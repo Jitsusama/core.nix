@@ -97,12 +97,30 @@ or launchd, and [`home.nix`][2] the account's.
   goes the same way after a week, two days once the disk is nearly full
   and twelve hours once it's critically full, but for its handover and a
   folder of GC roots, whose links keep what running programs read. A
-  quest a live session works on keeps all of it, in `tmp/` and beside it,
-  but its profiles at rest, whatever each entry's age: on 16 November a
-  laptop's guard took 188 entries of a working session's `tmp/`, a script
-  it wrote that evening among them. A session lives while its process
-  runs as the one that started then, told by its start ticks on Linux and
-  by the second it noted on a Mac, or while a pi host's roster holds it.
+  quest a live session works on keeps all it left beside `tmp/`, and in
+  `tmp/` what it wrote within two days awake: on 16 November a laptop's
+  guard took 188 entries of a working session's `tmp/`, a script it wrote
+  that evening among them. Past two days with nothing changed anywhere in
+  it, however deep, a live quest's `tmp/` entry goes by the same windows,
+  unless a process works in it or it is or holds a `handover`, a
+  repository (git, bare or not, jj, Mercurial, Sapling, Pijul, Subversion
+  or Fossil), a link into the store, a folder or entry that can't be read
+  or another filesystem mounted, at any depth, since the guard can't ask
+  whether a clone's commits are on a remote. It's dated by each entry's
+  later of its modification and change times, as an archive unpacked or
+  a tree copied keeping its times carries old modification times but new
+  inodes. One past 100,000 entries is kept, as it can't be read whole, and
+  a survey reads a million entries of all live quests at most, keeping
+  the rest for a later one. Each is read whole again just before it goes,
+  as a pass can reach it hours after its survey. Two days unchanged isn't
+  two days unread: the disk keeps no access times, so a lab only read is
+  dated by its last change. When the sessions folder can't be read, every
+  quest is held to this rule. On 18 November
+  quests' `tmp/` entries two days unwritten held 38 GB on one laptop, kept
+  while their sessions lived. Its browser profiles at rest
+  go as any quest's do. A session lives while its process runs as the
+  one that started then, told by its start ticks on Linux and by the
+  second it noted on a Mac, or while a pi host's roster holds it.
   A `store-roots` source names links a tool keeps to hold its builds from
   collection, as a development shell keeps its environment: those under
   its roots that Nix's indirect roots list and its pattern matches go once

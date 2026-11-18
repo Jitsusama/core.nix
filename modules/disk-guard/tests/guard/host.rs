@@ -313,6 +313,80 @@ fn a_cache_entry_goes_whoever_the_guard_cant_read() {
     );
 }
 
+// On 16 November a pass begun hours before took a live session's script.
+// A live quest's tmp/ entry is read whole again just before it goes, and
+// kept if anything in it was written since its survey, or it holds work
+// now; otherwise it goes as any entry does, and one the session took away
+// itself is gone, not kept as unreadable.
+#[test]
+fn a_live_quests_entry_is_read_again_before_it_goes() {
+    let proc = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(root.path()).unwrap();
+    let offer_for =
+        |name: &str, root: &Path, action: Action| offer(&root.join(name), Class::QuestTemp, action);
+    let surveyed = |name: &str| {
+        let lab = root.join(name);
+        fs::create_dir_all(lab.join("out")).unwrap();
+        fs::write(lab.join("out/run.log"), "x").unwrap();
+        let mut budget = disk_guard::scratch::LIVE_BUDGET;
+        let written = match disk_guard::scratch::live_reading(&lab, &mut budget) {
+            disk_guard::scratch::Live::Written(written) => written,
+            other => panic!("{} wasn't dated at its survey: {other:?}", lab.display()),
+        };
+        let action = Action::LiveEntry {
+            root: root.clone(),
+            written,
+        };
+        (lab, offer_for(name, &root, action))
+    };
+    let (left, left_offer) = surveyed("left");
+    let (back, back_offer) = surveyed("back");
+    let (cloned, cloned_offer) = surveyed("cloned");
+    let (removed, removed_offer) = surveyed("removed");
+    // After the survey: the session writes deep in one, a minute on, clones
+    // into another, and takes away the last.
+    let log = back.join("out/run.log");
+    fs::write(&log, "more").unwrap();
+    let later = std::time::SystemTime::now() + Duration::from_secs(60);
+    fs::File::options()
+        .write(true)
+        .open(&log)
+        .unwrap()
+        .set_modified(later)
+        .unwrap();
+    fs::create_dir_all(cloned.join("out/repo/.git")).unwrap();
+    fs::remove_dir_all(&removed).unwrap();
+    let offers = [left_offer, back_offer, cloned_offer, removed_offer];
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&offers, &mut scan);
+    let outcomes: Vec<_> = offers
+        .iter()
+        .map(|offer| reclaim.reclaim(&offer.candidate))
+        .collect();
+    assert_eq!(outcomes[0], Outcome::Reclaimed, "the left lab stayed");
+    assert!(!left.exists(), "the left lab is still there");
+    assert!(
+        matches!(&outcomes[1], Outcome::Kept(why) if why.contains("written since")),
+        "a lab written since its survey wasn't kept for it: {:?}",
+        outcomes[1]
+    );
+    assert!(
+        matches!(&outcomes[2], Outcome::Kept(why) if why.contains("repository")),
+        "a lab cloned into since its survey wasn't kept for it: {:?}",
+        outcomes[2]
+    );
+    assert_eq!(
+        outcomes[3],
+        Outcome::Reclaimed,
+        "a lab its session took away wasn't reported gone"
+    );
+    assert!(
+        back.join("out/run.log").exists() && cloned.join("out/repo/.git").exists(),
+        "a kept lab lost its files: the written one or the clone is gone"
+    );
+}
+
 #[test]
 fn a_folder_offered_as_a_cache_entry_is_refused_untouched() {
     let proc = tempfile::tempdir().unwrap();

@@ -2,10 +2,15 @@
 //! survey offers it.
 
 use crate::discover::{dir, file};
-use crate::survey::{DAY, config, find, now, offers, offers_sized, real, written_ago};
+use crate::survey::{DAY, config, find, now, offers, offers_sized, real, surveyed, written_ago};
 use disk_guard::activity::Process;
 use disk_guard::plan::Class;
-use disk_guard::survey::{Action, Sizes};
+use disk_guard::replaced::Uses;
+use disk_guard::scratch::{LIVE_BUDGET, Live, dated_whole, live_reading};
+use disk_guard::survey::{Action, Offer, Sizes};
+use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 const HOUR: f64 = 3_600.0;
 
@@ -324,14 +329,14 @@ fn lstart_wall(year: i32, month: i32, day: i32, [hour, minute, second]: [i32; 3]
 // On 16 November a laptop's guard took 188 entries of a quest's tmp/ while
 // its session worked in it, a script it had written that evening among
 // them: a pass begun hours before judged each entry by its own age. A
-// quest a live session works on keeps all it left, in tmp/ and beside it,
-// whatever each entry's age; its browser profiles at rest still go, as
-// their own lock says. A session lives while its process runs as the one
-// that started then: by its start ticks where the harness keeps them, as
-// on Linux, else by the start time it noted, as on a Mac. One whose
-// process ended keeps nothing.
+// quest a live session works on keeps what it wrote to its tmp/ within two
+// days, and all it left beside it, whatever its age; its browser profiles
+// at rest still go, as their own lock says. A session lives while its
+// process runs as the one that started then: by its start ticks where the
+// harness keeps them, as on Linux, else by the start time it noted, as on
+// a Mac. One whose process ended keeps nothing.
 #[test]
-fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
+fn a_quest_a_live_session_works_on_keeps_what_it_left_lately() {
     let home = tempfile::tempdir().unwrap();
     let home = real(home.path());
     let quests = dir(&home.join("quests"));
@@ -349,7 +354,7 @@ fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
         let workspace = dir(&workspaces.join(id));
         let script = workspace.join("tmp/splice.sh");
         file(&script, "x");
-        written_ago(&script, 8.0 * DAY);
+        written_ago(&script, 1.5 * DAY);
         let lab = dir(&workspace.join("lab"));
         file(&lab.join("run.log"), "x");
         written_ago(&lab.join("run.log"), 8.0 * DAY);
@@ -402,6 +407,253 @@ fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
             path.display()
         );
     }
+}
+
+/// Ages a folder and all within it, so none of it counts as written lately.
+fn aged_all(path: &Path, seconds: f64) {
+    if path.is_dir() && !path.is_symlink() {
+        for entry in std::fs::read_dir(path).unwrap() {
+            aged_all(&entry.unwrap().path(), seconds);
+        }
+    }
+    written_ago(path, seconds);
+}
+
+// On 18 November a laptop's quests held 38 GB in tmp/ entries unwritten for
+// two days, which a quest a live session works on kept however old.
+// A live quest's tmp/ entry goes once two days pass awake with nothing
+// written anywhere in it, however deep, as a quest with no session's
+// would. It stays while a process works in it, or while it is or holds a
+// handover or a repository, bare or not, whose commits may be on no
+// remote, at any depth. A link into the store stays, at its top or within,
+// as its build is the session's to drop; so does a folder that can't be
+// read, or listed but not searched, and all it left beside tmp/. A link
+// elsewhere isn't followed, as removing it removes only it.
+//
+// Nothing can set a change time back, so the survey runs 2.1 days on from
+// when the files were made: what was made now reads 2.1 days old, and an
+// age under that is a modification time set ahead.
+#[test]
+fn a_live_quests_tmp_gives_up_what_it_left_two_days_unwritten() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let (config, workspace) = live_quest(&home, "QEST-20200101-LIVEAA");
+    let tmp = dir(&workspace.join("tmp"));
+    let at = now() + 2.1 * DAY;
+    let tree = |name: &str, within: &[&str], seconds: f64| {
+        let top = dir(&tmp.join(name));
+        file(&top.join("run.log"), "x");
+        for path in within {
+            file(&top.join(path), "x");
+        }
+        aged_all(&top, seconds);
+        top
+    };
+    let deep = "a/b/c/d/e";
+    let spent = tree("spent-lab", &["out/result.json"], 2.1 * DAY);
+    let lately = tree("lately-lab", &[], -0.2 * DAY);
+    let handed = tree("handed", &["carry/handover/bundle"], 3.0 * DAY);
+    let clone = tree("clone", &["repo/.git/HEAD"], 3.0 * DAY);
+    let handover = tree("handover", &["bundle"], 3.0 * DAY);
+    let own_git = tree(".git", &["HEAD"], 3.0 * DAY);
+    let bare = tree(
+        "mirror.git",
+        &["HEAD", "objects/pack/p", "refs/heads/main"],
+        3.0 * DAY,
+    );
+    let far_clone = tree("far-clone", &[&format!("{deep}/.git/HEAD")], 3.0 * DAY);
+    let far_edit = tree("far-edit", &[&format!("{deep}/f.txt")], 3.0 * DAY);
+    written_ago(&far_edit.join(deep).join("f.txt"), HOUR - 2.1 * DAY);
+    let jj = tree("jj-clone", &["repo/.jj/repo"], 3.0 * DAY);
+    let hg = tree("hg-clone", &["repo/.hg/store"], 3.0 * DAY);
+    let listed = tree("listed", &["inner/notes.txt"], 3.0 * DAY);
+    let unsearched = listed.join("inner");
+    std::fs::set_permissions(&unsearched, PermissionsExt::from_mode(0o444)).unwrap();
+    let built = tree("built", &[], 3.0 * DAY);
+    std::os::unix::fs::symlink("/nix/store/abc-app", built.join("result")).unwrap();
+    aged_all(&built, 3.0 * DAY);
+    let shut = tree("shut", &["inner/x"], 3.0 * DAY);
+    let inner = shut.join("inner");
+    std::fs::set_permissions(&inner, PermissionsExt::from_mode(0o000)).unwrap();
+    let worked = tree("worked-lab", &[], 3.0 * DAY);
+    let root = tmp.join("result");
+    std::os::unix::fs::symlink("/nix/store/abc-app", &root).unwrap();
+    written_ago(&root, 3.0 * DAY);
+    let elsewhere = dir(&home.join("elsewhere"));
+    file(&elsewhere.join(".git/HEAD"), "x");
+    let pointer = tmp.join("pointer");
+    std::os::unix::fs::symlink(&elsewhere, &pointer).unwrap();
+    written_ago(&pointer, 3.0 * DAY);
+    let lab = dir(&workspace.join("lab"));
+    file(&lab.join("run.log"), "x");
+    aged_all(&lab, 8.0 * DAY);
+    let found = surveyed_at(&config, &[session(&worked)], at);
+    for folder in [&inner, &unsearched] {
+        std::fs::set_permissions(folder, PermissionsExt::from_mode(0o755)).unwrap();
+    }
+    let mut offered: Vec<_> = found.iter().map(|offer| &offer.candidate.path).collect();
+    offered.sort();
+    let kept = [
+        &lately, &handed, &clone, &handover, &own_git, &bare, &far_clone, &far_edit, &jj, &hg,
+        &listed, &built, &shut, &worked, &root, &lab,
+    ];
+    assert_eq!(
+        offered,
+        [&pointer, &spent],
+        "only the lab two days unwritten and a link elsewhere, not {kept:?}"
+    );
+    let offer = find(&found, &spent);
+    assert_eq!(offer.candidate.class, Class::QuestTemp);
+    let newest = whole(&spent);
+    assert!(
+        matches!(&offer.action, Action::LiveEntry { root, written }
+            if *root == tmp && (*written - newest).abs() < 1e-6),
+        "a live quest's entry isn't read again, from its newest change {newest}, before it \
+         goes: {:?}",
+        offer.action
+    );
+}
+
+/// A quest a live session works on, its config and its workspace.
+fn live_quest(home: &Path, id: &str) -> (disk_guard::config::Config, PathBuf) {
+    let quests = dir(&home.join("quests"));
+    let workspaces = dir(&home.join("workspaces"));
+    let sessions = dir(&home.join("sessions"));
+    file(
+        &quests.join(format!("{id}/README.md")),
+        &format!("---\nid: {id}\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n"),
+    );
+    file(
+        &sessions.join(format!("{id}.json")),
+        &format!(r#"{{"quest":"{id}","process":{{"pid":41,"startTicks":500}}}}"#),
+    );
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}",
+            "sessions": "{}" }}"#,
+        workspaces.display(),
+        quests.display(),
+        sessions.display()
+    ));
+    (config, dir(&workspaces.join(id)))
+}
+
+/// The session `live_quest` records, running in `cwd`.
+fn session(cwd: &Path) -> Process {
+    Process {
+        pid: 41,
+        uid: unsafe { libc::geteuid() },
+        start_ticks: 500,
+        cwd: Some(cwd.to_owned()),
+        readable: true,
+        ..Process::default()
+    }
+}
+
+/// What a survey at `at`, in wall seconds, offers with `processes` running.
+fn surveyed_at(config: &disk_guard::config::Config, processes: &[Process], at: f64) -> Vec<Offer> {
+    let ran = BTreeMap::new();
+    surveyed(
+        config,
+        processes,
+        &|_| false,
+        &ran,
+        &Uses::default(),
+        (at, Sizes::default()),
+    )
+    .0
+}
+
+/// The newest change a whole reading finds in `path`.
+fn whole(path: &Path) -> f64 {
+    match live_reading(path, &mut LIVE_BUDGET.clone()) {
+        Live::Written(written) => written,
+        other => panic!("{} wasn't dated: {other:?}", path.display()),
+    }
+}
+
+// An archive unpacked, or a tree copied keeping its times, carries the
+// modification times it had, years old perhaps, though a live session put
+// it there a moment ago. Its inodes' change times are new, and nothing can
+// set them back, so it's dated by those and stays.
+#[test]
+fn a_live_quests_tree_unpacked_a_moment_ago_stays() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let (config, workspace) = live_quest(&home, "QEST-20200101-UNPACK");
+    let unpacked = dir(&workspace.join("tmp/unpacked"));
+    file(&unpacked.join("src/main.rs"), "x");
+    aged_all(&unpacked, 400.0 * DAY);
+    let found = surveyed_at(&config, &[session(&home)], now());
+    let offered: Vec<_> = found.iter().map(|offer| &offer.candidate.path).collect();
+    assert!(
+        !offered.contains(&&unpacked),
+        "a tree unpacked a moment ago went for its old times: {offered:?}"
+    );
+}
+
+// When the sessions folder can't be read, no one can say which quests a
+// session lives in, so every quest's tmp/ goes by the live rule: an entry
+// a day unwritten, which a quest no session works on gives up, stays.
+#[test]
+fn with_the_sessions_unreadable_every_quest_keeps_two_days() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let (config, workspace) = live_quest(&home, "QEST-20200101-UNREAD");
+    std::fs::remove_file(home.join("sessions/QEST-20200101-UNREAD.json")).unwrap();
+    let lab = dir(&workspace.join("tmp/lab"));
+    file(&lab.join("run.log"), "x");
+    aged_all(&lab, 0.0);
+    let at = now() + DAY;
+    let offered = |found: &[Offer]| found.iter().any(|offer| offer.candidate.path == lab);
+    assert!(
+        offered(&surveyed_at(&config, &[], at)),
+        "a day-old entry of a quest no session works on was kept"
+    );
+    let sessions = home.join("sessions");
+    std::fs::set_permissions(&sessions, PermissionsExt::from_mode(0o000)).unwrap();
+    let found = surveyed_at(&config, &[], at);
+    std::fs::set_permissions(&sessions, PermissionsExt::from_mode(0o755)).unwrap();
+    assert!(
+        !offered(&found),
+        "with the sessions unreadable, a day-old entry wasn't held to the live rule"
+    );
+}
+
+// A whole reading stops at its budget and holds what it couldn't finish,
+// counting down what it read, so one survey's live entries share a
+// budget: what's past it is kept, read by a later survey.
+#[test]
+fn a_whole_reading_holds_what_its_budget_cant_finish() {
+    let home = tempfile::tempdir().unwrap();
+    let lab = dir(&real(home.path()).join("lab"));
+    for name in ["a", "b", "c"] {
+        file(&lab.join(name), "x");
+    }
+    let mut budget = 2;
+    assert!(
+        matches!(live_reading(&lab, &mut budget), Live::Holds(why) if why.contains("more than")),
+        "three entries read within a budget of two"
+    );
+    let mut budget = 5;
+    assert!(
+        matches!(live_reading(&lab, &mut budget), Live::Written(_)),
+        "three entries weren't read within five"
+    );
+    assert_eq!(budget, 2, "the reading didn't count what it read");
+    let mut entry = disk_guard::scratch::Entry {
+        path: lab.clone(),
+        written: 0.0,
+    };
+    let mut left = 2;
+    assert!(
+        !dated_whole(&mut entry, &mut left),
+        "dated past the survey's budget"
+    );
+    assert_eq!(left, 0, "the survey's budget wasn't spent by what was read");
+    assert!(
+        matches!(live_reading(&lab.join("gone"), &mut budget), Live::Gone),
+        "what isn't there read as other than gone"
+    );
 }
 
 // Every machine's guard is now told where the harness keeps its session

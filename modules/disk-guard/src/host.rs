@@ -548,8 +548,16 @@ impl Reclaimer for Reclaim<'_> {
                 reclaim::variant(&root, root_path, candidate, SystemTime::now())
             }
             Action::Build { target, .. } => reclaim::build(&root, root_path, target, candidate),
-            Action::Entry { .. } => {
-                reclaim::entry(&root, root_path, candidate, self.scan, &mut unlinked)
+            Action::Entry { .. } | Action::LiveEntry { .. } => {
+                let written = action.surveyed_write();
+                reclaim::live_entry(
+                    &root,
+                    root_path,
+                    candidate,
+                    written,
+                    self.scan,
+                    &mut unlinked,
+                )
             }
             Action::CacheEntry { .. } => {
                 reclaim::cache_entry(&root, root_path, candidate, &mut unlinked)
@@ -607,15 +615,24 @@ impl Reclaimer for Reclaim<'_> {
                 // Read before it goes: its .git files name the repositories.
                 let linked = workspaces::linked(&candidate.path);
                 let outcome = reclaim::entry(&root, root_path, candidate, self.scan, &mut unlinked);
-                if outcome == Outcome::Reclaimed {
-                    for common in linked {
-                        if let Err(error) = workspaces::prune(&common) {
-                            self.notes
-                                .push(format!("pruning {}: {error}", common.display()));
-                        }
-                    }
-                }
+                self.pruned(&outcome, linked);
                 outcome
+            }
+        }
+    }
+}
+
+impl Reclaim<'_> {
+    /// Prunes the repositories a reclaimed workspace's trees were linked to,
+    /// so none still lists a tree that's gone; a failure is only noted.
+    fn pruned(&mut self, outcome: &Outcome, linked: Vec<PathBuf>) {
+        if *outcome != Outcome::Reclaimed {
+            return;
+        }
+        for common in linked {
+            if let Err(error) = workspaces::prune(&common) {
+                self.notes
+                    .push(format!("pruning {}: {error}", common.display()));
             }
         }
     }

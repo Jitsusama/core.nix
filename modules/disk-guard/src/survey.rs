@@ -38,6 +38,10 @@ pub enum Action {
     Build { root: PathBuf, target: PathBuf },
     /// One entry, judged, moved aside, judged again and removed.
     Entry { root: PathBuf },
+    /// An entry of a live quest's `tmp/`, read whole again just before it
+    /// goes, as an `Entry` then: kept if anything in it was written after
+    /// `written`, the newest write its survey found, or it holds work now.
+    LiveEntry { root: PathBuf, written: f64 },
     /// One entry of a cache that refills itself and trims itself by age,
     /// as Go's build cache does: removed without judging who uses it.
     CacheEntry { root: PathBuf },
@@ -87,6 +91,7 @@ impl Action {
             | Action::Variant { root }
             | Action::Build { root, .. }
             | Action::Entry { root }
+            | Action::LiveEntry { root, .. }
             | Action::CacheEntry { root }
             | Action::Workspace { root }
             | Action::Trim { root }
@@ -95,6 +100,15 @@ impl Action {
             | Action::Ask { root, .. }
             | Action::Expire { root, .. } => root,
             Action::Trash { trash } => trash,
+        }
+    }
+
+    /// The newest write its survey found, for an entry read again before
+    /// it goes; none for any other.
+    pub fn surveyed_write(&self) -> Option<f64> {
+        match self {
+            Action::LiveEntry { written, .. } => Some(*written),
+            _ => None,
         }
     }
 }
@@ -528,8 +542,11 @@ impl Worked {
 /// process works in. Use is judged only of an entry old enough to offer,
 /// and before it's sized, which walks all of it; where processes work is
 /// read once, as there can be tens of thousands of entries to ask of.
-/// A quest a live session works on, as `worked` says, keeps all it left
-/// but its profiles at rest, whatever each entry's age.
+/// A quest a live session works on, as `worked` says, or every quest when
+/// that can't be told, keeps all it left beside `tmp/`, and in `tmp/` what
+/// was written within `scratch::LIVE_QUEST_UNWRITTEN` anywhere in it or
+/// holds work, as `scratch::live_reading` reads it; what goes is read
+/// again just before it does.
 fn offer_workspaces(
     path: &Path,
     quests: &Path,
@@ -543,6 +560,7 @@ fn offer_workspaces(
     let (over, working): (Vec<_>, Vec<_>) = workspaces::find(path, quests)
         .into_iter()
         .partition(workspaces::over);
+    let mut left = scratch::LIVE_SURVEY_BUDGET;
     for workspace in working {
         let tmp = workspace.path.join("tmp");
         let profiles = temp::profiles(&tmp, world.uid, world.now);
@@ -561,26 +579,49 @@ fn offer_workspaces(
             Worked::Any => true,
             Worked::These(quests) => id.is_some_and(|id| quests.contains(id)),
         };
-        if live {
-            continue;
-        }
+        // A quest a live session works on keeps what it wrote lately, what
+        // may be found nowhere else, its build roots and all beside tmp/:
+        // only what it left two days unwritten in tmp/ goes.
+        let unwritten = if live {
+            scratch::LIVE_QUEST_UNWRITTEN
+        } else {
+            scratch::QUEST_UNWRITTEN
+        };
         let a_profile = |path: &Path| profiles.iter().any(|profile| profile.path == path);
-        for entry in scratch::entries(&tmp) {
-            let young = scratch::idle(&entry, world.awake, world.now) < scratch::QUEST_UNWRITTEN;
+        for mut entry in scratch::entries(&tmp) {
+            let young = scratch::idle(&entry, world.awake, world.now) < unwritten;
             if young || a_profile(&entry.path) || worked_in(&entry.path) {
                 continue;
             }
+            // The shallow date can miss a live session's edit far down, so
+            // what passes it is read whole, and dated again by that.
+            let whole = live && !(world.stop)() && scratch::dated_whole(&mut entry, &mut left);
+            if live && (!whole || scratch::idle(&entry, world.awake, world.now) < unwritten) {
+                continue;
+            }
             let size = || sized(&entry.path, entry.written, world);
-            if let Some(candidate) = scratch::quest_candidate(&entry, size, world.awake, world.now)
+            let candidate = scratch::quest_candidate(&entry, size, world.awake, world.now);
+            if let Some(candidate) =
+                candidate.filter(|found| !live || found.class == Class::QuestTemp)
             {
+                let root = resolved(&tmp);
+                let action = if live {
+                    Action::LiveEntry {
+                        root,
+                        written: entry.written,
+                    }
+                } else {
+                    Action::Entry { root }
+                };
                 offers.push(Offer {
                     candidate,
-                    action: Action::Entry {
-                        root: resolved(&tmp),
-                    },
+                    action,
                     device,
                 });
             }
+        }
+        if live {
+            continue;
         }
         for entry in scratch::beside_tmp(&workspace.path) {
             let idle = scratch::idle(&entry, world.awake, world.now);

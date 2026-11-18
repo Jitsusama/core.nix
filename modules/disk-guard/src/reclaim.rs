@@ -424,6 +424,36 @@ pub fn entry(
     }
 }
 
+/// Reclaims an entry of a live quest's `tmp/` as [`entry`] does, once it's
+/// read whole again: a pass can reach it hours after its survey, and a live
+/// session may have come back to it meanwhile, as one did on 16 November.
+/// It's kept if anything in it was written after `written`, the newest
+/// write its survey found, or it holds work now. With no `written`, it's
+/// any other entry, reclaimed as [`entry`] does, and so is one gone since,
+/// which [`entry`] reports as it would any.
+pub fn live_entry(
+    root: &Dir,
+    root_path: &Path,
+    candidate: &Candidate,
+    written: Option<f64>,
+    looker: &mut impl Looker,
+    unlinked: &mut dyn FnMut(),
+) -> Outcome {
+    let Some(written) = written else {
+        return entry(root, root_path, candidate, looker, unlinked);
+    };
+    let mut budget = crate::scratch::LIVE_BUDGET;
+    match crate::scratch::live_reading(&candidate.path, &mut budget) {
+        crate::scratch::Live::Written(now) if now > written => {
+            Outcome::Kept("written since it was surveyed".to_owned())
+        }
+        crate::scratch::Live::Written(_) | crate::scratch::Live::Gone => {
+            entry(root, root_path, candidate, looker, unlinked)
+        }
+        crate::scratch::Live::Holds(why) => Outcome::Kept(why),
+    }
+}
+
 /// What comes of an entry whose earlier trash couldn't be emptied for
 /// `error`. One holding what this account may not remove, as root's files
 /// a session run as root left in a quest's scratch on 14 November, is

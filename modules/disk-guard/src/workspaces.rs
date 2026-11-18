@@ -460,10 +460,10 @@ fn lstart(token: &str) -> Option<f64> {
 /// The quests a live session works on now, read from the harness's
 /// session records in `sessions` and the hosts' rosters in `rosters`, or
 /// none when the records are there but can't be read, since then any quest
-/// may be. On
-/// 16 November a laptop's guard took 188 entries of a quest's tmp/ while
-/// its session worked in it, a script written that evening among them, so
-/// a quest one works on keeps what it left, whatever each entry's age.
+/// may be. On 16 November a laptop's guard took 188 entries of a quest's
+/// tmp/ while its session worked in it, a script written that evening among
+/// them, so a quest one works on keeps what it wrote lately and what holds
+/// work, as the survey says.
 pub fn worked_on(
     sessions: &Path,
     rosters: Option<&Path>,
