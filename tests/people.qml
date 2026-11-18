@@ -380,8 +380,10 @@ ShellRoot {
             // merged again at each answer, 13 ms of Joel's shell at p90
             // and 62 at most (his journal, 2026-11-14 to 17). Among equals,
             // the daemon's order: each address finds them as well as the
-            // next, as gus's does, so as Tuple lists them. Those listed are
-            // shown as listed, and the rest made of their records.
+            // next, as gus's does, so in the order the daemon heard them,
+            // which puts Zoë ahead of Gus, so a shell sorting by name is
+            // seen. Those listed are shown as listed, and the rest made of
+            // their records.
             what: "those listed first, then the rest, as the daemon finds them, merging no one",
             run: () => {
                 root.mergedBefore = people.merging.merges;
@@ -391,7 +393,7 @@ ShellRoot {
             check: () => {
                 const all = found("example");
                 expect("in order", names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, "
-                    + "Dee Ellery, Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
+                    + "Dee Ellery, Eli Fenwick, Zo\u00eb \"Zed\" Quill, Gus", names(all));
                 expect("merging no one", people.merging.merges === root.mergedBefore,
                     `${people.merging.merges - root.mergedBefore} merges`);
                 // Each found comes as the person they are, so not even
@@ -413,7 +415,7 @@ ShellRoot {
         seeking("example", "words asked again make none of their rows again", () => {
             const all = found("example");
             expect("found as before", names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, "
-                + "Dee Ellery, Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
+                + "Dee Ellery, Eli Fenwick, Zo\u00eb \"Zed\" Quill, Gus", names(all));
             expect("making none", people.tally.rows === root.madeBefore,
                 `${people.tally.rows - root.madeBefore} rows made`);
             // The launcher finds a row stepped into among these, by the key

@@ -46,7 +46,9 @@
         short_name = short;
         kind = "user";
       };
-      # Strangers between those Tuple knows, so their order is the search's.
+      # Strangers between those Tuple knows, so their order is the search's;
+      # Zoë ahead of Eli, so the order the daemon finds those nobody lists
+      # in isn't theirs by name too, and a shell sorting by name is seen.
       # Fay comes only once Ada goes into a call, a stranger nobody lists,
       # whom only the daemon's search finds. Gil comes last, met lately,
       # with nobody's stand changed.
@@ -55,12 +57,12 @@
         pkgs.writeText "contacts.json" (
           builtins.toJSON (
             [
+              (contact 106 "Zoë \"Zed\" Quill" null "zoe@example.com" "unknown" false false)
               (contact 101 "Eli Fenwick" null "eli@example.com" "unknown" false false)
               (contact 102 "Ada Brook" "Ada" "ada@example.com" ada true false)
               (contact 103 null null "gus@example.com" "unknown" false false)
               (contact 104 "Ben Carrow" null "ben@example.com" "busy" true false)
               (contact 105 "Cal Dunmore" null "cal@example.com" "offline" false true)
-              (contact 106 "Zoë \"Zed\" Quill" null "zoe@example.com" "unknown" false false)
               (contact 107 "Dee Ellery" null "dee@example.com" "unavailable" true false)
               (contact 108 "" "Hal" null "unknown" false false)
             ]
