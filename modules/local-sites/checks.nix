@@ -240,10 +240,11 @@ in
 // onLinux {
   # Its tests run as it builds, the server started as its unit starts it
   # beside a stand-in daemon (tests/serve.rs): the documents and a mount
-  # served, a stranger's name and a stranger's page refused, two pages
-  # sharing one watch on the daemon and each told every change trimmed to
-  # what the feed shows, an act refused before it reaches the daemon, and a
-  # daemon that isn't there said broken with why.
+  # served, a file the browser holds answered by its tag alone and one
+  # written since sent again, a stranger's name and a stranger's page
+  # refused, two pages sharing one watch on the daemon and each told every
+  # change trimmed to what the feed shows, an act refused before it reaches
+  # the daemon, and a daemon that isn't there said broken with why.
   local-sites-serves-its-sites = pkgs.callPackage ./package.nix { };
   # The system page, built on the theme's own web kit as a machine builds
   # it, read in headless Chromium through the server beside a stand-in
