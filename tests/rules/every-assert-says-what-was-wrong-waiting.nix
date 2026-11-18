@@ -18,7 +18,6 @@
   "modules/backlight/src/warmth.rs" = 2;
   "modules/bluetooth-links/src/main.rs" = 1;
   "modules/bluetooth-links/src/reply.rs" = 1;
-  "modules/cadence/src/idle.rs" = 8;
   "modules/cadence/src/mesh.rs" = 7;
   "modules/cadence/src/records.rs" = 5;
   "modules/cadence/src/revive.rs" = 1;

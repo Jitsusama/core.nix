@@ -10,6 +10,7 @@ fn quiet(idle: i64) -> Quiet {
         orchestrated_by: Some("VP50PC".into()),
         listening: true,
         running: true,
+        turned: Some(NOW - idle),
         since: Some(NOW - idle),
         started: None,
         unstarted: false,
@@ -79,7 +80,11 @@ fn a_new_turn_starts_a_new_spell() {
 #[test]
 fn one_that_never_turned_since_its_start_says_so() {
     let mut told = Told::default();
+    // As `Quiet::from` reads one that never turned: its spell from its
+    // pi's start.
     let s = Quiet {
+        turned: None,
+        started: Some(NOW - IDLE_FOR),
         unstarted: true,
         ..quiet(IDLE_FOR)
     };
@@ -163,11 +168,127 @@ fn one_with_a_next_step_is_woken_itself_at_twenty_minutes_once() {
         "8C7D8C31: this session has sat idle 0 h 20 min with a next step of its own, \
          \"Merge #12 once its gate passes\": its last turn ended at t98800. Take it up now. \
          If it waits on someone, park saying on whom; if it is another's, hand it to them \
-         by name. VP50PC hears of it at two hours idle."
+         by name. Answer this with re, saying which. VP50PC hears of it at two hours idle."
     );
     assert!(
         due(&[with_next(WAKE_AFTER)], &mut told, NOW + 600, clock).is_empty(),
         "a spell is woken once"
+    );
+}
+
+#[test]
+fn a_step_is_asked_of_once_and_its_orchestrator_hears_when_turns_dont_move_it() {
+    let mut told = Told::default();
+    assert_eq!(
+        due(&[with_next(WAKE_AFTER)], &mut told, NOW, clock).len(),
+        1,
+        "asked first"
+    );
+    // It answers, a turn of its own, and sits with the same step.
+    let answered = NOW + 60;
+    let later = || Quiet {
+        turned: Some(answered),
+        since: Some(answered),
+        ..with_next(0)
+    };
+    assert!(
+        due(&[later()], &mut told, answered + WAKE_AFTER + 60, clock).is_empty(),
+        "the same step asked of again"
+    );
+    let tells = due(&[later()], &mut told, answered + IDLE_FOR, clock);
+    assert_eq!(tells.len(), 1, "{tells:?}");
+    assert!(!tells[0].wakes, "woken again rather than told of");
+    assert!(
+        tells[0].text.contains(
+            " It was asked at t100000 to take up its next step, and the turns since \
+             haven't moved it."
+        ),
+        "{}",
+        tells[0].text
+    );
+    let moved = Quiet {
+        next: Some("Rebase #12 onto main".into()),
+        ..later()
+    };
+    let tells = due(&[moved], &mut told, answered + IDLE_FOR + 300, clock);
+    assert!(
+        tells.len() == 1 && tells[0].wakes,
+        "a new step wasn't asked of: {tells:?}"
+    );
+}
+
+#[test]
+fn one_first_seen_past_two_hours_is_asked_before_its_orchestrator_hears() {
+    let mut told = Told::default();
+    let s = with_next(IDLE_FOR * 2);
+    let tells = due(std::slice::from_ref(&s), &mut told, NOW, clock);
+    assert!(
+        tells.len() == 1 && tells[0].wakes,
+        "not asked alone first: {tells:?}"
+    );
+    assert!(
+        due(
+            std::slice::from_ref(&s),
+            &mut told,
+            NOW + WAKE_AFTER - 1,
+            clock
+        )
+        .is_empty(),
+        "its orchestrator heard before the question had time to take"
+    );
+    let s = Quiet {
+        since: Some(NOW - IDLE_FOR * 2),
+        ..s
+    };
+    let tells = due(&[s], &mut told, NOW + WAKE_AFTER, clock);
+    assert!(
+        tells.len() == 1 && !tells[0].wakes && tells[0].text.contains("has taken no turn since"),
+        "its orchestrator didn't hear once the question went unanswered: {tells:?}"
+    );
+}
+
+#[test]
+fn a_spell_across_midnight_or_a_resumed_log_is_asked_and_told_once() {
+    let mut told = Told::default();
+    let s = with_next(IDLE_FOR);
+    let first = due(std::slice::from_ref(&s), &mut told, NOW, clock);
+    assert_eq!(first.len(), 1, "asked: {first:?}");
+    let after = NOW + WAKE_AFTER;
+    assert_eq!(
+        due(std::slice::from_ref(&s), &mut told, after, clock).len(),
+        1,
+        "told of"
+    );
+    // Past midnight its presence names no turn, and its log was written
+    // later, at the turn's end or by a host resuming it.
+    let day_began = Quiet {
+        turned: None,
+        since: Some(NOW - IDLE_FOR + 5),
+        ..s
+    };
+    assert!(
+        due(&[day_began], &mut told, after + 300, clock).is_empty(),
+        "the same spell was asked or told of again"
+    );
+}
+
+#[test]
+fn a_line_that_could_not_be_sent_is_said_again() {
+    let mut told = Told::default();
+    let tells = due(&[with_next(IDLE_FOR)], &mut told, NOW, clock);
+    unsay(&mut told, &tells[0]);
+    assert_eq!(
+        due(&[with_next(IDLE_FOR)], &mut told, NOW + 300, clock).len(),
+        1,
+        "a wake not sent wasn't sent again"
+    );
+    let tells = due(&[quiet(IDLE_FOR)], &mut told, NOW, clock);
+    assert!(!tells[0].wakes, "{tells:?}");
+    unsay(&mut told, &tells[0]);
+    assert_eq!(
+        due(&[quiet(IDLE_FOR)], &mut told, NOW + 300, clock).len(),
+        1,
+        "a line for an orchestrator not sent wasn't sent again"
     );
 }
 
@@ -185,24 +306,26 @@ fn one_woken_and_still_idle_at_two_hours_is_told_so() {
         ..with_next(0)
     };
     let tells = due(&[s], &mut told, later, clock);
+    assert_eq!(tells.len(), 1, "asked again, or not told of: {tells:?}");
     let told_of = told_to_orchestrator(&tells);
     assert_eq!(told_of.len(), 1, "{tells:?}");
     assert!(
-        told_of[0]
-            .text
-            .contains(" It was woken at t100000 and has taken no turn since."),
+        told_of[0].text.contains(
+            " It was asked at t100000 to take up its next step, and has taken no turn since."
+        ),
         "{}",
         told_of[0].text
     );
 }
 
 #[test]
-fn one_cut_by_a_host_stop_is_woken_at_the_first_tick_after_its_host_is_back() {
+fn one_cut_by_a_host_stop_is_woken_once_its_host_is_back() {
     // 5HJZ8Z on 18 November: its turn cut at 07:40 by the host's stop, its
     // host back at 09:12, and nothing said to it until 10:50.
     let cut = NOW - 100 * 60;
     let resumed = NOW - 8 * 60;
     let s = Quiet {
+        turned: Some(cut),
         since: Some(cut),
         started: Some(resumed),
         unstarted: true,
@@ -304,6 +427,18 @@ fn a_presence_counts_from_its_last_turn_across_a_restart() {
     let parked =
         Quiet::from(&started_later, None, Some("b"), (true, false), |_| true).expect("one");
     assert!(!parked.listening, "a parked one isn't listening");
+}
+
+#[test]
+fn a_step_waiting_on_joel_or_on_an_answer_is_none_to_wake_to() {
+    let mut joel = presence(Some("1970-01-12T13:46:40Z"), 900_000_000);
+    joel.doing = serde_json::json!({"next": "Drill with Joel at his work MacBook"});
+    let q = Quiet::from(&joel, None, Some("b"), (false, false), |_| true).expect("one");
+    assert_eq!(q.next, None, "a step only Joel can move");
+    let mut asked = presence(Some("1970-01-12T13:46:40Z"), 900_000_000);
+    asked.wanting = serde_json::json!({"id": "2f95756a"});
+    let q = Quiet::from(&asked, None, Some("b"), (false, false), |_| true).expect("one");
+    assert_eq!(q.next, None, "a step waiting on the answer it asked for");
 }
 
 #[test]

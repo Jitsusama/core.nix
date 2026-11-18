@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use super::{Quiet, Told, due};
+use super::{Quiet, Told, due, unsay};
 use crate::asking::To;
 use crate::mesh::{self, Mesh, Presence};
 use crate::{clock, message, start, write_whole};
@@ -24,11 +24,17 @@ struct Running {
 /// Whether `p` runs background work of its own now, as the harness's
 /// `job-workflow/running/<session>.json` says. A file the pi it names no
 /// longer runs is left from a pi before, so only one naming the
-/// presence's own pi and start counts.
+/// presence's own pi and start, to the second either way, counts. A
+/// session id is read only when it is plain letters, digits and hyphens,
+/// since it names the file.
 fn working(root: &Path, p: &Presence) -> bool {
     let Some(owner) = p.owner.as_ref() else {
         return false;
     };
+    let plain = |c: char| c.is_ascii_alphanumeric() || c == '-';
+    if p.session.is_empty() || !p.session.chars().all(plain) {
+        return false;
+    }
     let path = root
         .join("job-workflow/running")
         .join(format!("{}.json", p.session));
@@ -38,7 +44,9 @@ fn working(root: &Path, p: &Presence) -> bool {
         .is_some_and(|r| {
             !r.jobs.is_empty()
                 && Some(r.owner) == owner.pid
-                && Some(r.started) == owner.started_at.map(|ms| ms / 1000)
+                && owner
+                    .started_at
+                    .is_some_and(|ms| (r.started - ms / 1000).abs() <= 1)
         })
 }
 
@@ -71,29 +79,22 @@ pub fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Resul
     let tells = due(&sessions, &mut told, now, clock);
     let mut failed = None;
     for tell in &tells {
-        // Not said, so the next tick says it again.
-        let unsay = |told: &mut Told| {
-            if tell.wakes {
-                told.woken.remove(&tell.session);
-            } else {
-                told.spells.remove(&tell.session);
-            }
-        };
         if failed.is_some() {
-            unsay(&mut told);
+            unsay(&mut told, tell);
             continue;
         }
-        // A wake is a finding, which starts the session's turn and waits
-        // on no answer; a line for an orchestrator is told as it is.
+        // A wake is a question, since only a question starts a listening
+        // session's turn: a finding waits for the turn it would start. A
+        // line for an orchestrator is told as it is.
         let intent = if tell.wakes {
-            "finding"
+            "question"
         } else {
             To::Orchestrator.intent()
         };
         match mesh.send(&message(&tell.to, intent, tell.text.clone())) {
             Ok(()) => println!("{} (to {})", tell.text, tell.to),
             Err(err) => {
-                unsay(&mut told);
+                unsay(&mut told, tell);
                 failed = Some(err);
             }
         }
@@ -134,6 +135,13 @@ mod tests {
             !working(root.path(), &presence(7, 2_000_000)),
             "a pi before this one"
         );
+        assert!(
+            working(root.path(), &presence(7, 1_001_000)),
+            "a start rounded the other way"
+        );
+        let mut odd = presence(7, 1_000_090);
+        odd.session = "../s-1".into();
+        assert!(!working(root.path(), &odd), "a session id that isn't plain");
         fs::write(&file, r#"{"owner":7,"started":1000,"jobs":[]}"#).expect("written");
         assert!(
             !working(root.path(), &presence(7, 1_000_090)),

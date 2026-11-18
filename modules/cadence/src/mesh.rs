@@ -50,6 +50,9 @@ pub struct Presence {
     /// What it says it is doing, its next step under `next`.
     #[serde(default)]
     pub doing: serde_json::Value,
+    /// What it waits to be answered on, when it asked; null otherwise.
+    #[serde(default)]
+    pub wanting: serde_json::Value,
 }
 
 /// The pi hosts' rosters, by host: the sessions each holds, or none when
@@ -518,6 +521,7 @@ mod tests {
             usage: serde_json::Value::Null,
             hosted: None,
             doing: serde_json::Value::Null,
+            wanting: serde_json::Value::Null,
         };
         assert!(alive(Some(&parked), |_| false));
         let gone = Presence {
