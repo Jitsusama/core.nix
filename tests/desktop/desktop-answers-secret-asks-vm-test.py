@@ -273,12 +273,16 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     since = desktop.mark()
     desktop.machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
-    desktop.machine.fail(
+    # A throw is written in the same turn as the close, but reaches the
+    # journal through a stream, so it's synced before it's read; a journal
+    # that can't be read fails rather than passing for a clean one.
+    desktop.machine.succeed("journalctl --sync")
+    said = desktop.machine.succeed(
         desktop.in_session(
             f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
-            " | grep -q TypeError"
         )
     )
+    assert "TypeError" not in said, f"a Return on the refused line threw: {said}"
 
 
 def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None:

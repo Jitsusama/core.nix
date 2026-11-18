@@ -669,6 +669,10 @@ ShellRoot {
             ["Ask, Hidden While You Share"]);
         same("saying it's the share that withholds it, not a missing key press",
             stage.toldWhys.slice(told), ["not while your screen is shared"]);
+        // Only what releases nothing goes while it's shared, so an act a
+        // daemon adds later that grants something is withheld too.
+        same("nor is any ask but a no or a revoke",
+            asks.stamped(root.key, { ask: "grant", thing: "op://Private/Kiln/password" }), null);
     }
 
     function sharingMoved() {
@@ -706,6 +710,9 @@ ShellRoot {
         Niri.castsHeard = false;
         same("before niri says its casts, an ask's row is hidden", row()?.name,
             "Ask, Hidden While You Share");
+        const waiting = "not until it's known whether your screen is shared";
+        same("saying on the row that it waits on knowing, not on a share",
+            [row()?.note, row()?.drawer?.()?.body], [waiting, waiting]);
         const told = stage.toldWhys.length;
         root.madeBefore.run();
         same("and a yes then is told it waits on knowing, not on a share",
@@ -739,26 +746,29 @@ ShellRoot {
     // becomes until the daemon answers; the share hides that row too, and
     // the name told if the no is refused or comes late.
     function heldThenShared() {
-        const other = { key: "wifi:kiln", from: stage, row: { name: "Kiln" }, name: "Kiln",
-            act: "join" };
+        // Another source's row keyed as the ask's, so only whose hold it
+        // is keeps it apart.
+        const other = { key: "wifi:kiln", from: stage, row: { name: "Kiln", shownKey: root.key },
+            name: "Kiln", act: "join" };
         stage.becoming = { "wifi:kiln": other };
         root.sent(row().verbs()[1]);
         const held = () => Object.values(stage.becoming).find(one => one.from !== stage) ?? {};
         const real = "op://Private/Kiln/password";
         same("a no before the share is held under the ask's own name", held().name, real);
         const act = held().act;
+        const done = held().done;
         const untolds = stage.untolds;
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         const hidden = "Ask, Hidden While You Share";
         same("the share holds it again named only as hidden, its row hidden too",
             [held().name, held().row?.name, held().act], [hidden, hidden, act]);
-        same("still saying when it's done", typeof held().done, "function");
+        same("still saying when it's done, as it did", held().done === done, true);
         same("what was told before the share is forgotten", stage.untolds, untolds + 1);
         same("another source's hold is left as it was", stage.becoming["wifi:kiln"] === other,
             true);
         Niri.casts = {};
         same("the share ended holds it again as itself", [held().name, held().row?.name],
             [real, real]);
-        same("still saying when it's done after", typeof held().done, "function");
+        same("still saying when it's done after, as it did", held().done === done, true);
     }
 }
