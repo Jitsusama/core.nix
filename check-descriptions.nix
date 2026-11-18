@@ -2504,8 +2504,8 @@
     PATH, left stopped after refusing
     what it was given and left running through a switch and through the kernel killing one of its
     commands for memory, watched by a two-minute watchdog, given 150 s to park its conversations
-    when stopped, its main process signalled first and what is left ended with it, with a core
-    limit of 0, soft and hard,
+    when stopped and told that limit, its main process signalled first and what is left ended
+    with it, with a core limit of 0, soft and hard,
     started at most three times in ten minutes and said to be down once left down, never at a
     restart, and a machine naming none, or a Mac, gets none
   '';
