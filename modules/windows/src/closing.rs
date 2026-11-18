@@ -35,7 +35,10 @@ pub fn shut(niri: &Path, unasked: &Unasked, told: &mut Told) -> bool {
     let close = json!({"Action": {"CloseWindow": {"id": unasked.window}}});
     let refused = order::refused(niri, &close);
     match &refused {
-        Some(why) => eprintln!("<3>niri didn't close an agent's password prompt: {why}"),
+        Some(why) => eprintln!(
+            "<3>niri didn't close an agent's password prompt, window {} {:?}, from {}: {why}",
+            unasked.window, unasked.app, unasked.unit
+        ),
         None => eprintln!("{}", unasked::closed(unasked)),
     }
     let shut = refused.is_none();

@@ -1,7 +1,7 @@
 //! A window an agent opened over Joel's work, said to the journal.
 //!
-//! Agents run in agents.slice and the jobs slices, apart from Joel's
-//! programs in app.slice, so a window whose process sits there was opened
+//! Agents run in agents.slice and the slices polkit's rules name for
+//! them, apart from Joel's programs in app.slice, so a window whose process sits there was opened
 //! by an agent's command, as a profiler's GUI opened on Joel's screen
 //! twice on 2026-11-14. The sessions' own windows sit there too, kitty's
 //! one instance in agents.slice, and are Joel's to look at, so a pi
@@ -163,22 +163,25 @@ impl Watched {
     }
 }
 
-/// The unit of a process in agents.slice or a jobs slice, from its cgroup
-/// file's unified line, or none for any other. What Joel starts at a
-/// terminal runs in jobs-awaited.slice, so it's his, as polkit's rules
-/// take it (modules/slices/agents-ask-first.rules).
+/// The unit of a process in a place polkit's rules take for an agent's
+/// (modules/slices/agents-ask-first.rules), from its cgroup file's unified
+/// line, or none for any other: agents.slice, jobs.service, jobs-work.slice,
+/// jobs-timed.slice, shared.slice or a pi-jobs scope. What Joel starts at a
+/// terminal runs in jobs-awaited.slice, none of these, so it's his.
 #[must_use]
 pub fn agents_unit(cgroup: &str) -> Option<&str> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
-    if path.split('/').any(|part| part == "jobs-awaited.slice") {
-        return None;
-    }
-    let agents = path.split('/').any(|part| {
-        part == "agents.slice"
-            || part
-                .strip_suffix(".slice")
-                .is_some_and(|slice| slice.starts_with("jobs"))
+    let parts: Vec<&str> = path.split('/').collect();
+    let within = parts.windows(2).any(|pair| {
+        matches!(
+            pair[0],
+            "agents.slice" | "jobs-work.slice" | "jobs-timed.slice" | "shared.slice"
+        ) || pair == ["jobs.slice", "jobs.service"]
     });
+    let fenced = parts
+        .iter()
+        .any(|part| part.starts_with("pi-jobs-") && part.ends_with(".scope"));
+    let agents = within || fenced;
     agents
         .then(|| path.rsplit('/').next())
         .flatten()
@@ -573,6 +576,31 @@ mod tests {
             agents_unit(JOB),
             Some("run-r1.scope"),
             "an agent's job wasn't known"
+        );
+    }
+
+    #[test]
+    fn an_agents_places_are_those_polkits_rules_name() {
+        let account = "0::/user.slice/user-1000.slice/user@1000.service";
+        for (place, unit) in [
+            ("shared.slice/push-walk-3.scope", "push-walk-3.scope"),
+            ("jobs.slice/jobs.service", "jobs.service"),
+            ("jobs.slice/jobs-timed.slice/run-r9.scope", "run-r9.scope"),
+            (
+                "jobs.slice/jobs-awaited.slice/pi-jobs-7.scope",
+                "pi-jobs-7.scope",
+            ),
+        ] {
+            assert_eq!(
+                agents_unit(&format!("{account}/{place}\n")),
+                Some(unit),
+                "an agent's process in {place} wasn't known as polkit knows it"
+            );
+        }
+        assert_eq!(
+            agents_unit(&format!("{account}/jobs.slice/jobs-sorter.service\n")),
+            None,
+            "a jobs slice polkit doesn't name was taken for an agent's"
         );
     }
 }

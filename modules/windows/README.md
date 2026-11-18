@@ -126,10 +126,12 @@ the window gone, not from the ask.
 
 ## A Window an Agent Opened
 
-Agents run in agents.slice and the jobs slices, so a window whose process
-sits there was opened by an agent over Joel's work. What Joel starts at a
-terminal runs in jobs-awaited.slice and is his, as polkit's rules take it. The daemon says each
-one to the journal as it opens, as a warning (src/unasked.rs):
+Agents run where polkit's rules say they do (modules/slices/agents-ask-first.rules):
+agents.slice, jobs.service, jobs-work.slice, jobs-timed.slice, shared.slice
+and pi-jobs scopes. A window whose process sits there was opened by an agent
+over Joel's work. What Joel starts at a terminal runs in jobs-awaited.slice
+and is his. The daemon says each one to the journal as it opens, as a
+warning (src/unasked.rs):
 
 ```text
 an agent opened a window over Joel's work: "org.kde.heaptrack" "Heaptrack", from
@@ -153,7 +155,8 @@ close key does, so the notice says it was asked to; a prompter could
 ignore it. An agent rerunning its test makes a fresh scope each time, so
 Joel is told once a minute for a folder at most. Where niri refuses, the
 notice says the window couldn't be closed and to type no password there,
-and the prompt is asked again when niri next says it. A prompt is weighed
+and the prompt is asked again when niri next says it; one that never
+changes again isn't. A prompt is weighed
 whenever niri says it, so one open as the daemon starts again, as after a
 switch, or one naming itself late, is closed too.
 Joel's own prompts come from his services and stay. The installed daemon
