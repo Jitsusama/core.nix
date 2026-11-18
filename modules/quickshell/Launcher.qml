@@ -13418,7 +13418,8 @@ Scope {
                             // What the last step back out's keeping said
                             // of the row it came to (keptLast's split),
                             // kept past the keepings after it, or null
-                            // until one keeps rows for it.
+                            // until one is kept, those that change no
+                            // row included.
                             property var steppedLast: null
                             // Whether keeping them last put every row in
                             // again (RowsKept.afresh), so they stand from
@@ -13453,11 +13454,19 @@ Scope {
                                 marking.marks.forEach((mark, at) => {
                                     rowOf[mark] = rows[at];
                                 });
+                                // Where a step back out lands, said of every
+                                // one, those that keep every row included.
+                                const landing = root.backTo === null || rows.length === 0 ? -1
+                                    : root.leftAt(root.backTo, rows);
+                                const arrival = { back: landing, stepping: root.backTo !== null,
+                                    empty: rows.length === 0 };
                                 if (steps.length === 0) {
                                     root.washedBy = root.words;
                                     list.rows = rows;
                                     list.rowOf = rowOf;
-                                    list.keptLast = { fresh: 0, laying: 0 };
+                                    list.keptLast = { fresh: 0, laying: 0, split: arrival };
+                                    if (root.backTo !== null)
+                                        list.steppedLast = arrival;
                                     return true;
                                 }
                                 for (const step of steps.filter(one => one.remove !== undefined))
@@ -13490,8 +13499,6 @@ Scope {
                                 // after, every row of a step in from home
                                 // was laid out again for it.
                                 root.rowsPlaced(false);
-                                const landing = root.backTo === null || rows.length === 0 ? -1
-                                    : root.leftAt(root.backTo, rows);
                                 const puts = steps.filter(one => one.remove === undefined);
                                 const whole = landing >= 0
                                     && RowsKept.allAfresh(puts, rows.length);
@@ -13574,8 +13581,7 @@ Scope {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
                                     laying: Date.now() - laying + aside + split,
-                                    split: { back: landing, from, took: split, whole,
-                                        stepping: root.backTo !== null },
+                                    split: Object.assign({ from, took: split, whole }, arrival),
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };

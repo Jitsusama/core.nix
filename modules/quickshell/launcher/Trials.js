@@ -151,14 +151,17 @@ function keptSaid(kept) {
 // Where a step back out came to and how its rows went in, or nothing for a
 // keeping that was no step back. Rows count from 1 among the list's own,
 // a heading taking one as it does there, so past a heading the number
-// runs ahead of the card's. A list put in afresh with its view at its top
-// has no rows above to split off; rows kept aren't put in.
-function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = back >= 0 }) {
+// runs ahead of the card's. One that comes to no row stands above them,
+// on the line or an answer's headline, unless the place has none left. A
+// list put in afresh with its view at its top has no rows above to split
+// off; rows kept aren't put in.
+function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = false,
+    empty = false }) {
     if (!stepping) {
         return "";
     }
     if (back < 0) {
-        return "; back to the line";
+        return empty ? "; back to no rows" : "; back above the rows";
     }
     const to = `back to row ${back + 1}`;
     if (from > 0) {
