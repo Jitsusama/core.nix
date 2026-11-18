@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
+use zbus::blocking::fdo::DBusProxy;
 use zbus::zvariant::OwnedValue;
 
 /// How long a test waits for what it expects before failing.
@@ -334,7 +335,8 @@ fn signal(
     member: &str,
     body: &(u32, impl serde::Serialize + zbus::zvariant::Type),
 ) {
-    let server = connection.unique_name().unwrap().to_string();
+    let bus = DBusProxy::new(connection).unwrap().get_id().unwrap();
+    let server = timers::on_bus(bus.as_str(), connection.unique_name().unwrap().as_str());
     let kept = folder.join("state").join("held.json");
     waits_for(|| {
         std::fs::read_to_string(&kept)

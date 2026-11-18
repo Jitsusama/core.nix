@@ -53,7 +53,7 @@ use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Help};
 use timers::{
     Ask, Held, KIND, Notice, Refusal, STOPWATCH, Standing, Stopwatch, Timer, VERSION, Words, ask,
-    error, now, unsaid, watched,
+    error, now, on_bus, unsaid, watched,
 };
 use zbus::blocking::{Connection, MessageIterator};
 use zbus::zvariant::Value as Variant;
@@ -441,7 +441,6 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
             Ok(Tell::Deaf(stopped)) => {
                 if stopped == dialled && connection.take().is_some() {
                     eprintln!("<4>stopped hearing the session bus, so it's dialled again");
-                    forget_notices(shared);
                     lost = true;
                 }
             }
@@ -508,9 +507,10 @@ fn connect(shared: &Arc<Shared>, dialled: u64) -> Result<Connection, String> {
     };
     let acted = listening(acts(), "what Joel does with a notice")?;
     let followed = listening(servers(), "which server takes the notices")?;
+    let id = bus_id(&bus).map_err(|why| format!("couldn't ask the session bus its id: {why}"))?;
     let heard = Arc::clone(shared);
     std::thread::spawn(move || {
-        hear(&heard, acted);
+        hear(&heard, acted, &id);
         say(&heard, Tell::Deaf(dialled));
     });
     let shared = Arc::clone(shared);
@@ -552,31 +552,29 @@ fn rung(shared: &Shared) -> Vec<String> {
         .collect()
 }
 
-/// Forgets every notice shown, as they went with the bus they were shown
-/// on: a bus begun again names its connections from the start, so a new
-/// server may carry the old one's name, and each rung timer would read as
-/// shown there.
-fn forget_notices(shared: &Shared) {
-    let mut daemon = lock(shared);
-    for timer in &mut daemon.held.timers {
-        timer.notice = None;
-    }
-    if let Err(why) = daemon.held.write(&daemon.kept) {
-        eprintln!("<3>couldn't keep the timers: {why}");
-    }
+/// The bus's own id, which no other bus has: one begun again, as after a
+/// login, names its connections from the start, so a name alone could be
+/// a server gone with the last bus.
+fn bus_id(bus: &Connection) -> zbus::Result<String> {
+    bus.call_method(Some(BUS), BUS_PATH, Some(BUS), "GetId", &())?
+        .body()
+        .deserialize()
 }
 
-/// The bus name of the notifications server there is now.
+/// The notifications server there is now, as `Notice::server` holds it:
+/// the bus's id and the server's name on it.
 fn server(bus: &Connection) -> zbus::Result<String> {
-    bus.call_method(
-        Some(BUS),
-        BUS_PATH,
-        Some(BUS),
-        "GetNameOwner",
-        &NOTIFICATIONS,
-    )?
-    .body()
-    .deserialize()
+    let name: String = bus
+        .call_method(
+            Some(BUS),
+            BUS_PATH,
+            Some(BUS),
+            "GetNameOwner",
+            &NOTIFICATIONS,
+        )?
+        .body()
+        .deserialize()?;
+    Ok(on_bus(&bus_id(bus)?, &name))
 }
 
 /// Takes a notice back, from the server that gave it alone, since its id
@@ -670,16 +668,20 @@ fn follow(shared: &Shared, messages: MessageIterator) {
 
 /// Hears each notice's act and its closing until the bus goes: Again sets
 /// its timer going afresh, and putting it away ends a timer still rung.
-fn hear(shared: &Shared, messages: MessageIterator) {
+fn hear(shared: &Shared, messages: MessageIterator, bus: &str) {
     for message in messages {
         let Ok(message) = message else { break };
         let header = message.header();
         let member = header.member().map(|member| member.as_str().to_owned());
-        // Which server said it, since a notice's id is only its own.
-        let sender = header
-            .sender()
-            .map(|sender| sender.as_str().to_owned())
-            .unwrap_or_default();
+        // Which server said it, on which bus, since a notice's id is only
+        // its own.
+        let sender = on_bus(
+            bus,
+            header
+                .sender()
+                .map(|sender| sender.as_str())
+                .unwrap_or_default(),
+        );
         match member.as_deref() {
             Some("ActionInvoked") => {
                 let Ok((id, act)) = message.body().deserialize::<(u32, String)>() else {
