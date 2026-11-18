@@ -26,8 +26,8 @@ pub struct Emptied {
 const LOGIN_FIELDS: [&str; 4] = ["auth", "identitytoken", "password", "registrytoken"];
 
 /// Settings as they're written: every key kept, in its order, and a key
-/// said twice kept twice, since Docker's reader merges a setting said
-/// twice where a map of `serde_json`'s keeps only the last saying.
+/// said twice kept twice, since cat reads every saying where a map of
+/// `serde_json`'s keeps only the last.
 enum Said {
     Nothing,
     Something,
@@ -130,12 +130,17 @@ fn holds(name: &str, value: &Said) -> bool {
     }
 }
 
-/// Every string a setting holds, however deep.
+/// Every string a setting holds, however deep, its names among them,
+/// since cat reads those too.
 fn addresses(value: &Said) -> Box<dyn Iterator<Item = &str> + '_> {
     match value {
         Said::Text(said) => Box::new(std::iter::once(said.as_str())),
         Said::Listed(listed) => Box::new(listed.iter().flat_map(addresses)),
-        Said::Named(named) => Box::new(named.iter().flat_map(|(_, said)| addresses(said))),
+        Said::Named(named) => Box::new(
+            named
+                .iter()
+                .flat_map(|(name, said)| std::iter::once(name.as_str()).chain(addresses(said))),
+        ),
         Said::Nothing | Said::Something => Box::new(std::iter::empty()),
     }
 }
@@ -279,8 +284,8 @@ mod tests {
 
     #[test]
     fn a_credential_under_a_key_said_twice_empties_the_file() {
-        // Docker's reader merges a setting said twice rather than keeping
-        // the last, so a credential under either saying counts.
+        // cat reads every saying of a setting said twice, whichever one
+        // Docker keeps, so a credential under either counts.
         for text in [
             r#"{"auths": {"registry.example": {"auth": "made-up"}}, "auths": {}}"#,
             r#"{"auths": {"registry.example": {"auth": "made-up"}, "registry.example": {}}}"#,
@@ -297,8 +302,8 @@ mod tests {
     #[test]
     fn a_credential_under_a_key_docker_folds_empties_the_file() {
         // Docker's reader folds the long s to s, the Kelvin sign to k, the
-        // dotted capital I to I, by its single-letter lower case, and the
-        // dotless i to I, by its upper case.
+        // dotted capital I to i, by its single-letter lower case, and the
+        // dotless i to i, by its upper case then lower.
         for text in [
             r#"{"auths": {"registry.example": {"\u0131dentitytoken": "made-up"}}}"#,
             r#"{"auth\u017f": {"registry.example": {"auth": "made-up"}}}"#,

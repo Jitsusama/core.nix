@@ -133,8 +133,17 @@ impl Fence {
     /// this reads or a pattern won't make.
     fn read(path: &Path) -> Option<Fence> {
         let text = std::fs::read_to_string(path).ok()?;
-        let list: FenceList = serde_json::from_str(&text).ok()?;
+        // A list that's there but can't be read refuses every ask as one
+        // missing does, so the journal says which it was.
+        let list: FenceList = serde_json::from_str(&text)
+            .map_err(|why| eprintln!("<3>passwords: can't read {}: {why}", path.display()))
+            .ok()?;
         if list.version != FENCE_VERSION {
+            eprintln!(
+                "<3>passwords: {} is version {}, not {FENCE_VERSION}",
+                path.display(),
+                list.version
+            );
             return None;
         }
         let ssh_kept = list
@@ -315,25 +324,32 @@ impl Passwords {
     /// that file can't be written, /dev/null is bound instead, so a login
     /// is never left readable for want of it.
     ///
-    /// A file inside a folder already made empty, one the list hides or
-    /// ~/.ssh, is left alone: the folder hides it, and bubblewrap can't
-    /// make a file to bind over inside it.
+    /// A file a folder already made empty hides, one the list hides or
+    /// ~/.ssh but for the files it binds back, is left alone: the folder
+    /// hides it, and bubblewrap can't make a file to bind over inside it.
     fn emptied(&self, fence: &Fence) -> Vec<OsString> {
         let hidden: Vec<PathBuf> = fence
             .home
             .iter()
             .filter_map(|listed| listed.strip_suffix('/'))
-            .chain([".ssh"])
             .filter_map(|named| real(&self.home.join(named)))
             .filter(|folder| is_folder(folder))
             .collect();
+        let ssh = Some(self.home.join(".ssh"))
+            .filter(|ssh| is_folder(ssh))
+            .and_then(|ssh| real(&ssh));
         let mut args: Vec<OsString> = Vec::new();
         let mut empty: Option<OsString> = None;
         for listed in &fence.emptied {
             let Some(over) = real(&self.home.join(&listed.path)) else {
                 continue;
             };
-            if !is_file(&over) || hidden.iter().any(|folder| over.starts_with(folder)) {
+            if !is_file(&over)
+                || hidden.iter().any(|folder| over.starts_with(folder))
+                || ssh
+                    .as_deref()
+                    .is_some_and(|ssh| ssh_hides(fence, ssh, &over))
+            {
                 continue;
             }
             let holds = std::fs::read_to_string(&over)
@@ -341,8 +357,15 @@ impl Passwords {
             if holds {
                 let source = empty
                     .get_or_insert_with(|| {
-                        self.written("emptied.json", "{}\n")
-                            .map_or_else(|| "/dev/null".into(), Into::into)
+                        self.written("emptied.json", "{}\n").map_or_else(
+                            || {
+                                // Podman refuses /dev/null, so the journal
+                                // says why Docker then fails.
+                                eprintln!("<4>passwords: emptying with /dev/null, unwritten");
+                                "/dev/null".into()
+                            },
+                            Into::into,
+                        )
                     })
                     .clone();
                 args.extend(["--ro-bind".into(), source, over.into()]);
@@ -515,6 +538,21 @@ fn history(tree: &Path) -> Vec<OsString> {
 /// there.
 fn real(path: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(path).ok()
+}
+
+/// Whether ~/.ssh, emptied where it really is at `ssh`, hides `over`:
+/// anything inside it but the files directly in it it binds back, as
+/// `ssh` binds them.
+fn ssh_hides(fence: &Fence, ssh: &Path, over: &Path) -> bool {
+    let Ok(inside) = over.strip_prefix(ssh) else {
+        return false;
+    };
+    let mut parts = inside.components();
+    let (Some(name), None) = (parts.next(), parts.next()) else {
+        return true;
+    };
+    let name = name.as_os_str().to_string_lossy();
+    !fence.ssh_kept.iter().any(|kept| kept.is_match(&name))
 }
 
 /// Whether a path is a folder itself, not a link to one.
