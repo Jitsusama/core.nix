@@ -8,15 +8,19 @@
 # is asked which: it answers "aoao", the unlocked items' count and
 # paths, then the locked items' count and paths.
 SECRET_TOOL=${SECRET_TOOL:-@secretTool@} BUSCTL=${BUSCTL:-@busctl@}
-"$SECRET_TOOL" lookup service agentic-harness username slack-credentials && exit 0
-found=$("$BUSCTL" --user call org.freedesktop.secrets /org/freedesktop/secrets \
+"${SECRET_TOOL}" lookup service agentic-harness username slack-credentials && exit 0
+found=$("${BUSCTL}" --user call org.freedesktop.secrets /org/freedesktop/secrets \
   org.freedesktop.Secret.Service SearchItems 'a{ss}' 2 \
   service agentic-harness username slack-credentials 2>/dev/null)
 # shellcheck disable=SC2086 # split on purpose: the answer's words
-set -- $found
+set -- ${found}
 [ "$#" -ge 3 ] && [ "$1" = aoao ] || exit 1
-case $2 in '' | *[!0-9]*) exit 1 ;; esac
-[ "$#" -ge $(($2 + 3)) ] || exit 1
+case $2 in
+  '' | *[!0-9]*) exit 1 ;;
+  *) [ "$#" -ge $(($2 + 3)) ] || exit 1 ;;
+esac
 shift $(($2 + 2))
-case $1 in '' | *[!0-9]* | 0) exit 1 ;; esac
-exit 75
+case $1 in
+  '' | *[!0-9]* | 0) exit 1 ;;
+  *) exit 75 ;;
+esac
