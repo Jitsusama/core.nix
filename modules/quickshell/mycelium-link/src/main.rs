@@ -4,7 +4,7 @@
 //! and `mycelium:network/<name>` opens Agents' Networks on that network's
 //! row, selected, as `qs ipc call launcher network` does. The realm's map
 //! links its cells and networks so (XUBK2E, 2026-11-15 [2b5c927a]).
-//! `mycelium:machine/<name>` opens Agents' Machines on that machine's row,
+//! `mycelium:machine/<name>` opens Machines on that machine's row,
 //! selected, as `qs ipc call launcher machine` does, which the system page
 //! offers as each machine's Open in the Launcher: the page can't act, so
 //! the row's own acts are where Joel starts a session there or updates it.
@@ -219,8 +219,8 @@ fn help() -> Help {
         "opens Agents' Networks on core.nix's network",
     )
     .example(
-        "mycelium-link mycelium:machine/optimus",
-        "opens Agents' Machines on optimus",
+        "mycelium-link mycelium:machine/osprey",
+        "opens Machines on osprey",
     )
     .argument(
         "<link>",
@@ -387,26 +387,26 @@ mod tests {
     #[test]
     fn a_machine_link_names_its_machine_and_nothing_after_it() {
         for link in [
-            "mycelium:machine/optimus",
-            "mycelium://machine/optimus",
-            "mycelium:machine/optimus/go",
-            "mycelium:machine/optimus/update",
-            "mycelium:machine/optimus?from=system",
-            "mycelium:machine/optimus#figures",
+            "mycelium:machine/osprey",
+            "mycelium://machine/osprey",
+            "mycelium:machine/osprey/go",
+            "mycelium:machine/osprey/update",
+            "mycelium:machine/osprey?from=system",
+            "mycelium:machine/osprey#figures",
         ] {
             assert_eq!(
                 named_by(link),
-                Ok(Link::Machine("optimus".to_owned())),
+                Ok(Link::Machine("osprey".to_owned())),
                 "{link} named another"
             );
         }
         assert_eq!(
-            named_by("mycelium:machine/methuselah-linux"),
-            Ok(Link::Machine("methuselah-linux".to_owned()))
+            named_by("mycelium:machine/heron-linux"),
+            Ok(Link::Machine("heron-linux".to_owned()))
         );
         assert_eq!(
-            Link::Machine("optimus".to_owned()).call(),
-            ["machine", "optimus"],
+            Link::Machine("osprey".to_owned()).call(),
+            ["machine", "osprey"],
             "a machine opens its row and acts on nothing"
         );
     }
@@ -419,8 +419,8 @@ mod tests {
             "mycelium:machine/-help",
             "mycelium:machine/.hidden",
             "mycelium:machine/opti%20mus",
-            "mycelium:machine/optimus;rm",
-            "mycelium:machine/optimus@here",
+            "mycelium:machine/osprey;rm",
+            "mycelium:machine/osprey@here",
             &format!("mycelium:machine/{}", "m".repeat(LONGEST + 1)),
         ] {
             assert!(read(link).is_err(), "{link} was followed");
