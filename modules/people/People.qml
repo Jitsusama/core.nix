@@ -346,10 +346,11 @@ Provider {
     }
     // Counts each change heard, for a binding that reads what's made.
     property int heardRevision: 0
-    // What's merged, and how many times everyone was, for a test to
-    // bound: kept in a plain object, since a property written as `all`
-    // is made would be read by it too, and loop.
-    readonly property var merging: ({ stale: true, merges: 0 })
+    // How many times everyone was merged (`merges`), and how many times
+    // one person was made from their records here (`each`), for a test to
+    // bound: kept in a plain object, since a property written as `all` is
+    // made would be read by it too, and loop.
+    readonly property var merging: ({ stale: true, merges: 0, each: 0 })
 
     // Everyone the sources know as one person each, how they stand, and
     // each record read and each person by address, made again only when
@@ -1327,11 +1328,14 @@ Provider {
     // them.
     function servedRow(record, among, keeping, records) {
         const one = among.byEmail[addressOf(record.key).toLowerCase()];
+        // The daemon serves who they are beside their row (drawer.rs's
+        // `found`), so they're made as one listed is, merging nothing;
+        // merged here only from a record served without them.
         if (one === undefined && record.row)
             return keptAlike(keeping, record.key, [record.key, record.stamp], () => {
-                const person = personMade([record], null);
-                return provider.made(person, Person.standing(person, []), record.row,
-                    () => record.drawer);
+                const person = record.person ?? personMade([record], null);
+                return provider.made(person, person.stood ?? Person.standing(person, []),
+                    record.row, () => record.drawer);
             });
         const theirs = one === undefined ? [record]
             : one.person.emails.map(email => records[email.toLowerCase()]).filter(Boolean);
@@ -1342,6 +1346,7 @@ Provider {
     // One person of their records and what the sources the daemon doesn't
     // hold said of them, `one`, merged as Person.js merges everyone.
     function personMade(records, one) {
+        merging.each += 1;
         const daemon = fromDaemon(records);
         return Person.merged(sources.map(source => ({
             name: source.settings.name,

@@ -532,6 +532,36 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
             &json!([])
         )
     );
+    // And with the person it is, as a listing gives them, so the shell
+    // shows them as served and merges nobody's sources for it; Gus, kept
+    // by Tuple's id, by that alone.
+    let person = |at: usize| {
+        let one = &said["records"][at]["person"];
+        (
+            one["key"].clone(),
+            one["emails"].clone(),
+            one["name"].clone(),
+            one["from"].clone(),
+        )
+    };
+    assert_eq!(
+        person(0),
+        (
+            json!("ada@example.com"),
+            json!(["ada@example.com"]),
+            json!("Ada Brightwater"),
+            json!(["tuple"])
+        )
+    );
+    assert_eq!(
+        person(1),
+        (
+            json!("tuple:7"),
+            json!([]),
+            json!("Gus Ada-Moor"),
+            json!(["tuple"])
+        )
+    );
     let said = client.ask(&json!({"id": 2, "ask": "search", "words": "ada", "limit": 1}));
     assert_eq!(keys(&said), ["person:ada@example.com"]);
     assert_eq!(
@@ -687,14 +717,15 @@ fn one_found_says_how_they_stand_as_one_listed_does() {
         &json!({"id": 1, "ask": "get", "keys": ["person:grace@example.com"], "patience": 5000}),
     );
     let listing = client.ask(&json!({"id": 2, "ask": "list", "kind": "listing"}));
-    let row_of = |records: &Value, key: &str| {
+    let part_of = |records: &Value, key: &str, part: &str| {
         records
             .as_array()
             .into_iter()
             .flatten()
             .find(|record| record["key"] == key)
-            .map_or(Value::Null, |record| record["row"].clone())
+            .map_or(Value::Null, |record| record[part].clone())
     };
+    let row_of = |records: &Value, key: &str| part_of(records, key, "row");
     // A listed row's `order` places it in the listing, which a search's
     // answer is ordered by itself.
     let mut listed = row_of(&listing["records"], "row:people:ada@example.com");
@@ -706,6 +737,17 @@ fn one_found_says_how_they_stand_as_one_listed_does() {
         row_of(&said["records"], "person:ada@example.com"),
         listed,
         "Ada, a favourite, found as she's listed: {said} {listing}"
+    );
+    // And served as the same person, how she stands included, since the
+    // shell makes her row from it as it makes a listed one's.
+    let person = part_of(&said["records"], "person:ada@example.com", "person");
+    assert_eq!(
+        (&person, &person["stood"]["favourite"]),
+        (
+            &part_of(&listing["records"], "person:ada@example.com", "person"),
+            &json!(true)
+        ),
+        "Ada, the same person found as listed: {said} {listing}"
     );
     // Tuple's word for one nobody lists is said as for one listed.
     let said = client.ask(&json!({"id": 4, "ask": "search", "words": "fenwick"}));
