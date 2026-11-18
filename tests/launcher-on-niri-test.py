@@ -332,7 +332,10 @@ def test_an_openings_first_drawer_is_kept_once_the_launcher_shuts(shell: Shell) 
                 said.update(cast("dict[str, Json]", json.loads(path.read_text())))
         return said
 
-    before = kept()
+    def learnt() -> set[str]:
+        """Say the kinds the file keeps a making for, each a list of times."""
+        return {kind for kind, times in kept().items() if isinstance(times, list) and times}
+
     shell.answer("date")
     shell.launcher_until(
         lambda shown: (
@@ -341,9 +344,20 @@ def test_an_openings_first_drawer_is_kept_once_the_launcher_shuts(shell: Shell) 
     )
     shell.close_launcher()
     deadline = time.monotonic() + 5
-    while kept() == before and time.monotonic() < deadline:
+    while not learnt() and time.monotonic() < deadline:
         time.sleep(0.05)
-    assert kept() != before, f"the launcher kept no drawer's making as it shut: {kept()}"
+    kinds = learnt()
+    assert kinds, f"the launcher kept no drawer's making as it shut: {kept()}"
+
+    # What's kept is read as the shell starts again, before any drawer is made: the restarted
+    # launcher knows each kind the file holds as it opens.
+    shell.restart()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    try:
+        shell.launcher_until(lambda shown: kinds <= set(shown["drawer"]["kinds"]))
+    finally:
+        shell.close_launcher()
 
 
 def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:

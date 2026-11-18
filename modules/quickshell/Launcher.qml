@@ -8532,9 +8532,16 @@ Scope {
     property bool drawerJoined: false
     // The makings, kept across the shell's restarts (launcher/Makings.js),
     // read as it starts and written as the launcher shuts having made a
-    // drawer since, off the shell's thread, as Drafts writes its own.
+    // drawer since, off the shell's thread. One write goes at a time, and
+    // one wanted while another goes follows it with the makings as they
+    // are then, as Drafts writes its own, so an older write never lands
+    // last. Nothing is written as the shell stops: a switch restarts it
+    // well after the launcher shut, so at most an open launcher's lesson
+    // is lost.
     property bool drawerMakingsMoved: false
     onDrawerMakingsChanged: drawerMakingsMoved = true
+    property bool drawerMakingsWriting: false
+    property bool drawerMakingsWanted: false
     FileView {
         id: drawerMakingsFile
         path: Quickshell.statePath("launcher-drawers.json")
@@ -8542,17 +8549,37 @@ Scope {
         blockWrites: false
         printErrors: false
         Component.onCompleted: root.drawerMakingsRead(text())
-        onSaveFailed: error => root.drawerMakingsFailed(error)
+        onSaved: root.drawerMakingsWritten()
+        onSaveFailed: error => {
+            root.drawerMakingsFailed(error);
+            root.drawerMakingsWritten();
+        }
     }
+    // A file there but unreadable is said, and the launcher starts afresh;
+    // the next write replaces it.
     function drawerMakingsRead(text) {
-        drawerMakings = Makings.joined(Makings.read(text), drawerMakings);
+        const read = Makings.read(text);
+        if (read === null)
+            console.warn("launcher: couldn't read how long drawers took, so it starts afresh");
+        drawerMakings = Makings.joined(read ?? {}, drawerMakings);
         drawerMakingsMoved = false;
     }
     function drawerMakingsKeep() {
         if (!drawerMakingsMoved)
             return;
+        if (drawerMakingsWriting) {
+            drawerMakingsWanted = true;
+            return;
+        }
         drawerMakingsMoved = false;
+        drawerMakingsWanted = false;
+        drawerMakingsWriting = true;
         drawerMakingsFile.setText(JSON.stringify(drawerMakings));
+    }
+    function drawerMakingsWritten() {
+        drawerMakingsWriting = false;
+        if (drawerMakingsWanted)
+            drawerMakingsKeep();
     }
     // Said once a shell, since each shutting would say it again.
     property bool drawerMakingsFailSaid: false
@@ -8771,6 +8798,7 @@ Scope {
         drawerSplit = null;
         drawerRow = selected;
         drawerAsked = Math.round(KeyTimes.now() - began);
+        drawerAskedFor = drawerRow;
         // A row with none keeps no key for a drawer its row brings later,
         // but one whose drawer apart is still to come keeps it.
         drawerAwaited = drawerWanted === null && drawerUnread(drawerRow);
@@ -8800,6 +8828,9 @@ Scope {
     // How long working out the drawer's row's drawer took when it was last
     // followed, which a drawer that comes out after resting made first.
     property int drawerAsked: 0
+    // The row drawerAsked was timed for, so a drawer settling on another
+    // never learns it as its own.
+    property var drawerAskedFor: null
     // The drawer last drawn and timed, by its row's key, and how many have
     // been, for the check that times each place's drawer under load; the
     // journal says only those slow enough to feel. It's set anew, once a
@@ -8918,11 +8949,12 @@ Scope {
         drawerShown(true);
         // Timed with what working out its row's drawer took as it was
         // followed, but not the rest between, which is the drawer's pace.
-        // Its making is learnt as a followed one's is, or a kind first
-        // reached with no drawer out would never come in its key's frame.
-        const making = Math.round(KeyTimes.now() - began) + drawerAsked;
-        drawerMakings = Pacing.drawerMade(drawerMakings, drawerKindOf(drawerRow), making);
-        drawerMade(began - drawerAsked, making);
+        // Its making is learnt as a followed one's is, working out its row's
+        // drawer alone and not its coming out, or a kind first reached with
+        // no drawer out would never come in its key's frame.
+        if (drawerAskedFor === drawerRow)
+            drawerMakings = Pacing.drawerMade(drawerMakings, drawerKindOf(drawerRow), drawerAsked);
+        drawerMade(began - drawerAsked, Math.round(KeyTimes.now() - began) + drawerAsked);
         feltSpan("the drawer", began);
     }
     // Shows the drawer wanted with its acts filled in, timing each, so its
@@ -8953,7 +8985,10 @@ Scope {
         if (!open || selected === null)
             return;
         drawerFollowDue = false;
+        const began = KeyTimes.now();
         drawerRow = selected;
+        drawerAsked = Math.round(KeyTimes.now() - began);
+        drawerAskedFor = drawerRow;
         drawerResting.stop();
         drawerSettled();
         if (drawerOut)
@@ -9404,6 +9439,7 @@ Scope {
                 row: root.drawerRow?.key ?? "",
                 wanted: root.drawerWanted !== null,
                 timed: root.drawerTimedLast,
+                kinds: Object.keys(root.drawerMakings),
                 // Whether there's no room for it beside the card, and
                 // whether it's drawn.
                 over: root.drawerOver,

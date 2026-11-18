@@ -878,11 +878,19 @@ QtObject {
         const read = Makings.read(JSON.stringify(made));
         check(failures, "a kind made cheaply before a restart comes in the key's frame after it",
             Pacing.drawerJoinsKey(read, wifi, false), true);
-        check(failures, "text that isn't JSON keeps none",
-            Object.keys(Makings.read("{\"Network wifi\": [6,")).length, 0);
-        check(failures, "nor does an empty file", Object.keys(Makings.read("")).length, 0);
-        check(failures, "nor a list in place of the kinds",
-            Object.keys(Makings.read("[6, 5]")).length, 0);
+        check(failures, "text that isn't JSON can't be read",
+            Makings.read("{\"Network wifi\": [6,"), null);
+        check(failures, "an empty file keeps none and is no fault",
+            JSON.stringify(Makings.read("")), "{}");
+        check(failures, "nor a list in place of the kinds", Makings.read("[6, 5]"), null);
+        check(failures, "nor a file past what's read",
+            Makings.read(JSON.stringify({ home: [1], pad: "x".repeat(70000) })), null);
+        // A kind named as every object's own is left out, rather than
+        // throwing as it's read and losing every good kind with it.
+        const named = Makings.read(
+            "{\"__proto__\": [1], \"constructor\": [2], \"toString\": [3], \"home\": [4]}");
+        check(failures, "a kind named as an object's own is left out",
+            JSON.stringify(named), JSON.stringify({ home: [4] }));
         const odd = Makings.read(JSON.stringify({
             home: [1, "2", -3, null, 2],
             broken: "7",
