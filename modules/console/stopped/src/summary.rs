@@ -159,7 +159,9 @@ fn way_out(pen: &Pen) -> String {
 /// Words from a unit, without what would steer the console rather than
 /// be read: an escape sequence whole, so a program that colours its own
 /// log or titles a window leaves no `[31m` or `]0;title` behind, and
-/// every other control character, a tab read as a space.
+/// every other control character, a tab read as a space. A sequence cut
+/// short by another escape ends there, as a terminal ends it, so the next
+/// is dropped whole too.
 fn clean(words: &str) -> String {
     let mut out = String::new();
     let mut chars = words.chars().peekable();
@@ -169,15 +171,16 @@ fn clean(words: &str) -> String {
                 // A control sequence: parameters and intermediates run
                 // until a final byte.
                 Some('[') => {
-                    for c in chars.by_ref() {
+                    while let Some(c) = chars.next_if(|&c| c != '\u{1b}') {
                         if ('\u{40}'..='\u{7e}').contains(&c) {
                             break;
                         }
                     }
                 }
-                // An operating system command, a title or a link: it
-                // runs until a bell or the string terminator.
-                Some(']') => {
+                // A string: an operating system command, as a title or a
+                // link, or a device control, privacy or application one.
+                // It runs until a bell or the string terminator.
+                Some(']' | 'P' | 'X' | '^' | '_') => {
                     while let Some(c) = chars.next() {
                         if c == '\u{7}' || (c == '\u{1b}' && chars.next_if_eq(&'\\').is_some()) {
                             break;
@@ -203,10 +206,53 @@ fn clean(words: &str) -> String {
     out
 }
 
+/// Whether `lines` say nothing a person could read once cleaned, as
+/// they'd be shown: each blank, or only escapes and controls.
+pub fn says_nothing(lines: &[String]) -> bool {
+    lines.iter().all(|line| clean(line).trim().is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use terminal_kit::Ink;
+
+    #[test]
+    fn lines_of_blanks_escapes_and_controls_say_nothing() {
+        let lines = |said: &[&str]| {
+            said.iter()
+                .map(|line| (*line).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert!(says_nothing(&[]), "no lines said something");
+        assert!(
+            says_nothing(&lines(&[
+                "",
+                "  \t",
+                "\u{1b}[0m\u{7}",
+                "\u{1b}]0;title\u{7}"
+            ])),
+            "lines that show nothing were taken as said"
+        );
+        assert!(
+            !says_nothing(&lines(&["", "\u{1b}[31mdisk gone"])),
+            "a line with words was taken as nothing"
+        );
+    }
+
+    #[test]
+    fn every_kind_of_escape_goes_whole_even_cut_short() {
+        assert_eq!(
+            clean("a\u{1b}Pq#0\u{1b}\\b\u{1b}_app\u{7}c\u{1b}^pm\u{1b}\\d\u{1b}Xsos\u{7}e"),
+            "abcde",
+            "a string sequence's payload reached the console"
+        );
+        assert_eq!(
+            clean("red\u{1b}[31\u{1b}[0m plain"),
+            "red plain",
+            "a sequence cut short by another left a piece of it behind"
+        );
+    }
 
     fn unit(name: &str, about: &str, said: &[&str]) -> Failed {
         Failed {
