@@ -717,7 +717,11 @@ ShellRoot {
         root.madeBefore.run();
         same("and a yes then is told it waits on knowing, not on a share",
             stage.toldWhys.slice(told), ["not until it's known whether your screen is shared"]);
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         Niri.castsHeard = true;
+        same("niri then saying there's a share, the row no longer says it waits on knowing",
+            [row()?.name, row()?.note], ["Ask, Hidden While You Share", ""]);
+        Niri.casts = {};
     }
 
     // The shell's own recording of one window shows nothing of the launcher.
