@@ -5,14 +5,11 @@
 //! heard this fortnight counts each of them as a hit, so what he hits most
 //! ranks first.
 
-use crate::words::alike;
+use crate::words::{alike, same};
 use serde::{Deserialize, Serialize};
 
-/// How alike two pains' words must be to be the same friction hit again.
-pub const SAME: f64 = 0.5;
-
 /// How alike a pain must be to a ledger line to be the one it carries:
-/// stricter than SAME, as two pains about one tool ("too tight on the
+/// strict, as two pains about one tool ("too tight on the
 /// right", "slow to open") share half their words yet aren't one ask.
 const CARRIED_ALIKE: f64 = 0.75;
 
@@ -54,6 +51,13 @@ pub struct Heard {
     /// How many sends of it the node never took.
     #[serde(default)]
     pub tries: u32,
+    /// The peer that took it up, by answering or passing on its question.
+    #[serde(default)]
+    pub taken_by: Option<String>,
+    /// The commit that closed it: a landing in its question's thread that
+    /// a switch carried.
+    #[serde(default)]
+    pub closed_by: Option<String>,
 }
 
 /// The words of each line of a ledger. A line carries its pain whether or
@@ -84,7 +88,7 @@ pub fn carried(words: &str, ledgers: &[String]) -> bool {
 pub fn hits(words: &str, kept: &[Heard]) -> usize {
     1 + kept
         .iter()
-        .filter(|heard| alike(&heard.words, words) > SAME)
+        .filter(|heard| same(&heard.words, words))
         .count()
 }
 
@@ -109,6 +113,8 @@ mod tests {
             to: None,
             routed_at: None,
             tries: 0,
+            taken_by: None,
+            closed_by: None,
         }
     }
 

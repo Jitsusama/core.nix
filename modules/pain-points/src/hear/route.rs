@@ -323,6 +323,8 @@ mod tests {
             to: None,
             routed_at: None,
             tries: 0,
+            taken_by: None,
+            closed_by: None,
         }
     }
 

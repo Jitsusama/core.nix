@@ -133,6 +133,39 @@ pub fn alike(a: &str, b: &str) -> f64 {
     2.0 * f64::from(shared) / f64::from(u32::try_from(a.len() + b.len()).unwrap_or(u32::MAX))
 }
 
+/// Whether two pains say one thing: whether more than half their words
+/// that carry meaning agree. Letter pairs can't tell: on 17 November any
+/// two long messages of his shared about half theirs, so a page that read
+/// worse and a call he couldn't share counted as one pain hit twice.
+pub fn same(a: &str, b: &str) -> bool {
+    let (a, b) = (meaning(a), meaning(b));
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    let shared = a.intersection(&b).count();
+    #[expect(clippy::cast_precision_loss, reason = "a message has few words")]
+    let agree = (2 * shared) as f64 / (a.len() + b.len()) as f64;
+    agree > 0.5
+}
+
+/// Words too common to say what a pain is about.
+const NO_MEANING: &[&str] = &[
+    "the", "and", "but", "for", "with", "are", "was", "this", "that", "not", "does", "have", "has",
+    "just", "can", "how", "what", "when", "its", "it's", "i'm", "all", "any", "from", "then",
+    "there", "their", "them", "they", "too", "very", "our", "you",
+];
+
+/// A message's words that carry meaning: lowered, past two letters, and
+/// not among [`NO_MEANING`].
+fn meaning(text: &str) -> std::collections::BTreeSet<String> {
+    lowered(text)
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '\''))
+        .map(|word| word.trim_matches('\''))
+        .filter(|word| word.len() > 2 && !NO_MEANING.contains(word))
+        .map(str::to_owned)
+        .collect()
+}
+
 /// Whether a user message came from somewhere other than his keys: the
 /// harness, a peer, the launcher's steering or a compaction's carry-on.
 pub fn automated(text: &str) -> bool {
@@ -148,6 +181,7 @@ pub fn automated(text: &str) -> bool {
         "Continue",
         "You are ",
         "Your ",
+        "Woken by ",
     ]
     .iter()
     .any(|opening| text.starts_with(opening))
@@ -202,6 +236,51 @@ mod tests {
         assert!(!nudging(""), "nothing typed is no nudge");
         assert!(!nudging("go on with the backlight"), "an ask of its own");
         assert!(!nudging("why?"), "a question");
+    }
+
+    #[test]
+    fn pains_are_one_when_their_words_agree_not_their_letters() {
+        // Pairs heard on 17 November that letter pairs scored above half.
+        assert!(
+            same("status update pleeease", "status update"),
+            "the one he said twice"
+        );
+        assert!(
+            !same(
+                "i am not able to show launcher when screen sharing over tuple; \
+                 it won't show up for others",
+                "i'm at the state where I have no clue how to start new work, \
+                 it's just a mess"
+            ),
+            "two long messages about different things"
+        );
+        assert!(
+            !same(
+                "FYI; this page is worse than never. now text takes over the whole \
+                 thing",
+                "readying this, it has the foundations of a good idea, but it \
+                 doesn't work yet"
+            ),
+            "nor these"
+        );
+        assert!(
+            same(
+                "The launcher is slow to open",
+                "launcher so slow to open again"
+            ),
+            "the same words, said differently"
+        );
+        assert!(!same("", "the launcher"), "nothing says nothing");
+        assert!(!same("it is so", "it is so"), "nor do words of no meaning");
+    }
+
+    #[test]
+    fn a_wake_a_peer_sent_is_automated() {
+        assert!(
+            automated("Woken by 1JQPPC on WCJQSG's ruling da5a35fb (the quest ..."),
+            "a peer's wake"
+        );
+        assert!(!automated("woken by the alarm again"), "his own words");
     }
 
     #[test]

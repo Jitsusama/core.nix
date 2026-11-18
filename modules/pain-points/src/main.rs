@@ -55,13 +55,17 @@ struct Run {
 }
 
 /// The flags `hear` takes, each with a value.
-const HEAR_FLAGS: [&str; 6] = [
+const HEAR_FLAGS: [&str; 10] = [
     "--sessions",
     "--ledgers",
     "--void",
     "--mycelium",
     "--date",
     "--at",
+    "--messages",
+    "--switches",
+    "--core",
+    "--git",
 ];
 
 /// The flags `read` takes, each with a value.
@@ -107,6 +111,10 @@ fn help() -> Help {
                 .option("--mycelium PATH", "the mycelium on PATH, or this")
                 .option("--date PATH", "the date on PATH, or this")
                 .option("--at MILLIS", "the time to hear up to, or now")
+                .option("--messages DIR", "the mesh's messages, or the harness's")
+                .option("--switches FILE", "integration's switches, or its own")
+                .option("--core DIR", "a git of core, or the one cadence keeps")
+                .option("--git PATH", "the git on PATH, or this")
                 .exit(Exit::Failed, "its state couldn't be written"),
         )
 }
