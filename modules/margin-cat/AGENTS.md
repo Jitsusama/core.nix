@@ -225,7 +225,9 @@ want to see its paws moving when it is walking or running."
 - Held by `margin-cat-floats.qml`: "onto and off one 2 above the tops, it steps within its
   walk, never leaping"
 - Held by `margin-cat-floats.qml`: "at the screen's top, a float with no room for an arc is
-  walked over both ways"
+  walked on, dropped off"
+- Held by `margin-cat-floats.qml`: "never walking or falling above the screen's top, there or
+  back"
 
 ### Paws Moving Up and Across Edges
 

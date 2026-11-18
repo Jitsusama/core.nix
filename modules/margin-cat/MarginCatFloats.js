@@ -139,7 +139,7 @@ function off(way, cols, to, at) {
         Ways.goes(way, up.x, way.y);
         // Closed, nothing holds it to walk up: it pushes off at once.
         if (!closed && steps(way, up, at)) {
-            Ways.goes(way, up.x, up.y);
+            walks(way, up.x, up.y);
             return done();
         }
         Ways.holds(way, "crouches", MarginCat.CROUCHES);
@@ -164,13 +164,18 @@ function off(way, cols, to, at) {
     way.facing = end.dir;
     Ways.goes(way, end.dir > 0 ? from.right - at.wide : from.left, way.y);
     const ground = Falls.under({ x: end.x, y: way.y }, cols, at);
-    if (steps(way, ground, at, { first: { x: end.x, y: way.y } })) {
+    if (aStep(way, ground, at)) {
         Ways.goes(way, end.x, way.y);
-        Ways.goes(way, end.x, ground.y);
+        walks(way, end.x, ground.y);
         return done();
     }
-    // A hop, then a fall.
-    Ways.leap(way, { x: end.x, y: way.y }, RISES, "hops");
+    // A hop clear of it, then a fall; with no room over it for the hop's
+    // arc, walked off its end and dropped (VKCF3Z 13d5bf97).
+    if (cramped(way, { x: end.x, y: way.y }, RISES, at)) {
+        Ways.goes(way, end.x, way.y);
+    } else {
+        Ways.leap(way, { x: end.x, y: way.y }, RISES, "hops");
+    }
     drops(way, cols, at);
     return done();
 }
@@ -179,11 +184,37 @@ function off(way, cols, to, at) {
 // where that's the screen's bottom.
 function drops(way, cols, at) {
     const ground = Falls.under(way, cols, at);
-    Ways.falls(way, { x: way.x, y: ground.y });
+    falls(way, { x: way.x, y: ground.y });
     Ways.holds(way, "lands", MarginCat.LANDS);
     if (ground.kind === "floor") {
         Ways.holds(way, "shakes", Falls.SHAKES);
     }
+}
+
+// Down to `to`, from where it's drawn: from over the screen's top, the
+// screen draws it at its top (MarginCatScreen.qml, which clamps its y at
+// 0), where it hung in its falling drawing till its fall reached it. A
+// fall wholly over the top shows nothing, so it's at `to` at once.
+function falls(way, to) {
+    if (way.y < 0 && to.y > way.y) {
+        way.y = Math.min(to.y, 0);
+    }
+    if (to.y <= 0 && way.y === to.y) {
+        return;
+    }
+    Ways.falls(way, to);
+}
+
+// Walking to `x`, `y`, and no further than it's drawn: a step to or from
+// a ledge over the screen's top walks only what shows under it, and is
+// at the rest at once, since walking in place at the top reads as a skid
+// on the spot (VKCF3Z 13d5bf97).
+function walks(way, x, y) {
+    if (way.y < 0) {
+        way.y = Math.min(y, 0);
+    }
+    Ways.goes(way, x, way.y < 0 ? y : Math.max(y, 0));
+    way.y = y;
 }
 
 // The way onto `to` where it's on a floating window's top it doesn't
@@ -236,10 +267,10 @@ function lands(way, plan) {
     const y = Routes.stands(it.top, at);
     way.turn = 0;
     if (plan.how === "drops" && aStep(way, { x: way.x, y }, at)) {
-        Ways.goes(way, way.x, y);
+        walks(way, way.x, y);
     } else if (plan.how === "drops") {
         const hard = y - way.y > LEAPS_UP * at.tall;
-        Ways.falls(way, { x: way.x, y });
+        falls(way, { x: way.x, y });
         Ways.holds(way, "lands", MarginCat.LANDS * (hard ? LANDS_HARD : 1));
     } else {
         const edge = plan.side < 0 ? it.left : it.right - at.wide;
@@ -248,7 +279,7 @@ function lands(way, plan) {
         // through the corner of its face, and on without landing.
         if (plan.how === "leaps"
             && steps(way, { x: edge, y }, at, { first: { x: way.x, y: it.top - at.tall } })) {
-            Ways.goes(way, way.x, y);
+            walks(way, way.x, y);
             Ways.goes(way, edge, y);
         } else if (plan.how === "leaps") {
             Ways.holds(way, "crouches", MarginCat.CROUCHES);
@@ -256,11 +287,19 @@ function lands(way, plan) {
             Ways.leap(way, { x: edge, y }, RISES / 2, "over");
             Ways.holds(way, "lands", MarginCat.LANDS);
         } else {
+            // Climbed no higher than the screen shows, where it would
+            // climb on the spot, and over its edge within its walk there.
+            const top = it.top - at.tall;
             Ways.clings(way, plan.side, -1);
-            Ways.climb(way, { rows: [it] }, it.top - at.tall, RISES);
+            Ways.climb(way, { rows: [it] }, Math.max(top, Math.min(way.y, 0)), RISES);
+            way.y = Math.min(way.y, top);
             Ways.clings(way, plan.side, 1);
-            Ways.leap(way, { x: edge, y }, RISES / 2, "over");
-            Ways.holds(way, "lands", MarginCat.LANDS);
+            if (y < 0) {
+                walks(way, edge, y);
+            } else {
+                Ways.leap(way, { x: edge, y }, RISES / 2, "over");
+                Ways.holds(way, "lands", MarginCat.LANDS);
+            }
         }
     }
     way.turn = 0;
@@ -274,26 +313,36 @@ function lands(way, plan) {
     aboard(way, began);
 }
 
-// Whether `way` to `to` is STEPS cells up or down or less: too little to
-// leap or fall, so it's walked (steps()).
+// Whether `way` to `to` is STEPS cells up or down or less as the screen
+// draws it, no higher than its top: too little to leap or fall, so it's
+// walked (steps()). Measured on the cat's own heights, a drop from over
+// the top onto a ledge a pixel under it fell, and hung in its falling
+// drawing for most of a fall's shortest time.
 function aStep(way, to, at) {
-    return Math.abs(to.y - way.y) <= STEPS * at.cell + 1e-6;
+    return Math.abs(Math.max(to.y, 0) - Math.max(way.y, 0)) <= STEPS * at.cell + 1e-6;
 }
 
 // Whether a leap or hop from `way` to `to` would have no arc to show: a
-// step (aStep()), or one whose apex, `rises` cells (RISES, or a hop's
-// half) over the higher end of its first leap (to `first`, a cell under
-// its landing onto a floating window's top), is above the screen's top.
-// The screen draws the cat no higher than its top (MarginCatScreen.qml,
-// which clamps its y at 0), so such a leap glided
-// along the edge in a leap's pose for 350 ms (VKCF3Z 299fb911, the GPU
-// rig at 120 Hz, 2026-11-16); it steps up or down within its walk
-// instead, paws moving. Only up to its own height: a taller one keeps
-// its leap, held at the edge, rather than walk up a wall.
+// step (aStep()), or one up whose arc has no room (cramped()). Such a
+// leap glided along the edge in a leap's pose for 350 ms (VKCF3Z
+// 299fb911, the GPU rig at 120 Hz, 2026-11-16); it steps up within its
+// walk instead, paws moving. Only up to its own height: a taller one
+// keeps its leap, held at the edge, rather than walk up a wall. Down,
+// past a step, it drops off rather than walk down through the air
+// (VKCF3Z 13d5bf97).
 function steps(way, to, at, { first = to, rises = RISES } = {}) {
-    const crossed = Math.abs(to.y - way.y);
-    const apex = Math.min(way.y, first.y) - rises * at.cell;
-    return aStep(way, to, at) || (crossed <= at.tall + 1e-6 && apex < -1e-6);
+    const rise = way.y - to.y;
+    return aStep(way, to, at)
+        || (rise > 0 && rise <= at.tall + 1e-6 && cramped(way, first, rises, at));
+}
+
+// Whether a leap's apex, `rises` cells (RISES, or a hop's half) over the
+// higher end of its first leap (to `first`, a cell under its landing
+// onto a floating window's top), is above the screen's top, where the
+// screen draws the cat no higher than its top (MarginCatScreen.qml,
+// which clamps its y at 0).
+function cramped(way, first, rises, at) {
+    return Math.min(way.y, first.y) - rises * at.cell < -1e-6;
 }
 
 // A route's move to `stop` onto, along or off a floating
@@ -319,8 +368,8 @@ function follows(way, stop, now) {
         // Up, it goes to its top's height beside its edge, where a leap's
         // via is a cell under its landing.
         way.facing = Math.sign(stop.via.x - way.x) || Math.sign(stop.x - way.x) || way.facing;
-        Ways.goes(way, stop.via.x, stop.how === "leapsOn" ? landing.y : stop.via.y);
-        Ways.goes(way, landing.x, landing.y);
+        walks(way, stop.via.x, stop.how === "leapsOn" ? landing.y : stop.via.y);
+        walks(way, landing.x, landing.y);
     } else if (stop.how === "leapsOn") {
         // Straight up beside its edge till its paws are level with its
         // top, and over, as lands() leaps on.
@@ -329,12 +378,18 @@ function follows(way, stop, now) {
         Ways.leap(way, stop.via, RISES);
         Ways.leap(way, landing, RISES / 2, "over");
         Ways.holds(way, "lands", MarginCat.LANDS);
+    } else if (stop.how === "hopsOff" && cramped(way, stop.via, RISES / 2, at)) {
+        // No room over it for a hop: off its end, and dropped.
+        way.facing = Math.sign(stop.via.x - way.x) || way.facing;
+        Ways.goes(way, stop.via.x, stop.via.y);
+        falls(way, landing);
+        Ways.holds(way, "lands", MarginCat.LANDS);
     } else if (stop.how === "hopsOff") {
         // Off its end clear of its face, and straight down.
         way.facing = Math.sign(stop.via.x - way.x) || way.facing;
         Ways.holds(way, "crouches", MarginCat.CROUCHES);
         Ways.leap(way, stop.via, RISES / 2, "hops");
-        Ways.falls(way, landing);
+        falls(way, landing);
         Ways.holds(way, "lands", MarginCat.LANDS);
     } else {
         // Across a gap from its end onto a column's ledge.
