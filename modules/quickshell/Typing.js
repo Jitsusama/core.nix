@@ -54,6 +54,15 @@ function caretAfter(act, text, at) {
     }
 }
 
+// Where a caret is kept for the line to open on again, typing, as a talk's
+// is (Drafts.js): where it is while typing, and after the letter normal
+// rests on otherwise, as a would take it back, since normal's block sits on
+// a letter and the line opens with insert's bar between two (RCTRF8,
+// 2026-11-17).
+function kept(typing, text, at) {
+    return typing ? at : caretAfter("append", text, at);
+}
+
 // Where the caret may rest in normal: on a letter, never past the last.
 function resting(text, at) {
     return Math.max(0, Math.min(at, text.length - 1));

@@ -2445,6 +2445,13 @@ QtObject {
         ];
         for (const [what, act, text, at, want] of carets)
             holds(`the caret ${what}`, Typing.caretAfter(act, text, at), want);
+        // A talk keeps its caret as insert would take it back on reopening,
+        // so "hi" left with Escape opens with x typed after the i, not
+        // between (RCTRF8, 2026-11-17).
+        holds("a caret kept from insert stays where it is", Typing.kept(true, "hi", 1), 1);
+        holds("one kept from normal goes after its letter", Typing.kept(false, "hi", 1), 2);
+        holds("and on its first letter, after that", Typing.kept(false, "hi", 0), 1);
+        holds("but never past an empty line", Typing.kept(false, "", 0), 0);
         holds("normal's caret rests on the last letter", Typing.resting("sound", 5), 4);
         holds("and on an empty line at its start", Typing.resting("", 0), 0);
         holds("a find narrowed says how far", Typing.noteOf("", "3 found", true), "3 found");

@@ -513,6 +513,40 @@ def test_a_talks_words_come_back_after_the_shell_starts_again(shell: Shell) -> N
     shell.launcher_until(lambda shown: shown["typed"] == "")
 
 
+def test_a_talk_left_in_normal_opens_typing_after_its_last_letter(shell: Shell) -> None:
+    """A talk left with Escape opens again typing where insert would take it back.
+
+    Escape rests normal's caret on the last letter, one left of where it was typed, and that was
+    kept, so the next letter landed one short (RCTRF8, 2026-11-17: "hi" then x gave "hxi").
+    Stepped back a letter while typing first, so a caret kept nowhere ("hix", the line's end)
+    or kept where normal rests ("xhi") each types somewhere else. Where each caret is kept is
+    tests/query-keys.qml's.
+    """
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    shell.send_chars("hi")
+    shell.launcher_until(lambda shown: shown["typed"] == "hi")
+    try:
+        shell.send_key("left")
+        shell.launcher_until(lambda shown: shown["caret"] == 1)
+        shell.send_key("esc")
+        shell.launcher_until(lambda shown: shown["mode"] == "normal" and shown["caret"] == 0)
+        shell.close_launcher()
+        found(shell, "listening quest", "Listening Quest")
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["asking"])
+        shell.send_chars("x")
+        shell.launcher_until(lambda shown: shown["typed"] in ("hix", "hxi", "xhi"))
+        assert shell.showing()["typed"] == "hxi", shell.showing()
+    finally:
+        # Ctrl+U clears to the caret, wherever the talk's three letters left it.
+        for _ in range(3):
+            shell.send_key("right")
+        shell.send_key("ctrl-u")
+        shell.launcher_until(lambda shown: shown["typed"] == "")
+
+
 @pytest.mark.usefixtures("at_shots_scale")
 def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(
     shell: Shell, shoot: Callable[[str], None]
