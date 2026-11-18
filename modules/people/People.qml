@@ -1329,11 +1329,14 @@ Provider {
     // them.
     function servedRow(record, among, keeping, records) {
         const one = among.byEmail[addressOf(record.key).toLowerCase()];
+        // The daemon serves who they are beside their row (drawer.rs's
+        // `found`), so they're made as one listed is, merging nothing;
+        // merged here only from a record served without them.
         if (one === undefined && record.row)
             return keptAlike(keeping, record.key, [record.key, record.stamp], () => {
-                const person = personMade([record], null);
-                return provider.made(person, Person.standing(person, []), record.row,
-                    () => record.drawer);
+                const person = record.person ?? personMade([record], null);
+                return provider.made(person, person.stood ?? Person.standing(person, []),
+                    record.row, () => record.drawer);
             });
         const theirs = one === undefined ? [record]
             : one.person.emails.map(email => records[email.toLowerCase()]).filter(Boolean);
