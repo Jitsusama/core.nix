@@ -73,16 +73,17 @@ Provider {
     readonly property bool hiding: Shared.hidden(Niri.castsHeard, Niri.casts,
         Recorder.windowSession)
     onHidingChanged: {
-        tellHiding();
         ready.remade();
         changed();
     }
-    // Said as it starts and at each change, so a copy kept hidden for want
-    // of niri's word reads apart from one hidden by a share in Joel's
-    // journal.
+    // Why they hide, "" while they show, said as it starts and whenever it
+    // changes, hidden or not, so a copy kept hidden for want of niri's word
+    // reads apart from one hidden by a share in Joel's journal.
+    readonly property string hidingWhy: Shared.why(Niri.castsHeard, Niri.casts,
+        Recorder.windowSession)
+    onHidingWhyChanged: tellHiding()
     function tellHiding() {
-        const why = Shared.why(Niri.castsHeard, Niri.casts, Recorder.windowSession);
-        console.info(hiding ? `copies: hidden, since ${why}` : "copies: shown");
+        console.info(hidingWhy !== "" ? `copies: hidden, since ${hidingWhy}` : "copies: shown");
     }
 
     // Whether the history is connected, to copy and paste for Pasting.qml.

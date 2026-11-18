@@ -26,6 +26,9 @@ function seen(cast, recording) {
     return cast.kind !== "PipeWire" || !recording || cast.session_id !== recording;
 }
 
+// What a cast's kind may say in the journal, since it's niri's word.
+const NOT_PLAIN = /[^A-Za-z0-9]/gu;
+
 // Why copies hide, for the journal, or "" while they show, with the same
 // arguments as hidden(): a copy kept hidden for want of niri's word looks
 // the same on screen as one hidden by a share, so Joel's journal says which
@@ -35,7 +38,7 @@ function why(heard, casts, recording) {
         return "niri hasn't said its casts yet";
     }
     const kinds = Object.values(casts ?? {}).filter(cast => seen(cast, recording))
-        .map(cast => String(cast.kind));
+        .map(cast => String(cast.kind).replace(NOT_PLAIN, "?"));
     if (kinds.length === 0) {
         return "";
     }

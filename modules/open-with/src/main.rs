@@ -75,9 +75,9 @@ enum Ended {
 /// here opens it" (Joel's mycelium: and tuple: links, 2026-11-17). With one
 /// app offered the portal opens it itself, so this does as it would. It
 /// opens any scheme whose default no folder registers without asking, so
-/// only the program the link came from may ask before it opens: Chrome
-/// asks for a site until Joel says always, and a program that asks
-/// nothing opens it unasked (#5399's council, 2026-11-18).
+/// for such a link nothing here asks before it opens; whether anything
+/// asks is the program's it came from, which this code can't see (#5399's
+/// council, 2026-11-18).
 fn at_once(choices: &[String], last: Option<String>) -> Option<String> {
     if choices.is_empty() { last } else { None }
 }
