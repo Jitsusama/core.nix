@@ -7,10 +7,11 @@
 //! meaning's "bge loaded on the NPU in 688 ms", and how long each pi took
 //! to show its first session, from its own "pi: ready in 889 ms". And how
 //! long each service a switch restarted was gone: from systemd stopping it
-//! to its ready line, or to its start where it says none, leaving out a
-//! oneshot, whose run serves nothing while it lasts, and a restart that
-//! followed a reload something other than a switch asked for
-//! (`reloads.rs`).
+//! to its ready line, or to its start where it says none, on its boot's
+//! clock, which no step of the wall clock moves, though not across a
+//! sleep longer than a restart can be, leaving out a oneshot, whose run
+//! serves nothing while it lasts, and a restart that followed a reload
+//! something other than a switch asked for (`reloads.rs`).
 //!
 //! Both are our side's figures, stand-ins for what Joel waits on: an
 //! opening is timed from the process's start, not from the key that asked
@@ -101,13 +102,15 @@ pub struct Launches {
     pub pi: BTreeMap<String, Vec<u64>>,
     /// How long each service was gone in a restart, in milliseconds.
     pub restarted: BTreeMap<String, Vec<u64>>,
-    /// When each service started to stop, in microseconds, and in which
-    /// boot, until it starts: a stop at shutdown and a start in the next
-    /// boot are a reboot, not a restart.
+    /// When each service started to stop, in which boot and in
+    /// microseconds on the boot's clock and the wall clock, until it
+    /// starts: a stop at shutdown and a start in the next boot are a
+    /// reboot, not a restart.
     #[serde(skip)]
-    stopping: BTreeMap<String, (String, i64)>,
-    /// Each service started again, with its boot and when it stopped and
-    /// started, until it says it's ready in that boot.
+    stopping: BTreeMap<String, (String, i64, i64)>,
+    /// Each service started again, with its boot and when, on the boot's
+    /// clock, it stopped and started, until it says it's ready in that
+    /// boot.
     #[serde(skip)]
     restarting: BTreeMap<String, (String, i64, i64)>,
     /// Each service that said it was ready soon after a restart.
@@ -161,13 +164,19 @@ impl Launches {
     pub fn heard(&mut self, entry: &Entry) -> bool {
         let unit = &entry.thing;
         match entry.job {
-            Some(Job::Stopping) if self.restarts_itself(entry) => {}
+            Some(Job::Stopping) if self.restarts_itself(entry) => {
+                // Its own restart records no stop for `served` to bound
+                // its last start's ready line by, so that wait ends here.
+                self.restarting.remove(unit);
+            }
             Some(Job::Stopping) => {
-                self.stopping
-                    .insert(unit.clone(), (entry.boot.clone(), entry.at));
+                self.stopping.insert(
+                    unit.clone(),
+                    (entry.boot.clone(), entry.since_boot, entry.at),
+                );
             }
             Some(Job::Started) => {
-                let Some((boot, stopped)) = self.stopping.remove(unit) else {
+                let Some((boot, stopped, stopped_at)) = self.stopping.remove(unit) else {
                     return true;
                 };
                 if boot != entry.boot {
@@ -178,11 +187,24 @@ impl Launches {
                 if entry.message.starts_with("Finished ") {
                     return true;
                 }
-                if entry.at.saturating_sub(stopped) <= RESTART_WITHIN {
-                    let gone = millis(entry.at.saturating_sub(stopped));
-                    self.restarted.entry(unit.clone()).or_default().push(gone);
+                // A restart is timed on the boot's clock, which no step of
+                // the wall clock moves; a start before its stop on it was
+                // heard out of order, or read without the boot's stamp.
+                // That clock stands still while the machine sleeps, though,
+                // so the wall clock bounds it too, as `restarts_itself`
+                // does: a service stopped before a sleep and started after
+                // it wasn't restarted. One stepped forward past the window
+                // reads as a sleep, which the two clocks can't tell apart.
+                let gone = entry.since_boot.saturating_sub(stopped);
+                if (0..=RESTART_WITHIN).contains(&gone)
+                    && entry.at.saturating_sub(stopped_at) <= RESTART_WITHIN
+                {
+                    self.restarted
+                        .entry(unit.clone())
+                        .or_default()
+                        .push(millis(gone));
                     self.restarting
-                        .insert(unit.clone(), (boot, stopped, entry.at));
+                        .insert(unit.clone(), (boot, stopped, entry.since_boot));
                 }
             }
             None => {
@@ -263,21 +285,38 @@ impl Launches {
         // a ready from the boot before comes before this boot's starts; a
         // ready from another boot still leaves this boot's restart waiting
         // for its own, so the pairing doesn't rest on that order.
-        if self
+        let Some(&(_, stopped, started)) = self
             .restarting
             .get(unit)
-            .is_none_or(|(boot, ..)| *boot != entry.boot)
+            .filter(|(boot, ..)| *boot == entry.boot)
+        else {
+            return;
+        };
+        // A ready line after the service stopped again is the next
+        // program's, so it can't time the restart before; one heard after
+        // that stop but written before it, as the followers lag, still can.
+        if self
+            .stopping
+            .get(unit)
+            .is_some_and(|(boot, stopped, _)| *boot == entry.boot && *stopped <= entry.since_boot)
         {
             return;
         }
-        let Some((_, stopped, started)) = self.restarting.remove(unit) else {
+        let after = entry.since_boot.saturating_sub(started);
+        // On the boot's clock a ready line before its start was written
+        // before it, by the program it stopped or by the new one beating
+        // systemd's own line, and heard after, as one follower ran ahead of
+        // another. The replay hears it first, leaving the restart for a
+        // ready line after its start, and live is held to the same.
+        if after < 0 {
             return;
-        };
-        if entry.at.saturating_sub(started) > READY_WITHIN {
+        }
+        self.restarting.remove(unit);
+        if after > READY_WITHIN {
             return;
         }
         if let Some(gone) = self.restarted.get_mut(unit).and_then(|all| all.last_mut()) {
-            *gone = millis(entry.at.saturating_sub(stopped));
+            *gone = millis(entry.since_boot.saturating_sub(stopped));
         }
         self.stamped.insert(unit.clone());
     }
