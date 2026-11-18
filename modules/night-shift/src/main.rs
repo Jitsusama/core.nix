@@ -60,7 +60,7 @@ use cgroup::Limits;
 use hours::Hours;
 use pressure::Places;
 use std::fmt::Write as _;
-use std::fs::{self, File, TryLockError};
+use std::fs::{self, File};
 use std::io::{self, Write as _};
 use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
@@ -344,18 +344,34 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
         .map_err(|error| failed(job, "can't open the lock").because(error.to_string()))?;
     let began = Instant::now();
     let mut told: Option<String> = None;
+    let mut left = None;
     loop {
-        match lock.try_lock() {
-            Ok(()) => break,
-            Err(TryLockError::WouldBlock) => {
-                let who = turn::holder(&places.runtime);
+        // A free turn is left a while to a job Joel waits on, waiting for
+        // it too.
+        match turn::look(&lock, &places.runtime, false, &mut left) {
+            Ok(turn::Look::Had) => break,
+            Ok(found) => {
+                let (why, waiting) = if let turn::Look::Left(next) = found {
+                    // Left only a while, so even a job that waits for
+                    // nobody waits that long.
+                    if job.wait_at_most.is_none() {
+                        if outside_its_hours(job) {
+                            return Ok(None);
+                        }
+                        thread::sleep(turn::LOOK_EVERY);
+                        continue;
+                    }
+                    let why = format!("the turn is left to {next}, which Joel waits on");
+                    (why.clone(), format!("waiting, as {why}"))
+                } else {
+                    let who = turn::holder(&places.runtime);
+                    (
+                        format!("another heavy job is running, {who}, and only one runs at a time"),
+                        format!("waiting for the turn, which {who} has"),
+                    )
+                };
                 let Some(most) = job.wait_at_most else {
-                    say(
-                        job,
-                        &format!(
-                            "not started: another heavy job is running, {who}, and only one runs at a time; a later try goes on"
-                        ),
-                    );
+                    say(job, &format!("not started: {why}; a later try goes on"));
                     return Ok(None);
                 };
                 // Hours that close while it waits end the wait, rather than
@@ -365,9 +381,9 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                 if outside_its_hours(job) {
                     return Ok(None);
                 }
-                if told.as_ref() != Some(&who) {
-                    say(job, &format!("waiting for the turn, which {who} has"));
-                    told = Some(who);
+                if told.as_ref() != Some(&waiting) {
+                    say(job, &waiting);
+                    told = Some(waiting);
                 }
                 if began.elapsed() >= most {
                     return Err(Failure::new(
@@ -381,7 +397,7 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                 }
                 thread::sleep(turn::LOOK_EVERY);
             }
-            Err(TryLockError::Error(error)) => {
+            Err(error) => {
                 return Err(failed(job, "can't take the lock").because(error.to_string()));
             }
         }
