@@ -152,6 +152,33 @@ onLinux {
         && unit (account graphical) == ""
       );
 
+  # niri's unit asks for the render deadline, and keeps it to screens of
+  # 60 Hz and slower, by the names the two patches read, and niri is built
+  # with both, so neither a rename on either side nor a patch dropped from
+  # the list lets it reach the 120 Hz panel, where it missed vblanks. Which
+  # rates defer is proven in niri's own tests, as it builds.
+  niri-renders-by-the-deadline-up-to-60-hz =
+    let
+      unit =
+        ((account graphical).xdg.configFile."systemd/user/niri.service.d/render-deadline.conf" or {
+          text = "";
+        }
+        ).text;
+      deadline = builtins.readFile ./renders-by-the-deadline.patch;
+      rate = builtins.readFile ./renders-by-the-deadline-up-to-a-rate.patch;
+      built = map (patch: baseNameOf (toString patch)) graphical.config.programs.niri.package.patches;
+    in
+    holds "niri-renders-by-the-deadline-up-to-60-hz"
+      "niri isn't built with both render deadline patches, or its unit doesn't ask for the deadline, doesn't keep it to screens of 60 Hz and slower, or asks by a name the patches don't read."
+      (
+        lib.elem "renders-by-the-deadline.patch" built
+        && lib.elem "renders-by-the-deadline-up-to-a-rate.patch" built
+        && lib.hasInfix ''var_os("NIRI_RENDER_DEADLINE")'' deadline
+        && lib.hasInfix ''var("NIRI_RENDER_DEADLINE_UP_TO_HZ")'' rate
+        && lib.hasInfix "Environment=NIRI_RENDER_DEADLINE=1\n" unit
+        && lib.hasInfix "Environment=NIRI_RENDER_DEADLINE_UP_TO_HZ=60\n" unit
+      );
+
   # niri reads its settings again in place when a switch changes them, and
   # refuses all of them for one it doesn't know. The niri running through a
   # switch is the one the machine booted, from before the switch, so a

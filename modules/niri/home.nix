@@ -210,6 +210,22 @@ in
         '';
       };
 
+  # niri renders each frame as late as it can and still make the next
+  # vblank, so a window answering a key a moment after one is shown a
+  # refresh sooner, but only on a screen of 60 Hz or slower: a faster one
+  # leaves too little room to render late in, and renders at once
+  # (nixos.nix's renders-by-the-deadline.patch and the patch keeping it to
+  # a rate). Asked through the environment, as full range is.
+  config.xdg.configFile."systemd/user/niri.service.d/render-deadline.conf" =
+    lib.mkIf pkgs.stdenv.hostPlatform.isLinux
+      {
+        text = ''
+          [Service]
+          Environment=NIRI_RENDER_DEADLINE=1
+          Environment=NIRI_RENDER_DEADLINE_UP_TO_HZ=60
+        '';
+      };
+
   # Where the cookie Xwayland asks for is kept (xwayland-satellite.sh), for
   # every program the user manager starts, niri and the launcher's
   # included, so an X11 program they start finds it. The user manager

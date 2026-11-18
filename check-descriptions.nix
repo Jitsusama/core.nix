@@ -2049,6 +2049,10 @@
     the session's niri, nested in the sandbox, walks its windows at most once a frame while a
     client's commits wake it hundreds of times a second
   '';
+  niri-renders-by-the-deadline-up-to-60-hz = ''
+    niri is built with both render deadline patches, and its unit asks for the deadline and keeps
+    it to screens of 60 Hz and slower, by the names those patches read
+  '';
   niri-says-what-the-gpu-gave-it = ''
     the session's niri lets smithay say which GPU priority niri got, keeping the rest of niri's own
     log filter

@@ -202,7 +202,12 @@
     # is in niri's environment, which adds no setting a niri before it would
     # refuse. render-deadline-action.patch turns it on and off while niri
     # runs: `niri-deadline on`, below, tries it on Joel's own GPU, and `off`
-    # puts it back.
+    # puts it back. Tried so on 18 November, it missed no vblank in 3 hours
+    # on a 60 Hz screen and took a median 6 ms off the launcher's frames'
+    # trip from swap to screen, but missed 8 in 20 s on the 120 Hz panel.
+    # So home.nix starts niri with it on, and the patch made on the rest,
+    # renders-by-the-deadline-up-to-a-rate.patch, keeps it to screens of
+    # 60 Hz and slower: a faster one renders at once.
     #
     # niri tells a sandbox's client apart only to hide globals from it, so
     # a window a fenced command opened through pi-fence-display took the
@@ -298,6 +303,7 @@
         ./keeps-secret-copies-from-sandboxes.patch
         ./fixed-to-output.patch
         ./says-a-layers-wake.patch
+        ./renders-by-the-deadline-up-to-a-rate.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
