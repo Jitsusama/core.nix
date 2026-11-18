@@ -47,7 +47,7 @@ fn help() -> Help {
     .example("system --json", "the whole record, as system.view/1")
     .example(
         "system machine NAME",
-        "one machine whole: its ties to the other parts, and what can be done with it",
+        "one machine whole: its cells, network and code, and what can be done with it",
     )
     .example(
         "system serve --socket SOCKET",

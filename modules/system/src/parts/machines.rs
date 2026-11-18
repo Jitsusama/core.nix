@@ -351,8 +351,8 @@ fn backup_said(backup: Backup) -> Option<(Health, String, String)> {
         Backup::Unread(why) => {
             return Some((
                 Health::Watch,
-                format!("can't tell when its quest backup last landed ({why})"),
-                "quest backup unread".to_owned(),
+                format!("can't tell when its quest backup last finished ({why})"),
+                "quest backup's time unknown".to_owned(),
             ));
         }
         Backup::Landed(age) => age,
@@ -365,7 +365,7 @@ fn backup_said(backup: Backup) -> Option<(Health, String, String)> {
     };
     Some((
         health,
-        format!("hasn't landed a quest backup in {hours} h{BACKUP_HINT}"),
+        format!("hasn't finished a quest backup in {hours} h{BACKUP_HINT}"),
         format!("no quest backup in {hours} h"),
     ))
 }
@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(health, Health::Watch);
         assert_eq!(
             laptop.says,
-            format!("hasn't landed a quest backup in 2 h{BACKUP_HINT}"),
+            format!("hasn't finished a quest backup in 2 h{BACKUP_HINT}"),
             "the journal is named only where the backup runs as a user service"
         );
         assert_eq!(laptop.side, ["no quest backup in 2 h"]);
@@ -531,9 +531,9 @@ mod tests {
         assert_eq!(laptop.health, Health::Watch);
         assert_eq!(
             laptop.says,
-            "can't tell when its quest backup last landed (its landing file says no time)"
+            "can't tell when its quest backup last finished (its landing file says no time)"
         );
-        assert_eq!(laptop.side, ["quest backup unread"]);
+        assert_eq!(laptop.side, ["quest backup's time unknown"]);
     }
 
     fn laptop(over: &[&str], band: &str) -> Value {
@@ -814,7 +814,7 @@ mod tests {
             part.things[0].says,
             format!(
                 "booted 3 hours ago after a firmware error, \
-                 hasn't landed a quest backup in 7 h{BACKUP_HINT}"
+                 hasn't finished a quest backup in 7 h{BACKUP_HINT}"
             ),
             "said in the order they were found"
         );
@@ -842,7 +842,7 @@ mod tests {
         assert_eq!(
             unread.says,
             format!(
-                "the node didn't answer; this machine hasn't landed a quest backup in 7 h{BACKUP_HINT}"
+                "the node didn't answer; this machine hasn't finished a quest backup in 7 h{BACKUP_HINT}"
             )
         );
         assert_eq!(

@@ -464,6 +464,7 @@ off.
 | Linux builder | a VM on a Mac that builds what Linux machines run, so the Mac's work builds there | | `darwinModules.linux-builder`, `darwin.linux-builder-vz` |
 | container | a program run apart from the machine, with its own files | | Podman |
 | update | the machine switched to its repository's main, signed, by root's own choosing when asked | upgrade, self-update | `update-to-main` |
+| quest backup | the agents' quests copied each hour, by a service core.nix doesn't run; `system` says it late once its last finished run is over 2 hours old, and bad from 7 whole hours | | `quest-backup`, its `landed` file |
 
 ## Network
 
