@@ -390,6 +390,72 @@ mod tests {
     }
 
     #[test]
+    fn an_agents_command_cant_tell_what_only_systemd_tells() {
+        let job = |fields: &str| {
+            let line = format!(
+                r#"{{"__REALTIME_TIMESTAMP":"1","PRIORITY":"6","SYSLOG_IDENTIFIER":"systemd",
+                "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service",
+                {fields}}}"#
+            )
+            .replace('\n', "");
+            parse(&line).expect("a journal line is an entry")
+        };
+        let restart = job(&format!(
+            r#""USER_UNIT":"quickshell.service","MESSAGE_ID":"{RESTART_SCHEDULED}",
+            "MESSAGE":"quickshell.service: Scheduled restart job, restart counter is at 1.""#
+        ));
+        assert!(
+            !restart.restart,
+            "a job can't make up a restart of his shell"
+        );
+        assert_ne!(
+            restart.thing, "quickshell.service",
+            "nor speak as systemd of a unit of his"
+        );
+        let started = job(&format!(
+            r#""MESSAGE_ID":"{STARTUP_FINISHED}","KERNEL_USEC":"1",
+            "MESSAGE":"Startup finished in 1s (kernel) = 1s.""#
+        ));
+        assert_eq!(started.mark, None, "nor make up how long the boot took");
+        let ready = job(r#""MESSAGE":"launcher: home kept as the shell started""#);
+        assert_eq!(ready.mark, None, "nor say the launcher was ready");
+        let stopping = job(&format!(
+            r#""USER_UNIT":"quickshell.service","MESSAGE_ID":"{UNIT_STOPPING}",
+            "MESSAGE":"Stopping quickshell.service""#
+        ));
+        assert_eq!(stopping.job, None, "nor that a unit of his is stopping");
+    }
+
+    #[test]
+    fn a_crash_in_work_he_waits_on_is_his() {
+        let crash = |slice: &str| {
+            let line = format!(
+                r#"{{"__REALTIME_TIMESTAMP":"1","PRIORITY":"2",
+                "SYSLOG_IDENTIFIER":"systemd-coredump","COREDUMP_COMM":"cargo",
+                "COREDUMP_CGROUP":"/user.slice/user-1000.slice/user@1000.service/{slice}",
+                "MESSAGE":"Process 1 (cargo) of user 1000 dumped core."}}"#
+            )
+            .replace('\n', "");
+            parse(&line).expect("a crash is an entry").whose
+        };
+        assert_eq!(
+            crash("jobs.slice/jobs-awaited.slice/awaited.service"),
+            Some(Whose::His),
+            "what he waits on at a terminal is his"
+        );
+        assert_eq!(
+            crash("jobs.slice/jobs-timed.slice/keeps.service"),
+            Some(Whose::Agents),
+            "the machine's timed work isn't"
+        );
+        assert_eq!(
+            crash("jobs.slice/notapp.slice/x.scope"),
+            Some(Whose::Agents),
+            "a slice is matched whole, not by its name's end"
+        );
+    }
+
+    #[test]
     fn a_crash_says_whose_program_it_was() {
         let his = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"2",
             "SYSLOG_IDENTIFIER":"systemd-coredump","COREDUMP_COMM":"1password",
