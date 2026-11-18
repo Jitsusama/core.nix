@@ -48,6 +48,7 @@ Provider {
             : !!Quickshell.env("XDG_RUNTIME_DIR")
         stamp: (key, ask) => provider.stamped(key, ask)
         toldAs: key => provider.hiding ? Words.name("asks:hidden") : ready.served(key)?.name ?? ""
+        whyWithheld: () => provider.hiding ? Words.field.becoming?.shared : undefined
         place: "asks"
         beside: ["summary"]
         make: (row, key) => provider.made(row, key)

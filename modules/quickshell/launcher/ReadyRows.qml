@@ -45,6 +45,9 @@ Scope {
     // What an act withheld or refused names its row by, `(key)` to a name, as Asks names only
     // that an ask is hidden while the screen is shared; by default the name as served.
     property var toldAs: null
+    // Why an act the stamp withheld wasn't sent, `(key)` to its words or undefined, as Asks
+    // says the share withholds a yes; by default that it wants Joel's own key press.
+    property var whyWithheld: null
     // The keys of rows the place is about to draw more of, its selected row's, so the daemon
     // reads their drawers and inside rows only while they're ahead (ready-rows.md's Notes).
     property var ahead: []
@@ -987,7 +990,8 @@ Scope {
     // key press grants: nothing is sent or drawn, and it's journalled and
     // told as Joel next opens the launcher, as a shut act's refusal is.
     function withheld(key, one) {
-        const why = Words.field.becoming?.keyed ?? "";
+        const why = (typeof whyWithheld === "function" ? whyWithheld(key) : undefined)
+            ?? Words.field.becoming?.keyed ?? "";
         console.info(`launcher: ${one.key} withheld: ${why}`);
         maker?.launcher?.toldNot(toldName(key), one.ask.act ?? verbOf(one), why);
     }
@@ -1053,7 +1057,7 @@ Scope {
         let answered = false;
         const becomes = into ? ready.make(into, becomesKey) : rowAt(key);
         const how = one.becomes ? undefined : { done: () => answered };
-        maker?.becomes(shown, becomes, row.name ?? "", one.ask.act ?? verbOf(one), how);
+        maker?.becomes(shown, becomes, toldName(key), one.ask.act ?? verbOf(one), how);
         const words = Words.field.becoming ?? {};
         const send = ask => link.ask(ask, answer => {
             const why = Ready.refusal(answer, words);
