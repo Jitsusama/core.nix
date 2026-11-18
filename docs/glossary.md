@@ -695,5 +695,12 @@ page that set it out: "i love this page and what it describes"):
   machine cells run on, not a cell (the design page's owner, 2026-11-17),
   so the choice sits beside what a cell lives on: whether basin is the
   word for the pool, or stays in the map's legend alone.
+- **knot**: the mycelium map's mark for a network nobody leads, shared by
+  cells under two networks or more: a ring with spokes, empty in the
+  middle, standing among its cells so they're the bridge between their
+  networks. Once no network has a leader (the design page's owner,
+  2026-11-17), every network may be drawn this way, so the choice sits
+  beside the tie between two cells: whether knot is the word for a
+  network's mark, or stays in the map's legend alone.
 
 [design]: design.md
