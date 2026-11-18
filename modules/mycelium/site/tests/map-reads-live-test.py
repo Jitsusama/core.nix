@@ -70,7 +70,7 @@ BASIN_CELLS = ("HERON1", "HERON2")
 # A cell find is asked for by name, and the title its drawer heads it with.
 SOUGHT = "TERN03"
 SOUGHT_TITLE = "Count the Cleats"
-# A receptor of node.json's handing one of its cells a review, as the node
+# A receptor of node.json's feeding one of its cells a review, as the node
 # says a feeding under its `fed` kind.
 FED_RECEPTOR = "calls@kestrel"
 FED_CELL = "SKIFF1"
@@ -213,7 +213,7 @@ def basins() -> dict[str, list[dict[str, object]]]:
 
 
 def fed() -> dict[str, list[dict[str, object]]]:
-    """Node.json's realm with FED_RECEPTOR having just handed FED_CELL a review."""
+    """Node.json's realm with FED_RECEPTOR having just fed FED_CELL a review."""
     reading = json.loads((HERE / "node.json").read_text())["kinds"]
     now = datetime.now(UTC)
     feeding = {
@@ -494,7 +494,7 @@ def test_a_basin_passes_the_maps_own_checks(browser: Browser, basins_served: Ser
         opened.close()
 
 
-def test_a_receptor_handing_a_cell_something_is_drawn_between_the_two(
+def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
     browser: Browser, fed_served: Served, fed_node: StandIn
 ) -> None:
     root, _ = fed_served
@@ -504,18 +504,18 @@ def test_a_receptor_handing_a_cell_something_is_drawn_between_the_two(
         the_map_stands(page, "live")
         the_map_counts(page, COUNTED, "a feeding changed the count")
         page.wait_for_function("document.getElementById('map-ground').painted().fed === 1")
-        # Each end's drawer says what was handed, the cell's by whom.
+        # Each end's drawer says what was fed, the cell's by whom.
         title = page.locator("#panel-title")
         body = page.locator("#panel-body")
         receptor = title.inner_text()
         page.evaluate(f"location.hash = '#cell={FED_CELL}'")
         expect(title, "the cell's drawer never opened").not_to_have_text(receptor)
         cell = title.inner_text()
-        expect(body, "the cell's drawer left out what it was handed").to_contain_text(
+        expect(body, "the cell's drawer left out what it was fed").to_contain_text(
             f"{FED_SAID}, by {receptor}", timeout=PACE_MS
         )
         page.evaluate(f"location.hash = '#cell={FED_RECEPTOR}'")
-        expect(body, "the receptor's drawer left out what it handed to whom").to_contain_text(
+        expect(body, "the receptor's drawer left out what it fed to whom").to_contain_text(
             f"{cell}, {FED_SAID}", timeout=PACE_MS
         )
         found = page.evaluate((HERE / "site-checks.js").read_text())

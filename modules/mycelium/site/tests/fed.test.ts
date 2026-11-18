@@ -1,4 +1,4 @@
-// A receptor hands one outside change to the one cell whose quest claims
+// A receptor feeds one outside change to the one cell whose quest claims
 // it, and the node says each such feeding for ten minutes (its `fed` kind):
 // these prove what the map keeps of one, for how long, in what order, and
 // that a node too old to serve them reads as one that says nothing of them.
@@ -13,7 +13,7 @@ const MINUTE_MS = 60_000;
 
 /**
  * A feeding as the node serves the `fed` kind, said `ago` before AT. Its
- * own word for what was handed sits under `source`, as the node moves any
+ * own word for what was fed sits under `source`, as the node moves any
  * field named as the interface's own.
  */
 function fed(receptor: string, cell: string, ago: number, more: Record<string, unknown> = {}) {
@@ -22,7 +22,7 @@ function fed(receptor: string, cell: string, ago: number, more: Record<string, u
   return { key, kind: "fed", heard: AT - ago, receptor, cell, at, ...more };
 }
 
-/** A word for what was handed, as the node serves it. */
+/** A word for what was fed, as the node serves it. */
 const REVIEW = { source: { kind: "review" } };
 
 /** The four watches the map waits on, empty, and the fed kind's, told `these`. */
@@ -41,7 +41,7 @@ it("a node that serves no feeding says nothing of them, not that none were made"
   assert.deepEqual(nowOf(told([]), AT).fed, []);
 });
 
-it("a feeding is kept as who handed what to whom and when, never more", () => {
+it("a feeding is kept as who fed what to whom and when, never more", () => {
   const one = fed("github@kestrel", "KESTRL1", MINUTE_MS, { ...REVIEW, title: "words" });
   assert.deepEqual(nowOf(told([one]), AT).fed, [
     { receptor: "github@kestrel", cell: "KESTRL1", at: "2026-11-18T07:59:00.000Z", kind: "review" },

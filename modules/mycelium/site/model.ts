@@ -348,7 +348,7 @@ function fedOf(held: Held | undefined, at: number): Fed[] | null {
     // either side that the clocks can't both be right.
     if (receptor && cell && said && Math.abs(at - when) < FED_SHOWN_MS) {
       // The record's own `kind` is the interface's, so the node moves the
-      // feeding's, its word for what was handed, under `source`.
+      // feeding's, its word for what was fed, under `source`.
       const kind = text(object(record, "source") ?? {}, "kind") ?? null;
       fed.push({ when, said: { receptor, cell, at: new Date(when).toISOString(), kind } });
     }

@@ -768,7 +768,7 @@ body {
 }
 
 /* A receptor's feeding: a dotted arc in the receptor's own ink, from its
-   dish to the cell it handed something to, so it reads as what came in
+   dish to the cell it fed something, so it reads as what came in
    from outside and never as talk, which is solid in the voice ink. */
 .m-fed {
   fill: none;

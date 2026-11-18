@@ -3361,7 +3361,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>A cell moving: in a turn now</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>Quiet: waiting for its next word</dd></div>` +
       `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, its dot filled while it is reading</dd></div>` +
-      (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Handed: a dotted arc from a receptor to the one cell it handed something from outside, such as a review asked of you, drawn for ten minutes</dd></div>` : "") +
+      (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Fed: a dotted arc from a receptor to the one cell it fed something from outside, such as a review asked of you, drawn for ten minutes</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
@@ -3491,7 +3491,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       .filter((f) => f.cell === s.address || f.receptor === s.address)
       .map((f) => (f.cell === s.address ? `${fedWords(f.kind)}, by ${m.byAddress.get(f.receptor)?.short || f.receptor}` : `${m.byAddress.get(f.cell)?.short || f.cell}, ${fedWords(f.kind)}`) + `, at ${clock(f.at, false)}`)
       .join("; ");
-    if (fedFact) facts.push(["Handed", fedFact]);
+    if (fedFact) facts.push(["Fed", fedFact]);
     const networks = s.networks.map((name) => {
       const h = m.hubs.get(name);
       if (h) return `<li><button type="button" class="row" data-go="net=${esc(h.key)}">${glyph(h.shape, 10)}<span class="what"><span class="name">${esc(h.name)}</span><span class="fact">${h === s.hub ? "its own" : "also on it"}${s.leads.includes(h.key) ? ", leads it" : ""}</span></span></button></li>`;
