@@ -12,10 +12,10 @@
 # CAKE, and the queue forms here instead, short and sorted. How fast that is
 # differs on every network, and on Wi-Fi from minute to minute, so the
 # shaper finds it from each direction's own delay, as shaper-record
-# measures it with ICMP timestamps, afresh in each stay on a network. A
-# network whose line is declared in jitsusama.shaper.networks, by its
-# router's hardware address, starts at its hold, and any other at 10 Mbit/s
-# up, until the controller's first second leaves it
+# measures it with ICMP timestamps, and keeps what each network's upload
+# learned, by its router's hardware address. A network whose line is
+# declared in jitsusama.shaper.networks starts at its hold, and one never
+# met at 10 Mbit/s up, until the controller's first second leaves it
 # unlimited, as it stays until a queue stands on it.
 #
 # CAKE's four tins follow the slices: voice for names, time and the
