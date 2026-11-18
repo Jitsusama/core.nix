@@ -975,8 +975,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             { jitsusama.mycelium.realm = "harbour"; }
           ];
         # The safe word's Slack reader stays down, as servesTheSafeWord says.
-        # The condition sits above the service's name, so no other area's
-        # machine is handed an empty pineapple-slack.
+        # The condition wraps the service's whole value rather than one of
+        # its settings, so no other area's machine is handed an empty
+        # pineapple-slack.
         systemd.user.services.pineapple-slack = lib.mkIf servesTheSafeWord {
           Install.WantedBy = lib.mkForce [ ];
         };
