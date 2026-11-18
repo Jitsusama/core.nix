@@ -275,25 +275,29 @@ QtObject {
     function splitting() {
         const even = () => 10;
         const headed = at => at === 0 ? 20 : 10;
-        const whole = count => [{ insert: 0, keys: Array.from({ length: count }, (_, at) => at) }];
-        // [what, the steps putting rows in, how many, the row back to, how far
-        // down the view stands from the first row's top, how tall each is, from]
+        // [what, the row back to, how far down the view stands from the first
+        // row's top, how tall each is, from]
         const cases = [
-            ["a view standing on a row's top starts at it", whole(30), 30, 16, 100, even, 10],
-            ["a row cut by the view's top is its first", whole(30), 30, 16, 105, even, 10],
-            ["the row back to, standing at the top, is the first", whole(30), 30, 16, 160, even,
-                16],
-            ["a heading's height is counted", whole(30), 30, 5, 25, headed, 1],
-            ["a view at the list's top isn't split", whole(30), 30, 4, 0, even, 0],
-            ["nor a step back to the first row", whole(30), 30, 0, 0, even, 0],
-            ["nor one onto the line", whole(30), 30, -1, 0, even, 0],
-            ["nor rows put in among some kept", [{ insert: 2, keys: [2, 3] }], 30, 16, 100, even,
-                0],
-            ["nor rows put in two runs", [{ insert: 0, keys: [0] }, { insert: 2, keys: [2] }], 3,
-                2, 10, even, 0],
-            ["nor a run short of the list", whole(20), 30, 16, 100, even, 0]
+            ["a view standing on a row's top starts at it", 16, 100, even, 10],
+            ["a row cut by the view's top is its first", 16, 105, even, 10],
+            ["the row back to, standing at the top, is the first", 16, 160, even, 16],
+            ["a heading's height is counted", 5, 25, headed, 1],
+            ["a view at the list's top isn't split", 4, 0, even, 0],
+            ["nor a step back to the first row", 0, 0, even, 0],
+            ["nor one onto the line", -1, 0, even, 0]
         ];
-        for (const [what, puts, count, back, down, tall, from] of cases)
-            Expect.same(what, RowsKept.splitFrom(puts, count, back, down, tall), from);
+        for (const [what, back, down, tall, from] of cases)
+            Expect.same(what, RowsKept.splitFrom(back, down, tall), from);
+        const whole = count => [{ insert: 0, keys: Array.from({ length: count }, (_, at) => at) }];
+        // [what, the steps putting rows in, how many rows the list holds, afresh]
+        const puts = [
+            ["one run of all the rows is the list afresh", whole(30), 30, true],
+            ["rows put in among some kept aren't", [{ insert: 2, keys: [2, 3] }], 30, false],
+            ["nor rows put in two runs", [{ insert: 0, keys: [0] }, { insert: 2, keys: [2] }], 3,
+                false],
+            ["nor a run short of the list", whole(20), 30, false]
+        ];
+        for (const [what, steps, count, afresh] of puts)
+            Expect.same(what, RowsKept.allAfresh(steps, count), afresh);
     }
 }

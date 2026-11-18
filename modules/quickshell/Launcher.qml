@@ -13475,10 +13475,11 @@ Scope {
                                 const back = root.backTo === null ? -1
                                     : root.leftAt(root.backTo, rows);
                                 const puts = steps.filter(one => one.remove === undefined);
-                                const from = RowsKept.splitFrom(puts, rows.length, back,
-                                    back > 0 ? root.scrollFor(back, root.backTo.above)
-                                        - list.rowY(0) : 0,
-                                    at => root.tallOf(rows[at], at));
+                                const from = back > 0 && RowsKept.allAfresh(puts, rows.length)
+                                    ? RowsKept.splitFrom(back,
+                                        root.scrollFor(back, root.backTo.above) - list.rowY(0),
+                                        at => root.tallOf(rows[at], at))
+                                    : 0;
                                 let put = 0;
                                 let split = 0;
                                 for (const step of puts) {
