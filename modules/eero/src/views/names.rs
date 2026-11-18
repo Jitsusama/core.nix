@@ -4,9 +4,9 @@
 //!
 //! A name is offered only when it finds the thing it names, so where two
 //! devices share one, each is offered by its hardware address instead,
-//! which is what the view would ask for. So is one holding a character
-//! the terminal kit keeps from the terminal, since the name a view draws
-//! without it isn't the name it finds.
+//! which is what the view would ask for. A name holding a character the
+//! terminal kit keeps from the terminal is offered as the kit draws it,
+//! which the views find it by too.
 
 use super::{
     VIEWS, device_name, find_device, find_node, find_profile, location, node_name, off_device,
@@ -15,12 +15,6 @@ use super::{
 use terminal_kit::layout;
 
 use crate::model::HomeNetwork;
-
-/// Whether `name` can be offered as it's drawn: nothing in it is kept
-/// from the terminal.
-fn drawn_whole(name: &str) -> bool {
-    *layout::one_line(name) == *name
-}
 
 /// A name to offer and what it is.
 pub type Named = (String, String);
@@ -40,8 +34,7 @@ pub fn nodes(model: &HomeNetwork) -> Vec<Named> {
         .iter()
         .map(|node| {
             let name = node_name(node);
-            let found =
-                drawn_whole(name) && find_node(model, name).is_ok_and(|found| found.id == node.id);
+            let found = find_node(model, name).is_ok_and(|found| found.id == node.id);
             let what = [node.model.clone(), node.gateway.then(|| "gateway".into())]
                 .into_iter()
                 .flatten()
@@ -58,8 +51,7 @@ pub fn nodes(model: &HomeNetwork) -> Vec<Named> {
 pub fn devices(model: &HomeNetwork) -> Vec<Named> {
     let on = model.devices.iter().map(|device| {
         let name = device_name(device);
-        let found = drawn_whole(&name)
-            && find_device(model, &name, None).is_ok_and(|found| found.mac == device.mac);
+        let found = find_device(model, &name, None).is_ok_and(|found| found.mac == device.mac);
         let on = location(model, device.node.as_deref());
         if found {
             (name.into_owned(), format!("on {on}"))
@@ -69,8 +61,7 @@ pub fn devices(model: &HomeNetwork) -> Vec<Named> {
     });
     let off = model.devices_off.iter().map(|device| {
         let name = off_name(device);
-        let found = drawn_whole(&name)
-            && !on_now_answers_to(model, &name)
+        let found = !on_now_answers_to(model, &name)
             && off_device(model, &name).is_some_and(|found| found.mac == device.mac);
         let last = match device.node.as_deref() {
             Some(node) => format!("not on now, last on {}", location(model, Some(node))),
@@ -92,8 +83,7 @@ pub fn profiles(model: &HomeNetwork) -> Vec<Named> {
         .iter()
         .map(|profile| {
             let name = profile_name(profile);
-            let found = drawn_whole(name)
-                && find_profile(model, name).is_ok_and(|found| found.id == profile.id);
+            let found = find_profile(model, name).is_ok_and(|found| found.id == profile.id);
             (
                 if found { name } else { &profile.id }.to_owned(),
                 super::counted(profile.devices.len(), "device"),
@@ -174,15 +164,22 @@ mod tests {
     }
 
     #[test]
-    fn a_name_holding_a_control_is_offered_as_what_finds_it() {
+    fn a_name_holding_a_control_finds_its_node_as_its_drawn() {
         let mut model = model();
-        model.nodes[2].location = Some("Den\nevil".into());
+        model.nodes[2].location = Some("Den\nevil\u{7}".into());
 
-        let offered = nodes(&model);
         assert_eq!(
-            names(&offered),
-            ["Hall", "Study", model.nodes[2].id.as_str()],
-            "a name drawn without its line break was offered, though it finds nothing"
+            for_zsh(&nodes(&model))
+                .lines()
+                .nth(2)
+                .map(|line| line.split(':').next()),
+            Some(Some("Den evil")),
+            "a name holding a control wasn't offered as the kit draws it"
+        );
+        assert_eq!(
+            find_node(&model, "den evil").map(|node| &node.id),
+            Ok(&model.nodes[2].id),
+            "the name a page draws didn't find what it names"
         );
     }
 

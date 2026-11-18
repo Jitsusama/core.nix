@@ -44,7 +44,7 @@ pub fn rate(mbps: f64) -> String {
 
 use std::borrow::Cow;
 
-use terminal_kit::Room;
+use terminal_kit::{Room, layout};
 
 use crate::called;
 use crate::model::{CloudState, Device, DeviceOff, HomeNetwork, Node, Profile};
@@ -421,11 +421,18 @@ pub fn listed(names: &[&str]) -> String {
     }
 }
 
+/// Whether a name eero holds is the one asked for, in any case, read as
+/// the kit draws it, so a name shown without its controls finds what it
+/// names.
+fn is_named(held: &str, asked: &str) -> bool {
+    layout::one_line(held).eq_ignore_ascii_case(&layout::one_line(asked))
+}
+
 fn find_node<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Node, String> {
     model
         .nodes
         .iter()
-        .find(|node| node.id == name || node_name(node).eq_ignore_ascii_case(name))
+        .find(|node| node.id == name || is_named(node_name(node), name))
         .ok_or_else(|| {
             let names: Vec<&str> = model.nodes.iter().map(node_name).collect();
             format!("no node is called {name}; the nodes are {}", listed(&names))
@@ -441,7 +448,7 @@ fn find_profile<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Profile, S
     model
         .profiles
         .iter()
-        .find(|profile| profile.id == name || profile_name(profile).eq_ignore_ascii_case(name))
+        .find(|profile| profile.id == name || is_named(profile_name(profile), name))
         .ok_or_else(|| {
             let names: Vec<&str> = model.profiles.iter().map(profile_name).collect();
             format!(
@@ -509,12 +516,10 @@ fn off_now(model: &HomeNetwork, name: &str, clock: Option<&Clock>) -> Option<Str
     })
 }
 
-/// Whether any of a device's names is the one asked for, in any case.
-fn answers_to(name: &str, names: [&Option<String>; 3]) -> bool {
-    names
-        .into_iter()
-        .flatten()
-        .any(|said| said.eq_ignore_ascii_case(name))
+/// Whether any of a device's names is the one asked for, as `is_named`
+/// reads them.
+fn answers_to(name: &str, held: [&Option<String>; 3]) -> bool {
+    held.into_iter().flatten().any(|said| is_named(said, name))
 }
 
 /// The device not on now that a name or hardware address finds, the first
