@@ -1900,7 +1900,7 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
 
     The system page's Open in the Launcher asks it (BMDYSH and XUBK2E, 2026-11-17), since a
     page can't act. Only the first word names one; a name no node lists opens Machines, its
-    foot saying the machine isn't among Joel's. Here one node lists only this machine,
+    foot saying Machines doesn't list it, and why. Here one node lists only this machine,
     which Machines lists first, so the case proves the call reaches Machines, not which row it
     lands on: tests/machines.qml holds which row a link names, over several realms' machines,
     by the one key Machines gives its rows.
@@ -1923,14 +1923,15 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
     did = followed(shell, "machine", "skiff.gone")
     assert did == {
         "done": False,
-        "said": "the machine the link named isn't among yours: no node this machine links lists it",
+        "said": "Machines doesn't list the machine the link named: no node of yours has said it"
+        " holds it, or none has answered since the shell started",
     }, did
     shell.launcher_until(
         lambda shown: (
             shown["open"]
             and shown["held"] == ["machines"]
             # The foot keeps each phrase whole with no-break spaces.
-            and "no node this machine links lists it"
+            and "none has answered since the shell started"
             in " ".join(shown["saying"]).replace("\xa0", " ")
             and "skiff" not in " ".join(shown["saying"])
         )
@@ -1943,10 +1944,16 @@ def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: S
 
     A page picks when its link is followed, so one followed while he's typing would take his
     place and his words (ISXEG8, 2026-11-15 [dd375f5e]): what he's typed and where he is stay
-    as they are, and the link is told the launcher's in use.
+    as they are, and the link is told the launcher's in use. A machine no node lists is asked
+    too, since its miss opens Machines and says why, and must not do so over him either.
     """
     in_use = {"done": False, "said": "the launcher is in use, so the link opened nothing"}
-    links = (("talkTo", "LISTEN"), ("network", "repo.core-nix"), ("machine", here()))
+    links = (
+        ("talkTo", "LISTEN"),
+        ("network", "repo.core-nix"),
+        ("machine", here()),
+        ("machine", "skiff.gone"),
+    )
     opened(shell)
     shell.type_in("listening")
     was = shell.showing()

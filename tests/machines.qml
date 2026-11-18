@@ -276,7 +276,8 @@ QtObject {
         // Among rows keyed as Machines keys them, a link lands on its
         // machine's row alone, and a miss on none, so it can't match by name.
         const rows = ["anchor", "tern", "lantern"]
-            .map(name => ({ name: `${name} row`, key: Machines.rowKey(name) }));
+            .map(name => ({ name: `${name} row`, key: Machines.rowKey(name) }))
+            .concat([{ name: "keyless row", key: null }]);
         const landed = ["tern", "lantern", "skiff.gone"]
             .map(asked => rows.filter(Machines.lands(Machines.linked(realms, asked).key))
                 .map(row => row.name));

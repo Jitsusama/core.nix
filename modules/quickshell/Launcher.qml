@@ -1550,8 +1550,8 @@ Scope {
     // talkTo, goToCell, showNetwork or showMachine, never opens over: what he's typed, and
     // where he is, stay as they are, and the link opens nothing (ISXEG8's ruling, 2026-11-15
     // [dd375f5e]). A link opens either only from closed, holding his first keys back
-    // (Prompt.qml's linked). One still opening counts, since open is set only once its first frame is drawn, and his keys are
-    // already the launcher's before then.
+    // (Prompt.qml's linked). One still opening counts, since open is set only once its
+    // first frame is drawn, and his keys are already the launcher's before then.
     function inUse() {
         return open || opening || talkLine.up;
     }
@@ -1608,9 +1608,9 @@ Scope {
     // may be moving the cursor, and a row jumping under them would take his place.
     function showMachine(said) {
         const machines = collections.find(one => one.settings.name === "machines") ?? null;
-        const { name, key } = machines
-            ? machines.linked(said)
-            : { name: String(said ?? "").trim().split(/\s+/)[0], key: null };
+        if (machines === null)
+            return { error: "the launcher has no Machines" };
+        const { name, key } = machines.linked(said);
         console.info(`launcher: asked from outside to show the machine ${JSON.stringify(name)}`);
         if (inUse())
             return inUseSaid;

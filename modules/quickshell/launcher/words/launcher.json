@@ -511,8 +511,8 @@
       "answers": ["machines"],
       "said": {
         "here": "this machine",
-        "unlisted": "the machine the link named isn't among yours",
-        "unlistedWhy": "no node this machine links lists it",
+        "unlisted": "Machines doesn't list the machine the link named",
+        "unlistedWhy": "no node of yours has said it holds it, or none has answered since the shell started",
         "yesterday": "yesterday",
         "ready": "ready",
         "busy": "busy",
