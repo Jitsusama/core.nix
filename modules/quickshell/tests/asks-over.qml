@@ -45,6 +45,8 @@ ShellRoot {
             key: root.key, thing, place: "asks", kind: "ask", state: "waiting",
             name: "op://Private/Kiln/password", glyph: "passwords", hue: "action",
             note: "S1", side: [{ said: "from S1", keep: 2 }], attention: 1000, digest,
+            // A field no hidden row draws, as a daemon may serve more later.
+            reads: "op://Private/Kiln/password",
             order: 1024, acts: [act("release"), act("refuse")],
             drawer: { eyebrow: "S1", title: "op://Private/Kiln/password",
                 body: "To fire the kiln.", facts: [{ name: "Runs", said: "make kiln" }] }
@@ -649,8 +651,17 @@ ShellRoot {
         same("its drawer says neither what it asks for, where from, nor why",
             [drawer.title, drawer.eyebrow, drawer.body, drawer.facts?.length],
             [hidden, "", "", 0]);
+        same("nor anything else the daemon serves, only what it may show",
+            [row()?.reads, row()?.graph], ["", null]);
         same("it has no act, so no key answers it unseen",
-            [row()?.arms, typeof row()?.run, row()?.verbs ?? null], ["", "undefined", null]);
+            [row()?.arms, row()?.verbs ?? null], ["", null]);
+        // The launcher closes on a Return with no run, so his second
+        // Return, meant for a yes, would reach the window behind.
+        same("a Return on it keeps the launcher open",
+            [row()?.stays, typeof row()?.run], [true, "function"]);
+        const sentBefore = link.sent.length;
+        row()?.run?.();
+        same("and answers nothing", link.sent.length, sentBefore);
         same("it still waits for him in For You, hidden there too",
             asks.forYou.map(one => one.row.name), [hidden]);
         same("and its line's time starts again", asks.seen, {});
