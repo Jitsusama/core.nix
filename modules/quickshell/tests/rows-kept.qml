@@ -292,10 +292,10 @@ QtObject {
         // [what, the steps putting rows in, how many rows the list holds, afresh]
         const puts = [
             ["one run of all the rows is the list afresh", whole(30), 30, true],
-            ["rows put in among some kept aren't", [{ insert: 2, keys: [2, 3] }], 30, false],
-            ["nor rows put in two runs", [{ insert: 0, keys: [0] }, { insert: 2, keys: [2] }], 3,
-                false],
-            ["nor a run short of the list", whole(20), 30, false]
+            ["a run short of the list isn't", whole(20), 30, false],
+            ["nor all the rows put in two runs", [{ insert: 0, keys: [0] }, { insert: 1,
+                keys: [1, 2] }], 3, false],
+            ["nor a row moved alone", [{ move: 2, to: 0 }], 3, false]
         ];
         for (const [what, steps, count, afresh] of puts)
             Expect.same(what, RowsKept.allAfresh(steps, count), afresh);

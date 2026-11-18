@@ -113,11 +113,12 @@ function afresh(was, now) {
         .concat(now.length > 0 ? [{ insert: 0, keys: now.slice() }] : []);
 }
 
-// Whether the rows `puts` puts in are the whole list put in afresh, one run
-// of all `count` rows into none: the only rows a step back out splits
-// (splitFrom).
+// Whether the steps `puts` putting rows in are the whole list put in
+// afresh, one run of all `count` rows into none, which can only go in at
+// the first: the only rows a step back out splits (splitFrom). A move has
+// no keys, and is none.
 function allAfresh(puts, count) {
-    return puts.length === 1 && puts[0].insert === 0 && puts[0].keys.length === count;
+    return puts.length === 1 && puts[0].keys?.length === count;
 }
 
 // Where a step back out to the row `back` splits a list put in afresh: the

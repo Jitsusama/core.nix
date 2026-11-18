@@ -13507,16 +13507,19 @@ Scope {
                                         // rows below, a moment at places
                                         // `from` short of their own, read
                                         // their own rows, and no frame comes
-                                        // between the two.
+                                        // between the two. What a row keys
+                                        // on its place, its height and
+                                        // whether it's selected, is worked
+                                        // out again at the second.
                                         if (from > 0) {
-                                            const splitFrom = Date.now();
+                                            const splitting = Date.now();
                                             list.contentY = list.rowY(0)
                                                 + list.rowHeight(from);
                                             rowsKept.insert(0, entries.slice(from));
                                             list.forceLayout();
                                             rowsKept.insert(0, entries.slice(0, from));
                                             list.forceLayout();
-                                            split = Date.now() - splitFrom;
+                                            split = Date.now() - splitting;
                                         } else {
                                             rowsKept.insert(step.insert, entries);
                                         }
@@ -13537,7 +13540,12 @@ Scope {
                                 // the row it comes back to (root.backTo),
                                 // scrolled there alone: positionViewAtIndex
                                 // would lay them out where the list stood
-                                // first, and then again there.
+                                // first, and then again there. Where rows
+                                // are kept, those drawn still stand where
+                                // they stood until laid out, so a row put
+                                // in or moved above it puts this off by its
+                                // height, and reselect lays them out again
+                                // where the row stands: twice, as before.
                                 if (back >= 0)
                                     list.contentY = root.scrollFor(back, root.backTo.above);
                                 list.forceLayout();
@@ -13545,6 +13553,7 @@ Scope {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
                                     laying: Date.now() - laying + aside + split,
+                                    split: from,
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };

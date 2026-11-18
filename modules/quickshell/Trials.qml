@@ -179,10 +179,13 @@ Scope {
             + ` words ${parts.words}, readying ${parts.readying})` : "";
     }
 
-    // The rows a laying drew, where it drew any.
+    // The rows a laying drew, where it drew any, and the row a step back out
+    // put its rows in from, where it split them (Launcher.qml's keep), so a
+    // slow step back says whether it split.
     function laid(kept) {
-        return (kept.built ?? 0) + (kept.reused ?? 0) > 0
-            ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
+        return ((kept.built ?? 0) + (kept.reused ?? 0) > 0
+            ? `: ${kept.built} rows built, ${kept.reused} taken back` : "")
+            + ((kept.split ?? 0) > 0 ? `, put in from row ${kept.split} up` : "");
     }
 
     // What a step spent, its own parts beside those of the search that drew

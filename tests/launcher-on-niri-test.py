@@ -2153,16 +2153,22 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         laid = laid_out(shell)
         drawn.append(int(laid["drawn"]) - before)
         was, now = band_of(standing, far), band_of(laid, far)
+        assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"
         shell.close_launcher()
-    # The rows drawn around the row before, and one built ahead each way.
-    reach = len(standing["rows"]) + 2
+    # The rows drawn around the row before, the one built ahead each way among them.
+    reach = len(standing["rows"])
     assert drawn[1] <= reach, f"rows drawn by each - back to {far}: {drawn}, {reach} in reach"
 
 
 def band_of(laid: Json, name: str) -> int | None:
-    """Give where the row read by this name is drawn on the card, or None where it isn't."""
-    bands = [row["band"] for row in laid["rows"] if row["reads"].split(" \u00b7 ")[0] == name]
+    """Give where the row by this name is drawn on the card, its name drawn, or None."""
+    bands = [
+        row["band"]
+        for row in laid["rows"]
+        if row["reads"].split(" \u00b7 ")[0] == name
+        and any(word["text"] == name for word in row["words"])
+    ]
     return cast("int", bands[0]) if bands else None
 
 
