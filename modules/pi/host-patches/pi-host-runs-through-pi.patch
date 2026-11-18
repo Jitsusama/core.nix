@@ -20,9 +20,11 @@ run drops them. The system message that brings the prompt's sections up
 to date is handed to the work, for the host to record before the run's
 first request: after a restart that changed the sections, as an upgrade
 does, that request would otherwise go out on the old ones. A runtime
-without this hands the work undefined. A run that fails to start keeps
-what it held for the next turn or run, since the transcript it would carry
-on may still owe a tool result. hostRuns marks a runtime that has it.
+without this hands the work undefined. A run that fails to start, and
+work that fails or is aborted, keep what they held for the next turn or
+run, since the transcript may still owe a tool result: written after the
+call, a held message would get the call a stand-in result, and the real
+one after it would be refused. hostRuns marks a runtime that has it.
 Nothing in pi calls it, so a pi no host drives behaves as before.
 
 Its hunk sits on _startRun's own ending, so a pi whose run lifecycle moved
@@ -40,7 +42,7 @@ pi build; ordinary interactive pi stays unchanged.
  	readonly agent: SessionAgent;
  	readonly sessionManager: SessionManager;
  	readonly settingsManager: SettingsManager;
-@@ -1990,6 +1992,73 @@
+@@ -1990,6 +1992,81 @@
  			this._runSystemPromptOptions = undefined;
  			this._flushPendingBashMessages();
  			this._flushPendingCustomMessages();
@@ -58,8 +60,10 @@ pi build; ordinary interactive pi stays unchanged.
 +	 * starting message; later turns' refresh then diffs against it. A runtime without this hands
 +	 * undefined, not an empty list. A message a handler returns waits for the next prompt, and
 +	 * one sent while the run starts waits for its first turn to end, so none lands between a tool
-+	 * call and its result. A run that fails to start keeps what it held for the next turn or run,
-+	 * since the transcript it would carry on may still owe a tool result. agent_settled fires as
++	 * call and its result. A run that fails to start, and work that fails or is aborted, keep what
++	 * they held for the next turn or run, since the transcript may still owe a tool result: a held
++	 * message written after that call would get it a stand-in result, and the real one after it
++	 * would be refused. agent_settled fires as
 +	 * the work ends. Inside a run of pi's own, the work joins it, is handed nothing, and pi's run
 +	 * settles it. Nothing in pi calls this.
 +	 */
@@ -104,13 +108,19 @@ pi build; ordinary interactive pi stays unchanged.
 +			this._resolveIdleWaitIfIdle();
 +			throw error;
 +		}
++		let finished = false;
 +		try {
 +			await work(prepared);
++			finished = !this._agentRunAbortRequested;
 +		} finally {
 +			if (this._agentRunAbortRequested) this._finishCancelledRetry();
 +			this._runSystemPromptOptions = undefined;
-+			this._flushPendingBashMessages();
-+			this._flushPendingCustomMessages();
++			// Work that failed or was aborted may have left a tool call unanswered, so what was held
++			// waits for the next turn or run, as a failed start's does.
++			if (finished) {
++				this._flushPendingBashMessages();
++				this._flushPendingCustomMessages();
++			}
  			await this._emitAgentSettled();
  		}
  	}
