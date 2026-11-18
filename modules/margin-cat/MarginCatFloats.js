@@ -193,9 +193,15 @@ function drops(way, cols, at) {
 
 // Down to `to`, from where it's drawn: from over the screen's top, the
 // screen draws it at its top (MarginCatScreen.qml, which clamps its y at
-// 0), where it hung in its falling drawing till its fall reached it.
+// 0), where it hung in its falling drawing till its fall reached it. A
+// fall wholly over the top shows nothing, so it's at `to` at once.
 function falls(way, to) {
-    way.y = Math.min(Math.max(way.y, 0), to.y);
+    if (way.y < 0 && to.y > way.y) {
+        way.y = Math.min(to.y, 0);
+    }
+    if (to.y <= 0 && way.y === to.y) {
+        return;
+    }
     Ways.falls(way, to);
 }
 
@@ -281,11 +287,19 @@ function lands(way, plan) {
             Ways.leap(way, { x: edge, y }, RISES / 2, "over");
             Ways.holds(way, "lands", MarginCat.LANDS);
         } else {
+            // Climbed no higher than the screen shows, where it would
+            // climb on the spot, and over its edge within its walk there.
+            const top = it.top - at.tall;
             Ways.clings(way, plan.side, -1);
-            Ways.climb(way, { rows: [it] }, it.top - at.tall, RISES);
+            Ways.climb(way, { rows: [it] }, Math.max(top, Math.min(way.y, 0)), RISES);
+            way.y = Math.min(way.y, top);
             Ways.clings(way, plan.side, 1);
-            Ways.leap(way, { x: edge, y }, RISES / 2, "over");
-            Ways.holds(way, "lands", MarginCat.LANDS);
+            if (y < 0) {
+                walks(way, edge, y);
+            } else {
+                Ways.leap(way, { x: edge, y }, RISES / 2, "over");
+                Ways.holds(way, "lands", MarginCat.LANDS);
+            }
         }
     }
     way.turn = 0;
@@ -299,10 +313,13 @@ function lands(way, plan) {
     aboard(way, began);
 }
 
-// Whether `way` to `to` is STEPS cells up or down or less: too little to
-// leap or fall, so it's walked (steps()).
+// Whether `way` to `to` is STEPS cells up or down or less as the screen
+// draws it, no higher than its top: too little to leap or fall, so it's
+// walked (steps()). Measured on the cat's own heights, a drop from over
+// the top onto a ledge a pixel under it fell, and hung in its falling
+// drawing for most of a fall's shortest time.
 function aStep(way, to, at) {
-    return Math.abs(to.y - way.y) <= STEPS * at.cell + 1e-6;
+    return Math.abs(Math.max(to.y, 0) - Math.max(way.y, 0)) <= STEPS * at.cell + 1e-6;
 }
 
 // Whether a leap or hop from `way` to `to` would have no arc to show: a

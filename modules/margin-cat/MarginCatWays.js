@@ -58,7 +58,7 @@ const HOLDS = { turns: "walkingB", thinks: "walkingB", settles: "walkingB", grab
     pins: "batting", looks: "earFlick", follows: "earFlick", peers: "nothingHere" };
 
 // A way begun at `from`, the legs it takes added as it goes, each from
-// where the last left it.
+// where the last left it, or over the screen's top where both are drawn.
 function begun(at, from) {
     return { at, x: from.x, y: from.y, facing: at.facing ?? 0, turn: 0, legs: [] };
 }
