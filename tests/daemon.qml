@@ -33,7 +33,9 @@
 // answered with the same records hears nothing, and lets go nothing
 // watched ahead, which it never names. A handler of a told change
 // reads when its line was heard, and one of a watch's whole answer, or one
-// it puts off, reads none. A client
+// it puts off, reads none. Each daemon's lines and their length are
+// counted by its name, for the launcher's census, and begun again once
+// said. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
@@ -222,6 +224,10 @@ ShellRoot {
     property real markedThen: -1
     property real markedLater: -1
     property var marks: []
+    // What the census would say of the lines heard, taken once.
+    property var heardSaid: null
+    // The lines the people and kinds daemons' connections had heard then.
+    property var heardLines: []
 
     // A tell put off carrying its line reads it, by Qt.callLater or a
     // Timer; and an ask sent from one is answered as from that line, not
@@ -357,7 +363,8 @@ ShellRoot {
             + `, listed ${Object.keys(listed.held).join(" ")}`
             + `, kinds ${JSON.stringify(kinds.held)}`
             + `, lapsing ${wholeFor.state} ${root.heldLapsing} ${JSON.stringify(wholeFor.held)}`
-            + `, answered ${JSON.stringify(root.answered)}`);
+            + `, answered ${JSON.stringify(root.answered)}`
+            + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
     }
 
@@ -635,6 +642,58 @@ ShellRoot {
             what: "a line heard, one put off from it and an ask's answer each name its daemon",
             holds: () => root.markedBy === "kinds" && root.carriedBy === "kinds"
                 && root.askAnsweredBy === "kinds" && Hearing.heardBy() === ""
+        },
+        {
+            // The census says whose lines held the most, since parsing them
+            // makes most of what Joel's shell makes (Hearing.js).
+            what: "each daemon's lines and their length are counted by its name, the most"
+                + " first, and the count begun again once said",
+            holds: () => {
+                // Taken once, since saying it begins the count again, with
+                // the lines each daemon's connections heard at that moment,
+                // so a line counted twice, or one connection's left out,
+                // fails.
+                const heardBy = daemons => daemons.reduce((sum, one) => sum + one.linesHeard, 0);
+                if (root.heardSaid === null) {
+                    root.heardLines = [heardBy([people, listed, forgetting, refreshed, paced]),
+                        heardBy([kinds, differing, flat, whole, wholeFor, rewatched, wholeAhead,
+                            marked, repaced, none])];
+                    root.heardSaid = Hearing.heardMost(99).said;
+                }
+                const peopleSaid = /(?:^|, )people ([0-9]+) lines?, ([0-9]+) characters/
+                    .exec(root.heardSaid);
+                const kindsSaid = /(?:^|, )kinds ([0-9]+) lines?, ([0-9]+) characters/
+                    .exec(root.heardSaid);
+                // Each line is a JSON message, more than ten characters.
+                const counts = [peopleSaid, kindsSaid].every((found, at) => found !== null
+                    && Number(found[1]) === root.heardLines[at] && Number(found[1]) >= 2
+                    && Number(found[2]) > 10 * Number(found[1]));
+                // Begun at a known time, so each window's minutes are exact,
+                // and the second is counted from the first's end.
+                const begun = Date.now();
+                Hearing.heardMost(0, begun);
+                Hearing.counted("b", 3000);
+                Hearing.counted("b", 1000);
+                Hearing.counted("a", 5000);
+                Hearing.counted("c", 10);
+                const most = Hearing.heardMost(2, begun + 2 * 60000);
+                const after = Hearing.heardMost(9, begun + 5 * 60000);
+                const run = "/run/user/1000";
+                const names = [Hearing.nameOf(`${run}/daemons/machine.sock`, [], run),
+                    Hearing.nameOf(`${run}/eero/socket`, [], run),
+                    Hearing.nameOf(`${run}/mycelium/personal.sock`, [], run),
+                    Hearing.nameOf(`${run}/clipboard-history.sock`, [], run),
+                    Hearing.nameOf("/run/wifid/rows", [], run),
+                    Hearing.nameOf("", ["/nix/store/x/bin/passwords-child"], run),
+                    Hearing.nameOf("/elsewhere/x/y.sock", [], ""),
+                    Hearing.nameOf("", [], run)].join(" ");
+                return counts
+                    && most.said === "a 1 line, 5000 characters, b 2 lines, 4000 characters"
+                    && most.minutes === 2 && most.lines === 4 && most.characters === 9010
+                    && after.said === "" && after.minutes === 3 && after.lines === 0
+                    && names === "machine eero mycelium/personal clipboard-history wifid/rows"
+                        + " passwords-child x/y a child";
+            }
         },
         {
             what: "a client holding its wire watches neither its socket nor its folder",
