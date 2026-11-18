@@ -9,12 +9,36 @@
   overflow: auto;
   padding-inline-start: var(--groups);
   border-inline-start: 1px solid var(--rule);
+  /* A tree stepped onto scrolls clear of the keys' line held at the drawer's foot. */
+  scroll-padding-block-end: 3rem;
 }
 
-/* Tab reaches the drawer so it can be scrolled by keys; its rule lights as the lantern. */
-.drawer:focus-visible {
-  outline: none;
-  box-shadow: inset var(--ring) 0 0 var(--accent);
+/* Tab reaches the drawer so it can be scrolled by keys; it shows focus in the kit's one ring,
+   drawn inside it, since a scrolling box clips what's drawn outside. */
+.drawer:focus-visible,
+.tree:focus-visible {
+  outline: var(--ring) solid var(--accent);
+  outline-offset: calc(-1 * var(--ring));
+  border-radius: var(--radius);
+}
+
+/* The keys of the tree stepped onto, said once at the drawer's foot rather than under the
+   tree, so stepping changes no tree's height. It holds its line while hidden, so showing it
+   moves nothing either. */
+.drawer-keys {
+  position: sticky;
+  inset-block-end: 0;
+  margin: 0;
+  padding-block: var(--tie);
+  border-block-start: 1px solid var(--rule);
+  background: var(--background);
+  font-size: var(--step-small);
+  color: var(--muted);
+  visibility: hidden;
+}
+
+.drawer:has(.tree:focus) .drawer-keys {
+  visibility: visible;
 }
 
 .open-title {
@@ -60,13 +84,13 @@
 
 .checkout .path,
 .tree .path {
-  font-size: 0.78rem;
+  font-size: var(--step-small);
   color: var(--text);
   overflow-wrap: anywhere;
 }
 
 .checkout .meta {
-  font-size: 0.75rem;
+  font-size: var(--step-small);
   color: var(--muted);
 }
 
@@ -84,7 +108,7 @@
 
 .group .n {
   font-style: normal;
-  font-size: 0.75rem;
+  font-size: var(--step-small);
   color: var(--muted);
 }
 
@@ -107,16 +131,6 @@
   background: var(--selection);
 }
 
-.tree[aria-current="true"] .row-keys {
-  display: block;
-  margin-block-start: 2px;
-}
-
-.tree:focus-visible {
-  outline: none;
-  box-shadow: inset var(--ring) 0 0 var(--accent);
-}
-
 .tree-body,
 .change-body {
   display: flex;
@@ -125,7 +139,7 @@
 }
 
 .branch {
-  font-size: 0.82rem;
+  font-size: var(--step-small);
   color: var(--strong);
   overflow-wrap: anywhere;
 }
@@ -152,7 +166,7 @@
   align-items: center;
   gap: 4px;
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: var(--step-small);
   color: var(--muted);
 }
 
@@ -178,7 +192,7 @@
 
 .failed {
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: var(--step-small);
 }
 
 .folded {

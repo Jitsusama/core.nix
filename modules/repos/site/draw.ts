@@ -274,7 +274,12 @@ function rowMeta(repository: Repository): string {
     repository.changes.length > 0 ? plural(repository.changes.length, "change") : "",
     weighedBriefly(weightOfAll(repository.checkouts.map((each) => each.weight))),
   ].filter(Boolean);
-  return parts.join(" · ");
+  return counted(parts.join(" · "));
+}
+
+/** `words` with each number held to the word after it, so a row wraps "6.0 MB" whole. */
+function counted(words: string): string {
+  return words.replace(/(\d) /gu, "$1\u00a0");
 }
 
 /** One repository as a row: its marks in the gutter, then its name and facts. */
@@ -343,9 +348,6 @@ function treeRow(tree: Tree, cutIn: string | undefined, context: Context): strin
   const where = repeats
     ? ""
     : `<span class="path" translate="no">${escaped(own ?? tilde(tree.path, home))}</span>`;
-  const keys = `<span class="row-keys" aria-hidden="true"><kbd>y</kbd> copy its folder${
-    tree.change?.url === undefined ? "" : " · <kbd>o</kbd> open its change"
-  } · <kbd>-</kbd> step out</span>`;
   const branch = tree.branch ?? (tree.commit === undefined ? "" : tree.commit.slice(0, 10));
   const change =
     tree.change === undefined
@@ -354,7 +356,7 @@ function treeRow(tree: Tree, cutIn: string | undefined, context: Context): strin
   return `<li class="tree ${tree.season}" data-path="${escaped(tree.path)}" data-home="code/${escaped(treeAddress(tree.path))}" tabindex="-1">
     <span class="g-season">${leaf(tree.season)}</span>
     <span class="tree-body"><span class="branch" translate="no">${escaped(branch)}${tree.snapshot ? ' <span class="snap">snapshot</span>' : ""}</span>
-    ${where}${cellsLine(tree.cells, homes)}${keys}</span>
+    ${where}${cellsLine(tree.cells, homes)}</span>
     ${change}${when(tree.writtenAt, now)}
   </li>`;
 }
@@ -425,7 +427,7 @@ function drawer(
       ].filter(Boolean);
       const weight = weighedFully(each.weight);
       return `<li class="checkout"><span class="path" translate="no">${escaped(tilde(each.path, home))}</span>
-        <span class="meta">${escaped([at, ...drift, weight].filter(Boolean).join(" · "))}</span>${cellsLine(each.cells, homes)}</li>`;
+        <span class="meta">${escaped(counted([at, ...drift, weight].filter(Boolean).join(" · ")))}</span>${cellsLine(each.cells, homes)}</li>`;
     })
     .join("");
   const joined = repository.joined

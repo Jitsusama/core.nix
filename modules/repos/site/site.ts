@@ -7,7 +7,6 @@
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
-import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { addressed, landing, outward, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
@@ -32,6 +31,7 @@ import {
   markRows,
   markTree,
   paced,
+  pressHead,
   write,
 } from "./page.ts";
 
@@ -60,7 +60,12 @@ const heard = new Map<string, string>();
 const arrived = new Set<string>();
 let cellsHeard = false;
 const repos = (): boolean => arrived.size === KINDS.length;
-const roomDrawn = keepRoom();
+// A reload forgets a name found and a season unfolded, so the list and drawer they drew keep no
+// room for it. The place and the repository open are in the address, which a reload keeps.
+const roomDrawn = keepRoom(() => [
+  ...(query.trim() === "" ? [] : (["list"] as const)),
+  ...((unfolded.get(cursor ?? "")?.size ?? 0) === 0 ? [] : (["open"] as const)),
+]);
 let mycelium: Mycelium = { cells: [], home: undefined, homes: NOWHERE };
 
 let place: Place = "every";
@@ -489,7 +494,7 @@ for (const link of document.querySelectorAll<HTMLAnchorElement>(".places [data-p
 }
 
 // A tapped key at the head acts as pressed; the list takes the keys unless the act gave them on.
-pressable(".head .keys kbd", { ...actions, Return: goIn, "?": () => toggle(keys) }, () => {
+pressHead({ ...actions, Return: goIn, "?": () => toggle(keys) }, () => {
   if (document.activeElement?.closest(".head .keys")) {
     list.focus({ preventScroll: true });
   }

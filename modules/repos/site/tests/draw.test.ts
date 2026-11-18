@@ -100,6 +100,11 @@ it("puts a repository's name in its row as words", () => {
   assert.ok(asWords(markup), `a row put a name in as markup: ${markup}`);
 });
 
+it("holds each number in a row to the word it counts, so a row never wraps between them", () => {
+  const markup = rows(grove().repositories, NOW, "");
+  assert.ok(markup.includes("1\u00a0tree"), `a row could wrap a count from its word: ${markup}`);
+});
+
 it("puts what was searched for as words when nothing is named like it", () => {
   const markup = rows([], NOW, HOSTILE);
   assert.ok(asWords(markup), `the list put what was searched for in as markup: ${markup}`);

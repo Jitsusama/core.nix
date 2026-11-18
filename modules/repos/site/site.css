@@ -50,10 +50,10 @@ code,
   font-feature-settings: var(--mono-features);
 }
 
-/* The kit sets code and keys a step smaller than the words around them, which inside the
-   page's small words would fall under ten pixels. */
+/* Code and keys stand at the scale's small step, a step under the words around them, and
+   level with the small words they sit in, rather than a fraction of either. */
 :is(code, kbd) {
-  font-size: max(0.8em, 10.5px);
+  font-size: var(--step-small);
 }
 
 /* ---- The sentence over the work, and the grove beside it. ---- */
@@ -112,7 +112,7 @@ code,
 
 .eyebrow {
   margin: 0 0 var(--tie);
-  font-size: 0.72rem;
+  font-size: var(--step-small);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--leaf-words);
@@ -246,7 +246,7 @@ code,
 }
 
 .places .n {
-  font-size: 0.72rem;
+  font-size: var(--step-small);
   color: var(--muted);
 }
 
@@ -267,11 +267,7 @@ code,
   color: var(--text);
 }
 
-.find input:focus-visible {
-  outline: none;
-  box-shadow: inset 0 calc(-1 * var(--ring)) 0 var(--accent);
-}
-
+/* The list holds focus and the row chosen in it shows it, below. */
 .list:focus-visible {
   outline: none;
 }
@@ -305,7 +301,7 @@ code,
 }
 
 .row .meta {
-  font-size: 0.75rem;
+  font-size: var(--step-small);
   color: var(--muted);
 }
 
@@ -321,7 +317,7 @@ code,
 
 .row .when,
 .tree .when {
-  font-size: 0.75rem;
+  font-size: var(--step-small);
   text-align: end;
   color: var(--muted);
 }
@@ -355,11 +351,20 @@ code,
   font-weight: 600;
 }
 
-/* Keys show on one row only: the tree's once the cursor has stepped into the drawer. A narrow
-   page has no room for the list's. They stand in the cursor's line where its cells are said,
+/* The row chosen in the list shows the list's focus, in the kit's one ring drawn just inside
+   the row, so it moves nothing. */
+.list:focus-visible .row[aria-selected="true"] {
+  outline: var(--ring) solid var(--accent);
+  outline-offset: calc(-1 * var(--ring));
+  border-radius: var(--radius);
+}
+
+/* The list's keys show on the cursor's row only, until the cursor steps into the drawer, whose
+   keys stand at its own foot. A narrow page has no room for the list's. They stand in the cursor's line where its cells are said,
    in a column as wide on every row, so the cursor moving changes no row's height; the drawer
-   says the cells. */
-@media (width > 60rem) {
+   says the cells. The column waits for a window wide enough that the list beside the drawer
+   keeps room for the names and their counts on one line. */
+@media (width > 75rem) {
   .row {
     grid-template-columns: 16px 16px minmax(0, 1fr) 10rem 3rem;
   }
@@ -375,10 +380,6 @@ code,
   .work:not(:has(.drawer :focus)) .row[aria-selected="true"] .cells {
     display: none;
   }
-}
-
-.list:focus-visible .row[aria-selected="true"] {
-  box-shadow: inset var(--ring) 0 0 var(--accent);
 }
 
 .quiet {
@@ -435,8 +436,10 @@ code,
 /* ---- Narrower windows: the drawer follows the list, the gutter tightens. ---- */
 
 @media (max-width: 60rem) {
+  /* The page scrolls the drawer here, so a tree stepped onto scrolls clear of its keys. */
   :root {
     --gutter: calc(16px + 16px + 2 * 12px);
+    scroll-padding-block-end: 3rem;
   }
 
   .work {

@@ -2,6 +2,7 @@
 // element the markup holds, writing into one, marking where the cursor is,
 // and copying a folder. What the cursor is, and where, stays with site.ts.
 
+import { pressable } from "../../local-sites/kit/steps.ts";
 import { ago } from "./draw.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
@@ -15,15 +16,85 @@ function element<T extends Element>(selector: string, kind: new () => T): T {
 
 const written = new WeakMap<Element, string>();
 
+// What names a thing the page draws again, in the order that names it most surely.
+const NAMING = ["data-path", "data-key", "data-place", "href", "id"] as const;
+
+/** The attribute naming `thing` and its value, by which it's found once drawn again. */
+function namingOf(thing: Element): [string, string] | undefined {
+  for (const name of NAMING) {
+    const value = thing.getAttribute(name);
+    if (value !== null) {
+      return [name, value];
+    }
+  }
+  return undefined;
+}
+
 /**
  * Writes `html` into `into` only when it differs from what was last written there, so a record
- * that changes nothing on this part of the page leaves focus where it stood.
+ * that changes nothing on this part of the page leaves focus where it stood. When it does, and
+ * focus was on something inside, focus goes to the same thing drawn again, so a redraw never
+ * drops the reader back to the top of the page.
  */
 function write(into: Element, html: string): void {
-  if (written.get(into) !== html) {
-    written.set(into, html);
-    into.innerHTML = html;
+  if (written.get(into) === html) {
+    return;
   }
+  written.set(into, html);
+  const focused = document.activeElement;
+  const naming =
+    focused !== null && focused !== into && into.contains(focused) ? namingOf(focused) : undefined;
+  into.innerHTML = html;
+  if (naming !== undefined) {
+    const [name, value] = naming;
+    const again = [...into.querySelectorAll<HTMLElement>(`[${name}]`)].find(
+      (each) => each.getAttribute(name) === value,
+    );
+    again?.focus({ preventScroll: true });
+  }
+}
+
+/**
+ * Makes `keys` one stop for Tab: the arrows, Home and End move between them, and Tab comes back
+ * to the one last left, so a row of buttons is passed in one press rather than six.
+ */
+function roving(keys: readonly HTMLElement[]): void {
+  const choose = (chosen: HTMLElement): void => {
+    for (const each of keys) {
+      each.tabIndex = each === chosen ? 0 : -1;
+    }
+  };
+  keys.forEach((key, at) => {
+    key.addEventListener("focus", () => choose(key));
+    key.addEventListener("keydown", (event) => {
+      const moves: Readonly<Record<string, number>> = {
+        ArrowRight: at + 1,
+        ArrowDown: at + 1,
+        ArrowLeft: at - 1,
+        ArrowUp: at - 1,
+        Home: 0,
+        End: keys.length - 1,
+      };
+      const to = moves[event.key];
+      const next = to === undefined ? undefined : keys[(to + keys.length) % keys.length];
+      if (next !== undefined) {
+        // The page's own arrows step the list; on a key they step the keys alone.
+        event.preventDefault();
+        event.stopPropagation();
+        next.focus();
+      }
+    });
+  });
+  const [first] = keys;
+  if (first !== undefined) {
+    choose(first);
+  }
+}
+
+/** Makes the keys shown at the head press as `taps` name them, one stop for Tab among them. */
+function pressHead(taps: Readonly<Record<string, () => void>>, afterwards: () => void): void {
+  pressable(".head .keys kbd", taps, afterwards);
+  roving([...document.querySelectorAll<HTMLElement>(".head .keys [role=button]")]);
 }
 
 /** Marks the repository keyed `cursor` in the grove and the list, and brings it into view. */
@@ -112,6 +183,7 @@ function paced(act: () => void, gap: number, pacing: () => boolean): () => void 
 
 // The parts whose height the feeds decide, each held at index.html's --room-<id> until they draw.
 const ROOMS = ["title", "lede", "grove", "list", "open"] as const;
+type Room = (typeof ROOMS)[number];
 // The longest a part's room is held, so a feed that never answers, or a daemon away, leaves the
 // page fitting what it holds, the trouble said where it's seen, rather than the last visit.
 const ROOM_HELD_MS = 3000;
@@ -119,10 +191,12 @@ const ROOM_HELD_MS = 3000;
 /**
  * Keeps the room each part the feeds draw took when the page was left, at this width, so the
  * next load holds it from its first paint (index.html puts it back) and nothing shifts as the
- * feeds arrive. Returns what's told of each draw, which lets the room go once every feed has
- * drawn, so the parts fit what they hold again.
+ * feeds arrive. A part `forgets` names, drawn from what a reload doesn't bring back (a name
+ * found, a season unfolded), keeps no room, nor does any once the width changes. Returns what's
+ * told of each draw, which lets the room go once every feed has drawn, so the parts fit what
+ * they hold again.
  */
-function keepRoom(): (everyFeed: boolean) => void {
+function keepRoom(forgets: () => readonly Room[]): (everyFeed: boolean) => void {
   const root = document.documentElement.style;
   let held = ROOMS.some((id) => root.getPropertyValue(`--room-${id}`) !== "");
   const letGo = (): void => {
@@ -132,13 +206,24 @@ function keepRoom(): (everyFeed: boolean) => void {
     held = false;
   };
   setTimeout(letGo, ROOM_HELD_MS);
+  // Room is kept for the width it was measured at, which a resize leaves.
+  const width = innerWidth;
+  globalThis.addEventListener("resize", () => {
+    if (held && innerWidth !== width) {
+      letGo();
+    }
+  });
   globalThis.addEventListener("pagehide", () => {
     // Room still held is the last visit's, not this one's, so it isn't kept again.
     if (held) {
       return;
     }
+    const forgotten = forgets();
     const heights = Object.fromEntries(
-      ROOMS.map((id) => [id, document.getElementById(id)?.offsetHeight ?? 0]),
+      ROOMS.map((id) => [
+        id,
+        forgotten.includes(id) ? 0 : (document.getElementById(id)?.offsetHeight ?? 0),
+      ]),
     );
     try {
       localStorage.setItem("code-room", JSON.stringify({ width: innerWidth, heights }));
@@ -165,4 +250,15 @@ function copyFolder(path: string, note: HTMLElement): void {
   );
 }
 
-export { copyFolder, element, keepRoom, keepTime, markRows, markTree, paced, write };
+export {
+  copyFolder,
+  element,
+  keepRoom,
+  keepTime,
+  markRows,
+  markTree,
+  paced,
+  pressHead,
+  type Room,
+  write,
+};
