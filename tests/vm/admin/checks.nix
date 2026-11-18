@@ -70,6 +70,11 @@ onLinux {
   # Whether a pi host's unit restarts a wedged host, and leaves one that
   # keeps crashing down, shows only with the account's own systemd running it.
   vm-a-wedged-pi-starts-again = import ./pi-hosts-recover.nix { inherit self pkgs; };
+  # Whether a crash's core stays from its owner, and a node's goes six hours
+  # on, shows only with systemd-coredump, the journal and tmpfiles there.
+  vm-cores-kept-from-their-owner = import ./cores-kept-from-their-owner.nix {
+    inherit self pkgs;
+  };
   # Whether a pi host gives back what it held after a kill -9 and a reboot
   # shows only with the account's own systemd starting it, and a boot.
   vm-pi-conversations-come-back =
