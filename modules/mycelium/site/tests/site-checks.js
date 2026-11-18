@@ -23,10 +23,15 @@
 // - screen: at the whole map and one and two zooms in, at most
 //   NAMES_ON_SCREEN names past the ones he's engaged with, no name over a
 //   cell or a network's mark, and every cell drawn at CELL_PX across or
-//   more, since smaller ones fold into their network;
+//   more, since smaller ones fold into their network; no network named
+//   while the cap leaves off a cell that needs him; some cell drawn unless
+//   the map says it folded; and each Zoom In moves the view;
+// - lines: the whole map paints lines across networks where knots stand,
+//   and talk wherever talk has two ends on the map;
 // - names: on the whole map, no more names than networks, branches
-//   included, past the one the keys rest on; once something is open, no faded name at all and at
-//   most NAMES_OPEN names;
+//   included, past the one the keys rest on and the cells that need him;
+//   once something is open, no faded name at all and at most NAMES_OPEN
+//   names;
 // - parity: every drawer, Now, network, branch, machine and cell, opens
 //   with Purpose, Doing and Health, in that order, in a dl.glance, with no
 //   words squeezed into less than half their column.
@@ -156,19 +161,23 @@
     // A knot, a network with no leader, is a network too.
     const hubs = marks('[data-key^="h:"], [data-key^="n:"]').length;
     // The name the keys rest on is what he's engaged with, which keeps its
-    // name wherever it is, so it counts against no budget.
-    const whole = names().filter((el) => !el.classList.contains("strong")).length;
+    // name wherever it is, so it counts against no budget; nor does a cell
+    // that needs him, which is named before any network.
+    const askingKeys = new Set(marks("[data-asks]").map((el) => el.dataset.key));
+    const whole = names().filter((el) => !(el.classList.contains("strong") || askingKeys.has(el.dataset.name))).length;
     if (whole > hubs) {
       faults.push(`names: the whole map shows ${whole} names, past one per network (${hubs})`);
     }
     // Lines are quieted, never taken away: a network shared across others
     // keeps its lines at the whole map, and so does the talk between cells.
-    const painted = document.getElementById("map-ground")?.painted?.() ?? { across: 0, talk: 0, said: 0 };
+    const painted = document.getElementById("map-ground")?.painted?.() ?? { across: 0, talk: 0, between: 0 };
     if (marks('[data-key^="n:"]').length > 0 && painted.across === 0) {
       faults.push("lines: the whole map paints no line across networks, though knots stand on it");
     }
-    if (painted.said > 0 && painted.talk === 0) {
-      faults.push(`lines: the whole map paints none of the ${painted.said} talk arcs it holds`);
+    // Talk inside one folded network waits in its ground, so only talk
+    // with two ends on the map must paint.
+    if (painted.between > 0 && painted.talk === 0) {
+      faults.push(`lines: the whole map paints none of the ${painted.between} talk arcs it holds between two ends`);
     }
   };
   // Every cell he can reach: each one the sentence counts has its mark,
@@ -185,6 +194,21 @@
       faults.push(`screen: ${what} shows ${on.length} names, past ${NAMES_ON_SCREEN}`);
     }
     const cells = marks('circle.cell, [data-key^="c:"]').map((el) => el.getBoundingClientRect()).filter(inView);
+    // Cells that need him take the seven names before any network does, so
+    // none of them is left off by the cap while a network holds a name. A
+    // name with no clear place near its mark waits for a closer view, which
+    // is no fault; the map lists the names the cap left off.
+    const capped = new Set((document.getElementById("labels")?.dataset.capped || "").split(" "));
+    const askingCapped = marks("[data-asks]").filter((el) => capped.has(el.dataset.key)).length;
+    // The network he's engaged with is named beyond the seven, so it doesn't count.
+    const netsNamed = on.filter((el) => ["h:", "n:"].some((kind) => (el.dataset.name || "").startsWith(kind))).length;
+    if (askingCapped > 0 && netsNamed > 0) {
+      faults.push(`screen: ${what} names ${netsNamed} networks while the cap leaves off ${askingCapped} cells that need him`);
+    }
+    // No cell drawn is a pass only when the map says it folded them.
+    if (cells.length === 0 && !document.getElementById("map-ground")?.painted?.().folded) {
+      faults.push(`screen: ${what} draws no cell, and nothing is folded`);
+    }
     const small = cells.filter((r) => r.width * MEMBRANE_SHARE < CELL_PX - SLACK_PX);
     if (small.length > 0) {
       faults.push(`screen: ${what} draws ${small.length} cells under ${CELL_PX} px across, the smallest ${Math.min(...small.map((r) => r.width * MEMBRANE_SHARE)).toFixed(1)}; their networks fold`);
@@ -200,8 +224,12 @@
     }
   };
   const zoomIn = async () => {
+    const was = document.getElementById("world")?.getAttribute("transform");
     document.querySelector('button[data-zoom="in"]')?.click();
     await settle();
+    if (document.getElementById("world")?.getAttribute("transform") === was) {
+      faults.push("screen: Zoom In left the view where it was");
+    }
   };
   const reach = async () => {
     const counted = Number((document.querySelector('[data-count="cells"]')?.textContent || "").replace(/\D/g, ""));
