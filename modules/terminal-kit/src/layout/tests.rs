@@ -12,6 +12,11 @@ fn spaced_words_close_every_blank_to_one_space() {
         "a run of blanks stayed open, so words could read as a try line"
     );
     assert_eq!(
+        spaced("try \u{200d} \u{fe0f} rm"),
+        "try rm",
+        "a word that draws nothing left the blanks either side of it as two"
+    );
+    assert_eq!(
         spaced("lo\rst"),
         "lost",
         "a dropped control parted the words it stood in"

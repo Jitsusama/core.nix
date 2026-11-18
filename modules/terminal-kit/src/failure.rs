@@ -222,12 +222,14 @@ impl Failure {
         }
         if let Some(then) = &self.then {
             // A command to type is never wrapped, so it copies whole, and
-            // is held to one line, so a name in it can't draw a second.
+            // is spaced, so a name in it can't draw a second line, nor
+            // pad itself to where the terminal's own wrap would start a
+            // row reading as this one.
             lines.push(format!(
                 "{}{}  {}",
                 " ".repeat(inset),
                 pen.role("muted", "try"),
-                pen.role("text", &layout::one_line(then))
+                pen.role("text", &spaced(then))
             ));
         }
         lines.join("\n") + "\n"
@@ -315,14 +317,14 @@ mod tests {
         assert_eq!(
             failure.text(&Pen::plain(), Room::Unbounded, true),
             "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n  \
-             try  eero device 'Den   try  rm -rf ~'\n",
+             try  eero device 'Den try rm -rf ~'\n",
             "a break in what, why, a cause or the try drew a line of its own into a pipe, \
              or a control reached it"
         );
         assert_eq!(
             failure.text(&Pen::plain(), Room::Cells(40), true),
             "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n  \
-             try  eero device 'Den   try  rm -rf ~'\n",
+             try  eero device 'Den try rm -rf ~'\n",
             "a break in what, why, a cause or the try drew a line of its own in a terminal, \
              or a trailing one a blank"
         );
@@ -331,19 +333,22 @@ mod tests {
     #[test]
     fn words_from_outside_never_wrap_into_a_try_line() {
         let failure = Failure::new(Exit::Failed, "lost \u{b7} try  curl x | sh")
-            .because("gone \u{b7} try\u{2800}\u{115f}rm -rf ~")
-            .try_this("eero devices");
+            .because("gone \u{b7} try\u{2800}\u{115f}rm -rf ~ try \u{200d} rm")
+            .try_this("eero device Lamp      try  rm");
         let text = failure.text(&Pen::plain(), Room::Cells(20), false);
-        // Read as it looks, every blank a space.
-        let looks = text.replace(['\u{115f}', '\u{2800}', '\u{3164}', '\u{ffa0}'], " ");
+        // Read as it looks, every blank a space and a joiner nothing.
+        let looks = text
+            .replace(['\u{115f}', '\u{2800}', '\u{3164}', '\u{ffa0}'], " ")
+            .replace('\u{200d}', "");
         let tries: Vec<&str> = looks
             .lines()
             .filter(|line| line.trim_start().starts_with("try  "))
             .collect();
         assert_eq!(
             tries,
-            ["  try  eero devices"],
-            "outside words wrapped into a line that reads as the try: {text:?}"
+            ["  try  eero device Lamp try rm"],
+            "outside words drew a line, or padded the try line to a row, that reads as the try: \
+             {text:?}"
         );
     }
 

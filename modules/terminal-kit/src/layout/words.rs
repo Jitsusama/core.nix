@@ -51,11 +51,13 @@ pub fn drawn(words: &str) -> Cow<'_, str> {
 /// two spaces mark. Drawn first, so a control dropped joins what stood
 /// either side of it rather than parting them. A blank that isn't a space
 /// to Unicode, braille's or the Hangul filler the pen keeps to shape a
-/// syllable, still draws as one, so it closes with the rest.
+/// syllable, still draws as one, so it closes with the rest. A word that
+/// draws nothing, a joiner the pen keeps standing alone, goes, or the
+/// blanks either side of it would draw as two.
 pub fn spaced(words: &str) -> String {
     one_line(words)
         .split(|c: char| c.is_whitespace() || matches!(c, '\u{115f}' | '\u{2800}'))
-        .filter(|word| !word.is_empty())
+        .filter(|word| super::width(word) > 0)
         .collect::<Vec<_>>()
         .join(" ")
 }
