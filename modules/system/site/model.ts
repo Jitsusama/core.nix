@@ -6,6 +6,7 @@
 
 import type { Held } from "../../local-sites/kit/records.ts";
 import { object, text, texts } from "../../local-sites/kit/records.ts";
+import { type Ties, tiesOf } from "./machine.ts";
 
 /** How a part or thing stands, as the daemon words it. */
 type Health = "good" | "watch" | "bad" | "unread";
@@ -15,8 +16,12 @@ interface Thing {
   readonly name: string;
   readonly health: Health;
   readonly says: string;
+  /** What in it is worth a look, worded for a side, worst first. */
+  readonly side: readonly string[];
   /** Its home's address from the sites' root, when its home publishes one. */
   readonly address: string | undefined;
+  /** What ties it to the other parts, a machine's (machine.ts). */
+  readonly ties: Ties;
 }
 
 /** The ways deeper into a part. */
@@ -218,7 +223,9 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
+    side: texts(record, "side") ?? [],
     address: text(record, "address"),
+    ties: tiesOf(record["ties"]),
   };
 }
 
@@ -271,4 +278,4 @@ function systemOf(summaries: Held, parts: Held, things: Held): System | undefine
 }
 
 export type { Deeper, Headline, Health, Part, System, Thing };
-export { CLEAR, headline, lede, looksIn, named, sentence, systemOf, WORDS };
+export { CLEAR, capital, headline, lede, looksIn, named, numbered, sentence, systemOf, WORDS };
