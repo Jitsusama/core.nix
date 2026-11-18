@@ -18,13 +18,20 @@ let
   # at this size reads as dirt, not detail; and each pose's lit pixels are
   # within 15% of its sitting's, so a tuck or a stretch doesn't read as a
   # smaller or bigger animal. Each is held to its own sitting, as a puppy is
-  # stockier than the cat.
+  # stockier than the cat. Its strides, in the order it walks them, each
+  # step one pair of feet, so its paws are seen walking rather than the
+  # animal skidding (Joel, 2026-11-13: "i always want to see its paws
+  # moving when it is walking or running"): from one stride to the next,
+  # and from the last back to the first, the body between the tail's tip on
+  # the top row and the feet on the bottom holds still, and of the feet only
+  # the fore half or the hind half changes.
   readsAsOne =
     {
       check,
       animal,
       sitting,
       poses,
+      strides,
     }:
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -67,10 +74,40 @@ let
           100 * lib.max gap (-gap) > 15 * sat
         ) drawn
       );
-      said = "stray ${builtins.toJSON stray}, unlike ${builtins.toJSON unlike}, undrawn ${builtins.toJSON missing}";
+      steps = lib.imap0 (i: from: {
+        inherit from;
+        to = lib.elemAt strides (lib.mod (i + 1) (lib.length strides));
+      }) strides;
+      # Which halves of the feet's row, fore and hind, differ between two.
+      moved =
+        a: b:
+        let
+          half = lib.stringLength (lib.last a) / 2;
+          feet = rows: at: builtins.substring at half (lib.last rows);
+        in
+        lib.filter (at: feet a at != feet b at) [
+          0
+          half
+        ];
+      stepsOnePair =
+        { from, to }:
+        let
+          a = glyphs.${from}.pixels or [ ];
+          b = glyphs.${to}.pixels or [ ];
+          body = rows: lib.sublist 1 (lib.length rows - 2) rows;
+        in
+        a != [ ] && lib.length a == lib.length b && body a == body b && lib.length (moved a b) == 1;
+      skids = lib.filter (step: !stepsOnePair step) steps;
+      skidding = map ({ from, to }: "${from} to ${to}") skids;
+      said = lib.concatStringsSep ", " [
+        "stray ${builtins.toJSON stray}"
+        "unlike ${builtins.toJSON unlike}"
+        "skidding ${builtins.toJSON skidding}"
+        "undrawn ${builtins.toJSON missing}"
+      ];
     in
     holds check "The ${animal}'s poses must read as one ${animal}: ${said}." (
-      stray == [ ] && unlike == [ ] && missing == [ ]
+      stray == [ ] && unlike == [ ] && skidding == [ ] && missing == [ ] && lib.length strides >= 2
     );
 in
 {
@@ -142,16 +179,16 @@ in
       "These marks share a glyph but mean different things: ${builtins.toJSON twoMeanings}."
       (twoMeanings == [ ]);
 
-  # Every mark drawn in pixels (the empty places' cat) stands as level as a
-  # glyph does (docs/design.md, Marks one height): square, its ink touching
-  # its top and bottom rows, and centred across to within a cell, so each
-  # pose of the cat, and of the puppy, stands on the same middle line at the
-  # same height. The
-  # cat's yarn is a thing on the ground beside it, not a mark, so it's held
-  # to that instead: drawn in the sitting cat's own square of cells, and
-  # standing on their bottom row, the cat's ground line, however low it
-  # lies. The three empty places' marks, the margin's cat's and puppy's own
-  # poses and its yarn are drawn, so it can't pass on none.
+  # Every mark drawn in pixels (the empty places' cat, and the margin's cat
+  # and puppy) stands as level as a glyph does (docs/design.md, Marks one
+  # height): square, its ink touching its top and bottom rows, and centred
+  # across to within a cell, so each pose of the cat, and of the puppy,
+  # stands on the same middle line at the same height. The cat's yarn is a
+  # thing on the ground beside it, not a mark, so it's held to that
+  # instead: drawn in the sitting cat's own square of cells, and standing on
+  # their bottom row, the cat's ground line, however low it lies. The three
+  # empty places' marks, the margin's cat's and puppy's poses named below
+  # and the cat's yarn are drawn, so it can't pass on none.
   every-pixel-mark-stands-level =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -223,6 +260,12 @@ in
     check = "every-cat-pose-reads-as-one-cat";
     animal = "cat";
     sitting = "nothingHere";
+    strides = [
+      "walkingA"
+      "walkingC"
+      "walkingB"
+      "walkingD"
+    ];
     poses = [
       "batting"
       "blinking"
@@ -252,6 +295,12 @@ in
     check = "every-puppy-pose-reads-as-one-puppy";
     animal = "puppy";
     sitting = "puppySitting";
+    strides = [
+      "puppyWalkingA"
+      "puppyWalkingC"
+      "puppyWalkingB"
+      "puppyWalkingD"
+    ];
     poses = [
       "puppyBowing"
       "puppySitting"
