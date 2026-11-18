@@ -8453,8 +8453,9 @@ Scope {
     // the drawer 200 ms and more behind his key against his 50 ms bar.
     // Closed, it's let go at once. One whose kind made cheaply of late comes
     // in the key's own frame instead (Pacing.js's drawerJoinsKey), unless
-    // letters still come, which it waits for as any drawer does, so typing
-    // never makes one on each letter.
+    // letters still come: then a drawer out of a kind that cheap follows
+    // in the frame after each letter, and any other waits for them to
+    // rest (Pacing.drawerRestsForLetters).
     property var drawerRow: null
     // Whether a follow waits for the next frame, so keys handled before one
     // comes follow once, for where they left the selection.
@@ -8522,6 +8523,7 @@ Scope {
         // keeps the key that reached it: Every Count, told each second, lost
         // 2 of 131 drawers' times in the lab (2026-11-12).
         drawerRested = 0;
+        drawerAfterLetter = false;
         const keyed = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
         if (keyed > 0 || !(drawerFollowDue || drawerAwaited))
             drawerKeyAt = keyed;
@@ -8534,14 +8536,24 @@ Scope {
             drawerFollowDue = false;
             drawerRow = selected;
         } else if (!prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now())) {
-            // While letters still come, its drawer waits until they rest
-            // rather than holding the next one; the key's own frame goes
-            // on without it (Pacing.typingRests). Even a cheap one, since
-            // up to 8 ms on every letter would be the letters' cost.
-            drawerFollowDue = false;
+            // While letters still come, a drawer of a dear kind, or one
+            // not yet made, waits until they rest rather than holding the
+            // next one; the key's own frame goes on without it
+            // (Pacing.typingRests). A cheap one follows in the frame after
+            // the letter's, never in it, since up to 8 ms on every letter
+            // would be the letters' cost (Pacing.drawerRestsForLetters).
+            // One not out yet rests too, since coming out costs more than
+            // the makings, timed only for drawers already out, measure.
             drawerJoined = false;
-            lettersResting.restart();
-            afterFrame(drawerWaits);
+            if (!drawerOut
+                || Pacing.drawerRestsForLetters(drawerMakings, drawerKindOf(selected))) {
+                drawerFollowDue = false;
+                lettersResting.restart();
+                afterFrame(drawerWaits);
+            } else if (!drawerFollowDue) {
+                drawerFollowDue = true;
+                afterFrame(drawerFollowOrRest);
+            }
         } else if (!prompt.keyHeld && drawerOut
             && Pacing.drawerJoinsKey(drawerMakings, drawerKindOf(selected), prompt.keyHeld)) {
             drawerFollowDue = false;
@@ -8592,6 +8604,9 @@ Scope {
     // How long the drawer following now rested for the letters, said
     // apart from its making in its line (Pacing.drawerCame).
     property real drawerRested: 0
+    // Whether the drawer following now followed its letter, cheap enough
+    // not to rest, said apart in its line too.
+    property bool drawerAfterLetter: false
     function lettersTyped() {
         // Said for the desktop test, which judges only letters that came
         // quicker than the rest: a loaded builder spaced wtype's letters
@@ -8615,11 +8630,24 @@ Scope {
     // field says a letter came, so whether letters still come is asked
     // again once its frame is begun.
     function drawerFollowOrRest() {
-        if (drawerFollowDue && !prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now())) {
+        // A letter since, whose drawer rests, or a follow since, has taken
+        // it over, so a dear row a letter reached in the meantime is never
+        // made here.
+        if (!drawerFollowDue)
+            return;
+        const typing = !prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now());
+        if (typing && (!drawerOut
+            || Pacing.drawerRestsForLetters(drawerMakings, drawerKindOf(selected)))) {
             drawerFollowDue = false;
             lettersResting.restart();
             drawerWaits();
             return;
+        }
+        // Said for the desktop test, which takes a drawer made between
+        // letters only from a kind the shell judged cheap.
+        if (typing && open && selected !== null && drawerRow !== selected) {
+            drawerAfterLetter = true;
+            Report.say(`letter's drawer is cheap: ${selected.key ?? ""}`);
         }
         drawerFollow();
     }
@@ -8702,8 +8730,9 @@ Scope {
         // place held: each was said as `drawer for ""`, in home.
         const key = drawerRow?.key || drawerRow?.name || "";
         const made = KeyTimes.now();
-        const came = cameAs ?? Pacing.drawerCame(drawerJoined, drawerRested);
+        const came = cameAs ?? Pacing.drawerCame(drawerJoined, drawerRested, drawerAfterLetter);
         drawerRested = 0;
+        drawerAfterLetter = false;
         const split = drawerSplit;
         drawerSplit = null;
         const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,

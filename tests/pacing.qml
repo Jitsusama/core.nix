@@ -882,6 +882,19 @@ QtObject {
             Pacing.drawerCame(false, 163.4), "after resting 163 ms for the letters");
         check(failures, "one that never rested says its frame as before",
             Pacing.drawerCame(true, 0), "in the key's frame");
+        // Only a dear kind rests: on 17 November, 20 of Joel's 47 drawers
+        // from 23:04 rested a median 166 ms before they followed, against 3
+        // to 8 ms for the rest, though agents' drawers made in a median 4.
+        check(failures, "a kind not yet made rests for the letters",
+            Pacing.drawerRestsForLetters({}, "agent"), true);
+        check(failures, "as does a dear one, as Google Calendar's first was",
+            Pacing.drawerRestsForLetters({ program: [134, 12] }, "program"), true);
+        check(failures, "while a cheap one follows its letter",
+            Pacing.drawerRestsForLetters({ agent: [4, 3, 5] }, "agent"), false);
+        check(failures, "and one at the line a drawer joins its key's frame under rests",
+            Pacing.drawerRestsForLetters({ agent: [8, 8, 8] }, "agent"), true);
+        check(failures, "its line says it followed its letter",
+            Pacing.drawerCame(false, 0, true), "the frame after its letter");
     }
 
     function run() {

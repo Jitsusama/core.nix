@@ -3940,7 +3940,7 @@ def drawer_trace(said: list[str]) -> list[str]:
     """Give each drawer followed, and each showing as what's typed, selected and drawn beside."""
     trace = []
     for one in said:
-        if one.startswith("drawer follows "):
+        if one.startswith(("drawer follows ", CHEAP_AFTER_LETTER)):
             trace.append(one)
         elif one.startswith("showing "):
             shown = json.loads(one[len("showing ") :])
@@ -3954,24 +3954,33 @@ def drawer_trace(said: list[str]) -> list[str]:
 
 
 LETTER_TYPED = re.compile(r"letter typed (\d+) ms after the one before, resting (\d+)")
+# What the shell says before a drawer it judged cheap follows its letter rather than resting.
+CHEAP_AFTER_LETTER = "letter's drawer is cheap: "
 
 
 def drawers_under_the_rest(said: list[str]) -> list[str]:
-    """Give each drawer followed before a letter the shell heard quicker than its rest.
+    """Give each dear drawer followed before a letter the shell heard quicker than its rest.
 
     wtype's letters are 50 ms apart, but a loaded builder spaced them 175 to 395 ms apart as
     the shell heard them, past the 160 ms rest, and a drawer made between them then is right
     (Y2YBTS, 2026-11-14, ed99cdc6 and 5dc9f833; typing again three times still failed in four
     gates). So a drawer is judged by the gap before the letter after it: one followed before
     a letter under the rest didn't wait for the letters. Those before the first letter count
-    too, since home's drawer was out before it.
+    too, since home's drawer was out before it. One the shell judged cheap follows its letter
+    rather than resting, made long before the next (Pacing.drawerRestsForLetters), so it's
+    left out.
     """
     wrong: list[str] = []
     waiting: list[str] = []
+    cheap: str | None = None
     first = True
     for one in said:
-        if one.startswith("drawer follows "):
-            waiting.append(one)
+        if one.startswith(CHEAP_AFTER_LETTER):
+            cheap = one[len(CHEAP_AFTER_LETTER) :]
+        elif one.startswith("drawer follows "):
+            if cheap is None or one != f"drawer follows {cheap}":
+                waiting.append(one)
+            cheap = None
         elif typed := LETTER_TYPED.fullmatch(one):
             # The first letter's gap is from whatever was typed before the mark.
             if first or int(typed[1]) < int(typed[2]):
@@ -4002,14 +4011,15 @@ def typed_from_home(shell: Shell, text: str, until: Callable[[int], None]) -> li
     return said
 
 
-def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> None:
-    """Letters typed faster than they rest make the drawer once, for where the typing stops.
+def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -> None:
+    """Letters typed faster than they rest make a dear drawer once, for where the typing stops.
 
     Joel types letters 100 to 150 ms apart, and each letter that moved the selection had its
     drawer made right after its frame, so the next letter waited behind it: "ca" 198 ms behind
     Chrome's drawer, "calend" 272 ms behind Google Calendar's first (2026-11-13, 06:14).
     A program's drawer, made in 4 to 14 ms here, never joins its key's frame, so typing onto
     one shows it; each letter makes its row again, and its drawer was made again each time.
+    Only a dear kind, or one not yet made, rests: a cheap one follows its letter.
     Only the drawers followed before the last letter are judged: once the letters rest, a
     loaded builder can list Foot's row again, and its drawer rightly follows the new row
     (75a49d9587e9, the net).
@@ -4039,17 +4049,21 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -
     Calendar for the whole word (VKCF3Z, c842849d). Typing a program's name from home moves
     the selection from Now, whose drawer is out, to the program, whose drawer never joins its
     key's frame, and before that drawer follows the drawer out must say the program's name.
+    One cheap enough to follow its letter rather than rest names it by being made, in the
+    frame after the letter's, so the first showing after it is judged instead.
     """
 
     def footed(since: int) -> None:
         shell.reported("drawer follows program:foot", lambda _: True, since)
 
     said = typed_from_home(shell, "foot", footed)
-    before = said[: said.index("drawer follows program:foot")]
-    shown = [json.loads(one[len("showing ") :]) for one in before if one.startswith("showing ")]
+    follow = said.index("drawer follows program:foot")
+    cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
+    judged = said[follow:] if cheap else said[:follow]
+    shown = [json.loads(one[len("showing ") :]) for one in judged if one.startswith("showing ")]
     on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
     assert on_foot, f"the drawer was never out beside Foot: {drawer_trace(said)}"
-    assert on_foot[-1]["drawer"]["title"] == "Foot", (
+    assert on_foot[0 if cheap else -1]["drawer"]["title"] == "Foot", (
         f"the drawer named another row: {drawer_trace(said)}"
     )
 

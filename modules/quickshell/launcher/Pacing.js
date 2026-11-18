@@ -233,12 +233,27 @@ function lettersComing(typedAt, now) {
     return typedAt > 0 && now - typedAt < typingRests;
 }
 
+// Whether a drawer a letter brought, while letters still come, waits until
+// they rest rather than following in the frame after the letter's. Only a
+// kind not yet made, or one whose recent makings reach the line a drawer
+// joins its key's frame under, holds the next letter long enough to rest:
+// a cheap one made in that frame is done long before the next letter, 100
+// to 150 ms on, and resting made 20 of Joel's 47 drawers from 23:04 on 17
+// November wait a median 166 ms, though agents' made in a median 4.
+function drawerRestsForLetters(makings, kind) {
+    return !drawerJoinsKey(makings, kind, false);
+}
+
 // Which frame a drawer came in, as its journal line says it, so the lines
-// show whether coming in the key's frame pays, and how long it rested for
-// the letters first, apart from its making.
-function drawerCame(joined, restedFor) {
+// show whether coming in the key's frame pays, how long it rested for the
+// letters first, apart from its making, and whether it followed its
+// letter rather than resting.
+function drawerCame(joined, restedFor, afterLetter) {
     if (restedFor > 0) {
         return `after resting ${Math.round(restedFor)} ms for the letters`;
+    }
+    if (afterLetter) {
+        return "the frame after its letter";
     }
     return joined ? "in the key's frame" : "the frame after";
 }
