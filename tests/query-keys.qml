@@ -1301,6 +1301,51 @@ QtObject {
         ];
         for (const [what, said, lines, want] of laid)
             holds(`an identifier laid: ${what}`, Identifier.laidWell(said, lines), want);
+        // A cut is kept for the next drawer to ask (RTOIMQ, 2026-11-18),
+        // and what one caller does to its answer reaches no other's.
+        for (const [what, key, cut, want] of [
+            ["at its marks", Identifier.cutKey("=", "mode=pseudo-gui"),
+                () => Identifier.cutAfter("mode=pseudo-gui", "="), ["mode=", "pseudo-gui"]],
+            ["at its figures", Identifier.cutKey(Identifier.FIGURES, "192.168.1.10"),
+                () => Identifier.cutAtFigures("192.168.1.10"), ["192.", "168.", "1.", "10"]]
+        ]) {
+            holds(`a cut ${what} is made first`, Identifier.cutsHeld().includes(key), false);
+            for (const ask of ["made", "kept"]) {
+                const got = cut();
+                got[0] = "changed";
+                got.push("added");
+                holds(`a cut ${what} ${ask} is the next ask's whole`, cut(), want);
+            }
+        }
+        // A cut kept is handed back rather than made again, which is the
+        // whole of what keeping saves.
+        let made = 0;
+        const counted = () => {
+            made += 1;
+            return ["counted"];
+        };
+        Identifier.keptCut("counting", "once", counted);
+        holds("a cut kept is not made again",
+            [Identifier.keptCut("counting", "once", counted), made], [["counted"], 1]);
+        // The same words cut at their marks and at their figures stay apart.
+        holds("a cut at its marks and one at its figures stay apart",
+            [Identifier.cutAtFigures("192.168.1.10"), Identifier.cutAfter("192.168.1.10", ".")],
+            [["192.", "168.", "1.", "10"], ["192.168.1.10"]]);
+        // A cut asked again is the one kept, moved to the newest, and
+        // however many are asked the kept stay bounded, the one asked
+        // longest ago going first.
+        const keyOf = at => Identifier.cutKey("-", `kept-${at}`);
+        for (let at = 0; at < Identifier.CUTS_KEPT; at++)
+            Identifier.cutAfter(`kept-${at}`, "-");
+        Identifier.cutAfter("kept-0", "-");
+        const refreshed = Identifier.cutsHeld();
+        holds("a cut asked again is kept as the newest", refreshed[refreshed.length - 1],
+            keyOf(0));
+        Identifier.cutAfter("kept-new", "-");
+        const held = Identifier.cutsHeld();
+        holds("the cuts kept stay bounded", held.length, Identifier.CUTS_KEPT);
+        holds("the cut asked longest ago goes first",
+            [held.includes(keyOf(0)), held.includes(keyOf(1)), held[0]], [true, false, keyOf(2)]);
         // The words an identifier is read as, each to stand whole, so a
         // UUID broken at its hyphens reads as whole (RTOIMQ, 2026-11-09).
         const hash = "0c8vy4kd2hxq7rm5ppa6f3jz1nbsw9li";
