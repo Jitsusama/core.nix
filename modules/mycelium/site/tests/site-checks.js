@@ -20,6 +20,10 @@
 //   then draws at least one;
 // - reach: until the map folds, every cell the sentence counts has a
 //   mark, and no group of cells working alone lists a receptor;
+// - screen: at the whole map and one and two zooms in, at most
+//   NAMES_ON_SCREEN names past the ones he's engaged with, no name over a
+//   cell or a network's mark, and every cell drawn at CELL_PX across or
+//   more, since smaller ones fold into their network;
 // - names: on the whole map, no more names than networks, branches
 //   included, past the one the keys rest on; once something is open, no faded name at all and at
 //   most NAMES_OPEN names;
@@ -37,6 +41,14 @@
   // Less map beside the drawer than one target: the drawer stands in for it.
   const NO_ROOM_PX = 44;
   const CRUSH_SHARE = 0.5;
+  // About as many things as a person tracks at a glance, as view.js's.
+  const NAMES_ON_SCREEN = 7;
+  // The least a cell is drawn across before its network folds.
+  const CELL_PX = 8;
+  const SLACK_PX = 0.25;
+  // A cell's mark is its hit circle, R + 4 round its membrane's R, as
+  // view.js draws them; the membrane is what he sees.
+  const MEMBRANE_SHARE = 11 / 15;
   const settle = () => new Promise((done) => setTimeout(done, SETTLE_MS));
   const open = async (hash) => {
     history.pushState(null, "", hash || location.pathname);
@@ -149,14 +161,53 @@
     if (whole > hubs) {
       faults.push(`names: the whole map shows ${whole} names, past one per network (${hubs})`);
     }
+    // Lines are quieted, never taken away: a network shared across others
+    // keeps its lines at the whole map, and so does the talk between cells.
+    const painted = document.getElementById("map-ground")?.painted?.() ?? { across: 0, talk: 0, said: 0 };
+    if (marks('[data-key^="n:"]').length > 0 && painted.across === 0) {
+      faults.push("lines: the whole map paints no line across networks, though knots stand on it");
+    }
+    if (painted.said > 0 && painted.talk === 0) {
+      faults.push(`lines: the whole map paints none of the ${painted.said} talk arcs it holds`);
+    }
   };
   // Every cell he can reach: each one the sentence counts has its mark,
   // until the map folds; and a receptor stands at the edge, never among
   // the cells working alone.
+  // What the map shows at one zoom, judged on screen: a handful of names,
+  // none over a cell or a network's mark, and every cell large enough to
+  // read as its kind.
+  const screen = (what) => {
+    const box = view.getBoundingClientRect();
+    const inView = (r) => r.right > box.left && r.left < box.right && r.bottom > box.top && r.top < box.bottom;
+    const on = names().filter((el) => !el.classList.contains("engaged") && !el.classList.contains("t-mark"));
+    if (on.length > NAMES_ON_SCREEN) {
+      faults.push(`screen: ${what} shows ${on.length} names, past ${NAMES_ON_SCREEN}`);
+    }
+    const cells = marks('circle.cell, [data-key^="c:"]').map((el) => el.getBoundingClientRect()).filter(inView);
+    const small = cells.filter((r) => r.width * MEMBRANE_SHARE < CELL_PX - SLACK_PX);
+    if (small.length > 0) {
+      faults.push(`screen: ${what} draws ${small.length} cells under ${CELL_PX} px across, the smallest ${Math.min(...small.map((r) => r.width * MEMBRANE_SHARE)).toFixed(1)}; their networks fold`);
+    }
+    const nets = marks('[data-key^="h:"] .m-hub, [data-key^="n:"] .m-hub').map((el) => el.getBoundingClientRect()).filter(inView);
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    for (const el of on) {
+      const r = el.getBoundingClientRect();
+      const under = [...cells, ...nets].filter((c) => hit(r, c)).length;
+      if (under > 0) {
+        faults.push(`screen: ${what} names ${el.dataset.name || el.textContent.trim().slice(0, 30)} over ${under} marks`);
+      }
+    }
+  };
+  const zoomIn = async () => {
+    document.querySelector('button[data-zoom="in"]')?.click();
+    await settle();
+  };
   const reach = async () => {
     const counted = Number((document.querySelector('[data-count="cells"]')?.textContent || "").replace(/\D/g, ""));
     const drawn = marks('[data-key^="c:"]').length;
-    if (counted <= FOLD_OVER && drawn !== counted) {
+    const folds = document.getElementById("map-ground")?.painted?.().folded ?? 0;
+    if (counted <= FOLD_OVER && folds === 0 && drawn !== counted) {
       faults.push(`reach: the sentence counts ${counted} cells and the map marks ${drawn}`);
     }
     for (const hub of marks('[data-key^="h:#loose"]')) {
@@ -193,7 +244,14 @@
     return ["nothing to check: the map drew no networks"];
   }
   wholeMap();
+  screen("the whole map");
   await reach();
+  await zoomIn();
+  screen("one zoom in");
+  await zoomIn();
+  screen("two zooms in");
+  document.querySelector('button[data-zoom="fit"]')?.click();
+  await settle();
 
   // Now: parity with the rest.
   const nowControl = document.getElementById("now-control");

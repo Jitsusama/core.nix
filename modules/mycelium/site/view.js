@@ -900,7 +900,6 @@
         clipKnocks(g, w, h);
       }
       for (const s of layer) {
-        if (s.hidden) continue;
         let shape;
         if (s.tag === "circle") {
           const [cx, cy, r] = [X(s.at[0]), Y(s.at[1]), s.r * k];
@@ -948,6 +947,15 @@
   const LINE_STEPS = 8;
   const LINE_STEP_PX = 3; // the most a said line moves between points
   const lineSteps = (xs, ys) => Math.max(LINE_STEPS, Math.ceil((Math.hypot(xs[1] - xs[0], ys[1] - ys[0]) + Math.hypot(xs[2] - xs[1], ys[2] - ys[1])) / LINE_STEP_PX));
+  // How many lines the canvas paints, by kind, said for the site's own
+  // checks: the lines across networks, the talk arcs, the talk held, and
+  // how many networks are folded into their grounds.
+  groundEl.painted = () => ({
+    across: (groundLayers[1] || []).length,
+    talk: talkLayer.length,
+    said: talk.size,
+    folded: folded.size,
+  });
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
     const box = groundEl.getBoundingClientRect();
@@ -987,7 +995,7 @@
     let nearest = TOUCH_PX;
     for (const shapes of [talkShapes, lineShapes]) {
       for (const line of shapes) {
-        if (!line.opens || line.hidden || (onGround && line.within)) continue;
+        if (!line.opens || (onGround && line.within)) continue;
         const [p, c, q] = line.map(([px, py]) => [px * k + tx, py * k + ty]);
         if (x < Math.min(p[0], c[0], q[0]) - nearest || x > Math.max(p[0], c[0], q[0]) + nearest) continue;
         if (y < Math.min(p[1], c[1], q[1]) - nearest || y > Math.max(p[1], c[1], q[1]) + nearest) continue;
@@ -1208,19 +1216,18 @@
   // test of whether the choice touches it, asked again on every draw. What
   // the choice leaves untouched steps back; a hypha or cross-hypha it
   // touches is also drawn strong.
-  // A shy shape is drawn only when the choice touches it: the lines that
-  // join cells across networks, which at the whole map hid the cells.
-  const inked = (base, on, tail = "", strong = false, shy = false) => ({ base, on, tail, strong, shy });
-  const inkOfShape = (s) => `${s.base}${near ? (s.on() ? (s.strong ? " lit" : "") : " far") : ""}${s.tail}`;
+  // A quiet shape is drawn faint until the choice touches it: the lines
+  // that join cells across networks, which drawn in full hid the cells.
+  const inked = (base, on, tail = "", strong = false, quiet = false) => ({ base, on, tail, strong, quiet });
+  const inkOfShape = (s) => {
+    const on = near && s.on();
+    return `${s.base}${near ? (on ? (s.strong ? " lit" : "") : " far") : ""}${s.quiet && !on ? " faint" : ""}${s.tail}`;
+  };
   // What is far is painted first, so what the choice touches lies on top.
   const farFirst = (a, b) => (b.cls.includes(" far") ? 1 : 0) - (a.cls.includes(" far") ? 1 : 0);
   const inkGround = () => {
     for (const layer of groundLayers) {
-      for (const s of layer) {
-        s.cls = inkOfShape(s);
-        s.hidden = s.shy && !(near && s.on());
-        if (s.line) s.line.hidden = s.hidden;
-      }
+      for (const s of layer) s.cls = inkOfShape(s);
       layer.sort(farFirst);
     }
   };
@@ -1356,6 +1363,9 @@
     // cords as a mycelium does: one trunk out each way, splitting into a
     // twig for each network, so a crowd reads as parts, not a dark mass.
     const cordWeight = (cells) => Math.min(CORD_MOST, Math.max(1, 1.5 + Math.log2(1 + cells) * 0.9));
+    // A cross-hypha is as nourished as the network it carries is wide: the
+    // dots of a repository shared by fifty cells stand larger than a pair's.
+    const crossWeight = (cells) => Math.min(CROSS_MOST, 1.25 + Math.log2(1 + cells) * 0.45);
     const tops = new Map();
     for (const h of m.hubs.values()) if (!h.within && h.machine) tops.set(h.machine, (tops.get(h.machine) || 0) + 1);
     const trunks = new Map();
@@ -1417,20 +1427,39 @@
     // shortest tree, from its knot where it has one, and a cell on a
     // second orchestration joined to its hub.
     for (const n of m.shared) {
-      const on = n.cells.filter((s) => pos.has(s.id) && !isFolded(s));
       const knot = knotsAt.get(n.key);
-      const points = [...(knot ? [knot] : []), ...on.map((s) => pos.get(s.id))];
-      const at = (i) => (!knot ? `c:${on[i].address}` : i === 0 ? `n:${n.key}` : `c:${on[i - 1].address}`);
-      for (const [a, b] of treeOf(`s|${n.key}|${knot ? "knot|" : ""}${on.map((s) => s.id).join(",")}`, points)) {
+      // A folded network's cells share through its ground: the line runs to
+      // the ground's edge nearest the knot, once for all its cells, so a
+      // share is never lost to a fold.
+      const ends = [];
+      const grounds = new Set();
+      for (const s of n.cells) {
+        if (!pos.has(s.id)) continue;
+        if (!isFolded(s)) {
+          ends.push([`c:${s.address}`, pos.get(s.id)]);
+          continue;
+        }
+        const home = homeOf(s);
+        if (!knot || grounds.has(home)) continue;
+        grounds.add(home);
+        const hub = m.hubs.get(home);
+        const [hx, hy] = L.at.get(home);
+        const d = Math.hypot(knot[0] - hx, knot[1] - hy) || 1;
+        const r = Math.min(d, hub ? colonyRadius(hub) : HUB_R);
+        ends.push([`h:${home}`, [hx + ((knot[0] - hx) * r) / d, hy + ((knot[1] - hy) * r) / d]]);
+      }
+      const points = [...(knot ? [knot] : []), ...ends.map(([, p]) => p)];
+      const at = (i) => (!knot ? ends[i][0] : i === 0 ? `n:${n.key}` : ends[i - 1][0]);
+      for (const [a, b] of treeOf(`s|${n.key}|${knot ? "knot|" : ""}${ends.map(([key]) => key).join(",")}`, points)) {
         link(crossAdj, at(a), at(b));
-        cross.push({ tag: "path", ...inked(`m-cross m-${n.shape}`, () => near.shared.has(n.key), "", true, true), line: opens(curve(points[a], points[b], 0.18), "net", n.key) });
+        cross.push({ tag: "path", ...inked(`m-cross m-${n.shape}`, () => near.shared.has(n.key), "", true, true), w: crossWeight(n.cells.length), line: opens(curve(points[a], points[b], 0.18), "net", n.key) });
       }
     }
     for (const s of m.cells) {
       if (!pos.has(s.id) || isFolded(s)) continue;
       for (const h of s.also) {
         link(crossAdj, `c:${s.address}`, `h:${h.key}`);
-        cross.push({ tag: "path", ...inked("m-cross m-bridge", () => near.ids.has(s.id) && near.hubs.has(h.key), "", true, true), line: opens(curve(pos.get(s.id), L.at.get(h.key), 0.14), "net", h.key) });
+        cross.push({ tag: "path", ...inked("m-cross m-bridge", () => near.ids.has(s.id) && near.hubs.has(h.key), "", true, true), w: crossWeight(1), line: opens(curve(pos.get(s.id), L.at.get(h.key), 0.14), "net", h.key) });
       }
     }
     // Machines joined to each other: the link that keeps a realm one.
@@ -1570,7 +1599,7 @@
         const below = (l.name.length - 1) * LINE + (l.mark ? MARK_SUB_Y : NAME_SUB_Y);
         const sub = l.sub ? `<text class="t-sub" y="${below}">${esc(l.sub)}</text>` : "";
         const here = l.mark && l.key === pointed && pointing();
-        const cls = `tag t-${l.kind}${l.mark ? " t-mark" : ""}${l.form ? ` t-${l.form}` : ""}${here ? " here" : ""}${l.off ? " off" : ""}${l.far ? " far" : ""}${l.strong ? " strong" : ""}${foundSet.has(l.key) ? " match" : ""}`;
+        const cls = `tag t-${l.kind}${l.mark ? " t-mark" : ""}${l.form ? ` t-${l.form}` : ""}${here ? " here" : ""}${l.off ? " off" : ""}${l.far ? " far" : ""}${l.strong ? " strong" : ""}${l.rank === 0 ? " engaged" : ""}${foundSet.has(l.key) ? " match" : ""}`;
         const words = `<text class="t-name${l.mono ? " mono" : ""}">${name}</text>`;
         if (!l.mark) return `<g class="${cls}" data-name="${esc(l.key)}"><rect class="t-plate" rx="3"/>${words}${sub}</g>`;
         // A mark takes the pointer itself, and its box is drawn round its
@@ -1654,6 +1683,7 @@
   const MARK_SUB_Y = 26;
   const NAME_SUB_Y = 18;
   const CELL_NAMED_PX = 15; // a cell's radius on screen once it is named
+  const NAMES_ON_SCREEN = 7; // names at once beside the one he's engaged with
   const HUB_NAMES_MOST = 40; // networks named once folding starts, busiest first
 
   // The circles on screen, in buckets of the screen, so a label can ask
@@ -1673,7 +1703,9 @@
           grid.get(b).push([sx, sy, sr, key]);
         }
     };
-    for (const [key, at] of spots) add(key, at, sizes.get(key));
+    // A hub's spokes are part of its mark, so a name keeps clear of them too.
+    const reachOf = (key) => sizes.get(key) + (key[0] === "h" || key[0] === "n" ? SPOKE_FROM + SPOKE_LONG : 0);
+    for (const [key, at] of spots) add(key, at, reachOf(key));
     return grid;
   };
   // Its own circle too: a name sits beside its mark, never on it.
@@ -1801,6 +1833,10 @@
     const stacked = stackMarks();
     const circles = circlesOnScreen(w, h);
     const lines = linesOnScreen(w, h);
+    // Names shown so far, past the one he's engaged with: a handful at
+    // most, busiest first, since a person tracks about seven things at a
+    // glance and a screen of names reads as a wall, not a map.
+    let shownNames = 0;
     for (let i = 0; i < labels.length; i++) {
       const l = labels[i];
       const g = nodes[i];
@@ -1832,7 +1868,7 @@
       // Names come with depth, as on a map: a cell that needs him is named
       // once it is drawn large enough to read as its own, so the whole
       // view names only machines, networks and where the keys are.
-      if (l.kind === "cell" && l.rank === 4 && l.r * k < CELL_NAMED_PX) {
+      if ((l.kind === "cell" && l.rank === 4 && l.r * k < CELL_NAMED_PX) || (l.rank > 0 && shownNames >= NAMES_ON_SCREEN)) {
         hide(g);
         continue;
       }
@@ -1849,6 +1885,7 @@
       const boxOf = ([x, y]) => [x, y, bw, bh];
       const clearOfNames = (t) => !taken.some((o) => overlap(boxOf(t), o));
       const clearOfMarks = (t) => !coversCircle(circles, boxOf(t));
+      const clearOfLines = (t) => linesUnder(lines, boxOf(t)) === 0;
       const seen = ([x, y]) => x >= 0 && y >= 0 && x + bw <= w && y + bh <= h;
       // Of the places allowed, the one over fewest lines, the nearest
       // where they tie: so a line runs under a name's plate only where
@@ -1866,26 +1903,28 @@
       // Never over a mark or another name, and nearer its own mark than any
       // other where it can be.
       const own = [sx, sy, l.r * k + 4];
-      const allowed = tries.filter((t) => seen(t) && clearOfNames(t) && clearOfMarks(t));
+      // A name never lies over a mark or a line: one with no clear place
+      // near its own mark waits for a hover or a closer view.
+      const allowed = tries.filter((t) => seen(t) && clearOfNames(t) && clearOfMarks(t) && (l.rank === 0 || clearOfLines(t)));
       let spot = least(allowed.filter((t) => !nearerOther(circles, boxOf(t), own))) || least(allowed);
-      // A name that must show (what's pointed at, hubs, machines) is pulled
-      // on screen, still clear of other names, rather than left half off
-      // the edge. Any other name shows whole or not at all: half a name at
-      // the map's edge reads as cut, not as more beyond. A mark off the map
-      // has nothing on screen to name.
+      // What he's engaged with (pointed at, open) keeps its name, pulled on
+      // screen rather than left half off the edge, and over a mark only
+      // where nowhere else will do. Any other name shows whole or not at
+      // all: half a name at the map's edge reads as cut, not as more
+      // beyond. A mark off the map has nothing on screen to name.
       const markSeen = sx >= 0 && sy >= 0 && sx <= w && sy <= h;
       const inView = ([x, y]) => [Math.max(0, Math.min(w - bw, x)), Math.max(0, Math.min(h - bh, y))];
-      if (!spot && l.rank <= 2 && markSeen) {
+      if (!spot && l.rank === 0 && markSeen) {
         const pulled = tries.map(inView);
-        spot = least(pulled.filter((t) => clearOfNames(t) && clearOfMarks(t))) || least(pulled.filter(clearOfNames));
+        spot = least(pulled.filter((t) => clearOfNames(t) && clearOfMarks(t))) || least(pulled.filter(clearOfNames)) || inView(tries[0]);
       }
-      if (!spot && l.rank === 0 && markSeen) spot = inView(tries[0]);
       if (!spot) {
         hide(g);
         continue;
       }
       g.removeAttribute("visibility");
       g.removeAttribute("display");
+      if (l.rank > 0) shownNames++;
       taken.push(boxOf(spot));
       cuts.push(boxOf(spot));
       g.setAttribute("transform", `translate(${(spot[0] - bx).toFixed(1)},${(spot[1] - by).toFixed(1)})`);
@@ -2160,10 +2199,11 @@
   const FOLD_OVER = 400; // cells, at or under which nothing folds
   const CORD_BUNDLE_OVER = 24; // networks on a machine, past which its cords bundle
   const CORD_MOST = 6; // px, the heaviest a cord or trunk is drawn
+  const CROSS_MOST = 4; // px, the largest a cross-hypha's dots are drawn
   const BUNDLE_WAYS = 12; // trunks out of a bundling machine, one each way
   const BUNDLE_REACH = 0.8; // how far out a trunk forks, as a share of the ring
   const MACHINE_ORBIT = 0.3; // how far out a bundling machine sits, as a share of the ring
-  const FOLD_PX = 3; // a cell's radius on screen under which its network folds
+  const FOLD_PX = 4; // a cell's radius on screen under which its network folds: 8 px across
   let folded = new Set();
   let refolding = 0;
   const homeOf = (s) => (s ? (s.hub || s.loose).key : null);
@@ -2171,13 +2211,16 @@
   const foldsNow = () => {
     const m = current;
     const out = new Set();
-    if (!m || !L || m.cells.length <= FOLD_OVER) return out;
+    // Cells drawn too small to read as their kind fold at any count; past
+    // FOLD_OVER, networks off the map fold as well.
+    const small = R * k < FOLD_PX;
+    const many = m && m.cells.length > FOLD_OVER;
+    if (!m || !L || !(small || many)) return out;
     const keep = new Set();
     if (chosen?.kind === "net") keep.add(chosen.id);
     if (chosen?.kind === "cell") keep.add(homeOf(m.byAddress.get(chosen.id)));
     if (pointed?.startsWith("c:")) keep.add(homeOf(m.byAddress.get(pointed.slice(2))));
     for (const key of foundSet) if (key[0] === "c") keep.add(homeOf(m.byAddress.get(key.slice(2))));
-    const small = R * k < FOLD_PX;
     const [w, h] = size();
     for (const hub of m.hubs.values()) {
       if (keep.has(hub.key)) continue;
@@ -4121,7 +4164,7 @@
       for (const t of current.ties) {
         if (tieOf.size >= MAX_TIES || t.strength < TIE_WARM_AT[0]) break;
         const [a, b] = t.ends.map((end) => `c:${end}`);
-        if (!spots.has(a) || !spots.has(b)) continue;
+        if (!current.byAddress.has(a.slice(2)) || !current.byAddress.has(b.slice(2))) continue;
         const e = pairKey(a, b);
         tieOf.set(e, t);
         talk.set(e, t.strength);
@@ -4141,22 +4184,38 @@
     if (!WARMS) return;
     talkShapes = [];
     talkLayer = [];
-    // Talk is drawn only where the choice touches it: at the whole map
-    // its arcs hid the cells, so there it shows only as the messages that
-    // travel. A cell open shows its own talk; a network shows the talk
-    // within it, since talk with one of its cells reaches most of the map.
+    // All talk is drawn, as thick as it is warm, but faint until the choice
+    // touches it, so the cells read first. A cell open lifts its own talk;
+    // a network lifts the talk within it, since talk with one of its cells
+    // reaches most of the map.
     const own = chosen?.kind === "cell" ? `c:${chosen.id}` : null;
     const touches = (end) => (end[0] === "h" ? near.hubs.has(end.slice(2)) : near.ids.has(current.byAddress.get(end.slice(2))?.id));
+    // A cell folded into its network talks through the network's hub, so
+    // talk is never lost to a fold: the talk between two folded networks
+    // is one line, as warm as the warmest pair it stands for, and talk
+    // inside one folded network waits in its ground.
+    const endOf = (end) => {
+      if (spots.has(end)) return end;
+      const s = end[0] === "c" && current.byAddress.get(end.slice(2));
+      return s && isFolded(s) ? `h:${homeOf(s)}` : null;
+    };
+    const drawn = new Map();
     for (const [e, n] of talk) {
-      if (chosen?.kind === "talk" ? chosen.id !== e : !near || !(own ? e.split("|").includes(own) : e.split("|").every(touches))) continue;
-      const [a, b] = e.split("|");
+      const [a, b] = e.split("|").map(endOf);
+      if (!a || !b || a === b) continue;
+      const key = a === e.split("|")[0] && b === e.split("|")[1] ? e : pairKey(a, b);
+      const was = drawn.get(key);
+      if (!was || was.n < n) drawn.set(key, { e, n, a, b });
+    }
+    for (const [key, { e, n, a, b }] of drawn) {
+      const faint = chosen?.kind === "talk" ? "" : !near || !(own ? key.split("|").includes(own) : key.split("|").every(touches)) ? " faint" : "";
       const arc = arcOf(a, b);
       if (!arc) continue;
       const line = opens([arc.p, arc.c, arc.q], "talk", e);
       talkShapes.push(line);
       // An opened talk is drawn alone; the rest step back with the map.
       const open = chosen?.kind === "talk" ? (chosen.id === e ? " lit" : " far") : "";
-      talkLayer.push({ tag: "path", cls: `m-talk warm${warmLevel(n)}${open}`, line });
+      talkLayer.push({ tag: "path", cls: `m-talk warm${warmLevel(n)}${open}${faint}`, line });
     }
     if (!paint) return;
     // The names keep off talk too, so they move when it does.

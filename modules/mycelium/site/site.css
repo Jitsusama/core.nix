@@ -702,6 +702,11 @@ body {
   opacity: 0.22;
 }
 
+/* A cross-hypha the choice doesn't touch, drawn faint beneath the cells. */
+.m-cross.faint {
+  opacity: 0.4;
+}
+
 .m-cross.lit {
   opacity: 1;
   stroke-width: 3;
@@ -735,6 +740,24 @@ body {
 
 .m-talk.warm3 {
   stroke-width: 4;
+}
+
+/* Talk the choice doesn't touch: faint and thinner, still as thick as it
+   is warm, so the cells read first and no talk is lost. */
+.m-talk.faint {
+  opacity: 0.3;
+}
+
+.m-talk.faint.warm1 {
+  stroke-width: 0.75;
+}
+
+.m-talk.faint.warm2 {
+  stroke-width: 1.25;
+}
+
+.m-talk.faint.warm3 {
+  stroke-width: 2;
 }
 
 /* The talk opened: the full voice ink, as thick as the most said. */
