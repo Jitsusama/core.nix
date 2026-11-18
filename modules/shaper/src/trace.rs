@@ -1,7 +1,7 @@
 //! What the live shaper heard and held each second that the recorder's
 //! lines can't say, kept as day files of its own: whose the upload's queue
-//! was, a call's round trip through the VPN, and the rate it held the
-//! upload to. A replay (src/replay.rs) puts these back into the recorded
+//! was, a call's round trip through the VPN, the rate it held the upload
+//! to, and the ceiling a trial held it under. A replay (src/replay.rs) puts these back into the recorded
 //! seconds, so a bite that came through our own queues or the VPN is
 //! replayed rather than passed as clean, and the rates the shaper really
 //! held are scored beside any a controller would set.
@@ -45,6 +45,10 @@ pub struct Line {
     /// The plateau the upload holds under, in kbit/s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plateau: Option<u64>,
+    /// The ceiling a trial held the upload under, in kbit/s, while one
+    /// did: a rate held there is the trial's, not the controller's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ceiling: Option<u64>,
 }
 
 impl Line {
@@ -60,6 +64,10 @@ impl Line {
             vpn_ms: heard.vpn_ms.map(tenth),
             vpn_base_ms: heard.vpn_base_ms.map(tenth),
             plateau: heard.plateau.map(crate::rate::whole),
+            ceiling: heard
+                .trial
+                .and_then(|t| t.most_kbit)
+                .map(crate::rate::whole),
         }
     }
 }
@@ -152,6 +160,7 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
                         Some(line) => {
                             second.up_ours = line.ours;
                             second.vpn_ms = line.vpn_ms;
+                            second.ceiling = line.ceiling;
                             last = Some((at, line.up));
                             line.up
                         }
@@ -220,6 +229,7 @@ mod tests {
             gateway_ms: None,
             up_ours: None,
             vpn_ms: None,
+            ceiling: None,
         }
     }
 
@@ -278,7 +288,13 @@ mod tests {
         }];
         let lines = BTreeMap::from([
             (NOV16 + 1, line(NOV16 + 1, Some(5_000), Some(120.0))),
-            (NOV16 + 2, line(NOV16 + 2, Some(4_800), None)),
+            (
+                NOV16 + 2,
+                Line {
+                    ceiling: Some(4_800),
+                    ..line(NOV16 + 2, Some(4_800), None)
+                },
+            ),
         ]);
         let held = merge(&mut stays, &lines);
         let ups: Vec<Option<u64>> = held[0].iter().map(|r| r.up).collect();
@@ -293,6 +309,8 @@ mod tests {
             "our queue: {:?}",
             s[2]
         );
+        assert_eq!(s[2].ceiling, Some(4_800), "a trial's ceiling: {:?}", s[2]);
+        assert_eq!(s[1].ceiling, None, "none, with no trial: {:?}", s[1]);
         assert_eq!(
             s[3].up_ours, None,
             "nothing heard, nothing put in: {:?}",

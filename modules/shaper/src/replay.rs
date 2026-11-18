@@ -67,6 +67,9 @@ pub struct Second {
     /// A call's round trip through the VPN riding the link, in ms, as only
     /// the live shaper hears it (src/vpndelay.rs); a replay leaves it None.
     pub vpn_ms: Option<f64>,
+    /// The ceiling a trial held the upload under, in kbit/s, as only the
+    /// live shaper knows it (src/live.rs); a replay leaves it None.
+    pub ceiling: Option<u64>,
 }
 
 /// The rates a controller sets each way, in kbit/s; None holds no limit.
@@ -369,6 +372,7 @@ impl Reading {
                 gateway_ms: median(tick.gateway.iter().copied()),
                 up_ours: None,
                 vpn_ms: None,
+                ceiling: None,
             });
         }
         self.done = self.done.max(second);
@@ -826,7 +830,8 @@ fn judged_lines(out: &mut String, judged: &bars::Judged) {
     let _ = writeln!(
         out,
         "\nagainst the line: under {} of the anchor past {} s with no cut made on the \
-         upload's own delay over {CAUSE_MS} ms in the minute before",
+         upload's own delay over {CAUSE_MS} ms in the minute before; a trial's ceiling \
+         set aside",
         bars::UNDER,
         bars::GRACE_S
     );
@@ -837,14 +842,19 @@ fn judged_lines(out: &mut String, judged: &bars::Judged) {
         let _ = writeln!(
             out,
             "{name}, against {} Mb/s up for {}: breached {} in {} spells, longest {}; \
-             {} cuts, {} on its own delay; held {hold} of it while busy",
+             {} cuts, {} on its own delay; held {hold} of it while busy{}",
             mbit(bar.anchor),
             span(bar.seconds),
             span(bar.breached_s),
             bar.breaches.len(),
             span(bar.longest_breach_s),
             bar.cuts,
-            bar.earned
+            bar.earned,
+            if bar.trial_s > 0 {
+                format!("; {} at a trial's ceiling", span(bar.trial_s))
+            } else {
+                String::new()
+            }
         );
     }
 }
