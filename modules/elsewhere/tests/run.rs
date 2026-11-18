@@ -21,8 +21,9 @@ const SCRATCHES: &str = ".cache/pi/agentic-harness.pi/quest-workspace";
 /// mycelium: `place` answers `placed.json`; `share` is taken; `run` on a
 /// machine named `gone` never runs, and otherwise the handover crosses to
 /// the far home, the command runs there through a login shell that says
-/// something of its own first, and the handover crosses back. Every ask
-/// is kept in `asked`, a line each.
+/// something of its own first, and the handover crosses back. Each
+/// crossing keeps home what a shared quest does: anything hidden and any
+/// folder a build fills. Every ask is kept in `asked`, a line each.
 const MYCELIUM: &str = r#"#!/bin/sh
 echo "$@" >> "$REALM/asked"
 case "$1" in
@@ -35,12 +36,16 @@ case " $* " in *" machine=gone "*) echo "no link reaches gone" >&2; exit 255 ;; 
 while [ "$1" != -- ]; do shift; done
 shift
 here="$HOME/$SCRATCHES" far="$REALM/far/$SCRATCHES"
-mkdir -p "$far"
-cp -R "$here/." "$far/"
+cross() {
+  mkdir -p "$2" && cp -R "$1/." "$2/"
+  find "$2" -mindepth 1 \( -name '.*' -o -name target -o -name node_modules \) \
+    -prune -exec rm -rf {} +
+}
+cross "$here" "$far"
 echo "a login shell's welcome"
 (cd "$REALM/far" && HOME="$REALM/far" "$@")
 code=$?
-cp -R "$far/." "$here/"
+cross "$far" "$here"
 exit $code
 "#;
 
@@ -90,6 +95,12 @@ impl Realm {
 
     /// Settings sending to `machine`, opting in `sh` as the kind `check`.
     fn settings(&self, machine: &str) {
+        self.bringing(machine, &["out"]);
+    }
+
+    /// Settings as `settings` writes them, with `check` bringing back
+    /// `brings_back`.
+    fn bringing(&self, machine: &str, brings_back: &[&str]) {
         let settings = serde_json::json!({
             "machines": [machine],
             "scratch": ".cache/elsewhere",
@@ -99,7 +110,7 @@ impl Realm {
                 "programs": ["sh"],
                 "setup": "FROM_SETUP=set; export FROM_SETUP",
                 "excludes": ["build"],
-                "brings_back": ["out"],
+                "brings_back": brings_back,
                 "needs": ["reach=home"],
                 "lasts": "5m",
             }},
@@ -291,6 +302,44 @@ fn nothing_travels_but_the_job_s_tracked_files() {
 }
 
 #[test]
+fn tracked_files_in_folders_a_build_would_fill_still_travel() {
+    let realm = Realm::new(true);
+    realm.tracked("lib/target/x.ts", "source\n");
+    realm.tracked("lib/target/y.ts", "more\n");
+    realm.tracked("web/node_modules/a.js", "vendored\n");
+    realm.tracked("a b/c d.txt", "spaced\n");
+    realm.untracked("bin/go", "#!/bin/sh\necho went\n");
+    fs::set_permissions(
+        realm.folder().join("bin/go"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    realm.git(&["add", "bin/go"]);
+    let output = realm.check(
+        &[],
+        "cat lib/target/x.ts lib/target/y.ts web/node_modules/a.js 'a b/c d.txt'; bin/go; \
+         mkdir -p out/target; echo 9 > out/target/n",
+    );
+    let (out, err) = said(&output);
+    assert!(output.status.success(), "the far job failed: {err}");
+    assert!(
+        err.contains("check runs on far") && !err.contains("runs here"),
+        "the job didn't run far: {err}"
+    );
+    assert_eq!(
+        out, "source\nmore\nvendored\nspaced\nwent\n",
+        "tracked files under a build's folder, with spaces or runnable, didn't reach the job whole"
+    );
+    assert_eq!(
+        fs::read_to_string(realm.folder().join("out/target/n"))
+            .ok()
+            .as_deref(),
+        Some("9\n"),
+        "what the kind brings back under a build's folder didn't come back"
+    );
+}
+
+#[test]
 fn a_far_job_s_failure_is_its_own_code() {
     let realm = Realm::new(true);
     let output = realm.check(&[], "echo broke >&2; exit 3");
@@ -342,24 +391,73 @@ fn a_job_placed_here_runs_here() {
 }
 
 #[test]
-fn a_job_mycelium_can_t_run_far_runs_here_saying_why() {
+fn a_job_told_there_that_can_t_go_says_why_and_is_never_made_here() {
     let realm = Realm::new(true);
     realm.settings("gone");
     let output = realm.check(&["--there"], "pwd");
     let (out, err) = said(&output);
-    assert!(output.status.success(), "the job didn't run here: {err}");
     assert_eq!(
-        fs::canonicalize(out.trim()).ok(),
-        fs::canonicalize(realm.folder()).ok(),
-        "a job gone couldn't run wasn't run here: {err}"
+        output.status.code(),
+        Some(69),
+        "a job --there couldn't send didn't end 69: {err}"
     );
     assert!(
-        err.contains("check runs here") && err.contains("gone"),
-        "it didn't say why the job stayed: {err}"
+        out.trim().is_empty() && !err.contains("runs here"),
+        "a job --there couldn't send was made here: {out} {err}"
+    );
+    assert!(
+        err.contains("couldn't be sent to gone") && err.contains("--here"),
+        "it didn't say why the job couldn't go, or point at --here: {err}"
     );
     assert!(
         emptied(&realm.handover()),
         "the handover kept a job that never left"
+    );
+    // What another try meets again isn't the far side being away.
+    let output = realm.run_in(
+        &["run", "check", "--there", "--", "/bin/sh", "-c", "pwd"],
+        None,
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(78),
+        "--there with no quest to carry it didn't end 78: {:?}",
+        said(&output)
+    );
+    realm.settings("far");
+    realm.tracked("named\twith a tab", "");
+    let output = realm.check(&["--there"], "pwd");
+    assert_eq!(
+        output.status.code(),
+        Some(77),
+        "--there with a file it can't carry didn't end 77: {:?}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_job_placed_far_that_never_got_there_runs_here_saying_why() {
+    let realm = Realm::new(true);
+    realm.settings("gone");
+    fs::write(
+        realm.root.join("placed.json"),
+        r#"{"Ok":{"Placement":{"placed":{"machine":"gone","passed":[]}}}}"#,
+    )
+    .unwrap();
+    let output = realm.check(&[], "pwd");
+    let (out, err) = said(&output);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "a job that never got far wasn't made here: {err}"
+    );
+    assert!(
+        out.trim().ends_with("/home/work/spec") && err.contains("check runs here"),
+        "it wasn't made here in its own folder, saying so: {out} {err}"
+    );
+    assert!(
+        err.contains("wasn't reached"),
+        "it didn't say the far side was never reached: {err}"
     );
 }
 
@@ -408,6 +506,105 @@ fn a_job_its_kind_doesnt_allow_is_refused_before_anything_runs() {
         realm.asked(),
         "",
         "a refused job asked mycelium for something"
+    );
+}
+
+#[test]
+fn a_far_job_whose_output_can_t_land_fails_and_writes_nothing_outside() {
+    for (job, ends) in [
+        ("mkdir out; echo 7 > out/n", 77),
+        ("mkdir out; echo 7 > out/n; exit 3", 3),
+    ] {
+        // A realm each, since the stand-in share never removes the far
+        // copy of a handover the way a real one does.
+        let realm = Realm::new(true);
+        let outside = realm.root.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, realm.folder().join("out")).unwrap();
+        let output = realm.check(&[], job);
+        let (_, err) = said(&output);
+        assert_eq!(
+            output.status.code(),
+            Some(ends),
+            "a job whose output couldn't land didn't end {ends}: {err}"
+        );
+        assert!(
+            err.contains("out/n would land through the link"),
+            "it didn't say the output was refused for a link: {err}"
+        );
+        if ends == 77 {
+            assert!(
+                err.contains("was refused as it came home") && err.contains("--here"),
+                "a passing job refused its output didn't say so, or point at --here: {err}"
+            );
+        }
+        assert!(emptied(&outside), "what came back was written outside");
+        assert!(
+            emptied(&realm.handover()),
+            "what couldn't land was left in the handover"
+        );
+    }
+}
+
+#[test]
+fn a_far_job_whose_output_won_t_land_fails_saying_so() {
+    let realm = Realm::new(true);
+    // A folder where out/n would land, which no file replaces.
+    fs::create_dir_all(realm.folder().join("out/n/kept")).unwrap();
+    let output = realm.check(&[], "mkdir out; echo 7 > out/n");
+    let (_, err) = said(&output);
+    assert_eq!(
+        output.status.code(),
+        Some(77),
+        "a job whose output didn't land didn't end 77: {err}"
+    );
+    for says in ["couldn't land here", "out/n didn't land", "--here"] {
+        assert!(err.contains(says), "it didn't say {says}: {err}");
+    }
+}
+
+#[test]
+fn a_kind_bringing_back_what_can_t_come_home_runs_here_and_says_why() {
+    let realm = Realm::new(true);
+    realm.bringing("far", &["out/.cache"]);
+    let here = realm.check(&["--here"], "pwd");
+    assert!(
+        here.status.success(),
+        "a job run here was refused for what it would bring back: {:?}",
+        said(&here)
+    );
+    let far = realm.check(&[], "pwd");
+    let (_, err) = said(&far);
+    assert!(
+        far.status.success(),
+        "a job bringing back a hidden path didn't run here: {err}"
+    );
+    assert!(
+        err.contains("runs here") && err.contains("out/.cache"),
+        "it didn't say it ran here for the path: {err}"
+    );
+    let (out, err) = said(&realm.run(&["where", "check", "--json"]));
+    let place: serde_json::Value = serde_json::from_str(&out).expect(&err);
+    assert!(
+        place["machine"].is_null() && place["because"] == "cant-come-home",
+        "where didn't say it stays because it can't come home: {out}"
+    );
+    // Told to send it, it isn't made here instead.
+    let sent = realm.check(&["--there"], "pwd");
+    let (_, err) = said(&sent);
+    assert_eq!(
+        sent.status.code(),
+        Some(78),
+        "--there with what can't come home didn't end 78: {err}"
+    );
+    assert!(
+        err.contains("out/.cache") && err.contains("--here") && !err.contains("runs here"),
+        "--there didn't say why it can't send, or ran it here: {err}"
+    );
+    assert!(
+        !realm.asked().contains("run "),
+        "a job that can't bring back ran far: {}",
+        realm.asked()
     );
 }
 

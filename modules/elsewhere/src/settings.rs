@@ -142,6 +142,33 @@ fn kind(name: &str, value: &Value) -> Result<Kind, String> {
     })
 }
 
+impl Kind {
+    /// The first path this kind brings back that names nothing that could
+    /// come home, since the far side passes over hidden files and the near
+    /// side lands nothing outside the folder; or one the far side's `find`
+    /// would read as part of its expression. Asked as a job goes far, so
+    /// one kind set wrongly leaves the others, and its own jobs here, to
+    /// run.
+    pub fn odd_brings_back(&self) -> Option<&str> {
+        self.brings_back
+            .iter()
+            .map(String::as_str)
+            .find(|path| !plain(path))
+    }
+}
+
+/// Whether `path`, with its slashes at either end taken off, names some
+/// place within a folder by plain names alone, which `find` reads as a
+/// path.
+fn plain(path: &str) -> bool {
+    let path = path.trim_matches('/');
+    !path.starts_with(['-', '!', '(', ')', ','])
+        && !path.is_empty()
+        && path
+            .split('/')
+            .all(|part| !part.is_empty() && !part.starts_with('.'))
+}
+
 fn strings(value: &Value, what: &str) -> Result<Vec<String>, String> {
     value
         .as_array()
@@ -200,6 +227,41 @@ mod tests {
             assert!(
                 problem.contains(says),
                 "{text} was refused as {problem}, not {says}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_kind_bringing_back_what_can_t_come_home_is_refused_alone() {
+        let settings = read(
+            r#"{"kinds": {
+                "hidden": {"programs": ["x"], "brings_back": ["out", "out/.cache"]},
+                "up": {"programs": ["x"], "brings_back": ["../up"]},
+                "option": {"programs": ["x"], "brings_back": ["-delete"]},
+                "not": {"programs": ["x"], "brings_back": ["!"]},
+                "open": {"programs": ["x"], "brings_back": ["(out"]},
+                "shut": {"programs": ["x"], "brings_back": [")"]},
+                "comma": {"programs": ["x"], "brings_back": [",out"]},
+                "empty": {"programs": ["x"], "brings_back": ["/"]},
+                "fine": {"programs": ["x"], "brings_back": ["/out/", "a/b"]}
+            }}"#,
+        )
+        .expect("one kind set wrongly stopped the settings loading");
+        for (name, odd) in [
+            ("hidden", Some("out/.cache")),
+            ("up", Some("../up")),
+            ("option", Some("-delete")),
+            ("not", Some("!")),
+            ("open", Some("(out")),
+            ("shut", Some(")")),
+            ("comma", Some(",out")),
+            ("empty", Some("/")),
+            ("fine", None),
+        ] {
+            assert_eq!(
+                settings.kinds[name].odd_brings_back(),
+                odd,
+                "{name}'s brings_back was judged wrongly"
             );
         }
     }

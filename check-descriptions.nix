@@ -921,11 +921,14 @@
   elsewhere-goes-where-mycelium-places-it = ''
     elsewhere asks mycelium to place a job with its kind's needs and how long it lasts, and when
     mycelium places it on a machine it may send to, sends only its tracked files, never a hidden
-    file, key or excluded path, through the quest's handover and runs it by mycelium run, never
-    ssh or rsync, after its kind's setup, bringing back what the kind names and ending with the
-    far job's own code; a job placed here, refused, with no quest or one mycelium doesn't run far
-    runs here saying why, a program its kind doesn't allow is refused before anything runs, and a
-    command asked wrongly says what it takes
+    file, key or excluded path, those under a folder a share keeps home included, through the
+    quest's handover and runs it by mycelium run, never ssh or rsync, after its kind's setup; it
+    brings back what the kind names, landing each as a plain file within the job's folder and
+    never through a link out of it, and ends with the far job's own code, or says why what came
+    back fell short, ending 77 when another try meets it again and 75 when it may not, the far
+    side's own refusal told from mycelium's; a job placed here, with no quest or one mycelium
+    doesn't run far runs here saying why, or under --there ends saying why; a program its kind
+    doesn't allow is refused before anything runs, and a command asked wrongly says what it takes
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux

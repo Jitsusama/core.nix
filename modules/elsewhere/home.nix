@@ -50,12 +50,12 @@ let
           "repository"
         ];
         default = "folder";
-        description = "Whether the tracked files of the job's folder go with it, or those of the repository holding it. Hidden files, keys, certificates and build output never do.";
+        description = "Whether the tracked files of the job's folder go with it, or those of the repository holding it. Hidden files, keys and certificates never do.";
       };
       excludes = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
-        description = "What of the tracked files doesn't travel: a path from the tree's top when it starts with /, else a name at any depth.";
+        description = "What of the tracked files doesn't travel: a path from the tree's top when it starts with /, else a name at any depth. A tracked file under a folder named target or node_modules travels, so name here any build output a repository tracks.";
       };
       bringsBack = lib.mkOption {
         type = lib.types.listOf lib.types.str;

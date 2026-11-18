@@ -136,6 +136,14 @@ fn place(settings: &Settings, kind: &Kind, stay: bool, send: bool) -> Place {
     if stay {
         return told(None);
     }
+    // What it made couldn't come home, so it's made here, where it lands
+    // as it's made, rather than refused.
+    if let Some(odd) = kind.odd_brings_back() {
+        return Place {
+            machine: None,
+            why: Why::CantComeHome(odd.to_owned()),
+        };
+    }
     if send && let Some(first) = settings.machines.first() {
         return told(Some(first));
     }
@@ -173,6 +181,9 @@ fn because(place: &Place) -> String {
         Why::NoMachines => "it may send to no machine".to_owned(),
         Why::NotHeard(problem) => format!("mycelium couldn't say: {problem}"),
         Why::Told => "as told".to_owned(),
+        Why::CantComeHome(path) => {
+            format!("its brings_back names {path}, which isn't a plain place in the job's folder")
+        }
     }
 }
 
@@ -313,6 +324,22 @@ fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
         return Err(Failure::new(Exit::Config, "there's no machine to send to")
             .try_this("jitsusama.elsewhere.machines in the machine's home-manager settings"));
     }
+    // Told to keep it off this machine, it isn't made here instead.
+    if asked.there
+        && let Some(odd) = kind.odd_brings_back()
+    {
+        return Err(Failure::new(
+            Exit::Config,
+            format!(
+                "{} can't be sent: what it made couldn't come home",
+                asked.kind
+            ),
+        )
+        .because(format!(
+            "its brings_back names {odd}, which isn't a plain place in the job's folder"
+        ))
+        .try_this("the kind's brings_back, or --here"));
+    }
     let place = place(settings, kind, asked.here, asked.there);
     let Some(machine) = &place.machine else {
         if place.why != Why::Told {
@@ -327,7 +354,14 @@ fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
             code,
             format!("{} ended {code} on {machine}", asked.command[0]),
         )),
-        Sent::Stayed(why) => {
+        // Told to send it, it isn't made here instead.
+        Sent::Stayed(exit, why) if asked.there => Err(Failure::new(
+            exit,
+            format!("{} couldn't be sent to {machine}", asked.kind),
+        )
+        .because(why)
+        .try_this("--here, to make it here")),
+        Sent::Stayed(_, why) => {
             eprintln!("{} runs here: {why}", asked.kind);
             Err(here_now(&asked.command))
         }
@@ -340,10 +374,12 @@ fn here_now(command: &[String]) -> Failure {
     Failure::new(Exit::Failed, format!("can't start {}", command[0])).because(error.to_string())
 }
 
-/// How a job sent away ended: with its code there, or kept here, and why.
+/// How a job sent away ended: with its code there, or kept here, why, and
+/// how a job told to go ends for it: unavailable only when mycelium
+/// didn't carry it, since another try meets anything else again.
 enum Sent {
     Ended(u8),
-    Stayed(String),
+    Stayed(Exit, String),
 }
 
 /// Sends the job to `machine` by the quest's handover and `mycelium run`,
@@ -354,6 +390,7 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
         .filter(|quest| far::plain_quest(quest))
     else {
         return Ok(Sent::Stayed(
+            Exit::Config,
             "no quest's handover is here to carry it".to_owned(),
         ));
     };
@@ -364,7 +401,7 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
         .and_then(|root| far::gathered(&root, kind).map(|files| (root, files)));
     let (root, files) = match gathered {
         Ok(gathered) => gathered,
-        Err(why) => return Ok(Sent::Stayed(why)),
+        Err(why) => return Ok(Sent::Stayed(Exit::Refused, why)),
     };
     let within = folder
         .strip_prefix(&root)
@@ -416,7 +453,8 @@ fn send(
     job: &Job,
 ) -> Result<Sent, Failure> {
     let (quest, id) = (job.quest.as_str(), job.id.as_str());
-    far::left(&job.root, &job.files, &job.handover).map_err(|error| {
+    let paths = job.files.iter().map(|(path, _)| path.as_str());
+    far::left(&job.root, paths, &job.handover).map_err(|error| {
         Failure::new(
             Exit::Failed,
             "couldn't leave the job in the quest's handover",
@@ -428,7 +466,10 @@ fn send(
     let shared = mycelium(settings, &["share", quest, "--to", machine, "--wait"])
         || mycelium(settings, &["share", quest]);
     if !shared {
-        return Ok(Sent::Stayed(format!("mycelium couldn't share {quest}")));
+        return Ok(Sent::Stayed(
+            Exit::Unavailable,
+            format!("mycelium couldn't share {quest}"),
+        ));
     }
     let script = far::script(
         quest,
@@ -451,26 +492,56 @@ fn send(
     let mut child = match child {
         Ok(child) => child,
         Err(error) => {
-            return Ok(Sent::Stayed(format!(
-                "{} didn't start: {error}",
-                settings.mycelium
-            )));
+            return Ok(Sent::Stayed(
+                Exit::Unavailable,
+                format!("{} didn't start: {error}", settings.mycelium),
+            ));
         }
     };
-    let started = child.stdout.take().is_some_and(|out| far::relay(out, id));
+    let heard = child
+        .stdout
+        .take()
+        .map_or(far::Heard::Nothing, |out| far::relay(out, id));
     let status = child.wait().map_err(|error| {
         Failure::new(Exit::Failed, "lost the far job").because(error.to_string())
     })?;
     let code = ended(status);
-    if !started {
-        return Ok(Sent::Stayed(format!(
-            "mycelium didn't run it on {machine}, ending {code}"
-        )));
+    if heard != far::Heard::Started {
+        let (exit, why) = heard.unstarted();
+        return Ok(Sent::Stayed(
+            exit,
+            format!("{machine} {why} before it started, ending {code}"),
+        ));
     }
-    if let Err(why) = far::bring_back(&job.handover, &job.folder, &kind.brings_back) {
-        eprintln!("couldn't bring back what it made on {machine}: {why}");
+    let brought = far::bring_back(
+        &job.handover,
+        &job.folder,
+        &kind.brings_back,
+        far::CROSSES_WITHIN,
+    );
+    let Err(missed) = brought else {
+        return Ok(Sent::Ended(code));
+    };
+    if code != 0 {
+        eprintln!(
+            "couldn't bring back what it made on {machine}: {}",
+            missed.why()
+        );
+        return Ok(Sent::Ended(code));
     }
-    Ok(Sent::Ended(code))
+    // The job passed but its work never reached the folder, so it isn't
+    // done here; made here, it would be.
+    let what = match missed {
+        far::Missed::Refused(_) => "was refused as it came home",
+        far::Missed::Unlanded(_) => "couldn't land here",
+        far::Missed::Roomless(_) => "found no room here",
+        far::Missed::Lost(_) => "didn't come home",
+    };
+    Err(
+        Failure::new(missed.exit(), format!("what it made on {machine} {what}"))
+            .because(missed.why().to_owned())
+            .try_this("--here, to make it here"),
+    )
 }
 
 /// Whether mycelium, asked `words`, says yes.
