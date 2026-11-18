@@ -81,7 +81,12 @@ the words the shell draws them in. An ask the daemon doesn't know answers
 `{"id": ..., "error": {"code": "unknown-ask", ...}}`, and a kind it doesn't
 hold `unknown-kind`. The shell's side is [`Daemon.qml`][client]; a daemon
 that follows another's records uses daemon-serve's `watch` module, and a
-program asking one uses [daemon-client][daemon-client].
+program asking one uses [daemon-client][daemon-client]. The sites' server
+([local-sites][local-sites]) is a client too: it bridges a page's feed to
+a daemon's socket, holding one watch for each kind pages are reading until
+none is, and passes on only reads, records trimmed to the kinds and fields
+its feed declares and the daemon's health as it gives it, so a page reads a
+daemon and never acts on it.
 
 A daemon that reads only what's asked for, as Programs makes a preview
 once it's got, hands daemon-serve a `fresh` that reads what each get, list
@@ -106,4 +111,5 @@ off, and a new daemon keeps every point from its first commit.
 [glossary]: glossary.md
 [client]: ../modules/quickshell/Daemon.qml
 [daemon-client]: ../modules/daemon-client/Cargo.toml
+[local-sites]: ../modules/local-sites/AGENTS.md
 [waiting]: ../tests/rules/daemons-agree-waiting.nix
