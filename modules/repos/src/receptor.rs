@@ -149,14 +149,17 @@ pub fn asked(seen: &Seen, owners: &Owners, login: &Declared) -> Vec<String> {
                 .filter(|change| change.review_asked_of.iter().any(|one| login.is(one)))
                 .filter_map(move |change| {
                     let number = change.github.as_ref()?.number;
-                    (number > 0)
-                        .then(|| (change.updated_at, format!("{owner}/{name}#{number}")))
+                    (number > 0).then(|| (change.updated_at, format!("{owner}/{name}#{number}")))
                 })
         })
         .collect();
     asked.sort_by(|a, b| b.cmp(a));
     asked.dedup_by(|a, b| a.1 == b.1);
-    asked.into_iter().take(MOST_ITEMS).map(|(_, item)| item).collect()
+    asked
+        .into_iter()
+        .take(MOST_ITEMS)
+        .map(|(_, item)| item)
+        .collect()
 }
 
 /// Whether `word` is an owner or a repository name as mycelium takes one.
@@ -218,18 +221,29 @@ impl Receptor {
     pub fn arguments(&self, seen: &Seen, now: u64, pid: u32) -> Vec<OsString> {
         let told = told(seen, &self.owners, &self.login, now);
         let mut arguments = self.speaker.arguments(told, EVERY, pid);
-        arguments.extend(self.items(seen));
+        arguments.extend(self.items(seen, told.state));
         arguments
     }
 
     /// The words naming the changes asking review, after the counts: each
     /// owner that may be named, the declared ones and those the items
     /// spell, as `--owner`, then each change as `--item`. The owners are
-    /// named even with no item, so mycelium clears what it kept.
-    fn items(&self, seen: &Seen) -> Vec<OsString> {
+    /// named even with no item, so mycelium clears what it kept. None is
+    /// said while a repository went unread, since its changes are then
+    /// missing rather than closed, and clearing them would feed every cell
+    /// again once the read came back.
+    fn items(&self, seen: &Seen, state: State) -> Vec<OsString> {
+        if state == State::Failing {
+            return Vec::new();
+        }
         let asked = asked(seen, &self.owners, &self.login);
         let mut owners: Vec<&str> = self.owners.0.iter().map(String::as_str).collect();
-        owners.extend(asked.iter().filter_map(|item| item.split_once('/')).map(|(o, _)| o));
+        owners.extend(
+            asked
+                .iter()
+                .filter_map(|item| item.split_once('/'))
+                .map(|(o, _)| o),
+        );
         owners.sort_unstable();
         owners.dedup();
         let owners = owners.into_iter().flat_map(|owner| ["--owner", owner]);
@@ -244,7 +258,8 @@ impl Receptor {
     /// When mycelium can't be run, or refuses what it's told.
     pub fn say(&self, seen: &Seen, now: u64, pid: u32) -> Result<(), String> {
         let told = told(seen, &self.owners, &self.login, now);
-        self.speaker.say_with(told, EVERY, pid, self.items(seen))
+        self.speaker
+            .say_with(told, EVERY, pid, self.items(seen, told.state))
     }
 }
 

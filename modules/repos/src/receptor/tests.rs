@@ -333,6 +333,30 @@ fn only_the_realms_changes_asking_the_login_are_named_by_number_alone() {
 }
 
 #[test]
+fn a_read_that_failed_names_no_changes_so_mycelium_keeps_those_it_had() {
+    let asking = numbered(12, change("asking", NOW - 60, &["jsama"]));
+    let failed = seen(
+        &[("github:kestrel-co/tool", vec![asking])],
+        &["github:kestrel-co/other: not readable here"],
+    );
+    let said: Vec<String> = receptor("/nix/store/x-mycelium/bin/mycelium")
+        .arguments(&failed, NOW, 4242)
+        .into_iter()
+        .map(|word| word.into_string().expect("words"))
+        .collect();
+    assert!(
+        said.contains(&"failing".to_owned()),
+        "it was told failing: {said:?}"
+    );
+    assert!(
+        !said
+            .iter()
+            .any(|word| word == "--owner" || word == "--item"),
+        "a failed read named changes, clearing those mycelium kept: {said:?}"
+    );
+}
+
+#[test]
 fn a_repository_mycelium_would_refuse_is_left_out_rather_than_lose_the_counts() {
     let seen = seen(
         &[
@@ -350,9 +374,16 @@ fn a_repository_mycelium_would_refuse_is_left_out_rather_than_lose_the_counts() 
         &[],
     );
     let asked = asked(&seen, &Owners::of(DECLARED, "work"), &login());
-    assert_eq!(asked.len(), MOST_ITEMS, "more were named than mycelium keeps");
     assert_eq!(
-        (asked.first().map(String::as_str), asked.last().map(String::as_str)),
+        asked.len(),
+        MOST_ITEMS,
+        "more were named than mycelium keeps"
+    );
+    assert_eq!(
+        (
+            asked.first().map(String::as_str),
+            asked.last().map(String::as_str)
+        ),
         (Some("kestrel-co/tool#1"), Some("kestrel-co/tool#200")),
         "the newest weren't the ones named"
     );
