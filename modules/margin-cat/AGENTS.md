@@ -194,8 +194,9 @@ one on the air (WCJQSG 1ee24751, 2026-11-18: "Stepping down a small ledge with i
 moving is what a cat does"). With room for its hop, a drop of a cell or two steps from the
 edge too, rather than walk a body-length on the air first (WCJQSG 3697e429); its feet a cell
 over the top, it's never drawn over the face doing it. A deeper one, with room, hops clear
-and falls. Its walk replanned partway down a step, it goes on clear of the end in front of
-the tiled windows before it settles, never behind the window it stepped off.
+and falls. Its walk replanned partway down a step, it goes on clear of the end the near way,
+in front of the tiled windows, before it settles, never behind the window it stepped off.
+Sitting on the tiles under a floating window's corner, it stays under it as it sets off.
 
 - Held by `margin-cat-floats.qml`: "onto a floating window it drops straight down from the top
   over it"
@@ -221,6 +222,10 @@ the tiled windows before it settles, never behind the window it stepped off.
   its face"
 - Held by `margin-cat-floats.qml`: "replanned partway down its step, it's never behind the
   window it stepped off"
+- Held by `margin-cat-floats.qml`: "and it goes on clear of the end it was stepping off, never
+  back across"
+- Held by `margin-cat-floats.qml`: "sitting on the tiles under a floating window's corner, it
+  walks off under it"
 - Held by `margin-cat-floats.qml`: "up to its own height down off one at the top, it steps
   off; a pixel more, drops"
 - Held by `margin-cat-floats.qml`: "its own height down off it on a short way, it steps off

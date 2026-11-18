@@ -363,7 +363,7 @@ function onward(way, to, at) {
     // its way there, setting off the way its route first goes.
     if (!stays) {
         Floats.off(way, cols, goal, at);
-        Floats.clears(way, at);
+        Floats.clears(way, cols, at);
     }
     let start = stays ? { kind: "floats" } : Falls.settle(way, cols, at);
     if (start.kind === "perched") {

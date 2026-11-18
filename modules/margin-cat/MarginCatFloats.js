@@ -65,12 +65,12 @@ function cornered(floats, place, at) {
     }) ?? null;
 }
 
-// Replanned partway down such a step, it goes on clear of the end over
-// the tiled windows before it settles: under them, the part over the
-// corner went behind the window for 740 ms as it fell and turned.
-function clears(way, at) {
+// Replanned in the air partway down such a step, it goes on clear of
+// the end over the tiled windows before it settles: under them, it went
+// behind the window for 740 ms. Sitting on the tiles, it stays under.
+function clears(way, cols, at) {
     const it = cornered(at.floats, way, at);
-    if (it !== null) {
+    if (it !== null && Falls.holding(way, cols, at) === null) {
         const began = way.legs.length;
         const x = way.x < it.left ? it.left - at.wide : it.right;
         way.facing = Math.sign(x - way.x) || way.facing;

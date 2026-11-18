@@ -545,7 +545,7 @@ QtObject {
             [[99, 2, 492, 2], [492, 2, 492, 0], [492, 0, 500, 0], [500, 0, 742, 0],
                 [742, 0, 750, 2], [750, 2, 900, 2]]);
         // A step down with room for its hop steps from its edge too, off
-        // a seat and on its way over, at a cell of 1 and of 2: walked
+        // a seat at a cell of 1 and of 2, and on its way over: walked
         // clear first, it walked a body-length on the air before it
         // stepped down (WCJQSG 3697e429).
         expect("a step down off one with room for its hop, it steps off from its edge",
@@ -624,7 +624,8 @@ QtObject {
         // set off: on its way on, under it on the tiled windows, it goes
         // behind it as it should.
         const behindIt = (way, it) => Array.from({
-            length: Math.floor(way.beats.find(beat => beat.name === "turns").begins) + 1
+            length: Math.floor(way.beats.find(beat => beat.name === "turns")?.begins
+                ?? way.ends) + 1
         }, (_, t) => Paths.frame(way, t)).filter(frame => frame.aboard !== true
                 && Math.round(frame.x) + 8 > it.left && Math.round(frame.x) < it.right
                 && Math.max(Math.round(frame.y), 0) + 8 > it.top
@@ -638,15 +639,37 @@ QtObject {
         const eightWorld = world({ cols: tilesAt(17), floats: [dropsTop] });
         const fromOff = midStep(offEight);
         const fromOver = midStep(overEight);
+        // Hurried, going on the way it was stepping, it doesn't turn.
+        const replans = [Paths.walk(fromOff, { x: 100, y: 8 }, eightWorld),
+            Paths.walk(fromOff, { x: 900, y: 8 }, eightWorld),
+            Paths.walk(fromOver, { x: 1000, y: 8 },
+                world({ cols: stairs(12, 17), floats: [dropsTop] })),
+            Paths.walk(fromOver, { x: 100, y: 3 },
+                world({ cols: stairs(12, 17), floats: [dropsTop] })),
+            Paths.walk(fromOff, { x: 100, y: 8 }, world({ cols: tilesAt(17),
+                floats: [dropsTop], hurried: true, facing: -1 }))];
         expect("replanned partway down its step, it's never behind the window it stepped off",
-            [Paths.walk(fromOff, { x: 100, y: 8 }, eightWorld),
-                Paths.walk(fromOff, { x: 900, y: 8 }, eightWorld),
-                Paths.walk(fromOver, { x: 1000, y: 8 },
-                    world({ cols: stairs(12, 17), floats: [dropsTop] })),
-                Paths.walk(fromOver, { x: 100, y: 3 },
-                    world({ cols: stairs(12, 17), floats: [dropsTop] }))]
-                .map(way => behindIt(way, dropsTop)),
-            [0, 0, 0, 0]);
+            replans.map(way => behindIt(way, dropsTop)), [0, 0, 0, 0, 0]);
+        // Its first leg is the clear, the near way, short of a body-length:
+        // back across the face, it's drawn over it, aboard, which
+        // behindIt() doesn't count.
+        const clearOf = (way, it) => {
+            const leg = way.beats.find(beat => beat.name === "goes");
+            return Math.abs(leg.to.x - leg.from.x) < 8
+                && (leg.to.x + 8 <= it.left || leg.to.x >= it.right);
+        };
+        expect("and it goes on clear of the end it was stepping off, never back across",
+            replans.map(way => clearOf(way, dropsTop)), [true, true, true, true, true]);
+        // Sitting on the tiles with a floating window's corner over it, it's
+        // under that window, as it should be, and walks off under it: drawn
+        // over it as it set off, it came out in front of its face.
+        const overSeat = float(504, 12, 200, 100);
+        const fromUnder = Paths.walk({ x: 500, y: 8 }, { x: 100, y: 8 },
+            world({ cols: tilesAt(17), floats: [overSeat] }));
+        expect("sitting on the tiles under a floating window's corner, it walks off under it",
+            Array.from({ length: Math.floor(fromUnder.ends) + 1 },
+                (_, t) => Paths.frame(fromUnder, t)).filter(frame => frame.aboard).length,
+            0);
         // At a laptop's ratio of 1.5, a cell of 4/3, as the shell draws it
         // (margin-cat-journeys.qml): its own height down, 15 of its 16
         // pixels, and all 16 of them, it steps; a pixel more, it drops. Its
