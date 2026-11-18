@@ -293,7 +293,7 @@ function row(repository: Repository, now: number): string {
     <span class="g-change">${change === undefined ? "" : bud(change)}</span>
     <span class="t-cell"><span class="t" translate="no">${escaped(repository.name)}</span>
       <span class="meta">${escaped(rowMeta(repository))}</span></span>
-    <span class="cells">${cells > 0 ? `<svg class="mk" viewBox="0 0 16 16" aria-hidden="true"><path class="thread" d="M8 2v5c0 3-3 4-5 7M8 7c0 3 3 4 5 7"/></svg>${plural(cells, "cell")}` : ""}</span>
+    <span class="cells">${cells > 0 ? `<svg class="mk" viewBox="0 0 16 16" aria-hidden="true"><path class="thread" d="M8 2v5c0 3-3 4-5 7M8 7c0 3 3 4 5 7"/></svg>${counted(plural(cells, "cell"))}` : ""}</span>
     ${when(repository.writtenAt, now)}
     <span class="row-keys" aria-hidden="true"><kbd>Return</kbd> step in · <kbd>o</kbd> open</span>
   </a>`;

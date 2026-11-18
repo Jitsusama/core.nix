@@ -44,13 +44,19 @@ function write(into: Element, html: string): void {
   const focused = document.activeElement;
   const naming =
     focused !== null && focused !== into && into.contains(focused) ? namingOf(focused) : undefined;
+  // Two drawn things may share a name, as one cell's home links each folder it's at, so focus
+  // comes back to the same one of them, by its place among them.
+  const named = (): HTMLElement[] =>
+    naming === undefined
+      ? []
+      : [...into.querySelectorAll<HTMLElement>(`[${naming[0]}]`)].filter(
+          (each) => each.getAttribute(naming[0]) === naming[1],
+        );
+  const at = named().findIndex((each) => each === focused);
   into.innerHTML = html;
   if (naming !== undefined) {
-    const [name, value] = naming;
-    const again = [...into.querySelectorAll<HTMLElement>(`[${name}]`)].find(
-      (each) => each.getAttribute(name) === value,
-    );
-    again?.focus({ preventScroll: true });
+    const again = named();
+    (again[at] ?? again[0])?.focus({ preventScroll: true });
   }
 }
 
@@ -67,6 +73,10 @@ function roving(keys: readonly HTMLElement[]): void {
   keys.forEach((key, at) => {
     key.addEventListener("focus", () => choose(key));
     key.addEventListener("keydown", (event) => {
+      // A chord is the browser's or the reader's, as Alt with an arrow goes back a page.
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return;
+      }
       const moves: Readonly<Record<string, number>> = {
         ArrowRight: at + 1,
         ArrowDown: at + 1,

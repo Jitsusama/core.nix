@@ -8,7 +8,7 @@ import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { addressed, landing, outward, type Place } from "./address.ts";
+import { addressed, forgotten, landing, outward, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
 import { footOf, headOf, worst } from "./head.ts";
 import { NOWHERE } from "./homes.ts";
@@ -60,12 +60,10 @@ const heard = new Map<string, string>();
 const arrived = new Set<string>();
 let cellsHeard = false;
 const repos = (): boolean => arrived.size === KINDS.length;
-// A reload forgets a name found and a season unfolded, so the list and drawer they drew keep no
-// room for it. The place and the repository open are in the address, which a reload keeps.
-const roomDrawn = keepRoom(() => [
-  ...(query.trim() === "" ? [] : (["list"] as const)),
-  ...((unfolded.get(cursor ?? "")?.size ?? 0) === 0 ? [] : (["open"] as const)),
-]);
+// A reload draws again only what the address says, so what it won't keeps no room.
+const roomDrawn = keepRoom(() =>
+  forgotten(location.hash, grove, { query, place, unfolded: unfolded.get(cursor ?? "") }),
+);
 let mycelium: Mycelium = { cells: [], home: undefined, homes: NOWHERE };
 
 let place: Place = "every";

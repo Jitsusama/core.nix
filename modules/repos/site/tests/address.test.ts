@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { addressed, landing, outward } from "../address.ts";
+import { addressed, forgotten, landing, outward } from "../address.ts";
 import type { Grove, Repository, Tree } from "../model.ts";
 
 function tree(path: string, season: Tree["season"], url?: string): Tree {
@@ -101,4 +101,25 @@ it("opens a tree's change, else the repository where GitHub keeps it", () => {
   assert.equal(outward(core, "/home/ada/trees/fresh"), "https://github.com/owl/core/pull/41");
   assert.equal(outward(core, "/home/ada/trees/old"), "https://github.com/owl/core");
   assert.equal(outward({ ...core, key: "heron:src/notes" }, null), undefined);
+});
+
+const untouched = { query: "", place: "every", unfolded: new Set() } as const;
+
+it("forgets nothing a reload draws again as it's drawn now", () => {
+  assert.deepEqual(forgotten("#repo=owl%2Fcore", grove, untouched), []);
+  assert.deepEqual(forgotten("#growing", grove, { ...untouched, place: "growing" }), []);
+  const old = addressed(core, "/home/ada/trees/old");
+  const reopened = { ...untouched, unfolded: new Set(["resting"] as const) };
+  assert.deepEqual(forgotten(old, grove, reopened), [], "a tree's address opens its season");
+});
+
+it("forgets the list a name or a place narrowed, and seasons only a key unfolded", () => {
+  const here = "#repo=owl%2Fcore";
+  assert.deepEqual(forgotten(here, grove, { ...untouched, query: "core" }), ["list"]);
+  assert.deepEqual(forgotten(here, grove, { ...untouched, place: "growing" }), ["list"]);
+  const folded = { ...untouched, unfolded: new Set(["resting", "gone"] as const) };
+  assert.deepEqual(forgotten(here, grove, folded), ["open"]);
+  const old = addressed(core, "/home/ada/trees/old");
+  assert.deepEqual(forgotten(old, grove, folded), ["open"], "gone stays folded on a reload");
+  assert.deepEqual(forgotten(here, undefined, { ...untouched, place: "growing" }), ["list"]);
 });

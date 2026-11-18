@@ -446,9 +446,11 @@ code,
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Left to the page to scroll, so its keys' line sticks to the window's foot, not its own. */
   .drawer {
     position: static;
     max-block-size: none;
+    overflow: visible;
     padding-inline-start: 0;
     border-inline-start: 0;
     border-block-start: 1px solid var(--rule);
