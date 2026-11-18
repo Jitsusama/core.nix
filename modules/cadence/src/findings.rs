@@ -19,6 +19,8 @@ use crate::day::{self, Day};
 use crate::judge::Finding;
 use crate::{DAY, holders, write_whole};
 
+pub mod gone;
+
 /// One finding as the ledger keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
@@ -247,7 +249,7 @@ pub fn late(ledger: &mut [Entry], now: i64) -> Vec<String> {
 pub(crate) mod tests {
     use super::*;
 
-    fn found(key: &str) -> Finding {
+    pub(crate) fn found(key: &str) -> Finding {
         Finding {
             key: key.to_owned(),
             bar: None,

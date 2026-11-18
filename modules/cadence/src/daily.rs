@@ -16,11 +16,12 @@ use jiff::tz::TimeZone;
 use crate::builders;
 use crate::day::{self, Day};
 use crate::findings;
+use crate::findings::gone;
 use crate::gate;
 use crate::health;
 use crate::judge;
 use crate::machine;
-use crate::mesh::Mesh;
+use crate::mesh::{self, Mesh};
 use crate::speed;
 use crate::{DAY, command, message, write_whole};
 use crate::{passed, phases};
@@ -48,12 +49,25 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
-    findings::update(
+    // An owner with no session to answer leaves its findings with the
+    // watcher, and the orchestrator hears which flags to change.
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .map(|b| b.trim().to_owned())
+        .unwrap_or_default();
+    let rosters = mesh.rostered(now);
+    let running = |p: &mesh::Presence| {
+        mesh::running(p, &boot, &rosters, |pid| {
+            Path::new(&format!("/proc/{pid}")).exists()
+        })
+    };
+    let gone = gone::owners(&told.owners, &ledger, &mesh.all(), running, now);
+    gone::update_without(
         &mut ledger,
         &today,
         &judged.worse,
         &told.owners,
         &mesh.known(),
+        &gone,
     );
     // A typed run tells nobody, so it marks nobody told or late.
     let sending = told.orchestrator.is_some();
@@ -68,7 +82,13 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         Vec::new()
     };
     findings::keep(&kept_at, &ledger)?;
-    let note = judge::note(&today, &judged, before.len(), &late);
+    // Its own line past the note's room, so it crowds out no finding.
+    let mut note = judge::note(&today, &judged, before.len(), &late);
+    if let Some(line) = gone::flags(&told.owners, &gone, told.watcher.as_deref()) {
+        note.push_str("- ");
+        note.push_str(&line);
+        note.push_str(".\n");
+    }
     let mut record = serde_json::to_value(&today)?;
     record["worse"] = serde_json::to_value(&judged.worse)?;
     record["better"] = serde_json::to_value(&judged.better)?;
