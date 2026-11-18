@@ -1059,6 +1059,22 @@ mod tests {
     }
 
     #[test]
+    fn each_session_holds_how_it_stands_apart_from_its_figures() {
+        let served = served(&inputs());
+        let doing = |address: &str| {
+            served
+                .get(&format!("row:agents:{address}"))
+                .expect("its row")["row"]["held"]["doing"]
+                .clone()
+        };
+        assert_eq!(
+            (doing("O"), doing("P")),
+            (json!("listening"), json!("working")),
+            "For You's heading over a cell says this, never its spend"
+        );
+    }
+
+    #[test]
     fn an_answer_is_said_until_read_and_its_drawer_keeps_it_as_joel_reads_it() {
         let mut inputs = inputs();
         let lines = |read: bool| {
