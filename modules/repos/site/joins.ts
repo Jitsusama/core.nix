@@ -34,21 +34,57 @@ function bySpelling(repositories: readonly Repository[]): Map<string, string[]> 
   return spellings;
 }
 
+/** Two repositories a cell's work ties together, by key in order, and every such cell by name. */
+interface Tie {
+  readonly ends: readonly [string, string];
+  readonly cells: readonly string[];
+}
+
+const inOrder = (one: string, other: string): number => one.localeCompare(other);
+
+/** Each other repository a cell in `repository` works across, by key, with the cell. */
+function* across(
+  repository: Repository,
+  spellings: ReadonlyMap<string, readonly string[]>,
+): Generator<readonly [string, string]> {
+  for (const cell of repository.cells) {
+    for (const name of networked(cell)) {
+      const [key, ...alike] = name === "" ? [] : (spellings.get(name) ?? []);
+      if (key !== undefined && alike.length === 0 && key !== repository.key) {
+        yield [key, cell.name];
+      }
+    }
+  }
+}
+
 /** Each repository with the others its cells' networks name too. */
 function joined(repositories: readonly Repository[]): Repository[] {
   const spellings = bySpelling(repositories);
   return repositories.map((repository) => {
-    const others = new Set<string>();
-    for (const cell of repository.cells) {
-      for (const name of networked(cell)) {
-        const [key, ...alike] = name === "" ? [] : (spellings.get(name) ?? []);
-        if (key !== undefined && alike.length === 0 && key !== repository.key) {
-          others.add(key);
-        }
-      }
-    }
-    return { ...repository, joined: [...others].sort((one, other) => one.localeCompare(other)) };
+    const others = new Set([...across(repository, spellings)].map(([key]) => key));
+    return { ...repository, joined: [...others].sort(inOrder) };
   });
 }
 
-export { joined };
+/**
+ * Every pair of repositories a cell's work ties, once whichever side said it, with the cells
+ * that tie them: a tie stands when either side's cells name the other by a spelling only it has.
+ */
+function ties(repositories: readonly Repository[]): Tie[] {
+  const spellings = bySpelling(repositories);
+  const tied = new Map<string, { ends: readonly [string, string]; cells: Set<string> }>();
+  for (const repository of repositories) {
+    for (const [other, cell] of across(repository, spellings)) {
+      const [one = "", two = ""] = [repository.key, other].sort(inOrder);
+      const id = `${one}\n${two}`;
+      const tie = tied.get(id) ?? { ends: [one, two], cells: new Set<string>() };
+      tie.cells.add(cell);
+      tied.set(id, tie);
+    }
+  }
+  return [...tied.values()]
+    .map(({ ends, cells }) => ({ ends, cells: [...cells].sort(inOrder) }))
+    .sort((one, other) => inOrder(one.ends.join("\n"), other.ends.join("\n")));
+}
+
+export { joined, type Tie, ties };
