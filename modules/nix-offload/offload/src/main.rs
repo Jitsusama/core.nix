@@ -752,9 +752,11 @@ fn built_nearby(
 }
 
 /// Whether `machine`, a Mac, has no room for more, saying the load it
-/// goes or waits at, by the rule a run for its system keeps
-/// (`held_for_a_mac`). A run whose caller asked already isn't asked again,
-/// nor is a machine that builds for no Mac.
+/// goes or waits at, by its load alone (`changed::mac::room`): a person's
+/// own part, which its turn there bounds beside another, never waits on
+/// another's build as a run for its system does (`held_for_a_mac`). A run
+/// whose caller asked already isn't asked again, nor is a machine that
+/// builds for no Mac.
 fn held_nearby(machine: &there::Nearby, scratch: &Path) -> bool {
     use changed::mac;
     let asked_already = env::var_os(ROOM_ASKED.0).is_some_and(|value| value == ROOM_ASKED.1);
@@ -1721,7 +1723,7 @@ fn not_taken(why: &str) -> ExitCode {
 const ROOM_ASKED: (&str, &str) = ("NIX_OFFLOAD_MAC_ROOM_ASKED", "1");
 
 /// How a changed-checks run with `arguments` ends when it waits rather
-/// than go to a busy Mac nearby, as [`changed::mac::room`] decides from
+/// than go to a busy Mac nearby, as [`changed::mac::room_alone`] decides from
 /// the first that answers, or none when it goes. It ends as one nothing
 /// built, which its callers try again later and never run here, where it
 /// would build nothing.
@@ -1745,7 +1747,7 @@ fn held_for_a_mac(arguments: &[String]) -> Option<ExitCode> {
         .find(|machine| machines::answers(&machine.address))?;
     // A run that goes says the load it went at, so a busy Mac that was
     // sent one can be told from the gate that let it through.
-    match mac::room(&mac.host, there::load_of(&mac, &scratch(), "ssh")) {
+    match mac::room_alone(&mac.host, there::load_of(&mac, &scratch(), "ssh")) {
         Ok(room) => {
             eprintln!("nix-offload: {room}, so a run for its system goes");
             None
@@ -1866,11 +1868,12 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
         return skipped(format!("{} nearby doesn't answer", names.join(", ")));
     };
-    // A Mac with no room waits rather than take more: its comparison is
-    // owed, and the net runs it once the Mac has room.
+    // A Mac with no room, or building another run already, waits rather
+    // than take more: its comparison is owed, and the net runs it once
+    // the Mac has room.
     // One that says nothing a load reads from has none either, as a run
     // for a Mac's system takes it (`held_for_a_mac`).
-    let room = match mac::room(&mac.host, there::load_of(mac, &scratch(), "ssh")) {
+    let room = match mac::room_alone(&mac.host, there::load_of(mac, &scratch(), "ssh")) {
         Ok(room) => room,
         Err(why) => return skipped(why),
     };

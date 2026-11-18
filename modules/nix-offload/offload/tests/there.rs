@@ -3858,6 +3858,37 @@ fn a_change_a_macs_checks_read_waits_while_the_mac_has_no_room_kept_as_skipped()
     );
 }
 
+#[test]
+fn a_gates_mac_comparison_waits_while_the_mac_builds_another_kept_as_skipped() {
+    // At 04:50 on 18 November a Mac under its load but building a
+    // session's darwin run took a comparison beside it, and reached 60.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(
+        changed.bin.join("load-mac"),
+        "{ 20.00 35.00 30.00 }\n12\n1\n",
+    )
+    .unwrap();
+
+    let (ran, _) = changed.run(&GATE);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap();
+    assert!(
+        !sent.contains("aarch64-darwin"),
+        "a comparison went beside another's build: {sent}"
+    );
+    let because = "mac has no room, building 1 run sent to it already, at load 20.0 over a \
+                   minute and 35.0 over five on 12 processors";
+    let kept = changed.kept_at(&head);
+    assert!(
+        kept.iter().any(|line| line["because"] == because),
+        "the comparison wasn't kept as skipped and owed: {kept:?}"
+    );
+}
+
 /// What the net asks for, to build a Mac's checks itself.
 const FOR_A_MAC: [&str; 4] = ["--build", "--no-vm", "--system", "aarch64-darwin"];
 
@@ -3907,6 +3938,38 @@ fn a_build_for_a_mac_busy_for_five_minutes_waits_though_its_last_minute_was_quie
             "mac has no room, at load 20.0 over a minute and 60.0 over five on 12 processors"
         ),
         "it never said the five-minute load it waited on: {ran:?}"
+    );
+}
+
+#[test]
+fn a_build_for_a_mac_already_building_another_waits_though_its_load_has_room() {
+    // At 04:50 on 18 November the net's run for a Mac went at a five-minute
+    // load of 35 on 12 processors, under its room, beside a session's
+    // darwin build, and the two took the Mac to 60.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(
+        changed.bin.join("load-mac"),
+        "{ 20.00 35.00 30.00 }\n12\n1\n",
+    )
+    .unwrap();
+
+    let (ran, _) = changed.run(&FOR_A_MAC);
+    assert_eq!(ran.status.code(), Some(69), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "mac has no room, building 1 run sent to it already, at load 20.0 over a minute \
+             and 35.0 over five on 12 processors, so a run for its system waits"
+        ),
+        "it never said the build it waited on: {ran:?}"
+    );
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent.contains("aarch64-darwin"),
+        "a run for a Mac went beside another's build: {sent}"
     );
 }
 

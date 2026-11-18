@@ -2589,6 +2589,10 @@ pub const NEARBY_AT_ONCE: u32 = 2;
 const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
      PATH=\"$PATH:/usr/sbin\" sysctl -n kern.bootsessionuuid 2>/dev/null";
 
+/// What a shell runs to name the folder its machine's turns are in, so a
+/// run taking a turn and one counting them read the same.
+const TURNS_READ: &str = "turns=\"${NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}\";";
+
 /// `command`, run once it holds one of [`NEARBY_AT_ONCE`] turns on the
 /// machine it's sent to, however many runs from however many machines
 /// send it builds. Each turn's run builds up to the machine's own
@@ -2626,7 +2630,7 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// read each other's turns as dead too, and nothing here tells them apart.
 pub fn in_turn_nearby(command: &str) -> String {
     format!(
-        "turns=\"${{NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}}\"; \
+        "{TURNS_READ} \
          boot=$({BOOT_READ}); mine=\"$$ $boot\"; \
          here=$(uname -n); turn=; waited=0; unmadebefore=; \
          trap 'k=1; while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do \
@@ -4285,12 +4289,17 @@ pub fn fetches(machine: &Nearby, asked: &Asked, scratch: &Path, ssh: &str) -> bo
 /// 08:58 on 17 November two runs went to a Mac whose five-minute load was
 /// 60 to 80 on 12 processors, through a gate that read the last minute in
 /// a lull. Nor is five alone, which a build its person has just begun
-/// takes a minute or two to reach.
+/// takes a minute or two to reach. Nor is load alone: at 04:50 on 18
+/// November the net's comparison went to a Mac at 35 over five, under its
+/// room, while a session's darwin build already ran there, and the two
+/// took it to 60. So it counts the runs sent to it that build there now
+/// too, by the turns they hold ([`in_turn_nearby`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Load {
     pub minute: f64,
     pub five: f64,
     pub cores: u32,
+    pub building: u32,
 }
 
 /// Runnable work for each processor past which a Mac has no room. On 16
@@ -4308,7 +4317,9 @@ impl Load {
     /// then `12`, the first two averages being the last minute's and the
     /// last five's, or none when it says something else: a figure missing
     /// or one too many, or one that isn't a load, so it's never read from
-    /// the wrong place.
+    /// the wrong place. A line after the processors, as [`building_read`]
+    /// says, is how many runs sent to it build there now, and none is read
+    /// as none, as a Mac's own `sysctl` says it to `nix-offload busy`.
     pub fn parse(said: &str) -> Option<Load> {
         let mut lines = said.lines();
         let averages = lines.next()?.trim();
@@ -4328,10 +4339,18 @@ impl Load {
             .parse::<u32>()
             .ok()
             .filter(|&cores| cores > 0)?;
+        let building = match lines.next() {
+            Some(line) => line.trim().parse::<u32>().ok()?,
+            None => 0,
+        };
+        if lines.next().is_some() {
+            return None;
+        }
         Some(Load {
             minute,
             five,
             cores,
+            building,
         })
     }
 
@@ -4352,6 +4371,30 @@ impl Load {
     }
 }
 
+/// What a shell runs to say how many runs sent to its machine build there
+/// now: its [`NEARBY_AT_ONCE`] turns ([`in_turn_nearby`]) held by a shell
+/// alive in this boot, as a run waiting for a turn reads them. A machine
+/// with no folder builds none.
+pub fn building_read() -> String {
+    format!(
+        "{TURNS_READ} \
+         boot=$({BOOT_READ}); building=0; k=1; \
+         while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do holder=$(readlink \"$turns/$k\" 2>/dev/null); \
+         k=$((k + 1)); pid=${{holder%% *}}; \
+         case \"$pid\" in ''|*[!0-9]*|0*|????????*) continue;; esac; \
+         if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
+         kill -0 \"$pid\" 2>/dev/null; then building=$((building + 1)); fi; done; \
+         echo \"$building\""
+    )
+}
+
+/// What a Mac runs to say its load ([`Load::parse`]): its load and
+/// processors, then the runs it builds ([`building_read`]), counted only
+/// once the load was said, so a Mac whose `sysctl` fails says nothing.
+pub fn load_read() -> String {
+    format!("sysctl -n vm.loadavg hw.ncpu && {{ {}; }}", building_read())
+}
+
 /// A Mac nearby's load, `Err` saying why when it couldn't be asked here or
 /// took past [`LOAD_PATIENCE`] to say it, and `Ok(None)` when it said
 /// nothing a load reads from, as an ssh that couldn't reach it says
@@ -4368,7 +4411,7 @@ pub fn load_of(machine: &Nearby, scratch: &Path, ssh: &str) -> Result<Option<Loa
     let spawned = reaching(ssh, &said)
         .args(["-o", "ConnectTimeout=20"])
         .arg(&machine.host)
-        .arg(far("sysctl -n vm.loadavg hw.ncpu"))
+        .arg(far(&load_read()))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -4802,9 +4845,15 @@ mod tests {
             Some(Load {
                 minute: 120.98,
                 five: 88.31,
-                cores: 12
+                cores: 12,
+                building: 0,
             }),
             "a Mac's sysctl wasn't read as its minute's and five minutes' loads"
+        );
+        assert_eq!(
+            Load::parse("{ 20.00 35.00 40.00 }\n12\n1\n").map(|load| load.building),
+            Some(1),
+            "the runs building on a Mac weren't read from the line after its processors"
         );
         assert_eq!(
             Load::parse("{20.00 60.00 80.00}\n12\n").map(|load| load.five),
@@ -4826,6 +4875,8 @@ mod tests {
             "{ 20.00 60.00 80.00 }\n",
             "{ 20.00 60.00 }\n12\n",
             "{ 20.00 60.00 80.00 90.00 }\n12\n",
+            "{ 20.00 60.00 80.00 }\n12\nmany\n",
+            "{ 20.00 60.00 80.00 }\n12\n1\n2\n",
         ] {
             assert_eq!(
                 Load::parse(unread),
@@ -4836,11 +4887,125 @@ mod tests {
     }
 
     #[test]
+    fn a_macs_builds_are_counted_by_the_live_turns_of_its_own_boot() {
+        let folder = tempfile::tempdir().unwrap();
+        let turns = folder.path().join("turns");
+        fs::create_dir_all(&turns).unwrap();
+        let boot = Command::new("sh").args(["-c", BOOT_READ]).output().unwrap();
+        let boot = String::from_utf8(boot.stdout).unwrap().trim().to_owned();
+        let mut live = Command::new("sleep").arg("30").spawn().unwrap();
+        let pid = live.id();
+        // Each holder but the first is passed over for one reason alone.
+        let holders = [
+            (format!("{pid} {boot}"), 1, "a live shell of this boot"),
+            (
+                format!("{pid} another-boot"),
+                0,
+                "a live pid of another boot",
+            ),
+            (format!("9999999 {boot}"), 0, "a dead pid of this boot"),
+            (
+                format!("0 {boot}"),
+                0,
+                "pid 0, which kill reads as its own group",
+            ),
+            (format!("0{pid} {boot}"), 0, "a pid led by 0"),
+            (
+                format!("99999999999999999999 {boot}"),
+                0,
+                "a pid past any machine's",
+            ),
+        ];
+        // Every count is read before any is judged, so the live shell is
+        // killed however the test ends.
+        let mut read = Vec::new();
+        for shell in ["dash", "zsh"] {
+            let counted = |turns: &Path| {
+                Command::new(shell)
+                    .args(["-c", &building_read()])
+                    .env("NIX_OFFLOAD_TURNS", turns)
+                    .output()
+                    .map_or_else(
+                        |error| format!("{error}"),
+                        |said| String::from_utf8_lossy(&said.stdout).into_owned(),
+                    )
+            };
+            for (holder, building, what) in &holders {
+                let _ = fs::remove_file(turns.join("1"));
+                std::os::unix::fs::symlink(holder, turns.join("1")).unwrap();
+                read.push((
+                    counted(&turns),
+                    format!("{building}\n"),
+                    format!("{shell}: a turn held by {what} was counted wrongly"),
+                ));
+            }
+            let _ = fs::remove_file(turns.join("1"));
+            let past = turns.join((NEARBY_AT_ONCE + 1).to_string());
+            std::os::unix::fs::symlink(format!("{pid} {boot}"), &past).unwrap();
+            read.push((
+                counted(&turns),
+                "0\n".to_owned(),
+                format!("{shell}: a link past the machine's turns was counted as one"),
+            ));
+            let _ = fs::remove_file(&past);
+            read.push((
+                counted(&folder.path().join("none")),
+                "0\n".to_owned(),
+                format!("{shell}: a Mac with no turns folder wasn't read as building nothing"),
+            ));
+        }
+        live.kill().unwrap();
+        live.wait().unwrap();
+        for (counted, building, why) in read {
+            assert_eq!(counted, building, "{why}");
+        }
+    }
+
+    #[test]
+    fn a_macs_load_is_read_whole_and_counted_only_once_said() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let bin = folder.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let sysctl = bin.join("sysctl");
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        for shell in ["dash", "zsh"] {
+            let read = |says: &str| {
+                fs::write(&sysctl, format!("#!/bin/sh\n{says}\n")).unwrap();
+                fs::set_permissions(&sysctl, fs::Permissions::from_mode(0o755)).unwrap();
+                let said = Command::new(shell)
+                    .args(["-c", &load_read()])
+                    .env("PATH", &path)
+                    .env("NIX_OFFLOAD_TURNS", folder.path().join("none"))
+                    .output()
+                    .unwrap();
+                String::from_utf8(said.stdout).unwrap()
+            };
+            let said = read("printf '{ 20.00 35.00 30.00 }\\n12\\n'");
+            assert_eq!(
+                Load::parse(&said).map(|load| (load.cores, load.building)),
+                Some((12, 0)),
+                "{shell}: a Mac's whole answer didn't read as its load: {said:?}"
+            );
+            assert_eq!(
+                read("exit 1"),
+                "",
+                "{shell}: a Mac whose sysctl failed still counted its builds"
+            );
+        }
+    }
+
+    #[test]
     fn a_mac_has_no_room_once_either_load_is_past_three_a_processor() {
         let at = |minute: f64, five: f64| Load {
             minute,
             five,
             cores: 12,
+            building: 0,
         };
         assert!(
             at(20.0, 60.0).over(),

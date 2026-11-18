@@ -182,6 +182,25 @@ pub fn room(host: &str, load: Result<Option<Load>, String>) -> Result<String, St
     }
 }
 
+/// [`room`], for a run that waits its turn behind any other: a gate's or
+/// the net's comparison, which is owed rather than wanted now, so it waits
+/// while another run sent to the Mac builds there, however light its load.
+/// At 04:50 on 18 November the net's comparison found a Mac at 35 over
+/// five, under its room, while a session's darwin build ran there, and
+/// the two took it to 60. A person's own part for a Mac takes [`room`]
+/// alone, since its turn there bounds it beside another.
+pub fn room_alone(host: &str, load: Result<Option<Load>, String>) -> Result<String, String> {
+    match load {
+        Ok(Some(load)) if load.building > 0 && !load.over() => Err(format!(
+            "{host} has no room, building {} run{} sent to it already, at {}",
+            load.building,
+            if load.building == 1 { "" } else { "s" },
+            load.said()
+        )),
+        load => room(host, load),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +216,7 @@ mod tests {
                 minute,
                 five,
                 cores: 12,
+                building: 0,
             }))
         };
         let busy = |why: &str| Err(why.to_owned());
@@ -231,6 +251,64 @@ mod tests {
             room("skiff", Err("slow".to_owned())),
             busy("slow"),
             "a Mac too busy to say its load was taken to have room"
+        );
+    }
+
+    #[test]
+    fn a_run_for_a_mac_waits_while_another_builds_there_however_light_its_load() {
+        let building = |building: u32| {
+            Ok(Some(Load {
+                minute: 20.0,
+                five: 35.0,
+                cores: 12,
+                building,
+            }))
+        };
+        assert_eq!(
+            room_alone("skiff", building(1)),
+            Err(
+                "skiff has no room, building 1 run sent to it already, at load 20.0 \
+                 over a minute and 35.0 over five on 12 processors"
+                    .to_owned()
+            ),
+            "a run for a Mac went beside a build already there"
+        );
+        assert_eq!(
+            room_alone("skiff", building(0)),
+            Ok(
+                "skiff has room, at load 20.0 over a minute and 35.0 over five on 12 processors"
+                    .to_owned()
+            ),
+            "a run for a Mac building nothing waited"
+        );
+        assert_eq!(
+            room("skiff", building(1)),
+            Ok(
+                "skiff has room, at load 20.0 over a minute and 35.0 over five on 12 processors"
+                    .to_owned()
+            ),
+            "a person's own part for a Mac waited on another's build, which its turn bounds"
+        );
+        assert_eq!(
+            room_alone(
+                "skiff",
+                Ok(Some(Load {
+                    minute: 20.0,
+                    five: 60.0,
+                    cores: 12,
+                    building: 1,
+                }))
+            ),
+            Err(
+                "skiff has no room, at load 20.0 over a minute and 60.0 over five on 12 processors"
+                    .to_owned()
+            ),
+            "a Mac past its load and building said the build rather than the load"
+        );
+        assert_eq!(
+            room_alone("skiff", Ok(None)),
+            Err("skiff didn't say its load".to_owned()),
+            "a Mac that said nothing was taken to have room"
         );
     }
 
