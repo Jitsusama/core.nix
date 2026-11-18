@@ -975,9 +975,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             { jitsusama.mycelium.realm = "harbour"; }
           ];
         # The safe word's Slack reader stays down, as servesTheSafeWord says.
-        systemd.user.services.pineapple-slack.Install.WantedBy = lib.mkIf servesTheSafeWord (
-          lib.mkForce [ ]
-        );
+        # The condition sits above the service's name, so no other area's
+        # machine is handed an empty pineapple-slack.
+        systemd.user.services.pineapple-slack = lib.mkIf servesTheSafeWord {
+          Install.WantedBy = lib.mkForce [ ];
+        };
         # And Slack's own desktop entry, as the machine's Slack brings it,
         # so Programs has the row whose note says why Slack can't be
         # checked. It starts nothing, since nothing here opens it.
