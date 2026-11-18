@@ -182,13 +182,18 @@ class Rig:
     def trace(self) -> str:
         """Give what the recorder saw each second, and what the shaper said, for a failure.
 
-        Each second's upload on eth1, in kbit/s, from its counters, and the median of its
-        own delays up, in ms, before the controller takes each reflector's least off.
+        Each second's upload over every link to the router, in kbit/s, from their counters,
+        and the median of its own delays up, in ms, before the controller takes each
+        reflector's least off. A line the recorder is still writing is passed over.
         """
-        text = self.client.succeed("cat /var/lib/shaper-record/*.jsonl")
+        # Read as it stands, so a missing file can't bury the failure it explains.
+        _, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl")
         seconds: dict[int, tuple[list[int], list[float]]] = {}
         for line in text.splitlines():
-            sample: Json = json.loads(line)
+            try:
+                sample: Json = json.loads(line)
+            except json.JSONDecodeError:
+                continue
             if "tx" not in sample:
                 continue
             sent, delays = seconds.setdefault(sample["at"] // 1000, ([], []))
@@ -202,8 +207,8 @@ class Rig:
             last = max(sent)
             median = sorted(delays)[len(delays) // 2] if delays else None
             rows.append(f"{second % 1000:03d} {kbit:6d} kbit/s up, out {median}")
-        said = self.client.succeed("journalctl -u shaper -o cat --no-pager")
-        status = self.client.succeed("cat /run/shaper/status.json")
+        _, said = self.client.execute("journalctl -u shaper -u shaper-record -o cat --no-pager")
+        _, status = self.client.execute("cat /run/shaper/status.json")
         return "\n".join([*rows, said, status])
 
     def waits_for(self, holds: Callable[[], bool], timeout: dt.timedelta, what: str) -> None:

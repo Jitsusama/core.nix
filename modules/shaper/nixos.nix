@@ -304,7 +304,7 @@ in
   config.users.groups.shaper-record = { };
 
   config.systemd.services.shaper-record = {
-    description = "Record each direction's delay, for the shaper's rebuild";
+    description = "Record each direction's delay, for the shaper's controller and replays";
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" ];
     path = [ pkgs.iproute2 ];

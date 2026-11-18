@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -483,7 +484,7 @@ def test_pi_sessions(connection: Connection) -> None:
 
 
 def test_real_time(connection: Connection) -> None:
-    """A call's packets make the shaper keep the connection's queue here.
+    """A call's packets show in the shaper's status and its journal.
 
     Datagrams an app sends past 443 are a call's, in the video tin, and a few hundred in a
     second are as many as a call's audio sends; the shaper looks once a second.
@@ -700,7 +701,8 @@ def test_status(on_eth2: Connection) -> None:
     status = on_eth2.client.succeed("shaper status")
     assert "eth2" in status, status
     assert " Mb/s, down " in status, status
-    assert "quiet round trips: " in status, status
+    # A host's quiet round trip is only said once its pings were heard.
+    assert re.search(r"quiet round trips: \S+ \d+ ms", status), status
     assert "cpu: the shaper" in status, status
 
 

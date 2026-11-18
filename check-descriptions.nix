@@ -2993,20 +2993,12 @@
     SHARED_SLICE
   '';
   shaper-finds-the-rate = ''
-    the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what
-    the connection carried, holds while it drains, and climbs while it's quiet, past what it held
-    only once busy five seconds, so bursts fit under the connection; forgets a cut ten quiet minutes
-    old, and keeps one the connection then proves; cuts no download arriving faster than its rate,
-    nor beside one an upload carrying under half the connection's best, nor again for a queue back
-    within two seconds; climbs back from a cut no queue returns for, so late pings alone don't wear
-    an upload down, yet retries no cut near one confirmed; never cuts Wi-Fi more than 5% under the
-    best it carried, while following a cable down, unless a busy direction's queue stands six
-    seconds at that floor, or 40% while real-time traffic flows, which a call's packets turn on for
-    30 s; remembers the connection's best, not its latest cut; reads sets, routes and queues from
-    what the kernel prints; replays recorded days as one stay per network across midnight, each
+    the shaper reads sets, routes and queues from what the kernel prints; counts what every link to
+    the same router carried, and what a follower's queues sent and dropped, on its leader's line;
+    replays recorded days as one stay per network across midnight, each
     second's carried rate from the counters and each direction's own delay voted from its
     reflectors, and names a cut with no queue of its own, a rate held low on an idle connection and
-    one starved under a full one; the rebuilt controller cuts a direction only once its own delay
+    one starved under a full one; the one-way controller cuts a direction only once its own delay
     has stood a second, a tenth under what got through, climbs a quarter a second until it nears its
     last queue and 5% after, takes the air's lateness and an idle direction's path off, leaves the
     connection unlimited with no timestamps, and goes back to its base when a queue outlasts half a

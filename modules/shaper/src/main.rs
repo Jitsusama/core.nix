@@ -943,15 +943,24 @@ fn tell_live(
     l.hear_vpn(vpns.keys().next().map(String::as_str));
 }
 
-/// Adds what each follower's CAKE sent to its leader's: the two send over
-/// one connection, so what crossed it is what both sent.
+/// Adds what each follower's CAKE sent, dropped and held to its leader's:
+/// the two send over one connection, so what crossed it is what both sent,
+/// and TCP's resends, the machine's, are of what both dropped.
 fn crossing(seen: &mut BTreeMap<String, oneway::Ours>, follows: &BTreeMap<String, String>) {
     for (follower, leader) in follows {
-        let Some(sent) = seen.get(follower).and_then(|ours| ours.sent) else {
+        let Some(theirs) = seen.get(follower).copied() else {
             continue;
         };
-        if let Some(total) = seen.get_mut(leader).and_then(|ours| ours.sent.as_mut()) {
+        let Some(ours) = seen.get_mut(leader) else {
+            continue;
+        };
+        if let (Some(total), Some(sent)) = (ours.sent.as_mut(), theirs.sent) {
             *total += sent;
+        }
+        ours.dropped += theirs.dropped;
+        if theirs.queued {
+            ours.queued = true;
+            ours.in_vpn = false;
         }
     }
 }
@@ -1635,8 +1644,19 @@ mod tests {
             ("wlan0".to_owned(), sent(50)),
         ]);
         let follows = BTreeMap::from([("eth2".to_owned(), "eth1".to_owned())]);
+        seen.get_mut("eth2").expect("eth2").dropped = 400;
+        seen.get_mut("eth2").expect("eth2").queued = true;
+        seen.get_mut("eth1").expect("eth1").in_vpn = true;
         crossing(&mut seen, &follows);
         assert_eq!(seen["eth1"].sent, Some(7_300), "{seen:?}");
+        // TCP's resends are the machine's, so what the follower's CAKE
+        // dropped is no router's either.
+        assert_eq!(seen["eth1"].dropped, 400, "{seen:?}");
+        assert!(
+            seen["eth1"].queued,
+            "the follower's queue is ours: {seen:?}"
+        );
+        assert!(!seen["eth1"].in_vpn, "a link's own queue stood: {seen:?}");
         assert_eq!(seen["eth2"].sent, Some(7_000), "a follower keeps its own");
         assert_eq!(
             seen["wlan0"].sent,
