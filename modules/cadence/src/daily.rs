@@ -16,6 +16,7 @@ use jiff::tz::TimeZone;
 use crate::builders;
 use crate::day::{self, Day};
 use crate::findings;
+use crate::findings::gone;
 use crate::gate;
 use crate::health;
 use crate::judge;
@@ -59,8 +60,8 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
             Path::new(&format!("/proc/{pid}")).exists()
         })
     };
-    let gone = findings::gone(&told.owners, &ledger, &mesh.all(), running, now);
-    findings::update_without(
+    let gone = gone::owners(&told.owners, &ledger, &mesh.all(), running, now);
+    gone::update_without(
         &mut ledger,
         &today,
         &judged.worse,
@@ -83,7 +84,7 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     findings::keep(&kept_at, &ledger)?;
     // Its own line past the note's room, so it crowds out no finding.
     let mut note = judge::note(&today, &judged, before.len(), &late);
-    if let Some(line) = findings::flags_gone(&told.owners, &gone, told.watcher.as_deref()) {
+    if let Some(line) = gone::flags(&told.owners, &gone, told.watcher.as_deref()) {
         note.push_str("- ");
         note.push_str(&line);
         note.push_str(".\n");
