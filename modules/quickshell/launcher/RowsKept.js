@@ -322,10 +322,26 @@ function steps(was, now, most) {
     return done;
 }
 
-// A tally of what a laying spent on each kind of row, to add to as each
-// row is built or taken back (tallied).
-function untallied() {
-    return bare();
+// A laying begun at `at`, to tally its rows as each is built or taken back
+// (rowLaid): what each kind's rows took (`kinds`, as tallied keeps it), and
+// when its last row was done or its part began (`since`), so a row begun
+// before counts only what it took since (ownTime).
+function begunLaying(at) {
+    return { kinds: bare(), since: at };
+}
+
+// Begins a part of `laying` at `at`, as its split or its layout, so its
+// rows are given none of what came before, which the laying leaves out.
+function restarted(laying, at) {
+    laying.since = at;
+}
+
+// Adds one more row of `kind` to `laying`, begun at `from` and done at
+// `to`, given only what it took since the laying's last row or part, then
+// the row after it only what it took since this one.
+function rowLaid(laying, kind, from, to) {
+    tallied(laying.kinds, kind, ownTime(from, to, laying.since));
+    laying.since = to;
 }
 
 // What of a laying a row done at `to` took: from `from`, when it began, or
@@ -353,8 +369,8 @@ function tallied(tally, kind, ms) {
 
 // Whose rows a laying spent on (`tally`), built or taken back alike: each
 // kind whose rows took a millisecond once rounded, so half of one or more,
-// most first then by name, with how many it laid: "; rows by kind: run 3
-// in 90, agent 5 in 20". Joel's "aq" took 8 rows back in 112 ms, where the
+// most first then by name, with how many it laid: " (run 3 in 90, agent 5
+// in 20)". Joel's "aq" took 8 rows back in 112 ms, where the
 // keys lab's rows take 0.9 ms each (2026-11-18), so his own rows are dear
 // and this says which. Nothing where none took one.
 function saidByKind(tally) {
@@ -363,7 +379,6 @@ function saidByKind(tally) {
         .filter(([, , ms]) => ms >= 1)
         .sort((one, other) => other[2] - one[2] || (one[0] < other[0] ? -1 : 1));
     return each.length > 0
-        ? `; rows by kind: ${each.map(([kind, rows, ms]) => `${kind} ${rows} in ${ms}`)
-            .join(", ")}`
+        ? ` (${each.map(([kind, rows, ms]) => `${kind} ${rows} in ${ms}`).join(", ")})`
         : "";
 }

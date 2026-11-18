@@ -13532,14 +13532,13 @@ Scope {
                             property var steppedLast: null
                             // What the laying in hand spent on each kind of
                             // row it built or took back, `{ kind: { rows, ms
-                            // } }` (RowsKept.tallied), or null outside one,
-                            // so no other row's drawing adds to it; and when
-                            // its last row was done, or it began, so a row
-                            // begun before, such as one made ahead and only
-                            // finished now, counts only what it took since
-                            // (RowsKept.ownTime).
+                            // } }`, and when its last row was done or its
+                            // part began, so a row begun before, such as one
+                            // made ahead and only finished now, counts only
+                            // what it took since (RowsKept.begunLaying); or
+                            // null outside one, so no other row's drawing
+                            // adds to it.
                             property var laidBy: null
-                            property real laidUntil: 0
                             // Whether keeping them last put every row in
                             // again (RowsKept.afresh), so they stand from
                             // the list's start, whatever it was scrolled to.
@@ -13606,7 +13605,7 @@ Scope {
                                 // "m" from home 8 in 43 ms (2026-11-14).
                                 // Its laying is said with the rest.
                                 // Read on the rows' own clock, so the laying
-                                // begins where their times do (laidUntil).
+                                // begins where their times do (laidBy).
                                 const asideFrom = KeyTimes.now();
                                 const built = root.rowsBuilt;
                                 const drawn = root.rowsDrawn;
@@ -13615,8 +13614,7 @@ Scope {
                                 // a row, where the keys lab's take 0.9
                                 // (2026-11-18), and the lab holds none of his
                                 // agents, runs or people.
-                                const laidBy = RowsKept.untallied();
-                                list.laidUntil = asideFrom;
+                                const laidBy = RowsKept.begunLaying(asideFrom);
                                 list.laidBy = laidBy;
                                 let aside = 0;
                                 let laying = 0;
@@ -13641,7 +13639,7 @@ Scope {
                                     // here is given none of the placing before,
                                     // which the laying leaves out too.
                                     laying = KeyTimes.now();
-                                    list.laidUntil = laying;
+                                    RowsKept.restarted(laidBy, laying);
                                     // A step back out lays them out around
                                     // the row it comes back to (root.backTo),
                                     // scrolled there alone: positionViewAtIndex
@@ -13670,7 +13668,7 @@ Scope {
                                     split: Object.assign({ from, took: split, whole }, arrival),
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built),
-                                    laidBy
+                                    laidBy: laidBy.kinds
                                 };
                                 if (root.backTo !== null)
                                     list.steppedLast = list.keptLast.split;
@@ -13733,9 +13731,9 @@ Scope {
                                         if (from > 0) {
                                             // Its rows are given none of
                                             // the placing before, which the
-                                            // laying leaves out (laidUntil).
+                                            // laying leaves out (laidBy).
                                             const splitting = KeyTimes.now();
-                                            list.laidUntil = splitting;
+                                            RowsKept.restarted(list.laidBy, splitting);
                                             list.contentY = list.rowY(0)
                                                 + list.rowHeight(from);
                                             rowsKept.insert(0, entries.slice(from));
@@ -14132,10 +14130,8 @@ Scope {
                                 function laid(from, to) {
                                     if (list.laidBy === null)
                                         return;
-                                    RowsKept.tallied(list.laidBy,
-                                        entry.modelData.what || entry.sort,
-                                        RowsKept.ownTime(from, to, list.laidUntil));
-                                    list.laidUntil = to;
+                                    RowsKept.rowLaid(list.laidBy,
+                                        entry.modelData.what || entry.sort, from, to);
                                 }
                                 // Its own glyph, or the glyph of what it's
                                 // inside (rowsGlyph), for an act.

@@ -310,6 +310,7 @@
     "launcher/Order.js"
     "launcher/Traffic.js"
   ];
+  "launcher/Trials.js" = [ "launcher/RowsKept.js" ];
   "launcher/Vendors.qml" = [ "launcher/Addresses.js" ];
   "launcher/Waits.js" = [ "launcher/Numbers.js" ];
   "launcher/Waits.qml" = [

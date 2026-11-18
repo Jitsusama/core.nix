@@ -2201,6 +2201,11 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         drawn.append(int(laid["drawn"]) - before)
         # Fails loudly if the split is ever passed by, as the bound could hold without it.
         assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
+        # Its rows are tallied too, those the split drew among them, in no more than it took.
+        tallied = tallied_rows(laid)
+        assert tallied is not None, f"- back tallied nothing: {laid['kept']}"
+        rows, made, back = tallied
+        assert rows == made + back, f"- back tallied {rows} rows, drew {made} and {back}"
         was, now = band_of(standing, far), band_of(laid, far)
         assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"

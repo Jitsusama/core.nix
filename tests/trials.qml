@@ -303,6 +303,16 @@ QtObject {
                 + " 5 weighing their keys; 6 of the laying splitting them at row 10,"
                 + " back to row 17)",
             Trials.keptPart(splitting, ", 5 weighing their keys"));
+        // Whose rows the laying spent on follows the rows it drew, which it
+        // breaks down, before what else the showing took.
+        const dearLaying = Object.assign({}, splitting,
+            { laidBy: { run: { rows: 3, ms: 9.6 }, agent: { rows: 7, ms: 4.2 } } });
+        expect("a showing says whose rows it laid right after the rows it drew",
+            Trials.keptPart(dearLaying, ", 5 weighing their keys")
+                === " (20 rows new, 30 laying them out: 2 rows built, 8 taken back"
+                + " (run 3 in 10, agent 7 in 4), 5 weighing their keys; 6 of the laying"
+                + " splitting them at row 10, back to row 17)",
+            Trials.keptPart(dearLaying, ", 5 weighing their keys"));
         expect("a keeping that took time is shown",
             Trials.keptPart({ fresh: 2, laying: 0, split: unstepped })
                 === " (2 rows new, 0 laying them out)",

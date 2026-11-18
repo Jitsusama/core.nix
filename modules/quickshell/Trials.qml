@@ -8,7 +8,6 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
-import "launcher/RowsKept.js" as RowsKept
 import "launcher/Thread.js" as Thread
 import "launcher/Trials.js" as Trials
 
@@ -145,12 +144,11 @@ Scope {
     // to the list and how long laying them out took, with how many rows that
     // drew, built and taken back from those let go, then how long weighing
     // every listed row's keys took, which a drawn row's cost doesn't say,
-    // whose rows the laying spent on, and last where a step back out came
-    // to.
+    // and last where a step back out came to.
     function composed(parts) {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
-            + Trials.keptPart(parts.kept, weighed(parts.weighing)
-                + Trials.readingSaid(parts.reading) + RowsKept.saidByKind(parts.kept?.laidBy))
+            + Trials.keptPart(parts.kept,
+                weighed(parts.weighing) + Trials.readingSaid(parts.reading))
             : "";
     }
 
