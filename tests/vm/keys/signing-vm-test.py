@@ -16,7 +16,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from vm_helpers import as_account
+from vm_helpers import as_account, journal_cursor
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -151,23 +151,27 @@ def test_both_keys_are_made_in_the_tpm_and_the_agent_holds_them(joel: Joel, keys
 
 
 def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: Keys) -> None:
-    """A process in the agents' slice is refused the keys Joel's own session is served.
+    """A process in the agents' slice is refused the keys Joel's app slice is served.
 
     The gate's cases are the agent's own build's tests; this proves only that the agent reads
-    its gate and the cgroup the kernel puts the asking process in. Joel's own session, asking
-    the same socket first, is served, and the agent's journal says the refusal was the gate's,
-    so neither a gate refusing everyone nor an agent that isn't there passes it.
+    its gate and the cgroup the kernel puts the asking process in. The same listing in Joel's
+    app slice, asking the same socket first, is served, and the agent's journal says the
+    refusal was the gate's, so neither a gate refusing everyone nor an agent that isn't there
+    passes it.
     """
     socket = f"{joel.runtime}/ssh-tpm-agent.sock"
-    assert keys.joel in joel.run(f"SSH_AUTH_SOCK={socket} ssh-add -l")
+
+    def listing(slice_: str) -> str:
+        return (
+            f"systemd-run --user --slice={slice_} --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
+            " $(command -v ssh-add) -l 2>&1"
+        )
+
+    assert keys.joel in joel.run(listing("app"))
     journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -o cat"
     # The journal is read from here on, so only this listing's refusal can pass it.
-    since = joel.run(f"{journal} -n 0 --show-cursor").split("cursor: ", 1)[1].strip()
-    listing = (
-        f"systemd-run --user --slice=agents --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
-        " $(command -v ssh-add) -l 2>&1"
-    )
-    said = joel.run(listing, succeed=False)
+    since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
+    said = joel.run(listing("agents"), succeed=False)
     assert "refused" in said
     assert keys.joel not in said
     joel.machine.wait_until_succeeds(

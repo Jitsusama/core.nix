@@ -65,16 +65,19 @@
     # there to type it.
     systemd.user.services.ssh-tpm-agent.Unit.X-SwitchMethod = "keep-old";
 
+    # So the switch that first brings the gate, and the core limit below,
+    # leaves the agent already running without either until its next start.
+    #
     # The gate is read again for each connection, so a switch changes it
     # without the restart that would ask for the PIN again. Only this agent,
     # the one holding Joel's keys, has one; the agents' own signing agents
     # run the same program without it. It sits in his own config, which
     # anything running as him may rewrite, so it catches accidents rather
     # than escapes. One emptied, unreadable or refusing nowhere refuses
-    # everyone, since it looks just like one that works. One missing serves
-    # everyone, journalling each request, since that's what rolling back to
-    # before the gate leaves the running agent with: refusing would shut
-    # Joel out until a restart asked for the PIN again.
+    # everyone, since it looks just like one that works. One gone after the
+    # agent read it, as rolling back to before the gate leaves it, is judged
+    # by what it last said, so Joel isn't shut out until a restart asks for
+    # the PIN again and agents' work stays refused.
     xdg.configFile."ssh-tpm-agent/gate".source = ./gate.conf;
     systemd.user.services.ssh-tpm-agent.Service.Environment = [
       "SSH_TPM_AGENT_GATE=${config.xdg.configHome}/ssh-tpm-agent/gate"
@@ -87,12 +90,13 @@
     systemd.user.services.ssh-tpm-agent.Service.LimitCORE = 0;
 
     # Home Manager has every shell not reached over SSH point SSH_AUTH_SOCK
-    # at this agent over whatever it was given, so a shell an agent's command
+    # at this agent over whatever it was given, so a zsh an agent's command
     # started took Joel's agent back in place of the agents' own proxy its
-    # session was given. A shell keeps the agent it was given, and only one
-    # given none, as the account's services are at login, points here. zsh's
-    # follows bash's.
-    sshAuthSock.initialization.bash = lib.mkForce ''
+    # session was given. A zsh keeps the agent it was given, and only one
+    # given none points here. bash's text stays Home Manager's, since its
+    # set-SSH_AUTH_SOCK service runs it at login to point the account's
+    # services here whatever the user manager already held.
+    sshAuthSock.initialization.zsh = lib.mkForce ''
       export SSH_AUTH_SOCK="''${SSH_AUTH_SOCK:-$XDG_RUNTIME_DIR/ssh-tpm-agent.sock}"
     '';
 

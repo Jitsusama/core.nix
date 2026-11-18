@@ -37,6 +37,9 @@ refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.s
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/run-p800969-i5013960.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/queue-2af2dh-1028.service /user.slice/user-1000.slice/user@1000.service/init.scope
 serve /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/run-p900100-i6000100.service /user.slice/user-1000.slice/user@1000.service/init.scope
+# Joel's own services there, refused knowingly, as none signs in over SSH.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/sccache.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-timed.slice/merge-net.service /user.slice/user-1000.slice/user@1000.service/init.scope
 # A command an agent moved out of its place with systemd-run --scope, still
 # a spawner's child; and one it started as a service, whose parent is the
 # user manager, which is served: the gate catches accidents, not escapes.

@@ -11,8 +11,9 @@ the journal says why, naming its unit and folder. watch journals what
 would be refused and serves it. A gate that can't be read or parsed, or
 refuses no place, is refused, and so is a peer the kernel doesn't name,
 one whose chain can't be read to init, or one gone by the time it's
-judged, as its pidfd says. Where the variable is unset, or names a file
-that is gone, as a rollback past the gate leaves it, nothing changes.
+judged, as its pidfd says. A file gone after it was read, as a rollback
+past the gate leaves it, is judged by what it last said; where the
+variable is unset, or its file was never read, nothing changes.
 
 diff --git a/agent/agent.go b/agent/agent.go
 index 47a77ee..1f8728f 100644
@@ -34,10 +35,10 @@ index 47a77ee..1f8728f 100644
  	}
 diff --git a/agent/gate.go b/agent/gate.go
 new file mode 100644
-index 0000000..dbe8124
+index 0000000..9c60b37
 --- /dev/null
 +++ b/agent/gate.go
-@@ -0,0 +1,308 @@
+@@ -0,0 +1,357 @@
 +package agent
 +
 +import (
@@ -51,6 +52,7 @@ index 0000000..dbe8124
 +	"regexp"
 +	"strconv"
 +	"strings"
++	"sync"
 +
 +	"golang.org/x/crypto/ssh"
 +	"golang.org/x/crypto/ssh/agent"
@@ -223,8 +225,8 @@ index 0000000..dbe8124
 +		ucred, err = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
 +		if fd, ferr := unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PEERPIDFD); ferr == nil {
 +			pidfd = fd
-+		} else if !errors.Is(ferr, unix.ENOPROTOOPT) && err == nil {
-+			err = ferr
++		} else if err == nil {
++			err = pidfdFailed(ferr)
 +		}
 +	}); cerr != nil || err != nil {
 +		if pidfd >= 0 {
@@ -244,8 +246,23 @@ index 0000000..dbe8124
 +	if pidfd < 0 {
 +		return true
 +	}
-+	err := unix.PidfdSendSignal(pidfd, 0, nil, 0)
-+	return !errors.Is(err, unix.ESRCH)
++	return !gone(unix.PidfdSendSignal(pidfd, 0, nil, 0))
++}
++
++// gone says whether signalling a process failed for its having exited,
++// ESRCH, rather than for its being another account's, EPERM.
++func gone(err error) bool {
++	return errors.Is(err, unix.ESRCH)
++}
++
++// pidfdFailed is what failing to get a peer's pidfd costs: nothing on a
++// kernel that doesn't know SO_PEERPIDFD, ENOPROTOOPT, where the pid alone
++// is trusted, and the peer's refusal for any other failure.
++func pidfdFailed(err error) error {
++	if errors.Is(err, unix.ENOPROTOOPT) {
++		return nil
++	}
++	return err
 +}
 +
 +// placeOf is the chain of pid, read from proc, or ErrPeerUnknown where it
@@ -258,35 +275,62 @@ index 0000000..dbe8124
 +	return chain, nil
 +}
 +
-+// refuses says why the gate refuses c's peer, or nil when it's served, and
-+// journals each refusal with the unit and folder it came from. Where
-+// GateVariable is unset it refuses nothing, and where it names a file that
-+// isn't there, which a rollback past the gate leaves the running agent
-+// with, it refuses nothing either, saying so each time: an agent's
-+// accident doesn't remove the file, and refusing would shut Joel out until
-+// a restart costs him his PIN. Where the file can't be read or parsed, or
-+// refuses no place, it refuses everything, since a gate that fails open
-+// looks just like one that works. A peer whose chain can't be read to init
-+// is refused too. A watching gate serves each peer it would refuse, saying
-+// it would.
-+func refuses(c *net.UnixConn, peer string) error {
++// lastRead holds the last gate each file parsed into, so a file gone
++// since is judged by what it last said.
++var lastRead = struct {
++	sync.Mutex
++	gates map[string]gate
++}{gates: map[string]gate{}}
++
++// readGate is the gate the file named by GateVariable holds, or ok false
++// where none is set, or where its file is gone and this agent never read
++// it. A file gone after it was read, which a rollback past the gate or a
++// removed config folder leaves the running agent with, is judged by what
++// it last said: Joel's places stay served, so he isn't shut out until a
++// restart asks for his PIN, and agents' work stays refused. A file that
++// can't be read or parsed, or refuses no place, is ErrGateUnread, since a
++// gate that fails open looks just like one that works.
++func readGate() (g gate, ok bool, err error) {
 +	file := os.Getenv(GateVariable)
 +	if file == "" {
-+		return nil
++		return gate{}, false, nil
 +	}
 +	text, err := os.ReadFile(file)
++	lastRead.Lock()
++	defer lastRead.Unlock()
 +	if errors.Is(err, fs.ErrNotExist) {
-+		slog.Warn("served a request with no gate, as its file is gone; restart ssh-tpm-agent to drop it", "file", file)
-+		return nil
++		if g, ok := lastRead.gates[file]; ok {
++			slog.Warn("judged a request by the gate last read, as its file is gone; restart ssh-tpm-agent to drop it", "file", file)
++			return g, true, nil
++		}
++		slog.Error("served a request with no gate, as its file is gone and was never read; restart ssh-tpm-agent to drop it", "file", file)
++		return gate{}, false, nil
 +	}
 +	if err != nil {
 +		slog.Error("refused a request, as the gate's file can't be read", "file", file, "error", err.Error())
-+		return ErrGateUnread
++		return gate{}, false, ErrGateUnread
 +	}
-+	g, err := parseGate(string(text))
++	g, err = parseGate(string(text))
 +	if err != nil {
 +		slog.Error("refused a request, as the gate's file doesn't parse", "file", file, "error", err.Error())
-+		return ErrGateUnread
++		return gate{}, false, ErrGateUnread
++	}
++	lastRead.gates[file] = g
++	return g, true, nil
++}
++
++// refuses says why the gate refuses c's peer, or nil when it's served, and
++// journals each refusal with the unit and folder it came from. With no
++// gate (readGate) it refuses nothing, and with one it can't read it
++// refuses everything. A peer whose chain can't be read to init is refused
++// too. A watching gate serves each peer it would refuse, saying it would.
++func refuses(c *net.UnixConn, peer string) error {
++	g, ok, err := readGate()
++	if err != nil {
++		return err
++	}
++	if !ok {
++		return nil
 +	}
 +	why, pid, at := g.verdict(c)
 +	if why == nil {
@@ -301,12 +345,18 @@ index 0000000..dbe8124
 +	case errors.Is(why, ErrPeerUnknown):
 +		said = "refused a request, as where its process runs couldn't be read"
 +	}
-+	if g.watching {
++	if g.serves(why) {
 +		slog.Warn("would have "+said, "unit", unit, "pid", pid, "folder", folder, "peer", peer)
 +		return nil
 +	}
 +	slog.Warn(said, "unit", unit, "pid", pid, "folder", folder, "peer", peer)
 +	return why
++}
++
++// serves says whether g serves a peer it judged refused for why: only a
++// watching gate does, whatever the refusal.
++func (g gate) serves(why error) bool {
++	return why == nil || g.watching
 +}
 +
 +// verdict is why g refuses c's peer, or nil, with the peer's pid, 0 where
@@ -348,16 +398,19 @@ index 0000000..dbe8124
 +func (r refusing) Extension(string, []byte) ([]byte, error) { return nil, r.why }
 diff --git a/agent/gate_serve_test.go b/agent/gate_serve_test.go
 new file mode 100644
-index 0000000..4d8d6ac
+index 0000000..e20e331
 --- /dev/null
 +++ b/agent/gate_serve_test.go
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,166 @@
 +package agent_test
 +
 +import (
++	"log/slog"
 +	"net"
 +	"os"
 +	"path"
++	"strings"
++	"sync"
 +	"testing"
 +
 +	"github.com/foxboron/ssh-tpm-agent/agent"
@@ -443,13 +496,57 @@ index 0000000..4d8d6ac
 +	}
 +}
 +
-+func TestAGateWhoseFileIsGoneServes(t *testing.T) {
++// saidBy gathers what the agent journals while a test runs.
++type saidBy struct {
++	sync.Mutex
++	text strings.Builder
++}
++
++func (s *saidBy) Write(b []byte) (int, error) {
++	s.Lock()
++	defer s.Unlock()
++	return s.text.Write(b)
++}
++
++func (s *saidBy) String() string {
++	s.Lock()
++	defer s.Unlock()
++	return s.text.String()
++}
++
++func journalled(t *testing.T) *saidBy {
++	t.Helper()
++	said := &saidBy{}
++	was := slog.Default()
++	slog.SetDefault(slog.New(slog.NewTextHandler(said, nil)))
++	t.Cleanup(func() { slog.SetDefault(was) })
++	return said
++}
++
++func TestAGateGoneBeforeItWasReadServesAndSaysSo(t *testing.T) {
++	said := journalled(t)
 +	file, list := gated(t, "refuse .\n")
 +	if err := os.Remove(file); err != nil {
 +		t.Fatal(err)
 +	}
 +	if err := list(); err != nil {
-+		t.Fatalf("a gate taken away refused: %v", err)
++		t.Fatalf("a gate taken away before it was read refused: %v", err)
++	}
++	if !strings.Contains(said.String(), "served a request with no gate") {
++		t.Fatalf("serving with no gate went unsaid: %q", said.String())
++	}
++}
++
++func TestAGateGoneAfterItWasReadJudgesByWhatItSaid(t *testing.T) {
++	file, list := gated(t, "refuse .\n")
++	if err := list(); err == nil {
++		t.Fatal("a refused place listed the keys")
++	}
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err == nil {
++		t.Fatal("a gate taken away after it was read served what it refused")
 +	}
 +}
 +
@@ -473,10 +570,10 @@ index 0000000..4d8d6ac
 +}
 diff --git a/agent/gate_test.go b/agent/gate_test.go
 new file mode 100644
-index 0000000..5d9e9a8
+index 0000000..f36a4c5
 --- /dev/null
 +++ b/agent/gate_test.go
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,264 @@
 +package agent
 +
 +import (
@@ -662,15 +759,48 @@ index 0000000..5d9e9a8
 +	}
 +}
 +
-+func TestAProcessThatCantBeSignalledIsStillThere(t *testing.T) {
-+	for _, pid := range []int{os.Getpid(), 1} {
-+		pidfd, err := unix.PidfdOpen(pid, 0)
-+		if err != nil {
-+			t.Fatal(err)
++func TestALiveProcessIsStillThere(t *testing.T) {
++	pidfd, err := unix.PidfdOpen(os.Getpid(), 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer unix.Close(pidfd)
++	if !stillThere(pidfd) {
++		t.Error("a live process was taken as gone")
++	}
++}
++
++// The build's sandbox has no process of another account to signal, so
++// what signalling one says is judged here rather than met.
++func TestOnlyAnExitedProcessIsGone(t *testing.T) {
++	for _, c := range []struct {
++		err  error
++		gone bool
++	}{{nil, false}, {unix.EPERM, false}, {unix.ESRCH, true}} {
++		if gone(c.err) != c.gone {
++			t.Errorf("signalling that says %v was taken as gone %v", c.err, !c.gone)
 +		}
-+		defer unix.Close(pidfd)
-+		if !stillThere(pidfd) {
-+			t.Errorf("process %d was taken as gone", pid)
++	}
++}
++
++func TestOnlyAKernelWithoutPidfdsHasAPidTrustedAlone(t *testing.T) {
++	if err := pidfdFailed(unix.ENOPROTOOPT); err != nil {
++		t.Errorf("a kernel without SO_PEERPIDFD refused its peer: %v", err)
++	}
++	for _, err := range []error{unix.EINVAL, unix.ESRCH, unix.EBADF} {
++		if pidfdFailed(err) == nil {
++			t.Errorf("a pidfd failing with %v left the pid trusted alone", err)
++		}
++	}
++}
++
++func TestAWatchingGateServesEveryRefusal(t *testing.T) {
++	for _, why := range []error{ErrRefusedPlace, ErrPeerUnknown} {
++		if !(gate{watching: true}).serves(why) {
++			t.Errorf("a watching gate refused for %v", why)
++		}
++		if (gate{}).serves(why) {
++			t.Errorf("a gate not watching served what it refused for %v", why)
 +		}
 +	}
 +}
