@@ -120,9 +120,12 @@ Provider {
     // share (ReadyRows.qml's thing), each shutting the launcher as it asks.
     function made(served, key) {
         const was = makings[key];
+        // What the row shows of the copy, its kind and age alone while
+        // copies hide.
+        const shown = hiding ? Shared.shown(served) : served;
         if (was !== undefined && was.served === served && was.hiding === hiding) {
-            was.row.side = ready.sideOf(served);
-            was.row.sideItems = ready.itemsOf(served);
+            was.row.side = ready.sideOf(shown);
+            was.row.sideItems = ready.itemsOf(shown);
             return was.row;
         }
         const held = served.held ?? {};
@@ -130,7 +133,7 @@ Provider {
         const fields = {
             thing: true,
             key: served.thing,
-            glyph: Theme.glyph[served.glyph] ?? Theme.glyph.clipboard,
+            glyph: Theme.glyph[shown.glyph] ?? Theme.glyph.clipboard,
             hue: served.hue ?? "text"
         };
         const kept = picture ? {
@@ -152,7 +155,7 @@ Provider {
             reads: "",
             picture: ""
         };
-        const readied = ready.thing(served, key, Object.assign(fields, kept, hidden));
+        const readied = ready.thing(shown, key, Object.assign(fields, kept, hidden));
         if (readied === null)
             return null;
         // What y joins with other rows' copies is the text, for a copy

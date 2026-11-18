@@ -20,3 +20,17 @@ function hidden(heard, casts, recording) {
     return Object.values(casts ?? {}).some(cast => cast.kind !== "PipeWire"
         || !recording || cast.session_id !== recording);
 }
+
+// A copy as the history `served` it, saying only its kind and when it was
+// copied, for its row while copies hide: the history's glyph tells a link,
+// an address, a path or a number apart, and its side gives a text's lines
+// or a picture's format and size, each read off what was copied (#5360's
+// council, 2026-11-18). Its acts stay, so Copy and Paste still work.
+function shown(served) {
+    return Object.assign({}, served, {
+        glyph: served?.kind === "picture" ? "picture" : "clipboard",
+        // Only the item saying when it came, not any timed one, so an item
+        // the history adds later is hidden until it's named here.
+        side: (served?.side ?? []).filter(item => item?.as === "came")
+    });
+}

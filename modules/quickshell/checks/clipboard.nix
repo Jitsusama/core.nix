@@ -48,9 +48,10 @@
 
   # Copies hide what each copy holds while niri says any cast, a call's
   # share through the portal or a recorder's screencopy, and until niri has
-  # said its casts, but not for the shell's own recording of one window, as
-  # modules/quickshell/tests/copies-hidden.qml holds launcher/Shared.js to
-  # it in Qt's own engine.
+  # said its casts, but not for the shell's own recording of one window, and
+  # what a hidden copy's row is made of says only its kind and when it came,
+  # as modules/quickshell/tests/copies-hidden.qml holds launcher/Shared.js
+  # to it in Qt's own engine.
   copies-hide-while-the-screen-is-shared =
     let
       qt = pkgs.qt6.qtdeclarative;

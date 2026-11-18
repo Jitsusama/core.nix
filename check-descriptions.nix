@@ -701,7 +701,8 @@
   copies-hide-while-the-screen-is-shared = ''
     Copies hide what each copy holds while niri says any cast, a share through the portal or a
     recorder's screencopy, and until niri has said its casts, but not for the shell's own
-    recording of one window
+    recording of one window; what a hidden copy's row is made of (Shared.shown) keeps only its
+    kind and when it came, never a glyph or side read off what was copied
   '';
   crate-reach-finds-what-reads-what = ''
     what main moved in a crate a change's crate reads, or one reading it, however far, is

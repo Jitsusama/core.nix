@@ -49,5 +49,34 @@ QtObject {
         Expect.same("even beside the shell's own recording of one window",
             Shared.hidden(true, Object.assign(cast(4, "PipeWire", 9, true),
                 cast(5, "WlrScreencopy", 12, true)), 9), true);
+        shownCases();
+    }
+
+    // What a hidden copy's row is made of, from copies as the history
+    // serves them (modules/quickshell/clipboard/src/rows.rs).
+    function shownCases() {
+        const came = { at: 1000, as: "came" };
+        const link = { thing: "7", kind: "text", glyph: "link", side: [came],
+            acts: [{ key: "verb:copy:copy" }] };
+        Expect.same("a hidden link's glyph says only that it's a copy",
+            Shared.shown(link).glyph, "clipboard");
+        Expect.same("and its acts stay, so it can still be copied",
+            JSON.stringify(Shared.shown(link).acts), JSON.stringify(link.acts));
+        Expect.same("what the history served is left as it was", link.glyph, "link");
+        const lines = { kind: "text", glyph: "lines", side: [{ said: "2 lines" }, came] };
+        Expect.same("a hidden text's side keeps when it came, not its lines",
+            JSON.stringify(Shared.shown(lines).side), JSON.stringify([came]));
+        Expect.same("and the side served is left whole", lines.side.length, 2);
+        const later = { kind: "text", side: [{ at: 900, as: "opened" }, came] };
+        Expect.same("a timed item other than when it came is hidden too",
+            JSON.stringify(Shared.shown(later).side), JSON.stringify([came]));
+        const picture = { kind: "picture", glyph: "picture",
+            side: [{ said: "PNG" }, { said: "1.52 MB" }, came] };
+        Expect.same("a hidden picture is still a picture", Shared.shown(picture).glyph,
+            "picture");
+        Expect.same("but says neither its format nor its size",
+            JSON.stringify(Shared.shown(picture).side), JSON.stringify([came]));
+        Expect.same("a copy served with no side has none",
+            JSON.stringify(Shared.shown({ kind: "text" }).side), "[]");
     }
 }
