@@ -181,7 +181,10 @@ Provider {
             ? `${node.id} ${node.audio.volume} ${node.audio.muted}` : String(node.id)))
         .join("\u241e")
 
-    onPlayingNowChanged: redrawHeld()
+    onPlayingNowChanged: {
+        startsAgain();
+        redrawHeld();
+    }
 
     // And a program found from the top, which lists what it holds under
     // it (`under`), is drawn again as that changes, as a Chrome's tabs
@@ -292,6 +295,7 @@ Provider {
         }
         const was = provider.running;
         provider.running = by;
+        provider.startsAgain();
         if (HeldWindows.ownersMoved(was, by))
             provider.changed();
         else
@@ -939,18 +943,22 @@ Provider {
         target: provider.recents
 
         function onLatelyChanged() {
+            provider.startsAgain();
             provider.redrawHeld();
         }
 
         function onSharedChanged() {
+            provider.startsAgain();
             provider.redrawHeld();
         }
 
         function onOpenNowChanged() {
+            provider.startsAgain();
             provider.redrawHeld();
         }
 
         function onClosedChanged() {
+            provider.startsAgain();
             provider.redrawHeld();
         }
     }
@@ -1750,8 +1758,53 @@ Provider {
         if (provider.keysOf(entry).length > 0
             || !provider.stepsIn(entry) && provider.ownActions(entry, provider.taken()).length > 0)
             return false;
-        return provider.controls(entry, start, below)
+        // Read so a binding that asked is asked again as the answers held
+        // are let go.
+        void provider.startsTurn;
+        const held = provider.startsHeld.by.get(entry.id);
+        if (held !== undefined && held.entry === entry)
+            return held.only;
+        const only = provider.controls(entry, start, below)
             .every(one => one.key === "verb:start" || one.key === "verb:below");
+        provider.startsHeld.by.set(entry.id, { entry, only });
+        return only;
+    }
+
+    // What startsOnly found of each closed program, by its desktop entry's
+    // id with the entry it was asked of, held until something its step
+    // reads says it changed (startsAgain). The foot weighs every row
+    // listed on each key, and a closed program made its whole step each
+    // time to say the same, about 1 ms a program: 160 of 536 ms of the
+    // keys lab's weighing over c, m and s, profiled (2026-11-18). Plain,
+    // so holding one wakes no binding; `startsTurn` counts the lettings go.
+    readonly property var startsHeld: ({ by: new Map() })
+    property int startsTurn: 0
+    // Lets go of every answer held, since no source says which program its
+    // change was for.
+    function startsAgain() {
+        startsHeld.by = new Map();
+        startsTurn += 1;
+    }
+    // What a step reads that can change while its desktop entry stays: the
+    // providers holding a hook it asks, whose `changed` says theirs did,
+    // and the programs others declare hidden. What's playing, the windows
+    // and the Recents say theirs where they're heard, above.
+    onHookingChanged: startsAgain()
+    onDeclaredChanged: startsAgain()
+    Variants {
+        model: (provider.launcher?.sources ?? []).filter(other => other !== provider
+            && typeof other.changed === "function"
+            && Object.values(provider.hooking).some(holding => holding.includes(other)))
+
+        Connections {
+            required property var modelData
+
+            target: modelData
+
+            function onChanged() {
+                provider.startsAgain();
+            }
+        }
     }
 
     // The desktop entry's actions its menu lists, each with the name it's
@@ -1793,7 +1846,10 @@ Provider {
     Component.onCompleted: optedAgain()
     // And as the desktop entries are read, which a program's own acts are
     // made again on, since an act's program is found by its entry.
-    onOwnActsChanged: optedAgain()
+    onOwnActsChanged: {
+        startsAgain();
+        optedAgain();
+    }
 
     function optedAgain() {
         optedIn = (provider.launcher?.sources ?? [])

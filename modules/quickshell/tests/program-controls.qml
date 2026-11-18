@@ -50,7 +50,9 @@
 // another provider gives to be found from the top makes its own row and
 // no program's own again, and none again as the same list is given anew
 // or what its acts read changes. A step asked again, as a held one is at each
-// change, makes none of its Recent's rows again. Typed inside Programs,
+// change, makes none of its Recent's rows again. Whether a closed program
+// starts only makes its step once while nothing it reads says it changed,
+// and again as a provider giving it acts does. Typed inside Programs,
 // the rows holding its letters stand at once and the programs daemon's
 // answer takes its own order; where the daemon can't search, typing on
 // looks only through what the last key found, and finds what looking
@@ -179,12 +181,16 @@ ShellRoot {
     }
 
     // A provider that joins the launcher's sources once the programs are
-    // read, giving Lone an act of its own.
+    // read, giving Lone an act of its own while it `gives`, and saying so
+    // as that changes, as a provider's acts do.
     QtObject {
         id: joiner
 
+        property bool gives: true
+        signal changed
+
         function programActs(program) {
-            return program !== "lone" ? [] : [
+            return program !== "lone" || !gives ? [] : [
                 { key: "lone:join", name: "Join Later", verb: "open" }
             ];
         }
@@ -915,6 +921,14 @@ ShellRoot {
             same("as does one with keys of its own", program("keyed").actsOnly, false);
             same("and neither makes its step to say so", applications.stepsCounted.made - made, 0);
             same("one with neither starts only", program("lone").actsOnly, true);
+            // The foot weighs every program listed on each key, and a
+            // closed one made its whole step each time to say the same,
+            // about 1 ms a program: 160 of 536 ms of the keys lab's
+            // weighing over c, m and s, profiled (2026-11-18).
+            const askedAgain = applications.stepsCounted.made;
+            same("asked again over the same sources, it makes no step to say so",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - askedAgain}`,
+                "true 0");
             // Which providers hold each hook is found as the launcher's
             // sources change, so one joining later is asked, and one gone
             // isn't.
@@ -922,6 +936,13 @@ ShellRoot {
             same("a provider joining later gives a program its acts",
                 names(program("lone").verbs()), "New Window, New Window Below, Join Later");
             same("so it no longer starts only", program("lone").actsOnly, false);
+            joiner.gives = false;
+            joiner.changed();
+            same("its giver's change asks again, and it starts only",
+                program("lone").actsOnly, true);
+            joiner.gives = true;
+            joiner.changed();
+            same("and given again, it holds more", program("lone").actsOnly, false);
             theLauncher.sources = theLauncher.sources.filter(source => source !== joiner);
             same("and once it's gone, it starts only again", program("lone").actsOnly, true);
 
