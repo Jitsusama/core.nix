@@ -2,9 +2,10 @@
 //! long chains land nothing shows on the card each hour rather than in a
 //! report someone has to ask for. From 10:00 to 22:00 on 17 November, 8
 //! of the 10 costliest quests that merged nothing were working sessions
-//! of 500 to 750 calls. The spend is spend-watch's own figure for each
-//! quest today, which QCXZEB hasn't agreed yet, so the measure has no
-//! target and says so: it is read, never filed as a finding.
+//! of 500 to 750 calls. The spend is spend-watch's own split of today's
+//! spend by quest, which the orchestrator ruled the card may show (18
+//! November), and the measure names it so a disagreement later is plain.
+//! It has no target: it is read, never filed as a finding.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -23,8 +24,8 @@ const NAMED_FROM: f64 = 30.0;
 /// How many changes a line names before counting the rest.
 const CHANGES_NAMED: usize = 3;
 
-/// What the measure says while spend-watch's figures are unagreed.
-pub const NOT_AGREED: &str = " (spend not agreed yet)";
+/// Where the measure's figures come from, as it says.
+pub const SOURCE: &str = " (spend-watch, own)";
 
 /// What the measure says when there is no figure for today to read.
 pub const UNREAD: &str = " (spend-watch unread, or not written this hour)";
@@ -160,7 +161,7 @@ pub fn beside(
     Measure {
         key: KEY.to_owned(),
         class: Class::Cells,
-        says: format!("{says}{NOT_AGREED}"),
+        says: format!("{says}{SOURCE}"),
         now: count(nothing),
         target: None,
         owner: owner.to_owned(),
@@ -307,10 +308,10 @@ mod tests {
     }
 
     #[test]
-    fn spend_is_unjudged_and_says_it_isnt_agreed() {
+    fn spend_is_unjudged_and_names_its_source() {
         let m = beside(Some(COLLECTION), &landed(), "WCJQSG");
-        assert_eq!(m.target, None, "an unagreed spend judged");
-        assert!(m.says.ends_with(NOT_AGREED), "{}", m.says);
+        assert_eq!(m.target, None, "spend with no target judged");
+        assert!(m.says.ends_with(SOURCE), "{}", m.says);
         assert!(
             m.says.starts_with("quests spending $30 or more"),
             "{}",
