@@ -13574,11 +13574,12 @@ Scope {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
                                     laying: Date.now() - laying + aside + split,
-                                    split: { back: landing, from, took: split, whole },
+                                    split: { back: landing, from, took: split, whole,
+                                        stepping: root.backTo !== null },
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };
-                                if (landing >= 0)
+                                if (root.backTo !== null)
                                     list.steppedLast = list.keptLast.split;
                                 return false;
                             }

@@ -137,29 +137,34 @@ function steppedMaking(making, split) {
     return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
 }
 
-// The rows a laying drew, where it drew any, and the row a step back out
-// came to (Launcher.qml's keep), counted from 1 as the card shows them:
-// where it split a list put in afresh, the row it put in first and how
-// much of the laying that took, so a slow step back says whether the split
-// or the layout after it spent the time; else why it didn't split.
+// The rows a laying drew, where it drew any, and where a step back out
+// came to (Launcher.qml's keep): where it split a list put in afresh, how
+// much of the laying that took and the row it split at, so a slow step
+// back says whether the split or the layout after it spent the time; else
+// why it didn't split.
 function keptSaid(kept) {
     const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
         ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
     return rows + landedSaid(kept.split ?? {});
 }
 
-// The row a step back out came to and how its rows went in, or nothing
-// for a keeping that was no step back. A list put in afresh with its view
-// at the top has no rows above to split off; rows kept aren't put in.
-function landedSaid({ back = -1, from = 0, took = 0, whole = false }) {
-    if (back < 0) {
+// Where a step back out came to and how its rows went in, or nothing for a
+// keeping that was no step back. Rows count from 1 among the list's own,
+// a heading taking one as it does there, so past a heading the number
+// runs ahead of the card's. A list put in afresh with its view at its top
+// has no rows above to split off; rows kept aren't put in.
+function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = back >= 0 }) {
+    if (!stepping) {
         return "";
     }
-    const to = `, back to row ${back + 1}`;
-    if (from > 0) {
-        return `${to}, ${Math.round(took)} of it putting in rows ${from + 1} on, then those above`;
+    if (back < 0) {
+        return "; back to the line";
     }
-    return whole ? `${to} at the list's top` : `${to} among rows kept`;
+    const to = `back to row ${back + 1}`;
+    if (from > 0) {
+        return `; ${Math.round(took)} of that splitting them at row ${from + 1}, ${to}`;
+    }
+    return whole ? `; ${to}, the view at the list's top` : `; ${to} among rows kept`;
 }
 
 // How long a showing's rows spent reading what each program holds, as

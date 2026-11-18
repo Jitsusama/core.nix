@@ -262,25 +262,30 @@ QtObject {
             Trials.keptSaid({ built: 3, reused: 7, split: { back: -1, from: 0, took: 0 } })
                 === ": 3 rows built, 7 taken back",
             Trials.keptSaid({ built: 3, reused: 7, split: { back: -1, from: 0, took: 0 } }));
-        const parted = { back: 16, from: 9, took: 5.6, whole: true };
-        expect("a step back out that split says to which row, from which, and what it took",
+        const parted = { back: 16, from: 9, took: 5.6, whole: true, stepping: true };
+        expect("a step back out that split says what it took, where, and to which row",
             Trials.keptSaid({ built: 2, reused: 8, split: parted })
-                === ": 2 rows built, 8 taken back,"
-                + " back to row 17, 6 of it putting in rows 10 on, then those above",
+                === ": 2 rows built, 8 taken back;"
+                + " 6 of that splitting them at row 10, back to row 17",
             Trials.keptSaid({ built: 2, reused: 8, split: parted }));
-        const top = { back: 16, from: 0, took: 0, whole: true };
-        expect("one put in afresh with nothing above its view says it came to the top",
+        const top = { back: 2, from: 0, took: 0, whole: true, stepping: true };
+        expect("one put in afresh with nothing above its view says its view was at the top",
             Trials.keptSaid({ built: 1, reused: 9, split: top })
-                === ": 1 rows built, 9 taken back, back to row 17 at the list's top",
+                === ": 1 rows built, 9 taken back; back to row 3, the view at the list's top",
             Trials.keptSaid({ built: 1, reused: 9, split: top }));
-        const among = { back: 16, from: 0, took: 0, whole: false };
+        const among = { back: 16, from: 0, took: 0, whole: false, stepping: true };
         expect("one that kept rows says it came back among them",
             Trials.keptSaid({ built: 1, reused: 9, split: among })
-                === ": 1 rows built, 9 taken back, back to row 17 among rows kept",
+                === ": 1 rows built, 9 taken back; back to row 17 among rows kept",
             Trials.keptSaid({ built: 1, reused: 9, split: among }));
+        const line = { back: -1, from: 0, took: 0, whole: false, stepping: true };
+        expect("one that came back to the line says so",
+            Trials.keptSaid({ built: 0, reused: 0, split: line }) === "; back to the line",
+            Trials.keptSaid({ built: 0, reused: 0, split: line }));
+        const none = { back: -1, from: 0, took: 0, whole: false, stepping: false };
         expect("a laying that drew none and was no step back says nothing",
-            Trials.keptSaid({ built: 0, reused: 0, split: { back: -1, from: 0, took: 0 } }) === "",
-            Trials.keptSaid({ built: 0, reused: 0, split: { back: -1, from: 0, took: 0 } }));
+            Trials.keptSaid({ built: 0, reused: 0, split: none }) === "",
+            Trials.keptSaid({ built: 0, reused: 0, split: none }));
         expect("one kept before steps back were told says only its rows",
             Trials.keptSaid({ built: 3, reused: 7 }) === ": 3 rows built, 7 taken back",
             Trials.keptSaid({ built: 3, reused: 7 }));
