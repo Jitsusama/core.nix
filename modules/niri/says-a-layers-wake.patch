@@ -1,0 +1,523 @@
+Says, at debug, what a layer surface's first new buffer after a quiet
+spell spent between its client's commit and the screen: how long niri
+took to take it, which for a dmabuf is how long its fence took to
+signal, what the output's redraw was doing then, when the frame
+carrying it began to render and was queued, when it reached the
+screen, the refreshes from the commit, and how fast the screen
+refreshed over the vblanks since its last frame. A shell opening its
+launcher after a quiet moment saw its frame reach the screen 4 to 7
+refreshes after its swap at 120 Hz, yet niri's own frames after an
+idle spell reach it within 2 (says-a-frames-steps-after-idle.patch),
+and none of the slow openings was among them, so the time goes before
+niri is asked to redraw. The times are by the monotonic clock
+presentation feedback uses, so a client's own timings line up. A
+surface counts as quiet once 100 ms have passed since its last new
+buffer, so an animation says nothing. It adds no setting; the tty
+backend alone says it, since only it knows when a frame reaches the
+screen, and an output keeps at most 8 waiting for a frame.
+
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index e1b0425..ff6c7dc 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -69,6 +69,7 @@ use crate::render_helpers::debug::draw_damage;
+ use crate::render_helpers::renderer::AsGlesRenderer;
+ use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
+ use crate::utils::frame_steps::FrameSteps;
++use crate::utils::layer_wake::Spell;
+ use crate::utils::{get_monotonic_time, is_laptop_panel, logical_output, PanelOrientation};
+ 
+ mod gamut;
+@@ -1844,8 +1845,25 @@ impl Tty {
+                 .unwrap()
+                 .plot(surface.sequence_delta_plot_name, delta);
+         }
++        // The vblanks counted since the last frame reached the screen, for the wakes it carries.
++        let spell = match (
++            output_state.last_drm_sequence,
++            output_state.frame_clock.last_presentation_time(),
++        ) {
++            (Some(sequence), Some(last)) if !presentation_time.is_zero() => Some(Spell {
++                vblanks: meta.sequence.wrapping_sub(sequence),
++                over: presentation_time.saturating_sub(last),
++            }),
++            _ => None,
++        };
+         output_state.last_drm_sequence = Some(meta.sequence);
+ 
++        for wake in mem::take(&mut output_state.layer_wakes_in_flight) {
++            if !presentation_time.is_zero() {
++                debug!("{name}: {}", wake.said(presentation_time, refresh_interval, spell));
++            }
++        }
++
+         // Said before the clock takes this presentation, by the time clients are told of it.
+         if let Some(steps) = output_state.frame_after_idle.take() {
+             if !presentation_time.is_zero() {
+@@ -2040,15 +2058,20 @@ impl Tty {
+                     match drm_compositor.queue_frame(data) {
+                         Ok(()) => {
+                             let output_state = niri.output_state.get_mut(output).unwrap();
++                            let queued = get_monotonic_time();
+                             output_state.frame_after_idle =
+                                 output_state.redraw_asked_at.take().and_then(|asked| {
+                                     FrameSteps::after_idle(
+                                         asked,
+                                         output_state.frame_clock.last_presentation_time(),
+                                         rendering,
+-                                        get_monotonic_time(),
++                                        queued,
+                                     )
+                                 });
++                            for mut wake in mem::take(&mut output_state.layer_wakes) {
++                                wake.drawn = Some((rendering, queued));
++                                output_state.layer_wakes_in_flight.push(wake);
++                            }
+                             let new_state = RedrawState::WaitingForVBlank {
+                                 redraw_needed: false,
+                             };
+diff --git a/src/handlers/layer_shell.rs b/src/handlers/layer_shell.rs
+index be5e95c..04eaef8 100644
+--- a/src/handlers/layer_shell.rs
++++ b/src/handlers/layer_shell.rs
+@@ -2,7 +2,10 @@ use smithay::delegate_layer_shell;
+ use smithay::desktop::{layer_map_for_output, LayerSurface, PopupKind, WindowSurfaceType};
+ use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
+ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+-use smithay::wayland::compositor::{add_pre_commit_hook, get_parent, with_states, HookId};
++use smithay::wayland::compositor::{
++    add_pre_commit_hook, get_parent, with_states, BufferAssignment, HookId, SurfaceAttributes,
++};
++use smithay::wayland::dmabuf::get_dmabuf;
+ use smithay::wayland::shell::wlr_layer::{
+     self, Layer, LayerSurface as WlrLayerSurface, LayerSurfaceCachedState, LayerSurfaceData,
+     WlrLayerShellHandler, WlrLayerShellState,
+@@ -11,7 +14,7 @@ use smithay::wayland::shell::xdg::PopupSurface;
+ 
+ use crate::layer::{MappedLayer, ResolvedLayerRules};
+ use crate::niri::State;
+-use crate::utils::{is_mapped, output_size, send_scale_transform};
++use crate::utils::{get_monotonic_time, is_mapped, output_size, send_scale_transform};
+ 
+ impl WlrLayerShellHandler for State {
+     fn shell_state(&mut self) -> &mut WlrLayerShellState {
+@@ -163,6 +166,15 @@ impl State {
+                         self.niri.layer_shell_on_demand_focus = Some(layer.clone());
+                     }
+ 
++                    // The first new buffer after a quiet spell, taken now its fence has
++                    // signalled, waits for the frame that carries it (utils/layer_wake.rs).
++                    if let Some(mut wake) = mapped.take_woken() {
++                        if let Some(state) = self.niri.output_state.get_mut(&output) {
++                            wake.taken = Some((get_monotonic_time(), state.redraw_state.said()));
++                            state.layer_taken(wake);
++                        }
++                    }
++
+                     // Check if the layer changed.
+                     if mapped.take_recompute_rules_on_commit() {
+                         let config = self.niri.config.borrow();
+@@ -254,7 +266,16 @@ fn add_mapped_layer_pre_commit_hook(layer: &LayerSurface) -> HookId {
+             )
+         });
+ 
+-        if layer_changed || asked_for_focus {
++        // A new buffer is stamped as the client commits it, before niri waits on its fence.
++        let new_buffer = with_states(surface, |states| {
++            let mut guard = states.cached_state.get::<SurfaceAttributes>();
++            match &guard.pending().buffer {
++                Some(BufferAssignment::NewBuffer(buffer)) => Some(get_dmabuf(buffer).is_ok()),
++                _ => None,
++            }
++        });
++
++        if layer_changed || asked_for_focus || new_buffer.is_some() {
+             for mapped in state.niri.mapped_layer_surfaces.values_mut() {
+                 if mapped.surface().wl_surface() == surface {
+                     if layer_changed {
+@@ -263,6 +284,9 @@ fn add_mapped_layer_pre_commit_hook(layer: &LayerSurface) -> HookId {
+                     if asked_for_focus {
+                         mapped.set_asked_for_focus_on_commit();
+                     }
++                    if let Some(fenced) = new_buffer {
++                        mapped.note_new_buffer(get_monotonic_time(), fenced);
++                    }
+                     break;
+                 }
+             }
+diff --git a/src/layer/mapped.rs b/src/layer/mapped.rs
+index 0cba091..787a59c 100644
+--- a/src/layer/mapped.rs
++++ b/src/layer/mapped.rs
+@@ -1,4 +1,5 @@
+ use std::sync::OnceLock;
++use std::time::Duration;
+ 
+ use niri_config::utils::MergeWith as _;
+ use niri_config::{Config, LayerRule};
+@@ -20,7 +21,8 @@ use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderEleme
+ use crate::render_helpers::surface::push_elements_from_surface_tree;
+ use crate::render_helpers::xray::XrayPos;
+ use crate::render_helpers::{background_effect, RenderCtx};
+-use crate::utils::{baba_is_float_offset, round_logical_in_physical};
++use crate::utils::layer_wake::LayerWake;
++use crate::utils::{baba_is_float_offset, get_monotonic_time, round_logical_in_physical};
+ 
+ #[derive(Debug)]
+ pub struct MappedLayer {
+@@ -44,6 +46,15 @@ pub struct MappedLayer {
+     /// commit handler.
+     asked_for_focus_on_commit: bool,
+ 
++    /// When the surface's client last committed a new buffer, by the monotonic clock.
++    last_buffer_at: Option<Duration>,
++
++    /// The first new buffer after a quiet spell, from the client's commit until niri takes it
++    /// (utils/layer_wake.rs).
++    ///
++    /// Set in the pre-commit hook; consumed in the commit handler.
++    woken: Option<LayerWake>,
++
+     /// Buffer to draw instead of the surface when it should be blocked out.
+     block_out_buffer: SolidColorBuffer,
+ 
+@@ -93,6 +104,9 @@ impl MappedLayer {
+             rules,
+             recompute_rules_on_commit: false,
+             asked_for_focus_on_commit: false,
++            // It's made as the surface maps, on the commit carrying its first buffer.
++            last_buffer_at: Some(get_monotonic_time()),
++            woken: None,
+             block_out_buffer: SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.]),
+             view_size,
+             scale,
+@@ -174,6 +188,20 @@ impl MappedLayer {
+         std::mem::take(&mut self.asked_for_focus_on_commit)
+     }
+ 
++    /// Notes a new buffer its client committed at `committed`, kept until niri takes it when it's
++    /// the first after a quiet spell.
++    pub fn note_new_buffer(&mut self, committed: Duration, fenced: bool) {
++        let (namespace, last) = (self.surface.namespace(), self.last_buffer_at);
++        if let Some(wake) = LayerWake::after_quiet(namespace, last, committed, fenced) {
++            self.woken = Some(wake);
++        }
++        self.last_buffer_at = Some(committed);
++    }
++
++    pub fn take_woken(&mut self) -> Option<LayerWake> {
++        self.woken.take()
++    }
++
+     pub fn place_within_backdrop(&self) -> bool {
+         if !self.rules.place_within_backdrop {
+             return false;
+diff --git a/src/niri.rs b/src/niri.rs
+index 2bb52e6..c0da3ea 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -174,6 +174,7 @@ use crate::ui::mru::{MruCloseRequest, WindowMruUi, WindowMruUiRenderElement};
+ use crate::ui::screen_transition::{self, ScreenTransition};
+ use crate::ui::screenshot_ui::{OutputScreenshot, ScreenshotUi, ScreenshotUiRenderElement};
+ use crate::utils::frame_steps::FrameSteps;
++use crate::utils::layer_wake::LayerWake;
+ use crate::utils::refresh_pacer::RefreshPacer;
+ use crate::utils::scale::{closest_representable_scale, guess_monitor_scale};
+ use crate::utils::spawning::{CHILD_DISPLAY, CHILD_ENV};
+@@ -561,9 +562,23 @@ pub struct OutputState {
+     /// The steps of the frame in flight, when it was asked for after an idle spell, said once it
+     /// reaches the screen (utils/frame_steps.rs).
+     pub frame_after_idle: Option<FrameSteps>,
++    /// Layer surfaces' first buffers after a quiet spell, taken and waiting for a frame to carry
++    /// them (utils/layer_wake.rs).
++    pub layer_wakes: Vec<LayerWake>,
++    /// Those the frame in flight carries, said once it reaches the screen.
++    pub layer_wakes_in_flight: Vec<LayerWake>,
+ }
+ 
+ impl OutputState {
++    /// Keeps a layer surface's wake for the frame that carries it, holding a few at most, since
++    /// a backend that never presents a frame never says them.
++    pub fn layer_taken(&mut self, wake: LayerWake) {
++        if self.layer_wakes.len() >= 8 {
++            self.layer_wakes.remove(0);
++        }
++        self.layer_wakes.push(wake);
++    }
++
+     /// Schedules an immediate redraw if one is not already scheduled, noting when one was asked
+     /// with no frame in flight, so the frame can say what it spent after a client's commit woke
+     /// an idle output.
+@@ -594,6 +609,21 @@ pub enum RedrawState {
+     WaitingForEstimatedVBlankAndQueued(RegistrationToken),
+ }
+ 
++impl RedrawState {
++    /// What it means for a commit arriving in it, in words.
++    pub fn said(&self) -> &'static str {
++        match self {
++            RedrawState::Idle => "the output idle",
++            RedrawState::Queued => "a redraw queued",
++            RedrawState::WaitingForVBlank { .. } => "a frame in flight",
++            RedrawState::WaitingForEstimatedVBlank(_) => "an empty frame's vblank awaited",
++            RedrawState::WaitingForEstimatedVBlankAndQueued(_) => {
++                "an empty frame's vblank awaited and a redraw queued"
++            }
++        }
++    }
++}
++
+ pub struct PopupGrabState {
+     pub root: WlSurface,
+     pub grab: PopupGrab<State>,
+@@ -3127,6 +3157,8 @@ impl Niri {
+             debug_damage_tracker: OutputDamageTracker::from_output(&output),
+             redraw_asked_at: None,
+             frame_after_idle: None,
++            layer_wakes: Vec::new(),
++            layer_wakes_in_flight: Vec::new(),
+         };
+         let rv = self.output_state.insert(output.clone(), state);
+         assert!(rv.is_none(), "output was already tracked");
+@@ -5144,6 +5176,11 @@ impl Niri {
+ 
+         // A frame queued took the ask with it; a redraw that queued none leaves nothing to say.
+         state.redraw_asked_at = None;
++        // A frame submitted carries what was taken, which only the tty backend says; one not
++        // submitted leaves it for the next.
++        if res == RenderResult::Submitted {
++            state.layer_wakes.clear();
++        }
+ 
+         if res == RenderResult::Skipped {
+             // Update the redraw state on failed render.
+diff --git a/src/utils/layer_wake.rs b/src/utils/layer_wake.rs
+new file mode 100644
+index 0000000..a5cf7bd
+--- /dev/null
++++ b/src/utils/layer_wake.rs
+@@ -0,0 +1,212 @@
++//! What a layer surface's first new buffer after a quiet spell spent between the client's commit
++//! and the screen.
++//!
++//! A shell's launcher opening after a quiet moment reached the screen four to seven refreshes
++//! after its swap, yet niri's own frames after an idle spell reach it within two (frame_steps.rs),
++//! and none of those openings was among the frames that says. So the time goes before niri's
++//! redraw is asked: on the buffer's fence, which the client's own GPU work signals, or on a frame
++//! already in flight. This says each step by the monotonic clock clients' presentation times use,
++//! from the client's commit through niri taking the buffer and rendering and queueing the frame
++//! that carries it to the screen, with how fast the screen refreshed over the spell before, which
++//! a panel dropping its refresh rate while idle would show.
++
++use std::time::Duration;
++
++/// How long a surface must have committed no new buffer for its next to be said.
++///
++/// It's well past any frame, so an animation says nothing, and short enough that a launcher
++/// opening after a moment's pause is said.
++pub const QUIET: Duration = Duration::from_millis(100);
++
++/// The vblanks an output counted between its last two frames reaching the screen, and the time
++/// between them.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub struct Spell {
++    pub vblanks: u32,
++    pub over: Duration,
++}
++
++/// When each step of a layer surface's first new buffer after a quiet spell happened.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct LayerWake {
++    /// The surface's namespace, as its client named it.
++    pub namespace: String,
++    /// How long since the surface's previous new buffer; none for its first since it was mapped.
++    pub quiet: Option<Duration>,
++    /// Whether the buffer is a dmabuf, which niri takes only once its fence signals.
++    pub fenced: bool,
++    /// When the client committed it.
++    pub committed: Duration,
++    /// When niri took it, and what the output's redraw was doing then.
++    pub taken: Option<(Duration, &'static str)>,
++    /// When rendering the frame carrying it began, and when that frame was queued.
++    pub drawn: Option<(Duration, Duration)>,
++}
++
++impl LayerWake {
++    /// The wake of a buffer committed at `committed`, when the surface's last was `last`: none
++    /// when that was too recent for this to be the first after a quiet spell.
++    pub fn after_quiet(
++        namespace: &str,
++        last: Option<Duration>,
++        committed: Duration,
++        fenced: bool,
++    ) -> Option<Self> {
++        let quiet = last.map(|last| committed.saturating_sub(last));
++        if quiet.is_some_and(|quiet| quiet < QUIET) {
++            return None;
++        }
++        Some(Self {
++            namespace: namespace.to_owned(),
++            quiet,
++            fenced,
++            committed,
++            taken: None,
++            drawn: None,
++        })
++    }
++
++    /// What it spent, once the frame carrying it reached the screen at `presented`, in
++    /// milliseconds, with the refreshes from the commit when the output's refresh is known.
++    pub fn said(
++        &self,
++        presented: Duration,
++        refresh: Option<Duration>,
++        spell: Option<Spell>,
++    ) -> String {
++        let ms = |duration: Duration| duration.as_secs_f64() * 1000.;
++        let quiet = match self.quiet {
++            Some(quiet) => format!("after {:.0} ms quiet", ms(quiet)),
++            None => String::from("since it was mapped"),
++        };
++        let kind = if self.fenced { "a dmabuf" } else { "unfenced" };
++        let mut said = format!(
++            "{}'s first buffer {quiet}, {kind}, committed at {:.1} ms:",
++            self.namespace,
++            ms(self.committed)
++        );
++        let mut last = self.committed;
++        if let Some((taken, redraw)) = self.taken {
++            said += &format!(
++                " niri took it {:.1} ms later, with {redraw};",
++                ms(taken.saturating_sub(last))
++            );
++            last = taken;
++        }
++        if let Some((rendering, queued)) = self.drawn {
++            said += &format!(
++                " its frame's render began {:.1} ms later and took {:.1},",
++                ms(rendering.saturating_sub(last)),
++                ms(queued.saturating_sub(rendering))
++            );
++            last = queued;
++        }
++        said += &format!(
++            " then it reached the screen {:.1} ms on",
++            ms(presented.saturating_sub(last))
++        );
++        if let Some(refresh) = refresh.filter(|refresh| !refresh.is_zero()) {
++            let taken = presented.saturating_sub(self.committed);
++            // Presentation lies on the refresh grid, so a hair past a whole refresh is one.
++            let frames = (taken.as_secs_f64() / refresh.as_secs_f64() - 0.01)
++                .ceil()
++                .max(1.) as u64;
++            let plural = if frames == 1 { "" } else { "es" };
++            said += &format!("; {frames} refresh{plural} from the commit");
++        }
++        if let Some(spell) = spell.filter(|spell| spell.vblanks > 0) {
++            let each = ms(spell.over) / f64::from(spell.vblanks);
++            let plural = if spell.vblanks == 1 { "" } else { "s" };
++            said += &format!(
++                "; the screen refreshed every {each:.2} ms over the {} vblank{plural} since its \
++                 last frame",
++                spell.vblanks
++            );
++        }
++        said
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn ms(value: f64) -> Duration {
++        Duration::from_secs_f64(value / 1000.)
++    }
++
++    /// A buffer committed 2 s after the last, taken 30 ms later, drawn 1 ms after that in 2 ms.
++    fn wake() -> LayerWake {
++        let mut wake =
++            LayerWake::after_quiet("launcher", Some(ms(1000.)), ms(3000.), true).unwrap();
++        wake.taken = Some((ms(3030.), "the output idle"));
++        wake.drawn = Some((ms(3031.), ms(3033.)));
++        wake
++    }
++
++    #[test]
++    fn a_buffer_soon_after_the_last_says_nothing() {
++        assert_eq!(
++            LayerWake::after_quiet("launcher", Some(ms(1000.)), ms(1050.), true),
++            None
++        );
++    }
++
++    #[test]
++    fn a_first_buffer_since_mapping_is_said() {
++        let wake = LayerWake::after_quiet("launcher", None, ms(50.), false).unwrap();
++        assert_eq!(wake.quiet, None);
++        assert_eq!(
++            wake.said(ms(58.3), None, None),
++            "launcher's first buffer since it was mapped, unfenced, committed at 50.0 ms: then it \
++             reached the screen 8.3 ms on"
++        );
++    }
++
++    #[test]
++    fn a_buffer_after_a_quiet_spell_says_each_step() {
++        assert_eq!(
++            wake().said(
++                ms(3041.6),
++                Some(ms(8.333)),
++                Some(Spell {
++                    vblanks: 240,
++                    over: ms(2000.),
++                })
++            ),
++            "launcher's first buffer after 2000 ms quiet, a dmabuf, committed at 3000.0 ms: niri \
++             took it 30.0 ms later, with the output idle; its frame's render began 1.0 ms later \
++             and took 2.0, then it reached the screen 8.6 ms on; 5 refreshes from the commit; the \
++             screen refreshed every 8.33 ms over the 240 vblanks since its last frame"
++        );
++    }
++
++    #[test]
++    fn a_panel_at_half_its_rate_shows_in_the_spell() {
++        let said = wake().said(
++            ms(3050.),
++            Some(ms(8.333)),
++            Some(Spell {
++                vblanks: 120,
++                over: ms(2000.),
++            }),
++        );
++        assert!(
++            said.ends_with("every 16.67 ms over the 120 vblanks since its last frame"),
++            "{said}"
++        );
++    }
++
++    #[test]
++    fn an_unknown_refresh_or_spell_counts_none() {
++        let said = wake().said(
++            ms(3040.),
++            None,
++            Some(Spell {
++                vblanks: 0,
++                over: ms(5.),
++            }),
++        );
++        assert!(said.ends_with("reached the screen 7.0 ms on"), "{said}");
++    }
++}
+diff --git a/src/utils/mod.rs b/src/utils/mod.rs
+index f1da535..797be9f 100644
+--- a/src/utils/mod.rs
++++ b/src/utils/mod.rs
+@@ -38,6 +38,7 @@ use crate::niri::ClientState;
+ 
+ pub mod frame_steps;
+ pub mod id;
++pub mod layer_wake;
+ pub mod refresh_pacer;
+ pub mod region;
+ pub mod scale;
