@@ -457,6 +457,18 @@ it("a carried run that fails to start keeps what it held for the next turn", asy
   }
 });
 
+it("a carried run whose work finishes with no turn writes what it held as it settles", async () => {
+  const { session, close } = await openPreparedSession({ tools: ["read"] });
+  try {
+    sendsAsItStarts(session);
+    await deadline(session.runForHost(() => Promise.resolve()));
+    // No turn ended to place it, so the settle writes it: finished work owes nothing.
+    assert.ok(session.messages.some(isHeld), "what it held is written as the run settles");
+  } finally {
+    close();
+  }
+});
+
 it("a carried run whose work fails keeps what it held for the next turn", async () => {
   const { session, faux, close } = await openPreparedSession({ tools: ["read"] });
   try {
@@ -486,6 +498,7 @@ it("a carried run aborted during its work keeps what it held for the next turn",
       }),
     );
     await deadline(aborted);
+    assert.equal(session.isStreaming, false);
     // An aborted turn may owe a tool result too, so nothing goes after it yet.
     assert.ok(!session.messages.some(isHeld), "what it held waits for a finished turn");
     await carryThroughToolRound(session, faux);
