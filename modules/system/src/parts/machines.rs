@@ -187,6 +187,18 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
         let side = format!("on battery at {charge}%");
         words.look(Health::Watch, format!("is {side}"), side);
     }
+    // An error the firmware kept before the boot, as an abrupt reset leaves, is
+    // said for a day after it (power.rs), so the morning after one in the
+    // night says it.
+    if let Some(ago) = said
+        .pointer("/firmware/error_before_boot")
+        .and_then(Value::as_u64)
+    {
+        // The time is the boot's: the record says nothing of when the
+        // error was.
+        let side = format!("booted {} after a firmware error", ago_said(ago));
+        words.look(Health::Watch, side.clone(), side);
+    }
     for part in ITS_OWN {
         match own.and_then(|own| own.pointer(&format!("/parts/{part}"))?.as_str()) {
             Some("watch") => words.look(
@@ -232,6 +244,15 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
         ties: Value::Null,
     };
     (thing, named)
+}
+
+/// How long ago, in the largest whole unit up to hours.
+fn ago_said(seconds: u64) -> String {
+    match seconds {
+        0..60 => "just now".to_owned(),
+        60..3_600 => format!("{} ago", count(seconds / 60, "minute", "minutes")),
+        _ => format!("{} ago", count(seconds / 3_600, "hour", "hours")),
+    }
 }
 
 /// A resource a node says a machine is short of, in Joel's words for it.
@@ -478,6 +499,48 @@ mod tests {
         low["power"]["on_battery"] = json!(false);
         let charging = machines(&Ok(realm(&[low])), &Err(String::new()), None, None);
         assert_eq!(charging.health, Health::Good);
+    }
+
+    #[test]
+    fn a_firmware_error_before_the_boot_is_worth_a_look() {
+        let mut cut = laptop(&[], "healthy");
+        cut["firmware"] = json!({"error_before_boot": 3 * 3_600 + 59});
+        let part = machines(
+            &Ok(realm(std::slice::from_ref(&cut))),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        assert_eq!(part.health, Health::Watch);
+        assert_eq!(
+            part.things[0].says,
+            "booted 3 hours ago after a firmware error"
+        );
+        assert_eq!(
+            part.things[0].side,
+            ["booted 3 hours ago after a firmware error"]
+        );
+        assert!(
+            part.says
+                .starts_with("laptop booted 3 hours ago after a firmware error"),
+            "the part's line reads as a sentence: {}",
+            part.says
+        );
+        cut["firmware"]["error_before_boot"] = json!(90);
+        let part = machines(&Ok(realm(&[cut])), &Err(String::new()), None, None);
+        assert_eq!(
+            part.things[0].says,
+            "booted 1 minute ago after a firmware error"
+        );
+    }
+
+    #[test]
+    fn how_long_ago_is_said_in_its_largest_whole_unit() {
+        assert_eq!(ago_said(59), "just now");
+        assert_eq!(ago_said(60), "1 minute ago");
+        assert_eq!(ago_said(3_599), "59 minutes ago");
+        assert_eq!(ago_said(3_600), "1 hour ago");
+        assert_eq!(ago_said(7_200), "2 hours ago");
     }
 
     #[test]

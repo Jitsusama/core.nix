@@ -25,6 +25,10 @@ use system::parts;
 use system::record::System;
 use terminal_kit::{Context, Exit, Failure, Help};
 
+/// The kernel's count of boot error records, once this process has read
+/// it, so `system serve` asks the journal for it once (power.rs).
+static FOUND: system::power::Found = system::power::Found::new();
+
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), run)
 }
@@ -75,14 +79,26 @@ fn run(context: &Context) -> Result<(), Failure> {
 
 /// The system as each owner says it now.
 pub(crate) fn read() -> System {
-    let [machines, health, net, repos]: [_; 4] = ask::all(&[
+    let since_boot = std::fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|uptime| system::power::since_boot(&uptime));
+    let mut asked: Vec<&[&str]> = vec![
         &["mycelium", "machines"],
         &["mycelium", "health"],
         &["net", "--json"],
         &["repos", "--json"],
-    ])
-    .try_into()
-    .unwrap_or_else(|_| unreachable!("one answer is given for each command asked"));
+    ];
+    let journal_asked = system::power::worth_asking(&FOUND, since_boot);
+    if journal_asked {
+        asked.push(system::power::ASK);
+    }
+    let mut answers = ask::all(&asked);
+    let journal = journal_asked.then(|| answers.pop()).flatten();
+    let [mut machines, health, net, repos]: [_; 4] = answers
+        .try_into()
+        .unwrap_or_else(|_| unreachable!("one answer is given for each command asked"));
+    let journal = system::power::remembered(&FOUND, journal);
+    note_a_firmware_error(&mut machines, &journal, since_boot);
     let mut system = System {
         machine: terminal_kit::environment::machine(),
         read_at: terminal_kit::time::rfc3339(now()),
@@ -97,6 +113,19 @@ pub(crate) fn read() -> System {
         Homes::read(&sites).place(&mut system);
     }
     system
+}
+
+/// Puts an error the firmware kept before this boot into this machine's
+/// record, from the journal's answer (power.rs says why it's read here).
+fn note_a_firmware_error(
+    machines: &mut parts::Answer,
+    journal: &parts::Answer,
+    since_boot: Option<u64>,
+) {
+    if let Some(ago) = since_boot.and_then(|since| system::power::kept_before_boot(journal, since))
+    {
+        system::power::note(machines, ago);
+    }
 }
 
 /// Where the local sites are kept on this machine (modules/local-sites),
