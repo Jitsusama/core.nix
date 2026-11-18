@@ -159,10 +159,24 @@ Provider {
     function reloadFacts() {
         const views = [resolv, resolved, up].filter(view => String(view.path) !== "");
         factsAsked = views;
-        if (views.length > 0)
+        if (views.length > 0) {
             stillReading = true;
+            factsWatch.restart();
+        }
         for (const view of views)
             view.reload();
+    }
+    // A fact that takes two seconds is said as last loaded, so a terminal
+    // isn't kept asking on a file that never lands.
+    Timer {
+        id: factsWatch
+
+        interval: 2000
+        onTriggered: provider.factsGivenUp()
+    }
+    function factsGivenUp() {
+        factsAsked = [];
+        settled();
     }
     function factLanded(view) {
         factsAsked = factsAsked.filter(each => each !== view);
@@ -236,7 +250,7 @@ Provider {
     // table may churn and the closed launcher wakes under five times a
     // second (VKCF3Z); open, a quarter second after, past the opening's
     // first frame.
-    property var glances: ({})
+    property var glances: Object.create(null)
     function keptGlance(name, said) {
         const kept = glances[name];
         return kept === undefined ? null : kept.filter(fact => fact.value !== said);
@@ -245,15 +259,18 @@ Provider {
         const now = standing();
         if (now === null)
             return;
-        const made = {};
+        const made = Object.create(null);
         for (const link of listed(now)) {
             // A cable whose files haven't landed keeps what it was, or
             // none, rather than being made without its link, which would
-            // then grow under Joel's eye. The name servers and the uptime
-            // need no such wait: they load as the shell starts, a file
-            // each, long before the machine daemon's first word on the
-            // links and the second's gathering after it.
-            if (link.kind === "wired" && cables[link.name] === undefined) {
+            // then grow under Joel's eye; but for a card given up, made
+            // as the daemon says it, since its files may not land for a
+            // while. The name servers and the uptime need no such wait:
+            // they load as the shell starts, a file each, long before the
+            // machine daemon's first word on the links and the second's
+            // gathering after it.
+            if (link.kind === "wired" && cables[link.name] === undefined
+                && !stuck(link.name)) {
                 if (glances[link.name] !== undefined)
                     made[link.name] = glances[link.name];
                 recable();
@@ -374,11 +391,17 @@ Provider {
     // loads isn't kept.
     property var cablesAsked: []
     property var cableLoading: null
-    // When each card whose files last took too long was given up, by its
-    // name (cableGivenUp).
+    // Each card whose files last took too long, by its name: { at, wait,
+    // state }, when it was given up, how long until it's asked again, and
+    // the daemon's word on its link then (cableGivenUp). A clock stepped
+    // back asks it again rather than holding it off longer.
     property var cablesStuck: Object.create(null)
     function stuck(name) {
-        return Date.now() - (cablesStuck[name] ?? 0) < 60000;
+        const given = cablesStuck[name];
+        if (given === undefined)
+            return false;
+        const since = Date.now() - given.at;
+        return since >= 0 && since < given.wait;
     }
 
     // A cable's link as last loaded, or null before its files first land,
@@ -396,11 +419,12 @@ Provider {
 
     // Loads every card's files again in the background, a file at a time
     // through one view, the cables said as they were until they land. A
-    // card already waiting or under way isn't asked twice.
+    // card already waiting or under way isn't asked twice, and one given
+    // up is passed over when its turn comes (nextCable).
     function recable() {
         const cards = (links ?? []).filter(link => link.kind === "wired")
             .map(link => link.name)
-            .filter(name => !cablesAsked.includes(name) && !stuck(name)
+            .filter(name => !cablesAsked.includes(name)
                 && (cableLoading === null || cableLoading.stale || cableLoading.name !== name));
         if (cards.length === 0)
             return;
@@ -410,6 +434,7 @@ Provider {
     }
 
     function nextCable() {
+        cablesAsked = cablesAsked.filter(name => !stuck(name));
         if (cablesAsked.length === 0) {
             cableLoading = null;
             cableWatch.stop();
@@ -448,15 +473,23 @@ Provider {
             Qt.callLater(cableFile);
             return;
         }
-        if (cablesStuck[loading.name] !== undefined) {
-            const still = Object.assign(Object.create(null), cablesStuck);
-            delete still[loading.name];
-            cablesStuck = still;
+        unstick([loading.name]);
+        // The next card is asked though keeping this one fails, so the
+        // watchdog never gives up a card whose files all landed.
+        try {
+            if (!loading.stale)
+                keepCable(loading.name, loading.state,
+                    Interfaces.cable(file => loading.texts[file] ?? ""));
+        } finally {
+            nextCable();
         }
-        if (!loading.stale)
-            keepCable(loading.name, loading.state,
-                Interfaces.cable(file => loading.texts[file] ?? ""));
-        nextCable();
+    }
+    function unstick(names) {
+        const still = Object.assign(Object.create(null), cablesStuck);
+        for (const name of names)
+            delete still[name];
+        if (Object.keys(still).length !== Object.keys(cablesStuck).length)
+            cablesStuck = still;
     }
 
     // A card's cable kept as its files said, with the daemon's word on
@@ -478,8 +511,9 @@ Provider {
 
     // The cables of cards no longer among the links, or whose link the
     // daemon says has changed since their files began to load, forgotten,
-    // so its newer word is said until they're loaded again; and a card
-    // gone, or changed, under way or waiting, isn't kept once loaded.
+    // so its newer word is said until they're loaded again; a card gone,
+    // or changed, under way or waiting, isn't kept once loaded; and one
+    // given up is asked again at once when plugged back in or changed.
     function forgetCables() {
         const cards = Object.create(null);
         for (const link of links ?? [])
@@ -497,6 +531,7 @@ Provider {
             cableStates = states;
         }
         cablesAsked = cablesAsked.filter(name => cards[name] !== undefined);
+        unstick(Object.keys(cablesStuck).filter(name => cards[name] !== cablesStuck[name].state));
         if (cableLoading !== null && cards[cableLoading.name] !== cableLoading.state)
             cableLoading.stale = true;
     }
@@ -504,11 +539,13 @@ Provider {
     // A file that takes two seconds, as one a busy driver holds up does,
     // gives up its card's load, its cable said as last loaded, or as the
     // daemon says its link before any has landed, rather than as a file
-    // that said nothing, and warned of. Pointed at no file, the view lets
-    // go of the load, so one landing late is dropped rather than taken
-    // for another file's. The card is asked again a minute on, not each
-    // second, since a read that hangs holds one of the threads every
-    // view in the shell loads on for as long as it does.
+    // that said nothing, and warned of, and its drawer made as the daemon
+    // says it. Pointed at no file, the view lets go of the load, so one
+    // landing late is dropped rather than taken for another file's. The
+    // card is asked again a minute on, then twice as long each time it's
+    // given up again, to an hour, not each second, since a read that
+    // hangs holds one of the threads every view in the shell loads on for
+    // as long as it does.
     Timer {
         id: cableWatch
 
@@ -519,13 +556,17 @@ Provider {
         const loading = cableLoading;
         if (loading === null)
             return;
+        const before = cablesStuck[loading.name];
+        const wait = Math.min(before === undefined ? 60000 : before.wait * 2, 3600000);
         const still = Object.assign(Object.create(null), cablesStuck);
-        still[loading.name] = Date.now();
+        still[loading.name] = { at: Date.now(), wait: wait, state: loading.state };
         cablesStuck = still;
         console.warn(`Networks: ${loading.name}'s ${cableFiles[loading.at]} took two seconds`
-            + " to load, so its cable is said as last loaded, and asked again in a minute");
+            + ` to load, so its cable is said as last loaded, and asked again in ${wait / 60000}`
+            + " min");
         cableProbe.path = "";
         nextCable();
+        glanceSoon();
     }
 
     Connections {

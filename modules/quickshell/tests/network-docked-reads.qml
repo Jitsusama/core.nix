@@ -151,7 +151,16 @@ ShellRoot {
         function onAnswered() {
             root.told.push(root.said());
         }
+
+        function onCablesChanged() {
+            if (networks.cables.enp0s1 !== undefined)
+                root.kept.push(networks.cableStates.enp0s1);
+        }
     }
+
+    // The daemon's word each time the first card's cable was kept, as it
+    // stood when its files began to load.
+    property var kept: []
 
     Until {
         id: waits
@@ -275,7 +284,20 @@ ShellRoot {
         shown.open = true;
         waits.until("the launcher told of the uptime once the opening's load lands",
             within(2000, () => told.includes("100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in 1 h")),
-            root.recabled);
+            root.steady);
+    }
+
+    // The uptime loaded again as it was counted on: nothing is told.
+    function steady() {
+        told = [];
+        Written.written(up, `${Math.round(networks.uptime())}.00 4000.00\n`);
+        networks.reloadFacts();
+        waits.until("the facts loaded again", within(2000, () => networks.factsAsked.length === 0),
+            () => {
+            Expect.expect("an uptime load that agrees with the count tells nothing",
+                told.length === 0, JSON.stringify(told));
+            root.recabled();
+        });
     }
 
     // Open, with no cable shown, so nothing loads it each second: once its
@@ -298,19 +320,31 @@ ShellRoot {
             within(2500, () => told.some(each => each.startsWith("1 Gb/s | "))), root.relinked);
     }
 
-    // The daemon says the cable has lost its link, newer than the files
-    // last loaded: it's said as the daemon says until they land again.
+    // The daemon says the cable has lost its link as its files load,
+    // newer than they are: it's said as the daemon says until they land
+    // again, and the load begun before isn't kept.
     function relinked() {
         shown.held = [];
+        kept = [];
+        networks.recable();
+        Expect.expect("the cable's load is under way as its link changes",
+            networks.cableLoading?.name === "enp0s1", JSON.stringify(networks.cableLoading));
         networks.links = [Object.assign({}, docked, { state: "no link" })];
         Expect.expect("a cable the daemon says has changed is said as it says",
             said().startsWith("nothing at the other end | "), said());
-        waits.until("the changed cable loaded again", within(2000, root.swept), root.held);
+        waits.until("the changed cable loaded again", within(2000, () => root.swept()
+            && networks.cables.enp0s1 !== undefined), () => {
+            Expect.expect("a load begun before its link changed isn't kept",
+                kept.length > 0 && kept.every(state => state === "no link"),
+                JSON.stringify(kept));
+            root.held();
+        });
     }
 
     // A second card plugged in, its load held up and given up: it's said
-    // as the daemon tells it, the first card as loaded; nothing is left
-    // reading, and asked again it's not loaded again at once.
+    // as the daemon tells it, the first card as loaded, and its drawer
+    // made so; nothing is left reading, and asked again it's not loaded
+    // again at once. Facts that never land are given up too.
     function held() {
         networks.links = [second, docked];
         networks.answer("ethernet");
@@ -330,13 +364,64 @@ ShellRoot {
                 JSON.stringify(networks.cables.enp0s2));
             Expect.expect("a card held up leaves nothing reading",
                 !networks.stillReading, String(networks.stillReading));
+            networks.reloadFacts();
+            networks.factsGivenUp();
+            Expect.expect("facts given up leave nothing reading",
+                !networks.stillReading, String(networks.stillReading));
             networks.recable();
             Expect.expect("a card held up isn't loaded again at once",
                 networks.cableLoading?.name !== "enp0s2"
                     && !networks.cablesAsked.includes("enp0s2"),
                 JSON.stringify([networks.cableLoading, networks.cablesAsked]));
-            root.unplugged();
+            waits.until("a card held up has its drawer made as the daemon says it",
+                within(2000, () => networks.glances.enp0s2 !== undefined), root.retried);
         });
+    }
+
+    // A minute on, the card held up is asked again; held up again, it
+    // waits twice as long.
+    function retried() {
+        const first = networks.cablesStuck.enp0s2;
+        Expect.expect("a card held up waits a minute", first?.wait === 60000,
+            JSON.stringify(first));
+        first.at -= 61000;
+        networks.recable();
+        Expect.expect("a card held up is asked again once its wait is over",
+            networks.cableLoading?.name === "enp0s2", JSON.stringify(networks.cableLoading));
+        networks.cableGivenUp();
+        Expect.expect("a card held up again waits twice as long",
+            networks.cablesStuck.enp0s2?.wait === 120000,
+            JSON.stringify(networks.cablesStuck.enp0s2));
+        waits.until("the other card loaded again", within(2000, root.swept), root.requeued);
+    }
+
+    // Its wait over, the card's link changes as it loads, so it's asked
+    // again, and then it's held up: it isn't loaded again at once,
+    // though it was waiting its turn.
+    function requeued() {
+        networks.cablesStuck.enp0s2.at -= 121000;
+        networks.recable();
+        networks.links = [Object.assign({}, second, { state: "no link" }), docked];
+        Expect.expect("a card changed as it loads is asked again",
+            networks.cablesAsked.includes("enp0s2"), JSON.stringify(networks.cablesAsked));
+        networks.cableGivenUp();
+        Expect.expect("a card held up as it waits its turn isn't loaded again at once",
+            networks.cableLoading?.name !== "enp0s2"
+                && !networks.cablesAsked.includes("enp0s2"),
+            JSON.stringify([networks.cableLoading, networks.cablesAsked]));
+        waits.until("the other card loaded once more", within(2000, root.swept),
+            root.recovered);
+    }
+
+    // Its link back as it was and its wait over, the card held up is
+    // loaded once its files land, and held up no more.
+    function recovered() {
+        networks.links = [second, docked];
+        networks.cablesStuck.enp0s2.at -= 61000;
+        networks.recable();
+        waits.until("a card held up is loaded once asked after its wait", within(2000, () =>
+            root.swept() && networks.cables.enp0s2 !== undefined
+                && networks.cablesStuck.enp0s2 === undefined), root.unplugged);
     }
 
     // The cards pulled out as the first's files load again: what they
