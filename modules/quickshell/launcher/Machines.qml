@@ -109,6 +109,12 @@ Provider {
     // What RealmMachines.js needs to say them: the words, the realms, now, this
     // machine's core, how the disk guard bands a disk, and a moment's day and
     // time as the launcher says them everywhere (When.js).
+    // The row a mycelium:machine/ link lands on, by its key, or none for a
+    // name no node lists (RealmMachines.js's linked).
+    function linked(said) {
+        return Listed.linked(records, said);
+    }
+
     function placeNow(listed) {
         const here = listed.find(record => record.here === true);
         const said = Words.of("machines").said ?? {};

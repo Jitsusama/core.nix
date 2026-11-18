@@ -1899,44 +1899,43 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
     """Machine and a machine's name opens Machines, that machine's row selected.
 
     The system page's Open in the Launcher asks it (BMDYSH and XUBK2E, 2026-11-17), since a
-    page can't act: the row's own acts are a step in. Only the first word names one; a name
-    no node lists is said as one the launcher hasn't, and opens nothing.
+    page can't act. Only the first word names one; a name no node lists is said as one the
+    launcher hasn't, and opens nothing. Here one node lists only this machine, which Machines
+    lists first, so the case proves the call reaches Machines, not which row it lands on:
+    tests/machines.qml holds which row a link names, over several realms' machines.
     """
-    here = shell.as_account("uname -n").strip()
+    name = shell.as_account("uname -n").strip()
 
-    def on(name: str) -> Callable[[Json], bool]:
+    def on(wanted: str) -> Callable[[Json], bool]:
         return lambda shown: (
             shown["open"]
             and shown["held"] == ["machines"]
-            and (shown["selected"] or {}).get("name") == name
+            and (shown["selected"] or {}).get("name") == wanted
         )
 
-    for said in (here, f"{here} update"):
+    for said in (name, f"{name} update"):
         did = followed(shell, "machine", said)
-        assert did == {"done": True, "said": f"opened Machines \u203a {here}"}, did
-        shell.launcher_until(on(here))
+        assert did == {"done": True, "said": f"opened Machines \u203a {name}"}, did
+        shell.launcher_until(on(name))
         shell.close_launcher()
-    did = followed(shell, "machine", "skiff.gone", quiet=False)
+    did = followed(shell, "machine", "skiff.gone")
     assert did == {"error": "the launcher has no machine called skiff.gone"}, did
     assert not shell.showing()["open"], shell.showing()
-    opened(shell)
-    in_use = {"done": False, "said": "the launcher is in use, so the link opened nothing"}
-    assert followed(shell, "machine", here, quiet=False) == in_use
-    shell.close_launcher()
 
 
 def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: Shell) -> None:
-    """A link asking talkTo or network while Joel has the launcher or the line up opens nothing.
+    """A link while Joel has the launcher or the line up opens nothing: talkTo, network, machine.
 
     A page picks when its link is followed, so one followed while he's typing would take his
     place and his words (ISXEG8, 2026-11-15 [dd375f5e]): what he's typed and where he is stay
     as they are, and the link is told the launcher's in use.
     """
     in_use = {"done": False, "said": "the launcher is in use, so the link opened nothing"}
+    links = (("talkTo", "LISTEN"), ("network", "repo.core-nix"), ("machine", here()))
     opened(shell)
     shell.type_in("listening")
     was = shell.showing()
-    for verb, said in (("talkTo", "LISTEN"), ("network", "repo.core-nix")):
+    for verb, said in links:
         assert followed(shell, verb, said, quiet=False) == in_use, (verb, said)
     shown = shell.showing()
     kept = ("open", "held", "typed", "mode", "asking")
@@ -1946,7 +1945,7 @@ def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: S
     shell.as_account(shell.ipc("line"))
     shell.launcher_until(lambda shown: shown["line"]["up"] and shown["line"]["keys"])
     try:
-        for verb, said in (("talkTo", "LISTEN"), ("network", "repo.core-nix")):
+        for verb, said in links:
             assert followed(shell, verb, said, quiet=False) == in_use, (verb, said)
         assert not shell.showing()["open"], shell.showing()
     finally:

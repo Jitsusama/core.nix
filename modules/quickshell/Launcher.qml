@@ -1549,9 +1549,11 @@ Scope {
     // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking
     // talkTo or network, never opens over: what he's typed, and where he is, stay as they are,
     // and the link opens nothing (ISXEG8's ruling, 2026-11-15 [dd375f5e]). A link opens either
-    // only from closed, holding his first keys back (Prompt.qml's linked).
+    // only from closed, holding his first keys back (Prompt.qml's linked). One still opening
+    // counts, since open is set only once its first frame is drawn, and his keys are
+    // already the launcher's before then.
     function inUse() {
-        return open || talkLine.up;
+        return open || opening || talkLine.up;
     }
     readonly property var inUseSaid: ({
             done: false,
@@ -1600,13 +1602,12 @@ Scope {
     // it did as JSON, as talkTo does, a name no node lists opening nothing.
     function showMachine(said) {
         const machines = collections.find(one => one.settings.name === "machines") ?? null;
-        const [name] = String(said ?? "").trim().split(/\s+/u);
+        const { name, key } = machines ? machines.linked(said) : { name: String(said ?? ""), key: null };
         console.info(`launcher: asked from outside to show the machine ${name}`);
-        if (machines === null || !machines.records.some(record => record.name === name))
+        if (key === null)
             return { error: `the launcher has no machine called ${name}` };
         if (inUse())
             return inUseSaid;
-        const key = `machines:${name}`;
         intoOn("machines", row => row.key === key);
         prompt.linked();
         return { done: true, said: `opened Machines \u203a ${name}` };

@@ -89,8 +89,6 @@ opening 'mycelium:cell/DAHTNJ@kestrel/go#notice:12' 'ipc call launcher goTo DAHT
 opening 'mycelium:network/repo.core-nix' 'ipc call launcher network repo.core-nix'
 # The system page's Open in the Launcher, on a machine's row.
 opening 'mycelium:machine/osprey?from=system' 'ipc call launcher machine osprey'
-opening 'mycelium:machine/-h' ''
-opening 'mycelium:machine/osp;rey' ''
 opening 'mycelium:cell/dahtnj' ''
 opening 'mycelium:cell/DAHTNJ@kes;trel' ''
 opening 'mycelium:cell/-h' ''

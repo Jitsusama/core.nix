@@ -161,6 +161,15 @@ function ordered(records) {
         Order.live({ stands: rank, name: record => record.name }));
 }
 
+// The row a mycelium:machine/ link lands on, as Machines keys it: the
+// machine its first word names, whichever realm's node lists it, and
+// none for a name no node lists, whole names only.
+function linked(records, said) {
+    const [name] = String(said ?? "").trim().split(/\s+/u);
+    const listed = name !== "" && records.some(record => record.name === name);
+    return { name: name, key: listed ? `machines:${name}` : null };
+}
+
 // A fact of the drawer, or none where its value isn't said.
 function fact(label, value, figure) {
     if (value === "" || value === null || value === undefined) {

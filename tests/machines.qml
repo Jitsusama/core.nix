@@ -11,7 +11,8 @@
 // never repeating the side, and leaves out what no node said; Start a
 // Session says why the node won't place on one, else how it stands; an
 // update says how it ended, as its updater said it, or why it couldn't
-// be asked. It exits 0 once every case holds, and otherwise 1, saying
+// be asked; a machine link lands on the row its first word names. It
+// exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
 import QtQuick
 import "RealmMachines.js" as Machines
@@ -254,5 +255,18 @@ QtObject {
                 "skiff refused the update", "couldn't update skiff: its node didn't answer",
                 "couldn't update skiff: skiff is out of reach",
                 "couldn't update skiff: its node didn't answer"]), JSON.stringify(ended));
+
+        // The row a mycelium:machine/ link lands on: any realm's machine,
+        // named by the first word said, and none for a name no node lists.
+        const linked = ["lantern", "  hermit update ", "anchor", "skiff.gone", "lant", ""]
+            .map(asked => Machines.linked(records, asked));
+        expect("a link lands on the row of the machine its first word names, any realm's",
+            JSON.stringify(linked) === JSON.stringify([
+                { name: "lantern", key: "machines:lantern" },
+                { name: "hermit", key: "machines:hermit" },
+                { name: "anchor", key: "machines:anchor" },
+                { name: "skiff.gone", key: null },
+                { name: "lant", key: null },
+                { name: "", key: null }]), JSON.stringify(linked));
     }
 }
