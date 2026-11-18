@@ -14,8 +14,9 @@
 //! It takes the shape every command of ours does (docs/commands.md),
 //! through the terminal kit, and asks wifid and starts its proxy before
 //! any window: with no network wanting a sign-in it says so and exits 0,
-//! where wifid can't say it exits 69, and where the proxy won't start, or
-//! GTK ends before its window closes, it exits 1. It says only text, so
+//! where wifid can't say it exits 69, and where the network's page isn't
+//! on the web, the proxy won't start, or GTK ends before its window
+//! closes, it exits 1. It says only text, so
 //! a form for a program is refused as usage. The window runs once
 //! the kit's body has ended, since a panic in one of GTK's callbacks ends
 //! the process at GTK's edge, where the kit's catch never sees it and
@@ -72,7 +73,8 @@ fn help() -> Help {
     )
     .exit(
         Exit::Failed,
-        "the window's proxy wouldn't start, or GTK ended before the window closed",
+        "the network's page isn't on the web, the window's proxy wouldn't start, \
+         or GTK ended before the window closed",
     )
 }
 
@@ -133,10 +135,25 @@ fn prepared(socket: &Path, patience: Duration) -> Result<Option<(Portal, String)
     let Some(portal) = wanting(&described) else {
         return Ok(None);
     };
+    // The page is whatever the network names, so a network naming a file
+    // or a script would have the window open it.
+    if !on_the_web(&portal.page) {
+        return Err(
+            Failure::new(Exit::Failed, "the network's sign-in page isn't on the web")
+                .because(format!("{} named {}", portal.network, portal.page)),
+        );
+    }
     let proxy = proxy(&portal.card).map_err(|error| {
         Failure::new(Exit::Failed, "the window's proxy wouldn't start").because(error.to_string())
     })?;
     Ok(Some((portal, proxy)))
+}
+
+/// Whether a page is one the web serves, over HTTP or HTTPS.
+fn on_the_web(page: &str) -> bool {
+    page.split_once("://").is_some_and(|(scheme, _)| {
+        scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+    })
 }
 
 /// Refuses any word, since the command takes none, so a typo never opens
@@ -485,6 +502,32 @@ mod tests {
         assert!(
             proxy.starts_with("socks5://") && proxy.contains("@127.0.0.1:"),
             "the proxy isn't the window's own on loopback: {proxy}"
+        );
+    }
+
+    #[test]
+    fn a_page_off_the_web_is_refused_before_any_window() {
+        for page in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "about:blank",
+            "front-desk.inn",
+        ] {
+            let mut named = inn("signIn");
+            named["cards"][0]["signIn"] = json!(page);
+            let (_dir, socket, _wifid) = wifi::tests::wifid(vec![json!({"parameters": named})]);
+
+            let refused = prepared(&socket, PATIENCE).map(|_| ());
+
+            assert_eq!(
+                refused.map_err(|failure| failure.code()),
+                Err(1),
+                "a window was wanted onto {page}"
+            );
+        }
+        assert!(
+            on_the_web("HTTPS://front-desk.inn/"),
+            "a page's scheme was read by case"
         );
     }
 
