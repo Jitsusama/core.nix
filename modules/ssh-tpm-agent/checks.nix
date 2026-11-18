@@ -4,6 +4,7 @@
   account,
   bareNixos,
   holds,
+  lib,
   pkgs,
   self,
   workstation,
@@ -25,8 +26,9 @@
     );
 
   # The agent holding Joel's keys reads its gate from where its unit says,
-  # and it's built with its tests, which judge ./gate-cases.txt by ./gate.conf, so
-  # this check builds only once the agent refuses what each case says.
+  # keeps no core, and leaves a shell the agent it was given; and it's built
+  # with its tests, which judge ./gate-cases.txt by ./gate.conf, so this check
+  # builds only once the agent refuses what each case says.
   ssh-tpm-agent-refuses-agents =
     let
       user = account workstation;
@@ -36,6 +38,7 @@
         user.xdg.configFile."ssh-tpm-agent/gate".source == ./gate.conf
         && builtins.elem gate user.systemd.user.services.ssh-tpm-agent.Service.Environment
         && user.systemd.user.services.ssh-tpm-agent.Service.LimitCORE or null == 0
+        && lib.hasInfix "\${SSH_AUTH_SOCK:-" user.sshAuthSock.initialization.zsh
         && builtins.elem ./refuses-agents.patch agent.patches
         && agent.doCheck
       );

@@ -70,9 +70,11 @@
     # the one holding Joel's keys, has one; the agents' own signing agents
     # run the same program without it. It sits in his own config, which
     # anything running as him may rewrite, so it catches accidents rather
-    # than escapes; one missing, emptied or unreadable refuses everyone. So
-    # rolling back to before the gate leaves the running agent refusing
-    # until it restarts, which asks for the PIN again.
+    # than escapes. One emptied, unreadable or refusing nowhere refuses
+    # everyone, since it looks just like one that works. One missing serves
+    # everyone, journalling each request, since that's what rolling back to
+    # before the gate leaves the running agent with: refusing would shut
+    # Joel out until a restart asked for the PIN again.
     xdg.configFile."ssh-tpm-agent/gate".source = ./gate.conf;
     systemd.user.services.ssh-tpm-agent.Service.Environment = [
       "SSH_TPM_AGENT_GATE=${config.xdg.configHome}/ssh-tpm-agent/gate"
@@ -83,6 +85,16 @@
     # may: so it keeps none, with a hard limit no process of his can raise
     # with prlimit.
     systemd.user.services.ssh-tpm-agent.Service.LimitCORE = 0;
+
+    # Home Manager has every shell not reached over SSH point SSH_AUTH_SOCK
+    # at this agent over whatever it was given, so a shell an agent's command
+    # started took Joel's agent back in place of the agents' own proxy its
+    # session was given. A shell keeps the agent it was given, and only one
+    # given none, as the account's services are at login, points here. zsh's
+    # follows bash's.
+    sshAuthSock.initialization.bash = lib.mkForce ''
+      export SSH_AUTH_SOCK="''${SSH_AUTH_SOCK:-$XDG_RUNTIME_DIR/ssh-tpm-agent.sock}"
+    '';
 
     # The login key, which the agent loads from ~/.ssh when it starts and
     # which asks for its PIN once a session.

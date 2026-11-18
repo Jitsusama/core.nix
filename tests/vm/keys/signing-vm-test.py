@@ -160,6 +160,9 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
     """
     socket = f"{joel.runtime}/ssh-tpm-agent.sock"
     assert keys.joel in joel.run(f"SSH_AUTH_SOCK={socket} ssh-add -l")
+    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -o cat"
+    # The journal is read from here on, so only this listing's refusal can pass it.
+    since = joel.run(f"{journal} -n 0 --show-cursor").split("cursor: ", 1)[1].strip()
     listing = (
         f"systemd-run --user --slice=agents --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
         " $(command -v ssh-add) -l 2>&1"
@@ -167,9 +170,10 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
     said = joel.run(listing, succeed=False)
     assert "refused" in said
     assert keys.joel not in said
-    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -o cat"
     joel.machine.wait_until_succeeds(
-        f'{journal} | grep -q "refused a request from agents\' work"', timeout=30
+        f"{journal} --after-cursor={shlex.quote(since)}"
+        ' | grep -q "refused a request from agents\' work"',
+        timeout=30,
     )
 
 
