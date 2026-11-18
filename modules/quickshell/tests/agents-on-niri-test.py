@@ -1923,7 +1923,7 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
     did = followed(shell, "machine", "skiff.gone")
     assert did == {
         "done": False,
-        "said": "Machines doesn't list the machine the link named: no node of yours has said it"
+        "said": "the link named a machine Machines doesn't list: no node of yours has said it"
         " holds it, or none has answered since the shell started",
     }, did
     shell.launcher_until(
