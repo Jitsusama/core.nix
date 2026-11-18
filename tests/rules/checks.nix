@@ -409,6 +409,7 @@
         warp = pkgs.callPackage ../../modules/warp/package.nix { };
         wifid = pkgs.callPackage ../../modules/wifid/package.nix { };
         wifid-calls = pkgs.callPackage ../../modules/wifid/calls/package.nix { };
+        wifid-sign-in = pkgs.callPackage ../../modules/wifid/sign-in/package.nix { };
         windows = pkgs.callPackage ../../modules/windows/package.nix { };
         without-syncfs = pkgs.callPackage ../../modules/nix-daemon/without-syncfs/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };

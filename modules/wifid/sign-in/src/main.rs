@@ -10,6 +10,12 @@
 //!
 //! After each page loads, wifid checks the network again, and the window
 //! closes once the network reaches beyond itself, or the card leaves it.
+//!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit, and asks wifid and starts its proxy before
+//! any window: with no network wanting a sign-in it says so and exits 0,
+//! where wifid can't say or the proxy won't start it exits 69, and a
+//! window that ends other than by closing exits 1.
 
 mod socks;
 mod wifi;
@@ -20,6 +26,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
+use std::process::ExitCode;
 use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
@@ -29,6 +36,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use serde_json::{Value, json};
 use socket2::{Domain, Socket, Type};
+use terminal_kit::{Exit, Failure, Help};
 use webkit6::prelude::*;
 
 use socks::{Credentials, Target};
@@ -39,41 +47,57 @@ const PATIENCE: Duration = Duration::from_secs(10);
 /// How many times a page that didn't load is tried again.
 const RETRIES: u32 = 5;
 
-const HELP: &str = "\
-wifid-sign-in  opens the sign-in page of the network that wants one
+fn help() -> Help {
+    Help::new(
+        "wifid-sign-in",
+        "opens the sign-in page of the network that wants one",
+    )
+    .example("wifid-sign-in", "what the shell runs when Joel asks")
+    .exit(
+        Exit::Unavailable,
+        "wifid didn't answer, or the window's proxy wouldn't start",
+    )
+    .exit(Exit::Failed, "the window ended other than by closing")
+}
 
-EXAMPLES
-  wifid-sign-in   what the shell runs when Joel asks
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        takes_no_words(&context.args)?;
+        let described =
+            wifi::call(Path::new(wifi::SOCKET), "Describe", json!({})).map_err(|error| {
+                Failure::new(
+                    Exit::Unavailable,
+                    "wifid didn't say which network wants a sign-in",
+                )
+                .because(error.to_string())
+            })?;
+        let Some(portal) = wanting(&described) else {
+            let _ = context.tell("done", "muted", "no network wants a sign-in");
+            return Ok(());
+        };
+        let proxy = proxy(&portal.card).map_err(|error| {
+            Failure::new(Exit::Unavailable, "the window's proxy wouldn't start")
+                .because(error.to_string())
+        })?;
+        show(portal, proxy)
+    })
+}
 
-EXIT
-  0   closed, or no network wants a sign-in
-  64  asked wrongly
-";
-
-/// What the command line asks for: the window, its help, or a refusal of
-/// words it doesn't take. It takes none, so --help or a typo never opens
-/// the window onto a page.
-fn asked(words: &[String]) -> Result<bool, String> {
-    match words {
-        [] => Ok(false),
-        [word] if word == "-h" || word == "--help" => Ok(true),
-        [word, ..] => Err(format!("wifid-sign-in takes no words, not {word}")),
+/// Refuses any word, since the command takes none, so a typo never opens
+/// the window onto a page; the kit has answered --help before this.
+fn takes_no_words(words: &[String]) -> Result<(), Failure> {
+    match words.first() {
+        None => Ok(()),
+        Some(word) => Err(Failure::new(
+            Exit::Usage,
+            format!("wifid-sign-in takes no words, not {word}"),
+        )
+        .try_this("wifid-sign-in --help")),
     }
 }
 
-fn main() -> glib::ExitCode {
-    let words: Vec<String> = std::env::args().skip(1).collect();
-    match asked(&words) {
-        Ok(false) => {}
-        Ok(true) => {
-            print!("{HELP}");
-            return glib::ExitCode::SUCCESS;
-        }
-        Err(wrong) => {
-            eprintln!("{wrong}\n  try  wifid-sign-in --help");
-            return glib::ExitCode::new(64);
-        }
-    }
+/// Shows the window onto the portal's page until it closes.
+fn show(portal: Portal, proxy: String) -> Result<(), Failure> {
     // bubblewrap refuses to start WebKit's sandbox for a process holding
     // capabilities, and WebKit then gives up. A session can hand its
     // programs some, as a compositor run from a system service does, and
@@ -92,8 +116,15 @@ fn main() -> glib::ExitCode {
     let app = gtk::Application::builder()
         .application_id("io.jitsusama.WifiSignIn")
         .build();
-    app.connect_activate(open);
-    app.run_with_args::<&str>(&[])
+    app.connect_activate(move |app| open(app, &portal, &proxy));
+    if app.run_with_args::<&str>(&[]) == glib::ExitCode::SUCCESS {
+        Ok(())
+    } else {
+        Err(Failure::new(
+            Exit::Failed,
+            "the sign-in window ended other than by closing",
+        ))
+    }
 }
 
 /// The card whose network wants a sign-in, the network, and where.
@@ -125,20 +156,10 @@ fn still_wanted(described: &Value, portal: &Portal) -> bool {
         .is_some_and(|card| card["network"] == portal.network.as_str() && card["reach"] != "online")
 }
 
-fn open(app: &gtk::Application) {
-    let socket = Path::new(wifi::SOCKET);
-    let described = wifi::call(socket, "Describe", json!({}));
-    let Some(portal) = described.ok().as_ref().and_then(wanting) else {
-        eprintln!("no network wants a sign-in");
-        return;
-    };
-    let proxy = match proxy(&portal.card) {
-        Ok(proxy) => proxy,
-        Err(error) => return eprintln!("can't open the window's proxy: {error}"),
-    };
-
+/// Opens the window onto the portal's page, its traffic through the proxy.
+fn open(app: &gtk::Application, portal: &Portal, proxy: &str) {
     let session = webkit6::NetworkSession::new_ephemeral();
-    let settings = webkit6::NetworkProxySettings::new(Some(&proxy), &[]);
+    let settings = webkit6::NetworkProxySettings::new(Some(proxy), &[]);
     session.set_proxy_settings(webkit6::NetworkProxyMode::Custom, Some(&settings));
     let view = webkit6::WebView::builder()
         .network_session(&session)
@@ -290,13 +311,13 @@ mod tests {
                 .map(|word| (*word).to_owned())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(asked(&words(&[])), Ok(false));
-        assert_eq!(asked(&words(&["--help"])), Ok(true));
-        assert_eq!(asked(&words(&["-h"])), Ok(true));
-        for wrong in [&["flsh"][..], &["--halp"], &["--help", "x"]] {
-            assert!(
-                asked(&words(wrong)).is_err(),
-                "{wrong:?} would have opened the window"
+        assert!(takes_no_words(&words(&[])).is_ok(), "no words was refused");
+        for wrong in [&["flsh"][..], &["--halp"], &["x", "y"]] {
+            let refused = takes_no_words(&words(wrong));
+            assert_eq!(
+                refused.map_err(|failure| failure.code()),
+                Err(64),
+                "{wrong:?} wasn't refused as asked wrongly"
             );
         }
     }

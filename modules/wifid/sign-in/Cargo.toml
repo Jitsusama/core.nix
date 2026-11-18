@@ -12,6 +12,7 @@ gtk4 = { version = "0.11", features = ["v4_10"] }
 libc = "0.2"
 serde_json = "1.0"
 socket2 = { version = "0.6", features = ["all"] }
+terminal-kit = { path = "../../terminal-kit" }
 webkit6 = { version = "0.6", features = ["v2_52"] }
 
 [dev-dependencies]

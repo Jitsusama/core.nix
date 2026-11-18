@@ -16,8 +16,4 @@
     "exits"
     "helps"
   ];
-  wifid-sign-in = [
-    "kit"
-    "helps"
-  ];
 }
