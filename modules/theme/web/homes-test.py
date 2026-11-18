@@ -301,6 +301,10 @@ def test_a_second_dot_step_is_refused(browser: Browser, tmp_path: Path) -> None:
     rows = json.dumps({"sites": dotted})
     assert probed(browser, tmp_path, dotted, NOTHING, rows, code=[NOTEBOOK]) == [
         (
+            '"././code/" in sites.json homes things on no plain path, so the home leaves it '
+            "out: steps of letters, digits and -._~, none starting with a dot"
+        ),
+        (
             '"././code/" in rows.json homes things on no plain path: '
             "steps of letters, digits and -._~, none starting with a dot"
         ),
