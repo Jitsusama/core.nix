@@ -276,9 +276,11 @@ in
               type = types.bool;
               default = false;
               description = ''
-                Whether it refuses only an ask, before anything is fetched,
-                and never the switch of what that ask built, such as a load
-                too high to build in: by then the load is the build's own.
+                Whether it refuses only an ask the follower alone made,
+                before anything is fetched, and never the switch of what
+                that ask built, such as a load too high to build in: by then
+                the load is the build's own. A person's ask builds anyway,
+                as theirs to make.
               '';
             };
             refusesAtMost = mkOption {

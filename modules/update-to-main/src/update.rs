@@ -137,7 +137,7 @@ fn run(
     // Switching what waited for a grant builds nothing, so a check that
     // refuses the ask alone is asked only past it: the load it reads may
     // be the waiting build's own.
-    if let Some(why) = busy_at_the_ask(config) {
+    if let Some(why) = busy_at_the_ask(config, following) {
         return Line::Refused { commit: last, why };
     }
     tell(&Line::Fetching);
@@ -656,15 +656,24 @@ fn busy(config: &Config) -> Option<String> {
         .find_map(is_busy)
 }
 
-/// What the machine is busy with as an ask comes, before anything is
-/// fetched, when any of its commands that refuse the ask alone says so
-/// and hasn't refused asks for longer than it may.
-fn busy_at_the_ask(config: &Config) -> Option<String> {
-    config
+/// What the machine is busy with as an ask the follower alone made comes,
+/// before anything is fetched, when any of its commands that refuse the
+/// ask alone says so and hasn't refused asks for longer than it may. A
+/// person's ask builds anyway: such a check spares their work a build
+/// they didn't ask for, and one they ask for is theirs to make, as one to
+/// mend the check itself may be.
+fn busy_at_the_ask(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
+    // Who asked is looked at only where it matters, since each look reads
+    // whether a person has joined the ask since.
+    let mut checks = config
         .refuse_while
         .iter()
         .filter(|busy| !busy.follower_waits && busy.refuses_the_ask_alone)
-        .find_map(|busy| refused_for_at_most(config, busy, is_busy(busy)))
+        .peekable();
+    if checks.peek().is_none() || !following() {
+        return None;
+    }
+    checks.find_map(|busy| refused_for_at_most(config, busy, is_busy(busy)))
 }
 
 /// How long after the last refusal a stretch of them ends, so the next

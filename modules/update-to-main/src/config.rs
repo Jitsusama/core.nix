@@ -230,9 +230,10 @@ pub struct Busy {
     /// someone is typing into, though it is to switch once they pause.
     #[serde(default)]
     pub every_ask_waits: bool,
-    /// Whether it refuses only an ask, before anything is fetched, and
-    /// never the switch of what that ask built: a load it reads is the
-    /// build's own by then, as a five-minute average stays high for minutes.
+    /// Whether it refuses only an ask the follower alone made, before
+    /// anything is fetched, and never the switch of what that ask built: a
+    /// load it reads is the build's own by then, as a five-minute average
+    /// stays high for minutes. A person's ask builds anyway.
     #[serde(default)]
     pub refuses_the_ask_alone: bool,
     /// How many seconds at most it refuses asks in a row, after which one

@@ -136,6 +136,21 @@ in
           refusesOnAMac "someone is at the machine"
         )
       );
+  # The Mac's room check names a question nix-offload answers, not words it
+  # refuses as asked wrongly, which update-to-main would read as can't tell
+  # and refuse all but one ask in two hours for: while this change was
+  # written, nix-offload had no busy yet, and the words alone passed above.
+  # Built here from the package the Mac names, its words answer for help.
+  update-to-main-asks-what-nix-offload-answers =
+    let
+      words = lib.tail (lib.head (refusesOnAMac "the Mac is over its room")).command;
+      offload = pkgs.callPackage ../nix-offload/offload/package.nix { };
+    in
+    pkgs.runCommand "update-to-main-asks-what-nix-offload-answers" { } ''
+      ${lib.getExe offload} ${lib.escapeShellArgs words} --help > help
+      grep -qx 'Usage: nix-offload ${lib.concatStringsSep " " words}' help
+      touch $out
+    '';
   # launchd gives a job 256 open files unless it says otherwise, and git
   # opens every pack it reads: on 16 November a Mac's update failed with
   # "Could not read" an object, its main's checkout holding about 489

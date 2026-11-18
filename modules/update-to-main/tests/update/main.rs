@@ -3872,16 +3872,61 @@ fn a_check_refusing_the_ask_alone_holds_no_switch() {
     let head = world.signed("one");
     world.system(&head);
     assert_eq!(
-        world.update().1,
+        world.asked_by(&|| true).1,
         done(&head),
         "a load the build raised shouldn't hold its own switch"
     );
     let next = world.signed("two");
     world.system(&next);
-    let Line::Refused { why, .. } = world.update().1 else {
+    let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
         panic!("an ask while over its room should be refused")
     };
     assert_eq!(why, "the machine is over its room");
+}
+
+/// A person's ask builds though the machine is over its room, since the
+/// build is theirs to choose, and may be the one that mends the check.
+#[test]
+fn a_person_s_ask_builds_though_the_machine_is_over_its_room() {
+    let mut world = World::new();
+    over_its_room(&mut world, None);
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert!(
+        matches!(world.asked_by(&|| true).1, Line::Refused { .. }),
+        "the follower's ask over its room should be refused"
+    );
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "a person's ask should build though over its room"
+    );
+}
+
+/// Switching what waited for a grant builds nothing, so a busy check that
+/// refuses the ask alone refuses no grant's switch, nor spends the grant.
+#[test]
+fn a_check_refusing_the_ask_alone_refuses_no_granted_switch() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "old");
+    over_its_room(&mut world, None);
+    let one = world.signed("one");
+    let waited = world.system(&one);
+    daemon_unit(&waited, "new");
+    let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
+        panic!("a switch restarting a held daemon should wait for a hold")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+    // The build's own load is still high as the grant comes.
+    fs::write(world.root.join("call"), "").unwrap();
+    fs::write(world.root.join("given"), "").unwrap();
+    assert_eq!(
+        world.asked_by(&|| true).1,
+        done(&one),
+        "the grant's switch shouldn't be refused by the load its build raised"
+    );
+    assert_eq!(world.running(), waited);
 }
 
 /// A busy check that may refuse asks only so long lets one through once
@@ -3890,24 +3935,34 @@ fn a_check_refusing_the_ask_alone_holds_no_switch() {
 #[test]
 fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
     let mut world = World::new();
-    over_its_room(&mut world, Some(0));
+    over_its_room(&mut world, Some(HOUR));
     fs::write(world.root.join("call"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
-    let Line::Refused { why, .. } = world.update().1 else {
-        panic!("the first ask while over its room should be refused")
-    };
-    assert_eq!(why, "the machine is over its room");
+    for ask in 0..2 {
+        let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
+            panic!("ask {ask} within the most it may refuse should be refused")
+        };
+        assert_eq!(why, "the machine is over its room");
+    }
     assert_eq!(world.builds(), 0, "a refused ask should build nothing");
+    // Refusing since just short of the most it may, it still refuses.
+    refused_since(&world, now() - HOUR + 60, now() - 60);
+    assert!(
+        matches!(world.asked_by(&|| true).1, Line::Refused { .. }),
+        "an ask short of the most it may refuse should be refused"
+    );
+    refused_since(&world, now() - HOUR - 1, now() - 60);
     assert_eq!(
-        world.update().1,
+        world.asked_by(&|| true).1,
         done(&head),
         "an ask past the most it may refuse should go ahead"
     );
+    assert!(!refusals(&world).exists(), "its count should start again");
     let next = world.signed("two");
     world.system(&next);
     assert!(
-        matches!(world.update().1, Line::Refused { .. }),
+        matches!(world.asked_by(&|| true).1, Line::Refused { .. }),
         "the count should start again once an ask went ahead"
     );
     let mut never = World::new();
@@ -3917,10 +3972,91 @@ fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
     never.system(&head);
     for ask in 0..2 {
         assert!(
-            matches!(never.update().1, Line::Refused { .. }),
+            matches!(never.asked_by(&|| true).1, Line::Refused { .. }),
             "with no most, ask {ask} should be refused"
         );
     }
+}
+
+/// A stretch of refusals ends once an ask finds room, or once none came
+/// for half an hour, as through a call or a sleep, so a refusal hours old
+/// lets no new busy spell through at once.
+#[test]
+fn a_stretch_of_refusals_ends_with_room_or_a_long_gap() {
+    let mut world = World::new();
+    over_its_room(&mut world, Some(HOUR));
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    refused_since(&world, now() - 2 * HOUR, now() - 60);
+    fs::remove_file(world.root.join("call")).unwrap();
+    assert_eq!(world.asked_by(&|| true).1, done(&head));
+    assert!(!refusals(&world).exists(), "room should end the stretch");
+    let next = world.signed("two");
+    world.system(&next);
+    fs::write(world.root.join("call"), "").unwrap();
+    refused_since(&world, now() - 2 * HOUR, now() - 31 * 60);
+    assert!(
+        matches!(world.asked_by(&|| true).1, Line::Refused { .. }),
+        "a refusal over half an hour ago shouldn't count toward this stretch"
+    );
+    let (began, _) = kept_refusals(&world);
+    assert!(now() - began < 60, "the stretch should begin again now");
+}
+
+/// A refusal record it can't trust or can't keep never refuses for good:
+/// one from the future, as a clock set back leaves, starts again, and one
+/// it can't write lets the ask go ahead.
+#[test]
+fn a_refusal_record_it_cant_trust_or_keep_refuses_nothing_for_good() {
+    let mut world = World::new();
+    over_its_room(&mut world, Some(HOUR));
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    refused_since(&world, now() + 2 * HOUR, now() + 2 * HOUR);
+    assert!(matches!(world.asked_by(&|| true).1, Line::Refused { .. }));
+    let (began, last) = kept_refusals(&world);
+    assert!(
+        began <= now() && last <= now(),
+        "a record from the future should start the stretch again"
+    );
+    fs::remove_file(refusals(&world)).unwrap();
+    fs::create_dir(refusals(&world)).unwrap();
+    assert_eq!(
+        world.asked_by(&|| true).1,
+        done(&head),
+        "an ask whose refusal couldn't be kept should go ahead"
+    );
+}
+
+const HOUR: u64 = 60 * 60;
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+/// Where the room check keeps its stretch of refusals.
+fn refusals(world: &World) -> PathBuf {
+    world
+        .config
+        .state
+        .join("refused-since-the-machine-is-over-its-room")
+}
+
+/// Records a stretch of the room check's refusals, from `began` to `last`.
+fn refused_since(world: &World, began: u64, last: u64) {
+    fs::write(refusals(world), format!("{began} {last}\n")).unwrap();
+}
+
+/// When the kept stretch of refusals began, and last refused.
+fn kept_refusals(world: &World) -> (u64, u64) {
+    let text = fs::read_to_string(refusals(world)).unwrap();
+    let mut times = text.split_whitespace().map(|t| t.parse().unwrap());
+    (times.next().unwrap(), times.next().unwrap())
 }
 
 #[test]
