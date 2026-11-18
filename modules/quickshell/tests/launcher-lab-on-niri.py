@@ -233,6 +233,7 @@ def test_each_chord_opening_is_timed(
     for round_ in range(rounds):
         # Each round starts one place further on, so no place always follows the same one.
         for place in places[round_ % len(places) :] + places[: round_ % len(places)]:
+            mark = shell.mark()
             opening = opened(shell, place)
             said = {
                 "place": place,
@@ -255,6 +256,14 @@ def test_each_chord_opening_is_timed(
             usable = usable_after(shell, cast("int", opening["nth"]))
             if isinstance(usable.get("stalled"), int):
                 stalled[place].append(cast("int", usable["stalled"]))
+            # Its line names what the longest stall was spent on.
+            for line in said_after(shell, mark, "opening usable")[:1]:
+                with capsys.disabled():
+                    print(
+                        f"lab-usable {os.environ.get('LAB_RUN', '')} {place}: "
+                        f"{line.split('launcher: ', 1)[-1]}",
+                        flush=True,
+                    )
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
     for place, spans in timed.items():
