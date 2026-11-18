@@ -101,6 +101,12 @@ struct Daemon {
     /// How niri's stream stands: "starting" until it first answers,
     /// "answering", or "not answering" while it's gone.
     niri: &'static str,
+    /// How the casts stand: "starting" until this stream of niri's says
+    /// them whole, "answering" once it has, or "not answering" while niri's
+    /// gone. The casts held are the last stream's until the new one says
+    /// its own, so the shell takes none for no share until then (ISXEG8 on
+    /// #5399, 2026-11-17).
+    casts: &'static str,
     events: u64,
 }
 
@@ -224,6 +230,7 @@ fn hold(asked: Asked) -> Result<(), Failure> {
             light: Held::default(),
             rows: Kept::default(),
             niri: "starting",
+            casts: "starting",
             events: 0,
         }),
         served: Arc::clone(&served),
@@ -316,6 +323,7 @@ fn follow(shared: &Shared, niri: &Path) {
         }
         let mut daemon = lock(&shared.daemon);
         daemon.niri = "not answering";
+        daemon.casts = "not answering";
         refresh(&shared.served, &mut daemon);
         drop(daemon);
         std::thread::sleep(NIRI_AGAIN);
@@ -363,6 +371,9 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
         let mut daemon = lock(&shared.daemon);
         let answered = daemon.niri != "answering";
         daemon.niri = "answering";
+        if answered {
+            daemon.casts = "starting";
+        }
         if event.get("Ok").is_some() {
             if answered {
                 refresh(&shared.served, &mut daemon);
@@ -370,6 +381,12 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
             continue;
         }
         daemon.events += 1;
+        // Heard in the same refresh as the casts it said, which CastsChanged
+        // always changes, so a watch is told them before it's told they're
+        // heard.
+        if event.get("CastsChanged").is_some() {
+            daemon.casts = "answering";
+        }
         let moved = outputs.is_some_and(|outputs| {
             let moved = daemon.outputs != outputs;
             daemon.outputs = outputs;
@@ -627,6 +644,7 @@ fn looked(shared: &Shared) -> bool {
 fn sources(daemon: &Daemon) -> Value {
     json!({
         "niri": {"state": daemon.niri, "events": daemon.events},
+        "casts": {"state": daemon.casts},
         "entries": {"state": "answering", "count": daemon.entries.len()},
     })
 }
