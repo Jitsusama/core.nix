@@ -1,4 +1,5 @@
 .pragma library
+.import "Pacing.js" as Pacing
 
 // What a search of what's typed does about the sources whose answers it
 // waits for (Launcher.qml's searchNow). A source such as the notices,
@@ -51,4 +52,24 @@ function next(now, waitingOn) {
 function waitedOf(held, now, bound, timedOut) {
     const waited = Math.max(0, Math.round(now - held.began));
     return { waited, behind: timedOut ? Math.max(0, waited - bound) : 0 };
+}
+
+// What a held key waited behind once its bound was out, from the work the
+// launcher noted while it was held (Launcher.qml's heldSpans), each
+// `{ name, from, to }` by the shell's own clock, as `held.from` and `at`,
+// when the wait ended, are: most first, then what none named, as an
+// opening's stall is (Pacing.stallSpent). Joel's fastest letters spent
+// 730 of their 1,054 ms past 50 behind the shell's other work, which said
+// nothing of what (RTOIMQ, 2026-11-17). The collector's time over the
+// hold, from `held.collected` to `collected`, is said after, since it
+// runs inside whatever was running; left out where it wasn't read. Ended
+// on its bound, or before, it names nothing.
+function behindOn(held, at, bound, spans, collected) {
+    const past = held.from + bound;
+    if (!(at > past)) {
+        return "";
+    }
+    const spent = Pacing.stallSpent(spans, past, at);
+    return held.collected === undefined ? spent
+        : `${spent}; the collector ${Math.round(collected - held.collected)} of it`;
 }

@@ -105,9 +105,11 @@ Scope {
     }
 
     // How much of a key's wait for answers was past its bound, behind the
-    // shell's other work (Awaited.waitedOf), or nothing when none was.
+    // shell's other work (Awaited.waitedOf), and what that work was
+    // (Awaited.behindOn), or nothing when none was.
     function behind(parts) {
-        return parts.behind ? ` (${parts.behind} of it behind the shell's other work)` : "";
+        return parts.behind ? ` (${parts.behind} of it behind the shell's other work`
+            + `${parts.behindOn ? `: ${parts.behindOn}` : ""})` : "";
     }
 
     // What drawing it was, by the render thread's times of its frame where

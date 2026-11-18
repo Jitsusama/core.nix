@@ -99,5 +99,29 @@ QtObject {
             Awaited.waitedOf(asked98, 1008, 8, true), { waited: 8, behind: 0 });
         Expect.same("a wait an answer ended is behind nothing, however long",
             Awaited.waitedOf(asked98, 1030, 8, false), { waited: 30, behind: 0 });
+
+        // What held the shell's thread past the bound is named by the work
+        // noted while the key was held, by the shell's own clock: Joel's
+        // "mut" waited 77 ms on answers, 69 of it behind the shell's other
+        // work, unnamed (RTOIMQ, 2026-11-17). Where two run at once, the
+        // one begun last has the time, so none counts twice; the collector
+        // is said of the hold, since it may run inside any of them.
+        const held = { from: 1000, collected: 50 };
+        const noted = [
+            { name: "agents changing", from: 1000, to: 1012 },
+            { name: "syncing", from: 1010, to: 1050 },
+            { name: "laying out", from: 1050, to: 1080 }
+        ];
+        Expect.same("a wait past its bound names what ran past it, most first",
+            Awaited.behindOn(held, 1098, 8, noted, 60),
+            "syncing 40, laying out 30, agents changing 2, 18 unnamed; the collector 10 of it");
+        Expect.same("work done before the bound isn't what the key waited behind",
+            Awaited.behindOn(held, 1098, 8, [{ name: "showing", from: 1000, to: 1008 }], 50),
+            "90 unnamed; the collector 0 of it");
+        Expect.same("a wait ended on its bound names nothing",
+            Awaited.behindOn(held, 1008, 8, noted, 60), "");
+        Expect.same("a hold whose collector wasn't read names the work alone",
+            Awaited.behindOn({ from: 1000 }, 1098, 8, noted, 60),
+            "syncing 40, laying out 30, agents changing 2, 18 unnamed");
     }
 }

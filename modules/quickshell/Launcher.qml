@@ -5587,10 +5587,14 @@ Scope {
             const startedAt = Date.now();
             const started = KeyTimes.now();
             const shown = refreshNow(source);
+            feltSpan(`${source.settings.name} changing`, started);
             return { source, startedAt, shown, tookMs: KeyTimes.now() - started };
         });
-        if (done.some(one => one.shown))
+        if (done.some(one => one.shown)) {
+            const reshown = KeyTimes.now();
             reshow(held.length);
+            feltSpan("showing again", reshown);
+        }
         for (const one of done)
             updateDrawn(one.source.settings.name, one.shown, begun);
         // Each a span of the opening (Traces.qml), saying which source
@@ -7339,8 +7343,14 @@ Scope {
         answersAwaited = null;
         answersWaited.stop();
         if (next.hold) {
+            // By the shell's clock too, with the collector's count, so what
+            // it waited behind past its bound is named (Awaited.behindOn).
             answersAwaited = { text: prompt.text, due: next.due, sources: next.hold,
-                began: Date.now() };
+                began: Date.now(), from: KeyTimes.now(), collected: Heap.collected() };
+            heldSpans = [];
+            // A frame begun while nothing listened would be noted from then.
+            if (!feltTicking.running)
+                feltFrame = Pacing.feltUnframed();
             answersWaited.restart();
             return;
         }
@@ -7351,14 +7361,20 @@ Scope {
         // The wait ends as the search begins, so the search's own time
         // isn't said as time behind the shell's other work.
         const listed = Date.now();
+        const listedAt = KeyTimes.now();
+        const collected = Heap.collected();
         steppedByKey = "";
         search(prompt.text);
         const into = steppedByKey;
         steppedByKey = "";
-        // Its key's time holds the wait, said apart in the journal.
+        // Its key's time holds the wait, said apart in the journal, with
+        // what the time past its bound went on.
         if (waited && searchParts)
             Object.assign(searchParts, Awaited.waitedOf(waited, listed, answersWaitedFor,
-                waited.timedOut === true));
+                waited.timedOut === true), { behindOn: waited.timedOut === true
+                    ? Awaited.behindOn(waited, listedAt, answersWaitedFor, heldSpans, collected)
+                    : "" });
+        heldSpans = [];
         if (asking)
             return;
         const timed = due.filter(key => key.untimed !== true);
@@ -11607,23 +11623,38 @@ Scope {
     // its longest stall says what it ran into (Pacing.stallSpent). Nothing
     // binds to it, so it's added to in place.
     property var feltSpans: []
+    // The same, noted while a key is held for its answers, so the time its
+    // wait ran past its bound says what it was behind (Awaited.behindOn).
+    // Each is noted as its work ends, and only while one of the two
+    // listens, so a key typed with neither costs nothing more.
+    property var heldSpans: []
+    readonly property bool spansHeard: feltTicking.running || answersAwaited !== null
     // The collector's count when the opening began, so its line says what
     // collecting took of it.
     property real feltCollectedFrom: 0
     function feltSpan(name, from) {
+        if (!spansHeard)
+            return;
+        const span = { name, from, to: KeyTimes.now() };
         if (feltTicking.running)
-            feltSpans.push({ name, from, to: KeyTimes.now() });
+            feltSpans.push(span);
+        if (answersAwaited !== null)
+            heldSpans.push(span);
     }
     // What the frame being drawn has laid out and when its sync began
     // (Pacing.feltFramed).
     property var feltFrame: Pacing.feltUnframed()
     function feltFramed(what, from, to) {
-        if (!feltTicking.running)
+        if (!spansHeard)
             return;
         const noted = Pacing.feltFramed(feltFrame, what, from, to);
         feltFrame = noted.frame;
-        for (const span of noted.spans)
-            feltSpans.push(span);
+        for (const span of noted.spans) {
+            if (feltTicking.running)
+                feltSpans.push(span);
+            if (answersAwaited !== null)
+                heldSpans.push(span);
+        }
     }
     // A row made or taken again while an opening is felt, from when it
     // began.
@@ -12045,11 +12076,12 @@ Scope {
         }
 
         // Each frame's own work on the shell's thread while an opening is
-        // felt, its rows laid out and its sync, so a stall is told from
-        // the frames in it (Pacing.feltFramed).
+        // felt or a key held, its rows laid out and its sync, so a stall,
+        // or a wait past its bound, is told from the frames in it
+        // (Pacing.feltFramed).
         Connections {
             target: card.Window.window
-            enabled: feltTicking.running
+            enabled: root.spansHeard
 
             function onAfterAnimating() {
                 root.feltFramed("animating", KeyTimes.now());
