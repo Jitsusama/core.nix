@@ -101,6 +101,9 @@ ShellRoot {
         property var sources: [notices, keys, giver]
         property var entered: null
         property var went: null
+        // Whether it's walked from outside, as `qs ipc call launcher run`
+        // does.
+        property bool cataloguing: false
 
         // Nothing is drawn here, so what waits on a frame runs at once.
         function afterFrame(then) {
@@ -325,6 +328,11 @@ ShellRoot {
 
     // How often the launcher heard the programs changed, as it would redraw.
     property int redrawn: 0
+
+    // A program's row whose answer a binding holds, as the launcher's
+    // selection does (Launcher.qml's selectedActsAlone).
+    property var loneRow: null
+    readonly property bool loneStartsOnly: loneRow !== null && loneRow.actsOnly === true
 
     Connections {
         target: applications
@@ -929,6 +937,48 @@ ShellRoot {
             same("asked again over the same sources, it makes no step to say so",
                 `${program("lone").actsOnly} ${applications.stepsCounted.made - askedAgain}`,
                 "true 0");
+            // What a closed program's step can't read lets nothing go, as
+            // a window retitled while Joel types.
+            const retitled = applications.stepsCounted.made;
+            const untitled = Niri.windows;
+            const retitling = Object.keys(untitled)[0];
+            Niri.windows = Object.assign({}, untitled, {
+                [retitling]: Object.assign({}, untitled[retitling], { title: "retitled" })
+            });
+            windowsChanged();
+            same("nor as a window is retitled",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - retitled}`,
+                "true 0");
+            Niri.windows = untitled;
+            windowsChanged();
+            // And what it can read asks again, each the only thing that
+            // would: a stream turning out to be its own, a walk from
+            // outside, and the programs others hide.
+            const playing = Launcher.Playing.streams[3];
+            playing.properties = { "application.name": "Lone" };
+            same("a stream named its own asks again, and its Sound holds more",
+                program("lone").actsOnly, false);
+            playing.properties = { "application.name": "Other" };
+            same("and named another's again, it starts only", program("lone").actsOnly, true);
+            for (const [said, change] of [
+                ["a walk from outside asks again", () => {
+                    theLauncher.cataloguing = !theLauncher.cataloguing;
+                }],
+                ["as do the programs others hide", () => {
+                    giver.hiddenPrograms = giver.hiddenPrograms.concat(["elsewhere"]);
+                }]
+            ]) {
+                change();
+                const asked = applications.stepsCounted.made;
+                same(said, `${program("lone").actsOnly} ${applications.stepsCounted.made - asked}`,
+                    "true 1");
+            }
+            theLauncher.cataloguing = false;
+            giver.hiddenPrograms = ["pair"];
+            // The selection holds its answer in a binding, as Launcher's
+            // selectedActsAlone does, which a held answer must wake.
+            root.loneRow = program("lone");
+            same("a binding over it starts only", root.loneStartsOnly, true);
             // Which providers hold each hook is found as the launcher's
             // sources change, so one joining later is asked, and one gone
             // isn't.
@@ -943,6 +993,12 @@ ShellRoot {
             joiner.gives = true;
             joiner.changed();
             same("and given again, it holds more", program("lone").actsOnly, false);
+            root.loneRow = program("lone");
+            joiner.gives = false;
+            joiner.changed();
+            same("and a binding over it is woken as its giver changes",
+                root.loneStartsOnly, true);
+            root.loneRow = null;
             theLauncher.sources = theLauncher.sources.filter(source => source !== joiner);
             same("and once it's gone, it starts only again", program("lone").actsOnly, true);
 

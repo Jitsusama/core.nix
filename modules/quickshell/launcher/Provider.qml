@@ -97,7 +97,9 @@ Scope {
     function awaits(letters) {
         return false;
     }
-    // A collection's things changed while it might be open.
+    // A collection's things changed while it might be open, or what its
+    // hooks give a program did (programActs, sentBy): Programs holds
+    // whether a closed program starts only until a giver says this.
     signal changed
 
     // An answer worked out too late to say, as the maths' is when the

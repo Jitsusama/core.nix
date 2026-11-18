@@ -174,11 +174,15 @@ Provider {
     // program held from the top again (Launcher.qml's refreshed): Pause
     // turns to Play when a media key pauses its player, Previous comes
     // once there's a track before, and the volume's bar moves with Louder.
+    // A stream's names are in it too, since they're heard only once it's
+    // bound, and they say whose it is (streamsOf).
     readonly property string playingNow: Playing.players.map(player => [player.dbusName,
         player.isPlaying, player.canPlay, player.canPause, player.canGoNext,
         player.canGoPrevious, player.trackTitle, player.trackArtist].join("\u241f"))
-        .concat((Playing.streams.concat(Playing.recorders ?? [])).map(node => node.audio
-            ? `${node.id} ${node.audio.volume} ${node.audio.muted}` : String(node.id)))
+        .concat((Playing.streams.concat(Playing.recorders ?? [])).map(node => [node.id,
+            node.name, node.properties?.["application.name"],
+            node.properties?.["application.process.binary"]].join(" ")
+            + (node.audio ? ` ${node.audio.volume} ${node.audio.muted}` : "")))
         .join("\u241e")
 
     onPlayingNowChanged: {
@@ -295,7 +299,6 @@ Provider {
         }
         const was = provider.running;
         provider.running = by;
-        provider.startsAgain();
         if (HeldWindows.ownersMoved(was, by))
             provider.changed();
         else
@@ -943,22 +946,18 @@ Provider {
         target: provider.recents
 
         function onLatelyChanged() {
-            provider.startsAgain();
             provider.redrawHeld();
         }
 
         function onSharedChanged() {
-            provider.startsAgain();
             provider.redrawHeld();
         }
 
         function onOpenNowChanged() {
-            provider.startsAgain();
             provider.redrawHeld();
         }
 
         function onClosedChanged() {
-            provider.startsAgain();
             provider.redrawHeld();
         }
     }
@@ -1777,6 +1776,10 @@ Provider {
     // time to say the same, about 1 ms a program: 160 of 536 ms of the
     // keys lab's weighing over c, m and s, profiled (2026-11-18). Plain,
     // so holding one wakes no binding; `startsTurn` counts the lettings go.
+    // Only a program with no windows, Recent, keys or actions of its own
+    // is held, each asked fresh above, so the windows and the Recents
+    // never let go: a closed program's step reads neither, and a title
+    // changing as Joel types would empty it between keys.
     readonly property var startsHeld: ({ by: new Map() })
     property int startsTurn: 0
     // Lets go of every answer held, since no source says which program its
@@ -1785,16 +1788,26 @@ Provider {
         startsHeld.by = new Map();
         startsTurn += 1;
     }
-    // What a step reads that can change while its desktop entry stays: the
-    // providers holding a hook it asks, whose `changed` says theirs did,
-    // and the programs others declare hidden. What's playing, the windows
-    // and the Recents say theirs where they're heard, above.
+    // What a closed program's step reads that can change while its desktop
+    // entry stays: the acts and notices other providers give it, each
+    // provider's `changed` saying its own did (Provider.qml); the programs
+    // others declare hidden; a walk from outside, which some providers
+    // give less to; and what's playing, above.
     onHookingChanged: startsAgain()
     onDeclaredChanged: startsAgain()
+    Connections {
+        target: provider.launcher
+        ignoreUnknownSignals: true
+
+        function onCataloguingChanged() {
+            provider.startsAgain();
+        }
+    }
     Variants {
         model: (provider.launcher?.sources ?? []).filter(other => other !== provider
             && typeof other.changed === "function"
-            && Object.values(provider.hooking).some(holding => holding.includes(other)))
+            && (provider.hooking.programActs.includes(other)
+                || provider.hooking.sentBy.includes(other)))
 
         Connections {
             required property var modelData
