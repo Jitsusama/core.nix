@@ -341,14 +341,15 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     stop::hear_stops();
     let asked =
         asked(args, std::env::var(SERVER_ENV).ok()).map_err(|e| crate::wrongly("proof", e))?;
-    // Gone however this proof ends before its own is written, so an
-    // earlier proof's report is never read for this one's.
-    if let Some(out) = &asked.out {
-        let _ = fs::remove_file(out);
-    }
     let marker = stop::marker();
     // Held to the end, released however the proof ends.
     let _alone = marker.as_deref().map(alone).transpose()?;
+    // Gone however this proof ends before its own is written, so an
+    // earlier proof's report is never read for this one's. Taken once
+    // the lock is, so a proof refused it leaves the running one's alone.
+    if let Some(out) = &asked.out {
+        let _ = fs::remove_file(out);
+    }
     // Paid before anything else can end the proof, so a killed proof's
     // debt is paid by the next however far that one gets.
     let paid = marker
@@ -491,7 +492,9 @@ fn window(
     // asks what the proof's own load adds to it.
     let stop = Arc::new(AtomicBool::new(false));
     // A stop heard as the window opened starts nothing.
+    let mut touched = false;
     if idle.is_empty() && !halted(&stop) {
+        touched = true;
         systemctl("start");
         // The shaper settles before its quiet counts.
         settle(&stop);
@@ -501,7 +504,9 @@ fn window(
         }
     }
     if halted(&stop) {
-        return (Vec::new(), put_back(was_on));
+        // One stopped before it touched the shaper leaves it as it found
+        // it, since a put-back then could only undo a change made since.
+        return (Vec::new(), !touched || put_back(was_on));
     }
     let watch = {
         let (stop, gate) = (Arc::clone(&stop), Arc::clone(gate));

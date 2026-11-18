@@ -229,19 +229,30 @@ fn debt_within(marker: &Path, takes: Duration, stands: Duration) -> Option<bool>
     while marker.exists() && asked.elapsed() < takes {
         thread::sleep(Duration::from_millis(100));
     }
-    let earlier = fs::read_to_string(marker)
+    // The word and its age are read from one opening, so a keeper
+    // forgetting it between them can't leave a word with no age.
+    let Ok(mut file) = fs::File::open(marker) else {
+        return None;
+    };
+    let mut said = String::new();
+    let earlier = std::io::Read::read_to_string(&mut file, &mut said)
         .ok()
-        .and_then(|s| match s.split_whitespace().next() {
+        .and_then(|_| match said.split_whitespace().next() {
             Some("on") => Some(true),
             Some("off") => Some(false),
             _ => None,
         });
-    // A word whose age can't be told, as one dated ahead of a clock set
-    // back, may be any age, so it's taken for an old one.
-    let age = fs::metadata(marker)
+    // A word dated within `FRESHENS` ahead of the clock is one written
+    // just before a small step back. One further ahead, as a clock set
+    // well back leaves it, may be any age, so it's taken for an old one.
+    let age = file
+        .metadata()
         .and_then(|m| m.modified())
         .ok()
-        .and_then(|at| at.elapsed().ok());
+        .and_then(|at| match at.elapsed() {
+            Ok(age) => Some(age),
+            Err(ahead) => (ahead.duration() <= FRESHENS).then_some(Duration::ZERO),
+        });
     if earlier.is_some() && age.is_none_or(|age| age > stands) {
         let when = age.map_or_else(
             || "at a time it can't tell".to_string(),
@@ -265,11 +276,12 @@ fn debt_within(marker: &Path, takes: Duration, stands: Duration) -> Option<bool>
 
 /// Runs one window owning the shaper, found `on`: claimed in `marker`
 /// while it runs, freshened every `FRESHENS`, so a keeper puts it back
-/// if the proof is killed, and given up once the window ends, however it
-/// does: one that couldn't put the shaper back ends the proof 69, which
-/// hands the shaper to Joel, and a later proof paying the word would undo
-/// what he does. Between windows it is nobody's, so a switch or Joel's
-/// own change then stands.
+/// if the proof is killed, and given up once the window returns, whether
+/// or not it put the shaper back: one that couldn't ends the proof 69,
+/// which hands the shaper to Joel, and a later proof paying the word
+/// would undo what he does. One that panics keeps it, since the proof
+/// dies of the panic and its keeper puts the shaper back. Between
+/// windows it is nobody's, so a switch or Joel's own change then stands.
 pub fn owning<T>(marker: Option<&Path>, on: bool, window: impl FnOnce() -> (T, bool)) -> (T, bool) {
     owning_every(marker, on, FRESHENS, window)
 }
@@ -537,13 +549,20 @@ pub mod tests {
         age(&marker, DEBT_STANDS + Duration::from_mins(1));
         assert_eq!(owed(), None, "undid what was set since an old proof");
         assert!(!marker.exists(), "kept a word too old to act on");
-        // One dated ahead, as a clock set back leaves it, may be any age.
+        // One dated a moment ahead was written just before a small step
+        // back; one well ahead, as a clock set far back leaves it, may be
+        // any age.
+        let ahead = |by: Duration| {
+            fs::File::options()
+                .write(true)
+                .open(&marker)
+                .and_then(|f| f.set_modified(std::time::SystemTime::now() + by))
+                .expect("a marker dated ahead");
+        };
         claim(&marker, true);
-        fs::File::options()
-            .write(true)
-            .open(&marker)
-            .and_then(|f| f.set_modified(std::time::SystemTime::now() + Duration::from_hours(1)))
-            .expect("a marker dated ahead");
+        ahead(Duration::from_secs(10));
+        assert_eq!(owed(), Some(true), "dropped a word a small step back");
+        ahead(Duration::from_hours(1));
         assert_eq!(owed(), None, "took a word of no age it can tell");
         let _ = fs::remove_dir_all(&dir);
     }
@@ -646,6 +665,16 @@ pub mod tests {
             "a crash before its restart"
         );
         assert_eq!(
+            read(&["deactivating+"], Duration::ZERO),
+            None,
+            "a stop or restart under way"
+        );
+        assert_eq!(
+            read(&["active+"], Duration::ZERO),
+            None,
+            "a job on a running shaper"
+        );
+        assert_eq!(
             read(&["inactive+"], Duration::ZERO),
             None,
             "a restart under way"
@@ -685,16 +714,22 @@ pub mod tests {
         assert_eq!(said(&marker), None, "left a word after its 69");
         // A window that panics ends as the panic does, its word kept for
         // the keeper, rather than held alive by its freshening.
-        let began = Instant::now();
-        let panicked = std::panic::catch_unwind(|| {
-            owning(Some(&marker), true, || -> ((), bool) {
-                panic!("a window's panic")
-            })
+        // Run on a thread of its own, so a window held by its freshening
+        // fails the test rather than hanging it.
+        let (ended, heard) = std::sync::mpsc::channel();
+        let panicking = marker.clone();
+        thread::spawn(move || {
+            let panicked = std::panic::catch_unwind(|| {
+                owning(Some(&panicking), true, || -> ((), bool) {
+                    panic!("a window's panic")
+                })
+            });
+            let _ = ended.send(panicked.is_err());
         });
-        assert!(panicked.is_err(), "a window's panic was lost");
-        assert!(
-            began.elapsed() < Duration::from_secs(1),
-            "a panicking window held the proof"
+        assert_eq!(
+            heard.recv_timeout(Duration::from_secs(2)),
+            Ok(true),
+            "a panicking window held the proof, or its panic was lost"
         );
         assert_eq!(
             said(&marker),
