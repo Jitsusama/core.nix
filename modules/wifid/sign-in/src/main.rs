@@ -14,8 +14,14 @@
 //! It takes the shape every command of ours does (docs/commands.md),
 //! through the terminal kit, and asks wifid and starts its proxy before
 //! any window: with no network wanting a sign-in it says so and exits 0,
-//! where wifid can't say or the proxy won't start it exits 69, and a
-//! window that ends other than by closing exits 1.
+//! where wifid can't say it exits 69, and where the proxy won't start, or
+//! GTK ends before its window closes, it exits 1. The window runs once
+//! the kit's body has ended, since a panic in one of GTK's callbacks ends
+//! the process at GTK's edge, where the kit's catch never sees it and
+//! would only keep its words back.
+//!
+//! A second run while a window is open hands itself to the first, which
+//! brings its window forward.
 
 mod socks;
 mod wifi;
@@ -36,7 +42,8 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use serde_json::{Value, json};
 use socket2::{Domain, Socket, Type};
-use terminal_kit::{Exit, Failure, Help};
+use terminal_kit::layout::Room;
+use terminal_kit::{Exit, Failure, Help, Ink, Pen};
 use webkit6::prelude::*;
 
 use socks::{Credentials, Target};
@@ -54,33 +61,71 @@ fn help() -> Help {
     )
     .example("wifid-sign-in", "what the shell runs when Joel asks")
     .exit(
-        Exit::Unavailable,
-        "wifid didn't answer, or the window's proxy wouldn't start",
+        Exit::Done,
+        "the window closed, or no network wants a sign-in",
     )
-    .exit(Exit::Failed, "the window ended other than by closing")
+    .exit(
+        Exit::Unavailable,
+        "wifid didn't say which network wants one",
+    )
+    .exit(
+        Exit::Failed,
+        "the window's proxy wouldn't start, or GTK ended before the window closed",
+    )
 }
 
 fn main() -> ExitCode {
-    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+    // bubblewrap refuses to start WebKit's sandbox for a process holding
+    // capabilities, and WebKit then gives up. A session can hand its
+    // programs some, as a compositor run from a system service does, and
+    // the window needs none. The ambient set is each thread's own, so it's
+    // cleared before any thread starts, the proxy's among them.
+    // SAFETY: PR_CAP_AMBIENT_CLEAR_ALL takes no pointers, needs no
+    // privilege, and touches only this thread's ambient set.
+    unsafe {
+        libc::prctl(
+            libc::PR_CAP_AMBIENT,
+            libc::PR_CAP_AMBIENT_CLEAR_ALL,
+            0,
+            0,
+            0,
+        )
+    };
+    let mut window = None;
+    let ended = terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         takes_no_words(&context.args)?;
-        let described =
-            wifi::call(Path::new(wifi::SOCKET), "Describe", json!({})).map_err(|error| {
-                Failure::new(
-                    Exit::Unavailable,
-                    "wifid didn't say which network wants a sign-in",
-                )
-                .because(error.to_string())
-            })?;
-        let Some(portal) = wanting(&described) else {
-            let _ = context.tell("done", "muted", "no network wants a sign-in");
-            return Ok(());
-        };
-        let proxy = proxy(&portal.card).map_err(|error| {
-            Failure::new(Exit::Unavailable, "the window's proxy wouldn't start")
-                .because(error.to_string())
-        })?;
-        show(portal, proxy)
-    })
+        match prepared(Path::new(wifi::SOCKET))? {
+            Some(prepared) => window = Some(prepared),
+            None => {
+                let _ = context.tell("done", "muted", "no network wants a sign-in");
+            }
+        }
+        Ok(())
+    });
+    match window {
+        Some((portal, proxy)) => show(portal, proxy),
+        None => ended,
+    }
+}
+
+/// The portal of the network that wants a sign-in, as wifid at `socket`
+/// says, and the proxy its window's traffic goes through; nothing when no
+/// network wants one.
+fn prepared(socket: &Path) -> Result<Option<(Portal, String)>, Failure> {
+    let described = wifi::call_within(socket, "Describe", PATIENCE).map_err(|error| {
+        Failure::new(
+            Exit::Unavailable,
+            "wifid didn't say which network wants a sign-in",
+        )
+        .because(error.to_string())
+    })?;
+    let Some(portal) = wanting(&described) else {
+        return Ok(None);
+    };
+    let proxy = proxy(&portal.card).map_err(|error| {
+        Failure::new(Exit::Failed, "the window's proxy wouldn't start").because(error.to_string())
+    })?;
+    Ok(Some((portal, proxy)))
 }
 
 /// Refuses any word, since the command takes none, so a typo never opens
@@ -96,35 +141,32 @@ fn takes_no_words(words: &[String]) -> Result<(), Failure> {
     }
 }
 
-/// Shows the window onto the portal's page until it closes.
-fn show(portal: Portal, proxy: String) -> Result<(), Failure> {
-    // bubblewrap refuses to start WebKit's sandbox for a process holding
-    // capabilities, and WebKit then gives up. A session can hand its
-    // programs some, as a compositor run from a system service does, and
-    // the window needs none, so nothing it starts inherits any.
-    // SAFETY: PR_CAP_AMBIENT_CLEAR_ALL takes no pointers, needs no
-    // privilege, and touches only this process's ambient set.
-    unsafe {
-        libc::prctl(
-            libc::PR_CAP_AMBIENT,
-            libc::PR_CAP_AMBIENT_CLEAR_ALL,
-            0,
-            0,
-            0,
-        )
-    };
+/// Shows the window onto the portal's page until it closes. Another
+/// activation, a second run's, brings the open window forward.
+fn show(portal: Portal, proxy: String) -> ExitCode {
     let app = gtk::Application::builder()
         .application_id("io.jitsusama.WifiSignIn")
         .build();
-    app.connect_activate(move |app| open(app, &portal, &proxy));
+    app.connect_activate(move |app| match app.active_window() {
+        Some(window) => window.present(),
+        None => open(app, &portal, &proxy),
+    });
     if app.run_with_args::<&str>(&[]) == glib::ExitCode::SUCCESS {
-        Ok(())
-    } else {
-        Err(Failure::new(
-            Exit::Failed,
-            "the sign-in window ended other than by closing",
-        ))
+        return Exit::Done.into();
     }
+    // GTK ended other than by its window closing, perhaps before one
+    // opened, having said why; GTK that can't reach a display ends the
+    // process itself as it starts. Past the kit's body, so said as the
+    // kit says a failure, plainly, and ended with the kit's own code.
+    let failure = Failure::new(
+        Exit::Failed,
+        "GTK ended before the sign-in window closed",
+    );
+    eprint!(
+        "{}",
+        failure.text(&Pen::new(Ink::plain(), None), Room::Unbounded, false)
+    );
+    Exit::Failed.into()
 }
 
 /// The card whose network wants a sign-in, the network, and where.
@@ -337,6 +379,50 @@ mod tests {
             network: "Roadside Inn".into(),
             page: "http://front-desk.inn/sign-in".into(),
         }
+    }
+
+    #[test]
+    fn a_wifid_that_cant_be_reached_ends_it_as_unavailable() {
+        let dir = tempfile::TempDir::new().unwrap();
+
+        let refused = prepared(&dir.path().join("wifi")).map(|_| ());
+
+        assert_eq!(refused.map_err(|failure| failure.code()), Err(69));
+    }
+
+    #[test]
+    fn a_wifid_that_refuses_ends_it_as_unavailable() {
+        let (_dir, socket, _wifid) =
+            wifi::tests::wifid(vec![json!({"error": "io.jitsusama.Wifi.Failed"})]);
+
+        let refused = prepared(&socket).map(|_| ());
+
+        assert_eq!(refused.map_err(|failure| failure.code()), Err(69));
+    }
+
+    #[test]
+    fn no_window_is_wanted_when_no_network_wants_a_sign_in() {
+        let (_dir, socket, _wifid) = wifi::tests::wifid(vec![json!({"parameters": inn("online")})]);
+
+        let prepared = prepared(&socket).map_err(|failure| failure.code());
+
+        assert_eq!(prepared.map(|wanted| wanted.is_none()), Ok(true));
+    }
+
+    #[test]
+    fn a_network_wanting_a_sign_in_gets_its_window_and_its_proxy() {
+        let (_dir, socket, _wifid) = wifi::tests::wifid(vec![json!({"parameters": inn("signIn")})]);
+
+        let (wanted, proxy) = prepared(&socket)
+            .map_err(|failure| failure.code())
+            .expect("a sign-in was wanted")
+            .expect("a window was wanted");
+
+        assert_eq!(wanted, portal());
+        assert!(
+            proxy.starts_with("socks5://") && proxy.contains("@127.0.0.1:"),
+            "the proxy isn't the window's own on loopback: {proxy}"
+        );
     }
 
     #[test]
