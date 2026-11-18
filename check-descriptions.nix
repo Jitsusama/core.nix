@@ -3,6 +3,11 @@
 # one with no check. A check added names what it proves here, in its place by name. Long
 # because it's one table, a line or two for each of core's checks.
 {
+  a-bare-machine-takes-a-modules-own-defaults = ''
+    a module's own defaults win over what each bare machine sets for itself: the NixOS one's
+    platform, boot loader, disk and state versions, as a hardware file sets its platform, and
+    the Mac one's platform, primary user and state versions
+  '';
   a-bluetooth-keyboard-may-wake-it = ''
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
@@ -924,6 +929,14 @@
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
+  '';
+  evaluates-refuses-a-machine-that-fails = ''
+    core.lib.evaluates refuses a bare machine whose assertion fails, as it evaluates, and passes
+    the same machine with its assertion holding without building it
+  '';
+  evaluates-refuses-a-machine-that-warns = ''
+    core.lib.evaluates fails on a bare machine with three warnings, one naming a package that
+    can't build, and its log names the check and each warning, building nothing a warning names
   '';
   every-assert-says-what-was-wrong = ''
     every Rust assert! and every Python assert of anything but a comparison carries a message

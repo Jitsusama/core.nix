@@ -668,6 +668,7 @@ says which module broke.
 | VM test | a check that boots machines in VMs | | a `vm-` name |
 | subtest | a named part of a VM test, which can run alone | | `with subtest(...)` |
 | example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` |
+| bare machine | the least machine of a class that evaluates, which a check adds one module to, for checks only | | `lib.bareNixosModule`, `lib.bareDarwinModule`, `bareNixos` |
 | stand-in | something standing in for a real program or device in a check | fake | |
 | shot | a picture a VM test takes of one state of the screen | photograph | `screendump`, `shots-changed` |
 | decision record | a document saying why the design is what it is | ADR | `docs/decisions/` |

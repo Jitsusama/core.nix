@@ -34,13 +34,43 @@ each brings. A Mac is the same with `nix-darwin.lib.darwinSystem` and
 A machine repository's own modules are what it adds to every machine of its
 own, such as an identity or the apps no role brings. They're imported beside
 core's roles, named for the machines they're for (`personal` here), and they
-set core's options rather than repeating what core does:
+set core's options rather than repeating what core does, importing the core
+module that declares each option they set:
 
 ```nix
-# personal/home.nix
+# personal/home.nix, given core by the repository's flake.nix
+{ core }:
 {
+  imports = [ core.homeModules.identity ];
   jitsusama.identity.email = "joel@example.com";
 }
+```
+
+It checks each module alone, as core checks its own, so one that quietly
+needs another fails in its checks rather than on a machine.
+`core.lib.bareNixosModule` and `core.lib.bareDarwinModule` are the least
+machine of each class, with one account, `someone`, for the check to add the
+module to. They are for checks only, never a machine's base: they allow
+unfree packages and nobody logs in to the account. Their platform and state
+versions are weaker than a checked module's own default, and so are the
+NixOS one's boot loader and disk and the Mac one's primary user.
+`core.lib.evaluates` is a check that a machine evaluates and no module
+warns. The module is given `core` through `importApply`, as core gives its
+own, so an error names its file:
+
+```nix
+home-on-nixos-personal = core.lib.evaluates pkgs "home-on-nixos-personal" (
+  nixpkgs.lib.nixosSystem {
+    modules = [
+      core.lib.bareNixosModule
+      {
+        home-manager.users.someone.imports = [
+          (nixpkgs.lib.modules.importApply ./personal/home.nix { inherit core; })
+        ];
+      }
+    ];
+  }
+);
 ```
 
 ## The Machine's Own Directory
