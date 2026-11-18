@@ -128,7 +128,7 @@ it("two cells sharing a title are two cells, each its own", () => {
   );
 });
 
-it("a machine's room and declared reach are flattened, as the map reads them", () => {
+it("a machine's room and what it declares are flattened, as the map reads them", () => {
   const { machines } = nowOf(told([skiff]), AT);
   assert.deepEqual(machines, [
     {
@@ -148,6 +148,7 @@ it("a machine's room and declared reach are flattened, as the map reads them", (
       over: ["cpu"],
       reach: ["cistern"],
       leaves_at: "2026-11-16T09:00:00Z",
+      basin: null,
       measured_at: "2026-11-16T07:29:00Z",
       share: null,
     },
@@ -162,7 +163,7 @@ it("a machine that measured no room and declares nothing reads as none", () => {
     [machine.cores, machine.available, machine.pressure, machine.over],
     [undefined, null, null, []],
   );
-  assert.deepEqual([machine.reach, machine.leaves_at], [[], null]);
+  assert.deepEqual([machine.reach, machine.leaves_at, machine.basin], [[], null, null]);
 });
 
 it("only the latest messages are heard, the newest last, as who sent them where", () => {

@@ -7,8 +7,9 @@
 // the map and the command never differ and nothing here re-derives them. A
 // record adds its `key` and `heard`, and drops its `kind`, which is the
 // interface's; both are put back as the command says them. The machines add
-// what their cells leave out (memory, disk, power, room), and the messages
-// only who sent, to whom and when, which is all the feed passes of them.
+// what their cells leave out (memory, disk, power, room), a basin's machines
+// folded into the one stand the map draws of it, and the messages only who
+// sent, to whom and when, which is all the feed passes of them.
 // What waits on the mesh, each question still waiting on a peer and each
 // hold still standing, is the node's own judgement (its `unanswered` kind),
 // read likewise without its words. The ties between cells, each pair that
@@ -144,7 +145,19 @@ function within(record: Fields, field: string): Fields {
   return isObject(value) ? value : {};
 }
 
-/** A machine record as the map draws it, its room and declared reach flattened. */
+/**
+ * A basin's name as the node reads one, a DNS label: lower-case letters,
+ * digits and hyphens, at most 63, never a hyphen at either end, so a name
+ * the node would refuse is never drawn either.
+ */
+const BASIN_NAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
+
+/** The basin a machine declares itself one of, or null where it names none. */
+function basinOf(said: unknown): string | null {
+  return typeof said === "string" && BASIN_NAME.test(said) ? said : null;
+}
+
+/** A machine record as the map draws it, its room and what it declares flattened. */
 function machineOf(record: Fields): Fields {
   const room = within(record, "room");
   const declared = within(record, "declared");
@@ -165,8 +178,87 @@ function machineOf(record: Fields): Fields {
     over: room["over"] ?? [],
     reach: declared["reach"] ?? [],
     leaves_at: declared["leaves_at"] ?? null,
+    // The pool of cloud machines it was borrowed from, by the pool's own
+    // short name; anything but a name reads as no basin at all.
+    basin: basinOf(declared["basin"]),
     measured_at: record["measured_at"],
   };
+}
+
+/**
+ * The word a basin's mark is named by after the basin's own name, so it
+ * reads as what it is and is never a machine's name, which holds no space.
+ */
+const BASIN_WORD = "basin";
+
+/** Orders names as the map lists them. */
+const collate = new Intl.Collator("en-CA").compare;
+
+/** `record`'s `field` where it is a number, else nothing. */
+function count(record: Fields, field: string): number {
+  const value = record[field];
+  return typeof value === "number" ? value : 0;
+}
+
+/** The most each of `machines` is pressed, field by field, or null where none measured. */
+function mostPressed(machines: readonly Fields[]): Fields | null {
+  const measured = machines.map((machine) => machine["pressure"]).filter(isObject);
+  if (measured.length === 0) {
+    return null;
+  }
+  const most = (field: string): number => Math.max(...measured.map((each) => count(each, field)));
+  return { cpu: most("cpu"), memory: most("memory"), io: most("io") };
+}
+
+/**
+ * A basin's machines as the one stand the map draws: named by the basin,
+ * its machines listed in it by name, ready while any of them is, the sum of
+ * their cores and memory, and the worst of how they are pressed, short and
+ * filling, so a machine in trouble is never hidden by the basin it is in.
+ */
+function basinStand(basin: string, machines: readonly Fields[]): Fields {
+  const members = [...machines].sort((one, other) =>
+    collate(String(one["name"]), String(other["name"])),
+  );
+  const sum = (field: string): number =>
+    members.reduce((total, member) => total + count(member, field), 0);
+  return {
+    name: `${basin} ${BASIN_WORD}`,
+    basin,
+    members,
+    state: members.some((member) => member["state"] === "ready") ? "ready" : members[0]?.["state"],
+    cores: sum("cores"),
+    memory: sum("memory"),
+    pressure: mostPressed(members),
+    over: [...new Set(members.flatMap((member) => member["over"]).filter(Boolean))],
+    disk_band: members.some((member) => member["disk_band"] === "filling") ? "filling" : null,
+    leaves_at: null,
+    share: null,
+  };
+}
+
+/**
+ * The machines as the map draws them. A basin lends machines by the hour,
+ * under names it makes up, so each basin stands once, named by the basin,
+ * whatever machines it has lent this minute. Each machine of no basin
+ * stands as itself, in the order the node first told of it, and the basins
+ * after them by name, so a basin giving a machine back moves nothing.
+ */
+function standsOf(machines: readonly Fields[]): Fields[] {
+  const lone: Fields[] = [];
+  const basins = new Map<string, Fields[]>();
+  for (const machine of machines) {
+    const basin = machine["basin"];
+    if (typeof basin === "string") {
+      basins.set(basin, [...(basins.get(basin) ?? []), machine]);
+    } else {
+      lone.push(machine);
+    }
+  }
+  const stands = [...basins]
+    .sort(([one], [other]) => collate(one, other))
+    .map(([basin, members]) => basinStand(basin, members));
+  return [...lone, ...stands];
 }
 
 /** The latest messages, the newest last, each only who sent it, how and where. */
@@ -317,10 +409,12 @@ function nowOf(heard: Heard, at: number): Now {
       .all()
       .filter(drawn)
       .map((record) => asPrinted(record, "cell")),
-    machines: heard.machine.all().map((record) => ({
-      ...machineOf(record),
-      share: shares.get(text(record, "name") ?? "") ?? null,
-    })),
+    machines: standsOf(
+      heard.machine.all().map((record) => ({
+        ...machineOf(record),
+        share: shares.get(text(record, "name") ?? "") ?? null,
+      })),
+    ),
     messages: messagesOf(heard.message),
     balance: balanceOf(reading),
     waits: waitsOf(heard.unanswered),
