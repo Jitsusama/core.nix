@@ -1,6 +1,7 @@
 // Whether what the launcher holds of Joel's own, a copy's contents or what
 // a secret ask asks for, hides because another program may be seeing the
-// screen (Copies.qml's hiding, and secret-asks' Asks.qml's): any cast niri says, starting or streaming, but the shell's own recording
+// screen (Copies.qml's hiding, and secret-asks' Asks.qml's): any cast niri
+// says, starting or streaming, but the shell's own recording
 // of one window. That's a call's share through the portal, and a screen or
 // region wf-recorder reads, since a recording is a share made later, its
 // file going wherever it goes (5GLTPH, 2026-11-17), and a kind niri adds
