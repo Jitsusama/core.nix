@@ -198,7 +198,10 @@ mod tests {
         let first = remembered(&found, Some(first));
         assert_eq!(kept_before_boot(&first, 60), None, "passed on as it was");
         assert_eq!(found.get(), Some(&0), "kept, so never asked again");
-        assert!(!worth_asking(&found, Some(60)));
+        assert!(
+            !worth_asking(&found, Some(60)),
+            "a clean boot is asked once"
+        );
         assert_eq!(
             kept_before_boot(&remembered(&found, None), 60),
             None,
