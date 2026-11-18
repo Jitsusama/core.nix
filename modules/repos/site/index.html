@@ -117,6 +117,16 @@
   </aside>
 </main>
 
+<section class="ties" id="ties" aria-labelledby="ties-title" hidden>
+  <h2 id="ties-title" class="ties-title">How They Join</h2>
+  <p class="ties-lede">Each thread is a cell whose work spans two repositories. Those of the one the keys rest on are drawn brighter; <kbd>j</kbd> and <kbd>k</kbd> step through them, and <kbd>Return</kbd> opens one.</p>
+  <figure class="ties-figure">
+    <div id="ties-map" class="ties-map" role="listbox" aria-labelledby="ties-title" aria-describedby="ties-here" tabindex="0" data-map data-level="repository"></div>
+    <figcaption id="ties-here" class="ties-here"></figcaption>
+  </figure>
+  <p id="ties-said" class="sr" role="status"></p>
+</section>
+
 <footer class="foot">
   <p id="asof" class="asof" data-state="connecting">Reaching the repos daemon.</p>
 </footer>

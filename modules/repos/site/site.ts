@@ -11,6 +11,7 @@ import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { addressed, forgotten, landing, outward, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
 import { footOf, headOf, worst } from "./head.ts";
+import { drawMap } from "./mapview.ts";
 import { NOWHERE } from "./homes.ts";
 import {
   type Feed,
@@ -149,6 +150,7 @@ function draw(): void {
   // A link in the drawer that a move redraws is gone, so focus stays in the drawer.
   const wasIn = opened.contains(document.activeElement);
   write(stand, groveOfTrees(grove));
+  drawMap(grove.repositories);
   drawList();
   drawOpen();
   if (wasIn) {
