@@ -530,12 +530,16 @@ impl<S: Sender> Slot<S> {
     }
 
     /// Takes no more requests down connection `number` for a reset, if
-    /// it's still the one kept and the slot hasn't retired one within
-    /// `RETIRED_FOR_A_RESET_AT_MOST_EVERY`, and says what came of it.
-    /// Answers already on it carry on.
+    /// it's still the one taking them and the slot hasn't retired one
+    /// within `RETIRED_FOR_A_RESET_AT_MOST_EVERY`, and says what came of it.
+    /// Answers already on it carry on. One the origin said goodbye to is
+    /// gone already, so its reset spends none of the slot's allowance.
     fn retire(&self, number: u64) -> Retiring {
         let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
-        if open.as_ref().is_none_or(|kept| kept.number != number) {
+        if open
+            .as_ref()
+            .is_none_or(|kept| kept.number != number || kept.sender.is_closed())
+        {
             return Retiring::Gone;
         }
         let mut retired = self.retired.lock().unwrap_or_else(PoisonError::into_inner);
@@ -556,7 +560,8 @@ impl<S: Sender> Slot<S> {
 enum Retiring {
     /// It takes no more requests.
     Retired,
-    /// It takes no more requests already: retired before, or let go.
+    /// It takes no more requests already: retired before, let go after a
+    /// sleep, or closed by the origin's goodbye.
     Gone,
     /// It's still taking requests, as the slot retired one lately.
     Kept,
@@ -1247,6 +1252,8 @@ async fn say_counts(counts: Arc<Counts>) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant, SystemTime};
 
     use bytes::Bytes;
@@ -1258,21 +1265,28 @@ mod tests {
         reach, reach_any, slept, with_causes,
     };
 
-    /// A connection kept for a test, which never closes.
-    #[derive(Clone)]
-    struct Line;
+    /// A connection kept for a test, closed only when the test closes it.
+    #[derive(Clone, Default)]
+    struct Line(Arc<AtomicBool>);
+
+    impl Line {
+        /// Closes it, as the origin's goodbye would.
+        fn close(&self) {
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
 
     impl Sender for Line {
         fn is_closed(&self) -> bool {
-            false
+            self.0.load(Ordering::Relaxed)
         }
     }
 
     #[test]
-    fn retiring_a_connection_spares_one_opened_since() {
+    fn a_reset_retires_only_the_connection_still_taking_requests() {
         let slot = Slot::new();
-        let reset = slot.keep(slot.next_number(), Line);
-        let since = slot.keep(slot.next_number(), Line);
+        let reset = slot.keep(slot.next_number(), Line::default());
+        let since = slot.keep(slot.next_number(), Line::default());
         assert_eq!(
             slot.retire(reset.number),
             Retiring::Gone,
@@ -1300,15 +1314,34 @@ mod tests {
     }
 
     #[test]
+    fn a_reset_on_a_connection_the_origin_closed_spends_no_allowance() {
+        let slot = Slot::new();
+        let closed = Line::default();
+        let kept = slot.keep(slot.next_number(), closed.clone());
+        closed.close();
+        assert_eq!(
+            slot.retire(kept.number),
+            Retiring::Gone,
+            "a reset on a connection the origin closed wasn't said as gone"
+        );
+        let fresh = slot.keep(slot.next_number(), Line::default());
+        assert_eq!(
+            slot.retire(fresh.number),
+            Retiring::Retired,
+            "a closed connection's reset spent the slot's allowance for a bad one"
+        );
+    }
+
+    #[test]
     fn a_slot_retires_a_connection_for_a_reset_at_most_so_often() {
         let slot = Slot::new();
-        let first = slot.keep(slot.next_number(), Line);
+        let first = slot.keep(slot.next_number(), Line::default());
         assert_eq!(
             slot.retire(first.number),
             Retiring::Retired,
             "a connection's first reset didn't retire it"
         );
-        let fresh = slot.keep(slot.next_number(), Line);
+        let fresh = slot.keep(slot.next_number(), Line::default());
         assert_eq!(
             slot.retire(fresh.number),
             Retiring::Kept,
