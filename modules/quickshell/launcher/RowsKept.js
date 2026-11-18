@@ -369,8 +369,10 @@ function tallied(tally, kind, ms) {
 
 // Whose rows a laying spent on (`tally`), built or taken back alike: each
 // kind whose rows took a millisecond once rounded, so half of one or more,
-// most first then by name, with how many it laid: " (run 3 in 90, agent 5
-// in 20)". Joel's "aq" took 8 rows back in 112 ms, where the
+// most first then by name, with how many rows it laid in how long: ", by
+// kind program 3 rows in 90 and on 1 row in 20", after the rows built and
+// taken back, which it breaks down together. Joel's "aq" took 8 rows back
+// in 112 ms, where the
 // keys lab's rows take 0.9 ms each (2026-11-18), so his own rows are dear
 // and this says which. Nothing where none took one.
 function saidByKind(tally) {
@@ -378,7 +380,7 @@ function saidByKind(tally) {
         .map(([kind, spent]) => [kind, spent.rows, Math.round(spent.ms)])
         .filter(([, , ms]) => ms >= 1)
         .sort((one, other) => other[2] - one[2] || (one[0] < other[0] ? -1 : 1));
-    return each.length > 0
-        ? ` (${each.map(([kind, rows, ms]) => `${kind} ${rows} in ${ms}`).join(", ")})`
-        : "";
+    const kinds = each.map(([kind, rows, ms]) =>
+        `${kind} ${rows} row${rows === 1 ? "" : "s"} in ${ms}`);
+    return kinds.length > 0 ? `, by kind ${kinds.join(" and ")}` : "";
 }

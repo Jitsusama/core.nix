@@ -13624,7 +13624,7 @@ Scope {
                                         && steps.some(one => one.insert !== undefined))
                                         list.forceLayout();
                                     aside = KeyTimes.now() - asideFrom;
-                                    placed = list.placeAll(steps, marking, rows, landing);
+                                    placed = list.placeAll(steps, marking, rows, landing, laidBy);
                                     // Laid out now rather than at the next
                                     // frame, so the rows drawn stand where
                                     // they will and the selection is placed
@@ -13665,7 +13665,10 @@ Scope {
                                     // always said it, though the rows' clock
                                     // reads finer.
                                     laying: Math.round(KeyTimes.now() - laying + aside + split),
-                                    split: Object.assign({ from, took: split, whole }, arrival),
+                                    // Whole too, as its time was before the
+                                    // rows' clock timed it.
+                                    split: Object.assign({ from, took: Math.round(split), whole },
+                                        arrival),
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built),
                                     laidBy: laidBy.kinds
@@ -13680,8 +13683,9 @@ Scope {
                             // (`marking`), once those they replace are
                             // aside, and says where a step back out to
                             // `landing` among `rows` split them, whether
-                            // it put every row in, and what its split took.
-                            function placeAll(steps, marking, rows, landing) {
+                            // it put every row in, and what its split took,
+                            // its rows tallied in `laidBy`'s laying.
+                            function placeAll(steps, marking, rows, landing, laidBy) {
                                 // Told where they stand before they go in,
                                 // once those they replace are aside, so each
                                 // is laid out once, wearing its place: told
@@ -13733,7 +13737,7 @@ Scope {
                                             // the placing before, which the
                                             // laying leaves out (laidBy).
                                             const splitting = KeyTimes.now();
-                                            RowsKept.restarted(list.laidBy, splitting);
+                                            RowsKept.restarted(laidBy, splitting);
                                             list.contentY = list.rowY(0)
                                                 + list.rowHeight(from);
                                             rowsKept.insert(0, entries.slice(from));

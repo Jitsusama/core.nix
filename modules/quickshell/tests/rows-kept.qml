@@ -86,17 +86,18 @@ QtObject {
             { kinds: { run: { rows: 2, ms: 5 }, agent: { rows: 1, ms: 2 } }, since: 22 });
         // A tally says whose rows it spent on, rounded, most first then by
         // name, and how many of each it laid. Kinds that round alike go by
-        // name, whatever their unrounded time.
-        const dearKinds = { person: { rows: 2, ms: 20.4 }, run: { rows: 3, ms: 89.6 },
-            agent: { rows: 5, ms: 20.2 }, act: { rows: 4, ms: 0.4 } };
+        // name, whatever their unrounded time. The kinds are the providers'
+        // own, a word or two each, as Joel's journal will say them.
+        const dearKinds = { "AI spend": { rows: 2, ms: 20.4 }, program: { rows: 3, ms: 89.6 },
+            on: { rows: 5, ms: 20.2 }, act: { rows: 4, ms: 0.4 } };
         Expect.same("a laying says whose rows it spent on, most first",
             RowsKept.saidByKind(dearKinds),
-            " (run 3 in 90, agent 5 in 20, person 2 in 20)");
+            ", by kind program 3 rows in 90 and AI spend 2 rows in 20 and on 5 rows in 20");
         Expect.same("a laying no kind spent a millisecond on says none",
             [RowsKept.saidByKind({ act: { rows: 9, ms: 0.49 } }), RowsKept.saidByKind(null)],
             ["", ""]);
         Expect.same("a kind's half a millisecond rounds to one, and is said",
-            RowsKept.saidByKind({ act: { rows: 1, ms: 0.5 } }), " (act 1 in 1)");
+            RowsKept.saidByKind({ act: { rows: 1, ms: 0.5 } }), ", by kind act 1 row in 1");
         // Each row held keeps its mark wherever the steps move it, and a
         // row put in is given the next, so a row reads what it shows by its
         // mark, which no other row's coming or going changes: read by its

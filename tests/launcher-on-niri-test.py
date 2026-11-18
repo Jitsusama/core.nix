@@ -2014,6 +2014,8 @@ def tallied_rows(laid: Json) -> tuple[int, int, int] | None:
     laying = float(last["laying"])
     # The journal says it in whole milliseconds, as its readers parse it.
     assert laying.is_integer(), f"a laying of {laying} ms isn't said whole"
+    split = float((last.get("split") or {}).get("took", 0))
+    assert split.is_integer(), f"a split of {split} ms isn't kept whole"
     # Rounded, the laying may say up to half a millisecond less than its rows took.
     assert sum(took) <= laying + 0.5 + 1e-6, f"rows took {took} of a {laying} ms laying"
     rows = sum(int(each["rows"]) for each in by.values())
@@ -2028,7 +2030,7 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
     each time, up to 43 ms of laying them out (2026-11-13 and 14). Now the rows it lets go
     are given to those it lists.
     """
-    built, kept, new, tallied = [], [], [], []
+    built, kept, new, tallied, kinds = [], [], [], [], set()
     for _ in range(3):
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
@@ -2038,6 +2040,7 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
         laid = laid_out(shell)
         built.append(int(laid["built"]) - before)
         tallied.append(tallied_rows(laid))
+        kinds |= set((laid["kept"] or {}).get("laidBy") or {})
         now = set(shell.showing()["rows"])
         kept.append(len(now & was))
         new.append(len(now - was))
@@ -2052,6 +2055,8 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
     assert any(back > 0 for _, _, back in laid_rows), f"no 'm' took a row back: {tallied}"
     drew = [(rows, made + back) for rows, made, back in laid_rows]
     assert all(rows == drawn for rows, drawn in drew), f"rows tallied, drawn: {drew}"
+    # Home's programs are tallied as what they are, not as the sort every row has.
+    assert "program" in kinds, f"no 'm' tallied a program, only {sorted(kinds)}"
 
 
 def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:
@@ -2167,7 +2172,7 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         for at in range(NOTICES_MANY):
             shell.as_account(f"notify-send --expire-time=1 'Heron {at:02}' 'one of many'")
     shell.notices_gone()
-    drawn = []
+    drawn, tallied = [], []
     for _ in range(2):
         # For You's Desktop, which holds the notices rested off the screen.
         shell.as_account(shell.ipc("toggle"))
@@ -2201,11 +2206,9 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         drawn.append(int(laid["drawn"]) - before)
         # Fails loudly if the split is ever passed by, as the bound could hold without it.
         assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
-        # Its rows are tallied too, those the split drew among them, in no more than it took.
-        tallied = tallied_rows(laid)
-        assert tallied is not None, f"- back tallied nothing: {laid['kept']}"
-        rows, made, back = tallied
-        assert rows == made + back, f"- back tallied {rows} rows, drew {made} and {back}"
+        # Its rows are tallied too, those the split drew among them, in no more than it took,
+        # where its keeping is still the last; one changing no row may follow it.
+        tallied.append(tallied_rows(laid))
         was, now = band_of(standing, far), band_of(laid, far)
         assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"
@@ -2218,6 +2221,10 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
     # The rows drawn around the row before, the one built ahead each way among them.
     reach = len(standing["rows"])
     assert drawn[1] <= reach, f"rows drawn by each - back to {far}: {drawn}, {reach} in reach"
+    laid_rows = [each for each in tallied if each is not None]
+    assert laid_rows, f"no - back tallied a row: {tallied}"
+    drew = [(rows, made + back) for rows, made, back in laid_rows]
+    assert all(rows == count for rows, count in drew), f"rows each - back tallied, drew: {drew}"
 
 
 def band_of(laid: Json, name: str) -> int | None:
