@@ -284,7 +284,7 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
         f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
     )
     # Any error QML writes, not only the one this guards, as Quickshell
-    # writes one: "WARN scene: @Launcher.qml[7708:-1]: TypeError: ...".
+    # writes one: "WARN scene: @Launcher.qml[<line>:-1]: TypeError: ...".
     thrown = re.search(r"\b\w*Error: ", said)
     assert thrown is None, f"a Return on the refused line threw: {said}"
 
