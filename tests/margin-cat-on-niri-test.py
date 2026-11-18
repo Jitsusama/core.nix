@@ -109,8 +109,11 @@ BYTE, RGB, RGBA = 8, 2, 6
 # How many shots of the screen are taken as a switch between workspaces begins, one after
 # another, and how many of the cat's places said before each it may be showing: a shot is
 # niri's newest frame, which holds the shell's last drawing, and a place is said as it's set,
-# a frame before it's drawn.
-SWITCH_SHOTS, DRAWN_BEHIND = 12, 2
+# a frame before it's drawn. A shot shows a second cat when the pixels of the cat's hue
+# outside its places come to a third of those it lights: a window's rounded corner in the
+# cat's columns softens into a few such pixels, two to six on the builders, and a second cat
+# rode in with 37.
+SWITCH_SHOTS, DRAWN_BEHIND, A_CAT = 12, 2, 1 / 3
 
 
 @pytest.fixture(scope="module")
@@ -942,21 +945,33 @@ def down_the_screen(width: int, pixels: bytes, x: int) -> bytes:
 def strays(width: int, pixels: bytes, hue: str, boxes: list[Json]) -> list[tuple[int, int]]:
     """Give the pixels near the cat's hue in none of the boxes, each a place it was said at.
 
-    A box is the cat's size and a pixel around it, at scale 1, as the nested screen is.
+    A box is the cat's size and a pixel around it, at scale 1, as the nested screen is. Only
+    the columns the boxes stand in are searched: a second cat drawn by niri rides with a
+    workspace up or down the screen, never across it, while a window's border elsewhere
+    softens at its corners and edges into pixels near the cat's hue. A row whose hue runs on
+    past those columns is a border's edge crossing them partway down a pixel as the windows
+    slide, never a cat, which stands a pixel clear of its box's sides.
     """
     spans = [
         (at["x"] - 1, at["y"] - 1, at["x"] + at["size"] + 1, at["y"] + at["size"] + 1)
         for at in boxes
     ]
-    found = []
-    for spot in range(len(pixels) // 3):
-        if near(pixels[spot * 3 : spot * 3 + 3].hex(), hue):
-            x, y = spot % width, spot // width
-            if not any(
-                left <= x < right and top <= y < bottom for left, top, right, bottom in spans
-            ):
-                found.append((x, y))
-    return found
+    columns = {x for left, _, right, _ in spans for x in range(int(left), int(right) + 1)}
+    outside = [x for x in (min(columns) - 1, max(columns) + 1) if 0 <= x < width]
+
+    def hued(x: int, y: int) -> bool:
+        return near(pixels[(y * width + x) * 3 : (y * width + x) * 3 + 3].hex(), hue)
+
+    def boxed(x: int, y: int) -> bool:
+        return any(left <= x < right and top <= y < bottom for left, top, right, bottom in spans)
+
+    return [
+        (x, y)
+        for y in range(len(pixels) // (width * 3))
+        if not any(hued(side, y) for side in outside)
+        for x in sorted(columns)
+        if 0 <= x < width and hued(x, y) and not boxed(x, y)
+    ]
 
 
 def test_through_a_switch_the_screen_shows_the_cat_only_where_the_shell_drew_it(
@@ -971,8 +986,8 @@ def test_through_a_switch_the_screen_shows_the_cat_only_where_the_shell_drew_it(
     (modules/niri's fixed-to-output.patch), so all it shows is the shell's one cat, cut only
     by the screen's edge or a window over it (Joel, 2026-11-15 23:34: "the whole kitty should
     not have to be rendered when you are seeing it come on to your screen"). Shots are taken
-    one after another as the switch begins and read once the cat sits: every pixel of the
-    cat's hue in each is in a box where the cat was said to be about then, and at least one
+    one after another as the switch begins and read once the cat sits: no shot holds a third
+    of a cat's pixels of its hue outside the boxes where it was said to be about then, and one
     shows the windows partway, apart from the screen before and after, or the case never saw
     the switch it judges.
     """
@@ -987,7 +1002,7 @@ def test_through_a_switch_the_screen_shows_the_cat_only_where_the_shell_drew_it(
     hue = at["hue"][-6:].lower()
     width, before = picture(shell, screen())
     stray = strays(width, before, hue, [at])
-    assert not stray, f"at rest the cat's hue is drawn outside it too, at {stray[:4]}"
+    assert len(stray) < at["lit"] * A_CAT, f"at rest the cat's hue is drawn outside it, at {stray}"
     shots = Path(os.environ["TMPDIR"]) / "switch"
     shots.mkdir(exist_ok=True)
     since = shell.mark()
@@ -1012,7 +1027,7 @@ def test_through_a_switch_the_screen_shows_the_cat_only_where_the_shell_drew_it(
             down_the_screen(width, pixels, x) not in still
             for x, still in zip(lines, rest, strict=True)
         )
-        if stray:
+        if len(stray) >= at["lit"] * A_CAT:
             wrong.append(f"{path.name}: {len(stray)} from {stray[0]} to {stray[-1]}")
     assert partway, "no shot caught the switch partway, so none judged it"
     assert not wrong, f"the cat was drawn where the shell never put it: {wrong}"
