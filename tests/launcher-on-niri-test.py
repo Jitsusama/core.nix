@@ -2112,13 +2112,14 @@ NOTICES_DOWN = 16
 
 
 def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> None:
-    """- back to a row far down a list lays out the rows around it, and never those at its top.
+    """- back to a row far down a list draws no more rows than stood around it, where it stood.
 
     The rows came back laid out from the list's top, then the selection's row was scrolled to
     and its rows laid out again, so Joel's - out of a notice twenty rows down Desktop took 68
     ms, 41 of it after the rows were shown (his journal, 2026-11-17 16:39:52). Sixteen down is
     twice the rows a card shows, as far as the twenty rows the shell says of its list. The rows it
-    draws are counted the second time, as the first may build what the notices never showed.
+    draws are counted the second time, as the first may build what the notices never showed, and
+    held to those drawn while the row was selected before, not to those it drew itself.
     """
     # Each rests at once, so the line has none left to show by the last.
     with shell.told(f"rests Heron {NOTICES_MANY - 1:02}", timedelta(seconds=90)):
@@ -2141,6 +2142,7 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         shell.normal()
         far = shell.showing()["rows"][NOTICES_DOWN]
         shell.down_to(far)
+        standing = laid_out(shell)
         # Into its drawer, nothing that sent it being there to go to (PastNotices.qml).
         shell.step_in()
         laid = laid_out(shell)
@@ -2150,12 +2152,18 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         shell.launcher_until(functools.partial(stepped_back_to, depth=depth, far=far))
         laid = laid_out(shell)
         drawn.append(int(laid["drawn"]) - before)
-        shown = [row["reads"].split(" \u00b7 ")[0] for row in laid["rows"]]
-        assert far in shown, f"- back left {far} out of sight: {shown}"
+        was, now = band_of(standing, far), band_of(laid, far)
+        assert now == was, f"- back put {far} at {now}, not at {was} where it stood"
         shell.close_launcher()
-    # The rows a card shows, and one built ahead each way.
-    reach = len(laid["rows"]) + 2
+    # The rows drawn around the row before, and one built ahead each way.
+    reach = len(standing["rows"]) + 2
     assert drawn[1] <= reach, f"rows drawn by each - back to {far}: {drawn}, {reach} in reach"
+
+
+def band_of(laid: Json, name: str) -> int | None:
+    """Give where the row read by this name is drawn on the card, or None where it isn't."""
+    bands = [row["band"] for row in laid["rows"] if row["reads"].split(" \u00b7 ")[0] == name]
+    return cast("int", bands[0]) if bands else None
 
 
 def stepped_back_to(shown: Json, *, depth: int, far: str) -> bool:

@@ -265,6 +265,35 @@ QtObject {
                 afresh || steps.filter(step => step.insert !== undefined).length <= most, true);
         }
 
+        splitting();
         Qt.exit(0);
+    }
+
+    // A step back out to a row well down a list put in afresh splits it at
+    // the first row of the view it lands in, and only then (Launcher.qml's
+    // keep): rows ten tall, or a heading of twenty first.
+    function splitting() {
+        const even = () => 10;
+        const headed = at => at === 0 ? 20 : 10;
+        const whole = count => [{ insert: 0, keys: Array.from({ length: count }, (_, at) => at) }];
+        // [what, the steps putting rows in, how many, the row back to, how far
+        // down the view stands from the first row's top, how tall each is, from]
+        const cases = [
+            ["a view standing on a row's top starts at it", whole(30), 30, 16, 100, even, 10],
+            ["a row cut by the view's top is its first", whole(30), 30, 16, 105, even, 10],
+            ["the row back to, standing at the top, is the first", whole(30), 30, 16, 160, even,
+                16],
+            ["a heading's height is counted", whole(30), 30, 5, 25, headed, 1],
+            ["a view at the list's top isn't split", whole(30), 30, 4, 0, even, 0],
+            ["nor a step back to the first row", whole(30), 30, 0, 0, even, 0],
+            ["nor one onto the line", whole(30), 30, -1, 0, even, 0],
+            ["nor rows put in among some kept", [{ insert: 2, keys: [2, 3] }], 30, 16, 100, even,
+                0],
+            ["nor rows put in two runs", [{ insert: 0, keys: [0] }, { insert: 2, keys: [2] }], 3,
+                2, 10, even, 0],
+            ["nor a run short of the list", whole(20), 30, 16, 100, even, 0]
+        ];
+        for (const [what, puts, count, back, down, tall, from] of cases)
+            Expect.same(what, RowsKept.splitFrom(puts, count, back, down, tall), from);
     }
 }

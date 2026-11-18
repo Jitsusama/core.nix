@@ -113,6 +113,29 @@ function afresh(was, now) {
         .concat(now.length > 0 ? [{ insert: 0, keys: now.slice() }] : []);
 }
 
+// Where a step back out to the row `back` splits the rows `puts` puts in:
+// the first row of the view it lands in, `down` below the first row's top,
+// each row `tall(at)` tall, or 0 to put them in at once. Only a list put in
+// afresh, one run of all `count` rows into none, is split: a view putting
+// rows into none makes every row from the first down to its foot, though
+// it shows only the last, so those from the view's top go in first and
+// those above after (Launcher.qml's keep). Joel's - out of a notice twenty
+// rows down took 68 ms (his journal, 2026-11-17 16:39:52).
+function splitFrom(puts, count, back, down, tall) {
+    const whole = puts.length === 1 && puts[0].insert === 0 && puts[0].keys.length === count;
+    if (back <= 0 || !whole)
+        return 0;
+    let top = 0;
+    for (let at = 0; at < back; at += 1)
+        top += tall(at);
+    let from = back;
+    while (from > 0 && top > down) {
+        from -= 1;
+        top -= tall(from);
+    }
+    return from;
+}
+
 // The lists shown lately, newest first, each as { rows, said }: its rows
 // and what was worked out of them by name. A backspace back to a place's
 // whole list lists the very rows it listed before, and each key walked

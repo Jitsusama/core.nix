@@ -4981,6 +4981,13 @@ Scope {
     // row left, Joel's - out of a notice took 68 ms, 41 of it after the
     // rows were shown (his journal, 2026-11-17 16:39:52). Null otherwise.
     property var backTo: null
+
+    // The row a step back out lands on among the rows now, or -1 where it
+    // lands on none, as on the line, or isn't a step back out: the list
+    // goes to its beginning then, as for any search.
+    function backRow() {
+        return backTo === null ? -1 : leftAt(backTo, matches);
+    }
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
     // A row on offer now by its key, as it reads now: in the step held, or
@@ -6436,7 +6443,7 @@ Scope {
             compose(!steadying);
             if (steadying)
                 return;
-            if (backTo === null)
+            if (backRow() < 0)
                 list.positionViewAtBeginning();
             searchParts = { before: searchedAt - searchBegan, lists: foundAt - searchedAt,
                 rows: 0, answers: Date.now() - foundAt, each: {}, within: null,
@@ -6506,7 +6513,7 @@ Scope {
             current = Math.max(lined ? -1 : 0, kept);
             if (kept >= 0)
                 list.positionViewAtIndex(kept, ListView.Contain);
-            else if (backTo === null)
+            else if (backRow() < 0)
                 list.positionViewAtBeginning();
             // Said as the top level's are: finding the place's rows, then
             // showing them, with how many were new to the list and how long
@@ -6643,7 +6650,7 @@ Scope {
         // a hundred times an opening: the highlight went its own way and
         // the list stopped short of its first row (Joel, 2026-11-08).
         compose(!steadying);
-        if (!steadying && backTo === null)
+        if (!steadying && backRow() < 0)
             list.positionViewAtBeginning();
         searchParts = { before: began - searchBegan, lists: listed - began, rows: matched - listed,
             answers: Date.now() - matched, each: listsTook, within: costs,
@@ -13468,12 +13475,10 @@ Scope {
                                 const back = root.backTo === null ? -1
                                     : root.leftAt(root.backTo, rows);
                                 const puts = steps.filter(one => one.remove === undefined);
-                                const whole = puts.length === 1 && puts[0].insert === 0
-                                    && puts[0].keys.length === rows.length;
-                                const from = back > 0 && whole
-                                    ? list.topRowAt(root.scrollFor(back, root.backTo.above)
-                                        - list.rowY(0), back)
-                                    : 0;
+                                const from = RowsKept.splitFrom(puts, rows.length, back,
+                                    back > 0 ? root.scrollFor(back, root.backTo.above)
+                                        - list.rowY(0) : 0,
+                                    at => root.tallOf(rows[at], at));
                                 let put = 0;
                                 let split = 0;
                                 for (const step of puts) {
@@ -13486,10 +13491,7 @@ Scope {
                                         // A step back out to a row well down
                                         // a list put in afresh puts in the
                                         // rows from the view's top first, then
-                                        // those above them: a view putting
-                                        // rows into none makes every row from
-                                        // the first down to the view's foot,
-                                        // though it shows only the last, and
+                                        // those above them (RowsKept.splitFrom):
                                         // rows put in above those drawn make
                                         // only those in its buffer, the view
                                         // held still (Qt's QQuickListViewPrivate
@@ -13499,7 +13501,12 @@ Scope {
                                         // more than the buffer's row less a
                                         // pixel. Coming back to a notice
                                         // sixteen rows down drew 18 rows for
-                                        // the 10 it shows.
+                                        // the 10 it shows. Each row reads
+                                        // what it shows by its mark, so the
+                                        // rows below, a moment at places
+                                        // `from` short of their own, read
+                                        // their own rows, and no frame comes
+                                        // between the two.
                                         if (from > 0) {
                                             const splitFrom = Date.now();
                                             list.contentY = list.rowY(0)
@@ -13642,16 +13649,6 @@ Scope {
 
                             function pick() {
                                 list.pickY = list.fillAt(root.current);
-                            }
-
-                            // The row at the top of a view scrolled this far
-                            // down the rows: the lowest, from the one given
-                            // up, whose top is no further down than that.
-                            function topRowAt(down, at) {
-                                let top = at;
-                                while (top > 0 && list.rowTop(top) > down)
-                                    top -= 1;
-                                return top;
                             }
 
                             // Where a row's own place starts and ends in the
