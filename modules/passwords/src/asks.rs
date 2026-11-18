@@ -306,19 +306,24 @@ impl Passwords {
         args
     }
 
-    /// bubblewrap's arguments emptying each file the list empties where
-    /// it holds a credential and this one does, or where it can't be
-    /// read to tell, a link's target rather than the link. It's emptied
-    /// to settings saying nothing, `{}`, since Podman, the docker command
-    /// here, refuses settings of no bytes; /dev/null where no copy can be
-    /// written, so a login is never left readable for want of one. A file
-    /// inside a folder the list hides is left to that folder, which hides
-    /// it already, and where bubblewrap couldn't make a file to bind over.
+    /// bubblewrap's arguments emptying each file the list empties, where
+    /// it holds a credential the entry names or can't be read to tell. A
+    /// link's target is emptied rather than the link.
+    ///
+    /// Each is bound over with settings saying nothing, `{}`, since
+    /// Podman, the docker command here, refuses a file of no bytes. Where
+    /// that file can't be written, /dev/null is bound instead, so a login
+    /// is never left readable for want of it.
+    ///
+    /// A file inside a folder already made empty, one the list hides or
+    /// ~/.ssh, is left alone: the folder hides it, and bubblewrap can't
+    /// make a file to bind over inside it.
     fn emptied(&self, fence: &Fence) -> Vec<OsString> {
         let hidden: Vec<PathBuf> = fence
             .home
             .iter()
             .filter_map(|listed| listed.strip_suffix('/'))
+            .chain([".ssh"])
             .filter_map(|named| real(&self.home.join(named)))
             .filter(|folder| is_folder(folder))
             .collect();
@@ -405,6 +410,10 @@ impl Passwords {
     fn written(&self, name: &str, kept: &str) -> Option<PathBuf> {
         use std::io::Write;
         use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        // Releases run at once, so each writes under a name of its own and
+        // none renames another's file away or binds it half written.
+        static WRITES: AtomicU64 = AtomicU64::new(0);
         let folder = self.runtime.join("passwords");
         std::fs::DirBuilder::new()
             .recursive(true)
@@ -412,7 +421,8 @@ impl Passwords {
             .create(&folder)
             .ok()?;
         let copy = folder.join(name);
-        let writing = folder.join(format!("{name}.{}", std::process::id()));
+        let write = WRITES.fetch_add(1, Ordering::Relaxed);
+        let writing = folder.join(format!("{name}.{}.{write}", std::process::id()));
         let _ = std::fs::remove_file(&writing);
         let mut file = std::fs::OpenOptions::new()
             .write(true)
