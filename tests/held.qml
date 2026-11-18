@@ -111,6 +111,11 @@ QtObject {
         const found = Held.remade(typed, 1, [], ways);
         check("a step found by what was typed is made again from its own row",
             `${found.all} ${read(found.steps)}`, `true ${read(steps)}`);
+        // Its own row offered now, it's taken as it is now.
+        const typedNow = Held.remade(typed, 1, [row("s1", "idle", [row("look", "Look")])],
+            ways);
+        check("a step found by what was typed takes its row as offered now",
+            read(typedNow.steps), "agents=Agents[s1] s1=idle[look]");
         // Its own row offering nothing now, as a session ended, is kept with
         // its rows gone, and the steps above it still made again.
         keptWith = [];
@@ -123,6 +128,17 @@ QtObject {
         const ownNow = Held.own(steps, 1, [row("s1", "idle", [row("look", "Look")])], ways);
         check("a source's own row stepped into says the row as the source offers it now",
             read(ownNow.steps), "agents=Agents[s1] s1=idle[look]");
+        // A place opened straight holds a step whose row has no key, as
+        // Launcher.qml's placeStep makes it, so it's never one of its
+        // members, though the launcher's same tells a keyless row by name.
+        const byName = Object.assign({}, ways, { same: (one, was) => (was.key ?? "") === ""
+            ? one.name === was.name : one.key === was.key });
+        const place = { row: { key: "", name: "agents", title: "Agents", from: "Agents" },
+            rows: [working] };
+        const namedLikeIt = Object.assign(row("s9", "idle", []), { name: "agents" });
+        const ownPlace = Held.own([place], 0, [namedLikeIt, working], byName);
+        check("a place's own step stays the place, whatever a member is named",
+            `${ownPlace.leave} ${ownPlace.steps[0].row.title}`, "-1 Agents");
         // Found by a search, the row says who gave it, which the source's own row doesn't.
         const given = [steps[0], Object.assign({}, steps[1], {
             row: Object.assign({}, working, { from: "Agents" })
@@ -204,6 +220,13 @@ QtObject {
         const flat = Held.own(searched, 1, [row("s1", "hidden"), inTree], ways).steps[1].row;
         check("a match it ranks is ranked as it stands", keys(flat.verbs()),
             "k1=flat k2=Kettle");
+        // A copy of such a row under a key of its own, as For You's want
+        // row is, ranks to the row it was copied from, so it isn't ranked.
+        const copied = Object.assign(row("k1", "wanted"), { ranked: () => row("a1", "flat") });
+        const notRanked = Held.own(searched, 1, [row("s1", "hidden"), copied], ways)
+            .steps[1].row;
+        check("but not where ranking gives another row", keys(notRanked.verbs()),
+            "k1=wanted k2=Kettle");
         // The step's own row gone, what it found is still as offered now.
         const bestGone = Held.own(searched, 1, [row("k1", "hidden")], ways).steps[1].row;
         check("the row it found by gone, its matches are still as offered now",
