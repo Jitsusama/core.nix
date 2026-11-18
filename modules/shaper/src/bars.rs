@@ -67,6 +67,8 @@ pub struct Breach {
 /// How the upload did against its anchor.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Bar {
+    /// The line it was judged against, in kbit/s: the anchor, or the
+    /// line a network's ceiling leaves under it where a replay says so.
     pub anchor: u64,
     /// Seconds judged: held to a rate or not.
     pub seconds: u64,

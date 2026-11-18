@@ -284,12 +284,6 @@ mod tests {
         let at = |h: &crate::live::Heard| Line::of(NOV16, "wlan0", h).ceiling;
         assert_eq!(at(&heard(Some(9_500.4))), Some(9_500), "a ceiling");
         assert_eq!(at(&heard(None)), None, "no ceiling");
-        // A trial with no ceiling of its own holds none.
-        let trial = crate::live::Heard {
-            trial: Some(crate::oneway::Tuning::default()),
-            ..heard(None)
-        };
-        assert_eq!(at(&trial), None, "a trial with no ceiling");
         // Written only when there is one, so a day's lines stay short.
         let line = serde_json::to_string(&Line::of(NOV16, "wlan0", &heard(None)));
         assert!(

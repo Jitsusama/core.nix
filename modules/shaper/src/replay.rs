@@ -831,8 +831,8 @@ fn judged_lines(out: &mut String, judged: &bars::Judged) {
     let bars = || judged.networks.iter().chain(&judged.windows);
     let _ = writeln!(
         out,
-        "\nagainst the line: under {} of the anchor past {} s with no cut made on the \
-         upload's own delay over {CAUSE_MS} ms in the minute before{}",
+        "\nagainst the line: under {} of each network's line below past {} s with no cut \
+         made on the upload's own delay over {CAUSE_MS} ms in the minute before{}",
         bars::UNDER,
         bars::GRACE_S,
         // Said only where a ceiling was set aside: a trace written before
@@ -940,6 +940,15 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
                 let text = it.next().map_or("", String::as_str);
                 let (network, up) = bars::anchor(text)
                     .map_err(|_| format!("--most takes NETWORK=UP in kbit/s, not {text:?}"))?;
+                // Live drops a ceiling under the least, as nixos.nix refuses
+                // one, so a replay held under it would hold what live never
+                // does.
+                if float(up) < oneway::MOST_KBIT_LEAST {
+                    return Err(format!(
+                        "--most is at least {} kbit/s, the least the shaper holds, not {up}",
+                        oneway::MOST_KBIT_LEAST
+                    ));
+                }
                 asked.ceilings.insert(network, up);
             }
             "--windows" => asked.windows = Some(it.next().map_or("", String::as_str).into()),
@@ -953,7 +962,14 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
         return Err("--controller held needs --heard, the trace it plays".into());
     }
     if asked.controller != Choice::OneWay && !asked.ceilings.is_empty() {
-        return Err("--most holds only the one-way controller; held reads its own".into());
+        let other = if asked.controller == Choice::Held {
+            "held, which reads its own from the trace"
+        } else {
+            "none, which holds nothing"
+        };
+        return Err(format!(
+            "--most holds only the one-way controller, not {other}"
+        ));
     }
     if asked.windows.is_some() && asked.anchors.is_empty() {
         return Err("--windows needs an --anchor to judge them by".into());
@@ -962,9 +978,10 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
 }
 
 /// Plays each stay through the rebuilt controller, guarded by its
-/// network's anchor and held under its network's ceiling, as the live
-/// shaper holds it, and marks each second the ceiling held, so the bars
-/// set it aside as the ceiling's.
+/// network's anchor and held under its network's ceiling, and started at
+/// the hold of the line they leave, as the live shaper holds it, and
+/// marks each second the ceiling held, so the bars set it aside as the
+/// ceiling's.
 fn one_way(
     stays: &mut [Stay],
     anchors: &bars::Anchors,
@@ -981,12 +998,35 @@ fn one_way(
                 most_kbit: most.map(float),
                 ..oneway::Tuning::default()
             });
+            controller.start_at_the_anchor();
             for second in &mut s.seconds {
                 second.ceiling = most;
             }
             play(s, &mut controller)
         })
         .collect()
+}
+
+/// Judges each stay by the bars against its network's line: the anchor,
+/// or under it the line its network's ceiling leaves, as the controller
+/// holds it (`Way::line`), so a stay held just under its ceiling is held
+/// at the line's hold, not low.
+fn judged(
+    stays: &[(&Stay, &[Rates])],
+    anchors: &bars::Anchors,
+    ceilings: &bars::Anchors,
+    windows: &[bars::Window],
+) -> bars::Judged {
+    let lines: bars::Anchors = anchors
+        .iter()
+        .map(|(network, &anchor)| {
+            let line = ceilings.get(network).map_or(anchor, |&most| {
+                anchor.min(whole(float(most) / oneway::ANCHOR_HOLD))
+            });
+            (network.clone(), line)
+        })
+        .collect();
+    bars::judge(stays, &lines, windows)
 }
 
 /// `shaper replay`: replays the files through the controller chosen, the
@@ -1023,7 +1063,7 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
             .zip(&rates)
             .map(|(s, r)| (s, r.as_slice()))
             .collect();
-        report.bars = Some(bars::judge(&pairs, &asked.anchors, &windows));
+        report.bars = Some(judged(&pairs, &asked.anchors, &asked.ceilings, &windows));
     }
     let text = if json {
         serde_json::to_string(&report).expect("a report serialises") + "\n"
@@ -1718,7 +1758,7 @@ mod tests {
         let rates = one_way(&mut stays, &anchors, &ceilings);
         let ups: Vec<_> = rates[0].iter().map(|r| r.up).collect();
         assert!(
-            ups.iter().all(|up| up.is_none_or(|up| up <= 9_500)),
+            ups.iter().all(|up| up.is_some_and(|up| up <= 9_500)),
             "past the ceiling: {ups:?}"
         );
         assert_eq!(ups.last(), Some(&Some(9_500)), "held at it: {ups:?}");
@@ -1738,6 +1778,60 @@ mod tests {
             free[0].seconds.iter().all(|s| s.ceiling.is_none()),
             "a second marked as a ceiling's with none asked"
         );
+    }
+
+    // A network's ceiling under the anchor's hold lowers the line the
+    // controller holds to, so the bars judge a stay held just under that
+    // ceiling against the line, as held at its hold and not low.
+    #[test]
+    fn the_bars_judge_a_ceilinged_stay_against_the_line_it_leaves() {
+        let lines = [
+            vec![pool(NOV3, "home")],
+            connection(NOV3, 300, constant(12_000, 0), quiet),
+        ]
+        .concat();
+        let mut stays = read_lines(&lines);
+        for second in &mut stays[0].seconds {
+            second.ceiling = Some(6_000);
+        }
+        let held = vec![
+            Rates {
+                up: Some(5_700),
+                down: None,
+            };
+            stays[0].seconds.len()
+        ];
+        let anchors = bars::Anchors::from([("home".to_owned(), 12_000)]);
+        let ceilings = bars::Anchors::from([("home".to_owned(), 6_000)]);
+        let pairs = [(&stays[0], held.as_slice())];
+        let bar = &judged(&pairs, &anchors, &ceilings, &[]).networks["home"];
+        assert_eq!(bar.anchor, 6_667, "judged against the line: {bar:?}");
+        assert_eq!(bar.breached_s, 0, "held at the line's hold: {bar:?}");
+        let bare = &judged(&pairs, &anchors, &bars::Anchors::new(), &[]).networks["home"];
+        assert!(bare.breached_s > 0, "held low with no ceiling: {bare:?}");
+    }
+
+    // A replayed stay on an anchored network starts at the hold of the
+    // line its network's ceiling leaves, as a live stay does.
+    #[test]
+    fn a_one_way_replay_starts_a_stay_at_the_line_s_hold() {
+        let lines = [
+            vec![pool(NOV3, "home")],
+            connection(NOV3, 5, constant(12_000, 0), quiet),
+        ]
+        .concat();
+        let anchors = bars::Anchors::from([("home".to_owned(), 12_000)]);
+        let first = |ceilings: &bars::Anchors| {
+            let mut stays = read_lines(&lines);
+            one_way(&mut stays, &anchors, ceilings)[0][0].up
+        };
+        assert_eq!(
+            first(&bars::Anchors::new()),
+            Some(10_800),
+            "the anchor's hold"
+        );
+        let ceilings = bars::Anchors::from([("home".to_owned(), 9_000)]);
+        assert_eq!(first(&ceilings), Some(9_000), "the line's hold");
     }
 
     #[test]
@@ -1762,6 +1856,14 @@ mod tests {
             "the ceiling, by the network's name in lower case: {most:?}"
         );
         assert!(asked(&args("--most home a.jsonl")).is_err(), "no rate");
+        let refused = |words: &str| asked(&args(words)).expect_err("refused");
+        let low = refused("--most home=3999 a.jsonl");
+        assert!(low.contains("4000"), "a ceiling live drops: {low}");
+        let none = refused("--controller none --most home=9500 a.jsonl");
+        assert!(
+            none.contains("not none"),
+            "a ceiling none can't hold: {none}"
+        );
         assert!(
             asked(&args(
                 "--controller held --heard t --most home=9500 a.jsonl"
