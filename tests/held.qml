@@ -87,6 +87,14 @@ QtObject {
         const ownNow = Held.own(steps, 1, [row("s1", "idle", [row("look", "Look")])], ways);
         check("a source's own row stepped into says the row as the source offers it now",
             read(ownNow.steps), "agents=Agents[s1] s1=idle[look]");
+        // Found by a search, the row says who gave it, which the source's own row doesn't.
+        const given = [steps[0], Object.assign({}, steps[1], {
+            row: Object.assign({}, working, { from: "Agents" })
+        })];
+        const ownGiven = Held.own(given, 1, [row("s1", "idle", [row("look", "Look")])], ways);
+        check("a source's own row taken as it is now still says who gave it",
+            `${ownGiven.steps[1].row.from} ${read(ownGiven.steps)}`,
+            "Agents agents=Agents[s1] s1=idle[look]");
         const ownNothing = Held.own(steps, 1, [row("s1", "ended")], ways);
         check("a source's own row that now offers nothing is left",
             `${ownNothing.leave} ${ownNothing.all}`, "1 false");
