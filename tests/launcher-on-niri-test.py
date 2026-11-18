@@ -1995,6 +1995,28 @@ def test_a_launcher_closed_inside_a_place_is_home_before_it_opens(shell: Shell) 
     shell.launcher_until(lambda shown: shown["held"] == [] and "Programs" in shown["rows"])
 
 
+def tallied_rows(laid: Json) -> tuple[int, int, int] | None:
+    """Give the rows the last laying tallied, built and took back, once it says it's done.
+
+    Every row a laying draws is tallied under its kind, each with its own time, so together
+    they take no more than the laying did; and none is tallied once it's done. None where the
+    last keeping laid nothing.
+    """
+    assert not laid["laying"], "a laying still listens for rows once it's done"
+    last = laid["kept"] or {}
+    if "laidBy" not in last:
+        return None
+    by = last["laidBy"]
+    unnamed = [kind for kind in by if kind in ("", "undefined", "null")]
+    assert not unnamed, f"rows tallied under no kind: {by}"
+    took = [float(each["ms"]) for each in by.values()]
+    assert min(took, default=0) >= 0, f"a kind's rows took less than nothing: {by}"
+    laying = float(last["laying"])
+    assert sum(took) <= laying + 0.5, f"rows took {took} of a {laying} ms laying"
+    rows = sum(int(each["rows"]) for each in by.values())
+    return rows, int(last["built"]), int(last["reused"])
+
+
 def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Shell) -> None:
     """A letter that keeps some rows and lists others builds no row, once warm.
 
@@ -2012,20 +2034,7 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
         shell.type_in("m")
         laid = laid_out(shell)
         built.append(int(laid["built"]) - before)
-        # Every row the last laying drew is tallied under a kind, and none once it's done.
-        assert not laid["laying"], "a laying still listens for rows once it's done"
-        last = laid["kept"] or {}
-        if "laidBy" in last:
-            by = last["laidBy"]
-            unnamed = [kind for kind in by if kind in ("", "undefined", "null")]
-            assert not unnamed, f"rows tallied under no kind: {by}"
-            # Each row's time is its own, so together they're no more than the laying's.
-            took = [float(each["ms"]) for each in by.values()]
-            assert min(took, default=0) >= 0, f"a kind's rows took less than nothing: {by}"
-            laying = float(last["laying"])
-            assert sum(took) <= laying + 0.5, f"rows took {took} of a {laying} ms laying"
-            rows = sum(int(each["rows"]) for each in by.values())
-            tallied.append((rows, int(last["built"]) + int(last["reused"])))
+        tallied.append(tallied_rows(laid))
         now = set(shell.showing()["rows"])
         kept.append(len(now & was))
         new.append(len(now - was))
@@ -2035,8 +2044,11 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
     assert min(kept) > 0, f"rows of home kept by each 'm': {kept}"
     assert min(new) > 0, f"rows new to each 'm': {new}"
     assert built[1:] == [0, 0], f"rows built by each 'm' from home: {built}"
-    assert any(drew > 0 for _, drew in tallied), f"no laying drew a row: {tallied}"
-    assert all(rows == drew for rows, drew in tallied), f"rows tallied, drawn: {tallied}"
+    # The rows each 'm' took back are tallied, as many as it drew.
+    laid_rows = [each for each in tallied if each is not None]
+    assert any(back > 0 for _, _, back in laid_rows), f"no 'm' took a row back: {tallied}"
+    drew = [(rows, made + back) for rows, made, back in laid_rows]
+    assert all(rows == drawn for rows, drawn in drew), f"rows tallied, drawn: {drew}"
 
 
 def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:
@@ -2055,7 +2067,7 @@ def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) 
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    built, rounds = [], []
+    built, rounds, tallied = [], [], []
     for place in ("Desktop", "Machine") * 2:
         shell.type_in(place.lower(), selecting=place)
         before = int(laid_out(shell)["built"])
@@ -2064,11 +2076,17 @@ def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) 
         shell.normal()
         laid = laid_out(shell)
         built.append(int(laid["built"]) - before)
+        tallied.append(tallied_rows(laid))
         rounds.append((place, laid))
         stepped_out(shell)
     shell.close_launcher()
     # The second round's steps built nothing.
     assert built[2:] == [0, 0], f"rows built by each step, Desktop then Machine twice: {built}"
+    # The rows a step built are tallied too, as many as it drew.
+    laid_rows = [each for each in tallied if each is not None]
+    assert any(made > 0 for _, made, _ in laid_rows), f"no step built a row: {tallied}"
+    drew = [(rows, made + back) for rows, made, back in laid_rows]
+    assert all(rows == drawn for rows, drawn in drew), f"rows tallied, drawn: {drew}"
     names = {place: {row["reads"].split(" \u00b7 ")[0] for row in laid["rows"]}
              for place, laid in rounds}  # fmt: skip
     for place, laid in rounds:
