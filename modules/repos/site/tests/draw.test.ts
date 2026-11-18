@@ -115,7 +115,7 @@ function openDrawer(): string {
   const whole = grove();
   const [opened] = whole.repositories;
   assert.ok(opened !== undefined, "the records drew no repository");
-  const context = { now: NOW, home: "/home/ada", homes: new Map([[HOSTILE, HOSTILE]]) };
+  const context = { now: NOW, home: "/home/ada", homes: () => HOSTILE };
   const open = new Set(["today", "week", "resting", "gone"] as const);
   return drawer(opened, whole, context, open);
 }

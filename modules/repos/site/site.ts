@@ -12,6 +12,7 @@ import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { addressed, landing, outward, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
 import { footOf, headOf, worst } from "./head.ts";
+import { NOWHERE } from "./homes.ts";
 import {
   type Feed,
   type Grove,
@@ -60,7 +61,7 @@ const arrived = new Set<string>();
 let cellsHeard = false;
 const repos = (): boolean => arrived.size === KINDS.length;
 const roomDrawn = keepRoom();
-let mycelium: Mycelium = { cells: [], home: undefined, homes: new Map() };
+let mycelium: Mycelium = { cells: [], home: undefined, homes: NOWHERE };
 
 let place: Place = "every";
 let query = "";
