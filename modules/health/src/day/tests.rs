@@ -185,6 +185,7 @@ fn an_agents_crash_and_refusal_are_not_left_out_as_agents_errors() {
             "Process 1 (tec) of user 1000 dumped core.",
         )
     });
+    day.take(&entry("tec", 3, "could not read the config"));
     day.take(&Entry {
         agents: true,
         ..entry("sudo", 3, "pam_unix(sudo:auth): authentication failure")
@@ -192,7 +193,7 @@ fn an_agents_crash_and_refusal_are_not_left_out_as_agents_errors() {
     let tec = &day.things["tec"];
     assert_eq!(
         (tec.crashes, tec.agents_errors, tec.figured_errors()),
-        (1, 0, 0),
+        (1, 0, 1),
         "a crash is left out once, as a crash, not again as an agent's"
     );
     assert_eq!(

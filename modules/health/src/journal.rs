@@ -261,11 +261,13 @@ fn agents_ran(cgroup: &str) -> bool {
     cgroup.contains("/agents.slice") || cgroup.contains("/jobs.slice")
 }
 
-/// Whether a line came from agents' work: a command run in the jobs slice,
-/// but for the work Joel waits on at a terminal (`jobs-awaited`) and the
-/// machine's timed work (`jobs-timed`). An agent itself, and the terminal
-/// Joel reads its sessions in, run in agents.slice, and what they say is
-/// the machine's to answer for, so it counts.
+/// Whether a line came from agents' work: their shells' holder
+/// (`jobs.service`) or a command in `jobs-work.slice`, the two places the
+/// jobs broker calls agents'. Everything else in the jobs slice is his or
+/// the machine's: what he waits on at a terminal, the timed work, and the
+/// compile cache every build reads. An agent itself, and the terminal Joel
+/// reads its sessions in, run in agents.slice, and what they say is the
+/// machine's to answer for, so it counts.
 fn agents_work(cgroup: &str) -> bool {
     let mut below = cgroup
         .split('/')
@@ -273,7 +275,7 @@ fn agents_work(cgroup: &str) -> bool {
         .skip(1);
     below
         .next()
-        .is_some_and(|kind| !matches!(kind, "jobs-awaited.slice" | "jobs-timed.slice"))
+        .is_some_and(|kind| matches!(kind, "jobs.service" | "jobs-work.slice"))
 }
 
 /// What each journal follower asks journalctl for.
@@ -440,6 +442,10 @@ mod tests {
         assert!(
             !from("jobs.slice/jobs-timed.slice/keeps.service"),
             "the machine's timed work is the machine's"
+        );
+        assert!(
+            !from("jobs.slice/sccache.service"),
+            "the compile cache every build reads is the machine's"
         );
         assert!(
             !from("agents.slice/sessions-kitty.service"),

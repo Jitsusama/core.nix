@@ -450,7 +450,7 @@ impl Thing {
             traces: self.traces,
             errors: self.errors.saturating_sub(self.agents_errors),
             restarts: self.restarts,
-            lines: self.lines,
+            lines: self.lines.saturating_sub(self.agents_errors),
             events: self.events,
             agents_errors: self.agents_errors,
         }
@@ -474,7 +474,7 @@ pub struct Badness {
     pub errors: u64,
     /// Restarts systemd scheduled.
     pub restarts: u64,
-    /// Lines at warning or graver, errors among them.
+    /// Lines at warning or graver, errors among them and agents' not.
     pub lines: u64,
     /// Devices' events.
     pub events: u64,

@@ -269,6 +269,9 @@ pub(super) fn counted(bad: &Badness, things: usize) -> String {
     if traces > 0 {
         parts.push(plural(traces, "trace", "traces"));
     }
+    // Agents' errors are out of both errors and lines, so what's left of
+    // the lines past his errors is warnings.
+    let warnings = lines.saturating_sub(errors);
     // A crash is said at an error's priority, so it's counted once, as a
     // crash.
     let errors = errors + agents;
@@ -287,7 +290,6 @@ pub(super) fn counted(bad: &Badness, things: usize) -> String {
     if restarts > 0 {
         parts.push(plural(restarts, "restart", "restarts"));
     }
-    let warnings = lines.saturating_sub(errors);
     if warnings > 0 {
         parts.push(plural(warnings, "warning", "warnings"));
     }
@@ -437,7 +439,7 @@ mod tests {
             },
         );
         day.things
-            .insert("kitty".into(), thing(Kind::Programs, 2, 2, 0, 0));
+            .insert("kitty".into(), thing(Kind::Programs, 5, 0, 0, 0));
         let worst: Vec<&str> = worst_of(&day, Kind::Programs)
             .into_iter()
             .map(|(name, _)| name.as_str())
@@ -445,7 +447,7 @@ mod tests {
         assert_eq!(
             worst,
             ["kitty", "tec"],
-            "two errors of his are worse than sixty of agents'"
+            "five warnings of his are worse than sixty errors of agents'"
         );
     }
 
