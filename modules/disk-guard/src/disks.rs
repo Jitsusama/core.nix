@@ -93,8 +93,9 @@ pub struct DiskStatus {
     pub written_in_life: Option<u64>,
     /// Seconds until it reaches its rated endurance at the pace it was
     /// written since boot, asleep and all; none until it's worn a percent
-    /// and an hour of the boot has passed. A percent is coarse, so a disk
-    /// 2% worn could be 1.5% or 2.5%, and this a quarter either way.
+    /// and an hour of the boot has passed, or once it's past its rating.
+    /// A percent is coarse, so a disk 2% worn could be 1.5% or 2.5%, and
+    /// this a quarter either way.
     pub rated_wear_in: Option<f64>,
 }
 
@@ -127,7 +128,9 @@ impl Watch {
     }
 
     /// Reads every disk, asking its health when an hour awake has passed
-    /// since the last ask.
+    /// since the last ask. Each ask replaces the wear it had, so a disk
+    /// that stops answering says none rather than an hour-old reading for
+    /// ever.
     pub fn observe(&mut self, tick: &Tick) {
         let awake = tick.monotonic;
         let health = self
@@ -142,9 +145,15 @@ impl Watch {
             .retain(|name, _| readings.iter().any(|reading| reading.name == *name));
         for reading in readings {
             let seen = self.seen.entry(reading.name).or_default();
-            // A count that went back is another boot's or another disk's.
+            // A count that went back is another disk's under the same
+            // name, so nothing seen of the last one holds, its wear
+            // included, and the new one's health is asked at the next
+            // step.
             if reading.written < seen.written {
-                seen.counts.clear();
+                *seen = Seen::default();
+                if !health {
+                    self.health_at = None;
+                }
             }
             seen.written = reading.written;
             seen.counts.push_back((awake, reading.written));
@@ -155,8 +164,8 @@ impl Watch {
             {
                 seen.counts.pop_front();
             }
-            if let Some(wear) = reading.wear {
-                seen.wear = Some(wear);
+            if health {
+                seen.wear = reading.wear;
             }
         }
     }
@@ -189,30 +198,40 @@ fn rate(counts: &VecDeque<(f64, u64)>) -> Option<f64> {
 /// percent took over its life, times the percents left, over what the
 /// boot wrote a second.
 fn rated_wear_in(wear: Wear, this_boot: u64, booted_for: f64) -> Option<f64> {
-    if wear.used == 0 || booted_for < PACE_FIRST || this_boot == 0 {
+    if wear.used == 0 || wear.used >= 100 || booted_for < PACE_FIRST || this_boot == 0 {
         return None;
-    }
-    if wear.used >= 100 {
-        return Some(0.0);
     }
     let per_percent = float(wear.written) / f64::from(wear.used);
     let left = per_percent * f64::from(100 - wear.used);
     Some(left / (float(this_boot) / booted_for))
 }
 
+/// How a health log is asked of the controller at a path in `/dev`.
+pub type Ask = Box<dyn FnMut(&std::path::Path) -> Option<Vec<u8>>>;
+
 /// The kernel's disks: each entry of `/sys/block` with a device behind
-/// it, which leaves out loops, mappers and memory, and for an NVMe disk
-/// the health log its controller in `/dev` gives root.
+/// it, which leaves out loops, mappers and memory, and that can be
+/// written, which leaves out an empty slot, an optical disc and an eMMC's
+/// boot areas; and for an NVMe disk the health log its controller in
+/// `/dev` gives root.
 #[cfg(target_os = "linux")]
 pub struct Sysfs {
     block: std::path::PathBuf,
     dev: std::path::PathBuf,
+    ask: Ask,
 }
 
 #[cfg(target_os = "linux")]
 impl Sysfs {
+    /// The disks under `block`, their controllers in `dev` asked with the
+    /// kernel's admin passthrough.
     pub fn new(block: std::path::PathBuf, dev: std::path::PathBuf) -> Sysfs {
-        Sysfs { block, dev }
+        Sysfs::asking(block, dev, Box::new(nvme_health_log))
+    }
+
+    /// The disks under `block`, their controllers in `dev` asked by `ask`.
+    pub fn asking(block: std::path::PathBuf, dev: std::path::PathBuf, ask: Ask) -> Sysfs {
+        Sysfs { block, dev, ask }
     }
 
     /// The machine's own.
@@ -220,16 +239,47 @@ impl Sysfs {
         Sysfs::new("/sys/block".into(), "/dev".into())
     }
 
-    /// The health log of the controller `entry` names as its device, as
-    /// `nvme0` for `nvme0n1`.
-    fn wear(&self, entry: &std::path::Path) -> Option<Wear> {
-        let device = std::fs::read_link(entry.join("device")).ok()?;
-        let controller = device.file_name()?.to_str()?;
-        if !controller.starts_with("nvme") {
+    /// The health log of the controller behind `entry`: its device, as
+    /// `nvme0` for `nvme0n1`, or under native multipath the first
+    /// controller its subsystem holds, since each answers for the same
+    /// disk.
+    fn wear(&mut self, entry: &std::path::Path) -> Option<Wear> {
+        let device = entry.join("device");
+        let named = std::fs::read_link(&device).ok()?;
+        let named = named.file_name()?.to_str()?;
+        let controller = if named.starts_with("nvme-subsys") {
+            let mut controllers: Vec<String> = std::fs::read_dir(&device)
+                .ok()?
+                .flatten()
+                .filter_map(|held| held.file_name().into_string().ok())
+                .filter(|held| is_controller(held))
+                .collect();
+            controllers.sort();
+            controllers.into_iter().next()?
+        } else if is_controller(named) {
+            named.to_owned()
+        } else {
             return None;
-        }
-        health(&nvme_health_log(&self.dev.join(controller))?)
+        };
+        health(&(self.ask)(&self.dev.join(controller))?)
     }
+}
+
+/// Whether `name` is an NVMe controller's, as `nvme0`.
+#[cfg(target_os = "linux")]
+fn is_controller(name: &str) -> bool {
+    name.strip_prefix("nvme").is_some_and(|number| {
+        !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+    })
+}
+
+/// Whether a disk in sysfs can be written: not read-only, and holding
+/// something. A file that can't be read leaves it in.
+#[cfg(target_os = "linux")]
+fn writable(entry: &std::path::Path) -> bool {
+    let said = |name: &str| std::fs::read_to_string(entry.join(name)).ok();
+    said("ro").is_none_or(|ro| ro.trim() != "1")
+        && said("size").is_none_or(|size| size.trim() != "0")
 }
 
 #[cfg(target_os = "linux")]
@@ -240,14 +290,14 @@ impl Disks for Sysfs {
         };
         let mut readings: Vec<Reading> = entries
             .flatten()
-            .filter(|entry| entry.path().join("device").symlink_metadata().is_ok())
-            .filter_map(|entry| {
-                let path = entry.path();
+            .map(|entry| entry.path())
+            .filter(|path| path.join("device").symlink_metadata().is_ok() && writable(path))
+            .filter_map(|path| {
                 let stat = std::fs::read_to_string(path.join("stat")).ok()?;
                 Some(Reading {
-                    name: entry.file_name().to_str()?.to_owned(),
+                    name: path.file_name()?.to_str()?.to_owned(),
                     written: written_since_boot(&stat)?,
-                    wear: health.then(|| self.wear(&path)).flatten(),
+                    wear: if health { self.wear(&path) } else { None },
                 })
             })
             .collect();
@@ -280,6 +330,14 @@ struct AdminCommand {
     timeout_ms: u32,
     result: u32,
 }
+
+/// The kernel's struct is 72 bytes, which the ioctl's number below
+/// carries as 0x48; a field copied wrong would send it garbage.
+#[cfg(target_os = "linux")]
+const _: () = assert!(
+    std::mem::size_of::<AdminCommand>() == 0x48,
+    "AdminCommand isn't the kernel's 72-byte nvme_passthru_cmd"
+);
 
 /// `NVME_IOCTL_ADMIN_CMD`: `_IOWR('N', 0x41, struct nvme_admin_cmd)`.
 #[cfg(target_os = "linux")]

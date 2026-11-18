@@ -248,7 +248,12 @@ fn wear_said(disk: &Value) -> String {
         "{} since boot",
         size(disk["written_this_boot"].as_u64().unwrap_or(0))
     ));
-    if let Some(left) = disk["rated_wear_in"].as_f64() {
+    if disk["used_percent"]
+        .as_u64()
+        .is_some_and(|used| used >= 100)
+    {
+        said.push("past its rated wear".to_owned());
+    } else if let Some(left) = disk["rated_wear_in"].as_f64() {
         // In whole days past one, since a percent worn is too coarse to
         // say hours of a year by.
         let left = if left >= 86_400.0 {

@@ -293,7 +293,14 @@ or launchd, and [`home.nix`][2] the account's.
   used and what it wrote in its life. From those, once a percent is worn
   and the boot is an hour old, it says when the disk reaches its rating
   at the boot's pace, a quarter either way at 2%, since the disk says
-  its wear in whole percents. A laptop's disk wrote 4.2 TB in 16 hours
+  its wear in whole percents, and past its rating says so instead. Each
+  ask replaces the last answer, so a disk that stops answering says no
+  wear rather than an old one. Only disks that can be written are read,
+  which leaves out an empty slot, an optical disc and an eMMC's boot
+  areas; under native multipath the health is asked of the first
+  controller the subsystem holds. The unit lets the guard open the NVMe
+  controllers to read, beside the clock's devices ProtectClock allows,
+  and the VM test proves the ask answers through it. A laptop's disk wrote 4.2 TB in 16 hours
   of one boot on 18 November, nearly all of it builds, about a year from
   its rating at that pace, and nothing said so. The counts move every
   step, so they're written with the status each half minute rather than

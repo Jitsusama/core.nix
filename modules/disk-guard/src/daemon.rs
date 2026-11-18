@@ -2766,8 +2766,7 @@ impl Guard {
             disks: self
                 .disks
                 .as_ref()
-                .map(crate::disks::Watch::status)
-                .unwrap_or_default(),
+                .map_or_else(Vec::new, crate::disks::Watch::status),
         };
         status.notice = crate::notices::standing(&status);
         if let Some((at, measured, grew)) =

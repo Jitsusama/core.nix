@@ -136,6 +136,45 @@ fn health_is_asked_once_an_awake_hour_and_kept_between() {
     assert_eq!(*set.asked.borrow(), [true, false, false, true, false]);
     assert_eq!(watch.status()[0].used_percent, Some(2));
     assert_eq!(watch.status()[0].written_in_life, Some(40_000 * GB));
+
+    // A clock that went back is a new one, so it asks again.
+    watch.observe(&at(100.0, 0.0));
+    assert_eq!(set.asked.borrow().last(), Some(&true));
+}
+
+#[test]
+fn a_disk_that_stops_answering_for_its_health_says_none_at_the_next_ask() {
+    let set = Set::default();
+    let mut watch = Watch::new(Box::new(set.clone()));
+    set.wrote(
+        100 * GB,
+        Some(Wear {
+            used: 2,
+            written: 40_000 * GB,
+        }),
+    );
+    watch.observe(&at(3600.0, 0.0));
+    set.wrote(101 * GB, None);
+    watch.observe(&at(5000.0, 0.0));
+    assert_eq!(watch.status()[0].used_percent, Some(2), "kept between asks");
+    watch.observe(&at(7200.0, 0.0));
+    assert_eq!(
+        watch.status()[0].used_percent,
+        None,
+        "the ask went unanswered"
+    );
+    assert_eq!(watch.status()[0].written_in_life, None);
+}
+
+#[test]
+fn a_disk_that_goes_is_no_longer_said() {
+    let set = Set::default();
+    let mut watch = Watch::new(Box::new(set.clone()));
+    set.wrote(100 * GB, None);
+    watch.observe(&at(3600.0, 0.0));
+    set.readings.borrow_mut().clear();
+    watch.observe(&at(3700.0, 0.0));
+    assert_eq!(watch.status(), []);
 }
 
 #[test]
@@ -174,7 +213,13 @@ fn no_rated_wear_is_said_until_it_can_be() {
     watch.observe(&at(600.0, 0.0));
     assert_eq!(watch.status()[0].rated_wear_in, None);
 
-    // Past its rating, it's there now.
+    // Nothing written this boot has no pace.
+    let mut watch = Watch::new(Box::new(set.clone()));
+    set.wrote(0, Some(Wear { used: 3, ..unworn }));
+    watch.observe(&at(7200.0, 0.0));
+    assert_eq!(watch.status()[0].rated_wear_in, None);
+
+    // Past its rating, its wear says so and there's no time left to say.
     let mut watch = Watch::new(Box::new(set.clone()));
     set.wrote(
         10 * GB,
@@ -184,7 +229,8 @@ fn no_rated_wear_is_said_until_it_can_be() {
         }),
     );
     watch.observe(&at(7200.0, 0.0));
-    assert_eq!(watch.status()[0].rated_wear_in, Some(0.0));
+    assert_eq!(watch.status()[0].used_percent, Some(104));
+    assert_eq!(watch.status()[0].rated_wear_in, None);
 }
 
 #[test]
@@ -198,6 +244,26 @@ fn a_count_that_goes_back_starts_the_rate_again() {
     assert_eq!(watch.status()[0].written_per_hour, None);
 }
 
+/// A count that goes back is another disk under the same name, whose
+/// wear isn't the last one's: it's dropped, and asked at the next step.
+#[test]
+fn a_count_that_goes_back_drops_the_wear_and_asks_again() {
+    let set = Set::default();
+    let mut watch = Watch::new(Box::new(set.clone()));
+    let worn = Some(Wear {
+        used: 9,
+        written: 400 * GB,
+    });
+    set.wrote(100 * GB, worn);
+    watch.observe(&at(3600.0, 0.0));
+    set.wrote(GB, worn);
+    watch.observe(&at(3700.0, 0.0));
+    assert_eq!(watch.status()[0].used_percent, None);
+    watch.observe(&at(3800.0, 0.0));
+    assert_eq!(*set.asked.borrow(), [true, false, true]);
+    assert_eq!(watch.status()[0].used_percent, Some(9));
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn only_a_disk_with_a_device_is_read_and_one_whose_health_cant_be_read_has_none() {
@@ -207,14 +273,22 @@ fn only_a_disk_with_a_device_is_read_and_one_whose_health_cant_be_read_has_none(
         let at = block.join(name);
         std::fs::create_dir_all(&at).unwrap();
         std::fs::write(at.join("stat"), stat(sectors)).unwrap();
+        std::fs::write(at.join("ro"), "0\n").unwrap();
+        std::fs::write(at.join("size"), "2000409264\n").unwrap();
         if let Some(device) = device {
             std::os::unix::fs::symlink(device, at.join("device")).unwrap();
         }
+        at
     };
     entry("loop0", None, 9);
     entry("dm-0", None, 9);
     entry("nvme0n1", Some("../../nvme0"), 1000);
     entry("sda", Some("../../../0:0:0:0"), 2000);
+    // An empty card reader's slot, and an eMMC's read-only boot area.
+    let empty = entry("sdb", Some("../../../1:0:0:0"), 0);
+    std::fs::write(empty.join("size"), "0\n").unwrap();
+    let boot = entry("mmcblk0boot0", Some("../../mmc0:0001"), 0);
+    std::fs::write(boot.join("ro"), "1\n").unwrap();
     // The controller a health log is asked of, a plain file here, which
     // refuses the ask as a disk that isn't NVMe would.
     let dev = root.path().join("dev");
@@ -237,4 +311,54 @@ fn only_a_disk_with_a_device_is_read_and_one_whose_health_cant_be_read_has_none(
             },
         ]
     );
+}
+
+/// Each NVMe disk's health is asked of its own controller: the one its
+/// `device` names, or under native multipath the first its subsystem
+/// holds. Nothing else is asked.
+#[cfg(target_os = "linux")]
+#[test]
+fn each_nvme_disks_health_is_asked_of_its_own_controller() {
+    let root = tempfile::tempdir().unwrap();
+    let block = root.path().join("block");
+    for (name, device) in [
+        ("nvme0n1", "../../nvme0"),
+        ("nvme1n1", "../../nvme-subsys1"),
+        ("sda", "../../../0:0:0:0"),
+    ] {
+        let at = block.join(name);
+        std::fs::create_dir_all(&at).unwrap();
+        std::fs::write(at.join("stat"), stat(8)).unwrap();
+        std::os::unix::fs::symlink(device, at.join("device")).unwrap();
+    }
+    // A subsystem holds its controllers, and its own files beside them.
+    let subsystem = root.path().join("nvme-subsys1");
+    for held in ["nvme2", "nvme1", "nvme1c1n1"] {
+        std::fs::create_dir_all(subsystem.join(held)).unwrap();
+    }
+    std::fs::write(subsystem.join("subsysnqn"), "nqn\n").unwrap();
+    let dev = root.path().join("dev");
+    let asked = Rc::new(RefCell::new(Vec::new()));
+    let log = health(2, 80_000_000);
+    let mut sysfs = disks::Sysfs::asking(block, dev.clone(), {
+        let asked = Rc::clone(&asked);
+        Box::new(move |controller| {
+            asked.borrow_mut().push(controller.to_owned());
+            Some(log.clone())
+        })
+    });
+    let read = sysfs.read(true);
+    // The kernel lists its disks in no order of its own.
+    asked.borrow_mut().sort();
+    assert_eq!(*asked.borrow(), [dev.join("nvme0"), dev.join("nvme1")]);
+    let worn = Some(Wear {
+        used: 2,
+        written: 80_000_000 * 512_000,
+    });
+    let wear: Vec<_> = read.iter().map(|reading| reading.wear).collect();
+    assert_eq!(wear, [worn, worn, None]);
+
+    asked.borrow_mut().clear();
+    sysfs.read(false);
+    assert!(asked.borrow().is_empty(), "health asked unasked");
 }

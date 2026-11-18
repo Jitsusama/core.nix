@@ -989,6 +989,55 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
     assert!(news(&written, &told, now), "what's said is news");
 }
 
+/// A disk's counts move at every step and are said at each beat, so they
+/// alone aren't news; its health read, or a disk coming or going, is.
+#[test]
+fn a_disks_counts_alone_are_no_news_and_its_health_or_a_disk_coming_is() {
+    use disk_guard::daemon::{Status, news};
+    use disk_guard::disks::DiskStatus;
+    use disk_guard::units::float;
+    let now = 1_000_000.0;
+    let disk = |name: &str, written: u64, used: Option<u8>| DiskStatus {
+        name: name.into(),
+        written_this_boot: written,
+        written_per_hour: Some(float(written) / 10.0),
+        used_percent: used,
+        // What it wrote in its life is read with its health, an hour
+        // apart, so it moves with its wear here.
+        written_in_life: used.map(|used| u64::from(used) * 20_000),
+        rated_wear_in: used.map(|_| float(written)),
+    };
+    let status = |disks: Vec<DiskStatus>, heartbeat: f64| Status {
+        version: 2,
+        heartbeat,
+        says: String::new(),
+        filesystems: Vec::new(),
+        cleared: Vec::new(),
+        last: None,
+        failed: None,
+        frozen: Vec::new(),
+        writer: None,
+        notice: None,
+        holders: Vec::new(),
+        holders_at: None,
+        disks,
+    };
+    let written = status(vec![disk("nvme0n1", 1000, Some(2))], now - 5.0);
+    let counted = status(vec![disk("nvme0n1", 9000, Some(2))], now);
+    assert!(!news(&written, &counted, now), "counts alone");
+    let worn = status(vec![disk("nvme0n1", 9000, Some(3))], now);
+    assert!(news(&written, &worn, now), "a percent more worn");
+    let unread = status(vec![disk("nvme0n1", 9000, None)], now);
+    assert!(news(&written, &unread, now), "its health gone unread");
+    let more = status(
+        vec![disk("nvme0n1", 9000, Some(2)), disk("sda", 10, None)],
+        now,
+    );
+    assert!(news(&written, &more, now), "a disk come");
+    let other = status(vec![disk("nvme1n1", 9000, Some(2))], now);
+    assert!(news(&written, &other, now), "another disk");
+}
+
 #[test]
 fn a_preview_reads_the_survey_the_last_pass_kept_rather_than_walking_again() {
     // On 9 November a plan walked every source itself and ran past 200
