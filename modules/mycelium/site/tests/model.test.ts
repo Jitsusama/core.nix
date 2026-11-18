@@ -75,7 +75,7 @@ const skiff = {
   disk_band: "fine",
   power: "ac",
   room: { memory_available: 30, pressure: 0.1, over: ["cpu"] },
-  declared: { reach: ["cistern"], leaves_at: "2026-11-16T09:00:00Z" },
+  declared: { reach: ["cistern"], leaves_at: "2026-11-16T09:00:00Z", basin: "shoal" },
   measured_at: "2026-11-16T07:29:00Z",
 };
 
@@ -128,7 +128,7 @@ it("two cells sharing a title are two cells, each its own", () => {
   );
 });
 
-it("a machine's room and declared reach are flattened, as the map reads them", () => {
+it("a machine's room and what it declares are flattened, as the map reads them", () => {
   const { machines } = nowOf(told([skiff]), AT);
   assert.deepEqual(machines, [
     {
@@ -148,6 +148,7 @@ it("a machine's room and declared reach are flattened, as the map reads them", (
       over: ["cpu"],
       reach: ["cistern"],
       leaves_at: "2026-11-16T09:00:00Z",
+      basin: "shoal",
       measured_at: "2026-11-16T07:29:00Z",
       share: null,
     },
@@ -162,7 +163,31 @@ it("a machine that measured no room and declares nothing reads as none", () => {
     [machine.cores, machine.available, machine.pressure, machine.over],
     [undefined, null, null, []],
   );
-  assert.deepEqual([machine.reach, machine.leaves_at], [[], null]);
+  assert.deepEqual([machine.reach, machine.leaves_at, machine.basin], [[], null, null]);
+});
+
+// The node reads a basin by a DNS label's letters and drops any other
+// shape, so the map holds a name to the same letters and never draws one
+// a node of another build let through.
+it("a basin named in any shape but a name reads as no basin", () => {
+  const misshapen = [
+    7,
+    { name: "shoal" },
+    "",
+    "Shoal Basin",
+    "shoal<script>",
+    "-shoal",
+    "shoal-",
+    "b".repeat(64),
+  ];
+  for (const basin of misshapen) {
+    const [machine] = nowOf(told([{ ...skiff, declared: { basin } }]), AT).machines;
+    assert.equal(machine?.basin, null, `${JSON.stringify(basin)} named a basin`);
+  }
+  const [named] = nowOf(told([{ ...skiff, declared: { basin: "b".repeat(63) } }]), AT).machines;
+  assert.equal(named?.basin, "b".repeat(63), "a name of 63 letters is a basin's");
+  const [hyphened] = nowOf(told([{ ...skiff, declared: { basin: "basin-1" } }]), AT).machines;
+  assert.equal(hyphened?.basin, "basin-1", "a hyphen within a name is a basin's");
 });
 
 it("only the latest messages are heard, the newest last, as who sent them where", () => {

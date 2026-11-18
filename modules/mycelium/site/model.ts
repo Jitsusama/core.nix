@@ -144,7 +144,19 @@ function within(record: Fields, field: string): Fields {
   return isObject(value) ? value : {};
 }
 
-/** A machine record as the map draws it, its room and declared reach flattened. */
+/**
+ * A basin's name as the node reads one, a DNS label: lower-case letters,
+ * digits and hyphens, at most 63, never a hyphen at either end, so a name
+ * the node would refuse is never drawn either.
+ */
+const BASIN_NAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
+
+/** The basin a machine declares itself one of, or null where it names none. */
+function basinOf(said: unknown): string | null {
+  return typeof said === "string" && BASIN_NAME.test(said) ? said : null;
+}
+
+/** A machine record as the map draws it, its room and what it declares flattened. */
 function machineOf(record: Fields): Fields {
   const room = within(record, "room");
   const declared = within(record, "declared");
@@ -165,6 +177,9 @@ function machineOf(record: Fields): Fields {
     over: room["over"] ?? [],
     reach: declared["reach"] ?? [],
     leaves_at: declared["leaves_at"] ?? null,
+    // The pool of cloud machines it was borrowed from, by the pool's own
+    // short name; anything but a name reads as no basin at all.
+    basin: basinOf(declared["basin"]),
     measured_at: record["measured_at"],
   };
 }
