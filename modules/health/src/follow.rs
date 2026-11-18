@@ -41,9 +41,8 @@ const EVERY: Duration = Duration::from_secs(30);
 /// which hears what went unheard meanwhile that day, short of a start
 /// that falls past midnight, which reads only the new day. Followers that
 /// end at every start then cost a replay of the day every ten minutes,
-/// rather than one every few seconds. Each start also forgets the faults
-/// health saw itself rather than heard, such as a lid reading wrong, as
-/// every start does (`Day::resume`), and they then start that often.
+/// rather than one every few seconds. The faults health saw itself, such
+/// as a lid reading wrong, are kept through each start (`Day::resume`).
 pub const SETTLED: Duration = Duration::from_mins(10);
 
 /// The day being tallied, and where it's written.
@@ -55,7 +54,6 @@ pub struct Follower {
     zone: TimeZone,
     ends: BTreeMap<String, i64>,
     lid: Option<Looked>,
-    lid_wrong: bool,
     pains: Option<PathBuf>,
     typing: Option<PathBuf>,
     trials: Option<trials::Reader>,
@@ -65,7 +63,6 @@ pub struct Follower {
     presences: Option<PathBuf>,
     cgroups: Option<(PathBuf, String)>,
     guards: Vec<PathBuf>,
-    guards_stopped: Vec<PathBuf>,
     reports: Vec<PathBuf>,
     reported: BTreeSet<PathBuf>,
 }
@@ -98,7 +95,6 @@ impl Follower {
             zone,
             ends: BTreeMap::new(),
             lid: None,
-            lid_wrong: false,
             pains: None,
             typing: None,
             trials: None,
@@ -108,7 +104,6 @@ impl Follower {
             presences: None,
             cgroups: None,
             guards: Vec::new(),
-            guards_stopped: Vec::new(),
             reports: Vec::new(),
             reported: BTreeSet::new(),
         }
@@ -131,7 +126,7 @@ impl Follower {
 
     /// Keep what the guards say of the disks at `at`. A guard found
     /// stopped counts once as a service's fault, and again only after it
-    /// beats again.
+    /// beats again, a start between them or not.
     pub fn guard(&mut self, at: i64) {
         if self.guards.is_empty() || date_of(at, &self.zone) != self.day.date {
             return;
@@ -141,13 +136,16 @@ impl Follower {
         self.day.disks.saw(at, &look);
         self.changed |= before != self.day.disks;
         for stopped in &look.stopped {
-            if !self.guards_stopped.contains(stopped) {
+            if !self.day.seeing.guards.contains(stopped) {
                 self.day
                     .fault("disk-guard", Kind::Services, GUARD_STOPPED, at);
                 self.changed = true;
             }
         }
-        self.guards_stopped = look.stopped;
+        if self.day.seeing.guards != look.stopped {
+            self.day.seeing.guards = look.stopped;
+            self.changed = true;
+        }
     }
 
     /// Weigh whose work kept the processors busy, from the groups beneath
@@ -384,17 +382,18 @@ impl Follower {
 
     /// Judge a look at the lid, taken at `at`. A lid gone wrong counts once
     /// as a device's fault, and again only after it reads open or the
-    /// screen goes dark.
+    /// screen goes dark, a start between them or not.
     pub fn look_at_lid(&mut self, now: Looked, at: i64) {
-        if lid::wrong(&now, self.lid.as_ref()) && !self.lid_wrong {
-            self.lid_wrong = true;
+        if lid::wrong(&now, self.lid.as_ref()) && !self.day.seeing.lid {
+            self.day.seeing.lid = true;
+            self.changed = true;
             if date_of(at, &self.zone) == self.day.date {
                 self.day.fault("lid", Kind::Devices, LID_WRONG, at);
-                self.changed = true;
             }
         }
-        if !now.shut || !now.screen_on {
-            self.lid_wrong = false;
+        if (!now.shut || !now.screen_on) && self.day.seeing.lid {
+            self.day.seeing.lid = false;
+            self.changed = true;
         }
         self.lid = Some(now);
     }
@@ -407,8 +406,9 @@ impl Follower {
     }
 
     /// Take one line of the source's. A line of a new day writes
-    /// the old one and starts the new; one of a day already written is
-    /// left out, since that day is done.
+    /// the old one and starts the new, which sees nothing gone wrong yet,
+    /// so a fault still seen counts once in it too; one of a day already
+    /// written is left out, since that day is done.
     ///
     /// # Errors
     ///
