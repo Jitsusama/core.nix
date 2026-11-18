@@ -173,10 +173,10 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
   the kit the theme writes for one
 - [docs/design.md][9]: how everything on a screen looks, reads and behaves
 - [docs/decisions/][6]: why the design is what it is
-- The seven modules that are programs of their own keep a guide beside their
+- The nine modules that are programs of their own keep a guide beside their
   code, read before changing them: [the disk guard][11], [the eero][23],
-  [the guide][12], [the margin cat][27], [the shell][13], [spend-watch][14]
-  and [WARP][24]
+  [the guide][12], [the local sites][28], [the margin cat][27],
+  [the network][29], [the shell][13], [spend-watch][14] and [WARP][24]
 
 [1]: docs/testing.md
 [2]: docs/architecture.md
@@ -205,3 +205,5 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [25]: docs/daemons.md
 [26]: docs/commands.md
 [27]: modules/margin-cat/AGENTS.md
+[28]: modules/local-sites/AGENTS.md
+[29]: modules/net/AGENTS.md

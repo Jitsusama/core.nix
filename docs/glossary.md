@@ -259,6 +259,12 @@ be read, marked unread and archived.
 | speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
 | download | a file the browser saved from the web, listed in its Recent while it's still where it was saved | | Chrome's `downloads` table, `chrome-recent-sites downloads` |
 | kept here | the copies of Drive's files on this machine, to open, and how much of the room set aside for them they take | | the cache home's `google/drive`, Google's `kept` |
+| site | a page or set of pages Joel opens in his browser from the sites' server on this machine, each a row on the sites' home | | `http://sites.localhost:8484/<site>/` |
+| live site | a site built by Nix from TypeScript on the kit, drawing a daemon's records as they change | | `localSite`, `jitsusama.local-sites.mounts` |
+| document | a site a session writes, kept as state rather than built, carrying a copy of the web kit as its own `kit/` and taking its keys from the kit | | `~/.local/share/jitsusama/sites/` |
+| feed | the WebSocket the sites' server bridges to one daemon's socket, with the kinds and fields a live site may read of it | | `/feed/<name>`, `jitsusama.local-sites.feeds` |
+| kit | what every live site shares from the sites' server: its feeds, records, keys and theme switch, served once; where the web-design skill says the kit, it means the web kit | | `modules/local-sites/kit/`, `/local-sites/kit/` |
+| web kit | the theme written for the web, its styles and fonts, served once for every live site | | `modules/theme/web/`, `/local-sites/web/` |
 
 ## People
 
