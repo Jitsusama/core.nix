@@ -5030,8 +5030,10 @@
   vm-desktop-answers-secret-asks = ''
     the passwords daemon the shell runs answers an agent's secret ask drawn in the launcher's Asks:
     Joel's Return twice releases the stand-in value into the one command asked for, which no
-    journal holds, his r refuses it, a launcher opened from outside takes no yes until his key
-    moves over the rows, and a yes walked through the launcher's IPC releases nothing
+    journal holds, his r refuses it and a Return on it then keeps the launcher, a launcher
+    opened from outside takes no yes until his key moves over the rows, nor after an agent's run
+    or walk onto Asks until his own Escape comes after it, and a yes walked through the
+    launcher's IPC releases nothing
   '';
   vm-desktop-captures = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures and

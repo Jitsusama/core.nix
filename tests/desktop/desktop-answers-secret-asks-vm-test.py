@@ -3,7 +3,7 @@
 Here the passwords daemon the shell runs answers an agent's secret ask, which the launcher draws
 in Asks: Joel's own yes releases the value into the one command asked for, his r refuses it, and
 a yes walked through the launcher's IPC, which any process running as him reaches, releases
-nothing.
+nothing, as does one after an agent's run or walk onto Asks came between his Escape and his move.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. It proves the wiring alone, one path through each
@@ -251,7 +251,7 @@ def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Deskto
 
 
 def test_r_refuses_an_ask(desktop: Desktop) -> None:
-    """R on an ask's line refuses it, releasing nothing."""
+    """R on an ask's line refuses it, releasing nothing, and a Return on it then does nothing."""
     ask = "1123456789abcdef0123456789abcdef"
     why = "To glaze the pots."
     put_up(desktop, ask, why)
@@ -260,6 +260,14 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     answer = answered(desktop, ask)
     assert (answer["state"], answer["why"]) == ("refused", "refused by Joel"), answer
     desktop.as_account(f"! test -e {TREE}/released")
+    # Return on the line once answered has nothing to do, so it keeps the launcher: the / after
+    # it finds the launcher still open on the line, rather than closed by a Return that failed.
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
+    desktop.machine.send_key("ret")
+    desktop.machine.send_chars("/")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["mode"] == "find" and selects(shown, why)
+    )
 
 
 def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None:
@@ -294,6 +302,49 @@ def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None
     )
     desktop.as_account(f"test -e {ASKS}/{ask}.ask.json && ! test -e {ASKS}/{ask}.answer.json")
     desktop.as_account(f"! test -e {TREE}/released")
+
+
+def outside_onto_asks(desktop: Desktop, way: str) -> None:
+    """Open Asks as an agent may, by the catalogue's run or a terminal's walk."""
+    if way == "run":
+        entries = json.loads(desktop.as_account("qs ipc call launcher list"))
+        found = [e["id"] for e in entries if e["words"] == "Asks" and e["in"] == "Passwords"]
+        assert len(found) == 1, f"the catalogue lists Asks {len(found)} times"
+        said = desktop.as_account(f"qs ipc call launcher run {shlex.quote(found[0])}")
+    else:
+        walked = json.dumps({"steps": ["Passwords", "Asks"]})
+        said = desktop.as_account(f"qs ipc call launcher doing {shlex.quote(walked)}")
+    assert json.loads(said).get("done") is True, f"the {way} didn't open Asks: {said}"
+
+
+@pytest.mark.parametrize("way", ["run", "doing"])
+def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop, way: str) -> None:
+    """An agent's run or walk onto Asks after Joel's Escape leaves his next j untimed.
+
+    Either may land the selection on a line he never chose, so his move counts only after an
+    Escape of his own that comes after it: two Returns after the j release nothing.
+    """
+    mark = "1" if way == "run" else "2"
+    ask = f"4{mark}23456789abcdef0123456789abcdef"
+    why = f"To bank the fire, by {way}."
+    # An older ask beneath, waiting, so his move goes off the line and back over waiting asks
+    # alone, whatever lines earlier tests left answered further down.
+    beneath = f"4{mark}13456789abcdef0123456789abcdef"
+    put_up(desktop, beneath, f"To rake the ash, by {way}.")
+    put_up(desktop, ask, why)
+    asks_open_on(desktop, ask, why)
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
+    outside_onto_asks(desktop, way)
+    # Still normal, so the j and k below move over the rows rather than type into the find.
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
+    desktop.machine.send_chars("j")
+    desktop.launcher_until(lambda shown: not selects(shown, why))
+    desktop.machine.send_chars("k")
+    desktop.launcher_until(lambda shown: selects(shown, why))
+    # Past the reading, so a move wrongly taken as his would have timed the line long enough.
+    time.sleep(PAST_THE_READING)
+    refused_unread(desktop, ask, say_yes(desktop))
 
 
 def scene_warnings(desktop: Desktop) -> str:
