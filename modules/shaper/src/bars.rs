@@ -610,7 +610,7 @@ mod tests {
         assert_eq!(
             anchor("6C:AE:F6:C2:D6:B2=12000"),
             Ok((HOME.to_owned(), 12_000)),
-            "named by its router, as the recorder names it"
+            "named as learned.json names it"
         );
         assert!(anchor("12000").is_err(), "no network");
         assert!(anchor("home=0").is_err(), "no rate");
