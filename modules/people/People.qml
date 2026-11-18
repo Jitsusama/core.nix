@@ -346,11 +346,10 @@ Provider {
     }
     // Counts each change heard, for a binding that reads what's made.
     property int heardRevision: 0
-    // What's merged, and how many times everyone was, for a test to
-    // bound: kept in a plain object, since a property written as `all`
-    // is made would be read by it too, and loop.
-    // How many times everyone was merged (`merges`), and one person's
-    // records (`each`), for a test to bound.
+    // How many times everyone was merged (`merges`), and how many times
+    // one person was made from their records here (`each`), for a test to
+    // bound: kept in a plain object, since a property written as `all` is
+    // made would be read by it too, and loop.
     readonly property var merging: ({ stale: true, merges: 0, each: 0 })
 
     // Everyone the sources know as one person each, how they stand, and
