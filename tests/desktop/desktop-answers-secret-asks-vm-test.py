@@ -21,6 +21,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import re
 import shlex
 import time
 from typing import TYPE_CHECKING
@@ -275,14 +276,15 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: not shown["open"])
     # A throw is written in the same turn as the close, but reaches the
     # journal through a stream, so it's synced before it's read; a journal
-    # that can't be read fails rather than passing for a clean one.
-    desktop.machine.succeed("journalctl --sync")
-    said = desktop.machine.succeed(
-        desktop.in_session(
-            f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
-        )
+    # that can't be read fails rather than passing for a clean one. Each
+    # read is paced, so a busy builder fails this step by name.
+    desktop.machine.succeed("journalctl --sync", timeout=60)
+    said = desktop.as_account(
+        f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
     )
-    assert "TypeError" not in said, f"a Return on the refused line threw: {said}"
+    # Any error QML writes, by its shape, not only the one this guards.
+    thrown = re.search(r"\.(qml|js):\d+: \w*Error\b", said)
+    assert thrown is None, f"a Return on the refused line threw: {said}"
 
 
 def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None:

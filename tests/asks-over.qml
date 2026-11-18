@@ -649,8 +649,8 @@ ShellRoot {
         same("its drawer says neither what it asks for, where from, nor why",
             [drawer.title, drawer.eyebrow, drawer.body, drawer.facts?.length],
             [hidden, "", "", 0]);
-        same("it has no act, so no Return answers it unseen", [row()?.arms, typeof row()?.run],
-            ["", "undefined"]);
+        same("it has no act, so no key answers it unseen",
+            [row()?.arms, typeof row()?.run, row()?.verbs ?? null], ["", "undefined", null]);
         same("it still waits for him in For You, hidden there too",
             asks.forYou.map(one => one.row.name), [hidden]);
         same("and its line's time starts again", asks.seen, {});
@@ -673,6 +673,9 @@ ShellRoot {
         // daemon adds later that grants something is withheld too.
         same("nor is any ask but a no or a revoke",
             asks.stamped(root.key, { ask: "grant", thing: "op://Private/Kiln/password" }), null);
+        same("while a revoke, taking a standing yes away, still goes",
+            asks.stamped(root.key, { ask: "revoke", thing: "op://Private/Kiln/password" })?.ask,
+            "revoke");
     }
 
     function sharingMoved() {
@@ -717,11 +720,21 @@ ShellRoot {
         root.madeBefore.run();
         same("and a yes then is told it waits on knowing, not on a share",
             stage.toldWhys.slice(told), ["not until it's known whether your screen is shared"]);
+        // A no from the row as it was is held as the row is now, saying it
+        // waits on knowing too.
+        stage.becoming = {};
+        root.sent(root.madeBefore.verbs()[1]);
+        const held = () => Object.values(stage.becoming).find(one => one.from !== stage) ?? {};
+        same("a no while it's unknown is held as a row waiting on knowing", held().row?.note,
+            waiting);
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         Niri.castsHeard = true;
         same("niri then saying there's a share, the row no longer says it waits on knowing",
             [row()?.name, row()?.note], ["Ask, Hidden While You Share", ""]);
+        same("nor does the row it's held as", [held().row?.name, held().row?.note],
+            ["Ask, Hidden While You Share", ""]);
         Niri.casts = {};
+        stage.becoming = {};
     }
 
     // The shell's own recording of one window shows nothing of the launcher.
