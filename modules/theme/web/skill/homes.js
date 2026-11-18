@@ -120,8 +120,9 @@
   // A row's homes are kinds, each read from its homes.json, or patterns,
   // {"kind", "address"}, giving every thing of a kind a home at the address
   // with its name, percent-encoded, for {name}. Both are held to what the
-  // system reader (modules/system/src/homes.rs) takes, so a row or a record
-  // it drops is named here rather than missed: a path of plain steps, and an
+  // system's reader (modules/system/src/homes.rs) and Code's
+  // (modules/repos/site/homes.ts) take, so a row or a record either drops
+  // is named here rather than missed: a path of plain steps, and an
   // address that is a fragment on the row's own page in plain bytes. A
   // pattern may be written from its page, "#machine={name}", or from the
   // sites' root, "mycelium/#machine={name}", and reads no homes.json.
@@ -217,11 +218,12 @@
     if (claims.length === 0) {
       continue;
     }
-    // The home lists a row written ./code/, as sessions write it, but the
-    // system's homes take its path as written and refuse the dot step.
+    // The home lists a row written ./code/, as sessions write it, and so do
+    // the system's homes, but Code's take its path as written and refuse the
+    // dot step. Once Code's take one ./ too, this goes.
     if (typeof path === "string" && path.startsWith("./") && plainPath(path.slice(2))) {
       missing.push(
-        `${JSON.stringify(path)} in ${record} homes things, which the system's homes refuse: `
+        `${JSON.stringify(path)} in ${record} homes things, which Code's homes refuse: `
           + "drop its ./ in sites.json",
       );
       continue;

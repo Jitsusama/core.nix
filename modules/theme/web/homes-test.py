@@ -3,8 +3,9 @@
 Each case writes a small sites folder, a sites.json, any rows.json and
 homes.json, and a page, serves it, runs the probe in the page as checks.md
 runs it, and reads what it names. The rules a row and a record are held to
-are the system reader's (modules/system/src/homes.rs), so a row or a record
-the reader would drop is named here. Where the rows come from is the
+are the system's reader's (modules/system/src/homes.rs) and Code's
+(modules/repos/site/homes.ts), so a row or a record either would drop is
+named here. Where the rows come from is the
 probe's own: rows.json, which the home writes (modules/local-sites/home),
 or sites.json where the sites serve none.
 The probe's path comes from WEB_SKILL, as the check running this sets it.
@@ -284,13 +285,13 @@ def test_no_record_at_all_is_a_fault(browser: Browser, tmp_path: Path) -> None:
     ]
 
 
-def test_a_leading_dot_step_is_named_for_the_system(browser: Browser, tmp_path: Path) -> None:
-    """The home lists a row written ./code/, which the system's homes refuse, so it's named."""
+def test_a_leading_dot_step_is_named_for_code(browser: Browser, tmp_path: Path) -> None:
+    """The home lists a row written ./code/, which Code's homes refuse, so it's named."""
     dotted = [{"path": "./code/", "homes": ["repository"]}]
     rows = json.dumps({"sites": dotted})
     assert probed(browser, tmp_path, dotted, NOTHING, rows, code=[NOTEBOOK]) == [
         (
-            '"./code/" in rows.json homes things, which the system\'s homes refuse: '
+            '"./code/" in rows.json homes things, which Code\'s homes refuse: '
             "drop its ./ in sites.json"
         ),
         "a row in rows.json home to a kind, for any mention to be measured",
