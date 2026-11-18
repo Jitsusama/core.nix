@@ -148,6 +148,8 @@ in
       words = lib.tail (lib.head (refusesOnAMac "the Mac is over its room")).command;
       offload = pkgs.callPackage ../nix-offload/offload/package.nix { };
     in
+    # Kept in Nix because the command it runs is the Mac's own, read from
+    # this evaluation, and the rest only sorts its exit code.
     pkgs.runCommand "update-to-main-asks-what-nix-offload-answers" { } ''
       rc=0
       ${lib.escapeShellArgs ([ (lib.getExe offload) ] ++ words)} || rc=$?
