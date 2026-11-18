@@ -116,7 +116,10 @@
     "Fuzzy.js"
     "launcher/SessionRow.js"
   ];
-  "launcher/Awaited.js" = [ "launcher/Pacing.js" ];
+  "launcher/Awaited.js" = [
+    "launcher/Pacing.js"
+    "launcher/Trials.js"
+  ];
   "launcher/ByEar.js" = [ "launcher/Numbers.js" ];
   "launcher/Calculator.qml" = [ "launcher/Numbers.js" ];
   "launcher/Capture.qml" = [

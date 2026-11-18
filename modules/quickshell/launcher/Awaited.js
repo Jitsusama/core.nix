@@ -1,5 +1,6 @@
 .pragma library
 .import "Pacing.js" as Pacing
+.import "Trials.js" as Trials
 
 // What a search of what's typed does about the sources whose answers it
 // waits for (Launcher.qml's searchNow). A source such as the notices,
@@ -118,4 +119,142 @@ function frameOpen(frame, at) {
 // own work after that isn't the sync; else up to the listing `at`.
 function heldOpen(frame, held, at) {
     return frameOpen(frame, held.firedAt ?? at);
+}
+
+// The render thread's steps of each frame in `frames`, as
+// FramePresentation's timesOf says them with the frame's number, that
+// held the shell's thread from `from` to `to`: its render, then its swap,
+// which waits on the compositor, and can wait on the GPU drawing what the
+// render handed it.
+function drawingHeld(frames, from, to) {
+    const steps = [];
+    for (const frame of frames) {
+        steps.push(
+            { name: "waiting on the last render", from: frame.rendering, to: frame.rendered },
+            { name: "waiting on the last swap", from: frame.rendered, to: frame.swapped });
+    }
+    return steps.filter(step => step.from > 0 && step.to > step.from)
+        .map(step => ({ name: step.name, from: Math.max(step.from, from),
+            to: Math.min(step.to, to) }))
+        .filter(step => step.to > step.from)
+        .sort((one, other) => one.from - other.from);
+}
+
+// One span the shell's thread was said syncing, told apart by the render
+// thread's times. Qt's threaded loop polishes before it says animating,
+// then posts the sync and waits (qsgthreadedrenderloop.cpp's
+// polishAndSync), so until the render thread takes the sync the shell's
+// thread waits on it: on a frame before's render or swap where that ran,
+// else before the sync, which holds both the render thread beginning the
+// frame, where it can wait for a buffer (syncAndRender's beginFrame), and
+// the shell's own handlers of animating run after the span opened, and so
+// names neither's owner. Those handlers can run while a frame before
+// still renders or swaps, so those waits are at most what it held. Then
+// the sync itself, then what the shell's thread ran after it let go (its
+// animations advanced, and what was queued ahead of the call ending the
+// span); on a loop rendering on the shell's thread, as in a sandbox, that
+// also holds the frame's own render and swap. Where no frame's sync began
+// within it, as one whose window wasn't ready to render, whose slot a
+// newer frame took, or one synced longer before the key's frame than the
+// ring's sixteen, what no step names is said as untimed syncing. Its own
+// step isn't said as syncing, which names the whole span where it isn't
+// told apart, as an opening's stall does (Pacing.stallSpent).
+function syncSplit(span, frames) {
+    const own = frames.filter(frame => frame.synchronizing >= span.from
+        && frame.synchronizing <= span.to)
+        .sort((one, other) => one.synchronizing - other.synchronizing)[0];
+    const took = own === undefined ? span.to : own.synchronizing;
+    const rest = own === undefined ? "untimed syncing" : "before the sync";
+    const parts = [];
+    let at = span.from;
+    for (const step of drawingHeld(frames.filter(frame => frame !== own), span.from, took)) {
+        if (step.from > at) {
+            parts.push({ name: rest, from: at, to: step.from });
+        }
+        // A step wholly inside one already said is passed over, so no
+        // millisecond is said twice.
+        if (step.to > at) {
+            parts.push({ name: step.name, from: Math.max(step.from, at), to: step.to });
+            at = step.to;
+        }
+    }
+    if (took > at) {
+        parts.push({ name: rest, from: at, to: took });
+    }
+    if (own === undefined) {
+        return parts;
+    }
+    // The patch sets both sync times on the render thread at once, so a
+    // sync with no end comes only from a read gone wrong; it's said as
+    // taking none, so the time after isn't put back under the sync.
+    const synced = own.synchronized > took ? Math.min(own.synchronized, span.to) : took;
+    if (synced > took) {
+        parts.push({ name: "the sync itself", from: took, to: synced });
+    }
+    if (span.to > synced) {
+        parts.push({ name: "after the sync", from: synced, to: span.to });
+    }
+    return parts;
+}
+
+// Each span said syncing told apart (syncSplit), the rest as they were.
+// The shell's thread is said syncing from its frame's animating to the
+// sync letting it go, so "sta" said syncing 68 where its own frame's sync
+// took 1 by the render thread (Joel, 2026-11-18).
+function syncsSplit(spans, frames) {
+    const split = [];
+    for (const span of spans) {
+        split.push(...(span.name === "syncing" ? syncSplit(span, frames) : [span]));
+    }
+    return split;
+}
+
+// What a held key waited behind (behindOn), with its syncs told apart by
+// the render thread's times of the frames around it, read as its line is
+// said, once the frames synced while it was held have rendered.
+function behindSplit(behind, frames, bound) {
+    return behindOn(behind.held, Object.assign({}, behind.listed,
+        { spans: syncsSplit(behind.listed.spans, frames) }), bound);
+}
+
+// The frames FramePresentation still has the times of, oldest first, each
+// with its number, read back from `last`, the newest begun. The newest
+// may be begun and not yet rendered, so has no times, and is passed over;
+// its slot then still holds the frame the ring's size before it, so the
+// ring's frames are counted from the newest rendered. The read ends at the
+// first a newer frame's slot took, as Trials.begunBefore's does, or at the
+// ring's size, should timesOf ever give a slot's times for a frame not its
+// own.
+function framesTimed(last, timesOf) {
+    const frames = [];
+    const newest = last > 0 && timesOf(last).rendered > 0 ? last : last - 1;
+    for (let frame = newest; frame > 0 && newest - frame < Trials.FRAMES_KEPT; frame--) {
+        const times = timesOf(frame);
+        if (!(times.rendered > 0)) {
+            break;
+        }
+        frames.unshift(Object.assign({ frame }, times));
+    }
+    return frames;
+}
+
+// How many held keys' waits are kept for their frames' swaps: more than a
+// burst types before the first's frame is swapped, which took 57 ms behind
+// a compositor's swap (Joel's "sta", 2026-11-18).
+const HELD_KEPT = 8;
+
+// The held keys' waits kept until each key's frame is swapped, with one
+// more, `behind` ({ held, listed }, as behindSplit takes it) for the key
+// whose search made `parts`; the oldest goes past HELD_KEPT. Each is kept
+// by its key's parts, so a key typed before an earlier one's frame was
+// swapped doesn't take its place.
+function heldKept(kept, parts, behind) {
+    return kept.slice(-(HELD_KEPT - 1)).concat([Object.assign({ parts }, behind)]);
+}
+
+// The wait kept for the key whose search made `parts`, as its frame is
+// swapped, or null, and what's kept without it.
+function heldDrawn(kept, parts) {
+    const behind = kept.find(one => one.parts === parts) ?? null;
+    return { behind, kept: kept.filter(one => one !== behind) };
 }
