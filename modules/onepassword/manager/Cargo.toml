@@ -1,7 +1,8 @@
 # 1Password as a password manager of Passwords (modules/passwords): its
 # items read through op and said on Passwords' line protocol, every hidden
 # detail's value taken off before it goes (src/lib.rs says how). libc
-# keeps its memory and descriptors from the account's other processes.
+# keeps its memory and descriptors from the account's other processes, and
+# its command line takes every command's shape (../../terminal-kit).
 [package]
 name = "onepassword-manager"
 version = "0.1.0"
@@ -17,3 +18,4 @@ path = "src/main.rs"
 inotify = { version = "0.11", default-features = false }
 libc = "0.2"
 serde_json = "1"
+terminal-kit = { path = "../../terminal-kit" }

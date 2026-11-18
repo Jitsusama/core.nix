@@ -1,4 +1,5 @@
-//! passwords-1password [--op PATH] [--open-unit UNIT [--opened FILE] [--systemctl PATH]]
+//! passwords-1password [--op PATH] [--release REFERENCE]... [--open-unit UNIT [--opened FILE]
+//! [--systemctl PATH]]
 //!
 //! 1Password as a password manager of Passwords, on Passwords' line
 //! protocol (modules/passwords/src/main.rs): an ask a line in, its answer
@@ -26,10 +27,16 @@
 //! turned the setting on, and an Unlock with the app closed that did
 //! nothing).
 //!
+//! Its command line takes the shape every command of ours does
+//! (docs/commands.md), through the terminal kit: `--help` and `--version`
+//! answer and start nothing, and a flag it doesn't know, or one with no
+//! value, is refused as usage (64) rather than passed over, so a manager
+//! Passwords was told to start wrongly never starts at all.
+//!
 //! Every agent runs as Joel, and a program just started may have its
 //! memory and descriptors read by any process of the same account, so the
 //! manager turns its dumpable flag off and writes no core dump before it
-//! reads anything: no other process can open its pipes and ask it through
+//! reads an ask or runs op: no other process can open its pipes and ask it through
 //! the op 1Password let in as its child. It ends with the passwords daemon
 //! that ran it, which has the kernel end it as the daemon goes.
 //!
@@ -51,6 +58,7 @@ use onepassword_manager::{
     passwords, period, reason, settings_file, value,
 };
 use serde_json::{Map, Value, json};
+use terminal_kit::{Exit, Failure, Help};
 
 /// How long 1Password may take to start once its unit is asked to.
 const OPENS_WITHIN: Duration = Duration::from_secs(20);
@@ -61,11 +69,61 @@ const REACHES_WITHIN: Duration = Duration::from_secs(15);
 const REACHING_AGAIN: Duration = Duration::from_secs(1);
 
 fn main() -> ExitCode {
-    if let Err(error) = harden() {
-        eprintln!("<3>couldn't keep its memory from the account: {error}");
-        return ExitCode::FAILURE;
-    }
-    let given = given();
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        harden().map_err(|error| {
+            Failure::new(
+                Exit::Failed,
+                "couldn't keep its memory from the account's other processes",
+            )
+            .because(error.to_string())
+        })?;
+        serve(given(&context.args)?);
+        Ok(())
+    })
+}
+
+/// What `--help` says, and what the kit holds its words to.
+fn help() -> Help {
+    Help::new(
+        "passwords-1password",
+        "1Password as a manager of Passwords: an ask a line in, its answer a line out",
+    )
+    .option(
+        "--op PATH",
+        "1Password's command, by default op as found on the PATH",
+    )
+    .option(
+        "--release REFERENCE",
+        "a reference a secret ask may release, given once for each",
+    )
+    .option(
+        "--open-unit UNIT",
+        "the unit that opens 1Password, started for your own ask while it's closed",
+    )
+    .option(
+        "--opened FILE",
+        "the file that unit keeps while 1Password runs, by default under XDG_RUNTIME_DIR",
+    )
+    .option(
+        "--systemctl PATH",
+        "what starts that unit, by default systemctl as found on the PATH",
+    )
+    .example(
+        "passwords-1password --op op --open-unit onepassword.service",
+        "as Passwords runs it, answering until its input ends",
+    )
+    .exit(
+        Exit::Usage,
+        "given a flag it doesn't know, or one without its value",
+    )
+    .exit(
+        Exit::Failed,
+        "it couldn't keep its memory from the account's other processes",
+    )
+}
+
+/// Answers each ask read until its input ends.
+fn serve(given: Given) {
     let config_home = std::env::var("XDG_CONFIG_HOME").ok();
     let home = std::env::var("HOME").ok();
     let settings = settings_file(config_home.as_deref(), home.as_deref());
@@ -97,7 +155,6 @@ fn main() -> ExitCode {
         };
         say(&manager.answer(&asked));
     }
-    ExitCode::SUCCESS
 }
 
 /// Keeps its memory and descriptors from the account's other processes,
@@ -136,21 +193,32 @@ struct Opener {
     systemctl: String,
 }
 
-fn given() -> Given {
-    let mut args = std::env::args().skip(1);
+/// What the manager was started with, read from the words the kit left,
+/// each flag with its value, or why it can't start.
+fn given(args: &[String]) -> Result<Given, Failure> {
+    let mut args = args.iter().cloned();
     let mut op = "op".to_owned();
     let mut opened = None;
     let mut unit = None;
     let mut systemctl = "systemctl".to_owned();
     let mut releases = Vec::new();
-    while let (Some(flag), Some(value)) = (args.next(), args.next()) {
+    while let Some(flag) = args.next() {
+        let mut value = || {
+            args.next().ok_or_else(|| {
+                Failure::new(Exit::Usage, format!("{flag} wants a value"))
+                    .try_this("passwords-1password --help")
+            })
+        };
         match flag.as_str() {
-            "--op" => op = value,
-            "--release" => releases.push(value),
-            "--opened" => opened = Some(PathBuf::from(value)),
-            "--open-unit" => unit = Some(value),
-            "--systemctl" => systemctl = value,
-            _ => eprintln!("<4>passwords-1password doesn't know {flag}"),
+            "--op" => op = value()?,
+            "--release" => releases.push(value()?),
+            "--opened" => opened = Some(PathBuf::from(value()?)),
+            "--open-unit" => unit = Some(value()?),
+            "--systemctl" => systemctl = value()?,
+            _ => {
+                return Err(Failure::new(Exit::Usage, format!("it doesn't know {flag}"))
+                    .try_this("passwords-1password --help"));
+            }
         }
     }
     // The unit's own runtime folder, %t to systemd, which a command given
@@ -159,7 +227,7 @@ fn given() -> Given {
         std::env::var_os("XDG_RUNTIME_DIR")
             .map(|run| PathBuf::from(run).join("onepassword").join("open"))
     });
-    Given {
+    Ok(Given {
         op,
         releases,
         opener: unit.zip(opened).map(|(unit, opened)| Opener {
@@ -167,7 +235,7 @@ fn given() -> Given {
             unit,
             systemctl,
         }),
-    }
+    })
 }
 
 /// Whether a release may read `reference`: only as Joel's own ask, never

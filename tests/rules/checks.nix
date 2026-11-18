@@ -341,6 +341,7 @@
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
         pain-points = pkgs.callPackage ../../modules/pain-points/package.nix { };
         passwords = pkgs.callPackage ../../modules/passwords/package.nix { };
+        passwords-1password = pkgs.callPackage ../../modules/onepassword/manager/package.nix { };
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
         people = pkgs.callPackage ../../modules/people/package.nix { };
         pi-agent-proxy = pkgs.callPackage ../../modules/pi/agent-proxy/package.nix { };
