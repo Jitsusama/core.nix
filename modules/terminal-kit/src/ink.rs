@@ -599,6 +599,11 @@ mod tests {
         assert_eq!(pen.role("alert", "a"), "\u{1b}[31ma\u{1b}[0m");
         assert_eq!(pen.title("T"), "\u{1b}[1mT\u{1b}[0m");
         assert_eq!(pen.voice("v"), "\u{1b}[3;90mv\u{1b}[0m");
+        assert_eq!(
+            pen.faint("rule", "r"),
+            "\u{1b}[2;90mr\u{1b}[0m",
+            "a track or a rule is the agreed grey, faint, as every command's is"
+        );
     }
 
     #[test]
