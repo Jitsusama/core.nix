@@ -21,8 +21,21 @@ pub trait Hub {
     fn merge(&self, merging: &Merging) -> Result<String, String>;
 
     /// The merge's commit of pull request `number`, once it reads merged,
-    /// as a merge whose answer was lost may have landed all the same.
-    fn merged(&self, number: u64) -> Option<String>;
+    /// as a merge whose answer was lost may have landed all the same;
+    /// none while it reads unmerged.
+    ///
+    /// # Errors
+    ///
+    /// Why GitHub couldn't be asked, which says nothing either way.
+    fn merged(&self, number: u64) -> Result<Option<String>, String>;
+
+    /// The tree GitHub holds at `commit`, so a landing is judged by what
+    /// GitHub merged rather than by a fetch that may lag or fail.
+    ///
+    /// # Errors
+    ///
+    /// Why GitHub couldn't say.
+    fn tree(&self, commit: &str) -> Result<String, String>;
 
     /// Revert `merging`'s merge on main through a pull request of its
     /// own, merged, giving that pull request's number.
@@ -50,15 +63,30 @@ impl Hub for GitHub {
         )
     }
 
-    fn merged(&self, number: u64) -> Option<String> {
+    fn merged(&self, number: u64) -> Result<Option<String>, String> {
         let read = gh(&[
             "api",
             &format!("repos/{}/pulls/{number}", self.slug),
             "--jq",
             "select(.merged) | .merge_commit_sha",
+        ])?;
+        Ok((!read.is_empty()).then_some(read))
+    }
+
+    fn tree(&self, commit: &str) -> Result<String, String> {
+        gh(&[
+            "api",
+            &format!("repos/{}/git/commits/{commit}", self.slug),
+            "--jq",
+            ".tree.sha",
         ])
-        .ok()?;
-        (!read.is_empty()).then_some(read)
+        .and_then(|tree| {
+            if tree.is_empty() {
+                Err(format!("GitHub knows no commit {commit}"))
+            } else {
+                Ok(tree)
+            }
+        })
     }
 
     fn revert(&self, merging: &Merging) -> Result<u64, String> {

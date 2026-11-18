@@ -100,7 +100,7 @@ fn shows(git: &dyn Fn(&[&str]) -> Result<String, String>, merge: &str) -> bool {
 const SHOWS_WITHIN: Duration = Duration::from_secs(30);
 
 /// How many times a merge GitHub refuses as main moved under it is asked.
-const MERGE_TRIES: u32 = 3;
+const MERGE_TRIES: usize = 3;
 
 /// Merge `merging` through `hub`, giving its merge's commit. GitHub
 /// refuses a merge as "Base branch was modified" while it still works out
@@ -115,7 +115,7 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Result<String, String> {
             Ok(made) => return Ok(made),
             Err(why) => why,
         };
-        if let Some(made) = hub.merged(merging.number) {
+        if let Ok(Some(made)) = hub.merged(merging.number) {
             return Ok(made);
         }
         if tried >= MERGE_TRIES || !why.contains("Base branch was modified") {
