@@ -158,12 +158,21 @@ impl Gate {
 
     /// Whether the link may carry the load now. A call detector that
     /// can't tell is taken for a call, and so is audio playing, and the
-    /// commands waited on are asked last, being the slowest.
+    /// commands waited on are asked last, being the slowest. A swayidle
+    /// gone closes it too, since its mark would then never be taken back
+    /// when Joel returns.
     pub fn open(&self) -> bool {
         self.mark.exists()
+            && self.watching()
             && exits(Command::new("a-call-is-on"), ASKED_FOR, signalled) == Some(1)
             && !audio_plays()
             && !busy(&self.waits, signalled)
+    }
+
+    /// Whether swayidle still runs to hear Joel come back.
+    fn watching(&self) -> bool {
+        let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
+        matches!(idle.try_wait(), Ok(None))
     }
 }
 

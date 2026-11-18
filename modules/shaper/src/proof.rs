@@ -509,6 +509,7 @@ fn window(
     // own traffic, so it's dropped and heard afresh in the next window.
     if !halted(&stop) && !gate.open() {
         stop.store(true, Ordering::Relaxed);
+        tell("Joel is back, or a call, audio or a meeting started: waiting for his next idle");
         if touched {
             idle.clear();
         }
