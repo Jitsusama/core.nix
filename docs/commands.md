@@ -172,13 +172,17 @@ without a rebuild:
 - **Only the command's escapes.** Words a command shows are anyone's to
   set: a device's name, a network's, a path, a message from a server.
   Words drawn through the kit's pen lose every control character but
-  the line break, with or without ink, a tab drawn as a space, the
-  marks that set or reorder the direction of text, and the characters
-  that draw nothing and join nothing, so none can retitle the window,
-  clear the screen, draw over a line, draw a name backwards or make two
-  names that read the same pass for two. The kit's layout and its wait
-  hold the words they're given to one line besides, a line break drawn
-  as a space: a table's cell, a list's row, a fact and its label, a
+  the line break, with or without ink, a tab or a Unicode separator
+  drawn as a space, the marks that set or reorder the direction of
+  text, and the default-ignorable characters that draw nothing and
+  shape nothing, so none can retitle the window, clear the screen, draw
+  over a line or draw a name backwards. What shapes a word or an emoji
+  stays (the soft hyphen, the joiners, variation selectors and a flag's
+  tags), so a command that finds things by name folds those away before
+  comparing, as eero does; look-alike letters from other scripts, and
+  one letter spelled two ways, aren't folded. The kit's layout, its wait
+  and a title hold the words they're given to one line besides, a line
+  break drawn as a space: a table's cell, a list's row, a fact and its label, a
   paragraph, words hung after a mark, a failure's every part, a link and
   a wait's words, so no field draws a record of its own, and none a
   line that passes for a failure's try. The kit can't tell a break a

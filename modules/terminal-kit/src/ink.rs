@@ -367,9 +367,11 @@ impl Pen {
         self.escaped(&[self.colour(role)], words)
     }
 
-    /// A title: bold, in strong, the only words a command sets bold.
+    /// A title: bold, in strong, the only words a command sets bold, and
+    /// held to one line, since a title is often a name from outside and a
+    /// break in it could draw a line that passes for the page's own.
     pub fn title(&self, words: &str) -> String {
-        self.escaped(&["1", self.colour("strong")], words)
+        self.escaped(&["1", self.colour("strong")], &one_line(words))
     }
 
     /// A label over a group or a column: muted capitals, but for a unit
@@ -640,14 +642,23 @@ mod tests {
     }
 
     #[test]
-    fn words_lose_the_marks_that_reorder_them_and_keep_unicode_lines() {
+    fn words_lose_the_marks_that_reorder_them_and_draw_unicode_lines_as_spaces() {
         let plain = Pen::plain();
         assert_eq!(
             plain.role("text", "hall\u{202e}gnp.exe\u{2066}x\u{2069}"),
             "hallgnp.exex",
             "a mark that reorders text reached the terminal"
         );
-        assert_eq!(plain.role("text", "one\u{2028}two"), "one\ntwo");
+        assert_eq!(
+            plain.role("text", "one\u{2028}two"),
+            "one two",
+            "a Unicode separator made a break no filter upstream saw"
+        );
+        assert_eq!(
+            plain.title("one\ntwo"),
+            "one two",
+            "a title drew a second line"
+        );
     }
 
     #[test]

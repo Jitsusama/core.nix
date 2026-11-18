@@ -61,6 +61,11 @@ fn laid_out_as_drawn(room: Room) {
         list(&rows("hall", "forged now and then", "on"), &pen, room),
         "a row's words or side were measured with what they never draw"
     );
+    assert_eq!(
+        list(&rows("hall", "quiet", "o\nn"), &pen, room),
+        list(&rows("hall", "quiet", "o n"), &pen, room),
+        "a break in a row's side drew a line of its own"
+    );
     let cells = |first: &str, second: &str| {
         vec![
             vec![first.to_owned(), second.to_owned()],

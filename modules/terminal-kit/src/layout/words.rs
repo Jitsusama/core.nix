@@ -25,8 +25,9 @@ const SMALL: [&str; 12] = [
 ];
 
 /// Words as the kit draws them: every control character dropped but the
-/// line break, a tab drawn as a space and a Unicode line or paragraph
-/// separator as a line break, and the marks that reorder text right to
+/// line break, a tab and a Unicode line or paragraph separator drawn as a
+/// space, so no break is made that a filter for line breaks upstream
+/// never saw, and the marks that reorder text right to
 /// left dropped too, since one can draw a name backwards over what's
 /// beside it. A name, a path or a message
 /// comes from anyone, an eero device's name or a Wi-Fi network's among
@@ -36,8 +37,8 @@ const SMALL: [&str; 12] = [
 /// borrowed as they are where they hold none, as nearly all do.
 pub fn drawn(words: &str) -> Cow<'_, str> {
     kept(words, |c| match c {
-        '\n' | '\u{2028}' | '\u{2029}' => Some('\n'),
-        '\t' => Some(' '),
+        '\n' => Some('\n'),
+        '\t' | '\u{2028}' | '\u{2029}' => Some(' '),
         _ => None,
     })
 }
@@ -55,24 +56,41 @@ pub fn one_line(words: &str) -> Cow<'_, str> {
 /// Unicode line or paragraph separator, or a mark that sets, embeds,
 /// overrides or isolates a run of text's direction, the implicit ones
 /// (left-to-right, right-to-left and Arabic letter marks) among them, or
-/// one that draws nothing and joins nothing (the zero-width space, the
-/// word joiner and the invisible operators after it, and the byte-order
-/// mark), which would let two names that read the same pass for two.
-/// The joiners that shape a script or an emoji stay.
+/// one of Unicode's default-ignorable characters that draws nothing and
+/// shapes nothing: the zero-width space, the combining grapheme joiner,
+/// Khmer's unwritten vowels, the word joiner and the format controls
+/// after it, the byte-order mark, the blank Hangul fillers that stand
+/// alone, the interlinear marks, shorthand and music formatting, and the
+/// language tag with the unassigned rest of its block. Those would hide
+/// a difference between two names drawn alike. The soft hyphen, the
+/// joiners and fillers that shape a script, variation selectors and the
+/// tags that spell a flag stay, since an emoji or a word is drawn wrong
+/// without them; a command that compares names folds those away itself.
 pub(crate) fn unseen(c: char) -> bool {
     c.is_control()
         || matches!(
             c,
-            '\u{061c}'
+            '\u{034f}'
+                | '\u{061c}'
+                | '\u{17b4}'
+                | '\u{17b5}'
                 | '\u{200b}'
                 | '\u{200e}'
                 | '\u{200f}'
                 | '\u{2028}'
                 | '\u{2029}'
                 | '\u{202a}'..='\u{202e}'
-                | '\u{2060}'..='\u{2064}'
-                | '\u{2066}'..='\u{2069}'
+                | '\u{2060}'..='\u{206f}'
+                | '\u{3164}'
                 | '\u{feff}'
+                | '\u{ffa0}'
+                | '\u{fff0}'..='\u{fffb}'
+                | '\u{1bca0}'..='\u{1bca3}'
+                | '\u{1d173}'..='\u{1d17a}'
+                | '\u{e0000}'
+                | '\u{e0001}'
+                | '\u{e0080}'..='\u{e00ff}'
+                | '\u{e01f0}'..='\u{e0fff}'
         )
 }
 
@@ -212,7 +230,7 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
 /// the one line without the space a trailing break left.
 fn set(words: &str, inset: usize, room: Room) -> Vec<String> {
     match room.cells() {
-        None => vec![one_line(words).trim_end().to_owned()],
+        None => vec![one_line(words).trim().to_owned()],
         Some(cells) => wrapped(words, cells.saturating_sub(inset).max(1)),
     }
 }
@@ -501,10 +519,48 @@ mod tests {
 
     #[test]
     fn every_mark_that_reorders_text_is_kept_from_the_terminal() {
+        // Unicode's own lists, not `unseen`'s: Bidi_Control, and the
+        // Default_Ignorable_Code_Point characters that shape nothing, each
+        // range by its ends.
         let marks = [
-            '\u{061c}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}',
-            '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{200b}', '\u{2060}',
-            '\u{2061}', '\u{2062}', '\u{2063}', '\u{2064}', '\u{feff}',
+            '\u{061c}',
+            '\u{200e}',
+            '\u{200f}',
+            '\u{202a}',
+            '\u{202b}',
+            '\u{202c}',
+            '\u{202d}',
+            '\u{202e}',
+            '\u{2066}',
+            '\u{2067}',
+            '\u{2068}',
+            '\u{2069}',
+            '\u{200b}',
+            '\u{2060}',
+            '\u{2061}',
+            '\u{2062}',
+            '\u{2063}',
+            '\u{2064}',
+            '\u{feff}',
+            '\u{034f}',
+            '\u{17b4}',
+            '\u{17b5}',
+            '\u{206a}',
+            '\u{206f}',
+            '\u{3164}',
+            '\u{ffa0}',
+            '\u{fff0}',
+            '\u{fffb}',
+            '\u{1bca0}',
+            '\u{1bca3}',
+            '\u{1d173}',
+            '\u{1d17a}',
+            '\u{e0000}',
+            '\u{e0001}',
+            '\u{e0080}',
+            '\u{e00ff}',
+            '\u{e01f0}',
+            '\u{e0fff}',
         ];
         for mark in marks {
             let words = format!("abc{mark}def");
@@ -513,13 +569,14 @@ mod tests {
         }
         assert_eq!(
             drawn("a\u{2028}b\u{2029}c"),
-            "a\nb\nc",
-            "a Unicode separator wasn't drawn as a line break"
+            "a b c",
+            "a Unicode separator made a line break"
         );
+        let shaping = "\u{ad}\u{200c}\u{200d}\u{fe0f}\u{e0067}\u{e007f}\u{1160}\u{180b}";
         assert_eq!(
-            drawn("\u{200d}\u{fe0f}"),
-            "\u{200d}\u{fe0f}",
-            "a joiner was dropped"
+            drawn(shaping),
+            shaping,
+            "a character that shapes was dropped"
         );
     }
 }
