@@ -18,7 +18,9 @@
 #
 # The relay trusts the public roots built into it, so an origin whose
 # certificate chains to a private root isn't reached: each request is
-# answered as a 421, which sends pi direct, and the journal says why.
+# answered as a 421, which sends pi direct, and the journal says why. A
+# request the origin resets is a 502, for pi's own retry, since the origin
+# may have acted on it; the connection it came on takes no more.
 #
 # The relay runs in background.slice, which the shaper sends in the agents'
 # lane, and its connections are the account's own, so they ride the work VPN

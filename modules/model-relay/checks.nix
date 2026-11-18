@@ -16,8 +16,10 @@ onLinux {
   # model-relay's tests run as it builds, against an HTTP/2 origin over TLS
   # of their own: a request forwarded whole, another host refused, many
   # requests at once on a few connections, an answer streamed as it comes, a
-  # connection the origin lets go opened again, an origin out of reach said
-  # as a 502 or a 504 without a queue, a connection that won't open not
+  # connection the origin lets go opened again, a request the origin reset
+  # said as a 502 with its connection retired, and told from one a fallen
+  # connection lost, an origin out of reach said as a 502 or a 504 without a
+  # queue, a connection that won't open not
   # asked for on every request, a failure that ends as the origin comes
   # back, an origin it can't trust sending pi direct, a request answered
   # beside an answer longer than the idle time, the relay leaving once idle

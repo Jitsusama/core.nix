@@ -30,9 +30,9 @@
 //! request. A request hyper hands back unsent, as when its connection was
 //! retired before it went, goes again on another; one the origin dropped
 //! after it went is said as a 502, for pi's retry. One the origin reset
-//! rather than answer retires the connection it went on, which may be
-//! refusing every request it's given, and is said as a 421, so pi sends
-//! it direct. After the machine
+//! rather than answer is a 502 too, since the origin may have acted on it,
+//! and retires the connection it went on, which may be refusing every
+//! request it's given. After the machine
 //! sleeps, the connections it held are retired and opened afresh, since
 //! the network they ran on may be gone and pings would take their time to
 //! say so. A ping is what finds a lost connection, and an unanswered one
@@ -45,8 +45,7 @@
 //! Nothing of a request's or an answer's headers or body is said, a failure
 //! included, and nothing is written to disk. A request it couldn't carry is
 //! answered as a 502, or a 504 when the origin couldn't be reached in time,
-//! or a 421 when the origin reset it, never by closing the socket, so pi
-//! decides what follows.
+//! never by closing the socket, so pi's own retry decides what follows.
 //!
 //! A switch leaves a running relay be, since a restart would end every
 //! answer still streaming. So it leaves on its own once nothing has been
@@ -459,8 +458,8 @@ impl Drop for Holding {
 
 /// One of the connections a relay keeps: the one open, if it is, how many
 /// it has kept, and the lock whoever opens it holds, so it's opened once.
-struct Slot {
-    open: Held<Option<Kept>>,
+struct Slot<S = SendRequest<Sent>> {
+    open: Held<Option<Kept<S>>>,
     kept: AtomicU64,
     opening: Mutex<()>,
 }
@@ -468,14 +467,27 @@ struct Slot {
 /// A connection a slot keeps: its sender, and which of the slot's it is,
 /// so what retires it can't retire one opened since.
 #[derive(Clone)]
-struct Kept {
+struct Kept<S = SendRequest<Sent>> {
     number: u64,
-    sender: SendRequest<Sent>,
+    sender: S,
 }
 
-impl Slot {
+/// What a slot keeps of a connection: something to send down, which says
+/// when the connection beneath it has closed.
+trait Sender: Clone {
+    /// Whether its connection has closed.
+    fn is_closed(&self) -> bool;
+}
+
+impl Sender for SendRequest<Sent> {
+    fn is_closed(&self) -> bool {
+        SendRequest::is_closed(self)
+    }
+}
+
+impl<S: Sender> Slot<S> {
     /// This connection, while it takes requests.
-    fn sender(&self) -> Option<Kept> {
+    fn sender(&self) -> Option<Kept<S>> {
         self.open
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -485,7 +497,7 @@ impl Slot {
     }
 
     /// Keeps `sender` as this connection's.
-    fn keep(&self, sender: SendRequest<Sent>) -> Kept {
+    fn keep(&self, sender: S) -> Kept<S> {
         let kept = Kept {
             number: self.kept.fetch_add(1, Ordering::Relaxed),
             sender,
@@ -783,29 +795,30 @@ impl Relay {
     fn not_carried(&self, why: &hyper::Error, (at, number): (usize, u64)) -> Response<Body> {
         // hyper's error says what failed, never what was sent, which a
         // test holds it to.
+        self.counts.failed.fetch_add(1, Ordering::Relaxed);
         if reset_by_the_origin(why) {
             // On 18 November the origin reset 1,545 of 24,218 requests,
             // each within a second of its asking, in spells of minutes that
             // took 10 to 15% of every session's: the shape one connection of
             // several refusing all it's given would make. Retired, such a
-            // connection costs one request, which pi sends direct; the
-            // origin answered nothing, so it hears the request once.
+            // connection costs one request. It's still a 502 rather than a
+            // 421 sending pi direct, since only a reset saying the stream
+            // was refused promises the origin acted on nothing, and these
+            // said a protocol error. The number says whether a fresh
+            // connection is reset too, which one bad one wouldn't be.
             self.slots[at].retire(number);
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
             eprintln!(
-                "model-relay: connection {at} had a request reset by the origin, so it's retired and pi goes directly: {}",
+                "model-relay: the origin reset a request on connection {at}.{number}, \
+                 so it's retired: {}",
                 with_causes(why)
             );
-            return said(
-                StatusCode::MISDIRECTED_REQUEST,
-                "this relay's origin reset the request on its connection, so go directly\n",
+        } else {
+            eprintln!(
+                "model-relay: a request couldn't be carried: {}",
+                with_causes(why)
             );
         }
-        self.counts.failed.fetch_add(1, Ordering::Relaxed);
-        eprintln!(
-            "model-relay: a request couldn't be carried: {}",
-            with_causes(why)
-        );
         said(
             StatusCode::BAD_GATEWAY,
             "this relay's request to its origin failed\n",
@@ -1164,7 +1177,8 @@ async fn say_counts(counts: Arc<Counts>) {
         }
         last = asked;
         eprintln!(
-            "model-relay: {asked} asked, {} refused, {} failed, {} reset and sent direct; {} connections opened, {} taking requests",
+            "model-relay: {asked} asked, {} refused, {} failed, {} of them reset; \
+             {} connections opened, {} taking requests",
             counts.refused.load(Ordering::Relaxed),
             counts.failed.load(Ordering::Relaxed),
             counts.reset.load(Ordering::Relaxed),
@@ -1183,9 +1197,41 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        HELD_AHEAD_AT_MOST, InPieces, Origin, SAID_AT_MOST, SLEPT_AT_LEAST, reach, reach_any,
-        slept, with_causes,
+        HELD_AHEAD_AT_MOST, Held, InPieces, Mutex, Origin, SAID_AT_MOST, SLEPT_AT_LEAST, Sender,
+        Slot, reach, reach_any, slept, with_causes,
     };
+
+    /// A connection kept for a test, which never closes.
+    #[derive(Clone)]
+    struct Line;
+
+    impl Sender for Line {
+        fn is_closed(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn retiring_a_connection_spares_one_opened_since() {
+        let slot = Slot {
+            open: Held::new(None),
+            kept: std::sync::atomic::AtomicU64::new(0),
+            opening: Mutex::new(()),
+        };
+        let reset = slot.keep(Line);
+        let since = slot.keep(Line);
+        slot.retire(reset.number);
+        assert_eq!(
+            slot.sender().map(|kept| kept.number),
+            Some(since.number),
+            "a reset that came late retired the connection opened since it"
+        );
+        slot.retire(since.number);
+        assert!(
+            slot.sender().is_none(),
+            "a connection its own reset retired is still taking requests"
+        );
+    }
 
     #[test]
     fn an_origin_is_an_https_host_alone() {
