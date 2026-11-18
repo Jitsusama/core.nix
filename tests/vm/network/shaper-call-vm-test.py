@@ -186,16 +186,19 @@ class Rig:
         """Give every machine's counts of what it queued, dropped and lost, since it booted.
 
         They count every test's traffic, so a failure that needs this one's alone takes them
-        before as well as after.
+        before as well as after. Each machine's links give what it sent and took in, so what
+        one sent and the next never took in is the host's, between them; nstat gives only
+        what a machine itself sent or took, never what the router forwards.
         """
+        gaps = "ip -s link; nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"
         return "\n".join(
             [
                 said(self.client, "tc -s qdisc show dev eth1"),
                 said(self.client, f"tc -s qdisc show dev {self.ifb()}"),
-                said(self.client, "nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
+                said(self.client, gaps),
                 said(self.router, "tc -s qdisc show dev eth1; tc -s qdisc show dev eth2"),
-                said(self.router, "nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
-                said(self.server, "nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
+                said(self.router, gaps),
+                said(self.server, gaps),
             ]
         )
 
