@@ -85,35 +85,48 @@ function cutWhere(words, breaksAfter) {
     return pieces.filter(piece => piece !== "");
 }
 
-// The cuts made lately, by how they were cut and the words cut, oldest
-// first. A drawer's facts are made again each time it's given, so its
+// The cuts made lately, by how they were cut and the words cut, the one
+// asked longest ago first. A drawer's facts are made again each time it's given, so its
 // store path, command and ids were cut letter by letter on every program
 // drawer shown: a quarter of the drawer's laying in Qt's profiler, and
 // keeping them took 23 to 31% off Chrome's, Slack's and kitty's drawers
 // (RTOIMQ, 2026-11-18). A cut depends on its words alone, never on a
 // width, so one kept is the one made again.
 const cuts = new Map();
-// At most this many are kept, the oldest going first: a drawer cuts tens,
-// so this holds a walk down Programs' many.
+// At most this many are kept, the one asked longest ago going first, so
+// what every drawer asks stays: a drawer cuts tens, so this holds a walk
+// down Programs' many.
 const CUTS_KEPT = 512;
+// How cutAtFigures' cuts are kept: a letter no marks hold, so they stay
+// apart from every cutAfter's.
+const FIGURES = "\u0001figures";
 
-// How many cuts are kept now, which tests/query-keys.qml holds to CUTS_KEPT.
+// The cuts kept now, as their keys, the one asked longest ago first,
+// which tests/query-keys.qml holds to CUTS_KEPT and to that order.
 function cutsHeld() {
-    return cuts.size;
+    return [...cuts.keys()];
 }
 
-// The cut `how` makes of `words`, kept, as a copy of its own, so a caller
-// changing what it's handed changes no later answer.
+// The key a cut is kept by: how it was cut, then its words, apart.
+function cutKey(how, words) {
+    return `${how}\u0000${words}`;
+}
+
+// The cut `how` makes of `words`, kept and moved to the newest, as a copy
+// of its own, so a caller changing what it's handed changes no later
+// answer.
 function keptCut(how, words, cut) {
-    const key = `${how}\u0000${words}`;
+    const key = cutKey(how, words);
     let pieces = cuts.get(key);
     if (pieces === undefined) {
         pieces = cut();
         if (cuts.size >= CUTS_KEPT) {
             cuts.delete(cuts.keys().next().value);
         }
-        cuts.set(key, pieces);
+    } else {
+        cuts.delete(key);
     }
+    cuts.set(key, pieces);
     return pieces.slice();
 }
 
@@ -125,10 +138,9 @@ function cutAfter(words, marks) {
 
 // Words cut after their figures' dots, "192." and "168.", so a number
 // too long for a line breaks between its figures before inside one
-// (Y2YBTS, 2026-11-09). Kept apart from every cutAfter by a key no marks
-// make.
+// (Y2YBTS, 2026-11-09).
 function cutAtFigures(words) {
-    return keptCut("\u0001figures", words, () => cutWhere(words, figureDot));
+    return keptCut(FIGURES, words, () => cutWhere(words, figureDot));
 }
 
 // Words cut to their letters, each mark kept with the letter before it

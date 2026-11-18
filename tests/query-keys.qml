@@ -1309,15 +1309,32 @@ QtObject {
             ["at its figures", () => Identifier.cutAtFigures("192.168.1.10"),
                 ["192.", "168.", "1.", "10"]]
         ]) {
-            const first = cut();
-            first[0] = "changed";
-            first.push("added");
-            holds(`a kept cut ${what} is the next ask's whole`, cut(), want);
+            for (const ask of ["made", "kept"]) {
+                const got = cut();
+                got[0] = "changed";
+                got.push("added");
+                holds(`a cut ${what} ${ask} is the next ask's whole`, cut(), want);
+            }
         }
-        // However many are asked, the kept stay bounded.
-        for (let at = 0; at < Identifier.CUTS_KEPT + 20; at++)
+        // The same words cut at their marks and at their figures stay apart.
+        holds("a cut at a dot keeps its figures whole",
+            [Identifier.cutAtFigures("192.168.1.10"), Identifier.cutAfter("192.168.1.10", ".")],
+            [["192.", "168.", "1.", "10"], ["192.168.1.10"]]);
+        // A cut asked again is the one kept, moved to the newest, and
+        // however many are asked the kept stay bounded, the one asked
+        // longest ago going first.
+        const keyOf = at => Identifier.cutKey("-", `kept-${at}`);
+        for (let at = 0; at < Identifier.CUTS_KEPT; at++)
             Identifier.cutAfter(`kept-${at}`, "-");
-        holds("the cuts kept stay bounded", Identifier.cutsHeld(), Identifier.CUTS_KEPT);
+        Identifier.cutAfter("kept-0", "-");
+        const refreshed = Identifier.cutsHeld();
+        holds("a cut asked again is kept as the newest", refreshed[refreshed.length - 1],
+            keyOf(0));
+        Identifier.cutAfter("kept-new", "-");
+        const held = Identifier.cutsHeld();
+        holds("the cuts kept stay bounded", held.length, Identifier.CUTS_KEPT);
+        holds("the cut asked longest ago goes first",
+            [held.includes(keyOf(0)), held.includes(keyOf(1)), held[0]], [true, false, keyOf(2)]);
         // The words an identifier is read as, each to stand whole, so a
         // UUID broken at its hyphens reads as whole (RTOIMQ, 2026-11-09).
         const hash = "0c8vy4kd2hxq7rm5ppa6f3jz1nbsw9li";
