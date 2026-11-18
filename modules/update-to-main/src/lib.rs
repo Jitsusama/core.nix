@@ -16,6 +16,7 @@
 //!   commits, which refuse anyone's, until an asker lets them through.
 //! - `git`: root's copy of main, its history and its signature.
 //! - `hosted`: main as its host names it, for a host that signs nothing.
+//! - `fetch_log`: the line a fetch of a hosted main leaves in the log.
 //! - `read`: a hosted main's folder read from its host's API, unfetched.
 //! - `follows`: the flake's inputs that follow their own signed main.
 //! - `follow`: the asker that asks whenever main moves.
@@ -35,6 +36,7 @@
 pub mod ask;
 pub mod batches;
 pub mod config;
+pub mod fetch_log;
 pub mod follow;
 pub mod follows;
 pub mod git;

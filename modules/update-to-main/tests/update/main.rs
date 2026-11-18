@@ -2035,6 +2035,79 @@ fn a_hosted_main_is_fetched_into_a_ref_of_its_own() {
     );
 }
 
+/// The checkout is someone's own, so each move of main's ref is on record
+/// in its reflog, though git keeps none for such a ref by default, and
+/// none at all here, where the checkout's config says to keep none.
+#[test]
+fn a_hosted_mains_every_move_is_logged() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    git(&checkout, &["config", "core.logAllRefUpdates", "false"]);
+    let first = world.hosted_commit("one", None);
+    world.system(&first);
+    assert_eq!(world.update().1, done(&first));
+    let second = world.hosted_commit("two", None);
+    world.system(&second);
+    assert_eq!(world.update().1, done(&second));
+    assert_eq!(
+        git(
+            &checkout,
+            &["reflog", "show", "--format=%H", "refs/update-to-main/main"]
+        ),
+        format!("{second}\n{first}"),
+        "the ref's reflog should hold both fetches, newest first"
+    );
+}
+
+/// A fetch runs none of git's upkeep in someone's checkout, whatever its
+/// config asks: a large repository's repack took its disk for an hour.
+/// Here each fetch keeps a pack, and the checkout's config asks, in the
+/// foreground, both for gc past one pack and for maintenance's own
+/// repack, which runs without gc, so a second fetch would leave fewer
+/// packs were either run. Its config is left as it was.
+#[test]
+fn a_hosted_fetch_runs_no_upkeep_in_the_checkout() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    for (key, value) in [
+        ("fetch.unpackLimit", "1"),
+        ("gc.auto", "6700"),
+        ("gc.autoPackLimit", "1"),
+        ("gc.autoDetach", "false"),
+        ("maintenance.auto", "true"),
+        ("maintenance.incremental-repack.enabled", "true"),
+        ("maintenance.incremental-repack.auto", "1"),
+    ] {
+        git(&checkout, &["config", key, value]);
+    }
+    let config = || git(&checkout, &["config", "--local", "--list"]);
+    let config_before = config();
+    let packs = || {
+        fs::read_dir(checkout.join(".git/objects/pack"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|x| x == "pack"))
+            .count()
+    };
+    let before = packs();
+    let first = world.hosted_commit("one", None);
+    world.system(&first);
+    assert_eq!(world.update().1, done(&first));
+    let second = world.hosted_commit("two", None);
+    world.system(&second);
+    assert_eq!(world.update().1, done(&second));
+    assert_eq!(
+        packs(),
+        before + 2,
+        "each fetch should leave its own pack, none rolled together"
+    );
+    assert_eq!(
+        config(),
+        config_before,
+        "the checkout's config should be left as it was"
+    );
+}
+
 /// A checkout whose git writes a commit graph after each fetch walks every
 /// ref for it, so a side branch missing an old commit failed every fetch of
 /// main, though main needs nothing of it: a machine went unupdated for a day.
