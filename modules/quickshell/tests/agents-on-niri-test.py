@@ -36,6 +36,7 @@ which cost more than all the cases, so splitting it would start them twice.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -532,7 +533,9 @@ def test_a_talk_left_in_normal_opens_typing_after_its_last_letter(shell: Shell) 
         shell.launcher_until(lambda shown: shown["caret"] == 1)
         shell.send_key("esc")
         shell.launcher_until(lambda shown: shown["mode"] == "normal" and shown["caret"] == 0)
-        talked_again(shell, "x")
+        shell.close_launcher()
+        talk_opened(shell)
+        shell.send_chars("x")
         shell.launcher_until(lambda shown: shown["typed"] in ("hix", "hxi", "xhi"))
         assert shell.showing()["typed"] == "hxi", shell.showing()
     finally:
@@ -543,7 +546,9 @@ def test_a_talk_left_after_i_opens_typing_where_i_took_it(shell: Shell) -> None:
     """A talk left in insert by i, nothing typed, opens again typing before the letter it rests on.
 
     i goes into insert without moving the caret, so only the save as the mode changes keeps
-    it; without it, Escape's keeps it after the letter ("hix" rather than "hxi").
+    it; without it, Escape's keeps it after the letter ("hix" rather than "hxi"). The shell
+    starts again with the talk open, as at a switch, since a shutting launcher leaves insert
+    through normal and keeps the same caret again.
     """
     found(shell, "listening quest", "Listening Quest")
     shell.send_key("ret")
@@ -555,20 +560,44 @@ def test_a_talk_left_after_i_opens_typing_where_i_took_it(shell: Shell) -> None:
         shell.launcher_until(lambda shown: shown["mode"] == "normal" and shown["caret"] == 1)
         shell.send_chars("i")
         shell.launcher_until(lambda shown: shown["mode"] == "insert" and shown["caret"] == 1)
-        talked_again(shell, "x")
+        deadline = time.monotonic() + 10
+        while 1 not in drafted_carets("hi"):
+            assert time.monotonic() < deadline, f"i's caret was never kept: {drafted_carets('hi')}"
+            time.sleep(0.05)
+        shell.restart()
+        talk_opened(shell)
+        shell.send_chars("x")
         shell.launcher_until(lambda shown: shown["typed"] in ("hix", "hxi", "xhi"))
         assert shell.showing()["typed"] == "hxi", shell.showing()
     finally:
         talk_cleared(shell)
 
 
-def talked_again(shell: Shell, letters: str) -> None:
-    """Shut the launcher, open Listening Quest's talk again, and type `letters` as it opens."""
-    shell.close_launcher()
+def drafted_carets(words: str) -> list[int]:
+    """Each caret the shell's drafts file keeps with `words`, wherever in it they're kept."""
+    carets: list[int] = []
+
+    def walk(held: object) -> None:
+        if isinstance(held, dict):
+            if held.get("text") == words and isinstance(held.get("caret"), int):
+                carets.append(held["caret"])
+            for value in held.values():
+                walk(value)
+        elif isinstance(held, list):
+            for value in held:
+                walk(value)
+
+    for kept in (STATE / "quickshell/by-shell").glob("*/launcher-drafts.json"):
+        with contextlib.suppress(ValueError):
+            walk(json.loads(kept.read_text()))
+    return carets
+
+
+def talk_opened(shell: Shell) -> None:
+    """Open Listening Quest's talk again from a shut launcher, typing as it opens."""
     found(shell, "listening quest", "Listening Quest")
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["asking"])
-    shell.send_chars(letters)
 
 
 def talk_cleared(shell: Shell) -> None:
@@ -578,9 +607,7 @@ def talk_cleared(shell: Shell) -> None:
     five Rights take past what any case here types.
     """
     shell.close_launcher()
-    found(shell, "listening quest", "Listening Quest")
-    shell.send_key("ret")
-    shell.launcher_until(lambda shown: shown["asking"])
+    talk_opened(shell)
     for _ in range(5):
         shell.send_key("right")
     shell.send_key("ctrl-u")
