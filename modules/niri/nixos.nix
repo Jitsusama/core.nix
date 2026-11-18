@@ -247,6 +247,16 @@
     # patch (fixed-to-output.patch) draws a bottom surface whose namespace
     # NIRI_FIXED_TO_OUTPUT names once on its screen, where it is, outside
     # the overview; home.nix's unit names the cat's. It adds no setting.
+    #
+    # niri's own frames after idle reach the screen within 2 refreshes of
+    # its redraw, yet the launcher's reached it 4 to 7 after the shell's
+    # swap, so the time goes before niri is asked to redraw: behind the
+    # buffer's fence, or a frame already in flight. The patch
+    # (says-a-layers-wake.patch, made on the rest) says at debug, for a
+    # layer surface's first buffer after 100 ms quiet, how long niri took
+    # to take it, what the output was doing then, when its frame rendered
+    # and reached the screen, and how fast the screen refreshed over the
+    # spell before. It adds no setting.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -287,6 +297,7 @@
         ./says-a-frames-steps-after-idle.patch
         ./keeps-secret-copies-from-sandboxes.patch
         ./fixed-to-output.patch
+        ./says-a-layers-wake.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
