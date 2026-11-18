@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{builders, gate, health, machine, passed, phases};
+use crate::{builders, gate, health, machine, passed, phases, units};
 
 mod switches;
 
@@ -425,6 +425,9 @@ pub fn failed_units(json_lines: &str) -> BTreeMap<String, u32> {
         let Some(unit) = entry.user_unit.or(entry.unit) else {
             continue;
         };
+        if units::a_run(&unit) {
+            continue;
+        }
         *named.entry(without_pids(&unit)).or_insert(0) += 1;
     }
     named
@@ -625,6 +628,23 @@ mod tests {
             named.len(),
             3,
             "a line that isn't a unit was counted: {named:?}"
+        );
+    }
+
+    #[test]
+    fn a_run_its_starter_reads_isnt_a_failed_unit() {
+        let lines = concat!(
+            r#"{"USER_UNIT":"merge-net-rerun-worktree-github-Jitsusama-core-nix-jitsusama-repos-serve.service"}"#,
+            "\n",
+            r#"{"USER_UNIT":"run-p178036-i50400995.service"}"#,
+            "\n",
+            r#"{"USER_UNIT":"camera.service"}"#,
+        );
+        let named = failed_units(lines);
+        assert_eq!(
+            named.keys().collect::<Vec<_>>(),
+            ["camera.service"],
+            "a run of the net's or pi's was named as a failed unit"
         );
     }
 

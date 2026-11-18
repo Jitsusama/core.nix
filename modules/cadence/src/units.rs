@@ -307,7 +307,7 @@ pub fn owner(unit: &str, owners: &BTreeMap<String, String>) -> Option<String> {
 /// units it starts for itself (`garbage-bound-mon-2af2dh.service`): a
 /// part of six letters and digits, holding both, so a plain word such as
 /// `camera` is never taken for one.
-fn address(unit: &str) -> Option<String> {
+pub fn address(unit: &str) -> Option<String> {
     let stem = unit.rsplit_once('.').map_or(unit, |(stem, _)| stem);
     stem.split('-')
         .find(|part| {
@@ -325,7 +325,7 @@ fn address(unit: &str) -> Option<String> {
 /// end itself: merge-net's reruns of a check, and pi's commands run as a
 /// transient unit, `run-p<pid>-i<id>.service`. On 17 November these
 /// were among the failed units nobody held, so they're never told.
-fn a_run(unit: &str) -> bool {
+pub fn a_run(unit: &str) -> bool {
     if unit.starts_with("merge-net-rerun-") {
         return true;
     }
