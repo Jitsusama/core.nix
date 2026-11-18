@@ -86,11 +86,12 @@ QtObject {
             { kinds: { run: { rows: 2, ms: 5 }, agent: { rows: 1, ms: 2 } }, since: 22 });
         // A tally says whose rows it spent on, rounded, most first then by
         // name, and how many of each it laid. Kinds that round alike go by
-        // name, whatever their unrounded time: "on" took longer than "AI
-        // spend" before rounding. The kinds are the providers' own, a word or
-        // two each, as Joel's journal will say them.
-        const dearKinds = { "AI spend": { rows: 2, ms: 20.2 }, program: { rows: 3, ms: 89.6 },
-            on: { rows: 5, ms: 20.4 }, act: { rows: 4, ms: 0.4 } };
+        // name, whatever their unrounded time or the order they were tallied
+        // in: "on", tallied first, took longer than "AI spend" before
+        // rounding. The kinds are the providers' own, a word or two each, as
+        // Joel's journal will say them.
+        const dearKinds = { on: { rows: 5, ms: 20.4 }, program: { rows: 3, ms: 89.6 },
+            "AI spend": { rows: 2, ms: 20.2 }, act: { rows: 4, ms: 0.4 } };
         Expect.same("a laying says whose rows it spent on, most first",
             RowsKept.saidByKind(dearKinds), ', by kind "program" 3 rows in 90 and'
                 + ' "AI spend" 2 rows in 20 and "on" 5 rows in 20');

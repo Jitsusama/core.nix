@@ -2019,6 +2019,8 @@ def tallied_rows(laid: Json) -> tuple[int, int, int] | None:
     # Rounded, the laying may say up to half a millisecond less than its rows took.
     assert sum(took) <= laying + 0.5 + 1e-6, f"rows took {took} of a {laying} ms laying"
     rows = sum(int(each["rows"]) for each in by.values())
+    # Rows drawn take some time, on a clock that reads finer than a millisecond.
+    assert rows == 0 or sum(took) > 0, f"{rows} rows tallied as taking no time: {by}"
     return rows, int(last["built"]), int(last["reused"])
 
 

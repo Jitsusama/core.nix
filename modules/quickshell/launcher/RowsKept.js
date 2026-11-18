@@ -372,10 +372,10 @@ function tallied(tally, kind, ms) {
 // most first then by name, with how many rows it laid in how long: ', by
 // kind "program" 3 rows in 90 and "on" 1 row in 20', after the rows built
 // and taken back, which it breaks down together. Each is quoted, as some
-// kinds are words a line reads on through, "on" or "holds". Joel's "aq" took 8 rows back
-// in 112 ms, where the
-// keys lab's rows take 0.9 ms each (2026-11-18), so his own rows are dear
-// and this says which. Nothing where none took one.
+// kinds are words a line reads on through, "on" or "holds". Joel's "aq"
+// took 8 rows back in 112 ms, where the keys lab's rows take 0.9 ms each
+// (2026-11-18), so his own rows are dear and this says which. Nothing
+// where none took one.
 function saidByKind(tally) {
     const each = Object.entries(tally ?? {})
         .map(([kind, spent]) => [kind, spent.rows, Math.round(spent.ms)])
