@@ -366,7 +366,10 @@ fn a_live_quests_entry_is_read_again_before_it_goes() {
         "a lab cloned into since its survey wasn't kept for it: {:?}",
         outcomes[2]
     );
-    assert!(back.join("out/run.log").exists() && cloned.join("out/repo/.git").exists());
+    assert!(
+        back.join("out/run.log").exists() && cloned.join("out/repo/.git").exists(),
+        "a kept lab lost its files: the written one or the clone is gone"
+    );
 }
 
 #[test]
