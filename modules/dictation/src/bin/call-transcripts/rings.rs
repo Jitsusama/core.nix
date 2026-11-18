@@ -1,0 +1,511 @@
+//! The Tuple calls Joel missed, as the calls receptor counts them: when
+//! each rang, and nothing else. tuple-call keeps a line a call in
+//! `tuple-call/recent.jsonl` in the state folder (modules/tuple/call's
+//! recent.rs), naming everyone in it; only whether it was `missed` and
+//! when it rang, `since`, are read here. The rest of each line is passed
+//! over as it's parsed, and the file's bytes are zeroed once read, so who
+//! rang never reaches the receptor, its memory past the read, or mycelium.
+//! One bound on that: `serde_json` unescapes a string it parses into a typed
+//! field or a key into scratch space of its own, freed unzeroed, which
+//! tuple-call's own lines never ask of it, since their keys are plain words
+//! and their two fields a flag and a number.
+//!
+//! Nothing is written to Tuple or its files, and no tuple command is run.
+//! A file that's missing, can't be opened as a plain file of its own, is
+//! larger than tuple-call could fill, or holds a line that isn't a call
+//! counts no missed call at all rather than a guess, and says why in fixed
+//! words for the daemon's log.
+
+use std::collections::BTreeSet;
+use std::ffi::OsString;
+use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
+use serde::de::{self, Deserializer, Visitor};
+
+/// More than tuple-call's nine kept calls could fill, even each with a
+/// room of a hundred people; one larger is no file tuple-call wrote.
+const LARGEST_FILE: u64 = 1024 * 1024;
+
+/// One call tuple-call kept, as far as the receptor reads it.
+#[derive(Deserialize)]
+struct Ring {
+    /// Whether it rang and wasn't answered.
+    #[serde(deserialize_with = "plain")]
+    missed: bool,
+    /// When it began to ring, or connected, in milliseconds.
+    #[serde(deserialize_with = "plain")]
+    since: i64,
+}
+
+/// A field read as the one plain value it should be. serde's own error
+/// for a field of the wrong type quotes what it found, which could be a
+/// name planted where a time belongs, into an error freed unzeroed; this
+/// one refuses a string or bytes in fixed words instead.
+fn plain<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Plain,
+{
+    deserializer.deserialize_any(Wordless(std::marker::PhantomData))
+}
+
+/// A value a call's field holds: a flag or a time.
+trait Plain: Sized {
+    /// The value from a flag, if this is one.
+    fn of_bool(_: bool) -> Option<Self> {
+        None
+    }
+    /// The value from a whole number, if this is one.
+    fn of_i64(_: i64) -> Option<Self> {
+        None
+    }
+}
+
+impl Plain for bool {
+    fn of_bool(value: bool) -> Option<Self> {
+        Some(value)
+    }
+}
+
+impl Plain for i64 {
+    fn of_i64(value: i64) -> Option<Self> {
+        Some(value)
+    }
+}
+
+/// Reads a `T` and refuses anything else without saying what it was.
+struct Wordless<T>(std::marker::PhantomData<T>);
+
+/// What every refusal says, so none quotes the value refused.
+const NOT_PLAIN: &str = "a field of a call holds what it shouldn't";
+
+impl<T: Plain> Visitor<'_> for Wordless<T> {
+    type Value = T;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a flag or a whole number")
+    }
+
+    fn visit_bool<E: de::Error>(self, value: bool) -> Result<T, E> {
+        T::of_bool(value).ok_or_else(|| E::custom(NOT_PLAIN))
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<T, E> {
+        T::of_i64(value).ok_or_else(|| E::custom(NOT_PLAIN))
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<T, E> {
+        i64::try_from(value)
+            .ok()
+            .and_then(T::of_i64)
+            .ok_or_else(|| E::custom(NOT_PLAIN))
+    }
+
+    fn visit_f64<E: de::Error>(self, _: f64) -> Result<T, E> {
+        Err(E::custom(NOT_PLAIN))
+    }
+
+    fn visit_str<E: de::Error>(self, _: &str) -> Result<T, E> {
+        Err(E::custom(NOT_PLAIN))
+    }
+
+    fn visit_bytes<E: de::Error>(self, _: &[u8]) -> Result<T, E> {
+        Err(E::custom(NOT_PLAIN))
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<T, E> {
+        Err(E::custom(NOT_PLAIN))
+    }
+}
+
+/// What reading the rings found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Rings {
+    /// When each missed call in the file began to ring, in milliseconds.
+    Missed(Vec<u64>),
+    /// Nothing could be counted, and why, in fixed words.
+    Unread(&'static str),
+}
+
+/// Where tuple-call keeps its calls: `tuple-call/recent.jsonl` in the
+/// state folder, found as tuple-call finds it, from `XDG_STATE_HOME` or
+/// else `HOME`. A relative state folder is passed over for home, as the
+/// XDG spec says, and a relative home finds nothing, so neither reads a
+/// file wherever the daemon happens to run.
+pub fn file() -> Option<PathBuf> {
+    file_from(std::env::var_os("XDG_STATE_HOME"), std::env::var_os("HOME"))
+}
+
+/// The file from the state and home folders named, as `file` finds it.
+fn file_from(state: Option<OsString>, home: Option<OsString>) -> Option<PathBuf> {
+    let named = |value: Option<OsString>| value.filter(|value| !value.is_empty());
+    let absolute = |folder: &PathBuf| folder.is_absolute();
+    let state = named(state)
+        .map(PathBuf::from)
+        .filter(absolute)
+        .or_else(|| named(home).map(|home| PathBuf::from(home).join(".local/state")))
+        .filter(absolute)?;
+    Some(state.join("tuple-call/recent.jsonl"))
+}
+
+/// The missed calls in the file at `path`.
+pub fn read(path: &Path) -> Rings {
+    let opened = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path);
+    let file = match opened {
+        Ok(file) => file,
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => {
+            return Rings::Unread("tuple-call has kept no calls");
+        }
+        Err(_) => return Rings::Unread("its file couldn't be opened as a file of its own"),
+    };
+    if !file.metadata().is_ok_and(|meta| meta.is_file()) {
+        return Rings::Unread("its file isn't a plain file");
+    }
+    // Room for the most that's read, taken before reading, so the buffer
+    // never grows and leaves a copy of what it held behind it unzeroed.
+    let mut bytes = Vec::with_capacity(usize::try_from(LARGEST_FILE + 1).unwrap_or(usize::MAX));
+    let rings = match file.take(LARGEST_FILE + 1).read_to_end(&mut bytes) {
+        Err(_) => Rings::Unread("its file couldn't be read"),
+        Ok(length) if u64::try_from(length).map_or(true, |length| length > LARGEST_FILE) => {
+            Rings::Unread("its file is larger than tuple-call writes")
+        }
+        Ok(_) => of(&bytes),
+    };
+    forget(bytes);
+    rings
+}
+
+/// Zeroes what the file said before letting it go, so the names in it
+/// don't sit in freed memory. `black_box` is what keeps the zeroing from
+/// being taken out as a write nothing reads; Rust promises that only as
+/// best it can, short of the volatile writes this crate doesn't make.
+fn forget(mut bytes: Vec<u8>) {
+    bytes.fill(0);
+    std::hint::black_box(&bytes);
+}
+
+/// The missed calls `bytes` names, a call a line.
+fn of(bytes: &[u8]) -> Rings {
+    let mut missed = Vec::new();
+    for line in bytes.split(|&byte| byte == b'\n') {
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        // serde_json's error for a line that's no object quotes a string
+        // it found there, past what Wordless can refuse in fixed words.
+        if line.iter().find(|byte| !byte.is_ascii_whitespace()) != Some(&b'{') {
+            return Rings::Unread("a line of its file isn't a call");
+        }
+        let Ok(ring) = serde_json::from_slice::<Ring>(line) else {
+            return Rings::Unread("a line of its file isn't a call");
+        };
+        if ring.missed {
+            let Ok(at) = u64::try_from(ring.since) else {
+                return Rings::Unread("a call in its file rang before 1970");
+            };
+            missed.push(at);
+        }
+    }
+    Rings::Missed(missed)
+}
+
+/// The missed calls heard today, kept between reads: tuple-call keeps
+/// only its newest nine calls, so a ring missed this morning leaves its
+/// file once Joel takes enough calls, and would stop being counted while
+/// it's still today's. Only when each rang is kept, and only in memory,
+/// so a restart of the daemon forgets those that left the file; keeping
+/// them on disk would be a store of its own, with terms of its own.
+/// While the file can't be read, nothing is counted, those already heard
+/// included, since a count from a file that can't be trusted is a guess.
+#[derive(Clone, Debug, Default)]
+pub struct Heard {
+    rang: BTreeSet<u64>,
+}
+
+impl Heard {
+    /// When each missed call heard between `midnight` and `now` rang,
+    /// this read's among them; none while the file can't be read, since
+    /// what it holds then isn't known, though what was heard is kept for
+    /// when it reads again. A ring said to be later than now isn't kept,
+    /// so a clock set wrong once can't leave one counted for good.
+    pub fn hear(&mut self, rings: &Rings, midnight: u64, now: u64) -> Vec<u64> {
+        self.rang.retain(|&at| at >= midnight);
+        match rings {
+            Rings::Missed(rang) => {
+                self.rang.extend(
+                    rang.iter()
+                        .copied()
+                        .filter(|&at| at >= midnight && at <= now),
+                );
+                self.rang.iter().copied().collect()
+            }
+            Rings::Unread(_) => Vec::new(),
+        }
+    }
+}
+
+/// Tuple's missed calls as the receptor follows them round to round:
+/// those heard today, and why the file last couldn't be counted from,
+/// so the log says each change once rather than every round.
+#[derive(Clone, Debug, Default)]
+pub struct Following {
+    heard: Heard,
+    unread: Option<&'static str>,
+}
+
+impl Following {
+    /// When each missed call heard today rang, after this round's read,
+    /// and the line for the log if whether they're counted changed.
+    pub fn round(&mut self, rings: &Rings, midnight: u64, now: u64) -> (Vec<u64>, Option<String>) {
+        let why = match rings {
+            Rings::Unread(why) => Some(*why),
+            Rings::Missed(_) => None,
+        };
+        let logged = match (self.unread, why) {
+            (before, Some(why)) if before != Some(why) => {
+                Some(format!("Tuple's missed calls aren't counted: {why}"))
+            }
+            (Some(_), None) => Some("Tuple's missed calls are counted from its file".to_owned()),
+            _ => None,
+        };
+        self.unread = why;
+        (self.heard.hear(rings, midnight, now), logged)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(missed: bool, since: i64) -> String {
+        serde_json::json!({
+            "people": [{"id": "7", "name": "Ada Brightwater", "email": "ada@example.com"}],
+            "since": since,
+            "ended": since + 60_000,
+            "missed": missed,
+            "caller": null,
+        })
+        .to_string()
+    }
+
+    fn unread(rings: &Rings) -> bool {
+        matches!(rings, Rings::Unread(_))
+    }
+
+    #[test]
+    fn only_the_missed_calls_are_read_and_only_when_each_rang() {
+        let text = [line(true, 1_000), line(false, 2_000), line(true, 3_000)].join("\n");
+        assert_eq!(of(text.as_bytes()), Rings::Missed(vec![1_000, 3_000]));
+        assert_eq!(
+            of(b""),
+            Rings::Missed(Vec::new()),
+            "no calls is no missed call"
+        );
+    }
+
+    #[test]
+    fn one_line_that_isnt_a_call_counts_none_of_them() {
+        for bad in [
+            "not json".to_owned(),
+            r#"{"since": 1000}"#.to_owned(),
+            r#"{"missed": "yes", "since": 1000}"#.to_owned(),
+            line(true, -1),
+        ] {
+            let text = [line(true, 1_000), bad.clone()].join("\n");
+            assert!(unread(&of(text.as_bytes())), "{bad:?} was read past");
+        }
+    }
+
+    #[test]
+    fn a_file_missing_linked_or_too_large_counts_none() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("recent.jsonl");
+        assert!(unread(&read(&path)), "a missing file was counted");
+
+        let sound = folder.path().join("sound.jsonl");
+        std::fs::write(&sound, line(true, 1_000)).unwrap();
+        assert_eq!(
+            read(&sound),
+            Rings::Missed(vec![1_000]),
+            "the file linked to doesn't read soundly"
+        );
+        std::os::unix::fs::symlink(&sound, &path).unwrap();
+        assert!(unread(&read(&path)), "a link was read through");
+        std::fs::remove_file(&path).unwrap();
+
+        let size = usize::try_from(LARGEST_FILE).unwrap();
+        let mut largest = line(true, 1_000).into_bytes();
+        largest.resize(size, b'\n');
+        std::fs::write(&path, &largest).unwrap();
+        assert_eq!(
+            read(&path),
+            Rings::Missed(vec![1_000]),
+            "a file at the bound wasn't read"
+        );
+        largest.push(b'\n');
+        std::fs::write(&path, largest).unwrap();
+        assert!(unread(&read(&path)), "a file past the bound was read");
+
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        assert!(unread(&read(&path)), "a folder was read as a file");
+
+        // A pipe opens and reads as empty, no missed call, so only the
+        // plain-file check tells it from a file of none.
+        std::fs::remove_dir(&path).unwrap();
+        let made = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(made.success(), "mkfifo failed");
+        assert!(
+            unread(&read(&path)),
+            "a pipe was read as a file of no calls"
+        );
+    }
+
+    #[test]
+    fn a_ring_missed_today_is_still_heard_once_it_leaves_the_file() {
+        let midnight = 10_000;
+        let now = midnight + 100;
+        let mut heard = Heard::default();
+        let first = Rings::Missed(vec![midnight - 1, midnight + 5, now + 1]);
+        assert_eq!(
+            heard.hear(&first, midnight, now),
+            [midnight + 5],
+            "yesterday's ring, or one later than now, was heard as today's"
+        );
+        let later = Rings::Missed(vec![midnight + 9]);
+        assert_eq!(
+            heard.hear(&later, midnight, now),
+            [midnight + 5, midnight + 9],
+            "a ring that left the file stopped being heard today"
+        );
+        assert!(
+            heard
+                .hear(&Rings::Unread("its file isn't a plain file"), midnight, now)
+                .is_empty(),
+            "rings were counted while the file couldn't be read"
+        );
+        assert_eq!(
+            heard.hear(&Rings::Missed(Vec::new()), midnight, now),
+            [midnight + 5, midnight + 9],
+            "what was heard was lost while the file couldn't be read"
+        );
+        assert!(
+            heard
+                .hear(&Rings::Missed(Vec::new()), midnight + 10, now + 10)
+                .is_empty(),
+            "a ring was still heard the next day"
+        );
+    }
+
+    #[test]
+    fn the_file_is_found_where_tuple_call_keeps_it() {
+        let found = |state: Option<&str>, home: Option<&str>| {
+            file_from(state.map(OsString::from), home.map(OsString::from))
+        };
+        assert_eq!(
+            found(Some("/state"), Some("/home/ada")),
+            Some(PathBuf::from("/state/tuple-call/recent.jsonl")),
+            "the state folder wasn't taken first"
+        );
+        assert_eq!(
+            found(Some(""), Some("/home/ada")),
+            Some(PathBuf::from(
+                "/home/ada/.local/state/tuple-call/recent.jsonl"
+            )),
+            "an empty state folder wasn't passed over for home"
+        );
+        assert_eq!(
+            found(None, Some("/home/ada")),
+            Some(PathBuf::from(
+                "/home/ada/.local/state/tuple-call/recent.jsonl"
+            )),
+            "home wasn't used with no state folder"
+        );
+        assert_eq!(
+            found(Some("state"), Some("/home/ada")),
+            Some(PathBuf::from(
+                "/home/ada/.local/state/tuple-call/recent.jsonl"
+            )),
+            "a relative state folder wasn't passed over for home"
+        );
+        assert_eq!(
+            found(Some("state"), None),
+            None,
+            "a relative folder was read"
+        );
+        assert_eq!(found(None, Some("ada")), None, "a relative home was read");
+        assert_eq!(
+            found(None, None),
+            None,
+            "a file was found with no folder named"
+        );
+    }
+
+    #[test]
+    fn a_field_of_the_wrong_kind_is_refused_without_quoting_it() {
+        for line in [
+            r#"{"missed":"Ada Brightwater","since":1}"#,
+            r#"{"missed":true,"since":"Ada Brightwater"}"#,
+        ] {
+            let refused = serde_json::from_str::<Ring>(line)
+                .err()
+                .expect("a field of the wrong kind was read");
+            assert!(
+                !refused.to_string().contains("Ada"),
+                "the refusal quoted what it refused: {refused}"
+            );
+        }
+        let ring: Ring =
+            serde_json::from_str(r#"{"missed":true,"since":7}"#).expect("a sound call wasn't read");
+        assert!(ring.missed && ring.since == 7, "a sound call was misread");
+    }
+
+    #[test]
+    fn rounds_keep_what_was_heard_and_log_each_change_once() {
+        let midnight = 10_000;
+        let plain = Rings::Unread("its file isn't a plain file");
+        let none = Rings::Unread("tuple-call has kept no calls");
+        let now = midnight + 100;
+        let mut following = Following::default();
+        let (missed, logged) = following.round(&Rings::Missed(vec![midnight + 5]), midnight, now);
+        assert_eq!(missed, [midnight + 5]);
+        assert_eq!(logged, None, "a sound file was logged");
+        let (missed, logged) = following.round(&plain, midnight, now);
+        assert!(
+            missed.is_empty(),
+            "a file that can't be read was counted from"
+        );
+        assert!(
+            logged.is_some_and(|line| line.contains("isn't a plain file")),
+            "a file that can't be counted from wasn't logged"
+        );
+        assert_eq!(
+            following.round(&plain, midnight, now).1,
+            None,
+            "it was logged again"
+        );
+        assert!(
+            following.round(&none, midnight, now).1.is_some(),
+            "a new reason wasn't logged"
+        );
+        let (missed, logged) = following.round(&Rings::Missed(vec![midnight + 9]), midnight, now);
+        assert_eq!(
+            missed,
+            [midnight + 5, midnight + 9],
+            "a ring heard before the file went unread was forgotten"
+        );
+        assert!(
+            logged.is_some_and(|line| line.contains("counted from its file")),
+            "its return wasn't logged"
+        );
+    }
+}

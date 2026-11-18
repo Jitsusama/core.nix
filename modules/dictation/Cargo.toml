@@ -38,6 +38,9 @@ png = "0.18"
 # calls receptor is one.
 receptor-say = { path = "../receptor-say" }
 rtrb = "0.4"
+# Tuple's missed calls are read as two fields alone, the rest of each line
+# passed over unkept, which a derived shape does and a parsed value doesn't.
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0"
 # The shape every command of ours takes (docs/commands.md).
 terminal-kit = { path = "../terminal-kit" }
