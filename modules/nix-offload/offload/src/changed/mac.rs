@@ -290,6 +290,22 @@ mod tests {
             "a person's own part for a Mac waited on another's build, which its turn bounds"
         );
         assert_eq!(
+            room_alone(
+                "skiff",
+                Ok(Some(Load {
+                    minute: 20.0,
+                    five: 60.0,
+                    cores: 12,
+                    building: 1,
+                }))
+            ),
+            Err(
+                "skiff has no room, at load 20.0 over a minute and 60.0 over five on 12 processors"
+                    .to_owned()
+            ),
+            "a Mac past its load and building said the build rather than the load"
+        );
+        assert_eq!(
             room_alone("skiff", Ok(None)),
             Err("skiff didn't say its load".to_owned()),
             "a Mac that said nothing was taken to have room"

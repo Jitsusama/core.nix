@@ -752,9 +752,11 @@ fn built_nearby(
 }
 
 /// Whether `machine`, a Mac, has no room for more, saying the load it
-/// goes or waits at, by the rule a run for its system keeps
-/// (`held_for_a_mac`). A run whose caller asked already isn't asked again,
-/// nor is a machine that builds for no Mac.
+/// goes or waits at, by its load alone (`changed::mac::room`): a person's
+/// own part, which its turn there bounds beside another, never waits on
+/// another's build as a run for its system does (`held_for_a_mac`). A run
+/// whose caller asked already isn't asked again, nor is a machine that
+/// builds for no Mac.
 fn held_nearby(machine: &there::Nearby, scratch: &Path) -> bool {
     use changed::mac;
     let asked_already = env::var_os(ROOM_ASKED.0).is_some_and(|value| value == ROOM_ASKED.1);

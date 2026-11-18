@@ -2589,6 +2589,10 @@ pub const NEARBY_AT_ONCE: u32 = 2;
 const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
      PATH=\"$PATH:/usr/sbin\" sysctl -n kern.bootsessionuuid 2>/dev/null";
 
+/// What a shell runs to name the folder its machine's turns are in, so a
+/// run taking a turn and one counting them read the same.
+const TURNS_READ: &str = "turns=\"${NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}\";";
+
 /// `command`, run once it holds one of [`NEARBY_AT_ONCE`] turns on the
 /// machine it's sent to, however many runs from however many machines
 /// send it builds. Each turn's run builds up to the machine's own
@@ -2626,7 +2630,7 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// read each other's turns as dead too, and nothing here tells them apart.
 pub fn in_turn_nearby(command: &str) -> String {
     format!(
-        "turns=\"${{NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}}\"; \
+        "{TURNS_READ} \
          boot=$({BOOT_READ}); mine=\"$$ $boot\"; \
          here=$(uname -n); turn=; waited=0; unmadebefore=; \
          trap 'k=1; while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do \
@@ -4368,19 +4372,27 @@ impl Load {
 }
 
 /// What a shell runs to say how many runs sent to its machine build there
-/// now: the turns in its turns folder ([`in_turn_nearby`]) held by a shell
+/// now: its [`NEARBY_AT_ONCE`] turns ([`in_turn_nearby`]) held by a shell
 /// alive in this boot, as a run waiting for a turn reads them. A machine
 /// with no folder builds none.
 pub fn building_read() -> String {
     format!(
-        "turns=\"${{NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}}\"; \
-         boot=$({BOOT_READ}); building=0; \
-         for k in $(ls \"$turns\" 2>/dev/null); do holder=$(readlink \"$turns/$k\" 2>/dev/null); \
-         pid=${{holder%% *}}; case \"$pid\" in ''|*[!0-9]*|0*|????????*) continue;; esac; \
+        "{TURNS_READ} \
+         boot=$({BOOT_READ}); building=0; k=1; \
+         while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do holder=$(readlink \"$turns/$k\" 2>/dev/null); \
+         k=$((k + 1)); pid=${{holder%% *}}; \
+         case \"$pid\" in ''|*[!0-9]*|0*|????????*) continue;; esac; \
          if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
          kill -0 \"$pid\" 2>/dev/null; then building=$((building + 1)); fi; done; \
          echo \"$building\""
     )
+}
+
+/// What a Mac runs to say its load ([`Load::parse`]): its load and
+/// processors, then the runs it builds ([`building_read`]), counted only
+/// once the load was said, so a Mac whose `sysctl` fails says nothing.
+pub fn load_read() -> String {
+    format!("sysctl -n vm.loadavg hw.ncpu && {{ {}; }}", building_read())
 }
 
 /// A Mac nearby's load, `Err` saying why when it couldn't be asked here or
@@ -4399,10 +4411,7 @@ pub fn load_of(machine: &Nearby, scratch: &Path, ssh: &str) -> Result<Option<Loa
     let spawned = reaching(ssh, &said)
         .args(["-o", "ConnectTimeout=20"])
         .arg(&machine.host)
-        .arg(far(&format!(
-            "sysctl -n vm.loadavg hw.ncpu && {}",
-            building_read()
-        )))
+        .arg(far(&load_read()))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -4884,16 +4893,37 @@ mod tests {
         fs::create_dir_all(&turns).unwrap();
         let boot = Command::new("sh").args(["-c", BOOT_READ]).output().unwrap();
         let boot = String::from_utf8(boot.stdout).unwrap().trim().to_owned();
-        let mut live = Command::new("sleep").arg("30").spawn().unwrap();
-        let link = |turn: &str, holder: String| {
-            std::os::unix::fs::symlink(holder, turns.join(turn)).unwrap();
-        };
-        link("1", format!("{} {boot}", live.id()));
-        link("2", format!("{} another-boot", live.id()));
-        link("3", format!("9999999 {boot}"));
-        link("4", "0 nothing".to_owned());
-        // A Mac's login shell is zsh, which ends a command on a glob that
-        // matches nothing, so the count lists its folder rather than glob.
+        // Killed as the test ends, however it ends.
+        struct Live(std::process::Child);
+        impl Drop for Live {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let live = Live(Command::new("sleep").arg("30").spawn().unwrap());
+        let pid = live.0.id();
+        // Each holder but the first is passed over for one reason alone.
+        let holders = [
+            (format!("{pid} {boot}"), 1, "a live shell of this boot"),
+            (
+                format!("{pid} another-boot"),
+                0,
+                "a live pid of another boot",
+            ),
+            (format!("9999999 {boot}"), 0, "a dead pid of this boot"),
+            (
+                format!("0 {boot}"),
+                0,
+                "pid 0, which kill reads as its own group",
+            ),
+            (format!("0{pid} {boot}"), 0, "a pid led by 0"),
+            (
+                format!("99999999999999999999 {boot}"),
+                0,
+                "a pid past any machine's",
+            ),
+        ];
         for shell in ["dash", "zsh"] {
             let counted = |turns: &Path| {
                 let said = Command::new(shell)
@@ -4903,19 +4933,69 @@ mod tests {
                     .unwrap();
                 String::from_utf8(said.stdout).unwrap()
             };
+            for (holder, building, what) in &holders {
+                let _ = fs::remove_file(turns.join("1"));
+                std::os::unix::fs::symlink(holder, turns.join("1")).unwrap();
+                assert_eq!(
+                    counted(&turns),
+                    format!("{building}\n"),
+                    "{shell}: a turn held by {what} was counted wrongly"
+                );
+            }
+            fs::remove_file(turns.join("1")).unwrap();
+            let past = NEARBY_AT_ONCE + 1;
+            std::os::unix::fs::symlink(format!("{pid} {boot}"), turns.join(past.to_string()))
+                .unwrap();
             assert_eq!(
                 counted(&turns),
-                "1\n",
-                "{shell}: a turn held by a live shell of this boot wasn't counted alone"
+                "0\n",
+                "{shell}: a link past the machine's turns was counted as one"
             );
+            fs::remove_file(turns.join(past.to_string())).unwrap();
             assert_eq!(
                 counted(&folder.path().join("none")),
                 "0\n",
                 "{shell}: a Mac with no turns folder wasn't read as building nothing"
             );
         }
-        live.kill().unwrap();
-        live.wait().unwrap();
+    }
+
+    #[test]
+    fn a_macs_load_is_read_whole_and_counted_only_once_said() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let bin = folder.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let sysctl = bin.join("sysctl");
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        for shell in ["dash", "zsh"] {
+            let read = |says: &str| {
+                fs::write(&sysctl, format!("#!/bin/sh\n{says}\n")).unwrap();
+                fs::set_permissions(&sysctl, fs::Permissions::from_mode(0o755)).unwrap();
+                let said = Command::new(shell)
+                    .args(["-c", &load_read()])
+                    .env("PATH", &path)
+                    .env("NIX_OFFLOAD_TURNS", folder.path().join("none"))
+                    .output()
+                    .unwrap();
+                String::from_utf8(said.stdout).unwrap()
+            };
+            let said = read("printf '{ 20.00 35.00 30.00 }\\n12\\n'");
+            assert_eq!(
+                Load::parse(&said).map(|load| (load.cores, load.building)),
+                Some((12, 0)),
+                "{shell}: a Mac's whole answer didn't read as its load: {said:?}"
+            );
+            assert_eq!(
+                read("exit 1"),
+                "",
+                "{shell}: a Mac whose sysctl failed still counted its builds"
+            );
+        }
     }
 
     #[test]
