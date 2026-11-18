@@ -405,6 +405,48 @@ fn a_service_stopping_or_started_is_followed_whatever_its_description_says() {
 }
 
 #[test]
+fn every_follower_asks_for_every_boot_last() {
+    // journalctl follows only this boot unless asked otherwise, so the
+    // day a reboot cut in two was counted from the reboot alone: on 17
+    // November, 4834 warnings before it went uncounted. `-k` and `-b`
+    // choose a boot too, so every boot is asked for after them, which
+    // holds wherever the last choice wins. They count however they're
+    // grouped, and a few are tried here whatever the followers hold
+    // today.
+    let chooses_a_boot = |arg: &str| {
+        (arg.starts_with('-') && !arg.starts_with("--") && arg.contains(['k', 'b']))
+            || arg == "--dmesg"
+            || arg.starts_with("--boot")
+            || arg.starts_with("--this-boot")
+    };
+    let mut asked_for = followed();
+    asked_for.extend([
+        vec!["-k".to_owned()],
+        vec!["-kp".to_owned(), "notice..info".to_owned()],
+        vec!["-b".to_owned()],
+    ]);
+    for asked in asked_for {
+        assert!(
+            !asked.iter().any(|arg| arg.starts_with("_BOOT_ID=")),
+            "a follower matches one boot: {asked:?}"
+        );
+        let journalctl = following(&asked);
+        let args: Vec<String> = journalctl
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args.iter()
+                .rev()
+                .find(|arg| chooses_a_boot(arg))
+                .map(String::as_str),
+            Some("--boot=all"),
+            "a follower reads only one boot: {args:?}"
+        );
+    }
+}
+
+#[test]
 fn a_service_stopping_or_started_is_its_job_and_a_scope_is_none() {
     let line = |id: &str, unit: &str| {
         format!(

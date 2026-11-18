@@ -416,14 +416,20 @@ pub fn followed() -> Vec<Vec<String>> {
     ]
 }
 
-/// One journalctl following from the day's start, as `asked`.
+/// One journalctl following from the day's start, as `asked`, through
+/// every boot of the day: journalctl follows only this boot unless told
+/// otherwise, so after a reboot the day would be counted from the reboot
+/// alone. `-k` chooses this boot too: systemd 262's journalctl reads
+/// every boot with `--boot=all` either side of it (checked on 17
+/// November), and asking last keeps it so where the last choice wins.
 #[must_use]
 pub fn following(asked: &[String]) -> Command {
     let mut journalctl = Command::new("journalctl");
     journalctl
         .args(["--follow", "--output=json", "--no-pager", "--since=today"])
         .arg(format!("--output-fields={FIELDS}"))
-        .args(asked);
+        .args(asked)
+        .arg("--boot=all");
     journalctl
 }
 
