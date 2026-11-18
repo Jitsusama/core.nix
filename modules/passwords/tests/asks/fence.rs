@@ -39,11 +39,27 @@ fn an_ask_is_refused_unseen_without_the_fences_list_or_with_one_it_cant_read() {
     let list = running.fence_list();
     let unmade = FENCE_LIST.replacen("\"sshKept\": [", "\"sshKept\": [\"(\", ", 1);
     let cases = [
-        ("d123456789abcdef0123456789abcdef", "is version 3", r#"{"version": 3, "home": [{}]}"#),
-        ("e123456789abcdef0123456789abcdef", "isn't a fence list", "{ not json"),
-        ("f123456789abcdef0123456789abcdef", "isn't version 2's form", r#"{"version": 2}"#),
+        (
+            "d123456789abcdef0123456789abcdef",
+            "is version 3",
+            r#"{"version": 3, "home": [{}]}"#,
+        ),
+        (
+            "e123456789abcdef0123456789abcdef",
+            "isn't a fence list",
+            "{ not json",
+        ),
+        (
+            "f123456789abcdef0123456789abcdef",
+            "isn't version 2's form",
+            r#"{"version": 2}"#,
+        ),
         ("0223456789abcdef0123456789abcdef", "can't be read", ""),
-        ("1223456789abcdef0123456789abcdef", "can't make", unmade.as_str()),
+        (
+            "1223456789abcdef0123456789abcdef",
+            "can't make",
+            unmade.as_str(),
+        ),
     ];
     for (id, told, text) in cases {
         if text.is_empty() {
@@ -84,7 +100,10 @@ fn a_fence_list_of_version_2_hides_what_version_1_does_and_empties() {
         ],
     );
     let secret = std::fs::canonicalize(running.folder.join("home/.secret-file")).unwrap();
-    holds(&args, &[Path::new("--ro-bind"), Path::new("/dev/null"), &secret]);
+    holds(
+        &args,
+        &[Path::new("--ro-bind"), Path::new("/dev/null"), &secret],
+    );
 }
 
 #[test]

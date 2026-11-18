@@ -129,7 +129,7 @@ fn holds(name: &str, value: &Said) -> bool {
                     .iter()
                     .any(|field_name| spelled(login, field_name).any(|said| !is_empty(said)))
                     || spelled(login, "serveraddress")
-                        .any(|said| matches!(said, Said::Text(address) if carries_login(address)))
+                        .any(|said| addresses(said).any(carries_login))
             })
         }
         "proxies" => addresses(value).any(carries_login),
@@ -241,7 +241,7 @@ mod tests {
             r#"{"auths": {"registry.example": {}}}"#,
             r#"{"auths": {"registry.example": {"auth": ""}}}"#,
             r#"{"auths": {"registry.example": {"email": "joel@example"}}}"#,
-            r#"{"auths": {"r.example": {"serveraddress": "https://r.example", "username": "j@x"}}}"#,
+            r#"{"auths": {"r.ex": {"serveraddress": "https://r.ex", "username": "j@x"}}}"#,
             r#"{"auths": {}, "credsStore": "", "HttpHeaders": {}, "detachKeys": "ctrl-p"}"#,
             r#"{"auths": null}"#,
             r#"{"auths": []}"#,

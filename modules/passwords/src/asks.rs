@@ -125,6 +125,13 @@ struct FenceList {
     emptied: Option<Vec<emptied::Emptied>>,
 }
 
+/// A list's version alone, read before its shape, since a version this
+/// daemon doesn't know may say its fields another way.
+#[derive(Deserialize)]
+struct Versioned {
+    version: u32,
+}
+
 /// The fence's list, read and its patterns made.
 struct Fence {
     home: Vec<String>,
@@ -135,30 +142,31 @@ struct Fence {
 
 impl Fence {
     /// The list at `path`, or why an ask is refused: none where it isn't
-    /// there, and unread where it isn't the form this reads or a pattern
+    /// there, and unread where it can't be read, isn't a list, is of a
+    /// version this doesn't know, isn't that version's form or a pattern
     /// won't make, the journal saying which.
     fn read(path: &Path) -> Result<Fence, &'static str> {
-        let text = std::fs::read_to_string(path).map_err(|why| {
-            if why.kind() == std::io::ErrorKind::NotFound {
-                return UNFENCED;
-            }
-            eprintln!("<3>passwords: can't open {}: {why}", path.display());
-            UNREAD
-        })?;
         let unread = |why: String| {
             eprintln!("<3>passwords: {} {why}", path.display());
             UNREAD
         };
-        let list: FenceList =
-            serde_json::from_str(&text).map_err(|why| unread(format!("can't read: {why}")))?;
-        if !FENCE_VERSIONS.contains(&list.version) {
+        let text = std::fs::read_to_string(path).map_err(|why| {
+            if why.kind() == std::io::ErrorKind::NotFound {
+                return UNFENCED;
+            }
+            unread(format!("can't be read: {why}"))
+        })?;
+        let Versioned { version } = serde_json::from_str(&text)
+            .map_err(|why| unread(format!("isn't a fence list: {why}")))?;
+        if !FENCE_VERSIONS.contains(&version) {
             return Err(unread(format!(
-                "is version {}, not {} to {}",
-                list.version,
+                "is version {version}, not {} to {}",
                 FENCE_VERSIONS.start(),
                 FENCE_VERSIONS.end()
             )));
         }
+        let list: FenceList = serde_json::from_str(&text)
+            .map_err(|why| unread(format!("isn't version {version}'s form: {why}")))?;
         let emptied = match (list.version >= NAMES_EMPTIED, list.emptied) {
             (true, Some(emptied)) => emptied,
             (false, None) => Vec::new(),
@@ -475,6 +483,8 @@ impl Passwords {
         let copy = folder.join(name);
         let write = WRITES.fetch_add(1, Ordering::Relaxed);
         let writing = folder.join(format!("{name}.{}.{write}", std::process::id()));
+        // A daemon stopped mid-write before may have left this name, under
+        // a pid since given to this one.
         let _ = std::fs::remove_file(&writing);
         let mut file = std::fs::OpenOptions::new()
             .write(true)
