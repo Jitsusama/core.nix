@@ -12,8 +12,13 @@
 // says no time until a frame presents it as it is now, and a frame asked
 // for a line left before it came counts for nothing. Release It from the
 // right arrow's verbs counts from its ask's own line. A yes walked from
-// outside the launcher is never sent, and a no goes as served. It exits 0
-// once every case holds, and otherwise 1, saying which didn't.
+// outside the launcher is never sent, and a no goes as served. While the
+// screen is shared, or before niri has said its casts, an ask's row says
+// only that it's hidden, with no acts and no frame timed, and shown again it
+// counts nothing until his next move (Niri and Recorder stood in by the
+// check). It exits 0 once every case holds, and otherwise 1, saying which
+// didn't.
+import qs
 import Quickshell
 import QtQuick
 import KeyTimes
@@ -235,7 +240,9 @@ ShellRoot {
             typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore,
             typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown, overRowsThenTold,
             toldOverRows, toldOverRowsShown, landed, landedThenMoved, landedThenShown, commanded,
-            commandedThenRun, commandedThenMoved, commandedThenShown]);
+            commandedThenRun, commandedThenMoved, commandedThenShown, timedBeforeSharing,
+            timedMove, sharing, sharingMoved, unshared, unsharedShown, unsharedMoved, unsharedMovedShown,
+            unheard, ownRecording]);
     }
 
     function arming() {
@@ -588,5 +595,80 @@ ShellRoot {
     function commandedThenShown() {
         stage.present(600);
         same("a move over rows the command line left times nothing", shownNow(), undefined);
+    }
+
+    // A line timed by his Escape and move, then the screen shared to a call.
+    function timedBeforeSharing() {
+        stage.open = false;
+        stage.opened();
+        stage.selected = row();
+        stage.toRows();
+    }
+
+    function timedMove() {
+        stage.press("j", true);
+    }
+
+    function sharing() {
+        stage.present(800);
+        same("the line is timed before the screen is shared", Object.keys(asks.seen),
+            [root.key]);
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        stage.selected = row();
+        const hidden = "Ask, Hidden While You Share";
+        same("while the screen is shared an ask's row names only that it's hidden",
+            row()?.name, hidden);
+        same("and says nothing of where it's from", row()?.note, "");
+        same("its drawer says neither what it asks for nor why",
+            [row()?.drawer?.title, row()?.drawer?.body, row()?.drawer?.facts?.length],
+            [hidden, "", 0]);
+        same("it has no act, so no Return answers it unseen", [row()?.arms, row()?.run],
+            ["", undefined]);
+        same("it still waits for him in For You", asks.forYou.length, 1);
+        same("and its line's time starts again", asks.seen, {});
+    }
+
+    function sharingMoved() {
+        const waiting = stage.awaiting.length;
+        stage.press("k", true);
+        same("a move over a hidden line asks no frame of it", stage.awaiting.length, waiting);
+    }
+
+    function unshared() {
+        Niri.casts = {};
+        stage.selected = row();
+        same("the share over, the ask's row says what it asks for again", row()?.name,
+            "op://Private/Kiln/password");
+    }
+
+    function unsharedShown() {
+        stage.present(600);
+        same("a line shown again after a share counts nothing before his next move",
+            shownNow(), undefined);
+    }
+
+    function unsharedMoved() {
+        stage.press("j", true);
+    }
+
+    function unsharedMovedShown() {
+        stage.present(700);
+        same("and his next move times it from its next frame", since(shownNow(), 700), true);
+    }
+
+    function unheard() {
+        Niri.castsHeard = false;
+        same("before niri says its casts, an ask's row is hidden", row()?.name,
+            "Ask, Hidden While You Share");
+        Niri.castsHeard = true;
+    }
+
+    // The shell's own recording of one window shows nothing of the launcher.
+    function ownRecording() {
+        Recorder.windowSession = 7;
+        Niri.casts = { "2": { kind: "PipeWire", session_id: 7 } };
+        same("the shell's own recording of a window hides no ask", row()?.name,
+            "op://Private/Kiln/password");
+        Niri.casts = {};
     }
 }
