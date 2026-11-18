@@ -13,6 +13,7 @@ import {
   text,
   texts,
 } from "../../local-sites/kit/records.ts";
+import { joined } from "./joins.ts";
 import { type Weight, weightOf } from "./weight.ts";
 
 /** When a tree was last written, as the grove draws it: in leaf, budding, bare or a stump. */
@@ -239,8 +240,6 @@ function cutIn(trees: readonly Tree[]): string | undefined {
 /** The seasons in the order a repository's trees are drawn. */
 const SEASONS: readonly Season[] = ["today", "week", "resting", "gone"];
 
-// A cell's network for a repository is named `repo.<its name>`.
-const REPOSITORY_NETWORK = "repo.";
 const REPOSITORY_KEY = /^repository:/u;
 
 /** The kinds the daemon tells, each followed by a watch of its own. */
@@ -254,13 +253,6 @@ interface Parts {
   readonly at: ReadonlyMap<string, readonly Cell[]>;
   readonly changes: ReadonlyMap<string, Change>;
   readonly now: number;
-}
-
-/** The repositories named by a cell's networks. */
-function networked(cell: Cell): readonly string[] {
-  return cell.networks
-    .filter((each) => each.startsWith(REPOSITORY_NETWORK))
-    .map((each) => each.slice(REPOSITORY_NETWORK.length));
 }
 
 /** A checkout from its record, with the cells at work in it. */
@@ -377,23 +369,6 @@ function groveOf(feed: Feed, cells: readonly Cell[], now: number): Grove | undef
     repositories: grove,
     worth: worthOf(grove),
   };
-}
-
-/** Each repository with the others its cells' networks name too. */
-function joined(repositories: readonly Repository[]): Repository[] {
-  const byName = new Map(repositories.map((each) => [each.name, each.key]));
-  return repositories.map((repository) => {
-    const others = new Set<string>();
-    for (const cell of repository.cells) {
-      for (const name of networked(cell)) {
-        const key = byName.get(name);
-        if (key !== undefined && key !== repository.key) {
-          others.add(key);
-        }
-      }
-    }
-    return { ...repository, joined: [...others].sort((one, other) => one.localeCompare(other)) };
-  });
 }
 
 /** What the reading's sources couldn't read, each a sentence's part. */

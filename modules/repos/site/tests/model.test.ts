@@ -212,6 +212,52 @@ it("joins repositories one cell works across, by the networks it's in", () => {
   assert.deepEqual(grove?.repositories[1]?.joined, [], "world has no cell of its own at work");
 });
 
+/**
+ * What core is joined to, with world named `name`, core's cell in `networks`, and `more` read
+ * before every other record, or after them when `last`.
+ */
+function coreJoined(
+  name: string,
+  networks: string[],
+  more: typeof records = [],
+  last = false,
+): readonly string[] {
+  const named = records.map((each) => (each === world ? { ...each, name } : each));
+  const cell = { ...map.cells[0], networks: [...networks, "repo.core"] };
+  const all = last ? [...named, ...more] : [...more, ...named];
+  const grove = groveOf(told(all), cellsOf({ cells: [cell] }), NOW);
+  const drawn = grove?.repositories.find((each) => each.key === "github:owl/core");
+  assert.ok(drawn !== undefined, "core wasn't drawn");
+  return drawn.joined;
+}
+
+it("joins a repository by its name as the mesh spells it, lower-cased and hyphened", () => {
+  const spellings = [
+    ["_World..Nix", "world-nix"],
+    ["World-Nix-", "world-nix"],
+    [".World.Nix.", "world-nix"],
+    ["world2.nix", "world2-nix"],
+    ["agentic-harness.pi", "agentic-harness-pi"],
+  ];
+  for (const [name = "", network] of spellings) {
+    assert.deepEqual(coreJoined(name, [`repo.${network}`]), ["github:owl/world"], name);
+  }
+});
+
+it("joins nothing by a spelling two repositories share, or by none", () => {
+  // Each read before and after the rest, so neither the first read nor the last can win.
+  for (const last of [false, true]) {
+    const twin = { ...world, key: "repository:github:fox/world", owner: "fox" };
+    assert.deepEqual(coreJoined("world", ["repo.world"], [twin], last), [], "a world was joined");
+    const spelledAlike = { ...twin, name: "World.Nix" };
+    const both = coreJoined("world-nix", ["repo.world-nix"], [spelledAlike], last);
+    assert.deepEqual(both, [], "one of two names spelled alike was joined");
+    const alike = { ...core, key: "repository:github:fox/core", owner: "fox" };
+    assert.deepEqual(coreJoined("world", [], [alike], last), [], "core was joined to its namesake");
+  }
+  assert.deepEqual(coreJoined("...", ["repo."]), [], "a name the mesh spells as nothing joined");
+});
+
 it("hangs each change on its repository and on the tree that names it", () => {
   const drawn = groveOf(told(records), [], NOW)?.repositories[0];
   assert.deepEqual(
