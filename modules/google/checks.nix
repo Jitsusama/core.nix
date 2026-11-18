@@ -93,7 +93,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-desktop-tells-the-next-meeting" { } ''
-      cp ${../../tests/calendar.qml} calendar.qml
+      cp ${./tests/calendar.qml} calendar.qml
       cp ${./Calendar.js} Calendar.js
       cp ${./Repeats.js} Repeats.js
       cp ${./Meet.js} Meet.js
@@ -140,7 +140,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-desktop-reads-the-mail" { } ''
-      cp ${../../tests/mail.qml} mail.qml
+      cp ${./tests/mail.qml} mail.qml
       cp ${./Google.js} Google.js
       cp ${./Mail.js} Mail.js
       cp ${../quickshell/When.js} When.js

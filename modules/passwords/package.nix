@@ -22,7 +22,11 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      ./tests
+      # The shell's cases beside them are checks.nix's, run in Qt's
+      # engine; left out by kind, a change to one doesn't rebuild the
+      # daemon, and moving one doesn't stop it evaluating. The zsh case,
+      # checks.nix's too, stays in, as it was before they came.
+      (lib.fileset.fileFilter (file: !file.hasExt "qml") ./tests)
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
       ../ready-rows/Cargo.toml

@@ -537,7 +537,8 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
 
     It's the call itself, named for its meeting, saying first whether Joel can be heard and
     how long it's gone on; inside are the microphone, who's in it, then its acts (VKCF3Z,
-    2026-11-08). Who's in it and the rest of its words are Meet.js's (tests/calendar.qml).
+    2026-11-08). Who's in it and the rest of its words are Meet.js's
+    (modules/google/tests/calendar.qml).
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
