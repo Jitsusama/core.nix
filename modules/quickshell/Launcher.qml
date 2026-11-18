@@ -7301,9 +7301,8 @@ Scope {
         // flash's timer stops, and an earlier yank still waiting on its
         // frame starts nothing, so neither ends this one before it's drawn.
         // Its time is asked for the way the showing report is
-        // (showingTurnDue), a turn later on each side of the frame, so both
-        // wait on the same frame and the report that says it flashed is
-        // made before its time can run out.
+        // (showingTurnDue), a turn later on each side of the frame, so it
+        // never starts before the report that says it flashed is made.
         flash.stop();
         const yank = ++yanks;
         Qt.callLater(() => afterFrame(() => Qt.callLater(() => {
