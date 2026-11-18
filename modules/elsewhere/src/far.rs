@@ -460,7 +460,8 @@ fn too_many(files: &[Brought]) -> Option<String> {
 /// folder `job` into `folder`, once it has all crossed, or says why not.
 /// It waits up to `within` seconds past the last time more crossed, and
 /// then lands what did. Everything that can land does, whatever else
-/// didn't.
+/// didn't, unless the far side said it cut its list, when nothing the
+/// list says is trusted and nothing lands.
 pub fn bring_back(
     job: &Path,
     folder: &Path,
@@ -472,7 +473,7 @@ pub fn bring_back(
     }
     let (mut waited, mut most, mut seen, mut said) = (0, 0, None, false);
     loop {
-        let text = readable(&fs::read(job.join(BROUGHT)).unwrap_or_default());
+        let text = readable(&list(job));
         if lines(&text).last() == Some(CUT) {
             return Err(Missed::Lost(
                 "the far side couldn't write down all it would bring back".to_owned(),
@@ -515,6 +516,17 @@ pub fn bring_back(
         None => Err(Missed::Lost(format!(
             "it didn't cross home within {within}s"
         ))),
+    }
+}
+
+/// The far side's list in the handover folder `job`, read only as a plain
+/// file, as every file landed is: anything else at its name, which no
+/// share carries, reads as nothing yet.
+fn list(job: &Path) -> Vec<u8> {
+    let path = job.join(BROUGHT);
+    match fs::symlink_metadata(&path) {
+        Ok(meta) if meta.is_file() => fs::read(&path).unwrap_or_default(),
+        _ => Vec::new(),
     }
 }
 

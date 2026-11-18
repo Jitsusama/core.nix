@@ -65,19 +65,22 @@ pub(super) fn bringing(kind: &Kind) -> String {
     if kind.brings_back.is_empty() {
         return format!("echo {END} > \"$job/{BROUGHT}\"\n");
     }
-    let paths = kind
-        .brings_back
-        .iter()
-        .map(|path| quoted(path.trim_matches('/')))
-        .collect::<Vec<_>>()
-        .join(" ");
+    // Each once, so a path a kind names twice is never lost twice.
+    let mut paths = Vec::new();
+    for path in &kind.brings_back {
+        let path = quoted(path.trim_matches('/'));
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+    let paths = paths.join(" ");
     format!(
         // A subshell of its own, which every write that fails ends, since
         // a shell that isn't interactive may itself exit when a redirection
         // fails, on a compound command or a function as on a special
         // builtin: then only this step ends, never the far line, and the
         // list gets no end. `true` rather than `:` for the same reason.
-        r#"names="$work.back"
+        r#"names="$work.back" wrote=0
 (
 lose() {{
   for path in {paths}; do
@@ -131,18 +134,26 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
     n=$((n + 1))
   done < "$names.in" || exit 1
   # Last, so no file's number moves.
-  while IFS= read -r lost; do printf '%s\n' "$lost" || exit 1; done < "$names.lost"
+  while IFS= read -r lost; do printf '%s\n' "$lost" || exit 1; done < "$names.lost" ||
+    exit 1
 }} > "$job/{BROUGHT}"
 else
   printf "elsewhere: couldn't list what to bring back beside %s\n" "$work" >&2
   lose > "$job/{BROUGHT}"
 fi
-) && echo {END} >> "$job/{BROUGHT}" || {{
-  printf "elsewhere: couldn't write down all it brings back\n" >&2
-  echo {CUT} >> "$job/{BROUGHT}"
-}}
-# Only once the end is written or not, as removing these frees room.
+) || wrote=$?
+# Freed before the list ends, as on a disk that filled, these are the
+# room its end needs.
 rm -f "$names" "$names".*
+# Cut on a line of its own, so a line the full disk cut in half can't
+# hide it.
+if [ $wrote -ne 0 ]; then
+  printf "elsewhere: couldn't write down all it brings back\n" >&2
+  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
+elif ! echo {END} >> "$job/{BROUGHT}"; then
+  printf "elsewhere: couldn't end the list of what it brings back\n" >&2
+  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
+fi
 "#
     )
 }

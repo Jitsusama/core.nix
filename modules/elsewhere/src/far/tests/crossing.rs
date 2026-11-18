@@ -1,6 +1,8 @@
 use super::{SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
 use crate::far::{BACK, BROUGHT, Missed, bring_back};
 use std::io::ErrorKind;
+#[cfg(target_os = "linux")]
+use std::path::Path;
 use std::time::{Duration, Instant};
 use terminal_kit::Exit;
 
@@ -32,7 +34,8 @@ fn a_copy_longer_than_listed_never_lands() {
 #[test]
 fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
     let mut kind = kind("");
-    kind.brings_back = vec!["out".into()];
+    // One path named twice, which is still lost once.
+    kind.brings_back = vec!["out".into(), "out/".into()];
     // Each failing only at the bring-back, having said all it would, as a
     // find stopped part way does, and passing the rest to the far
     // machine's own, the stand-in's folder first on the path.
@@ -104,6 +107,17 @@ fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path_it_made() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// A stand-in for `step` that, run with arguments `when` matches, does
+/// `refusal` instead, and otherwise passes on to the real one.
+fn refusing<'a>(step: &'a str, when: &str, refusal: &str) -> (&'a str, String) {
+    (
+        step,
+        format!(
+            "PATH=${{PATH#*:}}\ncase \" $* \" in {when}) {refusal} ;; esac\nexec {step} \"$@\""
+        ),
+    )
+}
+
 #[test]
 fn a_list_that_couldn_t_be_written_whole_ends_cut() {
     let mut kind = kind("");
@@ -111,44 +125,54 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
     // A find that fails once the far line can no longer write down what
     // it lost: its record of losses a folder, which refuses the open, and
     // where there is one, a full disk, which refuses the write. And a sort
-    // whose names then can't be read.
-    let refusing = |step: &str, when: &str, refusal: &str| {
-        (
-            step.to_owned(),
-            format!(
-                "PATH=${{PATH#*:}}\ncase \" $* \" in {when}) {refusal} ;; esac\nexec {step} \"$@\""
-            ),
-        )
-    };
-    let found = "*\" -type f \"*";
+    // after which the names, or the losses, can't be read.
+    let (found, sorted) = ("*\" -type f \"*", "*\" -u \"*");
     #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
-    let mut refusals = vec![
-        refusing(
+    let mut cases = vec![
+        vec![refusing(
             "find",
             found,
             "rm -f \"$PWD.back.lost\" && mkdir \"$PWD.back.lost\"; exit 1",
-        ),
-        refusing(
+        )],
+        vec![refusing(
             "sort",
-            "*\" -u \"*",
+            sorted,
             "sort \"$@\"; rm -f \"$PWD.back.in\" && ln -s nowhere \"$PWD.back.in\"; exit 0",
-        ),
+        )],
+        vec![refusing(
+            "sort",
+            sorted,
+            "sort \"$@\"; rm -f \"$PWD.back.lost\" && ln -s nowhere \"$PWD.back.lost\"; exit 0",
+        )],
     ];
     #[cfg(target_os = "linux")]
-    refusals.push(refusing(
-        "find",
-        found,
-        "ln -sf /dev/full \"$PWD.back.lost\"; exit 1",
-    ));
-    for (step, stand_in) in &refusals {
-        let refusal = stand_in.lines().nth(1).unwrap_or_default();
+    {
+        assert!(Path::new("/dev/full").exists(), "no full disk to stand in");
+        cases.push(vec![
+            refusing("find", found, "ln -sf /dev/full \"$PWD.back.lost\"; exit 1"),
+            // A far line that wrote on past the full disk reads its losses
+            // back from it next, which never ends: this ends it, so a lost
+            // guard fails rather than hangs.
+            refusing(
+                "sort",
+                sorted,
+                "[ -L \"$PWD.back.lost\" ] && rm \"$PWD.back.lost\" && true > \"$PWD.back.lost\"; exec sort \"$@\"",
+            ),
+        ]);
+    }
+    for stand_ins in &cases {
+        let refusal = stand_ins[0].1.lines().nth(1).unwrap_or_default();
+        let stand_ins: Vec<_> = stand_ins
+            .iter()
+            .map(|(step, text)| (*step, text.as_str()))
+            .collect();
         let (code, err, home) = far_line(
             "1\tx\nend\n",
             &[("x", "x")],
             "mkdir out && printf a > out/a",
             &kind,
             None,
-            &[(step, stand_in)],
+            &stand_ins,
         );
         assert_eq!(
             code,
@@ -162,6 +186,43 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_list_on_a_full_disk_is_never_said_whole() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    assert!(Path::new("/dev/full").exists(), "no full disk to stand in");
+    // A sort that leaves the list's own name on a full disk, so every line
+    // of it fails as it's written. The far tree is two folders below home.
+    let list = handover(Path::new("")).join(BROUGHT);
+    let sort = format!(
+        "PATH=${{PATH#*:}}\ncase \" $* \" in *\" -u \"*) sort \"$@\" && ln -sf /dev/full \"$PWD/../../{}\"; exit ;; esac\nexec sort \"$@\"",
+        list.display()
+    );
+    let (code, err, home) = far_line(
+        "1\tx\nend\n",
+        &[("x", "x")],
+        "mkdir out && printf a > out/a",
+        &kind,
+        None,
+        &[("sort", &sort)],
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("couldn't write down all it brings back")
+            && !err.contains("couldn't end"),
+        "the far line wrote on past a line it couldn't write ({code:?}): {err}"
+    );
+    // Nothing at the list's name but a plain file is read, so the near side
+    // waits it out rather than read a device forever.
+    let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+    assert!(
+        matches!(&landed, Err(Missed::Lost(_))),
+        "a list that never got written read as whole: {landed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
