@@ -41,15 +41,17 @@ pub struct Counts {
 
 impl Counts {
     /// The calls of these start times, at `now`, the day having begun at
-    /// `midnight`, both in milliseconds.
+    /// `midnight`, both in milliseconds. The hour counts only today's,
+    /// since mycelium refuses an hour past the day, as a call from the
+    /// last hour of yesterday would make it just after midnight.
     pub fn of(started: impl IntoIterator<Item = u64>, now: u64, midnight: u64) -> Self {
         let hour_ago = now.saturating_sub(HOUR);
         started
             .into_iter()
-            .filter(|&at| at <= now)
+            .filter(|&at| at <= now && at >= midnight)
             .fold(Self::default(), |counts, at| Self {
                 hour: counts.hour + u64::from(at > hour_ago),
-                today: counts.today + u64::from(at >= midnight),
+                today: counts.today + 1,
             })
     }
 }
@@ -152,38 +154,50 @@ fn midnight(now: u64) -> u64 {
 }
 
 /// The calls the book holds and the Tuple calls missed, counted at `now`.
-fn counted(held: &book::Book, rang: &Rings, now: u64, midnight: u64) -> Counts {
-    Counts::of(
-        held.starts().chain(rang.missed().iter().copied()),
-        now,
-        midnight,
-    )
+fn counted(held: &book::Book, missed: &[u64], now: u64, midnight: u64) -> Counts {
+    Counts::of(held.starts().chain(missed.iter().copied()), now, midnight)
+}
+
+/// What the log says when Tuple's missed calls stop or start being
+/// counted, or nothing when that hasn't changed since `before`.
+fn told(before: Option<&'static str>, now: Option<&'static str>) -> Option<String> {
+    match (before, now) {
+        (before, Some(why)) if before != Some(why) => {
+            Some(format!("Tuple's missed calls aren't counted: {why}"))
+        }
+        (Some(_), None) => Some("Tuple's missed calls are counted again".to_owned()),
+        _ => None,
+    }
 }
 
 /// Says how the calls stand, every `EVERY`, for as long as the daemon
 /// runs. A failure is said once, when it starts, rather than each round,
-/// and so is a Tuple file that couldn't be trusted, which counts nothing.
+/// and so is a Tuple file that can't be counted from, and its recovery.
 pub fn keep(receptor: &Receptor, book: &book::Shared) {
     let pid = std::process::id();
     let tuple = rings::file();
+    let mut heard = rings::Heard::default();
     let mut said: Option<String> = None;
-    let mut unsound: Option<&'static str> = None;
+    let mut unread: Option<&'static str> = None;
     loop {
         let now = book::now();
-        let rang = tuple.as_deref().map_or(Rings::Missing, rings::read);
+        let midnight = midnight(now);
+        let rang = tuple.as_deref().map_or(
+            Rings::Unread("no absolute folder names where tuple-call keeps its calls"),
+            rings::read,
+        );
         let why = match rang {
-            Rings::Unsound(why) => Some(why),
-            Rings::Missed(_) | Rings::Missing => None,
+            Rings::Unread(why) => Some(why),
+            Rings::Missed(_) => None,
         };
-        if why != unsound {
-            if let Some(why) = why {
-                eprintln!("call-transcripts: Tuple's missed calls aren't counted: {why}");
-            }
-            unsound = why;
+        if let Some(line) = told(unread, why) {
+            eprintln!("call-transcripts: {line}");
         }
+        unread = why;
+        let missed = heard.hear(&rang, midnight);
         let (counts, failing) = {
             let held = book.lock();
-            (counted(&held, &rang, now, midnight(now)), held.failing())
+            (counted(&held, &missed, now, midnight), held.failing())
         };
         let outcome = receptor.say(State::of(counts, failing), counts, pid).err();
         if outcome != said {
@@ -328,6 +342,38 @@ mod tests {
         (program, given)
     }
 
+    /// What a stand-in in `folder` was given when told how the calls
+    /// stand, a word a line.
+    fn said_by(folder: &std::path::Path, state: State, counts: Counts) -> String {
+        let (program, given) = stand_in(folder);
+        let receptor = receptor(program);
+        // Another test's child, forked while the stand-in was still open
+        // for writing, holds it busy until that child execs, which is
+        // moments; so a busy stand-in is run again rather than failed.
+        let mut said = receptor.say(state, counts, 4242);
+        for _ in 0..BUSY_TRIES {
+            match &said {
+                Err(why) if why.contains("os error 26") => {
+                    std::thread::yield_now();
+                    said = receptor.say(state, counts, 4242);
+                }
+                _ => break,
+            }
+        }
+        said.unwrap();
+        std::fs::read_to_string(given).unwrap()
+    }
+
+    #[test]
+    fn a_call_from_the_last_hour_of_yesterday_counts_in_neither() {
+        let midnight = NOW - HOUR / 2;
+        assert_eq!(
+            Counts::of([midnight - 1, midnight], NOW, midnight),
+            Counts { hour: 1, today: 1 },
+            "yesterday's call counted in the hour, past what mycelium takes"
+        );
+    }
+
     #[test]
     fn a_planted_title_or_person_never_reaches_the_receptor() {
         let folder = tempfile::tempdir().unwrap();
@@ -346,24 +392,7 @@ mod tests {
         .unwrap();
         let held = book::Book::read(&calls);
         let counts = Counts::of(held.starts(), NOW, MIDNIGHT);
-        let (program, given) = stand_in(folder.path());
-        let receptor = receptor(program);
-        let state = State::of(counts, held.failing());
-        // Another test's child, forked while the stand-in was still open
-        // for writing, holds it busy until that child execs, which is
-        // moments; so a busy stand-in is run again rather than failed.
-        let mut said = receptor.say(state, counts, 4242);
-        for _ in 0..BUSY_TRIES {
-            match &said {
-                Err(why) if why.contains("os error 26") => {
-                    std::thread::yield_now();
-                    said = receptor.say(state, counts, 4242);
-                }
-                _ => break,
-            }
-        }
-        said.unwrap();
-        let said = std::fs::read_to_string(given).unwrap();
+        let said = said_by(folder.path(), State::of(counts, held.failing()), counts);
         for planted in [
             "personal", "ignore", "skiff", "example", "kestrel", "planted",
         ] {
@@ -413,28 +442,14 @@ mod tests {
         )
         .unwrap();
         let held = book::Book::read(&calls);
-        let rang = rings::read(&recent);
-        let counts = counted(&held, &rang, NOW, MIDNIGHT);
+        let missed = rings::Heard::default().hear(&rings::read(&recent), MIDNIGHT);
+        let counts = counted(&held, &missed, NOW, MIDNIGHT);
         assert_eq!(
             counts,
             Counts { hour: 1, today: 1 },
             "only today's missed call counts; one answered or yesterday's doesn't"
         );
-        let (program, given) = stand_in(folder.path());
-        let receptor = receptor(program);
-        let state = State::of(counts, held.failing());
-        let mut said = receptor.say(state, counts, 4242);
-        for _ in 0..BUSY_TRIES {
-            match &said {
-                Err(why) if why.contains("os error 26") => {
-                    std::thread::yield_now();
-                    said = receptor.say(state, counts, 4242);
-                }
-                _ => break,
-            }
-        }
-        said.unwrap();
-        let said = std::fs::read_to_string(given).unwrap();
+        let said = said_by(folder.path(), State::of(counts, held.failing()), counts);
         for planted in ["personal", "Skiff", "Tern", "skiff", "example", "41"] {
             assert!(
                 !said.contains(planted),
@@ -450,35 +465,26 @@ mod tests {
     }
 
     #[test]
-    fn a_tuple_file_that_cant_be_trusted_counts_no_missed_call() {
-        let folder = tempfile::tempdir().unwrap();
-        let calls = folder.path().join("calls");
-        std::fs::create_dir_all(&calls).unwrap();
-        let recent = folder.path().join("recent.jsonl");
-        std::fs::write(
-            &recent,
-            format!(
-                "{}\nnot a call\n",
-                serde_json::json!({"missed": true, "since": NOW - 5})
-            ),
-        )
-        .unwrap();
-        let held = book::Book::read(&calls);
-        assert_eq!(
-            counted(&held, &rings::read(&recent), NOW, MIDNIGHT),
-            Counts::default(),
-            "a file holding a line that isn't a call was counted from"
+    fn a_tuple_file_that_cant_be_counted_from_is_logged_once_and_so_is_its_return() {
+        let unread = "its file isn't a plain file";
+        assert!(
+            told(None, Some(unread)).is_some_and(|line| line.contains(unread)),
+            "a file that can't be counted from wasn't logged"
         );
         assert_eq!(
-            counted(
-                &held,
-                &rings::read(&folder.path().join("none")),
-                NOW,
-                MIDNIGHT
-            ),
-            Counts::default(),
-            "no file was counted as calls"
+            told(Some(unread), Some(unread)),
+            None,
+            "it was logged again"
         );
+        assert!(
+            told(Some(unread), Some("tuple-call has kept no calls")).is_some(),
+            "a new reason wasn't logged"
+        );
+        assert!(
+            told(Some(unread), None).is_some_and(|line| line.contains("again")),
+            "its return wasn't logged"
+        );
+        assert_eq!(told(None, None), None, "a sound file was logged");
     }
 
     #[test]
