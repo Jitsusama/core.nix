@@ -34,22 +34,31 @@ const SMALL: [&str; 12] = [
 /// them, and one holding the terminal's own escapes would retitle the
 /// window, clear the screen or draw over a line as it's shown; only the
 /// kit spells escapes (docs/commands.md, Colour and Marks). The words are
-/// borrowed as they are where they hold none, as nearly all do.
+/// borrowed as they are where they hold none, as nearly all do. The
+/// vertical tab, form feed and next line part words as a tab does, so
+/// they're drawn as a space too; a return is dropped, since nearly every
+/// one ends a line before its break.
 pub fn drawn(words: &str) -> Cow<'_, str> {
     kept(words, |c| match c {
         '\n' => Some('\n'),
-        '\t' | '\u{2028}' | '\u{2029}' => Some(' '),
+        c if parts(c) => Some(' '),
         _ => None,
     })
+}
+
+/// Whether a character parts words without a line break of its own.
+fn parts(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+    )
 }
 
 /// The same, held to one line, as a table's cell, a list's row or a fact
 /// is: a line break is a space too, so no field draws a record of its
 /// own, and every line read through `grep` still names its record.
 pub fn one_line(words: &str) -> Cow<'_, str> {
-    kept(words, |c| {
-        matches!(c, '\n' | '\t' | '\u{2028}' | '\u{2029}').then_some(' ')
-    })
+    kept(words, |c| (c == '\n' || parts(c)).then_some(' '))
 }
 
 /// Whether the kit keeps `c` from the terminal: a control character, a
@@ -87,8 +96,7 @@ pub(crate) fn unseen(c: char) -> bool {
                 | '\u{fff0}'..='\u{fffb}'
                 | '\u{1bca0}'..='\u{1bca3}'
                 | '\u{1d173}'..='\u{1d17a}'
-                | '\u{e0000}'
-                | '\u{e0001}'
+                | '\u{e0000}'..='\u{e001f}'
                 | '\u{e0080}'..='\u{e00ff}'
                 | '\u{e01f0}'..='\u{e0fff}'
         )
@@ -557,6 +565,8 @@ mod tests {
             '\u{1d17a}',
             '\u{e0000}',
             '\u{e0001}',
+            '\u{e0002}',
+            '\u{e001f}',
             '\u{e0080}',
             '\u{e00ff}',
             '\u{e01f0}',
@@ -571,6 +581,11 @@ mod tests {
             drawn("a\u{2028}b\u{2029}c"),
             "a b c",
             "a Unicode separator made a line break"
+        );
+        assert_eq!(
+            drawn("a\u{b}b\u{c}c\u{85}d"),
+            "a b c d",
+            "a character that parts words ran them together"
         );
         let shaping = "\u{ad}\u{200c}\u{200d}\u{fe0f}\u{e0067}\u{e007f}\u{1160}\u{180b}";
         assert_eq!(

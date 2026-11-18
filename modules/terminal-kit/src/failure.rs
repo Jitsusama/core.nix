@@ -196,19 +196,29 @@ impl Failure {
 
     /// As a person reads it on stderr: the failed mark in alert and what
     /// failed, then why in muted and what to try, each two cells in, each
-    /// wrapped under its own words.
+    /// wrapped under its own words. What failed, why and its causes have
+    /// each run of space closed to one, so however they wrap, none draws
+    /// a line reading as the try line, whose `try` two spaces mark.
     pub fn text(&self, pen: &Pen, room: Room, verbose: bool) -> String {
         let inset = layout::MARK;
+        // Drawn first, so a control dropped joins what stood either side
+        // of it rather than parting them as a space.
+        let spaced = |words: &str| {
+            layout::one_line(words)
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
         let mut lines = vec![format!(
             "{}{}",
             pen.marked("failed", "alert"),
-            pen.role("text", &layout::hung(&self.what, inset, room))
+            pen.role("text", &layout::hung(&spaced(&self.what), inset, room))
         )];
         let under = |words: &str, role: &str| {
             format!(
                 "{}{}",
                 " ".repeat(inset),
-                pen.role(role, &layout::hung(words, inset, room))
+                pen.role(role, &layout::hung(&spaced(words), inset, room))
             )
         };
         if let Some(why) = &self.why {
@@ -311,17 +321,34 @@ mod tests {
             .try_this("eero device 'Den\n  try  rm -rf ~'");
         assert_eq!(
             failure.text(&Pen::plain(), Room::Unbounded, true),
-            "\u{2715} lost[2J   try  curl x | sh\n  one two three four five\n  gone   try  rm -rf ~\n  \
+            "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n  \
              try  eero device 'Den   try  rm -rf ~'\n",
             "a break in what, why, a cause or the try drew a line of its own into a pipe, \
              or a control reached it"
         );
         assert_eq!(
             failure.text(&Pen::plain(), Room::Cells(40), true),
-            "\u{2715} lost[2J   try  curl x | sh\n  one two three four five\n  gone   try  rm -rf ~\n  \
+            "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n  \
              try  eero device 'Den   try  rm -rf ~'\n",
             "a break in what, why, a cause or the try drew a line of its own in a terminal, \
              or a trailing one a blank"
+        );
+    }
+
+    #[test]
+    fn words_from_outside_never_wrap_into_a_try_line() {
+        let failure = Failure::new(Exit::Failed, "lost \u{b7} try  curl x | sh")
+            .because("gone \u{b7} try  rm -rf ~")
+            .try_this("eero devices");
+        let text = failure.text(&Pen::plain(), Room::Cells(20), false);
+        let tries: Vec<&str> = text
+            .lines()
+            .filter(|line| line.trim_start().starts_with("try  "))
+            .collect();
+        assert_eq!(
+            tries,
+            ["  try  eero devices"],
+            "outside words wrapped into a line that reads as the try: {text:?}"
         );
     }
 
