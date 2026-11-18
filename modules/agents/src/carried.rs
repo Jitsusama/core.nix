@@ -23,8 +23,16 @@
 //! within 31 s of the one pinned would be taken as carried when it isn't;
 //! mycelium's closest that day were 52 s apart.
 //! Where any of it can't be told, nothing is held back, as before.
+//!
+//! When each merge reached the machine is told the same way, between
+//! one arrival and the next: core's by the switches the integration
+//! record lists, a line a switch with when and the core it ran
+//! (`{"at", "revs": {"core"}}`), the harness's by when pi-packages
+//! made each version's folder. What a switch or an install brought is
+//! what its first parents hold past the one before; what the first of
+//! them brought isn't told, since what came before it isn't said.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -45,6 +53,9 @@ pub struct Carried {
     core: Option<HashSet<u64>>,
     harness: Option<HashSet<u64>>,
     mycelium: Option<i64>,
+    /// When the arrival that brought each merge happened, in ms, by its
+    /// repository's name and its number, where that's told.
+    since: HashMap<&'static str, HashMap<u64, i64>>,
 }
 
 /// Where what runs is said: update-to-main's last answer, the core the
@@ -55,6 +66,8 @@ pub struct Said<'a> {
     pub kept: &'a Path,
     pub clone: Option<&'a Path>,
     pub harness: Option<&'a Path>,
+    /// The integration's record of switches, a line each.
+    pub switches: Option<&'a Path>,
 }
 
 impl Carried {
@@ -92,11 +105,29 @@ impl Carried {
             )?;
             Some(merged(&log))
         });
+        let mut since = HashMap::new();
+        if let (Some(clone), Some(switches)) = (said.clone, said.switches) {
+            let lines = fs::read_to_string(switches).unwrap_or_default();
+            since.insert("core.nix", brought(switched(&lines), between(clone)));
+        }
+        if let Some(folder) = said.harness {
+            let versions = installs(&folder.join("versions"));
+            let mirror = folder.join("mirror.git");
+            since.insert("agentic-harness.pi", brought(versions, between(&mirror)));
+        }
         Self {
             core,
             harness,
             mycelium,
+            since,
         }
+    }
+
+    /// When the switch or install that brought landing `one` happened, in
+    /// ms: one of core's or the harness's, where that's told.
+    pub fn since(&self, one: &Value) -> Option<i64> {
+        let (name, number) = numbered(one);
+        self.since.get(name)?.get(&number?).copied()
     }
 
     /// Whether landing `one` is on the running system: one of core's or
@@ -104,12 +135,7 @@ impl Carried {
     /// pin is surely past it, and any other, or any where that can't be
     /// told, as it lands.
     pub fn carries(&self, one: &Value) -> bool {
-        let repo = one["repo"].as_str().unwrap_or("");
-        let name = repo.rsplit('/').next().unwrap_or("");
-        let number = one["ref"]
-            .as_str()
-            .and_then(|said| said.strip_prefix(name)?.strip_prefix('#'))
-            .and_then(|number| number.parse::<u64>().ok());
+        let (name, number) = numbered(one);
         let holds = |merged: &Option<HashSet<u64>>| match (merged, number) {
             (Some(merged), Some(number)) => merged.contains(&number),
             _ => true,
@@ -133,6 +159,96 @@ impl Carried {
             ..Self::default()
         }
     }
+
+    /// One telling only that core's merge `number` reached the machine
+    /// at `at`, in ms, for a test.
+    #[cfg(test)]
+    pub fn arrived(number: u64, at: i64) -> Self {
+        Self {
+            since: HashMap::from([("core.nix", HashMap::from([(number, at)]))]),
+            ..Self::default()
+        }
+    }
+}
+
+/// Landing `one`'s repository, by its name alone, and its merge's number,
+/// where its ref names one.
+fn numbered(one: &Value) -> (&str, Option<u64>) {
+    let repo = one["repo"].as_str().unwrap_or("");
+    let name = repo.rsplit('/').next().unwrap_or("");
+    let number = one["ref"]
+        .as_str()
+        .and_then(|said| said.strip_prefix(name)?.strip_prefix('#'))
+        .and_then(|number| number.parse::<u64>().ok());
+    (name, number)
+}
+
+/// The subjects on the first parents from one commit to another in the
+/// history at `folder`, a line each, where git says them.
+fn between(folder: &Path) -> impl Fn(&str, &str) -> Option<String> + '_ {
+    move |was, now| {
+        let range = format!("{was}..{now}");
+        git(folder, &["log", "--first-parent", "--format=%s", &range])
+    }
+}
+
+/// When each merge first arrived, in ms, by its number: what each of
+/// `arrivals`, a time and the commit then running, brought past the one
+/// before it, as `log` says the first parents between them. The latest
+/// arrival to bring one is its, since a switch back that dropped it and
+/// a switch on that brought it again mean it has run only since the
+/// second; the first of them brings none.
+fn brought(
+    mut arrivals: Vec<(i64, String)>,
+    log: impl Fn(&str, &str) -> Option<String>,
+) -> HashMap<u64, i64> {
+    arrivals.sort_by_key(|(at, _)| *at);
+    let mut since = HashMap::new();
+    for pair in arrivals.windows(2) {
+        let [(_, was), (at, now)] = pair else {
+            continue;
+        };
+        if was == now {
+            continue;
+        }
+        let Some(subjects) = log(was, now) else {
+            continue;
+        };
+        for number in merged(&subjects) {
+            since.insert(number, *at);
+        }
+    }
+    since
+}
+
+/// Each switch in the integration's record `lines`, when and the core it
+/// ran, passing over a line that doesn't say both whole.
+fn switched(lines: &str) -> Vec<(i64, String)> {
+    lines
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|one| {
+            let core = one["revs"]["core"].as_str().filter(|core| whole(core))?;
+            Some((clock::ms_of(&one["at"])?, core.to_owned()))
+        })
+        .collect()
+}
+
+/// Each version pi-packages installed under `versions`, when its folder
+/// was made and its commit. A folder's time is its own entries' last
+/// change, which an install makes once and nothing after.
+fn installs(versions: &Path) -> Vec<(i64, String)> {
+    fs::read_dir(versions)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let commit = installed(&entry.path())?;
+            let made = entry.metadata().ok()?.modified().ok()?;
+            let ms = made.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis();
+            Some((i64::try_from(ms).ok()?, commit))
+        })
+        .collect()
 }
 
 /// What git says in the repository at `folder`, run with `args`, where it
@@ -339,6 +455,112 @@ mod tests {
     }
 
     #[test]
+    fn a_merge_arrived_with_the_switch_that_brought_it_past_the_one_before() {
+        let (a, b, c) = ("a".repeat(40), "b".repeat(40), "c".repeat(40));
+        // Out of order, and a switch to the core already running, as a
+        // switch for the machine repository's own change is.
+        let arrivals = vec![
+            (300, c.clone()),
+            (100, a.clone()),
+            (200, b.clone()),
+            (250, b.clone()),
+            (400, b.clone()),
+            (500, c.clone()),
+        ];
+        let log = |was: &str, now: &str| match (&was[..1], &now[..1]) {
+            ("a", "b") => Some("Merge pull request #10 from x/y\nfix(z): w\n".to_owned()),
+            ("b", "c") => Some(
+                "Merge pull request #12 from x/y\nMerge pull request #11 from x/y\n".to_owned(),
+            ),
+            ("c", "b") => Some(String::new()),
+            _ => panic!("asked only between the switches next to each other: {was}..{now}"),
+        };
+        assert_eq!(
+            brought(arrivals, log),
+            HashMap::from([(10, 200), (11, 500), (12, 500)]),
+            "each merge by the latest switch that brought it, after a switch back took it \
+             away; the first switch's own say nothing"
+        );
+    }
+
+    #[test]
+    fn a_merge_whose_history_cant_be_read_arrived_at_no_time_told() {
+        let arrivals = vec![(100, "a".repeat(40)), (200, "b".repeat(40))];
+        assert!(
+            brought(arrivals, |_, _| None).is_empty(),
+            "git said nothing"
+        );
+    }
+
+    #[test]
+    fn a_switch_is_read_from_its_line_when_it_says_when_and_the_core_whole() {
+        let lines = format!(
+            "{}\n{}\nnot json\n{}\n{}\n",
+            json!({"at": "2026-11-18T06:05:43-05:00", "generation": 1254,
+                   "revs": {"core": CORE, "world": "x"}}),
+            json!({"at": "2026-11-18T07:18:33-05:00", "revs": {"core": "a3d5300"}}),
+            json!({"revs": {"core": CORE}}),
+            json!({"at": "2026-11-18T08:00:00Z", "revs": {"world": "x"}}),
+        );
+        assert_eq!(
+            switched(&lines),
+            vec![(1_794_999_943_000, CORE.to_owned())],
+            "only the line with its time and a whole core"
+        );
+    }
+
+    #[test]
+    fn a_landing_says_since_when_the_machine_has_had_its_merge() {
+        let carried = Carried {
+            since: HashMap::from([
+                ("core.nix", HashMap::from([(4177, 200)])),
+                ("agentic-harness.pi", HashMap::from([(1802, 300)])),
+            ]),
+            ..Carried::default()
+        };
+        let landing = |repo: &str, at: &str| json!({"repo": repo, "ref": at});
+        for (one, since, why) in [
+            (
+                landing("Jitsusama/core.nix", "core.nix#4177"),
+                Some(200),
+                "core's by its switch",
+            ),
+            (
+                landing("Jitsusama/agentic-harness.pi", "agentic-harness.pi#1802"),
+                Some(300),
+                "the harness's by its install",
+            ),
+            (
+                landing("Jitsusama/core.nix", "core.nix#4178"),
+                None,
+                "no switch told brought it",
+            ),
+            (
+                landing("Jitsusama/core.nix", "agentic-harness.pi#1802"),
+                None,
+                "a ref of another repository's",
+            ),
+            (
+                landing("", "PLAN-20261113-KRINS0#3"),
+                None,
+                "a plan's item isn't a merge",
+            ),
+        ] {
+            assert_eq!(carried.since(&one), since, "{why}");
+        }
+    }
+
+    #[test]
+    fn an_install_is_a_folder_named_by_its_commit() {
+        let folder = std::env::temp_dir().join(format!("agents-installs-{}", std::process::id()));
+        fs::create_dir_all(folder.join(CORE)).expect("a version's folder");
+        fs::create_dir_all(folder.join("next")).expect("a folder that isn't one");
+        let found: Vec<String> = installs(&folder).into_iter().map(|(_, one)| one).collect();
+        fs::remove_dir_all(&folder).expect("the test's folder gone");
+        assert_eq!(found, vec![CORE.to_owned()], "only the commit's folder");
+    }
+
+    #[test]
     fn a_done_asks_core_is_kept_for_when_the_answer_is_gone() {
         let folder = std::env::temp_dir().join(format!("agents-carried-{}", std::process::id()));
         let switched = folder.join("last.json");
@@ -355,6 +577,7 @@ mod tests {
             kept: &kept,
             clone: Some(&clone),
             harness: None,
+            switches: None,
         });
         fs::remove_file(&switched).expect("the answer gone, as at a boot");
         let said = file::read(&kept).expect("the core kept");

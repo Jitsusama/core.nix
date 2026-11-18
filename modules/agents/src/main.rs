@@ -11,7 +11,8 @@
 //! Usage: `agents --vocabulary WORDS [--node NODE] --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --restore RESTORE
 //! --kept KEPT --landed LANDED --steer STEER --shells SHELLS [--switched
-//! SWITCHED --clone CLONE] [--harness HARNESS] --socket SOCKET`, where
+//! SWITCHED --clone CLONE] [--harness HARNESS] [--switches SWITCHES]
+//! --socket SOCKET`, where
 //! WORDS is the launcher's
 //! words.json, NODE the mycelium node's socket, TODO the to-do daemon's,
 //! WINDOWS the windows daemon's, SPEND spend-watch's collection (its
@@ -28,7 +29,9 @@
 //! switch before To Try holds it (carried.rs; the core is kept beside
 //! KEPT, in carried.json), and with neither nothing waits; HARNESS is
 //! where pi-packages installs the harness, which says the same of its
-//! landings. A machine with no realm runs no node,
+//! landings, and when each of its versions came; SWITCHES the
+//! integration's record of switches, a line each, which says when each
+//! of core's merges reached the machine. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.
 //! Its help, its failures and its exits take the terminal kit's shape
 //! (`help()`).
@@ -114,6 +117,7 @@ fn help() -> Help {
         .option("--switched FILE", "what of core runs, with --clone")
         .option("--clone FOLDER", "core's bare clone, with --switched")
         .option("--harness FOLDER", "where the harness is installed")
+        .option("--switches FILE", "the switches made, with --clone")
         .option("--socket FILE", "where it serves the rows")
         .exit(Exit::Failed, "it couldn't serve or hear its sources")
         .exit(Exit::Config, "the vocabulary couldn't be read")
@@ -145,6 +149,7 @@ struct Args {
     switched: Option<PathBuf>,
     clone: Option<PathBuf>,
     harness: Option<PathBuf>,
+    switches: Option<PathBuf>,
     socket: PathBuf,
 }
 
@@ -178,6 +183,7 @@ fn args(args: &[String]) -> Result<Args, Failure> {
         switched: named("--switched"),
         clone: named("--clone"),
         harness: named("--harness"),
+        switches: named("--switches"),
         socket: needed("--socket")?,
     })
 }
@@ -471,6 +477,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         switched: args.switched,
         clone: args.clone,
         harness: args.harness,
+        switches: args.switches,
         landed: args.landed,
         steer: args.steer,
         shells: args.shells,
