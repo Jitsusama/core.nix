@@ -25,7 +25,9 @@
 # night job tried meanwhile leaves the turn to a later try. One Joel waits
 # on, such as a switch's build, adds `--ahead` and goes next; a night job
 # running then pauses for it, its cgroup frozen, and goes on once it
-# ends, before any job that came to wait meanwhile. A job that can run
+# ends, before any job that came to wait meanwhile. A pause holds only
+# the job's own processes, not a build it handed nix-daemon, and a stop
+# while paused lets it go on for its grace to hear it. A job that can run
 # long names `runsAtMost`, the time it may run, its pauses aside. So
 # night-shift is on every account's path.
 {

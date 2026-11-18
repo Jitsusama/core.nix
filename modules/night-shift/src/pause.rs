@@ -12,11 +12,19 @@
 //! to go on. Either way what it holds stays held while it waits, and the
 //! kernel may reclaim it under pressure as from any job that sleeps.
 //!
+//! A pause holds only the job's own processes. What it handed elsewhere
+//! runs on: a process that left its group when it has no cgroup apart,
+//! and a build it asked nix-daemon for, which runs under the daemon.
+//! World's night jobs are git, which does its work in its own processes.
+//! A job stopped while paused goes on first, for at most its grace, so it
+//! hears the TERM and gives back its locks.
+//!
 //! A job pauses once for each job Joel waits on, so one that is stopped
 //! or stuck, and never takes the turn it was left, costs the night job
 //! `turn::AHEAD_IS_LEFT_AT_MOST` once rather than every few seconds.
 
-use crate::turn::{self, Ahead, Look};
+use crate::ahead::{self, Ahead};
+use crate::turn::{self, Look};
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io;
@@ -123,14 +131,18 @@ impl<'a> Sharing<'a> {
 
     /// Looks once: a job holding the turn pauses when one Joel waits on
     /// waits for it, and a paused one goes on once the turn is back.
-    /// Gives what that changed, to say; fails only when a paused job
-    /// can't take the turn back.
+    /// Gives what that changed, to say; fails when a paused job can't take
+    /// the turn back or can't go on once it has, which stops it.
     pub fn look(&mut self) -> io::Result<Option<String>> {
         if let Some(paused) = &self.paused {
-            if !matches!(
-                turn::look(self.lock, self.runtime, false, &mut self.left)?,
-                Look::Had
-            ) {
+            let found =
+                turn::look(self.lock, self.runtime, false, &mut self.left).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!("it can't take the turn back: {error}"),
+                    )
+                })?;
+            if !matches!(found, Look::Had) {
                 return Ok(None);
             }
             let said = format!(
@@ -141,15 +153,17 @@ impl<'a> Sharing<'a> {
             self.before += paused.since.elapsed();
             self.paused = None;
             turn::note(self.runtime, self.name);
-            // The turn is had again whether or not it goes on; a job it
-            // can't let go on is stopped by its watcher's bars or its hours.
-            return Ok(Some(match self.hold.set(false) {
-                Ok(()) => said,
-                Err(error) => format!("{said}, but can't be let go on: {error}"),
-            }));
+            // A job still held would keep the turn doing nothing until its
+            // most, which no bar stops, as a held job stalls nobody.
+            self.hold.set(false).map_err(|error| {
+                io::Error::new(error.kind(), format!("it can't be let go on: {error}"))
+            })?;
+            return Ok(Some(said));
         }
-        let Some(waiter) = turn::next(self.runtime)
-            .filter(|waiter| !waiter.paused && !self.paused_for.contains(&waiter.pid))
+        // Those already paused for are passed over rather than ending the
+        // look, so one that never takes its turn hides none behind it.
+        let Some(waiter) =
+            ahead::next_but(self.runtime, &self.paused_for).filter(|waiter| !waiter.paused)
         else {
             return Ok(None);
         };

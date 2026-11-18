@@ -57,6 +57,7 @@
 //! Its help, its failures and its exits take the terminal kit's shape
 //! (src/commands.rs); a failed job's run ends with the job's own code.
 
+mod ahead;
 mod cgroup;
 mod commands;
 mod hours;
@@ -75,6 +76,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, ExitStatus};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use terminal_kit::{Exit, Failure};
@@ -300,6 +302,10 @@ fn run(job: &Job) -> Result<(), Failure> {
         }
     }
     let own = own.map(|dir| dir.join("memory.pressure"));
+    // From here a stop is the watcher's to carry out, so a job paused
+    // meanwhile goes on to hear it. The job's own program starts with the
+    // signals as they were, since exec sets caught ones back.
+    hear_stops();
     let mut child = command.spawn().map_err(|error| {
         failed(job, &format!("can't start {}", job.command[0])).because(error.to_string())
     })?;
@@ -476,6 +482,10 @@ fn watch(
     let began = Instant::now();
     let mut last_sample: Option<Instant> = None;
     loop {
+        if ASKED_TO_STOP.load(Ordering::Relaxed) {
+            say(job, "stopping: it was asked to stop");
+            return None;
+        }
         match child.try_wait() {
             Ok(Some(status)) => return Some(status),
             Ok(None) => {}
@@ -488,10 +498,7 @@ fn watch(
             Ok(Some(said)) => say(job, &said),
             Ok(None) => {}
             Err(error) => {
-                say(
-                    job,
-                    &format!("stopping: it can't take the turn back: {error}"),
-                );
+                say(job, &format!("stopping: {error}"));
                 return None;
             }
         }
@@ -581,6 +588,30 @@ fn finish(job: &Job, status: ExitStatus, done: &Path) -> Result<(), Failure> {
 unsafe extern "C" {
     fn kill(pid: i32, signal: i32) -> i32;
     fn write(fd: i32, buf: *const std::ffi::c_void, count: usize) -> isize;
+    // As src/turn.rs declares it, which takes SIG_DFL's 0 too.
+    fn signal(signal: i32, handler: usize) -> usize;
+}
+
+/// Set once night-shift is asked to stop, by systemd's TERM or a
+/// terminal's INT or HUP, for the watcher to stop the job.
+static ASKED_TO_STOP: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn asked_to_stop(_signal: i32) {
+    ASKED_TO_STOP.store(true, Ordering::Relaxed);
+}
+
+const SIGHUP: i32 = 1;
+const SIGINT: i32 = 2;
+
+/// Has a stop asked of night-shift set `ASKED_TO_STOP` rather than end
+/// it, which would leave a paused job held, deaf to the TERM sent beside
+/// it until systemd's KILL.
+fn hear_stops() {
+    for stop in [SIGHUP, SIGINT, SIGTERM] {
+        // SAFETY: the handler only stores to an atomic, which is safe in a
+        // signal handler.
+        unsafe { signal(stop, asked_to_stop as *const () as usize) };
+    }
 }
 
 /// Has the job write itself into its cgroup's `procs` before its program

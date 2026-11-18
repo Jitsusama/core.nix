@@ -85,8 +85,11 @@ impl Account {
         let mut args = vec![
             "run",
             "repack",
-            // The machine's memory needn't be quiet for this.
+            // The machine's memory needn't be quiet for this, nor stay
+            // so while it runs.
             "--start-under",
+            "100",
+            "--stop-machine",
             "100",
             "--every",
             "0.1",
@@ -662,6 +665,42 @@ fn a_night_jobs_most_counts_not_its_pauses() {
         account.path("ran").exists(),
         "the night job was stopped for the time it was paused: {said}"
     );
+}
+
+#[test]
+fn a_night_job_stopped_while_paused_goes_on_to_hear_it() {
+    // systemd stops a unit by TERM; a watcher ended by it would leave its
+    // job paused, deaf to the TERM sent beside it.
+    let account = Account::new();
+    let mut night = account.night(
+        &["--grace", "10"],
+        "trap 'touch heard; exit 0' TERM; until [ -e switched ]; do echo . >> ticks; sleep 0.05; done",
+    );
+    assert!(
+        within(AT_MOST, || account.path("ticks").exists()),
+        "the night job never ran"
+    );
+    let switch = account.saying(
+        "switch",
+        &["--ahead"],
+        "until [ -e go ]; do sleep 0.05; done; touch switched",
+        "said",
+    );
+    assert!(
+        within(AT_MOST, || account.says("night", "pauses")),
+        "the night job never paused"
+    );
+    Command::new("kill")
+        .args(["-TERM", &night.id().to_string()])
+        .status()
+        .unwrap();
+    let heard = within(AT_MOST, || account.path("heard").exists());
+    File::create(account.path("go")).unwrap();
+    let _ = switch.wait_with_output();
+    let _ = night.wait();
+    let said = fs::read_to_string(account.path("night")).unwrap_or_default();
+    assert!(heard, "the paused job never heard its stop: {said}");
+    assert!(said.contains("stopping: it was asked to stop"), "{said}");
 }
 
 #[test]
