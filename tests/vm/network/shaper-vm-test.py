@@ -332,13 +332,15 @@ def replugged(on_eth2: Connection) -> Replugged:
     # back with no address, so the replug waits until no eth2 unit has a job left, as a person's
     # seconds between the two allow. Its address unit going down says the stops were queued, and
     # it's seen up first: systemd calls one it doesn't know inactive, which would wait for nothing.
-    client.succeed("systemctl is-active -q network-addresses-eth2")
+    client.succeed("systemctl is-active network-addresses-eth2")
     client.succeed(f"echo {device} > /sys/bus/virtio/drivers/virtio_net/unbind")
     client.wait_until_succeeds("! ip link show eth2", timeout=SHAPING)
     client.wait_until_succeeds(
-        "systemctl show -P ActiveState network-addresses-eth2 | grep -Eqx 'inactive|failed'"
-        " && ! systemctl list-jobs --no-legend | grep -q eth2",
+        "systemctl show -P ActiveState network-addresses-eth2 | grep -Eqx 'inactive|failed'",
         timeout=SHAPING,
+    )
+    client.wait_until_succeeds(
+        'jobs=$(systemctl list-jobs --no-legend) && ! grep -q eth2 <<< "$jobs"', timeout=SHAPING
     )
     client.wait_until_succeeds(
         "journalctl -u shaper | grep -q 'eth2 no longer routes'", timeout=SHAPING
