@@ -46,9 +46,9 @@
       touch $out
     '';
 
-  # Copies hide what each copy holds while niri streams the screen to a
-  # call or any program through the portal, and until niri has said its
-  # casts, but not for the shell's own recording of one window, as
+  # Copies hide what each copy holds while niri says any cast, a call's
+  # share through the portal or a recorder's screencopy, and until niri has
+  # said its casts, but not for the shell's own recording of one window, as
   # tests/copies-hidden.qml holds launcher/Shared.js to it in Qt's own
   # engine.
   copies-hide-while-the-screen-is-shared =

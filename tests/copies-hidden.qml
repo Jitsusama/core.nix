@@ -38,7 +38,16 @@ QtObject {
         Expect.same("but not while a call shares beside it",
             Shared.hidden(true, Object.assign(cast(4, "PipeWire", 9, true),
                 cast(5, "PipeWire", 12, true)), 9), true);
-        Expect.same("a screen recorder outside the portal shows them",
-            Shared.hidden(true, cast(4, "WlrScreencopy", 9, true), null), false);
+        // A recording is a share made later: what it read lands in a file
+        // that goes wherever the file does (5GLTPH, 2026-11-17).
+        Expect.same("a screen recorder outside the portal hides them too",
+            Shared.hidden(true, cast(4, "WlrScreencopy", 9, true), null), true);
+        Expect.same("even one sharing the recorded window's session",
+            Shared.hidden(true, cast(4, "WlrScreencopy", 9, true), 9), true);
+        Expect.same("and a kind niri adds later",
+            Shared.hidden(true, cast(4, "Mirror", 9, true), 9), true);
+        Expect.same("even beside the shell's own recording of one window",
+            Shared.hidden(true, Object.assign(cast(4, "PipeWire", 9, true),
+                cast(5, "WlrScreencopy", 12, true)), 9), true);
     }
 }

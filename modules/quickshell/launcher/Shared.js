@@ -1,8 +1,12 @@
 // Whether what the launcher holds of Joel's own, a copy's contents, hides
 // because another program may be seeing the screen (Copies.qml's hiding):
-// any screencast niri streams through the portal, as a call's share is,
-// starting or streaming, the shell's own recording of one window aside;
-// and, until niri has said which casts there are, every time, since the
+// any cast niri says, starting or streaming, but the shell's own recording
+// of one window. That's a call's share through the portal, and a screen or
+// region wf-recorder reads, since a recording is a share made later, its
+// file going wherever it goes (5GLTPH, 2026-11-17), and a kind niri adds
+// later too. A recorder copying every frame without damage, as wf-recorder
+// -D does, isn't a cast to niri, so nothing here can hide from it. And,
+// until niri has said which casts there are, every time, since the
 // shell can't yet tell that nothing sees the screen (ISXEG8, 2026-11-17).
 .pragma library
 
@@ -13,6 +17,6 @@ function hidden(heard, casts, recording) {
     if (heard !== true) {
         return true;
     }
-    return Object.values(casts ?? {}).some(cast => cast.kind === "PipeWire"
-        && (!recording || cast.session_id !== recording));
+    return Object.values(casts ?? {}).some(cast => cast.kind !== "PipeWire"
+        || !recording || cast.session_id !== recording);
 }
