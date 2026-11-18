@@ -526,11 +526,12 @@ mod tests {
             "when an answered ask came keeps 1, giving way before how it stands at 2: {side}"
         );
         // The shell words an item as a time only where the item itself
-        // names its form, so a time held inside an item is never drawn.
+        // names its form, so a time held inside an item is never drawn:
+        // the item is the moment the ask came, flat, and nothing more.
         assert_eq!(
-            (side[1]["as"].as_str(), side[1]["at"].is_i64()),
-            (Some("came"), true),
-            "when an answered ask came is a time the shell can word: {side}"
+            side[1],
+            json!({ "at": 1_794_458_400_000_i64, "as": "came", "keep": 1 }),
+            "an answered ask's time is the moment it was asked, flat: {side}"
         );
         let (word, items, _) = said(State::Refused);
         assert_eq!(
