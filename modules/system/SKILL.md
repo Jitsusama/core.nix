@@ -95,14 +95,16 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
   machines and mycelium are the same whole read from every machine.
   The machine `system` runs on also says its quest backup once the last
   landing (`quest-backup/landed` under the state home, epoch seconds) is
-  over 2 hours old, worth a look, or over 6, bad, said in whole hours. A
-  landing file that can't be read, says no time, or says one more than a
-  minute ahead of the clock is worth a look, so a broken writer isn't
-  quiet; no file says nothing, as on a machine keeping no backup, and so
-  does a backup that has never landed. Only that machine's backup is
-  read, since the file is its own; from another machine it says nothing
-  of it. The backup runs hourly and catches up on waking, so a laptop
-  waking from a night reads late for the minute or two that run takes.
+  over 2 hours old, worth a look, or 7 whole hours or more, bad, said in
+  whole hours. A landing file that can't be read, says no time (0 or
+  less included), or says one more than a minute ahead of the clock is
+  worth a look, so a broken writer isn't quiet; no file says nothing, as
+  on a machine keeping no backup, and so does a backup that has never
+  landed. Only that machine's backup is read, since the file is its own;
+  from another machine it says nothing of it. When the machines can't be
+  read, the machines part says a late backup itself. The backup runs
+  hourly and catches up on waking, so a laptop waking from a night reads
+  late for the minute or two that run takes.
 - **Mycelium.** A link that isn't up is bad. A session whose process is
   gone is an agent's leftover, said in what the part holds ("3 sessions
   gone") and never worth a look.

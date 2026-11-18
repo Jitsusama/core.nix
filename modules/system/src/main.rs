@@ -55,6 +55,10 @@ fn help() -> Help {
     )
     .exit(Exit::Usage, "the words are unknown")
     .exit(Exit::NotFound, "no part lists the machine named")
+    .exit(
+        Exit::Unavailable,
+        "which machines there are couldn't be read",
+    )
 }
 
 fn run(context: &Context) -> Result<(), Failure> {

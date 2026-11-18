@@ -274,6 +274,8 @@ mod tests {
         assert_eq!(said["schema"], "system.machine/1");
         assert_eq!(said["key"], "machine:laptop");
         assert_eq!(said["health"], "watch");
+        assert_eq!(said["part"], "machines", "the part that lists it");
+        assert!(said.get("ties").is_some(), "its ties, as SKILL.md says");
         assert_eq!(said["machine"], system.machine);
         assert_eq!(said["read_at"], system.read_at);
         assert_eq!(system.machine("Laptop"), None, "named as the node names it");

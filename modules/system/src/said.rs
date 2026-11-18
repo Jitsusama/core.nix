@@ -1,9 +1,7 @@
 //! What a machine's ties to the other three parts (parts/ties.rs) are
 //! said in, in a terminal: its cells, its network, its code and itself,
-//! each as its main words and what goes beside them. The system page's
-//! machines say the same ties in the same words, each opening with a
-//! capital there and lower case here, where each follows its label; a
-//! word changed here is changed there in the same change.
+//! each as its main words and what goes beside them, lower case, since
+//! each follows its label.
 
 use serde_json::Value;
 use terminal_kit::time::span;
@@ -59,6 +57,7 @@ pub fn cells(ties: &Value) -> Said {
     };
     let aside = match of("ended") {
         0 => "none has ended".to_owned(),
+        1 => "and 1 that has ended".to_owned(),
         ended => format!("and {} that have ended", grouped(ended)),
     };
     Said::new(said, aside)
@@ -78,11 +77,17 @@ pub fn network(ties: &Value) -> Said {
         );
     }
     let said = places.iter().map(meets).collect::<Vec<_>>().join(", and ");
-    let reaches: Vec<String> = places.iter().filter_map(reach).collect();
-    let aside = if reaches.is_empty() {
+    let reaches: Vec<Option<String>> = places.iter().map(reach).collect();
+    // A place not measured keeps its turn among those that are, so each
+    // figure stays beside the place it was said after.
+    let aside = if reaches.iter().all(Option::is_none) {
         "how much room it has isn't measured".to_owned()
     } else {
-        reaches.join("; ")
+        reaches
+            .into_iter()
+            .map(|reach| reach.unwrap_or_else(|| "not measured".to_owned()))
+            .collect::<Vec<_>>()
+            .join("; ")
     };
     Said::new(said, aside)
 }
@@ -343,7 +348,7 @@ mod tests {
         assert_eq!(of(4, 0, 0), said("4 busy and none idle", "none has ended"));
         assert_eq!(
             of(0, 0, 1),
-            said("none busy or idle", "and 1 that have ended")
+            said("none busy or idle", "and 1 that has ended")
         );
         assert_eq!(
             cells(&json!({"cells": null})),
@@ -377,6 +382,14 @@ mod tests {
             said("Wi-Fi to an unnamed point, on 2.4 GHz", "a weak signal")
         );
         let unknown = json!({"by": null, "point": "Hall", "bars": null, "room_mbps": null});
+        assert_eq!(
+            at(json!([unknown.clone(), wired.clone()])),
+            said(
+                "on the Hall point, and wired to the Den point",
+                "not measured; 941 Mb/s of room"
+            ),
+            "a place not measured keeps its turn, so the next one's figure stays its own"
+        );
         assert_eq!(
             at(json!([unknown])),
             said("on the Hall point", "how much room it has isn't measured")
