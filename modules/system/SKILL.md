@@ -70,9 +70,9 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
 - **Machines.** One out of reach, or with a nearly or critically full
   disk, is bad. One with a filling disk, or on battery at 20% or less
   off the charger, is worth a look, and so is this machine for a day
-  after a boot whose firmware kept an error from before it, as a power
-  cut leaves ("firmware error before boot 3 hours ago"), read from the
-  kernel's count in this boot's journal. Being short of room (memory,
+  after a boot whose firmware kept an error from before it, as an abrupt
+  reset leaves ("booted 3 hours ago after a firmware error"), read from
+  the kernel's count in this boot's journal and the uptime. Being short of room (memory,
   processor, disk time) is said but never worth a look: agents' builds
   hold the processor nearly all day, which the person can't act on, and
   memory waits for a day measured to tell a held shortage from a spike.

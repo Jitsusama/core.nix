@@ -187,14 +187,16 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
         let side = format!("on battery at {charge}%");
         words.look(Health::Watch, format!("is {side}"), side);
     }
-    // An error the firmware kept before the boot, as a power cut leaves, is
+    // An error the firmware kept before the boot, as an abrupt reset leaves, is
     // said for a day after it (power.rs), so the morning after one in the
     // night says it.
     if let Some(ago) = said
         .pointer("/firmware/error_before_boot")
         .and_then(Value::as_u64)
     {
-        let side = format!("firmware error before boot {}", ago_said(ago));
+        // The time is the boot's: the record says nothing of when the
+        // error was.
+        let side = format!("booted {} after a firmware error", ago_said(ago));
         words.look(Health::Watch, side.clone(), side);
     }
     for part in ITS_OWN {
@@ -507,18 +509,33 @@ mod tests {
         assert_eq!(part.health, Health::Watch);
         assert_eq!(
             part.things[0].says,
-            "firmware error before boot 3 hours ago"
+            "booted 3 hours ago after a firmware error"
         );
         assert_eq!(
             part.things[0].side,
-            ["firmware error before boot 3 hours ago"]
+            ["booted 3 hours ago after a firmware error"]
+        );
+        assert!(
+            part.says
+                .starts_with("laptop booted 3 hours ago after a firmware error"),
+            "the part's line reads as a sentence: {}",
+            part.says
         );
         cut["firmware"]["error_before_boot"] = json!(90);
         let part = machines(&Ok(realm(&[cut])), &Err(String::new()));
         assert_eq!(
             part.things[0].says,
-            "firmware error before boot 1 minute ago"
+            "booted 1 minute ago after a firmware error"
         );
+    }
+
+    #[test]
+    fn how_long_ago_is_said_in_its_largest_whole_unit() {
+        assert_eq!(ago_said(59), "just now");
+        assert_eq!(ago_said(60), "1 minute ago");
+        assert_eq!(ago_said(3_599), "59 minutes ago");
+        assert_eq!(ago_said(3_600), "1 hour ago");
+        assert_eq!(ago_said(7_200), "2 hours ago");
     }
 
     #[test]

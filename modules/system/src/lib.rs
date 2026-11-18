@@ -10,7 +10,8 @@
 //! had is said as not read, with why, and the others still stand. The one
 //! exception is the kernel's word on an error the firmware kept before this
 //! machine's boot, which no owner's command says yet, read from this
-//! boot's journal (power.rs).
+//! boot's journal with the time since the boot from /proc/uptime
+//! (power.rs).
 //!
 //! What the views read is one record, `system.view/1` (record.rs): the
 //! command's screens here, and next the site, the skill and the launcher's

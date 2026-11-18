@@ -32,7 +32,9 @@ const DOMAIN: Domain = Domain {
 
 /// How often the owners are asked. The four together answer in about a
 /// tenth of a second, and a machine's state moves on the order of tens of
-/// seconds, so this keeps a page within a breath of now for little.
+/// seconds, so this keeps a page within a breath of now for little. The
+/// journal, asked for the firmware's error records, is asked only until it
+/// answers a count and only for a day after the boot (power.rs).
 const PACE: Duration = Duration::from_secs(15);
 
 /// The flags its unit may hand it.

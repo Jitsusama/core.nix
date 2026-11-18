@@ -1,11 +1,11 @@
 //! Whether the firmware kept an error from before this machine's boot. A
-//! laptop whose embedded controller cuts the power leaves no word in the
-//! journal, since nothing ran to write one; the firmware keeps an error
-//! record across the cut instead, its boot error region (ACPI BERT), and
-//! the kernel says at boot how many records it found there. On the laptop
-//! this was written for, every abrupt end left one and no clean boot did,
-//! but a record says only that the firmware kept an error, not which, so
-//! the view says that much and no more.
+//! machine reset from under the system, by its firmware or a power cut,
+//! leaves no word in the journal, since nothing ran to write one; the
+//! firmware keeps an error record across the reset instead, its boot error
+//! region (ACPI BERT), and the kernel says at boot how many records it
+//! found there. On the laptop this was written for, every abrupt end left
+//! one and no clean boot did, but a record says only that the firmware
+//! kept an error, not which, so the view says that much and no more.
 //!
 //! The kernel clears each record's block status as it reads it, so a copy
 //! of the region taken later reads empty; its own line in this boot's
@@ -17,13 +17,20 @@
 //! morning after a cut in the night, and no longer, since one a week ago is
 //! history rather than news.
 
+use std::sync::OnceLock;
+
 use serde_json::{Value, json};
 
 use crate::parts::Answer;
 
+/// The kernel's line, up to its count (drivers/acpi/apei/bert.c).
+const LINE: &str = "BERT: Total records found: ";
+
 /// What asks this boot's kernel log for the kernel's count of the boot
-/// error records, as one JSON document, the line's own; journalctl ends
-/// with 1 when no line matches, so a boot with none answers an error.
+/// error records, as one JSON document, the line's own. With `--grep`,
+/// `--lines` counts the newest matching entries (journalctl(1): it implies
+/// `--reverse`), not the boot's last lines. journalctl ends with 1 when no
+/// line matches, so a boot with none answers an error.
 pub const ASK: &[&str] = &[
     "journalctl",
     "--dmesg",
@@ -31,8 +38,14 @@ pub const ASK: &[&str] = &[
     "--output=json",
     "--output-fields=MESSAGE",
     "--lines=1",
-    "--grep=^BERT: Total records found: ",
+    concat!("--grep=^", "BERT: Total records found: "),
 ];
+
+/// The count the kernel gave, once found. It says it once, at boot, so a
+/// process that has read it needn't ask the journal again, as `system
+/// serve` would every few seconds; a boot with a record takes the journal
+/// about two seconds to answer.
+pub type Found = OnceLock<u64>;
 
 /// How long after the boot an error kept before it is worth a look.
 pub const NEWS_FOR: u64 = 24 * 60 * 60;
@@ -43,13 +56,34 @@ pub const NEWS_FOR: u64 = 24 * 60 * 60;
 /// ago, or when the journal couldn't be read.
 #[must_use]
 pub fn kept_before_boot(said: &Answer, since_boot: u64) -> Option<u64> {
-    let line = said.as_ref().ok()?.get("MESSAGE")?.as_str()?;
-    let found: u64 = line
-        .strip_prefix("BERT: Total records found: ")?
-        .trim()
-        .parse()
-        .ok()?;
+    let found = found_in(said)?;
     (found > 0 && since_boot <= NEWS_FOR).then_some(since_boot)
+}
+
+fn found_in(said: &Answer) -> Option<u64> {
+    let line = said.as_ref().ok()?.get("MESSAGE")?.as_str()?;
+    line.strip_prefix(LINE)?.trim().parse().ok()
+}
+
+/// Whether the journal is still worth asking: not after the day the news
+/// lasts, and not once this process has the kernel's count.
+#[must_use]
+pub fn worth_asking(found: &Found, since_boot: Option<u64>) -> bool {
+    found.get().is_none() && since_boot.is_none_or(|since| since <= NEWS_FOR)
+}
+
+/// The journal's answer, or the count already found as one when it
+/// wasn't asked, keeping a count found for the rest of the process.
+pub fn remembered(found: &Found, said: Option<Answer>) -> Answer {
+    if let Some(found) = found.get() {
+        return Ok(json!({ "MESSAGE": format!("{LINE}{found}") }));
+    }
+    let said = said.unwrap_or_else(|| Err("not asked after the day".to_owned()));
+    if let Some(count) = found_in(&said) {
+        // Another reader setting it first set the same count.
+        let _ = found.set(count);
+    }
+    said
 }
 
 /// The seconds since the boot, from /proc/uptime's first figure, which
@@ -130,6 +164,39 @@ mod tests {
     }
 
     #[test]
+    fn the_journal_is_asked_for_the_line_that_is_read() {
+        assert_eq!(ASK.last(), Some(&format!("--grep=^{LINE}").as_str()));
+        assert!(ASK.contains(&"--lines=1"), "one line, the newest matching");
+    }
+
+    #[test]
+    fn a_count_found_is_kept_and_the_journal_asked_no_more() {
+        let found = Found::new();
+        assert!(worth_asking(&found, Some(60)));
+        assert!(worth_asking(&found, None), "no uptime, still asked");
+        assert!(!worth_asking(&found, Some(NEWS_FOR + 1)), "a day on");
+
+        let none = remembered(&found, Some(Err("journalctl ended with 1".to_owned())));
+        assert!(none.is_err());
+        assert!(worth_asking(&found, Some(60)), "no line yet, asked again");
+
+        let one = remembered(&found, Some(Ok(said("BERT: Total records found: 1"))));
+        assert_eq!(kept_before_boot(&one, 60), Some(60));
+        assert!(!worth_asking(&found, Some(60)), "found, never asked again");
+        assert_eq!(
+            kept_before_boot(&remembered(&found, None), 120),
+            Some(120),
+            "the count found answers in the journal's place"
+        );
+
+        let unasked = Found::new();
+        assert!(
+            remembered(&unasked, None).is_err(),
+            "nothing asked, nothing found"
+        );
+    }
+
+    #[test]
     fn the_time_since_boot_is_uptimes_first_figure() {
         assert_eq!(since_boot("6683.39 21182.91\n"), Some(6_683));
         assert_eq!(since_boot(""), None);
@@ -158,6 +225,16 @@ mod tests {
             said.pointer("/Ok/Machines/1/firmware"),
             None,
             "only this machine's"
+        );
+
+        let mut kept: Answer = Ok(json!({ "Ok": { "Machines": [
+            { "firmware": { "version": "1.12.0" } },
+        ] } }));
+        note(&mut kept, 90);
+        assert_eq!(
+            kept.unwrap().pointer("/Ok/Machines/0/firmware"),
+            Some(&json!({ "version": "1.12.0", "error_before_boot": 90 })),
+            "a table the node gives keeps what it holds"
         );
 
         let mut null: Answer = Ok(json!({ "Ok": { "Machines": [{ "firmware": null }] } }));
