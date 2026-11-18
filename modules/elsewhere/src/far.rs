@@ -310,7 +310,7 @@ grown() {{
 # what was counted before it first could, with this pass, carries over.
 tick() {{
   t=$(date +%s 2>/dev/null)
-  case $t in ''|*[!0-9]*) now=$((now + 1)) ;; *)
+  case $t in ''|*[!0-9]*|0?*) now=$((now + 1)) ;; *)
     [ -n "$counting" ] && began=$((t - now - 1 + began)) counting=; now=$t ;; esac
 }}
 {copying}

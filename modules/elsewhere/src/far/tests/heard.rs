@@ -140,15 +140,18 @@ fn the_far_wait_runs_from_the_last_of_a_file_that_crossed() {
                 .append(true)
                 .open(tree.join("x"))
                 .unwrap();
-            std::io::Write::write_all(&mut file, &vec![b'x'; A_PIECE]).unwrap();
+            let mut piece = vec![0; A_PIECE];
+            let mut noise = std::fs::File::open("/dev/urandom").unwrap();
+            std::io::Read::read_exact(&mut noise, &mut piece).unwrap();
+            std::io::Write::write_all(&mut file, &piece).unwrap();
         },
         &format!("{}\tx\nend\n", 3 * A_PIECE),
     );
     assert!(ran, "a file still crossing was given up on {why}");
 }
 
-/// What a file still crossing grows by in the test above, of letters a
-/// filesystem that compresses can't store as holes: whole blocks, as
+/// What a file still crossing grows by in the test above, of noise a
+/// filesystem that compresses can't squeeze small: whole blocks, as
 /// the far side counts what crossed by its kilobytes.
 const A_PIECE: usize = 64 << 10;
 
@@ -189,20 +192,21 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
 
 #[test]
 fn a_far_date_that_fails_once_keeps_the_wait_on_the_clock() {
-    // One reading lost, as a date can fail on a busy machine, from a clock
-    // two seconds on at each reading, as when a pass over a large tree
-    // takes long: the first, before the wait has a time, whose pass and
-    // the next carry over to the clock, and the second, inside it, which
-    // costs the clock nothing. Either way the wait ends at its fourth
-    // reading, six seconds on, where one stuck counting passes would read
-    // the clock only once, one that dropped the pass that found it again
-    // five times, and one that counted from the lost reading five times.
-    for lost in [0, 1] {
+    // Readings lost, as a date can fail on a busy machine, from a clock
+    // some seconds on at each reading, and how many readings the wait
+    // takes to end. The first two, before the wait has a time, whose
+    // passes carry over to the clock with the one that found it: one that
+    // forgot either takes seven, and one that chose its clock once reads
+    // it once. One inside it, on a clock two on a reading, which costs the
+    // clock nothing: one that went back to counting takes five. Five in a
+    // row inside it, each a pass: one that let a lost pass go uncounted
+    // takes seven.
+    for (lost, step, readings) in [("0 1", 1, 6), ("1", 2, 4), ("1 2 3 4 5", 1, 6)] {
         let date = format!(
             "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
              echo $((n + 1)) > \"$HOME/clock\"\n\
-             [ \"$n\" -eq {lost} ] && exit 1\n\
-             echo $((1000000 + 2 * n))"
+             case \" {lost} \" in *\" $n \"*) exit 1 ;; esac\n\
+             echo $((1000000 + {step} * n))"
         );
         let (code, err, home) = far_line(
             "3\tx\nend\n",
@@ -216,10 +220,10 @@ fn a_far_date_that_fails_once_keeps_the_wait_on_the_clock() {
             code == Some(75) && err.contains("didn't reach"),
             "a file that never crossed wasn't waited out ({code:?}): {err}"
         );
-        let readings = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
+        let read = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
         assert_eq!(
-            readings.trim().parse::<u64>().ok(),
-            Some(4),
+            read.trim().parse::<u64>().ok(),
+            Some(readings),
             "a {}s wait whose date failed at reading {lost} read it wrongly often",
             super::WAITS
         );
