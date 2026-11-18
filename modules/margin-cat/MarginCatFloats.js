@@ -343,8 +343,14 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 // the GPU rig's 120 Hz, then dropped 3 pixels, it read as a bug (WCJQSG
 // 1ee24751: "Stepping down a small ledge with its paws moving is what a
 // cat does"); a few pixels of the corner for one stride is the smaller
-// break. Deeper, it walks clear and drops, never across the face
-// (VKCF3Z 13d5bf97).
+// break. Deeper, it walks clear and drops (VKCF3Z 13d5bf97), its feet
+// in the face only as deep as they stood on it. A step of a cell or two
+// (aStep()) isn't asked: it crosses no more than 1.6 pixels deeper than
+// its feet already sit, where walking clear would sit as deep and walk
+// on the air, as on a float a pixel under the screen's top, its feet 7
+// deep. The bound is on its path before the screen rounds
+// it to whole pixels, so a step refused a little past half its height
+// may draw no deeper than one it takes.
 //
 // Drawn no higher than the screen's top, its feet already sit `sunk`
 // into the face as it stands at the top over it (its top is its air
