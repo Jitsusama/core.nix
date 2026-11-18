@@ -142,10 +142,8 @@ pub fn gather() -> Sources {
         .collect();
     Sources {
         quests,
-        host: fs::read_to_string("/proc/sys/kernel/hostname")
-            .unwrap_or_default()
-            .trim()
-            .to_owned(),
+        // A Mac keeps no /proc, so the name comes from the kit's reader.
+        host: terminal_kit::environment::machine(),
         running: entries(Path::new("/proc"))
             .filter_map(|p| p.file_name()?.to_str()?.parse().ok())
             .collect(),
