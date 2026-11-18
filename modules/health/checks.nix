@@ -19,7 +19,10 @@ onLinux {
   # thing under its kind, keeping at most a hundred signatures each; a
   # day is written only once changed, whole, a new one starting empty and
   # a late line of a day done left out; and it's shown a line a kind, the
-  # gravest first, with a kind's things or a thing's signatures on asking.
+  # gravest first, with a kind's things or a thing's signatures on asking;
+  # and on systemd's own journalctl, each follower reads two boots and
+  # follows on across the reboot, and a day whose clock was stepped back
+  # is replayed in the order it was written.
   health-tallies-the-days-warnings = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in health, its tests included.
   health-passes-clippy = passesClippy "health-passes-clippy" (pkgs.callPackage ./package.nix { });

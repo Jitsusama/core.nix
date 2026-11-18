@@ -4,6 +4,7 @@
 //! `log` for.
 
 use std::path::Path;
+use std::process::Command;
 
 use jiff::Timestamp;
 use serde_json::Value;
@@ -101,6 +102,19 @@ pub fn parse(line: &str) -> Option<Entry> {
 pub fn app_of(image: &str) -> Option<String> {
     let end = image.find(".app/")? + ".app".len();
     Some(image[..end].to_owned())
+}
+
+/// The commands health follows a Mac's log by, each asking `log` what
+/// `followed` says, so what health starts is what's tested of it.
+pub fn commands(midnight: &str, now: &str) -> Vec<Command> {
+    followed(midnight, now)
+        .iter()
+        .map(|asked| {
+            let mut log = Command::new(LOG);
+            log.args(asked);
+            log
+        })
+        .collect()
 }
 
 /// What the follower asks `log` for: the lines from now on, and the day's

@@ -23,12 +23,30 @@ struct Stamp {
     cursor: Option<String>,
 }
 
+/// Where journald numbered a line: the counter, and its number by it.
+pub type Numbered = (String, u64);
+
 /// Send each of `histories`' lines through `send` in the order journald
 /// wrote them, a line of an earlier history first where two can't be told
 /// apart, until `send` says nothing hears them. Each history is read only
-/// as far as the merge needs, so the merge holds one line of each; what
-/// `send` takes is its own to hold. Says where each history ended, as its
-/// last cursor, or none for a history with none.
+/// as far as the merge needs, so the merge holds one line of each, and
+/// is dropped as soon as it's read no further; what `send` takes is its
+/// own to hold. Says where each history ended, as its last cursor, or
+/// none for a history with none.
+///
+/// A history ends at its first line numbered past `last`, the journal's
+/// last line as the replay began, by the same counter: it was written
+/// since, and its follower hears it from the line before, as each hears
+/// every line after. It's cut as that line is read, not once it would be
+/// heard: by one counter it would be heard after every other history's
+/// lines, and its journalctl would wait meanwhile. So the lines heard of
+/// every history end at one moment, however many are written meanwhile,
+/// and a clock stepped back can't move it, as it moves a time
+/// (`journal::reading`). A history is cut only at a line it gives,
+/// though: one asking `--grep` reads on
+/// through lines it doesn't match until it finds one past `last` or
+/// reaches the journal's end, and the merge waits on it meanwhile.
+/// A line of another counter, or none, is heard whatever `last` is.
 ///
 /// The merge holds each history in journald's order, as journalctl writes
 /// it. While every history's next line is numbered by one counter, they're
@@ -36,13 +54,20 @@ struct Stamp {
 /// 17 and 18 November every followed line shared one counter, through a
 /// reboot. Otherwise all are ordered by when they were written, so one
 /// rule decides each pick and the history a line sits in never does.
-pub fn merged<I>(histories: Vec<I>, mut send: impl FnMut(String) -> bool) -> Vec<Option<String>>
+pub fn merged<I>(
+    histories: Vec<I>,
+    last: Option<&Numbered>,
+    mut send: impl FnMut(String) -> bool,
+) -> Vec<Option<String>>
 where
     I: Iterator<Item = String>,
 {
-    let mut histories = histories;
+    let mut histories: Vec<Option<I>> = histories.into_iter().map(Some).collect();
     let mut ends = vec![None; histories.len()];
-    let mut heads: Vec<Option<Head>> = histories.iter_mut().map(head).collect();
+    let mut heads: Vec<Option<Head>> = histories
+        .iter_mut()
+        .map(|history| next_of(history, last))
+        .collect();
     while let Some(at) = earliest(&heads) {
         let (Some(slot), Some(history), Some(end)) =
             (heads.get_mut(at), histories.get_mut(at), ends.get_mut(at))
@@ -60,9 +85,37 @@ where
         if !send(line) {
             break;
         }
-        *slot = head(history);
+        *slot = next_of(history, last);
     }
     ends
+}
+
+/// The next line of `history`, or none once it has ended or reached a
+/// line written after `last`. Then it's read no further, so it's dropped
+/// at once, ending its journalctl rather than leaving it blocked on its
+/// pipe until every other history has ended.
+fn next_of<I: Iterator<Item = String>>(
+    history: &mut Option<I>,
+    last: Option<&Numbered>,
+) -> Option<Head> {
+    let next = history
+        .as_mut()
+        .and_then(head)
+        .filter(|next| !written_after(next.numbered.as_ref(), last));
+    if next.is_none() {
+        *history = None;
+    }
+    next
+}
+
+/// Whether a line journald `numbered` was written after `last`, by the
+/// same counter.
+fn written_after(numbered: Option<&Numbered>, last: Option<&Numbered>) -> bool {
+    matches!(
+        (numbered, last),
+        (Some((counter, number)), Some((last_counter, last_number)))
+            if counter == last_counter && number > last_number
+    )
 }
 
 /// Which of `heads` was written first, the earliest history's of those
@@ -89,7 +142,7 @@ fn earliest(heads: &[Option<Head>]) -> Option<usize> {
 /// A history's next line, read for the merge.
 struct Head {
     /// The counter journald numbered it by, and its number.
-    numbered: Option<(String, u64)>,
+    numbered: Option<Numbered>,
     /// When it was written, in microseconds; a line no time is read of
     /// counts as the earliest, so it's heard at once.
     at: u64,
@@ -109,11 +162,23 @@ fn head(history: &mut impl Iterator<Item = String>) -> Option<Head> {
         cursor,
     } = stamp(&line);
     Some(Head {
-        numbered: counter.zip(number.and_then(|number| number.parse().ok())),
+        numbered: number_of(counter, number),
         at: at.and_then(|at| at.parse().ok()).unwrap_or_default(),
         cursor,
         line,
     })
+}
+
+/// Where journald numbered `line`, or nothing of a line it didn't.
+pub fn numbering(line: &str) -> Option<Numbered> {
+    let Stamp {
+        counter, number, ..
+    } = stamp(line);
+    number_of(counter, number)
+}
+
+fn number_of(counter: Option<String>, number: Option<String>) -> Option<Numbered> {
+    counter.zip(number.and_then(|number| number.parse().ok()))
 }
 
 /// What the merge reads of `line`, or nothing of a line that isn't JSON.

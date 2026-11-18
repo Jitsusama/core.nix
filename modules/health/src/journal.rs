@@ -417,17 +417,37 @@ pub fn followed() -> Vec<Vec<String>> {
 }
 
 /// One journalctl reading the day, as `asked`, from `since`, the day's
-/// start, until `until`, in seconds since 1970, and ending: the histories
-/// are merged in the order their lines were written (`replay.rs`) before
-/// each follows on. Every history is given the same two, rather than
-/// each working out "today" and "now" as it starts, so all read one day
-/// to one moment however long the others take.
+/// start in seconds since 1970, to the journal's end, and ending: the
+/// histories are merged in the order their lines were written
+/// (`replay.rs`) before each follows on. Every history is given the same
+/// start, rather than each working out "today" as it starts, so all read
+/// one day however long the others take.
+///
+/// None is given a time to end at: journalctl ends a history at its first
+/// line stamped past `--until`, with 0, even when lines written after it
+/// are stamped before, as after a clock is stepped back (systemd 262, 18
+/// November). The rest of that history would come at its follower's pace,
+/// out of the order it was written. The merge ends each at the journal's
+/// last line as the replay began instead (`newest`), by journald's
+/// numbers, which a clock can't step back.
 #[must_use]
-pub fn reading(asked: &[String], since: i64, until: i64) -> Command {
-    journalctl(
-        &[&format!("--since=@{since}"), &format!("--until=@{until}")],
-        asked,
-    )
+pub fn reading(asked: &[String], since: i64) -> Command {
+    journalctl(&[&format!("--since=@{since}")], asked)
+}
+
+/// One journalctl saying the journal's last line, of every boot, for
+/// where journald numbered it, which the day's histories end at
+/// (`replay.rs`): the line it wrote last, though a clock stepped back
+/// stamps another later (systemd 262, 18 November). The system's journal
+/// and the account's share one counter, so the line it picks across them
+/// is numbered as the histories' are, and is the higher-numbered: on 18
+/// November, of copies of both files taken at once, the system's last
+/// line was 27583659 and the account's 27583664 by one counter, and this
+/// gave 27583664. The tests, writing one file, can't show it.
+/// A journal with no lines gives none.
+#[must_use]
+pub fn newest() -> Command {
+    journalctl(&["--lines=1"], &[])
 }
 
 /// One journalctl following, as `asked`, from just after `after`, the
