@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::github::SCHEMA;
-use crate::model::{Change, Checks, ChecksState, Review};
+use crate::model::{Change, Checks, ChecksState, GitHubChange, Review};
 
 const NOW: u64 = 1_800_000_000;
 
@@ -37,6 +37,17 @@ fn change(title: &str, updated_at: u64, asked_of: &[&str]) -> Change {
         review: Review::Waiting,
         github: None,
         review_asked_of: asked_of.iter().copied().map(str::to_owned).collect(),
+    }
+}
+
+/// `change`, numbered `number` as GitHub numbers it.
+fn numbered(number: u64, change: Change) -> Change {
+    Change {
+        github: Some(GitHubChange {
+            number,
+            url: format!("https://github.com/kestrel-co/tool/pull/{number}"),
+        }),
+        ..change
     }
 }
 
@@ -240,8 +251,10 @@ fn mycelium_is_given_fixed_words_and_counts_never_what_a_change_says() {
             "300",
             "--pid",
             "4242",
+            "--owner",
+            "Kestrel-Co",
         ],
-        "mycelium was given more than fixed words and counts"
+        "mycelium was given more than fixed words, counts and the realm's owners"
     );
     for word in [
         planted,
@@ -255,4 +268,92 @@ fn mycelium_is_given_fixed_words_and_counts_never_what_a_change_says() {
             "{word} reached mycelium: {said:?}"
         );
     }
+}
+
+#[test]
+fn only_the_realms_changes_asking_the_login_are_named_by_number_alone() {
+    let planted = "Fix the sign-in";
+    let seen = seen(
+        &[
+            (
+                "github:KESTREL-CO/tool",
+                vec![
+                    numbered(12, change(planted, NOW - 60, &["JSAMA"])),
+                    numbered(13, change("someone else's", NOW - 60, &["osprey"])),
+                    numbered(0, change("no number", NOW - 60, &["jsama"])),
+                    change("never numbered", NOW - 60, &["jsama"]),
+                    numbered(9, change("older", NOW - 7 * 24 * HOUR, &["jsama"])),
+                ],
+            ),
+            (
+                "github:osprey/elsewhere",
+                vec![numbered(4, change("not the realm's", NOW - 60, &["jsama"]))],
+            ),
+            (
+                "github:shared/tool",
+                vec![numbered(5, change("both realms'", NOW - 60, &["jsama"]))],
+            ),
+        ],
+        &[],
+    );
+    assert_eq!(
+        asked(&seen, &Owners::of(DECLARED, "work"), &login()),
+        ["KESTREL-CO/tool#12", "KESTREL-CO/tool#9"],
+        "a change not the realm's, not asking the login or with no number was named"
+    );
+    let said: Vec<String> = receptor("/nix/store/x-mycelium/bin/mycelium")
+        .arguments(&seen, NOW, 4242)
+        .into_iter()
+        .map(|word| word.into_string().expect("words"))
+        .collect();
+    let after = said
+        .iter()
+        .position(|word| word == "4242")
+        .expect("the counts are said first");
+    assert_eq!(
+        said[after + 1..],
+        [
+            "--owner",
+            "KESTREL-CO",
+            "--owner",
+            "Kestrel-Co",
+            "--item",
+            "KESTREL-CO/tool#12",
+            "--item",
+            "KESTREL-CO/tool#9",
+        ],
+        "the changes weren't named after the realm's owners, as the repository spells them"
+    );
+    for word in [planted, "osprey", "someone else's", "jsama"] {
+        assert!(
+            !said.iter().any(|said| said.contains(word)),
+            "{word} reached mycelium: {said:?}"
+        );
+    }
+}
+
+#[test]
+fn a_repository_mycelium_would_refuse_is_left_out_rather_than_lose_the_counts() {
+    let seen = seen(
+        &[
+            (
+                "github:kestrel-co/a tool",
+                vec![numbered(3, change("spaced", NOW - 60, &["jsama"]))],
+            ),
+            (
+                "github:kestrel-co/tool",
+                (1..=250)
+                    .map(|number| numbered(number, change("many", NOW - number, &["jsama"])))
+                    .collect(),
+            ),
+        ],
+        &[],
+    );
+    let asked = asked(&seen, &Owners::of(DECLARED, "work"), &login());
+    assert_eq!(asked.len(), MOST_ITEMS, "more were named than mycelium keeps");
+    assert_eq!(
+        (asked.first().map(String::as_str), asked.last().map(String::as_str)),
+        (Some("kestrel-co/tool#1"), Some("kestrel-co/tool#200")),
+        "the newest weren't the ones named"
+    );
 }

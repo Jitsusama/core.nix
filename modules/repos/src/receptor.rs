@@ -5,10 +5,13 @@
 //! It's counted from what a refresh already read, never asked of GitHub,
 //! so it adds no query and no token: the review requests ride the one
 //! query every refresh sends (github.rs), on the token that reads that
-//! repository already. Only counts and fixed words leave: no title,
-//! branch, repository or login is ever an argument, so nothing a change
-//! says reaches the node. mycelium is run by its store path, by the
-//! speaker every daemon's receptors share (../receptor-say).
+//! repository already. Only counts, fixed words and the changes asking
+//! Joel's review leave, each change as `owner/name#N` alone, with the
+//! realm's owners so mycelium can refuse any other: the node feeds each
+//! to the cell whose quest claims it (mycelium's PROTOCOL.md, Feeding). No
+//! title, branch, author or login is ever an argument, so nothing a
+//! change says of itself reaches the node. mycelium is run by its store
+//! path, by the speaker every daemon's receptors share (../receptor-say).
 //!
 //! Whose review counts, and which owners are the realm's, are declared by
 //! the machine's config alone, in `REPOS_RECEPTOR_LOGIN` and
@@ -30,6 +33,10 @@ pub const EVERY: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// An hour, in the record's seconds.
 const HOUR: u64 = 3_600;
+
+/// The most changes asking review that are named to mycelium, which keeps
+/// no more than this for a receptor.
+const MOST_ITEMS: usize = 200;
 
 /// The owners whose repositories are the realm's, as the machine declares
 /// them.
@@ -121,6 +128,45 @@ pub fn told(seen: &Seen, owners: &Owners, login: &Declared, now: u64) -> Told {
     }
 }
 
+/// The changes asking `login`'s review in the owners' repositories, as
+/// `owner/name#N`, the owner as the repository's key spells it, newest
+/// first and at most [`MOST_ITEMS`]. One GitHub gave no number, or whose
+/// owner or name holds more than mycelium takes in one (letters, digits,
+/// `-`, `_` and `.`), is left out, so it can't make mycelium refuse the
+/// counts it's said beside.
+pub fn asked(seen: &Seen, owners: &Owners, login: &Declared) -> Vec<String> {
+    let mut asked: Vec<(u64, String)> = seen
+        .changes
+        .iter()
+        .filter(|(key, _)| owners.hold(key))
+        .filter_map(|(key, changes)| {
+            let (owner, name) = key.strip_prefix("github:")?.split_once('/')?;
+            (named(owner) && named(name)).then_some((owner, name, changes))
+        })
+        .flat_map(|(owner, name, changes)| {
+            changes
+                .iter()
+                .filter(|change| change.review_asked_of.iter().any(|one| login.is(one)))
+                .filter_map(move |change| {
+                    let number = change.github.as_ref()?.number;
+                    (number > 0)
+                        .then(|| (change.updated_at, format!("{owner}/{name}#{number}")))
+                })
+        })
+        .collect();
+    asked.sort_by(|a, b| b.cmp(a));
+    asked.dedup_by(|a, b| a.1 == b.1);
+    asked.into_iter().take(MOST_ITEMS).map(|(_, item)| item).collect()
+}
+
+/// Whether `word` is an owner or a repository name as mycelium takes one.
+fn named(word: &str) -> bool {
+    !word.is_empty()
+        && word
+            .bytes()
+            .all(|letter| letter.is_ascii_alphanumeric() || b"-_.".contains(&letter))
+}
+
 /// How many there are, as mycelium counts.
 fn count<T>(items: impl Iterator<Item = T>) -> u64 {
     u64::try_from(items.count()).unwrap_or(u64::MAX)
@@ -171,7 +217,24 @@ impl Receptor {
     /// the process `pid`, which owns the refresh's timer.
     pub fn arguments(&self, seen: &Seen, now: u64, pid: u32) -> Vec<OsString> {
         let told = told(seen, &self.owners, &self.login, now);
-        self.speaker.arguments(told, EVERY, pid)
+        let mut arguments = self.speaker.arguments(told, EVERY, pid);
+        arguments.extend(self.items(seen));
+        arguments
+    }
+
+    /// The words naming the changes asking review, after the counts: each
+    /// owner that may be named, the declared ones and those the items
+    /// spell, as `--owner`, then each change as `--item`. The owners are
+    /// named even with no item, so mycelium clears what it kept.
+    fn items(&self, seen: &Seen) -> Vec<OsString> {
+        let asked = asked(seen, &self.owners, &self.login);
+        let mut owners: Vec<&str> = self.owners.0.iter().map(String::as_str).collect();
+        owners.extend(asked.iter().filter_map(|item| item.split_once('/')).map(|(o, _)| o));
+        owners.sort_unstable();
+        owners.dedup();
+        let owners = owners.into_iter().flat_map(|owner| ["--owner", owner]);
+        let items = asked.iter().flat_map(|item| ["--item", item.as_str()]);
+        owners.chain(items).map(OsString::from).collect()
     }
 
     /// Says what a refresh saw at `now`.
@@ -181,7 +244,7 @@ impl Receptor {
     /// When mycelium can't be run, or refuses what it's told.
     pub fn say(&self, seen: &Seen, now: u64, pid: u32) -> Result<(), String> {
         let told = told(seen, &self.owners, &self.login, now);
-        self.speaker.say(&[told], EVERY, pid)
+        self.speaker.say_with(told, EVERY, pid, self.items(seen))
     }
 }
 

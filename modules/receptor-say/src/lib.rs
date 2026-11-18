@@ -168,17 +168,43 @@ impl Speaker {
     /// of them; those after it aren't said.
     pub fn say(&self, told: &[Told], every: Duration, pid: u32) -> Result<(), String> {
         for &one in told {
-            let status = Command::new(&self.program)
-                .args(self.arguments(one, every, pid))
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .status()
-                .map_err(|why| format!("running {}: {why}", self.program.display()))?;
-            if !status.success() {
-                return Err(format!("{} {status}", self.program.display()));
-            }
+            self.run(self.arguments(one, every, pid))?;
         }
         Ok(())
+    }
+
+    /// Says how one receptor stands, as `say` does, with `more` words after
+    /// its own: those its source alone takes, which its caller builds.
+    ///
+    /// # Errors
+    ///
+    /// As `say`.
+    pub fn say_with(
+        &self,
+        told: Told,
+        every: Duration,
+        pid: u32,
+        more: Vec<OsString>,
+    ) -> Result<(), String> {
+        let mut arguments = self.arguments(told, every, pid);
+        arguments.extend(more);
+        self.run(arguments)
+    }
+
+    /// Runs mycelium with `arguments`, given one by one, never through a
+    /// shell.
+    fn run(&self, arguments: Vec<OsString>) -> Result<(), String> {
+        let status = Command::new(&self.program)
+            .args(arguments)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .status()
+            .map_err(|why| format!("running {}: {why}", self.program.display()))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{} {status}", self.program.display()))
+        }
     }
 
     /// Says each of `sources` off, its counts none.
