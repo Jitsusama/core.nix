@@ -8560,7 +8560,8 @@ Scope {
     function drawerMakingsRead(text) {
         const read = Makings.read(text);
         if (read === null)
-            console.warn("launcher: couldn't read how long drawers took, so it starts afresh");
+            console.warn("launcher: couldn't read launcher-drawers.json, how long drawers took,"
+                + " as JSON kinds of lists, so it starts afresh");
         drawerMakings = Makings.joined(read ?? {}, drawerMakings);
         drawerMakingsMoved = false;
     }
@@ -8812,9 +8813,11 @@ Scope {
             drawerKeyAt = 0;
         // A drawer already out is made again for the row at once; one
         // coming out is made as it settles.
+        // Learnt here, it isn't learnt again as the drawer settles.
         if (out && drawerShows !== was) {
             drawerMakings = Pacing.drawerMade(drawerMakings, drawerKindOf(drawerRow),
                 drawerAsked);
+            drawerAskedFor = null;
             drawerMade(began, drawerAsked);
         }
         Report.say(`drawer follows ${selected?.key ?? ""}`);

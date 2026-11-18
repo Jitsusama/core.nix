@@ -336,9 +336,6 @@ def test_an_openings_first_drawer_is_kept_once_the_launcher_shuts(shell: Shell) 
         """Say the kinds the file keeps a making for, each a list of times."""
         return {kind for kind, times in kept().items() if isinstance(times, list) and times}
 
-    # What earlier cases kept goes first, so what's found after shutting is this opening's.
-    for path in state.glob("quickshell/by-shell/*/launcher-drawers.json"):
-        path.unlink()
     shell.answer("date")
     shell.launcher_until(
         lambda shown: (
