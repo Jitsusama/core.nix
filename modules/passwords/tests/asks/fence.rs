@@ -15,7 +15,8 @@ fn an_ask_is_refused_unseen_without_the_fences_list_or_with_one_it_cant_read() {
     let bash = stored_bash();
     let argv = saying(&bash);
     let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
-    std::fs::remove_file(running.fence_list()).unwrap();
+    let list = running.fence_list();
+    std::fs::remove_file(&list).unwrap();
     let missing = "c123456789abcdef0123456789abcdef";
     put_up(&running, missing, LISTED, &argv);
     let answered = answer(&running, missing);
@@ -24,9 +25,12 @@ fn an_ask_is_refused_unseen_without_the_fences_list_or_with_one_it_cant_read() {
         answered["why"], "no fence list to hide by",
         "the answer: {answered}"
     );
+    // Every unread list's line opens with the list's path, so a missing
+    // one says nothing of it.
     let logged = running.logged();
+    let unread = format!("passwords: {} ", list.display());
     assert!(
-        !logged.contains("passwords: can't"),
+        !logged.contains(&unread),
         "a missing list was said to be unread: {logged}"
     );
     // A list that's there but can't be read is told apart from one
@@ -36,7 +40,6 @@ fn an_ask_is_refused_unseen_without_the_fences_list_or_with_one_it_cant_read() {
     // patterns don't make. Each reads only what the journal says after
     // its own ask, as the list's own line, since the refusal's says
     // "can't read" too.
-    let list = running.fence_list();
     let unmade = FENCE_LIST.replacen("\"sshKept\": [", "\"sshKept\": [\"(\", ", 1);
     let cases = [
         (
