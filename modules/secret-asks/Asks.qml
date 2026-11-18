@@ -80,6 +80,15 @@ Provider {
         heldAgain();
         changed();
     }
+    // Niri saying its casts late, a share among them, leaves the rows
+    // hidden, but they no longer wait on knowing, so each is made again.
+    readonly property bool unheard: hiding && !Niri.castsHeard
+    onUnheardChanged: {
+        if (!hiding)
+            return;
+        ready.remade();
+        changed();
+    }
 
     // Each row held as it becomes since an act of his, held again as its
     // row is made now and named as it's told now: hidden as a share
@@ -222,11 +231,12 @@ Provider {
     // A verb's ask as it's sent, a yes saying how long its line was shown,
     // or null for a yes walked from outside the launcher, which is never
     // sent. Only the passwords child reads the time; the experiments' own
-    // daemon is sent the ask as served. While hiding no yes is sent, by
-    // either daemon, since a row made before the share, as a step held
-    // into its verbs keeps, still offers its Release It.
+    // daemon is sent the ask as served. While hiding only what releases
+    // nothing is sent, a no or a revoke, by either daemon, since a row made
+    // before the share, as a step held into its verbs keeps, still offers
+    // its Release It, and an act a daemon adds later may grant too.
     function stamped(key, ask) {
-        if (hiding && ask?.ask === "release")
+        if (hiding && ask?.ask !== "refuse" && ask?.ask !== "revoke")
             return null;
         const said = Shown.stamped(ask, seen, key, {
             now: KeyTimes.now(),
@@ -291,12 +301,16 @@ Provider {
     // reads of it: whether it waits on Joel, and since when.
     function made(served, key) {
         const hidden = Words.name("asks:hidden");
+        // Hidden before niri has said its casts, the row says it waits on
+        // knowing, so a windows daemon that never says is told apart from
+        // a share; while shared, its name says why.
+        const waits = Niri.castsHeard ? "" : Words.field.becoming?.unheard ?? "";
         const drawn = !hiding ? served : Object.assign({}, served, {
             name: hidden,
-            note: "",
+            note: waits,
             acts: [],
             keywords: [],
-            drawer: { eyebrow: "", title: hidden, body: "", facts: [] }
+            drawer: { eyebrow: "", title: hidden, body: waits, facts: [] }
         });
         return ready.thing(drawn, key, {
             thing: true,
