@@ -17,6 +17,7 @@
 //! window was last looked at, in milliseconds.
 
 pub mod capture;
+pub mod closing;
 pub mod desktop;
 pub mod entries;
 pub mod interface;
