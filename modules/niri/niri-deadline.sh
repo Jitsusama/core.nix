@@ -17,8 +17,8 @@ off) want=false ;;
 niri-deadline  whether niri draws frames as late as it can
 
 EXAMPLES
-  niri-deadline on   draw by the deadline on screens of 60 Hz and slower
-  niri-deadline off  draw as soon as something changes, until niri restarts
+  niri-deadline on   draw by the deadline, at 60 Hz or less
+  niri-deadline off  draw at once, until niri restarts
 
 EXIT
   0   done
