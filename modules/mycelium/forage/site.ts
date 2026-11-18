@@ -269,19 +269,19 @@ follow(
 );
 
 /**
- * Draws the panel again as the day turns, though no record changed, since
- * a need's since says its day only once it isn't today's.
+ * Draws the panel again once the day has turned, though no record changed,
+ * since a need's since says its day only once it isn't today's. It looks
+ * each minute rather than waiting for midnight, since a timer sleeps with
+ * the laptop and would wake hours late.
  */
-function redrawAtMidnight(): void {
-  const next = new Date();
-  next.setHours(24, 0, 1, 0);
-  setTimeout(() => {
+let drawnOn = new Date().toDateString();
+setInterval(() => {
+  const today = new Date().toDateString();
+  if (today !== drawnOn) {
+    drawnOn = today;
     drawPanel();
-    redrawAtMidnight();
-  }, next.getTime() - Date.now());
-}
-
-redrawAtMidnight();
+  }
+}, 60_000);
 
 /** The index `by` steps to from `at` among `count`, kept inside them. */
 function stepped(at: number, by: number, count: number): number {

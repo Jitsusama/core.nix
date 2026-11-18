@@ -89,7 +89,8 @@ function splitOf(lineage: Fields, cell: string, unread: string[]): Omit<Split, "
  * split_into takes in each cell here naming it as split_from, and a cell
  * naming none takes the first cell here listing it in split_into. Where
  * the two ends disagree the split cell's own word stands, so a cell here
- * naming another ancestor drops out of a split_into listing it.
+ * naming another ancestor, or taken by an earlier lister, drops out of a
+ * split_into listing it.
  */
 function bothEnds<Each extends Split>(found: readonly Each[]): readonly Each[] {
   const naming = new Map<string, string[]>();
@@ -104,7 +105,9 @@ function bothEnds<Each extends Split>(found: readonly Each[]): readonly Each[] {
     }
   }
   return found.map((each) => {
-    const listed = each.splitInto.filter((cell) => (named.get(cell) ?? each.cell) === each.cell);
+    // A cell here grows under one ancestor, so only that one says it split into it.
+    const ancestor = (cell: string) => named.get(cell) ?? listing.get(cell) ?? each.cell;
+    const listed = each.splitInto.filter((cell) => ancestor(cell) === each.cell);
     const into = [...new Set([...listed, ...(naming.get(each.cell) ?? [])])];
     return {
       ...each,

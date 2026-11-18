@@ -356,6 +356,20 @@ it("a split cell's own word stands where its ancestor's list disagrees", () => {
   assert.equal(cell("SKIFFS")?.splitFrom, "FARAWAY");
 });
 
+it("a cell two ancestors list, naming neither, splits from the first alone", () => {
+  const { forages } = foragesOf(
+    told([
+      forage("KESTRL", { lineage: { split_into: ["TERNAA"] } }),
+      forage("OSPREY", { lineage: { split_into: ["TERNAA"] } }),
+      forage("TERNAA"),
+    ]),
+  );
+  const cell = (address: string) => forages.find((each) => each.cell === address);
+  assert.equal(cell("TERNAA")?.splitFrom, "KESTRL");
+  assert.deepEqual(cell("KESTRL")?.splitInto, ["TERNAA"]);
+  assert.deepEqual(cell("OSPREY")?.splitInto, []);
+});
+
 it("reads what it can of a split, and says what it couldn't", () => {
   const { forages, unread } = foragesOf(
     told([
