@@ -156,8 +156,10 @@
     // A knot, a network with no leader, is a network too.
     const hubs = marks('[data-key^="h:"], [data-key^="n:"]').length;
     // The name the keys rest on is what he's engaged with, which keeps its
-    // name wherever it is, so it counts against no budget.
-    const whole = names().filter((el) => !el.classList.contains("strong")).length;
+    // name wherever it is, so it counts against no budget; nor does a cell
+    // that needs him, which is named before any network.
+    const askingKeys = new Set(marks("[data-asks]").map((el) => el.dataset.key));
+    const whole = names().filter((el) => !(el.classList.contains("strong") || askingKeys.has(el.dataset.name))).length;
     if (whole > hubs) {
       faults.push(`names: the whole map shows ${whole} names, past one per network (${hubs})`);
     }
@@ -193,7 +195,7 @@
     const asking = marks("[data-asks]").filter((el) => inView(el.getBoundingClientRect()));
     const askingNamed = asking.filter((el) => shownKeys.has(el.dataset.key)).length;
     // The network he's engaged with is named beyond the seven, so it doesn't count.
-    const netsNamed = names().filter((el) => !el.classList.contains("engaged") && /^[hn]:/.test(el.dataset.name)).length;
+    const netsNamed = names().filter((el) => !el.classList.contains("engaged") && ["h:", "n:"].some((kind) => el.dataset.name.startsWith(kind))).length;
     if (asking.length > askingNamed && netsNamed > 0) {
       faults.push(`screen: ${what} names ${netsNamed} networks while ${asking.length - askingNamed} cells that need him go unnamed`);
     }
