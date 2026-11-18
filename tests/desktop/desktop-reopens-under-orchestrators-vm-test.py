@@ -831,9 +831,10 @@ def test_new_work_from_a_link_starts_its_session_in_no_window(desktop: Desktop) 
 
     Joel, 2026-11-16: starting a session on incoming work took a hand-built chain of a quest,
     a folder and a start. Typed from the find, as his try-line says, From a Link asks for the
-    link, and mycelium sprout has the realm's node start pi held in the link's checkout, told
-    to make the work a quest of its own; no window opens while it runs (pivot of 16 November,
-    18:55: no session needs a window of its own).
+    link, and the agents daemon, taking it only from the shell, asks the realm's node for a
+    Sprout, which starts pi held in the link's checkout, told to make the work a quest of its
+    own; no window opens while it runs (pivot of 16 November, 18:55: no session needs a
+    window of its own).
     """
     machine = desktop.machine
     link = "https://github.com/harbour/lighthouse/issues/7"

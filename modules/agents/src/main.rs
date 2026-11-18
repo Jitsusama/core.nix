@@ -43,6 +43,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
 
 use agents::acts;
+use agents::asker;
 use agents::arrangement::{Arrangement, Still};
 use agents::clock;
 use agents::feedback::{self, Landings};
@@ -54,6 +55,7 @@ use agents::row::Words;
 use agents::served::Served;
 use agents::session::Session;
 use agents::sources::{self, Heard, Paths};
+use agents::sprout;
 use agents::tell::{self, Routes};
 use agents::wants::{self, PUT_OFF_FOR_MS, PutOff, Wants};
 use daemon_serve::asks::Domain;
@@ -424,8 +426,18 @@ fn serve(args: Args) -> Result<(), Failure> {
         kept,
     );
     let shared = Shared::new(DOMAIN, own);
-    // Feedback waits on the node, so it holds up no ask after it.
-    shared.slow(&["feedback"]);
+    // Start New Work is asked of the node only for the shell, told apart
+    // by the connection it came on.
+    let node = args.node.clone();
+    shared.peered(
+        &[sprout::ASK],
+        Box::new(move |said, stream| {
+            Some(sprout::answer(said, asker::the_shell(stream), node.as_deref()))
+        }),
+    );
+    // Feedback and a sprout wait on the node, so neither holds up an ask
+    // after it.
+    shared.slow(&["feedback", sprout::ASK]);
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {
