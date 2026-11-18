@@ -93,13 +93,15 @@ pub fn profiles(model: &HomeNetwork) -> Vec<Named> {
 }
 
 /// The names as zsh's `_describe` reads them, one a line: the name, its
-/// colons escaped, since a colon ends it, then a colon and what it is,
-/// each held to one line, so a name from the network can't add a line
-/// zsh reads as a name of its own.
+/// backslashes and colons escaped, since zsh takes a backslash off
+/// whatever it's before and a colon ends the name, then a colon and what
+/// it is, each held to one line, so a name from the network can't add a
+/// line zsh reads as a name of its own.
 pub fn for_zsh(names: &[Named]) -> String {
     let mut out = String::new();
     for (name, what) in names {
-        out.push_str(&layout::one_line(name).replace(':', "\\:"));
+        let name = layout::one_line(name);
+        out.push_str(&name.trim().replace('\\', "\\\\").replace(':', "\\:"));
         out.push(':');
         out.push_str(&layout::one_line(what));
         out.push('\n');
@@ -157,9 +159,15 @@ mod tests {
         let mut model = model();
         model.nodes[2].location = Some("Hall".into());
 
+        // Neither is found by a name both answer to, so each is offered
+        // by the id that finds it.
         assert_eq!(
             names(&nodes(&model)),
-            ["Hall", "Study", model.nodes[2].id.as_str()]
+            [
+                model.nodes[0].id.as_str(),
+                "Study",
+                model.nodes[2].id.as_str()
+            ]
         );
     }
 
@@ -180,6 +188,59 @@ mod tests {
             find_node(&model, "den evil").map(|node| &node.id),
             Ok(&model.nodes[2].id),
             "the name a page draws didn't find what it names"
+        );
+    }
+
+    #[test]
+    fn a_name_ending_in_a_break_is_offered_and_found_as_its_drawn() {
+        let mut model = model();
+        model.nodes[2].location = Some("Den\n".into());
+
+        assert_eq!(
+            for_zsh(&nodes(&model))
+                .lines()
+                .nth(2)
+                .map(|line| line.split(':').next()),
+            Some(Some("Den")),
+            "a name ending in a break was offered with its space"
+        );
+        assert_eq!(
+            find_node(&model, "Den").map(|node| &node.id),
+            Ok(&model.nodes[2].id),
+            "the name a page draws didn't find a name ending in a break"
+        );
+    }
+
+    #[test]
+    fn two_nodes_named_the_same_once_drawn_are_named_by_their_ids() {
+        let mut model = model();
+        model.nodes[1].location = Some("Den".into());
+        model.nodes[2].location = Some("Den\u{7}".into());
+        let ids = [model.nodes[1].id.clone(), model.nodes[2].id.clone()];
+
+        assert_eq!(
+            find_node(&model, "den").map(|node| &node.id),
+            Err(format!(
+                "2 nodes are called den: {} and {}; name one by its id",
+                ids[0], ids[1]
+            )),
+            "one of two nodes drawn with the same name was picked for the other"
+        );
+        assert_eq!(
+            find_node(&model, &ids[1]).map(|node| &node.id),
+            Ok(&ids[1]),
+            "a node's id didn't find it"
+        );
+    }
+
+    #[test]
+    fn zsh_offers_a_backslash_in_a_name_as_it_is() {
+        let named = vec![("Den\\Hall:2".to_owned(), "a node".to_owned())];
+
+        assert_eq!(
+            for_zsh(&named),
+            "Den\\\\Hall\\:2:a node\n",
+            "zsh would take a backslash in a name off what it's before"
         );
     }
 

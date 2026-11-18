@@ -422,21 +422,60 @@ pub fn listed(names: &[&str]) -> String {
 }
 
 /// Whether a name eero holds is the one asked for, in any case, read as
-/// the kit draws it, so a name shown without its controls finds what it
-/// names.
+/// the kit draws it and without the space at its ends, so a name shown
+/// without its controls, or ending in a break, finds what it names.
 fn is_named(held: &str, asked: &str) -> bool {
-    layout::one_line(held).eq_ignore_ascii_case(&layout::one_line(asked))
+    layout::one_line(held)
+        .trim()
+        .eq_ignore_ascii_case(layout::one_line(asked).trim())
+}
+
+/// The one of `things` (a `kind`, such as a node, its plural `kinds`)
+/// whose id is `asked`, or else whose name is, as `is_named` reads it.
+/// Two whose names read the same once drawn are refused, each by its id,
+/// rather than one picked for the other.
+fn named_one<'a, T>(
+    things: &'a [T],
+    asked: &str,
+    [kind, kinds]: [&str; 2],
+    id: impl Fn(&T) -> &str,
+    name: impl Fn(&T) -> &str,
+) -> Result<&'a T, String> {
+    if let Some(thing) = things.iter().find(|thing| id(thing) == asked) {
+        return Ok(thing);
+    }
+    let called: Vec<&T> = things
+        .iter()
+        .filter(|thing| is_named(name(thing), asked))
+        .collect();
+    match called.as_slice() {
+        [one] => Ok(one),
+        [] => {
+            let names: Vec<&str> = things.iter().map(&name).collect();
+            Err(format!(
+                "no {kind} is called {asked}; the {kinds} are {}",
+                listed(&names)
+            ))
+        }
+        many => {
+            let ids: Vec<&str> = many.iter().map(|thing| id(thing)).collect();
+            Err(format!(
+                "{} {kinds} are called {asked}: {}; name one by its id",
+                many.len(),
+                listed(&ids)
+            ))
+        }
+    }
 }
 
 fn find_node<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Node, String> {
-    model
-        .nodes
-        .iter()
-        .find(|node| node.id == name || is_named(node_name(node), name))
-        .ok_or_else(|| {
-            let names: Vec<&str> = model.nodes.iter().map(node_name).collect();
-            format!("no node is called {name}; the nodes are {}", listed(&names))
-        })
+    named_one(
+        &model.nodes,
+        name,
+        ["node", "nodes"],
+        |node| &node.id,
+        node_name,
+    )
 }
 
 /// A profile's name, or its id where eero gives none.
@@ -445,17 +484,13 @@ fn profile_name(profile: &Profile) -> &str {
 }
 
 fn find_profile<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Profile, String> {
-    model
-        .profiles
-        .iter()
-        .find(|profile| profile.id == name || is_named(profile_name(profile), name))
-        .ok_or_else(|| {
-            let names: Vec<&str> = model.profiles.iter().map(profile_name).collect();
-            format!(
-                "no profile is called {name}; the profiles are {}",
-                listed(&names)
-            )
-        })
+    named_one(
+        &model.profiles,
+        name,
+        ["profile", "profiles"],
+        |profile| &profile.id,
+        profile_name,
+    )
 }
 
 /// The device on now that a name or hardware address names. One not on now
