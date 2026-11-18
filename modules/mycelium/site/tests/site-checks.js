@@ -187,6 +187,12 @@
       faults.push(`screen: ${what} shows ${on.length} names, past ${NAMES_ON_SCREEN}`);
     }
     const cells = marks('circle.cell, [data-key^="c:"]').map((el) => el.getBoundingClientRect()).filter(inView);
+    // A cell that needs him, drawn on screen, is named first among the seven.
+    const shownKeys = new Set(names().map((el) => el.dataset.name));
+    const unnamed = marks("[data-asks]").filter((el) => inView(el.getBoundingClientRect()) && !shownKeys.has(el.dataset.key));
+    if (unnamed.length > 0) {
+      faults.push(`screen: ${what} draws ${unnamed.length} cells that need him without their names, the first ${unnamed[0].dataset.key}`);
+    }
     // No cell drawn is a pass only when the map says it folded them.
     if (cells.length === 0 && !document.getElementById("map-ground")?.painted?.().folded) {
       faults.push(`screen: ${what} draws no cell, and nothing is folded`);

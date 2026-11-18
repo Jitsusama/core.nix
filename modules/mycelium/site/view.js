@@ -1088,7 +1088,7 @@
   const cellMarkClass = (s) => (chosen?.kind === "cell" && chosen.id === s.address ? "cell chosen m-hit" : "cell m-hit");
   const cellMarkup = (s, [x, y]) => {
     const net = esc(netOf(s)?.key || "");
-    return `<circle class="${cellMarkClass(s)}" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
+    return `<circle class="${cellMarkClass(s)}" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}"${s.standing === "asks" ? ' data-asks=""' : ""} cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
   };
   // What a cell paints, innermost last: what changed, what waits on it,
   // its membrane and what it is doing.
@@ -1587,7 +1587,8 @@
       const sought = key === `c:${m.byId.get(hover)?.address}` || foundSet.has(key);
       // What he hovers is named beyond the cap, as what he points at is.
       const hovered = key === `c:${m.byId.get(hover)?.address}`;
-      out.push({ key, kind: "cell", rank: strong || hovered ? 0 : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong });
+      // A cell that needs him is named before any network, among the seven.
+      out.push({ key, kind: "cell", rank: strong || hovered ? 0 : s.standing === "asks" ? NEEDS_YOU_RANK : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong });
     }
     const open = chosen && (chosen.kind === "net" && knotsAt.has(chosen.id) ? "n" : { cell: "c", net: "h", machine: "m" }[chosen.kind]);
     const openKey = open && `${open}:${chosen.id}`;
@@ -1689,6 +1690,7 @@
   const NAME_SUB_Y = 18;
   const CELL_NAMED_PX = 15; // a cell's radius on screen once it is named
   const NAMES_ON_SCREEN = 7; // names at once beside the one he's engaged with
+  const NEEDS_YOU_RANK = 0.5; // after what he's engaged with, before every network
   const HUB_NAMES_MOST = 40; // networks named once folding starts, busiest first
 
   // The circles on screen, in buckets of the screen, so a label can ask
