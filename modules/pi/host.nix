@@ -180,8 +180,9 @@ let
         # catch: pi bundles signal-exit, which adds one, and node then only
         # queues the signal for a loop that may never turn. At 16:46 on 17
         # November the background host's main thread spun on a CPU for four
-        # minutes; the watchdog aborted it at 120 s and systemd waited its
-        # default 150 s more before the kill. A node without the listener
+        # minutes; the watchdog aborted it at 120 s and systemd waited 150 s
+        # more before the kill, since an abort's timeout is the stop's
+        # (TimeoutStopSec below) unless set apart. A node without the listener
         # still aborts at once, and with no core (LimitCORE below) nothing is
         # lost by killing the rest 10 s on. The host's hold watcher has
         # written what held the loop by then.
