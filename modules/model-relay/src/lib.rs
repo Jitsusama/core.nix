@@ -88,8 +88,19 @@ pub const IDLE_EXIT: Duration = Duration::from_secs(120);
 /// How often an open connection is pinged, so one the network lost is
 /// found before a request is sent down it.
 const PING_EVERY: Duration = Duration::from_secs(20);
-/// How long a ping may wait for its answer before the connection is closed.
-const PING_ANSWERED_WITHIN: Duration = Duration::from_secs(20);
+/// How long a ping may wait for its answer before the connection is closed,
+/// with every request on it. Long enough for a lossy uplink's resends to
+/// back off a few times, since closing a live connection fails each request
+/// it carries, while one the network lost is still found within a minute.
+const PING_ANSWERED_WITHIN: Duration = Duration::from_secs(40);
+/// The most bytes the kernel may hold unsent on a connection to the
+/// origin. hyper pings once nothing has been read for `PING_EVERY`, which
+/// on an upload is the whole send, and the ping goes behind whatever the
+/// kernel already holds: measured on 17 November, 128 KB waited on a
+/// connection moving 70 kbit/s, the ping went unanswered, and hyper closed
+/// the connection with every request on it. Held to a few frames, the
+/// rest waits in h2, which sends a ping before the next frame of data.
+const UNSENT_AT_MOST: u32 = 16 * 1024;
 /// How often the counts are said, when anything was asked since.
 const COUNTS_EVERY: Duration = Duration::from_secs(600);
 /// How long it waits before accepting again after an accept fails, so a
@@ -647,7 +658,10 @@ impl Relay {
                 self.counts.failed.fetch_add(1, Ordering::Relaxed);
                 // hyper's error says what failed, never what was sent,
                 // which a test holds it to.
-                eprintln!("model-relay: a request couldn't be carried: {why}");
+                eprintln!(
+                    "model-relay: a request couldn't be carried: {}",
+                    with_causes(&why)
+                );
                 said(
                     StatusCode::BAD_GATEWAY,
                     "this relay's request to its origin failed\n",
@@ -775,7 +789,7 @@ impl Relay {
             let tcp = reach(&self.origin.host, self.origin.port, within)
                 .await
                 .map_err(on_the_way)?;
-            tcp.set_nodelay(true).map_err(on_the_way)?;
+            fit(&tcp).map_err(on_the_way)?;
             let name = ServerName::try_from(self.origin.host.clone())
                 .map_err(|why| (io::Error::other(why), Unreachable::Unfit))?;
             let tls = self.tls.connect(name, tcp).await.map_err(|why| {
@@ -809,7 +823,10 @@ impl Relay {
         let (sender, connection) = match tokio::time::timeout(within, opening).await {
             Ok(Ok(opened)) => opened,
             Ok(Err((why, unreachable))) => {
-                eprintln!("model-relay: connection {at} couldn't be made: {why}");
+                eprintln!(
+                    "model-relay: connection {at} couldn't be made: {}",
+                    with_causes(&why)
+                );
                 return Err(unreachable);
             }
             Err(_) => {
@@ -835,13 +852,35 @@ impl Relay {
                 Ok(()) => eprintln!("model-relay: connection {at} retired, {open} taking requests"),
                 Err(why) => {
                     eprintln!(
-                        "model-relay: connection {at} retired on {why}, {open} taking requests"
+                        "model-relay: connection {at} retired on {}, {open} taking requests",
+                        with_causes(&why)
                     );
                 }
             }
         });
         Ok(sender)
     }
+}
+
+/// Readies a connection to the origin: each frame goes as it's written,
+/// and the kernel holds no more than `UNSENT_AT_MOST` of them unsent.
+fn fit(tcp: &TcpStream) -> io::Result<()> {
+    tcp.set_nodelay(true)?;
+    socket2::SockRef::from(tcp).set_tcp_notsent_lowat(UNSENT_AT_MOST)
+}
+
+/// `why`, with every error beneath it, since hyper says only the kind of
+/// failure on top ("http2 error") and which one beneath ("keep-alive timed
+/// out", or the origin's goodbye). None of them holds what was sent.
+fn with_causes(why: &dyn std::error::Error) -> String {
+    let mut said = why.to_string();
+    let mut beneath = why.source();
+    while let Some(cause) = beneath {
+        said.push_str(": ");
+        said.push_str(&cause.to_string());
+        beneath = cause.source();
+    }
+    said
 }
 
 /// A TCP connection to `host`'s `port`, from the first address the name
@@ -963,7 +1002,7 @@ async fn say_counts(counts: Arc<Counts>) {
 mod tests {
     use std::time::{Duration, Instant, SystemTime};
 
-    use super::{Origin, SLEPT_AT_LEAST, reach_any, slept};
+    use super::{Origin, SLEPT_AT_LEAST, UNSENT_AT_MOST, fit, reach_any, slept, with_causes};
 
     #[test]
     fn an_origin_is_an_https_host_alone() {
@@ -1052,5 +1091,56 @@ mod tests {
             Some(std::io::ErrorKind::ConnectionRefused),
             "a refusal isn't said as a timeout"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_connection_to_the_origin_holds_few_bytes_unsent() {
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
+            .await
+            .expect("a connection");
+
+        fit(&tcp).expect("a connection readied");
+
+        assert_eq!(
+            socket2::SockRef::from(&tcp).tcp_notsent_lowat().ok(),
+            Some(UNSENT_AT_MOST),
+            "a ping would wait behind whatever the kernel holds unsent"
+        );
+        assert_eq!(
+            tcp.nodelay().ok(),
+            Some(true),
+            "a small frame would wait on the one before"
+        );
+    }
+
+    #[test]
+    fn an_error_is_said_with_what_lies_beneath_it() {
+        let beneath = std::io::Error::other("keep-alive timed out");
+        let why = std::io::Error::other(Beneath("http2 error", beneath));
+
+        assert_eq!(
+            with_causes(&why),
+            "http2 error: keep-alive timed out",
+            "the journal would say only the kind of failure, never which"
+        );
+    }
+
+    /// An error with one beneath it, as hyper's are.
+    #[derive(Debug)]
+    struct Beneath(&'static str, std::io::Error);
+
+    impl std::fmt::Display for Beneath {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+
+    impl std::error::Error for Beneath {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.1)
+        }
     }
 }

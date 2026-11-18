@@ -16,6 +16,9 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 bytes = "1"
 tokio = { version = "1.53", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+# The socket options tokio doesn't reach: how much the kernel may hold
+# unsent, so a ping isn't kept behind a whole body on a slow uplink.
+socket2 = { version = "0.6", features = ["all"] }
 # TLS to the origin, trusting the public roots, or only the roots a file
 # names (--roots), as the tests do.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
