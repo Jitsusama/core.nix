@@ -192,25 +192,34 @@ onLinux {
 
   # A shared screen shows the launcher, which Joel shows people his desktop
   # through on a call, and never polkit's password, askpass's PIN or a
-  # notice: no layer
-  # rule keeping a surface out of a share or a capture names the launcher's
-  # namespace, and some rule names each of the others. niri draws what it
-  # keeps out only into a PipeWire screencast, which no check here can
-  # take, so its rules are what's held.
+  # notice: no layer rule keeping a surface out of a share or a capture
+  # names the launcher's namespace, and the last rule saying what each of
+  # the others is kept out of, as niri reads them, keeps it out of every
+  # capture, a recorder's screencopy as much as a call's screencast, since
+  # a recording is a share made later (5GLTPH, 2026-11-17). The rules are
+  # what this holds; a capture that comes out black is the nested niri's
+  # to show.
   niri-shares-the-launcher-but-no-password =
     let
       text = (account graphical).xdg.configFile."niri/config.kdl".text;
       rules = map (block: lib.head (lib.splitString "\n}\n" block)) (
         lib.tail (lib.splitString "\nlayer-rule {\n" text)
       );
-      # A rule keeps a surface out by its own block-out-from line, never
-      # one commented out.
-      keepingOut = lib.filter (
+      # What a rule keeps a surface out of, by its own last block-out-from
+      # line, never one commented out; null where it keeps it out of
+      # nothing.
+      blockOut =
         rule:
-        lib.any (line: builtins.match " *block-out-from \"[a-z-]+\".*" line != null) (
-          lib.splitString "\n" rule
-        )
-      ) rules;
+        let
+          said = lib.concatMap (
+            line:
+            let
+              from = builtins.match " *block-out-from \"([a-z-]+)\".*" line;
+            in
+            if from == null then [ ] else from
+          ) (lib.splitString "\n" rule);
+        in
+        if said == [ ] then null else lib.last said;
       patterns =
         rule:
         lib.concatMap (
@@ -220,15 +229,29 @@ onLinux {
           in
           if named == null then [ ] else named
         ) (lib.splitString "\n" rule);
-      keptOut =
+      # niri searches for a rule's pattern within the namespace, where
+      # builtins.match matches the whole of it.
+      matches = namespace: pattern: builtins.match ".*(${pattern}).*" namespace != null;
+      names = namespace: rule: lib.any (matches namespace) (patterns rule);
+      # niri reads its rules in order, so the last one saying decides.
+      keptOutOf =
         namespace:
-        lib.any (
-          rule: lib.any (pattern: builtins.match pattern namespace != null) (patterns rule)
-        ) keepingOut;
+        let
+          saying = lib.filter (rule: blockOut rule != null && names namespace rule) rules;
+        in
+        if saying == [ ] then null else blockOut (lib.last saying);
+      wrong =
+        lib.optional (keptOutOf "launcher" != null) "the launcher"
+        ++ lib.filter (namespace: keptOutOf namespace != "screen-capture") [
+          "polkit"
+          "askpass"
+          "notifications"
+        ];
+      meant = "the launcher shows in a share, and polkit, askpass and the notices in no capture";
     in
     holds "niri-shares-the-launcher-but-no-password"
-      "config.kdl keeps the launcher out of a share, or lets polkit, askpass or a notice in."
-      (!keptOut "launcher" && keptOut "polkit" && keptOut "askpass" && keptOut "notifications");
+      "config.kdl misplaces ${lib.concatStringsSep ", " wrong}: ${meant}."
+      (wrong == [ ]);
 
   # niri reads back the files an account gets and rejects anything it
   # wouldn't load, from a misspelt action to a colour it can't parse.
