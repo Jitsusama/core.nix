@@ -662,7 +662,7 @@ impl Table {
 
 /// How a page reaches its reader: drawn with the terminal kit's pen, in
 /// the theme's roles on a terminal and as plain text anywhere else, as
-/// every command's is (docs/commands.md, Ink).
+/// every command's is (docs/commands.md, Colour and Marks).
 #[derive(Debug, Clone)]
 pub struct Ink {
     pen: Pen,

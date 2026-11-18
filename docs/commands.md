@@ -505,7 +505,9 @@ It gives:
 - tables and lists set to How It Reads, fitting the width and giving way;
 - the error's three parts, as text and as JSON, and the exit codes as a
   type;
-- the wait line and its meter, drawn only into a terminal.
+- the wait line and its meter, drawn only into a terminal;
+- a page drawn over the last, `screen::over`, for a command that
+  watches something and says it afresh as it changes.
 
 A command that isn't Rust keeps the convention by hand, and the check
 holds a script to the points it can keep without the kit, below.

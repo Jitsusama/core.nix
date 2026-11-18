@@ -1,6 +1,7 @@
 //! A page drawn over the last one, for a command that watches something
 //! and says it afresh as it changes. Only the kit spells the terminal's
-//! escapes (docs/commands.md, Inks, and commands-agree's inks point), so
+//! escapes (docs/commands.md, The Terminal Kit, and commands-agree's inks
+//! point), so
 //! a watching command asks it here rather than writing them itself.
 
 /// Where the terminal's cursor goes home, opening each page.
