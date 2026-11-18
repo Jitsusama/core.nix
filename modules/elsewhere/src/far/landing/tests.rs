@@ -1,4 +1,4 @@
-use super::{SWEEPS_AFTER, land, opened_plain};
+use super::{SWEEPS_AFTER, land, opened_as_listed, opened_plain};
 use crate::far::MARK;
 use crate::far::tests::scratch;
 use std::collections::HashSet;
@@ -17,30 +17,41 @@ fn names(folder: &Path) -> Vec<String> {
 /// Lands `from` at `into` as a bring-back's first file into its folder,
 /// listed at the size it has.
 fn landed(from: &Path, into: &Path) -> std::io::Result<()> {
-    let size = std::fs::symlink_metadata(from).map_or(0, |meta| meta.len());
-    land(from, into, size, &mut HashSet::new())
+    let source = opened_plain(from)?;
+    let size = source.metadata()?.len();
+    land(source, size, into, &mut HashSet::new())
 }
 
 #[test]
-fn only_a_file_of_the_size_listed_lands() {
+fn only_a_file_of_the_size_listed_is_taken_or_lands() {
     let root = scratch("sized");
-    std::fs::write(root.join("from"), "12345").unwrap();
+    let from = root.join("from");
+    std::fs::write(&from, "12345").unwrap();
     for size in [1, 6] {
-        let into = root.join(format!("at-{size}"));
-        let landing = land(&root.join("from"), &into, size, &mut HashSet::new());
         assert!(
-            landing.is_err() && !into.exists(),
-            "a file of 5 bytes landed as the {size} listed: {landing:?}"
+            opened_as_listed(&from, size).is_err(),
+            "a file of 5 bytes was taken as the {size} listed"
         );
     }
+    // One that shrank once opened, which only a read finds.
+    let into = root.join("short");
+    let landing = land(opened_plain(&from).unwrap(), 6, &into, &mut HashSet::new());
+    assert!(
+        landing
+            .as_ref()
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::UnexpectedEof)
+            && !into.exists(),
+        "a read short of its size landed, or wasn't said as one: {landing:?}"
+    );
+    let into = root.join("whole");
     land(
-        &root.join("from"),
-        &root.join("at-5"),
+        opened_as_listed(&from, 5).unwrap(),
         5,
+        &into,
         &mut HashSet::new(),
     )
     .unwrap();
-    assert_eq!(std::fs::read(root.join("at-5")).unwrap(), b"12345");
+    assert_eq!(std::fs::read(&into).unwrap(), b"12345");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -208,14 +219,15 @@ fn a_folder_is_swept_once_a_bring_back() {
     let root = scratch("once");
     std::fs::write(root.join("from"), "new").unwrap();
     let mut swept = HashSet::new();
-    land(&root.join("from"), &root.join("a"), 3, &mut swept).unwrap();
+    let from = || opened_plain(&root.join("from")).unwrap();
+    land(from(), 3, &root.join("a"), &mut swept).unwrap();
     // Left after the first landing, so only a second sweep would take it.
     let left = root.join(format!("{MARK}-1-0"));
     std::fs::write(&left, "old").unwrap();
     let file = std::fs::File::options().write(true).open(&left).unwrap();
     file.set_modified(std::time::SystemTime::now() - SWEEPS_AFTER * 2)
         .unwrap();
-    land(&root.join("from"), &root.join("b"), 3, &mut swept).unwrap();
+    land(from(), 3, &root.join("b"), &mut swept).unwrap();
     assert!(left.exists(), "a folder already swept was swept again");
     assert_eq!(swept.len(), 1, "a folder swept was counted twice");
     let _ = std::fs::remove_dir_all(&root);

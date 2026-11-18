@@ -50,12 +50,14 @@ const LANDING_TRIES: usize = 64;
 /// Puts `from` at `into` under a name of its own first and then moves it
 /// there, so whatever is already at `into`, a hard link to a file
 /// elsewhere or a symbolic link, is replaced rather than written through.
-/// Only a file of the `size` its list says lands, as every byte of it.
-/// A folder named in `swept` was swept already by this bring-back.
+/// `source`, opened as listed, lands as every one of its `size` bytes; a
+/// read that ends short of them fails as `UnexpectedEof`, the file having
+/// changed since it crossed. A folder named in `swept` was swept already
+/// by this bring-back.
 pub(super) fn land(
-    from: &Path,
-    into: &Path,
+    source: fs::File,
     size: u64,
+    into: &Path,
     swept: &mut HashSet<PathBuf>,
 ) -> io::Result<()> {
     let parent = into.parent().unwrap_or(Path::new("."));
@@ -63,17 +65,7 @@ pub(super) fn land(
     if swept.insert(parent.to_path_buf()) {
         sweep(parent);
     }
-    let source = opened_plain(from)?;
-    let opened = source.metadata()?;
-    // The size is the open file's, so another put at its name since the
-    // list was checked can't land, and no more than it is ever copied.
-    if opened.len() != size {
-        return Err(io::Error::other(format!(
-            "it is {} bytes, not the {size} listed",
-            opened.len()
-        )));
-    }
-    let bits = landing_bits(opened.permissions().mode());
+    let bits = landing_bits(source.metadata()?.permissions().mode());
     let (landing, mut to) = landing_name(parent, bits)?;
     let landed = held(&to)
         .and_then(|()| io::copy(&mut source.take(size), &mut to))
@@ -81,9 +73,10 @@ pub(super) fn land(
             if copied == size {
                 Ok(())
             } else {
-                Err(io::Error::other(format!(
-                    "only {copied} of its {size} bytes could be read"
-                )))
+                Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    format!("only {copied} of its {size} bytes could be read"),
+                ))
             }
         })
         .and_then(|()| synced(&to))
@@ -206,6 +199,20 @@ fn sweep(folder: &Path) {
             let _ = fs::remove_file(&path);
         }
     }
+}
+
+/// The file brought back at `from`, opened as the plain file of the
+/// `size` its list says: the size is the open file's own, so another put
+/// at its name since the list was checked is never taken for it.
+pub(super) fn opened_as_listed(from: &Path, size: u64) -> io::Result<fs::File> {
+    let source = opened_plain(from)?;
+    let opened = source.metadata()?.len();
+    if opened != size {
+        return Err(io::Error::other(format!(
+            "it is {opened} bytes, not the {size} listed"
+        )));
+    }
+    Ok(source)
 }
 
 /// Opens `path` only when it is a plain file, and the same file once open,

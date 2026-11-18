@@ -1,5 +1,5 @@
 use super::{SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
-use crate::far::{BACK, BROUGHT, Missed, bring_back};
+use crate::far::{BACK, BROUGHT, Brought, Missed, bring_back, landed};
 use std::io::ErrorKind;
 #[cfg(target_os = "linux")]
 use std::path::Path;
@@ -239,14 +239,15 @@ fn a_list_whose_end_can_t_be_written_is_said_and_ends_after_the_room_is_freed() 
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
     assert!(Path::new("/dev/full").exists(), "no full disk to stand in");
-    // The free of the job's copy and tree, the last thing before the end,
-    // says if the end came first, and then leaves the list's name on a full
-    // disk, so only the end's write fails.
+    // The free of the tree, the last thing before the end, says if the end
+    // came first or the job's copy isn't freed with it, and then leaves the
+    // list's name on a full disk, so only the end's write fails.
     let rm = refusing(
         "rm",
         &format!("*\"/{} \"*", super::super::TREE),
         &format!(
             "for a; do job=${{a%/{tree}}}; done\n\
+             case \" $* \" in *\" $HOME/s/1 \"*) ;; *) echo 'the copy was not freed with its tree' >&2 ;; esac\n\
              grep -qx end \"$job/{BROUGHT}\" && echo 'the list ended before its room was freed' >&2\n\
              rm \"$@\"; ln -sf /dev/full \"$job/{BROUGHT}\"; exit 0",
             tree = super::super::TREE
@@ -264,7 +265,8 @@ fn a_list_whose_end_can_t_be_written_is_said_and_ends_after_the_room_is_freed() 
         code == Some(0)
             && err.contains("couldn't end the list")
             && !err.contains("couldn't write down all")
-            && !err.contains("ended before"),
+            && !err.contains("ended before")
+            && !err.contains("not freed with"),
         "the far line didn't free its room first, or say its end failed ({code:?}): {err}"
     );
     let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
@@ -308,6 +310,46 @@ fn a_cut_after_half_a_line_is_cut() {
         "a cut after a half-written line wasn't read as cut"
     );
     assert!(!home.join("near/out/a").exists(), "a cut list landed");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_list_past_what_a_share_holds_in_one_file_is_refused() {
+    let home = scratch("long-list");
+    let job = handover(&home);
+    std::fs::create_dir_all(&job).unwrap();
+    // Sparse, so it costs the disk nothing.
+    std::fs::File::create(job.join(BROUGHT))
+        .unwrap()
+        .set_len(super::super::LARGEST_FILE + 1)
+        .unwrap();
+    let landed = bring_back(&job, &home.join("near"), &["out".into()], 1);
+    assert!(
+        matches!(&landed, Err(Missed::Refused(why)) if why.contains("its list of what it brings back is past")),
+        "a list no share carries whole was waited on, or read: {landed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_file_that_changed_as_it_crossed_is_lost_not_unlanded() {
+    let home = scratch("changed");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    std::fs::write(job.join(BACK).join("0"), "12345").unwrap();
+    // Listed whole, and then put over at another size, as a share may.
+    let files = [Brought {
+        number: 0,
+        path: "out/a".into(),
+        size: 1,
+    }];
+    let into = home.join("near");
+    let landed = landed(&job, &into, &["out".into()], "1\tout/a\nend\n", &files, &[]);
+    assert!(
+        matches!(&landed, Err(Missed::Lost(why)) if why.contains("out/a changed as it crossed home")),
+        "a file that changed in the share was blamed on the folder: {landed:?}"
+    );
+    assert!(!into.join("out/a").exists(), "a changed file landed");
     let _ = std::fs::remove_dir_all(&home);
 }
 

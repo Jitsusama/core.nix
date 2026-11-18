@@ -472,7 +472,15 @@ pub fn bring_back(
     }
     let (mut waited, mut most, mut seen, mut said) = (0, 0, None, false);
     loop {
-        let text = readable(&list(job));
+        let bytes = list(job);
+        // A share carries a list whole, so one past the bound is one every
+        // try writes again.
+        if u64::try_from(bytes.len()).map_or(true, |read| read > LARGEST_FILE) {
+            return Err(Missed::Refused(format!(
+                "its list of what it brings back is past the {LARGEST_FILE} bytes a share holds in one file"
+            )));
+        }
+        let text = readable(&bytes);
         if lines(&text).last() == Some(CUT) {
             return Err(Missed::Lost(
                 "the far side couldn't write down all it would bring back".to_owned(),
@@ -520,13 +528,13 @@ pub fn bring_back(
 
 /// The far side's list in the handover folder `job`, read only as the
 /// plain file it was opened as, as every file landed is, and no further
-/// than a share holds in one file: anything else at its name, which no
-/// share carries, reads as nothing yet.
+/// than a byte past what a share holds in one file: anything else at its
+/// name, which no share carries, reads as nothing yet.
 fn list(job: &Path) -> Vec<u8> {
     let mut bytes = Vec::new();
     if let Ok(file) = landing::opened_plain(&job.join(BROUGHT)) {
         // Read part way, it is a list still crossing, which the wait answers.
-        if file.take(LARGEST_FILE).read_to_end(&mut bytes).is_err() {
+        if file.take(LARGEST_FILE + 1).read_to_end(&mut bytes).is_err() {
             bytes.clear();
         }
     }
@@ -609,7 +617,8 @@ fn landed(
     files: &[Brought],
     short: &[Brought],
 ) -> Result<usize, Missed> {
-    let (mut refused, mut unlanded, mut landed) = (Vec::new(), Vec::new(), 0);
+    let (mut refused, mut unlanded, mut changed, mut landed) =
+        (Vec::new(), Vec::new(), Vec::new(), 0);
     let mut lasting = false;
     let mut swept = HashSet::new();
     for brought in files {
@@ -622,9 +631,26 @@ fn landed(
             continue;
         }
         let from = job.join(BACK).join(brought.number.to_string());
-        match landing::land(&from, &folder.join(&brought.path), brought.size, &mut swept) {
+        let landing = landing::opened_as_listed(&from, brought.size)
+            .map_err(|error| (true, error))
+            .and_then(|source| {
+                landing::land(
+                    source,
+                    brought.size,
+                    &folder.join(&brought.path),
+                    &mut swept,
+                )
+                .map_err(|error| (error.kind() == io::ErrorKind::UnexpectedEof, error))
+            });
+        match landing {
             Ok(()) => landed += 1,
-            Err(error) => {
+            // The share's fault rather than the folder's, so another try
+            // may not meet it.
+            Err((true, error)) => changed.push(format!(
+                "{} changed as it crossed home: {error}",
+                brought.path
+            )),
+            Err((false, error)) => {
                 lasting |= lasts(&error);
                 unlanded.push(format!("{} didn't land: {error}", brought.path));
             }
@@ -646,7 +672,12 @@ fn landed(
         " like them",
     ));
     let unlanded = some_of(unlanded, " like them");
-    let mut missed: Vec<String> = refused.iter().chain(&unlanded).cloned().collect();
+    let mut missed: Vec<String> = refused
+        .iter()
+        .chain(&unlanded)
+        .cloned()
+        .chain(some_of(changed, " like them"))
+        .collect();
     let lost: Vec<String> = marked(text, "-", brings_back).map(str::to_owned).collect();
     if !lost.is_empty() {
         missed.push(format!(
