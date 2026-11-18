@@ -111,6 +111,28 @@ fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
         "a refused job's copy of its tree was left behind"
     );
     let _ = std::fs::remove_dir_all(&home);
+    // Nor when nothing at all travels, and no tree crosses.
+    let (code, err, home) = far_line_in(
+        Path::new("drafts"),
+        "end\n",
+        &[],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[],
+    );
+    assert!(
+        code == Some(77) && err.contains("holds nothing that travels"),
+        "a folder with nothing that crossed wasn't refused ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+    // At the tree's top, the job runs in a tree with nothing in it.
+    let (code, err, home) = far_run("end\n", &[], "touch ../ran");
+    assert!(
+        code == Some(0) && home.join("s/ran").exists(),
+        "a job with no file that travels didn't run ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// A stream handing out a byte a read, as a slow pipe may, so how far it

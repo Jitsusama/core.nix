@@ -250,7 +250,9 @@ pub(super) fn far_line_in(
     ));
     let _ = std::fs::remove_dir_all(&home);
     let job = handover(&home);
-    std::fs::create_dir_all(job.join(super::TREE)).unwrap();
+    // No tree at all when no file crosses, as a share carrying only files
+    // leaves it.
+    std::fs::create_dir_all(&job).unwrap();
     for (path, text) in files {
         let into = job.join(super::TREE).join(path);
         std::fs::create_dir_all(into.parent().unwrap()).unwrap();

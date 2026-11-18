@@ -60,7 +60,10 @@ pub(super) fn land(from: &Path, into: &Path, swept: &mut HashSet<PathBuf>) -> io
     let (landing, mut to) = landing_name(parent, bits)?;
     let landed = held(&to)
         .and_then(|()| io::copy(&mut source, &mut to))
-        .and_then(|_| fs::rename(&landing, into));
+        // A network folder may say it is full only once asked to keep
+        // what was written, which a close that is dropped never hears.
+        .and_then(|_| to.sync_all())
+        .and_then(|()| fs::rename(&landing, into));
     landed.inspect_err(|_| {
         // What's left would be in the person's folder; it's spent anyway.
         let _ = fs::remove_file(&landing);

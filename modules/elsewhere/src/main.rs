@@ -530,34 +530,18 @@ fn send(
         return Ok(Sent::Ended(code));
     }
     // The job passed but its work never reached the folder, so it isn't
-    // done here; made here, it would be. A refusal would refuse it again,
-    // and what couldn't land would meet the same folder, so only a loss
-    // is worth another try.
-    let failure = match missed {
-        far::Missed::Refused(why) => Failure::new(
-            Exit::Refused,
-            format!("what it made on {machine} was refused as it came home"),
-        )
-        .because(why),
-        // Not 1, which a job's own failure passes through as, so a
-        // passing job whose work couldn't land isn't read as failing.
-        far::Missed::Unlanded(why) => Failure::new(
-            Exit::Refused,
-            format!("what it made on {machine} couldn't land here"),
-        )
-        .because(why),
-        far::Missed::Roomless(why) => Failure::new(
-            Exit::TryAgain,
-            format!("what it made on {machine} found no room here"),
-        )
-        .because(why),
-        far::Missed::Lost(why) => Failure::new(
-            Exit::TryAgain,
-            format!("what it made on {machine} didn't come home"),
-        )
-        .because(why),
+    // done here; made here, it would be.
+    let what = match missed {
+        far::Missed::Refused(_) => "was refused as it came home",
+        far::Missed::Unlanded(_) => "couldn't land here",
+        far::Missed::Roomless(_) => "found no room here",
+        far::Missed::Lost(_) => "didn't come home",
     };
-    Err(failure.try_this("--here, to make it here"))
+    Err(
+        Failure::new(missed.exit(), format!("what it made on {machine} {what}"))
+            .because(missed.why().to_owned())
+            .try_this("--here, to make it here"),
+    )
 }
 
 /// Whether mycelium, asked `words`, says yes.

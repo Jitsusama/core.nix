@@ -2,6 +2,7 @@ use super::{SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
 use crate::far::{BACK, BROUGHT, Missed, bring_back};
 use std::io::ErrorKind;
 use std::time::{Duration, Instant};
+use terminal_kit::Exit;
 
 /// How long the tests of a share still carrying give it with nothing
 /// crossing, in seconds.
@@ -26,6 +27,58 @@ fn a_copy_longer_than_listed_never_lands() {
     );
     assert!(!into.join("out/a").exists(), "a longer copy landed");
     let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // Each failing only at the bring-back, and passing the rest to the
+    // far machine's own, the stand-in's folder first on the path.
+    for (step, when) in [("find", "*\" -type f \"*"), ("sort", "*\" -u \"*")] {
+        let stand_in = format!(
+            "case \" $* \" in {when}) exit 1 ;; esac\nPATH=${{PATH#*:}} exec {step} \"$@\""
+        );
+        let (code, err, home) = far_line(
+            "1\tx\nend\n",
+            &[("x", "x")],
+            "mkdir out && printf a > out/a",
+            &kind,
+            None,
+            &[(step, &stand_in)],
+        );
+        assert_eq!(code, Some(0), "the job didn't run past {step}: {err}");
+        let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+        assert!(
+            matches!(&landed, Err(Missed::Lost(why)) if why.contains("out didn't come back")),
+            "a {step} that failed passed what it lost as whole: {landed:?}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn only_what_met_no_room_or_never_crossed_is_worth_another_try() {
+    for (refused, lasts, unlanded, ends) in [
+        (true, true, true, Exit::Refused),
+        (false, true, true, Exit::Refused),
+        (false, false, true, Exit::TryAgain),
+        (false, false, false, Exit::TryAgain),
+    ] {
+        let missed = super::super::missing(refused, lasts, unlanded, String::new());
+        assert_eq!(
+            missed.exit(),
+            ends,
+            "{missed:?} from refused {refused}, lasting {lasts}, unlanded {unlanded}"
+        );
+    }
+    assert!(
+        matches!(
+            super::super::missing(false, false, true, String::new()),
+            Missed::Roomless(_)
+        ),
+        "a miss that met no room wasn't said as one"
+    );
 }
 
 #[test]

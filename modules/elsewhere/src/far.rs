@@ -29,6 +29,7 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use terminal_kit::Exit;
 
 /// Where a job's folder lies within a quest's scratch.
 pub const HANDOVER: &str = "handover/elsewhere";
@@ -339,106 +340,6 @@ exit "$code"
     )
 }
 
-/// The far line's step making the job's tree of its files, `copied`: 0
-/// once made, 1 for the tree's own fault, which every try meets, and 2
-/// for this machine's, which another may not.
-fn copying() -> String {
-    format!(
-        r#"copied() {{
-  while IFS="$tab" read -r size path; do
-    [ "$size" = {END} ] && break
-    case "/$path/" in
-      //*|*/../*|*/./*) printf "elsewhere: the job's list names %s, outside its folder\n" "$path" >&2; return 1 ;;
-    esac
-  done < "$job/{LEFT}"
-  cp -R "$job/{TREE}/." "$work/" || return 2
-  # Deepest first, so a folder's contents are named before it is, and
-  # shortest first within a folder, so target.elsewhere is target before
-  # target.elsewhere.elsewhere takes its name. Each step to a file of its
-  # own, since a pipe's status is only its last command's in an sh with no
-  # pipefail, and a step failing must not read as no names to strip.
-  marks="$work.marks"
-  find "$work" -name '*{MARK}' > "$marks" &&
-    awk -F/ '{{ print NF "\t" length($NF) "\t" $0 }}' "$marks" > "$marks.by" &&
-    sort -t "$tab" -k1,1nr -k2,2n "$marks.by" > "$marks.in" &&
-    cut -f3- "$marks.in" > "$marks" || {{ rm -f "$marks" "$marks".*; return 2; }}
-  (
-    # A subshell of its own, so its exit ends only the loop in every sh.
-    while IFS= read -r name; do
-      to=${{name%{MARK}}}
-      case "${{to##*/}}" in
-        ''|.|..) printf "elsewhere: the job's tree names %s, outside its folder\n" "$name" >&2; exit 1 ;;
-      esac
-      [ -e "$to" ] && {{ printf "elsewhere: the job's tree names %s twice\n" "$to" >&2; exit 1; }}
-      mv "$name" "$to" || exit 2
-    done
-  ) < "$marks"
-  stripped=$?
-  rm -f "$marks" "$marks".*
-  return "$stripped"
-}}"#
-    )
-}
-
-/// The far line's step leaving what `kind` brings back in the handover.
-/// What comes back crosses under its number, since a kind may bring back
-/// what lies under a folder a share keeps home. A hidden file is left, as
-/// the near side would pass it over.
-fn bringing(kind: &Kind) -> String {
-    if kind.brings_back.is_empty() {
-        return format!(": > \"$job/{BROUGHT}\"\n");
-    }
-    let paths = kind
-        .brings_back
-        .iter()
-        .map(|path| quoted(path.trim_matches('/')))
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!(
-        r#"for path in {paths}; do
-  [ -e "$path" ] || continue
-  find "$path" -type l ! -path '*/.*' ! -name '.*' \
-    -exec printf "elsewhere: %s is a link, so it isn't brought back\n" {{}} \; >&2
-  find "$path" -type f ! -path '*/.*' ! -name '.*'
-# A file two of the paths hold crosses once, and counts once.
-done | LC_ALL=C sort -u | {{
-  n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
-  # One that can't be read or copied keeps its number, listed with no
-  # size, so the near side lands the rest and says it's missing.
-  missing() {{
-    rm -f "$job/{BACK}/$n"
-    printf "elsewhere: %s didn't come back\n" "$file" >&2
-    printf '%s\t%s\n' - "$file"
-    n=$((n + 1))
-  }}
-  # One past what a share holds, alone or with what crossed before it,
-  # is listed marked with its size and never crosses, so the near side
-  # lands the rest and says why without waiting for it.
-  past() {{
-    [ $1 -gt {LARGEST_FILE} ] || [ $((files + 1)) -gt $most_files ] ||
-      [ $(($bytes + $1)) -gt $most_bytes ]
-  }}
-  kept() {{
-    rm -f "$job/{BACK}/$n"
-    printf '>%s\t%s\n' $(($1)) "$file"
-    n=$((n + 1))
-  }}
-  while IFS= read -r file; do
-    size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
-    past $size && {{ kept $size; continue; }}
-    cp "$file" "$job/{BACK}/$n" && copied=$(wc -c < "$job/{BACK}/$n") ||
-      {{ missing; continue; }}
-    # Only what crossed counts toward the totals, at the size it crossed.
-    past $copied && {{ kept $copied; continue; }}
-    files=$((files + 1)) bytes=$(($bytes + $copied))
-    printf '%s\t%s\n' $(($copied)) "$file"
-    n=$((n + 1))
-  done
-}} > "$job/{BROUGHT}"
-"#
-    )
-}
-
 /// A file brought back: its number in the far list, which names it in
 /// the handover, its path in the job's folder, and its size.
 #[derive(Debug, PartialEq, Eq)]
@@ -522,6 +423,16 @@ impl Missed {
             | Missed::Unlanded(why)
             | Missed::Roomless(why)
             | Missed::Lost(why) => why,
+        }
+    }
+
+    /// What a passing job that missed so ends with: never 1, which a
+    /// job's own failure passes through as, and 75 only where another try
+    /// may not meet it.
+    pub fn exit(&self) -> Exit {
+        match self {
+            Missed::Refused(_) | Missed::Unlanded(_) => Exit::Refused,
+            Missed::Roomless(_) | Missed::Lost(_) => Exit::TryAgain,
         }
     }
 }
@@ -735,18 +646,29 @@ fn landed(
         missed.push(format!("the other {landed} landed"));
     }
     let missed = missed.join("; ");
-    // What is refused is refused every time, and what couldn't land meets
-    // the same folder; only what didn't cross, or met no room, may on
-    // another try.
-    Err(if !refused.is_empty() {
+    Err(missing(
+        !refused.is_empty(),
+        lasting,
+        !unlanded.is_empty(),
+        missed,
+    ))
+}
+
+/// What a bring-back that fell short `missed`, given whether any of it
+/// was `refused`, whether any couldn't land for a reason that `lasts`, and
+/// whether any was `unlanded` at all. What is refused is refused every
+/// time, and what couldn't land meets the same folder; only what didn't
+/// cross, or met no room, may not on another try.
+fn missing(refused: bool, lasts: bool, unlanded: bool, missed: String) -> Missed {
+    if refused {
         Missed::Refused(missed)
-    } else if lasting {
+    } else if lasts {
         Missed::Unlanded(missed)
-    } else if !unlanded.is_empty() {
+    } else if unlanded {
         Missed::Roomless(missed)
     } else {
         Missed::Lost(missed)
-    })
+    }
 }
 
 /// Whether what kept a file from landing meets another try too: anything
@@ -787,6 +709,9 @@ pub fn quoted(word: &str) -> String {
 
 mod heard;
 mod landing;
+mod steps;
+
+use steps::{bringing, copying};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

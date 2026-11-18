@@ -436,6 +436,32 @@ fn a_job_told_there_that_can_t_go_says_why_and_is_never_made_here() {
 }
 
 #[test]
+fn a_job_placed_far_that_never_got_there_runs_here_saying_why() {
+    let realm = Realm::new(true);
+    realm.settings("gone");
+    fs::write(
+        realm.root.join("placed.json"),
+        r#"{"Ok":{"Placement":{"placed":{"machine":"gone","passed":[]}}}}"#,
+    )
+    .unwrap();
+    let output = realm.check(&[], "pwd");
+    let (out, err) = said(&output);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "a job that never got far wasn't made here: {err}"
+    );
+    assert!(
+        out.trim().ends_with("/home/work/spec") && err.contains("check runs here"),
+        "it wasn't made here in its own folder, saying so: {out} {err}"
+    );
+    assert!(
+        err.contains("wasn't reached"),
+        "it didn't say the far side was never reached: {err}"
+    );
+}
+
+#[test]
 fn a_job_with_no_quest_to_carry_it_runs_here() {
     let realm = Realm::new(true);
     let output = realm.run_in(&["run", "check", "--", "/bin/sh", "-c", "pwd"], None);
