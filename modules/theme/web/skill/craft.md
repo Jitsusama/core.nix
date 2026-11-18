@@ -581,8 +581,8 @@ The mark is drawn once, in the page's way of drawing ornament (strokes in
 is the same drawing reduced to its plainest lines on a 32 grid, at 2 px
 strokes, so it holds at 16 px. A favicon can't read the page's properties,
 so it and `theme-color` are the one place a site writes a colour's value:
-each look's `--tint` and `--background`, copied from `kit/theme.css`, and
-copied again when the theme moves.
+each look's `--tint` and `--background`, copied from the kit's `theme.css`,
+and copied again when the theme moves.
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">

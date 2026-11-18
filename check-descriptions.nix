@@ -1230,26 +1230,28 @@
     clippy finds nothing in hibernate-unlock or its tests
   '';
   home-answers-its-keys = ''
-    the local sites' home, built from three recorded sites and served with the kit, answers its keys
-    in headless Chromium: j, k and the arrows step its cursor and hold at the ends, g twice but not
-    once and G reach the first and the last, Return opens the site under the cursor, ? and F1 show
-    its keys and Escape hides them, its shown keys answer a tap, an arrow on the theme switch
-    chooses a look and leaves the cursor, the look holds to the next visit, its mark takes each
-    look's own tint from the kit, a document under a hero answers a tap on its keys, and the
-    web-design skill's page checks pass at a phone's width and a desk's in both looks, with nothing
-    logged
+    the local sites' home, built from three recorded sites and served with the kit and the theme's
+    web kit the sites share, answers its keys in headless Chromium: j, k and the arrows step its
+    cursor and hold at the ends, g twice but not once and G reach the first and the last, Return
+    opens the site under the cursor, ? and F1 show its keys and Escape hides them, its shown keys
+    answer a tap, an arrow on the theme switch chooses a look and leaves the cursor, the look holds
+    to the next visit, its mark takes each look's own tint from the kit, a document under a hero
+    answers a tap on its keys, and the web-design skill's page checks pass at a phone's width and a
+    desk's in both looks, with nothing logged
   '';
   home-builds-from-its-rows = ''
     the local sites' home lists each site from its row in sites.json, the settled apart and every
     name escaped, with a row Nix declares for a live site standing in for the record's at its path
     or going first, says every row it lists in rows.json as written, strips each page that asks
-    after its skip link, names each document loading a script file of its own rather than the
-    kit's, loads the kit's keys and switch and takes away the scripts it used to copy, draws its
-    mark in each look's tint or the other look's where one is missing, leaves out and says a tint
-    or ground that isn't a colour, leaves out and says a recorded row whose path leads off the
-    sites however a browser would read it and fails on a declared one before writing anything,
-    keeps the last build for a record holding NaN, an infinity or a lone surrogate, and changes
-    nothing on a second run
+    after its skip link, names each document loading a script file of its own rather than the kit's,
+    loads the kit's keys and switch and the theme and its fonts from the sites' shared copy, takes
+    away the scripts it used to copy, draws its mark in each look's tint or the other look's where
+    one is missing, takes its grounds and tints from the theme it's handed rather than a kit/ among
+    the documents, says a theme that isn't there and fails on one that isn't a stylesheet, leaves
+    out and says a tint or ground that isn't a colour, leaves out and says a recorded row whose path
+    leads off the sites however a browser would read it and fails on a declared one before writing
+    anything, keeps the last build for a record holding NaN, an infinity or a lone surrogate, and
+    changes nothing on a second run
   '';
   homes-probe-reads-as-the-reader = ''
     the web-design skill's homes probe, in headless Chromium over small sites of its own, learns a

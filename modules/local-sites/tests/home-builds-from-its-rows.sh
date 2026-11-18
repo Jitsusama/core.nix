@@ -1,24 +1,26 @@
 # shellcheck shell=bash
-# Checks the home's builder against a sites.json of three rows: a growing
-# site with a strip and a page of its own kind, a growing one with none, and
-# a settled one. The home lists the two growing ones in their beds in order
+# Checks the home's builder against a sites.json of three rows: a growing site
+# with a strip and a page of its own kind, a growing one with none, and a
+# settled one. The home lists the two growing ones in their beds in order
 # (live before on record) and the settled one under Kept, with every name
-# escaped, a contents line naming each bed and a standing line counting
-# them; llms.txt and the twin list all three; each stripped page gets its strip after the
-# skip link, linking home from its depth; the home's own files are put
-# beside it, its mark drawn in each look's tint, and its old scripts
-# taken away, while its page loads the kit's script and switch; its
-# theme-color takes each look's ground from the kit, and names none without
-# one; a look with no tint takes the other's, and a tint or ground that
-# isn't a colour is left out and said, never written in; a second
-# run changes no file; a broken record keeps the last build; a root with no
-# sites.json is left alone; a row Nix declares stands in for the record's,
-# or goes first, and rows.json says every row listed as it was written, in
-# the home's order; a recorded row whose path leads off the sites is left
-# out and said, and a declared one fails the build; and a
-# document loading a script file of its own is named, on any of its pages,
-# however its tag is spelled and even past a byte that isn't UTF-8, while one
-# loading only the kit's, and an app loading its own, are not.
+# escaped, a contents line naming each bed and a standing line counting them;
+# llms.txt and the twin list all three; each stripped page gets its strip
+# after the skip link, linking home from its depth; the home's own files are
+# put beside it, its mark drawn in each look's tint, and its old scripts taken
+# away, while its page loads the kit's script and switch and the theme and its
+# fonts from the sites' shared copy, never a kit/ of the documents'; its
+# theme-color and mark take each look's ground and tint from the theme it's
+# handed, not a kit/ among the documents, and names none without one, saying
+# so; a theme that isn't a stylesheet fails the build; a look with no tint
+# takes the other's, and a tint or ground that isn't a colour is left out and
+# said, never written in; a second run changes no file; a broken record keeps
+# the last build; a root with no sites.json is left alone; a row Nix declares
+# stands in for the record's, or goes first, and rows.json says every row
+# listed as it was written, in the home's order; a recorded row whose path
+# leads off the sites is left out and said, and a declared one fails the
+# build; and a document loading a script file of its own is named, on any of
+# its pages, however its tag is spelled and even past a byte that isn't UTF-8,
+# while one loading only the kit's, and an app loading its own, are not.
 # usage: home-builds-from-its-rows.sh <python> <sources>
 set -euo pipefail
 
@@ -34,7 +36,7 @@ fail() {
 }
 
 mkdir -p "$work/empty"
-"$python" "$sources/home.py" "$sources" "$work/empty" > /dev/null
+"$python" "$sources/home.py" "$sources" "$work/empty" "$work/empty/kit/theme.css" > /dev/null
 left=$(ls -A "$work/empty")
 [ -z "$left" ] || fail "a root with no sites.json gained files"
 
@@ -82,7 +84,7 @@ script "src=/local-sites/kit/../x.js" notes/index.html
 # What an older builder copied in beside the home, which this one takes away.
 touch "$root/home.js" "$root/theme.js"
 
-said=$("$python" "$sources/home.py" "$sources" "$root")
+said=$("$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css")
 owning="scripts of their own in notes/ (/local-sites/kit/../x.js), old/ (site.js, ways.js)"
 [ "$said" = "home: 2 sites, 1 kept; strips on 3 pages; $owning" ] || fail "it said: $said"
 
@@ -98,6 +100,16 @@ grep -q '<script type="module" src="/local-sites/kit/home.js"></script>' "$index
   fail "the home doesn't load the kit's home.js"
 grep -q '<link rel="stylesheet" href="/local-sites/kit/switch.css">' "$index" ||
   fail "the home doesn't load the kit's switch.css"
+# The theme and its fonts come from the one copy the sites share, so a visit
+# from the home to a site fetches them once.
+for part in theme.css base.css fonts/fraunces.woff2; do
+  grep -q "href=\"/local-sites/web/$part\"" "$index" ||
+    fail "the home doesn't load $part from the sites' shared copy"
+done
+# However it's spelled, as site.sh refuses it on a live page.
+if grep -qiE '(^|[^-a-z0-9_/.])(/|(\./|\.\./)*)kit/' "$index"; then
+  fail "the home still loads a kit/ of the documents'"
+fi
 ! grep -qE 'src="(home|theme)\.js"' "$index" || fail "the home still loads a script of its own"
 grep -q '<span class="name">The map</span>' "$index" || fail "the home lacks The map"
 grep -q '<span class="name">Notes &amp; such</span>' "$index" || fail "a name wasn't escaped"
@@ -133,7 +145,8 @@ kit_of() {
   mkdir -p "$work/$1/kit"
   cp "$root/sites.json" "$work/$1/"
   printf '%s\n' "$2" > "$work/$1/kit/theme.css"
-  "$python" "$sources/home.py" "$sources" "$work/$1" > /dev/null 2> "$work/$1.said"
+  "$python" "$sources/home.py" "$sources" "$work/$1" "$work/$1/kit/theme.css" \
+    > /dev/null 2> "$work/$1.said"
 }
 # Whether the mark built in $work/$1 strokes $2 in the dark look and $3 in the
 # light one, failing with $4 otherwise.
@@ -186,7 +199,7 @@ grep -q '<span>Test</span>' "$root/map/tree.html" || fail "the map's own page do
 grep -q '<span>settled</span>' "$root/old/index.html" || fail "the old one's strip doesn't say settled"
 
 before=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
-"$python" "$sources/home.py" "$sources" "$root" > /dev/null
+"$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" > /dev/null
 after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 [ "$before" = "$after" ] || fail "a second run changed a file"
 strips=$(grep -c 'sites strip: home.py' "$root/map/index.html")
@@ -202,7 +215,7 @@ cat > "$work/declared.json" << 'EOF'
    "homes": ["tree", {"kind": "heron", "address": "#heron={name}"}]}
 ]}
 EOF
-said=$("$python" "$sources/home.py" "$sources" "$root" "$work/declared.json")
+said=$("$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" "$work/declared.json")
 # Declared, the old one is an app, whose scripts are its own business.
 owning="scripts of their own in notes/ (/local-sites/kit/../x.js)"
 [ "$said" = "home: 4 sites, 0 kept; strips on 2 pages; $owning" ] || fail "declared, it said: $said"
@@ -222,10 +235,11 @@ print(*(row["path"] for row in listed), "whole" if whole else "rewritten")' \
   "$root/rows.json" "$root/sites.json" "$work/declared.json")
 [ "$rows" = "grove/ map/ notes/ old/ whole" ] || fail "rows.json isn't every row as written: $rows"
 before=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
-"$python" "$sources/home.py" "$sources" "$root" "$work/declared.json" > /dev/null
+"$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" "$work/declared.json" \
+  > /dev/null
 after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 [ "$before" = "$after" ] || fail "a second run with declared rows changed a file"
-"$python" "$sources/home.py" "$sources" "$root" > /dev/null
+"$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" > /dev/null
 
 # A path the record holds twice, however spelled, is listed once when
 # declared, and with no record or folder yet the declared rows make both.
@@ -233,10 +247,12 @@ mkdir -p "$work/twice"
 grove=$(sed -n '2s/},$/}/p' "$work/declared.json")
 printf '{"sites": [%s, %s]}\n' "${grove/grove\//grove}" "${grove/grove\//.\/grove\/}" \
   > "$work/twice/sites.json"
-"$python" "$sources/home.py" "$sources" "$work/twice" "$work/declared.json" > /dev/null
+"$python" "$sources/home.py" "$sources" "$work/twice" "$work/twice/kit/theme.css" \
+  "$work/declared.json" > /dev/null
 listed=$(grep -c '^- \[The grove\]' "$work/twice/llms.txt")
 [ "$listed" = 1 ] || fail "a twice-recorded declared site was listed $listed times"
-"$python" "$sources/home.py" "$sources" "$work/fresh/sites" "$work/declared.json" > /dev/null
+"$python" "$sources/home.py" "$sources" "$work/fresh/sites" "$work/fresh/sites/kit/theme.css" \
+  "$work/declared.json" > /dev/null
 grep -q '<span class="name">The grove</span>' "$work/fresh/sites/index.html" ||
   fail "with no record, the declared rows made no home"
 # A row whose path leads anywhere but a page of the sites' own is left out of
@@ -262,7 +278,7 @@ cat > "$work/strays/sites.json" << 'EOF'
   {"path": "tern/", "name": "Tern", "kind": "mock"}
 ]}
 EOF
-said=$("$python" "$sources/home.py" "$sources" "$work/strays")
+said=$("$python" "$sources/home.py" "$sources" "$work/strays" "$work/strays/kit/theme.css")
 left="left out 'javascript:x()', '//gull.example/', '../up/', 'a\\\\b/', ' javascript:x()',"
 left+=" 'java\\tscript:x()', '', '/root/', './.dot/', '٣/', 5,"
 left+=" 'tern/.hidden/', 'tern/javascript:x()', no path of ours"
@@ -282,7 +298,7 @@ mkdir -p "$work/unread"
 for field in '"weight": NaN' '"weight": 1e999' '"note": "\ud800"'; do
   echo "{\"sites\": [{\"path\": \"gull/\", \"name\": \"Gull\", \"kind\": \"mock\", $field}]}" \
     > "$work/unread/sites.json"
-  said=$("$python" "$sources/home.py" "$sources" "$work/unread")
+  said=$("$python" "$sources/home.py" "$sources" "$work/unread" "$work/unread/kit/theme.css")
   [[ $said == *"can't be read"*"so the last build stays" ]] || fail "$field was read: $said"
   [ ! -e "$work/unread/index.html" ] || fail "$field was built"
 done
@@ -291,8 +307,8 @@ done
 mkdir -p "$work/astray"
 echo '{"sites": [{"path": "javascript:x()", "name": "Stray", "kind": "app"}]}' \
   > "$work/astray.json"
-if "$python" "$sources/home.py" "$sources" "$work/astray" "$work/astray.json" \
-  > /dev/null 2> "$work/astray.said"; then
+if "$python" "$sources/home.py" "$sources" "$work/astray" "$work/astray/kit/theme.css" \
+  "$work/astray.json" > /dev/null 2> "$work/astray.said"; then
   fail "a stray declared row didn't fail the build"
 fi
 told=$(< "$work/astray.said")
@@ -301,19 +317,47 @@ told=$(< "$work/astray.said")
 written=$(ls -A "$work/astray")
 [ -z "$written" ] || fail "a stray declared row failed after writing $written"
 
+# The theme the home is handed is the one it wears, not a kit/ among the
+# documents, which a session can write and the home no longer reads.
+mkdir -p "$work/handed"
+sed -e 's/forest/moss/' -e 's/paper/linen/' -e 's/amber/rust/' -e 's/ochre/sand/' \
+  "$root/kit/theme.css" > "$work/handed/theme.css"
+"$python" "$sources/home.py" "$sources" "$root" "$work/handed/theme.css" > /dev/null
+grep -q 'media="(prefers-color-scheme: dark)" content="moss"' "$index" ||
+  fail "the home took its dark ground from somewhere other than the theme it was handed"
+grep -q 'media="(prefers-color-scheme: light)" content="linen"' "$index" ||
+  fail "the home took its light ground from somewhere other than the theme it was handed"
+grep -q 'dark) { g { stroke: rust; }' "$root/favicon.svg" ||
+  fail "the home's mark took its dark tint from somewhere other than the theme it was handed"
+grep -q '^    g { stroke: sand; }' "$root/favicon.svg" ||
+  fail "the home's mark took its light tint from somewhere other than the theme it was handed"
+# A caller still on the old shape, handing the declared rows where the theme
+# goes, fails rather than building a home that names no look.
+if "$python" "$sources/home.py" "$sources" "$root" "$work/declared.json" \
+  > /dev/null 2> "$work/shape.said"; then
+  fail "the declared rows handed as the theme built anyway"
+fi
+told=$(< "$work/shape.said")
+[[ $told == *"isn't a stylesheet"* ]] ||
+  fail "the declared rows as the theme failed for another reason: $told"
+
 # Without the kit, the home names no ground rather than a made-up one.
 rm "$root/kit/theme.css"
-"$python" "$sources/home.py" "$sources" "$root" > /dev/null
+"$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" > /dev/null \
+  2> "$work/gone.said"
 if grep -q 'theme-color' "$index"; then
   fail "the home names a ground with no kit to take it from"
 fi
+grep -q "the theme $root/kit/theme.css isn't there" "$work/gone.said" ||
+  fail "a missing theme went unsaid"
 
 # A record caught half written, or broken by a slip, keeps the last good
 # build and says why, rather than failing and leaving the home to it.
 cp "$index" "$work/last.html"
 head -c 200 "$root/sites.json" > "$work/cut.json"
 mv "$work/cut.json" "$root/sites.json"
-said=$("$python" "$sources/home.py" "$sources" "$root") || fail "a broken record failed the build"
+said=$("$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css") ||
+  fail "a broken record failed the build"
 case $said in
   "home: sites.json can't be read ("*"), so the last build stays") ;;
   *) fail "a broken record said: $said" ;;
