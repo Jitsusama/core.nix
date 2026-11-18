@@ -296,9 +296,14 @@ QtObject {
         expect("a laying that drew none and was no step back says nothing",
             Trials.keptSaid({ built: 0, reused: 0, split: none }) === "",
             Trials.keptSaid({ built: 0, reused: 0, split: none }));
-        expect("one kept before steps back were told says only its rows",
-            Trials.keptSaid({ built: 3, reused: 7 }) === ": 3 rows built, 7 taken back",
-            Trials.keptSaid({ built: 3, reused: 7 }));
+        expect("a keeping that took time is shown",
+            Trials.keptShown({ fresh: 2, laying: 0, split: unstepped })
+                && Trials.keptShown({ fresh: 0, laying: 3, split: unstepped }), "hidden");
+        expect("a step back out that kept every row as it stood is shown",
+            Trials.keptShown({ fresh: 0, laying: 0, split: unchanged }), "hidden");
+        expect("a keeping that took none and was no step back isn't",
+            !Trials.keptShown({ fresh: 0, laying: 0, split: unstepped })
+                && !Trials.keptShown(null), "shown");
         expect("a showing says how long rows spent reading what they hold",
             Trials.readingSaid(12.6) === ", 13 reading what they hold"
                 && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",

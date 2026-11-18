@@ -145,7 +145,14 @@ function steppedMaking(making, split) {
 function keptSaid(kept) {
     const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
         ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
-    return rows + landedSaid(kept.split ?? {});
+    return rows + landedSaid(kept.split);
+}
+
+// Whether a key's showing says how its rows were kept: where laying them
+// out took any time, or where it was a step back out, which says where it
+// came to even when it kept every row as it stood.
+function keptShown(kept) {
+    return !!kept && (kept.fresh + kept.laying > 0 || kept.split?.stepping === true);
 }
 
 // Where a step back out came to and how its rows went in, or nothing for a
@@ -156,7 +163,7 @@ function keptSaid(kept) {
 // list put in afresh with its view at its top has no rows above to split
 // off; rows kept aren't put in.
 function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = false,
-    empty = false }) {
+    empty = false } = {}) {
     if (!stepping) {
         return "";
     }
