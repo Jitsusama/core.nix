@@ -24,18 +24,19 @@
 //! mycelium's closest that day were 52 s apart.
 //! Where any of it can't be told, nothing is held back, as before.
 //!
-//! When each merge reached the machine is told the same way, between
-//! one arrival and the next: core's by the switches the integration
-//! record lists, a line a switch with when and the core it ran
-//! (`{"at", "revs": {"core"}}`), the harness's by when pi-packages
-//! moved `current` off each version, which it marks in `retired` with
-//! the version's commit at that time, so the next marker's commit, or
-//! `current`'s for the last, is where it moved to. A folder made but
-//! never swapped to leaves no marker, so it brings nothing. What an
-//! arrival brought is what its first parents hold past the one before;
-//! what the first of them brought isn't told, since what came before it
-//! isn't said. The time is shown only for a merge the machine carries,
-//! so a switch back leaves no date on what it took away.
+//! When each of core's merges reached the machine is told by the
+//! switches the integration record lists, a line a switch with when and
+//! the core it ran (`{"at", "revs": {"core"}}`), in the order they ran:
+//! what a switch brought is what its first parents hold past the one
+//! before, and the latest switch to bring a merge is its. Read from the
+//! newest back, the first line that can't be read, or pair git can't
+//! say, ends what is told, since a switch back across it may have taken
+//! a merge away and brought it again. The time is shown only for a merge
+//! the machine is known to carry, so a switch back leaves no date on
+//! what it took away. The harness's merges carry no time yet: the
+//! markers pi-packages leaves in `retired` go with a version it sweeps,
+//! and one is written for a build never swapped to, so they don't say
+//! each swap.
 //!
 //! Long because more than half of it is the tests beside it, which build
 //! real histories and records for each way an arrival is told; the code
@@ -59,8 +60,9 @@ const RECORDED_WITHIN: i64 = 34_000;
 /// past which a landing's own drawer is long gone.
 const ARRIVALS_READ: usize = 200;
 
-/// One arrival: when, the commit running before and the commit after.
-type Arrival = (i64, String, String);
+/// One arrival: when, the commit running before and the commit after;
+/// none where the record can't say, which ends what is told before it.
+type Arrival = Option<(i64, String, String)>;
 
 /// What of each repository's merges the running system carries, by their
 /// numbers, or of mycelium's by the time of its pin, each none where that
@@ -127,15 +129,7 @@ impl Carried {
             // A stray byte costs its line, never the record.
             let lines = fs::read(switches).unwrap_or_default();
             let switches = switched(&String::from_utf8_lossy(&lines));
-            since.insert("core.nix", brought(switches, between(clone)));
-        }
-        if let Some(folder) = said.harness {
-            let now = fs::read_link(folder.join("current"))
-                .ok()
-                .and_then(|points| installed(&points));
-            let swaps = swapped(retirements(&folder.join("retired")), now);
-            let mirror = folder.join("mirror.git");
-            since.insert("agentic-harness.pi", brought(swaps, between(&mirror)));
+            since.insert("core.nix", brought(&switches, between(clone)));
         }
         Self {
             core,
@@ -145,13 +139,19 @@ impl Carried {
         }
     }
 
-    /// When the switch or install that brought landing `one` happened, in
-    /// ms: one of core's or the harness's the machine carries, where
-    /// that's told.
+    /// When the switch that brought landing `one` happened, in ms: one of
+    /// core's the machine is known to carry, where that's told. With what
+    /// runs unknown, a merge a switch back took away would keep its date.
     pub fn since(&self, one: &Value) -> Option<i64> {
         let (name, number) = numbered(one);
-        let at = self.since.get(name)?.get(&number?).copied()?;
-        self.carries(one).then_some(at)
+        let number = number?;
+        let at = self.since.get(name)?.get(&number).copied()?;
+        let merged = match name {
+            "core.nix" => self.core.as_ref(),
+            "agentic-harness.pi" => self.harness.as_ref(),
+            _ => None,
+        };
+        merged?.contains(&number).then_some(at)
     }
 
     /// Whether landing `one` is on the running system: one of core's or
@@ -189,6 +189,7 @@ impl Carried {
     #[cfg(test)]
     pub fn arrived(number: u64, at: i64) -> Self {
         Self {
+            core: Some(HashSet::from([number])),
             since: HashMap::from([("core.nix", HashMap::from([(number, at)]))]),
             ..Self::default()
         }
@@ -230,27 +231,29 @@ fn between(folder: &Path) -> impl Fn(&str, &str) -> Option<String> + '_ {
 }
 
 /// When each merge last arrived, in ms, by its number: what each of
-/// `arrivals` brought past the commit before it, as `log` says the
-/// first parents between them, the latest `ARRIVALS_READ` of them. The
-/// latest arrival to bring one is its, since a switch back that dropped
-/// it and a switch on that brought it again mean it has run only since
-/// the second.
-fn brought(
-    mut arrivals: Vec<Arrival>,
-    log: impl Fn(&str, &str) -> Option<String>,
-) -> HashMap<u64, i64> {
-    arrivals.sort_by_key(|(at, _, _)| *at);
+/// `arrivals`, in the order they ran, brought past the commit before it,
+/// as `log` says the first parents between them, of the latest
+/// `ARRIVALS_READ`. The latest arrival to bring one is its, since a
+/// switch back that dropped it and a switch on that brought it again
+/// mean it has run only since the second. Read from the newest back, so
+/// an arrival the record or `log` can't say ends it: past that, a date
+/// may be from before a switch back. Their own times aren't trusted to
+/// order them, so one clock set wrong can't outrank every later switch.
+fn brought(arrivals: &[Arrival], log: impl Fn(&str, &str) -> Option<String>) -> HashMap<u64, i64> {
     let latest = arrivals.len().saturating_sub(ARRIVALS_READ);
     let mut since = HashMap::new();
-    for (at, was, now) in &arrivals[latest..] {
+    for arrival in arrivals[latest..].iter().rev() {
+        let Some((at, was, now)) = arrival else {
+            break;
+        };
         if was == now {
             continue;
         }
         let Some(subjects) = log(was, now) else {
-            continue;
+            break;
         };
         for number in merged(&subjects) {
-            since.insert(number, *at);
+            since.entry(number).or_insert(*at);
         }
     }
     since
@@ -258,10 +261,10 @@ fn brought(
 
 /// Each switch in the integration's record `lines`, when, the core
 /// before it and the core it ran, from lines next to each other that
-/// both say when and a whole core. A line that doesn't breaks the run,
-/// since what ran across it isn't said, and a switch past it may have
-/// gone through a switch back the pair can't see. The record is kept in
-/// the order its switches ran.
+/// both say when and a whole core, in the order the record keeps, which
+/// is the order its switches ran. A line that doesn't is a break, since
+/// what ran across it isn't said, and a switch past it may have gone
+/// through a switch back the pair can't see.
 fn switched(lines: &str) -> Vec<Arrival> {
     let said: Vec<Option<(i64, String)>> = lines
         .lines()
@@ -272,44 +275,10 @@ fn switched(lines: &str) -> Vec<Arrival> {
         })
         .collect();
     said.windows(2)
-        .filter_map(|pair| match pair {
+        .map(|pair| match pair {
             [Some((_, was)), Some((at, now))] => Some((*at, was.clone(), now.clone())),
             _ => None,
         })
-        .collect()
-}
-
-/// Each version `current` left, by its commit, and when, from the
-/// markers pi-packages leaves in `retired` as it swaps.
-fn retirements(retired: &Path) -> Vec<(i64, String)> {
-    fs::read_dir(retired)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| {
-            let commit = installed(&entry.path())?;
-            let left = entry.metadata().ok()?.modified().ok()?;
-            let ms = left.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis();
-            Some((i64::try_from(ms).ok()?, commit))
-        })
-        .collect()
-}
-
-/// Each swap of `current`, from the versions it `left` and when, and
-/// the commit it names `now`: it moved off each to the next one it
-/// left, and off the last to `now`. A version swapped back to and left
-/// again keeps only its last leaving, so only the latest swaps are
-/// whole, which are the ones a landing's date reads.
-fn swapped(mut left: Vec<(i64, String)>, now: Option<String>) -> Vec<Arrival> {
-    left.sort_by_key(|(at, _)| *at);
-    let to = left
-        .iter()
-        .skip(1)
-        .map(|(_, commit)| Some(commit.clone()))
-        .chain([now]);
-    left.iter()
-        .zip(to)
-        .filter_map(|((at, was), now)| Some((*at, was.clone(), now?)))
         .collect()
 }
 
@@ -519,14 +488,15 @@ mod tests {
     #[test]
     fn a_merge_arrived_with_the_switch_that_brought_it_past_the_one_before() {
         let (a, b, c) = ("a".repeat(40), "b".repeat(40), "c".repeat(40));
-        // Out of order, and a switch to the core already running, as a
-        // switch for the machine repository's own change is.
+        // In the order they ran, one clock set back (150), and a switch to
+        // the core already running, as one for the machine repository's
+        // own change is.
         let arrivals = vec![
-            (300, b.clone(), c.clone()),
-            (200, a.clone(), b.clone()),
-            (250, b.clone(), b.clone()),
-            (400, c.clone(), b.clone()),
-            (500, b.clone(), c.clone()),
+            Some((200, a.clone(), b.clone())),
+            Some((250, b.clone(), b.clone())),
+            Some((300, b.clone(), c.clone())),
+            Some((400, c.clone(), b.clone())),
+            Some((150, b.clone(), c.clone())),
         ];
         let log = |was: &str, now: &str| match (&was[..1], &now[..1]) {
             ("a", "b") => Some("Merge pull request #10 from x/y\nfix(z): w\n".to_owned()),
@@ -537,10 +507,40 @@ mod tests {
             _ => panic!("asked only between the switches next to each other: {was}..{now}"),
         };
         assert_eq!(
-            brought(arrivals, log),
-            HashMap::from([(10, 200), (11, 500), (12, 500)]),
-            "each merge by the latest switch that brought it, after a switch back took it \
-             away"
+            brought(&arrivals, log),
+            HashMap::from([(10, 200), (11, 150), (12, 150)]),
+            "each merge by the latest switch to run that brought it, after a switch back \
+             took it away, whatever its clock said"
+        );
+    }
+
+    #[test]
+    fn nothing_is_told_from_before_what_the_record_or_git_cant_say() {
+        let (a, b, c) = ("a".repeat(40), "b".repeat(40), "c".repeat(40));
+        let log = |was: &str, now: &str| match (&was[..1], &now[..1]) {
+            ("a", "b") => Some("Merge pull request #10 from x/y\n".to_owned()),
+            ("b", "c") => Some("Merge pull request #11 from x/y\n".to_owned()),
+            _ => None,
+        };
+        let unread = vec![
+            Some((200, a.clone(), b.clone())),
+            None,
+            Some((300, b.clone(), c.clone())),
+        ];
+        assert_eq!(
+            brought(&unread, log),
+            HashMap::from([(11, 300)]),
+            "a switch back may hide behind a line that can't be read"
+        );
+        let unsaid = vec![
+            Some((200, a.clone(), b.clone())),
+            Some((250, b.clone(), a.clone())),
+            Some((300, b.clone(), c)),
+        ];
+        assert_eq!(
+            brought(&unsaid, log),
+            HashMap::from([(11, 300)]),
+            "nor is a merge dated across a pair git can't say"
         );
     }
 
@@ -548,17 +548,17 @@ mod tests {
     fn only_the_latest_arrivals_are_read() {
         let arrivals: Vec<Arrival> = (0..=ARRIVALS_READ)
             .map(|at| {
-                (
+                Some((
                     i64::try_from(at).unwrap_or(0),
                     format!("{at}"),
                     "x".to_owned(),
-                )
+                ))
             })
             .collect();
         let asked = std::cell::RefCell::new(Vec::new());
-        let _ = brought(arrivals, |was, _| {
+        let _ = brought(&arrivals, |was, _| {
             asked.borrow_mut().push(was.to_owned());
-            None
+            Some(String::new())
         });
         assert_eq!(asked.borrow().len(), ARRIVALS_READ, "a bounded record");
         assert!(
@@ -569,9 +569,9 @@ mod tests {
 
     #[test]
     fn a_merge_whose_history_cant_be_read_arrived_at_no_time_told() {
-        let arrivals = vec![(200, "a".repeat(40), "b".repeat(40))];
+        let arrivals = vec![Some((200, "a".repeat(40), "b".repeat(40)))];
         assert!(
-            brought(arrivals, |_, _| None).is_empty(),
+            brought(&arrivals, |_, _| None).is_empty(),
             "git said nothing"
         );
     }
@@ -598,37 +598,22 @@ mod tests {
         assert_eq!(
             switched(&lines),
             vec![
-                (1_795_003_200_000, a.clone(), b.clone()),
-                (1_795_010_400_000, c.clone(), d.clone()),
+                Some((1_795_003_200_000, a.clone(), b.clone())),
+                None,
+                None,
+                None,
+                None,
+                Some((1_795_010_400_000, c.clone(), d.clone())),
             ],
-            "each pair of whole lines; no switch is read across a line that isn't"
-        );
-    }
-
-    #[test]
-    fn the_harness_moved_off_each_version_it_left_to_the_next() {
-        let (a, b, c) = ("a".repeat(40), "b".repeat(40), "c".repeat(40));
-        // Out of order, as a folder lists them.
-        let left = vec![(300, b.clone()), (100, a.clone())];
-        assert_eq!(
-            swapped(left.clone(), Some(c.clone())),
-            vec![(100, a.clone(), b.clone()), (300, b.clone(), c)],
-            "off a to b, then off b to what current names"
-        );
-        assert_eq!(
-            swapped(left, None),
-            vec![(100, a, b)],
-            "with current unread, the last swap isn't told"
+            "each pair of whole lines, and a break for each across a line that isn't"
         );
     }
 
     #[test]
     fn a_landing_says_since_when_the_machine_has_had_its_merge() {
         let carried = Carried {
-            since: HashMap::from([
-                ("core.nix", HashMap::from([(4177, 200)])),
-                ("agentic-harness.pi", HashMap::from([(1802, 300)])),
-            ]),
+            core: Some(HashSet::from([4177, 4178])),
+            since: HashMap::from([("core.nix", HashMap::from([(4177, 200)]))]),
             ..Carried::default()
         };
         let landing = |repo: &str, at: &str| json!({"repo": repo, "ref": at});
@@ -637,11 +622,6 @@ mod tests {
                 landing("Jitsusama/core.nix", "core.nix#4177"),
                 Some(200),
                 "core's by its switch",
-            ),
-            (
-                landing("Jitsusama/agentic-harness.pi", "agentic-harness.pi#1802"),
-                Some(300),
-                "the harness's by its install",
             ),
             (
                 landing("Jitsusama/core.nix", "core.nix#4178"),
@@ -670,20 +650,15 @@ mod tests {
             None,
             "a merge a switch back took away isn't on the machine since any time"
         );
-    }
-
-    #[test]
-    fn a_retirement_is_a_marker_named_by_its_commit() {
-        let folder = std::env::temp_dir().join(format!("agents-retired-{}", std::process::id()));
-        fs::create_dir_all(&folder).expect("a folder for the markers");
-        fs::write(folder.join(CORE), "").expect("a version's marker");
-        fs::write(folder.join("next"), "").expect("a file that isn't one");
-        let found: Vec<String> = retirements(&folder)
-            .into_iter()
-            .map(|(_, one)| one)
-            .collect();
-        fs::remove_dir_all(&folder).expect("the test's folder gone");
-        assert_eq!(found, vec![CORE.to_owned()], "only the commit's marker");
+        let unknown = Carried {
+            core: None,
+            ..carried
+        };
+        assert_eq!(
+            unknown.since(&landing("Jitsusama/core.nix", "core.nix#4177")),
+            None,
+            "with what runs unknown, a date may be from before a switch back"
+        );
     }
 
     /// Runs git in `folder` as a test's own, with no settings of the
@@ -706,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    fn the_machine_says_since_when_from_its_switches_and_swaps_in_real_history() {
+    fn the_machine_says_since_when_from_its_switches_in_real_history() {
         let folder = std::env::temp_dir().join(format!("agents-since-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
         let repo = folder.join("core");
@@ -727,17 +702,13 @@ mod tests {
             format!("{}\n{}\n", line(1_000, &first), line(2_000, &eleven)),
         )
         .expect("the switches");
-        // The harness's mirror is the same history: off `first` at 3 s to
-        // `ten`, the version current names.
+        // The harness's install is the same history, current naming `ten`,
+        // so its merge is carried but given no time.
         let harness = folder.join("harness");
-        fs::create_dir_all(harness.join("retired")).expect("its markers' folder");
+        fs::create_dir_all(&harness).expect("its folder");
         std::os::unix::fs::symlink(&repo, harness.join("mirror.git")).expect("its mirror");
         std::os::unix::fs::symlink(format!("versions/{ten}"), harness.join("current"))
             .expect("its current");
-        let marker = fs::File::create(harness.join("retired").join(&first)).expect("a marker");
-        marker
-            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(3))
-            .expect("its time");
         let answer = folder.join("last.json");
         let read = |core: &str| {
             fs::write(
@@ -775,17 +746,16 @@ mod tests {
             ),
             (
                 landing("Jitsusama/agentic-harness.pi", 10),
-                Some(3_000),
-                "the harness's by its swap",
-            ),
-            (
-                landing("Jitsusama/agentic-harness.pi", 11),
                 None,
-                "not in the version current names",
+                "the harness's swaps aren't told",
             ),
         ] {
             assert_eq!(running.since(&one), since, "{why}");
         }
+        assert!(
+            running.carries(&landing("Jitsusama/agentic-harness.pi", 10)),
+            "though its install carries it"
+        );
         assert_eq!(
             rolled_back.since(&landing("Jitsusama/core.nix", 11)),
             None,
