@@ -1239,6 +1239,7 @@ fn owned_trees(home: &Home) -> Config {
              "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
              "sources": {{
                "src": {{ "kind": "cargo", "roots": ["{0}/trees"] }},
+               "trash": {{ "kind": "trash", "path": "{0}/Trash" }},
                "workspaces": {{ "kind": "workspaces", "path": "{0}/workspaces",
                                 "quests": "{0}/quests", "trees": "{0}/cut" }} }} }}"#,
         home.root.display()
@@ -1477,6 +1478,87 @@ fn a_checkout_with_work_not_committed_is_never_finished() {
     let mut guard = home.guard(config());
     guard.step(&tick(), &CALM).unwrap();
     assert_eq!(times_asked(&asked), 0, "its head isn't what's in it");
+}
+
+#[test]
+fn a_held_snapshots_build_goes_an_hour_after_its_last_use() {
+    // A gate's snapshot is held by the session that cut it, which goes on
+    // working long after the gate: on 17 November 34 such snapshots held
+    // 86 GiB of builds on a filling disk. A worktree held as long keeps its
+    // build, since a person may come back to edit it.
+    for shareable in [true, false] {
+        let home = Home::new();
+        let built = held_tree(&home, 400);
+        let record = home.root.join("cut/app.json");
+        let body = fs::read_to_string(&record).unwrap().replacen(
+            '{',
+            &format!(r#"{{"identity":{{"key":"app","shareable":{shareable}}},"#),
+            1,
+        );
+        fs::write(&record, body).unwrap();
+        let mut guard = home.guard(owned_trees(&home));
+        guard.step(&tick(), &CALM).unwrap();
+        assert!(built.exists(), "a held tree's build stays while it's fresh");
+        // Trash long expired goes at any upkeep, so whether it's still
+        // there says whether one came.
+        let probe = home.trashed("old.txt", "2001-09-09T01:46:40");
+        let after = |seconds: f64| Tick {
+            wall: tick().wall + seconds,
+            monotonic: 3_600.0 + seconds,
+            ..tick()
+        };
+        guard.step(&after(1_800.0), &CALM).unwrap();
+        assert!(probe.exists(), "no upkeep comes before the hour");
+        assert!(built.exists(), "half an hour unused, the build stays");
+        guard.step(&after(3_700.0), &CALM).unwrap();
+        if shareable {
+            assert!(!probe.exists(), "the snapshot's hour made upkeep due");
+            assert!(
+                !built.exists(),
+                "a snapshot's build goes after an idle hour"
+            );
+        } else {
+            assert!(probe.exists(), "a worktree's build makes nothing due");
+            guard.step(&after(7.0 * 3_600.0), &CALM).unwrap();
+            assert!(!probe.exists(), "routine upkeep came");
+            assert!(built.exists(), "a worktree's build stays through upkeep");
+        }
+    }
+}
+
+#[test]
+fn a_snapshot_cut_since_the_last_survey_is_looked_at_an_hour_on() {
+    // On 17 November a gate's snapshot was cut, and built in, after the
+    // guard's upkeep, so no survey had timed its build's hour, and it
+    // would have waited six for routine upkeep.
+    let home = Home::new();
+    let mut guard = home.guard(owned_trees(&home));
+    let after = |seconds: f64| Tick {
+        wall: tick().wall + seconds,
+        monotonic: 3_600.0 + seconds,
+        ..tick()
+    };
+    // The first step starts the guard; the second is its first upkeep,
+    // which the probe's going shows.
+    let probe = home.trashed("old.txt", "2001-09-09T01:46:40");
+    guard.step(&after(0.0), &CALM).unwrap();
+    guard.step(&after(61.0), &CALM).unwrap();
+    assert!(!probe.exists(), "upkeep ran before the snapshot was cut");
+    let built = held_tree(&home, 400);
+    let record = home.root.join("cut/app.json");
+    let body = fs::read_to_string(&record).unwrap().replacen(
+        '{',
+        r#"{"identity":{"key":"app","shareable":true},"#,
+        1,
+    );
+    fs::write(&record, body).unwrap();
+    guard.step(&after(122.0), &CALM).unwrap();
+    assert!(built.exists(), "a fresh snapshot's build stays");
+    guard.step(&after(3_900.0), &CALM).unwrap();
+    assert!(
+        !built.exists(),
+        "a snapshot cut after upkeep loses its idle build an hour on"
+    );
 }
 
 #[test]

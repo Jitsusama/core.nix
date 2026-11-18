@@ -64,7 +64,17 @@ or launchd, and [`home.nix`][2] the account's.
   for (a restarted host resumes its sessions under a new process, while
   the record goes on naming the old one), unless a quest at work lists
   it (a quest parked on the bench or for someday isn't: its builds are a
-  cache), and a temp
+  cache). A build in
+  a snapshot the broker pinned at a commit, its record shareable and its
+  path the build's git top, goes an hour after it was last built in,
+  unless a session sits in its tree, whoever holds it and whatever the
+  band: nobody edits a snapshot, and the session that cut one for a gate
+  goes on long after the gate, so its holder ending says nothing. In such
+  a snapshot a crate's older build goes once an hour unused, even while
+  the next gate builds, and its incremental sessions go while nobody sits
+  in the tree, since rustc's locks keep the one a build uses. The guard
+  makes upkeep due the moment the soonest of these passes its hour. So
+  does a temp
   entry nothing has changed since the last boot, whatever its name, since
   whatever made it ended with that boot. A browser profile in the `tmp/`
   of a quest still at work goes once nothing has changed in it for an

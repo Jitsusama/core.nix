@@ -66,6 +66,7 @@ mod socket;
 mod state;
 mod store_roots;
 mod survey;
+mod survey_trees;
 mod temp;
 mod trash;
 mod trees;

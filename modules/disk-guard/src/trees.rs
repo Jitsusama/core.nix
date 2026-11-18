@@ -13,6 +13,10 @@ use std::path::{Path, PathBuf};
 pub struct Seen {
     pub used: Use,
     pub finished: bool,
+    /// Its tree is a snapshot a broker pinned at a commit, which nobody
+    /// edits: a build there is a gate's or a reader's, made again from
+    /// the same commit.
+    pub pinned: bool,
     pub size: u64,
     /// When it was last built or installed into, in wall seconds.
     pub last_used: f64,
@@ -107,6 +111,12 @@ pub fn last_used(found: &Found) -> f64 {
     packages.chain(committed).fold(top, f64::max)
 }
 
+/// How long a build in a pinned snapshot may go unused before it's spent.
+/// On 17 November a gate's snapshot kept a 51 GiB build for two hours
+/// after the gate ended, while the disk filled; a gate's builds run
+/// minutes apart, so an hour keeps one a run of gates shares.
+pub const SNAPSHOT_UNUSED: f64 = 3600.0;
+
 /// The candidate a found tree makes, or none while something works in it or
 /// can't be read. A tree whose checkout is gone is spent like a finished
 /// one, and has no checkout left to judge its use by.
@@ -121,14 +131,18 @@ pub fn candidate(found: &Found, seen: &Seen, awake: &Awake, now: f64) -> Option<
         Kind::Install => Class::Install,
     };
     let gone = matches!(found.checkout, Checkout::Gone(_));
+    // Used later than now, or too big to date, is used now.
+    let idle = awake.since(seen.last_used.min(now), now).max(0.0);
+    // Nobody edits a pinned snapshot, so a build there an hour unused is
+    // a gate's or a reader's that has ended, whoever still holds the tree.
+    let snapshot_spent = seen.pinned && idle >= SNAPSHOT_UNUSED;
     Some(Candidate {
         path: found.path.clone(),
         class,
-        // Used later than now, or too big to date, is used now.
-        idle: awake.since(seen.last_used.min(now), now).max(0.0),
+        idle,
         size: seen.size,
         occupied,
-        spent: seen.finished || gone,
+        spent: seen.finished || gone || snapshot_spent,
         checkout: checkout(found).map(Path::to_owned),
     })
 }

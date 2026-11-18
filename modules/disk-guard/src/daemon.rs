@@ -407,6 +407,12 @@ pub struct Guard {
     /// The producers whose watched files said something new at that look,
     /// each to run on its own rather than make all of upkeep due.
     produced: Vec<String>,
+    /// When, in wall seconds, the soonest build the last whole survey found
+    /// in a pinned snapshot will have gone an hour unused, and so be spent.
+    snapshot_spends: Option<f64>,
+    /// The pinned snapshots the last look at the owners found, so one cut
+    /// since, which no survey has offered yet, times its own hour.
+    snapshots_known: Option<Vec<PathBuf>>,
     /// Whether a root left since the listing began, or a process holding
     /// paths ended, either of which makes garbage the listing lacks.
     root_left: bool,
@@ -762,6 +768,8 @@ impl Guard {
             holding: None,
             owners_at: None,
             produced: Vec::new(),
+            snapshot_spends: None,
+            snapshots_known: None,
             root_left: false,
             held_ended: false,
             collect: false,
@@ -1555,6 +1563,26 @@ impl Guard {
             })
             .map(|(name, _)| name.clone())
             .collect();
+        // A snapshot cut since the last look, or every one at the guard's
+        // start, may hold a build no survey has timed yet, so it's looked
+        // at again an hour on.
+        let snapshots = pinned_trees(&self.config);
+        let cut = self
+            .snapshots_known
+            .as_ref()
+            .is_none_or(|known| snapshots.iter().any(|tree| !known.contains(tree)));
+        if cut && !snapshots.is_empty() {
+            let at = tick.wall + crate::trees::SNAPSHOT_UNUSED;
+            self.snapshot_spends = Some(self.snapshot_spends.map_or(at, |soon| soon.min(at)));
+        }
+        self.snapshots_known = Some(snapshots);
+        // A snapshot's build an hour unused is spent as surely as one whose
+        // holder ended, though nothing about its holder changed.
+        let snapshot_spent = self.snapshot_spends.is_some_and(|at| tick.wall >= at);
+        if snapshot_spent {
+            self.snapshot_spends = None;
+            self.memory.upkept = None;
+        }
         let ended = self.memory.owners.as_ref().is_none_or(|before| {
             before.boot != seen.boot
                 || before.guard != seen.guard
@@ -2241,6 +2269,10 @@ impl Guard {
         };
         let quests_over = spent_trees(&self.config, running, (&tick.boot, &boot));
         let held = held_trees(&self.config, running);
+        let snapshots = pinned_trees(&self.config);
+        // A build's checkout is its sources' git top, which is the path a
+        // snapshot's record names; a checkout nested inside one is its own.
+        let pinned = |dir: &Path| snapshots.iter().any(|tree| dir == tree);
         let mut finished = |dir: &Path| {
             if held.iter().any(|tree| dir.starts_with(tree)) {
                 return false;
@@ -2273,6 +2305,7 @@ impl Guard {
             awake: &self.memory.awake,
             now: tick.wall,
             finished: &mut finished,
+            pinned: &pinned,
             ran: &self.memory.ran,
             said: &self.memory.said,
             uses: &uses,
@@ -2290,6 +2323,7 @@ impl Guard {
         // may forget the rest.
         if part.is_none() && !(self.stop)() {
             sizes.ended();
+            self.snapshot_spends = snapshot_spends(&offers, &kept, &snapshots, tick.wall);
         }
         self.sizes = sizes;
         // A walk a stop cut short found only part of what's there, and a
@@ -2987,6 +3021,59 @@ fn held_trees(config: &Config, running: impl Fn(u32, f64) -> bool + Copy) -> Vec
         .flat_map(|(records, rosters)| {
             crate::workspaces::held_trees(records, rosters.as_deref(), running)
         })
+        .collect()
+}
+
+/// When the soonest build offered in a pinned snapshot, not yet spent, or
+/// the soonest older build there, will have gone an hour unused. One a
+/// build ran in or a session sat in, which the survey kept or couldn't
+/// spend, is looked at again an hour on, since it may be done by then.
+fn snapshot_spends(
+    offers: &[Offer],
+    kept: &[(PathBuf, crate::activity::Use)],
+    snapshots: &[PathBuf],
+    now: f64,
+) -> Option<f64> {
+    let pinned = |dir: &Path| snapshots.iter().any(|tree| dir == tree);
+    let hour = crate::trees::SNAPSHOT_UNUSED;
+    let offered = offers
+        .iter()
+        .map(|offer| &offer.candidate)
+        .filter(|candidate| {
+            matches!(
+                candidate.class,
+                Class::Target | Class::Install | Class::Replaced
+            ) && !candidate.spent
+                && candidate.checkout.as_deref().is_some_and(pinned)
+        })
+        .map(|candidate| {
+            if candidate.occupied {
+                now + hour
+            } else {
+                now + (hour - candidate.idle).max(0.0)
+            }
+        });
+    let busy = kept
+        .iter()
+        .filter(|(tree, _)| snapshots.iter().any(|snapshot| tree.starts_with(snapshot)))
+        .map(|_| now + hour);
+    offered.chain(busy).reduce(f64::min)
+}
+
+/// The trees a broker's records name as snapshots pinned at a commit,
+/// whose builds a gate or a reader made and nobody edits.
+fn pinned_trees(config: &Config) -> Vec<PathBuf> {
+    config
+        .sources
+        .values()
+        .filter_map(|source| match source {
+            Source::Workspaces {
+                trees: Some(records),
+                ..
+            } => Some(records),
+            _ => None,
+        })
+        .flat_map(|records| crate::workspaces::pinned_trees(records))
         .collect()
 }
 

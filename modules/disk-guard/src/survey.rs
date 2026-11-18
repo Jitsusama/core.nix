@@ -122,6 +122,8 @@ pub struct World<'a> {
     pub now: f64,
     /// Whether a checkout's work is finished, as its predicate says.
     pub finished: &'a mut dyn FnMut(&Path) -> bool,
+    /// Whether a checkout is a snapshot a broker pinned at a commit.
+    pub pinned: &'a dyn Fn(&Path) -> bool,
     /// When each source's command last ran, in wall seconds, by name.
     pub ran: &'a BTreeMap<String, f64>,
     /// What each producer's watch said when it last ran, by name.
@@ -835,12 +837,17 @@ fn trees_under(
         let seen = trees::Seen {
             used,
             finished,
+            pinned: checkout.is_some_and(|dir| (world.pinned)(dir)),
             size: frees,
             last_used: trees::last_used(tree),
         };
         let Some(candidate) = trees::candidate(tree, &seen, world.awake, world.now) else {
             continue;
         };
+        // In a snapshot nobody edits, a crate's incremental sessions serve
+        // only a build running now, and rustc's locks keep the one it
+        // uses; so they go at once while nobody sits in the tree.
+        let snapshot_idle = seen.pinned && !candidate.occupied;
         let action = match kind {
             Kind::Target => Action::Target {
                 root: root.to_owned(),
@@ -865,7 +872,7 @@ fn trees_under(
                         .max(0.0),
                     size: size(&variant.path, world),
                     occupied: false,
-                    spent: false,
+                    spent: snapshot_idle,
                     checkout: checkout.map(Path::to_owned),
                 };
                 offers.push(Offer {
@@ -882,16 +889,21 @@ fn trees_under(
                 let Some(last_used) = world.uses.last_used(&build) else {
                     continue;
                 };
+                let idle = world
+                    .awake
+                    .since(last_used.min(world.now), world.now)
+                    .max(0.0);
                 let candidate = Candidate {
                     path: build.deps.join(format!("{}-{}", build.name, build.digest)),
                     class: Class::Replaced,
-                    idle: world
-                        .awake
-                        .since(last_used.min(world.now), world.now)
-                        .max(0.0),
+                    idle,
                     size: build.size,
                     occupied: false,
-                    spent: false,
+                    // A gate snapshot builds one commit after another, and
+                    // on 17 November one kept 89 builds of a single test
+                    // crate, 55 GiB in all: an older build an hour unused
+                    // there is an earlier gate's, even while the next runs.
+                    spent: seen.pinned && idle >= trees::SNAPSHOT_UNUSED,
                     checkout: checkout.map(Path::to_owned),
                 };
                 offers.push(Offer {
