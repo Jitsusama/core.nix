@@ -48,5 +48,11 @@ def test_an_administrator_reads_the_boots_error_record(machine: BaseMachine) -> 
 
 def test_an_account_that_isnt_an_administrator_reads_none(machine: BaseMachine) -> None:
     folder = kept(machine)
-    machine.fail(f"su {ACCOUNT} -c 'ls {folder}'")
-    machine.fail(f"su {ACCOUNT} -c 'head -c 4 {folder}/bert-region'")
+    # What is refused has to be there, and the account able to read what
+    # anyone may, or a missing folder or a failing su would pass alone.
+    machine.succeed(f"test -s {folder}/bert-region")
+    machine.succeed(f"su {ACCOUNT} -c 'ls /var/lib'")
+    listed = machine.fail(f"su {ACCOUNT} -c 'ls {folder}' 2>&1")
+    read = machine.fail(f"su {ACCOUNT} -c 'head -c 4 {folder}/bert-region' 2>&1")
+    assert "Permission denied" in listed, f"listing failed for another reason: {listed!r}"
+    assert "Permission denied" in read, f"reading failed for another reason: {read!r}"
