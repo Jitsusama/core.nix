@@ -376,8 +376,9 @@ in
     // lib.optionalAttrs (realm != null) {
       # The realm's node on this machine. The forage page reads only each
       # cell's purpose, standing, documents, lineage, what its quest
-      # waits on its person for, and the needs it serves and relies on,
-      # each by the cell at its other end. The map reads its
+      # waits on its person for, and the needs it serves and relies on:
+      # the cell at the other end, the need's own words and since when,
+      # which the page escapes. The map reads its
       # networks and cells whole, as `mycelium networks` draws them; of
       # each machine only what the map draws; of each message only who
       # sent it, how and where, never its words; the balance service's
