@@ -207,6 +207,22 @@ mod tests {
     }
 
     #[test]
+    fn logins_in_a_shape_docker_cant_read_empty_the_file() {
+        // What Docker can't read, cat still can, so a login said in any
+        // other shape than Docker's counts, as settings that don't parse do.
+        for text in [
+            r#"{"auths": ["made-up"]}"#,
+            r#"{"auths": {"registry.example": "made-up"}}"#,
+            r#"{"auths": {"registry.example": {"auth": {"value": "made-up"}}}}"#,
+        ] {
+            assert!(
+                empties(text, &docker()),
+                "a login in a shape Docker can't read was left: {text}"
+            );
+        }
+    }
+
+    #[test]
     fn registries_named_without_a_login_are_left() {
         for text in [
             r#"{"auths": {"registry.example": {}}}"#,
@@ -274,9 +290,11 @@ mod tests {
 
     #[test]
     fn a_credential_under_a_key_docker_folds_empties_the_file() {
-        // Docker's reader folds the long s to s, the Kelvin sign to k, and
-        // the dotted capital I to I, by its single-letter lower case.
+        // Docker's reader folds the long s to s, the Kelvin sign to k, the
+        // dotted capital I to I, by its single-letter lower case, and the
+        // dotless i to I, by its upper case.
         for text in [
+            r#"{"auths": {"registry.example": {"\u0131dentitytoken": "made-up"}}}"#,
             r#"{"auth\u017f": {"registry.example": {"auth": "made-up"}}}"#,
             r#"{"auths": {"registry.example": {"\u0130dentitytoken": "made-up"}}}"#,
             r#"{"prox\u0130es": {"default": {"httpProxy": "http://joel:made-up@p.example"}}}"#,
@@ -292,9 +310,9 @@ mod tests {
 
     #[test]
     fn a_proxys_login_with_a_slash_in_its_password_empties_the_file() {
-        // An @ anywhere past the scheme counts as a login, so a password
-        // holding a slash is never read as a path; an @ that is a path's
-        // only empties a file holding no login, which fails safe.
+        // An @ anywhere counts as a login, so a password holding a slash
+        // is never read as a path; an @ that is a path's only empties a
+        // file holding no login, which fails safe.
         for text in [
             r#"{"proxies": {"default": {"httpProxy": "http://joel:made/up@proxy.example"}}}"#,
             r#"{"proxies": {"default": {"httpProxy": "joel:made/up@proxy.example:3128"}}}"#,
