@@ -185,6 +185,11 @@ Joel, 2026-11-13 18:59: "we need to have the cat support jumping down on to
 a floating window, and then jumping to the top of a non floating one when it
 closes or loses focus"
 
+It's never over a floating window's face but at its corner: with no room over one for its
+hop, it steps down off the end within its own height, paws moving, crossing the corner for a
+stride, the smaller break than walking a body-length on the air (WCJQSG 1ee24751,
+2026-11-18: "Stepping down a small ledge with its paws moving is what a cat does").
+
 - Held by `margin-cat-floats.qml`: "onto a floating window it drops straight down from the top
   over it"
 - Held by `margin-cat-floats.qml`: "off it, it crouches and leaps straight up onto the ledge
@@ -199,12 +204,10 @@ closes or loses focus"
 - Held by `margin-cat-floats.qml`: "never over its face, on or off it"
 - Held by `margin-cat-floats.qml`: "crossing the corner of its face 3 deep, for a stride at
   its walk's pace"
-- Held by `margin-cat-floats.qml`: "crossing 2 deep or just 4, it steps off; just past,
+- Held by `margin-cat-floats.qml`: "its own height down off one at the screen's top, it
+  steps off its end"
+- Held by `margin-cat-floats.qml`: "off a seat its own height down, it steps; a pixel more,
   it walks clear and drops"
-- Held by `margin-cat-floats.qml`: "off a seat it would step 5.8 deep from, it walks clear
-  and drops"
-- Held by `margin-cat-floats.qml`: "a cell or two down off one its feet sit 7 deep in, it
-  steps, 7 deep"
 - Held by `margin-cat-floats.qml`: "one across the tops on its way, it walks over its top"
 - Held by `margin-cat-floats.qml`: "a floating window a leap up on its way is a step"
 - Held by `margin-cat-floats.qml`: "a floating window off its way changes nothing"
