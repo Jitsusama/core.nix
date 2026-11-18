@@ -168,7 +168,7 @@ Provider {
 
     // When the load in flight was asked, or 0 with none; each FileView
     // starts one as it's made.
-    property real asked: Date.now()
+    property real loadAsked: Date.now()
 
     // Loads the counters and the shaper's status again, in the background.
     // A FileView asked again while it loads loads again, and both land a
@@ -177,10 +177,10 @@ Provider {
     // for a tenth of a second after one lands, nothing more is loaded.
     function look() {
         const now = Date.now();
-        if (now - asked < second
+        if (now - loadAsked < second
             || reads !== null && Math.abs(now - reads.last.at) < soonest / 2)
             return;
-        asked = now;
+        loadAsked = now;
         netdev.reload();
         shaper.reload();
     }
@@ -192,7 +192,7 @@ Provider {
         const now = Date.now();
         const kept = reads;
         const age = kept ? now - kept.last.at : Infinity;
-        asked = 0;
+        loadAsked = 0;
         unreadable = false;
         const all = Traffic.counters(netdev.text());
         const known = {};
@@ -218,7 +218,7 @@ Provider {
 
     // The counters couldn't be loaded: nothing more is coming to wait for.
     function uncounted() {
-        asked = 0;
+        loadAsked = 0;
         unreadable = true;
         stillReading = false;
     }
