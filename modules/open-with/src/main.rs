@@ -73,7 +73,10 @@ enum Ended {
 /// mimeinfo.cache, as for an entry in the account's own folder, but still
 /// names that app as the last choice; the shell could only say "Nothing
 /// here opens it" (Joel's mycelium: and tuple: links, 2026-11-17). With one
-/// app offered the portal opens it itself, so this does as it would.
+/// app offered the portal opens it itself, so this does as it would. It
+/// opens any scheme whose default no folder registers without asking, so
+/// what still asks before such a link opens is the program it came from,
+/// as Chrome asks once for each site.
 fn at_once(choices: &[String], last: Option<String>) -> Option<String> {
     if choices.is_empty() { last } else { None }
 }
