@@ -188,8 +188,11 @@ ShellRoot {
 
         property bool gives: true
         signal changed
+        // How many times its acts were asked, plain, as the giver's are.
+        readonly property var asked: ({ acts: 0 })
 
         function programActs(program) {
+            asked.acts += 1;
             return program !== "lone" || !gives ? [] : [
                 { key: "lone:join", name: "Join Later", verb: "open" }
             ];
@@ -227,7 +230,10 @@ ShellRoot {
 
         launcher: theLauncher
         settings: ({ name: "notices" })
-        onChanged: root.ready()
+        onChanged: {
+            root.ready();
+            root.noticed();
+        }
     }
 
     // The notices daemon, serving the history's rows, the tester's
@@ -612,10 +618,42 @@ ShellRoot {
             same("the file stays where it was, dimmed and said closed, holding only its path",
                 `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
                 `file:${root.home}/open.pdf true closed | Copy the Path`);
-            Qt.exit(0);
+            root.noticeLone();
         } catch (error) {
             fail(error.message);
         }
+    }
+
+    // The notices' collection says it changed as each notice comes, which
+    // on Joel's came about every 48 s: only a program's own notice coming
+    // lets its answer go.
+    function noticeLone() {
+        same("before a notice, it starts only", program("lone").actsOnly, true);
+        const noticeAsked = applications.stepsCounted.made;
+        notices.changed();
+        same("the notices' collection saying it changed leaves its answer held",
+            `${program("lone").actsOnly} ${applications.stepsCounted.made - noticeAsked}`,
+            "true 0");
+        root.waiting = "lone's notice";
+        Notices.history = Notices.history.concat([{ id: 4, at: Date.now(), app: "Lone",
+            summary: "Done", body: "", read: false, missed: false }]);
+    }
+
+    function noticed() {
+        if (root.waiting !== "lone's notice" || !("Lone" in notices.sentCounts()))
+            return;
+        root.waiting = "the end";
+        // Asked once every handler of the change has heard it, as a key
+        // after it would be: this one may come before Applications'.
+        Qt.callLater(() => {
+            try {
+                same("and a notice of its own coming, it holds more",
+                    program("lone").actsOnly, false);
+                Qt.exit(0);
+            } catch (error) {
+                fail(error.message);
+            }
+        });
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.
@@ -961,8 +999,7 @@ ShellRoot {
             // And what it can read asks again, each the only thing that
             // would: a stream or a player turning out to be its own, a
             // walk from outside and its end, the programs others hide, a
-            // notice's sender saying it changed, and an opening and a
-            // closing.
+            // notice of its own (noticeLone), and an opening and a closing.
             const holds = row => `${program("lone").actsOnly} ${names(program("lone").verbs())
                 .split(", ").includes(row)}`;
             // Each name a stream is found by changes alone, from an answer
@@ -992,7 +1029,8 @@ ShellRoot {
             // its answer was held.
             const streamsWere = Launcher.Playing.streams;
             Launcher.Playing.streams = streamsWere.filter(node => node !== playing);
-            same("held while a stream isn't listed, it starts only", program("lone").actsOnly, true);
+            same("held while a stream isn't listed, it starts only", program("lone").actsOnly,
+                true);
             owning("application.name", "Lone");
             Launcher.Playing.streams = streamsWere;
             same("a stream of its own listed asks again, and its Sound holds more",
@@ -1074,7 +1112,6 @@ ShellRoot {
                 ["as do the programs others hide", () => {
                     giver.hiddenPrograms = giver.hiddenPrograms.concat(["elsewhere"]);
                 }],
-                ["as does a notice's sender saying it changed", () => notices.changed()],
                 ["as does each opening", () => {
                     theLauncher.open = true;
                 }],
@@ -1082,6 +1119,11 @@ ShellRoot {
                     theLauncher.open = false;
                 }]
             ]) {
+                // Held before it, so the step made after is the change's.
+                const heldAsked = applications.stepsCounted.made;
+                same(`held before it: ${said}`,
+                    `${program("lone").actsOnly} ${applications.stepsCounted.made - heldAsked}`,
+                    "true 0");
                 change();
                 const asked = applications.stepsCounted.made;
                 const giverWas = giver.asked.acts;
@@ -1107,6 +1149,12 @@ ShellRoot {
             same("a provider joining later gives a program its acts",
                 names(program("lone").verbs()), "New Window, New Window Below, Join Later");
             same("so it no longer starts only", program("lone").actsOnly, false);
+            // Each giver has a turn of its own, so another saying it
+            // changed asks only that one again.
+            const joinerWas = joiner.asked.acts;
+            giver.changed();
+            same("another giver saying it changed leaves this one unasked",
+                `${program("lone").actsOnly} ${joiner.asked.acts - joinerWas}`, "false 0");
             joiner.gives = false;
             joiner.changed();
             same("its giver's change asks again, and it starts only",

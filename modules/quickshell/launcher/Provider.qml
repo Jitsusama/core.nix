@@ -99,7 +99,9 @@ Scope {
     }
     // A collection's things changed while it might be open, or what its
     // hooks give a program did (programActs, sentBy): Programs holds
-    // whether a closed program starts only until a giver says this.
+    // whether a closed program starts only until a giver says this. A
+    // program with keys of its own is never held, so a giver only to
+    // such programs needn't say it, as GIMP's, swayimg's and Slack's don't.
     signal changed
 
     // An answer worked out too late to say, as the maths' is when the

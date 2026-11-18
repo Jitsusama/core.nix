@@ -179,10 +179,11 @@ Provider {
     // (playerOf, streamsOf, recordersOf).
     // JSON, since the names are other processes' and could hold any
     // separator, and one change that moved a name across it would say
-    // nothing. Who plays comes first, made once, so each change reads a
-    // node's properties once and the handler reads who back from here.
+    // nothing. Who plays is a binding of its own, so a title changing
+    // makes it again only when a node did, and the handler reads it there.
+    readonly property string playingWhoNow: playingWho()
     readonly property string playingNow: JSON.stringify([
-        playingWho(),
+        playingWhoNow,
         Playing.players.map(player => [player.isPlaying, player.canPlay, player.canPause,
             player.canGoNext, player.canGoPrevious, player.trackTitle, player.trackArtist]),
         Playing.streams.concat(Playing.recorders ?? []).map(node => [node.audio?.volume,
@@ -190,9 +191,8 @@ Provider {
     ])
 
     onPlayingNowChanged: {
-        const who = JSON.parse(playingNow)[0];
-        if (who !== playingHeard.who) {
-            playingHeard.who = who;
+        if (playingWhoNow !== playingHeard.who) {
+            playingHeard.who = playingWhoNow;
             playingHeard.turn += 1;
             startsTurn += 1;
         }
@@ -207,7 +207,9 @@ Provider {
     // keys. Each change of who turns `turn`, which has each held answer
     // ask again only whether anything plays for its program (playsAsHeld),
     // since a chime's stream, an agent's done or a timer's ring, is no
-    // program's. Plain, kept as last heard; JSON, as playingNow is.
+    // program's. Plain, kept as last heard from the start (onCompleted),
+    // so the first title after it isn't taken for a change of who; JSON,
+    // as playingNow is.
     readonly property var playingHeard: ({ who: "", turn: 0 })
     function playingWho() {
         return JSON.stringify([
@@ -1822,7 +1824,8 @@ Provider {
         // holdsSafely is read here too, for the moment between a giver with
         // no changed joining and onHookingChanged letting every answer go.
         if (held !== undefined && held.entry === entry && provider.holdsSafely
-            && provider.givesAsHeld(held, entry.id) && provider.playsAsHeld(held, entry))
+            && provider.givesAsHeld(held, entry.id) && provider.sendsAsHeld(held, entry)
+            && provider.playsAsHeld(held, entry))
             return held.only;
         const told = { gave: new Map(), plays: false };
         const only = provider.controls(entry, start, below, told)
@@ -1834,6 +1837,7 @@ Provider {
                 entry,
                 only,
                 gave: provider.givesTurned(told.gave),
+                sent: provider.sentTurned(entry),
                 plays: told.plays,
                 playsTurn: provider.playingHeard.turn
             });
@@ -1848,6 +1852,39 @@ Provider {
             turn: provider.givesTurns.by.get(other) ?? 0,
             gives
         }]));
+    }
+
+    // Whether the notices' collection holds any its program sent, with
+    // the turn the collection had said it changed by: a Notifications
+    // row is in its step only while it does (notices), and sentCount
+    // keeps each program's count until the counts change, so asking
+    // after the step was made counts nothing again.
+    function sentTurned(entry) {
+        const past = provider.hooking.sentBy[0] ?? null;
+        return {
+            turn: past ? provider.givesTurns.by.get(past) ?? 0 : 0,
+            sends: provider.sendsOf(past, entry)
+        };
+    }
+    function sendsOf(past, entry) {
+        if (!past)
+            return false;
+        const looked = {};
+        const same = given => provider.names(entry, given, looked);
+        return provider.sentCount(past, entry, same).count > 0;
+    }
+
+    // Whether a held program's notices are there or not as they were,
+    // asked again only once the collection said it changed since.
+    function sendsAsHeld(held, entry) {
+        const past = provider.hooking.sentBy[0] ?? null;
+        const turn = past ? provider.givesTurns.by.get(past) ?? 0 : 0;
+        if (turn === held.sent.turn)
+            return true;
+        if (provider.sendsOf(past, entry) !== held.sent.sends)
+            return false;
+        held.sent.turn = turn;
+        return true;
     }
 
     // Whether a player, a stream or a recorder is a program's, as its
@@ -1916,13 +1953,12 @@ Provider {
     // differently asked again (givesAsHeld), by a turn of its own: kitty
     // says changed as any of its windows is retitled, which an agent's
     // does with each command, and letting every answer go then brought
-    // each key's cost back. A sender of notices still lets every one go.
+    // each key's cost back. The notices' collection has a turn here too,
+    // each held answer asking only whether its program's notices are
+    // there (sendsAsHeld): it says changed as each notice comes, and
+    // they came about every 48 s through Joel's working day (2026-11-17).
     readonly property var givesTurns: ({ by: new Map() })
     function gaveAgain(other) {
-        if (provider.hooking.sentBy.includes(other)) {
-            startsAgain();
-            return;
-        }
         givesTurns.by.set(other, (givesTurns.by.get(other) ?? 0) + 1);
         startsTurn += 1;
     }
@@ -2007,7 +2043,10 @@ Provider {
         .map(other => other === provider ? [] : other.foundActs ?? []))
     property var optedIn: []
     onOptedSaidChanged: optedAgain()
-    Component.onCompleted: optedAgain()
+    Component.onCompleted: {
+        playingHeard.who = playingWhoNow;
+        optedAgain();
+    }
     // And as the desktop entries are read, which a program's own acts are
     // made again on, since an act's program is found by its entry.
     onOwnActsChanged: {
