@@ -129,20 +129,21 @@ def opened(shell: Shell, place: str) -> Json:
     return each[-1]
 
 
-def usable_after(shell: Shell, nth: int) -> Json:
-    """Give the opening numbered once it has said when it was usable, or as it is after a while.
+def usable_after(shell: Shell, nth: int, mark: int) -> tuple[Json, list[str]]:
+    """Give the opening numbered once it has said when it was usable, with its line.
 
     An opening says it once a key could act on it, which can come after it's presented; one
-    shut first never says it, so the wait gives up and gives the opening as it stands.
+    shut first never says it, so the wait gives up and gives the opening as it stands. It waits
+    on the shell's log, not on asking the shell, whose answering would run on the thread whose
+    stall it times.
     """
-    each: list[Json] = []
     giving_up = time.monotonic() + USABLE_S
-    while time.monotonic() < giving_up:
-        each[:] = [one for one in openings(shell) if one.get("nth") == nth]
-        if each and "stalled" in each[0]:
-            break
+    said = said_after(shell, mark, "opening usable")
+    while not said and time.monotonic() < giving_up:
         time.sleep(launcher_on_niri.POLL)
-    return each[0] if each else {}
+        said = said_after(shell, mark, "opening usable")
+    each = [one for one in openings(shell) if one.get("nth") == nth]
+    return (each[0] if each else {}), said[:1]
 
 
 def p90(spans: list[int]) -> int:
@@ -159,8 +160,10 @@ def said_of(place: str, presented: list[int], took: list[int], stalled: list[int
     its presented time doesn't.
     """
     niri = [whole - shell for whole, shell in zip(presented, took, strict=True)]
+    # Of how many, as one not usable in time says none and would leave the rest's median.
     stalls = (
         f"; its longest stall a median {round(statistics.median(stalled))} ms, p90 {p90(stalled)}"
+        f", of {len(stalled)}"
         if stalled
         else ""
     )
@@ -244,7 +247,6 @@ def test_each_chord_opening_is_timed(
                 "niri": opening["presented"] - cast("int", opening["took"]),
                 "rows": opening.get("rows"),
                 "filling": opening.get("filling"),
-                "stalled": opening.get("stalled"),
             }
             with capsys.disabled():
                 print(f"lab-opening {os.environ.get('LAB_RUN', '')} {json.dumps(said)}", flush=True)
@@ -272,14 +274,13 @@ def stall_of(
     It's said once the opening is usable, which presented alone doesn't wait for, and given as
     a list of one, or none where the opening's record never said it.
     """
-    usable = usable_after(shell, cast("int", opening["nth"]))
-    for line in said_after(shell, mark, "opening usable")[:1]:
-        with capsys.disabled():
-            print(
-                f"lab-usable {os.environ.get('LAB_RUN', '')} {place}: "
-                f"{line.split('launcher: ', 1)[-1]}",
-                flush=True,
-            )
+    usable, said = usable_after(shell, cast("int", opening["nth"]), mark)
+    with capsys.disabled():
+        print(
+            f"lab-usable {os.environ.get('LAB_RUN', '')} {place}: "
+            f"{said[0].split('launcher: ', 1)[-1] if said else f'unsaid in {USABLE_S} s'}",
+            flush=True,
+        )
     stalled = usable.get("stalled")
     return [stalled] if isinstance(stalled, int) else []
 
