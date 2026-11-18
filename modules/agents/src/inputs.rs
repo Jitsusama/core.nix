@@ -1060,9 +1060,9 @@ mod tests {
 
     #[test]
     fn each_session_holds_how_it_stands_apart_from_its_figures() {
-        let served = served(&inputs());
+        let standing = served(&inputs());
         let doing = |address: &str| {
-            served
+            standing
                 .get(&format!("row:agents:{address}"))
                 .expect("its row")["row"]["held"]["doing"]
                 .clone()
