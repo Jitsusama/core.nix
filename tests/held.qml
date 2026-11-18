@@ -96,10 +96,16 @@ QtObject {
         check("and isn't left", `${gone.all} ${gone.leave}`, "false -1");
         // The step above shows a row gone as a copy marked so, as
         // Steady.kept dims it, offering nothing; that's the row gone.
-        const goneCopy = Object.assign(row("s1", "working", []), { gone: true });
+        const goneCopy = Object.assign(row("s1", "working", []), { gone: true, went: true });
         const dimmed = Held.remade(steps, 1, [goneCopy], ways);
         check("a step whose row the step above shows gone is kept, not left",
             `${dimmed.all} ${dimmed.leave} ${read(dimmed.steps)}`, `false -1 ${read(steps)}`);
+        // A row its source serves dimmed itself, as Firmware's act done
+        // with, is still that row, as it is now.
+        const servedDim = Object.assign(row("s1", "done", [row("look", "Look")]), { gone: true });
+        const doneNow = Held.remade(steps, 1, [servedDim], ways);
+        check("a step whose row its source serves dimmed says the row as it is now",
+            `${doneNow.all} ${read(doneNow.steps)}`, "true agents=Agents[s1] s1=done[look]");
 
         const nothing = Held.remade(steps, 1, [row("s1", "ended")], ways);
         check("a step whose row now offers nothing is left", nothing.leave, 1);
