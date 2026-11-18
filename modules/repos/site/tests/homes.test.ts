@@ -54,11 +54,6 @@ it("takes a row's path only as steps of plain bytes under the sites' root", () =
   }
   const here = { sites: [{ path: "./code/", homes: ["cell"] }] };
   assert.deepEqual(holdingOf(here, "cell"), { sites: ["code/"] }, "./code/ was refused");
-  const herePattern = { sites: [{ path: "./mycelium/", homes: [machines] }] };
-  assert.deepEqual(holdingOf(herePattern, "machine"), held, "./mycelium/'s pattern was refused");
-  const fromRoot = { ...machines, address: "mycelium/#machine={name}" };
-  const hereRoot = { sites: [{ path: "./mycelium/", homes: [fromRoot] }] };
-  assert.deepEqual(holdingOf(hereRoot, "machine"), held, "a root pattern on ./mycelium/ failed");
 });
 
 it("reads a row at ./code/ as the site at code/, its record and all", async () => {
@@ -69,6 +64,16 @@ it("reads a row at ./code/ as the site at code/, its record and all", async () =
   assert.equal(homes("E2ZIAQ"), "code/#c=1");
 });
 
+it("refuses an address written from ./, as the system's homes do, on any row", async () => {
+  const sites = { sites: [{ path: "./code/", homes: ["cell"] }] };
+  const records = { "code/": cells({ key: "E2ZIAQ", address: "./code/#c=1" }) };
+  const { homes } = await homesFrom(sites, "cell", reading(records));
+  assert.equal(homes("E2ZIAQ"), undefined, "a record's ./code/ address was taken");
+  const dotted = { ...machines, address: "./mycelium/#machine={name}" };
+  const claim = { sites: [{ path: "./mycelium/", homes: [dotted] }] };
+  assert.equal(holdingOf(claim, "machine"), undefined, "a pattern's ./ address was taken");
+});
+
 it("takes a pattern a row says, written from its page or from the sites' root", () => {
   const fromPage = { sites: [{ path: "mycelium/", homes: [machines] }] };
   const fromRoot = {
@@ -76,6 +81,11 @@ it("takes a pattern a row says, written from its page or from the sites' root", 
   };
   assert.deepEqual(holdingOf(fromPage, "machine"), held);
   assert.deepEqual(holdingOf(fromRoot, "machine"), held);
+  // A row at ./mycelium/ is the site at mycelium/, whichever way its pattern is written.
+  for (const each of [machines, { ...machines, address: "mycelium/#machine={name}" }]) {
+    const here = { sites: [{ path: "./mycelium/", homes: [each] }] };
+    assert.deepEqual(holdingOf(here, "machine"), held, `${each.address} on ./mycelium/ failed`);
+  }
 });
 
 it("lets a pattern hold its kind against its own row's name, said before it or after", () => {
