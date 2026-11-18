@@ -160,5 +160,17 @@
       "test_the_cat_walks_between_workspaces_as_if_on_one_screen"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1794985705,
+    "commit": "7e89121b2c9010910739e2cb89a5aa5be1ed23c1",
+    "due": "2026-11-20",
+    "owner_pr": 5451,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 7e89121b2c90",
+    "subtests": [
+      "test_a_murmur_settled_comes_to_roost"
+    ],
+    "test": "murmurs-site-reads-live"
   }
 ]
