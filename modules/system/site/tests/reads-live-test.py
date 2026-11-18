@@ -83,6 +83,11 @@ def test_the_system_page_draws_every_machine_live(system_page: Page) -> None:
         expect(row, f"the page drew no row for {machine}").to_be_visible()
 
 
+# How far under the masthead's foot a row scrolled up to it may land, its
+# own margin and a rounding: further, and it never scrolled to the edge.
+SCROLLED_TO = 40
+
+
 def section_of_the_cursor(page: Page) -> str | None:
     """Say which section holds what has focus, by its id, or None."""
     held = page.evaluate("document.activeElement?.closest('section[id]')?.id ?? null")
@@ -97,20 +102,27 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
     assert section_of_the_cursor(system_page) == "machine-1"
     keyboard.press("2")
     assert section_of_the_cursor(system_page) == "machine-2"
-    # From the page's end, 1 scrolls up to its row, which lands at the top
-    # edge: clear of the masthead only while the scroll padding holds it.
-    keyboard.press("G")
-    scrolled = system_page.evaluate("window.scrollY")
-    assert isinstance(scrolled, int | float)
-    assert scrolled > 0, "G didn't scroll the page"
+    # With machine 1's row scrolled up out of sight, 1 scrolls back to it and
+    # lands it at the top edge: clear of the masthead only while the scroll
+    # padding holds it there.
+    size = system_page.viewport_size
+    system_page.set_viewport_size({"width": 1280, "height": 400})
+    above = system_page.evaluate(
+        "(() => { const row = document.querySelector('#machine-1 a[data-row]');"
+        " window.scrollTo(0, row.getBoundingClientRect().bottom + window.scrollY + 50);"
+        " return row.getBoundingClientRect().bottom < 0; })()"
+    )
+    assert above is True, "machine 1's row couldn't be scrolled out of sight"
     keyboard.press("1")
     assert section_of_the_cursor(system_page) == "machine-1"
-    landed = system_page.evaluate("document.activeElement.getBoundingClientRect().top")
-    mast = system_page.evaluate("document.querySelector('.mast').getBoundingClientRect().bottom")
-    assert isinstance(landed, int | float)
-    assert isinstance(mast, int | float)
-    assert landed >= mast, f"the row landed at {landed}, under the masthead to {mast}"
-    assert landed < mast + 40, f"the row landed at {landed}, not scrolled up to the masthead"
+    gap = system_page.evaluate(
+        "document.activeElement.getBoundingClientRect().top"
+        " - document.querySelector('.mast').getBoundingClientRect().bottom"
+    )
+    assert isinstance(gap, int | float), f"the gap measured {gap!r}, not a number"
+    assert 0 <= gap < SCROLLED_TO, f"the row landed {gap}px below the masthead's foot"
+    if size is not None:
+        system_page.set_viewport_size(size)
     keyboard.press("2")
     keyboard.press("k")
     assert section_of_the_cursor(system_page) == "machine-1"
