@@ -38,9 +38,9 @@
   };
 
   # Do not disturb holds notices while the screen is shared and lets them go
-  # after, as tests/quiet.qml drives it through Quickshell itself, with
-  # niri's casts, the notices, the recorder and the shell's options stood in
-  # for.
+  # after, as modules/quickshell/tests/quiet.qml drives it through Quickshell
+  # itself, with niri's casts, the notices, the recorder and the shell's options
+  # stood in for.
   do-not-disturb-holds-while-sharing =
     let
       chosen = "readonly property var doNotDisturb: ({ whileSharing: true })";
@@ -49,7 +49,7 @@
     pkgs.runCommandLocal "do-not-disturb-holds-while-sharing" { } ''
       mkdir runtime && chmod 700 runtime
       ${copied [ "Quiet.qml" ]}
-      cp ${../../../tests/quiet.qml} shell.qml
+      cp ${../tests/quiet.qml} shell.qml
       cp ${singleton "Niri.qml" "property var casts: ({})"} Niri.qml
       cp ${singleton "Notices.qml" "property var history: []"} Notices.qml
       cp ${singleton "Recorder.qml" "property var windowSession: null"} Recorder.qml
@@ -126,7 +126,7 @@
           "NoticeRow.qml"
           "Signature.qml"
         ]}
-        cp ${../../../tests/notice-columns.qml} shell.qml
+        cp ${../tests/notice-columns.qml} shell.qml
         ${shellFolderLint}
         QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
         ${measure} ${../tests/notice-columns.py} . said
@@ -135,15 +135,15 @@
       touch $out
     '';
 
-  # Once a notice is opened, its sender's window comes forward when it
-  # doesn't by itself, as tests/notice-comes-forward.qml holds Forward.js
-  # to niri's windows.
+  # Once a notice is opened, its sender's window comes forward when it doesn't
+  # by itself, as modules/quickshell/tests/notice-comes-forward.qml holds
+  # Forward.js to niri's windows.
   a-notice-comes-forward =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-notice-comes-forward" { } ''
-      cp ${../../../tests/notice-comes-forward.qml} notice-comes-forward.qml
+      cp ${../tests/notice-comes-forward.qml} notice-comes-forward.qml
       ${copied [ "Forward.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -152,15 +152,15 @@
       touch $out
     '';
 
-  # What a notice's card offers of its sender's, its sender's own Read,
-  # and the line a search names a notice by, as tests/notice.qml holds
-  # Notice.js.
+  # What a notice's card offers of its sender's, its sender's own Read, and the
+  # line a search names a notice by, as modules/quickshell/tests/notice.qml
+  # holds Notice.js.
   a-notice-found-is-noted-by-what-was-typed =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-notice-found-is-noted-by-what-was-typed" { } ''
-      cp ${../../../tests/notice.qml} notice.qml
+      cp ${../tests/notice.qml} notice.qml
       cp ${../launcher/Notice.js} Notice.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -169,11 +169,11 @@
       touch $out
     '';
 
-  # What comes true by itself is said once as a notice, and again only as
-  # it tells something new, its earlier notice taken back first, and in new
-  # words in place, by its id, as tests/arrivals.qml holds Arrivals.qml to
-  # with the facts and the notices stood in, and notify-send writing down
-  # what it's asked to say and the id it gave.
+  # What comes true by itself is said once as a notice, and again only as it
+  # tells something new, its earlier notice taken back first, and in new words
+  # in place, by its id, as modules/quickshell/tests/arrivals.qml holds
+  # Arrivals.qml to with the facts and the notices stood in, and notify-send
+  # writing down what it's asked to say and the id it gave.
   an-arrival-is-said-once-each-time =
     let
       facts = singleton "Facts.qml" "property var all: []";
@@ -206,7 +206,7 @@
       cp ${notices} Notices.qml
       cp ${options} Options.qml
       cp ${report} Report.qml
-      cp ${../../../tests/arrivals.qml} shell.qml
+      cp ${../tests/arrivals.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} PATH=${notifySend}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
@@ -222,13 +222,13 @@
   # launcher shows them, and counts the rest; what's playing takes it for
   # its moment over one that can wait, and a notice stays as long as its
   # sender asked, else five seconds, ten with something to do
-  # (tests/notice-line.qml).
+  # (modules/quickshell/tests/notice-line.qml).
   the-arrival-line-shows-what-still-waits =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-arrival-line-shows-what-still-waits" { } ''
-      cp ${../../../tests/notice-line.qml} notice-line.qml
+      cp ${../tests/notice-line.qml} notice-line.qml
       ${copied [
         "Knock.js"
         "NoticeLine.js"
@@ -241,15 +241,15 @@
       touch $out
     '';
 
-  # A notice the notices daemon serves reads as Quickshell's own did, and
-  # each act on it is an ask of the daemon, as tests/live-notice.qml holds
-  # LiveNotice.js to.
+  # A notice the notices daemon serves reads as Quickshell's own did, and each
+  # act on it is an ask of the daemon, as
+  # modules/quickshell/tests/live-notice.qml holds LiveNotice.js to.
   a-live-notice-asks-the-daemon =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-live-notice-asks-the-daemon" { } ''
-      cp ${../../../tests/live-notice.qml} live-notice.qml
+      cp ${../tests/live-notice.qml} live-notice.qml
       ${copied [ "LiveNotice.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

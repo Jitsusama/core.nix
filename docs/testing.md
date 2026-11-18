@@ -359,7 +359,8 @@ quietly stopped holding.
 ### The Desktop's Logic
 
 Run in Qt's own JavaScript engine, the one the desktop runs it in, over cases
-written beside each in `tests/`.
+written beside the shell in `modules/quickshell/tests/`; a case a VM test
+reads too waits in `tests/` until it moves.
 
 ### Examples
 
@@ -408,7 +409,7 @@ niri idle, so coming back needs a VM.
 Every launcher change quotes its openings' presented time, from the ask to
 the frame niri presents, the same way on both sides. The lab is the `lab` of
 `the-launcher-opens-on-what-it-kept-on-niri`, which no gate runs
-(`tests/launcher-lab-on-niri.py`). After one untimed opening, which pays a
+(`modules/quickshell/tests/launcher-lab-on-niri.py`). After one untimed opening, which pays a
 fresh niri's first blur as his never does, it opens home and every chord's
 place in turn from shut, once home is kept, round after round, and prints each
 opening's presented time, whether it was kept, and the rows it made, then

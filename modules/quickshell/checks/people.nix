@@ -14,14 +14,14 @@
   ...
 }:
 {
-  # The launcher's People, with Tuple as its source, reads Tuple's contacts
-  # from the real people daemon, which runs the real tuple-people reading
-  # a stand-in for Tuple's follow here, and calls, joins or favours one
-  # (tests/people.qml), with niri stood in. Slack rides beside it as the
-  # daemon serves it, with no file of its own, its reader stood in by
-  # tests/people-slack-source.sh. A listener stands in for
-  # Tuple's daemon's socket, and the shell never asks Tuple anything
-  # itself, since it reaches Tuple through niri alone.
+  # The launcher's People, with Tuple as its source, reads Tuple's contacts from
+  # the real people daemon, which runs the real tuple-people reading a stand-in
+  # for Tuple's follow here, and calls, joins or favours one
+  # (modules/quickshell/tests/people.qml), with niri stood in. Slack rides
+  # beside it as the daemon serves it, with no file of its own, its reader stood
+  # in by tests/people-slack-source.sh. A listener stands in for Tuple's
+  # daemon's socket, and the shell never asks Tuple anything itself, since it
+  # reaches Tuple through niri alone.
   the-launcher-finds-the-people =
     let
       niri = singleton "Niri.qml" ''
@@ -127,9 +127,9 @@
       cp ${import ../launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       cp ${../../people/PersonSource.qml} PersonSource.qml
       cp ${../../tuple/TupleSource.qml} launcher/people/tuple.qml
-      cp ${../../../tests/people-page-source.qml} launcher/people/pages.qml
+      cp ${../tests/people-page-source.qml} launcher/people/pages.qml
       cp ${../../tuple/TuplePeople.qml} TuplePeople.qml
-      cp ${../../../tests/people.qml} shell.qml
+      cp ${../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${report} Report.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -143,9 +143,9 @@
       {"sources": [{"name": "tuple", "stands": $(cat ${../../tuple/stands.json}),
         "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]},
         {"name": "facts",
-          "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-facts-source.sh}"]},
+          "command": ["${lib.getExe pkgs.bash}", "${../tests/people-facts-source.sh}"]},
         {"name": "slack", "stands": ${builtins.toJSON slackStands}, "holds": "verb:person:slack",
-          "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-slack-source.sh}"]}]}
+          "command": ["${lib.getExe pkgs.bash}", "${../tests/people-slack-source.sh}"]}]}
       EOF
       export PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
       export WORDS=${(import ../launcher/words.nix).file}
@@ -184,13 +184,13 @@
       touch $out
     '';
 
-  # How the call Joel's in stands comes from tuple-call, the real daemon,
-  # over its socket (tests/tuple-call.qml): it follows a stand-in tuple
-  # whose stream says each line the test writes, and whose other commands
-  # are kept, while a listener stands in for Tuple's daemon answering. The
-  # shell tells who comes and goes through a stand-in notify-send that keeps
-  # what it's asked. The daemon's own reading of Tuple is its tests', run as
-  # it builds (tuple-call-holds-the-call).
+  # How the call Joel's in stands comes from tuple-call, the real daemon, over
+  # its socket (modules/quickshell/tests/tuple-call.qml): it follows a stand-in
+  # tuple whose stream says each line the test writes, and whose other commands
+  # are kept, while a listener stands in for Tuple's daemon answering. The shell
+  # tells who comes and goes through a stand-in notify-send that keeps what it's
+  # asked. The daemon's own reading of Tuple is its tests', run as it builds
+  # (tuple-call-holds-the-call).
   the-desktop-hears-tuples-call =
     let
       calls = pkgs.callPackage ../../tuple/call/package.nix { };
@@ -263,7 +263,7 @@
       ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${../../tuple/Tuple.js} Tuple.js
-      cp ${../../../tests/tuple-call.qml} shell.qml
+      cp ${../tests/tuple-call.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data
       export XDG_STATE_HOME=$TMPDIR/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

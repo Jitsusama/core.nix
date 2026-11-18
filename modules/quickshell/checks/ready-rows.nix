@@ -11,16 +11,17 @@
   ...
 }:
 {
-  # The launcher keeps the rows a daemon serves ready in the order each
-  # row says, placing each a change names and letting those gone go, as
-  # tests/placed.qml holds launcher/Placed.js to rows made up there.
+  # The launcher keeps the rows a daemon serves ready in the order each row
+  # says, placing each a change names and letting those gone go, as
+  # modules/quickshell/tests/placed.qml holds launcher/Placed.js to rows made up
+  # there.
   the-launcher-places-each-row-it-is-served =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-places-each-row-it-is-served" { } ''
       mkdir launcher
-      cp ${../../../tests/placed.qml} placed.qml
+      cp ${../tests/placed.qml} placed.qml
       ${copied [ "launcher/Placed.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

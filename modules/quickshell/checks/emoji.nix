@@ -10,15 +10,15 @@
 }:
 {
   # The launcher finds emoji by what they're called and what they mean, best
-  # first, as tests/emoji.qml lists them, over the list it's built with, and
-  # in about three times the least a search could take.
+  # first, as modules/quickshell/tests/emoji.qml lists them, over the list it's
+  # built with, and in about three times the least a search could take.
   the-launcher-finds-emoji =
     let
       emoji = import ../launcher/emoji.nix { inherit lib pkgs; } "none";
     in
     pkgs.runCommandLocal "the-launcher-finds-emoji" { } ''
       mkdir launcher
-      cp ${../../../tests/emoji.qml} emoji.qml
+      cp ${../tests/emoji.qml} emoji.qml
       ${copied [ "launcher/Emoji.js" ]}
       cp ${emoji} emoji.jsonl
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

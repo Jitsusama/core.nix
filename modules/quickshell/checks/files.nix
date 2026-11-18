@@ -13,13 +13,13 @@
   ...
 }:
 {
-  # A file in the launcher's chooser of files says its size and when it
-  # changed as VKCF3Z set them, and its plate its kind, preview and facts,
-  # one kept elsewhere, as in Google Drive, alike from what its place
-  # listed, a file nothing has read is its ending's kind and a picture
-  # previewed as it is, and a file in the Nix store goes by its own name
-  # past its hash, as tests/file-facts.qml holds FileFacts.js to it in Qt's
-  # own engine.
+  # A file in the launcher's chooser of files says its size and when it changed
+  # as VKCF3Z set them, and its plate its kind, preview and facts, one kept
+  # elsewhere, as in Google Drive, alike from what its place listed, a file
+  # nothing has read is its ending's kind and a picture previewed as it is, and
+  # a file in the Nix store goes by its own name past its hash, as
+  # modules/quickshell/tests/file-facts.qml holds FileFacts.js to it in Qt's own
+  # engine.
   a-file-says-its-size-and-when-it-changed =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -31,7 +31,7 @@
         TZDIR = "${pkgs.tzdata}/share/zoneinfo";
       }
       ''
-        cp ${../../../tests/file-facts.qml} file-facts.qml
+        cp ${../tests/file-facts.qml} file-facts.qml
         ${copied [ "FileFacts.js" ]}
         cp ${(import ../launcher/words.nix).file} words.json
         export QML_XHR_ALLOW_FILE_READ=1
@@ -42,13 +42,13 @@
         touch $out
       '';
 
-  # The launcher chooses the files a program opens or saves, as open-with
-  # asks it (tests/file-chooser.qml): in folders made here, with the files
-  # opened lately listed by a stand-in for recent-files, the desktop's
-  # kinds of file by a few of shared-mime-info's lines, a place kept
-  # elsewhere by a stand-in for Google's Drive, file-preview by one that
-  # notes which process each thing was asked of, and niri by one whose
-  # window with the keys is a text editor's, the program that asks.
+  # The launcher chooses the files a program opens or saves, as open-with asks
+  # it (modules/quickshell/tests/file-chooser.qml): in folders made here, with
+  # the files opened lately listed by a stand-in for recent-files, the desktop's
+  # kinds of file by a few of shared-mime-info's lines, a place kept elsewhere
+  # by a stand-in for Google's Drive, file-preview by one that notes which
+  # process each thing was asked of, and niri by one whose window with the keys
+  # is a text editor's, the program that asks.
   the-launcher-chooses-files-as-asked =
     let
       niri = singleton "Niri.qml" ''
@@ -85,7 +85,7 @@
         "launcher/words.json"
       ]}
       cp ${../../open-with/FileChooser.qml} launcher/FileChooser.qml
-      cp ${../../../tests/file-chooser.qml} shell.qml
+      cp ${../tests/file-chooser.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       mkdir $XDG_RUNTIME_DIR/open-with

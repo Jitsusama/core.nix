@@ -18,8 +18,9 @@
   ...
 }:
 {
-  # A collection's row made again from a row made keeps every field it's
-  # given, as tests/member.qml holds launcher/Member.js to, in Qt's engine.
+  # A collection's row made again from a row made keeps every field it's given,
+  # as modules/quickshell/tests/member.qml holds launcher/Member.js to, in Qt's
+  # engine.
   a-row-made-again-keeps-every-field =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -28,7 +29,7 @@
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "a-row-made-again-keeps-every-field" { } ''
       mkdir launcher
-      cp ${../../../tests/member.qml} member.qml
+      cp ${../tests/member.qml} member.qml
       ${copied [ "launcher/Member.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -39,13 +40,14 @@
     '';
 
   # The shell's QML is given an activation token by niri when it asks
-  # (tests/activation-token-on-niri.sh), as the notices daemon will need it
-  # to hand a program with an action chosen, having no window to ask with.
+  # (modules/quickshell/tests/activation-token-on-niri.sh), as the notices
+  # daemon will need it to hand a program with an action chosen, having no
+  # window to ask with.
   the-shell-is-given-a-token-on-niri = shellOnNiri {
     name = "the-shell-is-given-a-token-on-niri";
     away = 3600;
-    root = ../../../tests/activation-token.qml;
-    command = "${lib.getExe pkgs.bash} ${../../../tests/activation-token-on-niri.sh} quickshell logs";
+    root = ../tests/activation-token.qml;
+    command = "${lib.getExe pkgs.bash} ${../tests/activation-token-on-niri.sh} quickshell logs";
   };
 
   # The account's whole shell, a notice up, loses its only screen and is
@@ -59,34 +61,36 @@
     command = "${lib.getExe pkgs.bash} ${../../../tests/shell-loses-its-screen.sh} quickshell logs ${../../../tests/lib/shell-says.sh}";
   };
 
-  # A window drawn flat holds no depth or stencil buffer, and still draws
-  # what's set over its picture over it, in the Quickshell the machine runs
-  # (window-drawn-flat.patch, tests/flat-windows-hold-no-depth-on-niri.sh),
-  # on a screen of Joel's size.
+  # A window drawn flat holds no depth or stencil buffer, and still draws what's
+  # set over its picture over it, in the Quickshell the machine runs
+  # (window-drawn-flat.patch,
+  # modules/quickshell/tests/flat-windows-hold-no-depth-on-niri.sh), on a screen
+  # of Joel's size.
   flat-windows-hold-no-depth-on-niri = shellOnNiri {
     name = "flat-windows-hold-no-depth-on-niri";
     away = 3600;
     size = "2880x1800";
-    root = ../../../tests/flat-windows-hold-no-depth.qml;
+    root = ../tests/flat-windows-hold-no-depth.qml;
     inputs = [ pkgs.imagemagick ];
-    command = "${lib.getExe pkgs.bash} ${../../../tests/flat-windows-hold-no-depth-on-niri.sh} quickshell logs ${../../../tests/lib/Memory.js}";
+    command = "${lib.getExe pkgs.bash} ${../tests/flat-windows-hold-no-depth-on-niri.sh} quickshell logs ${../../../tests/lib/Memory.js}";
   };
 
-  # A picture read uncached from a file, as the wallpaper's is, lets the
-  # file's pixels go once it's a texture, in the shell's own Qt
+  # A picture read uncached from a file, as the wallpaper's is, lets the file's
+  # pixels go once it's a texture, in the shell's own Qt
   # (qtdeclarative-uncached-pictures-let-go.patch), and is read again for a
-  # window it moves to (tests/uncached-pictures-let-go-on-niri.sh).
+  # window it moves to
+  # (modules/quickshell/tests/uncached-pictures-let-go-on-niri.sh).
   uncached-pictures-let-go-on-niri = shellOnNiri {
     name = "uncached-pictures-let-go-on-niri";
     away = 3600;
-    root = ../../../tests/uncached-pictures-let-go.qml;
+    root = ../tests/uncached-pictures-let-go.qml;
     inputs = [ pkgs.imagemagick ];
-    command = "${lib.getExe pkgs.bash} ${../../../tests/uncached-pictures-let-go-on-niri.sh} quickshell logs";
+    command = "${lib.getExe pkgs.bash} ${../tests/uncached-pictures-let-go-on-niri.sh} quickshell logs";
   };
 
-  # The wallpaper's picture is read at its screen's own pixels, by niri's
-  # scale for the output, as tests/wallpaper.qml holds Wallpaper.js to, in
-  # Qt's engine.
+  # The wallpaper's picture is read at its screen's own pixels, by niri's scale
+  # for the output, as modules/quickshell/tests/wallpaper.qml holds Wallpaper.js
+  # to, in Qt's engine.
   the-wallpaper-is-read-at-its-screens-pixels =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -94,7 +98,7 @@
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-wallpaper-is-read-at-its-screens-pixels" { } ''
-      cp ${../../../tests/wallpaper.qml} wallpaper.qml
+      cp ${../tests/wallpaper.qml} wallpaper.qml
       ${copied [ "Wallpaper.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -307,15 +311,15 @@
       "These start programs themselves rather than through Niri.spawn: ${lib.concatStringsSep ", " culprits}"
       (qml != [ ] && culprits == [ ]);
 
-  # The shell holds a daemon's records over one connection (Daemon.qml),
-  # against the real people daemon with two sources stood in for, one
-  # asked (daemon-source.sh) and one saying everyone unasked
-  # (daemon-roster.sh), started, stopped and started again by
-  # tests/daemon.qml; and over one connection, records of two kinds from a
-  # daemon holding both, kinds told as the mycelium node tells them, and a
-  # watch answered whole of only some keys, as the passwords child answers
-  # its asks' rows (daemon-kinds.py); and a line's handlers read when it was heard
-  # (Hearing.js). The stand-ins are in modules/quickshell/tests/stand-ins.
+  # The shell holds a daemon's records over one connection (Daemon.qml), against
+  # the real people daemon with two sources stood in for, one asked
+  # (daemon-source.sh) and one saying everyone unasked (daemon-roster.sh),
+  # started, stopped and started again by modules/quickshell/tests/daemon.qml; and
+  # over one connection, records of two kinds from a daemon holding both, kinds
+  # told as the mycelium node tells them, and a watch answered whole of only some
+  # keys, as the passwords child answers its asks' rows (daemon-kinds.py); and a
+  # line's handlers read when it was heard (Hearing.js). The stand-ins are in
+  # modules/quickshell/tests/stand-ins.
   the-desktop-holds-a-daemons-records =
     let
       people = pkgs.callPackage ../../people/package.nix { };
@@ -329,7 +333,7 @@
         "command": ["${lib.getExe pkgs.bash}", "${../tests/stand-ins/daemon-roster.sh}"]}]}
       EOF
       ${copied [ "Daemon.qml" ]}
-      cp ${../../../tests/daemon.qml} shell.qml
+      cp ${../tests/daemon.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
       export PYTHON=${lib.getExe pkgs.python3} KINDS=${../tests/stand-ins/daemon-kinds.py}
@@ -338,15 +342,16 @@
       touch $out
     '';
 
-  # A change saying only what differs mends the record a daemon's client
-  # holds, a field said deep only where it moved inside it, as
-  # tests/mending.qml holds Mending.js to it in Qt's own engine.
+  # A change saying only what differs mends the record a daemon's client holds,
+  # a field said deep only where it moved inside it, as
+  # modules/quickshell/tests/mending.qml holds Mending.js to it in Qt's own
+  # engine.
   a-change-mends-only-what-moved =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-change-mends-only-what-moved" { } ''
-      cp ${../../../tests/mending.qml} mending.qml
+      cp ${../tests/mending.qml} mending.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "Mending.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -399,7 +404,7 @@
   # buffer was cut off, so the launcher's catalogue never reached pi-ask.
   an-ipc-reply-arrives-whole = pkgs.runCommandLocal "an-ipc-reply-arrives-whole" { } ''
     mkdir runtime && chmod 700 runtime
-    cp ${../../../tests/ipc-replies.qml} shell.qml
+    cp ${../tests/ipc-replies.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts} QS=${qs} PATH=${pkgs.coreutils}/bin:$PATH
     ${shellFolderLint}
@@ -417,7 +422,7 @@
     pkgs.runCommandLocal "a-getter-turned-leaves-other-shapes-whole" { }
       ''
         mkdir runtime && chmod 700 runtime
-        cp ${../../../tests/getters-keep-their-own-table.qml} shell.qml
+        cp ${../tests/getters-keep-their-own-table.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml
@@ -430,7 +435,7 @@
   # read as local time reads the moment the case names.
   dates-read-as-before = pkgs.runCommandLocal "dates-read-as-before" { } ''
     mkdir runtime && chmod 700 runtime
-    cp ${../../../tests/dates-read-as-before.qml} shell.qml
+    cp ${../tests/dates-read-as-before.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen TZ=UTC
     ${shellFolderLint}
     timeout 60 ${qs} -p shell.qml
@@ -443,7 +448,7 @@
   # string apiece held twice what one for each word does.
   json-strings-kept-once = pkgs.runCommandLocal "json-strings-kept-once" { } ''
     mkdir runtime && chmod 700 runtime
-    cp ${../../../tests/json-strings-kept-once.qml} shell.qml
+    cp ${../tests/json-strings-kept-once.qml} shell.qml
     cp ${../../../tests/lib/Memory.js} Memory.js
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export QML_XHR_ALLOW_FILE_READ=1
@@ -458,7 +463,7 @@
   # needs, for every string the daemons' answers hold.
   json-strings-at-their-length = pkgs.runCommandLocal "json-strings-at-their-length" { } ''
     mkdir runtime && chmod 700 runtime
-    cp ${../../../tests/json-strings-at-their-length.qml} shell.qml
+    cp ${../tests/json-strings-at-their-length.qml} shell.qml
     cp ${../../../tests/lib/Memory.js} Memory.js
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export QML_XHR_ALLOW_FILE_READ=1
@@ -473,7 +478,7 @@
   # left the heap 30 MB heavier for the rest of its run.
   the-collector-keeps-up = pkgs.runCommandLocal "the-collector-keeps-up" { } ''
     mkdir runtime && chmod 700 runtime
-    cp ${../../../tests/collector-keeps-up.qml} shell.qml
+    cp ${../tests/collector-keeps-up.qml} shell.qml
     cp ${../../../tests/lib/Memory.js} Memory.js
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export QML_XHR_ALLOW_FILE_READ=1
@@ -487,7 +492,7 @@
   # (qtdeclarative-maps-find-keys-by-hash.patch).
   maps-keep-their-meaning = pkgs.runCommandLocal "maps-keep-their-meaning" { } ''
     mkdir runtime && chmod 700 runtime
-    cp ${../../../tests/maps-keep-their-meaning.qml} shell.qml
+    cp ${../tests/maps-keep-their-meaning.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     ${shellFolderLint}
     timeout 60 ${qs} -p shell.qml
@@ -512,16 +517,17 @@
     touch $out
   '';
 
-  # A file reloaded while it's still being read is read once more as that
-  # read lands, so the view holds what was written last, as
-  # tests/reloaded.qml drives it in the Quickshell the machine runs
-  # (fileview-reads-again.patch): a status file taken away mid-read stayed
-  # said, as the-desktop-reads-the-spend-watch once saw on a busy builder.
+  # A file reloaded while it's still being read is read once more as that read
+  # lands, so the view holds what was written last, as
+  # modules/quickshell/tests/reloaded.qml drives it in the Quickshell the
+  # machine runs (fileview-reads-again.patch): a status file taken away mid-read
+  # stayed said, as the-desktop-reads-the-spend-watch once saw on a busy
+  # builder.
   a-file-reloaded-mid-read-is-read-again =
     pkgs.runCommandLocal "a-file-reloaded-mid-read-is-read-again" { }
       ''
         mkdir runtime && chmod 700 runtime
-        cp ${../../../tests/reloaded.qml} shell.qml
+        cp ${../tests/reloaded.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}
@@ -529,21 +535,21 @@
         touch $out
       '';
 
-  # A status file is heard again once its folder is made again, and when
-  # its folder is made only after the shell starts, as tests/watched.qml
-  # drives it, in the Quickshell the machine runs
-  # (fileview-watch-nearest.patch): a guard's runtime folder goes each time
-  # systemd restarts the guard. A view of the folder itself hears a file
-  # renamed into it or removed (fileview-hears-a-folder.patch). A view moved
-  # to another file, or watching again, keeps the one watcher it made
-  # (fileview-keeps-its-watcher.patch), counted from Quickshell's log: each
-  # one dropped cost the shell's thread a millisecond, 130 of them as it
-  # started. Kept in Nix because each line copies a file Nix gives it beside
-  # the shell, or runs the Quickshell it builds.
+  # A status file is heard again once its folder is made again, and when its
+  # folder is made only after the shell starts, as
+  # modules/quickshell/tests/watched.qml drives it, in the Quickshell the
+  # machine runs (fileview-watch-nearest.patch): a guard's runtime folder goes
+  # each time systemd restarts the guard. A view of the folder itself hears a
+  # file renamed into it or removed (fileview-hears-a-folder.patch). A view
+  # moved to another file, or watching again, keeps the one watcher it made
+  # (fileview-keeps-its-watcher.patch), counted from Quickshell's log: each one
+  # dropped cost the shell's thread a millisecond, 130 of them as it started.
+  # Kept in Nix because each line copies a file Nix gives it beside the shell,
+  # or runs the Quickshell it builds.
   a-watched-file-comes-back = pkgs.runCommandLocal "a-watched-file-comes-back" { } ''
     mkdir runtime && chmod 700 runtime
     cp ${../pieces/StatusFile.qml} StatusFile.qml
-    cp ${../../../tests/watched.qml} shell.qml
+    cp ${../tests/watched.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
@@ -558,12 +564,12 @@
     touch $out
   '';
 
-  # The desktop entries are read again only when a folder holding them
-  # changes, as tests/desktop-entries.qml drives them in the Quickshell the
-  # machine runs (desktop-entries-heard-only-when-theirs.patch): a file
-  # written beside them, as a hidden file in the home folder is, reads nothing,
-  # while an entry added and a link on the way pointed elsewhere each read
-  # them once, counted from Quickshell's log of each scan.
+  # The desktop entries are read again only when a folder holding them changes,
+  # as modules/quickshell/tests/desktop-entries.qml drives them in the
+  # Quickshell the machine runs (desktop-entries-heard-only-when-theirs.patch):
+  # a file written beside them, as a hidden file in the home folder is, reads
+  # nothing, while an entry added and a link on the way pointed elsewhere each
+  # read them once, counted from Quickshell's log of each scan.
   desktop-entries-are-read-only-when-theirs-change =
     pkgs.runCommandLocal "desktop-entries-are-read-only-when-theirs-change" { }
       ''
@@ -575,7 +581,7 @@
         entry System > entries-first/share/applications/system.desktop
         entry Next > entries-next/share/applications/next.desktop
         ln -s "$PWD/entries-first" entries
-        cp ${../../../tests/desktop-entries.qml} shell.qml
+        cp ${../tests/desktop-entries.qml} shell.qml
         export HOME=$PWD/home XDG_DATA_HOME=$PWD/data XDG_DATA_DIRS=$PWD/entries/share
         export ENTRIES_LINK=$PWD/entries XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8
         export QT_QPA_PLATFORM=offscreen FONTCONFIG_FILE=${noFonts}
@@ -595,10 +601,10 @@
   # Every place opened again, round after round, keeps no more of the
   # shell's JavaScript heap live than the round before, as Qt's collector
   # says at each closing's collection, which only its allocatorStats at
-  # debug say (tests/shell-stays-light-on-niri-test.py).
+  # debug say (modules/quickshell/tests/shell-stays-light-on-niri-test.py).
   the-shell-stays-light-on-niri = launcherOnNiri {
     name = "the-shell-stays-light-on-niri";
-    tests = ../../../tests/shell-stays-light-on-niri-test.py;
+    tests = ../tests/shell-stays-light-on-niri-test.py;
     given = [ "QS_GIVEN=--log-rules qt.qml.gc.allocatorStats.debug=true" ];
   };
 }

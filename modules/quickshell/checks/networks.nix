@@ -102,13 +102,13 @@ in
       touch $out
     '';
 
-  # Every row Network's Address and Traffic show, and each answer as a row
-  # of its own, has a drawer saying more than its line, each fact named by
-  # the vocabulary (tests/network-drawers.qml): Address over two stand-in
-  # connections, Traffic over the sandbox's own counters, Ethernet with no
-  # card, Wi-Fi's own row's drawer, and a connection's drawer shown whole or
-  # not at all, never growing. Kept in Nix because each line copies a file
-  # Nix gives it beside the cases, or sets what the shell runs them with.
+  # Every row Network's Address and Traffic show, and each answer as a row of
+  # its own, has a drawer saying more than its line, each fact named by the
+  # vocabulary (modules/quickshell/tests/network-drawers.qml): Address over two
+  # stand-in connections, Traffic over the sandbox's own counters, Ethernet with
+  # no card, Wi-Fi's own row's drawer, and a connection's drawer shown whole or
+  # not at all, never growing. Kept in Nix because each line copies a file Nix
+  # gives it beside the cases, or sets what the shell runs them with.
   every-network-row-has-a-drawer = pkgs.runCommandLocal "every-network-row-has-a-drawer" { } ''
     mkdir -p launcher runtime && chmod 700 runtime
     ${copied [
@@ -121,7 +121,7 @@ in
       "launcher/words.json"
     ]}
     cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-    cp ${../../../tests/network-drawers.qml} shell.qml
+    cp ${../tests/network-drawers.qml} shell.qml
     cp ${../../../tests/lib/Expect.js} Expect.js
     cp ${../../../tests/lib/Until.qml} Until.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -133,8 +133,8 @@ in
 
   # Traffic, asked after a gap as each step into Network asks it, reads one
   # sysfs file for an interface it already knows rather than all four again
-  # (tests/traffic-reads.qml), since each is a blocking read. A build has no
-  # sysfs, so the case writes lo's folder in sys/lo, made here.
+  # (modules/quickshell/tests/traffic-reads.qml), since each is a blocking read.
+  # A build has no sysfs, so the case writes lo's folder in sys/lo, made here.
   traffic-reads-a-known-interface-once-after-a-gap =
     pkgs.runCommandLocal "traffic-reads-a-known-interface-once-after-a-gap" { }
       ''
@@ -148,7 +148,7 @@ in
           "launcher/words.json"
         ]}
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${../../../tests/traffic-reads.qml} shell.qml
+        cp ${../tests/traffic-reads.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
@@ -161,8 +161,8 @@ in
   # loads them again in the background as the launcher opens, as the links
   # change and when they're old, telling the launcher once a load changes a
   # gateway or its cost and never for the kernel's use counts alone
-  # (tests/network-routes.qml), since a step into Network asks Address
-  # and Ethernet, which each read both routing tables. The case writes its
+  # (modules/quickshell/tests/network-routes.qml), since a step into Network
+  # asks Address and Ethernet, which each read both routing tables. The case writes its
   # own tables in net/, made here. Kept in Nix because each line copies a
   # file Nix gives it beside the case, or sets what the shell runs it with.
   address-waits-on-no-route-file = pkgs.runCommandLocal "address-waits-on-no-route-file" { } ''
@@ -175,7 +175,7 @@ in
       "launcher/words.json"
     ]}
     cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-    cp ${../../../tests/network-routes.qml} shell.qml
+    cp ${../tests/network-routes.qml} shell.qml
     cp ${../../../tests/lib/Expect.js} Expect.js
     cp ${../../../tests/lib/Until.qml} Until.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -185,26 +185,29 @@ in
     touch $out
   '';
 
-  # Wi-Fi joins a network by the acts wifid serves on its row, asking each
-  # word a join needs in the field before it's sent (tests/wifi-acts.qml),
-  # with the launcher's asking stood in.
-  wifi-asks-each-word-a-join-needs-first = wifiCase "wifi-asks-each-word-a-join-needs-first" ../../../tests/wifi-acts.qml;
+  # Wi-Fi joins a network by the acts wifid serves on its row, asking each word
+  # a join needs in the field before it's sent
+  # (modules/quickshell/tests/wifi-acts.qml), with the launcher's asking stood
+  # in.
+  wifi-asks-each-word-a-join-needs-first = wifiCase "wifi-asks-each-word-a-join-needs-first" ../tests/wifi-acts.qml;
 
-  # Wi-Fi's cards look for networks only while its rows are shown, Wi-Fi
-  # held or a find showing a row of its, or a terminal's show walked in, and
-  # never with the launcher open on another place (tests/wifi-looks.qml),
-  # since each look takes the card off its channel for seconds.
-  wifi-looks-only-while-its-rows-are-shown = wifiCase "wifi-looks-only-while-its-rows-are-shown" ../../../tests/wifi-looks.qml;
+  # Wi-Fi's cards look for networks only while its rows are shown, Wi-Fi held or
+  # a find showing a row of its, or a terminal's show walked in, and never with
+  # the launcher open on another place
+  # (modules/quickshell/tests/wifi-looks.qml), since each look takes the card
+  # off its channel for seconds.
+  wifi-looks-only-while-its-rows-are-shown = wifiCase "wifi-looks-only-while-its-rows-are-shown" ../tests/wifi-looks.qml;
 
   # Wi-Fi holds the network joined ahead while the launcher's open, so a
   # step onto Wi-Fi or into it finds its drawer held, and a change to that
   # drawer alone, nobody looking at it, tells the launcher nothing
-  # (tests/wifi-ahead.qml).
-  wifi-holds-the-network-joined-ahead = wifiCase "wifi-holds-the-network-joined-ahead" ../../../tests/wifi-ahead.qml;
+  # (modules/quickshell/tests/wifi-ahead.qml).
+  wifi-holds-the-network-joined-ahead = wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml;
 
-  # A network wanting a sign-in is told of once, and its notice taken back
-  # once it stops wanting one, even a notice arriving only after that
-  # (tests/sign-in.qml), with the real SignIn.qml and what it reads stood in.
+  # A network wanting a sign-in is told of once, and its notice taken back once
+  # it stops wanting one, even a notice arriving only after that
+  # (modules/quickshell/tests/sign-in.qml), with the real SignIn.qml and what it
+  # reads stood in.
   a-sign-in-notice-is-taken-back-even-late =
     let
       # Kept in Nix because each only stands in for what SignIn.qml reads
@@ -238,7 +241,7 @@ in
       cp ${notices} Notices.qml
       cp ${niri} Niri.qml
       cp ${report} Report.qml
-      cp ${../../../tests/sign-in.qml} shell.qml
+      cp ${../tests/sign-in.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

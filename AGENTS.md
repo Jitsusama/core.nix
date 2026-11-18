@@ -14,7 +14,7 @@ no framework, and nothing found by scanning the file tree.
 | `roles/<role>/`     | what a machine is for: imports only, one file per system  |
 | `hardware/<model>/` | one machine model's needs, and the kernel it runs         |
 | `examples/`         | machines built only from the outputs, as a consumer would |
-| `tests/`            | VM tests, the shell's QML cases, check scripts, stand-ins |
+| `tests/`            | VM tests, check scripts, stand-ins, shared test pieces    |
 | `tools/`            | the dev shell's own programs, for changing core.nix       |
 | `checks.nix`        | what `nix flake check` runs: every folder's `checks.nix`  |
 | `check-descriptions.nix` | what each check proves, by its name                  |
@@ -36,7 +36,7 @@ its lowest tier that can show it, as [Earning a Check][17] says. Read both
 before adding a test.
 
 - Logic is proven in Qt's own engine or offscreen Quickshell, over cases in
-  `tests/`, in under a second each ([The Desktop's Logic][18]). A view that
+  `modules/quickshell/tests/`, in under a second each ([The Desktop's Logic][18]). A view that
   works something out moves it into a `.js` beside it, where they reach it.
 - What the desktop does on niri that needs no system service, a surface
   landing as niri's layer or what a bind runs, is proven on a nested niri in

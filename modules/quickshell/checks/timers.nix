@@ -9,16 +9,17 @@
   ...
 }:
 {
-  # A timer's span and name are read from what's typed after "timer", its
-  # time left told as a clock and its span in its largest units, and timers
-  # listed rung first, and what Now's Timers row says, as tests/timing.qml
-  # holds launcher/Timing.js to it in Qt's own engine.
+  # A timer's span and name are read from what's typed after "timer", its time
+  # left told as a clock and its span in its largest units, and timers listed
+  # rung first, and what Now's Timers row says, as
+  # modules/quickshell/tests/timing.qml holds launcher/Timing.js to it in Qt's
+  # own engine.
   a-timer-is-read-from-what-is-typed =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-timer-is-read-from-what-is-typed" { } ''
-      cp ${../../../tests/timing.qml} timing.qml
+      cp ${../tests/timing.qml} timing.qml
       cp ${../launcher/Timing.js} Timing.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

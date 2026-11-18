@@ -59,51 +59,50 @@
       touch $out
     '';
 
-  # Now's own rows, last: the time, the date, the location, the weather
-  # read as the launcher opens and the next meeting, whose Return is the
-  # meeting's own (tests/now-moment.qml), with the margin's pieces, the
-  # agents' waiting list, the weather and the calendar stood in. The
-  # location is Location.qml's own, reading whereabouts itself over its
-  # socket: here is the one it kept from before it started, written here,
-  # GeoClue isn't there to say another, and the clock's zone is a link
-  # that names another than the place's. For You's looks are given as the
-  # to-do daemon's stream tells them, kept only while each reads the same,
-  # and what's
-  # on as pieces whose rows are kept while each reads the same. For You's
-  # Desktop holds the notices' rows as their daemon serves them, stood in
-  # (tests/lib/NoticesDaemon.qml), each kept while its notice is the same.
-  # Lately's rows are kept as well, so a notice arriving makes only
-  # Desktop's row again, and a session's move that leaves what For You
-  # reads of it the same makes none.
+  # Now's own rows, last: the time, the date, the location, the weather read as
+  # the launcher opens and the next meeting, whose Return is the meeting's own
+  # (modules/quickshell/tests/now-moment.qml), with the margin's pieces, the
+  # agents' waiting list, the weather and the calendar stood in. The location is
+  # Location.qml's own, reading whereabouts itself over its socket: here is the
+  # one it kept from before it started, written here, GeoClue isn't there to say
+  # another, and the clock's zone is a link that names another than the place's.
+  # For You's looks are given as the to-do daemon's stream tells them, kept only
+  # while each reads the same, and what's on as pieces whose rows are kept while
+  # each reads the same. For You's Desktop holds the notices' rows as their
+  # daemon serves them, stood in (tests/lib/NoticesDaemon.qml), each kept while
+  # its notice is the same. Lately's rows are kept as well, so a notice arriving
+  # makes only Desktop's row again, and a session's move that leaves what For
+  # You reads of it the same makes none.
   the-launcher-shows-the-moment-in-now = nowShown {
     name = "the-launcher-shows-the-moment-in-now";
-    test = ../../../tests/now-moment.qml;
+    test = ../tests/now-moment.qml;
   };
 
   # An opening into a place that shows none of For You's rows places no
   # time or date, which makes Time's and Today's rows, until Now's rows are
   # wanted, and they place it once, only once a minute has turned since it
-  # was placed (tests/now-retime.qml).
+  # was placed (modules/quickshell/tests/now-retime.qml).
   the-launcher-places-the-time-only-when-now-is-wanted = nowShown {
     name = "the-launcher-places-the-time-only-when-now-is-wanted";
-    test = ../../../tests/now-retime.qml;
+    test = ../tests/now-retime.qml;
   };
 
   # A look Joel acts on shows so at once; one the to-do daemon refuses to
   # settle is put back as it read and said in the journal, and one it
   # settles stays as its stream then tells it, the same look in the
   # daemon's own words leaving the act's text, the daemon stood in on its
-  # socket by the case itself (tests/now-look-unwritten.qml).
+  # socket by the case itself (modules/quickshell/tests/now-look-unwritten.qml).
   the-launcher-puts-back-a-look-it-couldnt-write = nowShown {
     name = "the-launcher-puts-back-a-look-it-couldnt-write";
-    test = ../../../tests/now-look-unwritten.qml;
+    test = ../tests/now-look-unwritten.qml;
   };
 
-  # The launcher's weather answers now, its parts and the rain by the hour
-  # from one forecast, and the rain's own words answer the next rain
-  # (tests/weather.qml), with what Open-Meteo would say kept beforehand, so
-  # nothing leaves the sandbox; and here is where the laptop is, as each
-  # case gives Location's here, ahead of the place set and the time zone.
+  # The launcher's weather answers now, its parts and the rain by the hour from
+  # one forecast, and the rain's own words answer the next rain
+  # (modules/quickshell/tests/weather.qml), with what Open-Meteo would say kept
+  # beforehand, so nothing leaves the sandbox; and here is where the laptop is,
+  # as each case gives Location's here, ahead of the place set and the time
+  # zone.
   the-launcher-answers-the-rain = pkgs.runCommandLocal "the-launcher-answers-the-rain" { } ''
     mkdir launcher
     ${copied [
@@ -113,7 +112,7 @@
       "launcher/words.json"
     ]}
     cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-    cp ${../../../tests/weather.qml} shell.qml
+    cp ${../tests/weather.qml} shell.qml
     cp ${singleton "Location.qml" ''
       property var here: null
       property string clockZone: ""
@@ -126,15 +125,15 @@
     touch $out
   '';
 
-  # For You's Lately holds what's unread from each source until that source
-  # says it's done, and History says how, as tests/lately.qml holds
-  # Lately.js.
+  # For You's Lately holds what's unread from each source until that source says
+  # it's done, and History says how, as modules/quickshell/tests/lately.qml
+  # holds Lately.js.
   lately-follows-each-source =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "lately-follows-each-source" { } ''
-      cp ${../../../tests/lately.qml} lately.qml
+      cp ${../tests/lately.qml} lately.qml
       cp ${../launcher/Lately.js} Lately.js
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -145,13 +144,14 @@
     '';
 
   # Now lists what's on by its groups, what wants Joel first, then by name
-  # within each, as tests/now-groups.qml holds launcher/NowGroups.js to it.
+  # within each, as modules/quickshell/tests/now-groups.qml holds
+  # launcher/NowGroups.js to it.
   now-lists-by-group =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "now-lists-by-group" { } ''
-      cp ${../../../tests/now-groups.qml} now-groups.qml
+      cp ${../tests/now-groups.qml} now-groups.qml
       cp ${../launcher/NowGroups.js} NowGroups.js
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -163,13 +163,14 @@
 
   # Explain It asks the realm's node only what one session is, by its address
   # alone, and tells the quick model only what Joel knows the work by, as
-  # tests/explain-it.qml holds launcher/Explaining.js to it in Qt's own engine.
+  # modules/quickshell/tests/explain-it.qml holds launcher/Explaining.js to it
+  # in Qt's own engine.
   explain-it-asks-only-what-a-cell-is =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "explain-it-asks-only-what-a-cell-is" { } ''
-      cp ${../../../tests/explain-it.qml} explain-it.qml
+      cp ${../tests/explain-it.qml} explain-it.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "launcher/Explaining.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -179,21 +180,21 @@
       touch $out
     '';
 
-  # Explain It reads each session on its own from the realm's node, tells a
-  # node that can't say from a session it doesn't know, and shows its pi's
-  # answer in the act's place only while it's the act's own
-  # (tests/explainer.qml), over a stand-in mycelium (tests/explain-it-node.sh)
-  # that knows one session, answers another late, never answers a third and
-  # can't say a fourth.
+  # Explain It reads each session on its own from the realm's node, tells a node
+  # that can't say from a session it doesn't know, and shows its pi's answer in
+  # the act's place only while it's the act's own
+  # (modules/quickshell/tests/explainer.qml), over a stand-in mycelium
+  # (modules/quickshell/tests/explain-it-node.sh) that knows one session,
+  # answers another late, never answers a third and can't say a fourth.
   explain-it-shows-its-own-answer =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what the shell runs them with.
     pkgs.runCommandLocal "explain-it-shows-its-own-answer" { } ''
       mkdir -p launcher bin runtime && chmod 700 runtime
       ${copied [ "launcher/Explainer.qml" ]}
-      { echo "#!${pkgs.runtimeShell}"; cat ${../../../tests/explain-it-node.sh}; } > bin/mycelium
+      { echo "#!${pkgs.runtimeShell}"; cat ${../tests/explain-it-node.sh}; } > bin/mycelium
       chmod +x bin/mycelium
-      cp ${../../../tests/explainer.qml} shell.qml
+      cp ${../tests/explainer.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Until.qml} Until.qml
       touch asked
@@ -206,14 +207,14 @@
 
   # For You's to-dos hold only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as
-  # tests/waiting-on-you.qml holds Waiting.js to the agents' own files, as
-  # the mycelium node serves them.
+  # modules/quickshell/tests/waiting-on-you.qml holds Waiting.js to the agents'
+  # own files, as the mycelium node serves them.
   needs-you-is-true =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "needs-you-is-true" { } ''
-      cp ${../../../tests/waiting-on-you.qml} waiting-on-you.qml
+      cp ${../tests/waiting-on-you.qml} waiting-on-you.qml
       ${copied [ "Waiting.js" ]}
       cp ${../launcher/NeedsYou.js} NeedsYou.js
       cp ${../launcher/Ago.js} Ago.js
@@ -226,8 +227,9 @@
 
   # For You weighs what waits on Joel again only when the node says something
   # new of it, not each time a file of it is written again, as
-  # tests/waiting-kept.qml holds the real WaitingOnYou.qml to, through
-  # Quickshell, with a stand-in for the node and the rest of the shell.
+  # modules/quickshell/tests/waiting-kept.qml holds the real WaitingOnYou.qml
+  # to, through Quickshell, with a stand-in for the node and the rest of the
+  # shell.
   for-you-weighs-again-only-for-news =
     let
       folder = pkgs.linkFarm "for-you-weighs-again-only-for-news" {
@@ -238,7 +240,7 @@
         "Hearing.js" = ../Hearing.js;
         "Mending.js" = ../Mending.js;
         "Expect.js" = ../../../tests/lib/Expect.js;
-        "shell.qml" = ../../../tests/waiting-kept.qml;
+        "shell.qml" = ../tests/waiting-kept.qml;
         "Sessions.qml" = singleton "Sessions.qml" ''
           readonly property string nodePath: Quickshell.env("XDG_RUNTIME_DIR") + "/node.sock"
           property var present: ({})

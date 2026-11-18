@@ -18,13 +18,14 @@
   ...
 }:
 {
-  # An agent's row does, on Return, the act its state makes harmless, its
-  # rows the agents daemon's, made from the realm's own node's sessions, as
-  # a workstation's are (tests/agents-on-niri-test.py). The clipboard's
-  # history serves what Super+S's line attaches by Ctrl+R * and Ctrl+R +.
+  # An agent's row does, on Return, the act its state makes harmless, its rows
+  # the agents daemon's, made from the realm's own node's sessions, as a
+  # workstation's are (modules/quickshell/tests/agents-on-niri-test.py). The
+  # clipboard's history serves what Super+S's line attaches by Ctrl+R * and
+  # Ctrl+R +.
   an-agents-return-does-its-harmless-act-on-niri = launcherOnNiri {
     name = "an-agents-return-does-its-harmless-act-on-niri";
-    tests = ../../../tests/agents-on-niri-test.py;
+    tests = ../tests/agents-on-niri-test.py;
     given = [
       "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}"
       "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { })}"
@@ -52,16 +53,17 @@
       touch $out
     '';
 
-  # Joel's words in a talk's field outlive the shell starting again, as a
-  # switch does, and go only once his talk says they were delivered, never
-  # on Return (Joel, 2026-11-12 16:00, through QCXZEB's e23364f8), as
-  # tests/drafts.qml holds launcher/Drafts.js to it in Qt's own engine.
+  # Joel's words in a talk's field outlive the shell starting again, as a switch
+  # does, and go only once his talk says they were delivered, never on Return
+  # (Joel, 2026-11-12 16:00, through QCXZEB's e23364f8), as
+  # modules/quickshell/tests/drafts.qml holds launcher/Drafts.js to it in Qt's
+  # own engine.
   a-talks-words-outlive-the-shell =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-talks-words-outlive-the-shell" { } ''
-      cp ${../../../tests/drafts.qml} drafts.qml
+      cp ${../tests/drafts.qml} drafts.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "launcher/Drafts.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -71,15 +73,16 @@
       touch $out
     '';
 
-  # The launcher's talkTo, as a cell on the realm's map asks it, opens a
-  # talk only on whom its first word names, a network told apart, as
-  # tests/talk-to.qml holds launcher/TalkTo.js to it in Qt's own engine.
+  # The launcher's talkTo, as a cell on the realm's map asks it, opens a talk
+  # only on whom its first word names, a network told apart, as
+  # modules/quickshell/tests/talk-to.qml holds launcher/TalkTo.js to it in Qt's
+  # own engine.
   talk-to-opens-only-on-whom-it-names =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "talk-to-opens-only-on-whom-it-names" { } ''
-      cp ${../../../tests/talk-to.qml} talk-to.qml
+      cp ${../tests/talk-to.qml} talk-to.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "launcher/TalkTo.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -89,17 +92,17 @@
       touch $out
     '';
 
-  # Start New Work asks the realm's node only a sprout of what Joel said,
-  # in no window, in one of the repositories his quests work in, and says
-  # how it ended in the node's or sprout's own words, as
-  # tests/start-new-work.qml holds launcher/Sprouting.js to it in Qt's own
-  # engine.
+  # Start New Work asks the realm's node only a sprout of what Joel said, in no
+  # window, in one of the repositories his quests work in, and says how it ended
+  # in the node's or sprout's own words, as
+  # modules/quickshell/tests/start-new-work.qml holds launcher/Sprouting.js to
+  # it in Qt's own engine.
   start-new-work-asks-only-a-sprout =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "start-new-work-asks-only-a-sprout" { } ''
-      cp ${../../../tests/start-new-work.qml} start-new-work.qml
+      cp ${../tests/start-new-work.qml} start-new-work.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "launcher/Sprouting.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -110,15 +113,15 @@
     '';
 
   # Carry Back asks the realm's node only a carry of a quest to a machine,
-  # rebuilt from the act's parts, and says how it ended in the node's own
-  # words, as tests/carry-back.qml holds launcher/CarryBack.js to it in Qt's
-  # own engine.
+  # rebuilt from the act's parts, and says how it ended in the node's own words,
+  # as modules/quickshell/tests/carry-back.qml holds launcher/CarryBack.js to it
+  # in Qt's own engine.
   carry-back-asks-the-node-only-a-carry =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "carry-back-asks-the-node-only-a-carry" { } ''
-      cp ${../../../tests/carry-back.qml} carry-back.qml
+      cp ${../tests/carry-back.qml} carry-back.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "launcher/CarryBack.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -129,12 +132,13 @@
     '';
 
   # A mycelium: link a page hands the desktop reaches mycelium-link's entry
-  # through niri's own list of defaults, the entry registered for the
-  # scheme in the profile's applications as the portal needs, and none left
-  # in the account's own folder to stand in its way. It asks the launcher to
-  # talk to the cell or show the network it names, by its name alone, and nothing
-  # for a link naming neither or a second within a few seconds
-  # (tests/mycelium-links-open-in-the-launcher.sh). Its tests run as it builds.
+  # through niri's own list of defaults, the entry registered for the scheme in
+  # the profile's applications as the portal needs, and none left in the
+  # account's own folder to stand in its way. It asks the launcher to talk to the
+  # cell or show the network it names, by its name alone, and nothing for a link
+  # naming neither or a second within a few seconds
+  # (modules/quickshell/tests/mycelium-links-open-in-the-launcher.sh). Its tests
+  # run as it builds.
   mycelium-links-open-in-the-launcher =
     let
       home = account graphical;
@@ -164,7 +168,7 @@
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../../tests/mycelium-links-open-in-the-launcher.sh} ${
+        ${lib.getExe pkgs.bash} ${../tests/mycelium-links-open-in-the-launcher.sh} ${
           lib.escapeShellArgs [
             entry
             (pkgs.writeText "niri-mimeapps.list" defaults)
@@ -190,7 +194,7 @@
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "pi-sorts-without-collecting" { } ''
-      cp ${../../../tests/pi-source-collects.qml} pi-source-collects.qml
+      cp ${../tests/pi-source-collects.qml} pi-source-collects.qml
       ${copied [ "PiSource.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -201,17 +205,18 @@
       touch $out
     '';
 
-  # A pi session says how it stands and its acts, and its drawer's times
-  # are worded, as tests/session-row.qml holds launcher/SessionRow.js and
-  # SessionDrawer.js to them in Qt's own engine, and Landed what they
-  # landed, kept past their end (Landed.js). How Agents lays sessions out,
-  # and what its drawer says, is the agents daemon's, proven in its crate.
+  # A pi session says how it stands and its acts, and its drawer's times are
+  # worded, as modules/quickshell/tests/session-row.qml holds
+  # launcher/SessionRow.js and SessionDrawer.js to them in Qt's own engine, and
+  # Landed what they landed, kept past their end (Landed.js). How Agents lays
+  # sessions out, and what its drawer says, is the agents daemon's, proven in
+  # its crate.
   the-launcher-says-how-each-session-stands =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-says-how-each-session-stands" { } ''
-      cp ${../../../tests/session-row.qml} session-row.qml
+      cp ${../tests/session-row.qml} session-row.qml
       cp ${../launcher/Holders.js} Holders.js
       cp ${../launcher/SessionRow.js} SessionRow.js
       cp ${../launcher/Order.js} Order.js
@@ -225,15 +230,15 @@
       touch $out
     '';
 
-  # What became of Joel's line to the void, as the Super+S line reads it:
-  # its talk and reply, where the void says it went and how a take-back
-  # stands, as tests/told.qml holds Told.js to in Qt's own engine.
+  # What became of Joel's line to the void, as the Super+S line reads it: its
+  # talk and reply, where the void says it went and how a take-back stands, as
+  # modules/quickshell/tests/told.qml holds Told.js to in Qt's own engine.
   a-reply-to-the-void-says-where-it-went =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-reply-to-the-void-says-where-it-went" { } ''
-      cp ${../../../tests/told.qml} told.qml
+      cp ${../tests/told.qml} told.qml
       ${copied [ "Told.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -243,17 +248,18 @@
       touch $out
     '';
 
-  # What Super+S's line sends with Joel's words, the quiet line naming who
-  # hears it, and its talk sent, answered and taken back inside the line, as
-  # tests/talk-line.qml holds TalkLine.js to in Qt's own engine, with a
-  # session's talk under the launcher's field, which SessionTalks.js says,
-  # and a line opened as its thread, which TalkThread.js makes.
+  # What Super+S's line sends with Joel's words, the quiet line naming who hears
+  # it, and its talk sent, answered and taken back inside the line, as
+  # modules/quickshell/tests/talk-line.qml holds TalkLine.js to in Qt's own
+  # engine, with a session's talk under the launcher's field, which
+  # SessionTalks.js says, and a line opened as its thread, which TalkThread.js
+  # makes.
   the-talk-line-says-what-became-of-its-words =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-talk-line-says-what-became-of-its-words" { } ''
-      cp ${../../../tests/talk-line.qml} talk-line.qml
+      cp ${../tests/talk-line.qml} talk-line.qml
       ${copied [
         "SessionTalks.js"
         "TalkLine.js"
@@ -269,13 +275,13 @@
 
   # The machine queue is the harness's file as the node's record holds it,
   # and a write of only when it was written says nothing new, as
-  # tests/jobs.qml holds Jobs.js to it in Qt's own engine.
+  # modules/quickshell/tests/jobs.qml holds Jobs.js to it in Qt's own engine.
   the-queue-is-heard-from-the-node =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-queue-is-heard-from-the-node" { } ''
-      cp ${../../../tests/jobs.qml} jobs.qml
+      cp ${../tests/jobs.qml} jobs.qml
       ${copied [ "Jobs.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -285,9 +291,9 @@
       touch $out
     '';
 
-  # The talks Agents shows (tests/talks.qml), heard from a stand-in for the
-  # realm's node serving each talk as a record of its lines: by its
-  # session's address, newest first, moved on by each line told, one made
+  # The talks Agents shows (modules/quickshell/tests/talks.qml), heard from a
+  # stand-in for the realm's node serving each talk as a record of its lines: by
+  # its session's address, newest first, moved on by each line told, one made
   # since heard and one let go gone, with no file of the talks read here.
   the-launcher-hears-talks-from-the-node =
     let
@@ -325,7 +331,7 @@
         "launcher/Provider.qml"
         "launcher/words.json"
       ]}
-      cp ${../../../tests/talks.qml} shell.qml
+      cp ${../tests/talks.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${waiting} WaitingOnYou.qml
@@ -341,9 +347,9 @@
     '';
 
   # The launcher's Ask row says why when pi-ask can't start, and gives each
-  # question a pi of its own (tests/ask.qml), over a pi-ask that ends with
-  # an error and the desktop tests' stand-in, which speaks pi's RPC as the
-  # work machine's pi does.
+  # question a pi of its own (modules/quickshell/tests/ask.qml), over a pi-ask
+  # that ends with an error and the desktop tests' stand-in, which speaks pi's
+  # RPC as the work machine's pi does.
   the-launcher-asks-a-fresh-pi =
     let
       broken = pkgs.writeShellScript "pi-ask-broken" ''
@@ -373,7 +379,7 @@
       ]}
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
-      cp ${../../../tests/ask.qml} shell.qml
+      cp ${../tests/ask.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} ASK_BROKEN=${broken} ASK_STAND_IN=${standIn}
       ${shellFolderLint}
@@ -381,10 +387,10 @@
       touch $out
     '';
 
-  # The launcher's runs find pi's fleets and review rounds in their records
-  # as the realm's mycelium node serves them, and go to the session that
-  # started one or read a participant's answer (tests/runs.qml), with niri,
-  # pi's sessions and the screen's sharing stood in, and no node, so the
+  # The launcher's runs find pi's fleets and review rounds in their records as
+  # the realm's mycelium node serves them, and go to the session that started
+  # one or read a participant's answer (modules/quickshell/tests/runs.qml), with
+  # niri, pi's sessions and the screen's sharing stood in, and no node, so the
   # case gives the records itself.
   the-launcher-finds-the-runs =
     let
@@ -411,7 +417,7 @@
         "launcher/words.json"
       ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../../../tests/runs.qml} shell.qml
+      cp ${../tests/runs.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${singleton "AgentSources.qml" "readonly property var runs: []"} AgentSources.qml
@@ -424,11 +430,11 @@
       touch $out
     '';
 
-  # The launcher's queue, Agents' place for the machine's heavy work, says
-  # what each job is from the queue pi's harness writes (tests/queue.qml),
-  # with the queue, pi's sessions, niri, Quests and a slice's memory stood
-  # in: names in words, times against the last run, what a waiting job
-  # waits for, and where Return goes.
+  # The launcher's queue, Agents' place for the machine's heavy work, says what
+  # each job is from the queue pi's harness writes
+  # (modules/quickshell/tests/queue.qml), with the queue, pi's sessions, niri,
+  # Quests and a slice's memory stood in: names in words, times against the last
+  # run, what a waiting job waits for, and where Return goes.
   the-launcher-finds-the-queue =
     let
       niri = singleton "Niri.qml" ''
@@ -457,7 +463,7 @@
         "launcher/Queue.qml"
         "launcher/words.json"
       ]}
-      cp ${../../../tests/queue.qml} shell.qml
+      cp ${../tests/queue.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${jobs} Jobs.qml

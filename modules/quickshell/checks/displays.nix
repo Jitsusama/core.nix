@@ -23,11 +23,11 @@
     tests = ../../../tests/screens-off-on-niri-test.py;
   };
 
-  # The launcher tells how the desk light is lit and sets it, and the
-  # brightness bar hears its changes but not a camera lighting it; with no
-  # light, its row stays and says why (tests/desk-light.qml), over a
-  # stand-in litra that keeps a light's state and says each change on its
-  # watch, as the real one does.
+  # The launcher tells how the desk light is lit and sets it, and the brightness
+  # bar hears its changes but not a camera lighting it; with no light, its row
+  # stays and says why (modules/quickshell/tests/desk-light.qml), over a
+  # stand-in litra that keeps a light's state and says each change on its watch,
+  # as the real one does.
   the-launcher-finds-the-desk-light =
     let
       niri = pkgs.writeText "Niri.qml" ''
@@ -108,7 +108,7 @@
         "launcher/Provider.qml"
         "launcher/words.json"
       ]}
-      cp ${../../../tests/desk-light.qml} shell.qml
+      cp ${../tests/desk-light.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${litra}/bin:$PATH
@@ -119,14 +119,13 @@
       touch $out
     '';
 
-  # The launcher's Screens draws each screen's row as the windows daemon
-  # serves it, makes again only the row a change names, offers Windows the
-  # screens laid out by what their rows hold, with no record of niri's,
-  # asks the daemon a screen's Return rather than niri, and says the Brightness as the
-  # place's line serves it (tests/displays.qml), with the daemon and niri
-  # stood in. A screen's ways, what :setl power and unplugged do with
-  # them, and what the place's :set line serves, are the windows daemon's,
-  # tested beside it.
+  # The launcher's Screens draws each screen's row as the windows daemon serves it,
+  # makes again only the row a change names, offers Windows the screens laid out by
+  # what their rows hold, with no record of niri's, asks the daemon a screen's Return
+  # rather than niri, and says the Brightness as the place's line serves it
+  # (modules/quickshell/tests/displays.qml), with the daemon and niri stood in. A
+  # screen's ways, what :setl power and unplugged do with them, and what the place's
+  # :set line serves, are the windows daemon's, tested beside it.
   the-launcher-remakes-only-the-screens-that-changed =
     let
       # niri as Screens still asks it, a change to a screen answered.
@@ -147,7 +146,7 @@
         "launcher/ReadyRows.qml"
         "launcher/words.json"
       ]}
-      cp ${../../../tests/displays.qml} shell.qml
+      cp ${../tests/displays.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

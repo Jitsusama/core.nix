@@ -17,7 +17,7 @@
   # The launcher's quests find pi's quests in the harness's two lists, open
   # and ended, as the quests daemon makes their rows from a stand-in for
   # the realm's node, and open pi on one or go to its session
-  # (tests/quests.qml), with niri and pi's sessions stood in.
+  # (modules/quickshell/tests/quests.qml), with niri and pi's sessions stood in.
   the-launcher-finds-the-quests =
     let
       quests = lib.getExe (pkgs.callPackage ../../quests/package.nix { });
@@ -60,7 +60,7 @@
         "launcher/ReadyRows.qml"
         "launcher/words.json"
       ]}
-      cp ${../../../tests/quests.qml} shell.qml
+      cp ${../tests/quests.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

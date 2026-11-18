@@ -12,9 +12,10 @@
   ...
 }:
 {
-  # The launcher's Heat draws its rows and headline as the machine daemon
-  # serves them ready, and makes again only the rows a change names
-  # (tests/heat.qml), over a stand-in for the daemon, with niri stood in.
+  # The launcher's Heat draws its rows and headline as the machine daemon serves
+  # them ready, and makes again only the rows a change names
+  # (modules/quickshell/tests/heat.qml), over a stand-in for the daemon, with
+  # niri stood in.
   heat-remakes-only-what-moved =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -34,7 +35,7 @@
       cp ${singleton "Niri.qml" ''
         function spawn(command) { }
       ''} Niri.qml
-      cp ${../../../tests/heat.qml} shell.qml
+      cp ${../tests/heat.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -42,9 +43,10 @@
       touch $out
     '';
 
-  # With nothing at the machine daemon's socket, Heat's row stands: held
-  # before its watch begins, then saying its daemon isn't answering, so
-  # Machine's head never names a row a show can't find (tests/heat-away.qml).
+  # With nothing at the machine daemon's socket, Heat's row stands: held before
+  # its watch begins, then saying its daemon isn't answering, so Machine's head
+  # never names a row a show can't find
+  # (modules/quickshell/tests/heat-away.qml).
   heat-stands-while-its-daemon-is-away =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # case, or sets what Quickshell runs it with.
@@ -63,7 +65,7 @@
       cp ${singleton "Niri.qml" ''
         function spawn(command) { }
       ''} Niri.qml
-      cp ${../../../tests/heat-away.qml} shell.qml
+      cp ${../tests/heat-away.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

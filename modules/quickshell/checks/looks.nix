@@ -195,12 +195,12 @@
       touch $out
     '';
 
-  # A row's graph is ten braille characters over a dim track of every dot,
-  # a bar filling from the left, a spark from the right with the newest last
-  # and a strip a reading for each member, in the warning colour at 95% or
-  # when it says it warns; rows' graphs stand in one column, and a figure
-  # wears no glyph, as tests/graphs.qml draws them through Quickshell in the
-  # theme's own face and sizes, at a panel's width.
+  # A row's graph is ten braille characters over a dim track of every dot, a bar
+  # filling from the left, a spark from the right with the newest last and a
+  # strip a reading for each member, in the warning colour at 95% or when it
+  # says it warns; rows' graphs stand in one column, and a figure wears no
+  # glyph, as modules/quickshell/tests/graphs.qml draws them through Quickshell
+  # in the theme's own face and sizes, at a panel's width.
   the-launchers-graphs-draw-in-braille =
     let
       machine = graphical.config;
@@ -217,7 +217,7 @@
         "TextMeasure.qml"
         "Wash.qml"
       ]}
-      cp ${../../../tests/graphs.qml} shell.qml
+      cp ${../tests/graphs.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
@@ -226,15 +226,16 @@
       touch $out
     '';
 
-  # The empty places' cat is laid in whole pixels of the screen at 1, 1.5
-  # and 2, starting on one, so it's as sharp at the laptop's fractional
-  # scale as at 2, as tests/pixels.qml holds Pixels.js to in Qt's own engine.
+  # The empty places' cat is laid in whole pixels of the screen at 1, 1.5 and 2,
+  # starting on one, so it's as sharp at the laptop's fractional scale as at 2,
+  # as modules/quickshell/tests/pixels.qml holds Pixels.js to in Qt's own
+  # engine.
   the-cat-is-drawn-in-whole-pixels =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-cat-is-drawn-in-whole-pixels" { } ''
-      cp ${../../../tests/pixels.qml} pixels.qml
+      cp ${../tests/pixels.qml} pixels.qml
       ${copied [ "Pixels.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -243,16 +244,17 @@
       touch $out
     '';
 
-  # A floating surface standing over another, as the launcher's drawer over
-  # its card on a narrow screen, meets it with a square foot, its region
-  # alike, its top and the card's foot staying round, as tests/floating.qml
-  # reads them back from what Quickshell draws.
+  # A floating surface standing over another, as the launcher's drawer over its
+  # card on a narrow screen, meets it with a square foot, its region alike, its
+  # top and the card's foot staying round, as
+  # modules/quickshell/tests/floating.qml reads them back from what Quickshell
+  # draws.
   the-drawer-over-the-card-meets-it-square =
     pkgs.runCommandLocal "the-drawer-over-the-card-meets-it-square" { }
       ''
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         ${copied [ "Floating.qml" ]}
-        cp ${../../../tests/floating.qml} shell.qml
+        cp ${../tests/floating.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         mkdir -m 700 $XDG_RUNTIME_DIR
@@ -261,10 +263,10 @@
         touch $out
       '';
 
-  # A palette's row and its field keep their words apart and inside their
-  # edges however long they run, ending what doesn't fit in an ellipsis, as
-  # tests/rows.qml draws them through Quickshell in the theme's own face and
-  # sizes, at a panel's width.
+  # A palette's row and its field keep their words apart and inside their edges
+  # however long they run, ending what doesn't fit in an ellipsis, as
+  # modules/quickshell/tests/rows.qml draws them through Quickshell in the
+  # theme's own face and sizes, at a panel's width.
   the-launchers-rows-keep-their-words-apart =
     let
       machine = graphical.config;
@@ -306,7 +308,7 @@
         "Wash.qml"
       ]}
       cp ${lights} Lights.qml
-      cp ${../../../tests/rows.qml} shell.qml
+      cp ${../tests/rows.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
@@ -335,11 +337,11 @@
       touch $out
     '';
 
-  # A glyph the theme turns is drawn a half turn about its ink's middle, so
-  # the down triangle is the triangle turned and its ink keeps the upright
-  # one's box, on lines between pixels too, at his laptop's scale and at 1,
-  # as modules/quickshell/tests/turned-mark.py reads tests/turned-mark.qml's
-  # pictures back.
+  # A glyph the theme turns is drawn a half turn about its ink's middle, so the
+  # down triangle is the triangle turned and its ink keeps the upright one's
+  # box, on lines between pixels too, at his laptop's scale and at 1, as
+  # modules/quickshell/tests/turned-mark.py reads
+  # modules/quickshell/tests/turned-mark.qml's pictures back.
   a-turned-mark-keeps-its-ink =
     let
       machine = graphical.config;
@@ -356,7 +358,7 @@
         cd at-$scale
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         ${copied [ "Mark.qml" ]}
-        cp ${../../../tests/turned-mark.qml} shell.qml
+        cp ${../tests/turned-mark.qml} shell.qml
         ${shellFolderLint}
         QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
         ${measure} ${../tests/turned-mark.py} . said

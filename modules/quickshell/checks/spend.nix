@@ -14,14 +14,15 @@
   ...
 }:
 {
-  # The AI spend piece and the tokens piece read what spend-watch writes,
-  # from a day of a session's turns on two models, and the states
-  # tests/spend.qml writes by hand, through Quickshell itself, with niri, do
-  # not disturb, the shortcuts and the sessions stood in for; the
-  # launcher's collection holds the rows `spend-watch serve` serves ready
-  # from those files (tests/spend-served.qml), its budgets' drawers among
+  # The AI spend piece and the tokens piece read what spend-watch writes, from a
+  # day of a session's turns on two models, and the states
+  # modules/quickshell/tests/spend.qml writes by hand, through Quickshell
+  # itself, with niri, do not disturb, the shortcuts and the sessions stood in
+  # for; the launcher's collection holds the rows `spend-watch serve` serves
+  # ready from those files (tests/spend-served.qml), its budgets' drawers among
   # them; and what its socket tells, from a stand-in serving those records
-  # (tests/spend-told.qml), a change remaking only the rows it changed.
+  # (modules/quickshell/tests/spend-told.qml), a change remaking only the rows
+  # it changed.
   the-desktop-reads-the-spend-watch =
     let
       watch = pkgs.callPackage ../../spend-watch/package.nix { };
@@ -79,9 +80,9 @@
         "launcher/words.json"
       ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../../../tests/spend.qml} shell.qml
+      cp ${../tests/spend.qml} shell.qml
       cp ${../../../tests/spend-served.qml} served.qml
-      cp ${../../../tests/spend-told.qml} told.qml
+      cp ${../tests/spend-told.qml} told.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Until.qml} Until.qml
       cp ${niri} Niri.qml

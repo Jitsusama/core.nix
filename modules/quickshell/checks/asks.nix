@@ -13,11 +13,11 @@
   ...
 }:
 {
-  # A yes says how long its line was on the screen, from the first frame
-  # niri presented it in this opening, and nothing where it wasn't, where
-  # the line changed since, or where the launcher is walked from outside;
-  # opened from outside, a line is timed only from a key that moves over the
-  # rows, typing starts it again and Return never does, as tests/asks-shown.qml holds
+  # A yes says how long its line was on the screen, from the first frame niri
+  # presented it in this opening, and nothing where it wasn't, where the line changed
+  # since, or where the launcher is walked from outside; opened from outside, a line
+  # is timed only from a key that moves over the rows, typing starts it again and
+  # Return never does, as modules/quickshell/tests/asks-shown.qml holds
   # secret-asks/Shown.js to asks made up there.
   the-asks-say-how-long-each-was-shown =
     let
@@ -25,7 +25,7 @@
     in
     pkgs.runCommandLocal "the-asks-say-how-long-each-was-shown" { } ''
       mkdir launcher
-      cp ${../../../tests/asks-shown.qml} asks-shown.qml
+      cp ${../tests/asks-shown.qml} asks-shown.qml
       cp ${../../secret-asks/Shown.js} launcher/Shown.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -72,12 +72,12 @@
       touch $out
     '';
 
-  # Asks lists what the secret-asks daemon serves, run here over its own
-  # folder with stand-ins for op and loginctl, and two asks put up as an
-  # agent puts one (tests/asks-stand-ins.sh): For You holds each waiting
-  # one, Return releases it once a first Return has armed it, r refuses,
-  # a yes while locked is refused in the daemon's words, and Refuse It
-  # refuses the other (tests/asks-served.qml).
+  # Asks lists what the secret-asks daemon serves, run here over its own folder
+  # with stand-ins for op and loginctl, and two asks put up as an agent puts one
+  # (modules/quickshell/tests/asks-stand-ins.sh): For You holds each waiting
+  # one, Return releases it once a first Return has armed it, r refuses, a yes
+  # while locked is refused in the daemon's words, and Refuse It refuses the
+  # other (tests/asks-served.qml).
   the-asks-place-releases-through-its-daemon =
     let
       asks = lib.getExe (pkgs.callPackage ../../secret-asks/package.nix { });
@@ -88,7 +88,7 @@
     # cases, or sets what the shell runs them with.
     pkgs.runCommandLocal "the-asks-place-releases-through-its-daemon" { } ''
       export HOME=$TMPDIR GIT_CONFIG_GLOBAL=/dev/null
-      read -r ASK_YES ASK_NO < <(${pkgs.runtimeShell} ${../../../tests/asks-stand-ins.sh} \
+      read -r ASK_YES ASK_NO < <(${pkgs.runtimeShell} ${../tests/asks-stand-ins.sh} \
         $PWD '${item}' ${asks} ${git} ${pkgs.runtimeShell})
       ${copied [
         "Daemon.qml"

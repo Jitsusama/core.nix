@@ -13,18 +13,18 @@
 }:
 {
   # BlueZ says a new device is connected once its link is up, before it's
-  # paired, so the launcher's Bluetooth would stop following a pairing early
-  # and leave the device untrusted. The VM has no radio, so this drives it
-  # through Quickshell itself with stand-in devices
-  # (tests/bluetooth-pairing.qml), with the facts desk-facts would write
-  # for a connected mouse, and how its link and some headphones' are doing,
-  # with their last reads and how each is held, and the adapter's traffic
-  # and version, as bluetooth-links would write it: the headphones'
-  # skipping channels 22 to 39, where a Wi-Fi network on its channel 6 sits.
-  # A stand-in Facts says the headphones are running low, as the devices
-  # piece would, and for a while that the adapter stopped answering. A
-  # stand-in adapter and launcher hold Nearby to looking only while it's
-  # open, with devices heard as the shell's patch to Quickshell says them
+  # paired, so the launcher's Bluetooth would stop following a pairing early and
+  # leave the device untrusted. The VM has no radio, so this drives it through
+  # Quickshell itself with stand-in devices
+  # (modules/quickshell/tests/bluetooth-pairing.qml), with the facts desk-facts
+  # would write for a connected mouse, and how its link and some headphones' are
+  # doing, with their last reads and how each is held, and the adapter's traffic
+  # and version, as bluetooth-links would write it: the headphones' skipping
+  # channels 22 to 39, where a Wi-Fi network on its channel 6 sits. A stand-in
+  # Facts says the headphones are running low, as the devices piece would, and
+  # for a while that the adapter stopped answering. A stand-in adapter and
+  # launcher hold Nearby to looking only while it's open, with devices heard as
+  # the shell's patch to Quickshell says them
   # (bluetooth-rssi-and-failures.patch).
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
@@ -61,7 +61,7 @@
           "launcher/words.json"
         ]}
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${../../../tests/bluetooth-pairing.qml} shell.qml
+        cp ${../tests/bluetooth-pairing.qml} shell.qml
         cp ${pkgs.writeText "Niri.qml" ''
           pragma Singleton
           import Quickshell

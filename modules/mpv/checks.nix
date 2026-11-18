@@ -119,7 +119,7 @@ onLinux {
       cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
       cp ${./MpvProgram.qml} launcher/MpvProgram.qml
       cp ${./Mpv.js} launcher/Mpv.js
-      cp ${../../tests/mpv-program.qml} shell.qml
+      cp ${./tests/mpv-program.qml} shell.qml
       cp ${../../tests/lib/HeardWindows.js} HeardWindows.js
       cp ${niri} Niri.qml
       cp ${playing} launcher/Playing.qml

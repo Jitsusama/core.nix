@@ -5,7 +5,7 @@
 {
   "modules/ddcutil/tests/only-external-screens-reach-the-seat.sh" = 2;
   "modules/quickshell/Launcher.qml" = 1;
-  "tests/agents-on-niri-test.py" = 1;
+  "modules/quickshell/tests/agents-on-niri-test.py" = 1;
   "tests/vm/boot/bluetooth-keyboard-stand-in.py" = 6;
   "tests/desktop/desktop-launcher-answers-vm-test.py" = 4;
   "tests/desktop/desktop-launcher-finds-by-name-vm-test.py" = 11;

@@ -135,7 +135,7 @@ disable` comment and the reason above it.
 
 A case goes in the first of these that can show it, cheapest first:
 
-1. **Qt's engine or offscreen Quickshell**, over cases in `tests/`, in under
+1. **Qt's engine or offscreen Quickshell**, over cases in its `tests/`, in under
    a second each, as [testing][logic] lists: a ranking, an order, what a key
    does to a list, how a row or a drawer is laid out and cut. Logic that sits
    in a view file moves into a `.js` beside it, where those checks can reach
