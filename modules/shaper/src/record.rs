@@ -5,15 +5,15 @@
 //! replayed over before it shapes anything (src/replay.rs), and `shaper
 //! record` writes it while the shaper stays off.
 //!
-//! The pool is chosen on each new network, and again each hour, as
-//! src/reflectors.rs says.
+//! The pool is chosen on each new network, and again when it's due or
+//! failing, as src/reflectors.rs says.
 //!
 //! Probes go every 0.3 s while the link carries anything, and every 5 s
 //! once it has carried under 1 Mbit/s for a minute, so an idle machine
 //! wakes for it rarely while the baselines still follow the path.
 
 use crate::icmp::{self, Socket};
-use crate::reflectors::{Asking, ENOUGH, MISSES, Pool, candidates, operators};
+use crate::reflectors::{Asking, ENOUGH, Pool, candidates, operators};
 use crate::stamp;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -149,14 +149,18 @@ struct Sent {
     at: Instant,
 }
 
-/// The pool's line in the journal.
-fn pool_line(reflectors: &[(&'static str, Ipv4Addr)]) -> Value {
-    json!({
+/// The pool's line in the journal, which says when a choice `kept` it.
+fn pool_line(reflectors: &[(&'static str, Ipv4Addr)], kept: bool) -> Value {
+    let mut line = json!({
         "at": now_ms(),
         "pool": reflectors.iter().map(|(o, a)| json!([o, a.to_string()])).collect::<Vec<_>>(),
         "operators": operators(reflectors),
         "enough": operators(reflectors) >= ENOUGH,
-    })
+    });
+    if kept {
+        line["kept"] = json!(true);
+    }
+    line
 }
 
 /// One link's recording under way.
@@ -167,7 +171,6 @@ struct Recorder<'a> {
     socket: Socket,
     journal: Journal,
     pool: Pool,
-    misses: BTreeMap<Ipv4Addr, u32>,
     outstanding: BTreeMap<u16, Sent>,
     seq: u16,
     turn: usize,
@@ -258,7 +261,7 @@ impl Recorder<'_> {
             && let Some(sent) = self.outstanding.remove(&reply.seq)
             && let Some((operator, address)) = sent.to
         {
-            self.misses.remove(&address);
+            self.pool.heard(address);
             let finished = stamp::since_midnight(SystemTime::now());
             let rtt = ms(arrived.duration_since(sent.at));
             let mut line = json!({
@@ -285,9 +288,7 @@ impl Recorder<'_> {
     }
 
     /// Write down each probe that hasn't come back in time, as lost, and
-    /// count it against its reflector if it was sent to the pool there is:
-    /// one sent to the last, still out as the pool was chosen, would set
-    /// off another choice at once.
+    /// tell the pool of it.
     fn expire(&mut self) {
         let late: Vec<u16> = self
             .outstanding
@@ -301,9 +302,7 @@ impl Recorder<'_> {
             };
             let line = match sent.to {
                 Some((operator, address)) => {
-                    if sent.at >= self.pool.at {
-                        *self.misses.entry(address).or_default() += 1;
-                    }
+                    self.pool.missed(address, sent.at);
                     json!({"at": now_ms(), "reflector": address.to_string(),
                            "operator": operator, "lost": true})
                 }
@@ -317,11 +316,8 @@ impl Recorder<'_> {
     /// mid-stay (src/live.rs) learns within the hour which link it holds,
     /// a kept pool's choice included, which says so.
     fn write_pool(&mut self) {
-        let mut line = pool_line(&self.pool.reflectors);
+        let mut line = pool_line(&self.pool.reflectors, self.pool.kept);
         line["link"] = json!(self.link);
-        if self.pool.kept {
-            line["kept"] = json!(true);
-        }
         self.journal.write(&line);
     }
 
@@ -332,12 +328,10 @@ impl Recorder<'_> {
             if let Some(said) = self.pool.settle(self.link, &asking, now) {
                 eprintln!("{said}");
             }
-            self.misses.clear();
             self.write_pool();
             return;
         }
-        let failing = self.misses.values().any(|m| *m >= MISSES);
-        if self.asking.is_none() && self.pool.asks_again(failing, now) {
+        if self.asking.is_none() && self.pool.asks_again(now) {
             self.ask(now);
         }
     }
@@ -369,7 +363,7 @@ pub fn record(
     // The recording opens with its network, which begins a stay
     // (src/live.rs), before any sample; its pool follows once chosen, so
     // this one says it's choosing rather than that nothing answered.
-    let mut first = pool_line(&[]);
+    let mut first = pool_line(&[], false);
     first["choosing"] = json!(true);
     first["link"] = json!(link);
     first["network"] = json!(network);
@@ -380,8 +374,7 @@ pub fn record(
         id,
         socket,
         journal,
-        pool: Pool::new(Instant::now()),
-        misses: BTreeMap::new(),
+        pool: Pool::new(Instant::now(), operators(&candidates())),
         outstanding: BTreeMap::new(),
         seq: 0,
         turn: 0,
@@ -410,6 +403,15 @@ pub fn record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A kept pool's line is the pool that was, not a choice, and the
+    // record says so.
+    #[test]
+    fn a_kept_pool_s_line_says_it_was_kept() {
+        let pool = [("Quad9", Ipv4Addr::new(9, 9, 9, 9))];
+        assert_eq!(pool_line(&pool, true)["kept"], json!(true));
+        assert_eq!(pool_line(&pool, false).get("kept"), None);
+    }
 
     #[test]
     fn a_link_idle_a_minute_is_probed_rarely() {

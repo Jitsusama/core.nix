@@ -6,8 +6,10 @@
 //! so, since a controller has nothing to vote with there.
 //!
 //! A choice is asked again each hour, or when one of the pool keeps
-//! missing. One that too few answer, while the pool there is reaches more,
-//! keeps that pool for one choice, asked again in five minutes: on
+//! missing, or in five minutes while it reaches fewer than three
+//! operators and fewer than the candidates do. One that too few answer,
+//! while the pool there is reaches more, keeps that pool for one choice,
+//! asked again in five minutes: on
 //! 17 November a choice asked inside half a minute of a dark network heard
 //! nobody, and replaced six reflectors that answered again a moment later
 //! with none.
@@ -153,7 +155,8 @@ impl Asking {
 
 /// Whether to ask for a new pool, `since` the last was chosen or kept:
 /// when one of it keeps missing, `failing`, or when it's due, an hour on,
-/// or five minutes on for a pool `short` of enough operators or `kept`.
+/// or five minutes on for a pool `short` of the operators it could reach
+/// or `kept`.
 fn asks_again(short: bool, kept: bool, failing: bool, since: Duration) -> bool {
     let due = if short || kept { SHORT_REPOOL } else { REPOOL };
     // A kept pool's misses don't ask again before then, or a network
@@ -167,41 +170,66 @@ pub struct Pool {
     /// When it was chosen or kept, so only the misses since count, and
     /// it's asked for again on time.
     pub at: Instant,
-    /// Whether a pool has been chosen yet, so the first is said.
-    chosen: bool,
+    /// Whether a choice has settled yet, so the first is said.
+    settled: bool,
     /// Whether the last choice kept it, so the next is asked within five
     /// minutes rather than the hour, its misses wait for it, and it's
     /// taken whatever it hears.
     pub kept: bool,
+    /// How many operators the candidates reach, so a pool that has them
+    /// all isn't short however few they are: every `SHAPER_REFLECTORS`
+    /// address is one operator's.
+    reachable: usize,
+    /// Each of it lost this many times running since it was chosen.
+    misses: BTreeMap<Ipv4Addr, u32>,
 }
 
 impl Pool {
-    /// No pool yet, at `now`.
-    pub fn new(now: Instant) -> Pool {
+    /// No pool yet, at `now`, from candidates reaching `reachable`
+    /// operators.
+    pub fn new(now: Instant, reachable: usize) -> Pool {
         Pool {
             reflectors: Vec::new(),
             at: now,
-            chosen: false,
+            settled: false,
             kept: false,
+            reachable,
+            misses: BTreeMap::new(),
+        }
+    }
+
+    /// A probe to `address` came back, so its misses start again.
+    pub fn heard(&mut self, address: Ipv4Addr) {
+        self.misses.remove(&address);
+    }
+
+    /// A probe to `address`, sent at `sent`, was lost. It counts only if
+    /// it went to this pool: one sent to the last, still out as this was
+    /// chosen, would set off another choice at once.
+    pub fn missed(&mut self, address: Ipv4Addr, sent: Instant) {
+        if sent >= self.at {
+            *self.misses.entry(address).or_default() += 1;
         }
     }
 
     /// Takes a choice that's done at `now`, on `link`: the pool it heard,
-    /// or the pool there is, kept for one choice. Answers the journal's
-    /// line when the pool changes, is first chosen, is kept, or a keep
-    /// ends, and not every five minutes on a network that answers no
-    /// timestamps.
+    /// or the pool there is, kept for one choice. Answers what to say in
+    /// the service's log when the pool changes, is first chosen, is kept,
+    /// or a keep ends, and not every five minutes on a network that
+    /// answers no timestamps.
     pub fn settle(&mut self, link: &str, asking: &Asking, now: Instant) -> Option<String> {
         self.at = now;
+        self.misses.clear();
         let Some(chosen) = asking.chosen(&self.reflectors, self.kept) else {
             self.kept = true;
             return Some(format!(
-                "recording {link} with the {} reflectors it had, since too few answered a new \
-                 choice",
-                self.reflectors.len()
+                "recording {link} with the {} reflectors it had, since {} operators answered \
+                 a new choice; asking again in five minutes",
+                self.reflectors.len(),
+                operators(&asking.heard)
             ));
         };
-        let said = (chosen != self.reflectors || !self.chosen || self.kept).then(|| {
+        let said = (chosen != self.reflectors || !self.settled || self.kept).then(|| {
             format!(
                 "recording {link} with {} reflectors from {} operators",
                 chosen.len(),
@@ -209,14 +237,15 @@ impl Pool {
             )
         });
         self.reflectors = chosen;
-        self.chosen = true;
+        self.settled = true;
         self.kept = false;
         said
     }
 
-    /// Whether to ask for a new pool at `now`, one of it `failing` or not.
-    pub fn asks_again(&self, failing: bool, now: Instant) -> bool {
-        let short = operators(&self.reflectors) < ENOUGH;
+    /// Whether to ask for a new pool at `now`.
+    pub fn asks_again(&self, now: Instant) -> bool {
+        let failing = self.misses.values().any(|m| *m >= MISSES);
+        let short = operators(&self.reflectors) < ENOUGH.min(self.reachable);
         asks_again(
             short,
             self.kept,
@@ -417,11 +446,67 @@ mod tests {
         );
     }
 
+    /// Operators the public resolvers reach, so three is never all.
+    const PUBLIC: usize = 14;
+
     /// A pool chosen from three operators at `now`.
     fn chosen(now: Instant) -> Pool {
-        let mut pool = Pool::new(now);
+        let mut pool = Pool::new(now, PUBLIC);
         pool.settle("wlp0s20f3", &heard(&three()), now);
         pool
+    }
+
+    /// `address` lost `MISSES` times, each sent at `sent`.
+    fn failing(pool: &mut Pool, address: Ipv4Addr, sent: Instant) {
+        for _ in 0..MISSES {
+            pool.missed(address, sent);
+        }
+    }
+
+    #[test]
+    fn a_reflector_missing_its_probes_asks_again() {
+        let start = Instant::now();
+        let mut pool = chosen(start);
+        failing(&mut pool, at(9), start);
+        assert!(pool.asks_again(start + MINUTE), "misses didn't ask again");
+        pool.heard(at(9));
+        assert!(
+            !pool.asks_again(start + MINUTE),
+            "an answer didn't start its misses again"
+        );
+    }
+
+    #[test]
+    fn a_probe_sent_to_the_last_pool_is_no_miss() {
+        let start = Instant::now();
+        let mut pool = chosen(start + MINUTE);
+        failing(&mut pool, at(9), start);
+        assert!(!pool.asks_again(start + 2 * MINUTE));
+    }
+
+    // Misses counted against a pool would otherwise set off the next
+    // choice the moment one is settled.
+    #[test]
+    fn a_choice_starts_the_misses_again() {
+        let start = Instant::now();
+        let mut pool = chosen(start);
+        failing(&mut pool, at(9), start);
+        let next = start + MINUTE;
+        pool.settle("wlp0s20f3", &heard(&three()), next);
+        assert!(
+            !pool.asks_again(next + MINUTE),
+            "the last pool's misses asked again"
+        );
+    }
+
+    #[test]
+    fn a_first_choice_nobody_answers_is_said() {
+        let start = Instant::now();
+        let mut pool = Pool::new(start, PUBLIC);
+        assert_eq!(
+            pool.settle("wlp0s20f3", &heard(&[]), start).as_deref(),
+            Some("recording wlp0s20f3 with 0 reflectors from 0 operators")
+        );
     }
 
     // A pool that really lost its operators would otherwise be kept for
@@ -436,17 +521,18 @@ mod tests {
                 .as_deref(),
             Some(concat!(
                 "recording wlp0s20f3 with the 3 reflectors it had, ",
-                "since too few answered a new choice"
+                "since 1 operators answered a new choice; asking again in five minutes"
             ))
         );
         assert_eq!(pool.reflectors, three(), "the pool wasn't kept");
+        failing(&mut pool, at(9), dark);
         assert!(
-            !pool.asks_again(true, dark + MINUTE),
+            !pool.asks_again(dark + MINUTE),
             "a kept pool's misses asked again"
         );
         let again = dark + SHORT_REPOOL + MINUTE;
         assert!(
-            pool.asks_again(false, again),
+            pool.asks_again(again),
             "a kept pool waited past five minutes"
         );
         assert_eq!(
@@ -459,8 +545,9 @@ mod tests {
             vec![("Quad9", at(9))],
             "a second keep in a row"
         );
+        failing(&mut pool, at(9), again);
         assert!(
-            pool.asks_again(true, again + MINUTE),
+            pool.asks_again(again + MINUTE),
             "the pool taken after a keep didn't act on its misses"
         );
     }
@@ -477,7 +564,7 @@ mod tests {
         );
         assert!(!pool.kept);
         assert!(
-            !pool.asks_again(false, back + SHORT_REPOOL + MINUTE),
+            !pool.asks_again(back + SHORT_REPOOL + MINUTE),
             "a pool with enough was asked for again before the hour"
         );
     }
@@ -495,8 +582,37 @@ mod tests {
     #[test]
     fn a_pool_too_small_to_vote_with_is_asked_for_again_in_five_minutes() {
         let start = Instant::now();
-        let mut pool = Pool::new(start);
+        let mut pool = Pool::new(start, PUBLIC);
         pool.settle("wlp0s20f3", &heard(&[("Quad9", at(9))]), start);
-        assert!(pool.asks_again(false, start + SHORT_REPOOL + MINUTE));
+        assert!(
+            !pool.asks_again(start + SHORT_REPOOL),
+            "a short pool was asked for again inside five minutes"
+        );
+        assert!(
+            pool.asks_again(start + SHORT_REPOOL + Duration::from_secs(1)),
+            "a short pool waited past five minutes"
+        );
+    }
+
+    // Every `SHAPER_REFLECTORS` address is one operator's, so a pool of
+    // them would otherwise be asked for again every five minutes for good.
+    #[test]
+    fn a_pool_with_every_operator_it_could_reach_waits_the_hour() {
+        let start = Instant::now();
+        let mut pool = Pool::new(start, 1);
+        pool.settle("wlp0s20f3", &heard(&[("named", at(9))]), start);
+        assert!(
+            !pool.asks_again(start + SHORT_REPOOL + MINUTE),
+            "a pool of every operator there is was asked for again"
+        );
+        assert!(pool.asks_again(start + REPOOL + MINUTE));
+    }
+
+    #[test]
+    fn an_empty_pool_is_asked_for_again_in_five_minutes_wherever_it_is() {
+        let start = Instant::now();
+        let mut pool = Pool::new(start, 1);
+        pool.settle("wlp0s20f3", &heard(&[]), start);
+        assert!(pool.asks_again(start + SHORT_REPOOL + MINUTE));
     }
 }
