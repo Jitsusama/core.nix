@@ -45,7 +45,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::{Asked, gate};
 use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
@@ -57,7 +57,7 @@ use pineapple::slack::{Message, found, micros, root};
 use pineapple::vocabulary::Words;
 use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
 use serde_json::{Value, json};
-use slack_people::{Account, Signed, Slack};
+use slack_people::{Account, LastSignIn, Signed, Slack};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
 
 /// How often Slack is searched, unless a test says otherwise: with the
@@ -352,21 +352,33 @@ fn run(how: &Run) -> Result<(), Failure> {
     };
     let patience = sign_in::PATIENCE.min(how.every * SIGN_IN_ROUNDS);
     let rest = slack_people::REST.min(how.every * SIGN_IN_ROUNDS);
+    // A locked keyring doesn't end a sign-in, so stops are still heard.
+    let mut last = LastSignIn::new();
     loop {
-        match Account::signed(&credentials, patience, rest) {
-            Signed::In(account) if !account.user.is_empty() => {
-                round(&slack, &reader, &account, &state, &mut judged);
-                tell_phone(&slack, &mut phone, &account, &state);
-            }
-            Signed::In(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
+        let now = Instant::now();
+        let signed = Account::signed(&credentials, patience, rest);
+        match &signed {
             Signed::Out => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
             // A locked keyring prompts each time it's asked, so it rests.
+            Signed::RanOver if last.stands(now) => eprintln!(
+                "<4>Slack's sign-in ran past {} seconds and was stopped, so the one last read \
+                 is used till the keyring is asked again",
+                patience.as_secs()
+            ),
             Signed::RanOver => eprintln!(
                 "<4>{}",
                 ran_over("Slack", "slack", patience, rest + how.every)
             ),
-            // Said as it began.
-            Signed::Resting => {}
+            // Said as it began, or by what follows.
+            Signed::In(_) | Signed::Resting => {}
+        }
+        match last.heard(signed, now) {
+            Some(account) if !account.user.is_empty() => {
+                round(&slack, &reader, &account, &state, &mut judged);
+                tell_phone(&slack, &mut phone, &account, &state);
+            }
+            Some(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
+            None => {}
         }
         std::thread::sleep(how.every);
     }

@@ -67,9 +67,61 @@ pub const REST: Duration = Duration::from_mins(3);
 /// read of it, so no caller asks again during the rest.
 static RAN_OVER_AT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
-/// The sign-in this program last read, which `read` answers with while
-/// the keyring runs over or rests.
-static LAST_READ: std::sync::Mutex<Option<Account>> = std::sync::Mutex::new(None);
+/// The sign-in this program's `read` last read.
+static LAST_READ: std::sync::Mutex<LastSignIn> = std::sync::Mutex::new(LastSignIn::new());
+
+/// How long a sign-in read stands while the keyring runs over or rests:
+/// long past one rest, so a keyring's unlock prompt goes unnoticed, and
+/// short of a keyring locked on purpose leaving Slack open for good.
+pub const STANDS: Duration = Duration::from_mins(15);
+
+/// The sign-in a program last read, which stands while the keyring runs
+/// over or rests, at most [`STANDS`] after it was read: a locked keyring
+/// doesn't end a sign-in.
+pub struct LastSignIn {
+    last: Option<(Account, Instant)>,
+}
+
+impl Default for LastSignIn {
+    fn default() -> Self {
+        LastSignIn::new()
+    }
+}
+
+impl LastSignIn {
+    /// None read yet.
+    #[must_use]
+    pub const fn new() -> LastSignIn {
+        LastSignIn { last: None }
+    }
+
+    /// Whether a sign-in read stands at `now`.
+    #[must_use]
+    pub fn stands(&self, now: Instant) -> bool {
+        self.last
+            .as_ref()
+            .is_some_and(|(_, read)| now.saturating_duration_since(*read) < STANDS)
+    }
+
+    /// The sign-in `signed` holds, kept as read at `now`; or, while the
+    /// keyring runs over or rests, the one kept, while it stands; or none,
+    /// once neither the keyring nor the file holds one.
+    pub fn heard(&mut self, signed: Signed, now: Instant) -> Option<Account> {
+        match signed {
+            Signed::In(account) => {
+                self.last = Some((account.clone(), now));
+                Some(account)
+            }
+            Signed::RanOver | Signed::Resting if self.stands(now) => {
+                self.last.as_ref().map(|(account, _)| account.clone())
+            }
+            Signed::RanOver | Signed::Resting | Signed::Out => {
+                self.last = None;
+                None
+            }
+        }
+    }
+}
 
 /// What the harness's sign-in came to.
 pub enum Signed {
@@ -99,20 +151,18 @@ impl std::fmt::Debug for Signed {
 
 impl Account {
     /// The harness's sign-in, as `signed` reads it, or none. While the
-    /// keyring runs over or rests, the one this program last read, so a
-    /// locked keyring doesn't read as Joel signed out; a run-over is said
-    /// in the journal.
+    /// keyring runs over or rests, the one this program last read, while
+    /// it stands; a run-over is said in the journal.
     pub fn read(path: &Path) -> Option<Account> {
         let signed = Account::signed(path, sign_in_program::PATIENCE, REST);
+        let now = Instant::now();
+        let mut kept = LAST_READ
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if matches!(signed, Signed::RanOver) {
-            eprintln!(
-                "<4>the keyring's Slack sign-in ran past {} seconds and was stopped, so it \
-                 isn't asked again for {} minutes, and the sign-in last read stands",
-                sign_in_program::PATIENCE.as_secs(),
-                REST.as_secs().div_ceil(60)
-            );
+            eprintln!("<4>{}", ran_over(kept.stands(now)));
         }
-        remembered(&LAST_READ, signed)
+        kept.heard(signed, now)
     }
 
     /// The harness's sign-in, as `kept` reads it, the keyring's printed by
@@ -174,24 +224,20 @@ fn rested(
     signed
 }
 
-/// The sign-in `signed` holds, kept in `last`; or, while the keyring runs
-/// over or rests, the one `last` kept; or none, once neither the keyring
-/// nor the file holds one.
-fn remembered(last: &std::sync::Mutex<Option<Account>>, signed: Signed) -> Option<Account> {
-    let mut last = last
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    match signed {
-        Signed::In(account) => {
-            *last = Some(account.clone());
-            Some(account)
-        }
-        Signed::RanOver | Signed::Resting => last.clone(),
-        Signed::Out => {
-            *last = None;
-            None
-        }
-    }
+/// The line `read` says when the keyring ran over: whether the sign-in
+/// last read `stands` meanwhile or Slack reads as signed out.
+fn ran_over(stands: bool) -> String {
+    let meanwhile = if stands {
+        "the sign-in last read stands meanwhile"
+    } else {
+        "with no sign-in read yet, Slack reads as signed out till then"
+    };
+    format!(
+        "the keyring's Slack sign-in ran past {} seconds and was stopped, so it isn't asked \
+         again for {} minutes, and {meanwhile}",
+        sign_in_program::PATIENCE.as_secs(),
+        REST.as_secs().div_ceil(60)
+    )
 }
 
 /// What Slack said of an address, as the shell is told it: who it is in
@@ -1367,33 +1413,74 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_sign_in_read_stands_while_the_keyring_runs_over_or_rests() {
-        let last = std::sync::Mutex::new(None);
-        let account = |token: &str| Account {
+    /// A sign-in to the stand-in workspace, its token `token`.
+    fn account(token: &str) -> Account {
+        Account {
             token: token.to_owned(),
             cookie: "d".to_owned(),
             team: "T1".to_owned(),
             user: String::new(),
-        };
+        }
+    }
+
+    #[test]
+    fn a_sign_in_read_stands_while_the_keyring_runs_over_or_rests() {
         let token = |kept: Option<Account>| kept.map(|account| account.token);
-        assert_eq!(
-            token(remembered(&last, Signed::RanOver)),
-            None,
-            "none read yet"
-        );
-        let read = token(remembered(&last, Signed::In(account("xoxc-keyring"))));
-        assert_eq!(read.as_deref(), Some("xoxc-keyring"), "what's read");
-        let over = token(remembered(&last, Signed::RanOver));
+        let read = Instant::now();
+        let mut last = LastSignIn::new();
+        let none = token(last.heard(Signed::RanOver, read));
+        assert_eq!(none, None, "none read yet");
+        let first = token(last.heard(Signed::In(account("xoxc-keyring")), read));
+        assert_eq!(first.as_deref(), Some("xoxc-keyring"), "what's read");
+        let over = token(last.heard(Signed::RanOver, read + Duration::from_secs(30)));
         assert_eq!(
             over.as_deref(),
             Some("xoxc-keyring"),
             "it stands as it runs over"
         );
-        let resting = token(remembered(&last, Signed::Resting));
+        let resting = token(last.heard(Signed::Resting, read + Duration::from_mins(3)));
         assert_eq!(resting.as_deref(), Some("xoxc-keyring"), "and as it rests");
-        assert_eq!(token(remembered(&last, Signed::Out)), None, "signed out is");
-        let after = token(remembered(&last, Signed::Resting));
+        let out = token(last.heard(Signed::Out, read + Duration::from_mins(4)));
+        assert_eq!(out, None, "signed out is");
+        let after = token(last.heard(Signed::Resting, read + Duration::from_mins(4)));
         assert_eq!(after, None, "and nothing stands once Joel signed out");
+    }
+
+    #[test]
+    fn a_sign_in_read_stands_no_longer_than_its_bound() {
+        let read = Instant::now();
+        let mut last = LastSignIn::new();
+        let _ = last.heard(Signed::In(account("xoxc-keyring")), read);
+        let late = read + STANDS;
+        assert!(
+            !last.stands(late),
+            "a sign-in read {STANDS:?} ago stands no longer"
+        );
+        let kept = last
+            .heard(Signed::Resting, late)
+            .map(|account| account.token);
+        assert_eq!(
+            kept, None,
+            "a locked keyring ends Slack once its bound is up"
+        );
+        assert!(
+            last.heard(Signed::Resting, read).is_none(),
+            "and what was let go isn't brought back"
+        );
+    }
+
+    #[test]
+    fn a_run_over_says_whether_a_sign_in_stands_meanwhile() {
+        let stands = ran_over(true);
+        assert!(
+            stands.ends_with("and the sign-in last read stands meanwhile"),
+            "one read stands: {stands}"
+        );
+        let none = ran_over(false);
+        assert!(
+            none.ends_with("with no sign-in read yet, Slack reads as signed out till then")
+                && !none.contains("stands"),
+            "none read, so none is said to stand: {none}"
+        );
     }
 }

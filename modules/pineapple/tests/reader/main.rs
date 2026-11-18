@@ -544,6 +544,74 @@ fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest(
 }
 
 #[test]
+fn a_keyring_that_hangs_after_answering_leaves_slack_read_with_the_last_sign_in() {
+    let (origin, requests) = stand_in();
+    let home = home();
+    // The stand-in secret-tool: asked first, it prints the sign-in; asked
+    // second, it never answers; asked after, it prints it again.
+    let keyring = home.join("keyring");
+    let (once, hung) = (home.join("keyring-once"), home.join("keyring-hung"));
+    let sign_in = json!({"token": {
+        "accessToken": "xoxc-stand-in", "cookie": "stand-in", "teamId": "T0TEAM0001",
+        "userId": JOEL,
+    }});
+    let script = format!(
+        "#!/bin/sh\nif [ -e '{hung}' ] || [ ! -e '{once}' ]; then : > '{once}'; \
+         printf '%s\\n' '{sign_in}'; else : > '{hung}'; exec sleep 600; fi",
+        once = once.display(),
+        hung = hung.display()
+    );
+    // Written by a shell of its own, as the case above says.
+    let written = Command::new("/bin/sh")
+        .args(["-c", r#"printf '%s\n' "$2" > "$1" && chmod 755 "$1""#, "sh"])
+        .arg(&keyring)
+        .arg(script)
+        .status()
+        .expect("the keyring's shell runs");
+    assert!(written.success(), "the keyring wasn't written");
+    let journal = std::fs::File::create(home.join("journal")).expect("the journal");
+    let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
+        .args(["run", "--origin", &origin, "--every", PACE])
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join("config"))
+        .env("XDG_STATE_HOME", home.join("state"))
+        .env("SIGN_IN_KEYRING", &keyring)
+        .stdout(Stdio::null())
+        .stderr(journal)
+        .spawn()
+        .expect("the reader starts");
+    let searches = || {
+        let asked = requests.lock().expect("what was asked");
+        asked
+            .iter()
+            .filter(|line| line.contains("search.messages"))
+            .count()
+    };
+    let said = || std::fs::read_to_string(home.join("journal")).unwrap_or_default();
+    let began = Instant::now();
+    while !said().contains("so the one last read is used") && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    let at_run_over = searches();
+    // Half the two seconds' rest at this pace: searches only with the
+    // sign-in last read.
+    thread::sleep(Duration::from_secs(1));
+    let during_rest = searches() - at_run_over;
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    assert!(hung.exists(), "the keyring hung once");
+    assert!(
+        said().contains("Slack's sign-in ran past 2 seconds and was stopped, so the one last read"),
+        "the journal says the last sign-in is used: {}",
+        said()
+    );
+    assert!(
+        during_rest >= 3,
+        "Slack is still searched while the keyring rests, {during_rest} times in a second"
+    );
+}
+
+#[test]
 fn joels_own_resume_in_shadow_ends_only_the_shadow_stop_it_names() {
     let (origin, _) = answering(joel_resumes);
     let home = home();
