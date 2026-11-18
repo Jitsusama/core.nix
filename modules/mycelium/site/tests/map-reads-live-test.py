@@ -58,6 +58,7 @@ CROWD_NETWORKS = 20
 CROWD_ASKING = "cell:ASKS01"
 # Two machines lent from one basin, a cell moved onto each.
 BASIN = "shoal"
+BASIN_MARK = f"{BASIN} basin"
 BASIN_MACHINES = ("pool-a", "pool-b")
 BASIN_CELLS = ("HERON1", "HERON2")
 
@@ -320,7 +321,9 @@ def test_a_cell_that_needs_you_takes_a_name_before_the_networks(
 
 def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Served) -> None:
     root, _ = basins_served
-    opened = Opened(browser, f"{root}mycelium/#machine={BASIN}", SIZES[-1], "light")
+    # Other sites link a machine by its own name, so a link to a basin's
+    # machine opens the basin it is drawn as, and the address says so.
+    opened = Opened(browser, f"{root}mycelium/#machine={BASIN_MACHINES[0]}", SIZES[-1], "light")
     try:
         page = opened.page
         the_map_stands(page, "live")
@@ -329,22 +332,47 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         # drawn apart, and its mark is named by the basin, open at the top.
         expect(page.locator("#world g.machine"), "the basin was drawn apart").to_have_count(3)
         expect(
-            page.locator(f'#labels .tag.t-basin[data-mark="m:{BASIN}"]'),
+            page.locator(f'#labels .tag.t-basin[data-mark="m:{BASIN_MARK}"]'),
             "the basin had no mark of its own",
         ).to_have_count(1)
         # Its drawer lists each of its machines, its cells counted on each.
-        expect(page.locator("#panel-title"), "the basin's drawer never opened").to_have_text(BASIN)
+        title = page.locator("#panel-title")
+        expect(title, "the basin's machine didn't open the basin").to_have_text(BASIN_MARK)
+        expect(page, "the address kept the machine's name").to_have_url(
+            re.compile(f"#machine={re.escape(BASIN)}%20basin$")
+        )
         body = page.locator("#panel-body")
         said = "A basin, drawn as one machine: 2 machines"
         expect(body, "the drawer didn't say it was a basin").to_contain_text(said)
         for name in BASIN_MACHINES:
-            row = body.locator(".health .row", has=page.locator(".name", has_text=name))
+            exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
+            row = body.locator(".health .row", has=exactly)
             expect(row, f"the drawer left {name} out").to_contain_text(": 1 cell;")
         # A cell on one says the machine it runs on, and the basin it's in.
         page.evaluate(f"location.hash = '#cell={BASIN_CELLS[0]}'")
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
+        # Now counts every machine, a basin's each its own, not each mark.
+        page.locator("#now-control").click()
+        expect(title, "Now never opened").to_have_text("Now")
+        machines = len(BASIN_MACHINES) + 2
+        expect(body, "Now counted the basin as one machine").to_contain_text(
+            f"of {machines} machines."
+        )
+    finally:
+        opened.close()
+
+
+def test_a_basin_passes_the_maps_own_checks(browser: Browser, basins_served: Served) -> None:
+    root, _ = basins_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "light")
+    try:
+        the_map_stands(opened.page, "live")
+        the_map_counts(opened.page, COUNTED, "the map didn't draw")
+        # They open every machine's drawer, the basin's among them.
+        found = opened.page.evaluate((HERE / "site-checks.js").read_text())
+        assert found == [], f"site-checks.js on a realm with a basin found {found}"
     finally:
         opened.close()
 

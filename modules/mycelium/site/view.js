@@ -419,45 +419,13 @@
     return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages, waits: now.waits, balance: now.balance, ties: now.ties };
   };
 
-  // A basin is a pool of cloud machines borrowed and given back by the
-  // hour, under names the pool makes up, so the map draws each basin once,
-  // named by the basin where its first machine stood, its machines listed
-  // in its drawer. A machine of no basin stands as itself. A machine's
-  // stand is what its cells are drawn from; each cell still says which
-  // machine it runs on.
-  const foldBasins = (machines) => {
-    const lone = new Set(machines.filter((x) => !x.basin).map((x) => x.name));
-    const basins = new Map();
-    for (const x of machines) if (x.basin) basins.set(x.basin, [...(basins.get(x.basin) || []), x]);
-    const standOf = new Map();
-    const stands = [];
-    for (const x of machines) {
-      if (!x.basin) stands.push(x);
-      if (!x.basin || basins.get(x.basin)[0] !== x) continue;
-      const members = [...basins.get(x.basin)].sort((a, b) => collate(a.name, b.name));
-      // A basin named like a machine of its own is told apart from it.
-      const name = lone.has(x.basin) ? `${x.basin} basin` : x.basin;
-      const sum = (field) => members.reduce((total, y) => total + (typeof y[field] === "number" ? y[field] : 0), 0);
-      stands.push({
-        name,
-        basin: x.basin,
-        members,
-        state: members.some((y) => y.state === "ready") ? "ready" : x.state,
-        cores: sum("cores"),
-        memory: sum("memory"),
-        reach: [...new Set(members.flatMap((y) => y.reach || []))],
-        leaves_at: null,
-        share: null,
-        measured_at: members.map((y) => y.measured_at || "").sort().at(-1) || null,
-      });
-      for (const y of members) standOf.set(y.name, name);
-    }
-    return { machines: stands, standOf };
-  };
-
   const model = (raw) => {
     const now = raw.networks ? raw : fromSessions(raw);
-    const { machines, standOf } = foldBasins(now.machines || []);
+    // The model draws a basin's machines as one stand (model.ts), the
+    // stand its cells are drawn from; each cell still says which machine
+    // it runs on, as its host.
+    const machines = now.machines || [];
+    const standOf = new Map(machines.flatMap((x) => (x.members || []).map((y) => [y.name, x.name])));
     const known = new Set(now.networks.map((n) => n.name));
     const orchestrations = now.networks.filter((n) => n.shape === "orchestration");
     const shapes = shapesFor(orchestrations.map((n) => n.name));
@@ -601,7 +569,7 @@
       .map((n) => ({ key: n.name, shape: n.shape, short: n.short || n.name, title: n.title, cells: n.cells.map((a) => byAddress.get(a)).filter(Boolean) }))
       .filter((n) => n.cells.length >= 2);
     const repositories = new Set(cells.map((s) => s.repo).filter(Boolean)).size || shared.filter((n) => n.shape === "repository").length;
-    return { at: now.at, hubs, cells, byAddress, byId, shared, machines, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, shared, machines, standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, repositories };
   };
 
   // ---- Places that never move. ----
@@ -1603,7 +1571,9 @@
       const n = counts.get(x.name) || 0;
       const nets = capped ? [...m.hubs.values()].filter((h) => !h.within && h.machine === x.name).length : 0;
       const carried = nets ? `${plural(n, "cell")} \u00b7 ${plural(nets, "network")}` : plural(n, "cell");
-      const sub = x.state !== "ready" ? "off" : p ? `${carried} \u00b7 cpu ${Math.round(p.cpu)}%` : carried;
+      // A basin that runs with some of its machines off says how many.
+      const down = offWords(x);
+      const sub = x.state !== "ready" ? "off" : [carried, down, p ? `cpu ${Math.round(p.cpu)}%` : ""].filter(Boolean).join(" \u00b7 ");
       out.push({ ...mark, sub });
     }
     // One tier of names at a time, so the map is never a wall of words:
@@ -2105,7 +2075,8 @@
   const machineWords = (id) => {
     const x = current.machines.find((y) => y.name === id);
     const cells = cellsOn(id);
-    return `${x?.state === "ready" ? "ready" : "off"}, ${plural(cells.length, "cell")}${spentWords(cells)}`;
+    const state = x?.state !== "ready" ? "off" : offWords(x) ? `ready, ${offWords(x)}` : "ready";
+    return `${state}, ${plural(cells.length, "cell")}${spentWords(cells)}`;
   };
   // A machine's cells, one list per reading, so its sum is kept with it.
   const cellsOn = perReading((id) => current.cells.filter((s) => s.machine === id));
@@ -2927,8 +2898,17 @@
     const on = pointed && spots.has(pointed) ? ` The keys are on ${describe(pointed)}. ${levelWords(pointed)}` : "";
     where.textContent = key ? `Back on ${describe(key)}.${on}` : chosen ? `Back on ${placeless(chosen)}.${on}` : `Back to the whole map.${on}`;
   };
+  // A basin's machine is drawn as its basin, so a link to it by its own
+  // name, as other sites write one, opens the basin, and the address says so.
+  const standFor = (c) => {
+    const stand = c?.kind === "machine" ? current?.standOf.get(c.id) : null;
+    if (!stand) return c;
+    const as = { kind: "machine", id: stand };
+    history.replaceState(history.state, "", hashOf(as));
+    return as;
+  };
   const apply = (animate) => {
-    const c = fromHash();
+    const c = standFor(fromHash());
     chosen = knows(c) ? c : null;
     if (chosen?.kind === "machine") machinesShown = true;
     const key = keyOf(chosen);
@@ -3007,8 +2987,14 @@
   const isSandbox = (x) => leavesAt(x) !== null;
   // A box borrowed from a pool of cloud machines says which basin it is
   // in, in what it declares; never by its name, which the node makes up.
-  // A basin's machines are drawn as the one basin they are in (foldBasins).
+  // A basin's machines are drawn as the one basin they are in (model.ts).
   const isBasin = (x) => Boolean(x?.basin);
+  // How many of a basin's machines are off while it runs, in words, or
+  // nothing where none is.
+  const offWords = (x) => {
+    const off = (x?.members || []).filter((y) => y.state !== "ready").length;
+    return off ? `${plural(off, "machine")} off` : "";
+  };
   // Every machine as itself, a basin's taken out of it.
   const everyMachine = () => current.machines.flatMap((x) => x.members || [x]);
   const machineForm = (x) => (isBasin(x) ? "basin" : isSandbox(x) ? "lent" : "shut");
@@ -3485,7 +3471,7 @@
     // itself, which says its lease.
     const box = current.machines.find((x) => x.name === s.machine);
     const runs = everyMachine().find((x) => x.name === s.host);
-    const named = box?.members ? `${s.host}, in the ${s.machine} basin` : s.machine || "no machine";
+    const named = box?.members ? `${s.host}, in the ${box.basin} basin` : s.machine || "no machine";
     const on = `${named}${isSandbox(runs) ? `, ${sandboxWords(runs)}` : ""}`;
     const home =
       s.kind === "receptor" ? `at the network's edge, on ${on}, where ${s.purpose || "the outside"} comes in` : s.hub ? `in the ${s.hub.name} network, on ${on}` : `working alone on ${on}`;
