@@ -87,16 +87,21 @@ impl Server {
 struct Bus {
     daemon: Child,
     address: String,
+    socket: PathBuf,
+    config: PathBuf,
 }
 
-impl Bus {
-    fn new(folder: &Path) -> Bus {
-        let socket = folder.join("bus");
-        let config = folder.join("bus.conf");
-        std::fs::write(
-            &config,
-            format!(
-                r#"<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+/// The bus's config, listening at `socket`; one that `refuses` turns away
+/// every match rule asked for, as a bus under strain may answer late.
+fn bus_config(socket: &Path, refuses: bool) -> String {
+    let denial = if refuses {
+        r#"<deny send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus"
+      send_member="AddMatch"/>"#
+    } else {
+        ""
+    };
+    format!(
+        r#"<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
   <type>session</type>
@@ -106,12 +111,18 @@ impl Bus {
     <allow send_destination="*" eavesdrop="true"/>
     <allow eavesdrop="true"/>
     <allow own="*"/>
+    {denial}
   </policy>
 </busconfig>"#,
-                socket.display()
-            ),
-        )
-        .unwrap();
+        socket.display()
+    )
+}
+
+impl Bus {
+    fn new(folder: &Path) -> Bus {
+        let socket = folder.join("bus");
+        let config = folder.join("bus.conf");
+        std::fs::write(&config, bus_config(&socket, false)).unwrap();
         let daemon = Command::new("dbus-daemon")
             .arg(format!("--config-file={}", config.display()))
             .arg("--nofork")
@@ -122,7 +133,27 @@ impl Bus {
         Bus {
             daemon,
             address: format!("unix:path={}", socket.display()),
+            socket,
+            config,
         }
+    }
+
+    /// Lets match rules be added, or turns each away, from now on: the
+    /// config rewritten and read again, which the bus answers once done.
+    fn lets_listen(&self, lets: bool) {
+        std::fs::write(&self.config, bus_config(&self.socket, !lets)).unwrap();
+        Builder::address(self.address.as_str())
+            .unwrap()
+            .build()
+            .unwrap()
+            .call_method(
+                Some("org.freedesktop.DBus"),
+                "/org/freedesktop/DBus",
+                Some("org.freedesktop.DBus"),
+                "ReloadConfig",
+                &(),
+            )
+            .unwrap();
     }
 
     /// The stand-in, serving on this bus under the notifications' name.
@@ -404,6 +435,37 @@ fn a_ring_with_no_server_to_take_it_is_said_once_one_comes() {
     assert_eq!(client.change()["changed"][0]["state"], "rung");
     let (_connection, server) = bus.serve();
     waits_for(|| server.shown.lock().unwrap().len() == 1);
+    running.stop();
+}
+
+#[test]
+fn a_bus_that_wont_let_it_listen_is_tried_again_until_it_does() {
+    let folder = folder("listens");
+    let bus = Bus::new(&folder);
+    let (connection, server) = bus.serve();
+    bus.lets_listen(false);
+    let running = Running::start(&folder, &bus);
+    let mut client = running.client();
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
+    client.ask(&json!({"id": 1, "ask": "start", "span": 100, "name": "tea"}));
+    assert_eq!(client.change()["changed"][0]["state"], "rung");
+    // A notice shown now would have an Again that nothing hears.
+    std::thread::sleep(Duration::from_secs(1));
+    assert_eq!(
+        server.shown.lock().unwrap().len(),
+        0,
+        "a ring was shown while nothing could hear what Joel does with it"
+    );
+    bus.lets_listen(true);
+    waits_for(|| server.shown.lock().unwrap().len() == 1);
+    signal(&folder, &connection, "ActionInvoked", &(1u32, "again"));
+    let again = loop {
+        let change = client.change();
+        if change["changed"][0]["state"] == "running" {
+            break change;
+        }
+    };
+    assert_eq!(again["changed"][0]["key"], "timer:1");
     running.stop();
 }
 

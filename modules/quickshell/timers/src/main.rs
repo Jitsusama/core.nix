@@ -461,26 +461,29 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
 /// and whether another notifications server takes the place of the last.
 /// Both are listening before it's returned, since its first notice is
 /// said at once: a rule added in its own thread came after the notice
-/// under load, and Joel's press on it went unheard (Y9XISP's flaky case,
-/// 2026-11-17).
+/// under load, and a press on the card that came sooner went unheard. A
+/// rule the bus turns away, as one answering late under load does, gives
+/// no bus, so the notices wait and it's tried again: a notice shown with
+/// nothing hearing it would keep an Again that did nothing for the rest of
+/// the daemon's life.
 fn connect(shared: &Arc<Shared>) -> Option<Connection> {
     let bus = zbus::blocking::connection::Builder::session()
         .and_then(|builder| builder.method_timeout(PATIENCE).build())
         .map_err(|why| eprintln!("<4>couldn't reach the session bus: {why}"))
         .ok()?;
-    let listening = |rule: zbus::Result<MatchRule<'static>>| {
+    let listening = |rule: zbus::Result<MatchRule<'static>>, what: &str| {
         rule.and_then(|rule| MessageIterator::for_match_rule(rule, &bus, None))
-            .map_err(|why| eprintln!("<4>couldn't listen on the session bus: {why}"))
+            .map_err(|why| {
+                eprintln!("<4>couldn't hear {what} on the session bus, so rings wait: {why}");
+            })
             .ok()
     };
-    if let Some(messages) = listening(acts()) {
-        let shared = Arc::clone(shared);
-        std::thread::spawn(move || hear(&shared, messages));
-    }
-    if let Some(messages) = listening(servers()) {
-        let shared = Arc::clone(shared);
-        std::thread::spawn(move || follow(&shared, messages));
-    }
+    let acted = listening(acts(), "what Joel does with a notice")?;
+    let followed = listening(servers(), "which server takes the notices")?;
+    let heard = Arc::clone(shared);
+    std::thread::spawn(move || hear(&heard, acted));
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || follow(&shared, followed));
     Some(bus)
 }
 
