@@ -532,6 +532,26 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
             &json!([])
         )
     );
+    // And with the person it is, as a listing gives them, so the shell
+    // shows them as served and merges nobody's sources for it; Gus, kept
+    // by Tuple's id, by that alone.
+    let person = |at: usize| {
+        let one = &said["records"][at]["person"];
+        (one["key"].clone(), one["emails"].clone(), one["name"].clone(), one["from"].clone())
+    };
+    assert_eq!(
+        person(0),
+        (
+            json!("ada@example.com"),
+            json!(["ada@example.com"]),
+            json!("Ada Brightwater"),
+            json!(["tuple"])
+        )
+    );
+    assert_eq!(
+        person(1),
+        (json!("tuple:7"), json!([]), json!("Gus Ada-Moor"), json!(["tuple"]))
+    );
     let said = client.ask(&json!({"id": 2, "ask": "search", "words": "ada", "limit": 1}));
     assert_eq!(keys(&said), ["person:ada@example.com"]);
     assert_eq!(

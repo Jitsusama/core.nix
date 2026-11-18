@@ -385,6 +385,7 @@ ShellRoot {
             what: "those listed first, then the rest, as the daemon finds them, merging no one",
             run: () => {
                 root.mergedBefore = people.merging.merges;
+                root.eachBefore = people.merging.each;
                 people.search("example");
             },
             holds: () => answered("example"),
@@ -394,6 +395,10 @@ ShellRoot {
                     + "Dee Ellery, Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
                 expect("merging no one", people.merging.merges === root.mergedBefore,
                     `${people.merging.merges - root.mergedBefore} merges`);
+                // Each found comes as the person they are, so not even
+                // their own record's sources are merged here.
+                expect("merging no one's sources", people.merging.each === root.eachBefore,
+                    `${people.merging.each - root.eachBefore} merged`);
                 root.madeBefore = people.tally.rows;
             }
         },
@@ -953,6 +958,8 @@ ShellRoot {
     property var mergedBefore: null
     // How many rows People had made once a search was first answered.
     property int madeBefore: 0
+    // How many people's own records People had merged before a search.
+    property int eachBefore: 0
     // Who an unlisted address was the moment it was first asked after.
     property var unlistedFirst: undefined
     property int heardBefore: 0
