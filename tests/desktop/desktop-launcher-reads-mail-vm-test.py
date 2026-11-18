@@ -799,9 +799,10 @@ def test_a_search_ends_with_a_sources_last_row_which_lights_in_place_once_found(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-# How many people People may hold: those listed and those a search found, a
-# search answering at most 50, never the crowd the daemon holds.
-PEOPLE_HELD_MOST = 100
+# How many people People may hold: those listed and those searches found, a
+# search answering at most 50 and the rows of 250 kept before they're let go,
+# so words typed again make none, never the crowd of 8,000 the daemon holds.
+PEOPLE_HELD_MOST = 400
 
 
 def test_a_crowd_the_people_daemon_holds_is_found_by_a_search_and_never_held_by_the_shell(
