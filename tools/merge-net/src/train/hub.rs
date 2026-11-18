@@ -124,8 +124,16 @@ impl Hub for GitHub {
         loop {
             tried += 1;
             let merging = merge_at(&self.slug, reverting, head, &worded, title);
-            // A revert whose answer was lost may have merged all the same.
-            let landed = || matches!(self.merged(reverting), Ok(Some(_)));
+            // A revert whose answer was lost may have merged all the same,
+            // which GitHub is asked three times before its silence counts.
+            let landed = || {
+                (0..3).any(|asked| {
+                    if asked > 0 {
+                        std::thread::sleep(Duration::from_secs(2));
+                    }
+                    matches!(self.merged(reverting), Ok(Some(_)))
+                })
+            };
             match merging {
                 Ok(_) => return Ok(reverting),
                 Err(_) if landed() => return Ok(reverting),

@@ -270,9 +270,9 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
     Some(format!(
         "merge-net put {} on the merge train with {others} others, which merge to main \
          together once one run of changed-checks over all of them passes, its words going \
-         to {}; merge-net started the train, so push nothing to this branch until it lands, \
-         and ask `merge-net ready` again to learn whether it did, as a pull request the \
-         train merged and then reverted reads merged too",
+         to {}; merge-net started the train, so push nothing to this branch until it lands; \
+         a pull request the train merged and then reverted reads merged too, so its fell \
+         folder says so, by head, when one does",
         short(head),
         folder(&root).display()
     ))
@@ -298,9 +298,9 @@ pub fn riding(head: &str) -> Option<String> {
 fn rides_said(root: &Path) -> String {
     format!(
         "it waits on the train, {} riders in all, for one run of changed-checks over them to \
-         pass, its words going to {}; push nothing to this branch until it lands, and ask \
-         again to learn whether it did, as a pull request the train merged and then \
-         reverted reads merged too",
+         pass, its words going to {}; push nothing to this branch until it lands; a pull \
+         request the train merged and then reverted reads merged too, so its fell folder \
+         says so, by head, when one does",
         riders(root).len(),
         folder(root).display()
     )
@@ -530,7 +530,10 @@ fn after_landing(
                          so it lands again only through a revert of #{revert}, GitHub's revert"
                     )
                 } else if kept.contains(head) {
-                    format!("its merge stays on main though no gate ran that tree, as {why}")
+                    format!(
+                        "its merge may stand on main though no gate ran that tree, as {why}; \
+                         its pull request says whether it merged"
+                    )
                 } else {
                     format!("the train stopped before merging it, as {why}")
                 };
@@ -665,17 +668,18 @@ fn pull_of(slug: &str, branch: &str) -> Option<(u64, String, String)> {
         "--state",
         "open",
         "--json",
-        "number,title,headRefOid,headRepositoryOwner",
+        "number,title,headRefOid,headRepositoryOwner,baseRefName",
     ])
     .ok()?;
     let pulls: Value = serde_json::from_str(&out).ok()?;
     // A fork's pull request may name a branch of the same name; only the
-    // repository's own are the rider's.
+    // repository's own are the rider's, and only one into main, as GitHub
+    // merges a pull request into its own base.
     let owner = slug.split('/').next().unwrap_or_default();
-    let pull = pulls
-        .as_array()?
-        .iter()
-        .find(|pull| pull["headRepositoryOwner"]["login"].as_str() == Some(owner))?;
+    let pull = pulls.as_array()?.iter().find(|pull| {
+        pull["headRepositoryOwner"]["login"].as_str() == Some(owner)
+            && pull["baseRefName"].as_str() == Some("main")
+    })?;
     Some((
         pull["number"].as_u64()?,
         pull["title"].as_str()?.to_owned(),

@@ -33,6 +33,8 @@ struct Fake {
     moved_after: Option<u64>,
     /// The pull request whose revert GitHub opens but won't merge.
     revert_fails: Option<u64>,
+    /// How many times more GitHub can't say what a merge's tree is.
+    tree_fails: Cell<u32>,
 }
 
 impl Fake {
@@ -51,6 +53,7 @@ impl Fake {
             moved_before: None,
             moved_after: None,
             revert_fails: None,
+            tree_fails: Cell::new(0),
         }
     }
 
@@ -109,9 +112,9 @@ impl Hub for Fake {
         }
         if let Some((refused, left)) = self.refuses_for.get()
             && refused == number
+            && left > 0
         {
-            self.refuses_for
-                .set(left.checked_sub(1).map(|left| (refused, left)));
+            self.refuses_for.set(Some((refused, left - 1)));
             return Err("Pull Request is not mergeable".to_owned());
         }
         if self.moved_before == Some(number) {
@@ -154,6 +157,10 @@ impl Hub for Fake {
     }
 
     fn tree(&self, commit: &str) -> Result<String, String> {
+        if self.tree_fails.get() > 0 {
+            self.tree_fails.set(self.tree_fails.get() - 1);
+            return Err("gh api: HTTP 502: Bad Gateway".to_owned());
+        }
         self.on_main()?;
         git_in(&self.clone, &["rev-parse", &format!("{commit}^{{tree}}")])
     }
@@ -235,6 +242,23 @@ fn landed_by(name: &str, hub: impl FnOnce(&Path, &Path) -> Fake) -> Landed {
             .into_iter()
             .filter(|file| git_in(&origin, &["cat-file", "-e", &format!("main:{file}")]).is_ok())
             .collect(),
+        unsigned: git_in(
+            &origin,
+            &[
+                "log",
+                "--first-parent",
+                "--format=%H %B%x00",
+                &format!("{base}..main"),
+            ],
+        )
+        .unwrap()
+        .split('\0')
+        .map(str::trim)
+        .filter(|commit| !commit.is_empty())
+        .filter(|commit| !commit.contains("Merged by GitHub") && !commit.ends_with("elsewhere"))
+        .filter(|commit| !commit.contains(" Revert "))
+        .map(|commit| commit.split(' ').next().unwrap_or_default().to_owned())
+        .collect(),
         main,
         one,
         two,
@@ -258,6 +282,10 @@ struct Landed {
     base_tree: String,
     /// Which of the riders' files, and another change's, main holds.
     holds: Vec<&'static str>,
+    /// The commits main gained along its first parent that GitHub didn't
+    /// make, which a follower trusting only GitHub's key refuses as its
+    /// tip, besides another change's.
+    unsigned: Vec<String>,
     one: String,
     two: String,
     candidate: String,
@@ -280,6 +308,11 @@ fn a_passed_candidate_lands_through_githubs_merges() {
     assert_ne!(
         landed.main, landed.candidate,
         "the train pushed its own candidate to main, whose key main doesn't trust"
+    );
+    assert!(
+        landed.unsigned.is_empty(),
+        "main gained commits GitHub didn't make, which a follower trusting it refuses: {:?}",
+        landed.unsigned
     );
     assert_eq!(
         landed.main_tree, landed.tested_tree,
@@ -383,6 +416,11 @@ fn a_change_merged_just_after_the_train_leaves_its_merges_landed() {
         ["one", "two", "elsewhere"],
         "main doesn't hold both riders and the change after them"
     );
+    assert!(
+        landed.unsigned.is_empty(),
+        "main gained commits GitHub didn't make, which a follower trusting it refuses: {:?}",
+        landed.unsigned
+    );
 }
 
 #[test]
@@ -416,8 +454,60 @@ fn a_merge_refused_while_github_works_it_out_is_asked_again() {
     );
     assert_eq!(
         landed.asked,
-        ["merge 1", "merge 2", "merge 2", "merge 2", "merge 2"],
+        ["merge 1", "merge 2", "merge 2", "merge 2"],
         "the refused merge wasn't asked again until GitHub took it"
+    );
+}
+
+#[test]
+fn a_tree_github_once_couldnt_give_is_asked_again() {
+    let landed = landed_by("github-tree-again", |place, origin| Fake {
+        tree_fails: Cell::new(1),
+        ..Fake::of(place, origin)
+    });
+    assert_eq!(
+        landed.landing,
+        Landing::Landed(landed.main.clone()),
+        "one failed read of GitHub's tree reverted a right landing"
+    );
+}
+
+#[test]
+fn a_tree_github_cant_give_reverts_the_merges() {
+    let landed = landed_by("github-treeless", |place, origin| Fake {
+        tree_fails: Cell::new(u32::MAX),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Reverted { reverted, kept, why }
+                if *reverted == [(landed.two.clone(), 102), (landed.one.clone(), 101)]
+                    && kept.is_empty()
+                    && why.contains("couldn't say what its merge")
+        ),
+        "merges whose tree GitHub couldn't give landed unjudged: {:?}",
+        landed.landing
+    );
+}
+
+#[test]
+fn a_second_revert_github_wont_merge_keeps_just_the_merge_under_it() {
+    let landed = landed_by("github-kept-under", |place, origin| Fake {
+        moved_before: Some(2),
+        revert_fails: Some(1),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Reverted { reverted, kept, why }
+                if *reverted == [(landed.two.clone(), 102)]
+                    && *kept == [landed.one.clone()]
+                    && why.contains("#101")
+        ),
+        "the merge under a failed revert, and only it, wasn't kept: {:?}",
+        landed.landing
     );
 }
 
