@@ -333,6 +333,11 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     stop::hear_stops();
     let asked =
         asked(args, std::env::var(SERVER_ENV).ok()).map_err(|e| crate::wrongly("proof", e))?;
+    // Gone however this proof ends before its own is written, so an
+    // earlier proof's report is never read for this one's.
+    if let Some(out) = &asked.out {
+        let _ = fs::remove_file(out);
+    }
     let Some(link) = uplink() else {
         return Err(Failure::new(
             Exit::Unavailable,
@@ -367,22 +372,32 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
     let active = || systemctl("is-active");
-    let was_on = marker
+    let mut was_on = marker
         .as_deref()
         .map_or_else(active, |m| stop::own_state(m, active));
+    // Only a window starts or stops the shaper, so until one does the
+    // shaper is whoever's sets it, a switch's or Joel's, and nothing puts
+    // it back; then its state is read afresh and claimed. A killed proof's
+    // that left it wrong is owed from the start.
+    let mut touched = was_on != active();
     if let Some(marker) = &marker {
+        if !touched {
+            stop::forget(marker);
+        }
         stop::keep(marker);
     }
     let mut idle: Vec<f64> = Vec::new();
-    // Only a window starts or stops the shaper, so a proof that never had
-    // one leaves it to whoever set it since: put back, it could undo a
-    // switch or Joel's own stop made while the proof waited.
-    let mut touched = false;
     let (pairs, complete) = across_windows(
         asked.pairs,
         || opened(|| gate.open(), deadline, &STOPPED),
         |from| {
-            touched = true;
+            if !touched {
+                touched = true;
+                was_on = active();
+                if let Some(marker) = &marker {
+                    stop::claim(marker, was_on);
+                }
+            }
             window(&asked, &link, &gate, was_on, from, &mut idle)
         },
     );
@@ -609,6 +624,8 @@ mod tests {
             !opened(|| false, deadline, &stopped),
             "opened while stopped"
         );
+        // A stopped proof finding Joel away still opens no window.
+        assert!(!opened(|| true, deadline, &stopped), "opened once stopped");
         settle(&stopped);
         assert!(
             began.elapsed() < Duration::from_secs(2),

@@ -113,7 +113,8 @@ impl Gate {
                 }
             }
         }
-        let shown = mark.display().to_string();
+        // swayidle hands each command to a shell, so the path is quoted.
+        let shown = format!("'{}'", mark.display().to_string().replace('\'', r"'\''"));
         let mut idle = Command::new("swayidle");
         idle.args(["timeout", &IDLE_S.to_string(), &format!("touch {shown}")])
             .args(["resume", &format!("rm -f {shown}")])

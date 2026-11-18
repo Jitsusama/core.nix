@@ -153,11 +153,17 @@ fn state_within(marker: &Path, active: impl FnOnce() -> bool, takes: Duration) -
         ));
     }
     let on = earlier.unwrap_or_else(active);
+    claim(marker, on);
+    on
+}
+
+/// Writes `on` to `marker` as this proof's word, with its pid, so only
+/// this proof's keeper acts on it.
+pub fn claim(marker: &Path, on: bool) {
     let word = if on { "on" } else { "off" };
     if fs::write(marker, format!("{word} {}\n", std::process::id())).is_err() {
         tell(&format!("couldn't write {}", marker.display()));
     }
-    on
 }
 
 /// Why a proof can't run alone.
@@ -357,6 +363,22 @@ mod tests {
         fs::write(&marker, format!("off {next}\n")).expect("a marker");
         assert_eq!(kept(pid, &began), "", "acted on the next proof's marker");
         assert!(marker.exists(), "forgot the next proof's marker");
+        // And one the next proof writes while this keeper's systemctl runs
+        // is read again, and left.
+        fs::write(&marker, format!("on {pid}\n")).expect("a marker");
+        let racing = format!(
+            "m=$1; next() {{ echo \"off {next}\" >\"$m\"; }}; {}",
+            keeper(pid, &began)
+        );
+        Command::new("sh")
+            .args(["-c", &racing, "sh", at, "next"])
+            .status()
+            .expect("a shell");
+        assert_eq!(
+            fs::read_to_string(&marker).ok(),
+            Some(format!("off {next}\n")),
+            "forgot the marker the next proof wrote meanwhile"
+        );
         // A shaper that wouldn't go back keeps its marker, for the next.
         fs::write(&marker, format!("on {pid}\n")).expect("a marker");
         let failing = Command::new("sh")
@@ -475,7 +497,7 @@ mod tests {
         });
         assert!(
             own_state(&marker, || on.load(Ordering::Relaxed)),
-            "read the shaper's state before its keeper was done"
+            "read the shaper off, before its keeper had it on again"
         );
         assert!(
             forgotten.load(Ordering::Relaxed),
