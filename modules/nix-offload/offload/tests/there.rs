@@ -187,9 +187,10 @@ fn executable(path: &Path, script: &str) {
 /// `closure` file, when there is one. Sending held outputs up takes as
 /// many seconds as the `copy-takes` file says, when there is one, and a
 /// send of the path the `slow-to-send` file names takes 30. A copy up
-/// keeps what `NIX_SSHOPTS` said in `nix-sshopts`, and while the
-/// `loses-copy` file is there, the first loses its builder as ssh's
-/// keepalives give up, and takes the file away.
+/// adds what `NIX_SSHOPTS` said to `nix-sshopts`, and while the
+/// `loses-copy` file is there, the first loses its builder, saying what
+/// the file holds or, where it's empty, what ssh says as its keepalives
+/// give up, and takes the file away.
 const NIX: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/nix-was-given"
@@ -197,11 +198,16 @@ echo "$@" >> "$here/nix-calls"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
 case "$*" in
   "copy "*"--to "*)
-    echo "${NIX_SSHOPTS:-}" > "$here/nix-sshopts"
+    echo "${NIX_SSHOPTS:-}" >> "$here/nix-sshopts"
     if [ -f "$here/loses-copy" ]; then
+      said=$(cat "$here/loses-copy")
       rm -f "$here/loses-copy"
-      echo "Timeout, server localhost not responding." >&2
-      echo "error: Nix daemon disconnected unexpectedly (maybe it crashed?)" >&2
+      if [ -n "$said" ]; then
+        echo "$said" >&2
+      else
+        echo "Timeout, server localhost not responding." >&2
+        echo "error: Nix daemon disconnected unexpectedly (maybe it crashed?)" >&2
+      fi
       exit 1
     fi ;;
 esac
@@ -1682,34 +1688,15 @@ fn a_copy_up_that_loses_its_builder_is_cut_soon_and_sent_again_once_one_stands()
     // uplink, each waited out the 60 s of keepalives the builder's ssh entry
     // gives before Nix said its daemon had gone, and the run ended there:
     // five lanes lost about 30 minutes each.
-    let folder = tempfile::tempdir().unwrap();
-    let offload = folder.path().join("offload");
-    fs::create_dir(&offload).unwrap();
-    fs::write(offload.join("store"), STORE).unwrap();
-    fs::write(offload.join("lender"), format!("{}\n", std::process::id())).unwrap();
-    stand_ins(folder.path(), 0);
-    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
-    fs::write(folder.path().join("loses-copy"), "").unwrap();
-    let ran = there_given(folder.path(), &offload, &["-L", "/nix/store/aaaa-x.drv"]);
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
-    assert_eq!(
-        calls
-            .lines()
-            .filter(|call| call.starts_with("copy "))
-            .count(),
-        2,
-        "copied again: {calls}"
-    );
-    // Nothing back from the builder for 15 s cuts the copy, not 60.
-    let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
+    let (ran, sshopts) = copied_after_a_loss("");
+    // Nothing back from the builder for 15 s cuts the first copy, not 60.
+    // An uplink that's lossy and full can stall a copy past 15 s and then
+    // move it again, so the one sent again after a cut has a minute.
+    assert_eq!(sshopts.len(), 2, "copied again: {sshopts:?}");
     assert!(
-        sshopts.contains("-o ServerAliveInterval=5 -o ServerAliveCountMax=3"),
-        "{sshopts}"
-    );
-    assert_eq!(
-        given_to(folder.path()),
-        "nix-offload\nnix build --no-link -L '/nix/store/aaaa-x.drv^*'\n"
+        sshopts[0].ends_with("-o ServerAliveInterval=5 -o ServerAliveCountMax=3")
+            && sshopts[1].ends_with("-o ServerAliveInterval=5 -o ServerAliveCountMax=12"),
+        "the copy sent again wasn't given a minute after the one cut: {sshopts:?}"
     );
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(said.contains("Nix daemon disconnected"), "{said}");
@@ -1717,8 +1704,58 @@ fn a_copy_up_that_loses_its_builder_is_cut_soon_and_sent_again_once_one_stands()
         said.contains("waits for a builder to stand again"),
         "{said}"
     );
+    assert!(
+        said.contains(
+            "keepalive went unanswered, so a copy sent again in this run waits up to 60 s"
+        ),
+        "the run didn't say the copy sent again waits longer: {said}"
+    );
     // Nothing was building there, so nothing goes on there.
     assert!(!said.contains("nix log"), "{said}");
+}
+
+#[test]
+fn a_copy_up_whose_connection_was_reset_is_sent_again_no_more_patiently() {
+    // A reset isn't a stall a longer keepalive outlasts.
+    let (ran, sshopts) = copied_after_a_loss(
+        "error: cannot open connection to remote store 'ssh-ng://x': Connection reset by peer",
+    );
+    assert_eq!(sshopts.len(), 2, "copied again: {sshopts:?}");
+    assert!(
+        sshopts
+            .iter()
+            .all(|given| given.ends_with("-o ServerAliveInterval=5 -o ServerAliveCountMax=3")),
+        "a reset copy gave the next one longer: {sshopts:?}"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        !said.contains("keepalive went unanswered"),
+        "a reset was said to be an unanswered keepalive: {said}"
+    );
+}
+
+/// A run whose first copy up loses its builder, saying `said` as it does
+/// (ssh's keepalive giving up where it's empty), once it has ended well
+/// and been asked to build only what it was named, with what each copy
+/// up's `NIX_SSHOPTS` said.
+fn copied_after_a_loss(said: &str) -> (std::process::Output, Vec<String>) {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    fs::write(offload.join("lender"), format!("{}\n", std::process::id())).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    fs::write(folder.path().join("loses-copy"), said).unwrap();
+    let ran = there_given(folder.path(), &offload, &["-L", "/nix/store/aaaa-x.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        given_to(folder.path()),
+        "nix-offload\nnix build --no-link -L '/nix/store/aaaa-x.drv^*'\n",
+        "the run wasn't asked to build what it was named"
+    );
+    let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
+    (ran, sshopts.lines().map(str::to_owned).collect())
 }
 
 #[test]
@@ -5788,6 +5825,61 @@ fn a_vm_run_waiting_on_the_first_builder_goes_to_the_second_once_it_has_room() {
     assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
     assert_eq!(tests_on(&built, "nix-offload-vm-more"), 3, "{built:?}");
     assert!(said.contains("another VM builder has room now"), "{said}");
+}
+
+#[test]
+fn a_commands_paths_sent_again_after_their_keepalive_went_unanswered_wait_a_minute() {
+    // On 17 November a 24 MB base a run sent first was cut at 15 s on
+    // each try, behind an uplink that's lossy and full.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 0);
+    let config = folder.path().join("gitconfig");
+    fs::write(
+        &config,
+        "[user]\nname = Tester\nemail = tester@example.com\n",
+    )
+    .unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir(&tree).unwrap();
+    let git = |arguments: &[&str]| git(&tree, &config, arguments);
+    git(&["init", "-q", "-b", "main"]);
+    git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+    fs::write(tree.join("package.json"), "{ }").unwrap();
+    git(&["add", "package.json"]);
+    git(&["commit", "-q", "-m", "pushed"]);
+    let head = git(&["rev-parse", "HEAD"]);
+    git(&["update-ref", "refs/remotes/origin/main", &head]);
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    fs::write(offload.join("lender"), format!("{}\n", std::process::id())).unwrap();
+    fs::write(bin.join("loses-copy"), "").unwrap();
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["--never-ask", "--run", "--copy", "/nix/store/a-runtime"])
+        .args(["--longest", "60", "--", "pnpm", "test"])
+        .current_dir(&tree)
+        .env("GIT_CONFIG_GLOBAL", &config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sshopts = fs::read_to_string(bin.join("nix-sshopts")).unwrap();
+    let sshopts: Vec<&str> = sshopts.lines().collect();
+    assert!(
+        sshopts.len() == 2
+            && sshopts[0].ends_with("-o ServerAliveInterval=5 -o ServerAliveCountMax=3")
+            && sshopts[1].ends_with("-o ServerAliveInterval=5 -o ServerAliveCountMax=12"),
+        "the paths sent again weren't given a minute after the copy cut: {sshopts:?}"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "keepalive went unanswered, so a copy sent again in this run waits up to 60 s"
+        ),
+        "the run didn't say its copy sent again waits longer: {said}"
+    );
 }
 
 #[test]

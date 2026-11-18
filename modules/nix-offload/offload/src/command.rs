@@ -235,7 +235,7 @@ fn closure_of(nix: &str, paths: &[String]) -> Option<u64> {
 /// Runs `sending` for `asked` on the lent builder `store` names, as the run
 /// `run`, its paths sent first, and gives its status, or none when ssh
 /// couldn't reach it or its paths couldn't go. `[ssh, nix]` are the
-/// programs run.
+/// programs run, and `cuts` the run's copies up its keepalive cut.
 pub fn on(
     store: &str,
     sending: &Sending,
@@ -243,6 +243,7 @@ pub fn on(
     run: &str,
     scratch: &Path,
     [ssh, nix]: [&str; 2],
+    cuts: &there::Cuts,
 ) -> Option<i32> {
     let lent = there::builder(store.lines().next()?.trim())?;
     if !asked.copies.is_empty() {
@@ -252,7 +253,8 @@ pub fn on(
             lent.host
         );
         let size = closure_of(nix, &asked.copies).unwrap_or(0);
-        if let Err(why) = there::paths_up(&asked.copies, &lent, nix, there::send_within(size)) {
+        if let Err(why) = there::paths_up(&asked.copies, &lent, nix, there::send_within(size), cuts)
+        {
             eprintln!("nix-offload: {why}");
             return None;
         }

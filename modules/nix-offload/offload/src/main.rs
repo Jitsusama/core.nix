@@ -1461,7 +1461,18 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let more = more_dir();
     let lenders = [dir.as_path(), more.as_path()];
-    let on = |store: &str| command::on(store, &sending, &asked, &run, &scratch, ["ssh", "nix"]);
+    let cuts = there::Cuts::default();
+    let on = |store: &str| {
+        command::on(
+            store,
+            &sending,
+            &asked,
+            &run,
+            &scratch,
+            ["ssh", "nix"],
+            &cuts,
+        )
+    };
     let mut status = changed::in_turn(lenders, std::process::id())
         .iter()
         .filter_map(|lender| standing(lender))
@@ -2139,7 +2150,13 @@ impl Sent<'_> {
         // the builder trusts no account.
         if let Some(own) = self.own {
             let package = [changed::package_of(own)];
-            if let Err(why) = there::paths_up(&package, &lent, "nix", there::send_within(0)) {
+            if let Err(why) = there::paths_up(
+                &package,
+                &lent,
+                "nix",
+                there::send_within(0),
+                &there::Cuts::default(),
+            ) {
                 eprintln!("nix-offload: {why}");
                 return None;
             }
