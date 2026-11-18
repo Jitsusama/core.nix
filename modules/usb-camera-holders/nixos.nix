@@ -15,8 +15,8 @@
 #
 # While it streams, the watch also says in its journal every ten seconds
 # how: the format and frame rate asked for, the frames the camera gave by
-# uvcvideo's count in debugfs, and every control's value, exposure among
-# them. A call that looked bad or choppy is read back afterwards with
+# uvcvideo's count in debugfs and the packets it sent in error, and every
+# control's value, exposure among them. A call that looked bad or choppy is read back afterwards with
 # `journalctl -u 'usb-camera-holders@*'`, rather than pieced together from
 # what else was running. It reads no frames.
 { lib, pkgs, ... }:
@@ -52,7 +52,9 @@ in
       ExecStart = "${lib.getExe holders} --usb /dev/%I ${holdersDir}";
       # The same reach as a loopback's watch: every process's open files,
       # and nothing else. Running as root, it reads uvcvideo's counts in
-      # debugfs too, which ProtectKernelTunables leaves readable.
+      # debugfs too, which ProtectKernelTunables leaves readable: root owns
+      # debugfs and uvcvideo makes its stats readable by all, so no
+      # capability is needed, and the line says why if they can't be read.
       CapabilityBoundingSet = [
         "CAP_DAC_READ_SEARCH"
         "CAP_SYS_PTRACE"

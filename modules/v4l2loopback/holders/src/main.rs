@@ -29,7 +29,8 @@
 //! the stream shows only in sysfs, which says nothing when it changes.
 //! While a USB camera streams, it also says in its log, every ten seconds,
 //! how: the format and frame rate asked for, the frames the camera gave,
-//! and its controls (src/record.rs says how).
+//! the packets it sent in error, and its controls (src/record.rs says
+//! how).
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
 //! holds costs nothing. Its help, its failures and its exits take the
@@ -229,18 +230,20 @@ fn watch(
         };
         let anyone = !names.is_empty();
         let shown = listed(names, sysfs, node);
+        if said.as_ref() != Some(&shown)
+            && let Err(error) = write(output, &shown)
+        {
+            eprintln!("{}: {error}", output.display());
+        }
+        // The record asks the camera itself, which a stalling camera can
+        // keep waiting, so it comes after the file is right.
         if let Some(record) = record.as_deref_mut() {
             let streaming: Vec<String> = shown.iter().cloned().collect();
             if let Some(line) = record.now(node, &streaming) {
                 println!("{line}");
             }
         }
-        if said.as_ref() != Some(&shown) {
-            if let Err(error) = write(output, &shown) {
-                eprintln!("{}: {error}", output.display());
-            }
-            said = Some(shown);
-        }
+        said = Some(shown);
         match events.wait(anyone.then_some(every)) {
             Woken::Timeout | Woken::Changed => {}
             Woken::NodeGone => return Ended::Gone,

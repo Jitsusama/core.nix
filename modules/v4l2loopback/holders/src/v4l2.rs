@@ -6,6 +6,7 @@
 //! The structures are the kernel's (`linux/videodev2.h`), laid out by hand
 //! for the four calls asked, since nothing else here needs a binding.
 
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io;
 use std::os::fd::AsRawFd;
@@ -85,9 +86,15 @@ const GET_CONTROL: c_ulong = readwrite(27, size_of::<Control>());
 const QUERY_CONTROL: c_ulong = readwrite(36, size_of::<Queried>());
 const QUERY_MENU: c_ulong = readwrite(37, size_of::<Menu>());
 
-fn ask<T>(file: &File, request: c_ulong, argument: &mut T) -> io::Result<()> {
-    // SAFETY: the argument is the structure the request names, laid out
-    // as the kernel lays it out, and lives through the call.
+/// Asks the driver one thing.
+///
+/// # Safety
+///
+/// `T` must be the structure `request` names, laid out as the kernel lays
+/// it out, since the kernel reads and writes its size through the pointer.
+unsafe fn ask<T>(file: &File, request: c_ulong, argument: &mut T) -> io::Result<()> {
+    // SAFETY: the caller pairs the request with its structure, and the
+    // argument lives through the call.
     let done = unsafe {
         ioctl(
             file.as_raw_fd(),
@@ -102,10 +109,11 @@ fn ask<T>(file: &File, request: c_ulong, argument: &mut T) -> io::Result<()> {
     }
 }
 
-/// A fixed field of text, up to its first NUL.
+/// A fixed field of text, up to its first NUL, with anything that could
+/// break the journal's line made plain, as a holder's name is.
 fn text(field: &[u8]) -> String {
     let end = field.iter().position(|b| *b == 0).unwrap_or(field.len());
-    String::from_utf8_lossy(&field[..end]).into_owned()
+    crate::holders::text(&field[..end])
 }
 
 /// The format a capture was last set to: its pixels' four letters, and
@@ -125,7 +133,8 @@ pub fn format(file: &File) -> io::Result<Format> {
         pixels: [0; 4],
         rest: [0; 188],
     };
-    ask(file, GET_FORMAT, &mut asked)?;
+    // SAFETY: GET_FORMAT names a v4l2_format, which Formatted lays out.
+    unsafe { ask(file, GET_FORMAT, &mut asked) }?;
     Ok(Format {
         pixels: text(&asked.pixels),
         width: asked.width,
@@ -143,7 +152,8 @@ pub fn asked_rate(file: &File) -> io::Result<f64> {
         denominator: 0,
         rest: [0; 184],
     };
-    ask(file, GET_STREAMING, &mut asked)?;
+    // SAFETY: GET_STREAMING names a v4l2_streamparm, as Streaming is.
+    unsafe { ask(file, GET_STREAMING, &mut asked) }?;
     if asked.numerator == 0 {
         return Err(io::Error::other("no frame interval"));
     }
@@ -159,8 +169,12 @@ pub struct Value {
 }
 
 /// Every control a number says the value of, in the driver's order. A
-/// control that won't say is left out rather than failing the rest.
-pub fn controls(file: &File) -> Vec<Value> {
+/// control that won't say is left out rather than failing the rest, and
+/// joins those unanswered, which aren't asked again: uvcvideo asks the
+/// camera itself for a control that changes on its own, such as exposure
+/// while it's automatic, and waits five seconds on one that doesn't
+/// answer.
+pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Vec<Value> {
     let mut values = Vec::new();
     let mut id = NEXT;
     loop {
@@ -175,19 +189,23 @@ pub fn controls(file: &File) -> Vec<Value> {
             flags: 0,
             reserved: [0; 2],
         };
-        if ask(file, QUERY_CONTROL, &mut queried).is_err() {
+        // SAFETY: QUERY_CONTROL names a v4l2_queryctrl, as Queried is.
+        if unsafe { ask(file, QUERY_CONTROL, &mut queried) }.is_err() {
             return values;
         }
         id = queried.id | NEXT;
         let said = matches!(queried.kind, INTEGER | BOOLEAN | MENU | INTEGER_MENU);
-        if !said || queried.flags & (DISABLED | WRITE_ONLY) != 0 {
+        if !said || queried.flags & (DISABLED | WRITE_ONLY) != 0 || unanswered.contains(&queried.id)
+        {
             continue;
         }
         let mut control = Control {
             id: queried.id,
             value: 0,
         };
-        if ask(file, GET_CONTROL, &mut control).is_err() {
+        // SAFETY: GET_CONTROL names a v4l2_control, as Control is.
+        if unsafe { ask(file, GET_CONTROL, &mut control) }.is_err() {
+            unanswered.insert(queried.id);
             continue;
         }
         let item = (queried.kind == MENU).then(|| {
@@ -197,7 +215,8 @@ pub fn controls(file: &File) -> Vec<Value> {
                 name: [0; 32],
                 reserved: 0,
             };
-            ask(file, QUERY_MENU, &mut menu)
+            // SAFETY: QUERY_MENU names a v4l2_querymenu, as Menu is.
+            unsafe { ask(file, QUERY_MENU, &mut menu) }
                 .ok()
                 .map(|()| text(&{ menu.name }))
         });
@@ -212,6 +231,7 @@ pub fn controls(file: &File) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::offset_of;
 
     #[test]
     fn the_calls_are_the_kernels() {
@@ -224,8 +244,39 @@ mod tests {
     }
 
     #[test]
-    fn a_field_of_text_ends_at_its_first_nul() {
+    fn the_fields_sit_where_the_kernel_reads_them() {
+        // As videodev2.h lays them out on a 64-bit machine.
+        assert_eq!(
+            [
+                offset_of!(Formatted, width),
+                offset_of!(Formatted, height),
+                offset_of!(Formatted, pixels),
+            ],
+            [8, 12, 16]
+        );
+        assert_eq!(
+            [
+                offset_of!(Streaming, numerator),
+                offset_of!(Streaming, denominator),
+            ],
+            [12, 16]
+        );
+        assert_eq!(
+            [
+                offset_of!(Queried, kind),
+                offset_of!(Queried, name),
+                offset_of!(Queried, flags),
+            ],
+            [4, 8, 56]
+        );
+        assert_eq!(offset_of!(Control, value), 4);
+        assert_eq!([offset_of!(Menu, index), offset_of!(Menu, name)], [4, 8]);
+    }
+
+    #[test]
+    fn a_field_of_text_ends_at_its_first_nul_and_breaks_no_line() {
         assert_eq!(text(b"MJPG"), "MJPG");
         assert_eq!(text(b"Exposure\0junk"), "Exposure");
+        assert_eq!(text(b"Auto\nMode"), "Auto?Mode");
     }
 }

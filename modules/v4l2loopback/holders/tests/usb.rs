@@ -1,9 +1,9 @@
 //! The program itself watching a USB camera, run as its unit runs it, over
 //! a sysfs of its own: its file is there while the camera is, says nobody
-//! while nobody streams, and goes when the camera's node does or the
-//! program is stopped.
+//! while nobody streams, goes when the camera's node does or the program
+//! is stopped, and while the camera streams, its log says how.
 
-use std::fs;
+use std::fs::{self, File};
 use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -20,6 +20,10 @@ struct Watch {
     root: PathBuf,
     node: PathBuf,
     file: PathBuf,
+    /// The streaming interface, uvcvideo's count of it, and the log.
+    streaming: PathBuf,
+    stats: PathBuf,
+    log: PathBuf,
     program: Child,
 }
 
@@ -31,9 +35,15 @@ impl Watch {
         let _ = fs::remove_dir_all(&root);
         let sysfs = root.join("sys");
         let usb = sysfs.join("devices/usb2/2-1");
-        for (interface, class, sub) in [("2-1:1.0", "0e", "01"), ("2-1:1.1", "0e", "02")] {
+        fs::create_dir_all(&usb).unwrap();
+        fs::write(usb.join("busnum"), "2\n").unwrap();
+        fs::write(usb.join("devnum"), "7\n").unwrap();
+        for (interface, class, sub, number) in
+            [("2-1:1.0", "0e", "01", "00"), ("2-1:1.1", "0e", "02", "01")]
+        {
             let folder = usb.join(interface);
             fs::create_dir_all(&folder).unwrap();
+            fs::write(folder.join("bInterfaceNumber"), format!("{number}\n")).unwrap();
             fs::write(folder.join("bInterfaceClass"), format!("{class}\n")).unwrap();
             fs::write(folder.join("bInterfaceSubClass"), format!("{sub}\n")).unwrap();
             fs::write(folder.join("bAlternateSetting"), " 0\n").unwrap();
@@ -49,20 +59,36 @@ impl Watch {
         fs::create_dir_all(&folder).unwrap();
         // What a run killed mid-write would have left.
         fs::write(folder.join("MX Brio 705 for Business.99"), "").unwrap();
+        let debugfs = root.join("debug");
+        let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
+        fs::create_dir_all(stats.parent().unwrap()).unwrap();
+        let log = root.join("log");
         let program = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
             .arg("--usb")
             .arg("--sysfs")
             .arg(&sysfs)
+            .arg("--debugfs")
+            .arg(&debugfs)
             .arg(&node)
             .arg(&folder)
+            .stdout(File::create(&log).unwrap())
             .spawn()
             .unwrap();
         Self {
             file: folder.join("MX Brio 705 for Business"),
+            streaming: usb.join("2-1:1.1/bAlternateSetting"),
+            stats,
+            log,
             root,
             node,
             program,
         }
+    }
+
+    /// Has uvcvideo say it has counted these frames of the stream.
+    fn count(&self, frames: u64) {
+        let text = format!("frames:  {frames}\npackets: 0\nempty:   0\nerrors:  0\ninvalid: 0\n");
+        fs::write(&self.stats, text).unwrap();
     }
 
     /// Waits up to five seconds for the camera's file to be there or not.
@@ -102,6 +128,30 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
     assert_eq!(fs::read_to_string(&watch.file).unwrap(), "");
     let left = watch.file.with_file_name("MX Brio 705 for Business.99");
     assert!(!left.exists(), "a killed run's file was left");
+}
+
+#[test]
+fn while_the_camera_streams_its_log_says_what_it_gave() {
+    let watch = Watch::start("record");
+    watch.until_there(true, "no file while the camera's there");
+    watch.count(0);
+    // This test holds the camera, and it streams.
+    let _held = File::open(&watch.node).unwrap();
+    fs::write(&watch.streaming, " 1\n").unwrap();
+    sleep(Duration::from_secs(2));
+    watch.count(300);
+    // The first line comes ten seconds after the stream was first seen.
+    for _ in 0..300 {
+        let log = fs::read_to_string(&watch.log).unwrap();
+        if let Some(line) = log.lines().next() {
+            assert!(line.starts_with("streams to "), "{line}");
+            assert!(line.contains(" fps, 0 packets in error"), "{line}");
+            assert!(!line.contains("unknown"), "{line}");
+            return;
+        }
+        sleep(Duration::from_millis(50));
+    }
+    panic!("nothing said of the stream in fifteen seconds");
 }
 
 #[test]

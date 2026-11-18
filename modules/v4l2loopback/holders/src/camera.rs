@@ -135,7 +135,8 @@ pub mod tests {
             fs::write(usb.join("devnum"), "7\n").unwrap();
             for (interface, class, sub, number) in [
                 ("2-1:1.0", "0e", "01", "00"),
-                ("2-1:1.1", "0e", "02", "01"),
+                // In hex, as sysfs gives it, so a reading in decimal fails.
+                ("2-1:1.1", "0e", "02", "0a"),
                 ("2-1:1.4", "01", "02", "04"),
             ] {
                 let folder = usb.join(interface);
