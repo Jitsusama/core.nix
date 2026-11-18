@@ -6187,16 +6187,17 @@ Scope {
         stepOut = stepTimed && wordsBack
             ? { text: `\u2190 ${leaving.name}`, began, heard, pressed, collected, thread } : null;
         backTo = left;
-        let searched = false;
+        list.steppedLast = null;
+        let restarted = false;
         try {
             restart(words);
-            searched = true;
+            restarted = true;
         } finally {
             stepOut = null;
             backTo = null;
             // A search that failed leaves reselect unrun, and its
             // selection unshown while backTo was set (onCurrentChanged).
-            if (!searched && current >= 0)
+            if (!restarted && current >= 0)
                 list.reveal(current);
         }
         placeCaret(onto);
@@ -8445,8 +8446,9 @@ Scope {
         // builds rows ahead, and how many it holds, so a test can say a
         // step drew only the rows in reach rather than every one; and how
         // many fact rows the drawer has made and how many it holds, so it
-        // can say an arrow keeps them; and what the rows last kept laid
-        // out (keptLast), so it can say a step back out split them.
+        // can say an arrow keeps them; and how the last step back out laid
+        // out its rows (steppedLast), so it can say the step split them,
+        // whatever kept them since.
         const inside = listBox.mapToItem(card, 0, 0);
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
             numbers: wordsIn(rowsGutter, card), rowTall: root.rowTall,
@@ -8459,7 +8461,7 @@ Scope {
             drawn: root.rowsDrawn, built: root.rowsBuilt, factsMade: drawerCard.factsMade,
             factsHeld: drawerCard.facts.length, widthsAsked: drawerCard.widths.asked,
             widthsMade: drawerCard.widths.made,
-            ahead: list.cacheBuffer, listed: list.count, firstAt, kept: list.keptLast,
+            ahead: list.cacheBuffer, listed: list.count, firstAt, stepped: list.steppedLast,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
     }
@@ -13413,6 +13415,11 @@ Scope {
                             // showing says beside its own time, or null
                             // until the rows it composed were kept.
                             property var keptLast: null
+                            // What the last step back out's keeping said
+                            // of the row it came to (keptLast's split),
+                            // kept past the keepings after it, or null
+                            // until one keeps rows for it.
+                            property var steppedLast: null
                             // Whether keeping them last put every row in
                             // again (RowsKept.afresh), so they stand from
                             // the list's start, whatever it was scrolled to.
@@ -13483,12 +13490,15 @@ Scope {
                                 // after, every row of a step in from home
                                 // was laid out again for it.
                                 root.rowsPlaced(false);
-                                const back = root.backTo === null || rows.length === 0 ? -1
+                                const landing = root.backTo === null || rows.length === 0 ? -1
                                     : root.leftAt(root.backTo, rows);
                                 const puts = steps.filter(one => one.remove === undefined);
-                                const from = back > 0 && RowsKept.allAfresh(puts, rows.length)
-                                    ? RowsKept.splitFrom(back,
-                                        root.scrollFor(back, root.backTo.above) - list.rowY(0),
+                                const whole = landing >= 0
+                                    && RowsKept.allAfresh(puts, rows.length);
+                                const from = landing > 0 && whole
+                                    ? RowsKept.splitFrom(landing,
+                                        root.scrollFor(landing, root.backTo.above)
+                                            - list.rowY(0),
                                         at => root.tallOf(rows[at], at))
                                     : 0;
                                 let put = 0;
@@ -13557,17 +13567,19 @@ Scope {
                                 // in or moved above it puts this off by its
                                 // height, and reselect lays them out again
                                 // where the row stands: twice, as before.
-                                if (back >= 0)
-                                    list.contentY = root.scrollFor(back, root.backTo.above);
+                                if (landing >= 0)
+                                    list.contentY = root.scrollFor(landing, root.backTo.above);
                                 list.forceLayout();
                                 list.keptLast = {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
                                     laying: Date.now() - laying + aside + split,
-                                    split: { back, from, took: split },
+                                    split: { back: landing, from, took: split, whole },
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };
+                                if (landing >= 0)
+                                    list.steppedLast = list.keptLast.split;
                                 return false;
                             }
 

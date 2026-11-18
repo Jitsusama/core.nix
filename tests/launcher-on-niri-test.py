@@ -2160,8 +2160,8 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         shell.launcher_until(functools.partial(stepped_back_to, depth=depth, far=far))
         laid = laid_out(shell)
         drawn.append(int(laid["drawn"]) - before)
-        # Else what's drawn may be in reach only by chance, and the journal says no split.
-        assert (laid["kept"] or {}).get("split", {}).get("from", 0) > 0, laid["kept"]
+        # Fails loudly if the split is ever passed by, as the bound could hold without it.
+        assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
         was, now = band_of(standing, far), band_of(laid, far)
         assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"

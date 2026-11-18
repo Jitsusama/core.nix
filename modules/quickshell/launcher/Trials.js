@@ -137,18 +137,29 @@ function steppedMaking(making, split) {
     return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
 }
 
-// The rows a laying drew, where it drew any, and where a step back out
-// split a list put in afresh (Launcher.qml's keep), the row it put them in
-// from and how much of the laying that took, so a slow step back says
-// whether the split or the layout after it spent the time; and the row a
-// step back out came to without splitting, as where it kept rows.
+// The rows a laying drew, where it drew any, and the row a step back out
+// came to (Launcher.qml's keep), counted from 1 as the card shows them:
+// where it split a list put in afresh, the row it put in first and how
+// much of the laying that took, so a slow step back says whether the split
+// or the layout after it spent the time; else why it didn't split.
 function keptSaid(kept) {
     const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
         ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
-    const { back = -1, from = 0, took = 0 } = kept.split ?? {};
-    const split = from > 0 ? `, ${Math.round(took)} of it putting them in from row ${from} up`
-        : back > 0 ? `, back to row ${back} unsplit` : "";
-    return rows + split;
+    return rows + landedSaid(kept.split ?? {});
+}
+
+// The row a step back out came to and how its rows went in, or nothing
+// for a keeping that was no step back. A list put in afresh with its view
+// at the top has no rows above to split off; rows kept aren't put in.
+function landedSaid({ back = -1, from = 0, took = 0, whole = false }) {
+    if (back < 0) {
+        return "";
+    }
+    const to = `, back to row ${back + 1}`;
+    if (from > 0) {
+        return `${to}, ${Math.round(took)} of it putting in rows ${from + 1} on, then those above`;
+    }
+    return whole ? `${to} at the list's top` : `${to} among rows kept`;
 }
 
 // How long a showing's rows spent reading what each program holds, as
