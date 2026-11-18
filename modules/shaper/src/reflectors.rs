@@ -507,7 +507,10 @@ mod tests {
         let start = Instant::now();
         let mut pool = chosen(start + MINUTE);
         failing(&mut pool, at(9), start);
-        assert!(!pool.asks_again(start + 2 * MINUTE));
+        assert!(
+            !pool.asks_again(start + 2 * MINUTE),
+            "probes sent to the last pool set off a choice"
+        );
     }
 
     // Misses counted against a pool would otherwise set off the next
@@ -590,7 +593,7 @@ mod tests {
             pool.settle("wlp0s20f3", &heard(&three()), back).as_deref(),
             Some("recording wlp0s20f3 with 3 reflectors from 3 operators")
         );
-        assert!(!pool.kept());
+        assert!(!pool.kept(), "a choice ending a keep still kept");
         assert!(
             !pool.asks_again(back + SHORT_REPOOL + MINUTE),
             "a pool with enough was asked for again before the hour"
@@ -634,7 +637,10 @@ mod tests {
             !pool.asks_again(start + SHORT_REPOOL + MINUTE),
             "a pool of every operator there is was asked for again"
         );
-        assert!(pool.asks_again(start + REPOOL + MINUTE));
+        assert!(
+            pool.asks_again(start + REPOOL + MINUTE),
+            "a pool of every operator there is waited past the hour"
+        );
     }
 
     #[test]
