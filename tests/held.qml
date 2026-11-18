@@ -161,24 +161,31 @@ QtObject {
             `${keptAgain.side} ${keys(keptAgain.verbs())}`, "in Agents look=Look");
         // What the search found is each as the source offers it now, so an
         // ask hidden as a share begins is listed hidden, never as it was
-        // found; one the source no longer offers is kept as found, as
-        // People's, found beyond what it lists, are.
+        // found; one gone from all the source searches is gone from the
+        // step too, as an answered ask is, rather than kept as it was found.
         const matched = () => [row("k1", "Kiln"), row("k2", "Kettle")];
         const searched = [steps[0], Object.assign({}, steps[1], {
             row: Object.assign({}, working, { foundAs: { from: "Asks", verbs: matched,
                 landsIn: working } })
         })];
         const hiddenNow = [row("s1", "hidden"), row("k1", "hidden")];
-        const ownSearched = Held.own(searched, 1, hiddenNow, ways).steps[1];
+        const ownSearched = Held.own(searched, 1, hiddenNow, ways, hiddenNow).steps[1];
         check("what a search found is listed as the source offers it now",
             `${keys(ownSearched.row.verbs())} ${keys(ownSearched.rows)}`,
-            "k1=hidden k2=Kettle k1=hidden k2=Kettle");
+            "k1=hidden k1=hidden");
         check("and where it lands is the row as it is now", ownSearched.row.landsIn?.says,
             "hidden");
-        const searchedAgain = Held.own([steps[0], ownSearched], 1, [row("s1", "hidden"),
-            row("k1", "shown")], ways).steps[1].row;
+        const shownNow = [row("s1", "hidden"), row("k1", "shown")];
+        const searchedAgain = Held.own([steps[0], ownSearched], 1, shownNow, ways, shownNow)
+            .steps[1].row;
         check("made again twice, it lists them as they are then", keys(searchedAgain.verbs()),
-            "k1=shown k2=Kettle");
+            "k1=shown");
+        // A row the source searches beyond what it lists, as Sound's, is
+        // kept as it was found.
+        const beyond = Held.own(searched, 1, hiddenNow, ways,
+            hiddenNow.concat([row("k2", "Kettle")])).steps[1].row;
+        check("but one it still searches beyond what it lists is kept as found",
+            keys(beyond.verbs()), "k1=hidden k2=Kettle");
         const ownNothing = Held.own(steps, 1, [row("s1", "ended")], ways);
         check("a source's own row that now offers nothing is left",
             `${ownNothing.leave} ${ownNothing.all}`, "1 false");
