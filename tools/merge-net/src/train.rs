@@ -9,6 +9,11 @@
 //! a file under the net's state folder, `train/riders/<head>.json`, says
 //! its head, its branch and when it boarded, and `ready` starts the train
 //! as a user unit of its own, `merge-net ride`, unless it already goes.
+//! The train goes as the build the watch follows, which the watch names in
+//! the state folder's `installed` as it starts, never as the build that
+//! asked, which may be a tree's or a profile's from before the last
+//! switch; and between candidates a ride a switch replaced goes on as the
+//! new build, in the same unit.
 //! The train cuts a candidate at origin's main in a checkout of its own,
 //! merges every rider still its pull request's head into it in the order
 //! they boarded, as GitHub's merge button words a merge, and runs the gate
@@ -54,10 +59,13 @@ pub use right_of_way::gives_way;
 
 mod gated;
 mod hub;
+mod installed;
 mod landing;
 mod splitting;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
+pub use installed::install;
+use installed::{build, hand_over, handed, newer};
 use landing::{Landing, land};
 use splitting::{After, Splitting, UNTAKEN_FOR};
 
@@ -335,7 +343,7 @@ fn going() -> bool {
 /// Start the train's unit, beside the asker in its slice: whether systemd
 /// took it.
 fn start(root: &Path) -> bool {
-    let Ok(merge_net) = std::env::current_exe() else {
+    let Some(merge_net) = build(root, std::env::current_exe()) else {
         return false;
     };
     let train = folder(root);
@@ -395,13 +403,20 @@ const UNTAKEN_PAUSE: Duration = Duration::from_mins(1);
 /// When its checkout can't be made.
 pub fn ride(url: &str) -> Result<ExitCode, String> {
     let root = crate::state::State::from_env().root;
-    // A train that was killed left its right of way behind, so one
-    // starting afresh holds none, and however it stops, changes merge
-    // alone again.
-    way(&root, &Ended::Otherwise);
+    begin(&root, handed().is_some());
     let ridden = ride_from(&root, url);
     way(&root, &Ended::Otherwise);
     ridden
+}
+
+/// Begin a ride under `root`. A train that was killed left its right of
+/// way behind, so one starting afresh holds none, and however it stops,
+/// changes merge alone again; one a ride was `handed_over` from holds
+/// what that ride held.
+fn begin(root: &Path, handed_over: bool) {
+    if !handed_over {
+        way(root, &Ended::Otherwise);
+    }
 }
 
 /// Ride the train whose state is under `root` from the repository at
@@ -424,6 +439,19 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         if waiting.is_empty() {
             println!("merge-net: no one waits on the train");
             return Ok(ExitCode::SUCCESS);
+        }
+        // A ride started before a switch went on as the build from before
+        // it: on 18 November one pushed #5426, #5460 and #5321 to main
+        // itself, under Joel's key, after the switch that made the train
+        // merge through GitHub. Between candidates it goes on as the build
+        // installed instead; when that build won't run, it goes on as it
+        // is rather than leave its riders waiting on an asker.
+        if let Some(newer) = newer(&root, std::env::current_exe(), handed().as_deref()) {
+            println!(
+                "merge-net: another merge-net is installed, so the train goes on as {}",
+                newer.display()
+            );
+            println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
         }
         let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
         mergings.truncate(splitting.take());
