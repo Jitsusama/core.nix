@@ -359,6 +359,10 @@ fn run(how: &Run) -> Result<(), Failure> {
         let signed = Account::signed(&credentials, patience, rest);
         match &signed {
             Signed::Out => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
+            // Said once, as the sign-in last read is let go.
+            Signed::RanOver | Signed::Resting if last.lapsed(now) => {
+                eprintln!("<4>{}", slack_people::no_longer_stands());
+            }
             // A locked keyring prompts each time it's asked, so it rests.
             Signed::RanOver if last.stands(now) => eprintln!(
                 "<4>Slack's sign-in ran past {} seconds and was stopped, so the one last read \

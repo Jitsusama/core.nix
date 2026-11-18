@@ -103,6 +103,13 @@ impl LastSignIn {
             .is_some_and(|(_, read)| now.saturating_duration_since(*read) < STANDS)
     }
 
+    /// Whether a sign-in was read and no longer stands at `now`, so the
+    /// next run-over or rest lets it go: the moment to say so.
+    #[must_use]
+    pub fn lapsed(&self, now: Instant) -> bool {
+        self.last.is_some() && !self.stands(now)
+    }
+
     /// The sign-in `signed` holds, kept as read at `now`; or, while the
     /// keyring runs over or rests, the one kept, while it stands; or none,
     /// once neither the keyring nor the file holds one.
@@ -159,7 +166,10 @@ impl Account {
         let mut kept = LAST_READ
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if matches!(signed, Signed::RanOver) {
+        let waits = matches!(signed, Signed::RanOver | Signed::Resting);
+        if waits && kept.lapsed(now) {
+            eprintln!("<4>{}", no_longer_stands());
+        } else if matches!(signed, Signed::RanOver) {
             eprintln!("<4>{}", ran_over(kept.stands(now)));
         }
         kept.heard(signed, now)
@@ -230,13 +240,25 @@ fn ran_over(stands: bool) -> String {
     let meanwhile = if stands {
         "the sign-in last read stands meanwhile"
     } else {
-        "with no sign-in read yet, Slack reads as signed out till then"
+        "with no sign-in standing, Slack reads as signed out till then"
     };
     format!(
         "the keyring's Slack sign-in ran past {} seconds and was stopped, so it isn't asked \
          again for {} minutes, and {meanwhile}",
         sign_in_program::PATIENCE.as_secs(),
         REST.as_secs().div_ceil(60)
+    )
+}
+
+/// The line said as a sign-in read [`STANDS`] ago is let go while the
+/// keyring still runs over or rests, since nothing else says Slack has
+/// stopped being read.
+#[must_use]
+pub fn no_longer_stands() -> String {
+    format!(
+        "the Slack sign-in read {} minutes ago no longer stands while the keyring runs over \
+         or rests, so Slack isn't read till the keyring answers",
+        STANDS.as_secs() / 60
     )
 }
 
@@ -1450,8 +1472,13 @@ mod tests {
     fn a_sign_in_read_stands_no_longer_than_its_bound() {
         let read = Instant::now();
         let mut last = LastSignIn::new();
+        assert!(!last.lapsed(read), "nothing read hasn't lapsed");
         let _ = last.heard(Signed::In(account("xoxc-keyring")), read);
         let late = read + STANDS;
+        assert!(
+            !last.lapsed(read + STANDS / 2) && last.lapsed(late),
+            "a sign-in lapses at its bound, not before"
+        );
         assert!(
             !last.stands(late),
             "a sign-in read {STANDS:?} ago stands no longer"
@@ -1467,6 +1494,12 @@ mod tests {
             last.heard(Signed::Resting, read).is_none(),
             "and what was let go isn't brought back"
         );
+        assert!(!last.lapsed(late), "and is said to lapse once");
+        assert!(
+            no_longer_stands().contains("read 15 minutes ago no longer stands"),
+            "the lapse says the bound: {}",
+            no_longer_stands()
+        );
     }
 
     #[test]
@@ -1478,7 +1511,7 @@ mod tests {
         );
         let none = ran_over(false);
         assert!(
-            none.ends_with("with no sign-in read yet, Slack reads as signed out till then")
+            none.ends_with("with no sign-in standing, Slack reads as signed out till then")
                 && !none.contains("stands"),
             "none read, so none is said to stand: {none}"
         );
