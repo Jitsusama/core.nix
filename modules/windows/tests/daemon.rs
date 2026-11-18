@@ -582,6 +582,103 @@ fn niri_gone_and_back_describes_the_desktop_again() {
     assert_eq!(health["sources"]["niri"]["state"], "answering");
 }
 
+/// What a watch is told until the screenshot niri is now told to say,
+/// the `taken`th, reaches it, by which every line niri said before it has
+/// been heard too.
+fn told_through(running: &Running, watch: &mut Client, taken: u64) -> Vec<Value> {
+    running
+        .niri
+        .says(&json!({"ScreenshotCaptured": {"path": "/tmp/marker.png"}}));
+    let mut told = Vec::new();
+    loop {
+        let said = watch.heard();
+        let marked = said["changed"].as_array().is_some_and(|changed| {
+            changed
+                .iter()
+                .any(|record| record["key"] == "screenshot" && record["taken"] == taken)
+        });
+        told.push(said);
+        if marked {
+            return told;
+        }
+    }
+}
+
+/// Where in what a watch was told it first heard this, if it did.
+fn first(told: &[Value], heard: impl Fn(&Value) -> bool) -> Option<usize> {
+    told.iter().position(heard)
+}
+
+/// What a watch was told of the casts source, in the order told.
+fn casts_said(told: &[Value]) -> Vec<Value> {
+    told.iter()
+        .filter_map(|said| said["sources"].get("casts").cloned())
+        .collect()
+}
+
+#[test]
+fn the_casts_stand_unheard_until_each_stream_of_niris_says_them() {
+    let running = Running::new("casts");
+    let mut watch = running.daemon.client();
+    watch.ask(&json!({"id": 1, "ask": "watch", "kind": ["cast", "screenshot"]}));
+    let casts = || {
+        let health = running
+            .daemon
+            .client()
+            .ask(&json!({"id": 3, "ask": "health"}));
+        health["sources"]["casts"]["state"].clone()
+    };
+    let answering = |said: &Value| said["sources"]["casts"] == "answering";
+    // The stand-in's beginning says no casts, so none are heard yet,
+    // and a share begun now isn't taken for none.
+    let told = told_through(&running, &mut watch, 1);
+    assert_eq!(casts(), "starting", "casts heard before niri said them");
+    assert_eq!(casts_said(&told), Vec::<Value>::new());
+    // Heard, a watch is told the casts before it's told they're heard.
+    let sharing = json!({"stream_id": 7, "kind": "PipeWire", "is_active": true});
+    running
+        .niri
+        .says(&json!({"CastsChanged": {"casts": [sharing]}}));
+    let told = told_through(&running, &mut watch, 2);
+    let cast = first(&told, |said| {
+        said["changed"]
+            .as_array()
+            .is_some_and(|changed| changed.iter().any(|record| record["key"] == "cast:7"))
+    });
+    let heard = first(&told, answering);
+    assert!(
+        cast.is_some() && cast < heard,
+        "casts heard before they were told: {told:?}"
+    );
+    // A niri begun again under the daemon hasn't said its casts, and
+    // the last niri's no longer stand (ISXEG8 on #5399, 2026-11-17).
+    running.niri.hangs_up();
+    until("the daemon never asked niri again", || {
+        running.niri.streams() == 2
+    });
+    let told = told_through(&running, &mut watch, 3);
+    assert_eq!(
+        casts(),
+        "starting",
+        "the last niri's casts stood for the new one's"
+    );
+    assert_eq!(
+        casts_said(&told).last(),
+        Some(&json!("starting")),
+        "{told:?}"
+    );
+    // The new niri says none, so the last one's share goes before the
+    // casts are heard again.
+    running.niri.says(&json!({"CastsChanged": {"casts": []}}));
+    let told = told_through(&running, &mut watch, 4);
+    let gone = first(&told, |said| said["gone"] == json!(["cast:7"]));
+    let heard = first(&told, answering);
+    assert!(
+        gone.is_some() && gone < heard,
+        "casts heard before they were told: {told:?}"
+    );
+}
+
 #[test]
 fn a_watch_of_screens_summary_is_told_how_many_there_are_and_how_many_are_on() {
     let running = Running::worded(

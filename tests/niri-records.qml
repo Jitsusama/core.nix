@@ -193,12 +193,16 @@ QtObject {
             [["foot", 7], ["slack", 9]]);
 
         // Whether the casts are heard, as the daemon and niri's stream come
-        // and go: [stood in, the stream said them, the daemon answered].
+        // and go: [stood in, the stream said them, the daemon answered,
+        // what the daemon's casts source says]. The last two: a niri begun
+        // again under a daemon still up, and a daemon that says no casts.
         const heard = [
-            [false, false, true], [false, false, false], [true, false, true],
-            [true, true, false], [false, true, false]
-        ].map(state => NiriRecords.castsHeard(state[0], state[1], state[2]));
+            [false, false, true, "answering"], [false, false, false, "answering"],
+            [true, false, true, "answering"], [true, true, false, undefined],
+            [false, true, false, "answering"], [false, false, true, "starting"],
+            [false, false, true, undefined]
+        ].map(state => NiriRecords.castsHeard(state[0], state[1], state[2], state[3]));
         Expect.same("casts are heard only from what tells them now, said whole", heard,
-            [true, false, false, true, false]);
+            [true, false, false, true, false, false, false]);
     }
 }

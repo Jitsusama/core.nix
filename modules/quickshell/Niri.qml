@@ -98,7 +98,7 @@ Singleton {
     // itself from a share hides until it has: until then the shell can't
     // tell that nothing sees the screen (NiriRecords.castsHeard).
     readonly property bool castsHeard: NiriRecords.castsHeard(standIn, castsStreamed,
-        placesHeard.answeredThisWatch)
+        placesHeard.answeredThisWatch, placesHeard.sources.casts)
     // Whether niri's stream has said its casts since it connected.
     property bool castsStreamed: false
 
