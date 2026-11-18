@@ -70,6 +70,9 @@ pub struct Entry {
     pub crashed: Option<String>,
     /// Whose a core dump's program was, when it's one.
     pub whose: Option<Whose>,
+    /// Whether an agent or one of its commands wrote it, from the slice
+    /// it ran in: what it says was never put to Joel.
+    pub agents: bool,
     /// Whether it's systemd scheduling a unit's restart.
     pub restart: bool,
     /// Whether the kernel said it.
@@ -140,12 +143,13 @@ pub fn parse(line: &str) -> Option<Entry> {
     };
     let text = |name: &str| fields.get(name).and_then(said);
     let at = text("__REALTIME_TIMESTAMP")?.parse().ok()?;
+    let cgroup = text("_SYSTEMD_CGROUP").unwrap_or_default();
+    let agents = agents_work(&cgroup);
     let priority = text("PRIORITY").and_then(|p| p.parse().ok()).unwrap_or(6);
     let message = text("MESSAGE").unwrap_or_default();
     let identifier = text("SYSLOG_IDENTIFIER").or_else(|| text("_COMM"));
     let unit = text("USER_UNIT").or_else(|| text("UNIT"));
-    let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER)
-        && !agents_ran(&text("_SYSTEMD_CGROUP").unwrap_or_default());
+    let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER) && !agents_ran(&cgroup);
     let ask = asked_joel.then(|| asks::of(text)).flatten();
     let thing = match (identifier.as_deref(), unit) {
         (Some("systemd") | None, Some(unit)) => unit,
@@ -158,7 +162,9 @@ pub fn parse(line: &str) -> Option<Entry> {
         Some(UNIT_STARTED) => Some(Job::Started),
         _ => None,
     };
-    let crashed = text("COREDUMP_COMM");
+    // A real crash is told by systemd-coredump, which never runs in agents'
+    // work, so a crash said from there is a forgery and only a line.
+    let crashed = text("COREDUMP_COMM").filter(|_| !agents);
     let whose = crashed.as_ref().map(|_| whose(&fields));
     let micros = |name: &str| text(name).and_then(|value| value.parse().ok());
     let mark = match text("MESSAGE_ID").as_deref() {
@@ -186,6 +192,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         ran_in: text("_SYSTEMD_USER_UNIT").or_else(|| text("_SYSTEMD_UNIT")),
         crashed,
         whose,
+        agents,
         restart: text("MESSAGE_ID").as_deref() == Some(RESTART_SCHEDULED),
         kernel: text("_TRANSPORT").as_deref() == Some("kernel"),
         boot: text("_BOOT_ID").unwrap_or_default(),
@@ -254,6 +261,23 @@ fn whose(fields: &Map<String, Value>) -> Whose {
 /// what it says was never put to Joel.
 fn agents_ran(cgroup: &str) -> bool {
     cgroup.contains("/agents.slice") || cgroup.contains("/jobs.slice")
+}
+
+/// Whether a line came from agents' work: their shells' holder
+/// (`jobs.service`) or a command in `jobs-work.slice`, the two places the
+/// jobs broker calls agents'. Everything else in the jobs slice is his or
+/// the machine's: what he waits on at a terminal, the timed work, and the
+/// compile cache every build reads. An agent itself, and the terminal Joel
+/// reads its sessions in, run in agents.slice, and what they say is the
+/// machine's to answer for, so it counts.
+fn agents_work(cgroup: &str) -> bool {
+    let mut below = cgroup
+        .split('/')
+        .skip_while(|segment| *segment != "jobs.slice")
+        .skip(1);
+    below
+        .next()
+        .is_some_and(|kind| matches!(kind, "jobs.service" | "jobs-work.slice"))
 }
 
 /// What each journal follower asks journalctl for.
@@ -387,6 +411,67 @@ mod tests {
             agents.whose,
             Some(Whose::Agents),
             "a job's program is agents'"
+        );
+    }
+
+    #[test]
+    fn a_crash_said_from_agents_work_is_only_a_line() {
+        let line = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"2",
+            "SYSLOG_IDENTIFIER":"systemd-coredump","COREDUMP_COMM":"kitty",
+            "COREDUMP_CGROUP":"/user.slice/user-1000.slice/user@1000.service/app.slice/k.scope",
+            "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service",
+            "MESSAGE":"Process 1 (kitty) of user 1000 dumped core."}"#
+            .replace('\n', "");
+        let entry = parse(&line).expect("a journal line is an entry");
+        assert_eq!(
+            (entry.crashed, entry.agents),
+            (None, true),
+            "an agent's command can't make up a crash of his"
+        );
+    }
+
+    #[test]
+    fn a_line_says_whether_an_agents_command_wrote_it() {
+        let from = |slice: &str| {
+            let line = format!(
+                r#"{{"__REALTIME_TIMESTAMP":"1","PRIORITY":"3","SYSLOG_IDENTIFIER":"tec",
+                "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/{slice}",
+                "MESSAGE":"could not reach the daemon"}}"#
+            )
+            .replace('\n', "");
+            parse(&line).expect("a journal line is an entry").agents
+        };
+        assert!(
+            !from("app.slice/app-niri-kitty-1.scope"),
+            "a line from his own terminal is his"
+        );
+        assert!(
+            from("jobs.slice/jobs-work.slice/jobs-work-delta.slice/work-9-1.scope"),
+            "a line from an agent's command is agents'"
+        );
+        assert!(
+            from("jobs.slice/jobs.service"),
+            "a line from an agent's shell is agents'"
+        );
+        assert!(
+            !from("jobs.slice/jobs-awaited.slice/awaited.service"),
+            "what he waits on at a terminal is his"
+        );
+        assert!(
+            !from("jobs.slice/jobs-timed.slice/keeps.service"),
+            "the machine's timed work is the machine's"
+        );
+        assert!(
+            !from("jobs.slice/sccache.service"),
+            "the compile cache every build reads is the machine's"
+        );
+        assert!(
+            !from("agents.slice/sessions-kitty.service"),
+            "the terminal he reads sessions in, and the agents themselves, answer to him"
+        );
+        assert!(
+            !from("app.slice/notjobs.slice/x.scope"),
+            "a slice is matched whole, not by its name's end"
         );
     }
 

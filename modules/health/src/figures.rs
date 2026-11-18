@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::day::{Boot, Day};
+use crate::day::{Boot, Day, Thing};
 use crate::feel::Pain;
 use crate::show::KINDS;
 use crate::typing;
@@ -81,7 +81,7 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
             .things
             .values()
             .filter(|thing| thing.kind == Some(kind))
-            .map(|thing| thing.errors)
+            .map(Thing::figured_errors)
             .sum();
         figures.insert(format!("{}.errors", kind.name()), errors as f64);
     }
@@ -257,7 +257,8 @@ mod tests {
             "chrome".into(),
             Thing {
                 kind: Some(Kind::Programs),
-                errors: 7,
+                errors: 9,
+                agents_errors: 2,
                 crashes: 3,
                 his_crashes: 1,
                 ..Thing::default()
@@ -299,7 +300,7 @@ mod tests {
             (
                 Some(27.0),
                 Some(4.5),
-                Some(7.0),
+                Some(4.0),
                 Some(0.0),
                 Some(30_720.0),
                 Some(1.0),

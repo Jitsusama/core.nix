@@ -82,6 +82,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         ran_in: if lookup { None } else { app_of(image) },
         crashed: None,
         whose: None,
+        agents: false,
         restart: false,
         kernel,
         boot: text("bootUUID").unwrap_or_default().to_owned(),

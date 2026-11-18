@@ -245,7 +245,7 @@ fn total(things: &[(&String, &Thing)]) -> Badness {
 }
 
 /// Badness in words, gravest first, leaving out what's none: "3 crashes
-/// (1 yours), 12 errors, 1,470 warnings from 21".
+/// (1 yours), 12 errors (7 agents'), 1,470 warnings from 21".
 pub(super) fn counted(bad: &Badness, things: usize) -> String {
     let Badness {
         his_crashes: his,
@@ -255,6 +255,7 @@ pub(super) fn counted(bad: &Badness, things: usize) -> String {
         restarts,
         lines,
         events,
+        agents_errors: agents,
     } = *bad;
     let mut parts = Vec::new();
     if crashes > 0 {
@@ -268,16 +269,27 @@ pub(super) fn counted(bad: &Badness, things: usize) -> String {
     if traces > 0 {
         parts.push(plural(traces, "trace", "traces"));
     }
+    // Agents' errors are out of both errors and lines, so what's left of
+    // the lines past his errors is warnings.
+    let warnings = lines.saturating_sub(errors);
     // A crash is said at an error's priority, so it's counted once, as a
     // crash.
+    let errors = errors + agents;
     let other_errors = errors.saturating_sub(crashes);
     if other_errors > 0 {
-        parts.push(plural(other_errors, "error", "errors"));
+        let agents = if agents > 0 {
+            format!(" ({} agents')", grouped(agents))
+        } else {
+            String::new()
+        };
+        parts.push(format!(
+            "{}{agents}",
+            plural(other_errors, "error", "errors")
+        ));
     }
     if restarts > 0 {
         parts.push(plural(restarts, "restart", "restarts"));
     }
-    let warnings = lines.saturating_sub(errors);
     if warnings > 0 {
         parts.push(plural(warnings, "warning", "warnings"));
     }
@@ -401,6 +413,44 @@ mod tests {
             "a kind's worst is its gravest, not its loudest"
         );
         assert_eq!(lines.len(), 4, "a kind with nothing isn't shown");
+    }
+
+    #[test]
+    fn errors_say_how_many_were_agents() {
+        let tec = Thing {
+            agents_errors: 1_200,
+            agents_lines: 1_200,
+            ..thing(Kind::Programs, 2_000, 1_205, 0, 0)
+        };
+        assert_eq!(
+            counted(&tec.badness(), 0),
+            "1,205 errors (1,200 agents'), 795 warnings",
+            "what agents' commands said is told apart, as Joel's crashes are"
+        );
+    }
+
+    #[test]
+    fn agents_errors_rank_below_his() {
+        let mut day = Day::new("2026-11-16");
+        day.things.insert(
+            "tec".into(),
+            Thing {
+                agents_errors: 60,
+                agents_lines: 90,
+                ..thing(Kind::Programs, 90, 60, 0, 0)
+            },
+        );
+        day.things
+            .insert("kitty".into(), thing(Kind::Programs, 5, 0, 0, 0));
+        let worst: Vec<&str> = worst_of(&day, Kind::Programs)
+            .into_iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            worst,
+            ["kitty", "tec"],
+            "five warnings of his are worse than ninety lines of agents'"
+        );
     }
 
     #[test]
