@@ -110,6 +110,19 @@
     "test": "vm-desktop-starts-clean"
   },
   {
+    "at": 1794792122,
+    "commit": "75aaf29a37d911bbea9a5b3648cb8490ff52f821",
+    "due": "2026-11-19",
+    "due_why": "Its owner takes it off once the train passes it 20 times running after #5418's fix, by 2026-11-19 23:59 UTC",
+    "owner_pr": 5418,
+    "owner_session": "XY9H5C",
+    "reason": "blocked 15 of 47 gate runs that built the cat from 10:45 to 19:38 on 15 Nov, among them 0f3b0074 twice, 7c7bc7c1 and 4f7fe3a9, none touching the cat, passing when rerun",
+    "subtests": [
+      "test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
     "at": 1794838970,
     "commit": "467f7109b3c34c6195996ce4f98c020a3064fe53",
     "due": "2026-11-18",
