@@ -7,6 +7,7 @@
   git,
   lib,
   rustPlatform,
+  stdenv,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "repos";
@@ -31,6 +32,20 @@ rustPlatform.buildRustPackage rec {
   # The counting's test counts over a small repository it builds with git,
   # and the weighing's weighs one git wrote and gathered.
   nativeCheckInputs = [ git ];
+  # A Mac's Nix sandbox lets a build bind no TCP listener, even on the
+  # loopback, so the redirect's test fails in a Mac's Nix build alone; it
+  # still runs under cargo test on a Mac, and in every Linux build.
+  # `--exact` skips that whole name only, so a test added later still
+  # runs. A Mac runs only the unit tests, since no sandboxed Mac run has
+  # reached the one in tests/ yet.
+  cargoTestFlags = lib.optionals stdenv.hostPlatform.isDarwin [
+    "--lib"
+    "--bins"
+  ];
+  checkFlags = lib.optionals stdenv.hostPlatform.isDarwin [
+    "--exact"
+    "--skip=github::gh_tests::a_redirect_is_refused_not_followed"
+  ];
   meta = {
     description = "Lists every repository on the machine once, with its checkouts and trees";
     license = lib.licenses.mit;
