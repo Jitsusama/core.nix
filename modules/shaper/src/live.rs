@@ -801,18 +801,7 @@ mod tests {
     fn a_start_steps_on_no_second_recorded_before_it() {
         let mut follow = Follow::new();
         follow.from_ms = NOV3 + 20_000;
-        let mut lines = vec![pool(NOV3, Some("home"))];
-        // The upload queues after its first two seconds, so a second
-        // stepped would cut it.
-        for i in 0..100_u64 {
-            let at = NOV3 + 100 * (i + 1);
-            let out = if i < 20 { 10.0 } else { 60.0 };
-            lines.push(
-                json!({"at": at, "reflector": "9.9.9.9", "operator": "Quad9", "out": out,
-                       "back": 10.0, "rtt": 20.0, "rx": 1_000 * i, "tx": 3_750_000 * (i + 1)})
-                .to_string(),
-            );
-        }
+        let lines = [vec![pool(NOV3, Some("home"))], queuing(NOV3)].concat();
         for line in &lines {
             follow.take(&parse(line).expect("a sample"));
         }
@@ -828,29 +817,55 @@ mod tests {
         assert_eq!(follow.network, "home", "the stay's network wasn't named");
     }
 
+    /// An upload heard ten times a second for 10 s from `at`, queuing
+    /// after its first two seconds, so a second stepped on it cuts it.
+    fn queuing(at: u64) -> Vec<String> {
+        (0..100_u64)
+            .map(|i| {
+                let out = if i < 20 { 10.0 } else { 60.0 };
+                json!({"at": at + 100 * (i + 1), "reflector": "9.9.9.9", "operator": "Quad9",
+                       "out": out, "back": 10.0, "rtt": 20.0, "rx": 1_000 * i,
+                       "tx": 3_750_000 * (i + 1)})
+                .to_string()
+            })
+            .collect()
+    }
+
     #[test]
     fn a_declared_network_s_stay_starts_at_its_anchor_s_hold_each_time_it_is_met() {
         let mut follow = Follow::new();
         follow.anchor(Anchors::from([("home".to_owned(), 12_000.0)]));
         let hold = Some(crate::rate::whole(12_000.0 * oneway::ANCHOR_HOLD));
-        let start = |follow: &mut Follow, network: &str| {
-            follow.take(&parse(&pool(NOV3, Some(network))).expect("a pool line"));
+        let start = |follow: &mut Follow, at: u64, network: &str| {
+            follow.take(&parse(&pool(at, Some(network))).expect("a pool line"));
             follow.controller.up.limit()
         };
         assert_eq!(
-            start(&mut follow, "home"),
+            start(&mut follow, NOV3, "home"),
             hold,
             "home didn't start at its hold"
         );
         assert_eq!(
-            start(&mut follow, "cafe"),
+            start(&mut follow, NOV3, "cafe"),
             None,
             "an undeclared network started held"
         );
+        for line in queuing(NOV3) {
+            follow.take(&parse(&line).expect("a sample"));
+        }
+        assert!(
+            follow.controller.up.limit().is_some(),
+            "the queue didn't cut the cafe's upload"
+        );
         assert_eq!(
-            start(&mut follow, "home"),
+            start(&mut follow, NOV3 + 20_000, "home"),
             hold,
             "home met again didn't start at its hold"
+        );
+        assert_eq!(
+            start(&mut follow, NOV3 + 40_000, "cafe"),
+            None,
+            "the cafe met again started from its last stay's cut"
         );
     }
 

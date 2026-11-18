@@ -84,7 +84,7 @@ enum State {
     Holding,
 }
 
-/// Where a network nobody has measured starts, in kbit/s: under most home
+/// Where a network with no anchor starts each stay, in kbit/s: under most home
 /// connections both ways, so its first seconds of load don't queue at the
 /// modem, until the controller's first second leaves it unlimited while
 /// no queue stands.
