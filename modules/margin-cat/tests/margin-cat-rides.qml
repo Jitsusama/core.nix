@@ -251,6 +251,19 @@ QtObject {
             [heardLate.beats.map(beat => beat.name).slice(0, 3),
                 posed(heardLate, "rides").every(one => one.pose === "falling"), ends(heardLate)],
             [["rides", "lands", "shakes"], true, [532, 399]]);
+        // Or the shell sat it on the row below as that row came into its
+        // place, before it heard of the close: it falls all the same,
+        // never riding the row below down as the window over it grows (a
+        // builder's nested niri, every gate from 2026-11-17 06:26: rides,
+        // turns, lands).
+        const seatedBelow = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
+            hurried: true, closed: true, on: 8, cols: Paths.columns(grown, 0),
+            before: Paths.columns(belowInPlace, 0), ahead: 63, frame: 1000 / 120 }));
+        expect("sat on the row below as it moved into place, then heard to close, it falls",
+            [seatedBelow.beats.map(beat => beat.name).slice(0, 3),
+                posed(seatedBelow, "rides").every(one => one.pose === "falling"),
+                ends(seatedBelow)],
+            [["rides", "lands", "shakes"], true, [532, 399]]);
         const opened = ided.concat([{ id: 9, left: 432, top: 500, width: 400, height: 284,
             column: 1 }]);
         const staysOn = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({

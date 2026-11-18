@@ -199,9 +199,17 @@ function rides(way, cols, at) {
     // Told of the resize `ahead` ms after niri set its edge going, it
     // starts as far in (MarginCat.behind), and a frame further where its
     // top comes up into it, since behind is in the window's face.
+    const away = held.kind !== "side" && to.y > way.y;
+    // A row closed, and the window over it grown down over where it sits:
+    // the top it held going down is the row below, which the shell may
+    // have seated it on as that row came into the closed one's place
+    // (a builder's nested niri, 2026-11-17: rides, turns, lands). It
+    // falls ahead of that window's edge instead (drops), never riding.
+    if (at.closed && away && within(way, cols, at) !== null) {
+        return;
+    }
     const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
     const ms = MarginCat.slides(spring);
-    const away = held.kind !== "side" && to.y > way.y;
     const ahead = Math.min((at.ahead ?? 0) + (away ? 0 : at.frame ?? 0), ms);
     Ways.rides(way, to, { ms: ms - ahead, edge: t => MarginCat.slid(t + ahead, spring),
         away, room, frame: at.frame });
