@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 /// Public resolvers, by operator, that a timestamp may be asked of. On
 /// 3 November four of eleven tried answered from a home connection.
-pub const CANDIDATES: &[(&str, [u8; 4])] = &[
+const CANDIDATES: &[(&str, [u8; 4])] = &[
     ("Quad9", [9, 9, 9, 9]),
     ("Quad9", [149, 112, 112, 112]),
     ("Quad9", [9, 9, 9, 11]),
@@ -71,17 +71,17 @@ const POOL: usize = 6;
 /// Fewer operators than this answering leaves nothing to vote with.
 pub const ENOUGH: usize = 3;
 /// A pool member lost this many times running is replaced.
-pub const MISSES: u32 = 3;
+const MISSES: u32 = 3;
 const REPOOL: Duration = Duration::from_secs(3_600);
 /// How soon a pool too small to vote with, or kept, is asked for again.
 const SHORT_REPOOL: Duration = Duration::from_secs(300);
 /// How long the candidates asked for a pool are waited on.
-pub const ASKING_FOR: Duration = Duration::from_millis(1_500);
+const ASKING_FOR: Duration = Duration::from_millis(1_500);
 
 /// The reflectors to probe from those that answered: one per operator in
 /// the order they answered, then more of the same operators, up to the
 /// pool's size.
-pub fn pool(answered: &[(&'static str, Ipv4Addr)]) -> Vec<(&'static str, Ipv4Addr)> {
+fn pool(answered: &[(&'static str, Ipv4Addr)]) -> Vec<(&'static str, Ipv4Addr)> {
     let mut chosen: Vec<(&'static str, Ipv4Addr)> = Vec::new();
     let mut seen = BTreeSet::new();
     for &(operator, address) in answered {
@@ -238,11 +238,14 @@ impl Pool {
         self.misses.clear();
         let Some(chosen) = asking.chosen(&self.reflectors, self.kept) else {
             self.kept = true;
+            let answered = match operators(&asking.heard) {
+                1 => "1 operator".to_string(),
+                n => format!("{n} operators"),
+            };
             return Some(format!(
-                "recording {link} with the {} reflectors it had, since {} operators answered \
+                "recording {link} with the {} reflectors it had, since {answered} answered \
                  a new choice; asking again in five minutes",
                 self.reflectors.len(),
-                operators(&asking.heard)
             ));
         };
         // The same reflectors answering in another order are the same pool.
@@ -544,10 +547,11 @@ mod tests {
                 .as_deref(),
             Some(concat!(
                 "recording wlp0s20f3 with the 3 reflectors it had, ",
-                "since 1 operators answered a new choice; asking again in five minutes"
+                "since 1 operator answered a new choice; asking again in five minutes"
             ))
         );
-        assert_eq!(pool.reflectors, three(), "the pool wasn't kept");
+        assert_eq!(pool.reflectors(), three(), "the pool wasn't kept");
+        assert!(pool.kept(), "the keep isn't said in the record");
         failing(&mut pool, at(9), dark);
         assert!(
             !pool.asks_again(dark + MINUTE),
@@ -564,7 +568,7 @@ mod tests {
             Some("recording wlp0s20f3 with 1 reflectors from 1 operators")
         );
         assert_eq!(
-            pool.reflectors,
+            pool.reflectors(),
             vec![("Quad9", at(9))],
             "a second keep in a row"
         );
@@ -580,12 +584,13 @@ mod tests {
         let start = Instant::now();
         let mut pool = chosen(start);
         pool.settle("wlp0s20f3", &heard(&[]), start + REPOOL);
+        assert!(pool.kept(), "an empty choice didn't keep the pool");
         let back = start + REPOOL + SHORT_REPOOL + MINUTE;
         assert_eq!(
             pool.settle("wlp0s20f3", &heard(&three()), back).as_deref(),
             Some("recording wlp0s20f3 with 3 reflectors from 3 operators")
         );
-        assert!(!pool.kept);
+        assert!(!pool.kept());
         assert!(
             !pool.asks_again(back + SHORT_REPOOL + MINUTE),
             "a pool with enough was asked for again before the hour"
@@ -656,6 +661,20 @@ mod tests {
             pool.settle("wlp0s20f3", &heard(&four), start + REPOOL)
                 .as_deref(),
             Some("recording wlp0s20f3 with 4 reflectors from 4 operators")
+        );
+    }
+
+    // One reflector traded for another, the count the same, is a new pool.
+    #[test]
+    fn a_pool_with_one_reflector_traded_is_said() {
+        let start = Instant::now();
+        let mut pool = chosen(start);
+        let mut traded = three();
+        traded[2] = ("Cloud", at(66));
+        assert_eq!(
+            pool.settle("wlp0s20f3", &heard(&traded), start + REPOOL)
+                .as_deref(),
+            Some("recording wlp0s20f3 with 3 reflectors from 3 operators")
         );
     }
 
