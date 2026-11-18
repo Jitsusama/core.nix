@@ -3348,7 +3348,8 @@
     leaving Escape, Alt, a field and a dialog to Spotify
   '';
   ssh-tpm-agent-refuses-agents = ''
-    the TPM's SSH agent refuses a process where agents' work runs, and its build passes each case the gate must decide
+    the TPM's SSH agent refuses a process where agents' work runs, keeps no core of its PIN, and
+    its build passes each case the gate must decide
   '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered

@@ -68,7 +68,11 @@
     # The gate is read again for each connection, so a switch changes it
     # without the restart that would ask for the PIN again. Only this agent,
     # the one holding Joel's keys, has one; the agents' own signing agents
-    # run the same program without it.
+    # run the same program without it. It sits in his own config, which
+    # anything running as him may rewrite, so it catches accidents rather
+    # than escapes; one missing, emptied or unreadable refuses everyone. So
+    # rolling back to before the gate leaves the running agent refusing
+    # until it restarts, which asks for the PIN again.
     xdg.configFile."ssh-tpm-agent/gate".source = ./gate.conf;
     systemd.user.services.ssh-tpm-agent.Service.Environment = [
       "SSH_TPM_AGENT_GATE=${config.xdg.configHome}/ssh-tpm-agent/gate"
