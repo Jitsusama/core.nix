@@ -117,13 +117,13 @@ QtObject {
             `${ownGiven.steps[1].row.from} ${read(ownGiven.steps)}`,
             "Agents agents=Agents[s1] s1=idle[look]");
         // Found by a search, the launcher gave the row its own fields, as
-        // its side and the verbs it found, said in `given`; they're kept
+        // its side and the verbs it found, said in `foundAs`; they're kept
         // over the row as the source offers it now, and nothing else the
         // source offered then and no longer does.
         const asked = () => [row("look", "Look")];
         const gathered = [steps[0], Object.assign({}, steps[1], {
             row: Object.assign({}, working, { from: "Agents", side: "in Agents", verbs: asked,
-                targets: ["kiln"], given: { from: "Agents", side: "in Agents", verbs: asked } })
+                targets: ["kiln"], foundAs: { from: "Agents", side: "in Agents", verbs: asked } })
         })];
         askedAt = [];
         const offeredNow = Object.assign(row("s1", "idle", [row("look", "Look")]), {
@@ -135,6 +135,14 @@ QtObject {
             `${kept.side} ${kept.verbs === asked} ${kept.says}`, "in Agents true idle");
         check("but not what the source offered then and doesn't now", kept.targets, undefined);
         check("asked what it offers at the step it is", askedAt.join(" "), "1");
+        // `given` is a row's way of asking for words (Launcher.qml's
+        // asking), so what the launcher gave is never said in it.
+        check("nor taken for a row asking for words", typeof kept.given, "undefined");
+        // Made again a second time, it still knows what the launcher gave.
+        askedAt = [];
+        const keptAgain = Held.own(ownGathered.steps, 1, [offeredNow], ways).steps[1].row;
+        check("made again twice, it still keeps what the launcher gave it",
+            `${keptAgain.side} ${keptAgain.verbs === asked}`, "in Agents true");
         const ownNothing = Held.own(steps, 1, [row("s1", "ended")], ways);
         check("a source's own row that now offers nothing is left",
             `${ownNothing.leave} ${ownNothing.all}`, "1 false");
