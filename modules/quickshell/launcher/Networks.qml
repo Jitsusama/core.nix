@@ -32,10 +32,10 @@
 // nothing polls. The routes are loaded from the kernel's files in the
 // background as the launcher opens, as the links change and when they're
 // old, and an answer says them as last loaded, so a step into Network
-// waits on no file for them. The name servers are read from resolv.conf
-// when a connection's parts are asked. A cable's link is
-// read from its folder in /sys/class/net, and read again each second
-// while it's shown. The leases and neighbours are asked of networkd over
+// waits on no file for them. The name servers, from resolv.conf, and the
+// time since boot load with them, and a cable's link loads from its
+// folder in /sys/class/net a file at a time, again each second while it's
+// shown, each said as last loaded too. The leases and neighbours are asked of networkd over
 // its varlink socket as the launcher opens and when what it said is five
 // seconds old, so nothing is spawned for them either.
 //
@@ -67,6 +67,14 @@ Provider {
     // Where the kernel's routing tables are, its files route and
     // ipv6_route, so a case can stand in its own.
     property string kernel: "/proc/net"
+    // Where each card's folder is, so a case can stand in its own.
+    property string sysfs: "/sys/class/net"
+    // The name servers' files and the time since boot's, for a case too.
+    property string resolvFile: "/etc/resolv.conf"
+    property string resolvedFile: "/run/systemd/resolve/resolv.conf"
+    property string uptimeFile: "/proc/uptime"
+    // networkd's varlink socket, so a case can give its own leases.
+    property string networkdSocket: "/run/systemd/netif/io.systemd.Network"
 
     function grouped(value) {
         return Numbers.format(value, 0, settings.group, settings.point);
@@ -124,6 +132,8 @@ Provider {
     function look() {
         lookedAt = Date.now();
         reroute();
+        reloadFacts();
+        recable();
         if (!networkd.connected)
             networkd.connected = true;
     }
@@ -137,6 +147,16 @@ Provider {
     function reroute() {
         route.reload();
         sixRoute.reload();
+    }
+
+    // The name servers and the time since boot loaded again in the
+    // background, as the routes are; with Ethernet's answer reading a
+    // cable's twenty files twice, a docked step into Network made over
+    // forty reads where it waited on each.
+    function reloadFacts() {
+        resolv.reload();
+        resolved.reload();
+        up.reload();
     }
 
     // Each interface's default gateway and its cost, IPv4's and IPv6's, as
@@ -211,8 +231,18 @@ Provider {
         if (now === null)
             return;
         const made = {};
-        for (const link of listed(now))
+        for (const link of listed(now)) {
+            // A cable whose files haven't landed keeps what it was, or
+            // none, rather than being made without its link, which would
+            // then grow under Joel's eye.
+            if (link.kind === "wired" && cables[link.name] === undefined) {
+                if (glances[link.name] !== undefined)
+                    made[link.name] = glances[link.name];
+                recable();
+                continue;
+            }
             made[link.name] = glance(link.name, []);
+        }
         if (JSON.stringify(made) !== JSON.stringify(glances))
             glances = made;
     }
@@ -229,6 +259,8 @@ Provider {
     // A link that changes most often changes the routes with it.
     onLinksChanged: {
         reroute();
+        forgetCables();
+        recable();
         glanceSoon();
     }
     // The calls to networkd not yet answered, in order: one is sent at a
@@ -263,7 +295,7 @@ Provider {
 
     Socket {
         id: networkd
-        path: "/run/systemd/netif/io.systemd.Network"
+        path: provider.networkdSocket
         onConnectionStateChanged: {
             if (connected) {
                 provider.calling = ["Describe", "GetLLDPNeighbors"];
@@ -298,10 +330,118 @@ Provider {
         }
     }
 
-    // What a file in an interface's sysfs folder says, or "".
-    function sys(name, file) {
-        probe.path = `/sys/class/net/${name}/${file}`;
-        return read(probe).trim();
+    // Each cable's link as its card's files said when last loaded
+    // (Interfaces.cable), by the card's name; one not loaded yet isn't
+    // here, and one gone from the links is forgotten.
+    property var cables: ({})
+    // The files a cable's link is read from, in its card's folder, as
+    // Interfaces.cable reads them.
+    readonly property var cableFiles: {
+        const files = [];
+        Interfaces.cable(file => {
+            files.push(file);
+            return "";
+        });
+        return files;
+    }
+    // The cards whose files are still to be loaded, in turn, and the one
+    // under way, { name, at, texts }, or null with none.
+    property var cablesAsked: []
+    property var cableLoading: null
+
+    // A cable's link as last loaded, or null before its files first land,
+    // which are asked for then, and a terminal's show asks again.
+    function cableOf(name) {
+        const cable = cables[name];
+        if (cable !== undefined)
+            return cable;
+        stillReading = true;
+        recable();
+        return null;
+    }
+
+    // Loads every card's files again in the background, a file at a time
+    // through one view, the cables said as they were until they land. A
+    // card already waiting or under way isn't asked twice.
+    function recable() {
+        const cards = (links ?? []).filter(link => link.kind === "wired")
+            .map(link => link.name)
+            .filter(name => !cablesAsked.includes(name) && cableLoading?.name !== name);
+        if (cards.length === 0)
+            return;
+        cablesAsked = cablesAsked.concat(cards);
+        if (cableLoading === null)
+            nextCable();
+    }
+
+    function nextCable() {
+        if (cablesAsked.length === 0) {
+            cableLoading = null;
+            cableWatch.stop();
+            stillReading = false;
+            return;
+        }
+        cableLoading = { name: cablesAsked[0], at: 0, texts: {} };
+        cablesAsked = cablesAsked.slice(1);
+        Qt.callLater(cableFile);
+    }
+
+    function cableFile() {
+        if (cableLoading === null)
+            return;
+        const path = `${sysfs}/${cableLoading.name}/${cableFiles[cableLoading.at]}`;
+        cableWatch.restart();
+        if (cableProbe.path === path)
+            cableProbe.reload();
+        else
+            cableProbe.path = path;
+    }
+
+    // A file of the card under way landed, saying `text`, or "" where it
+    // can't be read: the next is asked a turn on, since a path set inside
+    // the view's own failure loads nothing, and once the last has landed
+    // the cable is kept, said again where it's shown if it changed.
+    function cableLanded(text) {
+        const loading = cableLoading;
+        if (loading === null)
+            return;
+        loading.texts[cableFiles[loading.at]] = text;
+        loading.at += 1;
+        if (loading.at < cableFiles.length) {
+            Qt.callLater(cableFile);
+            return;
+        }
+        const now = Interfaces.cable(file => loading.texts[file] ?? "");
+        if (JSON.stringify(now) !== JSON.stringify(cables[loading.name])) {
+            const all = Object.assign({}, cables);
+            all[loading.name] = now;
+            cables = all;
+            glanceSoon();
+            if (provider.launcher?.open)
+                answered();
+        }
+        nextCable();
+    }
+
+    // The cables of cards no longer among the links, forgotten.
+    function forgetCables() {
+        const cards = (links ?? []).filter(link => link.kind === "wired").map(link => link.name);
+        const kept = {};
+        for (const name of Object.keys(cables))
+            if (cards.includes(name))
+                kept[name] = cables[name];
+        if (Object.keys(kept).length !== Object.keys(cables).length)
+            cables = kept;
+    }
+
+    // A file that takes two seconds is given up as unreadable, and the
+    // card goes on; one that lands after is taken for the next file, and
+    // put right when the card is next loaded, a second on while it's shown.
+    Timer {
+        id: cableWatch
+
+        interval: 2000
+        onTriggered: provider.cableLanded("")
     }
 
     Connections {
@@ -506,6 +646,8 @@ Provider {
         onTriggered: {
             provider.ticking = true;
             provider.reroute();
+            provider.reloadFacts();
+            provider.recable();
             try {
                 provider.answered();
             } finally {
@@ -586,7 +728,7 @@ Provider {
                 rows.push(part(key("dns"), "dns", servers.join(", "),
                     "what this machine asks names of"));
         }
-        const cable = link.kind === "wired" ? Interfaces.cable(file => sys(name, file)) : null;
+        const cable = link.kind === "wired" ? cableOf(name) : null;
         if (cable !== null)
             rows.push(...cableParts(name, cable));
         const lease = leases[name] ?? null;
@@ -670,7 +812,9 @@ Provider {
     // broken, then each kind it had, what couldn't go out, then each kind
     // of that, and what was set aside each way, which isn't an error.
     function errorParts(name) {
-        const errors = Interfaces.cable(file => sys(name, file)).errors;
+        const errors = cableOf(name)?.errors ?? null;
+        if (errors === null)
+            return [];
         const key = id => `networks:${name}:errors:${id}`;
         const said = (id, value) => part(key(id), id, howMany(value), errorSaid[id] ?? "",
             String(value));
@@ -689,9 +833,22 @@ Provider {
     }
 
     // How long the machine's been up, in seconds, as networkd counts a
-    // lease's times.
+    // lease's times: as last loaded and counted on since, or null before
+    // it first lands.
+    property real upLoaded: 0
+    property real upAt: 0
     function uptime() {
-        return Number(read(up).trim().split(/\s+/)[0]) || 0;
+        return upAt === 0 ? null : upLoaded + Math.max(0, Date.now() - upAt) / 1000;
+    }
+    function upLanded() {
+        const first = upAt === 0;
+        upLoaded = Number(up.text().trim().split(/\s+/)[0]) || 0;
+        upAt = Date.now();
+        if (first && Object.keys(leases).length > 0) {
+            glanceSoon();
+            if (provider.launcher?.open)
+                answered();
+        }
     }
 
     // A moment, in seconds since boot, as how long from now: "in 3 h",
@@ -706,7 +863,7 @@ Provider {
     function leaseRow(name, lease) {
         const now = uptime();
         let side = lease.server ?? "held";
-        if (lease.ends !== null)
+        if (lease.ends !== null && now !== null)
             side = lease.ends > now ? `ends in ${Interfaces.lasted(lease.ends - now)}` : "ended";
         return holderRow({
             key: `networks:${name}:lease`,
@@ -735,15 +892,15 @@ Provider {
         if (lease.lasts !== null)
             rows.push(said("lasts", Interfaces.lasted(lease.lasts), "how long each lease lasts",
                 String(lease.lasts)));
-        if (lease.got !== null)
+        if (lease.got !== null && now !== null)
             rows.push(said("got", fromNow(lease.got, now), "given or last renewed", ""));
-        if (lease.renews !== null)
+        if (lease.renews !== null && now !== null)
             rows.push(said("renews", fromNow(lease.renews, now),
                 "when it asks its server to keep it", ""));
-        if (lease.rebinds !== null)
+        if (lease.rebinds !== null && now !== null)
             rows.push(said("rebinds", fromNow(lease.rebinds, now),
                 "when it asks any server, if its own hasn't answered", ""));
-        if (lease.ends !== null)
+        if (lease.ends !== null && now !== null)
             rows.push(said("ends", fromNow(lease.ends, now), "when the address goes, unless kept",
                 ""));
         if (lease.nameServers.length > 0)
@@ -795,10 +952,10 @@ Provider {
         // name in both.
         const cards = now.links.filter(link => link.kind === "wired");
         const said = link => {
-            const cable = Interfaces.cable(file => sys(link.name, file));
-            return cable.speed !== null ? Interfaces.linkRate(cable.speed,
+            const cable = cableOf(link.name);
+            return cable !== null && cable.speed !== null ? Interfaces.linkRate(cable.speed,
                 (value, places) => Numbers.format(value, places, settings.group, settings.point))
-                : stateSaid[cable.state];
+                : stateSaid[cable?.state ?? link.state];
         };
         if (cards.length === 0)
             return {
@@ -835,10 +992,23 @@ Provider {
     }
 
     // The name servers this machine asks, from resolv.conf, or from
-    // systemd-resolved's own file where resolv.conf names only its stub.
+    // systemd-resolved's own file where resolv.conf names only its stub,
+    // as last loaded.
+    property var servers: []
     function nameServers() {
-        const said = Interfaces.servers(read(resolv));
-        return Interfaces.stubbed(said) ? Interfaces.servers(read(resolved)) : said;
+        return servers;
+    }
+    // Either file landed: the servers are worked out again, and said again
+    // where they're shown if they changed.
+    function resolvLanded() {
+        const said = Interfaces.servers(resolv.text());
+        const now = Interfaces.stubbed(said) ? Interfaces.servers(resolved.text()) : said;
+        if (JSON.stringify(now) === JSON.stringify(servers))
+            return;
+        servers = now;
+        glanceSoon();
+        if (provider.launcher?.open)
+            answered();
     }
 
     // One part of the connection on the way out, asked for alone: the
@@ -961,27 +1131,33 @@ Provider {
         printErrors: false
         onLoaded: provider.routed()
     }
+    // Loaded in the background as the routes are (reloadFacts), never
+    // waited on.
     FileView {
         id: resolv
-        path: "/etc/resolv.conf"
-        blockLoading: true
+        path: provider.resolvFile
         printErrors: false
+        onLoaded: provider.resolvLanded()
+        onLoadFailed: provider.resolvLanded()
     }
     FileView {
         id: resolved
-        path: "/run/systemd/resolve/resolv.conf"
-        blockLoading: true
+        path: provider.resolvedFile
         printErrors: false
+        onLoaded: provider.resolvLanded()
+        onLoadFailed: provider.resolvLanded()
     }
     FileView {
         id: up
-        path: "/proc/uptime"
-        blockLoading: true
+        path: provider.uptimeFile
         printErrors: false
+        onLoaded: provider.upLanded()
     }
+    // Each cable's files in turn (recable).
     FileView {
-        id: probe
-        blockLoading: true
+        id: cableProbe
         printErrors: false
+        onLoaded: provider.cableLanded(text())
+        onLoadFailed: provider.cableLanded("")
     }
 }

@@ -1010,6 +1010,14 @@
     telling the launcher once that load changes the way out, and nothing for a load that
     changes only the kernel's use counts; and loads them again as the links change
   '';
+  ethernet-waits-on-no-cable-file = ''
+    Ethernet, with one card, answers from its cable's files, the name servers and the time
+    since boot as last loaded, though each has changed since; before the cable's files land it
+    says the link as the daemon told it, says it's still reading, and makes no drawer for it,
+    and a lease says its server until the uptime lands; the launcher opening loads them all
+    again and is told of the change; a cable shown loads again each second, unasked; and a card
+    gone is forgotten
+  '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,
     though each file has changed since, a first rate over the uptime loaded; asked after a gap
