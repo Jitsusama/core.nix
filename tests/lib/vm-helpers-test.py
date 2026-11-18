@@ -372,23 +372,32 @@ def test_pixels_that_read_as_whitespace_are_still_pixels() -> None:
 
 
 def test_pictures_of_other_sizes_differ_however_alike_their_rows() -> None:
+    # The same rows read, only the screen's height between them changed.
     alike = vm_helpers.alike_between_rows(1, 3)
-    assert not alike(picture("..", "ww", "ww", ".."), picture("...", "www", "www", "...")), (
-        "a picture 2 wide read as alike to one 3 wide"
+    assert not alike(picture("..", "ww", "ww", ".."), picture("..", "ww", "ww", "..", "..")), (
+        "a picture 4 high read as alike to one 5 high"
     )
 
 
-def test_a_cat_walking_on_the_tops_is_rest_for_a_wait_on_the_rows_between() -> None:
+@pytest.mark.parametrize(("top", "bottom"), [(1, 5), (3, 3), (-1, 2)])
+def test_a_band_the_picture_doesnt_hold_is_refused(top: int, bottom: int) -> None:
+    # Read as alike every time, it would let a wait pass without looking at anything.
+    alike = vm_helpers.alike_between_rows(top, bottom)
+    with pytest.raises(ValueError, match="aren't in a picture 4 high"):
+        alike(picture("..", "ww", "ww", ".."), picture("..", "ww", "ww", ".."))
+
+
+def test_an_edge_moving_in_the_rows_read_keeps_the_wait_from_settling() -> None:
     looked = iter(range(1000))
     clock = FadingGuest(frames=0, apart=1.0)
 
-    def walking() -> bytes:
+    def moving() -> bytes:
         clock.now += FadingGuest.LOOKING
-        return picture(".c" if next(looked) % 2 else "c.", "ww", "ww", "..")
+        return picture("..", "w." if next(looked) % 2 else "ww", "ww", "..")
 
     def nothing_counted() -> dict[str, int]:
         return {}
 
     alike = vm_helpers.alike_between_rows(1, 3)
-    why = vm_helpers.settled(walking, nothing_counted, 0.5, 5, clock=clock.clock, alike=alike)
-    assert why is None, why
+    why = vm_helpers.settled(moving, nothing_counted, 0.5, 5, clock=clock.clock, alike=alike)
+    assert why, "an edge moving every look in the rows read was taken for rest"

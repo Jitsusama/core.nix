@@ -16,6 +16,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
 import pytest
+import vm_helpers
 from desktop_session import (
     CAP_SYS_NICE,
     PICTURE_COLOURS,
@@ -39,12 +40,15 @@ CUT_OFF = timedelta(seconds=60)
 # How long Cage may take to take a new input device, which it does once udev hands it on: on a
 # busy host on 2026-11-16 that came 21 s after the stand-in touchscreen started.
 TAKING = timedelta(seconds=60)
-# How long a tap Cage has may take to reach wev before another goes, so a slow tap isn't heard
-# twice: a tap reaches it in well under a second on a busy host.
+# How long a tap Cage has may take to reach wev before another goes, paced by how busy the
+# host is, so a slow tap isn't heard twice: a tap reaches it in well under a second on a busy
+# host.
 HEARING = timedelta(seconds=5)
 # The rows of QEMU's picture a wait on the swipes' windows reads: below their tops, which the
 # margin cat walks along, and above the screen's foot, where it sits otherwise. Every window
 # the swipes move stands the screen's full height, so each edge they move crosses these rows.
+# The cat crosses them only climbing a side or falling as a column narrows, which ends, so a
+# wait outlasts it rather than passing over it.
 BELOW_THE_CAT = (100, 700)
 
 
@@ -248,20 +252,27 @@ class Touchscreen:
 
         The stand-in makes its device at once, but Cage takes it only once udev hands it on, and
         a tap before that reaches nobody: on a busy host, a tap a few seconds after the device
-        was made went before Cage had it.
+        was made went before Cage had it. Once one is heard, it waits out the gap after the last
+        tap sent, so one still on its way lands before the subtest counts what wev heard.
         """
-        sent = -HEARING.total_seconds()
+        gap = HEARING.total_seconds() * vm_helpers.pace(vm_helpers.busyness())
+        sent = -gap
 
         def tapped(_: bool) -> bool:
             nonlocal sent
+            waited = time.monotonic() - sent >= gap
             if self.touches("up"):
-                return True
-            if time.monotonic() - sent >= HEARING.total_seconds():
+                return waited
+            if waited:
                 self.desktop.machine.succeed("echo '1 tap 0.5' > /run/touchscreen")
                 sent = time.monotonic()
             return False
 
-        retry(tapped, timeout=TAKING)
+        try:
+            retry(tapped, timeout=TAKING)
+        except Exception as error:
+            message = f"wev heard no tap in {TAKING.total_seconds():.0f} s: Cage never took it"
+            raise AssertionError(message) from error
 
     def settled(self) -> None:
         """Wait for the windows to stand still, whatever the margin cat does along their tops."""
@@ -314,9 +325,13 @@ def touchscreen(desktop: Desktop) -> Iterator[Touchscreen]:
     retry(lambda _: any(window["title"] == "wev" for window in desktop.windows()), timeout=SAYING)
     desktop.as_account("niri msg action maximize-column")
     screen = Touchscreen(desktop)
-    screen.heard()
-    yield screen
-    machine.succeed("systemctl stop touchscreen")
+    try:
+        screen.heard()
+        yield screen
+    finally:
+        # wev too, should the test end before its own stop.
+        desktop.as_account("systemctl --user stop wev wev-right || true")
+        machine.succeed("systemctl stop touchscreen")
 
 
 def test_the_screens_warmth_starts_only_when_asked(desktop: Desktop) -> None:

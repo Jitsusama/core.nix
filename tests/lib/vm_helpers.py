@@ -152,7 +152,7 @@ def nowhere(_before: bytes, _now: bytes) -> str:
 
 
 # The header of a binary PPM, the kind QEMU's screendump writes.
-PPM_HEADER = re.compile(rb"P6\s+(?P<width>\d+)\s+\d+\s+\d+\s")
+PPM_HEADER = re.compile(rb"P6\s+(?P<width>\d+)\s+(?P<height>\d+)\s+\d+\s")
 
 
 def alike_between_rows(top: int, bottom: int) -> Callable[[bytes, bytes], bool]:
@@ -169,6 +169,12 @@ def alike_between_rows(top: int, bottom: int) -> Callable[[bytes, bytes], bool]:
         header = PPM_HEADER.match(shot)
         if header is None:
             message = f"not a PPM: {shot[:16]!r}"
+            raise ValueError(message)
+        # A band the picture doesn't hold would read as alike every time, so the wait would
+        # pass without looking at anything.
+        high = int(header["height"])
+        if not 0 <= top < bottom <= high:
+            message = f"rows {top} to {bottom} aren't in a picture {high} high"
             raise ValueError(message)
         across = int(header["width"]) * 3
         pixels = shot[header.end() :]

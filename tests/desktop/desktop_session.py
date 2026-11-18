@@ -222,6 +222,20 @@ def changed_where(before: bytes, now: bytes) -> str:
     return f" from {box[0]},{box[1]} to {box[2]},{box[3]}" if box else ""
 
 
+def changed_between(top: int, bottom: int) -> Callable[[bytes, bytes], str]:
+    """Say where two of QEMU's pictures differ in the rows from top up to bottom, as a box."""
+
+    def band(shot: bytes) -> Image.Image:
+        image = Image.open(io.BytesIO(shot)).convert("RGB")
+        return image.crop((0, top, image.width, bottom))
+
+    def where(before: bytes, now: bytes) -> str:
+        box = ImageChops.difference(band(before), band(now)).getbbox()
+        return f" from {box[0]},{box[1] + top} to {box[2]},{box[3] + top}" if box else ""
+
+    return where
+
+
 # How much of the screen a running clock may change and the picture still count as at rest: a
 # hundredth of its pixels. A timer's figures change a few hundred each second, two clocks
 # under ten thousand at 2, while a fade changes every pixel of what fades, the launcher's
@@ -571,13 +585,19 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         a running clock's figures to change, the rest of the picture holding still
         (but_the_ticks), since a clock's own frames would change the count with it. Between
         reads only the picture's rows from the first up to the second (alike_between_rows),
-        for a wait on windows the margin cat walks along the tops of.
+        for a wait on windows the margin cat walks along the tops of; it goes with neither
+        shell only, which reads no picture, nor ticking, which reads the whole of one.
         """
+        if between and (shell_only or ticking):
+            message = "a wait on a band of rows takes neither shell_only nor ticking"
+            raise ValueError(message)
         pace = vm_helpers.pace(vm_helpers.busyness())
         began = time.monotonic()
         alike: Callable[[bytes, bytes], bool] = operator.eq
+        where: Callable[[bytes, bytes], str] = vm_helpers.nowhere if shell_only else changed_where
         if between:
             alike = vm_helpers.alike_between_rows(*between)
+            where = changed_between(*between)
         elif ticking:
             alike = but_the_ticks
         with tempfile.TemporaryDirectory() as folder:
@@ -606,7 +626,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                     drawn,
                     span * pace,
                     timeout.total_seconds() * pace,
-                    where=(vm_helpers.nowhere if shell_only else changed_where),
+                    where=where,
                     alike=alike,
                 )
             finally:
