@@ -66,6 +66,22 @@ fn a_file_that_can_t_land_leaves_its_place_as_it_was() {
         "a landing that failed left a name of its own behind"
     );
     let _ = std::fs::remove_dir_all(&root);
+    // Failing only at its last step, a folder holding a file where it
+    // would go, once its own name was made and written.
+    let root = scratch("unrenamed");
+    std::fs::write(root.join("from"), "new").unwrap();
+    std::fs::create_dir(root.join("there")).unwrap();
+    std::fs::write(root.join("there/kept"), "mine").unwrap();
+    assert!(
+        landed(&root.join("from"), &root.join("there")).is_err(),
+        "a file landed over a folder"
+    );
+    assert_eq!(
+        names(&root),
+        ["from", "there"],
+        "a landing that failed at its rename left its own name behind"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]

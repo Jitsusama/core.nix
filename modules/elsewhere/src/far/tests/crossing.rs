@@ -92,6 +92,34 @@ fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path_it_made() {
 }
 
 #[test]
+fn a_loss_that_couldn_t_be_written_never_ends_the_list() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A find that fails once the far line can no longer write down what
+    // it lost, its record of losses a folder now, as a full disk refuses.
+    let stand_in = "PATH=${PATH#*:}\ncase \" $* \" in *\" -type f \"*)\n  rm -f \"$PWD.back.lost\" && mkdir \"$PWD.back.lost\"; exit 1 ;;\nesac\nexec find \"$@\"";
+    let (code, err, home) = far_line(
+        "1\tx\nend\n",
+        &[("x", "x")],
+        "mkdir out && printf a > out/a",
+        &kind,
+        None,
+        &[("find", stand_in)],
+    );
+    assert_eq!(
+        code,
+        Some(0),
+        "the far line didn't end as its job did: {err}"
+    );
+    let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+    assert!(
+        matches!(&landed, Err(Missed::Lost(_))),
+        "a list missing a loss it couldn't write read as whole: {landed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn only_what_met_no_room_or_never_crossed_is_worth_another_try() {
     for (refused, lasts, unlanded, ends) in [
         (true, true, true, Exit::Refused),

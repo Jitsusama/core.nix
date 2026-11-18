@@ -329,8 +329,7 @@ say {started}
 code=$?
 # Made fresh, so no copy is written through whatever sat at its number.
 rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
-{bringing}echo {END} >> "$job/{BROUGHT}"
-cd "$HOME" && rm -rf "$work" "$job/{TREE}"
+{bringing}cd "$HOME" && rm -rf "$work" "$job/{TREE}"
 exit "$code"
 "#,
         started = quoted(&Heard::Started.line(id)),
