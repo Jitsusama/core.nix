@@ -237,7 +237,9 @@ pub struct Busy {
     pub refuses_the_ask_alone: bool,
     /// How many seconds at most it refuses asks in a row, after which one
     /// goes ahead and the count starts again: a command that can never tell
-    /// would otherwise refuse the very update that mends it.
+    /// would otherwise refuse the very update that mends it. Read only with
+    /// `refuses_the_ask_alone`, since any other would refuse the switch of
+    /// the ask it let through.
     #[serde(default)]
     pub refuses_at_most: Option<u64>,
 }

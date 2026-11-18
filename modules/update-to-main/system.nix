@@ -290,7 +290,10 @@ in
                 which one goes ahead, saying so in the log, and the count
                 starts again. With none, it refuses for as long as it says
                 busy, though a command that can never tell then refuses the
-                very update that would mend it.
+                very update that would mend it. It needs refusesTheAskAlone,
+                since any other would refuse the switch of the ask it let
+                through. Refusals more than half an hour apart are two
+                stretches, each counted from its own start.
               '';
             };
           };
@@ -595,6 +598,10 @@ in
       {
         assertion = (cfg.builders == null && cfg.here == null) || cfg.elsewhere;
         message = "jitsusama.update-to-main.builders and here are for building elsewhere.";
+      }
+      {
+        assertion = lib.all (busy: busy.refusesAtMost == null || busy.refusesTheAskAlone) cfg.refuseWhile;
+        message = "jitsusama.update-to-main.refuseWhile's refusesAtMost needs refusesTheAskAlone.";
       }
       {
         assertion = cfg.batches == null || cfg.system.kind == "nixos";

@@ -113,7 +113,7 @@ fn run(
     let last = last(config);
     if let Some(why) = paused(config, following)
         .or_else(|| too_low(config))
-        .or_else(|| busy_at_the_ask(config))
+        .or_else(|| busy(config))
     {
         return Line::Refused { commit: last, why };
     }
@@ -133,6 +133,12 @@ fn run(
         && held::stops(config, &waiting.commit, &waiting.followed).is_none()
     {
         return switch_waiting(config, waiting, last, tell);
+    }
+    // Switching what waited for a grant builds nothing, so a check that
+    // refuses the ask alone is asked only past it: the load it reads may
+    // be the waiting build's own.
+    if let Some(why) = busy_at_the_ask(config) {
+        return Line::Refused { commit: last, why };
     }
     tell(&Line::Fetching);
     let main = Repo::main(config);
@@ -639,9 +645,9 @@ fn held(config: &Config, built: &std::path::Path, granted: bool) -> Option<Strin
 }
 
 /// What the machine is busy with, when any of its busy commands says so,
-/// once an ask has built or before a waiting switch. Those a follower
-/// waits on refuse nothing, and those that refuse the ask alone refuse no
-/// switch.
+/// as an ask comes, once it has built or before a waiting switch. Those a
+/// follower waits on refuse nothing, and those that refuse the ask alone
+/// are asked apart, refusing no switch.
 fn busy(config: &Config) -> Option<String> {
     config
         .refuse_while
@@ -651,20 +657,28 @@ fn busy(config: &Config) -> Option<String> {
 }
 
 /// What the machine is busy with as an ask comes, before anything is
-/// fetched, when any of its busy commands says so and hasn't refused asks
-/// for longer than it may.
+/// fetched, when any of its commands that refuse the ask alone says so
+/// and hasn't refused asks for longer than it may.
 fn busy_at_the_ask(config: &Config) -> Option<String> {
     config
         .refuse_while
         .iter()
-        .filter(|busy| !busy.follower_waits)
+        .filter(|busy| !busy.follower_waits && busy.refuses_the_ask_alone)
         .find_map(|busy| refused_for_at_most(config, busy, is_busy(busy)))
 }
 
+/// How long after the last refusal a stretch of them ends, so the next
+/// starts its count again: a follower asks again within a minute while
+/// busy, and every half hour at most otherwise, so a longer gap means
+/// another check refused first, or the machine slept.
+const A_STRETCH_ENDS_AFTER: u64 = 30 * 60;
+
 /// `why` the ask is refused, unless `busy` has refused asks for longer
 /// than it may, when this one goes ahead, says so, and the count starts
-/// again. When each refusal began is kept in the state folder, under a
-/// name drawn from what it's busy with.
+/// again. When the stretch of refusals began, and when it last refused,
+/// are kept in the state folder, under a name drawn from what it's busy
+/// with; one it can't keep lets the ask go ahead, since the most it may
+/// refuse couldn't be held to.
 fn refused_for_at_most(config: &Config, busy: &Busy, why: Option<String>) -> Option<String> {
     let Some(most) = busy.refuses_at_most else {
         return why;
@@ -682,24 +696,35 @@ fn refused_for_at_most(config: &Config, busy: &Busy, why: Option<String>) -> Opt
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
+    // A time from the future, as a clock set back leaves, starts the
+    // stretch again rather than refusing until the clock reaches it.
     let began = fs::read_to_string(&since)
         .ok()
-        .and_then(|text| text.trim().parse::<u64>().ok());
-    match began {
-        Some(began) if now.saturating_sub(began) >= most => {
-            let _ = fs::remove_file(&since);
-            eprintln!(
-                "update-to-main: {why} for {} s of asks, so this one goes ahead",
-                now.saturating_sub(began)
-            );
-            None
-        }
-        Some(_) => Some(why),
-        None => {
-            let _ = fs::write(&since, now.to_string());
-            Some(why)
-        }
+        .and_then(|text| {
+            let mut times = text.split_whitespace().map(str::parse::<u64>);
+            Some((times.next()?.ok()?, times.next()?.ok()?))
+        })
+        .filter(|&(began, last)| {
+            began <= last && last <= now && now - last <= A_STRETCH_ENDS_AFTER
+        })
+        .map_or(now, |(began, _)| began);
+    if now - began >= most {
+        let _ = fs::remove_file(&since);
+        eprintln!(
+            "update-to-main: {why} for {} s of asks, so this one goes ahead",
+            now - began
+        );
+        return None;
     }
+    if let Err(e) = fs::write(&since, format!("{began} {now}\n")) {
+        eprintln!(
+            "update-to-main: {why}, but {} couldn't keep when that began ({e}), so this \
+             ask goes ahead",
+            since.display()
+        );
+        return None;
+    }
+    Some(why)
 }
 
 /// Waits, for a switch only the follower asked for, while any command a
