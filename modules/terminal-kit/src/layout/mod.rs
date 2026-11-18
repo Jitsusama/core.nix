@@ -320,25 +320,31 @@ fn line(row: &Row, lead: usize, across: usize, pen: &Pen) -> String {
 /// judged on its own: one that can't fit beside the column, whole on its
 /// line, or wrapping in no more than half the room without cutting a word
 /// of it, as an identifier, that would fit whole under, goes under its
-/// label, two cells in. A long value wraps under itself, and is held to
-/// one line first, as `one_line` says.
+/// label, two cells in. A long value wraps under itself. Each label and
+/// value is held to one line first, as `one_line` says, since a label
+/// can come from outside as well, as a device's own name for a reading.
 pub fn facts(facts: &[(&str, Option<&str>)], unknown: &str, pen: &Pen, room: Room) -> Vec<String> {
     fn said<'a>(value: Option<&'a str>, unknown: &'a str) -> (&'a str, &'static str) {
         value.map_or((unknown, "muted"), |value| (value, "text"))
     }
-    let held: Vec<(&str, Option<String>)>;
+    let held: Vec<(String, Option<String>)>;
     let flat: Vec<(&str, Option<&str>)>;
     let facts = if facts
         .iter()
-        .any(|(_, value)| value.is_some_and(holds_unseen))
+        .any(|(label, value)| holds_unseen(label) || value.is_some_and(holds_unseen))
     {
         held = facts
             .iter()
-            .map(|(label, value)| (*label, value.map(|value| one_line(value).into_owned())))
+            .map(|(label, value)| {
+                (
+                    one_line(label).into_owned(),
+                    value.map(|value| one_line(value).into_owned()),
+                )
+            })
             .collect();
         flat = held
             .iter()
-            .map(|(label, value)| (*label, value.as_deref()))
+            .map(|(label, value)| (label.as_str(), value.as_deref()))
             .collect();
         flat.as_slice()
     } else {

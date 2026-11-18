@@ -101,6 +101,36 @@ fn a_fact_from_outside_stays_beside_its_label() {
         ["Name  hall Password  hunter2[8m"].map(str::to_owned),
         "a fact's value drew a fact of its own"
     );
+    let labelled = [("Den\nWAN", Some("up")), ("Hall", Some("up"))];
+    for room in [Room::Unbounded, Room::Cells(80)] {
+        assert_eq!(
+            facts(&labelled, "unknown", &Pen::plain(), room),
+            ["Den WAN  up", "Hall     up"].map(str::to_owned),
+            "a fact's label drew a fact of its own in {room:?}"
+        );
+    }
+}
+
+#[test]
+fn a_paragraph_and_hung_words_keep_their_own_lines_at_the_inset() {
+    let said = "a.service: failed\nb.service: failed\u{2028}c";
+    for room in [Room::Unbounded, Room::Cells(80)] {
+        assert_eq!(
+            hung(said, 2, room),
+            "a.service: failed\n  b.service: failed\n  c",
+            "hung words ran their own lines together, or one left the inset, in {room:?}"
+        );
+        assert_eq!(
+            paragraph(said, 4, room),
+            ["    a.service: failed", "    b.service: failed", "    c"].map(str::to_owned),
+            "a paragraph ran its own lines together, or one left the inset, in {room:?}"
+        );
+    }
+    assert_eq!(
+        hung("one two\nthree", 2, Room::Cells(7)),
+        "one\n  two\n  three",
+        "a line of the words' own wrapped with the one before it"
+    );
 }
 
 #[test]

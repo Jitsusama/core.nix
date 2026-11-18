@@ -166,17 +166,22 @@ without a rebuild:
   cells, blank where it has none.
 - **Links.** A URL or a path shown into a terminal with ink is a kitty
   hyperlink (OSC 8) on the words that name it, so it opens on a click
-  without being printed twice.
+  without being printed twice. Its words keep only the colours a pen
+  inks with, reset, bold, faint, italic and a foreground colour, and a
+  colour they leave open is closed inside the link.
 - **Only the command's escapes.** Words a command shows are anyone's to
   set: a device's name, a network's, a path, a message from a server.
   Words drawn through the kit's pen lose every control character but
   the line break, with or without ink, a tab drawn as a space, and the
-  marks that reorder text right to left, so none can retitle the window,
-  clear the screen, draw over a line or draw a name backwards. The kit's
-  layout and its wait hold the words they're given to one line besides,
-  a line break drawn as a space: a table's cell, a list's row, a fact, a
-  link, prose wrapped at its inset and a wait's words, so no field draws
-  a record of its own. `say` writes what it's given as it is, so a
+  marks that set or reorder the direction of text, so none can retitle
+  the window, clear the screen, draw over a line or draw a name
+  backwards. The kit's layout and its wait hold the words they're given
+  to one line besides, a line break drawn as a space: a table's cell, a
+  list's row, a fact and its label, a link, a command to try and a
+  wait's words, so no field draws a record of its own. Prose set at an
+  inset, as a paragraph or hung after a mark, keeps the lines its words
+  break themselves, each at the inset, as a list of what failed reads a
+  line each. `say` writes what it's given as it is, so a
   command saying words from outside through it draws them through the
   pen or `layout::one_line` first. The JSON forms keep the words as they
   are, escaped as JSON escapes them.

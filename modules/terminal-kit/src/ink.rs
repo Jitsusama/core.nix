@@ -434,7 +434,7 @@ impl Pen {
 }
 
 /// Words held to one line, as `layout::one_line` holds them, but keeping
-/// each colour a pen inks them in, `ESC [`, numbers and semicolons, and
+/// each colour a pen inks them in, `ESC [`, the codes `inked` allows and
 /// `m`, which moves nothing and can't end a link.
 fn inked_on_one_line(words: &str) -> Cow<'_, str> {
     if !words.chars().any(crate::layout::unseen) {
@@ -448,7 +448,7 @@ fn inked_on_one_line(words: &str) -> Cow<'_, str> {
                 - after
                     .trim_start_matches(|c: char| c.is_ascii_digit() || c == ';')
                     .len();
-            after[codes..].starts_with('m').then_some(2 + codes + 1)
+            (after[codes..].starts_with('m') && inked(&after[..codes])).then_some(2 + codes + 1)
         });
         if let Some(colour) = colour {
             held.push_str(&rest[..colour]);
@@ -463,6 +463,29 @@ fn inked_on_one_line(words: &str) -> Cow<'_, str> {
         rest = &rest[c.len_utf8()..];
     }
     Cow::Owned(held)
+}
+
+/// Whether a colour's codes are only those a pen inks with: the reset,
+/// bold, faint and italic and their ends, and a foreground colour, of
+/// the sixteen, the 256 or as red, green and blue. Anything else, as a
+/// blink, a reverse or a conceal that hides what a link says, isn't.
+fn inked(codes: &str) -> bool {
+    let mut codes = codes.split(';');
+    while let Some(code) = codes.next() {
+        let kept = match code.parse::<u8>() {
+            Ok(0..=3 | 22 | 23 | 30..=37 | 39 | 90..=97) => true,
+            Ok(38) => match codes.next() {
+                Some("5") => codes.next().is_some_and(|n| n.parse::<u8>().is_ok()),
+                Some("2") => (0..3).all(|_| codes.next().is_some_and(|n| n.parse::<u8>().is_ok())),
+                _ => false,
+            },
+            _ => code.is_empty(),
+        };
+        if !kept {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -588,10 +611,25 @@ mod tests {
             "a link kept an escape that isn't a colour"
         );
         assert_eq!(
-            pen.link("t", "\u{1b}[8mhall"),
-            "\u{1b}]8;;t\u{1b}\\\u{1b}[8mhall\u{1b}[0m\u{1b}]8;;\u{1b}\\",
+            pen.link("t", "\u{1b}[31mhall"),
+            "\u{1b}]8;;t\u{1b}\\\u{1b}[31mhall\u{1b}[0m\u{1b}]8;;\u{1b}\\",
             "a colour its words left open ran on past the link"
         );
+        for hiding in ["8", "5", "7", "31;8", "38;5", "38;9;1"] {
+            assert_eq!(
+                pen.link("t", &format!("\u{1b}[{hiding}mhall")),
+                format!("\u{1b}]8;;t\u{1b}\\[{hiding}mhall\u{1b}]8;;\u{1b}\\"),
+                "a link kept {hiding:?}, which no pen inks with"
+            );
+        }
+        for inked in ["1;97", "2;33", "3;90", "38;5;8", "38;2;247;232;178", ""] {
+            let words = format!("\u{1b}[{inked}mhall\u{1b}[0m");
+            assert_eq!(
+                pen.link("t", &words),
+                format!("\u{1b}]8;;t\u{1b}\\{words}\u{1b}]8;;\u{1b}\\"),
+                "a link dropped {inked:?}, which a pen inks with"
+            );
+        }
         assert_eq!(
             Pen::plain().link("t", "\u{1b}[31mhall"),
             "[31mhall",

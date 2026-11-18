@@ -5,7 +5,8 @@
 //! Lists, facts and tables set their cells with these, once each is
 //! drawn as the terminal may be given it. Each holds its words to one
 //! line first, as `one_line` says, since a break of their own would
-//! draw past the inset or the measure they keep.
+//! draw past the inset or the measure they keep; a paragraph and hung
+//! words keep their own lines instead, each set at the inset.
 
 use std::borrow::Cow;
 
@@ -48,13 +49,20 @@ pub fn one_line(words: &str) -> Cow<'_, str> {
 }
 
 /// Whether the kit keeps `c` from the terminal: a control character, a
-/// Unicode line or paragraph separator, or a mark that embeds, overrides
-/// or isolates a run of text's direction.
+/// Unicode line or paragraph separator, or a mark that sets, embeds,
+/// overrides or isolates a run of text's direction, the implicit ones
+/// (left-to-right, right-to-left and Arabic letter marks) among them.
 pub(crate) fn unseen(c: char) -> bool {
     c.is_control()
         || matches!(
             c,
-            '\u{2028}' | '\u{2029}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
         )
 }
 
@@ -171,31 +179,35 @@ pub fn shortened(word: &str, room: usize) -> String {
 
 /// Words set as a paragraph `inset` cells in: wrapped at whole words to
 /// the room, every line at the same inset, so a nested level keeps its
-/// indent wherever it wraps. Into a pipe it's one line.
+/// indent wherever it wraps. A line the words break themselves stays a
+/// line of its own, at the inset too; into a pipe each is one line.
 pub fn paragraph(words: &str, inset: usize, room: Room) -> Vec<String> {
-    let flat = one_line(words);
-    let words = &*flat;
     let pad = " ".repeat(inset);
-    match room.cells() {
-        None => vec![format!("{pad}{words}")],
-        Some(cells) => wrapped(words, cells.saturating_sub(inset).max(1))
-            .into_iter()
-            .map(|line| format!("{pad}{line}"))
-            .collect(),
-    }
+    own_lines(words, inset, room)
+        .into_iter()
+        .map(|line| format!("{pad}{line}"))
+        .collect()
 }
 
 /// Words set after something `lead` cells wide: wrapped at whole words
-/// to the room, each further line under the first's words. Into a pipe
-/// they stay one line.
+/// to the room, each further line under the first's words. A line the
+/// words break themselves, as a list of what failed is, stays a line of
+/// its own under them too; into a pipe each is one line.
 pub fn hung(words: &str, lead: usize, room: Room) -> String {
-    let flat = one_line(words);
-    let words = &*flat;
-    match room.cells() {
-        None => words.to_owned(),
-        Some(cells) => wrapped(words, cells.saturating_sub(lead).max(1))
-            .join(&format!("\n{}", " ".repeat(lead))),
-    }
+    own_lines(words, lead, room).join(&format!("\n{}", " ".repeat(lead)))
+}
+
+/// Each line of the words as drawn, wrapped to the room left after
+/// `inset` cells, ready to set at the inset. Only the words' own breaks
+/// part them into a pipe, where nothing wraps.
+fn own_lines(words: &str, inset: usize, room: Room) -> Vec<String> {
+    drawn(words)
+        .split('\n')
+        .flat_map(|line| match room.cells() {
+            None => vec![line.to_owned()],
+            Some(cells) => wrapped(line, cells.saturating_sub(inset).max(1)),
+        })
+        .collect()
 }
 
 /// Words wrapped to `measure` cells: a run gives way at its items first,
@@ -460,6 +472,46 @@ mod tests {
         assert_eq!(
             wrapped("a screen 1272 \u{d7} 768 wide", 12),
             ["a screen", "1272 \u{d7} 768", "wide"]
+        );
+    }
+
+    #[test]
+    fn words_cut_wrapped_or_shortened_stay_on_one_line() {
+        let name = "Den\neero\tPro\u{2029}6";
+        assert_eq!(
+            wrapped(name, 80),
+            ["Den eero Pro 6"],
+            "wrapped words kept a break"
+        );
+        assert_eq!(cut(name, 80), "Den eero Pro 6", "a cut name kept a break");
+        assert_eq!(cut(name, 10), "Den eero\u{2026}", "a cut name kept a break");
+        assert_eq!(
+            shortened("~/a\nb/c", 80),
+            "~/a b/c",
+            "a shortened word kept a break"
+        );
+    }
+
+    #[test]
+    fn every_mark_that_reorders_text_is_kept_from_the_terminal() {
+        let marks = [
+            '\u{061c}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}',
+            '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+        ];
+        for mark in marks {
+            let words = format!("abc{mark}def");
+            assert_eq!(drawn(&words), "abcdef", "{mark:?} reached the terminal");
+            assert_eq!(one_line(&words), "abcdef", "{mark:?} reached the terminal");
+        }
+        assert_eq!(
+            drawn("a\u{2028}b\u{2029}c"),
+            "a\nb\nc",
+            "a Unicode separator wasn't drawn as a line break"
+        );
+        assert_eq!(
+            drawn("\u{200d}\u{fe0f}"),
+            "\u{200d}\u{fe0f}",
+            "a joiner was dropped"
         );
     }
 }

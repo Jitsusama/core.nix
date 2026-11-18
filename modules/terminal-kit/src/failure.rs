@@ -218,12 +218,13 @@ impl Failure {
             lines.extend(self.chain.iter().map(|cause| under(cause, "muted")));
         }
         if let Some(then) = &self.then {
-            // A command to type is never wrapped, so it copies whole.
+            // A command to type is never wrapped, so it copies whole, and
+            // is held to one line, so a name in it can't draw a second.
             lines.push(format!(
                 "{}{}  {}",
                 " ".repeat(inset),
                 pen.role("muted", "try"),
-                pen.role("text", then)
+                pen.role("text", &layout::one_line(then))
             ));
         }
         lines.join("\n") + "\n"
@@ -303,18 +304,20 @@ mod tests {
     }
 
     #[test]
-    fn a_servers_message_wraps_under_itself_whatever_its_breaks() {
-        let failure =
-            Failure::new(Exit::Failed, "lost\r\u{1b}[2J").because("one\ntwo three\nfour five");
+    fn a_servers_message_keeps_its_own_lines_under_itself() {
+        let failure = Failure::new(Exit::Failed, "lost\r\u{1b}[2J")
+            .because("one\ntwo three four\nfive")
+            .try_this("eero device 'Den\n  try  rm -rf ~'");
         assert_eq!(
             failure.text(&Pen::plain(), Room::Cells(12), false),
-            "\u{2715} lost[2J\n  one two\n  three four\n  five\n",
-            "a message's own line break drew past its inset, or a control reached the terminal"
+            "\u{2715} lost[2J\n  one\n  two three\n  four\n  five\n  try  eero device 'Den   try  rm -rf ~'\n",
+            "a message's own line drew past its inset, a control reached the terminal, \
+             or a name drew a try line of its own"
         );
         assert_eq!(
             failure.text(&Pen::plain(), Room::Unbounded, false),
-            "\u{2715} lost[2J\n  one two three four five\n",
-            "a message's own line break drew a line of its own into a pipe"
+            "\u{2715} lost[2J\n  one\n  two three four\n  five\n  try  eero device 'Den   try  rm -rf ~'\n",
+            "a message's own lines ran together into a pipe, or left its inset"
         );
     }
 
