@@ -267,7 +267,12 @@ class Touchscreen:
             if self.touches("up"):
                 return True
             if taps.due():
-                self.desktop.machine.succeed("echo '1 tap 0.5' > /run/touchscreen")
+                # A stand-in that died leaves its fifo with no reader, where a write would wait
+                # for ever; cut off, it fails the wait, which then says the stand-in's state.
+                cut = int(SAYING.total_seconds())
+                self.desktop.machine.succeed(
+                    f"timeout {cut} sh -c \"echo '1 tap 0.5' > /run/touchscreen\""
+                )
                 taps.send()
             return False
 

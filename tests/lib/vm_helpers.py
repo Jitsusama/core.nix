@@ -209,9 +209,12 @@ def changed_between_rows(top: int, bottom: int) -> Callable[[bytes, bytes], str]
     """
 
     def where(before: bytes, now: bytes) -> str:
-        was, now_band = band(before, top, bottom), band(now, top, bottom)
-        if was.header != now_band.header:
+        # Sizes are weighed before the band is read, since a picture grown too short for it
+        # differs in its size rather than holding no band.
+        was_size, now_size = PPM_HEADER.match(before), PPM_HEADER.match(now)
+        if was_size and now_size and was_size[0] != now_size[0]:
             return " in its size"
+        was, now_band = band(before, top, bottom), band(now, top, bottom)
         changed = [at for at in range(bottom - top) if was.row(at) != now_band.row(at)]
         if not changed:
             return ""

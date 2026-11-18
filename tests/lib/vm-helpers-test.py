@@ -429,6 +429,12 @@ def test_pictures_of_other_sizes_are_said_to_differ_in_size() -> None:
     assert said == " in its size", f"a picture 4 high against one 5 high was said as {said!r}"
 
 
+def test_a_picture_grown_too_short_for_the_rows_read_is_said_to_differ_in_size() -> None:
+    where = vm_helpers.changed_between_rows(1, 4)
+    said = where(picture("..", "ww", "ww", ".."), picture("..", "ww"))
+    assert said == " in its size", f"a picture 4 high against one 2 high was said as {said!r}"
+
+
 def test_a_change_only_outside_the_rows_read_is_said_as_none() -> None:
     where = vm_helpers.changed_between_rows(1, 3)
     said = where(picture("c.", "ww", "ww", ".."), picture(".c", "ww", "ww", "c."))
