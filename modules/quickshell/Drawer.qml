@@ -783,6 +783,7 @@ Floating {
     // Into it: the cursor on the title's first letter where it's in view,
     // else the first line in view, so nothing moves as the keys come in.
     function enter() {
+        unflash();
         lastChosen = null;
         began = choosing !== "" ? began : null;
         laid = lines();
@@ -796,11 +797,20 @@ Floating {
     // Another page shown while it holds the keys, as its list of keys is:
     // read from its top once Qt has laid it out, as a window opened on it.
     function anew() {
-        if (keys)
+        if (keys) {
+            // At once, so the new page's first frame draws none of it.
+            unflash();
             Qt.callLater(() => {
                 scrolled = 0;
                 enter();
             });
+        }
+    }
+    // y's flash ends with the page it was given on: what it took is that
+    // page's letters, so a page stepped into would wear them as its own.
+    function unflash() {
+        flash.stop();
+        flashing = [];
     }
     // Laid out anew while it holds the keys, as a fact's value comes or the
     // row refreshes: the lines read again once Qt has laid them out, the

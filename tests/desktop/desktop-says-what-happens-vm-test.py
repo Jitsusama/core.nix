@@ -779,8 +779,10 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     the clipboard as markdown, the title after its #, and goes back to the page with the
     cursor at its start, the flash it gives what it took ending; o goes to its other end,
     Escape lets it go, and gv brings it back. V grounds each line whole, a band across the
-    measure, where v grounds only the letters. Its pictures at both of Joel's scales show
-    letters chosen over two lines, for a person to judge the selection's ground and the block.
+    measure, where v grounds only the letters. A page stepped into while the flash shows
+    draws none of it (stepped_into_unflashed). Its pictures at both of Joel's scales show
+    letters chosen over two lines, for a person to judge the selection's ground and the
+    block.
     """
     page = InTheDrawer(desktop)
     title = page.into()["line"]
@@ -855,8 +857,37 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
         page.until("v l l l l l j", chose("letters", 2))
         desktop.shoot(f"launcher-drawer-chosen-at-{scale.replace('.', '-')}")
     page.pressed_until("esc", lambda shown: shown["mode"] == "page")
+    stepped_into_unflashed(desktop, page)
     page.back("ctrl-w h")
     desktop.close_launcher()
+
+
+def stepped_into_unflashed(desktop: Desktop, page: InTheDrawer) -> None:
+    """Step into a page while y's flash shows, which draws none of it.
+
+    Space ? sent with the y lists the drawer's keys long before the flash's time is up, which
+    begins only once a frame has drawn it, so the list's first frame is the one that would
+    show it. Space ? again gives the row's drawer back.
+    """
+    # From the first line's start, where l has a letter to take.
+    page.until("g g", lambda drawer: drawer["cursor"]["line"] == 0)
+    page.until(
+        "v l",
+        lambda drawer: drawer["chosen"]["by"] == "letters" and drawer["chosen"]["count"] > 1,
+    )
+    since = desktop.mark()
+    page.press("y spc ?")
+    flashed: list[object] = []
+
+    def listed(said: str) -> bool:
+        shown = json.loads(said)
+        if shown.get("listing"):
+            flashed.append(((shown.get("drawer") or {}).get("chosen") or {}).get("flashing"))
+        return bool(flashed)
+
+    desktop.reported("showing ", listed, since)
+    assert flashed == [False], f"the list stepped into showed the copy's flash: {flashed}"
+    page.pressed_until("spc ?", lambda shown: not shown["listing"], lambda: page.press("esc"))
 
 
 def test_a_notices_action_is_done_from_the_launcher_and_one_let_go_stays_unread(
