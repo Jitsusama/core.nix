@@ -78,11 +78,12 @@ let
   # root, whose shell it runs before, has none of: the theme.json the
   # account's home writes is put where the kit reads one.
   themed = pkgs.writeTextDir "jitsusama/theme.json" home.xdg.configFile."jitsusama/theme.json".text;
+  summary = lib.getExe (pkgs.callPackage ./stopped/package.nix { });
   stopped = pkgs.writeShellApplication {
     name = "boot-stopped";
     runtimeInputs = [ config.systemd.package ];
     text = ''
-      XDG_CONFIG_HOME=${themed} exec ${lib.getExe (pkgs.callPackage ./stopped/package.nix { })} "$@"
+      XDG_CONFIG_HOME=${themed} exec ${summary} "$@"
     '';
   };
 
@@ -148,7 +149,13 @@ in
         "-${lib.getExe stopped}"
       ];
       boot.initrd.systemd = {
-        storePaths = [ stopped ];
+        # The initrd takes a script's own path but not those it names, so
+        # the program it runs and the theme it reads go in too.
+        storePaths = [
+          stopped
+          summary
+          "${themed}/jitsusama/theme.json"
+        ];
         services.emergency.serviceConfig.ExecStartPre = lib.mkOrder 1600 [
           "-${lib.getExe stopped}"
         ];
