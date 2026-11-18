@@ -188,6 +188,7 @@
     "When.js"
     "launcher/RealmMachines.js"
   ];
+  "launcher/Makings.js" = [ "launcher/Pacing.js" ];
   "launcher/Media.js" = [ "Music.js" ];
   "launcher/Moment.js" = [ "launcher/Numbers.js" ];
   "launcher/Nearby.js" = [ "launcher/Order.js" ];

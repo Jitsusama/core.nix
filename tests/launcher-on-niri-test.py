@@ -316,6 +316,36 @@ def test_the_dates_drawer_says_its_week_and_its_moon_copies_on_return(shell: She
     assert re.fullmatch(MOON_PHASES, shell.copied()), shell.copied()
 
 
+def test_an_openings_first_drawer_is_kept_once_the_launcher_shuts(shell: Shell) -> None:
+    """How long an opening's first drawer took is kept as the launcher shuts, past a restart.
+
+    Learnt in memory alone, and only from a drawer already out, a kind Joel steps onto a few times
+    a day had none at most keys after a restart, so its cheap drawer came the frame after: Wi-Fi's,
+    made in a median of 6 ms, came a median of 53 ms from its key (F8TT8O, 2026-11-18).
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+
+    def kept() -> dict[str, Json]:
+        said: dict[str, Json] = {}
+        for path in state.glob("quickshell/by-shell/*/launcher-drawers.json"):
+            if path.read_text().strip():
+                said.update(cast("dict[str, Json]", json.loads(path.read_text())))
+        return said
+
+    before = kept()
+    shell.answer("date")
+    shell.launcher_until(
+        lambda shown: (
+            bool(shown["drawer"]["shown"]) and str(shown["drawer"]["body"]).startswith("Week ")
+        )
+    )
+    shell.close_launcher()
+    deadline = time.monotonic() + 5
+    while kept() == before and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert kept() != before, f"the launcher kept no drawer's making as it shut: {kept()}"
+
+
 def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
     """A drawer's nerdy bits open and fold on za, and they stay as left from row to row.
 
