@@ -118,6 +118,22 @@ in
           { home-manager.users.someone.jitsusama.pi.hosts = hosts; }
         ]);
       services = (naming bareNixos self.nixosModules.workstation).systemd.user.services;
+      # The same hosts where pi's SSH agent proxy runs.
+      proxied =
+        (account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.jitsusama.pi = {
+              inherit hosts;
+              agentProxy.builderKey = "/builders/key";
+            };
+          }
+        ])).systemd.user.services;
+      agentOf =
+        services: kind:
+        lib.findFirst (lib.hasPrefix ''"SSH_AUTH_SOCK='') null (
+          lib.toList services."pi-host-one-${kind}".Service.Environment
+        );
       mac = naming bareDarwin self.darwinModules.workstation;
       # home-manager keeps a unit's settings as lists.
       first = value: lib.head (lib.toList value);
@@ -152,6 +168,8 @@ in
         && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment
         # The host parks within the stop limit the unit names.
         && lib.elem ''"PI_HOST_STOP_USEC=150000000"'' environment
+        # Every conversation it holds shares its codemode workers.
+        && lib.elem ''"PI_CODEMODE_MAX_WORKERS=16"'' environment
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
         # systemd keeps a quoted entry whole, spaces and escaped quotes in it.
         && lib.elem ''"GREETING=say \"hi\" there"'' environment;
@@ -179,13 +197,18 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 150 s to park at a stop or isn't told so, or leaves its commands' processes behind, can dump a core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, points its conversations at no SSH agent where pi's proxy runs, or leaves its commands' processes behind, can dump a core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         starts "attended"
         && starts "background"
         && findsItsPath "attended"
         && findsItsPath "background"
         && saysDown
+        # Its conversations reach the agents' SSH agent where the proxy runs,
+        # and no agent is named for them where it doesn't.
+        && agentOf services "attended" == null
+        && agentOf proxied "attended" == ''"SSH_AUTH_SOCK=%t/pi-agent.sock"''
+        && agentOf proxied "background" == ''"SSH_AUTH_SOCK=%t/pi-agent.sock"''
         && !((account workstation).systemd.user.services ? "pi-host-down@")
         &&
           hostsIn services == [

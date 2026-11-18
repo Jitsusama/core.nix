@@ -29,6 +29,14 @@ let
 
   homeRealm = lib.attrByPath [ "jitsusama" "mycelium" "realm" ] null config;
 
+  # Whether pi's SSH agent proxy runs here, as home.nix decides it, so a
+  # host is pointed at its socket only where there is one. Hosts are Linux
+  # alone, so the platform needs no test of its own. A configuration
+  # without home.nix (a VM test's) has no proxy.
+  agentProxied =
+    lib.attrByPath [ "jitsusama" "pi" "agentProxy" "machines" ] [ ] config != [ ]
+    || lib.attrByPath [ "jitsusama" "pi" "agentProxy" "builderKey" ] null config != null;
+
   # Why a realm's proof doesn't prove its pi, or null when it does. The pi is
   # a folder inside the runtime the proof names, so the runtime is compared
   # with a slash after it, and one whose name merely starts the same fails.
@@ -137,6 +145,23 @@ let
             # when it first starts, before any of the host's code runs, so it
             # is set here. A machine's own value still wins.
             UV_THREADPOOL_SIZE = "16";
+            # pi gives a process two codemode workers, which suits one
+            # conversation but is shared here by every conversation the host
+            # holds. After the reset of 17 November the background host's
+            # forty conversations had one cell's six-minute script and one
+            # other holding both, and every other script failed after waiting
+            # a minute. A worker starts only for a script, so a bigger limit
+            # costs nothing while idle. pi reads it at each script.
+            PI_CODEMODE_MAX_WORKERS = "16";
+          }
+          // lib.optionalAttrs agentProxied {
+            # A hosted conversation's commands run with the host's own
+            # environment, so they reach the agents' SSH agent, as a fenced
+            # command does, rather than whichever agent the user manager was
+            # told of before the host started. After the reset of 17 November
+            # the hosts started before the session told the manager of any,
+            # and every ssh from a hosted conversation was refused.
+            SSH_AUTH_SOCK = "%t/pi-agent.sock";
           }
           // host.environment
           // {
