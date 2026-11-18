@@ -15,9 +15,10 @@ onLinux {
   # moment's recording or with nobody logged in, and that it can't tell
   # when a PipeWire won't answer; and that a fresh call on another of the
   # person's machines, as a stand-in mycelium node tells it, is a call
-  # unless it's asked about here alone, a stale or quiet one none, one
-  # declaring no call probe named unseen, and a probe with no answer or a
-  # node that won't answer can't tell.
+  # unless it's asked about here alone, even beside a node that won't
+  # answer, a stale or quiet one none, and one declaring no call probe, one
+  # whose probe said nothing and a node that won't answer each named and
+  # no wait, a socket linked from elsewhere never asked.
   calls-tells-a-call = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in it, its tests included.
   calls-passes-clippy = passesClippy "calls-passes-clippy" (pkgs.callPackage ./package.nix { });

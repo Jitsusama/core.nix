@@ -13,12 +13,17 @@
 //!
 //! - a fresh record whose `reached.call` is a literal `true` is a call;
 //! - a fresh one that declares the call probe but holds no yes or no, as
-//!   when the probe couldn't tell, can't tell;
+//!   when the probe couldn't tell, is untold;
 //! - a fresh one that declares no call probe, as a machine on a core
-//!   from before the probe, is unseen: no wait, since the gap is one only
-//!   an update closes, but named, so it shows rather than hides;
+//!   from before the probe or one declaring nothing, is unseen;
 //! - a record older than [`FRESH`], a machine asleep, off or away, is no
 //!   call, so a closed laptop holds nothing back.
+//!
+//! Untold and unseen machines, and a node here that won't answer, are
+//! named rather than waited on: whatever asks counts can't tell as busy
+//! with no end, so one broken peer, or a wedged node, would hold every
+//! switch for ever, the one that would mend it included. Only this
+//! machine's own sound server not answering is can't tell.
 //!
 //! This machine's own record is passed over, since its sound server
 //! already says; the probe asking only here is what keeps two machines
@@ -44,17 +49,16 @@ pub struct Heard {
     pub untold: Vec<String>,
     /// Machines whose fresh record declares no call probe.
     pub unseen: Vec<String>,
+    /// Why each node here that didn't answer couldn't, naming its socket.
+    pub unanswered: Vec<String>,
 }
 
 /// What this machine's nodes under `runtimes` hear of its peers now, on
-/// Linux (src/nodes.rs), or why a node couldn't be asked.
-///
-/// # Errors
-///
-/// When a node's socket is there but its node won't answer.
+/// Linux (src/nodes.rs), each node asked whatever another said.
 #[cfg(target_os = "linux")]
-pub fn hear(runtimes: &std::path::Path) -> Result<Heard, String> {
-    let answers = crate::nodes::answers(runtimes)?;
+#[must_use]
+pub fn hear(runtimes: &std::path::Path) -> Heard {
+    let asked = crate::nodes::answers(runtimes);
     // mycelium names a machine by its hostname.
     let here = std::fs::read_to_string("/proc/sys/kernel/hostname")
         .map(|name| name.trim().to_owned())
@@ -62,7 +66,10 @@ pub fn hear(runtimes: &std::path::Path) -> Result<Heard, String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(0));
-    Ok(judge(&answers, &here, now))
+    Heard {
+        unanswered: asked.unanswered,
+        ..judge(&asked.answers, &here, now)
+    }
 }
 
 /// What one machine's records say, weakest first, so the strongest of
@@ -172,9 +179,9 @@ mod tests {
     const AT: i64 = 1_794_924_960;
 
     /// A record measured at `measured_at`, declaring the call probe when
-    /// `probed`, its probes saying `reached`.
-    fn record(name: &str, measured_at: &str, probed: bool, reached: Value) -> Value {
-        let probes = if probed {
+    /// `declares_call`, its probes saying `reached`.
+    fn record(name: &str, measured_at: &str, declares_call: bool, reached: &Value) -> Value {
+        let probes = if declares_call {
             json!({"call": {"run": ["a-call-is-on", "--here"]}})
         } else {
             json!({"home": {"run": ["probe"]}})
@@ -217,7 +224,12 @@ mod tests {
     #[test]
     fn only_a_literal_yes_in_a_fresh_record_is_a_call() {
         let heard = judge(
-            &[answer(&[record("skiff", NOW, true, json!({"call": true}))])],
+            &[answer(&[record(
+                "skiff",
+                NOW,
+                true,
+                &json!({"call": true}),
+            )])],
             HERE,
             AT + 30,
         );
@@ -231,7 +243,7 @@ mod tests {
             (json!({"call": "true"}), "a string"),
             (json!({"call": 1}), "a number"),
         ] {
-            let heard = judge(&[answer(&[record("skiff", NOW, true, reached)])], HERE, AT);
+            let heard = judge(&[answer(&[record("skiff", NOW, true, &reached)])], HERE, AT);
             assert!(heard.calls.is_empty(), "{why} was a call: {heard:?}");
         }
     }
@@ -239,7 +251,7 @@ mod tests {
     #[test]
     fn this_machines_own_record_is_passed_over() {
         let heard = judge(
-            &[answer(&[record(HERE, NOW, true, json!({"call": true}))])],
+            &[answer(&[record(HERE, NOW, true, &json!({"call": true}))])],
             HERE,
             AT,
         );
@@ -251,18 +263,14 @@ mod tests {
     }
 
     #[test]
-    fn a_probe_declared_with_no_yes_or_no_cant_tell() {
+    fn a_probe_declared_with_no_yes_or_no_is_untold() {
         for (reached, why) in [
             (json!({}), "no reading"),
             (json!(null), "no probes reached"),
             (json!({"call": "true"}), "a string"),
         ] {
-            let heard = judge(&[answer(&[record("skiff", NOW, true, reached)])], HERE, AT);
-            assert_eq!(
-                heard.untold,
-                ["skiff"],
-                "{why} wasn't can't tell: {heard:?}"
-            );
+            let heard = judge(&[answer(&[record("skiff", NOW, true, &reached)])], HERE, AT);
+            assert_eq!(heard.untold, ["skiff"], "{why} wasn't untold: {heard:?}");
         }
     }
 
@@ -273,7 +281,7 @@ mod tests {
                 "skiff",
                 NOW,
                 false,
-                json!({"home": true}),
+                &json!({"home": true}),
             )])],
             HERE,
             AT,
@@ -295,13 +303,13 @@ mod tests {
             ("2026-11-17T14:17:01Z", "a record from the future"),
             ("not a time", "a record with no time"),
         ] {
-            for probed in [true, false] {
+            for declares_call in [true, false] {
                 let heard = judge(
                     &[answer(&[record(
                         "skiff",
                         measured_at,
-                        probed,
-                        json!({"call": true}),
+                        declares_call,
+                        &json!({"call": true}),
                     )])],
                     HERE,
                     AT,
@@ -313,8 +321,8 @@ mod tests {
 
     #[test]
     fn a_machine_in_two_realms_is_named_once_by_its_strongest_record() {
-        let personal = answer(&[record("skiff", NOW, false, json!({}))]);
-        let work = answer(&[record("skiff", NOW, true, json!({"call": true}))]);
+        let personal = answer(&[record("skiff", NOW, false, &json!({}))]);
+        let work = answer(&[record("skiff", NOW, true, &json!({"call": true}))]);
         let heard = judge(&[personal, work], HERE, AT);
         assert_eq!(
             heard,
@@ -326,17 +334,13 @@ mod tests {
         );
         let heard = judge(
             &[
-                answer(&[record("skiff", NOW, true, json!({}))]),
-                answer(&[record("skiff", NOW, true, json!({"call": false}))]),
+                answer(&[record("skiff", NOW, true, &json!({}))]),
+                answer(&[record("skiff", NOW, true, &json!({"call": false}))]),
             ],
             HERE,
             AT,
         );
-        assert_eq!(
-            heard,
-            Heard::default(),
-            "a fresh no didn't win over can't tell"
-        );
+        assert_eq!(heard, Heard::default(), "a fresh no didn't win over untold");
     }
 
     #[test]

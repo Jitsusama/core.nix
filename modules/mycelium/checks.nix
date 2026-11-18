@@ -791,14 +791,16 @@ in
           costs_money = false;
           inherit (declaring) taints;
         }
-        && map baseNameOf (declared linux).probes.call.run == [
-          "a-call-is-on"
-          "--here"
-        ]
-        && map baseNameOf (declared mac).probes.call.run == [
-          "a-call-is-on"
-          "--here"
-        ]
+        &&
+          map baseNameOf (declared linux).probes.call.run == [
+            "a-call-is-on"
+            "--here"
+          ]
+        &&
+          map baseNameOf (declared mac).probes.call.run == [
+            "a-call-is-on"
+            "--here"
+          ]
         && (declared mac).outlives == [ ]
         && !((declared linux) ? within)
         && !((declared linux) ? hosts)
