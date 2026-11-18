@@ -272,6 +272,32 @@ in
                 reason to restart what someone is typing into.
               '';
             };
+            refusesTheAskAlone = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Whether it refuses only an ask the follower alone made,
+                before anything is fetched, and never the switch of what
+                that ask built, such as a load too high to build in: by then
+                the load is the build's own. A person's ask builds anyway,
+                as theirs to make.
+              '';
+            };
+            refusesAtMost = mkOption {
+              type = types.nullOr types.ints.positive;
+              default = null;
+              example = 7200;
+              description = ''
+                How many seconds at most it refuses asks in a row, after
+                which one goes ahead, saying so in the log, and the count
+                starts again. With none, it refuses for as long as it says
+                busy, though a command that can never tell then refuses the
+                very update that would mend it. It needs refusesTheAskAlone,
+                since any other would refuse the switch of the ask it let
+                through. Refusals more than half an hour apart are two
+                stretches, each counted from its own start.
+              '';
+            };
           };
         }
       );
@@ -279,8 +305,9 @@ in
       description = ''
         What the machine may be busy with when an update mustn't start or
         switch, such as a call a switch would cut. Each is asked before the
-        update starts and again before it switches; while one is busy the
-        ask is refused, and what was built stays for the next one.
+        update starts and, unless it refuses the ask alone, again before it
+        switches; while one is busy the ask is refused, and what was built
+        stays for the next one.
       '';
     };
     holdAccountRestarts = mkOption {
@@ -575,6 +602,14 @@ in
         message = "jitsusama.update-to-main.builders and here are for building elsewhere.";
       }
       {
+        assertion = lib.all (busy: busy.refusesAtMost == null || busy.refusesTheAskAlone) cfg.refuseWhile;
+        message = "jitsusama.update-to-main.refuseWhile's refusesAtMost needs refusesTheAskAlone.";
+      }
+      {
+        assertion = lib.all (busy: !(busy.followerWaits && busy.refusesTheAskAlone)) cfg.refuseWhile;
+        message = "jitsusama.update-to-main.refuseWhile's refusesTheAskAlone refuses nothing with followerWaits, which never refuses.";
+      }
+      {
         assertion = cfg.batches == null || cfg.system.kind == "nixos";
         message = "jitsusama.update-to-main.batches are for NixOS, whose memory Linux reports.";
       }
@@ -638,6 +673,8 @@ in
               follower_waits = busy.followerWaits;
               follower_waits_at_most = busy.followerWaitsAtMost;
               every_ask_waits = busy.everyAskWaits;
+              refuses_the_ask_alone = busy.refusesTheAskAlone;
+              refuses_at_most = busy.refusesAtMost;
             }) cfg.refuseWhile;
             follower_tells = cfg.followerTells;
             holds =

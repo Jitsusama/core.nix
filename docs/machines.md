@@ -155,6 +155,14 @@ jitsusama.update-to-main.refuseWhile = [
 ];
 ```
 
+One with `refusesTheAskAlone` is asked only as the follower's ask comes,
+before anything is fetched, never before the switch, since by then a load
+it reads is the build's own; a person's own ask builds anyway. With
+`refusesAtMost` it refuses that many seconds of asks at most, then lets
+one through, so a command that can never tell doesn't refuse the update
+that would mend it. A Mac refuses this way while `nix-offload busy` says
+it's past its room, for two hours at most.
+
 A repository whose host signs nothing is followed by what the host names
 instead. With `hosted` set, root asks the host for main over TLS with a
 token the account's `token` command prints, reads that commit's objects from
@@ -165,6 +173,9 @@ fetches each of `inputs`, the private ones, by its lock. In a repository
 whose main moves more often than the folder does, `changed` names a
 command that prints the newest commit on main changing `directory`; while
 that commit's folder is the one last built, nothing is fetched or built.
+The fetch keeps a reflog for its ref, runs none of git's upkeep in the
+checkout and moves no submodule, and its log says when it ran, how long it
+took, where main moved and how much the objects grew.
 The account's answer only ever spares a fetch, since what's built is
 still a commit the host named. The machine then trusts the host and takes
 no signers:

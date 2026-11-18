@@ -267,7 +267,7 @@
   "modules/update-to-main/src/run.rs" = 9;
   "modules/update-to-main/src/session.rs" = 1;
   "modules/update-to-main/src/system.rs" = 11;
-  "modules/update-to-main/tests/update/main.rs" = 15;
+  "modules/update-to-main/tests/update/main.rs" = 11;
   "modules/v4l2loopback/holders/src/camera.rs" = 5;
   "modules/v4l2loopback/holders/src/holders.rs" = 7;
   "modules/v4l2loopback/holders/src/main.rs" = 4;

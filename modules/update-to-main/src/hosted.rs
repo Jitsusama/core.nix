@@ -29,6 +29,7 @@
 //! gives no token can.
 
 use crate::config::{Config, Hosted};
+use crate::fetch_log;
 use crate::git::{self, Repo};
 use crate::read;
 use crate::run::{self, Account, Failure};
@@ -372,8 +373,30 @@ fn borrow(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fai
 /// fetch of a main that needs nothing from it. Its negotiation and its
 /// check that what came is whole put up with such a branch; only the
 /// graph's write failed the fetch.
+///
+/// The checkout is someone's own, so every move of that ref is logged in
+/// its reflog, whatever the checkout's config says; no submodule's refs
+/// move; and the fetch runs none of git's upkeep after it: a repack of a
+/// large repository takes its disk for an hour, and is the checkout's
+/// owner's to run, so the packs fetches leave are rolled by the owner's
+/// own git and upkeep. Whether it succeeds or fails, it says when it
+/// began, how long it took over how many tries, what main moved from and to,
+/// and how much the checkout's objects grew, since a machine's log
+/// otherwise gives no time and a fetch's size is only known once it's done.
 fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Failure> {
-    git::retried(&git::FETCH_AGAIN, std::thread::sleep, || {
+    let main = format!("refs/update-to-main/{}", config.branch);
+    let read_main = || {
+        let [read, format] = fetch_log::REF_READ;
+        let said = said_by_git(hosted, account, &[read, format, &main]);
+        fetch_log::ref_named(said.as_deref(), &main).map(str::to_owned)
+    };
+    let from = read_main();
+    let before = stored(hosted, account);
+    let began = std::time::SystemTime::now();
+    let timer = std::time::Instant::now();
+    let mut attempts = 0;
+    let tried = git::retried(&git::FETCH_AGAIN, std::thread::sleep, || {
+        attempts += 1;
         let mut command = run::command_as("git".as_ref(), account, &hosted.path, &hosted.checkout);
         git::ending_stalls(&mut command);
         run::output(
@@ -382,15 +405,47 @@ fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fail
             [
                 "-c",
                 "fetch.writeCommitGraph=false",
+                "-c",
+                "core.logAllRefUpdates=always",
+                "-c",
+                "maintenance.auto=false",
                 "fetch",
                 "--quiet",
                 "--no-tags",
+                "--no-recurse-submodules",
                 &config.repository,
                 &format!("+refs/heads/{0}:refs/update-to-main/{0}", config.branch),
             ],
         )
-    })?;
+    });
+    let to = read_main();
+    eprintln!(
+        "{}",
+        fetch_log::line(
+            &hosted.checkout,
+            tried.is_ok(),
+            began,
+            (timer.elapsed().as_secs(), attempts),
+            (from.as_deref(), to.as_deref()),
+            before.zip(stored(hosted, account)),
+        )
+    );
+    tried?;
     Ok(())
+}
+
+/// What git prints for `args`, trimmed, run as the account in its
+/// checkout, or none when it fails.
+fn said_by_git(hosted: &Hosted, account: &Account, args: &[&str]) -> Option<String> {
+    let command = run::command_as("git".as_ref(), account, &hosted.path, &hosted.checkout);
+    let said = run::output(command, "reading the checkout", args).ok()?;
+    Some(said.trim().to_owned())
+}
+
+/// The KiB the checkout's objects take, packed and loose, as git counts
+/// them without reading any object.
+fn stored(hosted: &Hosted, account: &Account) -> Option<u64> {
+    fetch_log::kib_stored(&said_by_git(hosted, account, &fetch_log::COUNT)?)
 }
 
 /// Unpacks the flake's folder at `commit` into a folder of its own, the
