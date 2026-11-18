@@ -303,11 +303,23 @@ fn a_snapshot_is_known_by_its_record_being_shareable() {
     record("worktree", r#""identity":{"key":"w","shareable":false},"#);
     record("unsaid", r#""identity":{"key":"u"},"#);
     record("bare", "");
+    record("odd", r#""identity":{"key":"o","shareable":"yes"},"#);
+    record("strange", r#""identity":"s","#);
     fs::write(records.join("torn.json"), "{\"path\":").unwrap();
     assert_eq!(
         disk_guard::workspaces::pinned_trees(&records),
         [PathBuf::from("/t/snapshot")],
         "only a record that says it's shareable is a snapshot"
+    );
+    // What a record is said to be is read only for this, so an identity
+    // of another shape never costs a tree its holders.
+    let mut held = disk_guard::workspaces::held_trees(&records, |_, _| true);
+    held.sort();
+    assert_eq!(
+        held,
+        ["bare", "odd", "snapshot", "strange", "unsaid", "worktree"]
+            .map(|key| PathBuf::from(format!("/t/{key}"))),
+        "a record whose identity reads otherwise is still held"
     );
 }
 

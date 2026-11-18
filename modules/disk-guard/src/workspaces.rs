@@ -238,15 +238,12 @@ struct Record {
     owners: Vec<Owner>,
     #[serde(default)]
     sessions: Vec<String>,
-    identity: Option<Identity>,
-}
-
-/// What a tree broker's record says a tree is: a snapshot, pinned at a
-/// commit, is shareable between readers; a worktree is one holder's own.
-#[derive(Deserialize)]
-struct Identity {
+    /// What the broker says the tree is: a snapshot, pinned at a commit,
+    /// is shareable between readers; a worktree is one holder's own. Read
+    /// loosely, so an identity of another shape never loses the record,
+    /// and with it who holds the tree.
     #[serde(default)]
-    shareable: bool,
+    identity: serde_json::Value,
 }
 
 /// The trees a tree broker's records in `records` name that nobody holds:
@@ -301,7 +298,7 @@ pub fn held_trees(
 pub fn pinned_trees(records: &Path) -> Vec<PathBuf> {
     read_records(records)
         .into_iter()
-        .filter(|record| record.identity.as_ref().is_some_and(|id| id.shareable))
+        .filter(|record| record.identity["shareable"] == serde_json::Value::Bool(true))
         .map(|record| record.path)
         .collect()
 }
