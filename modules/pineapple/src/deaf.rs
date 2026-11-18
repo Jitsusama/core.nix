@@ -20,20 +20,9 @@ use serde_json::{Value, json};
 /// is a minute of stops unheard.
 pub const ROUNDS: u32 = 2;
 
-/// The words Slack refuses a sign-in with, each fixed by signing in again.
-const REFUSALS: [&str; 5] = [
-    "invalid_auth",
-    "not_authed",
-    "token_revoked",
-    "token_expired",
-    "account_inactive",
-];
-
-/// Whether Slack's word `error` refuses the sign-in itself.
-#[must_use]
-pub fn refuses_the_sign_in(error: &str) -> bool {
-    REFUSALS.contains(&error)
-}
+/// Whether Slack's error word refuses the sign-in itself: the slack
+/// crate's own list, so this reader counts the words slack-unreads does.
+pub use slack_people::refuses_the_sign_in;
 
 /// Why a round read nothing that Joel can fix.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +61,9 @@ pub enum Change {
 pub struct Deaf {
     rounds: u32,
     told: Option<Deafness>,
+    /// When this time of not hearing was first told, in milliseconds,
+    /// which names its row, so each time is a row For You hasn't seen.
+    since: Option<u64>,
     /// Whether a file this program didn't write may still stand, as one
     /// left by the reader before a restart may.
     left: bool,
@@ -91,7 +83,19 @@ impl Deaf {
         Deaf {
             rounds: 0,
             told: None,
+            since: None,
             left: true,
+        }
+    }
+
+    /// That `change` couldn't be made, so the next round makes it again:
+    /// a row not written is told again, one not taken away is taken
+    /// away once Slack is heard.
+    pub fn failed(&mut self, change: &Change) {
+        match change {
+            Change::Tell(_) => self.told = None,
+            Change::Untell => self.left = true,
+            Change::Keep => {}
         }
     }
 
@@ -102,6 +106,7 @@ impl Deaf {
         match round {
             Round::Heard => {
                 self.rounds = 0;
+                self.since = None;
                 let left = std::mem::take(&mut self.left);
                 if self.told.take().is_some() || left {
                     Change::Untell
@@ -116,7 +121,8 @@ impl Deaf {
                 }
                 self.told = Some(why);
                 self.left = false;
-                Change::Tell(waits(why, at))
+                let since = *self.since.get_or_insert(at);
+                Change::Tell(waits(why, since, at))
             }
             Round::Unasked => Change::Keep,
         }
@@ -125,9 +131,12 @@ impl Deaf {
 
 /// What a deaf reader asks of Joel, in the shape every quest's file of
 /// what waits on him takes (`mesh_wait`'s), as slack-unreads' sign-in is:
-/// one item he can do now, known done by the signal `signin:slack`.
+/// one item he can do now, known done by the signal `signin:slack` given
+/// after `since`, when this time of not hearing was first told. The row is
+/// named for `since`: For You says an item it has seen once, and keeps
+/// one Joel marked done gone, by name, so a later time needs its own.
 #[must_use]
-pub fn waits(why: Deafness, at: u64) -> Value {
+pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
     let (said, first) = match why {
         Deafness::Refused => (
             "Slack refused the safe word's sign-in two rounds running",
@@ -152,11 +161,12 @@ pub fn waits(why: Deafness, at: u64) -> Value {
         "updated": slack_people::messages::iso(at),
         "quest": "pineapple",
         "items": [{
-            "id": "pineapple-slack-deaf",
+            "id": format!("pineapple-slack-deaf-{since}"),
             "title": "The Safe Word Can't Hear Slack",
             "why": format!(
-                "{said}, so a stop said in Slack isn't heard; GitHub and Delta still hear one"
+                "{said}, so a stop said in Slack isn't heard; one said elsewhere still is"
             ),
+            "raisedAt": slack_people::messages::iso(since),
             "minutes": 1,
             "ready": true,
             "doneWhen": {"signal": "signin:slack"},

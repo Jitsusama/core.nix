@@ -15,7 +15,7 @@ use super::{JOEL, PACE, PATIENCE, decisions, each, home, stand_in, until_decided
 /// The reader started in `home` against `origin`, its keyring a stand-in
 /// secret-tool running `script`, which `{sign_in}` in prints the sign-in
 /// of, and its journal written to home/journal.
-fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> Child {
+pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> Child {
     let sign_in = json!({"token": {
         "accessToken": "xoxc-stand-in", "cookie": "stand-in", "teamId": "T0TEAM0001",
         "userId": JOEL,

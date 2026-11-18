@@ -397,8 +397,10 @@ fn run(how: &Run) -> Result<(), Failure> {
             }
             None => Round::Deaf(Deafness::NoSignIn),
         };
-        if let Err(error) = deaf::make(&waiting, &deaf.heard(heard, millis())) {
-            eprintln!("<3>couldn't tell Joel in For You that Slack isn't heard: {error}");
+        let change = deaf.heard(heard, millis());
+        if let Err(error) = deaf::make(&waiting, &change) {
+            eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
+            deaf.failed(&change);
         }
         std::thread::sleep(how.every);
     }
