@@ -120,6 +120,9 @@ impl Gate {
             .args(["resume", &format!("rm -f {shown}")])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
+            // Off the terminal, since a background group writing to one
+            // set to tostop is stopped, unseen, and would read as alive.
+            .stderr(Stdio::null())
             // In a group of its own, so a Ctrl-C or a closed terminal
             // reaches the proof alone, which then ends it, rather than
             // ending it first and reading as a swayidle lost.
