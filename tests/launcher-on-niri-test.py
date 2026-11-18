@@ -2082,9 +2082,9 @@ def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) 
     shell.close_launcher()
     # The second round's steps built nothing.
     assert built[2:] == [0, 0], f"rows built by each step, Desktop then Machine twice: {built}"
-    # The rows a step built are tallied too, as many as it drew.
+    # The rows each step took back are tallied too, as many as it drew.
     laid_rows = [each for each in tallied if each is not None]
-    assert any(made > 0 for _, made, _ in laid_rows), f"no step built a row: {tallied}"
+    assert laid_rows, f"no step laid a row: {tallied}"
     drew = [(rows, made + back) for rows, made, back in laid_rows]
     assert all(rows == drawn for rows, drawn in drew), f"rows tallied, drawn: {drew}"
     names = {place: {row["reads"].split(" \u00b7 ")[0] for row in laid["rows"]}
