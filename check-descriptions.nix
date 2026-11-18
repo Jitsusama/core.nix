@@ -3307,7 +3307,8 @@
   '';
   the-camera-takes-its-loopback = ''
     the XPS 14's camera service takes the loopback of its name already there, held or not, adds one
-    only when there's none, and deletes the others of its name where nothing holds them
+    only when there's none, deletes the others of its name where nothing holds them, and of
+    several keeps one a program holds
   '';
   the-camera-takes-the-one-plugged-in = ''
     the camera program takes a camera on a removable USB port over the machine's own while it's

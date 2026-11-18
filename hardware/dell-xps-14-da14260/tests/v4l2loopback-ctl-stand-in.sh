@@ -5,7 +5,7 @@
 # refuses a loopback a program has open.
 set -euo pipefail
 
-sysfs=$LOOPBACK_SYSFS
+sysfs=${LOOPBACK_SYSFS:?the stand-in lists its loopbacks in LOOPBACK_SYSFS}
 case $1 in
 add)
   shift

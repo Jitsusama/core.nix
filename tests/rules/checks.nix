@@ -184,6 +184,9 @@
         boot-fell-back = script "boot-fell-back" ../../modules/lanzaboote/fell-back.sh { };
         boot-fell-back-told = script "boot-fell-back-told" ../../modules/lanzaboote/fell-back-told.sh { };
         camera = script "camera" ../../modules/camera/camera.sh { };
+        camera-loopback =
+          script "camera-loopback" ../../hardware/dell-xps-14-da14260/camera/loopback.sh
+            { };
         cargo-builds = script "cargo-builds" ../../modules/cargo/builds.sh { };
         chrony-network-servers =
           script "chrony-network-servers" ../../modules/chrony/network-servers.sh

@@ -173,10 +173,8 @@ in
       inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.systemd.services.camera)
         preStart
         ;
-      startsWithIt =
-        builtins.match "/nix/store/[^ ]*/bin/camera-loopback 'Built-in Camera' .*" (
-          builtins.unsafeDiscardStringContext preStart
-        ) != null;
+      itsStart = "/nix/store/[^ ]*/bin/camera-loopback 'Built-in Camera' /run/camera/device -b 4 -x 1";
+      startsWithIt = builtins.match itsStart (builtins.unsafeDiscardStringContext preStart) != null;
     in
     pkgs.runCommandLocal "the-camera-takes-its-loopback" { } ''
       ${lib.optionalString (!startsWithIt) ''

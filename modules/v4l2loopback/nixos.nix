@@ -123,7 +123,7 @@ in
       lib.nameValuePair "${name}-holders" {
         description = "Says which programs have ${name} open";
         # It starts once the camera's service has made the loopback, and
-        # stops and starts with it, since each start makes a new one.
+        # stops and starts with it, since a start may name another one.
         bindsTo = [ camera.unit ];
         after = [ camera.unit ];
         wantedBy = [ camera.unit ];
