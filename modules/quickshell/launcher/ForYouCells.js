@@ -64,8 +64,9 @@ function laidOut(groups, rowsOf, headingOf, asked) {
 // its address, while the daemon says neither; and Joel's own heading where
 // no cell is, each from on:waiting's words (`said`).
 function headingName(cell, served, said) {
-    if (cell === null)
+    if (cell === null) {
         return String(said.yours ?? "");
+    }
     const title = String(served?.name || cell.title || String(cell.address ?? "").toUpperCase());
     const doing = String(served?.doing ?? "");
     return doing === "" ? title : filledOnce(said.cell, { title, doing });
@@ -75,6 +76,6 @@ function headingName(cell, served, said) {
 // never read again: filled key by key, a title holding "{doing}" was
 // filled a second time, and String.replace read "$&" in one as a pattern.
 function filledOnce(template, fill) {
-    return String(template ?? "").replace(/\{(\w+)\}/g, (whole, key) =>
-        Object.prototype.hasOwnProperty.call(fill, key) ? String(fill[key]) : whole);
+    return String(template ?? "").replace(/\{(?<key>\w+)\}/gu, (whole, key) =>
+        Object.keys(fill).includes(key) ? String(fill[key]) : whole);
 }
