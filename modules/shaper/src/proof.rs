@@ -348,21 +348,7 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
         .map_err(|e| Failure::new(Exit::Config, e))?;
     let marker = stop::marker();
     // Held to the end, released however the proof ends.
-    let _alone = match &marker {
-        Some(m) => Some(stop::alone(m).map_err(|why| {
-            match why {
-                stop::NotAlone::Another(who) => Failure::new(
-                    Exit::TryAgain,
-                    format!("another proof is running, pid {who}"),
-                )
-                .because("two at once would load the link twice"),
-                stop::NotAlone::Unopened(e) => {
-                    Failure::new(Exit::Unavailable, "couldn't open the proof's lock").because(e)
-                }
-            }
-        })?),
-        None => None,
-    };
+    let _alone = marker.as_deref().map(alone).transpose()?;
     let Some(gate) = Gate::new(waits) else {
         return Err(Failure::new(
             Exit::Unavailable,
@@ -446,6 +432,20 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
             "the shaper didn't beat the router",
         ))
     }
+}
+
+/// The lock beside `marker` that only one proof holds at a time.
+fn alone(marker: &std::path::Path) -> Result<fs::File, Failure> {
+    stop::alone(marker).map_err(|why| match why {
+        stop::NotAlone::Another(who) => Failure::new(
+            Exit::TryAgain,
+            format!("another proof is running, pid {who}"),
+        )
+        .because("two at once would load the link twice"),
+        stop::NotAlone::Unopened(e) => {
+            Failure::new(Exit::Unavailable, "couldn't open the proof's lock").because(e)
+        }
+    })
 }
 
 /// How a proof ends before its verdict counts: 69 when the shaper isn't
