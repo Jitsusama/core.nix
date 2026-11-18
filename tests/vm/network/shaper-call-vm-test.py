@@ -76,6 +76,8 @@ class Rig:
     client: BaseMachine
     router: BaseMachine
     server: BaseMachine
+    # Every machine's counts as the loads that are on started, for a failure's trace.
+    since: str | None = None
 
     def cake(self, dev: str) -> Json:
         """Give the CAKE on one of the client's devices, with its counts: on a link, Joel's."""
@@ -124,6 +126,8 @@ class Rig:
             if status not in (0, NOT_LOADED):
                 print(f"the loads in {unit} wouldn't stop: {reply.strip()}")
                 stuck.append(unit)
+            # A unit that failed stays loaded, stopped or not, and takes its name with it.
+            self.client.execute(f"systemctl -M alice@ --user reset-failed {unit}.service")
         return stuck
 
     def calls(self, names: list[str] | None = None, seconds: int = CALL_SECONDS) -> dict[str, Json]:
@@ -190,24 +194,26 @@ class Rig:
                 said(self.client, f"tc -s qdisc show dev {self.ifb()}"),
                 said(self.client, "nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
                 said(self.router, "tc -s qdisc show dev eth1; tc -s qdisc show dev eth2"),
+                said(self.router, "nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
                 said(self.server, "nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
             ]
         )
 
-    def trace(self, before: str | None = None) -> str:
+    def trace(self) -> str:
         """Give what the shaper said, held and heard, and every count, for a failure.
 
         Each part that can't be read says so rather than raising, since a failure's trace is
         taken when things are wrong: with the shaper stopped, its status and IFB are gone.
-        Given the counts from before what failed, it gives them beside those after.
+        The counts from when the loads started come beside those now, so they tell this
+        test's losses from every earlier test's.
         """
         parts = [
             self.seconds(),
             said(self.client, "journalctl -u shaper -o cat --no-pager"),
             said(self.client, "cat /run/shaper/status.json"),
         ]
-        if before is not None:
-            parts.append(f"counted before:\n{before}\ncounted after:")
+        if self.since is not None:
+            parts.append(f"counted as the loads started:\n{self.since}\ncounted now:")
         parts.append(self.counted())
         return "\n".join(parts)
 
@@ -264,6 +270,7 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
     upload = f"{BIN}/cat /dev/zero > /dev/tcp/{FAR}/{SINK_PORT}"
     rx = "cat /sys/class/net/eth1/statistics/rx_bytes"
     first = int(rig.client.succeed(rx))
+    rig.since = rig.counted()
     loads = [
         ("jobs-downloads", "jobs.slice", JOBS_DOWNLOADS, download),
         ("jobs-uploads", "jobs.slice", JOBS_UPLOADS, upload),
@@ -379,12 +386,11 @@ def test_unshaped(rig: Rig) -> None:
     shaper's.
     """
     rig.client.succeed("systemctl stop shaper.service")
-    before = rig.counted()
     lost = under_load(rig, shaped=False)
     if any(ways["down"] > DOWN_MOST for ways in lost.values()):
         # Unshaped, only the router's queues and the machines' own gaps are left to lose
-        # them, which their counts before and after tell apart.
-        trace = rig.trace(before)
+        # them, which their counts as the loads started and now tell apart.
+        trace = rig.trace()
         for name, ways in lost.items():
             assert ways["down"] <= DOWN_MOST, (
                 f"the {name} call lost {ways['down']} datagrams down unshaped,"
