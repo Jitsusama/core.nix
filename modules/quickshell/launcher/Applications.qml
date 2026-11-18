@@ -1867,6 +1867,7 @@ Provider {
         };
     }
     function sendsOf(past, entry) {
+        sendsCounted.asked += 1;
         if (!past)
             return false;
         const looked = {};
@@ -1902,6 +1903,8 @@ Provider {
     // check that each asks once a change of who plays; plain, as
     // stepsCounted is.
     readonly property var playsCounted: ({ asked: 0 })
+    // And whether its notices are there, for the same check of the notices.
+    readonly property var sendsCounted: ({ asked: 0 })
 
     // Whether anything plays for a held program as it did, asked again
     // only once who plays changed since.
@@ -2049,9 +2052,11 @@ Provider {
     }
     // And as the desktop entries are read, which a program's own acts are
     // made again on, since an act's program is found by its entry. Held
-    // answers go then too: an entry read again is a new object, which a
-    // held answer already refuses, but what other sources take (taken())
-    // can change a closed program's step while its entry stays.
+    // answers go then too: an entry read again as a new object is already
+    // refused, but a player's, a stream's or a notice's sender is found
+    // by its name among all the entries (names()), so one installed can
+    // make what plays or sends a held program's while its entry stays.
+    // No case reads the entries again, as DesktopEntries can't be stood in.
     onOwnActsChanged: {
         startsAgain();
         optedAgain();

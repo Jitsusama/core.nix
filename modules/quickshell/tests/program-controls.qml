@@ -668,6 +668,10 @@ ShellRoot {
             same("another program's notice coming leaves its answer held",
                 `${program("lone").actsOnly} ${applications.stepsCounted.made - root.noticeAsked}`,
                 "true 0");
+            const sendsAsked = applications.sendsCounted.asked;
+            same("and asked again, it isn't asked whether its notices are there",
+                `${program("lone").actsOnly} ${applications.sendsCounted.asked - sendsAsked}`,
+                "true 0");
             root.waiting = "lone's notice";
             Notices.history = Notices.history.concat([{ id: 5, at: Date.now(), app: "Lone",
                 summary: "Done", body: "", read: true, missed: false }]);
@@ -1103,8 +1107,9 @@ ShellRoot {
             playerTitled.trackTitle = title;
             playerTitled.isPlaying = !playerTitled.isPlaying;
             playing.volume = volumeWas;
-            // A stream of no program's coming and going, as an agent's done
-            // chime's does, asks each held answer only whether it plays.
+            // A stream of no program's changing who plays, as an agent's done
+            // chime's does, asks each held answer only whether it plays: here
+            // one renamed, a listed stream's way in being Lone's own below.
             const chimed = applications.stepsCounted.made;
             const chimeAsked = applications.playsCounted.asked;
             playing.name = "A chime";
