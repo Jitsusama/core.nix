@@ -4,7 +4,7 @@
 
 use std::process::ExitCode;
 
-use crate::answers::{Verdict, keep};
+use crate::answers::{Rerun, Verdict, keep};
 use crate::state::short;
 
 /// A list each change adds a line to, which on a busy day main moves in
@@ -112,7 +112,7 @@ pub fn say(
                     .collect::<Vec<_>>()
                     .join(" and ")
             );
-            keep(commit, Verdict::Regate, shared);
+            keep(commit, Verdict::Regate(Rerun::Lists), shared);
         }
         Lists::Broken(why) => eprintln!(
             "merge-net: {} at {} no longer reads as the net's list: {why}",
