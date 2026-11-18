@@ -77,6 +77,7 @@ import "launcher/Flash.js" as Flash
 import "launcher/Spots.js" as Spots
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
+import "launcher/Held.js" as Held
 import "launcher/Joined.js" as Joined
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
@@ -5946,21 +5947,46 @@ Scope {
         // enter made it: only the steps below it were, so Now stepped into
         // kept a row that had left it, undimmed, until it was left (PN2VZC,
         // a7b9d465: Work Network's row, past 30 s in one of four runs).
-        if (from >= 0) {
-            const step = steps[from];
-            const into = inside(step.row,
-                asThing(step.row, from === 0 || collects(steps[from - 1])));
-            if (into) {
-                steps[from] = Object.assign({}, step, {
-                    rows: Steady.kept(step.rows, into, pairedId)
-                });
-            }
-        }
-        const above = top ? own : from < 0 ? [] : source.everything();
+        const offered = from < 0 ? [] : source.everything();
+        if (from >= 0 && !heldAgain(steps, Held.own(steps, from, offered, heldWays())))
+            return false;
+        const above = top ? own : offered;
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
             return false;
         held = steps;
         return true;
+    }
+
+    // How Held.js finds a held step's row among those offered now, what a
+    // row stepped into offers, as enter makes it, and how those rows keep
+    // the order the step shows them in.
+    function heldWays() {
+        return {
+            same: sameRow,
+            into: (thing, at, steps) => inside(thing,
+                asThing(thing, at === 0 || collects(steps[at - 1]))),
+            keep: (step, into) => Steady.kept(step.rows, into, pairedId)
+        };
+    }
+
+    // Held.js's steps made again put back into `steps`, the array each
+    // caller holds; a step Held.js says to leave, one still offered that
+    // now offers nothing, is left as Joel's - would leave it, back to the
+    // step above it. Says whether every step was made again.
+    function heldAgain(steps, made) {
+        made.steps.forEach((step, at) => {
+            steps[at] = step;
+        });
+        if (made.leave < 0)
+            return made.all;
+        // A dialog's own collection is never left, for the home it never
+        // showed (canGoUp).
+        const outermost = steps[0]?.row.from?.collection?.outermost === true;
+        const leave = Math.max(made.leave, outermost ? 1 : 0);
+        held = steps;
+        while (held.length > leave)
+            back();
+        return false;
     }
 
     // Each step from `from` on made again from the rows the one above it
@@ -5972,22 +5998,8 @@ Scope {
     // picker holds at home is found from any folder. Says whether every
     // step was still there.
     function remade(steps, from, above) {
-        let rows = above ?? (from > 0 && from <= steps.length ? steps[from - 1].rows : []);
-        for (let at = from; at < steps.length; at++) {
-            const step = steps[at];
-            const thing = rows.find(row => sameRow(row, step.row))
-                ?? ((step.typed ?? "") !== "" ? step.row : undefined);
-            const things = !!thing && asThing(thing, at === 0 || collects(steps[at - 1]));
-            const into = !thing ? null : inside(thing, things);
-            if (!into)
-                return false;
-            steps[at] = Object.assign({}, step, {
-                row: thing,
-                rows: Steady.kept(step.rows, into, pairedId)
-            });
-            rows = into;
-        }
-        return true;
+        const rows = above ?? (from > 0 && from <= steps.length ? steps[from - 1].rows : []);
+        return heldAgain(steps, Held.remade(steps, from, rows, heldWays()));
     }
 
     // What's shown searched again under what's held now, `count` steps,
