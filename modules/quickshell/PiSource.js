@@ -125,6 +125,13 @@ function movesShut(answer) {
 // changes, about one a second, start a garbage collection of its own (303
 // in 300 changes, against 12 compared in place, in Qt's engine on
 // 2026-11-10).
+//
+// Stepped through by index, with no function made inside it: Qt's engine
+// keeps each call's arguments on the heap for any function holding one
+// that reads them, whether or not that call makes it, so comparing Joel's
+// sessions and runs at each change made 188,592 of them between two of
+// the collector's runs on 2026-11-17, the most of anything his shell made
+// then.
 function alike(before, after) {
     if (before === after) {
         return true;
@@ -134,16 +141,30 @@ function alike(before, after) {
         return false;
     }
     if (Array.isArray(before)) {
-        return before.length === after.length && before.every((one, at) => alike(one, after[at]));
+        if (before.length !== after.length) {
+            return false;
+        }
+        for (let at = 0; at < before.length; at += 1) {
+            if (!alike(before[at], after[at])) {
+                return false;
+            }
+        }
+        return true;
     }
-    return fieldsAlike(before, after, []);
+    return fieldsSaid(before, after) && fieldsSaid(after, before);
 }
 
-// Whether two objects say the same in every field but those passed over,
-// as Windows.qml keeps a window's row while only what it passes over moved.
-function fieldsAlike(before, after, passed) {
-    const told = name => passed.includes(name) || alike(before[name], after[name]);
-    return Object.keys(before).every(told) && Object.keys(after).every(told);
+// Whether each field `one` has says in `other` what it says in `one`, a
+// field one leaves undefined being one not said. Asked both ways, since
+// alike is the same either way round.
+function fieldsSaid(one, other) {
+    const names = Object.keys(one);
+    for (let at = 0; at < names.length; at += 1) {
+        if (!alike(one[names[at]], other[names[at]])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // Copies the fields named from `from` that are said, so one unsaid is

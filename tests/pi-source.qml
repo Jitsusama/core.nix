@@ -203,7 +203,11 @@ QtObject {
         const pairs = [[{ a: 1, b: [1, { c: "x" }] }, { b: [1, { c: "x" }], a: 1 }, true],
             [{ a: 1, b: undefined }, { a: 1 }, true], [{ a: null }, {}, false],
             [[1, 2], [1, 2, 3], false], [[], {}, false], [{ a: [1] }, { a: [2] }, false],
-            ["1", 1, false], [{ a: { b: 1 } }, { a: { b: 1, c: 2 } }, false]];
+            ["1", 1, false], [{ a: { b: 1 } }, { a: { b: 1, c: 2 } }, false],
+            [[{ a: [{ b: 1 }] }, { c: "x" }], [{ a: [{ b: 1 }] }, { c: "x" }], true],
+            [[{ a: [{ b: 1 }] }, { c: "x" }], [{ a: [{ b: 2 }] }, { c: "x" }], false],
+            [{ a: undefined, b: 1 }, { b: 1, c: undefined }, true], [[1, 2, 3], [1, 2, 4], false],
+            [{ a: 1, b: 2 }, { a: 1, b: 3 }, false]];
         const missaid = pairs.filter(([before, after, same]) => Pi.alike(before, after) !== same
             || Pi.alike(after, before) !== same);
         expect("lists and records are alike only where their JSON would be",
