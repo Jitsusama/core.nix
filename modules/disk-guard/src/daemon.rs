@@ -2955,7 +2955,7 @@ fn spent_trees(
         })
         .flat_map(|(quests, trees, sessions, rosters)| {
             let unheld = trees.as_deref().map_or_else(Vec::new, |records| {
-                crate::workspaces::unheld_trees(records, quests, running)
+                crate::workspaces::unheld_trees(records, quests, rosters.as_deref(), running)
             });
             let idle = sessions.as_deref().map_or_else(Vec::new, |sessions| {
                 crate::workspaces::idle_trees(quests, sessions, rosters.as_deref(), boot, alive)
@@ -2979,11 +2979,14 @@ fn held_trees(config: &Config, running: impl Fn(u32, f64) -> bool + Copy) -> Vec
         .filter_map(|source| match source {
             Source::Workspaces {
                 trees: Some(records),
+                rosters,
                 ..
-            } => Some(records),
+            } => Some((records, rosters)),
             _ => None,
         })
-        .flat_map(|records| crate::workspaces::held_trees(records, running))
+        .flat_map(|(records, rosters)| {
+            crate::workspaces::held_trees(records, rosters.as_deref(), running)
+        })
         .collect()
 }
 
