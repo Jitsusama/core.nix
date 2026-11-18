@@ -8,7 +8,9 @@ nothing.
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. It proves the wiring alone, one path through each
 connection: how long a line must be shown, a digest that changed, a command that ends first and
-what the fence hides are the passwords daemon's own tests' (modules/passwords/tests/asks), and
+what the fence hides are the passwords daemon's own tests' (modules/passwords/tests/asks), but for
+one file it empties, Docker's settings, here through bubblewrap itself where those run a stand-in,
+and
 what Asks sends for each press is asks-over's (tests/asks-over.qml). Every test asks for the
 desktop, started once a run (desktop_session.py), and gives each ask a why of its own, which its
 line's drawer says, so a line answered earlier is never taken for it. Each test's asks are taken
@@ -45,6 +47,11 @@ FENCE_LIST = (
 )
 # The tree the ask's command runs in, the one place besides the caches it may write.
 TREE = "~/asked"
+# Docker's settings with a registry's made-up login, which the fence's list empties for the
+# command, and the settings saying nothing bound over them.
+DOCKER = "~/.docker/config.json"
+DOCKER_LOGIN = '{"auths": {"registry.example": {"auth": "ZG9ja2VyLW1hZGUtdXA="}}}'
+EMPTIED = "{}"
 # Past the key language's wait (300 ms) and the daemon's least time a line is shown (500 ms), so
 # a second Return is neither taken for the first doubled nor refused as unread.
 PAST_THE_READING = 1.0
@@ -57,10 +64,20 @@ def asking(desktop: Desktop) -> Iterator[None]:
     An ask taken away is let go (modules/secret-asks/tests/daemon.rs), so one a failed test left
     waiting can't be answered by the next test's keys.
     """
-    fence = json.dumps({"version": 1, "home": [], "sshKept": [], "npmrc": None})
+    fence = json.dumps(
+        {
+            "version": 1,
+            "home": [],
+            "sshKept": [],
+            "npmrc": None,
+            "emptied": [{"path": ".docker/config.json", "when": ["auths"]}],
+        }
+    )
     desktop.as_account(
-        f"mkdir -p $(dirname {FENCE_LIST}) {TREE} && printf %s {shlex.quote(fence)} > {FENCE_LIST}"
-        f" && rm -f {TREE}/released"
+        f"mkdir -p $(dirname {FENCE_LIST}) $(dirname {DOCKER}) {TREE}"
+        f" && printf %s {shlex.quote(fence)} > {FENCE_LIST}"
+        f" && printf %s {shlex.quote(DOCKER_LOGIN)} > {DOCKER}"
+        f" && rm -f {TREE}/released {TREE}/docker"
     )
     yield
     if desktop.showing()["open"]:
@@ -77,10 +94,14 @@ def put_up(desktop: Desktop, ask: str, why: str) -> None:
     """Put an ask up as the harness does, written aside and renamed into place.
 
     Its command writes the digest of the value it's given into its tree, so the test sees it
-    arrive, and prints the value itself, so the answer's output shows it masked.
+    arrive, and prints the value itself, so the answer's output shows it masked. It copies
+    Docker's settings as it reads them there too, first and whatever comes of it, so a test sees
+    what the fence left it of them.
     """
     asked_ms = int(desktop.as_account("date +%s%3N").strip())
-    command = 'printf %s "$GIVEN" | sha256sum > released && printf %s "$GIVEN"'
+    command = (
+        f'cat {DOCKER} > docker; printf %s "$GIVEN" | sha256sum > released && printf %s "$GIVEN"'
+    )
     said = json.dumps(
         {
             "version": 1,
@@ -188,7 +209,11 @@ def read_nowhere(desktop: Desktop) -> None:
 
 
 def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> None:
-    """Joel's yes, Return twice on the ask's line, releases the value into its command alone."""
+    """Joel's yes, Return twice on the ask's line, releases the value into its command alone.
+
+    Bubblewrap itself takes the settings saying nothing bound over Docker's, and the command
+    reads those rather than the login.
+    """
     ask = "0123456789abcdef0123456789abcdef"
     why = "To fire the kiln."
     put_up(desktop, ask, why)
@@ -205,6 +230,8 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer
     given = desktop.as_account(f"cat {TREE}/released").split()[0]
     assert given == hashlib.sha256(STAND_IN.encode()).hexdigest(), "the command wasn't given it"
+    docker = desktop.as_account(f"cat {TREE}/docker").strip()
+    assert docker == EMPTIED, f"the command read Docker's settings as {docker!r}"
     assert answer["output"], f"the command's output isn't in its answer: {answer}"
     assert STAND_IN not in json.dumps(answer), answer
     read_nowhere(desktop)
