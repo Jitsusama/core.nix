@@ -246,11 +246,12 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
     (thing, named)
 }
 
-/// How long ago, in the largest whole unit up to hours.
+/// How long ago, in whole hours, and under the first hour as one span.
+/// The words stand still for an hour at a time: minutes changed them every
+/// minute, and every watcher of the record was sent them again each time.
 fn ago_said(seconds: u64) -> String {
     match seconds {
-        0..60 => "just now".to_owned(),
-        60..3_600 => format!("{} ago", count(seconds / 60, "minute", "minutes")),
+        0..3_600 => "under an hour ago".to_owned(),
         _ => format!("{} ago", count(seconds / 3_600, "hour", "hours")),
     }
 }
@@ -527,19 +528,32 @@ mod tests {
             part.says
         );
         cut["firmware"]["error_before_boot"] = json!(90);
-        let part = machines(&Ok(realm(&[cut])), &Err(String::new()), None, None);
+        let part = machines(
+            &Ok(realm(std::slice::from_ref(&cut))),
+            &Err(String::new()),
+            None,
+            None,
+        );
         assert_eq!(
             part.things[0].says,
-            "booted 1 minute ago after a firmware error"
+            "booted under an hour ago after a firmware error"
+        );
+        // Read again later in the same hour, the machine says the same.
+        cut["firmware"]["error_before_boot"] = json!(3_500);
+        let later = machines(&Ok(realm(&[cut])), &Err(String::new()), None, None);
+        assert_eq!(
+            later.things[0], part.things[0],
+            "a later read in the same hour changed the machine"
         );
     }
 
     #[test]
-    fn how_long_ago_is_said_in_its_largest_whole_unit() {
-        assert_eq!(ago_said(59), "just now");
-        assert_eq!(ago_said(60), "1 minute ago");
-        assert_eq!(ago_said(3_599), "59 minutes ago");
+    fn how_long_ago_is_said_in_whole_hours() {
+        assert_eq!(ago_said(0), "under an hour ago");
+        assert_eq!(ago_said(60), "under an hour ago");
+        assert_eq!(ago_said(3_599), "under an hour ago");
         assert_eq!(ago_said(3_600), "1 hour ago");
+        assert_eq!(ago_said(7_199), "1 hour ago");
         assert_eq!(ago_said(7_200), "2 hours ago");
     }
 
