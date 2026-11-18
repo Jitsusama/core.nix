@@ -251,18 +251,29 @@ QtObject {
             [heardLate.beats.map(beat => beat.name).slice(0, 3),
                 posed(heardLate, "rides").every(one => one.pose === "falling"), ends(heardLate)],
             [["rides", "lands", "shakes"], true, [532, 399]]);
-        // Or the shell sat it on the row below as that row came into its
-        // place, before it heard of the close: it falls all the same,
-        // never riding the row below down as the window over it grows (a
-        // builder's nested niri, every gate from 2026-11-17 06:26: rides,
-        // turns, lands).
-        const seatedBelow = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
-            hurried: true, closed: true, on: 8, cols: Paths.columns(grown, 0),
-            before: Paths.columns(belowInPlace, 0), ahead: 63, frame: 1000 / 120 }));
-        expect("sat on the row below as it moved into place, then heard to close, it falls",
-            [seatedBelow.beats.map(beat => beat.name).slice(0, 3),
-                posed(seatedBelow, "rides").every(one => one.pose === "falling"),
-                ends(seatedBelow)],
+        // Every walk the close sets going is the close's, its target moved
+        // before its first step or its seat laid out again: the shell walks
+        // it as closed under it, even seated on the row below once that
+        // moved into place, never as sat on a row that then goes down, which
+        // it rides (a builder's nested niri, every gate from 2026-11-17
+        // 06:26: rides, turns, lands).
+        const closeKept = { on: 7, at: 1000, saw: rows, gone: false, stands: 8,
+            seen: belowInPlace };
+        const keptHeard = MarginCat.closeHeard(closeKept, 1999);
+        expect("a walk the close set going, its target moved, hears the close as at the close",
+            [keptHeard.closed, keptHeard.on, keptHeard.before === rows,
+                MarginCat.closeHeard(Object.assign({}, closeKept, { on: null }), 1001).on,
+                MarginCat.closeHeard(closeKept, 2000).closed,
+                MarginCat.closeHeard(closeKept, 2000).before === belowInPlace],
+            [true, 7, true, 8, false, true]);
+        const replanned = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
+            hurried: true, closed: keptHeard.closed, on: keptHeard.on,
+            cols: Paths.columns(grown, 0), before: Paths.columns(keptHeard.before, 0),
+            ahead: 63, frame: 1000 / 120 }));
+        expect("its walk set again as the column's laid out, it falls onto the row below",
+            [replanned.beats.map(beat => beat.name).slice(0, 3),
+                posed(replanned, "rides").every(one => one.pose === "falling"),
+                ends(replanned)],
             [["rides", "lands", "shakes"], true, [532, 399]]);
         const opened = ided.concat([{ id: 9, left: 432, top: 500, width: 400, height: 284,
             column: 1 }]);

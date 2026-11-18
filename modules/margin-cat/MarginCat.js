@@ -66,8 +66,27 @@ const LEAVES = 250;
 
 // How long after the window it sat on closed the next change of its column
 // is still that close's, in ms: niri lays the column out again once the
-// windows left have resized, which it waits on for at most 300 ms.
-const CLOSING = 500;
+// windows left have resized, which it waits on for at most 300 ms, and a
+// busy machine's shell hears of it later still.
+const CLOSING = 1000;
+
+// What a walk set going hears of the window it sat on closing, the
+// `close` the screen keeps (the window it was `on`, `at` when, and the
+// windows as it `saw` them then) as it is `now`: within CLOSING, that
+// window gone, as the one it stood on, and the windows as they were at
+// the close, so every walk the close sets going is the close's, its
+// target moved before its first step or its seat laid out again once
+// the windows left have resized, and falls rather than riding the row
+// below down sitting (a builder's nested niri, 2026-11-17: niri moved
+// that row up into the closed one's place as the cat set off, and it
+// rode, turned and landed). After, as it `stands` now: the window it
+// stands on, whether that's `gone`, and the windows it last `seen`.
+function closeHeard(close, now) {
+    if (close.on !== null && close.on !== undefined && now - close.at < CLOSING) {
+        return { closed: true, on: close.on, before: close.saw };
+    }
+    return { closed: close.gone, on: close.stands, before: close.seen };
+}
 
 // A walk's beats, in ms at the theme's pace, each a pose of the theme's own
 // (Joel, 2026-11-12: "proper smooth animations with character to them"):
