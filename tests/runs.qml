@@ -37,8 +37,9 @@ ShellRoot {
     readonly property string answer: "/state/subagent-workflow/runs/fleet-live/reviewers/b/result.json"
 
     // As the node serves them: a fleet at work, its session parked, one of
-    // its two done; a council done, named for its change; and a fleet the
-    // node still says runs, whose session is gone.
+    // its two done; a council done, named for its change, started after the
+    // fleet, so only its being at work lists the fleet first; and a fleet
+    // the node still says runs, whose session is gone.
     readonly property var records: [
         {
             key: "run:fleet.fleet-live", kind: "run", id: "fleet.fleet-live", about: "fleet-live",
@@ -52,14 +53,13 @@ ShellRoot {
         {
             key: "run:review.council-20261022T100000000-000001", kind: "run",
             id: "review.council-20261022T100000000-000001", about: "core.nix#380",
-            parent: "s-gone", state: "done", since: "2026-10-22T10:00:00.000Z",
-            ended: "2026-10-22T10:03:00.000Z", "pi.cost.usd": 1.25,
+            parent: "s-gone", state: "done", since: ago(5), ended: ago(2), "pi.cost.usd": 1.25,
             members: [
                 { id: "tests", state: "complete", model: "anthropic/opus",
-                    since: "2026-10-22T10:00:00.000Z", ended: "2026-10-22T10:02:00.000Z",
+                    since: ago(5), ended: ago(3),
                     "pi.cost.usd": 0.5 },
                 { id: "safety", state: "complete", model: "anthropic/opus",
-                    since: "2026-10-22T10:00:30.000Z", ended: "2026-10-22T10:03:00.000Z",
+                    since: ago(4.5), ended: ago(2),
                     "pi.cost.usd": 0.75 }
             ]
         },
