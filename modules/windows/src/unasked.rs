@@ -10,11 +10,16 @@
 //!
 //! Only a window opened while the stream runs is said: what's there as it
 //! begins was said when it opened, or opened before the daemon ran.
-//! Nothing is closed; the line names the unit and the folder it ran in, so
-//! the agent behind it can be found.
+//! The line names the unit and the folder it ran in, so the agent behind
+//! it can be found.
+//!
+//! One that asks for a password is closed as well, and Joel told why
+//! (`prompts`): an agent's test put a keyring's prompt on his screen twice
+//! on 2026-11-17, and he typed his real password into it (ISXEG8).
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -23,6 +28,8 @@ use crate::desktop::app_of;
 /// An agent's window, as the journal says it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Unasked {
+    /// The window's id, as niri says it.
+    pub window: u64,
     /// The window's app id, as niri says it.
     pub app: String,
     /// The window's title.
@@ -61,7 +68,8 @@ impl Watched {
             }
             "WindowOpenedOrChanged" => {
                 let window = &said["window"];
-                if !self.windows.insert(window["id"].as_u64()?) {
+                let id = window["id"].as_u64()?;
+                if !self.windows.insert(id) {
                     return None;
                 }
                 let app = window["app_id"].as_str()?;
@@ -71,6 +79,7 @@ impl Watched {
                 let pid = u32::try_from(window["pid"].as_u64()?).ok()?;
                 let unit = agents_unit(&cgroup(pid)?)?.to_owned();
                 Some(Unasked {
+                    window: id,
                     app: app.to_owned(),
                     title: window["title"].as_str().unwrap_or_default().to_owned(),
                     unit,
@@ -117,14 +126,71 @@ pub fn line(unasked: &Unasked) -> String {
     )
 }
 
+/// Whether an agent's window asks for a password, by the app id it names
+/// itself with: a keyring's prompter (gcr-prompter, gnome-keyring's
+/// `SystemPrompter`), gpg's pinentry, ssh's askpass in each of its kinds, or
+/// a polkit agent. polkit already refuses an agent's asks (ISXEG8, #3548),
+/// but an agent can start its own agent, as it started its own keyring.
+#[must_use]
+pub fn prompts(app: &str) -> bool {
+    let app = app.to_lowercase();
+    PROMPTERS.iter().any(|prompter| app.contains(prompter))
+}
+
+const PROMPTERS: [&str; 6] = [
+    "askpass",
+    "gcr-prompter",
+    "pinentry",
+    "policykit",
+    "polkit",
+    "systemprompter",
+];
+
+/// The journal's line for an agent's password prompt closed: a warning,
+/// as the window's own line is.
+#[must_use]
+pub fn closed(unasked: &Unasked) -> String {
+    format!(
+        "<4>closed a password prompt an agent opened: {} {:?}, from {}",
+        unasked.app, unasked.title, unasked.unit
+    )
+}
+
+/// What Joel is told of an agent's password prompt closed, its summary
+/// and its body, naming where it came from. It says window, the
+/// glossary's word, since a prompt there is the shell's line (H2VYOB).
+/// The unit and folder are said as they are.
+#[must_use]
+pub fn notice(unasked: &Unasked) -> (String, String) {
+    let folder = unasked
+        .folder
+        .as_deref()
+        .map_or_else(String::new, |folder| format!(", in {folder}"));
+    (
+        "An agent's password window was closed".to_owned(),
+        format!(
+            "It came from {}{folder}, so a password typed there would have reached the agent.",
+            unasked.unit
+        ),
+    )
+}
+
+/// Where processes are read: /proc, or the folder `WINDOWS_PROC` names,
+/// which only a test sets, so a stand-in's process can sit in an agent's
+/// scope the build sandbox has no cgroups for.
+#[must_use]
+pub fn processes() -> PathBuf {
+    std::env::var_os("WINDOWS_PROC").map_or_else(|| PathBuf::from("/proc"), PathBuf::from)
+}
+
 /// A process's cgroup file.
-pub fn cgroup(pid: u32) -> Option<String> {
-    fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()
+pub fn cgroup(processes: &Path, pid: u32) -> Option<String> {
+    fs::read_to_string(processes.join(pid.to_string()).join("cgroup")).ok()
 }
 
 /// A process's working folder.
-pub fn folder(pid: u32) -> Option<String> {
-    fs::read_link(format!("/proc/{pid}/cwd"))
+pub fn folder(processes: &Path, pid: u32) -> Option<String> {
+    fs::read_link(processes.join(pid.to_string()).join("cwd"))
         .ok()
         .map(|path| path.display().to_string())
 }
@@ -178,6 +244,7 @@ mod tests {
         assert_eq!(
             said,
             Some(Unasked {
+                window: 166,
                 app: "org.kde.heaptrack".to_owned(),
                 title: "Heaptrack".to_owned(),
                 unit: "pi-host-work-background.service".to_owned(),
@@ -224,8 +291,60 @@ mod tests {
     }
 
     #[test]
+    fn a_password_prompt_is_known_by_the_app_id_it_names_itself_with() {
+        for app in [
+            "gcr-prompter",
+            "org.gnome.keyring.SystemPrompter",
+            "pinentry-qt",
+            "org.gnupg.pinentry-gtk",
+            "ssh-askpass",
+            "lxqt-openssh-askpass",
+            "org.kde.ksshaskpass",
+            "polkit-gnome-authentication-agent-1",
+            "lxqt-policykit-agent",
+        ] {
+            assert!(prompts(app), "{app} wasn't known for a password prompt");
+        }
+        for app in [
+            "org.kde.heaptrack",
+            "kitty",
+            "slack",
+            "1Password",
+            "org.gnome.Nautilus",
+        ] {
+            assert!(!prompts(app), "{app} was taken for a password prompt");
+        }
+    }
+
+    #[test]
+    fn a_prompt_closed_is_said_and_told_naming_its_unit() {
+        let unasked = Unasked {
+            window: 7,
+            app: "gcr-prompter".to_owned(),
+            title: "Unlock Keyring".to_owned(),
+            unit: "run-r1.scope".to_owned(),
+            folder: Some("/trees/keyring".to_owned()),
+        };
+        assert_eq!(
+            closed(&unasked),
+            "<4>closed a password prompt an agent opened: gcr-prompter \"Unlock Keyring\", \
+             from run-r1.scope"
+        );
+        assert_eq!(
+            notice(&unasked),
+            (
+                "An agent's password window was closed".to_owned(),
+                "It came from run-r1.scope, in /trees/keyring, so a password typed there would \
+                 have reached the agent."
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
     fn the_line_names_the_window_its_unit_and_its_folder_as_a_warning() {
         let unasked = Unasked {
+            window: 166,
             app: "org.kde.heaptrack".to_owned(),
             title: "Heaptrack".to_owned(),
             unit: "pi-host-work-background.service".to_owned(),

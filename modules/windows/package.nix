@@ -9,13 +9,20 @@
 # them all, and built from this one.
 {
   lib,
+  libnotify,
   rustPlatform,
   systemd,
   words ? null,
+  # What puts up a notice, which a check swaps for one that keeps what it
+  # was told.
+  notifySend ? lib.getExe' libnotify "notify-send",
 }:
 rustPlatform.buildRustPackage rec {
   pname = "windows";
-  env = lib.optionalAttrs (words != null) { WINDOWS_TEST_WORDS = "${words}"; };
+  env = {
+    WINDOWS_NOTIFY_SEND = notifySend;
+  }
+  // lib.optionalAttrs (words != null) { WINDOWS_TEST_WORDS = "${words}"; };
   version = "0.1.0";
   src = lib.fileset.toSource {
     root = ../.;

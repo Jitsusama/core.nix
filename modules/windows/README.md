@@ -138,8 +138,19 @@ pi-host-work-background.service in /home/joel/src/tree
 The sessions' own windows, in kitty's one instance in agents.slice, are
 never said, nor is anything the launcher opens, which starts in
 app.slice. A window there as the event stream begins was said when it
-opened. Nothing is closed: the line names the unit and its folder, so the
-agent behind it can be found.
+opened. The line names the unit and its folder, so the agent behind it can
+be found.
+
+One that asks for a password is closed as it opens: a keyring's prompter,
+gpg's pinentry, ssh's askpass or a polkit agent, known by the app id each
+names itself with. On 2026-11-17 an agent's test started a keyring of its
+own, whose prompt opened on Joel's screen, and he typed his real password
+into it. The daemon asks niri to close the window, says so in the journal,
+and puts up a notice naming the scope and folder it came from, through
+libnotify's notify-send. Joel's own prompts come from his services and
+stay. One gap is known: gpg-agent starts on demand from whoever first runs
+gpg, so an agent that started it would make Joel's pinentry look like the
+agent's, and it would be closed, the notice saying where from.
 
 ## Left Out, and Why
 

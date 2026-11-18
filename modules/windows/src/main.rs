@@ -333,6 +333,9 @@ fn follow(shared: &Shared, niri: &Path) {
 /// Hears each event of one stream until it ends. niri describes the
 /// whole desktop as the stream begins, so what's held from a stream
 /// before is replaced by it.
+///
+/// An agent's password prompt is closed as it opens, and Joel told, since
+/// what he types there goes to the agent (unasked.rs).
 fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
     let Ok(reading) = stream.try_clone() else {
         return;
@@ -344,6 +347,7 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
     // the desktop held, which it neither reads nor changes.
     let mut times = Timed::default();
     let mut watched = Watched::default();
+    let processes = unasked::processes();
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { return };
         let Ok(event) = serde_json::from_str::<Value>(&line) else {
@@ -357,8 +361,13 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
         if let Some(timing) = times.heard(&event, timed::now, timed::started) {
             timed::say(timing);
         }
-        if let Some(unasked) = watched.heard(&event, unasked::cgroup, unasked::folder) {
+        let cgroup = |pid| unasked::cgroup(&processes, pid);
+        let folder = |pid| unasked::folder(&processes, pid);
+        if let Some(unasked) = watched.heard(&event, cgroup, folder) {
             eprintln!("{}", unasked::line(&unasked));
+            if unasked::prompts(&unasked.app) {
+                shut(niri, &unasked);
+            }
         }
         // A screen coming or going changes the workspaces, so its outputs
         // are asked again then, before the lock is taken, so no ask waits
@@ -457,6 +466,38 @@ fn entries_changed(shared: &Shared) {
     daemon.entries = entries;
     daemon.names.forget();
     refresh(&shared.served, &mut daemon);
+}
+
+/// The program a notice is put up through, libnotify's notify-send as the
+/// package names it, so the daemon needs no bus of its own.
+const NOTIFY_SEND: &str = match option_env!("WINDOWS_NOTIFY_SEND") {
+    Some(program) => program,
+    None => "notify-send",
+};
+
+/// Closes an agent's password prompt through niri and tells Joel which
+/// unit it came from, off the stream's thread, so niri's next event isn't
+/// held while the notice goes up.
+fn shut(niri: &Path, unasked: &unasked::Unasked) {
+    let close = json!({"Action": {"CloseWindow": {"id": unasked.window}}});
+    match order::refused(niri, &close) {
+        Some(why) => eprintln!("<3>niri didn't close an agent's password prompt: {why}"),
+        None => eprintln!("{}", unasked::closed(unasked)),
+    }
+    let (summary, body) = unasked::notice(unasked);
+    std::thread::spawn(move || {
+        let told = std::process::Command::new(NOTIFY_SEND)
+            .args([
+                "--app-name=Windows",
+                "--urgency=critical",
+                "--icon=dialog-password",
+            ])
+            .args([summary, body])
+            .status();
+        if !told.as_ref().is_ok_and(std::process::ExitStatus::success) {
+            eprintln!("<3>Joel couldn't be told of an agent's password prompt: {told:?}");
+        }
+    });
 }
 
 /// What desk-facts says of each screen in its folder, or nothing where it
