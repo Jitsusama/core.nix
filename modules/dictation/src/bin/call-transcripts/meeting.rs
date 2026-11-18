@@ -247,9 +247,9 @@ mod tests {
         serving(
             &runtime.join("daemons/google.sock"),
             vec![
-                ("get", "keys", whose.clone(), account(before)),
+                ("get", "keys", whose.clone(), account(&before)),
                 ("list", "kind", json!("meeting"), meetings),
-                ("get", "keys", whose, account(after)),
+                ("get", "keys", whose, account(&after)),
             ],
         );
         runtime
@@ -257,7 +257,7 @@ mod tests {
 
     /// The google daemon's answer to an ask for its account, which it
     /// says is `address`'s.
-    fn account(address: Value) -> Value {
+    fn account(address: &Value) -> Value {
         json!({"records": [
             {"key": "account:google", "kind": "account",
              "account": {"standing": "ready", "address": address}},
@@ -376,14 +376,14 @@ mod tests {
             runtime
         }
         assert_eq!(
-            signed_in(&serving("held", account(json!("jsama@example.com")))).as_deref(),
+            signed_in(&serving("held", account(&json!("jsama@example.com")))).as_deref(),
             Some("jsama@example.com"),
             "the address served is the one signed in"
         );
         for (name, answer) in [
-            ("unheard", account(Value::Null)),
+            ("unheard", account(&Value::Null)),
             ("no-record", json!({"records": []})),
-            ("not-text", account(json!(7))),
+            ("not-text", account(&json!(7))),
         ] {
             assert_eq!(
                 signed_in(&serving(name, answer)),
