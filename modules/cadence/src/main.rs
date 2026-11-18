@@ -302,14 +302,17 @@ fn run(args: &Args) -> io::Result<()> {
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
+    let switcher = switcher(args).unwrap_or_else(|| watcher.clone());
     for question in asking::tick(&snapshot, &mut state) {
         let to = match question.to {
             To::Watcher => watcher,
+            To::Switcher => &switcher,
             To::Orchestrator => orchestrator,
         };
         let text = match question.to {
-            To::Watcher => format!(
-                "{} Answer with re set to this question once handled.",
+            To::Watcher | To::Switcher => format!(
+                "{} Answer with re set to this question once handled: cadence reads your answer \
+                 from what you send, within five minutes.",
                 question.text
             ),
             To::Orchestrator => question.text.clone(),
@@ -329,6 +332,12 @@ fn run(args: &Args) -> io::Result<()> {
         state.carded = Some(now);
     }
     write_whole(&path, &serde_json::to_string_pretty(&state)?)
+}
+
+/// Who switches the machine: the owner of `switch.` findings, as
+/// `--owner` names it.
+fn switcher(args: &Args) -> Option<String> {
+    findings::owner_of("switch.", &args.owners)
 }
 
 /// Tells each merge's owner that the net reverted it, or that no Mac took
@@ -604,6 +613,17 @@ fn gather(
         .as_deref()
         .map(|a| mesh.sent_by(a))
         .unwrap_or_default();
+    let answered = sent
+        .iter()
+        .filter_map(|m| m.re.clone())
+        .chain(
+            switcher(args)
+                .map(|a| mesh.sent_by(&a))
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|m| m.re),
+        )
+        .collect();
     let orchestrator = args.orchestrator.as_deref().map(|s| format!("@{s}"));
     Ok(Snapshot {
         now,
@@ -648,7 +668,7 @@ fn gather(
             .filter_map(|m| mesh::stamped_at(&m.id))
             .max()
             .map(|ms| ms / 1000),
-        answered: sent.into_iter().filter_map(|m| m.re).collect(),
+        answered,
     })
 }
 

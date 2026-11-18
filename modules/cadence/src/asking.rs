@@ -49,19 +49,22 @@ pub struct State {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum To {
     Watcher,
+    /// Whoever switches the machine, for an alarm only a switch answers:
+    /// on 18 November one went to the watcher, which could only pass it on.
+    Switcher,
     Orchestrator,
 }
 
 impl To {
-    /// How the mesh is to carry it. Only the watcher's answers are waited
-    /// on, read from what it sent; the orchestrator is told as a finding, which
+    /// How the mesh is to carry it. Only the watcher's and the switcher's
+    /// answers are waited on, read from what they sent; the orchestrator is told as a finding, which
     /// wants no answer, since one sent back to cadence's address reaches no
     /// session, and on 9 November a question to the orchestrator sat unanswered
     /// on the mesh.
     #[must_use]
     pub fn intent(self) -> &'static str {
         match self {
-            To::Watcher => "question",
+            To::Watcher | To::Switcher => "question",
             To::Orchestrator => "finding",
         }
     }
@@ -124,12 +127,16 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         .collect();
     if s.watcher_alive {
         for (key, q) in silent {
+            let who = if switching(&key) {
+                "The session that switches the machine"
+            } else {
+                "The session keeping the delivery cycle fast"
+            };
             escalate(
                 state,
                 format!("silent:{key}"),
                 format!(
-                    "The session keeping the delivery cycle fast hasn't answered cadence for {} min: \
-                     \"{}\" Pivot or restart it.",
+                    "{who} hasn't answered cadence for {} min: \"{}\" Pivot or restart it.",
                     (s.now - q.at) / 60,
                     q.text
                 ),
@@ -141,7 +148,11 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         if !state.seen.contains_key(&key) {
             state.seen.insert(key.clone(), s.now);
             out.push(Question {
-                to: To::Watcher,
+                to: if switching(&key) {
+                    To::Switcher
+                } else {
+                    To::Watcher
+                },
                 key: Some(key),
                 text,
             });
@@ -160,6 +171,15 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
     state.escalated.retain(|_, at| keep(at));
     state.asked.retain(|_, q| keep(&q.at));
     out
+}
+
+/// Whether an alarm's key says the machine isn't running what merged: a
+/// merge not on, updates failing, or the follower held. Only a switch
+/// answers those.
+fn switching(key: &str) -> bool {
+    ["alarm:noton:", "alarm:failing:", "alarm:heldfor:"]
+        .iter()
+        .any(|alarm| key.starts_with(alarm))
 }
 
 /// Whether the card is overdue, so cadence sends the orchestrator its own: no
@@ -205,6 +225,16 @@ mod tests {
         assert!(card_due(&s, &state), "and none since");
         s.last_card = Some(s.now - 60);
         assert!(!card_due(&s, &state), "the watcher's own card counts");
+    }
+
+    #[test]
+    fn an_alarm_only_a_switch_answers_goes_to_the_switcher() {
+        assert!(switching("alarm:noton:6a811d78d19a"), "a merge not on");
+        assert!(switching("alarm:failing:1795000000"), "updates failing");
+        assert!(switching("alarm:heldfor:1795000000"), "the follower held");
+        assert!(!switching("alarm:cpu:498611"), "his processor");
+        assert!(!switching("noton:6a811d78d19a"), "only an alarm");
+        assert_eq!(To::Switcher.intent(), "question", "waited on");
     }
 
     #[test]

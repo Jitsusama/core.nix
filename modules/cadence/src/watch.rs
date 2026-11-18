@@ -393,7 +393,7 @@ pub mod tests {
         let mut state = State::default();
         let first = tick(&s, &mut state);
         assert_eq!(first.len(), 1);
-        assert_eq!(first[0].to, To::Watcher);
+        assert_eq!(first[0].to, To::Switcher, "only a switch gets it on");
         assert!(
             first[0].text.contains("#1 merged 25 min ago"),
             "{}",
