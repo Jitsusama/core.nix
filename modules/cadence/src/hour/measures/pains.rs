@@ -66,7 +66,7 @@ pub fn pains(summary: Option<&str>, now: i64, owner: &str) -> Measure {
     };
     if let Some(why) = why {
         measure.target = None;
-        measure.says.push_str(&format!(" (unjudged: {why})"));
+        measure.says = format!("{} (unjudged: {why})", measure.says);
     }
     if let Some(worst) = read.get("worst").and_then(Value::as_str) {
         let hits = read.get("worst_hits").and_then(Value::as_u64).unwrap_or(1);
