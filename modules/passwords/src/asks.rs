@@ -308,20 +308,39 @@ impl Passwords {
 
     /// bubblewrap's arguments emptying each file the list empties where
     /// it holds a credential and this one does, or where it can't be
-    /// read to tell, a link's target rather than the link.
+    /// read to tell, a link's target rather than the link. It's emptied
+    /// to settings saying nothing, `{}`, since Podman, the docker command
+    /// here, refuses settings of no bytes; /dev/null where no copy can be
+    /// written, so a login is never left readable for want of one. A file
+    /// inside a folder the list hides is left to that folder, which hides
+    /// it already, and where bubblewrap couldn't make a file to bind over.
     fn emptied(&self, fence: &Fence) -> Vec<OsString> {
+        let hidden: Vec<PathBuf> = fence
+            .home
+            .iter()
+            .filter_map(|listed| listed.strip_suffix('/'))
+            .filter_map(|named| real(&self.home.join(named)))
+            .filter(|folder| is_folder(folder))
+            .collect();
         let mut args: Vec<OsString> = Vec::new();
+        let mut empty: Option<OsString> = None;
         for listed in &fence.emptied {
             let Some(over) = real(&self.home.join(&listed.path)) else {
                 continue;
             };
-            if !is_file(&over) {
+            if !is_file(&over) || hidden.iter().any(|folder| over.starts_with(folder)) {
                 continue;
             }
             let holds = std::fs::read_to_string(&over)
                 .map_or(true, |text| emptied::empties(&text, &listed.when));
             if holds {
-                args.extend(["--ro-bind".into(), "/dev/null".into(), over.into()]);
+                let source = empty
+                    .get_or_insert_with(|| {
+                        self.written("emptied.json", "{}\n")
+                            .map_or_else(|| "/dev/null".into(), Into::into)
+                    })
+                    .clone();
+                args.extend(["--ro-bind".into(), source, over.into()]);
             }
         }
         args
@@ -375,15 +394,15 @@ impl Passwords {
         let Some(kept) = without_npm_credentials(&text) else {
             return Vec::new();
         };
-        let copy = self.copy_of_npmrc(&kept);
+        let copy = self.written("npmrc", &kept);
         let source: OsString = copy.map_or_else(|| "/dev/null".into(), Into::into);
         vec!["--ro-bind".into(), source, over.into()]
     }
 
-    /// Writes npm's settings without their credentials where only the
-    /// account reads them, in the daemon's own folder in the runtime
-    /// folder, whole or not at all.
-    fn copy_of_npmrc(&self, kept: &str) -> Option<PathBuf> {
+    /// Writes `kept` as `name` where only the account reads it, in the
+    /// daemon's own folder in the runtime folder, whole or not at all, as
+    /// npm's settings without their credentials are.
+    fn written(&self, name: &str, kept: &str) -> Option<PathBuf> {
         use std::io::Write;
         use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
         let folder = self.runtime.join("passwords");
@@ -392,8 +411,8 @@ impl Passwords {
             .mode(0o700)
             .create(&folder)
             .ok()?;
-        let copy = folder.join("npmrc");
-        let writing = folder.join(format!("npmrc.{}", std::process::id()));
+        let copy = folder.join(name);
+        let writing = folder.join(format!("{name}.{}", std::process::id()));
         let _ = std::fs::remove_file(&writing);
         let mut file = std::fs::OpenOptions::new()
             .write(true)
