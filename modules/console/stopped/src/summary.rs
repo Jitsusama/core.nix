@@ -167,7 +167,10 @@ fn clean(words: &str) -> String {
     let mut chars = words.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
-            '\u{1b}' => match chars.next() {
+            // Every sequence ends at the next escape, as a terminal ends
+            // it, which then starts one of its own; only the string
+            // terminator, an escape and a backslash, is part of one.
+            '\u{1b}' => match chars.next_if(|&c| c != '\u{1b}') {
                 // A control sequence: parameters and intermediates run
                 // until a final byte.
                 Some('[') => {
@@ -181,10 +184,14 @@ fn clean(words: &str) -> String {
                 // link, or a device control, privacy or application one.
                 // It runs until a bell or the string terminator.
                 Some(']' | 'P' | 'X' | '^' | '_') => {
-                    while let Some(c) = chars.next() {
-                        if c == '\u{7}' || (c == '\u{1b}' && chars.next_if_eq(&'\\').is_some()) {
+                    while let Some(c) = chars.next_if(|&c| c != '\u{1b}') {
+                        if c == '\u{7}' {
                             break;
                         }
+                    }
+                    let mut ahead = chars.clone();
+                    if ahead.next() == Some('\u{1b}') && ahead.next() == Some('\\') {
+                        chars = ahead;
                     }
                 }
                 // Any other, such as `ESC ( B`: intermediates, then one
@@ -194,7 +201,7 @@ fn clean(words: &str) -> String {
                         .next_if(|c| ('\u{20}'..='\u{2f}').contains(c))
                         .is_some()
                     {}
-                    chars.next();
+                    chars.next_if(|&c| c != '\u{1b}');
                 }
                 _ => {}
             },
@@ -247,11 +254,18 @@ mod tests {
             "abcde",
             "a string sequence's payload reached the console"
         );
-        assert_eq!(
-            clean("red\u{1b}[31\u{1b}[0m plain"),
-            "red plain",
-            "a sequence cut short by another left a piece of it behind"
-        );
+        for cut in [
+            "red\u{1b}[31\u{1b}[0m plain",
+            "red\u{1b}]0;tit\u{1b}[0m plain",
+            "red\u{1b}(\u{1b}[0m plain",
+            "red\u{1b}\u{1b}[0m plain",
+        ] {
+            assert_eq!(
+                clean(cut),
+                "red plain",
+                "a sequence cut short by another ate the words after it or left a piece: {cut:?}"
+            );
+        }
     }
 
     fn unit(name: &str, about: &str, said: &[&str]) -> Failed {
