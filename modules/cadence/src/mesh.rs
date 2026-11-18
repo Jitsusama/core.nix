@@ -317,7 +317,7 @@ impl Mesh {
     pub fn sent_by(&self, address: &str) -> Vec<Message> {
         let mark = format!("-{address}-");
         let mut sent: Vec<Message> = self
-            .message_files()
+            .message_files(|_| true)
             .into_iter()
             .filter(|p| {
                 p.file_name()
@@ -331,10 +331,16 @@ impl Mesh {
     }
 
     /// Every message sent at `from_ms` or later, by its id's stamp, so only
-    /// those are opened.
+    /// those are opened. A day's folder from before the day before is
+    /// never listed: they hold tens of thousands, and a folder's day may be
+    /// named on either side of midnight here.
     #[must_use]
     pub fn sent_since(&self, from_ms: i64) -> Vec<Message> {
-        self.message_files()
+        let earliest = jiff::Timestamp::from_millisecond(from_ms - 24 * 3600 * 1000)
+            .map(|at| at.strftime("%Y-%m-%d").to_string())
+            .unwrap_or_default();
+        let dated = |name: &str| name.len() == 10 && name.as_bytes()[4] == b'-';
+        self.message_files(|day| !dated(day) || day >= earliest.as_str())
             .into_iter()
             .filter(|p| {
                 p.file_name()
@@ -346,14 +352,15 @@ impl Mesh {
     }
 
     /// Every message's file, those the harness filed into a folder for
-    /// each day included.
-    fn message_files(&self) -> Vec<PathBuf> {
+    /// each day `keep_day` keeps, by the folder's name, included.
+    fn message_files(&self, keep_day: impl Fn(&str) -> bool) -> Vec<PathBuf> {
         let folder = self.messages();
         let days: Vec<PathBuf> = fs::read_dir(&folder)
             .into_iter()
             .flatten()
             .filter_map(Result::ok)
             .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .filter(|entry| keep_day(&entry.file_name().to_string_lossy()))
             .map(|entry| entry.path())
             .collect();
         json_files(&folder)
@@ -694,6 +701,44 @@ mod tests {
             ids,
             ["1-WATCHER-9-aa", "2-WATCHER-9-bb"],
             "a message filed into its day's folder is still read, in order"
+        );
+    }
+
+    #[test]
+    fn what_was_sent_since_a_moment_is_read_from_its_stamp_and_recent_days() {
+        let (_dir, mesh) = mesh();
+        // 2026-11-18 05:00 UTC, midnight in Toronto, and an hour either side.
+        let midnight = 1_794_978_000_000_i64;
+        for (id, day) in [
+            (format!("{}-A-1-aa", midnight - 3_600_000), "2026-11-18"),
+            (format!("{}-A-1-bb", midnight + 3_600_000), "2026-11-18"),
+            (format!("{}-A-1-cc", midnight + 3_600_000), "2026-11-16"),
+            (format!("{}-A-1-dd", midnight + 7_200_000), ""),
+        ] {
+            mesh.send(&question(&id, "B")).unwrap();
+            if !day.is_empty() {
+                let folder = mesh.messages().join(day);
+                fs::create_dir_all(&folder).unwrap();
+                fs::rename(
+                    mesh.messages().join(format!("{id}.json")),
+                    folder.join(format!("{id}.json")),
+                )
+                .unwrap();
+            }
+        }
+        let mut ids: Vec<String> = mesh
+            .sent_since(midnight)
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        ids.sort();
+        assert_eq!(
+            ids,
+            [
+                format!("{}-A-1-bb", midnight + 3_600_000),
+                format!("{}-A-1-dd", midnight + 7_200_000)
+            ],
+            "one sent before the moment read, one since missed, or a day long past listed"
         );
     }
 }
