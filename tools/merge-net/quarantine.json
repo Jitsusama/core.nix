@@ -161,18 +161,6 @@
     "test": "vm-a-hidden-queue-is-taken-back"
   },
   {
-    "at": 1795007290,
-    "commit": "e27e8f339c7df90d945adde69e63c82d57cc81f4",
-    "due": "2026-11-20",
-    "owner_pr": 5463,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at e27e8f339c7d",
-    "subtests": [
-      "test_stopping"
-    ],
-    "test": "vm-the-network-keeps-its-order"
-  },
-  {
     "at": 1795022147,
     "commit": "28d1e29f9bd69c9661b0ae2dc85309c626bdf43a",
     "due": "2026-11-20",
