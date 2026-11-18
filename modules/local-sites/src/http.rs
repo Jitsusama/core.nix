@@ -2,10 +2,17 @@
 //! file sent (files.rs) or a feed opened (page.rs). The request's head is
 //! peeked rather than read, so a feed's handshake, which tungstenite reads
 //! itself, still finds it there. Each answer closes its connection: on
-//! loopback a new one costs nothing worth keeping one open for.
+//! loopback a new one costs nothing worth keeping one open for. A file
+//! goes with a tag of what it is served as, its real path, size, inode and
+//! times, so a browser asking again with the tag it holds is told it
+//! hasn't changed rather than sent the file once more.
 
+use std::fs::{File, Metadata};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+use std::os::unix::fs::MetadataExt;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,6 +26,9 @@ use crate::upstream::Upstreams;
 
 /// The most a request's head may hold.
 const HEAD: usize = 16 * 1024;
+
+/// The status of a file the browser already holds.
+const NOT_MODIFIED: u16 = 304;
 
 /// How long a request may take to arrive whole.
 const PATIENCE: Duration = Duration::from_secs(10);
@@ -37,6 +47,8 @@ struct Head {
     host: Option<String>,
     upgrade: bool,
     length: usize,
+    /// The tags of the copies the browser holds, as `If-None-Match` lists them.
+    held: Option<String>,
 }
 
 /// Answers one connection.
@@ -134,23 +146,7 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
     }
     let path = head.path.split(['?', '#']).next().unwrap_or("/");
     match files::find(&server.config, path) {
-        Found::File(file) => match std::fs::read(&file) {
-            Ok(body) => {
-                let told = Told {
-                    kind: files::kind_of(&file),
-                    body: &body,
-                    sent: head.method != "HEAD",
-                };
-                write_answer(stream, (200, "OK"), &told, &[]);
-            }
-            Err(_) => send(
-                stream,
-                500,
-                "Internal Server Error",
-                "text/plain",
-                b"the file couldn't be read\n",
-            ),
-        },
+        Found::File(file) => send_file(stream, head, &file),
         Found::Folder(to) => {
             let told = Told {
                 kind: "text/plain",
@@ -173,6 +169,76 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
             b"that path is refused\n",
         ),
     }
+}
+
+/// Sends `file`, or says it hasn't changed where the browser holds its tag.
+fn send_file(stream: &mut TcpStream, head: &Head, file: &Path) {
+    let kind = files::kind_of(file);
+    // One open gives both the tag and the body, so a file replaced between
+    // the two can't go out under the other's tag.
+    let Ok((mut opened, tag)) = opened(file, kind) else {
+        return unreadable(stream);
+    };
+    let tagged = [("ETag", tag.as_str())];
+    if head.held.as_deref().is_some_and(|held| holds(held, &tag)) {
+        let told = Told {
+            kind,
+            body: b"",
+            sent: false,
+        };
+        return write_answer(stream, (NOT_MODIFIED, "Not Modified"), &told, &tagged);
+    }
+    let mut body = Vec::new();
+    if opened.read_to_end(&mut body).is_err() {
+        return unreadable(stream);
+    }
+    let told = Told {
+        kind,
+        body: &body,
+        sent: head.method != "HEAD",
+    };
+    write_answer(stream, (200, "OK"), &told, &tagged);
+}
+
+fn unreadable(stream: &mut TcpStream) {
+    send(
+        stream,
+        500,
+        "Internal Server Error",
+        "text/plain",
+        b"the file couldn't be read\n",
+    );
+}
+
+/// Opens the file a path names, wherever its links lead, with its tag.
+fn opened(file: &Path, kind: &str) -> io::Result<(File, String)> {
+    let real = file.canonicalize()?;
+    let opened = File::open(&real)?;
+    let about = opened.metadata()?;
+    Ok((opened, tag(&real, kind, &about)))
+}
+
+/// A file's tag: what it's served as; its real path, which for a store path
+/// names its contents; and its size, inode and the times it was written and
+/// changed, so a write moves it, as does a file put in its place.
+fn tag(real: &Path, kind: &str, about: &Metadata) -> String {
+    let mut hasher = DefaultHasher::new();
+    (real, kind, about.len(), about.dev(), about.ino()).hash(&mut hasher);
+    let times = (
+        about.mtime(),
+        about.mtime_nsec(),
+        about.ctime(),
+        about.ctime_nsec(),
+    );
+    times.hash(&mut hasher);
+    format!("\"{:016x}\"", hasher.finish())
+}
+
+/// Whether an `If-None-Match` list, `held`, names `tag`, weakly or by `*`.
+fn holds(held: &str, tag: &str) -> bool {
+    held.split(',')
+        .map(|one| one.trim().trim_start_matches("W/"))
+        .any(|one| one == tag || one == "*")
 }
 
 /// Peeks the request's head, answering none where it isn't HTTP.
@@ -202,6 +268,7 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                     host: header("host").map(str::to_owned),
                     upgrade,
                     length,
+                    held: header("if-none-match").map(str::to_owned),
                 }));
             }
             Ok(httparse::Status::Partial) if peeked < HEAD => {
@@ -241,11 +308,18 @@ fn write_answer(
     extra: &[(&str, &str)],
 ) {
     let (kind, length) = (told.kind, told.body.len());
-    // A site changes while Joel reads it, so a reload shows the change.
+    // A site changes while Joel reads it, so a reload asks again, and a
+    // file unchanged since is answered by its tag alone.
     let mut answer = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: {kind}\r\nContent-Length: {length}\r\n\
+        "HTTP/1.1 {status} {reason}\r\n\
          Cache-Control: no-cache\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n"
     );
+    // An unchanged file's answer has no body, so it says neither a length
+    // nor a type, which the browser keeps from the copy it holds.
+    if status != NOT_MODIFIED {
+        answer.extend(["Content-Type: ", kind, "\r\n"]);
+        answer.extend(["Content-Length: ", &length.to_string(), "\r\n"]);
+    }
     for (name, value) in extra {
         answer.extend([name, ": ", value, "\r\n"]);
     }
@@ -258,4 +332,30 @@ fn write_answer(
             Ok(())
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TAG: &str = "\"00000000000000aa\"";
+
+    #[test]
+    fn a_list_naming_the_tag_however_it_names_it_holds_it() {
+        assert!(holds(TAG, TAG), "the tag alone");
+        assert!(holds(&format!("W/{TAG}"), TAG), "the tag said weakly");
+        assert!(holds(&format!("\"b\",  {TAG} "), TAG), "the tag in a list");
+        assert!(holds("*", TAG), "any copy at all");
+    }
+
+    #[test]
+    fn a_list_naming_another_tag_or_nothing_doesnt_hold_it() {
+        assert!(!holds("\"00000000000000ab\"", TAG), "another copy");
+        assert!(!holds("", TAG), "an empty list");
+        assert!(
+            !holds("00000000000000aa", TAG),
+            "the tag without its quotes"
+        );
+        assert!(!holds(&format!("{TAG}x"), TAG), "a longer tag");
+    }
 }

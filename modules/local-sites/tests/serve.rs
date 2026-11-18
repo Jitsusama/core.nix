@@ -1,9 +1,10 @@
 //! The server as its unit runs it, on a port of its own, beside a
 //! stand-in daemon speaking the daemon interface on a socket: files from
-//! the documents and from a mount, the door shut to a stranger's name and
-//! a stranger's page, and a feed whose pages share one watch on the
-//! daemon, hear each change, can't act, and are told when the daemon is
-//! gone.
+//! the documents and from a mount, a file the browser holds answered by
+//! its tag alone and one written since sent again, the door shut to a
+//! stranger's name and a stranger's page, and a feed whose pages share
+//! one watch on the daemon, hear each change, can't act, and are told
+//! when the daemon is gone.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -137,7 +138,36 @@ fn served(name: &str) -> Served {
     std::fs::write(kit.join("theme.css"), ":root {}").expect("the kit's file");
     let socket = folder.join("node.sock");
     let stand_in = StandIn::start(&socket);
-    // A port nobody holds, given up for the server to take.
+    // A port given up is free for any test to be given next, so one server
+    // starts at a time, from its port's choosing until it listens; and one
+    // that can't listen anyway, its port taken by another's reader, starts
+    // again on another.
+    let _starting = STARTING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    for _ in 0..TRIES {
+        let (child, port) = started(&folder, &socket);
+        if let Some(child) = listening(child, port) {
+            return Served {
+                child,
+                port,
+                folder,
+                stand_in,
+            };
+        }
+    }
+    panic!("the server never listened, on {TRIES} ports");
+}
+
+/// One server starting at a time, so no two are given the same free port.
+static STARTING: Mutex<()> = Mutex::new(());
+
+/// How many ports a server is started on before the test gives up.
+const TRIES: usize = 5;
+
+/// A server started on a port nobody held, with the documents in `folder`.
+fn started(folder: &Path, socket: &Path) -> (Child, u16) {
+    let (documents, kit) = (folder.join("sites"), folder.join("kit"));
     let port = TcpListener::bind("127.0.0.1:0")
         .and_then(|free| free.local_addr())
         .expect("a free port")
@@ -159,33 +189,48 @@ fn served(name: &str) -> Served {
         .arg(&file)
         .spawn()
         .expect("the server starts");
+    (child, port)
+}
+
+/// The server once it listens on `port`, or none when it ended first.
+fn listening(mut child: Child, port: u16) -> Option<Child> {
     let started = Instant::now();
     while TcpStream::connect(("127.0.0.1", port)).is_err() {
+        if child.try_wait().ok().flatten().is_some() {
+            return None;
+        }
         assert!(started.elapsed() < PATIENCE, "the server never listened");
         // Nothing to wait on but the port itself, so it's looked at again.
         thread::sleep(Duration::from_millis(20));
     }
-    Served {
-        child,
-        port,
-        folder,
-        stand_in,
-    }
+    Some(child)
 }
 
 /// What a GET of `path`, naming the server `host`, is answered: its status
 /// line and its body.
 fn get(port: u16, host: &str, path: &str) -> (String, String) {
+    let (status, _, body) = asked(port, host, &format!("GET {path}"), "");
+    (status, body)
+}
+
+/// What `ask`, a method and a path, with `extra` header lines is answered:
+/// its status line, its header lines and its body.
+fn asked(port: u16, host: &str, ask: &str, extra: &str) -> (String, String, String) {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("it connects");
-    write!(stream, "GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n").expect("it asks");
+    write!(stream, "{ask} HTTP/1.1\r\nHost: {host}\r\n{extra}\r\n").expect("it asks");
     let mut answer = String::new();
     stream.read_to_string(&mut answer).expect("it's answered");
-    let status = answer.lines().next().unwrap_or("").to_owned();
-    let body = answer
-        .split_once("\r\n\r\n")
-        .map_or("", |(_, body)| body)
-        .to_owned();
-    (status, body)
+    let (head, body) = answer.split_once("\r\n\r\n").unwrap_or((&answer, ""));
+    let (status, headers) = head.split_once("\r\n").unwrap_or((head, ""));
+    (status.to_owned(), headers.to_owned(), body.to_owned())
+}
+
+/// The value of the header `name` among `headers`, however its name is cased.
+fn header<'a>(headers: &'a str, name: &str) -> Option<&'a str> {
+    headers.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.eq_ignore_ascii_case(name).then(|| value.trim())
+    })
 }
 
 fn page(port: u16, feed: &str, origin: &str) -> Result<WebSocket<TcpStream>, String> {
@@ -237,6 +282,107 @@ fn it_serves_the_documents_and_a_mount_at_its_own_path() {
     assert_eq!(
         get(served.port, &host, "/nothing").0,
         "HTTP/1.1 404 Not Found"
+    );
+}
+
+#[test]
+fn a_file_unchanged_since_its_last_visit_is_not_sent_again() {
+    let served = served("unchanged");
+    let host = format!("localhost:{}", served.port);
+    for (path, kind) in [
+        ("/mycelium/", "text/html; charset=utf-8"),
+        ("/kit/theme.css", "text/css; charset=utf-8"),
+    ] {
+        let (_, headers, sent) = asked(served.port, &host, &format!("GET {path}"), "");
+        let tag = header(&headers, "etag").expect("a file is sent with its tag");
+        let (status, asked_head, body) = asked(served.port, &host, &format!("HEAD {path}"), "");
+        assert_eq!(
+            (status.as_str(), body.as_str()),
+            ("HTTP/1.1 200 OK", ""),
+            "HEAD {path}"
+        );
+        for said in [&headers, &asked_head] {
+            let length = sent.len().to_string();
+            let told = ["content-type", "content-length", "cache-control", "etag"]
+                .map(|name| header(said, name));
+            let owed = [
+                Some(kind),
+                Some(length.as_str()),
+                Some("no-cache"),
+                Some(tag),
+            ];
+            assert_eq!(told, owed, "{path} was sent without what it's owed");
+        }
+        for ask in [format!("GET {path}"), format!("HEAD {path}")] {
+            let held = format!("If-None-Match: {tag}\r\n");
+            let (status, headers, body) = asked(served.port, &host, &ask, &held);
+            assert_eq!(status, "HTTP/1.1 304 Not Modified", "{ask} was sent again");
+            assert_eq!(body, "", "{ask} was answered unchanged with a body");
+            assert_eq!(header(&headers, "etag"), Some(tag), "{ask} lost its tag");
+            for unsaid in ["content-length", "content-type"] {
+                let said = header(&headers, unsaid);
+                assert_eq!(said, None, "{ask} was answered unchanged with a {unsaid}");
+            }
+        }
+        let listed = format!("If-None-Match: \"other\", W/{tag}\r\n");
+        let (status, _, _) = asked(served.port, &host, &format!("GET {path}"), &listed);
+        let unchanged = "HTTP/1.1 304 Not Modified";
+        assert_eq!(status, unchanged, "{path} missed its weak tag in a list");
+    }
+}
+
+#[test]
+fn a_file_written_since_its_last_visit_is_sent_again() {
+    let served = served("written");
+    let host = format!("localhost:{}", served.port);
+    let page = served.folder.join("sites/mycelium/index.html");
+    // Each rewrite keeps the page's size and puts its write time back, so a
+    // tag of the size and that time alone can't see it. What the tag sees
+    // instead here is the change time; within one tick of the clock, its
+    // inode would see a rename too, which no test can make the clock do.
+    for (how, page_now) in [("in place", "<h1>pam</h1>"), ("by rename", "<h1>amp</h1>")] {
+        let (_, headers, _) = asked(served.port, &host, "GET /mycelium/", "");
+        let tag = header(&headers, "etag").expect("the page's tag").to_owned();
+        let written = std::fs::metadata(&page).and_then(|about| about.modified());
+        let written = written.expect("the page's time");
+        if how == "by rename" {
+            let beside = page.with_extension("new");
+            std::fs::write(&beside, page_now).expect("the new page is written");
+            std::fs::rename(&beside, &page).expect("it takes the page's place");
+        } else {
+            std::fs::write(&page, page_now).expect("the page is rewritten");
+        }
+        let file = std::fs::File::options().write(true).open(&page);
+        let set = file.and_then(|file| file.set_modified(written));
+        set.expect("the page's time is put back");
+        let held = format!("If-None-Match: {tag}\r\n");
+        let (status, headers, body) = asked(served.port, &host, "GET /mycelium/", &held);
+        assert_eq!(
+            (status.as_str(), body.as_str()),
+            ("HTTP/1.1 200 OK", page_now),
+            "a page rewritten {how} was answered as unchanged"
+        );
+        let moved = header(&headers, "etag") != Some(tag.as_str());
+        assert!(moved, "a page rewritten {how} kept its tag");
+    }
+}
+
+#[test]
+fn a_file_that_cant_be_read_is_said_so() {
+    use std::os::unix::fs::PermissionsExt;
+    let served = served("unreadable");
+    let host = format!("localhost:{}", served.port);
+    let page = served.folder.join("sites/mycelium/index.html");
+    let shut = std::fs::Permissions::from_mode(0o000);
+    std::fs::set_permissions(&page, shut).expect("the page is shut");
+    let (status, body) = get(served.port, &host, "/mycelium/");
+    assert_eq!(
+        (status.as_str(), body.as_str()),
+        (
+            "HTTP/1.1 500 Internal Server Error",
+            "the file couldn't be read\n"
+        ),
+        "a page that can't be read was answered otherwise"
     );
 }
 
