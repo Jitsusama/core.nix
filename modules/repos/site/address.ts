@@ -74,22 +74,30 @@ function outward(open: Repository, inner: string | null): string | undefined {
 interface Drawn {
   readonly query: string;
   readonly place: Place;
-  /** The open repository's seasons unfolded, beyond those open from the start, if any. */
-  readonly unfolded: ReadonlySet<Season> | undefined;
+  /** The repository open in the drawer. */
+  readonly cursor: string | null;
+  /** Each repository's seasons unfolded, beyond those open from the start. */
+  readonly unfolded: ReadonlyMap<string, ReadonlySet<Season>>;
 }
 
 /**
  * The parts a reload at `hash` won't draw as they're drawn now, so they keep no room: the list,
  * when it was narrowed by a name found or by a place the address doesn't name, and the drawer,
- * when a season is unfolded that the address doesn't open again by naming a tree in it.
+ * when it shows a folding season's trees that the address doesn't open again by naming one.
  */
 function forgotten(hash: string, grove: Grove | undefined, drawn: Drawn): ("list" | "open")[] {
   const said = grove === undefined ? undefined : landing(hash, grove);
   const place = said?.kind === "place" ? said.place : "every";
-  const reopens = said?.kind === "tree" ? said.season : undefined;
+  const reopens = said?.kind === "tree" && said.key === drawn.cursor ? said.season : undefined;
   const list = drawn.query.trim() !== "" || drawn.place !== place;
-  const open = [...(drawn.unfolded ?? [])].some((season) => season !== reopens);
-  return [...(list ? (["list"] as const) : []), ...(open ? (["open"] as const) : [])];
+  const open = grove?.repositories.find((each) => each.key === drawn.cursor);
+  // Only resting and gone fold, and unfolding one with no trees draws nothing more.
+  const shows = (season: Season): boolean =>
+    (season === "resting" || season === "gone") &&
+    season !== reopens &&
+    open?.trees.some((each) => each.season === season) === true;
+  const drawer = [...(drawn.unfolded.get(drawn.cursor ?? "") ?? [])].some(shows);
+  return [...(list ? (["list"] as const) : []), ...(drawer ? (["open"] as const) : [])];
 }
 
 export { addressed, type Drawn, forgotten, type Landing, landing, outward, type Place };

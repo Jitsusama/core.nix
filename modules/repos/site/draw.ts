@@ -274,10 +274,13 @@ function rowMeta(repository: Repository): string {
     repository.changes.length > 0 ? plural(repository.changes.length, "change") : "",
     weighedBriefly(weightOfAll(repository.checkouts.map((each) => each.weight))),
   ].filter(Boolean);
-  return counted(parts.join(" · "));
+  return parts.map(counted).join(" · ");
 }
 
-/** `words` with each number held to the word after it, so a row wraps "6.0 MB" whole. */
+/**
+ * `words` with each number held to the word after it, so a row wraps "6.0 MB" whole. Each part
+ * of a line goes alone, so a part ending in a digit isn't held to the separator after it.
+ */
 function counted(words: string): string {
   return words.replace(/(\d) /gu, "$1\u00a0");
 }
@@ -427,7 +430,7 @@ function drawer(
       ].filter(Boolean);
       const weight = weighedFully(each.weight);
       return `<li class="checkout"><span class="path" translate="no">${escaped(tilde(each.path, home))}</span>
-        <span class="meta">${escaped(counted([at, ...drift, weight].filter(Boolean).join(" · ")))}</span>${cellsLine(each.cells, homes)}</li>`;
+        <span class="meta">${escaped([at, ...drift, weight].filter(Boolean).map(counted).join(" · "))}</span>${cellsLine(each.cells, homes)}</li>`;
     })
     .join("");
   const joined = repository.joined

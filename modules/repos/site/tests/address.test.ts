@@ -114,7 +114,9 @@ const cleared: Grove = { ...grove, repositories: [felled] };
 const untouched = { query: "", place: "every", cursor: core.key, unfolded: new Map() } as const;
 
 /** What's drawn with `seasons` unfolded in core. */
-function unfolding(...seasons: Season[]): typeof untouched & { unfolded: Map<string, Set<Season>> } {
+function unfolding(
+  ...seasons: Season[]
+): typeof untouched & { unfolded: Map<string, Set<Season>> } {
   return { ...untouched, unfolded: new Map([[core.key, new Set(seasons)]]) };
 }
 

@@ -73,10 +73,6 @@ function roving(keys: readonly HTMLElement[]): void {
   keys.forEach((key, at) => {
     key.addEventListener("focus", () => choose(key));
     key.addEventListener("keydown", (event) => {
-      // A chord is the browser's or the reader's, as Alt with an arrow goes back a page.
-      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
-        return;
-      }
       const moves: Readonly<Record<string, number>> = {
         ArrowRight: at + 1,
         ArrowDown: at + 1,
@@ -87,7 +83,14 @@ function roving(keys: readonly HTMLElement[]): void {
       };
       const to = moves[event.key];
       const next = to === undefined ? undefined : keys[(to + keys.length) % keys.length];
-      if (next !== undefined) {
+      if (
+        next !== undefined &&
+        (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      ) {
+        // A chord is the browser's or the reader's, as Alt with an arrow goes back a page, and
+        // never the page's, whose arrows would step the grove from a key.
+        event.stopPropagation();
+      } else if (next !== undefined) {
         // The page's own arrows step the list; on a key they step the keys alone.
         event.preventDefault();
         event.stopPropagation();
@@ -120,6 +123,19 @@ function markRows(cursor: string | null, scroll: boolean): void {
         each.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
     }
+  }
+}
+
+/**
+ * Keeps focus in the drawer after a redraw: where write left it, else on the cursor's tree, else
+ * on the drawer itself, since what held it may be gone.
+ */
+function keepIn(opened: HTMLElement, inner: string | null): void {
+  if (!opened.contains(document.activeElement)) {
+    markTree(opened, inner, true);
+  }
+  if (!opened.contains(document.activeElement)) {
+    opened.focus({ preventScroll: true });
   }
 }
 
@@ -266,6 +282,7 @@ export {
   keepRoom,
   keepTime,
   markRows,
+  keepIn,
   markTree,
   paced,
   pressHead,

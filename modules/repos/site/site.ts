@@ -26,6 +26,7 @@ import { type Mycelium, watchMycelium } from "./mycelium.ts";
 import {
   copyFolder,
   element,
+  keepIn,
   keepRoom,
   keepTime,
   markRows,
@@ -62,7 +63,7 @@ let cellsHeard = false;
 const repos = (): boolean => arrived.size === KINDS.length;
 // A reload draws again only what the address says, so what it won't keeps no room.
 const roomDrawn = keepRoom(() =>
-  forgotten(location.hash, grove, { query, place, unfolded: unfolded.get(cursor ?? "") }),
+  forgotten(location.hash, grove, { query, place, cursor, unfolded }),
 );
 let mycelium: Mycelium = { cells: [], home: undefined, homes: NOWHERE };
 
@@ -150,10 +151,8 @@ function draw(): void {
   write(stand, groveOfTrees(grove));
   drawList();
   drawOpen();
-  if (wasIn && inner !== null) {
-    markInner(true);
-  } else if (wasIn && !opened.contains(document.activeElement)) {
-    opened.focus({ preventScroll: true });
+  if (wasIn) {
+    keepIn(opened, inner);
   }
   roomDrawn(repos() && cellsHeard);
   land();
