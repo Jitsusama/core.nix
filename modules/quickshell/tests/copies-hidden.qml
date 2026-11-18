@@ -49,7 +49,24 @@ QtObject {
         Expect.same("even beside the shell's own recording of one window",
             Shared.hidden(true, Object.assign(cast(4, "PipeWire", 9, true),
                 cast(5, "WlrScreencopy", 12, true)), 9), true);
+        whyCases();
         shownCases();
+    }
+
+    // Why they hide, as the journal says it, agreeing with hidden().
+    function whyCases() {
+        Expect.same("before niri says its casts, the journal says so",
+            Shared.why(false, {}, null), "niri hasn't said its casts yet");
+        Expect.same("nothing cast, nothing to say", Shared.why(true, {}, null), "");
+        Expect.same("nor for the shell's own recording alone",
+            Shared.why(true, cast(4, "PipeWire", 9, true), 9), "");
+        Expect.same("a share says what sees the screen, the recording left out",
+            Shared.why(true, Object.assign(cast(4, "PipeWire", 9, true),
+                cast(5, "WlrScreencopy", 12, true)), 9), "1 cast sees the screen (WlrScreencopy)");
+        Expect.same("and counts each",
+            Shared.why(true, Object.assign(cast(4, "PipeWire", 9, true),
+                cast(5, "WlrScreencopy", 12, true)), null),
+            "2 casts see the screen (PipeWire, WlrScreencopy)");
     }
 
     // What a hidden copy's row is made of, from copies as the history

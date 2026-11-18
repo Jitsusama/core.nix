@@ -73,14 +73,25 @@ Provider {
     readonly property bool hiding: Shared.hidden(Niri.castsHeard, Niri.casts,
         Recorder.windowSession)
     onHidingChanged: {
+        tellHiding();
         ready.remade();
         changed();
+    }
+    // Said as it starts and at each change, so a copy kept hidden for want
+    // of niri's word reads apart from one hidden by a share in Joel's
+    // journal.
+    function tellHiding() {
+        const why = Shared.why(Niri.castsHeard, Niri.casts, Recorder.windowSession);
+        console.info(hiding ? `copies: hidden, since ${why}` : "copies: shown");
     }
 
     // Whether the history is connected, to copy and paste for Pasting.qml.
     readonly property bool linked: (ready.link?.wire ?? null) !== null
 
-    Component.onCompleted: Pasting.helper = provider
+    Component.onCompleted: {
+        Pasting.helper = provider;
+        tellHiding();
+    }
 
     // Asks the history, as Daemon.qml asks; `then` is given its answer, or
     // null while it isn't there to ask.

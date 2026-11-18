@@ -255,7 +255,9 @@ Singleton {
     }
 
     // Everything the daemon holds, taken anew, as once it answers again
-    // after niri's stream stood in.
+    // after niri's stream stood in. With no cast records among them, the
+    // casts the stream said stay, which can only hide copies a while longer
+    // than a share lasts, never show them while one goes on.
     function retake(): void {
         stoodIn = false;
         kept = NiriRecords.held();
