@@ -1599,6 +1599,7 @@ dependencies = [
  "serde_json",
  "socket2",
  "tempfile",
+ "terminal-kit",
  "webkit6",
 ]
 

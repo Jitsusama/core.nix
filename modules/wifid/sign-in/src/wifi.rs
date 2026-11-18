@@ -7,6 +7,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::net::IpAddr;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -17,7 +18,18 @@ pub const SOCKET: &str = "/run/wifid/io.jitsusama.Wifi";
 /// taking none is asked with none, since wifid closes the connection on
 /// empty ones.
 pub fn call(socket: &Path, method: &str, parameters: Value) -> io::Result<Value> {
-    let mut answers = ask(socket, method, parameters, false)?;
+    one(ask(socket, method, parameters, false, None)?)
+}
+
+/// Asks wifid something taking no parameters, as `call` does, giving up
+/// once it has waited `within` for an answer, so a wifid that's stuck
+/// can't hold the command for ever.
+pub fn call_within(socket: &Path, method: &str, within: Duration) -> io::Result<Value> {
+    one(ask(socket, method, json!({}), false, Some(within))?)
+}
+
+/// The first answer wifid gave.
+fn one(mut answers: impl Iterator<Item = io::Result<Value>>) -> io::Result<Value> {
     let answer = answers
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "wifid didn't answer"))??;
@@ -27,7 +39,7 @@ pub fn call(socket: &Path, method: &str, parameters: Value) -> io::Result<Value>
 /// Every description wifid sends, the first at once and another each time
 /// anything changes, until wifid stops.
 pub fn follow(socket: &Path) -> io::Result<impl Iterator<Item = Value>> {
-    let answers = ask(socket, "Describe", json!({}), true)?;
+    let answers = ask(socket, "Describe", json!({}), true, None)?;
     Ok(answers.map_while(Result::ok))
 }
 
@@ -41,14 +53,17 @@ pub fn lookup(socket: &Path, card: &str, name: &str) -> io::Result<Vec<IpAddr>> 
 }
 
 /// Sends one call and gives each answer's parameters as it comes, or why
-/// wifid refused.
+/// wifid refused, waiting at most `within` for each where it's given.
 fn ask(
     socket: &Path,
     method: &str,
     parameters: Value,
     more: bool,
+    within: Option<Duration>,
 ) -> io::Result<impl Iterator<Item = io::Result<Value>>> {
     let mut stream = UnixStream::connect(socket)?;
+    stream.set_read_timeout(within)?;
+    stream.set_write_timeout(within)?;
     let mut call = json!({"method": format!("io.jitsusama.Wifi.{method}")});
     if parameters
         .as_object()
@@ -87,7 +102,7 @@ fn ask(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::os::unix::net::UnixListener;
     use std::thread;
 
@@ -95,7 +110,7 @@ mod tests {
 
     /// A stand-in wifid that answers one connection with these replies,
     /// and gives back what it was asked.
-    fn wifid(
+    pub(crate) fn wifid(
         replies: Vec<Value>,
     ) -> (
         tempfile::TempDir,
@@ -205,5 +220,27 @@ mod tests {
         let refused = lookup(&socket, "wlan9", "front-desk.inn").unwrap_err();
 
         assert!(refused.to_string().contains("NotJoined"), "{refused}");
+    }
+
+    #[test]
+    fn a_wifid_that_never_answers_is_given_up_on() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let socket = dir.path().join("wifi");
+        let listener = UnixListener::bind(&socket).unwrap();
+        // Takes the call and holds it unanswered past the patience asked.
+        let _holding = thread::spawn(move || {
+            let held = listener.accept();
+            thread::sleep(Duration::from_secs(3));
+            drop(held);
+        });
+
+        let started = std::time::Instant::now();
+        let gave_up = call_within(&socket, "Describe", Duration::from_millis(200));
+
+        assert!(gave_up.is_err(), "an answer came: {gave_up:?}");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "it waited for wifid past its patience"
+        );
     }
 }
