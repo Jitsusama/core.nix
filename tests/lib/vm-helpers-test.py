@@ -349,25 +349,33 @@ def picture(*rows: str) -> bytes:
 def test_pictures_changed_only_above_and_below_the_rows_read_are_alike() -> None:
     # The margin cat walking along the windows' tops, then sitting at the screen's foot.
     alike = vm_helpers.alike_between_rows(1, 3)
-    assert alike(picture("c.", "ww", "ww", ".."), picture(".c", "ww", "ww", "c."))
+    assert alike(picture("c.", "ww", "ww", ".."), picture(".c", "ww", "ww", "c.")), (
+        "the cat moving outside rows 1 to 3 read as a change"
+    )
 
 
 def test_pictures_changed_within_the_rows_read_differ() -> None:
     # A column's edge moving, which crosses every row a full-height window stands in.
     alike = vm_helpers.alike_between_rows(1, 3)
-    assert not alike(picture("..", "ww", "ww", ".."), picture("..", "w.", "ww", ".."))
+    assert not alike(picture("..", "ww", "ww", ".."), picture("..", "w.", "ww", "..")), (
+        "an edge moving in row 1 read as no change"
+    )
 
 
 def test_pixels_that_read_as_whitespace_are_still_pixels() -> None:
     # A picture opening on a row of bytes that read as spaces, which mustn't count as the
     # header's end, or every row after it is read short.
     alike = vm_helpers.alike_between_rows(1, 2)
-    assert not alike(picture("  ", "ww"), picture("  ", "w "))
+    assert not alike(picture("  ", "ww"), picture("  ", "w ")), (
+        "a first row of spaces was read as the header, so row 1's change was missed"
+    )
 
 
 def test_pictures_of_other_sizes_differ_however_alike_their_rows() -> None:
     alike = vm_helpers.alike_between_rows(1, 3)
-    assert not alike(picture("..", "ww", "ww", ".."), picture("...", "www", "www", "..."))
+    assert not alike(picture("..", "ww", "ww", ".."), picture("...", "www", "www", "...")), (
+        "a picture 2 wide read as alike to one 3 wide"
+    )
 
 
 def test_a_cat_walking_on_the_tops_is_rest_for_a_wait_on_the_rows_between() -> None:
