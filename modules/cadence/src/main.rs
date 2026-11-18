@@ -652,11 +652,13 @@ fn gather(
 /// Each realm's other machines whose newest update failed, as the node
 /// keeping it says; none from a realm whose node doesn't answer.
 fn failing_elsewhere(realms: &[String]) -> Vec<elsewhere::Failing> {
-    let this = fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    // Read as the kit reads it, so it matches mycelium's names as the
+    // other tools' readings do.
+    let this = terminal_kit::environment::machine();
     realms
         .iter()
         .filter_map(|realm| command("mycelium", &["--realm", realm, "machines"]).ok())
-        .flat_map(|answer| elsewhere::failing_elsewhere(&answer, this.trim()))
+        .flat_map(|answer| elsewhere::failing_elsewhere(&answer, &this))
         .collect()
 }
 

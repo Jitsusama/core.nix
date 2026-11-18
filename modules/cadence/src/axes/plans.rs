@@ -119,7 +119,8 @@ fn sessions(front: &str) -> Vec<(&str, u32)> {
 const KINDS: [&str; 4] = ["plans", "research", "briefs", "reports"];
 
 /// Reads the store's active quests and their documents, this machine's name
-/// and its running processes: files only, with no command run.
+/// and its running processes: files only, unless the kernel's name for
+/// the machine can't be read and `hostname` is asked instead.
 #[must_use]
 pub fn gather() -> Sources {
     let data = std::env::var_os("XDG_DATA_HOME").map_or_else(
@@ -142,10 +143,8 @@ pub fn gather() -> Sources {
         .collect();
     Sources {
         quests,
-        host: fs::read_to_string("/proc/sys/kernel/hostname")
-            .unwrap_or_default()
-            .trim()
-            .to_owned(),
+        // The kit's reader, which every tool matching mycelium's names shares.
+        host: terminal_kit::environment::machine(),
         running: entries(Path::new("/proc"))
             .filter_map(|p| p.file_name()?.to_str()?.parse().ok())
             .collect(),
