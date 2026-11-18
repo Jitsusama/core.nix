@@ -187,8 +187,9 @@ closes or loses focus"
 
 It's never over a floating window's face but where the screen's top draws it there, as deep
 as its feet sit, and at its corner: with no room over one for its hop, it steps down off the
-end within its own height, paws moving, crossing the corner for a body-length's walk, or up
-to twice that on a short way, the smaller break than walking one on the air (WCJQSG
+end within its own height, paws moving, crossing the corner for a body-length's walk, under
+a fifth of a second, or up to half a second on a short way, the smaller break than walking
+one on the air (WCJQSG
 1ee24751, 2026-11-18: "Stepping down a small ledge with its paws moving is what a cat
 does").
 
@@ -216,8 +217,8 @@ does").
   off; a pixel more, drops"
 - Held by `margin-cat-floats.qml`: "its own height down off it on a short way, it steps off
   as slowly as it ambles"
-- Held by `margin-cat-floats.qml`: "at 1.5x it steps its own height down, a pixel sunk first;
-  a pixel more, it drops"
+- Held by `margin-cat-floats.qml`: "at 1.5x it steps its own height down, never sunk; a pixel
+  more, it drops"
 - Held by `margin-cat-floats.qml`: "off a seat its own height down, it steps; a pixel more,
   it walks clear and drops"
 - Held by `margin-cat-floats.qml`: "at a cell of 2, its own height down off a seat it steps;

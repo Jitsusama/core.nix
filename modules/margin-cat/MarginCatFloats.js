@@ -166,7 +166,7 @@ function off(way, cols, to, at) {
     const ground = Falls.under({ x: end.x, y: way.y }, cols, at);
     const noRoom = cramped(way, { x: end.x, y: way.y }, RISES, at);
     if (noRoom && stepsDown(way, ground, at)) {
-        walks(way, end.x, ground.y);
+        stepOff(way, end.x, ground.y, at);
         return done();
     }
     if (aStep(way, ground, at)) {
@@ -358,12 +358,10 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 // the corner than its feet sit on it. Drawn no higher than the screen's
 // top, on a window whose top is under its own height down they already
 // sit in the face; lower, up to its air over it, so the crossing is
-// fresh, and still the smaller break than the walk on the air. At a
-// ratio of 1.5 a drop not whole cells snaps to cells from its end, so
-// its first cell down can come under a frame before its first along, a
-// pixel into the face while still over it. Its walk
+// fresh, and still the smaller break than the walk on the air. Its walk
 // is timed by the ground it covers along and down, so the deeper the
-// step the longer, up to twice a body-length's walk. For that walk its
+// step the longer: under 200 ms on a long way, up to 500 ms on a short
+// one, ambling and easing to its stop. For that walk its
 // cells take the pointer over the corner, often the window's title bar,
 // as they do wherever it stands. Standing over the top, as a workspace
 // move can draw it sliding with the screen, its step starts from the
@@ -374,6 +372,22 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 function stepsDown(way, to, at) {
     const drop = Math.max(to.y, 0) - Math.max(way.y, 0);
     return drop >= 0 && drop <= at.tall + 1e-6;
+}
+
+// Down off a floating window's end from its edge to `x`, `y`, as
+// stepsDown() allows. Its moves are drawn on whole cells from where
+// each ends (MarginCatWays.js's onCells()), so a drop not whole cells,
+// as a cell of 4/3 at a ratio of 1.5 gives, takes its part-cell down
+// first, while it's wholly over the face, its body as wide as the
+// step is long: a pixel sunk into it for a frame at 120 Hz. A cell
+// along first and it goes down with its body already past the edge.
+function stepOff(way, x, y, at) {
+    const from = way.y < 0 ? Math.min(y, 0) : way.y;
+    const cells = (y - from) / at.cell;
+    if (Math.abs(cells - Math.round(cells)) > 1e-6) {
+        Ways.goes(way, way.x + Math.sign(x - way.x) * at.cell, way.y);
+    }
+    walks(way, x, y);
 }
 
 // Whether a leap's apex, `rises` cells (RISES, or a hop's half) over the
@@ -407,7 +421,7 @@ function follows(way, stop, now) {
         // back ones leave the corner.
         way.facing = Math.sign(stop.via.x - way.x) || way.facing;
         Ways.goes(way, stop.via.x - way.facing * at.wide, way.y);
-        walks(way, landing.x, landing.y);
+        stepOff(way, landing.x, landing.y, at);
     } else if ((stop.how === "leapsOn" || stop.how === "hopsOff")
         && steps(way, landing, at,
             { first: stop.via, rises: stop.how === "hopsOff" ? RISES / 2 : RISES })) {

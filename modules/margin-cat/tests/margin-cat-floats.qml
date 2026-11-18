@@ -590,19 +590,24 @@ QtObject {
             corner(shortDeep, dropsTop), crossed(5, 500));
         // At a laptop's ratio of 1.5, a cell of 4/3, as the shell draws it
         // (margin-cat-journeys.qml): its own height down, 15 of its 16
-        // pixels, it steps; a pixel more, it drops. Its drop, 7.5 cells,
-        // snaps to cells from its end, so its first down comes 12 ms
-        // before its first along: a pixel into the face, under a frame.
+        // pixels, and all 16 of them, it steps; a pixel more, it drops. Its
+        // drop, 7.5 cells, snaps to cells from its end, so it goes a cell
+        // along first, or its part-cell down comes while it's wholly over
+        // the face (stepOff()).
         const fracFloat = float(500, 8, 250, 200);
         const fracAt = top => world({ cell: 4 / 3, ratio: 1.5, wide: 32 / 3, tall: 32 / 3,
             air: 4 / 3, cols: tilesAt(top), floats: [fracFloat] });
         const fracStep = Paths.walk({ x: 600, y: -4 }, { x: 100, y: 10 }, fracAt(22));
         const fracDrop = Paths.walk({ x: 600, y: -4 }, { x: 100, y: 11 }, fracAt(23));
-        expect("at 1.5x it steps its own height down, a pixel sunk first; a pixel more, it drops",
+        const fracEdge = Paths.walk({ x: 600, y: -4 }, { x: 100, y: 32 / 3 },
+            fracAt(22 + 2 / 3));
+        expect("at 1.5x it steps its own height down, never sunk; a pixel more, it drops",
             [leapsBy(fracStep, fracFloat, 32 / 3), corner(fracStep, fracFloat, fracAt(22)),
+                leapsBy(fracEdge, fracFloat, 32 / 3),
+                corner(fracEdge, fracFloat, fracAt(22 + 2 / 3)),
                 leapsBy(fracDrop, fracFloat, 32 / 3), corner(fracDrop, fracFloat, fracAt(23)),
                 breaks(fracStep), breaks(fracDrop)],
-            [[], `${crossed(10, 300)}, sinking`, ["falls"], crossed(4, 200), [], []]);
+            [[], crossed(9, 300), [], crossed(10, 300), ["falls"], crossed(4, 200), [], []]);
         // Up to its own height it walks; a cell taller and it keeps its
         // leap, held at the edge, rather than walk up a wall.
         const capped = float(500, 4, 250, 200);
