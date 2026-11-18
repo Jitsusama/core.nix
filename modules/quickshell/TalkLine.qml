@@ -772,11 +772,12 @@ Scope {
     }
 
     // What the line shows, for the launcher's showing: whether it's up with the keys, what's
-    // typed, its mode and caret, who it names and what it's about, how the talk stands and
-    // what it offers, and how far down the screen its card stands.
+    // typed, its mode and caret, keys a link's quiet dropped, who it names and what it's about,
+    // how the talk stands and what it offers, and how far down the screen its card stands.
     function shown() {
         return { up, keys: up && prompt.Window.active, typed: prompt.text, mode: prompt.mode,
-            caret: prompt.caret, hears: root.hears === null ? "" : root.said.hearer ?? "",
+            caret: prompt.caret, quietDropped: prompt.quietDropped,
+            hears: root.hears === null ? "" : root.said.hearer ?? "",
             about: foot.text, attached: root.shownRows.map(row => ({ kind: row.kind,
                 text: row.text, note: row.note })), lines: prompt.typedLines, talk: root.talk?.said ?? "",
             standing: root.standingOf(root.exchanges[0] ?? null), talks: root.exchanges,
