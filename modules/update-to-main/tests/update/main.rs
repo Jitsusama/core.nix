@@ -2063,8 +2063,9 @@ fn a_hosted_mains_every_move_is_logged() {
 /// config asks: a large repository's repack took its disk for an hour.
 /// Here each fetch keeps a pack, and the checkout's config asks, in the
 /// foreground, both for gc past one pack and for maintenance's own
-/// repack, which runs without gc, so a second fetch would leave fewer
-/// packs were either run. Its config is left as it was.
+/// repack, which runs without gc: a second fetch would leave fewer packs
+/// were gc run, and a multi-pack index, maintenance's repack's first step,
+/// were that run. Its config is left as it was.
 #[test]
 fn a_hosted_fetch_runs_no_upkeep_in_the_checkout() {
     let world = World::hosted_from(World::new(), counted_token);
@@ -2100,6 +2101,10 @@ fn a_hosted_fetch_runs_no_upkeep_in_the_checkout() {
         packs(),
         before + 2,
         "each fetch should leave its own pack, none rolled together"
+    );
+    assert!(
+        !checkout.join(".git/objects/pack/multi-pack-index").exists(),
+        "no fetch should run maintenance's repack, which writes a multi-pack index"
     );
     assert_eq!(
         config(),
@@ -3832,7 +3837,90 @@ fn refuse_during_calls(world: &mut World) {
         follower_waits: false,
         follower_waits_at_most: None,
         every_ask_waits: false,
+        refuses_the_ask_alone: false,
+        refuses_at_most: None,
     }];
+}
+
+/// The machine is over its room while the world's `call` file is there,
+/// which a build makes while `call-starts` is: refusing the ask alone, and
+/// for `at_most` seconds of asks if given.
+fn over_its_room(world: &mut World, at_most: Option<u64>) {
+    world.config.refuse_while = vec![Busy {
+        command: vec![
+            shell(),
+            "-c".to_owned(),
+            format!("test -e {}/call", world.root.display()),
+        ],
+        why: "the machine is over its room".to_owned(),
+        follower_waits: false,
+        follower_waits_at_most: None,
+        every_ask_waits: false,
+        refuses_the_ask_alone: true,
+        refuses_at_most: at_most,
+    }];
+}
+
+/// A load a build raises is its own, so a busy check that refuses the ask
+/// alone holds no switch of what was built: the five-minute load stays
+/// high for minutes after a build.
+#[test]
+fn a_check_refusing_the_ask_alone_holds_no_switch() {
+    let mut world = World::new();
+    over_its_room(&mut world, None);
+    fs::write(world.root.join("call-starts"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "a load the build raised shouldn't hold its own switch"
+    );
+    let next = world.signed("two");
+    world.system(&next);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("an ask while over its room should be refused")
+    };
+    assert_eq!(why, "the machine is over its room");
+}
+
+/// A busy check that may refuse asks only so long lets one through once
+/// it has refused that long, and refuses again after: one that can never
+/// tell would otherwise refuse the update that mends it.
+#[test]
+fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
+    let mut world = World::new();
+    over_its_room(&mut world, Some(0));
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("the first ask while over its room should be refused")
+    };
+    assert_eq!(why, "the machine is over its room");
+    assert_eq!(world.builds(), 0, "a refused ask should build nothing");
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "an ask past the most it may refuse should go ahead"
+    );
+    let next = world.signed("two");
+    world.system(&next);
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "the count should start again once an ask went ahead"
+    );
+    let mut never = World::new();
+    over_its_room(&mut never, None);
+    fs::write(never.root.join("call"), "").unwrap();
+    let head = never.signed("one");
+    never.system(&head);
+    for ask in 0..2 {
+        assert!(
+            matches!(never.update().1, Line::Refused { .. }),
+            "with no most, ask {ask} should be refused"
+        );
+    }
 }
 
 #[test]
@@ -3925,6 +4013,8 @@ fn waits_on(world: &World, why: &str, counted: &str, times: usize, at_most: Opti
         follower_waits: true,
         follower_waits_at_most: at_most,
         every_ask_waits: false,
+        refuses_the_ask_alone: false,
+        refuses_at_most: None,
     }
 }
 

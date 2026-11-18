@@ -272,6 +272,27 @@ in
                 reason to restart what someone is typing into.
               '';
             };
+            refusesTheAskAlone = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Whether it refuses only an ask, before anything is fetched,
+                and never the switch of what that ask built, such as a load
+                too high to build in: by then the load is the build's own.
+              '';
+            };
+            refusesAtMost = mkOption {
+              type = types.nullOr types.ints.positive;
+              default = null;
+              example = 7200;
+              description = ''
+                How many seconds at most it refuses asks in a row, after
+                which one goes ahead, saying so in the log, and the count
+                starts again. With none, it refuses for as long as it says
+                busy, though a command that can never tell then refuses the
+                very update that would mend it.
+              '';
+            };
           };
         }
       );
@@ -279,8 +300,9 @@ in
       description = ''
         What the machine may be busy with when an update mustn't start or
         switch, such as a call a switch would cut. Each is asked before the
-        update starts and again before it switches; while one is busy the
-        ask is refused, and what was built stays for the next one.
+        update starts and, unless it refuses the ask alone, again before it
+        switches; while one is busy the ask is refused, and what was built
+        stays for the next one.
       '';
     };
     holdAccountRestarts = mkOption {
@@ -638,6 +660,8 @@ in
               follower_waits = busy.followerWaits;
               follower_waits_at_most = busy.followerWaitsAtMost;
               every_ask_waits = busy.everyAskWaits;
+              refuses_the_ask_alone = busy.refusesTheAskAlone;
+              refuses_at_most = busy.refusesAtMost;
             }) cfg.refuseWhile;
             follower_tells = cfg.followerTells;
             holds =

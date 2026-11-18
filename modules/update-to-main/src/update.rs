@@ -27,7 +27,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// How a refusal for a held daemon's restart or a held path's change
 /// begins, so an asker that follows main can tell it from being busy and
@@ -113,7 +113,7 @@ fn run(
     let last = last(config);
     if let Some(why) = paused(config, following)
         .or_else(|| too_low(config))
-        .or_else(|| busy(config))
+        .or_else(|| busy_at_the_ask(config))
     {
         return Line::Refused { commit: last, why };
     }
@@ -638,14 +638,68 @@ fn held(config: &Config, built: &std::path::Path, granted: bool) -> Option<Strin
     ))
 }
 
-/// What the machine is busy with, when any of its busy commands says so.
-/// Those a follower waits on refuse nothing.
+/// What the machine is busy with, when any of its busy commands says so,
+/// once an ask has built or before a waiting switch. Those a follower
+/// waits on refuse nothing, and those that refuse the ask alone refuse no
+/// switch.
 fn busy(config: &Config) -> Option<String> {
     config
         .refuse_while
         .iter()
-        .filter(|busy| !busy.follower_waits)
+        .filter(|busy| !busy.follower_waits && !busy.refuses_the_ask_alone)
         .find_map(is_busy)
+}
+
+/// What the machine is busy with as an ask comes, before anything is
+/// fetched, when any of its busy commands says so and hasn't refused asks
+/// for longer than it may.
+fn busy_at_the_ask(config: &Config) -> Option<String> {
+    config
+        .refuse_while
+        .iter()
+        .filter(|busy| !busy.follower_waits)
+        .find_map(|busy| refused_for_at_most(config, busy, is_busy(busy)))
+}
+
+/// `why` the ask is refused, unless `busy` has refused asks for longer
+/// than it may, when this one goes ahead, says so, and the count starts
+/// again. When each refusal began is kept in the state folder, under a
+/// name drawn from what it's busy with.
+fn refused_for_at_most(config: &Config, busy: &Busy, why: Option<String>) -> Option<String> {
+    let Some(most) = busy.refuses_at_most else {
+        return why;
+    };
+    let name: String = busy
+        .why
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let since = config.state.join(format!("refused-since-{name}"));
+    let Some(why) = why else {
+        let _ = fs::remove_file(&since);
+        return None;
+    };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let began = fs::read_to_string(&since)
+        .ok()
+        .and_then(|text| text.trim().parse::<u64>().ok());
+    match began {
+        Some(began) if now.saturating_sub(began) >= most => {
+            let _ = fs::remove_file(&since);
+            eprintln!(
+                "update-to-main: {why} for {} s of asks, so this one goes ahead",
+                now.saturating_sub(began)
+            );
+            None
+        }
+        Some(_) => Some(why),
+        None => {
+            let _ = fs::write(&since, now.to_string());
+            Some(why)
+        }
+    }
 }
 
 /// Waits, for a switch only the follower asked for, while any command a
