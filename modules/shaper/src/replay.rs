@@ -1734,7 +1734,10 @@ mod tests {
             rates[0].iter().any(|r| r.up.is_none_or(|up| up > 9_500)),
             "held with no ceiling"
         );
-        assert!(free[0].seconds.iter().all(|s| s.ceiling.is_none()));
+        assert!(
+            free[0].seconds.iter().all(|s| s.ceiling.is_none()),
+            "a second marked as a ceiling's with none asked"
+        );
     }
 
     #[test]
