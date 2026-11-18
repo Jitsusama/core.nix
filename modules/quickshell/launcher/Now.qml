@@ -2032,7 +2032,7 @@ Provider {
 
     function cellSaid(cell) {
         const agents = cell === null ? null : provider.source("agents");
-        return Cells.headingName(cell, agents ? agents.made(cell) : null,
+        return Cells.headingName(cell, agents ? agents.standingOf(cell.address) : null,
             Words.of("on:waiting").said ?? {});
     }
 

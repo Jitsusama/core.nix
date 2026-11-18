@@ -13,7 +13,8 @@
 // as a cell is. A cell is one by its address, whatever its case.
 function byCell(items, cellOf) {
     const groups = [];
-    const at = {};
+    // No prototype, so an address is never taken for one of Object's own.
+    const at = Object.create(null);
     for (const item of items ?? []) {
         const found = cellOf(item) ?? null;
         const address = typeof found?.address === "string" ? found.address.toUpperCase() : "";

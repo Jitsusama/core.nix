@@ -145,6 +145,14 @@ ShellRoot {
                     name: session.title, side: "" };
             return rows[session.address];
         }
+
+        // How a session stands, read from its row's record as Agents'
+        // own reads it, without making a row.
+        function standingOf(address) {
+            void remade;
+            const row = rows[address];
+            return row ? { name: row.name, doing: row.doing ?? "" } : null;
+        }
     }
 
     // The launcher's placing of an answered thing, as Launcher.qml's
@@ -821,9 +829,15 @@ ShellRoot {
     property real heldMinute: -1
     // And whether it said none of what moved is shown (changedUnseen).
     property bool nowUnseen: false
+    // How many times what For You lists from moved (Now.qml's forYouHeard).
+    property int forYouHeardTimes: 0
 
     Connections {
         target: now
+
+        function onForYouHeardChanged() {
+            root.forYouHeardTimes += 1;
+        }
 
         function onChanged() {
             root.nowChanged += 1;
@@ -1256,24 +1270,49 @@ ShellRoot {
             doing: "needs you" };
         WaitingOnYou.now = [toDo("Sign In")];
         now.lookTexts = { "c.json": lookAt("c", "Read C", "s-c") };
-        const rows = forYou();
-        const read = rows.slice(0, 5).map(row => [row.key, row.heading === true ? row.name : ""]);
-        const under = JSON.stringify(read.slice(1, 3).map(one => one[0]).sort());
+        const shown = () => forYou().map(row => [row.key, row.heading === true ? row.name : ""]);
+        const read = shown();
+        // What it wants blocks it, so it weighs most and leads its cell.
         expect("a look a session left stands under its heading, each heading saying its cell",
-            JSON.stringify(read[0]) === '["on:heading:cell:LEFTC","Session C \u00b7 needs you"]'
-                && under === '["on:look:c","on:waiting:want:LEFTC"]'
-                && JSON.stringify(read[3]) === '["on:heading:cell:yours","yours alone"]'
-                && read[4][0] === "on:waiting:Sign In",
+            JSON.stringify(read) === JSON.stringify([
+                ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"],
+                ["on:waiting:want:LEFTC", ""], ["on:look:c", ""],
+                ["on:heading:cell:yours", "yours alone"], ["on:waiting:Sign In", ""]]),
             JSON.stringify(read));
-        // Its standing moving alone, with nothing else For You holds, is heard,
-        // so its heading never goes on saying how it stood before.
-        const toldBefore = now.cellsTold;
+        // Two asking stand together in Agents Asking, first, above every
+        // heading, since a heading claims what's under it (Y2YBTS,
+        // 2026-11-18 15:49); the cell that left the look keeps its heading
+        // over the look alone, and no ask stands loose.
+        const asking = { address: "WANTD", title: "Session D", presence: { session: "s-d",
+            addresses: [], wants: { kind: "question", said: "Which?" } } };
+        Sessions.running = [left, asking];
+        Sessions.wanting = [left, asking];
+        const gathered = shown();
+        expect("two asking stand first in Agents Asking, above the headings",
+            JSON.stringify(gathered) === JSON.stringify([
+                ["on:waitingOnYou:kind:agent", ""],
+                ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"], ["on:look:c", ""],
+                ["on:heading:cell:yours", "yours alone"], ["on:waiting:Sign In", ""]]),
+            JSON.stringify(gathered));
+        // A cell behind a look and wanting nothing, its standing moving
+        // alone: For You hears it, so a heading held never goes on saying
+        // how its cell stood before.
+        Sessions.running = [left];
+        Sessions.wanting = [];
+        agents.rows.LEFTC.doing = "listening";
+        agents.remade += 1;
+        const listening = shown();
+        const heardBefore = root.forYouHeardTimes;
         agents.rows.LEFTC.doing = "working";
         agents.remade += 1;
-        expect("a cell's standing moving alone moves what For You hears",
-            toldBefore.includes("Session C \u00b7 needs you")
-                && now.cellsTold.includes("Session C \u00b7 working"),
-            JSON.stringify([toldBefore, now.cellsTold]));
+        const working = shown();
+        expect("a cell's standing moving alone is heard, and its heading says it",
+            root.forYouHeardTimes > heardBefore
+                && listening[0][0] === "on:heading:cell:LEFTC"
+                && listening[0][1] === "Session C \u00b7 listening"
+                && JSON.stringify(working.slice(0, 2)) === JSON.stringify([
+                    ["on:heading:cell:LEFTC", "Session C \u00b7 working"], ["on:look:c", ""]]),
+            JSON.stringify([root.forYouHeardTimes - heardBefore, listening, working]));
         Sessions.running = [];
         Sessions.wanting = [];
         delete agents.rows.LEFTC;

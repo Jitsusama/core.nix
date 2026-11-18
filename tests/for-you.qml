@@ -679,7 +679,7 @@ QtObject {
         const behind = { one: cellA, two: null, three: cellB, four: { address: "aaaaaa" },
             five: null };
         const grouped = Cells.byCell(["one", "two", "three", "four", "five"]
-            .map(name => ({ name })), item => behind[item.name]);
+            .map((name, at) => ({ name, weight: 9 - 2 * at })), item => behind[item.name]);
         expect("each cell's rows under it, the cells by their heaviest",
             grouped.map(group => [group.cell?.address ?? null,
                 group.items.map(item => item.name)]),
@@ -732,9 +732,9 @@ QtObject {
         // loose row that weighs less, as agentAt places it (Y2YBTS,
         // 2026-11-18 15:49).
         const asking = weight => ({ rows: ["ASKED"], weight });
-        expect("headings shown, it stands first, though lighter",
-            Cells.laidOut(grouped, rowsOf, headingOf, asking(0)).slice(0, 2),
-            ["ASKED", "# AAAAAA"]);
+        expect("headings shown, it stands first, though lighter than all",
+            Cells.laidOut(grouped, rowsOf, headingOf, asking(0.5)), ["ASKED", "# AAAAAA", "one",
+                "four", "# yours", "two", "five", "# BBBBBB", "three"]);
         const weighs = [{ name: "two", weight: 9 }, { name: "five", weight: 2 }];
         const ownOnly = Cells.byCell(weighs, () => null);
         expect("no heading, before the first lighter row",
@@ -745,14 +745,24 @@ QtObject {
             Cells.laidOut(ownOnly, rowsOf, headingOf, asking(1)), ["two", "five", "ASKED"]);
         expect("a cell whose rows all went leaves no heading, so it goes by weight",
             Cells.laidOut(Cells.byCell([{ name: "gone", weight: 9 }, weighs[1]],
-                item => item.name === "gone" ? cellA : null), rowsOf, headingOf, asking(5)),
-            ["ASKED", "five"]);
+                item => item.name === "gone" ? cellA : null), rowsOf, headingOf, asking(1)),
+            ["five", "ASKED"]);
         expect("nothing else, it alone", Cells.laidOut([], rowsOf, headingOf, asking(3)),
             ["ASKED"]);
-        const lone = ForYou.banded([{ kind: "agent", thing: { kind: "todo", blocks: 1,
-            since: now - hour }, name: "a" }], now);
-        expect("a lone ask isn't gathered, so it stands under its cell as itself",
-            [lone.now.map(one => one.name), lone.agent.length], [["a"], 0]);
+        // With no heading it stands where banded's agentAt puts it, a row
+        // weighing the same before it, so For You and its :filter, which
+        // reads agentAt, list in one order.
+        const ask = name => ({ kind: "agent", thing: { kind: "todo", blocks: 1,
+            since: now - hour }, name });
+        const tied = ForYou.banded([ask("a"), ask("b"), { kind: "do", thing: { kind: "todo",
+            blocks: 1, since: now - hour }, name: "tie" }, { kind: "do",
+            thing: { kind: "todo" }, name: "light" }], now);
+        const tiedNames = tied.now.map(one => one.name);
+        expect("a tie stands before it, where agentAt puts it",
+            [Cells.laidOut(Cells.byCell(tied.now, () => null), rowsOf, headingOf,
+                { rows: ["ASKED"], weight: tied.agent[0].weight }),
+                tiedNames.slice(0, tied.agentAt).concat(["ASKED"], tiedNames.slice(tied.agentAt))],
+            [["tie", "ASKED", "light"], ["tie", "ASKED", "light"]]);
 
         if (failures.length > 0) {
             for (const failure of failures)

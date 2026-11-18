@@ -820,10 +820,6 @@ Provider {
             side: said(served.side),
             sideItems: served.side ?? [],
             note: String(held.note ?? ""),
-            // How it stands, as the daemon words it, without its figures,
-            // as For You's heading over the cell says it (Now.qml's
-            // cellHeading).
-            doing: String(held.doing ?? ""),
             depth: served.depth,
             gone: !!held.gone,
             // Return does the act its state makes harmless, one of those
@@ -861,6 +857,19 @@ Provider {
             belongs: String(ranked.belongs ?? "")
         });
         return row;
+    }
+
+    // How a session stands as its row serves it, its name and how the
+    // daemon words its state without its figures, as For You's heading over
+    // the cell says it (Now.qml's cellHeading), or none before it's told.
+    // Read from the record, never a made row, since the headings are heard
+    // with the launcher shut, where a row made for nobody is work a held
+    // key waits on (vm-desktop-launcher-keeps-up, ZINAWZ).
+    function standingOf(address) {
+        void placings;
+        const served = rowsKind?.held?.[`row:agents:${address}`]?.row;
+        return served ? { name: String(served.name ?? ""),
+            doing: String(served.held?.doing ?? "") } : null;
     }
 
     // A session's row at no depth, as Now and Ask show one, or none while
