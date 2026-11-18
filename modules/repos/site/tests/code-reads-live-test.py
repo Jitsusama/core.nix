@@ -11,7 +11,9 @@ its home on the map, say each repository's weight and due upkeep in its row and
 drawer, say broken when the daemon stops and live again, its repositories
 drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
-row as the cursor steps, not shift as its feeds arrive on a reload, draw a
+row or tree as the cursor steps, keep focus where it was through a redraw, let
+Tab reach the head's keys once, not shift as its feeds arrive on a reload, nor
+hold room for what a reload forgets or at another width, draw a
 second's burst of records a few times rather than each, and pass the
 web-design skill's page checks and its homes check at a phone's width and
 a desk's in both looks. Anything the page logs fails it, but for the browser's
@@ -481,6 +483,60 @@ def test_stepping_the_cursor_moves_no_row(code_page: Page) -> None:
     assert code_page.evaluate(boxes) == before, "stepping the cursor moved the rows"
 
 
+def test_stepping_through_the_trees_moves_no_tree(code_page: Page, repos_daemon: StandIn) -> None:
+    says_it_stands(code_page, "live")
+    for path in ["grove", "old"]:
+        repos_daemon.tell(
+            "tree", changed=[{"key": f"tree:/home/ada/trees/{path}", "written_at": now()}]
+        )
+    trees = code_page.locator("#open .tree")
+    expect(trees, "core's drawer didn't draw both trees open").to_have_count(2, timeout=PACE_MS)
+    row(code_page, "github:owl/core").click()
+    boxes = (
+        "() => [...document.querySelectorAll('#open .tree')]"
+        ".map(each => [each.offsetTop, each.offsetHeight])"
+    )
+    before = code_page.evaluate(boxes)
+    code_page.keyboard.press("Enter")
+    stepped_in = code_page.locator('#open .tree[aria-current="true"]')
+    expect(stepped_in, "Return didn't step into the first tree").to_be_focused()
+    expect(code_page.locator(".drawer-keys"), "the trees' keys weren't shown").to_be_visible()
+    assert code_page.evaluate(boxes) == before, "stepping in moved the trees"
+    code_page.keyboard.press("j")
+    expect(trees.nth(1), "j didn't step to the next tree").to_have_attribute("aria-current", "true")
+    assert code_page.evaluate(boxes) == before, "stepping through the trees moved them"
+
+
+def test_a_redraw_keeps_focus_where_it_was(code_page: Page, repos_daemon: StandIn) -> None:
+    says_it_stands(code_page, "live")
+    every = code_page.locator('#title a[data-place="every"]')
+    every.focus()
+    # A tree written now makes core grow, which the headline says again around the link.
+    grove_written_now(repos_daemon)
+    expect(code_page.locator("#title"), "the headline wasn't said again").to_contain_text(
+        "1 growing", timeout=PACE_MS
+    )
+    expect(every, "the headline said again lost the link focused in it").to_be_focused()
+
+
+def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    keys = code_page.locator(".head .keys [role=button]")
+    expect(keys, "the head's keys weren't made pressable").to_have_count(6)
+    keys.first.focus()
+    code_page.keyboard.press("ArrowRight")
+    expect(keys.nth(1), "the right arrow didn't move to the next key").to_be_focused()
+    code_page.keyboard.press("End")
+    expect(keys.last, "End didn't move to the last key").to_be_focused()
+    code_page.keyboard.press("Home")
+    expect(keys.first, "Home didn't move to the first key").to_be_focused()
+    code_page.keyboard.press("Tab")
+    left = code_page.evaluate("() => document.activeElement.closest('.head .keys') === null")
+    assert left, "Tab stopped on a second key at the head"
+    code_page.keyboard.press("Shift+Tab")
+    expect(keys.first, "Tab back didn't come to the key last left").to_be_focused()
+
+
 def test_a_reload_holds_the_page_still(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
@@ -507,6 +563,44 @@ def test_a_reload_holds_the_page_still(code_page: Page) -> None:
         "() => document.documentElement.style.getPropertyValue('--room-list')"
     )
     assert room == "", f"the list's room, {room}, was held after every feed had drawn"
+
+
+# What a page holds at DOMContentLoaded of each part's room, before any feed can draw.
+HELD_ROOM = """document.addEventListener("DOMContentLoaded", () => {
+  const style = document.documentElement.style;
+  globalThis.held = Object.fromEntries(
+    ["title", "list"].map((id) => [id, style.getPropertyValue(`--room-${id}`)]),
+  );
+});"""
+
+
+def test_a_reload_holds_no_room_for_a_name_it_forgets(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    code_page.locator("#find").fill("notes")
+    expect(code_page.locator("#list .row"), "finding didn't narrow the list").to_have_count(1)
+    code_page.add_init_script(HELD_ROOM)
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    held = code_page.evaluate("() => globalThis.held")
+    assert held["title"] != "", "the reload held no room at all"
+    # The reload forgets what was found, so the list it draws is every repository.
+    assert held["list"] == "", f"the reload held {held['list']} for a list it won't draw"
+
+
+def test_a_resize_before_the_feeds_arrive_lets_the_room_go(
+    code_page: Page, repos_daemon: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    # With the daemon away the repositories never draw, so the room stays held for its while.
+    repos_daemon.leave()
+    code_page.add_init_script(HELD_ROOM)
+    code_page.reload(wait_until="domcontentloaded")
+    assert code_page.evaluate("() => globalThis.held.list") != "", "the reload held no room"
+    size = code_page.viewport_size or {"width": 1280, "height": 800}
+    code_page.set_viewport_size({"width": size["width"] - 200, "height": size["height"]})
+    # Well inside the 3 seconds the room is held for anyway, so only the resize can let it go.
+    let_go = "() => document.documentElement.style.getPropertyValue('--room-list') === ''"
+    code_page.wait_for_function(let_go, timeout=1000)
 
 
 def test_a_burst_of_records_draws_the_list_a_few_times(
