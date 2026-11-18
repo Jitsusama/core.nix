@@ -327,15 +327,17 @@ def replugged(on_eth2: Connection) -> Replugged:
     client = on_eth2.client
     device = client.succeed("basename $(readlink /sys/class/net/eth2/device)").strip()
     unplugged_ifb = on_eth2.ifb("eth2")
-    # Plugged back while eth2's address unit still stops, systemd refuses to start it again
-    # ("Requested transaction contradicts existing jobs") and eth2 comes back with no address,
-    # so the replug waits for the stop, as a person's seconds between the two allow. The unit
-    # is seen up first: systemd calls one it doesn't know inactive, which would wait for nothing.
+    # Plugged back while the rig's scripted networking still stops eth2's units, systemd refuses
+    # to start them again ("Requested transaction contradicts existing jobs") and eth2 comes
+    # back with no address, so the replug waits until no eth2 unit has a job left, as a person's
+    # seconds between the two allow. Its address unit going down says the stops were queued, and
+    # it's seen up first: systemd calls one it doesn't know inactive, which would wait for nothing.
     client.succeed("systemctl is-active -q network-addresses-eth2")
     client.succeed(f"echo {device} > /sys/bus/virtio/drivers/virtio_net/unbind")
     client.wait_until_succeeds("! ip link show eth2", timeout=SHAPING)
     client.wait_until_succeeds(
-        "systemctl show -P ActiveState network-addresses-eth2 | grep -Eqx 'inactive|failed'",
+        "systemctl show -P ActiveState network-addresses-eth2 | grep -Eqx 'inactive|failed'"
+        " && ! systemctl list-jobs --no-legend | grep -q eth2",
         timeout=SHAPING,
     )
     client.wait_until_succeeds(
