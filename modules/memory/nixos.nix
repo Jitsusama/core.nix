@@ -119,14 +119,19 @@ in
     "vm.compaction_proactiveness" = 40;
 
     # Let allocations take part of a block of another kind of page, as the
-    # kernel does by default. Keeping blocks whole (below) was tried on 18
-    # November in four alternating half hours under agents' load: on, Joel's
-    # apps waited on memory 4.9 s and 2.5 s a round against 0.03 s and 0.01 s
-    # off, with 27,465 and 254,426 allocation stalls against 1,234 and 2,123.
-    # It gained little: 909 and 809 MB free in blocks of 128 KB or more
-    # against 794 and 340, and no large allocation failed either way, once
-    # Wi-Fi's buffers fell back to vmalloc. Written, so a switch that changes
-    # these settings puts back a trial an agent left on, as for the others.
+    # kernel does by default. Keeping blocks whole (below) was tried on the
+    # laptop on 18 November, turned on and off for four alternating half
+    # hours under agents' load. Each half hour on, Joel's apps waited on
+    # memory 4.9 s and 2.5 s against 0.03 s and 0.01 s off, and the machine
+    # stalled allocating 27,465 and 254,426 times against 1,234 and 2,123.
+    # The gain is unproven: 909 and 809 MB free in blocks of 128 KB or more
+    # against 794 and 340, over rounds too short to read it, and no
+    # allocation of any size failed in the 16 hours since the laptop's Wi-Fi
+    # buffers fell back to vmalloc, which had been most of the failures. So
+    # it stays off unless large allocations fail again, when a trial on from
+    # boot for a day is what would show its gain. Written, so a switch that
+    # changes these settings puts back a trial an agent left on, as for the
+    # others.
     "vm.defrag_mode" = lib.mkIf defragModeIsSafe 0;
   };
 
@@ -175,11 +180,11 @@ in
   # can't move pages to; 89% of the 5.5 million compactions since boot had
   # failed. In a kernel build with bursts of huge pages his commits measured
   # three quarters fewer allocation stalls, and over twice the swapping out,
-  # so it was tried under agents' load before being made the default, and
-  # stays off for what it cost Joel's apps (above). The kernel asks for it
-  # right after boot, since memory already fragmented recovers slowly, so a
-  # trial turned on mid-run pays its cost at once and reads its gain over
-  # hours. Each unit writes its instance and only a value the rules list:
+  # so it was tried under agents' load rather than made the default, and
+  # stays off for what it cost Joel's apps at once (above). The kernel asks
+  # for it right after boot, since memory already fragmented recovers
+  # slowly, so a trial turned on mid-run pays its cost at once and reads its
+  # gain over hours. Each unit writes its instance and only a value the rules list:
   # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
   # `memory-lru-gen@n`, `memory-swappiness@100`, `memory-page-cluster@3`
   # (2^3 pages at most), `memory-compaction@40`, `memory-min-free@131072`
