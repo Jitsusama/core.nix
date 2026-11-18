@@ -3,14 +3,14 @@
 //! file; the shaper reads each line the file gains, makes seconds of them
 //! as a replay does (src/replay.rs), and steps the controller on each, so
 //! the rates that shape a link are the ones a replay of its lines scores.
-//! What each network's directions learned is kept, on disk too, so a
-//! network met again, after a restart or a rejoin, starts from it.
+//! Each stay starts as a network never met does, or at its anchor's hold
+//! where its line is declared: what a stay learned ends with it.
 //!
 //! Long because its tests replay recorded days through every path a stay
 //! takes, which only reads whole beside the follower they step.
 
 use crate::networks::Anchors;
-use crate::oneway::{self, Learned, Ours, Tuning};
+use crate::oneway::{self, Ours, Tuning};
 use crate::record::day_file;
 use crate::replay::{Controller as _, Rates, Reading, Sample, parse};
 use crate::vpndelay::Probe;
@@ -26,9 +26,6 @@ use std::time::{Duration, Instant, SystemTime};
 /// to, and a rate held from a minute ago may be far under the
 /// connection's now.
 const SILENT_MS: u64 = 10_000;
-
-/// What each network's directions learned, up and down, by its name.
-pub type Known = BTreeMap<String, (Learned, Learned)>;
 
 /// What the controller last heard of its link's second, and what it made
 /// of it: what a trace needs to say why a rate held where it did.
@@ -66,15 +63,6 @@ pub struct Heard {
     /// Why the upload holds where it does, in one sentence (src/why.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
-}
-
-/// What a link joining `network` starts its upload at, in kbit/s: the
-/// hold of the plateau the one-way controller learned there and kept in
-/// `kept`, or none where it learned none.
-pub fn starting_up(kept: &Path, network: &str) -> Option<u64> {
-    let known: Known = serde_json::from_str(&fs::read_to_string(kept).ok()?).ok()?;
-    let plateau = known.get(network)?.0.plateau?;
-    Some(crate::rate::whole(plateau * Tuning::default().hold))
 }
 
 /// The trial written at `path`, held within its bounds: none while there
@@ -127,9 +115,8 @@ pub struct Follow {
     /// seconds since 1970, for the trace (src/trace.rs).
     last: Option<crate::replay::Second>,
     last_at: Option<u64>,
-    /// The network of the stay, and what each network met learned.
+    /// The network of the stay.
     network: String,
-    known: Known,
     /// When the shaper started, in ms since 1970: what was recorded before
     /// it is no stay of its own.
     from_ms: u64,
@@ -140,7 +127,7 @@ pub struct Follow {
 }
 
 impl Follow {
-    pub fn new(known: Known) -> Follow {
+    pub fn new() -> Follow {
         Follow {
             link: None,
             reading: Reading::new(UNKNOWN.into()),
@@ -152,7 +139,6 @@ impl Follow {
             last: None,
             last_at: None,
             network: UNKNOWN.into(),
-            known,
             from_ms: 0,
             trial: None,
             anchors: Anchors::new(),
@@ -177,19 +163,6 @@ impl Follow {
         self.controller.up.tune(self.trial.unwrap_or_default());
     }
 
-    /// What each network met learned, the stay's included.
-    pub fn known(&mut self) -> &Known {
-        if self.network != UNKNOWN {
-            let (up, down) = self.known.get(&self.network).copied().unwrap_or_default();
-            let now = (
-                self.controller.up.learned().over(up),
-                self.controller.down.learned().over(down),
-            );
-            self.known.insert(self.network.clone(), now);
-        }
-        &self.known
-    }
-
     /// Takes whose a link's upload queue is now, for the seconds to come.
     pub fn see(&mut self, link: &str, ours: Ours) {
         self.ours.insert(link.to_string(), ours);
@@ -201,7 +174,7 @@ impl Follow {
     }
 
     /// Takes one line's sample. A recording begun anew is a new stay,
-    /// started from what its network learned before, if it was met.
+    /// started as a network never met is, or at its anchor.
     pub fn take(&mut self, sample: &Sample) {
         self.last_ms = self.last_ms.max(sample.at());
         if let Sample::Pool { network, link, .. } = sample {
@@ -209,10 +182,8 @@ impl Follow {
                 self.link.clone_from(link);
             }
             if let Some(network) = network {
-                self.known();
                 self.reading = Reading::new(network.clone());
-                let (up, down) = self.known.get(network).copied().unwrap_or_default();
-                self.controller = oneway::Controller::from_learned(up, down);
+                self.controller = oneway::Controller::new(None, None);
                 self.controller.up.tune(self.trial.unwrap_or_default());
                 self.controller.anchor(self.anchors.get(network).copied());
                 self.controller.start_at_the_anchor();
@@ -270,7 +241,7 @@ impl Follow {
             vpn_ms: second.vpn_ms,
             vpn_base_ms: self.controller.vpn_base(),
             up_limit: self.controller.up.limit(),
-            plateau: self.controller.up.learned().plateau,
+            plateau: self.controller.up.plateau(),
             trial: self.trial,
             up_tins_kbit: None,
             why: Some(self.controller.why()),
@@ -332,56 +303,25 @@ pub struct Live {
     /// A line the recorder is still writing.
     partial: Vec<u8>,
     follow: Follow,
-    /// Where what each network learned is kept, and what was last written.
-    kept: PathBuf,
-    written: Known,
     /// A call's round trip through the VPN riding the link.
     vpn: Probe,
 }
 
 impl Live {
     /// Starts at yesterday's file, so a stay begun before midnight is known
-    /// from its first line, and from what each network learned, kept in
-    /// `kept`. Only what's recorded from `now` on is stepped on.
-    pub fn new(folder: &Path, now: SystemTime, kept: &Path) -> Live {
+    /// from its first line. Only what's recorded from `now` on is stepped
+    /// on.
+    pub fn new(folder: &Path, now: SystemTime) -> Live {
         let yesterday = now.checked_sub(Duration::from_hours(24)).unwrap_or(now);
-        let written: Known = fs::read_to_string(kept)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default();
         Live {
             folder: folder.to_path_buf(),
             file: (day_file(folder, yesterday), 0),
             partial: Vec::new(),
             follow: Follow {
                 from_ms: ms(now),
-                ..Follow::new(written.clone())
+                ..Follow::new()
             },
-            kept: kept.to_path_buf(),
-            written,
             vpn: Probe::default(),
-        }
-    }
-
-    /// Writes what each network learned when a rate in it moved by more
-    /// than a twentieth, so a rate that wanders doesn't wear the disk.
-    fn keep(&mut self) {
-        let known = self.follow.known();
-        let moved = known.iter().any(|(network, &(up, down))| {
-            let (was_up, was_down) = self.written.get(network).copied().unwrap_or_default();
-            up.moved(was_up) || down.moved(was_down)
-        });
-        if !moved {
-            return;
-        }
-        self.written = known.clone();
-        let text = serde_json::to_string_pretty(&self.written).unwrap_or_default();
-        let fresh = self.kept.with_extension("json.new");
-        if fs::write(&fresh, text)
-            .and_then(|()| fs::rename(&fresh, &self.kept))
-            .is_err()
-        {
-            eprintln!("couldn't write {}", self.kept.display());
         }
     }
 
@@ -435,7 +375,6 @@ impl Live {
             self.partial.clear();
             self.read_on();
         }
-        self.keep();
         self.follow.now(ms(now))
     }
 
@@ -521,7 +460,7 @@ mod tests {
     }
 
     fn followed(lines: &[String]) -> Follow {
-        let mut follow = Follow::new(Known::new());
+        let mut follow = Follow::new();
         for line in lines {
             follow.take(&parse(line).expect("a sample"));
         }
@@ -570,8 +509,8 @@ mod tests {
     }
 
     /// A follower that hears data waiting and our CAKE holding nothing.
-    fn waiting(known: Known) -> Follow {
-        let mut follow = Follow::new(known);
+    fn waiting() -> Follow {
+        let mut follow = Follow::new();
         follow.see(
             "wlan0",
             Ours {
@@ -583,28 +522,31 @@ mod tests {
         follow
     }
 
+    // What a stay learned of a network that isn't declared starts nothing
+    // after it: on 16 November home's 4,586 was the cuts' own doing and
+    // held every start there, and a network's line moves between stays.
+    // A network met again is found again, as one never met is.
     #[test]
-    fn a_network_met_again_starts_held_under_its_router() {
-        let mut follow = waiting(Known::new());
+    fn a_network_met_again_starts_as_one_never_met() {
+        let mut follow = waiting();
         let mut lines = flow_queued(NOV3);
         lines.push(pool(NOV3 + 11_000, Some("hotel")));
         lines.push(pool(NOV3 + 12_000, Some("home")));
         for line in &lines {
             follow.take(&parse(line).expect("a sample"));
         }
-        let up = follow.controller.up.limit();
-        assert!(
-            up.is_some_and(|up| (11_000..12_000).contains(&up)),
-            "home started at {up:?}"
+        assert_eq!(follow.controller.up.limit(), None, "home started held");
+        assert_eq!(
+            follow.heard().map(|(_, h)| h.plateau),
+            Some(None),
+            "home started under the plateau it learned"
         );
-        let hotel = follow.known().get("hotel").copied().unwrap_or_default();
-        assert_eq!(hotel.0.plateau, None, "the hotel took home's plateau");
     }
 
     #[test]
     fn a_queue_past_cake_that_the_probes_cant_see_is_taken_back_live() {
         let lines = flow_queued(NOV3);
-        let mut follow = Follow::new(Known::new());
+        let mut follow = Follow::new();
         follow.see(
             "wlan0",
             Ours {
@@ -629,7 +571,7 @@ mod tests {
     // line can't be told from a signal that never came.
     #[test]
     fn what_the_controller_heard_last_is_told() {
-        let mut follow = waiting(Known::new());
+        let mut follow = waiting();
         follow.hear_vpn(Some(80.0));
         for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
@@ -653,7 +595,7 @@ mod tests {
         );
         assert_eq!(
             heard.plateau,
-            follow.controller.up.learned().plateau,
+            follow.controller.up.plateau(),
             "the plateau: {heard:?}"
         );
     }
@@ -663,7 +605,7 @@ mod tests {
     // heard before.
     #[test]
     fn a_silent_recorder_gives_no_reason() {
-        let mut follow = waiting(Known::new());
+        let mut follow = waiting();
         follow.tune(Some(Tuning {
             most_kbit: Some(8_500.0),
             ..Tuning::default()
@@ -691,7 +633,7 @@ mod tests {
     // reaches the line.
     #[test]
     fn a_reason_speaks_of_the_upload_the_shaper_is_answered() {
-        let mut follow = waiting(Known::new());
+        let mut follow = waiting();
         for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
         }
@@ -722,7 +664,7 @@ mod tests {
     // nothing then, whatever its own rate reads, so it gives no reason.
     #[test]
     fn a_controller_letting_go_gives_no_reason() {
-        let mut follow = waiting(Known::new());
+        let mut follow = waiting();
         follow.tune(Some(Tuning {
             most_kbit: Some(8_500.0),
             ..Tuning::default()
@@ -748,7 +690,7 @@ mod tests {
     // then, its reason waiting, and no ceiling is what holds it.
     #[test]
     fn a_recorder_heard_again_waits_until_a_second_after_is_stepped() {
-        let mut follow = waiting(Known::new());
+        let mut follow = waiting();
         for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
         }
@@ -787,7 +729,7 @@ mod tests {
             late_ms: 22.0,
             ..Tuning::default()
         };
-        let mut follow = waiting(Known::new());
+        let mut follow = waiting();
         follow.tune(Some(trial));
         for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
@@ -850,11 +792,7 @@ mod tests {
     // across the home network taught the upload a base of 282 Mbit/s.
     #[test]
     fn a_start_steps_on_no_second_recorded_before_it() {
-        let home = Learned {
-            base: Some(11_000.0),
-            plateau: None,
-        };
-        let mut follow = Follow::new(Known::from([("home".to_string(), (home, home))]));
+        let mut follow = Follow::new();
         follow.from_ms = NOV3 + 20_000;
         let mut lines = vec![pool(NOV3, Some("home"))];
         for i in 0..100_u64 {
@@ -873,9 +811,9 @@ mod tests {
             "stepped on a second before the start"
         );
         assert_eq!(
-            follow.controller.up.learned().base,
-            Some(11_000.0),
-            "learned from a stay the shaper wasn't in"
+            follow.controller.up.limit(),
+            None,
+            "held from a stay the shaper wasn't in"
         );
         assert_eq!(follow.network, "home", "the stay's network wasn't named");
     }
@@ -930,7 +868,7 @@ mod tests {
         fs::write(&path, format!("{}\n{half}", rest.join("\n"))).expect("today's file");
         // The shaper started as the stay did.
         let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
-        let mut live = Live::new(&folder, started, &folder.join("learned.json"));
+        let mut live = Live::new(&folder, started);
         let first = live.poll(today).map(|(l, r)| (l.to_string(), r));
         assert!(
             first
@@ -949,62 +887,6 @@ mod tests {
             followed(&lines).now(NOV3 + 6_000).map(|(_, r)| r)
         );
         assert_eq!(live.follow.last_ms, NOV3 + 6_000);
-        let _ = fs::remove_dir_all(&folder);
-    }
-
-    #[test]
-    fn a_restart_starts_a_network_from_what_it_learned() {
-        let folder = std::env::temp_dir().join(format!("shaper-kept-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&folder);
-        fs::create_dir_all(&folder).expect("a folder");
-        let kept = folder.join("learned.json");
-        let today = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3 + 10_000);
-        let lines = flow_queued(NOV3);
-        fs::write(
-            crate::record::day_file(&folder, today),
-            format!("{}\n", lines.join("\n")),
-        )
-        .expect("today's file");
-        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
-        let mut live = Live::new(&folder, started, &kept);
-        live.see(
-            "wlan0",
-            Ours {
-                queued: false,
-                waiting: true,
-                ..Ours::default()
-            },
-        );
-        let _ = live.poll(today);
-        let learned = Live::new(&folder, today, &kept).written;
-        let up = learned.get("home").and_then(|(up, _)| up.plateau);
-        assert!(
-            up.is_some_and(|up| (11_000.0..13_000.0).contains(&up)),
-            "kept {learned:?}"
-        );
-        let _ = fs::remove_dir_all(&folder);
-    }
-
-    #[test]
-    fn a_link_starts_its_upload_at_the_hold_of_what_its_network_learned() {
-        let folder = std::env::temp_dir().join(format!("shaper-start-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&folder);
-        fs::create_dir_all(&folder).expect("a folder");
-        let kept = folder.join("learned.json");
-        assert_eq!(starting_up(&kept, "home"), None, "with nothing kept");
-        fs::write(
-            &kept,
-            r#"{"home": [{"line": 6750.9, "held": 10090.0}, {"line": null, "held": null}],
-                "cafe": [{"line": null, "held": null}, {"line": null, "held": null}]}"#,
-        )
-        .expect("what was learned");
-        assert_eq!(starting_up(&kept, "home"), Some(9_586));
-        assert_eq!(
-            starting_up(&kept, "cafe"),
-            None,
-            "a network with no plateau"
-        );
-        assert_eq!(starting_up(&kept, "park"), None, "a network never met");
         let _ = fs::remove_dir_all(&folder);
     }
 }
