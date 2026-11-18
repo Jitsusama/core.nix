@@ -55,7 +55,15 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
     chords = screens.in_niri(
         "journalctl --user -o cat | grep -c 'Started app-niri-launcher.x2dsay' || true"
     )
-    before = int(machine.succeed(chords))
+
+    def counted(lines: str) -> int:
+        # The unit is up before journald has stored systemd's line for it, so a count read the
+        # moment it's active found none in 14 of the net's runs: journald writes out all it was
+        # sent first, and a second start can't hide either.
+        machine.succeed("journalctl --sync")
+        return int(machine.succeed(lines))
+
+    before = counted(chords)
     # Held a second, past the 200 ms delay at 40 a second, a key repeats some thirty times.
     held = 1.0
     try:
@@ -63,7 +71,7 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
         machine.send_monitor_command(f"sendkey meta_l-spc {int(held * 1000)}")
         # Counted once it's let go and a second after, since a repeat comes only while held.
         time.sleep(held + 1)
-        ran = int(machine.succeed(chords)) - before
+        ran = counted(chords) - before
         assert ran == 1, f"a held Super+Space ran the launcher {ran} times"
         screens.launcher_until(
             lambda shown: shown["open"] and shown["keys"], "took the keys at a held chord"
@@ -92,7 +100,7 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
         # Watched for as long as it's held and a second after, since a repeat comes only then.
         deadline = time.monotonic() + held + 1
         while time.monotonic() < deadline:
-            said = int(machine.succeed(started))
+            said = counted(started)
             assert said == 1, f"a held Return started Keep Awake {said} times"
             time.sleep(0.2)
         assert screens.awake(), "a held Return turned Keep Awake on and off again"
