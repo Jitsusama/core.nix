@@ -157,23 +157,44 @@ fn way_out(pen: &Pen) -> String {
 }
 
 /// Words from a unit, without what would steer the console rather than
-/// be read: a colour or cursor sequence whole, its parameters with it,
-/// so a program that colours its own log leaves no `[31m` behind, and
+/// be read: an escape sequence whole, so a program that colours its own
+/// log or titles a window leaves no `[31m` or `]0;title` behind, and
 /// every other control character, a tab read as a space.
 fn clean(words: &str) -> String {
     let mut out = String::new();
     let mut chars = words.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
-            '\u{1b}' if chars.peek() == Some(&'[') => {
-                chars.next();
-                // Parameters and intermediates run until a final byte.
-                for c in chars.by_ref() {
-                    if ('\u{40}'..='\u{7e}').contains(&c) {
-                        break;
+            '\u{1b}' => match chars.next() {
+                // A control sequence: parameters and intermediates run
+                // until a final byte.
+                Some('[') => {
+                    for c in chars.by_ref() {
+                        if ('\u{40}'..='\u{7e}').contains(&c) {
+                            break;
+                        }
                     }
                 }
-            }
+                // An operating system command, a title or a link: it
+                // runs until a bell or the string terminator.
+                Some(']') => {
+                    while let Some(c) = chars.next() {
+                        if c == '\u{7}' || (c == '\u{1b}' && chars.next_if_eq(&'\\').is_some()) {
+                            break;
+                        }
+                    }
+                }
+                // Any other, such as `ESC ( B`: intermediates, then one
+                // final character.
+                Some(c) if ('\u{20}'..='\u{2f}').contains(&c) => {
+                    while chars
+                        .next_if(|c| ('\u{20}'..='\u{2f}').contains(c))
+                        .is_some()
+                    {}
+                    chars.next();
+                }
+                _ => {}
+            },
             '\t' => out.push(' '),
             c if c.is_control() => {}
             c => out.push(c),
@@ -374,7 +395,15 @@ mod tests {
     #[test]
     fn a_coloured_line_loses_its_sequences_whole_and_a_blank_one_goes() {
         let summary = text(
-            &[unit("a.service", "A", &["\u{1b}[1;31mred\u{1b}[0m", "", "  \u{7}"])],
+            &[unit(
+                "a.service",
+                "A",
+                &[
+                    "\u{1b}[1;31mred\u{1b}[0m\u{1b}(B\u{1b}]8;;https://x\u{1b}\\",
+                    "",
+                    "  \u{7}",
+                ],
+            )],
             1,
             &console(),
             Room::Cells(80),
@@ -427,7 +456,7 @@ mod tests {
         );
         says(&summary, "  x  bell.service  Rings");
         says(&summary, "     reading its label");
-        says(&summary, "     a gap]0;title");
+        says(&summary, "     a gap");
     }
 
     #[test]

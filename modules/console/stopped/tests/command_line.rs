@@ -39,7 +39,11 @@ fn a_form_for_a_program_is_refused_as_usage() {
 #[test]
 fn a_word_is_refused_as_usage() {
     let ran = run(&["now"]);
-    assert_eq!(ran.status.code(), Some(64), "a word wasn't refused as usage");
+    assert_eq!(
+        ran.status.code(),
+        Some(64),
+        "a word wasn't refused as usage"
+    );
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains("takes no words, not now"),
         "a word wasn't named in its refusal: {:?}",

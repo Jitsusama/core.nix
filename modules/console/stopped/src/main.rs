@@ -136,10 +136,11 @@ fn described(unit: &str) -> Option<String> {
 }
 
 /// The last three lines a unit's own programs said, or, when they said
-/// nothing, as when one was killed, the last line systemd said of it.
+/// nothing, as when one was killed, the last line systemd said of it. A
+/// blank line says nothing, so lines that are all blank count as none.
 fn last(unit: &str) -> Vec<String> {
     let own = journal(&format!("_SYSTEMD_UNIT={unit}"), 3);
-    if own.is_empty() {
+    if own.iter().all(|line| line.trim().is_empty()) {
         journal(&format!("--unit={unit}"), 1)
     } else {
         own
