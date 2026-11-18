@@ -9172,6 +9172,9 @@ Scope {
             talks: root.talkAsked ? root.talks : null,
             // Where the field's caret stands, so a talk's can be seen kept.
             caret: prompt.caret,
+            // How many keys a link's quiet dropped since it opened the field
+            // (Prompt.qml), so a check knows which of its keys came inside it.
+            quietDropped: prompt.quietDropped,
             // What the list says in place of rows, where it has none.
             nothing: nothingShown.visible ? nothingShown.name : "",
             // The cat drawn beside it, if any: which mark's, a cell in the

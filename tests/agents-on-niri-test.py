@@ -357,6 +357,10 @@ def opened(shell: Shell) -> None:
 
 # How long what a link opens drops every key (Prompt.qml's linkQuiet), and a little more.
 LINK_QUIET = 0.8
+# What a case types into what a link opened, and how often it tries to type inside the link's
+# quiet.
+LINK_KEYS = "hi"
+LINK_TRIES = 5
 
 
 def followed(shell: Shell, verb: str, said: str, *, quiet: bool = True) -> Json:
@@ -1476,10 +1480,9 @@ def test_no_words_however_long_leave_their_room_or_lie_on_anothers(shell: Shell)
     talk.write_text("".join(json.dumps(line) + "\n" for line in lines))
 
     def none_broke_out(where: str) -> None:
-        broke = json.loads(shell.as_account(shell.ipc("contained")))
+        broke, drawn = broke_out_once_laid(shell, where)
         if broke:
             said = {fault["said"] for fault in broke} | {fault.get("with") for fault in broke}
-            drawn = json.loads(shell.as_account(shell.ipc("drawnTexts")))
             who = [each for surface in drawn for each in surface if each["said"] in said]
             assert broke == [], f"{where}: {broke}\ndrawn by: {who}"
 
@@ -1504,6 +1507,41 @@ def test_no_words_however_long_leave_their_room_or_lie_on_anothers(shell: Shell)
         none_broke_out("its parts, how it went selected")
     finally:
         talk.unlink()
+
+
+# How long the words on the card and its drawer must hold still, a frame drawn since they last
+# moved, before a case asks which broke out; and how long they may hold still with no frame
+# drawn, when nothing waits to be.
+LAID_STILL = 0.5
+LAID_UNDRAWN = 2.0
+LAID_WITHIN = 10
+
+
+def broke_out_once_laid(shell: Shell, where: str) -> tuple[list[Json], list[list[Json]]]:
+    """Give the words that broke out once the card and its drawer are laid, and every word.
+
+    Qt lays a row or a column out again only before its next frame, and a loaded builder can be
+    slow to draw one, so words read between a change and that frame stand where they were:
+    the drawer's '1 more' over its dot, a name over the words below it. So the words drawn must
+    hold still for LAID_STILL with a frame drawn since they last moved, or for LAID_UNDRAWN with
+    none, and read the same after the launcher says which broke out as before it.
+    """
+    deadline = time.monotonic() + LAID_WITHIN
+    drawn = shell.as_account(shell.ipc("drawnTexts"))
+    frames, moved = shell.frames(), time.monotonic()
+    while True:
+        assert time.monotonic() < deadline, f"{where}: the words never held still: {drawn}"
+        time.sleep(launcher_on_niri.POLL)
+        now = shell.as_account(shell.ipc("drawnTexts"))
+        if now != drawn:
+            drawn, frames, moved = now, shell.frames(), time.monotonic()
+            continue
+        still = time.monotonic() - moved
+        if not (still >= LAID_STILL and shell.frames() > frames) and still < LAID_UNDRAWN:
+            continue
+        broke = json.loads(shell.as_account(shell.ipc("contained")))
+        if shell.as_account(shell.ipc("drawnTexts")) == drawn:
+            return broke, json.loads(drawn)
 
 
 def test_a_closed_orchestrator_stands_dimmed_at_the_trees_end_the_last_live_first(
@@ -1782,22 +1820,22 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
         return sorted(set(inbox.glob("*.json")) - steered)
 
     try:
-        # Its keys land past the quiet, as a loaded builder's did.
-        did = followed(shell, "talkTo", "LISTEN", quiet=True)
-        assert did["done"], did
-        shell.launcher_until(
-            lambda shown: (
-                shown["open"]
-                and shown["asking"]
-                and shown["keys"]
-                and shown["held"] == ["agents", "Listening Quest"]
-            )
-        )
-        shell.send_chars("hi")
-        shell.send_key("ret")
+        # Typed past the quiet, every key is taken.
+        assert typed_into_a_link(shell, late=True) == (0, LINK_KEYS)
+        emptied_and_put_away(shell)
+        # Under load keys can land past the quiet however soon they're sent, so each try asks
+        # how many it dropped, as the void's case does. Only a try that dropped every key can
+        # say a Return before a key sends nothing, since any key typed lets Return send.
+        for _ in range(LINK_TRIES):
+            dropped, typed = typed_into_a_link(shell, late=False)
+            assert typed == LINK_KEYS[dropped:], (dropped, typed)
+            if dropped == len(LINK_KEYS):
+                break
+            emptied_and_put_away(shell)
+        else:
+            pytest.fail(f"no try landed every key inside the link's quiet in {LINK_TRIES}")
+        # Past the quiet, with no key typed yet, Return still sends nothing.
         time.sleep(LINK_QUIET)
-        shown = shell.showing()
-        assert (shown["typed"], shown["asking"]) == ("", True), shown
         shell.send_key("ret")
         # A Return taken would send at once; this gives it the time to.
         time.sleep(0.3)
@@ -1815,6 +1853,49 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
     finally:
         for one in sent():
             one.unlink()
+
+
+def typed_into_a_link(shell: Shell, *, late: bool) -> tuple[int, str]:
+    """Open Talk to Listening Quest by a link and type LINK_KEYS into it, late or at once.
+
+    It gives how many keys the field says the link's quiet dropped, and what it took of them,
+    waiting until one or the other has every key, so a key that lands late is still counted.
+    """
+    did = followed(shell, "talkTo", "LISTEN", quiet=late)
+    assert did["done"], did
+    # What's typed already is read from the showing the wait passes on, since asking again
+    # would spend the quiet on a round trip.
+    was = [""]
+
+    def up(shown: Json) -> bool:
+        was[0] = shown["typed"]
+        return bool(
+            shown["open"]
+            and shown["asking"]
+            and shown["keys"]
+            and shown["held"] == ["agents", "Listening Quest"]
+        )
+
+    shell.launcher_until(up)
+    shell.send_chars(LINK_KEYS)
+    shell.launcher_until(
+        lambda shown: shown["quietDropped"] + len(shown["typed"]) - len(was[0]) == len(LINK_KEYS)
+    )
+    shown = shell.showing()
+    assert shown["typed"].startswith(was[0]), (was[0], shown)
+    return shown["quietDropped"], shown["typed"][len(was[0]) :]
+
+
+def emptied_and_put_away(shell: Shell) -> None:
+    """Past the quiet, rub out what's typed in the launcher's field, then close it.
+
+    Rubbed out, so a talk's kept words don't carry what a try typed into the next.
+    """
+    time.sleep(LINK_QUIET)
+    for _ in shell.showing()["typed"]:
+        shell.send_key("backspace")
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+    shell.close_launcher()
 
 
 def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_start(
@@ -2692,12 +2773,6 @@ def test_talk_to_the_voids_address_opens_super_s_line_as_its_talk_does(shell: Sh
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
-# What a case types into the void's line a link opened, and how often it tries to type inside
-# the link's quiet.
-VOID_KEYS = "hi"
-VOID_TRIES = 5
-
-
 def test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_keys_at_first(
     shell: Shell,
 ) -> None:
@@ -2715,20 +2790,20 @@ def test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_k
     assert not shell.showing()["line"]["up"], shell.showing()
     shell.close_launcher()
     # Typed past the quiet, every key is taken.
-    assert typed_into_the_void(shell, late=True) == (0, VOID_KEYS)
+    assert typed_into_the_void(shell, late=True) == (0, LINK_KEYS)
     # Under load keys can land past the quiet however soon they're sent, so each try asks how
     # many it dropped: those are the first, and the rest are typed. Tries run under the same
     # load, so there are enough of them that one lands inside the 700 ms on a busy builder.
-    for _ in range(VOID_TRIES):
+    for _ in range(LINK_TRIES):
         dropped, typed = typed_into_the_void(shell, late=False)
-        assert typed == VOID_KEYS[dropped:], (dropped, typed)
+        assert typed == LINK_KEYS[dropped:], (dropped, typed)
         if dropped:
             return
-    pytest.fail(f"no key landed inside the link's quiet in {VOID_TRIES} tries")
+    pytest.fail(f"no key landed inside the link's quiet in {LINK_TRIES} tries")
 
 
 def typed_into_the_void(shell: Shell, *, late: bool) -> tuple[int, str]:
-    """Open the void's line by a link and type VOID_KEYS, late or at once, and empty it again.
+    """Open the void's line by a link and type LINK_KEYS, late or at once, and empty it again.
 
     It gives how many keys the line says its quiet dropped, and what it took of them, waiting
     until one or the other has every key, so a key that lands late is still counted.
@@ -2745,11 +2820,11 @@ def typed_into_the_void(shell: Shell, *, late: bool) -> tuple[int, str]:
 
     shell.launcher_until(up)
     try:
-        shell.send_chars(VOID_KEYS)
+        shell.send_chars(LINK_KEYS)
         shell.launcher_until(
             lambda shown: (
                 shown["line"]["quietDropped"] + len(shown["line"]["typed"]) - len(was[0])
-                == len(VOID_KEYS)
+                == len(LINK_KEYS)
             )
         )
         line = shell.showing()["line"]
