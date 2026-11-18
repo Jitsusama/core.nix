@@ -636,7 +636,8 @@
     web-design skill's page checks and its homes check passing at a phone's width and a desk's in
     both looks, a repository's weight and due upkeep said in its row and drawer, its ages told
     again each minute in place with the focused tree kept, today's growth yesterday's once the day
-    turns, and nothing logged
+    turns, no row moving as the cursor steps, a reload not shifting as the feeds arrive, a second's
+    burst of records drawing the list a few times, and nothing logged
   '';
   code-site-keeps-its-last-homes = ''
     the code site's writer, while repos fails, ends well in one line and leaves the last homes as
