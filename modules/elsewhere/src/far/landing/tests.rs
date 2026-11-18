@@ -1,4 +1,4 @@
-use super::{Fault, SWEEPS_AFTER, land, opened_as_listed, opened_plain};
+use super::{Fault, SWEEPS_AFTER, copied, land, opened_as_listed, opened_plain};
 use crate::far::MARK;
 use crate::far::tests::scratch;
 use std::collections::HashSet;
@@ -42,13 +42,15 @@ fn only_a_file_of_the_size_listed_is_taken_or_lands() {
             && !into.exists(),
         "a read short of its size landed, or wasn't the share's: {landing:?}"
     );
-    // One read that fails, as of a folder, is the share's too.
+    // One read that fails, as of a folder, is the share's too, and leaves
+    // nothing behind.
     let into = root.join("unread");
+    let before = names(&root);
     let folder = std::fs::File::open(&root).unwrap();
     let landing = land(folder, 1, &into, &mut HashSet::new());
     assert!(
-        matches!(&landing, Err(Fault::Share(_))) && !into.exists(),
-        "a source that couldn't be read wasn't the share's: {landing:?}"
+        matches!(&landing, Err(Fault::Share(_))) && names(&root) == before,
+        "a source that couldn't be read wasn't the share's, or left its landing: {landing:?}"
     );
     let into = root.join("whole");
     land(
@@ -59,6 +61,35 @@ fn only_a_file_of_the_size_listed_is_taken_or_lands() {
     )
     .unwrap();
     assert_eq!(std::fs::read(&into).unwrap(), b"12345");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_copy_takes_only_the_size_listed_and_a_failed_write_is_the_folder_s() {
+    let root = scratch("copied");
+    let from = root.join("from");
+    std::fs::write(&from, "12345").unwrap();
+    let into = root.join("into");
+    let mut to = std::fs::File::create(&into).unwrap();
+    copied(&mut opened_plain(&from).unwrap(), 3, &mut to).unwrap();
+    assert_eq!(
+        std::fs::read(&into).unwrap(),
+        b"123",
+        "a copy went past its size"
+    );
+    // A folder with no room, as the full disk stands in for.
+    #[cfg(target_os = "linux")]
+    {
+        let mut full = std::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .unwrap();
+        let copy = copied(&mut opened_plain(&from).unwrap(), 5, &mut full);
+        assert!(
+            matches!(&copy, Err(Fault::Folder(_))),
+            "a write with no room wasn't the folder's: {copy:?}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&root);
 }
 

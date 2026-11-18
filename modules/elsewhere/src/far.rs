@@ -643,11 +643,11 @@ fn landed(
             });
         match landing {
             Ok(()) => landed += 1,
-            // Another try may not meet it.
-            Err(Fault::Share(error)) => changed.push(format!(
-                "{} changed as it crossed home: {error}",
-                brought.path
-            )),
+            // Changed, or unreadable, once it crossed: another try may
+            // not meet it.
+            Err(Fault::Share(error)) => {
+                changed.push(format!("{} didn't come home whole: {error}", brought.path));
+            }
             Err(Fault::Folder(error)) => {
                 lasting |= lasts(&error);
                 unlanded.push(format!("{} didn't land: {error}", brought.path));
