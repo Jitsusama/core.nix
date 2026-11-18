@@ -298,7 +298,7 @@ pub fn refused(niri: &Path, request: &Value) -> Option<String> {
 }
 
 /// niri's answer to one request, or none where it didn't answer in time.
-fn answer(niri: &Path, request: &Value) -> Option<Value> {
+pub fn answer(niri: &Path, request: &Value) -> Option<Value> {
     let mut stream = UnixStream::connect(niri).ok()?;
     stream.set_read_timeout(Some(ASKING)).ok()?;
     // The request goes as one line in one write: serde_json says a value

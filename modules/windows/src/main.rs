@@ -55,6 +55,7 @@ use programs::{now_ms, xdg};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Help};
+use windows::behind::{self, Focus};
 use windows::closing::{self, Told};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
@@ -349,6 +350,7 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
     let mut times = Timed::default();
     let mut watched = Watched::default();
     let mut told = Told::default();
+    let mut focus = Focus::default();
     let processes = unasked::processes();
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { return };
@@ -365,8 +367,16 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
         }
         let cgroup = |pid| unasked::cgroup(&processes, pid);
         let folder = |pid| unasked::folder(&processes, pid);
+        focus.heard(&event);
         if let Some(unasked) = watched.heard(&event, cgroup, folder) {
             eprintln!("{}", unasked::line(&unasked));
+            focus.agents(unasked.window);
+            // A prompt is closed instead, below.
+            if let Some(on) = behind::opened_focused(&event)
+                && behind::moved(&unasked)
+            {
+                behind::put(niri, &unasked, on, focus.taken_by(unasked.window));
+            }
         }
         for prompt in watched.prompting(&event, cgroup, folder) {
             if !closing::shut(niri, &prompt, &mut told) {

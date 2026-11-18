@@ -287,7 +287,8 @@
     the windows daemon closes a password prompt an agent's scope opens on niri within a second,
     says so in its journal and tells Joel the scope and folder it came from, once for a second
     prompt from that scope, and closes one already open as it starts again, while his own prompt
-    and the scope's other windows stay open
+    and the scope's other windows stay open; the scope's terminal, opening focused, is put on a
+    workspace no screen shows and the window focused before it has the focus again
   '';
   agents-runs-in-each-account = ''
     the agents daemon runs in each account of a machine in a realm, following its node and the
