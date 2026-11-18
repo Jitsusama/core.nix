@@ -23,7 +23,16 @@ import {
   stepped,
 } from "./model.ts";
 import { type Mycelium, watchMycelium } from "./mycelium.ts";
-import { copyFolder, element, keepTime, markRows, markTree, write } from "./page.ts";
+import {
+  copyFolder,
+  element,
+  keepRoom,
+  keepTime,
+  markRows,
+  markTree,
+  paced,
+  write,
+} from "./page.ts";
 
 const title = element("#title", HTMLHeadingElement);
 const lede = element("#lede", HTMLParagraphElement);
@@ -45,6 +54,12 @@ const held: { -readonly [kind in keyof Feed]: Held } = {
 };
 const standings = new Map<string, Standing>();
 const heard = new Map<string, string>();
+// The kinds whose records have arrived, and whether the node's cells have: draws go unpaced,
+// and the room kept from the last visit held, until they all have.
+const arrived = new Set<string>();
+let cellsHeard = false;
+const repos = (): boolean => arrived.size === KINDS.length;
+const roomDrawn = keepRoom();
 let mycelium: Mycelium = { cells: [], home: undefined, homes: new Map() };
 
 let place: Place = "every";
@@ -98,11 +113,6 @@ function drawPlaces(): void {
   }
 }
 
-/** Marks the cursor's repository in the grove and the list, and follows it. */
-function select(scroll = true): void {
-  markRows(cursor, scroll);
-}
-
 function drawOpen(): void {
   const open = current();
   if (open === undefined || grove === undefined) {
@@ -112,22 +122,13 @@ function drawOpen(): void {
   if (inner !== null && !open.trees.some((each) => each.path === inner)) {
     inner = null;
   }
-  write(
-    opened,
-    drawer(
-      open,
-      grove,
-      { now: Date.now(), home: mycelium.home, homes: mycelium.homes },
-      unfolded.get(open.key) ?? new Set(),
-    ),
-  );
+  const at = { now: Date.now(), home: mycelium.home, homes: mycelium.homes };
+  write(opened, drawer(open, grove, at, unfolded.get(open.key) ?? new Set()));
   markInner(false);
 }
 
 /** Marks the tree the cursor is on inside the open repository. */
-function markInner(focus: boolean): void {
-  markTree(opened, inner, focus);
-}
+const markInner = (focus: boolean): void => markTree(opened, inner, focus);
 
 function draw(): void {
   grove = groveOf(held, mycelium.cells, Date.now());
@@ -150,31 +151,26 @@ function draw(): void {
   } else if (wasIn && !opened.contains(document.activeElement)) {
     opened.focus({ preventScroll: true });
   }
+  roomDrawn(repos() && cellsHeard);
+  land();
 }
 
 function drawList(): void {
   write(list, rows(shown(), Date.now(), query));
-  select(false);
+  markRows(cursor, false);
 }
 
-let pending = false;
-/** Draws once for every record a frame brings, so a burst draws once. */
-function soon(): void {
-  if (!pending) {
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      draw();
-      land();
-    });
-  }
-}
+// Draws on the frame after a record, then at most twice a second while records keep coming.
+const soon = paced(draw, 500, repos);
 
 for (const kind of KINDS) {
   held[kind] = follow(
     { feed: "repos", kind },
     {
-      moved: soon,
+      moved: () => {
+        arrived.add(kind);
+        soon();
+      },
       stands: (now) => {
         standings.set(kind, now);
         heard.delete(kind);
@@ -190,6 +186,7 @@ for (const kind of KINDS) {
 
 watchMycelium((now) => {
   mycelium = now;
+  cellsHeard = true;
   soon();
 });
 // Ages and seasons are told against now, so they're kept with the clock while nothing moves.
@@ -247,7 +244,7 @@ function choose(key: string, tree: string | null): void {
   cursor = key;
   inner = tree;
   reveal(key);
-  select();
+  markRows(cursor, true);
   drawOpen();
   if (tree === null) {
     list.focus({ preventScroll: true });
@@ -289,7 +286,7 @@ function step(by: number, among: readonly Repository[] = shown()): void {
   const next = among[stepped(at, by, among.length)];
   if (next !== undefined) {
     cursor = next.key;
-    select();
+    markRows(cursor, true);
     drawOpen();
     follows();
   }
@@ -312,7 +309,7 @@ function walk(by: number): void {
   if (next !== undefined) {
     cursor = next.key;
     reveal(next.key);
-    select();
+    markRows(cursor, true);
     drawOpen();
     follows();
   }
@@ -442,7 +439,7 @@ find.addEventListener("keydown", (event) => {
     const first = shown()[0];
     if (event.key === "Enter" && first !== undefined) {
       cursor = first.key;
-      select();
+      markRows(cursor, true);
       drawOpen();
       follows();
     }

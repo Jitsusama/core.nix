@@ -328,9 +328,14 @@ code,
 
 .row-keys {
   display: none;
-  grid-column: 4 / -1;
   font-size: var(--step-small);
   color: var(--muted);
+}
+
+.row .row-keys {
+  grid-area: 1 / 4;
+  white-space: nowrap;
+  text-align: end;
 }
 
 /* The cursor's ground is lighter than the page's, so the quiet words on it step up a tone to
@@ -351,10 +356,24 @@ code,
 }
 
 /* Keys show on one row only: the tree's once the cursor has stepped into the drawer. A narrow
-   page has no room for the list's. */
+   page has no room for the list's. They stand in the cursor's line where its cells are said,
+   in a column as wide on every row, so the cursor moving changes no row's height; the drawer
+   says the cells. */
 @media (width > 60rem) {
+  .row {
+    grid-template-columns: 16px 16px minmax(0, 1fr) 10rem 3rem;
+  }
+
+  .row .cells {
+    justify-self: end;
+  }
+
   .work:not(:has(.drawer :focus)) .row[aria-selected="true"] .row-keys {
     display: block;
+  }
+
+  .work:not(:has(.drawer :focus)) .row[aria-selected="true"] .cells {
+    display: none;
   }
 }
 
@@ -367,6 +386,28 @@ code,
   font-family: var(--serif);
   font-style: italic;
   color: var(--muted);
+}
+
+/* ---- The room the feeds draw into, held from the last visit until they draw (page.ts). ---- */
+
+#title {
+  min-block-size: var(--room-title, auto);
+}
+
+#lede {
+  min-block-size: var(--room-lede, auto);
+}
+
+#grove {
+  min-block-size: var(--room-grove, auto);
+}
+
+#list {
+  min-block-size: var(--room-list, auto);
+}
+
+#open {
+  min-block-size: var(--room-open, auto);
 }
 
 /* ---- The standing line. ---- */

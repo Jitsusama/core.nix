@@ -10,15 +10,19 @@ written now, drop a repository that goes, draw the cell at work and link it to
 its home on the map, say each repository's weight and due upkeep in its row and
 drawer, say broken when the daemon stops and live again, its repositories
 drawn, when it's back, say stale when the server goes, move its ages on while
-nothing is written, make today's growth yesterday's once the day turns, and pass
-the web-design skill's page checks and its homes check at a phone's width and
+nothing is written, make today's growth yesterday's once the day turns, move no
+row as the cursor steps, not shift as its feeds arrive on a reload, draw a
+second's burst of records a few times rather than each, and pass the
+web-design skill's page checks and its homes check at a phone's width and
 a desk's in both looks. Anything the page logs fails it, but for the browser's
 own lines once the test takes the server away. The server, the browser and the
 tab are modules/local-sites/tests/live_page.py's.
 """
 
 import json
+import math
 import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,8 +36,15 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 HERE = Path(__file__).parent
-# Code draws once a frame after a record moves, so a change must show well inside this.
+# Code draws on the frame after a record moves, then at most twice a second while records keep
+# coming, so a change must show well inside this.
 PACE_MS = 6000
+# How far the page may shift unasked: a tenth of the web's "good" bound, which a font
+# swapping in stays under, and a row or a sentence arriving doesn't.
+STILL = 0.01
+# Code draws a burst of records at most twice a second, so each second of one may draw this
+# often, with two draws over for its first record and its last.
+DRAWS_A_SECOND = 2
 # The server watches a gone daemon again every 2 seconds, so its return shows inside this.
 BACK_MS = 15000
 # The browser's own lines for a feed that couldn't connect and a fetch that
@@ -364,6 +375,81 @@ def test_the_day_turning_makes_todays_growth_yesterdays(
         assert noise(logged) == [], f"Code logged as the day turned: {noise(logged)}"
     finally:
         context.close()
+
+
+def test_stepping_the_cursor_moves_no_row(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    rows = code_page.locator("#list .row")
+    expect(rows, "Code drew no rows to step through").to_have_count(2)
+    rows.first.click()
+    # Where each row stands and how tall it is: the cursor moving must change neither.
+    boxes = (
+        "() => [...document.querySelectorAll('#list .row')]"
+        ".map(each => [each.offsetTop, each.offsetHeight])"
+    )
+    before = code_page.evaluate(boxes)
+    code_page.keyboard.press("j")
+    expect(rows.nth(1), "j didn't step to the next row").to_have_attribute("aria-selected", "true")
+    expect(rows.nth(1).locator(".row-keys"), "the cursor's keys weren't shown").to_be_visible()
+    assert code_page.evaluate(boxes) == before, "stepping the cursor moved the rows"
+
+
+def test_a_reload_holds_the_page_still(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
+    # Every shift of the page the reader didn't cause, from the reload's first paint on.
+    code_page.add_init_script(
+        """globalThis.shifted = 0;
+        new PerformanceObserver((list) => {
+          for (const each of list.getEntries()) {
+            globalThis.shifted += each.hadRecentInput ? 0 : each.value;
+          }
+        }).observe({ type: "layout-shift", buffered: true });
+        document.addEventListener("DOMContentLoaded", () => {
+          globalThis.held = document.documentElement.style.getPropertyValue("--room-list");
+        });"""
+    )
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    expect(row(code_page, "github:owl/core"), "the reload drew no row").to_be_visible()
+    code_page.wait_for_timeout(1000)
+    shifted = code_page.evaluate("() => globalThis.shifted")
+    assert shifted < STILL, f"the page shifted {shifted} as its feeds arrived on a reload"
+    assert code_page.evaluate("() => globalThis.held") != "", "the reload held no room"
+    room = code_page.evaluate(
+        "() => document.documentElement.style.getPropertyValue('--room-list')"
+    )
+    assert room == "", f"the list's room, {room}, was held after every feed had drawn"
+
+
+def test_a_burst_of_records_draws_the_list_a_few_times(
+    code_page: Page, repos_daemon: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
+    code_page.evaluate(
+        """() => {
+          globalThis.writes = 0;
+          new MutationObserver(() => { globalThis.writes += 1; })
+            .observe(document.querySelector("#list"), { childList: true });
+        }"""
+    )
+    # A second of a tree written over and over, as an agent's build does, each record moving
+    # the list, then a last record no other says: a repository going.
+    started = time.monotonic()
+    for each in range(20):
+        written = now() if each % 2 == 0 else "2026-01-01T00:00:00Z"
+        repos_daemon.tell(
+            "tree", changed=[{"key": "tree:/home/ada/trees/old", "written_at": written}]
+        )
+        time.sleep(0.05)
+    repos_daemon.tell("repository", gone=["repository:local:~/src/notes"])
+    lasted = time.monotonic() - started
+    notes = row(code_page, "local:~/src/notes")
+    expect(notes, "the burst's last record wasn't drawn").to_have_count(0, timeout=PACE_MS)
+    writes = code_page.evaluate("() => globalThis.writes")
+    allowed = math.ceil(lasted * DRAWS_A_SECOND) + 2
+    assert writes <= allowed, f"21 records in {lasted:.1f} s drew the list {writes} times"
 
 
 @pytest.mark.parametrize("look", LOOKS)
