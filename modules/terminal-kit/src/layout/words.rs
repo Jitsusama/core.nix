@@ -62,28 +62,35 @@ pub fn spaced(words: &str) -> String {
         .join(" ")
 }
 
-/// A command to type on one line, each run of blanks closed to its first,
-/// kept as the character it was, so no blank becomes a break between
-/// arguments the command never had, and none pads the line to where the
-/// terminal's own wrap starts a row reading as a try. A character that
-/// draws nothing inside a run goes with it, or the run would draw as two.
-pub fn closed(words: &str) -> String {
+/// A command to type, when it draws safely just as it was written: on one
+/// line, with nothing the pen drops, and each blank between its words a
+/// single one a cell wide. Nothing otherwise, since changing a command
+/// to draw it safely would have it name something it didn't, a device
+/// whose name holds two spaces as another without them, and drawing it
+/// as written could pad it to where the terminal's own wrap starts a row
+/// reading as a try. A character that draws nothing just after a blank
+/// counts as a blank of its own, since the two would draw as two.
+pub fn typed(words: &str) -> Option<&str> {
+    if one_line(words) != words {
+        return None;
+    }
     let blank = |c: char| c.is_whitespace() || matches!(c, '\u{115f}' | '\u{2800}');
-    let mut kept = String::new();
-    // At the start, as after a blank, so blanks leading it go.
+    // At the start, as after a blank, so a blank leading it is refused.
     let mut after_blank = true;
-    for c in one_line(words).chars() {
+    for c in words.chars() {
+        let cells = c.width();
         if blank(c) {
-            if !after_blank {
-                kept.push(c);
+            if after_blank || cells != Some(1) {
+                return None;
             }
             after_blank = true;
-        } else if !(after_blank && c.width().unwrap_or(0) == 0) {
-            kept.push(c);
+        } else if after_blank && cells.unwrap_or(0) == 0 {
+            return None;
+        } else {
             after_blank = false;
         }
     }
-    kept.trim_end_matches(blank).to_owned()
+    (!after_blank).then_some(words)
 }
 
 /// Whether a character parts words without a line break of its own.

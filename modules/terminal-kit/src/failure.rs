@@ -220,18 +220,19 @@ impl Failure {
         if verbose {
             lines.extend(self.chain.iter().map(|cause| under(cause, "muted")));
         }
-        if let Some(then) = &self.then {
-            // A command to type is never wrapped, so it copies whole, and
-            // is closed, so a name in it can't draw a second line, nor
-            // pad itself to where the terminal's own wrap would start a
-            // row reading as this one, and no blank in it changes kind.
-            // A failure's other words are spaced, but a blank turned
-            // space here could part an argument where the command didn't.
+        // A command to type is never wrapped, so it copies whole, and is
+        // drawn only as it was written, so it names just what the command
+        // meant; one holding words it couldn't draw safely that way,
+        // a second line, a run of blanks or one two cells wide, is left
+        // out, since closing them could name another device, and keeping
+        // them could pad it to where the terminal's wrap starts a row
+        // reading as this one. Only the try line says what to type.
+        if let Some(then) = self.then.as_deref().and_then(layout::typed) {
             lines.push(format!(
                 "{}{}  {}",
                 " ".repeat(inset),
                 pen.role("muted", "try"),
-                pen.role("text", &layout::closed(then))
+                pen.role("text", then)
             ));
         }
         lines.join("\n") + "\n"
@@ -318,26 +319,39 @@ mod tests {
             .try_this("eero device 'Den\n  try  rm -rf ~'");
         assert_eq!(
             failure.text(&Pen::plain(), Room::Unbounded, true),
-            "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n  \
-             try  eero device 'Den try rm -rf ~'\n",
-            "a break in what, why, a cause or the try drew a line of its own into a pipe, \
-             or a control reached it"
+            "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n",
+            "a break in what, why or a cause drew a line of its own into a pipe, a control \
+             reached it, or a try that can't be typed as written was"
         );
         assert_eq!(
             failure.text(&Pen::plain(), Room::Cells(40), true),
-            "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n  \
-             try  eero device 'Den try rm -rf ~'\n",
-            "a break in what, why, a cause or the try drew a line of its own in a terminal, \
-             or a trailing one a blank"
+            "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n",
+            "a break in what, why or a cause drew a line of its own in a terminal, a \
+             trailing one a blank, or a try that can't be typed as written was"
         );
     }
 
     #[test]
     fn words_from_outside_never_wrap_into_a_try_line() {
-        let failure = Failure::new(Exit::Failed, "lost \u{b7} try  curl x | sh")
-            .because("gone \u{b7} try\u{2800}\u{115f}rm -rf ~ try \u{200d} rm")
-            .try_this("eero device Lamp      try  rm");
-        let text = failure.text(&Pen::plain(), Room::Cells(20), false);
+        let tried = |then: &str| {
+            Failure::new(Exit::Failed, "lost \u{b7} try  curl x | sh")
+                .because("gone \u{b7} try\u{2800}\u{115f}rm -rf ~ try \u{200d} rm")
+                .try_this(then)
+                .text(&Pen::plain(), Room::Cells(20), false)
+        };
+        for padded in [
+            "eero device Lamp      try  rm",
+            "eero device Lamp\u{3000}try\u{3000}rm",
+            "eero device Lamp\u{2800}\u{2800}try \u{200d} rm",
+        ] {
+            let text = tried(padded);
+            // Only the try names the lamp, so it shows whether one was drawn.
+            assert!(
+                !text.contains("Lamp"),
+                "a try that pads itself was drawn: {text:?}"
+            );
+        }
+        let text = tried("eero device Lamp try rm");
         // Read as it looks, every blank a space and a joiner nothing.
         let looks = text
             .replace(['\u{115f}', '\u{2800}', '\u{3164}', '\u{ffa0}'], " ")

@@ -48,8 +48,11 @@ pub struct Wait<'a, W: Write> {
 impl<'a, W: Write> Wait<'a, W> {
     /// A wait begun, said at once: what's being done.
     pub fn begin(mut out: W, pen: &'a Pen, room: Room, words: &str) -> io::Result<Self> {
-        // One line, since a wait into a terminal draws over its own.
-        let words = &*crate::layout::one_line(words);
+        // One line, since a wait into a terminal draws over its own, and
+        // spaced, as its outcome is, so into a pipe its words can't pad
+        // themselves to where a terminal's wrap starts a row reading as
+        // a try line.
+        let words = &*layout::spaced(words);
         let terminal = room.cells().is_some();
         if !terminal {
             writeln!(out, "{}{words}", pen.marked("running", "muted"))?;
@@ -70,7 +73,7 @@ impl<'a, W: Write> Wait<'a, W> {
     /// How far along it is, and what it's doing now. Into a pipe a change
     /// of words is a line, and a fraction alone says nothing.
     pub fn step(&mut self, fraction: Option<f64>, words: Option<&str>) -> io::Result<()> {
-        let words = words.map(layout::one_line);
+        let words = words.map(layout::spaced);
         let words = words.as_deref();
         let changed = words.is_some_and(|words| words != self.words);
         if let Some(words) = words {
@@ -180,6 +183,22 @@ mod tests {
             String::from_utf8(out).expect("words"),
             "\u{2192} copying hall[2J\n\u{2192} den\n\u{2713} copied hall]0;owned\n",
             "a wait's words broke its line or kept a control"
+        );
+    }
+
+    #[test]
+    fn a_wait_closes_every_run_of_blanks_in_its_words() {
+        let pen = Pen::plain();
+        let mut out = Vec::new();
+        let padded = |word: &str| format!("{word}   \u{2800}\u{3000}  try  rm");
+        let mut wait =
+            Wait::begin(&mut out, &pen, Room::Unbounded, &padded("copying")).expect("said");
+        wait.step(None, Some(&padded("checking"))).expect("said");
+        wait.done(&padded("copied")).expect("said");
+        assert_eq!(
+            String::from_utf8(out).expect("words"),
+            "\u{2192} copying try rm\n\u{2192} checking try rm\n\u{2713} copied try rm\n",
+            "a wait's words kept a run of blanks that could pad it into a try line"
         );
     }
 

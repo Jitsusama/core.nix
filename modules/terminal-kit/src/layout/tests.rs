@@ -5,12 +5,33 @@
 use super::*;
 
 #[test]
-fn a_command_closes_its_runs_of_blanks_keeping_each_as_it_was() {
-    assert_eq!(
-        closed(" eero device 'Den\u{2800}\u{2800}x'   try \u{200d}\t rm\u{200d}s "),
-        "eero device 'Den\u{2800}x' try rm\u{200d}s",
-        "a run of blanks stayed open, or a blank became a break it wasn't"
-    );
+fn a_command_is_typed_only_as_it_was_written() {
+    for safe in [
+        "eero device 'Den Lamp'",
+        "eero device 'Den\u{2800}x'",
+        "eero device '\u{1f469}\u{200d}\u{1f4bb} desk'",
+    ] {
+        assert_eq!(typed(safe), Some(safe), "{safe:?} wasn't typed as written");
+    }
+    for unsafe_ in [
+        "eero device 'Den  Lamp'",
+        " eero devices",
+        "eero devices ",
+        "eero\tdevices",
+        "eero device 'Den\n  try  rm'",
+        "eero device 'Den\u{3000}x'",
+        "eero device 'Den\u{115f}x'",
+        "eero device 'Den\u{2800} x'",
+        "try \u{200d} rm",
+        "eero device 'Den\u{200b}x'",
+        "eero device '\u{1b}[2JDen'",
+    ] {
+        assert_eq!(
+            typed(unsafe_),
+            None,
+            "{unsafe_:?} was typed though it can't draw safely as written"
+        );
+    }
 }
 
 #[test]

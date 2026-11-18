@@ -448,11 +448,11 @@ the order they're read, the most useful last, where the eye ends:
 - **What to do**, where there's something: a command to type after "try",
   or the one thing to check. A command that can't say what to do leaves
   the line out rather than guess. It's never wrapped, so it copies whole,
-  and each run of blanks in it is closed to its first, kept as the
-  character it was, so a name in it can't pad it to where a terminal's
-  own wrap would start a row reading as a try, and no blank becomes a
-  break between arguments; a command that finds things by name folds
-  those runs too, so the line still finds what it named.
+  and it's drawn only as it was written: one holding a name the kit
+  can't draw safely that way, with a line break, a run of blanks, one two
+  cells wide or a character the pen drops, is left out. Changing it
+  could name another thing than the one meant, and keeping it could pad
+  it to where a terminal's own wrap starts a row reading as a try.
 
 No stack, no `anyhow` chain and no source path by default; `--verbose`
 adds the chain. Errors of one kind are grouped under one line saying how
