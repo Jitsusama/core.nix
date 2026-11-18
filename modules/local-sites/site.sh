@@ -1,17 +1,19 @@
 # shellcheck shell=bash
 # Builds one live site (site.nix says why it's built this way): typechecks
 # its TypeScript on the kit at its strictest, runs its tests if it has any,
-# compiles it to the browser's modules, and lays it out with its page, its
-# twins and the theme's web kit. Each look's ground and tint fill the page's
+# compiles it to the browser's modules, and lays it out with its page and
+# its twins. The theme's web kit isn't copied in: every live site reads the
+# one copy the sites share, at ../local-sites/web/, so a page that doesn't,
+# or that still reads a kit/ of its own, is refused. Each look's ground and tint fill the page's
 # theme-color and its favicon, the two places a site can't name a role. Each
 # page gets the strip every one of Joel's sites opens with, written here
 # rather than carried by each page, so no app's copy says more than its kind.
-# usage: site.sh <tsc> <node> <kit> <site> <name> <web kit> <out>
+# usage: site.sh <tsc> <node> <kit> <site> <name> <out>
 #   <dark ground> <light ground> <dark tint> <light tint>
 set -euo pipefail
 
-tsc=$1 node=$2 kit=$3 site=$4 name=$5 web=$6 out=$7
-dark_ground=$8 light_ground=$9 dark_tint=${10} light_tint=${11}
+tsc=$1 node=$2 kit=$3 site=$4 name=$5 out=$6
+dark_ground=$7 light_ground=$8 dark_tint=$9 light_tint=${10}
 
 # The sources as they sit in the tree, so the site's imports of the kit
 # resolve here as they do there.
@@ -51,6 +53,11 @@ done
 # reaches. A site is served one folder deep (site.nix says why), so home is
 # one folder up.
 strip="${work}/strip.html"
+# A page or its styles naming a kit/ that doesn't go through local-sites/,
+# however it's spelled: quoted either way or not at all, in a url(), from
+# the root, here or a folder up, in any case.
+own_kit='(^|[^-a-z0-9_/.])(/|(\./|\.\./)*)kit/'
+theme='<link rel="stylesheet" href="../local-sites/web/theme.css">'
 cat >"${strip}" <<'STRIP'
 
 <!-- sites strip: localSite writes this -->
@@ -59,10 +66,21 @@ cat >"${strip}" <<'STRIP'
 <span>App</span></nav>
 <!-- /sites strip -->
 STRIP
+for file in "${out}"/*.html "${out}"/*.css; do
+  [[ -f ${file} ]] || continue
+  if grep -qiE "${own_kit}" "${file}"; then
+    echo "${file##*/} reads its own kit/; a live site reads ../local-sites/web/" >&2
+    exit 1
+  fi
+done
 for page in "${out}"/*.html; do
   [[ -f ${page} ]] || continue
   if grep -q 'sites-strip' "${page}"; then
     echo "${page##*/} carries its own strip; localSite writes it, so take it out" >&2
+    exit 1
+  fi
+  if ! grep -qF "${theme}" "${page}"; then
+    echo "${page##*/} doesn't read the theme from the sites' one copy: ${theme}" >&2
     exit 1
   fi
   skips=$(grep -c '<a class="skip"' "${page}" || true)
@@ -72,5 +90,3 @@ for page in "${out}"/*.html; do
   fi
   sed -i -e "/<a class=\"skip\"/r ${strip}" "${page}"
 done
-cp -r "${web}" "${out}/kit"
-chmod -R u+w "${out}/kit"

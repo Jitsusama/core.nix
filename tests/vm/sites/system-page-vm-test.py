@@ -87,13 +87,19 @@ def daemon_back(served: BaseMachine) -> Iterator[BaseMachine]:
 
 
 def test_the_server_serves_the_system_page_and_its_kit(served: BaseMachine) -> None:
-    """The page, its script and the kit it imports are served by the server's own name."""
+    """The page, its script, the kit it imports and the theme it reads are served by name.
+
+    The theme's web kit is mounted once for every site, so it is asked for where
+    the page reads it, beside the kit, as the machine mounts it.
+    """
     page = served.succeed(f"curl -sf {SITES}/system/")
     assert '<nav class="sites-strip"' in page, (
         "the page was served without the strip its build writes"
     )
     served.succeed(f"curl -sf {SITES}/system/site.js")
     served.succeed(f"curl -sf {SITES}/local-sites/kit/feed.js")
+    served.succeed(f"curl -sf {SITES}/local-sites/web/theme.css")
+    served.succeed(f"curl -sf {SITES}/local-sites/web/fonts/fraunces.woff2 -o /dev/null")
 
 
 def test_the_feed_reaches_the_daemon_over_its_socket(served: BaseMachine) -> None:
