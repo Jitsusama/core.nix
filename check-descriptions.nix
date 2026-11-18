@@ -5290,7 +5290,8 @@
   vm-a-wedged-pi-starts-again = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
     killed by the watchdog and started again once its loop stops pinging, its abort recorded by
-    systemd-coredump with no core kept, and one that crashes
+    systemd-coredump with no core kept, and killed 10 s on when it ignores that abort, and one that
+    crashes
     at every start is started three times, then left failed with start-limit-hit, and one that
     refuses what it was given is left down at once, each saying which host is down and why, and
     one whose command the kernel kills for memory stays up, unrestarted

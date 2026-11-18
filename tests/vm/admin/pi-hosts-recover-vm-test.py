@@ -3,7 +3,8 @@
 pi-hosts-recover.nix, beside this, runs this through pytest inside the driver
 (tests/lib/vm_pytest.py), on a machine whose account lingers with a realm's hosts as their module
 renders them, their node a stand-in that says ready and pings the watchdog each second until a file
-tells it to hang, crash, refuse or run a command too big for it. A host left down starts the
+tells it to hang (deaf to the watchdog's abort or not), crash, refuse or run a command too big for
+it. A host left down starts the
 notice that says so, whose words the journal keeps too, which is what the tests read: the machine
 shows no notices. Each test starts the background host afresh, its start limit cleared, so any
 test runs alone with `-k`. The tests need no value from Nix.
@@ -146,6 +147,25 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
     assert host.starts()[0] == first
     assert first not in host.starts()[1:]
     # It came back by itself, so nobody is told it's down.
+    assert DOWN not in host.said(NOTICE)
+
+
+def test_a_host_deaf_to_the_watchdogs_abort_is_killed_soon_after(host: Host) -> None:
+    """A wedged host that ignores the watchdog's SIGABRT is killed 10 s on, not at its stop limit.
+
+    A node whose loop spins with a JavaScript listener for SIGABRT only queues it, as the
+    background host's did on 17 November; the unit's 150 s stop limit would hold it far past
+    the time a start may take to come back.
+    """
+    [first] = host.starts()
+    host.run(f"touch {FOLDER}/deaf")
+    host.until(f"test -e {FOLDER}/deafened && test $(wc -l < {STARTS}) -gt 1")
+    host.until(f"systemctl --user is-active {UNIT}")
+    said = host.said()
+    assert "Failed with result 'watchdog'" in said, said
+    assert "State 'stop-watchdog' timed out. Killing." in said, said
+    assert "status=9/KILL" in said, said
+    assert first not in host.starts()[1:]
     assert DOWN not in host.said(NOTICE)
 
 
