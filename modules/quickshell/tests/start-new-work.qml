@@ -42,39 +42,6 @@ QtObject {
         Expect.same("a sprout it can ask is no refusal",
             Sprouting.refused("tidy it", "/home/j/src/core", said), null);
 
-        // Where words can be said: the repositories the open quests work in.
-        Expect.same("each repository once, in the quests' order, home never",
-            Sprouting.folders([
-                { folder: "/home/j/src/core" },
-                { folder: "/home/j" },
-                { folder: "/home/j/src/harness" },
-                { folder: "/home/j/src/core" },
-                { folder: "" },
-                {},
-                { folder: "src/relative" }
-            ], "/home/j"),
-            [
-                { folder: "/home/j/src/core", name: "~/src/core" },
-                { folder: "/home/j/src/harness", name: "~/src/harness" }
-            ]);
-        Expect.same("home spelled any other way is still home",
-            Sprouting.folders([{ folder: "/home/j/" }, { folder: "/home//j" },
-                { folder: "/home/j/." }, { folder: "/home/j/src/.." }], "/home/j"), []);
-        Expect.same("home said with a slash after it is still home",
-            Sprouting.folders([{ folder: "/home/j" }, { folder: "/home/j/src/core/" }],
-                "/home/j/"),
-            [{ folder: "/home/j/src/core", name: "~/src/core" }]);
-        Expect.same("a folder only beginning as home does isn't under it",
-            Sprouting.folders([{ folder: "/home/jo/src" }], "/home/j"),
-            [{ folder: "/home/jo/src", name: "/home/jo/src" }]);
-        Expect.same("a repository outside home reads as its whole path",
-            Sprouting.folders([{ folder: "/srv/work" }], "/home/j"),
-            [{ folder: "/srv/work", name: "/srv/work" }]);
-        Expect.same("the root is never offered",
-            Sprouting.folders([{ folder: "/" }], "/home/j"), []);
-        Expect.same("with home unknown, no folder is offered",
-            Sprouting.folders([{ folder: "/home/j/src/core" }], ""), []);
-
         // How it ended, as the daemon answers (modules/agents/src/sprout.rs).
         Expect.same("started, on the machine the node chose",
             Sprouting.ended({ id: "ask-3", sprouted: { machine: "kestrel", held: "h1",

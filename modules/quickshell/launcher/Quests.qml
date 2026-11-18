@@ -61,7 +61,7 @@ Provider {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/quests.sock`
         place: "quests"
-        beside: ["summary"]
+        beside: ["summary", "folders"]
         make: (row, key) => provider.made(row, key)
         maker: provider
         drawn: provider.launcher?.open ?? false
@@ -189,14 +189,12 @@ Provider {
         });
     }
 
-    // The open quests as `{ folder }`, each the folder the daemon holds
-    // it works in, in their order, for Start New Work's rows to say words
-    // in (Agents.qml, launcher/Sprouting.js's folders): the open rows
-    // everything() begins with, as Start a Session reads them, never the
-    // ended ones a search finds.
+    // The repositories the open quests work in, as `{ folder, name }`, each
+    // once, in Quests' order and home never, for Start New Work's rows to
+    // say words in (Agents.qml), as the daemon serves them
+    // (modules/quests/src/folders.rs).
     function folders() {
-        return rowsNow().filter(row => row.unfinished)
-            .map(row => ({ folder: String(ready.served(row.key)?.held?.folder ?? "") }));
+        return ready.held["folders:quests"]?.folders ?? [];
     }
 
     // What a row's acts need of its quest, from what the daemon holds

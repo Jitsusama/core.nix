@@ -65,7 +65,8 @@ fn node(socket: &Path, later: Receiver<Value>) {
                 Some("quest") => json!([
                     {"key": "quest:QEST-A", "kind": "quest", "heard": 1, "id": "QEST-A",
                         "title": "Bootstrap the laptop", "quest.kind": "quest",
-                        "status": "active", "priority": "driving", "rank": 1},
+                        "status": "active", "priority": "driving", "rank": 1,
+                        "start": "/home/joel/src/laptop"},
                     {"key": "quest:QEST-B", "kind": "quest", "heard": 1, "id": "QEST-B",
                         "title": "Retune the prompt", "quest.kind": "subquest",
                         "parent": "QEST-A", "status": "active", "priority": "queued"}
@@ -125,7 +126,7 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
     client.ask(&json!({"id": 1, "ask": "hello"}));
     // The node's three watches may land as more than one making, so the
     // watch waits for what it brings: the session holding B.
-    client.send(&json!({"id": 2, "ask": "watch", "kind": ["row", "summary"],
+    client.send(&json!({"id": 2, "ask": "watch", "kind": ["row", "summary", "folders"],
         "place": "quests"}));
     let mut held: BTreeMap<String, Value> = BTreeMap::new();
     let all_heard = |held: &BTreeMap<String, Value>| {
@@ -158,6 +159,11 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
         json!([{"said": "subquest"}, {"said": "queued"}, {"said": "S"}])
     );
     assert_eq!(b["held"]["folder"], "/home/joel");
+    assert_eq!(
+        held.get("folders:quests").map(|record| &record["folders"]),
+        Some(&json!([{"folder": "/home/joel/src/laptop", "name": "~/src/laptop"}])),
+        "where Start New Work's words can be said, home never: {held:?}"
+    );
     tell.send(json!({"id": 2, "changed": [{"key": "quest:QEST-A", "heard": 2}]}))
         .expect("the node is told");
     tell.send(json!({"id": 2, "changed": [{"key": "quest:QEST-A", "title": "Again"}]}))

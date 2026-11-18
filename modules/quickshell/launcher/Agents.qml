@@ -1473,8 +1473,7 @@ Provider {
             });
         };
         const inside = () => [act("link", "", Words.name("verb:agents:start-new-work:link"))]
-            .concat(Sprouting.folders(source("quests")?.folders() ?? [],
-                Quickshell.env("HOME") ?? "").map(one => act("in", one.folder,
+            .concat((source("quests")?.folders() ?? []).map(one => act("in", one.folder,
                 Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
         return Object.assign(thingRow({
             key: "agents:start-new-work",

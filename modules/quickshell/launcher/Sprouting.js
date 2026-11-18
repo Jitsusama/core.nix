@@ -9,7 +9,8 @@
 // its session held in no window, which Go To opens when he wants it
 // (pivot of 16 November, 18:55: no session needs a window of its own).
 // The daemon asks only for the shell (modules/agents/src/asker.rs), since
-// the node takes it for Joel.
+// the node takes it for Joel. The repositories come from the quests
+// daemon (modules/quests/src/folders.rs).
 //
 // Only a sprout is asked, and only its own shape: what he said as one,
 // and a folder only when it's a whole path.
@@ -40,46 +41,6 @@ function refused(text, folder, said) {
         return why;
     }
     return String(said[why] ?? "");
-}
-
-// `path` as plain steps: no empty step, no `.`, and `..` taking back the
-// step before, so two spellings of one folder read the same.
-function plain(path) {
-    const steps = [];
-    for (const step of String(path).split("/")) {
-        if (step === "..") {
-            steps.pop();
-        } else if (step !== "" && step !== ".") {
-            steps.push(step);
-        }
-    }
-    return `/${steps.join("/")}`;
-}
-
-// The repositories words can be said in: each folder `quests` work in,
-// once, in their order, as `{ folder, name }`, its name read from `home`
-// as ~ as a shell says it. Home itself never, since a session begun there
-// has none of a repository's skills, nor one that isn't a whole path; and
-// none while home isn't known, since home couldn't be told from them.
-function folders(quests, home) {
-    const said = String(home ?? "");
-    if (!said.startsWith("/")) {
-        return [];
-    }
-    const homeAt = plain(said);
-    const seen = new Set();
-    const found = [];
-    for (const quest of quests ?? []) {
-        const given = String(quest?.folder ?? "");
-        const folder = given.startsWith("/") ? plain(given) : "";
-        if (folder !== "" && folder !== homeAt && folder !== "/" && !seen.has(folder)) {
-            seen.add(folder);
-            const name = folder.startsWith(`${homeAt}/`)
-                ? `~${folder.slice(homeAt.length)}` : folder;
-            found.push({ folder, name });
-        }
-    }
-    return found;
 }
 
 // How it ended, from the daemon's `answer` (modules/agents/src/sprout.rs):
