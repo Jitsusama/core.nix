@@ -361,9 +361,11 @@ pub const KINDS: &[Kind] = &[
         key: "code.queued-on",
         axis: "time to done",
         evidence: "merge-net's answers.jsonl, the files each hold and run again turned on",
-        says: "changes held back or run again on",
+        // Its names are a cause and a zone, as `held:modules/repos`: held
+        // back behind another's gate, or sent to run again as main moved.
+        says: "changes queued on",
         // The launcher's pytest file held 11 changes back by 09:50 on 12
-        // November, as it had most days, so only a new file was ever said.
+        // November, as it had most days, so only a new name was ever said.
         floor: Some(3.0),
     },
 ];
