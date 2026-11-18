@@ -13,11 +13,13 @@
 //! words for the daemon's log.
 
 use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use serde::de::{self, Deserializer, Visitor};
 
 /// More than tuple-call's nine kept calls could fill, even each with a
 /// room of a hundred people; one larger is no file tuple-call wrote.
@@ -27,9 +29,100 @@ const LARGEST_FILE: u64 = 1024 * 1024;
 #[derive(Deserialize)]
 struct Ring {
     /// Whether it rang and wasn't answered.
+    #[serde(deserialize_with = "plain")]
     missed: bool,
     /// When it began to ring, or connected, in milliseconds.
+    #[serde(deserialize_with = "plain")]
     since: i64,
+}
+
+/// A field read as the one plain value it should be. serde's own error
+/// for a field of the wrong type quotes what it found, which could be a
+/// name planted where a time belongs, into an error freed unzeroed; this
+/// one refuses a string or bytes in fixed words instead.
+fn plain<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Plain,
+{
+    deserializer.deserialize_any(Wordless(std::marker::PhantomData))
+}
+
+/// A value a call's field holds: a flag or a time.
+trait Plain: Sized {
+    /// The value from a flag, if this is one.
+    fn of_bool(_: bool) -> Option<Self> {
+        None
+    }
+    /// The value from a whole number, if this is one.
+    fn of_i64(_: i64) -> Option<Self> {
+        None
+    }
+}
+
+impl Plain for bool {
+    fn of_bool(value: bool) -> Option<Self> {
+        Some(value)
+    }
+}
+
+impl Plain for i64 {
+    fn of_i64(value: i64) -> Option<Self> {
+        Some(value)
+    }
+}
+
+/// Reads a `T` and refuses anything else without saying what it was.
+struct Wordless<T>(std::marker::PhantomData<T>);
+
+/// What every refusal says, so none quotes the value refused.
+const NOT_PLAIN: &str = "a field of a call holds what it shouldn't";
+
+impl<'de, T: Plain> Visitor<'de> for Wordless<T> {
+    type Value = T;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a flag or a whole number")
+    }
+
+    fn visit_bool<E: de::Error>(self, value: bool) -> Result<T, E> {
+        T::of_bool(value).ok_or_else(|| E::custom(NOT_PLAIN))
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<T, E> {
+        T::of_i64(value).ok_or_else(|| E::custom(NOT_PLAIN))
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<T, E> {
+        i64::try_from(value)
+            .ok()
+            .and_then(T::of_i64)
+            .ok_or_else(|| E::custom(NOT_PLAIN))
+    }
+
+    fn visit_f64<E: de::Error>(self, _: f64) -> Result<T, E> {
+        Err(E::custom(NOT_PLAIN))
+    }
+
+    fn visit_str<E: de::Error>(self, _: &str) -> Result<T, E> {
+        Err(E::custom(NOT_PLAIN))
+    }
+
+    fn visit_bytes<E: de::Error>(self, _: &[u8]) -> Result<T, E> {
+        Err(E::custom(NOT_PLAIN))
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<T, E> {
+        Err(E::custom(NOT_PLAIN))
+    }
+
+    fn visit_seq<A: de::SeqAccess<'de>>(self, _: A) -> Result<T, A::Error> {
+        Err(de::Error::custom(NOT_PLAIN))
+    }
+
+    fn visit_map<A: de::MapAccess<'de>>(self, _: A) -> Result<T, A::Error> {
+        Err(de::Error::custom(NOT_PLAIN))
+    }
 }
 
 /// What reading the rings found.
@@ -46,10 +139,15 @@ pub enum Rings {
 /// else `HOME`, but only when that's an absolute folder, so a relative one
 /// never reads a file wherever the daemon happens to run.
 pub fn file() -> Option<PathBuf> {
-    let named = |name| std::env::var_os(name).filter(|value| !value.is_empty());
-    let state = named("XDG_STATE_HOME")
+    file_from(std::env::var_os("XDG_STATE_HOME"), std::env::var_os("HOME"))
+}
+
+/// The file from the state and home folders named, as `file` finds it.
+fn file_from(state: Option<OsString>, home: Option<OsString>) -> Option<PathBuf> {
+    let named = |value: Option<OsString>| value.filter(|value| !value.is_empty());
+    let state = named(state)
         .map(PathBuf::from)
-        .or_else(|| named("HOME").map(|home| PathBuf::from(home).join(".local/state")))
+        .or_else(|| named(home).map(|home| PathBuf::from(home).join(".local/state")))
         .filter(|folder| folder.is_absolute())?;
     Some(state.join("tuple-call/recent.jsonl"))
 }
@@ -297,6 +395,63 @@ mod tests {
                 .is_empty(),
             "a ring was still heard the next day"
         );
+    }
+
+    #[test]
+    fn the_file_is_found_where_tuple_call_keeps_it() {
+        let found = |state: Option<&str>, home: Option<&str>| {
+            file_from(state.map(OsString::from), home.map(OsString::from))
+        };
+        assert_eq!(
+            found(Some("/state"), Some("/home/ada")),
+            Some(PathBuf::from("/state/tuple-call/recent.jsonl")),
+            "the state folder wasn't taken first"
+        );
+        assert_eq!(
+            found(Some(""), Some("/home/ada")),
+            Some(PathBuf::from(
+                "/home/ada/.local/state/tuple-call/recent.jsonl"
+            )),
+            "an empty state folder wasn't passed over for home"
+        );
+        assert_eq!(
+            found(None, Some("/home/ada")),
+            Some(PathBuf::from(
+                "/home/ada/.local/state/tuple-call/recent.jsonl"
+            )),
+            "home wasn't used with no state folder"
+        );
+        assert_eq!(
+            found(Some("state"), Some("/home/ada")),
+            None,
+            "a relative folder was read"
+        );
+        assert_eq!(found(None, Some("ada")), None, "a relative home was read");
+        assert_eq!(
+            found(None, None),
+            None,
+            "a file was found with no folder named"
+        );
+    }
+
+    #[test]
+    fn a_field_of_the_wrong_kind_is_refused_without_quoting_it() {
+        for line in [
+            r#"{"missed":"Ada Brightwater","since":1}"#,
+            r#"{"missed":true,"since":"Ada Brightwater"}"#,
+            r#"{"missed":true,"since":["Ada Brightwater"]}"#,
+        ] {
+            let refused = serde_json::from_str::<Ring>(line)
+                .err()
+                .expect("a field of the wrong kind was read");
+            assert!(
+                !refused.to_string().contains("Ada"),
+                "the refusal quoted what it refused: {refused}"
+            );
+        }
+        let ring: Ring =
+            serde_json::from_str(r#"{"missed":true,"since":7}"#).expect("a sound call wasn't read");
+        assert!(ring.missed && ring.since == 7, "a sound call was misread");
     }
 
     #[test]

@@ -8,13 +8,16 @@
 //! someone was called lately. So tuple-call keeps it, a JSON line a call
 //! in `tuple-call/recent.jsonl` in the state folder, so it outlives a
 //! restart, and a line that can't be read is passed over rather than
-//! losing the rest.
+//! losing the rest. call-transcripts reads `missed` and `since` from it
+//! too, to count the calls Joel missed (modules/dictation's rings.rs),
+//! and counts none from a file with a line it can't read, so a change to
+//! either field, or to a line's shape, must change it as well.
 
 use serde_json::{Value, json};
 
 /// How many calls are kept, ended and missed together: as many as the
 /// launcher's Recent lists, nine, so 1 to 9 pick one (Recents.qml), and
-/// nothing else reads them, so a longer history would be kept for nobody.
+/// nothing else lists them, so a longer history would be kept for nobody.
 pub const KEPT: usize = 9;
 
 /// Someone a call was with, as Tuple knew them then.

@@ -9,9 +9,10 @@
 //! ring is a call that asked for Joel as much as one he took, so it
 //! counts in each, and every one is addressed to him. No title, person,
 //! event or folder of a call is ever an argument, so nothing a call's
-//! files say reaches the node, whatever they hold. mycelium is run by its store path, its
-//! arguments given one by one and never through a shell, by the speaker
-//! every daemon's receptors share (../receptor-say).
+//! files say reaches the node, whatever they hold. mycelium is run by
+//! its store path, its arguments given one by one and never through a
+//! shell, by the speaker every daemon's receptors share
+//! (../receptor-say).
 //!
 //! The service names the program and the realm in `MYCELIUM` and
 //! `MYCELIUM_REALM` (modules/call-transcripts/home.nix); with either unset,
