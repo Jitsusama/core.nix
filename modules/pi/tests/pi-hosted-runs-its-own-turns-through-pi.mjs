@@ -457,6 +457,44 @@ it("a carried run that fails to start keeps what it held for the next turn", asy
   }
 });
 
+it("a carried run whose work fails keeps what it held for the next turn", async () => {
+  const { session, faux, close } = await openPreparedSession({ tools: ["read"] });
+  try {
+    sendsAsItStarts(session);
+    const failed = new Error("the work failed");
+    await assert.rejects(deadline(session.runForHost(() => Promise.reject(failed))), failed);
+    assert.equal(session.isStreaming, false);
+    // A turn the work never finished may owe a tool result, so nothing goes after it yet.
+    assert.ok(!session.messages.some(isHeld), "what it held waits for a finished turn");
+    await carryThroughToolRound(session, faux);
+    assert.ok(heldAfterToolResult(session), "the next run places it after its tool result");
+  } finally {
+    close();
+  }
+});
+
+it("a carried run aborted during its work keeps what it held for the next turn", async () => {
+  const { session, faux, close } = await openPreparedSession({ tools: ["read"] });
+  try {
+    sendsAsItStarts(session);
+    let aborted;
+    await deadline(
+      session.runForHost(() => {
+        // Not awaited here: pi's abort waits for the run it stops to settle.
+        aborted = session.abort();
+        return Promise.resolve();
+      }),
+    );
+    await deadline(aborted);
+    // An aborted turn may owe a tool result too, so nothing goes after it yet.
+    assert.ok(!session.messages.some(isHeld), "what it held waits for a finished turn");
+    await carryThroughToolRound(session, faux);
+    assert.ok(heldAfterToolResult(session), "the next run places it after its tool result");
+  } finally {
+    close();
+  }
+});
+
 it("a handler's setActiveTools() holds for a carried run", async () => {
   // It keeps one of two tools, so neither the base loadout nor none at all passes.
   const narrows = (pi) =>
