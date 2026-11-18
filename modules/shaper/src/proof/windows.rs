@@ -191,8 +191,10 @@ mod tests {
             "opened once stopped"
         );
         let _ = raiser.join();
+        // Well short of the 15 s it would wait unstopped, with room for a
+        // loaded builder's late wake.
         assert!(
-            began.elapsed() < Duration::from_secs(2),
+            began.elapsed() < Duration::from_secs(5),
             "a stop on the way waited {:?}",
             began.elapsed()
         );

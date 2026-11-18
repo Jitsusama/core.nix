@@ -36,7 +36,8 @@
 //! once. It waits `--wait` seconds from its start in all, and exits 75 if
 //! they run out before every pair is measured, writing what it measured
 //! to `--out`. It exits 69 if it couldn't put the shaper back, saying how
-//! to, and leaves the shaper to Joel. When systemd doesn't say whether
+//! to, and leaves the shaper to Joel, and 69 too once swayidle has gone,
+//! since nothing then hears him come back. When systemd doesn't say whether
 //! the shaper is on, no window opens on it, and it exits 75 with the
 //! shaper left as it stood. The call's packets are src/call.rs's.
 //!
@@ -403,7 +404,8 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
         asked.out.as_deref(),
         &serde_json::json!({
             "verdict": verdict, "complete": windows.complete, "stopped": stopped,
-            "shaper_back": windows.back, "idle_call_ms": idle, "pairs": pairs
+            "shaper_back": windows.back, "swayidle_lost": lost,
+            "idle_call_ms": idle, "pairs": pairs
         }),
     );
     windows.ending(paid, stopped)?;
@@ -520,7 +522,7 @@ fn window(
     // own traffic, so it's dropped and heard afresh in the next window.
     if !halted(&stop) && !gate.open() {
         stop.store(true, Ordering::Relaxed);
-        tell("Joel is back, or a call, audio or a meeting started: waiting for his next idle");
+        tell(&format!("{}: not starting the load", gate.why_shut()));
         if touched {
             idle.clear();
         }
@@ -541,7 +543,7 @@ fn window(
                 } else if !gate.open() {
                     stop.store(true, Ordering::Relaxed);
                     stop_scopes();
-                    tell("Joel is back, or a call, audio or a meeting started: stopping the load");
+                    tell(&format!("{}: stopping the load", gate.why_shut()));
                 }
                 // The gate is asked once a second while the load runs.
                 thread::sleep(Duration::from_secs(1));
@@ -561,8 +563,13 @@ fn window(
         let _ = watch.join();
     }
     if closed && !STOPPED.load(Ordering::Relaxed) {
+        let next = if gate.lost() {
+            ""
+        } else {
+            "; waiting for Joel's next idle"
+        };
         tell(&format!(
-            "kept {} pairs, the one under way dropped; waiting for Joel's next idle",
+            "kept {} pairs, the one under way dropped{next}",
             from as usize + pairs.len()
         ));
     }

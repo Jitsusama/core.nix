@@ -169,6 +169,16 @@ impl Gate {
             && !busy(&self.waits, signalled)
     }
 
+    /// Why the gate is shut, for Joel: a lost swayidle said as itself, not
+    /// as his coming back.
+    pub fn why_shut(&self) -> &'static str {
+        if self.lost() {
+            "swayidle went away, so nothing hears whether Joel is back"
+        } else {
+            "Joel is back, or a call, audio or a meeting started"
+        }
+    }
+
     /// Whether swayidle has gone, so nothing hears Joel come back and the
     /// gate can never open again.
     pub fn lost(&self) -> bool {

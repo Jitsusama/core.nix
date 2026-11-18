@@ -186,6 +186,11 @@ pub fn stop_scopes() {
 mod tests {
     use super::*;
 
+    /// How long a script that should end is given: the watcher asks once a
+    /// second, but a shell starting on a builder at a load of 60 took over
+    /// three, and a longer bound only slows a run that fails.
+    const ENDS: Duration = Duration::from_secs(10);
+
     /// Whether `script`, given a server nothing answers on, ends by itself
     /// within `within`; it's killed if not.
     fn ends_within(script: &str, within: Duration) -> bool {
@@ -244,7 +249,7 @@ mod tests {
         let (me, began) = (std::process::id(), began());
         assert!(!began.is_empty(), "no start read from /proc/self/stat");
         assert!(
-            ends_within(&script(pid, &began_then), Duration::from_secs(3)),
+            ends_within(&script(pid, &began_then), ENDS),
             "uploading on after its proof ended"
         );
         // The first process's start, read as this one's is: a pid given
@@ -255,11 +260,11 @@ mod tests {
             "no other start to tell apart"
         );
         assert!(
-            ends_within(&script(me, &other), Duration::from_secs(3)),
+            ends_within(&script(me, &other), ENDS),
             "uploading on for another process given its proof's pid"
         );
         assert!(
-            ends_within(&script(me, ""), Duration::from_secs(3)),
+            ends_within(&script(me, ""), ENDS),
             "uploading on for a proof whose start couldn't be read"
         );
         assert!(
@@ -296,7 +301,7 @@ mod tests {
         let (pid, began) = (zombie.id(), began_of(&zombie.id().to_string()));
         // Long enough for it to end, and stay a zombie, unreaped.
         thread::sleep(Duration::from_millis(300));
-        let ended = ends_within(&script(pid, &began), Duration::from_secs(3));
+        let ended = ends_within(&script(pid, &began), ENDS);
         let _ = zombie.wait();
         assert!(ended, "uploading on for a proof killed but not yet reaped");
     }
@@ -318,7 +323,7 @@ mod tests {
             libc::kill(group, libc::SIGSTOP);
         }
         thread::sleep(Duration::from_millis(200));
-        let ended = ends_within(&script(pid, &began), Duration::from_secs(3));
+        let ended = ends_within(&script(pid, &began), ENDS);
         let _ = proof.kill();
         let _ = proof.wait();
         assert!(
@@ -326,7 +331,7 @@ mod tests {
             "uploading on for a proof stopped, as Ctrl-Z or SIGSTOP leaves it"
         );
         assert!(
-            ends_within(&script(std::process::id(), "1 2"), Duration::from_secs(3)),
+            ends_within(&script(std::process::id(), "1 2"), ENDS),
             "took a start that isn't a number"
         );
     }
@@ -369,15 +374,12 @@ mod tests {
     fn whatever_a_scope_runs_ends_soon_after_its_proof() {
         let (pid, then) = a_proof_for("1");
         assert!(
-            ends_within(&guarded_for(pid, &then, "sleep 30"), Duration::from_secs(4)),
+            ends_within(&guarded_for(pid, &then, "sleep 30"), ENDS),
             "a probe ran on after its proof ended"
         );
         let (me, began) = (std::process::id(), began());
         assert!(
-            ends_within(
-                &guarded_for(me, &began, "sleep 0.2"),
-                Duration::from_secs(3)
-            ),
+            ends_within(&guarded_for(me, &began, "sleep 0.2"), ENDS),
             "a probe's scope outlived what it ran"
         );
     }
