@@ -102,7 +102,9 @@ it("puts a repository's name in its row as words", () => {
 
 it("holds each number in a row to the word it counts, so a row never wraps between them", () => {
   const markup = rows(grove().repositories, NOW, "");
-  assert.ok(markup.includes("1\u00a0tree"), `a row could wrap a count from its word: ${markup}`);
+  for (const count of ["1\u00a0tree", "1\u00a0cell"]) {
+    assert.ok(markup.includes(count), `a row could wrap ${count} from its word: ${markup}`);
+  }
 });
 
 it("puts what was searched for as words when nothing is named like it", () => {

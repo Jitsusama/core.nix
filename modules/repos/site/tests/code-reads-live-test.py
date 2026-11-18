@@ -46,6 +46,12 @@ ASKED_AGAIN_MS = 20_000
 # How far the page may shift unasked: a tenth of the web's "good" bound, which a font
 # swapping in stays under, and a row or a sentence arriving doesn't.
 STILL = 0.01
+# How long page.ts holds the last visit's room before letting it go anyway.
+ROOM_HELD_MS = 3000
+# A phone's window short enough that an open drawer runs past its foot.
+SHORT_PHONE = 360
+# Core's resting tree, in a season that stays folded until opened.
+OLD = "/home/ada/trees/old"
 # Code draws a burst of records at most twice a second, so each second of one may draw this
 # often, with two draws over for its first record and its last.
 DRAWS_A_SECOND = 2
@@ -507,6 +513,36 @@ def test_stepping_through_the_trees_moves_no_tree(code_page: Page, repos_daemon:
     assert code_page.evaluate(boxes) == before, "stepping through the trees moved them"
 
 
+def test_a_phone_shows_the_trees_keys_at_the_foot_of_the_window(
+    code_page: Page, repos_daemon: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    code_page.set_viewport_size({"width": 390, "height": SHORT_PHONE})
+    for path in ["grove", "old"]:
+        repos_daemon.tell(
+            "tree", changed=[{"key": f"tree:/home/ada/trees/{path}", "written_at": now()}]
+        )
+    expect(code_page.locator("#open .tree"), "core's trees weren't drawn open").to_have_count(
+        2, timeout=PACE_MS
+    )
+    row(code_page, "github:owl/core").click()
+    code_page.keyboard.press("Enter")
+    stepped_in = code_page.locator('#open .tree[aria-current="true"]')
+    expect(stepped_in, "Return didn't step into the first tree").to_be_focused()
+    # The drawer's head at the window's top, so its foot lies below the window.
+    drawer = code_page.locator(".drawer")
+    code_page.evaluate(
+        "() => scrollTo(0, document.querySelector('.drawer').getBoundingClientRect().top + scrollY)"
+    )
+    box = drawer.bounding_box()
+    assert box is not None, "the drawer wasn't drawn"
+    assert box["height"] > SHORT_PHONE, "the drawer fit the window, proving nothing"
+    line = code_page.locator(".drawer-keys").bounding_box()
+    assert line is not None, "the trees' keys weren't drawn"
+    foot = line["y"] + line["height"]
+    assert foot <= SHORT_PHONE + 1, f"the trees' keys sat below the window, at {line}"
+
+
 def test_a_redraw_keeps_focus_where_it_was(code_page: Page, repos_daemon: StandIn) -> None:
     says_it_stands(code_page, "live")
     every = code_page.locator('#title a[data-place="every"]')
@@ -523,6 +559,8 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     keys = code_page.locator(".head .keys [role=button]")
     expect(keys, "the head's keys weren't made pressable").to_have_count(6)
+    chosen = code_page.locator('#list .row[aria-selected="true"]')
+    cursor = chosen.get_attribute("data-key") if chosen.count() == 1 else None
     keys.first.focus()
     code_page.keyboard.press("ArrowRight")
     expect(keys.nth(1), "the right arrow didn't move to the next key").to_be_focused()
@@ -530,11 +568,17 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     expect(keys.last, "End didn't move to the last key").to_be_focused()
     code_page.keyboard.press("Home")
     expect(keys.first, "Home didn't move to the first key").to_be_focused()
+    now_chosen = chosen.get_attribute("data-key") if chosen.count() == 1 else None
+    assert now_chosen == cursor, "Home and End on a key moved the list's cursor too"
+    # A chord is the browser's or the reader's, never a step between the keys.
+    code_page.keyboard.press("Alt+ArrowRight")
+    expect(keys.first, "a key took Alt with the arrow as its own step").to_be_focused()
+    code_page.keyboard.press("ArrowRight")
     code_page.keyboard.press("Tab")
     left = code_page.evaluate("() => document.activeElement.closest('.head .keys') === null")
     assert left, "Tab stopped on a second key at the head"
     code_page.keyboard.press("Shift+Tab")
-    expect(keys.first, "Tab back didn't come to the key last left").to_be_focused()
+    expect(keys.nth(1), "Tab back didn't come to the key last left").to_be_focused()
 
 
 def test_a_reload_holds_the_page_still(code_page: Page) -> None:
@@ -569,8 +613,9 @@ def test_a_reload_holds_the_page_still(code_page: Page) -> None:
 HELD_ROOM = """document.addEventListener("DOMContentLoaded", () => {
   const style = document.documentElement.style;
   globalThis.held = Object.fromEntries(
-    ["title", "list"].map((id) => [id, style.getPropertyValue(`--room-${id}`)]),
+    ["title", "list", "open"].map((id) => [id, style.getPropertyValue(`--room-${id}`)]),
   );
+  globalThis.loadedAt = performance.now();
 });"""
 
 
@@ -587,6 +632,51 @@ def test_a_reload_holds_no_room_for_a_name_it_forgets(code_page: Page) -> None:
     assert held["list"] == "", f"the reload held {held['list']} for a list it won't draw"
 
 
+def test_a_reload_holds_no_room_for_a_place_the_address_left(
+    code_page: Page, repos_daemon: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    code_page.locator('#title a[data-place="growing"]').click()
+    expect(code_page.locator("#list .row"), "Growing didn't narrow the list").to_have_count(
+        1, timeout=PACE_MS
+    )
+    # Choosing core puts it in the address, which then says nothing of Growing.
+    row(code_page, "github:owl/core").click()
+    code_page.add_init_script(HELD_ROOM)
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    held = code_page.evaluate("() => globalThis.held")
+    assert held["title"] != "", "the reload held no room at all"
+    assert held["list"] == "", f"the reload held {held['list']} for a Growing it won't draw"
+
+
+def test_a_reload_holds_room_for_the_season_its_address_opens(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    code_page.evaluate("(path) => { location.hash = `#tree=${encodeURIComponent(path)}`; }", OLD)
+    expect(
+        code_page.locator('#open .tree[aria-current="true"]'), "the address didn't open the tree"
+    ).to_have_count(1, timeout=PACE_MS)
+    code_page.add_init_script(HELD_ROOM)
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    held = code_page.evaluate("() => globalThis.held")
+    assert held["open"] != "", "the reload held no room for a drawer its address opens again"
+
+
+def test_a_reload_holds_no_room_for_a_season_only_z_opened(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    row(code_page, "github:owl/core").click()
+    code_page.keyboard.press("z")
+    expect(code_page.locator("#open .tree"), "z didn't open the resting trees").to_have_count(2)
+    code_page.add_init_script(HELD_ROOM)
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    held = code_page.evaluate("() => globalThis.held")
+    assert held["title"] != "", "the reload held no room at all"
+    assert held["open"] == "", f"the reload held {held['open']} for trees it folds again"
+
+
 def test_a_resize_before_the_feeds_arrive_lets_the_room_go(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     # Every feed answered by a socket that never speaks, so nothing draws and the room stays
@@ -600,6 +690,9 @@ def test_a_resize_before_the_feeds_arrive_lets_the_room_go(code_page: Page) -> N
     # Well inside the 3 seconds the room is held for anyway, so only the resize can let it go.
     let_go = "() => document.documentElement.style.getPropertyValue('--room-list') === ''"
     code_page.wait_for_function(let_go, timeout=1000)
+    # A builder slow enough to reach here after the timer can't tell the two apart.
+    elapsed = code_page.evaluate("() => performance.now() - globalThis.loadedAt")
+    assert elapsed < ROOM_HELD_MS, f"the room went on its timer, at {elapsed} ms, not the resize"
 
 
 def test_a_burst_of_records_draws_the_list_a_few_times(
