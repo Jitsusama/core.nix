@@ -130,12 +130,11 @@ pub fn emptiest(workspaces: &[Value], on: u64) -> Option<u64> {
         .and_then(|workspace| workspace["id"].as_u64())
 }
 
-/// Where niri's focus is now, by window, or `None` when niri didn't say;
-/// `Some(None)` when no window has it.
-fn focused(niri: &Path) -> Option<Option<u64>> {
-    let answer = order::answer(niri, &json!("FocusedWindow"))?;
-    let window = answer.get("Ok")?.get("FocusedWindow")?;
-    Some(window["id"].as_u64())
+/// Whether niri says `window` has the focus now; not when niri didn't
+/// answer, or no window has it.
+fn holds(niri: &Path, window: u64) -> bool {
+    order::answer(niri, &json!("FocusedWindow"))
+        .is_some_and(|answer| answer["Ok"]["FocusedWindow"]["id"].as_u64() == Some(window))
 }
 
 /// Puts an agent's window that took the focus behind Joel's work, off
@@ -152,7 +151,7 @@ pub fn put(niri: &Path, unasked: &Unasked, on: u64, back: Option<u64>) {
     let from = unasked.unit.clone();
     std::thread::spawn(move || {
         if let Some(back) = back
-            && focused(&niri) == Some(Some(window))
+            && holds(&niri, window)
         {
             let again = json!({"Action": {"FocusWindow": {"id": back}}});
             if let Some(why) = order::refused(&niri, &again) {
