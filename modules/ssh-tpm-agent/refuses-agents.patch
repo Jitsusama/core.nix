@@ -8,12 +8,13 @@ up to init, whose cgroup a rule names is refused there. Allow ends the
 search, so a place can be allowed inside a slice that is refused. A
 refused peer hears the protocol's bare failure for every request, and
 the journal says why, naming its unit and folder. watch journals what
-would be refused and serves it. A gate that can't be read or parsed, or
-refuses no place, is refused, and so is a peer the kernel doesn't name,
-one whose chain can't be read to init, or one gone by the time it's
-judged, as its pidfd says. A file gone after it was read, as a rollback
-past the gate leaves it, is judged by what it last said; where the
-variable is unset, or its file was never read, nothing changes.
+would be refused and serves it. A gate that can't be read or parsed,
+refuses no place, or is gone before it was ever read, refuses everyone.
+Refused too is a peer the kernel doesn't name, one whose chain can't
+be read to init, or one gone by the time it's judged, as its pidfd
+says. A file gone after it was read, as a rollback past the gate
+leaves it, is judged by what it last said. Where the variable is unset,
+nothing changes.
 
 diff --git a/agent/agent.go b/agent/agent.go
 index 47a77ee..1f8728f 100644
@@ -35,10 +36,10 @@ index 47a77ee..1f8728f 100644
  	}
 diff --git a/agent/gate.go b/agent/gate.go
 new file mode 100644
-index 0000000..9c60b37
+index 0000000..8682027
 --- /dev/null
 +++ b/agent/gate.go
-@@ -0,0 +1,357 @@
+@@ -0,0 +1,359 @@
 +package agent
 +
 +import (
@@ -283,13 +284,15 @@ index 0000000..9c60b37
 +}{gates: map[string]gate{}}
 +
 +// readGate is the gate the file named by GateVariable holds, or ok false
-+// where none is set, or where its file is gone and this agent never read
-+// it. A file gone after it was read, which a rollback past the gate or a
-+// removed config folder leaves the running agent with, is judged by what
-+// it last said: Joel's places stay served, so he isn't shut out until a
-+// restart asks for his PIN, and agents' work stays refused. A file that
-+// can't be read or parsed, or refuses no place, is ErrGateUnread, since a
-+// gate that fails open looks just like one that works.
++// where none is set. A file gone after it was read, which a rollback past
++// the gate or a removed config folder leaves the running agent with, is
++// judged by what it last said: Joel's places stay served, so he isn't shut
++// out until a restart asks for his PIN, and agents' work stays refused. A
++// file gone that this agent never read is ErrGateUnread, as is one that
++// can't be read or parsed, or refuses no place, since a gate that fails
++// open looks just like one that works. Each is read again at the next
++// connection, so a switch that puts the file back serves Joel again with
++// no restart.
 +func readGate() (g gate, ok bool, err error) {
 +	file := os.Getenv(GateVariable)
 +	if file == "" {
@@ -300,11 +303,11 @@ index 0000000..9c60b37
 +	defer lastRead.Unlock()
 +	if errors.Is(err, fs.ErrNotExist) {
 +		if g, ok := lastRead.gates[file]; ok {
-+			slog.Warn("judged a request by the gate last read, as its file is gone; restart ssh-tpm-agent to drop it", "file", file)
++			slog.Warn("judged a request by the gate last read, as its file is gone", "file", file)
 +			return g, true, nil
 +		}
-+		slog.Error("served a request with no gate, as its file is gone and was never read; restart ssh-tpm-agent to drop it", "file", file)
-+		return gate{}, false, nil
++		slog.Error("refused a request, as the gate's file is gone and was never read", "file", file)
++		return gate{}, false, ErrGateUnread
 +	}
 +	if err != nil {
 +		slog.Error("refused a request, as the gate's file can't be read", "file", file, "error", err.Error())
@@ -398,10 +401,10 @@ index 0000000..9c60b37
 +func (r refusing) Extension(string, []byte) ([]byte, error) { return nil, r.why }
 diff --git a/agent/gate_serve_test.go b/agent/gate_serve_test.go
 new file mode 100644
-index 0000000..e20e331
+index 0000000..f2cf18f
 --- /dev/null
 +++ b/agent/gate_serve_test.go
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,190 @@
 +package agent_test
 +
 +import (
@@ -523,17 +526,41 @@ index 0000000..e20e331
 +	return said
 +}
 +
-+func TestAGateGoneBeforeItWasReadServesAndSaysSo(t *testing.T) {
++// A gate gone before this agent read it can't say who it served, so it
++// refuses everyone until the file is back, and a file put back is read at
++// the next connection, with no restart to ask for Joel's PIN.
++func TestAGateGoneBeforeItWasReadRefusesUntilItIsBack(t *testing.T) {
 +	said := journalled(t)
-+	file, list := gated(t, "refuse .\n")
++	file, list := gated(t, "allow .\nrefuse .\n")
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err == nil {
++		t.Fatal("a gate taken away before it was read served")
++	}
++	if !strings.Contains(said.String(), "gate's file is gone and was never read") {
++		t.Fatalf("refusing with no gate read went unsaid: %q", said.String())
++	}
++	if err := os.WriteFile(file, []byte("allow .\nrefuse .\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err != nil {
++		t.Fatalf("a gate put back didn't serve what it allows: %v", err)
++	}
++}
++
++// A gate gone after it was read keeps serving what it served, so a
++// rollback past the gate doesn't shut Joel out until a restart.
++func TestAGateGoneAfterItWasReadServesWhatItServed(t *testing.T) {
++	file, list := gated(t, "allow .\nrefuse .\n")
++	if err := list(); err != nil {
++		t.Fatalf("an allowed place was refused: %v", err)
++	}
 +	if err := os.Remove(file); err != nil {
 +		t.Fatal(err)
 +	}
 +	if err := list(); err != nil {
-+		t.Fatalf("a gate taken away before it was read refused: %v", err)
-+	}
-+	if !strings.Contains(said.String(), "served a request with no gate") {
-+		t.Fatalf("serving with no gate went unsaid: %q", said.String())
++		t.Fatalf("a gate taken away after it was read refused what it served: %v", err)
 +	}
 +}
 +

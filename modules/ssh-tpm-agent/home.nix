@@ -73,8 +73,9 @@
     # the one holding Joel's keys, has one; the agents' own signing agents
     # run the same program without it. It sits in his own config, which
     # anything running as him may rewrite, so it catches accidents rather
-    # than escapes. One emptied, unreadable or refusing nowhere refuses
-    # everyone, since it looks just like one that works. One gone after the
+    # than escapes. One emptied, unreadable, refusing nowhere or gone before
+    # the agent ever read it refuses everyone, since it looks just like one
+    # that works, until a switch puts it back. One gone after the
     # agent read it, as rolling back to before the gate leaves it, is judged
     # by what it last said, so Joel isn't shut out until a restart asks for
     # the PIN again and agents' work stays refused.
