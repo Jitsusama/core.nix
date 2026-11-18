@@ -2494,7 +2494,11 @@ const GRACE: u32 = 300;
 /// claimer has lived for the grace period. The run sent again waits on
 /// what the first is building through Nix's lock on each derivation.
 /// Once the command itself has ended, the watcher ends too, as there's
-/// nothing left to wait for.
+/// nothing left to wait for, and the shell takes its own claim, and the
+/// folder once no other claims it: a claim left behind names a pid that
+/// the machine gives out again, and on 18 November three of one Mac's 516
+/// such claims named its daemons, so a watcher would hold that run for
+/// callers long gone.
 pub fn far(command: &str) -> String {
     far_within(command, &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"), false)
 }
@@ -2571,8 +2575,10 @@ fn far_within(command: &str, grace: &str, outlives: bool) -> String {
          {unnamed}rmdir \"$claims\" 2>/dev/null; kill -TERM 0) \
          </dev/null >/dev/null 2>&1 & \
          {ROOM_SAID} watching=$!; \
-         trap 'kill $watching 2>/dev/null; exit 143' HUP TERM; {command}; \
-         ended=$?; kill $watching 2>/dev/null; exit $ended"
+         nix_offload_given() {{ kill $watching 2>/dev/null; {unnamed}rm -f \"$claims/$PPID\"; \
+         rmdir \"$claims\" 2>/dev/null; }}; \
+         trap 'nix_offload_given; exit 143' HUP TERM; {command}; \
+         ended=$?; nix_offload_given; exit $ended"
     )
 }
 
@@ -5360,6 +5366,31 @@ mod tests {
             .unwrap();
         assert_eq!(ran.status.code(), Some(1), "{ran:?}");
         assert_eq!(String::from_utf8_lossy(&ran.stdout), "ran\n");
+    }
+
+    #[test]
+    fn a_run_that_ends_takes_its_claim_away_in_dash_and_zsh() {
+        // On 18 November a Mac held 130 claim folders, one with 516
+        // claims of runs long ended, three of them pids reused since by
+        // daemons, which a watcher reads as callers still there: a run
+        // killed watcher and all as its command ended never took its own.
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            for sent in [far("true"), outliving("true")] {
+                let ran = Command::new(shell)
+                    .args(["-c", &sent])
+                    .env("TMPDIR", folder.path())
+                    .process_group(0)
+                    .output()
+                    .unwrap();
+                assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            }
+            let left: Vec<_> = fs::read_dir(folder.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert!(left.is_empty(), "{shell} left {left:?}");
+        }
     }
 
     #[test]
