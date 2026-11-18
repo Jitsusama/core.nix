@@ -119,8 +119,13 @@ in
     "vm.compaction_proactiveness" = 40;
 
     # Let allocations take part of a block of another kind of page, as the
-    # kernel does by default, until a trial shows keeping blocks whole (below)
-    # costs Joel's apps less than it saves. Written, so a switch that changes
+    # kernel does by default. Keeping blocks whole (below) was tried on 18
+    # November in four alternating half hours under agents' load: on, Joel's
+    # apps waited on memory 4.9 s and 2.5 s a round against 0.03 s and 0.01 s
+    # off, with 27,465 and 254,426 allocation stalls against 1,234 and 2,123.
+    # It gained little: 909 and 809 MB free in blocks of 128 KB or more
+    # against 794 and 340, and no large allocation failed either way, once
+    # Wi-Fi's buffers fell back to vmalloc. Written, so a switch that changes
     # these settings puts back a trial an agent left on, as for the others.
     "vm.defrag_mode" = lib.mkIf defragModeIsSafe 0;
   };
@@ -170,8 +175,8 @@ in
   # can't move pages to; 89% of the 5.5 million compactions since boot had
   # failed. In a kernel build with bursts of huge pages his commits measured
   # three quarters fewer allocation stalls, and over twice the swapping out,
-  # so it waits on a trial under agents' load weighing Joel's apps' swap-ins
-  # and kswapd's give-ups before it's the default. The kernel asks for it
+  # so it was tried under agents' load before being made the default, and
+  # stays off for what it cost Joel's apps (above). The kernel asks for it
   # right after boot, since memory already fragmented recovers slowly, so a
   # trial turned on mid-run pays its cost at once and reads its gain over
   # hours. Each unit writes its instance and only a value the rules list:
