@@ -49,9 +49,9 @@
 # receptor, a cell on the mycelium map: it runs mycelium by its store
 # path, given only fixed words, counts and ids, never a title, person or
 # summary (src/bin/call-transcripts/receptor.rs). A machine in no realm
-# says nothing, and an event is named only while the Google account
-# signed in is the one the realm declares (jitsusama.google.receptorAccount),
-# so another account's meetings never reach it.
+# says nothing, and an event is named only when the call's meeting was on
+# the Google account the realm declares (jitsusama.google.receptorAccount),
+# as kept with the call, so another account's meetings never reach it.
 {
   mycelium,
   people,

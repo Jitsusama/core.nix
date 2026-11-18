@@ -559,13 +559,21 @@ mod tests {
     #[test]
     fn a_meeting_rejoined_on_another_account_is_kept_as_no_one_s() {
         let ours = || Some("jsama@example.com".to_owned());
-        assert_eq!(rejoined(ours(), ours()), ours(), "rejoined on its own account");
+        assert_eq!(
+            rejoined(ours(), ours()),
+            ours(),
+            "rejoined on its own account"
+        );
         assert_eq!(
             rejoined(ours(), Some("skiff@example.com".to_owned())),
             None,
             "rejoined on another account, it stayed the first's"
         );
-        assert_eq!(rejoined(ours(), None), ours(), "an unheard rejoin lost its account");
+        assert_eq!(
+            rejoined(ours(), None),
+            ours(),
+            "an unheard rejoin lost its account"
+        );
         assert_eq!(
             rejoined(None, ours()),
             None,
