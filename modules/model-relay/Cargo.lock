@@ -384,6 +384,7 @@ dependencies = [
  "hyper-util",
  "rcgen",
  "rustls",
+ "socket2",
  "tempfile",
  "terminal-kit",
  "tokio",
