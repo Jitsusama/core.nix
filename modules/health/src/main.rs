@@ -65,6 +65,7 @@ mod launches;
 mod lid;
 mod memory;
 mod reloads;
+mod replay;
 mod reports;
 mod sessions;
 mod show;
