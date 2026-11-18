@@ -8,8 +8,11 @@
 //! epoch; the head asked about; `ok`, `hold` or `regate`; and the files
 //! the answer turned on. For a hold, those an earlier gate shares; for a
 //! run again, those main moved under the change; for `ok`, the change's
-//! own. An answer that turns on no file, a head off main or one never
-//! run, isn't kept.
+//! own. A run again says `why` besides: `lists`, when main moved only
+//! lists each change adds to and their own checks run, or
+//! `changed-checks`, when it runs whole. An answer that turns on no
+//! file, a head off main or one never run, isn't kept, so a change
+//! edited after its pass is never counted here.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -50,14 +53,26 @@ impl Verdict {
     }
 }
 
+impl Rerun {
+    fn said(self) -> &'static str {
+        match self {
+            Self::Lists => "lists",
+            Self::Checks => "changed-checks",
+        }
+    }
+}
+
 /// The line kept for an answer of `verdict` on `head` at `at`.
 pub fn line(at: u64, head: &str, verdict: Verdict, files: &[String]) -> String {
-    let said = serde_json::json!({
+    let mut said = serde_json::json!({
         "at": at,
         "head": head,
         "verdict": verdict.said(),
         "files": files,
     });
+    if let Verdict::Regate(rerun) = verdict {
+        said["why"] = rerun.said().into();
+    }
     format!("{said}\n")
 }
 
