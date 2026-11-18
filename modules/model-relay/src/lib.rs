@@ -531,18 +531,45 @@ impl<S: Sender> Slot<S> {
 
     /// Takes no more requests down connection `number` for a reset, if
     /// it's still the one kept and the slot hasn't retired one within
-    /// `RETIRED_FOR_A_RESET_AT_MOST_EVERY`, and says whether it did.
+    /// `RETIRED_FOR_A_RESET_AT_MOST_EVERY`, and says what came of it.
     /// Answers already on it carry on.
-    fn retire(&self, number: u64) -> bool {
+    fn retire(&self, number: u64) -> Retiring {
         let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
+        if open.as_ref().is_none_or(|kept| kept.number != number) {
+            return Retiring::Gone;
+        }
         let mut retired = self.retired.lock().unwrap_or_else(PoisonError::into_inner);
-        let lately = retired.is_some_and(|when| when.elapsed() < RETIRED_FOR_A_RESET_AT_MOST_EVERY);
-        if lately || open.as_ref().is_none_or(|kept| kept.number != number) {
-            return false;
+        if retired.is_some_and(|when| when.elapsed() < RETIRED_FOR_A_RESET_AT_MOST_EVERY) {
+            return Retiring::Kept;
         }
         *open = None;
         *retired = Some(Instant::now());
-        true
+        Retiring::Retired
+    }
+}
+
+/// What a reset did to the connection it came on. Told apart in the log
+/// because a spell's later resets mostly come on requests still in flight
+/// on a connection already retired, and said as kept they read as the
+/// relay holding on to a bad connection.
+#[derive(Debug, PartialEq, Eq)]
+enum Retiring {
+    /// It takes no more requests.
+    Retired,
+    /// It takes no more requests already: retired before, or let go.
+    Gone,
+    /// It's still taking requests, as the slot retired one lately.
+    Kept,
+}
+
+impl Retiring {
+    /// How the log says it.
+    fn said(&self) -> &'static str {
+        match self {
+            Retiring::Retired => "so it's retired",
+            Retiring::Gone => "already retired",
+            Retiring::Kept => "kept, as one was retired lately",
+        }
     }
 }
 
@@ -830,11 +857,7 @@ impl Relay {
             // was refused promises the origin acted on nothing, and these
             // said a protocol error. The number says whether a fresh
             // connection is reset too, which one bad one wouldn't be.
-            let done = if self.slots[at].retire(number) {
-                "so it's retired"
-            } else {
-                "kept, as one was retired lately"
-            };
+            let done = self.slots[at].retire(number).said();
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
             eprintln!(
                 "model-relay: the origin reset a request on connection {at}.{number}, {done}: {}",
@@ -1231,8 +1254,8 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        HELD_AHEAD_AT_MOST, InPieces, Origin, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot, reach,
-        reach_any, slept, with_causes,
+        HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot,
+        reach, reach_any, slept, with_causes,
     };
 
     /// A connection kept for a test, which never closes.
@@ -1250,22 +1273,29 @@ mod tests {
         let slot = Slot::new();
         let reset = slot.keep(slot.next_number(), Line);
         let since = slot.keep(slot.next_number(), Line);
-        assert!(
-            !slot.retire(reset.number),
-            "a late reset said it retired a connection"
+        assert_eq!(
+            slot.retire(reset.number),
+            Retiring::Gone,
+            "a reset on a connection no longer kept wasn't said as one"
         );
         assert_eq!(
             slot.sender().map(|kept| kept.number),
             Some(since.number),
             "a reset that came late retired the connection opened since it"
         );
-        assert!(
+        assert_eq!(
             slot.retire(since.number),
+            Retiring::Retired,
             "a connection's own reset didn't retire it"
         );
         assert!(
             slot.sender().is_none(),
             "a connection its own reset retired is still taking requests"
+        );
+        assert_eq!(
+            slot.retire(since.number),
+            Retiring::Gone,
+            "a second reset on a connection already retired was said as kept"
         );
     }
 
@@ -1273,13 +1303,15 @@ mod tests {
     fn a_slot_retires_a_connection_for_a_reset_at_most_so_often() {
         let slot = Slot::new();
         let first = slot.keep(slot.next_number(), Line);
-        assert!(
+        assert_eq!(
             slot.retire(first.number),
+            Retiring::Retired,
             "a connection's first reset didn't retire it"
         );
         let fresh = slot.keep(slot.next_number(), Line);
-        assert!(
-            !slot.retire(fresh.number),
+        assert_eq!(
+            slot.retire(fresh.number),
+            Retiring::Kept,
             "a fresh connection was retired at once, so resets everywhere would open one each"
         );
         assert_eq!(slot.sender().map(|kept| kept.number), Some(fresh.number));
