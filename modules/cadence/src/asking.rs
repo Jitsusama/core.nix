@@ -1,6 +1,7 @@
 //! Whom cadence asks about the targets `watch.rs` finds missed, and what
 //! it remembers between ticks so each is asked once: the session keeping
-//! the cycle fast first, and the orchestrator above it when that session
+//! the cycle fast, or the one switching the machine for an alarm only a
+//! switch answers, and the orchestrator above them when the one asked
 //! doesn't answer or isn't there.
 
 use std::collections::BTreeMap;
@@ -57,10 +58,10 @@ pub enum To {
 
 impl To {
     /// How the mesh is to carry it. Only the watcher's and the switcher's
-    /// answers are waited on, read from what they sent; the orchestrator is told as a finding, which
-    /// wants no answer, since one sent back to cadence's address reaches no
-    /// session, and on 9 November a question to the orchestrator sat unanswered
-    /// on the mesh.
+    /// answers are waited on, read from what they sent; the orchestrator
+    /// is told as a finding, which wants no answer, since one sent back to
+    /// cadence's address reaches no session, and on 9 November a question
+    /// to the orchestrator sat unanswered on the mesh.
     #[must_use]
     pub fn intent(self) -> &'static str {
         match self {
@@ -80,8 +81,9 @@ pub struct Question {
 }
 
 /// One tick: what to ask whom, given the snapshot and what was asked
-/// before. Each question to the watcher is remembered by its key once it
-/// has gone, with [`State::asked_as`], so its answer can be waited on.
+/// before. Each question to the watcher or the switcher is remembered by
+/// its key once it has gone, with [`State::asked_as`], so its answer can
+/// be waited on; only an answer from the one asked settles it.
 pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
     let mut out = Vec::new();
     let mut escalate = |state: &mut State, key: String, text: String| {
@@ -118,37 +120,48 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         }
     }
 
-    state.asked.retain(|_, q| !s.answered.contains(&q.id));
+    let to_switcher = |key: &str| s.switcher.is_some() && switching(key);
+    state.asked.retain(|key, q| {
+        let answers = if to_switcher(key) {
+            &s.switcher_answered
+        } else {
+            &s.answered
+        };
+        !answers.contains(&q.id)
+    });
     let silent: Vec<(String, Asked)> = state
         .asked
         .iter()
         .filter(|(_, q)| s.now - q.at > ANSWER_WITHIN)
         .map(|(k, q)| (k.clone(), q.clone()))
         .collect();
-    if s.watcher_alive {
-        for (key, q) in silent {
-            let who = if switching(&key) {
-                "The session that switches the machine"
-            } else {
-                "The session keeping the delivery cycle fast"
-            };
-            escalate(
-                state,
-                format!("silent:{key}"),
-                format!(
-                    "{who} hasn't answered cadence for {} min: \"{}\" Pivot or restart it.",
-                    (s.now - q.at) / 60,
-                    q.text
-                ),
-            );
-        }
+    for (key, q) in silent {
+        // The switcher's silence is said whether the watcher is there or
+        // not; the watcher's only while it is, as its being gone is said
+        // on its own.
+        let who = match &s.switcher {
+            Some(switcher) if switching(&key) => {
+                format!("{switcher}, the session that switches the machine,")
+            }
+            _ if s.watcher_alive => "The session keeping the delivery cycle fast".to_owned(),
+            _ => continue,
+        };
+        escalate(
+            state,
+            format!("silent:{key}"),
+            format!(
+                "{who} hasn't answered cadence for {} min: \"{}\" Pivot or restart it.",
+                (s.now - q.at) / 60,
+                q.text
+            ),
+        );
     }
 
     let mut ask = |state: &mut State, key: String, text: String| {
         if !state.seen.contains_key(&key) {
             state.seen.insert(key.clone(), s.now);
             out.push(Question {
-                to: if switching(&key) {
+                to: if to_switcher(&key) {
                     To::Switcher
                 } else {
                     To::Watcher
@@ -228,19 +241,99 @@ mod tests {
     }
 
     #[test]
-    fn an_alarm_only_a_switch_answers_goes_to_the_switcher() {
+    fn an_alarm_only_a_switch_answers_is_one_of_three() {
         assert!(switching("alarm:noton:6a811d78d19a"), "a merge not on");
+        assert!(
+            switching("alarm:noton:after:1795000000"),
+            "merges not on after one"
+        );
         assert!(switching("alarm:failing:1795000000"), "updates failing");
         assert!(switching("alarm:heldfor:1795000000"), "the follower held");
         assert!(!switching("alarm:cpu:498611"), "his processor");
         assert!(!switching("noton:6a811d78d19a"), "only an alarm");
-        assert_eq!(To::Switcher.intent(), "question", "waited on");
     }
 
     #[test]
-    fn only_the_watcher_is_asked_and_the_orchestrator_is_told() {
-        assert_eq!(To::Watcher.intent(), "question");
-        assert_eq!(To::Orchestrator.intent(), "finding");
+    fn the_watcher_and_the_switcher_are_asked_and_the_orchestrator_is_told() {
+        assert_eq!(To::Watcher.intent(), "question", "waited on");
+        assert_eq!(To::Switcher.intent(), "question", "waited on");
+        assert_eq!(To::Orchestrator.intent(), "finding", "wants nothing back");
+    }
+
+    /// A switch alarm asked 25 minutes ago, and a snapshot of now.
+    fn a_switch_alarm_asked(switcher: Option<&str>) -> (Snapshot, State) {
+        let mut state = State::default();
+        let at = 100_000 - ANSWER_WITHIN - 300;
+        state.asked_as("alarm:noton:abc", "1-CADENCE-1-aa", at, "#1 isn't on.");
+        let mut s = calm(100_000);
+        s.switcher = switcher.map(Into::into);
+        (s, state)
+    }
+
+    #[test]
+    fn a_switch_alarm_goes_to_the_switcher_or_with_none_named_to_the_watcher() {
+        let mut s = calm(100_000);
+        s.landings = vec![crate::watch::Landing {
+            merge: crate::watch::tests::merge("abc", 100_000 - 25 * 60),
+            on: None,
+        }];
+        let asked = tick(&s, &mut State::default());
+        assert_eq!(asked.len(), 1, "one alarm: {asked:?}");
+        assert_eq!(asked[0].to, To::Watcher, "no switcher named");
+        s.switcher = Some("SWITCH".into());
+        let asked = tick(&s, &mut State::default());
+        assert_eq!(asked[0].to, To::Switcher, "the switcher named");
+    }
+
+    #[test]
+    fn only_the_one_asked_settles_a_question() {
+        let (mut s, mut state) = a_switch_alarm_asked(Some("SWITCH"));
+        s.answered = vec!["1-CADENCE-1-aa".into()];
+        tick(&s, &mut state);
+        assert!(
+            state.asked.contains_key("alarm:noton:abc"),
+            "the watcher's reply settles no question the switcher was asked"
+        );
+        s.answered.clear();
+        s.switcher_answered = vec!["1-CADENCE-1-aa".into()];
+        tick(&s, &mut state);
+        assert!(state.asked.is_empty(), "the switcher's own does");
+        let (mut s, mut state) = a_switch_alarm_asked(None);
+        s.answered = vec!["1-CADENCE-1-aa".into()];
+        tick(&s, &mut state);
+        assert!(
+            state.asked.is_empty(),
+            "the watcher, asked with no switcher, settles it"
+        );
+    }
+
+    #[test]
+    fn a_silent_switcher_is_named_to_the_orchestrator_though_the_watcher_is_gone() {
+        let (mut s, mut state) = a_switch_alarm_asked(Some("SWITCH"));
+        s.watcher_alive = false;
+        let asked = tick(&s, &mut state);
+        assert_eq!(
+            asked.len(),
+            1,
+            "the silence, not yet the watcher's going: {asked:?}"
+        );
+        assert_eq!(asked[0].to, To::Orchestrator, "told");
+        assert!(
+            asked[0]
+                .text
+                .starts_with("SWITCH, the session that switches the machine,"),
+            "named: {}",
+            asked[0].text
+        );
+        let (s, mut state) = a_switch_alarm_asked(None);
+        let asked = tick(&s, &mut state);
+        assert!(
+            asked[0]
+                .text
+                .starts_with("The session keeping the delivery cycle fast"),
+            "with no switcher the watcher was asked, and is named: {}",
+            asked[0].text
+        );
     }
 
     #[test]

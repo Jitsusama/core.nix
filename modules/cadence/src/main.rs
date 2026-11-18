@@ -302,17 +302,18 @@ fn run(args: &Args) -> io::Result<()> {
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    let switcher = switcher(args).unwrap_or_else(|| watcher.clone());
     for question in asking::tick(&snapshot, &mut state) {
         let to = match question.to {
-            To::Watcher => watcher,
-            To::Switcher => &switcher,
-            To::Orchestrator => orchestrator,
+            To::Watcher => watcher.as_str(),
+            To::Switcher => snapshot.switcher.as_deref().unwrap_or(watcher),
+            To::Orchestrator => orchestrator.as_str(),
         };
+        // Taken up, not handled, since a switch can outlast the twenty
+        // minutes before the orchestrator is told of a silence.
         let text = match question.to {
             To::Watcher | To::Switcher => format!(
-                "{} Answer with re set to this question once handled: cadence reads your answer \
-                 from what you send, within five minutes.",
+                "{} Answer with re set to this question once you've taken it up: cadence looks \
+                 for that every five minutes.",
                 question.text
             ),
             To::Orchestrator => question.text.clone(),
@@ -334,8 +335,9 @@ fn run(args: &Args) -> io::Result<()> {
     write_whole(&path, &serde_json::to_string_pretty(&state)?)
 }
 
-/// Who switches the machine: the owner of `switch.` findings, as
-/// `--owner` names it.
+/// Who switches the machine: the owner of `cadence day`'s `switch.`
+/// findings, as `--owner` names it, is asked of the tick's alarms only a
+/// switch answers too.
 fn switcher(args: &Args) -> Option<String> {
     findings::owner_of("switch.", &args.owners)
 }
@@ -613,16 +615,13 @@ fn gather(
         .as_deref()
         .map(|a| mesh.sent_by(a))
         .unwrap_or_default();
-    let answered = sent
-        .iter()
-        .filter_map(|m| m.re.clone())
-        .chain(
-            switcher(args)
-                .map(|a| mesh.sent_by(&a))
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|m| m.re),
-        )
+    let switcher = switcher(args);
+    let switcher_answered = switcher
+        .as_deref()
+        .map(|a| mesh.sent_by(a))
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|m| m.re)
         .collect();
     let orchestrator = args.orchestrator.as_deref().map(|s| format!("@{s}"));
     Ok(Snapshot {
@@ -668,7 +667,9 @@ fn gather(
             .filter_map(|m| mesh::stamped_at(&m.id))
             .max()
             .map(|ms| ms / 1000),
-        answered,
+        answered: sent.into_iter().filter_map(|m| m.re).collect(),
+        switcher,
+        switcher_answered,
     })
 }
 
