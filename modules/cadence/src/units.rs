@@ -300,6 +300,44 @@ fn run(program: &str, args: &[&str]) -> io::Result<String> {
 pub fn owner(unit: &str, owners: &BTreeMap<String, String>) -> Option<String> {
     owner_of(&format!("unit:{unit}"), owners)
         .or_else(|| owner_of(&format!("unstamped:{unit}"), owners))
+        .or_else(|| address(unit))
+}
+
+/// The session address a unit's name carries, as a session names the
+/// units it starts for itself (`garbage-bound-mon-2af2dh.service`): a
+/// part of six letters and digits, holding both, so a plain word such as
+/// `camera` is never taken for one.
+fn address(unit: &str) -> Option<String> {
+    let stem = unit.rsplit_once('.').map_or(unit, |(stem, _)| stem);
+    stem.split('-')
+        .find(|part| {
+            part.len() == 6
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+                && part.bytes().any(|b| b.is_ascii_digit())
+                && part.bytes().any(|b| b.is_ascii_lowercase())
+        })
+        .map(str::to_ascii_uppercase)
+}
+
+/// Whether `unit` is one run started for whoever ran it, which reads its
+/// end itself: merge-net's reruns of a check, and pi's commands run as a
+/// transient unit, `run-p<pid>-i<id>.service`. On 17 November these
+/// were among the failed units nobody held, so they're never told.
+fn a_run(unit: &str) -> bool {
+    if unit.starts_with("merge-net-rerun-") {
+        return true;
+    }
+    let stem = unit.strip_suffix(".service").unwrap_or(unit);
+    stem.strip_prefix("run-p")
+        .and_then(|rest| rest.split_once("-i"))
+        .is_some_and(|(pid, id)| {
+            !pid.is_empty()
+                && !id.is_empty()
+                && pid.bytes().all(|b| b.is_ascii_digit())
+                && id.bytes().all(|b| b.is_ascii_digit())
+        })
 }
 
 /// One thing broken now: its key, its unit, when it began as far as this
@@ -367,7 +405,7 @@ fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) ->
     for r in read
         .restarts
         .iter()
-        .filter(|r| r.at > now - WITHIN && r.at <= now)
+        .filter(|r| r.at > now - WITHIN && r.at <= now && !a_run(&r.unit))
     {
         looping.entry(&r.unit).or_default().push(r.at);
     }
@@ -394,7 +432,7 @@ fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) ->
             reason: None,
         });
     }
-    for f in &read.failed {
+    for f in read.failed.iter().filter(|f| !a_run(&f.unit)) {
         broken.push(Broken {
             key: format!("failed:{}", f.unit),
             unit: f.unit.clone(),
@@ -592,6 +630,68 @@ mod tests {
             due(&read, &mut told, 600, |_| None, clock).is_empty(),
             "once a spell"
         );
+    }
+
+    #[test]
+    fn a_run_the_net_or_pi_started_is_never_told() {
+        let mut told = Told::default();
+        let failed = |unit: &str| Failed {
+            unit: unit.into(),
+            since: Some(50),
+        };
+        // Two kinds of unit failed on 17 November that no one held, each
+        // a run its starter already reads the end of, beside a service.
+        let read = Read {
+            failed: vec![
+                failed(
+                    "merge-net-rerun-worktree-github-Jitsusama-core-nix-jitsusama-repos-serve.service",
+                ),
+                failed("run-p178036-i50400995.service"),
+                failed("camera.service"),
+            ],
+            restarts: of("run-p958215-i38676451.service", &[100, 200, 300]),
+            ..Read::default()
+        };
+        let tells = due(&read, &mut told, 400, |_| None, clock);
+        let units: Vec<&str> = tells.iter().map(|t| t.unit.as_str()).collect();
+        assert_eq!(units, ["camera.service"], "only the service that stays");
+        assert!(
+            !a_run("merge-net.service") && !a_run("run-parts.service"),
+            "the net itself, and a unit only beginning with run-p"
+        );
+    }
+
+    #[test]
+    fn a_unit_named_for_a_session_is_that_sessions() {
+        let owners: BTreeMap<String, String> = [(
+            "unit:world-cadence-mt-2af2dh.service".to_owned(),
+            "80ECO2".to_owned(),
+        )]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            owner("garbage-bound-mon-2af2dh.service", &owners).as_deref(),
+            Some("2AF2DH"),
+            "its address last"
+        );
+        assert_eq!(
+            owner("b8rbnw-guard.service", &owners).as_deref(),
+            Some("B8RBNW"),
+            "its address first"
+        );
+        assert_eq!(
+            owner("world-cadence-mt-2af2dh.service", &owners).as_deref(),
+            Some("80ECO2"),
+            "an owner line comes before the name"
+        );
+        for plain in [
+            "camera.service",
+            "system.service",
+            "code-site.service",
+            "t-crash-probe.service",
+        ] {
+            assert_eq!(owner(plain, &owners), None, "{plain}: no address in it");
+        }
     }
 
     #[test]
