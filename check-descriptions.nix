@@ -3919,9 +3919,9 @@
     opens on the sandboxed display and takes wtype's keys, which the display itself refuses
   '';
   pi-fence-census-loads = ''
-    pi-fence's census, as core builds pi-fence from the harness's source, loads every package it
-    imports and judges a machine with no sessions, counting none and with nothing proven fenced
-    saying it doesn't hold, rather than refusing because it couldn't load
+    pi-fence's census, as core builds pi-fence from the harness's source, loads and judges a
+    machine with no sessions, counting none and with nothing proven fenced saying it doesn't hold,
+    rather than refusing because it couldn't load or throwing after its first line
   '';
   pi-fence-never-runs-unfenced = ''
     pi-fence, the store's launcher for one command in pi's own fence, refuses a kind it doesn't

@@ -23,15 +23,23 @@ let
   };
   # The census (`pi-fence census`) loads yaml, the one package anything
   # pi-fence runs takes at run time; its other imports are only types. It
-  # is the version the harness's pnpm-lock.yaml locks: the same tarball
-  # as the lock's sha512, named here by its sha256.
+  # is the version the harness's pnpm-lock.yaml locks, which the build
+  # below holds it to, so moving the pin past a move of yaml's fails
+  # until this follows: the same tarball as the lock's sha512, named
+  # here by its sha256.
+  yamlVersion = "2.9.0";
   yaml = fetchurl {
-    url = "https://registry.npmjs.org/yaml/-/yaml-2.9.0.tgz";
+    url = "https://registry.npmjs.org/yaml/-/yaml-${yamlVersion}.tgz";
     hash = "sha256-AI+iBMsbpwDgJyugRau/Cab/5jRW6BRrqXysbCrR75E=";
   };
   # Node looks for a package in node_modules beside the real path of the
   # file importing it, so the harness is copied in beside it, not linked.
   program = runCommandLocal "pi-fence-harness" { } ''
+    sed -n '/^importers:/,/^packages:/p' ${harness}/pnpm-lock.yaml \
+      | grep -A2 -x '      yaml:' | grep -qx '        version: ${yamlVersion}' || {
+      echo "the harness's lock no longer locks yaml ${yamlVersion}" >&2
+      exit 1
+    }
     cp -r ${harness} $out
     chmod -R u+w $out
     mkdir -p $out/node_modules/yaml
