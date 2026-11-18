@@ -847,7 +847,6 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
         f"rm -f {opened} {first} && mkdir -p {folder} && touch $XDG_RUNTIME_DIR/pi-stays"
     )
     before = {window["id"] for window in desktop.windows()}
-    brought: list[dict[str, Any]] = []
     try:
         # Any program of Joel's can ask the shell's catalogue, an agent among them, so From a
         # Link asked that way starts nothing: only his own Return sprouts (#5456's council).
@@ -900,29 +899,39 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
             timeout=dt.timedelta(seconds=30),
         )
         presents(desktop, "sprouted", "SPROUT", {"cwd": folder})
-        # Up to the shell's minute, since it hears the session through the node and the
-        # agents daemon, then opens it.
-        deadline = time.monotonic() + 90
-        while True:
-            brought = [one for one in desktop.windows() if one["id"] not in before]
-            focused = json.loads(desktop.as_account("niri msg --json focused-window"))
-            if len(brought) == 1 and (focused or {}).get("id") == brought[0]["id"]:
-                break
-            assert time.monotonic() < deadline, (
-                f"its window didn't open focused: brought {brought}, focused {focused}"
-            )
-            time.sleep(0.5)
+        opened_focused(desktop, before)
         assert desktop.showing()["open"] is False, "the launcher stayed open over it"
     finally:
         desktop.launcher_left_closed()
-        for window in brought:
-            desktop.close(window)
+        # Its window too, opened or not by the time a failure came, so the next walk has none.
+        for window in desktop.windows():
+            if window["id"] not in before:
+                desktop.close(window)
         # A pattern its own shell's words don't match, so pkill ends only the stand-in.
         desktop.as_account(
             f"rm -f $XDG_RUNTIME_DIR/pi-stays {opened} {first} $XDG_RUNTIME_DIR/pi-owner-sprouted"
             f" {PI_PRESENCE}/sprout.json; pkill -f 'sleep 60[0-5]'; true"
         )
         desktop.as_account("rm -rf ~/src/github.com/harbour")
+
+
+def opened_focused(desktop: Desktop, before: set[int]) -> None:
+    """Wait for one window more than `before`, holding the keys.
+
+    Up to a minute and a half, past the shell's minute, since it hears a new session through
+    the node and the agents daemon before it opens it.
+    """
+    deadline = time.monotonic() + 90
+    while True:
+        brought = [one for one in desktop.windows() if one["id"] not in before]
+        focused = json.loads(desktop.as_account("niri msg --json focused-window"))
+        if len(brought) == 1 and (focused or {}).get("id") == brought[0]["id"]:
+            return
+        assert time.monotonic() < deadline, (
+            f"its window didn't open focused: brought {brought}, focused {focused}"
+        )
+        # Each look at niri is cheap; half a second apart sees it open well within the wait.
+        time.sleep(0.5)
 
 
 def sitting_space(desktop: Desktop, window: dict[str, Any]) -> str:
