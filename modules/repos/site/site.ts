@@ -126,8 +126,10 @@ function drawOpen(): void {
   }
   const at = { now: Date.now(), home: mycelium.home, homes: mycelium.homes };
   write(opened, drawer(open, grove, at, unfolded.get(open.key) ?? new Set()));
-  // A tree gone, or folded away as its season turned, is no longer one to step from.
-  inner = markInner(false) ? inner : null;
+  if (!markInner(false) && inner !== null) {
+    inner = null;
+    follows();
+  }
 }
 
 /** Marks the tree the cursor is on inside the open repository. */

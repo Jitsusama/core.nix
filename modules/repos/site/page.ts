@@ -140,7 +140,10 @@ function keepIn(opened: HTMLElement, inner: string | null): void {
   }
 }
 
-/** Marks the tree at `inner` inside `opened`, focusing it when asked, and says if it's drawn. */
+/**
+ * Marks the tree at `inner` inside `opened`, focusing it when asked, and says if it's drawn, so
+ * a tree gone or folded away as its season turned is let go, and the address with it.
+ */
 function markTree(opened: HTMLElement, inner: string | null, focus: boolean): boolean {
   let drawn = false;
   for (const each of opened.querySelectorAll<HTMLElement>(".tree")) {

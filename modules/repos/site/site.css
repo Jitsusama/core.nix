@@ -360,8 +360,8 @@ code,
 }
 
 /* The list's keys show on the cursor's row only, until the cursor steps into the drawer, whose
-   keys stand at its own foot. A narrow page has no room for the list's. They stand in the cursor's line where its cells are said,
-   in a column as wide on every row, so the cursor moving changes no row's height; the drawer
+   keys stand at its own foot. A narrow page has no room for the list's. They stand in the
+   cursor's line where its cells are said, in a column as wide on every row, so the cursor moving changes no row's height; the drawer
    says the cells. The column waits for a window wide enough that the list beside the drawer
    keeps room for the names and their counts on one line. */
 @media (width > 75rem) {
