@@ -222,6 +222,9 @@ def stepped_out(shell: Shell) -> str | None:
     """
     shell.normal()
     depth = len(shell.showing()["held"])
+    if depth == 0:
+        refused = "there was no place held to step out of"
+        raise AssertionError(refused)
     since = shell.mark()
     shell.send_chars("-")
     shell.launcher_until(lambda shown: len(shown["held"]) < depth)
@@ -566,12 +569,22 @@ def profiler_started(trace: Path, profiling: Path) -> subprocess.Popen[bytes]:
     )
 
 
-def stepped_round(shell: Shell, round_: int, step: str, capsys: pytest.CaptureFixture[str]) -> None:
-    """Step into `step` and back out, then out of LAB_CHORD's place, printing each line."""
+def warmed(shell: Shell, step: str, step_key: str) -> None:
+    """Step into `step` and out of LAB_CHORD's place once untimed, as the words are typed once."""
     if step:
-        line, out = stepped_from_home(shell, step, os.environ.get("LAB_STEP_KEY", "ret"))
+        stepped_from_home(shell, step, step_key)
+    if chord := os.environ.get("LAB_CHORD"):
+        chorded_out(shell, chord)
+
+
+def stepped_round(
+    shell: Shell, round_: int, step: tuple[str, str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Step into `step` by its key and back out, then out of LAB_CHORD's place, printing each."""
+    if step[0]:
+        line, out = stepped_from_home(shell, *step)
         with capsys.disabled():
-            print(f"lab-step {round_} {step}: {line or 'under the felt'}", flush=True)
+            print(f"lab-step {round_} {step[0]}: {line or 'under the felt'}", flush=True)
             if os.environ.get("LAB_BACK"):
                 print(f"lab-back {round_}: {out or 'under the felt'}", flush=True)
     if chord := os.environ.get("LAB_CHORD"):
@@ -598,20 +611,20 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     within_known(Path(os.environ["SHELL_FOLDER"]) / "Launcher.qml")
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
+        # Windows to list are opened before the profiler listens, so it hears only the keys.
+        for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):
+            shell.opened(f"Lab {nth}", app="foot")
         if os.environ.get("LAB_PROFILE"):
             profiler = profiler_started(trace, profiling)
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
-        for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):
-            shell.opened(f"Lab {nth}", app="foot")
         typed_from_home(shell, words[0])
         rounds = changed_instead(shell, words[0], rounds, tmp_path, capsys)
-        if step:
-            stepped_from_home(shell, step, step_key)
+        warmed(shell, step, step_key)
         for round_ in range(rounds):
             for word in words[round_ % len(words) :] + words[: round_ % len(words)]:
                 tallied(round_, word, typed_from_home(shell, word), parts, capsys)
-            stepped_round(shell, round_, step, capsys)
+            stepped_round(shell, round_, (step, step_key), capsys)
         if profiler is not None:
             flushed(profiler, trace)
     heard: list[str] = []
