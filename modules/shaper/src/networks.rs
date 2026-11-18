@@ -48,11 +48,14 @@ pub fn anchors(path: &Path) -> Anchors {
         .collect()
 }
 
-/// The ceilings written at `path`, of the networks that set one.
+/// The ceilings written at `path`, of the networks that set one the
+/// controller would hold: none under the least a trial may set, which
+/// nixos.nix refuses too, so the start and the steps agree on one.
 pub fn ceilings(path: &Path) -> Ceilings {
     networks(path)
         .into_iter()
         .filter_map(|(router, network)| Some((router, network.most?)))
+        .filter(|(_, most)| most.is_finite() && *most >= crate::oneway::MOST_KBIT_LEAST)
         .collect()
 }
 
@@ -119,6 +122,15 @@ mod tests {
             anchors(&file).len(),
             2,
             "a ceiling leaves the anchors alone"
+        );
+        fs::write(
+            &file,
+            r#"{"00:00:5e:00:53:01": {"up": 12000, "most": 9.5}}"#,
+        )
+        .expect("a ceiling in Mb/s");
+        assert!(
+            ceilings(&file).is_empty(),
+            "one under a trial's least, as the controller would refuse"
         );
         fs::write(&file, "not json").expect("a broken file");
         assert!(anchors(&file).is_empty(), "a broken file anchors nothing");

@@ -312,12 +312,18 @@ impl Follow {
     /// moment in ms since 1970: no limit once the recorder has gone silent.
     pub fn now(&self, at_ms: u64) -> Option<(&str, Rates)> {
         let link = self.link.as_deref()?;
-        if self.silent(at_ms) {
-            // A trial's ceiling still holds what nothing else does.
-            let up = self.trial.and_then(|t| t.most_kbit).map(crate::rate::whole);
-            return Some((link, Rates { up, down: None }));
-        }
-        Some((link, self.rates))
+        let rates = if self.silent(at_ms) {
+            Rates::default()
+        } else {
+            self.rates
+        };
+        // A ceiling, a trial's or the network's, still holds what nothing
+        // else does: a recorder gone silent, or a stay not yet stepped on.
+        let most = self.tuning().most_kbit.map(crate::rate::whole);
+        let up = rates
+            .up
+            .map_or(most, |up| Some(most.map_or(up, |most| up.min(most))));
+        Some((link, Rates { up, ..rates }))
     }
 }
 
@@ -593,6 +599,35 @@ mod tests {
             Tuning::default(),
             "nor any after"
         );
+    }
+
+    // A network's ceiling holds its upload from a stay's first line, with
+    // its anchor beside it and before the controller has stepped, through
+    // a recorder's silence, and on coming back to it from another network.
+    #[test]
+    fn a_network_s_ceiling_holds_from_a_stay_s_start_through_a_silence() {
+        let mut follow = waiting();
+        follow.anchor(Anchors::from([("home".to_string(), 12_000.0)]));
+        follow.ceil(Ceilings::from([("home".to_string(), 9_500.0)]));
+        let up = |follow: &Follow, at| follow.now(at).and_then(|(_, r)| r.up);
+        let lines = flow_queued(NOV3);
+        follow.take(&parse(&lines[0]).expect("a sample"));
+        assert_eq!(up(&follow, NOV3), Some(9_500), "the stay's first line");
+        assert_eq!(follow.controller.up.limit(), Some(9_500), "its start");
+        for line in &lines[1..] {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        let stepped = up(&follow, follow.last_ms);
+        assert!(
+            stepped.is_some_and(|up| up <= 9_500),
+            "stepped: {stepped:?}"
+        );
+        let silent = follow.last_ms + SILENT_MS + 1;
+        assert_eq!(up(&follow, silent), Some(9_500), "a silent recorder");
+        follow.take(&parse(&pool(NOV3 + 11_000, Some("hotel"))).expect("a sample"));
+        assert_eq!(up(&follow, NOV3 + 11_000), None, "another network");
+        follow.take(&parse(&pool(NOV3 + 12_000, Some("home"))).expect("a sample"));
+        assert_eq!(up(&follow, NOV3 + 12_000), Some(9_500), "home again");
     }
 
     // What a stay learned of a network that isn't declared starts nothing

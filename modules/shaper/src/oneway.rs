@@ -69,7 +69,7 @@ const LEAST_KBIT: f64 = 500.0;
 /// The lowest ceiling a trial may set the upload under, in kbit/s.
 /// A ceiling under it is refused rather than raised to it, since it's
 /// most likely written in Mb/s, and one this low starves agents' lane.
-const MOST_KBIT_LEAST: f64 = 4_000.0;
+pub const MOST_KBIT_LEAST: f64 = 4_000.0;
 /// A direction carrying under this share of what it could carry, its rate
 /// or its connection, when its queue stands carries a sliver: the queue is
 /// mostly another machine's or the air's, so a cut halves what it could
@@ -518,6 +518,18 @@ impl Way {
         }
     }
 
+    /// The line the rate is judged against on an anchored network: its
+    /// anchor, or under it the line a ceiling's hold leaves, so an upload
+    /// held at a ceiling under the anchor's hold is at the line's hold,
+    /// not held low, and a queue past it can still be the router's.
+    fn line(&self) -> Option<f64> {
+        let ceiling = self
+            .tuning
+            .most_kbit
+            .map_or(f64::INFINITY, |most| most / ANCHOR_HOLD);
+        self.anchor.map(|anchor| anchor.min(ceiling))
+    }
+
     /// Whether a trial's ceiling, not the line, holds the rate: what the
     /// link carries then says only where the trial put it.
     fn at_the_ceiling(&self) -> bool {
@@ -607,7 +619,7 @@ impl Way {
         // minutes, with the round trip within 6 ms of its least.
         let backing_off = ours.in_vpn && tunnel == Tunnel::Clear;
         let line_full = self
-            .anchor
+            .line()
             .is_none_or(|anchor| through >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD);
         let elsewhere = ours.waiting
             && held_back
@@ -948,7 +960,7 @@ impl Way {
         // On 16 November one such cut held the upload under the anchor's
         // hold for an hour.
         let declared = self
-            .anchor
+            .line()
             .map_or(0.0, |anchor| anchor * ANCHOR_HOLD / self.tuning.hold);
         plateau
             .min(most / self.tuning.hold)
@@ -1290,7 +1302,7 @@ impl Controller {
     /// home's 4,586 was on 16 November, and the guard takes a minute to
     /// undo it. A controller already stepping is left as it is.
     pub fn start_at_the_anchor(&mut self) {
-        let Some(anchor) = self.anchor else {
+        let Some(anchor) = self.up.line() else {
             return;
         };
         if self.last_at.is_some() {
@@ -1307,7 +1319,8 @@ impl Controller {
     /// router's: on an anchored network, near the anchor's hold, since a
     /// router holds back nothing while the line has room.
     fn may_fill_the_line(&self, carried: f64) -> bool {
-        self.anchor
+        self.up
+            .line()
             .is_none_or(|anchor| carried >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD)
     }
 
@@ -1315,7 +1328,7 @@ impl Controller {
     pub fn why(&self) -> String {
         let at = self.last_at.unwrap_or(0.0);
         let since = self.why_since.unwrap_or(at);
-        crate::why::say(self.why, self.up.limit(), self.anchor, at - since)
+        crate::why::say(self.why, self.up.limit(), self.up.line(), at - since)
     }
 
     /// The least a call's round trip through the VPN is taken to be, in
@@ -1533,7 +1546,7 @@ impl Controller {
     /// Sends the upload back to its anchor's hold once the guard finds it
     /// held low past what a drained cut excuses, answering whether it did.
     fn guard_the_anchor(&mut self, at: f64, fed: Option<f64>, cut: bool) -> bool {
-        let Some(anchor) = self.anchor else {
+        let Some(anchor) = self.up.line() else {
             return false;
         };
         let late = self.up.tuning.late_ms;
@@ -1598,8 +1611,8 @@ impl Controller {
                 }
             };
         }
-        let at_the_hold = self
-            .anchor
+        let at_the_hold = up
+            .line()
             .is_some_and(|anchor| up.rate >= anchor * ANCHOR_HOLD - 1.0);
         match up.plateau {
             Some(plateau) if !at_the_hold && up.rate <= plateau * up.tuning.hold + 1.0 => {
@@ -3674,6 +3687,28 @@ mod tests {
             unanchored.up.limit(),
             None,
             "an undeclared network started held"
+        );
+    }
+
+    // A ceiling under the anchor's hold is the line's hold on its network,
+    // as at home under the eero's own shaper, so a stay starts there and a
+    // queue past it is still taken for the router's: judged against the
+    // anchor's hold, the link never carried enough for one to be.
+    #[test]
+    fn a_ceiling_under_the_anchor_s_hold_is_the_line_s_hold() {
+        let mut c = Controller::new(None, None);
+        c.up.tune(Tuning {
+            most_kbit: Some(9_500.0),
+            ..Tuning::default()
+        });
+        c.anchor(Some(12_000.0));
+        c.start_at_the_anchor();
+        assert_eq!(c.up.limit(), Some(9_500), "the stay's start");
+        assert!(c.may_fill_the_line(9_000.0), "a queue past the ceiling");
+        c.up.tune(Tuning::default());
+        assert!(
+            !c.may_fill_the_line(9_000.0),
+            "under the anchor's hold, with no ceiling"
         );
     }
 

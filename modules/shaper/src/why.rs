@@ -160,13 +160,14 @@ pub fn holding(link: &str, up: Option<u64>, down: Option<u64>, reason: Option<&R
     }
 }
 
-/// The journal's line when a trial's ceiling alone holds `link`'s upload,
-/// at `up` kbit/s: the recorder has gone silent, or the controller lets
-/// the upload go, so nothing it judged holds it.
+/// The journal's line when a ceiling alone, a trial's or its network's,
+/// holds `link`'s upload, at `up` kbit/s: the recorder has gone silent,
+/// the controller lets the upload go or hasn't stepped yet, so nothing it
+/// judged holds it.
 pub fn ceiling(link: &str, up: u64) -> String {
     format!(
-        "{link}: held to {} up by a trial's ceiling alone, while the controller holds \
-         nothing.",
+        "{link}: held to {} up by its ceiling alone, a trial's or its network's, while the \
+         controller holds nothing.",
         mbit(lossless(up))
     )
 }
@@ -341,8 +342,8 @@ mod tests {
     fn a_ceiling_holding_alone_says_the_controller_holds_nothing() {
         assert_eq!(
             ceiling("wlp0s20f3", 8_500),
-            "wlp0s20f3: held to 8.5 Mb/s up by a trial's ceiling alone, while the controller \
-             holds nothing."
+            "wlp0s20f3: held to 8.5 Mb/s up by its ceiling alone, a trial's or its network's, \
+             while the controller holds nothing."
         );
     }
 

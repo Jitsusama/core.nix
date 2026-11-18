@@ -293,7 +293,8 @@ struct Shaped {
     follows: Option<String>,
     /// Whether the journal has been told of a spell of limits now.
     told: bool,
-    /// Whether the spell told is held by a trial's ceiling alone, with
+    /// Whether the spell told is held by a ceiling alone, a trial's or the
+    /// network's, with
     /// nothing the controller judged holding it.
     ceiling: bool,
     /// Whether a call's or a screen share's traffic crosses the link, and
@@ -821,6 +822,13 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut primary: Option<String> = None;
     let mut call = Call::default();
     let mut live = started_live(options);
+    // Each network's ceiling holds its links whatever the controller asks,
+    // or before it asks anything (`led`).
+    let ceilings = options
+        .networks
+        .as_deref()
+        .map(networks::ceilings)
+        .unwrap_or_default();
     // What the controller heard and held each second, which the
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
@@ -878,7 +886,7 @@ fn run(options: &Options) -> Result<(), Failure> {
                 s.trips.heard(&echo.host, echo.rtt_ms);
             }
         }
-        step_links(&mut shaped, &mut live);
+        step_links(&mut shaped, &mut live, &ceilings);
         // A follower holds its leader's rates, so the two together stay
         // under the one connection; its own pings still say its round trips.
         // Its download goes straight in as its leader's does, since nothing
@@ -1295,7 +1303,11 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
 
 /// One step of the controller, `live`, over every uplink that leads its
 /// router: a follower takes its leader's rates after.
-fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: &mut live::Live) {
+fn step_links(
+    shaped: &mut BTreeMap<String, Shaped>,
+    live: &mut live::Live,
+    ceilings: &networks::Ceilings,
+) {
     // Every link's upload CAKE is read, followers' too, for whose queue
     // each is when the controller is next told (`Shaped::ours`).
     for s in shaped.values_mut() {
@@ -1316,18 +1328,38 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: &mut live::Live) {
     for (name, s) in shaped.iter_mut().filter(|(_, s)| s.follows.is_none()) {
         let held = link.as_deref() == Some(name.as_str());
         // The VPN is held only while the upload is: a recorder gone
-        // silent lets both go, unless a trial's ceiling holds the
-        // upload, when the VPN has its whole share of it.
+        // silent lets both go, unless a ceiling holds the upload, when
+        // the VPN has its whole share of it.
         s.vpn_share = if held && rates.up.is_some() {
             share
         } else {
             1.0
         };
+        let most = ceilings.get(&s.network).copied().map(rate::whole);
         if held {
-            hold(s, rates, &why);
+            hold(s, led(rates, true, most), &why);
         } else {
-            hold(s, replay::Rates::default(), &why::Judged::Nothing);
+            hold(s, led(rates, false, most), &why::Judged::Nothing);
         }
+    }
+}
+
+/// What a link is held to at a step: the controller's `rates` on the
+/// link it holds, `held`, and none on another, under the ceiling of the
+/// link's network, `most`, in kbit/s, either way. So a network's ceiling
+/// holds before the controller has stepped on a second, as when the
+/// shaper starts, and on a link the controller doesn't hold.
+fn led(rates: replay::Rates, held: bool, most: Option<u64>) -> replay::Rates {
+    let rates = if held {
+        rates
+    } else {
+        replay::Rates::default()
+    };
+    replay::Rates {
+        up: rates
+            .up
+            .map_or(most, |up| Some(most.map_or(up, |most| up.min(most)))),
+        ..rates
     }
 }
 
@@ -1359,7 +1391,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged) {
 
 /// What a second's rates come to on a link: what each way is held to,
 /// whether a spell of limits is told, and whether nothing the controller
-/// judged holds it, a trial's ceiling alone, with the journal's line as
+/// judged holds it, a ceiling alone, with the journal's line as
 /// one begins or ends, or as the controller's judgement stops holding it
 /// or holds it again.
 #[derive(Debug, PartialEq)]
@@ -1743,6 +1775,44 @@ mod tests {
 
     fn asked(up: Option<u64>, down: Option<u64>) -> replay::Rates {
         replay::Rates { up, down }
+    }
+
+    // On 16 November the eero's own shaper, past ours, was home's narrow
+    // point. Its ceiling holds the link from the shaper's first step, before
+    // the controller has asked anything, and on a link it doesn't hold, as
+    // well as over what it asks.
+    #[test]
+    fn a_network_s_ceiling_holds_whatever_the_controller_asks() {
+        let most = Some(9_500);
+        let cases = [
+            (asked(None, None), true, asked(most, None), "before a step"),
+            (
+                asked(Some(11_000), Some(50_000)),
+                true,
+                asked(most, Some(50_000)),
+                "over the ceiling",
+            ),
+            (
+                asked(Some(8_000), None),
+                true,
+                asked(Some(8_000), None),
+                "under it",
+            ),
+            (
+                asked(Some(8_000), None),
+                false,
+                asked(most, None),
+                "a link not held",
+            ),
+        ];
+        for (rates, held, wanted, case) in cases {
+            assert_eq!(led(rates, held, most), wanted, "{case}");
+        }
+        assert_eq!(
+            led(asked(Some(8_000), None), false, None),
+            asked(None, None),
+            "nor one with no ceiling"
+        );
     }
 
     fn reason(up: u64) -> why::Reason {
