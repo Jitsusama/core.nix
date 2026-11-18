@@ -1021,9 +1021,10 @@
     loads again each second; a cable the daemon says has changed as it loads is said as it says,
     the load begun before not kept; a card whose load is given up is said as the daemon tells
     it, drawer and all, leaves nothing reading, and isn't loaded again at once, though waiting
-    its turn, but a minute on, then twice as long if held up again, and is held up no more once
-    loaded; facts given up leave nothing reading; and a card gone is forgotten, though its load
-    was under way
+    its turn, but a minute on, then twice as long if held up again, to an hour, held though its
+    link changes, asked again once the clock steps back, and held up no more once loaded; facts
+    given up leave nothing reading and aren't waited on again until they land; and a card gone
+    is forgotten, though its load was under way
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,

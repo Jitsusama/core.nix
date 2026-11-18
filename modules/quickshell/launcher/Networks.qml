@@ -158,16 +158,21 @@ Provider {
     property var factsAsked: []
     function reloadFacts() {
         const views = [resolv, resolved, up].filter(view => String(view.path) !== "");
-        factsAsked = views;
-        if (views.length > 0) {
+        factsAsked = views.filter(view => !factsHung.includes(view));
+        if (factsAsked.length > 0) {
             stillReading = true;
-            factsWatch.restart();
+            if (!factsWatch.running)
+                factsWatch.start();
         }
         for (const view of views)
             view.reload();
     }
-    // A fact that takes two seconds is said as last loaded, so a terminal
-    // isn't kept asking on a file that never lands.
+    // A fact still loading two seconds after it was first asked, since
+    // the tick asks again each second while a cable is shown, is said as
+    // last loaded and warned of, and isn't waited on again until it
+    // lands, so a terminal isn't kept asking on a file that never does.
+    // Asking again for a load under way starts no other.
+    property var factsHung: []
     Timer {
         id: factsWatch
 
@@ -175,11 +180,16 @@ Provider {
         onTriggered: provider.factsGivenUp()
     }
     function factsGivenUp() {
+        for (const view of factsAsked)
+            console.warn(`Networks: ${view.path} took two seconds to load, so it's said as`
+                + " last loaded");
+        factsHung = factsHung.concat(factsAsked);
         factsAsked = [];
         settled();
     }
     function factLanded(view) {
         factsAsked = factsAsked.filter(each => each !== view);
+        factsHung = factsHung.filter(each => each !== view);
         settled();
     }
     // Read once nothing loading for an answer is still under way.
@@ -391,10 +401,10 @@ Provider {
     // loads isn't kept.
     property var cablesAsked: []
     property var cableLoading: null
-    // Each card whose files last took too long, by its name: { at, wait,
-    // state }, when it was given up, how long until it's asked again, and
-    // the daemon's word on its link then (cableGivenUp). A clock stepped
-    // back asks it again rather than holding it off longer.
+    // Each card whose files last took too long, by its name: { at, wait },
+    // when it was given up and how long until it's asked again
+    // (cableGivenUp). A clock stepped back asks it again rather than
+    // holding it off longer.
     property var cablesStuck: Object.create(null)
     function stuck(name) {
         const given = cablesStuck[name];
@@ -473,7 +483,11 @@ Provider {
             Qt.callLater(cableFile);
             return;
         }
-        unstick([loading.name]);
+        if (cablesStuck[loading.name] !== undefined) {
+            const still = Object.assign(Object.create(null), cablesStuck);
+            delete still[loading.name];
+            cablesStuck = still;
+        }
         // The next card is asked though keeping this one fails, so the
         // watchdog never gives up a card whose files all landed.
         try {
@@ -483,13 +497,6 @@ Provider {
         } finally {
             nextCable();
         }
-    }
-    function unstick(names) {
-        const still = Object.assign(Object.create(null), cablesStuck);
-        for (const name of names)
-            delete still[name];
-        if (Object.keys(still).length !== Object.keys(cablesStuck).length)
-            cablesStuck = still;
     }
 
     // A card's cable kept as its files said, with the daemon's word on
@@ -511,9 +518,10 @@ Provider {
 
     // The cables of cards no longer among the links, or whose link the
     // daemon says has changed since their files began to load, forgotten,
-    // so its newer word is said until they're loaded again; a card gone,
-    // or changed, under way or waiting, isn't kept once loaded; and one
-    // given up is asked again at once when plugged back in or changed.
+    // so its newer word is said until they're loaded again; and a card
+    // gone, or changed, under way or waiting, isn't kept once loaded. One
+    // given up stays held off through either, so a link that flaps can't
+    // take another thread on a hung file each time.
     function forgetCables() {
         const cards = Object.create(null);
         for (const link of links ?? [])
@@ -531,7 +539,6 @@ Provider {
             cableStates = states;
         }
         cablesAsked = cablesAsked.filter(name => cards[name] !== undefined);
-        unstick(Object.keys(cablesStuck).filter(name => cards[name] !== cablesStuck[name].state));
         if (cableLoading !== null && cards[cableLoading.name] !== cableLoading.state)
             cableLoading.stale = true;
     }
@@ -559,7 +566,7 @@ Provider {
         const before = cablesStuck[loading.name];
         const wait = Math.min(before === undefined ? 60000 : before.wait * 2, 3600000);
         const still = Object.assign(Object.create(null), cablesStuck);
-        still[loading.name] = { at: Date.now(), wait: wait, state: loading.state };
+        still[loading.name] = { at: Date.now(), wait: wait };
         cablesStuck = still;
         console.warn(`Networks: ${loading.name}'s ${cableFiles[loading.at]} took two seconds`
             + ` to load, so its cable is said as last loaded, and asked again in ${wait / 60000}`

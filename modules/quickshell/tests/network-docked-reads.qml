@@ -368,6 +368,9 @@ ShellRoot {
             networks.factsGivenUp();
             Expect.expect("facts given up leave nothing reading",
                 !networks.stillReading, String(networks.stillReading));
+            networks.reloadFacts();
+            Expect.expect("facts given up aren't waited on again until they land",
+                !networks.stillReading, String(networks.stillReading));
             networks.recable();
             Expect.expect("a card held up isn't loaded again at once",
                 networks.cableLoading?.name !== "enp0s2"
@@ -395,11 +398,13 @@ ShellRoot {
         waits.until("the other card loaded again", within(2000, root.swept), root.requeued);
     }
 
-    // Its wait over, the card's link changes as it loads, so it's asked
-    // again, and then it's held up: it isn't loaded again at once,
-    // though it was waiting its turn.
+    // Its wait over, long held up, the card's link changes as it loads,
+    // so it's asked again, and then it's held up: it isn't loaded again
+    // at once, though it was waiting its turn, and it waits an hour, no
+    // longer.
     function requeued() {
-        networks.cablesStuck.enp0s2.at -= 121000;
+        networks.cablesStuck.enp0s2.wait = 2400000;
+        networks.cablesStuck.enp0s2.at -= 2401000;
         networks.recable();
         networks.links = [Object.assign({}, second, { state: "no link" }), docked];
         Expect.expect("a card changed as it loads is asked again",
@@ -409,17 +414,26 @@ ShellRoot {
             networks.cableLoading?.name !== "enp0s2"
                 && !networks.cablesAsked.includes("enp0s2"),
             JSON.stringify([networks.cableLoading, networks.cablesAsked]));
+        Expect.expect("a card held up waits an hour at most",
+            networks.cablesStuck.enp0s2?.wait === 3600000,
+            JSON.stringify(networks.cablesStuck.enp0s2));
         waits.until("the other card loaded once more", within(2000, root.swept),
             root.recovered);
     }
 
-    // Its link back as it was and its wait over, the card held up is
-    // loaded once its files land, and held up no more.
+    // Its link back as it was, the card held up stays held, so a link
+    // that flaps takes no more reads of a hung file; the clock stepped
+    // back, it's asked again, loaded once its files land, and held up no
+    // more.
     function recovered() {
         networks.links = [second, docked];
-        networks.cablesStuck.enp0s2.at -= 61000;
+        Expect.expect("a card held up stays held though its link changes",
+            networks.cableLoading?.name !== "enp0s2"
+                && !networks.cablesAsked.includes("enp0s2"),
+            JSON.stringify([networks.cableLoading, networks.cablesAsked]));
+        networks.cablesStuck.enp0s2.at = Date.now() + 3600000;
         networks.recable();
-        waits.until("a card held up is loaded once asked after its wait", within(2000, () =>
+        waits.until("a card held up is loaded once the clock steps back", within(2000, () =>
             root.swept() && networks.cables.enp0s2 !== undefined
                 && networks.cablesStuck.enp0s2 === undefined), root.unplugged);
     }
