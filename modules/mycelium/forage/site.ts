@@ -15,7 +15,7 @@ import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { command, escaped, floorOf, forageRow, onMap, panelOf } from "./draw.ts";
-import { type Forage, foragesOf, headline, holds, lede, startedFrom } from "./model.ts";
+import { type Forage, foragesOf, grewFrom, headline, holds, lede, startedFrom } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -268,6 +268,21 @@ follow(
   },
 );
 
+/**
+ * Draws the panel again once the day has turned, though no record changed,
+ * since a need's since says its day only once it isn't today's. It looks
+ * each minute rather than waiting for midnight, since a timer sleeps with
+ * the laptop and would wake hours late.
+ */
+let drawnOn = new Date().toDateString();
+setInterval(() => {
+  const today = new Date().toDateString();
+  if (today !== drawnOn) {
+    drawnOn = today;
+    drawPanel();
+  }
+}, 60_000);
+
 /** The index `by` steps to from `at` among `count`, kept inside them. */
 function stepped(at: number, by: number, count: number): number {
   if (by === Number.POSITIVE_INFINITY) {
@@ -287,9 +302,14 @@ function move(by: number): void {
   drawPanel();
 }
 
-/** Steps to the cell that started the one the cursor is on, when it is drawn. */
+/**
+ * Steps to the cell the one the cursor is on grew from, the one that
+ * started it or it split from, when it is drawn.
+ */
 function up(): void {
-  const by = current()?.startedBy;
+  const open = current();
+  const by =
+    open === undefined ? undefined : grewFrom(open, new Set(forages.map((each) => each.cell)));
   if (by !== undefined) {
     openCell(by);
   }

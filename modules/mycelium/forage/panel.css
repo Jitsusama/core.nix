@@ -180,6 +180,13 @@
   align-items: center;
 }
 
+/* Each need a cell serves or relies on is a line of its own. */
+.facts dd.needs {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
 /* A comma in a list of cells stays with the address before it. */
 .facts dd .tie {
   white-space: nowrap;

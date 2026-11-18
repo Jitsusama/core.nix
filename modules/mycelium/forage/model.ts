@@ -1,13 +1,16 @@
 // What the forage page draws, read from the mycelium node's forage records
 // (mycelium's PROTOCOL.md, Forages): one for each cell of this machine that
 // works on a quest, keyed forage:<cell>, with the purpose its quest states,
-// the documents it keeps for it and what its quest waits on its person
-// for. Nothing here touches the page, so every case is proven in node, and
-// a record the page couldn't make sense of is said rather than drawn as if
-// it were whole.
+// the documents it keeps for it, what its quest waits on its person
+// for, and how it joins other forages: the needs it serves and relies
+// on, and the cell it split from or into, read in joins.ts. Nothing here
+// touches the page, so every case is proven in node, and a record the
+// page couldn't make sense of is said rather than drawn as if it were
+// whole.
 
 import type { Fields, Held } from "../../local-sites/kit/records.ts";
 import { isObject, number, object, text } from "../../local-sites/kit/records.ts";
+import { bothEnds, type Join, joinsOf, splitOf } from "./joins.ts";
 
 /** One document a cell keeps for its purpose: a plan, research, a brief or a report. */
 interface Document {
@@ -50,7 +53,15 @@ interface Forage {
   readonly startedBy: string | undefined;
   /** The quest its own sits under, when it sits under one. */
   readonly parent: string | undefined;
-  /** How many cells above it started it, here: 0 for one nothing here started. */
+  /** The cell whose purpose it took a part of, when it was split from one. */
+  readonly splitFrom: string | undefined;
+  /** The cells it split its purpose into, by address, as it ended. */
+  readonly splitInto: readonly string[];
+  /** The needs it took from other cells, and works on for them. */
+  readonly serves: readonly Join[];
+  /** The needs it handed other cells, which work on them for it. */
+  readonly relies: readonly Join[];
+  /** How many cells above it it grew from, here, started or split: 0 for none here. */
   readonly depth: number;
 }
 
@@ -172,31 +183,51 @@ function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | und
     waits: waitsOf(record, cell, unread),
     startedBy: text(lineage, "started_by"),
     parent: text(lineage, "parent"),
+    ...splitOf(lineage, cell, unread),
+    serves: joinsOf(record["serves"], "serves", cell, unread),
+    relies: joinsOf(record["relies"], "relies", cell, unread),
   };
 }
 
 /**
- * Every forage `held` holds, each cell after the one that started it, as a
- * tree is read: those nothing here started first, by address, and under
- * each the cells it started, by address. A cell started by one on another
- * machine stands at the top, since its starter isn't drawn here.
+ * The cell `forage` grew from, among `here`: the one that started it, else
+ * the one it split from, since a split's new cells may be started by
+ * another. None when neither is here, or when it names itself.
+ */
+function grewFrom(
+  forage: Pick<Forage, "cell" | "startedBy" | "splitFrom">,
+  here: ReadonlySet<string>,
+): string | undefined {
+  return [forage.startedBy, forage.splitFrom].find(
+    (each) => each !== undefined && each !== forage.cell && here.has(each),
+  );
+}
+
+/**
+ * Every forage `held` holds, each cell after the one it grew from (its
+ * starter, else the cell it split from), as a tree is read: those that
+ * grew from nothing here first, by address, and under each the cells that
+ * grew from it, by address. A cell that grew from one not drawn here
+ * stands at the top, and a split is read from either end.
  */
 function foragesOf(held: Held): Forages {
   const unread: string[] = [];
-  const read = held
-    .all()
-    .map((record) => forageOf(record, unread))
-    .filter((each) => each !== undefined)
-    .sort((one, other) => one.cell.localeCompare(other.cell));
+  const read = bothEnds(
+    held
+      .all()
+      .map((record) => forageOf(record, unread))
+      .filter((each) => each !== undefined)
+      .sort((one, other) => one.cell.localeCompare(other.cell)),
+  );
   const here = new Set(read.map((each) => each.cell));
   const started = new Map<string, (typeof read)[number][]>();
   const tops: (typeof read)[number][] = [];
   for (const each of read) {
-    const by = each.startedBy;
-    if (by !== undefined && by !== each.cell && here.has(by)) {
-      started.set(by, [...(started.get(by) ?? []), each]);
-    } else {
+    const by = grewFrom(each, here);
+    if (by === undefined) {
       tops.push(each);
+    } else {
+      started.set(by, [...(started.get(by) ?? []), each]);
     }
   }
   const forages: Forage[] = [];
@@ -395,5 +426,5 @@ function holds(forage: Forage, query: string): boolean {
     .some((each) => each.includes(sought));
 }
 
-export type { Document, Forage, Forages, Headline, Wait };
-export { counted, foragesOf, headline, holds, keeps, lede, startedFrom, steps };
+export type { Document, Forage, Forages, Headline, Join, Wait };
+export { counted, foragesOf, grewFrom, headline, holds, keeps, lede, startedFrom, steps };

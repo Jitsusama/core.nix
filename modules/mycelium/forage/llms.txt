@@ -2,7 +2,8 @@
 
 > A live, read-only view of every cell standing on this machine that
 > works on a quest: the purpose its quest states, the cell that started it
-> and the cells it started, and how far the plans, research, briefs and
+> and the cells it started, the cell it split from and the cells it split
+> into, the needs it serves and relies on, and how far the plans, research, briefs and
 > reports it keeps have come.
 
 - [The page](index.html): the cells drawn as the forest floor cut

@@ -3,13 +3,16 @@
 // the floor each cell is a compartment along its hypha, whole when its
 // purpose is written and hollow when it isn't, so a cell without purpose
 // is told by its shape and never by colour alone; a cell started by
-// another branches below it, and a cap rises over a cell whose plans have
-// landed steps, its gills lit as they land. What a cell's quest waits on its
-// person for leads its panel and is counted in its row. Every word read from a record
-// is escaped before it reaches the page, and how far a plan has come is
-// said in words beside its marks.
+// another, or split from it, branches below it; a dotted arc joins a cell
+// to one serving a need of its; and a cap rises over a cell whose plans have
+// landed steps, its gills lit as they land. What a cell's quest waits on
+// its person for leads its panel and is counted in its row. Every word
+// read from a record is escaped before it reaches the page, and how far a
+// plan has come is said in words beside its marks.
 
-import { type Document, type Forage, keeps, steps, type Wait } from "./model.ts";
+import { clockTime } from "../../local-sites/kit/status.ts";
+import { type Join, joined } from "./joins.ts";
+import { type Document, type Forage, grewFrom, keeps, steps, type Wait } from "./model.ts";
 
 const ESCAPES: { readonly [character: string]: string } = {
   "&": "&amp;",
@@ -18,6 +21,22 @@ const ESCAPES: { readonly [character: string]: string } = {
   '"': "&quot;",
   "'": "&#39;",
 };
+
+/** Each month as a need's since says it, when the need wasn't taken today. */
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
 
 /** Each stage of a document as the page says it. */
 const STAGES: { readonly [stage: string]: string } = {
@@ -210,14 +229,28 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
   const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);
   const height = deepest + 40;
   const at = new Map(cells.map((each) => [each.forage.cell, each]));
+  const here = new Set(forages.map((each) => each.cell));
   const main = `<path class="hypha" d="M${FLOOR.margin / 2} ${FLOOR.hypha}H${width - FLOOR.margin / 2}"/>`;
   const branches = cells
     .map(({ forage, x, y }) => {
-      const from = forage.startedBy === undefined ? undefined : at.get(forage.startedBy);
+      const by = grewFrom(forage, here);
+      const from = by === undefined ? undefined : at.get(by);
       if (from === undefined || forage.depth === 0) {
         return "";
       }
       return `<path class="hypha" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
+    })
+    .join("");
+  const joins = joined(cells.map((each) => each.forage))
+    .map(({ from, to }) => {
+      const one = at.get(from);
+      const other = at.get(to);
+      if (one === undefined || other === undefined) {
+        return "";
+      }
+      // It bows below both cells and is dotted, so it never reads as a branch.
+      const low = Math.max(one.y, other.y) + FLOOR.drop;
+      return `<path class="join" d="M${one.x} ${one.y + 6}Q${(one.x + other.x) / 2} ${low} ${other.x} ${other.y + 6}"/>`;
     })
     .join("");
   const caps = cells
@@ -239,7 +272,7 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
       : "";
   return `<svg viewBox="0 0 ${width} ${height}" style="--w:${width * FLOOR.scale}px" aria-hidden="true">
 <path class="ground" d="M0 ${FLOOR.ground}H${width}"/>
-${main}${branches}${caps}${compartments}
+${main}${branches}${joins}${caps}${compartments}
 <text class="substrate" x="${FLOOR.margin / 2}" y="${height - 12}">${escaped(substrate)}</text>${more}
 </svg>`;
 }
@@ -287,9 +320,7 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
   if (by === undefined) {
     return "Nothing; it started on its own";
   }
-  return here.has(by)
-    ? cellLink(by)
-    : `<span><code>${escaped(by)}</code>, on another machine</span>`;
+  return cellOrAway(by, here);
 }
 
 /**
@@ -301,19 +332,100 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
  * flexed items, and ties each comma to the address before it, so no line
  * starts with one.
  */
-function cellsStarted(started: readonly string[]): string {
+function cellsStarted(
+  started: readonly string[],
+  name: (cell: string) => string = cellLink,
+): string {
   if (started.length === 0) {
     return "None here yet";
   }
   const count = started.length === 1 ? "One cell" : `${started.length} cells`;
   const named = started.length > MOST_STARTED + 1 ? MOST_STARTED : started.length;
-  const links = started.slice(0, named).map(cellLink);
+  const links = started.slice(0, named).map(name);
   const rest = started.length - links.length;
   const last = rest === 0 ? links.pop() : `${rest} more`;
   const before = links
     .map((link, at) => (at < links.length - 1 ? `<span class="tie">${link},</span>` : link))
     .join(" ");
   return before === "" ? `${count}: ${last}` : `${count}: ${before} and ${last}`;
+}
+
+/**
+ * `cell` linked to its row when it is drawn here, else said not to stand
+ * here, since it may have ended or stand on another machine.
+ */
+function cellOrAway(cell: string, here: ReadonlySet<string>): string {
+  return here.has(cell)
+    ? cellLink(cell)
+    : `<span><code>${escaped(cell)}</code>, not standing here</span>`;
+}
+
+/**
+ * When `since` was, by the clock when it was today and by the day and
+ * clock before, so a need held for days never reads as this morning's;
+ * nothing when it isn't a time. `now` is when the page draws.
+ */
+function sinceOf(since: string | undefined, now: number): string {
+  const at = since === undefined ? Number.NaN : Date.parse(since);
+  if (Number.isNaN(at)) {
+    return "";
+  }
+  const when = new Date(at);
+  const today = new Date(now).toDateString() === when.toDateString();
+  const day = today ? "" : `${when.getDate()} ${MONTHS[when.getMonth()]}, `;
+  return `, since <time datetime="${when.toISOString()}">${day}${clockTime(at)}</time>`;
+}
+
+/**
+ * The needs `joins` holds, one line each: the cell at the other end, what
+ * the need was about in the asking cell's own words, and since when.
+ * `asker` names who said each need's words: the cell at the other end of
+ * one this cell serves, or this cell's own quest for one it relies on.
+ * `now` is when the panel draws.
+ */
+function needsOf(
+  joins: readonly Join[],
+  here: ReadonlySet<string>,
+  now: number,
+  asker: (join: Join) => string,
+): string {
+  // As with the cells a cell started, a long list names six and counts the rest.
+  const named = joins.length > MOST_STARTED + 1 ? MOST_STARTED : joins.length;
+  const lines = joins.slice(0, named).map((join) => {
+    const need =
+      join.need === "" ? "" : `, for <span${saidBy(asker(join))}>${escaped(join.need)}</span>`;
+    const since = sinceOf(join.since, now);
+    return `<span class="need">${cellOrAway(join.cell, here)}${need}${since}</span>`;
+  });
+  const rest = joins.length - named;
+  const more = rest === 0 ? "" : `<span class="need">and ${rest} more</span>`;
+  return lines.join("") + more;
+}
+
+/**
+ * The facts of how `forage` joins other forages, beside who started it:
+ * the cell it split from, the cells it split into, and the needs it serves
+ * and relies on. Each is said only when it holds, since most cells split
+ * from none and a need fades once it's done.
+ */
+function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): string {
+  const facts: string[] = [];
+  if (forage.splitFrom !== undefined) {
+    facts.push(`<div><dt>Split from</dt><dd>${cellOrAway(forage.splitFrom, here)}</dd></div>`);
+  }
+  if (forage.splitInto.length > 0) {
+    const into = cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here));
+    facts.push(`<div><dt>Split into</dt><dd><span>${into}</span></dd></div>`);
+  }
+  if (forage.serves.length > 0) {
+    const said = needsOf(forage.serves, here, now, (join) => join.cell);
+    facts.push(`<div><dt>Serves</dt><dd class="needs">${said}</dd></div>`);
+  }
+  if (forage.relies.length > 0) {
+    const said = needsOf(forage.relies, here, now, () => forage.quest);
+    facts.push(`<div><dt>Relies on</dt><dd class="needs">${said}</dd></div>`);
+  }
+  return facts.map((fact) => `\n    ${fact}`).join("");
 }
 
 /** `cell`'s address, linked to its row, where a press moves the cursor to it. */
@@ -326,7 +438,12 @@ function cellLink(cell: string): string {
  * The panel of `forage`, the cell the cursor is on; `here` holds every cell
  * drawn, and `started` the cells it started among them.
  */
-function panelOf(forage: Forage, here: ReadonlySet<string>, started: readonly string[]): string {
+function panelOf(
+  forage: Forage,
+  here: ReadonlySet<string>,
+  started: readonly string[],
+  now: number = Date.now(),
+): string {
   const said = escaped(command(forage));
   const quiet = forage.purpose === "" ? " quiet" : "";
   return `
@@ -339,7 +456,7 @@ ${waitsOf(forage)}${documentsOf(forage)}
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
     <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
-    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>
+    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>

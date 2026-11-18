@@ -11,6 +11,7 @@ sites' kit by [`site.nix`][site], which leaves this note behind.
 | ------------ | --------------------------------------------------------------- |
 | `site.ts`    | the page: its watch, its keys and what it says                  |
 | `model.ts`   | the forage records read as cells, and the sentence saying them  |
+| `joins.ts`   | how forages join: the needs they share and the cells they split |
 | `draw.ts`    | the floor cut through, the rows, and the cell open as its panel |
 | `index.html` | the page, and `site.css` and `panel.css` its styles             |
 | `index.md`   | its Markdown twin, with `llms.txt` for a model                  |
