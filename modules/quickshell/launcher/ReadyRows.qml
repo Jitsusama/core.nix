@@ -297,8 +297,16 @@ Scope {
     // stampOf), for a place's spotsStampOf: null for a row not the one
     // made of its record now, so a row left from before is never kept.
     function stampOf(row) {
+        return madeNow(row) ? Ready.stampOf(keys, held, madeOf[row.key]) : null;
+    }
+
+    // Whether a row is the one made of its record now, which is all a
+    // place that says its own stamp asks of stampOf: Sound and Wi-Fi asked
+    // stampOf for it, which looked through every key and wrote each record
+    // out, once a device or a network at each slice of a closing.
+    function madeNow(row) {
         const key = madeOf[row?.key];
-        return key !== undefined && made[key] === row ? Ready.stampOf(keys, held, key) : null;
+        return key !== undefined && made[key] === row && Ready.rowOf(held[key]) !== null;
     }
 
     // What the place made of the row of `key`, made now if not yet: the

@@ -624,7 +624,7 @@ ShellRoot {
             sound.spotsStamp().includes('["clarity"]'), sound.spotsStamp());
         expect("and each fact its card says, in the daemon's order",
             sound.spotsStamp().includes('["playing","offers"]'), sound.spotsStamp());
-        expect("and each port it can be moved to, in the daemon's order",
+        expect("and each port it can be moved to",
             sound.spotsStamp().includes('["Speakers","Headphones"]'), sound.spotsStamp());
         // Asked at each slice of a closing, they look through the keys once
         // for as long as no record changes, not once a device or a part.
@@ -634,7 +634,12 @@ ShellRoot {
         sound.spotsStamp();
         expect("what its spots are made of is found in one pass over the keys",
             sound.insideKept.made - passes <= 1, `${sound.insideKept.made - passes} passes`);
+        root.passes = sound.insideKept.made;
     }
+
+    // How many passes over the keys Sound had made once its spots were
+    // last asked for, so a record heard since is seen to be found again.
+    property int passes: 0
 
     function louderChoice() {
         return part("volume:louder", {
@@ -689,6 +694,10 @@ ShellRoot {
     }
 
     function muted() {
+        sound.spotsStamp();
+        expect("a record heard has the rows inside each found again from the keys now",
+            sound.insideKept.made > root.passes && sound.insideKept.keys === sound.served.keys,
+            `${sound.insideKept.made - root.passes} passes`);
         const muting = partOf("mute");
         expect("muted, its act is Unmute, as the daemon names it, and its foot says unmute",
             muting.targets()[0]?.name === "Unmute" && muting.verb === "unmute",

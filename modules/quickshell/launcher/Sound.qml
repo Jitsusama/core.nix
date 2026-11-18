@@ -140,9 +140,12 @@ Provider {
     // every key looked through for each device's ports, facts and parts.
     // The spots asked for those at each slice of a closing, which made
     // thousands of lists of every key between two of the collector's runs
-    // in Joel's shell on 2026-11-17. A plain object, so writing it as a
-    // binding asks notifies nothing; `made` counts the passes, for
-    // tests/sound-served.qml.
+    // in Joel's shell on 2026-11-17. It holds because each record
+    // ReadyRows hears is placed as a new list of keys (ReadyRows.js's
+    // placed), so no row inside another changes while the list stays the
+    // same. A plain object, so writing it as a binding asks notifies
+    // nothing; each list is frozen, since every caller shares it; `made`
+    // counts the passes, for tests/sound-served.qml.
     readonly property var insideKept: ({ keys: null, by: null, made: 0 })
 
     function insideOf(parent) {
@@ -157,6 +160,7 @@ Provider {
                     by.set(under, []);
                 by.get(under).push(keys[at]);
             }
+            by.forEach(list => Object.freeze(list));
             insideKept.keys = keys;
             insideKept.by = by;
             insideKept.made += 1;
@@ -1384,7 +1388,7 @@ Provider {
     // of a device now, so it's made again. The daemon serving every part
     // ready, by 13 November, ends it.
     function spotsStampOf(thing) {
-        if (ready.stampOf(thing) === null)
+        if (!ready.madeNow(thing))
             return null;
         const key = ready.madeOf[thing.key];
         const row = ready.served(key);
