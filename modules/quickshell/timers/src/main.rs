@@ -441,6 +441,7 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
             Ok(Tell::Deaf(stopped)) => {
                 if stopped == dialled && connection.take().is_some() {
                     eprintln!("<4>stopped hearing the session bus, so it's dialled again");
+                    forget_notices(shared);
                     lost = true;
                 }
             }
@@ -549,6 +550,20 @@ fn rung(shared: &Shared) -> Vec<String> {
         .filter(|timer| matches!(timer.standing, Standing::Rung { .. }))
         .map(|timer| timer.key.clone())
         .collect()
+}
+
+/// Forgets every notice shown, as they went with the bus they were shown
+/// on: a bus begun again names its connections from the start, so a new
+/// server may carry the old one's name, and each rung timer would read as
+/// shown there.
+fn forget_notices(shared: &Shared) {
+    let mut daemon = lock(shared);
+    for timer in &mut daemon.held.timers {
+        timer.notice = None;
+    }
+    if let Err(why) = daemon.held.write(&daemon.kept) {
+        eprintln!("<3>couldn't keep the timers: {why}");
+    }
 }
 
 /// The bus name of the notifications server there is now.
