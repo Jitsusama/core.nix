@@ -172,12 +172,12 @@ mod tests {
     #[test]
     fn a_count_found_is_kept_and_the_journal_asked_no_more() {
         let found = Found::new();
-        assert!(worth_asking(&found, Some(60)));
+        assert!(worth_asking(&found, Some(60)), "nothing found yet, asked");
         assert!(worth_asking(&found, None), "no uptime, still asked");
         assert!(!worth_asking(&found, Some(NEWS_FOR + 1)), "a day on");
 
         let none = remembered(&found, Some(Err("journalctl ended with 1".to_owned())));
-        assert!(none.is_err());
+        assert!(none.is_err(), "no line passes on as the journal's error");
         assert!(worth_asking(&found, Some(60)), "no line yet, asked again");
 
         let one = remembered(&found, Some(Ok(said("BERT: Total records found: 1"))));
