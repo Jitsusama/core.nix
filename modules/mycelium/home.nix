@@ -334,7 +334,7 @@ let
     };
     Install.WantedBy = [ "default.target" ];
   };
-  macNode = words: log: {
+  macNode = words: log: realm: {
     enable = true;
     config = {
       ProgramArguments = words;
@@ -348,6 +348,10 @@ let
         # nobody can touch this one's sensor, so its commits sign with
         # the agents' key, even in a held terminal.
         SIGN_AS = "agent";
+        # The node reads what it serves only as it starts, and launchd
+        # reloads an agent only when its own file changes, so what it
+        # serves is written into it, as X-Restart-Triggers is on Linux.
+        MYCELIUM_SERVES = builtins.hashString "sha256" (builtins.toJSON (servesIn realm));
       };
       RunAtLoad = true;
       # Started again whenever it stops, but not more than every 30 s.
@@ -638,7 +642,7 @@ in
     })
     (lib.mkIf (isDarwin && serving) {
       launchd.agents = {
-        mycelium = macNode node "mycelium";
+        mycelium = macNode node "mycelium" cfg.realm;
         mycelium-balance = {
           enable = true;
           config = {
@@ -651,7 +655,7 @@ in
         };
       }
       // lib.mapAttrs' (
-        realm: words: lib.nameValuePair "mycelium-${realm}" (macNode words "mycelium-${realm}")
+        realm: words: lib.nameValuePair "mycelium-${realm}" (macNode words "mycelium-${realm}" realm)
       ) furtherNodes;
     })
   ];
