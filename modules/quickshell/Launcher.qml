@@ -3448,11 +3448,11 @@ Scope {
 
     // The keys `told` that fit the foot's `room`, those furthest from
     // Return giving way first (Standing.keysFitted), counted for stepFits
-    // in a plain object, since a property read and written as they're
-    // fitted would fit them again.
-    readonly property var footFitted: ({ times: 0 })
+    // with the facts' fittings (standing.fitNow) in a plain object, since a
+    // property read and written as they're fitted would fit them again.
+    readonly property var footFitted: ({ keys: 0, facts: 0 })
     function keysFittedIn(told, loose, room) {
-        footFitted.times += 1;
+        footFitted.keys += 1;
         return Standing.keysFitted(told, keys => keysWide(keys, loose), room, footYielding);
     }
 
@@ -6194,9 +6194,9 @@ Scope {
     // its keys about seven, most of it as held changed, before any row
     // was found (the keys lab's profile, 2026-11-18).
     property bool stepping: false
-    // How many times the last step out fitted the foot's keys, for the
-    // check that it's once.
-    property int stepFits: -1
+    // How many times the last step out fitted the foot's keys and its
+    // facts, for the check that it's once.
+    property var stepFits: null
 
     // `pressedOut` when - asked for it, the one way out that's timed: a
     // daemon's answer, Escape out of an ask and :q go back too, and were
@@ -6225,7 +6225,7 @@ Scope {
         // The foot is fitted as stepping ends, before the step's parts
         // are stamped, so its one fitting is timed with them.
         const outer = stepping;
-        const fits = footFitted.times;
+        const fits = Object.assign({}, footFitted);
         stepping = true;
         let stepped = null;
         try {
@@ -6233,7 +6233,8 @@ Scope {
                 name: leaving.name });
         } finally {
             stepping = outer;
-            stepFits = footFitted.times - fits;
+            stepFits = { keys: footFitted.keys - fits.keys,
+                facts: footFitted.facts - fits.facts };
         }
         if (stepped === null)
             return;
@@ -6267,6 +6268,11 @@ Scope {
         backTo = left;
         list.steppedLast = null;
         let restarted = false;
+        // Words put back are timed as the field's key, within restart, so
+        // the foot is fitted as they're searched, in that key's own time,
+        // rather than after it was stamped.
+        if (stepOut !== null)
+            stepping = false;
         try {
             restart(words);
             restarted = true;
@@ -14650,6 +14656,7 @@ Scope {
                             readonly property var fitNow: {
                                 if (root.stepping)
                                     return null;
+                                root.footFitted.facts += 1;
                                 const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
                                 const left = foot.room - (waiting.length === 0 ? 0

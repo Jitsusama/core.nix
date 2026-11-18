@@ -5011,6 +5011,7 @@ def test_a_step_out_fits_the_foots_keys_once(shell: Shell) -> None:
     Fitted again as held changed, as the mode came back and as the rows were found, Joel's - out
     of Windows spent 13 to 20 ms of its 53 and 58 ms before it searched anything (his journal,
     2026-11-17 23:05:23 and 2026-11-18 10:43:47). Fitted for each, they were fitted three times.
+    Held, they must still read as the row they land on fits them, moved off and back.
     """
     shell.launcher_until(lambda shown: not shown["open"])
     shell.as_account(shell.ipc("collection", "windows"))
@@ -5018,9 +5019,20 @@ def test_a_step_out_fits_the_foots_keys_once(shell: Shell) -> None:
     shell.normal()
     shell.send_chars("-")
     shell.launcher_until(lambda shown: not shown["held"])
-    fits = laid_out(shell)["stepFits"]
+    laid = laid_out(shell)
+    landed_on = shell.showing()["selected"]
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: shown["selected"] != landed_on)
+    shell.send_chars("k")
+    shell.launcher_until(lambda shown: shown["selected"] == landed_on)
+    refitted = laid_out(shell)["foot"]
     shell.close_launcher()
-    assert fits == 1, f"- out of Windows fitted the foot's keys {fits} times"
+    fits = laid["stepFits"]
+    assert fits == {"keys": 1, "facts": 1}, f"- out of Windows fitted the foot {fits}"
+    # The clock may turn between the two.
+    held = [word["text"] for word in laid["foot"] if not re.search("[0-9]", word["text"])]
+    fresh = [word["text"] for word in refitted if not re.search("[0-9]", word["text"])]
+    assert held == fresh, f"the foot held {held} where its row fits {fresh}"
 
 
 def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> None:
