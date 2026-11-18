@@ -35,15 +35,7 @@ let
   # Node looks for a package in node_modules beside the real path of the
   # file importing it, so the harness is copied in beside it, not linked.
   program = runCommandLocal "pi-fence-harness" { } ''
-    sed -n '/^importers:/,/^packages:/p' ${harness}/pnpm-lock.yaml \
-      | grep -A2 -x '      yaml:' | grep -qx '        version: ${yamlVersion}' || {
-      echo "the harness's lock no longer locks yaml ${yamlVersion}" >&2
-      exit 1
-    }
-    cp -r ${harness} $out
-    chmod -R u+w $out
-    mkdir -p $out/node_modules/yaml
-    tar -xzf ${yaml} -C $out/node_modules/yaml --strip-components=1
+    ${lib.getExe bash} ${./harness.sh} ${harness} ${yaml} ${yamlVersion} $out
   '';
 in
 writeShellApplication {
