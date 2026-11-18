@@ -192,6 +192,10 @@ const HOLD: f64 = 0.95;
 const PROBE_EVERY_S: f64 = 60.0;
 const PROBE_UP: f64 = 1.1;
 const PROBE_S: f64 = 3.0;
+/// How long a probe pushes before what gets through counts as the line:
+/// what a router past it drops comes back as TCP's resends a round trip or
+/// more later.
+const PROBE_SETTLE_S: f64 = 1.0;
 /// The share of a network's declared upload rate, its anchor, that the
 /// guard sends the upload back to: within the 85% to 95% of a cable
 /// modem's rate that `LibreQoS` holds one at.
@@ -390,6 +394,17 @@ struct Draining {
     most_ms: f64,
 }
 
+/// What a probe under way saw past its first `PROBE_SETTLE_S`: how many
+/// moments, whether the VPN's flows backed off in any, and what got
+/// through in those our CAKE held a queue in, summed, and how many.
+#[derive(Clone, Copy, Debug, Default)]
+struct Probed {
+    moments: u32,
+    backed_off: bool,
+    through: f64,
+    queued: u32,
+}
+
 /// One direction's rate.
 #[derive(Clone, Debug)]
 pub struct Way {
@@ -431,6 +446,7 @@ pub struct Way {
     plateau: Option<f64>,
     next_probe: f64,
     probing_until: Option<f64>,
+    probed: Probed,
     /// Whether this is the download, whose cuts hold what has already
     /// crossed the line: its senders hear of a cut only from what CAKE
     /// drops, a round trip later, and what they send meanwhile waits here.
@@ -477,6 +493,7 @@ impl Way {
             plateau: None,
             next_probe: 0.0,
             probing_until: None,
+            probed: Probed::default(),
             download: false,
             draining: None,
             anothers_until: f64::NEG_INFINITY,
@@ -651,12 +668,25 @@ impl Way {
         let Some(plateau) = self.plateau else {
             return false;
         };
+        if let Some(until) = self.probing_until
+            && at < until
+            && at >= until - PROBE_S + PROBE_SETTLE_S
+        {
+            let probed = &mut self.probed;
+            probed.moments += 1;
+            probed.backed_off |= backing_off;
+            if ours.queued && !backing_off {
+                probed.through += through;
+                probed.queued += 1;
+            }
+        }
         match self.probing_until {
             Some(until) if at >= until => {
                 self.probing_until = None;
                 // A probe the ceiling held carried the ceiling, not the
                 // line, however full our queue stood.
-                if ours.queued && !self.at_the_ceiling() && through >= self.rate * share * UNDER {
+                let ceiling = self.at_the_ceiling();
+                if ours.queued && !ceiling && through >= self.rate * share * UNDER {
                     // The link carried the higher rate with CAKE still
                     // holding a queue, so there is room past it: keep it,
                     // and look higher at once.
@@ -676,13 +706,15 @@ impl Way {
                         plateau
                     };
                     self.plateau = Some(plateau);
-                    self.rate = plateau * self.tuning.hold;
+                    self.rate =
+                        self.met(at, ceiling, backing_off).unwrap_or(plateau) * self.tuning.hold;
                     self.next_probe = at + PROBE_EVERY_S;
                 }
             }
             None if at >= self.next_probe && ours.waiting => {
                 self.rate = plateau * self.tuning.probe_up / share;
                 self.probing_until = Some(at + PROBE_S);
+                self.probed = Probed::default();
                 self.elsewhere = None;
             }
             // The queue the probes saw has gone, and what the link carried
@@ -729,6 +761,33 @@ impl Way {
                 .fold(f64::INFINITY, f64::min);
             self.proven = self.proven.max(least);
         }
+    }
+
+    /// The line a probe that found no room met, which becomes the plateau:
+    /// what got through while it pushed past the line with our CAKE holding
+    /// a queue, once the router's drops had come back as resends. Kept as
+    /// the plateau, a line found over the old one lifts the hold to under
+    /// it, and one found under it brings the hold down. Losses on the air
+    /// count against it, holding a little lower on Wi-Fi, but each probe
+    /// measures afresh from it, so that never ratchets down. None
+    /// where the probe measured something else: a ceiling, the VPN's flows
+    /// backing off in any moment of it, our CAKE holding a queue in under
+    /// half its moments, or less than a queue elsewhere is taken back at.
+    fn met(&mut self, at: f64, ceiling: bool, backing_off: bool) -> Option<f64> {
+        let probed = std::mem::take(&mut self.probed);
+        if ceiling || backing_off || probed.backed_off || probed.queued * 2 < probed.moments {
+            return None;
+        }
+        let line = probed.through / f64::from(probed.queued.max(1));
+        let line_full = self
+            .anchor
+            .is_none_or(|anchor| line >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD);
+        let reached = self.reached(at);
+        let taken = line_full && line > FLOWING_KBIT && reached > 0.0 && line >= reached * REACHED;
+        taken.then(|| {
+            self.plateau = Some(line);
+            line
+        })
     }
 
     /// Takes back what cuts for a delay they didn't drain did: the plateau
@@ -3460,13 +3519,34 @@ mod tests {
     /// sends again what the router dropped, and `cake_drops` of the rate
     /// CAKE dropped itself. Answers the rate held at the end.
     fn many_flows(c: &mut Controller, to: f64, line: f64, cake_drops: f64) -> Option<u64> {
+        many_flows_heard_late(c, to, line, cake_drops, 0)
+    }
+
+    /// Steps a controller as `many_flows` does, with what the router drops
+    /// sent again `late` moments after it was sent, a round trip or more
+    /// later, as TCP hears of a loss: until then the link carries all of a
+    /// rate over the line with nothing yet sent again.
+    fn many_flows_heard_late(
+        c: &mut Controller,
+        to: f64,
+        line: f64,
+        cake_drops: f64,
+        late: usize,
+    ) -> Option<u64> {
         let mut at = 0.0;
+        let mut sent = std::collections::VecDeque::new();
         let mut limits = Limits {
             up: None,
             down: None,
         };
         while at < to {
             let rate = c.up.limit().map_or(line * 2.0, crate::rate::float);
+            sent.push_back(rate);
+            let heard = if sent.len() > late {
+                sent.pop_front().unwrap_or(rate)
+            } else {
+                line
+            };
             let dropped = rate * cake_drops;
             #[expect(
                 clippy::cast_possible_truncation,
@@ -3480,7 +3560,7 @@ mod tests {
                 up_ours: Some(Ours {
                     queued: true,
                     waiting: true,
-                    resent: kbit((rate - line).max(0.0) + dropped),
+                    resent: kbit((heard - line).max(0.0) + dropped),
                     dropped: kbit(dropped),
                     ..Ours::default()
                 }),
@@ -3504,6 +3584,41 @@ mod tests {
         let mut c = Controller::from_learned(learned, Learned::default());
         let held = many_flows(&mut c, 10.0, 8_000.0, 0.03);
         assert!(near(held, 7_600.0), "held over the line: {held:?}");
+    }
+
+    // On a line over the plateau, a probe that meets it carries less than
+    // the probe's rate, which once read as no room and left the hold under
+    // the old plateau for good, a tenth under the line. What got through
+    // over the probe's settled seconds is the line, so the hold climbs to
+    // under it.
+    #[test]
+    fn a_probe_that_meets_a_line_over_the_plateau_holds_under_that_line() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(8_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let held = many_flows(&mut c, 10.0, 8_500.0, 0.03);
+        assert!(near(held, 8_075.0), "not held under the line met: {held:?}");
+    }
+
+    // What the router drops comes back as resends a round trip or more
+    // later, so a probe's first moments over the line carry its whole rate
+    // with nothing yet sent again. Counted, they'd read a line the probe
+    // passes by under a twentieth higher than it is, which nothing after
+    // takes back, and the hold would stand at 8088, over 8370's hold.
+    #[test]
+    fn a_probe_counts_the_line_only_once_the_router_s_drops_come_back() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(8_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let held = many_flows_heard_late(&mut c, 10.0, 8_370.0, 0.03, 10);
+        assert!(
+            held.is_some_and(|kbit| (7_930..=7_970).contains(&kbit)),
+            "not held under the line met: {held:?}"
+        );
     }
 
     #[test]
