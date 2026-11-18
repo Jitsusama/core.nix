@@ -41,7 +41,6 @@
   "modules/quickshell/timers/src/main.rs"
   "modules/shaper/src/main.rs"
   "modules/shaper/src/oneway.rs"
-  "modules/shaper/src/rate.rs"
   "modules/shaper/src/replay.rs"
   "modules/slack/src/lib.rs"
   "modules/slack/tests/stand_in.rs"

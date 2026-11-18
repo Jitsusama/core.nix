@@ -699,7 +699,8 @@ def test_status(on_eth2: Connection) -> None:
     """Its status says what it holds the link to."""
     status = on_eth2.client.succeed("shaper status")
     assert "eth2" in status, status
-    assert "held under load" in status, status
+    assert " Mb/s, down " in status, status
+    assert "quiet round trips: " in status, status
     assert "cpu: the shaper" in status, status
 
 

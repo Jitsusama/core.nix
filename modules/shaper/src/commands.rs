@@ -33,13 +33,12 @@ fn run() -> Help {
     Help::new("run", "shapes every uplink until it's stopped")
         .example("shaper run", "as its unit runs it, with no VPNs")
         .example(
-            "shaper run --vpns wg0 --controller one-way --record /var/lib/shaper-record",
+            "shaper run --vpns wg0",
             "riding wg0, rated from each direction's delay",
         )
         .option("--hosts HOSTS", "the distant hosts it pings, by commas")
         .option("--vpns VPNS", "the tunnels it shapes too, by commas")
-        .option("--controller CONTROLLER", "round-trip, or one-way")
-        .option("--record DIR", "where the recorder writes, for one-way")
+        .option("--record DIR", "where the recorder writes, which it reads")
         .option("--trial FILE", "a trial of how the upload finds its line")
         .option(
             "--networks FILE",
@@ -185,10 +184,6 @@ mod tests {
             "run",
             "--vpns",
             "wg0,wg1",
-            "--controller",
-            "one-way",
-            "--record",
-            "/var/lib/shaper-record",
             "--networks",
             "/etc/shaper-networks.json",
         ],
@@ -220,8 +215,11 @@ mod tests {
             panic!("the run's unit words were refused");
         };
         assert_eq!(asked.vpns, ["wg0", "wg1"], "--vpns");
-        assert!(asked.one_way, "--controller one-way left the round trip's");
-        assert_eq!(asked.record, std::path::Path::new("/var/lib/shaper-record"));
+        assert_eq!(
+            asked.record,
+            std::path::Path::new(UNITS[3][2]),
+            "the folder the run reads isn't the one the recorder's unit writes"
+        );
         assert_eq!(
             asked.networks.as_deref(),
             Some(std::path::Path::new("/etc/shaper-networks.json")),
@@ -244,6 +242,9 @@ mod tests {
             (&["shape"], "shaper --help"),
             (&["run", "--sideways"], "shaper run --help"),
             (&["run", "--controller", "sideways"], "shaper run --help"),
+            // One controller is left, so there is none to choose.
+            (&["run", "--controller", "round-trip"], "shaper run --help"),
+            (&["run", "--controller", "one-way"], "shaper run --help"),
             (&["run", "--vpns"], "shaper run --help"),
             (&["status", "--runtime"], "shaper status --help"),
             (&["stop", "--now"], "shaper stop --help"),

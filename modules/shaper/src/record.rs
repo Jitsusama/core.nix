@@ -91,6 +91,47 @@ fn carried(link: &str) -> (u64, u64) {
     (read("rx"), read("tx"))
 }
 
+/// What this machine's links to one connection carried together, received
+/// and sent, in bytes. A second link to the same router, as Wi-Fi is beside
+/// a cable, sends over the same connection, so an upload there fills the
+/// queue the recorded link's probes meet, and the record has to count it.
+/// The total runs on as a link joins or leaves, so neither reads as a
+/// second's burst or a fall.
+struct Counted {
+    last: BTreeMap<String, (u64, u64)>,
+    total: (u64, u64),
+}
+
+impl Counted {
+    /// Starts from what `link` has carried since it came up, so a link
+    /// alone reads as its own counters.
+    fn new(link: &str, carried: (u64, u64)) -> Self {
+        Counted {
+            last: BTreeMap::from([(link.to_owned(), carried)]),
+            total: carried,
+        }
+    }
+
+    /// Adds what each link carried since it was last read, given its
+    /// counters now, and gives the total; a link not read before counts
+    /// from here.
+    fn add(&mut self, read: Vec<(String, (u64, u64))>) -> (u64, u64) {
+        for (link, (rx, tx)) in &read {
+            if let Some(&(was_rx, was_tx)) = self.last.get(link) {
+                self.total.0 += rx.saturating_sub(was_rx);
+                self.total.1 += tx.saturating_sub(was_tx);
+            }
+        }
+        self.last = read.into_iter().collect();
+        self.total
+    }
+
+    /// Reads `links`' counters and adds what they carried.
+    fn read(&mut self, links: &[String]) -> (u64, u64) {
+        self.add(links.iter().map(|l| (l.clone(), carried(l))).collect())
+    }
+}
+
 fn now_ms() -> u64 {
     u64::try_from(
         SystemTime::now()
@@ -166,6 +207,10 @@ fn pool_line(reflectors: &[(&'static str, Ipv4Addr)], kept: bool) -> Value {
 /// One link's recording under way.
 struct Recorder<'a> {
     link: &'a str,
+    /// The recorded link and the others that reach its router, and what
+    /// they carried together.
+    links: Vec<String>,
+    counted: Counted,
     gateway: Option<Ipv4Addr>,
     id: u16,
     socket: Socket,
@@ -204,7 +249,7 @@ impl Recorder<'_> {
             return;
         }
         let (counted, since) = self.window;
-        let total = carried(self.link);
+        let total = self.counted.read(&self.links);
         let bits = (total.0 + total.1).saturating_sub(counted.0 + counted.1) * 8;
         let over = now.duration_since(since);
         self.next = now + pace(bits, over);
@@ -256,7 +301,7 @@ impl Recorder<'_> {
                 return;
             }
         }
-        let (rx, tx) = carried(self.link);
+        let (rx, tx) = self.counted.read(&self.links);
         if let Some(reply) = stamped
             && let Some(sent) = self.outstanding.remove(&reply.seq)
             && let Some((operator, address)) = sent.to
@@ -338,13 +383,15 @@ impl Recorder<'_> {
 }
 
 /// Record a link's signal while `still` says it's the uplink it was, then
-/// return so the caller finds the next, with a pool of its own.
+/// return so the caller finds the next, with a pool of its own. What it
+/// carried counts with what the links `beside` name carried, those that
+/// reach the same router.
 pub fn record(
     link: &str,
     network: &str,
     gateway: Option<Ipv4Addr>,
     folder: &Path,
-    still: &dyn Fn() -> bool,
+    (still, beside): (&dyn Fn() -> bool, &dyn Fn() -> Vec<String>),
 ) {
     let id = u16::try_from(std::process::id() & 0xffff).unwrap_or(1);
     let socket = match Socket::bound(link, Duration::from_millis(50)) {
@@ -368,8 +415,12 @@ pub fn record(
     first["link"] = json!(link);
     first["network"] = json!(network);
     journal.write(&first);
+    let links = |beside: Vec<String>| [vec![link.to_owned()], beside].concat();
+    let counted = Counted::new(link, carried(link));
     let mut recorder = Recorder {
         link,
+        links: links(beside()),
+        counted,
         gateway,
         id,
         socket,
@@ -391,6 +442,7 @@ pub fn record(
             if !still() {
                 return;
             }
+            recorder.links = links(beside());
             checked = now;
         }
         recorder.probe(now);
@@ -445,6 +497,32 @@ mod tests {
         assert_eq!(
             day_file(Path::new("/r"), leap),
             PathBuf::from("/r/2000-02-29.jsonl")
+        );
+    }
+
+    // On 18 November the rate test's upload over a second link to the
+    // router left the recorded link looking idle, so it was probed rarely
+    // and never cut, while the connection's queue stood at 430 ms.
+    #[test]
+    fn a_second_link_s_traffic_counts_on_the_connection() {
+        let mut counted = Counted::new("eth1", (1_000, 5_000));
+        let at = |eth1: (u64, u64), eth2: (u64, u64)| {
+            vec![("eth1".to_owned(), eth1), ("eth2".to_owned(), eth2)]
+        };
+        // eth2 joins with what it carried before: none of that counts.
+        assert_eq!(
+            counted.add(at((1_100, 5_000), (90_000, 70_000))),
+            (1_100, 5_000)
+        );
+        assert_eq!(
+            counted.add(at((1_200, 5_000), (90_500, 80_000))),
+            (1_700, 15_000),
+            "what eth2 sent counts beside eth1's"
+        );
+        // eth2 leaves: the total carries on from where it was.
+        assert_eq!(
+            counted.add(vec![("eth1".to_owned(), (1_300, 5_100))]),
+            (1_800, 15_100)
         );
     }
 

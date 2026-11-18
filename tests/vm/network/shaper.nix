@@ -38,9 +38,10 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     # The test's only distant host is the server.
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
-    # The module starts only the one-way controller at boot; the test runs this one.
-    systemd.services.shaper.wantedBy = [ "multi-user.target" ];
     systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
+    # Nothing limits this connection's download, which then goes straight
+    # in; the tests count each class's downloads in its IFB's CAKE.
+    systemd.services.shaper.environment.SHAPER_TURN_DOWNLOAD = "1";
     jitsusama.shaper.vpns = [ "wg0" ];
     users.users.alice = {
       isNormalUser = true;

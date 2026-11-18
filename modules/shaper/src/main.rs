@@ -7,16 +7,18 @@
 //! wait behind a build's. So on every link with a default route, the shaper
 //! sends and receives a little slower than the connection can take, through CAKE,
 //! and the queue forms here instead, short and sorted into CAKE's four
-//! tins. How fast "a little slower" is, it finds as it goes (src/rate.rs),
-//! and remembers for each network (src/memory.rs); with `--controller
-//! one-way`, its rebuild finds it from each direction's own delay, as the
-//! recorder measures it (src/live.rs). Which tin a connection
+//! tins. How fast "a little slower" is, the one-way controller finds as it
+//! goes, from each direction's own delay, as the recorder measures it
+//! (src/live.rs); its pings to distant hosts only say each one's quiet
+//! round trip (src/trips.rs). Which tin a connection
 //! goes to, nftables decides from the cgroup of the socket that opened it
 //! (the table in nixos.nix): the shaper keeps that table's sets of cgroups
 //! current (src/classes.rs), and its queues on each uplink (src/qdisc.rs).
 //!
 //! `shaper --help`, and each command's, say what each takes
-//! (src/commands.rs); `SHAPER_HOSTS` stands for `--hosts`.
+//! (src/commands.rs); `SHAPER_HOSTS` stands for `--hosts`, and
+//! `SHAPER_TURN_DOWNLOAD`, set to anything, keeps every download turned
+//! through its IFB, so a test can count what each class received.
 
 mod bars;
 mod call;
@@ -30,7 +32,6 @@ mod icmp;
 mod lanes;
 mod links;
 mod live;
-mod memory;
 mod networks;
 mod oneway;
 mod probe;
@@ -47,14 +48,14 @@ mod sim;
 mod stamp;
 mod status;
 mod trace;
+mod trips;
 mod tunnel;
 mod vpndelay;
 mod waiting;
 mod why;
 
-use memory::{Held, Memory};
 use probe::{Echo, Probes};
-use rate::{Bounds, Controller, Direction, Settings, State, float};
+use rate::{Bounds, Direction, float};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -68,6 +69,20 @@ use terminal_kit::{Context, Exit, Failure};
 
 const TABLE: &str = "shaper";
 const STEP: Duration = Duration::from_millis(200);
+
+/// A rate each way, in kbit/s.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Held {
+    up: u64,
+    down: u64,
+}
+
+/// Whether the controller holds a link under its most either way now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum State {
+    Resting,
+    Holding,
+}
 
 /// Where a network nobody has measured starts, in kbit/s: under most home
 /// connections both ways, so its first seconds of load don't queue at the
@@ -92,9 +107,8 @@ struct Options {
     proc: PathBuf,
     users: PathBuf,
     vpns: Vec<String>,
-    /// Whether the one-way controller sets the rates (src/live.rs), from
-    /// what the recorder writes in `record`, rather than the round trip's.
-    one_way: bool,
+    /// Where the recorder writes what the controller sets the rates from
+    /// (src/live.rs).
     record: PathBuf,
     /// Where a trial of how the upload finds its line may be written, by
     /// an account that may stop the shaper anyway (src/live.rs).
@@ -102,6 +116,10 @@ struct Options {
     /// Where each network's declared upload rate is written, its anchor,
     /// which the one-way controller's guard holds the upload near.
     networks: Option<PathBuf>,
+    /// Whether what each link receives is turned through its IFB even
+    /// while nothing limits the download, so a test can count what each
+    /// class received.
+    turn_download: bool,
 }
 
 /// Reads the flags `run`, `status` and `record` take, refusing any other
@@ -121,10 +139,10 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
         proc: "/proc".into(),
         users: "/run/user".into(),
         vpns: Vec::new(),
-        one_way: false,
         record: "/var/lib/shaper-record".into(),
         trial: "/run/shaper-trial/upload.json".into(),
         networks: None,
+        turn_download: std::env::var_os("SHAPER_TURN_DOWNLOAD").is_some(),
     };
     // A network of its own, a test's among them, names its own distant hosts.
     if let Ok(hosts) = std::env::var("SHAPER_HOSTS") {
@@ -147,15 +165,6 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
             "--record" => o.record = value()?.into(),
             "--trial" => o.trial = value()?.into(),
             "--networks" => o.networks = Some(value()?.into()),
-            "--controller" => match value()?.as_str() {
-                "one-way" => o.one_way = true,
-                "round-trip" => o.one_way = false,
-                other => {
-                    return Err(wrongly(format!(
-                        "--controller is round-trip or one-way, not {other}"
-                    )));
-                }
-            },
             "--vpns" => {
                 o.vpns = value()?
                     .split(',')
@@ -244,24 +253,45 @@ fn read_number(path: &Path) -> Option<u64> {
     fs::read_to_string(path).ok()?.trim().parse().ok()
 }
 
+/// How what a link receives comes in.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Download {
+    /// Turned through its IFB, because a limit holds it.
+    Turned,
+    /// Straight in, past its IFB, because nothing limits it.
+    Straight,
+    /// Turned through its IFB always, as `Options::turn_download` asks.
+    Kept,
+}
+
+impl Download {
+    fn straight(self) -> bool {
+        self == Self::Straight
+    }
+}
+
 /// One uplink being shaped.
 struct Shaped {
     uplink: links::Uplink,
     ifb: String,
     network: String,
-    controller: Controller,
+    /// What the link is held to each way.
+    up: Direction,
+    down: Direction,
+    /// The pings to distant hosts, and each one's quiet round trip.
     probes: Probes,
+    trips: trips::Trips,
     applied: (u64, u64),
-    counted: (u64, u64, Instant),
     state: State,
     /// The link whose rate this one takes, when both reach the same router.
     follows: Option<String>,
-    /// Whether the journal has been told of the connection's queue building now.
+    /// Whether the journal has been told of a spell of limits now.
     told: bool,
     /// Whether the spell told is held by a trial's ceiling alone, with
     /// nothing the controller judged holding it.
     ceiling: bool,
-    /// Whether a call's or a screen share's traffic crosses the link.
+    /// Whether a call's or a screen share's traffic crosses the link, and
+    /// whether it did at the last look.
     real_time: realtime::RealTime,
     /// What the upload's CAKE held when last read, and of the reads since
     /// the controller was last told, how many found a queue in it.
@@ -282,9 +312,8 @@ struct Shaped {
     drops: Option<u64>,
     dropped: u64,
     told_at: Option<Instant>,
-    /// Whether what the link receives goes straight in, past its IFB,
-    /// because nothing limits the download.
-    straight: bool,
+    /// How what the link receives comes in.
+    download: Download,
     /// The bytes the upload's CAKE had sent when last read, and when the
     /// controller was last told: what crossed the line, apart from the
     /// home network's traffic, which the link sends as well.
@@ -342,18 +371,12 @@ impl Shaped {
         self.split.vpn
     }
 
-    /// What the connection has carried each way, in bytes, as each
-    /// direction's CAKE counts it. The link's own counts take in copies to
-    /// this network's machines as well, which never cross the connection:
-    /// on 29 October they took a home upload's rate from 8 Mbit/s to 458
-    /// within three hours, on a connection carrying about 11, and a cut
-    /// could go no further under that than Wi-Fi's floor, so the queue
-    /// formed in the router behind every session's requests.
-    ///
-    /// The upload's CAKE is read for the queue it holds at the same time,
-    /// five times a second, so a moment's burst through it isn't taken
-    /// for a queue.
-    fn bytes(&mut self) -> (u64, u64) {
+    /// Reads the upload's CAKE: what it has sent, as CAKE counts it, since
+    /// the link's own counts take in copies to this network's machines,
+    /// which never cross the connection, and the queue it holds and what it
+    /// dropped. It is read five times a second, so a moment's burst through
+    /// it isn't taken for a queue.
+    fn read_upload(&mut self) {
         let read = |dev: &str| sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).ok();
         let up = read(&self.uplink.name);
         if let Some(now) = up.as_deref().and_then(qdisc::holding) {
@@ -366,12 +389,7 @@ impl Shaped {
         if let Some(now) = up.as_deref().and_then(qdisc::drops) {
             self.dropped += since(self.drops.replace(now), now);
         }
-        let sent = |json: Option<String>| {
-            json.and_then(|json| qdisc::shaped_bytes(&json))
-                .unwrap_or(0)
-        };
-        self.sent_bytes = sent(up);
-        (self.sent_bytes, sent(read(&self.ifb)))
+        self.sent_bytes = up.and_then(|json| qdisc::shaped_bytes(&json)).unwrap_or(0);
     }
 
     /// Whose the upload's queue has been since last asked: whether CAKE
@@ -391,17 +409,6 @@ impl Shaped {
             .map(|(s, then)| bytes_kbit(self.sent_bytes.saturating_sub(then), s));
         oneway::Ours::from_reads(link, vpn, wait, waiting, (resent, dropped))
             .map(|ours| oneway::Ours { sent, ..ours })
-    }
-
-    /// What the link sent and received since it was last counted, in
-    /// kbit/s.
-    fn carried(&mut self) -> (f64, f64) {
-        let (tx, rx) = self.bytes();
-        let (tx0, rx0, at) = self.counted;
-        let seconds = at.elapsed().as_secs_f64().max(0.001);
-        self.counted = (tx, rx, Instant::now());
-        let kbit = |now: u64, then: u64| float(now.saturating_sub(then)) * 8.0 / 1000.0 / seconds;
-        (kbit(tx, tx0), kbit(rx, rx0))
     }
 }
 
@@ -432,7 +439,17 @@ fn recording(folder: &Path) -> Result<(), Failure> {
             }) == Some(&uplink)
                 && router_of(&uplink).is_none_or(|router| router == network)
         };
-        record::record(&uplink.name, &network, gateway, folder, &still);
+        // The other links to the same router send over the same
+        // connection, so what they carry counts with this one's.
+        let beside = || {
+            uplinks()
+                .iter()
+                .filter(|u| u.name != uplink.name)
+                .filter(|u| router_of(u).is_some_and(|router| router == network))
+                .map(|u| u.name.clone())
+                .collect()
+        };
+        record::record(&uplink.name, &network, gateway, folder, (&still, &beside));
         thread::sleep(Duration::from_secs(2));
     }
 }
@@ -497,9 +514,12 @@ fn ceiling(link: &str) -> links::Ceiling {
     ))
 }
 
+/// Starts shaping an uplink: at the upload's rate its network's declared
+/// line holds it to, or else at what its upload learned, or else at
+/// `FIRST`, and at `FIRST`'s download, until the controller says more.
 fn start(
     uplink: links::Uplink,
-    (memory, learned, networks): (&Memory, Option<&Path>, Option<&Path>),
+    (learned, networks): (&Path, Option<&Path>),
     hosts: &[String],
     echoes: &std::sync::mpsc::Sender<Echo>,
 ) -> Option<Shaped> {
@@ -511,12 +531,12 @@ fn start(
     .ok()?;
     let ifb = qdisc::ifb(index);
     let network = network_of(&uplink);
-    let mut held = memory.get(&network).unwrap_or(FIRST);
-    // The one-way controller keeps what each network's upload learned, and
-    // this memory only what the older controller did: on 14 November a
-    // boot started at 15.4 Mbit/s, kept on 3 November, over a learned 10.1,
-    // and queued at the modem until a cut 2 s later.
-    if let Some(up) = learned.and_then(|kept| live::starting_up(kept, &network)) {
+    let mut held = FIRST;
+    // The rates the round trip's controller kept for each network, in
+    // connections.json, are no longer read: on 14 November a boot started
+    // at 15.4 Mbit/s, kept on 3 November, over a learned 10.1, and queued
+    // at the modem until a cut 2 s later.
+    if let Some(up) = live::starting_up(learned, &network) {
         held.up = up;
     }
     // A network whose line is declared starts at its hold, as its stay in
@@ -525,29 +545,21 @@ fn start(
         held.up = up;
     }
     let max = ceiling(&uplink.name);
-    // The kernel gives a Wi-Fi link a wireless folder of its own.
-    let wireless = Path::new("/sys/class/net")
-        .join(&uplink.name)
-        .join("wireless")
-        .is_dir();
-    let controller = Controller::new(
-        Settings::for_link(wireless),
-        Direction::new(
-            Bounds {
-                min: FLOOR.up,
-                max: max.up,
-            },
-            held.up,
-        ),
-        Direction::new(
-            Bounds {
-                min: FLOOR.down,
-                max: max.down,
-            },
-            held.down,
-        ),
+    let held_up = Direction::new(
+        Bounds {
+            min: FLOOR.up,
+            max: max.up,
+        },
+        held.up,
     );
-    let (up, down) = (controller.up.rate, controller.down.rate);
+    let held_down = Direction::new(
+        Bounds {
+            min: FLOOR.down,
+            max: max.down,
+        },
+        held.down,
+    );
+    let (up, down) = (held_up.rate, held_down.rate);
     let mut lanes = lanes::Lanes::default();
     let split = lanes.at(float(up));
     install(&uplink.name, &ifb, (up, &split), down, false);
@@ -560,10 +572,11 @@ fn start(
         uplink,
         ifb,
         network,
-        controller,
+        up: held_up,
+        down: held_down,
         probes,
+        trips: trips::Trips::default(),
         applied: (up, down),
-        counted: (0, 0, Instant::now()),
         state: State::Resting,
         follows: None,
         told: false,
@@ -577,7 +590,7 @@ fn start(
         drops: None,
         dropped: 0,
         told_at: None,
-        straight: false,
+        download: Download::Turned,
         sent_bytes: 0,
         sent_told: None,
         lanes,
@@ -585,8 +598,7 @@ fn start(
         split_at: None,
         straight_tins: qdisc::TinRates::default(),
     };
-    let (tx, rx) = shaped.bytes();
-    shaped.counted = (tx, rx, Instant::now());
+    shaped.read_upload();
     Some(shaped)
 }
 
@@ -772,7 +784,9 @@ fn started_live(options: &Options) -> live::Live {
 fn run(options: &Options) -> Result<(), Failure> {
     let _ = fs::create_dir_all(&options.state);
     let _ = fs::create_dir_all(&options.runtime);
-    let mut memory = Memory::open(&options.state);
+    // Where the round trip's controller kept each network's rates, which
+    // nothing reads now.
+    let _ = fs::remove_file(options.state.join("connections.json"));
     let (send, echoes): (_, Receiver<Echo>) = channel();
     let mut shaped: BTreeMap<String, Shaped> = BTreeMap::new();
     let began = Instant::now();
@@ -782,7 +796,6 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut first = first::Heed::default();
     let mut reach = classes::Local::default();
     let mut vpns = Vpns::default();
-    let mut last_kept = Instant::now();
     // Listing every process costs more than a step can spend, so the pi
     // sessions are found every few seconds, and whether each runs a typed
     // turn is read at every step.
@@ -793,7 +806,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut up_tins = qdisc::TinRates::default();
     let mut primary: Option<String> = None;
     let mut call = Call::default();
-    let mut live = options.one_way.then(|| started_live(options));
+    let mut live = started_live(options);
     // What the controller heard and held each second, which the
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
@@ -807,7 +820,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         }
         if last_look.is_none_or(|at| now - at >= Duration::from_secs(1)) {
             last_look = Some(now);
-            let order = look(&mut shaped, &mut memory, options, &send);
+            let order = look(&mut shaped, options, &send);
             follow_leaders(&mut shaped, &order);
             primary = order.first().cloned();
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
@@ -825,10 +838,14 @@ fn run(options: &Options) -> Result<(), Failure> {
             }
             reach = local(&shaped, &vpns.0);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
-            if let Some(l) = live.as_mut() {
-                l.tune(live::trial(&options.trial));
-                tell_live(l, options, &mut shaped, &vpns.0, (&mut last_resent, now));
-            }
+            live.tune(live::trial(&options.trial));
+            tell_live(
+                &mut live,
+                options,
+                &mut shaped,
+                &vpns.0,
+                (&mut last_resent, now),
+            );
         }
         // A slice or unit made a moment ago reaches its set at the next
         // step. nixos-rebuild loads the table afresh on a switch, empty, so
@@ -844,38 +861,32 @@ fn run(options: &Options) -> Result<(), Failure> {
         }
         while let Ok(echo) = echoes.try_recv() {
             if let Some(s) = shaped.get_mut(&echo.link) {
-                s.controller.sample(&echo.host, echo.rtt_ms);
+                s.trips.heard(&echo.host, echo.rtt_ms);
             }
         }
-        step_links(&mut shaped, live.as_mut(), t);
+        step_links(&mut shaped, &mut live);
         // A follower holds its leader's rates, so the two together stay
-        // under the one connection; its own controller only keeps its pings.
-        let rates: BTreeMap<String, (u64, u64)> = shaped
+        // under the one connection; its own pings still say its round trips.
+        // Its download goes straight in as its leader's does, since nothing
+        // limits the one connection's.
+        let rates: BTreeMap<String, (u64, u64, bool)> = shaped
             .iter()
-            .map(|(n, s)| (n.clone(), (s.controller.up.rate, s.controller.down.rate)))
+            .map(|(n, s)| (n.clone(), (s.up.rate, s.down.rate, s.download.straight())))
             .collect();
         for s in shaped.values_mut() {
-            if let Some((up, down)) = s.follows.as_ref().and_then(|l| rates.get(l)) {
-                s.controller.up.rate = *up;
-                s.controller.down.rate = *down;
+            if let Some(&(up, down, straight)) = s.follows.as_ref().and_then(|l| rates.get(l)) {
+                s.up.rate = up;
+                s.down.rate = down;
                 apply(s);
+                go_straight(s, straight);
             }
         }
-        if now - last_kept >= Duration::from_secs(60) {
-            last_kept = now;
-            for s in shaped.values_mut() {
-                keep(&mut memory, s);
-            }
-        }
-        let heard = live
-            .as_ref()
-            .and_then(live::Live::heard)
-            .map(|(link, mut h)| {
-                h.up_tins_kbit = up_tins.kbit();
-                (link, h)
-            });
+        let heard = live.heard().map(|(link, mut h)| {
+            h.up_tins_kbit = up_tins.kbit();
+            (link, h)
+        });
         write_status(&options.runtime, &shaped, heard.as_ref());
-        if let Some(line) = live.as_ref().and_then(live::Live::traced) {
+        if let Some(line) = live.traced() {
             traces.write(&line);
         }
         thread::sleep(STEP);
@@ -915,41 +926,34 @@ fn tell_live(
 ) {
     let waiting = waiting::read(&options.proc);
     let resent = resent_kbit(last_resent, waiting::resent(&options.proc), now);
-    for (name, s) in shaped {
+    let mut seen = BTreeMap::new();
+    for (name, s) in shaped.iter_mut() {
         if let Some(ours) = s.ours(waiting, resent, now) {
-            l.see(name, ours);
+            seen.insert(name.clone(), ours);
         }
+    }
+    let follows: BTreeMap<String, String> = shaped
+        .iter()
+        .filter_map(|(name, s)| s.follows.clone().map(|leader| (name.clone(), leader)))
+        .collect();
+    crossing(&mut seen, &follows);
+    for (name, ours) in seen {
+        l.see(&name, ours);
     }
     l.hear_vpn(vpns.keys().next().map(String::as_str));
 }
 
-/// Remembers what a link learned of its network's rates, each direction
-/// only if its own load taught it, keeping what memory holds for the other.
-fn keep(memory: &mut Memory, s: &mut Shaped) {
-    let c = &mut s.controller;
-    let (settings, up, down) = (&c.settings, &mut c.up, &mut c.down);
-    if !up.learned && !down.learned {
-        return;
+/// Adds what each follower's CAKE sent to its leader's: the two send over
+/// one connection, so what crossed it is what both sent.
+fn crossing(seen: &mut BTreeMap<String, oneway::Ours>, follows: &BTreeMap<String, String>) {
+    for (follower, leader) in follows {
+        let Some(sent) = seen.get(follower).and_then(|ours| ours.sent) else {
+            continue;
+        };
+        if let Some(total) = seen.get_mut(leader).and_then(|ours| ours.sent.as_mut()) {
+            *total += sent;
+        }
     }
-    let known = memory.get(&s.network).unwrap_or(Held {
-        up: up.remembered(settings),
-        down: down.remembered(settings),
-    });
-    let held = Held {
-        up: if up.learned {
-            up.remembered(settings)
-        } else {
-            known.up
-        },
-        down: if down.learned {
-            down.remembered(settings)
-        } else {
-            known.down
-        },
-    };
-    memory.put(&s.network, held);
-    up.learned = false;
-    down.learned = false;
 }
 
 /// What the shaper holds a VPN to each way, in kbit/s, the IFB its
@@ -1080,7 +1084,7 @@ fn follow_vpns(
         // Held under its tunnel's pace while it waits inside it, so the
         // queue stands in this CAKE; agents' direct lane borrows the rest.
         let held = vpn * lanes::VPN_HELD * s.vpn_share;
-        (rate::whole(held), s.applied.1, s.straight)
+        (rate::whole(held), s.applied.1, s.download.straight())
     });
     let carried = sh(&words(&format!(
         "nft -j list counter inet {TABLE} {}",
@@ -1158,7 +1162,6 @@ fn follow_vpns(
 /// uplinks in the routes' order, the first being the one VPNs ride.
 fn look(
     shaped: &mut BTreeMap<String, Shaped>,
-    memory: &mut Memory,
     options: &Options,
     send: &std::sync::mpsc::Sender<Echo>,
 ) -> Vec<String> {
@@ -1170,8 +1173,7 @@ fn look(
         .cloned()
         .collect();
     for name in gone {
-        if let Some(mut s) = shaped.remove(&name) {
-            keep(memory, &mut s);
+        if let Some(s) = shaped.remove(&name) {
             for command in qdisc::remove(&name, &s.ifb) {
                 let _ = sh(&command);
             }
@@ -1182,10 +1184,12 @@ fn look(
         match shaped.get_mut(&uplink.name) {
             None => {
                 let name = uplink.name.clone();
-                let learned = options.one_way.then(|| options.state.join("learned.json"));
-                let networks = options.networks.as_deref().filter(|_| options.one_way);
-                let kept = (&*memory, learned.as_deref(), networks);
-                if let Some(s) = start(uplink, kept, &options.hosts, send) {
+                let learned = options.state.join("learned.json");
+                let kept = (learned.as_path(), options.networks.as_deref());
+                if let Some(mut s) = start(uplink, kept, &options.hosts, send) {
+                    if options.turn_download {
+                        s.download = Download::Kept;
+                    }
                     shaped.insert(name, s);
                 }
             }
@@ -1194,19 +1198,19 @@ fn look(
                     .unwrap_or_default();
                 let ifb =
                     sh(&words(&format!("tc -j qdisc show dev {}", s.ifb))).unwrap_or_default();
-                let turned = s.straight || qdisc::turned(&json);
+                let turned = s.download.straight() || qdisc::turned(&json);
                 if !lanes::laned(&json) || !turned || !qdisc::ours(&ifb) {
                     eprintln!("{}'s queues were gone; putting them back", s.uplink.name);
                     s.holding = None;
-                    s.split = s.lanes.at(float(s.controller.up.rate));
+                    s.split = s.lanes.at(float(s.up.rate));
                     install(
                         &s.uplink.name,
                         &s.ifb,
-                        (s.controller.up.rate, &s.split),
-                        s.controller.down.rate,
-                        s.straight,
+                        (s.up.rate, &s.split),
+                        s.down.rate,
+                        s.download.straight(),
                     );
-                    s.applied = (s.controller.up.rate, s.controller.down.rate);
+                    s.applied = (s.up.rate, s.down.rate);
                 }
                 if !s.probes.running() {
                     s.probes = Probes::start(&s.uplink.name, &options.hosts, 0.3, send);
@@ -1215,8 +1219,8 @@ fn look(
                 // without the link going away: a desk's went from 100 Mbit/s
                 // to gigabit, and its rates stayed held under the old wire.
                 let max = ceiling(&s.uplink.name);
-                let up = s.controller.up.bound(max.up);
-                if s.controller.down.bound(max.down) || up {
+                let up = s.up.bound(max.up);
+                if s.down.bound(max.down) || up {
                     eprintln!(
                         "{}: the link's speed changed, so its rates are held under {} up and {} \
                          down",
@@ -1229,14 +1233,7 @@ fn look(
                 // so a link first named by itself learns its network later.
                 if s.network.starts_with("link ") || s.uplink.gateway != uplink.gateway {
                     s.uplink.gateway = uplink.gateway;
-                    let network = network_of(&s.uplink);
-                    if network != s.network {
-                        if let Some(held) = memory.get(&network) {
-                            s.controller.up = Direction::new(s.controller.up.bounds, held.up);
-                            s.controller.down = Direction::new(s.controller.down.bounds, held.down);
-                        }
-                        s.network = network;
-                    }
+                    s.network = network_of(&s.uplink);
                 }
             }
         }
@@ -1244,9 +1241,9 @@ fn look(
     order
 }
 
-/// Tells each link's controller whether real-time traffic crosses it, from
-/// the packets its video tins sent each way, and the journal when that
-/// changes.
+/// Follows whether real-time traffic crosses each link, from the packets
+/// its video tins sent each way, for its status, and tells the journal
+/// when that changes.
 fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
     for (name, s) in shaped {
         let packets = [&s.uplink.name, &s.ifb]
@@ -1256,84 +1253,54 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
                     .map_or(0, |json| qdisc::video_packets(&json))
             })
             .sum();
+        let was = s.real_time.flows();
         let live = s.real_time.count(packets, t);
-        if live != s.controller.live {
+        if live != was {
             if live {
-                eprintln!(
-                    "{name}: real-time traffic flows, so the connection's queue is kept here"
-                );
+                eprintln!("{name}: real-time traffic flows now");
             } else {
-                eprintln!(
-                    "{name}: no real-time traffic now, so the connection's whole rate is kept"
-                );
+                // Worded apart from the line it ends, which the VM tests
+                // look for.
+                eprintln!("{name}: the real-time traffic stopped");
             }
-            s.controller.live = live;
         }
     }
 }
 
-/// One step of an uplink's controller on what its connection carried, in
-/// kbit/s, applying its rates when they moved.
-fn step(s: &mut Shaped, t: f64, sent: f64, received: f64) {
-    let was = (s.controller.up.rate, s.controller.down.rate);
-    s.state = s.controller.step(t, sent, received);
-    tell(s, was, sent, received);
-    apply(s);
-    // The round trip's controller reads what came down from the IFB's
-    // CAKE, so its downloads always go through it.
-    go_straight(s, false);
-}
-
-/// One step of every uplink's controller, on what its connection carried:
-/// the round trip's, or with `live`, the one-way controller's.
-fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Live>, t: f64) {
-    // Every link is counted, followers too: their traffic crosses the
-    // leader's connection, and a leader blind to it reads the queue a
-    // download over Wi-Fi builds against an idle download, and cuts its
-    // upload.
-    let carried: BTreeMap<String, (f64, f64)> = shaped
-        .iter_mut()
-        .map(|(n, s)| (n.clone(), s.carried()))
-        .collect();
-    let follows: BTreeMap<String, String> = shaped
-        .iter()
-        .filter_map(|(n, s)| s.follows.clone().map(|l| (n.clone(), l)))
-        .collect();
+/// One step of the controller, `live`, over every uplink that leads its
+/// router: a follower takes its leader's rates after.
+fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: &mut live::Live) {
+    // Every link's upload CAKE is read, followers' too, for whose queue
+    // each is when the controller is next told (`Shaped::ours`).
+    for s in shaped.values_mut() {
+        s.read_upload();
+    }
     // The one-way controller holds the link the recorder follows; any
     // other goes at its whole rate, its traffic still sorted by CAKE.
-    let held = live.map(|l| {
-        // One moment for all three, after the poll reads what's new, so
-        // the rates, the reason and the VPN's share judge the recorder's
-        // silence alike.
-        let now = SystemTime::now();
-        let (link, rates) = match l.poll(now) {
-            Some((link, rates)) => (Some(link.to_string()), rates),
-            None => (None, replay::Rates::default()),
+    // One moment for all three, after the poll reads what's new, so the
+    // rates, the reason and the VPN's share judge the recorder's silence
+    // alike.
+    let now = SystemTime::now();
+    let (link, rates) = match live.poll(now) {
+        Some((link, rates)) => (Some(link.to_string()), rates),
+        None => (None, replay::Rates::default()),
+    };
+    let why = live.why(now);
+    let share = live.vpn_share(now);
+    for (name, s) in shaped.iter_mut().filter(|(_, s)| s.follows.is_none()) {
+        let held = link.as_deref() == Some(name.as_str());
+        // The VPN is held only while the upload is: a recorder gone
+        // silent lets both go, unless a trial's ceiling holds the
+        // upload, when the VPN has its whole share of it.
+        s.vpn_share = if held && rates.up.is_some() {
+            share
+        } else {
+            1.0
         };
-        let why = l.why(now);
-        let share = l.vpn_share(now);
-        (link, rates, why, share)
-    });
-    for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
-        if let Some(s) = shaped.get_mut(&name) {
-            // The VPN is held only while the upload is: a recorder gone
-            // silent lets both go, unless a trial's ceiling holds the
-            // upload, when the VPN has its whole share of it.
-            s.vpn_share = match &held {
-                Some((link, rates, _, share))
-                    if link.as_deref() == Some(name.as_str()) && rates.up.is_some() =>
-                {
-                    *share
-                }
-                _ => 1.0,
-            };
-            match &held {
-                None => step(s, t, sent, received),
-                Some((link, rates, why, _)) if link.as_deref() == Some(name.as_str()) => {
-                    hold(s, *rates, why);
-                }
-                Some(_) => hold(s, replay::Rates::default(), &why::Judged::Nothing),
-            }
+        if held {
+            hold(s, rates, &why);
+        } else {
+            hold(s, replay::Rates::default(), &why::Judged::Nothing);
         }
     }
 }
@@ -1344,12 +1311,12 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
 /// than of each second's cut.
 fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged) {
     let most = Held {
-        up: s.controller.up.bounds.max,
-        down: s.controller.down.bounds.max,
+        up: s.up.bounds.max,
+        down: s.down.bounds.max,
     };
     let spell = spell(&s.uplink.name, (s.told, s.ceiling), rates, most, why);
-    s.controller.up.rate = spell.held.up;
-    s.controller.down.rate = spell.held.down;
+    s.up.rate = spell.held.up;
+    s.down.rate = spell.held.down;
     if let Some(line) = &spell.said {
         eprintln!("{line}");
     }
@@ -1444,7 +1411,8 @@ fn spell(
 /// back through once a limit holds, after `apply` gave the IFB's CAKE its
 /// rate. `qdisc::unturn` says why.
 fn go_straight(s: &mut Shaped, straight: bool) {
-    if straight == s.straight {
+    let straight = straight && s.download != Download::Kept;
+    if straight == s.download.straight() {
         return;
     }
     let name = s.uplink.name.clone();
@@ -1461,7 +1429,11 @@ fn go_straight(s: &mut Shaped, straight: bool) {
         run_all(qdisc::turn(&name, &s.ifb))
     };
     if done {
-        s.straight = straight;
+        s.download = if straight {
+            Download::Straight
+        } else {
+            Download::Turned
+        };
         if straight {
             eprintln!("{name}: nothing limits the download, so it goes straight in");
         } else {
@@ -1470,58 +1442,10 @@ fn go_straight(s: &mut Shaped, straight: bool) {
     }
 }
 
-/// Tells the journal of each cut, and of a queue on the connection that
-/// builds while the shaper holds its rates, once a spell: a spike in a ping
-/// with neither in the journal was never the connection's queue, and a
-/// spike with only the second was one this machine doesn't fill, or
-/// couldn't cut yet. It
-/// tells of an old cut forgotten too, so a rate that jumps back is
-/// explained.
-fn tell(s: &mut Shaped, was: (u64, u64), sent: f64, received: f64) {
-    let name = &s.uplink.name;
-    let (up, down) = (s.controller.up.rate, s.controller.down.rate);
-    match s.state {
-        State::Cut => {
-            eprintln!(
-                "{name}: the connection's queue reached {:.0} ms; up {} to {}, down {} to {}",
-                s.controller.cut_level(),
-                mbit(was.0),
-                mbit(up),
-                mbit(was.1),
-                mbit(down)
-            );
-            s.told = true;
-        }
-        State::Holding if s.controller.building() && !s.told => {
-            eprintln!(
-                "{name}: the connection's queue is building and the rates hold: \
-                 up carries {:.0}% \
-                 of {}, down {:.0}% of {}",
-                sent / float(up.max(1)) * 100.0,
-                mbit(up),
-                received / float(down.max(1)) * 100.0,
-                mbit(down)
-            );
-            s.told = true;
-        }
-        State::Forgot => {
-            eprintln!(
-                "{name}: no cut for {:.0} minutes, so the connection's best is held again: \
-                 up {}, down {}",
-                s.controller.settings.forget_s / 60.0,
-                mbit(s.controller.up.held),
-                mbit(s.controller.down.held)
-            );
-        }
-        _ if !s.controller.building() => s.told = false,
-        _ => {}
-    }
-}
-
 /// Puts a link's rates on its queues when they moved by more than 1%.
 fn apply(s: &mut Shaped) {
     let moved = |a: u64, b: u64| a.abs_diff(b) * 100 > b;
-    let (up, down) = (s.controller.up.rate, s.controller.down.rate);
+    let (up, down) = (s.up.rate, s.down.rate);
     if moved(up, s.applied.0) {
         // The lanes move with the rate at once, so the classes never
         // promise more than it.
@@ -1545,10 +1469,8 @@ struct LinkStatus {
     network: String,
     up: u64,
     down: u64,
-    held_up: u64,
-    held_down: u64,
     state: String,
-    building: bool,
+    /// Each distant host's quiet round trip, in ms.
     baselines: Vec<(String, f64)>,
     #[serde(default)]
     follows: Option<String>,
@@ -1581,14 +1503,11 @@ fn write_status(
             network: s.network.clone(),
             up: s.applied.0,
             down: s.applied.1,
-            held_up: s.controller.up.held,
-            held_down: s.controller.down.held,
             state: format!("{:?}", s.state).to_lowercase(),
-            building: s.controller.building(),
-            baselines: s.controller.baselines(),
+            baselines: s.trips.quiet(),
             follows: s.follows.clone(),
-            live: s.controller.live,
-            straight: s.straight,
+            live: s.real_time.flows(),
+            straight: s.download.straight(),
             heard: heard
                 .filter(|(link, _)| *link == s.uplink.name)
                 .map(|(_, heard)| heard.clone()),
@@ -1700,6 +1619,31 @@ fn sweep(kept: &BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // On 18 November the rate test's uploads over a second link to the
+    // router crossed the connection without the first link's line hearing
+    // of them, so its controller never cut.
+    #[test]
+    fn a_follower_s_sending_crosses_its_leader_s_line() {
+        let sent = |kbit| oneway::Ours {
+            sent: Some(kbit),
+            ..oneway::Ours::default()
+        };
+        let mut seen = BTreeMap::from([
+            ("eth1".to_owned(), sent(300)),
+            ("eth2".to_owned(), sent(7_000)),
+            ("wlan0".to_owned(), sent(50)),
+        ]);
+        let follows = BTreeMap::from([("eth2".to_owned(), "eth1".to_owned())]);
+        crossing(&mut seen, &follows);
+        assert_eq!(seen["eth1"].sent, Some(7_300), "{seen:?}");
+        assert_eq!(seen["eth2"].sent, Some(7_000), "a follower keeps its own");
+        assert_eq!(
+            seen["wlan0"].sent,
+            Some(50),
+            "a link nobody follows keeps its own"
+        );
+    }
 
     /// A wired link's most, from its speed: 50 Mb/s up and 2 Gb/s down.
     const MOST: Held = Held {

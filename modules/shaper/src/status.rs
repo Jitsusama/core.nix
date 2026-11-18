@@ -78,27 +78,14 @@ fn said(link: &LinkStatus) -> Vec<String> {
     if let Some(leader) = &link.follows {
         say(format!("at {leader}'s rate: both reach the same router"));
     }
-    // Said only while it holds: a quiet connection needs no line saying so.
-    if link.building && link.follows.is_none() {
-        say("the connection's queue is building, so the shaper is slowing".to_owned());
-    }
     if link.live {
-        say("real-time traffic flows, so the connection's queue is kept here".to_owned());
+        say("real-time traffic flows: a call's or a screen share's".to_owned());
     }
-    // The one-way controller sets the rate where it runs, and the older
-    // one's held rates stay where it started, so on 14 November the
-    // status said 15.4 Mbit/s was held up while 9.9 was the line found.
     let found = link.heard.as_ref().and_then(|heard| heard.plateau);
     if let Some(plateau) = found {
         say(format!(
             "the upload's line, found under load: {}",
             mbit(whole(plateau))
-        ));
-    } else if link.follows.is_none() {
-        say(format!(
-            "held under load: up {}, down {}",
-            mbit(link.held_up),
-            mbit(link.held_down)
         ));
     }
     let pings: Vec<String> = link
