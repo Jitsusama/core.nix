@@ -15,6 +15,8 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ../calls/Cargo.toml
+      ../calls/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

@@ -1,6 +1,7 @@
 //! The faults health sees itself, rather than hears: the lid reading
-//! wrong and a disk guard gone quiet, each counted once until it clears,
-//! through a start and across midnight.
+//! wrong, a disk guard gone quiet and a machine whose calls go unseen,
+//! each counted once until it clears, through a start and across
+//! midnight.
 
 use super::*;
 
@@ -236,5 +237,51 @@ fn a_disk_guard_that_stopped_is_a_services_fault_once() {
         read(into.path(), "2026-11-12").disks.filesystems["/"].least_free,
         10,
         "a restart lost the day's least free space"
+    );
+}
+
+#[test]
+fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let unseen = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
+    follower.see_unseen_calls(unseen(&["skiff", "dinghy"]), NOON);
+    follower.see_unseen_calls(unseen(&["skiff", "dinghy"]), NOON + 30_000_000);
+    follower.see_unseen_calls(unseen(&["skiff"]), NOON + 60_000_000);
+    follower.write().expect("the day is written");
+    let day = read(into.path(), "2026-11-12");
+    let errors = |day: &Day, name: &str| day.things.get(name).map(|thing| thing.errors);
+    assert_eq!(
+        (errors(&day, "skiff"), errors(&day, "dinghy")),
+        (Some(1), Some(1)),
+        "each unseen machine wasn't one fault while it stayed unseen"
+    );
+    assert_eq!(
+        day.things["skiff"].kind,
+        Some(Kind::Services),
+        "an unseen machine isn't a service's fault"
+    );
+    let said: Vec<&str> = day.things["skiff"]
+        .signatures
+        .values()
+        .map(|said| said.example.as_str())
+        .collect();
+    assert_eq!(said, [CALL_UNSEEN], "said the way Joel reads it");
+
+    // A restart keeps what's still unseen, so it isn't counted again.
+    let mut again = Follower::new("2026-11-12", into.path(), TimeZone::UTC).resuming(day);
+    again.see_unseen_calls(unseen(&["skiff"]), NOON + 90_000_000);
+    assert_eq!(
+        errors(&again.day, "skiff"),
+        Some(1),
+        "a restart counted again a machine still unseen"
+    );
+
+    // dinghy, seen again since, counts again once it's unseen again.
+    again.see_unseen_calls(unseen(&["skiff", "dinghy"]), NOON + 120_000_000);
+    assert_eq!(
+        errors(&again.day, "dinghy"),
+        Some(2),
+        "a machine unseen again wasn't counted again"
     );
 }
