@@ -70,7 +70,7 @@ pub(super) fn bringing(kind: &Kind) -> String {
         // `true` rather than `:`, which a shell that isn't interactive
         // exits on when its redirection fails, as a special builtin.
         r#"names="$work.back"
-lose() {{ for path in {paths}; do printf '%s\t%s\n' - "$path"; done; }}
+lose() {{ for path in {paths}; do [ -e "$path" ] && printf '%s\t%s\n' - "$path"; done; }}
 if true > "$names" && true > "$names.lost"; then
 for path in {paths}; do
   [ -e "$path" ] || continue

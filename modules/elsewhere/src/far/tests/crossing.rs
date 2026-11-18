@@ -54,24 +54,26 @@ fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
             matches!(&landed, Err(Missed::Lost(why)) if why.contains("out didn't come back")),
             "a {step} that failed passed what it lost as whole: {landed:?}"
         );
-        // What a find listed before it stopped still lands.
-        assert!(
-            step == "sort" || home.join("near/out/a").exists(),
-            "what the find listed before it stopped didn't land"
+        // What a find listed before it stopped still lands, and nothing a
+        // failed sort said is trusted.
+        assert_eq!(
+            home.join("near/out/a").exists(),
+            step == "find",
+            "what the {step} listed before it failed was landed wrongly"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
 }
 
 #[test]
-fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path() {
+fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path_it_made() {
     let mut kind = kind("");
-    kind.brings_back = vec!["out".into()];
+    kind.brings_back = vec!["out".into(), "logs".into(), "gone".into()];
     // A folder where the far line lists its names, so it can't.
     let (code, err, home) = far_line(
         "1\tx\nend\n",
         &[("x", "x")],
-        "mkdir \"$PWD.back\" out && printf a > out/a",
+        "mkdir \"$PWD.back\" out logs && printf a > out/a",
         &kind,
         None,
         &[],
@@ -79,8 +81,12 @@ fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path() {
     assert_eq!(code, Some(0), "the job didn't run: {err}");
     let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
     assert!(
-        matches!(&landed, Err(Missed::Lost(why)) if why.contains("out didn't come back")),
-        "names that couldn't be listed passed as none to bring back: {landed:?}"
+        matches!(&landed, Err(Missed::Lost(why)) if why.starts_with("out, logs didn't come back")),
+        "names that couldn't be listed weren't each lost, or one never made was: {landed:?}"
+    );
+    assert!(
+        !home.join("near/out/a").exists(),
+        "a file landed though its names were never listed"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

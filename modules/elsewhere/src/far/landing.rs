@@ -6,8 +6,10 @@
 
 use super::MARK;
 use std::collections::HashSet;
+use std::ffi::c_int;
 use std::fs;
 use std::io;
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -60,7 +62,7 @@ pub(super) fn land(from: &Path, into: &Path, swept: &mut HashSet<PathBuf>) -> io
     let (landing, mut to) = landing_name(parent, bits)?;
     let landed = held(&to)
         .and_then(|()| io::copy(&mut source, &mut to))
-        .and_then(|_| kept(&to))
+        .and_then(|_| synced(&to))
         .and_then(|()| fs::rename(&landing, into));
     landed.inspect_err(|_| {
         // What's left would be in the person's folder; it's spent anyway.
@@ -70,15 +72,23 @@ pub(super) fn land(from: &Path, into: &Path, swept: &mut HashSet<PathBuf>) -> io
 
 /// Asks the folder to keep what was written to `to`, since a network
 /// folder may say it is full, or past a quota, only then, and a close that
-/// is dropped never hears it. Not on Apple's systems, where a sync flushes
-/// the drive's own cache (`F_FULLFSYNC`): one a file makes a large
-/// bring-back crawl, and some network folders refuse it outright, which
-/// would fail every landing.
-fn kept(to: &fs::File) -> io::Result<()> {
-    if cfg!(target_vendor = "apple") {
-        Ok(())
-    } else {
-        to.sync_data()
+/// is dropped never hears it. `fsync` itself rather than std's sync, which
+/// on Apple's systems is `F_FULLFSYNC`, a flush of the drive's own cache
+/// besides: one a file makes a large bring-back crawl, and some network
+/// folders refuse it outright, which would fail every landing.
+fn synced(to: &fs::File) -> io::Result<()> {
+    unsafe extern "C" {
+        fn fsync(fd: c_int) -> c_int;
+    }
+    loop {
+        // Safe: the descriptor is `to`'s own, open for as long as it's lent.
+        if unsafe { fsync(to.as_raw_fd()) } == 0 {
+            return Ok(());
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
     }
 }
 
