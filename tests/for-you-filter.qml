@@ -23,6 +23,7 @@ QtObject {
     // and for-you:source entries, beside one of another place's.
     readonly property var names: ({
             "for-you:kind:do": "To-Dos",
+            "for-you:kind:agent": "Agents Asking",
             "for-you:kind:look": "To Look At",
             "for-you:kind:try": "To Try",
             "for-you:source:mail": "Mail",
@@ -40,7 +41,7 @@ QtObject {
     readonly property var items: [
         "a:do:needs-you", "b:look:mail", "c:look:slack", "d:try:sessions", "e:look:mail",
         "f:notice:slack", "g:notice:mail", "h:notice:desktop", "i:notice:home-network",
-        "j:look:looks"
+        "j:look:looks", "k:agent:sessions"
     ].map(one => {
         const [key, kind, source] = one.split(":");
         return { key, kind: "thing", forYou: { kind, source } };
@@ -72,7 +73,11 @@ QtObject {
             ["two words narrow to both", "mail look", "b e", "Mail · To Look At"],
             ["in either order, the source said first", "look mail", "b e", "Mail · To Look At"],
             ["typed in capitals", "Mail LOOK", "b e", "Mail · To Look At"],
-            ["a source the words don't know, by its id", "sessions", "d", "Sessions"],
+            ["a source the words don't know, by its id", "sessions", "d k", "Sessions"],
+            // What agents ask, as Agents Asking holds it, never among the
+            // to-dos (Joel, 2026-11-18 10:18).
+            ["what agents ask is its own kind", "agent", "k", "Agents Asking"],
+            ["and no to-do", "do", "a", "To-Dos"],
             ["and an id of parts, each begun in capitals", "home-network", "i", "Home Network"],
             ["a source the words know, with nothing now, is an empty step", "calendar", "",
                 "Calendar"],
@@ -112,8 +117,8 @@ QtObject {
 
         // Only sources present are offered, so never the calendar here.
         // Nor a source of one kind alone, which its kind already reaches.
-        const everything = "do 1, look 4, try 1, desktop 1, home-network 1, mail 3, sessions 1, "
-            + "slack 2";
+        const everything = "do 1, agent 1, look 4, try 1, desktop 1, home-network 1, mail 3, "
+            + "sessions 2, slack 2";
         // [what, what's typed after `:filter`, what Tab offers]
         const tabs = [
             ["kinds in their bands' order, then sources A to Z by name, each with its count",
@@ -128,7 +133,8 @@ QtObject {
             check(failures, what, offers(Filter.offered(items, arg, said)), offered);
         check(failures, "each offer is named as the head names it, with the field it fills",
             Filter.offered(items, "", said).map(one => `${one.value}:${one.field}:${one.note}`)
-                .join(", "), "do:kind:To-Dos, look:kind:To Look At, try:kind:To Try, "
+                .join(", "), "do:kind:To-Dos, agent:kind:Agents Asking, "
+                + "look:kind:To Look At, try:kind:To Try, "
                 + "desktop:source:Desktop, home-network:source:Home Network, "
                 + "mail:source:Mail, sessions:source:Sessions, slack:source:Slack");
         // Every offer wears a mark: a kind its own, a source its own or its
@@ -138,7 +144,7 @@ QtObject {
             Filter.offered(items, "", said).map(one => {
                 const mark = Filter.markOf(one);
                 return `${one.value} ${mark.glyph ?? `program:${mark.program}`}`;
-            }).join(", "), "do waitsOnJoel, look look, try toTry, desktop desktop, "
+            }).join(", "), "do waitsOnJoel, agent agent, look look, try toTry, desktop desktop, "
                 + "home-network forYou, mail mail, sessions agent, slack program:slack");
 
         // Two sources alike by name keep the order they came, and A to Z

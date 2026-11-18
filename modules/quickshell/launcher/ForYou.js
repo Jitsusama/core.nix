@@ -123,11 +123,13 @@ const OWN_ROWS = ["look", "try", "read"];
 // The kinds never lifted however long they've waited, as they ask nothing of Joel: a look
 // only to see (VKCF3Z, 2026-11-12).
 const NEVER_LIFTED = ["read"];
-// The kinds always gathered in a row of their own, ahead of what else needs
-// Joel now, however they press: what agents ask of him, which stood loose
-// among the to-dos (Joel, 2026-11-18 10:18: "they are all loose amongst
-// other things properly categorized, it is confusing").
+// The kinds gathered in a row of their own among what needs Joel now, once
+// two or more ask, standing where the heaviest weighs: what agents ask,
+// which stood loose among the to-dos (Joel, 2026-11-18 10:18: "they are all
+// loose amongst other things properly categorized, it is confusing"). One
+// alone stands as itself, so Super+O, Return, Return still reaches it.
 const GATHERED = ["agent"];
+const GATHERED_FROM = 2;
 
 // Whether a thing needs Joel now, whatever its kind, as a critical notice
 // is lifted over the rest: it blocks a session, or its deadline (`due`,
@@ -138,13 +140,14 @@ function pressingBy(thing, now, due) {
 
 // The band a thing of a kind stands in: a to-do, or anything pressing,
 // among what needs Joel now, `now`; a look or a thing to try otherwise in
-// its kind's own row, `look` or `try`; what an agent asks always in `agent`.
+// its kind's own row, `look` or `try`; what an agent asks in `agent`.
 function bandBy(kind, thing, now, due) {
     return NEVER_LIFTED.includes(kind) || GATHERED.includes(kind)
         || OWN_ROWS.includes(kind) && !pressingBy(thing, now, due) ? kind : "now";
 }
 
-// For You's items in their bands, { now, agent, look, try, read }, each item
+// For You's items in their bands, { now, agent, look, try, read }, and
+// `agentAt`, where in `now` Agents Asking stands, each item
 // { kind, thing } with whatever else its caller keeps, and given its
 // `weight`. Each band is heaviest first, those alike the oldest first,
 // then in the order they came (VKCF3Z, 2026-11-09). Each item's times are
@@ -162,8 +165,12 @@ function banded(items, now) {
         bands[band].push({ at, since: times.since, item: Object.assign({}, item,
             { weight: weighBy(item.thing, now, times).weight }) });
     }
-    return { now: inOrder(bands.now), agent: inOrder(bands.agent), look: inOrder(bands.look),
-        try: inOrder(bands.try), read: inOrder(bands.read) };
+    const gathers = bands.agent.length >= GATHERED_FROM;
+    const asked = gathers ? inOrder(bands.agent) : [];
+    const lead = inOrder(gathers ? bands.now : bands.now.concat(bands.agent));
+    const lighter = lead.findIndex(item => item.weight < (asked[0]?.weight ?? 0));
+    return { now: lead, agent: asked, agentAt: lighter < 0 ? lead.length : lighter,
+        look: inOrder(bands.look), try: inOrder(bands.try), read: inOrder(bands.read) };
 }
 
 // The moment after `now` when time alone next lifts one of `items` into

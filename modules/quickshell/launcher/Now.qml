@@ -1746,7 +1746,7 @@ Provider {
         ];
         const row = member(Object.assign({}, made, {
             key: key,
-            forYou: { kind: "do", source: "sessions" },
+            forYou: { kind: "agent", source: "sessions" },
             // Its Return is stepping in, not Agents' own act on the session.
             returns: null,
             verb: "more",
@@ -1857,7 +1857,7 @@ Provider {
         const count = answers.choices.length;
         const row = member(Object.assign({}, made, {
             key: key,
-            forYou: { kind: "do", source: "sessions" },
+            forYou: { kind: "agent", source: "sessions" },
             side: count === 1 ? said.answerOne ?? ""
                 : filledIn(said.answer ?? "", { count: String(count) }),
             drawer: () => ({
@@ -1894,7 +1894,7 @@ Provider {
             make: () => provider.toReopen
         }]).concat((provider.source("agents") ? sessions : [])
         .map(session => ({
-            // Gathered in Agents Asking, ahead of the rest (ForYou.js).
+            // Gathered in Agents Asking once two ask (ForYou.js).
             kind: "agent",
             thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
             make: () => {
@@ -2006,9 +2006,10 @@ Provider {
     // leads by its order (VKCF3Z, 2026-11-09).
     // Kept while it holds the same rows, each kept as it is (kindsKept).
     // Agents Asking is such a row too, gathering what agents ask of Joel,
-    // though each needs him now, so it leads them, its mark in the hue of
-    // what it holds rather than muted (Joel, 2026-11-18 10:18: "they are
-    // all loose amongst other things properly categorized").
+    // though each needs him now, so it stands among what does where its
+    // heaviest weighs, its mark in the hue of what it holds rather than
+    // muted (Joel, 2026-11-18 10:18: "they are all loose amongst other
+    // things properly categorized").
     function kindRow(kind, rows) {
         if (rows.length === 0)
             return [];
@@ -2055,7 +2056,9 @@ Provider {
             delete itemsNow[identity];
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
-        const rows = kindRow("agent", bandRows(bands.agent, now)).concat(bandRows(bands.now, now),
+        const rows = bandRows(bands.now.slice(0, bands.agentAt), now).concat(
+            kindRow("agent", bandRows(bands.agent, now)),
+            bandRows(bands.now.slice(bands.agentAt), now),
             kindRow("look", bandRows(bands.look, now)),
             kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
             latelyRows(now),
@@ -2075,7 +2078,8 @@ Provider {
     function filterable() {
         const now = Date.now();
         const bands = bandsAt(now);
-        return bandRows(bands.agent, now).concat(bandRows(bands.now, now),
+        return bandRows(bands.now.slice(0, bands.agentAt), now).concat(
+            bandRows(bands.agent, now), bandRows(bands.now.slice(bands.agentAt), now),
             bandRows(bands.look, now),
             bandRows(bands.try, now), bandRows(bands.read, now), latelyRows(now));
     }

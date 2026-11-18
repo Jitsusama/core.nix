@@ -11,8 +11,10 @@
 .pragma library
 .import "Order.js" as Order
 
-// The kinds a filter names, in the order For You's bands are designed in.
-const KINDS = ["do", "look", "try"];
+// The kinds a filter names, in the order For You's bands are designed in:
+// `agent` is what agents ask, so :filter agent holds what Agents Asking
+// does, and :filter do none of it.
+const KINDS = ["do", "agent", "look", "try"];
 // For You's own sources that give it one kind alone, so they're no source
 // to filter by: their kind already reaches them, and typed, each answers as
 // it (VKCF3Z, 2026-11-08). Every other source is the world's.
@@ -36,7 +38,7 @@ const SOURCE_ID = "for-you:source:";
 // table doesn't know wears For You's own tray, never the to-do's, which
 // would read as a to-do (VKCF3Z, 2026-11-08).
 const MARKS = {
-    kind: { do: "waitsOnJoel", look: "look", try: "toTry" },
+    kind: { do: "waitsOnJoel", agent: "agent", look: "look", try: "toTry" },
     source: { mail: "mail", calendar: "calendar", desktop: "desktop", sessions: "agent",
         pineapple: "stopped" }
 };

@@ -1021,15 +1021,23 @@ ShellRoot {
         const heldFirst = forYou();
         expect("For You holds the session, the to-dos and To Look At", keys(heldFirst)
             === JSON.stringify(["on:waiting:Say Yes", "on:waiting:Sign In",
-                "on:waiting:want:WANTB", agentsAsking, "on:waitingOnYou:kind:look"]),
-            keys(heldFirst));
-        // Agents Asking leads, and the session stands in it alone, never
-        // loose among the to-dos (Joel, 2026-11-18 10:18).
+                "on:waiting:want:WANTB", "on:waitingOnYou:kind:look"]), keys(heldFirst));
+        // Two asking stand together in Agents Asking, never loose among the
+        // to-dos (Joel, 2026-11-18 10:18), ahead of them, since each blocks
+        // its session, in the hue of what it holds and counting them; one
+        // alone stood as itself, above.
+        Sessions.wanting = Sessions.wanting.concat([{ address: "WANTC", title: "Session C",
+            presence: { session: "s-c", addresses: [], wants: { kind: "question",
+                said: "Which?" } } }]);
         const led = now.waiting.verbs();
-        expect("Agents Asking leads For You, holding the session", led[0]?.key === agentsAsking
-            && led.every(row => row.key !== "on:waiting:want:WANTB")
-            && led[0].verbs().map(row => row.key).join() === "on:waiting:want:WANTB",
-            JSON.stringify(led.map(row => row.key)));
+        const gathered = led[0]?.verbs?.() ?? [];
+        expect("two asking lead For You in Agents Asking, in its hue, counted",
+            led[0]?.key === agentsAsking && gathered.length === 2
+                && led.every(row => !row.key.startsWith("on:waiting:want:"))
+                && led[0].hue === (gathered[0].hue ?? "") && led[0].hue !== "muted"
+                && led[0].side === "2",
+            JSON.stringify(led.map(row => `${row.key} ${row.hue} ${row.side}`)));
+        Sessions.wanting = Sessions.wanting.slice(0, 1);
         const same = (rows, from) => rows.length === from.length
             && rows.every((row, at) => row === from[at]);
         let forYouBefore = now.tally.rows;
@@ -1340,7 +1348,8 @@ ShellRoot {
         const does = act => !putOff(act)
             && (typeof act.run === "function" || typeof act.given === "function");
         const served = { "on:waiting:want:WANTH": 2, "on:waiting:want:WANTI": 1 };
-        const doing = forYou().filter(row => row.forYou?.kind === "do");
+        // What agents ask is Joel's to do as well, though its own kind.
+        const doing = forYou().filter(row => ["do", "agent"].includes(row.forYou?.kind));
         // What each row lacks, so a red run says which half went missing.
         const lacks = doing.map(row => {
             const inside = typeof row.verbs === "function" ? row.verbs() : [];
