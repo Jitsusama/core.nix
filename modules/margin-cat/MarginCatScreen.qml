@@ -303,7 +303,7 @@ PanelWindow {
             sat = wanted;
             under = column;
             if (reshaped)
-                walkFrom(true, fallsYet() ? closedSaw : saw);
+                walkFrom(true, saw);
             else
                 place = there;
         } else if (going !== null && wanted === goingTo) {
@@ -334,8 +334,9 @@ PanelWindow {
         return going === null ? sat : goingTo;
     }
 
-    // Whether the window it sat on closed under it a moment ago, with
-    // nothing moved yet, so the next change of its column is that close's.
+    // Whether the window it sat on closed under it a moment ago, and it
+    // hasn't walked off since, so the next change of its column, or of its
+    // walk's target, is that close's.
     function fallsYet(): bool {
         return closedOn !== null && Date.now() - closedAt < MarginCat.CLOSING;
     }
@@ -366,6 +367,14 @@ PanelWindow {
         if (place === null || to === null)
             return;
         const tiles = tilesOf(space?.id);
+        const heard = MarginCat.closeHeard({
+            on: closedOn,
+            at: closedAt,
+            saw: closedSaw,
+            gone: standsOn() !== null && Niri.windows[standsOn()] === undefined,
+            stands: standsOn(),
+            seen: saw
+        }, Date.now());
         const plan = Paths.walk({ x: place.x, y: place.y }, { x: to.x, y: to.y }, {
             cell,
             ratio,
@@ -379,15 +388,15 @@ PanelWindow {
             facing: stepped?.facing ?? 0,
             height: modelData.height,
             cols: Paths.columns(tiles, 0),
-            before: saw ? Paths.columns(saw, 0) : null,
+            before: heard.before ? Paths.columns(heard.before, 0) : null,
             floats: Floats.of(tiles, 0),
-            floated: saw ? Floats.of(saw, 0) : [],
+            floated: heard.before ? Floats.of(heard.before, 0) : [],
             spring: Theme.motion.spring,
-            // The window it stands on gone, until it sits again.
-            closed: fallsYet()
-                || (standsOn() !== null && Niri.windows[standsOn()] === undefined),
+            // The window it stands on gone, until it sits again, or
+            // closed a moment ago (MarginCat.closeHeard).
+            closed: heard.closed,
             // Gone too where the window over it has grown over it first.
-            on: fallsYet() ? closedOn : standsOn(),
+            on: heard.on,
             ahead: MarginCat.behind(frameMs, "resize"),
             // As far into a window's growth over it as niri says it is.
             grows: MarginCat.behindResize(frameMs, Tiles.resizing(Niri.windows, space?.id)),
@@ -396,7 +405,7 @@ PanelWindow {
         });
         goingTo = wanted;
         under = column;
-        if (plan !== null || !fallsYet())
+        if (!fallsYet())
             closedOn = null;
         if (plan === null) {
             halt();
@@ -429,6 +438,8 @@ PanelWindow {
     function moveTo(way: int): void {
         landedOn = null;
         halt();
+        // A close is owned only by the walks it set going.
+        closedOn = null;
         resting.stop();
         leaving.stop();
         movingTo = null;
@@ -760,6 +771,7 @@ PanelWindow {
         if (place === null || moving !== null)
             return;
         halt();
+        closedOn = null;
         resting.stop();
         leaving.stop();
         endStroll();
@@ -828,6 +840,7 @@ PanelWindow {
     function plays(playing: var): void {
         if (playing === null)
             return;
+        closedOn = null;
         roams = null;
         landedOn = null;
         shown = [];
@@ -900,6 +913,7 @@ PanelWindow {
             if (window.there !== null || window.emptied)
                 return;
             window.halt();
+            window.closedOn = null;
             window.endStroll();
             resting.stop();
             window.sat = window.wanted;
@@ -932,6 +946,8 @@ PanelWindow {
                     window.yarnKept = true;
                 window.tell(kind ?? "walk");
                 window.halt();
+                // Off the window that closed under it, the close is done.
+                window.closedOn = null;
                 window.sat = window.goingTo;
                 // Where its walk took it, which is its seat unless the keys
                 // went elsewhere on the way, whose seat it walks to once

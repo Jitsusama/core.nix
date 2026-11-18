@@ -220,7 +220,8 @@ function drops(way, cols, at) {
     }
     const inWindow = within(way, cols, at);
     const bottom = inWindow === null ? closedUnder(way, at) : inWindow.row.bottom;
-    if (bottom === null || (inWindow !== null && inWindow.row.top > way.y)) {
+    const over = inWindow !== null && inWindow.row.top <= way.y && !risen(inWindow.row, at);
+    if (bottom === null || (inWindow !== null && !over)) {
         return false;
     }
     // Not yet grown over it, it lands on what's under it now: niri may
@@ -245,6 +246,20 @@ function drops(way, cols, at) {
     Ways.holds(way, "lands", MarginCat.LANDS);
     Ways.holds(way, "shakes", SHAKES);
     return true;
+}
+
+// Whether `row` has risen since `before`: the row below moved up into
+// the closed one's place, partway down the fall, rather than a window
+// grown down over it, so it is shoved up onto that row's top, never
+// through its face to the floor (a council's trace, 2026-11-17).
+function risen(row, at) {
+    for (const column of at.before ?? []) {
+        const was = column.rows.find(one => one.id !== undefined && one.id === row.id);
+        if (was !== undefined) {
+            return was.top > row.top + 0.5;
+        }
+    }
+    return false;
 }
 
 // Where the row it stood on (`at.on`) reached down to, as it was
