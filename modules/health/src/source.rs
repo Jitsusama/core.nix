@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
-use std::io::{self, BufRead as _, BufReader};
+use std::io::{self, BufRead as _, BufReader, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, ExitStatus, Output, Stdio};
 use std::sync::OnceLock;
@@ -606,7 +606,7 @@ fn warn(words: &str) {
 
 /// Say `words` on stderr as a failure (`as_marked`): what health ends
 /// on, its own error line saying only that a follower ended or couldn't
-/// start.
+/// start, and a day it can't write, which it runs on through for a time.
 pub(crate) fn fail(words: &str) {
     say_marked(words, ERROR);
 }
@@ -620,7 +620,9 @@ const ERROR: u8 = 3;
 fn say_marked(words: &str, mark: u8) {
     static JOURNAL: OnceLock<bool> = OnceLock::new();
     let journal = *JOURNAL.get_or_init(|| terminal_kit::Environment::here().journal);
-    eprintln!("{}", as_marked(words, journal, mark));
+    // A Mac's stderr is a log file, which a full disk can't take, and
+    // `eprintln!` would panic on it, ending health every few seconds.
+    let _ = writeln!(io::stderr().lock(), "{}", as_marked(words, journal, mark));
 }
 
 /// `words` as the journal reads them at `mark`, where stderr is the

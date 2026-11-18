@@ -36,20 +36,30 @@ use crate::typing;
 /// nothing.
 const EVERY: Duration = Duration::from_secs(30);
 
-/// How long health runs before a follower's end ends it, for systemd or
-/// launchd to start it again with every follower and the day read again,
-/// which hears what went unheard meanwhile that day, short of a start
-/// that falls past midnight, which reads only the new day. Followers that
-/// end at every start then cost a replay of the day every ten minutes,
-/// rather than one every few seconds. The faults health saw itself, such
+/// How long health runs before a follower's end, or a line lost to a day
+/// it couldn't write, ends it, for systemd or launchd to start it again
+/// with every follower and the day read again, which hears what went
+/// unheard meanwhile that day, short of a start that falls past midnight,
+/// which reads only the new day. Followers that end at every start then
+/// cost a replay of the day every ten minutes, rather than one every few
+/// seconds. The faults health saw itself, such
 /// as a lid reading wrong, are kept through each start (`Day::resume`).
 pub const SETTLED: Duration = Duration::from_mins(10);
+
+/// How long health tries to write a day it can't before it ends to start
+/// again, for a write that more room won't fix, such as a folder it may
+/// no longer write, so it shows in health's restarts and costs a replay
+/// an hour rather than keeping one day for ever.
+const GIVES_UP: Duration = Duration::from_hours(1);
 
 /// The day being tallied, and where it's written.
 pub struct Follower {
     source: Source,
     day: Day,
     changed: bool,
+    // The last write failed, so a new day's line waits for the next
+    // tick's try rather than serializing the whole day again for each.
+    write_failed: bool,
     into: PathBuf,
     zone: TimeZone,
     ends: BTreeMap<String, i64>,
@@ -91,6 +101,7 @@ impl Follower {
             source: Source::Journal,
             day: Day::new(date),
             changed: false,
+            write_failed: false,
             into: into.to_owned(),
             zone,
             ends: BTreeMap::new(),
@@ -412,13 +423,17 @@ impl Follower {
     ///
     /// # Errors
     ///
-    /// When the finished day can't be written.
+    /// When the finished day can't be written, or a write of it has just
+    /// failed, which only `write` tries again.
     pub fn take(&mut self, line: &str) -> io::Result<()> {
         let Some(entry) = self.source.parse(line) else {
             return Ok(());
         };
         let date = date_of(entry.at, &self.zone);
         if date > self.day.date {
+            if self.write_failed {
+                return Err(io::Error::other("the day it ends is still unwritten"));
+            }
             self.write()?;
             let read = std::mem::take(&mut self.day.read);
             self.day = Day::new(&date);
@@ -445,7 +460,9 @@ impl Follower {
         if !self.changed {
             return Ok(());
         }
-        write_day(&self.day, &self.into)?;
+        let written = write_day(&self.day, &self.into);
+        self.write_failed = written.is_err();
+        written?;
         self.changed = false;
         Ok(())
     }
@@ -502,8 +519,9 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
 ///
 /// # Errors
 ///
-/// When a follower has ended or its followers couldn't start, no sooner than
-/// `SETTLED` after health started, or the day can't be written.
+/// When a follower has ended, its followers couldn't start or a line was
+/// lost, no sooner than `SETTLED` after health started and once the day
+/// is written, or when the day can't be written as health ends.
 pub fn follow(into: &Path) -> io::Result<()> {
     let source = Source::here();
     let zone = TimeZone::system();
@@ -563,7 +581,14 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let (lines, read) = mpsc::channel();
     let ended = ended_by(source.start(&now, &lines), &lines, crate::source::fail);
     drop(lines);
-    run(&mut follower, &read, Instant::now, thread::sleep, lid::look)?;
+    run(
+        &mut follower,
+        &read,
+        Instant::now,
+        thread::sleep,
+        lid::look,
+        &crate::source::fail,
+    )?;
     Err(ended)
 }
 
@@ -604,27 +629,56 @@ fn ended_by(
 /// and once nothing can be, health `wait`s out the rest, still looking
 /// every half minute. What went unheard that day is heard from the day's
 /// replay once health starts again.
+///
+/// A day that can't be written, as on a full disk, is said through `say`
+/// once a spell and written again every half minute, and health runs on
+/// until it can be, keeping the day, for as long as `GIVES_UP`: starting
+/// again frees no room, and a start past midnight would lose the old
+/// day's end. A new day's lines can't be taken meanwhile, so such a lost
+/// line ends health as a follower's end does, once the day is written,
+/// for the replay to hear it. Most of what the ticks see meanwhile, such
+/// as the disk guard's and memory's readings, is dated the new day and
+/// so kept in neither.
+///
+/// # Errors
+///
+/// When a new day's line went untaken, the day can't be written as health
+/// ends, or it gave up writing it.
 fn run(
     follower: &mut Follower,
     read: &Receiver<Option<String>>,
     mut now: impl FnMut() -> Instant,
     mut wait: impl FnMut(Duration),
     mut look: impl FnMut() -> Looked,
+    say: &dyn Fn(&str),
 ) -> io::Result<()> {
     let started = now();
     let mut ticked = started;
     let mut ended = false;
     let mut hearing = true;
+    // Since when the day couldn't be written, while it can't.
+    let mut failing = None;
+    let mut lost = None;
+    let mut gave_up;
     loop {
         let at = now();
         let ran = at.saturating_duration_since(started);
-        if ended && ran >= SETTLED {
+        gave_up = failing.is_some_and(|since| at.saturating_duration_since(since) >= GIVES_UP);
+        if ((ended && failing.is_none()) || gave_up) && ran >= SETTLED {
             break;
         }
         let left = EVERY.saturating_sub(at.saturating_duration_since(ticked));
         if hearing {
             match read.recv_timeout(left) {
-                Ok(Some(line)) => follower.take(&line)?,
+                Ok(Some(line)) => {
+                    // Only a new day's line writes, so a line taken without
+                    // one leaves the write's failure as it was.
+                    if let Err(error) = follower.take(&line) {
+                        failing = unwritten(Some(&error), failing, at, &follower.into, say);
+                        ended = true;
+                        lost.get_or_insert(error);
+                    }
+                }
                 Ok(None) => ended = true,
                 Err(RecvTimeoutError::Timeout) => {}
                 // Every sender is gone, so nothing more can be heard.
@@ -634,7 +688,15 @@ fn run(
                 }
             }
         } else {
-            wait(left.min(SETTLED.saturating_sub(ran)));
+            // Past `SETTLED`, only a day still unwritten keeps health
+            // here, and the next try is the next tick's, so it never
+            // waits nothing and spins.
+            let settles = SETTLED.saturating_sub(ran);
+            wait(if settles.is_zero() {
+                left
+            } else {
+                left.min(settles)
+            });
         }
         let at = now();
         if at.saturating_duration_since(ticked) >= EVERY {
@@ -650,10 +712,57 @@ fn run(
             follower.time_typing();
             follower.pool_keys();
             follower.hear(SESSIONS_A_TICK);
-            follower.write()?;
+            let written = follower.write();
+            failing = unwritten(written.err().as_ref(), failing, at, &follower.into, say);
         }
     }
-    follower.write()
+    let written = follower.write();
+    // A start that gave up says so, whatever its last try came to.
+    if gave_up {
+        return Err(io::Error::other(format!(
+            "health gave up writing the day after {} minutes of trying",
+            GIVES_UP.as_secs() / 60
+        )));
+    }
+    written.map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!("the day couldn't be written as health ended: {error}"),
+        )
+    })?;
+    lost.map_or(Ok(()), |error: io::Error| {
+        Err(io::Error::new(
+            error.kind(),
+            format!(
+                "a new day's line went untaken while the day couldn't be written, for the \
+                 replay to hear: {error}"
+            ),
+        ))
+    })
+}
+
+/// Since when the day has been left unwritten, given the write's `error`
+/// at `at`, if any, and since when it was. The first failure of a spell
+/// is said through `say`, naming the folder `into`, since the next half
+/// minute's will most likely say the same.
+fn unwritten(
+    error: Option<&io::Error>,
+    since: Option<Instant>,
+    at: Instant,
+    into: &Path,
+    say: &dyn Fn(&str),
+) -> Option<Instant> {
+    let error = error?;
+    if since.is_none() {
+        say(&format!(
+            "health: can't write the day into {}: {error}, so it keeps the day and tries again \
+             every half minute for up to {} minutes; a new day's lines that come meanwhile are \
+             heard at health's next start",
+            into.display(),
+            GIVES_UP.as_secs() / 60
+        ));
+    }
+    Some(since.unwrap_or(at))
 }
 
 // The tests keep a file of their own, follow/tests.rs, so the follower
