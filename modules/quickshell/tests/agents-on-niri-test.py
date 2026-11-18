@@ -545,10 +545,10 @@ def test_a_talk_left_in_normal_opens_typing_after_its_last_letter(shell: Shell) 
 def test_a_talk_left_after_i_opens_typing_where_i_took_it(shell: Shell) -> None:
     """A talk left in insert by i, nothing typed, opens again typing before the letter it rests on.
 
-    i goes into insert without moving the caret, so only the save as the mode changes keeps
-    it; without it, Escape's keeps it after the letter ("hix" rather than "hxi"). The shell
+    Escape keeps the caret insert left from, after the letter, so i, back in insert where normal
+    rests, must keep its own caret rather than that one ("hxi" rather than "hix"). The shell
     starts again with the talk open, as at a switch, since a shutting launcher leaves insert
-    through normal and keeps the same caret again.
+    through normal and keeps Escape's caret again.
     """
     found(shell, "listening quest", "Listening Quest")
     shell.send_key("ret")
