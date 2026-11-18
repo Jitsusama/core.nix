@@ -5015,7 +5015,9 @@
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate
     setting, names its file for the camera, made a plain file name, and removes it when the node
     goes or the watch is stopped; a holder's name is one printable line, and only a unit in its
-    cgroup is left out
+    cgroup is left out; and while it streams, the watch says every ten seconds the frames a second
+    uvcvideo counted it giving, those sent broken, its format and its controls, under the names
+    v4l2-ctl gives them, asking V4L2 by the kernel's own call numbers
   '';
   v4l2loopback-holders-passes-clippy = ''
     clippy finds nothing in the cameras' holders watcher or its tests

@@ -27,6 +27,9 @@
 //! programs that only look at a camera, such as `PipeWire`'s, open it for a
 //! moment as it comes; while anyone holds it, it looks once a second, as
 //! the stream shows only in sysfs, which says nothing when it changes.
+//! While a USB camera streams, it also says in its log, every ten seconds,
+//! how: the format and frame rate asked for, the frames the camera gave,
+//! and its controls (src/record.rs says how).
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
 //! holds costs nothing. Its help, its failures and its exits take the
@@ -34,6 +37,8 @@
 
 mod camera;
 mod holders;
+mod record;
+mod v4l2;
 mod wait;
 
 use std::collections::{BTreeSet, HashSet};
@@ -44,6 +49,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use record::Record;
 use terminal_kit::{Exit, Failure, Help};
 use wait::{Events, Woken};
 
@@ -52,12 +58,14 @@ struct Options {
     units: Vec<String>,
     usb: bool,
     sysfs: PathBuf,
+    debugfs: PathBuf,
     source: PathBuf,
     output: PathBuf,
 }
 
 /// What it says it is, does and ends with, as `--help` shows it. Its
-/// tests' `--sysfs PATH`, where sysfs is, goes unnamed.
+/// tests' `--sysfs PATH` and `--debugfs PATH`, where those are, go
+/// unnamed.
 fn help() -> Help {
     Help::new("loopback-holders", "says who has a camera open, in a file")
         .example(
@@ -85,8 +93,9 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
     let mut card = None;
     let mut units = Vec::new();
     let mut usb = false;
-    // Where sysfs is, for the tests.
+    // Where sysfs and debugfs are, for the tests.
     let mut sysfs = PathBuf::from("/sys");
+    let mut debugfs = PathBuf::from("/sys/kernel/debug");
     let mut places = Vec::new();
     while let Some(argument) = arguments.next() {
         let mut value = || {
@@ -98,6 +107,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
             "--card" => card = Some(value()?),
             "--ignore-unit" => units.push(value()?),
             "--sysfs" => sysfs = PathBuf::from(value()?),
+            "--debugfs" => debugfs = PathBuf::from(value()?),
             "--usb" => usb = true,
             option if option.starts_with('-') => {
                 return Err(wrongly(format!("{option} isn't a flag it takes")));
@@ -114,6 +124,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
         units,
         usb,
         sysfs,
+        debugfs,
         source,
         output,
     })
@@ -182,13 +193,15 @@ enum Ended {
 }
 
 /// Says who holds the node until it goes. With sysfs, the node is a USB
-/// camera's, named only while it streams.
+/// camera's, named only while it streams, and with a record, said in the
+/// log as it does.
 fn watch(
     events: &mut Events,
     node: &Path,
     output: &Path,
     units: &[String],
     sysfs: Option<&Path>,
+    mut record: Option<&mut Record>,
 ) -> Ended {
     if let Err(error) = events.watch(node) {
         eprintln!("can't watch {}: {error}", node.display());
@@ -216,6 +229,12 @@ fn watch(
         };
         let anyone = !names.is_empty();
         let shown = listed(names, sysfs, node);
+        if let Some(record) = record.as_deref_mut() {
+            let streaming: Vec<String> = shown.iter().cloned().collect();
+            if let Some(line) = record.now(node, &streaming) {
+                println!("{line}");
+            }
+        }
         if said.as_ref() != Some(&shown) {
             if let Err(error) = write(output, &shown) {
                 eprintln!("{}: {error}", output.display());
@@ -244,7 +263,15 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
         .because(format!("{}: {error}", node.display()))
     })?;
     tidy(&output);
-    watch(events, &node, &output, &options.units, Some(&options.sysfs));
+    let mut record = Record::new(&options.sysfs, &options.debugfs);
+    watch(
+        events,
+        &node,
+        &output,
+        &options.units,
+        Some(&options.sysfs),
+        Some(&mut record),
+    );
     match fs::remove_file(&output) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(Failure::new(
             Exit::Failed,
@@ -278,7 +305,7 @@ fn loopback(events: &mut Events, options: &Options) {
             continue;
         };
         gone = false;
-        let ended = watch(events, &node, &options.output, &options.units, None);
+        let ended = watch(events, &node, &options.output, &options.units, None, None);
         say_nobody();
         if let Ended::Stopped = ended {
             return;
@@ -392,6 +419,7 @@ mod tests {
         assert_eq!(read.units, ["a.service", "b.service"]);
         assert!(!read.usb);
         assert_eq!(read.sysfs, Path::new("/sys"));
+        assert_eq!(read.debugfs, Path::new("/sys/kernel/debug"));
         assert_eq!(
             (read.source.as_path(), read.output.as_path()),
             (Path::new("/run/d"), Path::new("/run/o"))

@@ -129,13 +129,18 @@ pub mod tests {
             let root = scratch(test);
             let sysfs = root.join("sys");
             let usb = sysfs.join("devices/usb2/2-1");
-            for (interface, class, sub) in [
-                ("2-1:1.0", "0e", "01"),
-                ("2-1:1.1", "0e", "02"),
-                ("2-1:1.4", "01", "02"),
+            // Its bus and its number on it, as uvcvideo names its counts.
+            fs::create_dir_all(&usb).unwrap();
+            fs::write(usb.join("busnum"), "2\n").unwrap();
+            fs::write(usb.join("devnum"), "7\n").unwrap();
+            for (interface, class, sub, number) in [
+                ("2-1:1.0", "0e", "01", "00"),
+                ("2-1:1.1", "0e", "02", "01"),
+                ("2-1:1.4", "01", "02", "04"),
             ] {
                 let folder = usb.join(interface);
                 fs::create_dir_all(&folder).unwrap();
+                fs::write(folder.join("bInterfaceNumber"), format!("{number}\n")).unwrap();
                 fs::write(folder.join("bInterfaceClass"), format!("{class}\n")).unwrap();
                 fs::write(folder.join("bInterfaceSubClass"), format!("{sub}\n")).unwrap();
                 fs::write(folder.join("bAlternateSetting"), " 0\n").unwrap();
