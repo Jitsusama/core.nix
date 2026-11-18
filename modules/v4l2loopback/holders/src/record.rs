@@ -195,8 +195,11 @@ pub struct Gave {
 /// What the camera says it was asked for, without streaming from it.
 #[derive(Default)]
 pub struct Asked {
-    pub format: Option<v4l2::Format>,
-    pub rate: Option<f64>,
+    /// Each left out when it isn't asked, as once the stream has stopped,
+    /// and why it's unknown when it couldn't be read, so a call that stops
+    /// reaching the camera shows in the line.
+    pub format: Option<Result<v4l2::Format, String>>,
+    pub rate: Option<Result<f64, String>>,
     pub controls: v4l2::Controls,
 }
 
@@ -213,15 +216,27 @@ pub fn line(
     let mut said = named(holders);
     match asked {
         Ok(asked) => {
-            if let Some(format) = &asked.format {
-                let _ = write!(
-                    said,
-                    "; {} {}x{}",
-                    format.pixels, format.width, format.height
-                );
+            match &asked.format {
+                Some(Ok(format)) => {
+                    let _ = write!(
+                        said,
+                        "; {} {}x{}",
+                        format.pixels, format.width, format.height
+                    );
+                }
+                Some(Err(why)) => {
+                    let _ = write!(said, "; format unknown: {why}");
+                }
+                None => {}
             }
-            if let Some(rate) = asked.rate {
-                let _ = write!(said, " at {rate:.1} fps asked");
+            match &asked.rate {
+                Some(Ok(rate)) => {
+                    let _ = write!(said, " at {rate:.1} fps asked");
+                }
+                Some(Err(why)) => {
+                    let _ = write!(said, "; rate unknown: {why}");
+                }
+                None => {}
             }
         }
         Err(why) => {
@@ -387,8 +402,8 @@ impl Record {
             },
         };
         let asked = Asked {
-            format: v4l2::format(file).ok(),
-            rate: v4l2::asked_rate(file).ok(),
+            format: Some(v4l2::format(file).map_err(|error| error.to_string())),
+            rate: Some(v4l2::asked_rate(file).map_err(|error| error.to_string())),
             controls: v4l2::controls(file, &mut self.unanswered),
         };
         Some(line(holders, Ok(&asked), &gave))
@@ -508,12 +523,12 @@ mod tests {
     #[test]
     fn the_line_says_who_streams_how_and_what_the_camera_gave() {
         let asked = Asked {
-            format: Some(v4l2::Format {
+            format: Some(Ok(v4l2::Format {
                 pixels: "MJPG".to_owned(),
                 width: 1920,
                 height: 1080,
-            }),
-            rate: Some(30.0),
+            })),
+            rate: Some(Ok(30.0)),
             controls: v4l2::Controls {
                 values: vec![
                     v4l2::Value {
@@ -601,6 +616,28 @@ mod tests {
         (camera, stats.join("stats"), record)
     }
 
+    /// What a node that answers no V4L2 call is said to have been asked.
+    const UNASKED: &str = "; format unknown: Inappropriate ioctl for device (os error 25); \
+                           rate unknown: Inappropriate ioctl for device (os error 25)";
+
+    #[test]
+    fn a_stream_with_no_count_found_is_said_to_end_all_the_same() {
+        let (camera, _, mut record) = streaming("record-uncounted-end");
+        // A node sysfs doesn't know has no streaming interface to count.
+        let unknown = camera.root.join("dev/video9");
+        let holders = ["chrome".to_owned()];
+        let start = Instant::now();
+        assert_eq!(record.at(start, &unknown, &holders), None);
+        assert_eq!(
+            record
+                .at(start + Duration::from_secs(2), &unknown, &[])
+                .as_deref(),
+            Some(
+                "streams to \"chrome\"; gave unknown: uvcvideo's count wasn't found; then stopped"
+            )
+        );
+    }
+
     fn count(stats: &Path, frames: u64, errors: u64) {
         let text = format!("frames:  {frames}\nerrors:  {errors}\ninvalid: 0\n");
         fs::write(stats, text).unwrap();
@@ -618,10 +655,13 @@ mod tests {
         assert_eq!(record.at(soon, &camera.node, &holders), None);
         count(&stats, 160, 2);
         let later = start + Duration::from_secs(12);
-        // The stand-in node is a folder, which answers no V4L2 call.
+        // The stand-in node is a folder, which answers no V4L2 call, and
+        // the line says so.
         assert_eq!(
-            record.at(later, &camera.node, &holders).as_deref(),
-            Some("streams to \"chrome\"; gave 12.5 fps, 2 packets in error")
+            record.at(later, &camera.node, &holders),
+            Some(format!(
+                "streams to \"chrome\"{UNASKED}; gave 12.5 fps, 2 packets in error"
+            ))
         );
         assert!(record.stream.file.is_some(), "the node isn't held");
         count(&stats, 190, 2);
@@ -647,8 +687,10 @@ mod tests {
         assert_eq!(record.at(soon, &camera.node, &holders), None);
         count(&stats, 300, 0);
         assert_eq!(
-            record.at(again + EVERY, &camera.node, &holders).as_deref(),
-            Some("streams to \"chrome\"; gave 30.0 fps, 0 packets in error")
+            record.at(again + EVERY, &camera.node, &holders),
+            Some(format!(
+                "streams to \"chrome\"{UNASKED}; gave 30.0 fps, 0 packets in error"
+            ))
         );
     }
 
@@ -680,8 +722,10 @@ mod tests {
         assert_eq!(record.at(again, &camera.node, &holders), None);
         count(&stats, 310, 0);
         assert_eq!(
-            record.at(again + EVERY, &camera.node, &holders).as_deref(),
-            Some("streams to \"chrome\"; gave 30.0 fps, 0 packets in error")
+            record.at(again + EVERY, &camera.node, &holders),
+            Some(format!(
+                "streams to \"chrome\"{UNASKED}; gave 30.0 fps, 0 packets in error"
+            ))
         );
     }
 

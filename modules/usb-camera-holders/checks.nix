@@ -15,12 +15,14 @@ onLinux {
   # allows the clock's device and no other, and PrivateDevices would hide
   # the camera, every line then saying it can't ask it. Every policy lets
   # through what DeviceAllow names, so none is refused. An entry's access
-  # is its last word, and one without it grants all three of r, w and m.
+  # is its last word, spaces around it aside, and one without it grants all
+  # three of r, w and m.
   usb-camera-holders-may-open-the-camera =
     let
       unit = graphical.config.systemd.services."usb-camera-holders@".serviceConfig;
       allowed = lib.toList (unit.DeviceAllow or [ ]);
-      access = entry: lib.last ([ "rwm" ] ++ lib.tail (lib.splitString " " entry));
+      words = entry: lib.filter (word: word != "") (lib.splitString " " entry);
+      access = entry: lib.last ([ "rwm" ] ++ lib.tail (words entry));
       writes = entry: lib.hasInfix "w" (access entry) || lib.hasInfix "m" (access entry);
       hidden = unit.PrivateDevices or false;
     in

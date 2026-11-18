@@ -339,23 +339,23 @@ mod tests {
         const EPIPE: i32 = 32;
         const EIO: i32 = 5;
         let error = io::Error::from_raw_os_error;
-        assert!(unanswering(&error(ETIMEDOUT)));
-        for refused in [EBUSY, EPIPE, EIO, EINVAL] {
-            assert!(!unanswering(&error(refused)), "{refused}");
-        }
+        let kept: Vec<bool> = [ETIMEDOUT, EBUSY, EPIPE, EIO, EINVAL]
+            .map(|code| unanswering(&error(code)))
+            .into();
+        assert_eq!(kept, [true, false, false, false, false]);
     }
 
     #[test]
     fn the_list_ends_with_einval_or_a_node_that_isnt_v4l2s_and_is_cut_short_else() {
         let error = io::Error::from_raw_os_error;
-        assert!(ends_the_list(&error(EINVAL)));
-        assert!(ends_the_list(&error(ENOTTY)));
-        assert!(!ends_the_list(&error(110)));
-        assert!(!ends_the_list(&error(5)));
+        let ends: Vec<bool> = [EINVAL, ENOTTY, 110, 5]
+            .map(|code| ends_the_list(&error(code)))
+            .into();
+        assert_eq!(ends, [true, true, false, false]);
         // /dev/full is no V4L2 node: it has no controls, and isn't cut short.
         let full = File::open("/dev/full").unwrap();
         let controls = controls(&full, &mut BTreeSet::new());
-        assert!(controls.values.is_empty());
+        assert_eq!(controls.values.len(), 0);
         assert_eq!(controls.cut_short, None);
     }
 
@@ -365,7 +365,7 @@ mod tests {
         let full = File::open("/dev/full").unwrap();
         let mut unanswered = BTreeSet::from([NEXT]);
         let controls = controls(&full, &mut unanswered);
-        assert!(controls.values.is_empty());
+        assert_eq!(controls.values.len(), 0);
         assert_eq!(
             controls.cut_short.as_deref(),
             Some("the next control was unanswered")

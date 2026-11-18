@@ -176,8 +176,9 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
 
 #[test]
 fn while_the_camera_streams_its_log_says_what_it_gave() {
-    // /dev/full stands in for the camera's node: nothing else holds it.
-    let mut watch = Watch::on("record", Some(Path::new("/dev/full")));
+    // /dev/zero stands in for the camera's node: nothing else holds it,
+    // while the other test's watch holds /dev/full.
+    let mut watch = Watch::on("record", Some(Path::new("/dev/zero")));
     watch.until_there(true, "no file while the camera's there");
     watch.count(0);
     // This test holds the camera, and it streams.
@@ -198,6 +199,9 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
                 .and_then(|(rate, _)| rate.parse().ok())
                 .unwrap_or_else(|| panic!("{line}"));
             assert!((25.0..=30.0).contains(&rate), "{line}");
+            // The camera was asked: /dev/zero answers it isn't V4L2's.
+            let asked = "; format unknown: Inappropriate ioctl for device (os error 25)";
+            assert!(line.contains(asked), "{line}");
             // Stopped mid-stream, it says the stream's end as it goes.
             watch.stop();
             assert_eq!(watch.ended(), Some(0));
@@ -228,6 +232,11 @@ fn a_log_that_takes_no_write_doesnt_stop_the_watch() {
     drop(held);
     fs::write(&watch.streaming, " 0\n").unwrap();
     watch.until_named(false, "the watch no longer follows the camera");
+    // A stop's line, always said, comes after the file is written, so only
+    // a watch that lived through it names the next stream.
+    let _held = File::open(&watch.node).unwrap();
+    fs::write(&watch.streaming, " 1\n").unwrap();
+    watch.until_named(true, "the watch didn't live through its stop line");
 }
 
 #[test]

@@ -293,9 +293,14 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     );
     // A stream the watch ends during has its last seconds said too, since
     // a camera dropping off mid-call is what the record is for.
-    let then = match ended {
-        Ended::Gone => "the camera went",
-        Ended::Stopped => "the watch stopped",
+    // An unplugged camera's unit is stopped as its device goes, often
+    // before the watch has seen the node go, so a stop finding the node
+    // gone is the camera going.
+    let gone = matches!(ended, Ended::Gone) || !node.exists();
+    let then = if gone {
+        "the camera went"
+    } else {
+        "the watch stopped"
     };
     if let Some(line) = record.ended(then) {
         say(&line);
