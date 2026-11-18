@@ -19,8 +19,9 @@ impl Shared {
     /// those that changed and the keys that went, and, on a line of its
     /// own as the shell's Daemon.qml reads it, how the sources stand once
     /// that changes. A paced watch is told how the sources stand at once
-    /// too, and holds back the keys that moved until its pace is up, or
-    /// until a record new to it comes, which is told at once with them. A
+    /// too, and holds back the keys that moved until its pace is up, until
+    /// a record new to it comes, which is told at once with them, or until
+    /// the sources stand anew, when they're told on the line before. A
     /// connection whose lines aren't being read is hung up on, and its
     /// watches dropped, rather than told less than it asked for.
     ///

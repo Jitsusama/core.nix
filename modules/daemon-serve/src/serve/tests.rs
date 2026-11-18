@@ -692,10 +692,10 @@ fn a_paced_watch_is_told_what_it_held_back_before_how_the_sources_stand() {
         vec![row("agents", "O", "harbour")],
         json!({"niri": "answering"}),
     );
-    // niri hanging up and coming back: a watcher told its sources answer
-    // again takes what it holds as current, so what was held back for
-    // the pace comes first, or a record that moved meanwhile stays stale
-    // for a whole pace (ISXEG8, 2026-11-18).
+    // niri hanging up: a watcher told how its sources stand takes what it
+    // holds as current for them, so what was held back for the pace comes
+    // first, or a record that moved meanwhile stays stale for a whole pace
+    // (ISXEG8, 2026-11-18). Answering again goes the same path.
     shared.change(
         vec![row("agents", "O", "harbour")],
         json!({"niri": "starting"}),
@@ -710,6 +710,27 @@ fn a_paced_watch_is_told_what_it_held_back_before_how_the_sources_stand() {
         client.heard(),
         json!({"id": "all", "sources": {"niri": "starting"}}),
         "then how the sources stand"
+    );
+    // What was told isn't held back again: the next move waits its pace,
+    // so the sources standing anew tell it alone, once.
+    shared.change(
+        vec![row("agents", "O", "tide")],
+        json!({"niri": "starting"}),
+    );
+    shared.change(
+        vec![row("agents", "O", "tide")],
+        json!({"niri": "answering"}),
+    );
+    let again = client.heard();
+    assert_eq!(
+        &again["changed"],
+        &json!([row("agents", "O", "tide")]),
+        "the flush told something twice or lost the next move: {again}"
+    );
+    assert_eq!(
+        client.heard(),
+        json!({"id": "all", "sources": {"niri": "answering"}}),
+        "niri answering again tells its line after what moved"
     );
 }
 
