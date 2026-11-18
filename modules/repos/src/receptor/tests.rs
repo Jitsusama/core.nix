@@ -393,6 +393,14 @@ fn a_read_that_failed_names_no_changes_so_mycelium_keeps_those_it_had() {
         elsewhere.contains(&"kestrel-co/tool#12".to_owned()),
         "another realm's unread repository stopped this realm's naming: {elsewhere:?}"
     );
+    // The owner is declared Kestrel-Co, but GitHub spells it kestrel-co,
+    // and mycelium takes an item only of an owner it was told as spelled.
+    assert!(
+        elsewhere
+            .windows(2)
+            .any(|pair| pair == ["--owner", "kestrel-co"]),
+        "the owner the item spells wasn't said, so mycelium would refuse it: {elsewhere:?}"
+    );
 }
 
 #[test]
@@ -423,6 +431,8 @@ fn a_change_mycelium_would_refuse_is_left_out_and_no_more_are_named_than_it_keep
         ("github:kestrel-co/a tool", "kestrel-co/a tool", 3),
         ("github:kestrel-co/moved", "osprey/moved", 7),
         ("github:kestrel-co/other", "kestrel-co/other", 0),
+        ("github:kestrel-co/-tool", "kestrel-co/-tool", 4),
+        ("github:kestrel-co/..", "kestrel-co/..", 5),
     ];
     let mut changes: Vec<(&str, Vec<Change>)> = refused
         .iter()
@@ -438,6 +448,18 @@ fn a_change_mycelium_would_refuse_is_left_out_and_no_more_are_named_than_it_keep
         github.url = "https://github.com/kestrel-co/other/issues/8".to_owned();
     }
     changes[2].1.push(issue);
+    // Links that aren't this pull request's own: another number, and a
+    // page beneath it.
+    for (number, url) in [
+        (6, "https://github.com/kestrel-co/other/pull/60"),
+        (2, "https://github.com/kestrel-co/other/pull/2/files"),
+    ] {
+        let mut elsewhere = numbered("kestrel-co/other", number, change("else", NOW, &["jsama"]));
+        if let Some(github) = elsewhere.github.as_mut() {
+            github.url = url.to_owned();
+        }
+        changes[2].1.push(elsewhere);
+    }
     changes.push((
         "github:kestrel-co/tool",
         (1..=250)

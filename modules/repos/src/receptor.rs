@@ -179,13 +179,22 @@ fn spelled(url: &str, number: u64) -> Option<String> {
     sound.then(|| format!("{owner}/{name}#{number}"))
 }
 
-/// Whether `word` is an owner or a repository name as mycelium takes one.
+/// Whether `word` is an owner or a repository name as mycelium takes one:
+/// its letters, at most [`LONGEST_NAME`] of them and not dots alone. One
+/// opening with a dash is refused too, since mycelium would read it as a
+/// flag of its own and refuse the counts with it.
 fn named(word: &str) -> bool {
     !word.is_empty()
+        && word.len() <= LONGEST_NAME
+        && !word.starts_with('-')
+        && word.bytes().any(|letter| letter != b'.')
         && word
             .bytes()
             .all(|letter| letter.is_ascii_alphanumeric() || b"-_.".contains(&letter))
 }
+
+/// The longest owner or repository name mycelium takes.
+const LONGEST_NAME: usize = 100;
 
 /// How many there are, as mycelium counts.
 fn count<T>(items: impl Iterator<Item = T>) -> u64 {
