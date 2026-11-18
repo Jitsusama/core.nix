@@ -63,6 +63,7 @@
   "launcher/Standing.js"
   "launcher/Steady.js"
   "launcher/Joined.js"
+  "launcher/Held.js"
   "launcher/RowsKept.js"
   "launcher/Order.js"
   "launcher/Shared.js"

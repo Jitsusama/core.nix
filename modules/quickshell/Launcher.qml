@@ -77,6 +77,7 @@ import "launcher/Flash.js" as Flash
 import "launcher/Spots.js" as Spots
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
+import "launcher/Held.js" as Held
 import "launcher/Joined.js" as Joined
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
@@ -2565,7 +2566,11 @@ Scope {
             // What it belongs to leads, as a session ranked flat says whom
             // it's under, the depth that showed it gone (Agents.qml), and its
             // noun only where no kind says it (Rank.gatheredSide).
-            const gathered = Object.assign({}, best, {
+            // What the launcher gives the row is said in `foundAs` too, so
+            // a step held in it keeps these over the source's row as it is
+            // now, and nothing else the row held then (Held.js's own).
+            // Never `given`, which says a row asks for words.
+            const foundAs = {
                 side: Rank.gatheredSide(best.belongs ?? "", found.length, noun,
                     kindOf(best) !== ""),
                 chip: noun,
@@ -2580,20 +2585,21 @@ Scope {
                 tier: Rank.gatheredTier(best, letters, Fuzzy.match(best.prepared
                     ?? Fuzzy.prepare(best.name ?? ""), Fuzzy.words(letters), false).score >= 0),
                 verbs: () => found
-            });
+            };
+            const gathered = Object.assign({}, best, foundAs);
             // One with no act of its own, only more inside (an
             // orchestrator, a device), lands inside it on Return, its
             // collection's crumb before its own, as the approved proposal's
             // one feel has it, and the right arrow lands there too, so
             // Return never goes further in than it (Joel, 2026-10-26).
             if (part !== null)
-                Object.assign(gathered, {
+                Object.assign(foundAs, {
                     stays: true,
                     lands: true,
                     run: () => root.searchIn(source, part.into, letters)
                 });
             else if (!best.run && (best.verbs || best.targets))
-                Object.assign(gathered, {
+                Object.assign(foundAs, {
                     stays: true,
                     lands: true,
                     run: () => root.landInside(gathered, best)
@@ -2602,8 +2608,8 @@ Scope {
             // where it lives, whatever its Return does (VKCF3Z, 2026-10-29:
             // "the crumbs are where it lives").
             else if (best.verbs || best.targets)
-                gathered.landsIn = best;
-            rows.push(gathered);
+                foundAs.landsIn = best;
+            rows.push(Object.assign(gathered, foundAs, { foundAs }));
         }
         if (Object.keys(made).length > 0)
             Report.say(`texts made ready on a key ${JSON.stringify(made)}`);
@@ -5194,7 +5200,7 @@ Scope {
         // saying what it holds when empty, as Waiting on You does, is a
         // place stepped into however little it holds.
         const places = things && row.from ? partsOf(row.from).length : 0;
-        if ((!into || into.length === 0) && places === 0 && !row.empty)
+        if (Held.offers(into, places, row.empty) === null)
             return false;
         if (meant)
             learnAfterFrame(typed, row.key);
@@ -5946,21 +5952,60 @@ Scope {
         // enter made it: only the steps below it were, so Now stepped into
         // kept a row that had left it, undimmed, until it was left (PN2VZC,
         // a7b9d465: Work Network's row, past 30 s in one of four runs).
-        if (from >= 0) {
-            const step = steps[from];
-            const into = inside(step.row,
-                asThing(step.row, from === 0 || collects(steps[from - 1])));
-            if (into) {
-                steps[from] = Object.assign({}, step, {
-                    rows: Steady.kept(step.rows, into, pairedId)
-                });
-            }
-        }
-        const above = top ? own : from < 0 ? [] : source.everything();
+        const offered = from < 0 ? [] : source.everything();
+        if (from >= 0 && !heldAgain(steps, Held.own(steps, from, offered, heldWays(source))))
+            return false;
+        const above = top ? own : offered;
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
             return false;
         held = steps;
         return true;
+    }
+
+    // How Held.js finds a held step's row among those offered now, what a
+    // row stepped into offers, as enter makes it, and how those rows keep
+    // the order the step shows them in; and, for `source`, all it
+    // searches, which Held.js reads only for what a search found in it
+    // that isn't listed (foundNow).
+    function heldWays(source) {
+        return {
+            looked: () => source ? source.looksThrough() : [],
+            same: sameRow,
+            into: (thing, at, steps) => {
+                const things = asThing(thing, at === 0 || collects(steps[at - 1]));
+                return Held.offers(inside(thing, things),
+                    things && thing.from ? partsOf(thing.from).length : 0, thing.empty);
+            },
+            keep: (step, into) => Steady.kept(step.rows, into, pairedId)
+        };
+    }
+
+    // Held.js's steps made again put back into `steps`, the array each
+    // caller holds; a step Held.js says to leave, one still offered that
+    // now offers nothing, is left as Joel's - would leave it, back to the
+    // step above it. Says whether every step was made again.
+    function heldAgain(steps, made) {
+        made.steps.forEach((step, at) => {
+            steps[at] = step;
+        });
+        if (made.leave < 0)
+            return made.all;
+        // A dialog's own collection is never left, for the home it never
+        // showed (canGoUp).
+        const outermost = steps[0]?.row.from?.collection?.outermost === true;
+        const leave = Math.max(made.leave, outermost ? 1 : 0);
+        held = steps;
+        const before = held.length;
+        while (held.length > leave)
+            back();
+        // Said in the journal, so a step that closes under Joel by itself
+        // can be told from one his key left: how many, as back() may leave
+        // two at once, and never the row's name, which a source served.
+        const left = before - held.length;
+        if (left > 0)
+            console.info(`launcher: left ${left} ${left === 1 ? "step" : "steps"} by `
+                + "itself, as what it held offers nothing now");
+        return false;
     }
 
     // Each step from `from` on made again from the rows the one above it
@@ -5972,22 +6017,8 @@ Scope {
     // picker holds at home is found from any folder. Says whether every
     // step was still there.
     function remade(steps, from, above) {
-        let rows = above ?? (from > 0 && from <= steps.length ? steps[from - 1].rows : []);
-        for (let at = from; at < steps.length; at++) {
-            const step = steps[at];
-            const thing = rows.find(row => sameRow(row, step.row))
-                ?? ((step.typed ?? "") !== "" ? step.row : undefined);
-            const things = !!thing && asThing(thing, at === 0 || collects(steps[at - 1]));
-            const into = !thing ? null : inside(thing, things);
-            if (!into)
-                return false;
-            steps[at] = Object.assign({}, step, {
-                row: thing,
-                rows: Steady.kept(step.rows, into, pairedId)
-            });
-            rows = into;
-        }
-        return true;
+        const rows = above ?? (from > 0 && from <= steps.length ? steps[from - 1].rows : []);
+        return heldAgain(steps, Held.remade(steps, from, rows, heldWays()));
     }
 
     // What's shown searched again under what's held now, `count` steps,

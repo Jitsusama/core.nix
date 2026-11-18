@@ -4094,6 +4094,11 @@
     so, each drawer says where it is and its kind, the heading, how far down, each mark and its
     path, and the reader's drawer says how many files are still to finish
   '';
+  the-launcher-remakes-what-it-holds = ''
+    a step the launcher holds is made again with its row as it's offered now, a step whose row
+    is gone is kept as it was, and one whose row is still offered but offers nothing now is
+    left, the steps above it kept
+  '';
   the-launcher-remakes-only-the-screens-that-changed = ''
     the launcher's Screens draws each screen's row as the windows daemon serves it, makes again
     only the row a change names, offers Windows the screens laid out by what their rows hold, asks

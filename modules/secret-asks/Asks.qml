@@ -235,8 +235,9 @@ Provider {
     // sent. Only the passwords child reads the time; the experiments' own
     // daemon is sent the ask as served. While hiding only what releases
     // nothing is sent, a no or a revoke, by either daemon, since a row made
-    // before the share, as a step held into its verbs keeps, still offers
-    // its Release It, and a later ask act may grant too. It sees only what
+    // before the share still offers its Release It until the launcher
+    // leaves a step held into its verbs, as it does once the hidden row
+    // offers nothing (Held.js), and a later ask act may grant too. It sees only what
     // asks through here: an act's `also`, which ReadyRows sends itself,
     // isn't, and no ask's row serves one.
     function stamped(key, ask) {
