@@ -46,6 +46,15 @@ const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
+/**
+ * An age, holding the moment it's told from, so the page can tell it again each minute without
+ * drawing anything else.
+ */
+function when(at: number | undefined, now: number): string {
+  const from = at === undefined ? "" : ` data-at="${at}"`;
+  return `<span class="when"${from}>${escaped(ago(at, now))}</span>`;
+}
+
 /** How long ago `at` was, shortly, as a row's age says it. */
 function ago(at: number | undefined, now: number): string {
   if (at === undefined) {
@@ -279,7 +288,7 @@ function row(repository: Repository, now: number): string {
     <span class="t-cell"><span class="t" translate="no">${escaped(repository.name)}</span>
       <span class="meta">${escaped(rowMeta(repository))}</span></span>
     <span class="cells">${cells > 0 ? `<svg class="mk" viewBox="0 0 16 16" aria-hidden="true"><path class="thread" d="M8 2v5c0 3-3 4-5 7M8 7c0 3 3 4 5 7"/></svg>${plural(cells, "cell")}` : ""}</span>
-    <span class="when">${escaped(ago(repository.writtenAt, now))}</span>
+    ${when(repository.writtenAt, now)}
     <span class="row-keys" aria-hidden="true"><kbd>Return</kbd> step in · <kbd>o</kbd> open</span>
   </a>`;
 }
@@ -345,7 +354,7 @@ function treeRow(tree: Tree, cutIn: string | undefined, context: Context): strin
     <span class="g-season">${leaf(tree.season)}</span>
     <span class="tree-body"><span class="branch" translate="no">${escaped(branch)}${tree.snapshot ? ' <span class="snap">snapshot</span>' : ""}</span>
     ${where}${cellsLine(tree.cells, homes)}${keys}</span>
-    ${change}<span class="when">${escaped(ago(tree.writtenAt, now))}</span>
+    ${change}${when(tree.writtenAt, now)}
   </li>`;
 }
 

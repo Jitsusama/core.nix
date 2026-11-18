@@ -625,7 +625,8 @@
     repository's trees by season then branch, a cursor stepping within the rows, an address
     landing on a place, a repository or a tree in its season, and another site home to a kind found
     by the row claiming it, inside the sites' folders, its homes of that kind alone, and a
-    store's weight said in disk units, about only where the daemon reckoned it, with its upkeep
+    store's weight said in disk units, about only where the daemon reckoned it, with its upkeep,
+    and every name, branch, change title, address and failed check drawn as words, never markup
   '';
   code-site-reads-live = ''
     the code page, served by the local sites' server beside a stand-in repos daemon and node,
@@ -633,8 +634,9 @@
     and one going, a cell at work drawn and linked to its home on the map, broken while the daemon
     is away and live with its repositories again once it's back, stale once the server goes, the
     web-design skill's page checks and its homes check passing at a phone's width and a desk's in
-    both looks, a repository's weight and due upkeep said in its row and drawer, and nothing
-    logged
+    both looks, a repository's weight and due upkeep said in its row and drawer, its ages told
+    again each minute in place with the focused tree kept, today's growth yesterday's once the day
+    turns, and nothing logged
   '';
   code-site-keeps-its-last-homes = ''
     the code site's writer, while repos fails, ends well in one line and leaves the last homes as

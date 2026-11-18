@@ -8,8 +8,9 @@ sites' record, Code's homes and the map's homes among the documents. It must
 say it's live with every repository drawn, grow a repository whose tree is
 written now, drop a repository that goes, draw the cell at work and link it to
 its home on the map, say each repository's weight and due upkeep in its row and
-drawer, say broken when the daemon stops and live again, its
-repositories drawn, when it's back, say stale when the server goes, and pass
+drawer, say broken when the daemon stops and live again, its repositories
+drawn, when it's back, say stale when the server goes, move its ages on while
+nothing is written, make today's growth yesterday's once the day turns, and pass
 the web-design skill's page checks and its homes check at a phone's width and
 a desk's in both looks. Anything the page logs fails it, but for the browser's
 own lines once the test takes the server away. The server, the browser and the
@@ -24,7 +25,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from live_page import LOOKS, SIZES, Opened, Served, serving
-from playwright.sync_api import Browser, Locator, Page, expect
+from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
 if TYPE_CHECKING:
@@ -145,9 +146,33 @@ def row(page: Page, key: str) -> Locator:
     return page.locator(f'#list .row[data-key="{key}"]')
 
 
-def grove_written_now(repos_daemon: StandIn) -> None:
-    """Write the grove tree now, as a cell at work does, so the drawer shows it open."""
-    repos_daemon.tell("tree", changed=[{"key": "tree:/home/ada/trees/grove", "written_at": now()}])
+def grove_written_now(repos_daemon: StandIn, at: str | None = None) -> None:
+    """Write the grove tree now, or `at`, as a cell at work does, so the drawer shows it open."""
+    written = now() if at is None else at
+    repos_daemon.tell(
+        "tree", changed=[{"key": "tree:/home/ada/trees/grove", "written_at": written}]
+    )
+
+
+def clocked(browser: Browser, root: str, at: str) -> tuple[BrowserContext, Page, list[str]]:
+    """Open Code on a clock of its own, set to `at` in UTC.
+
+    The clock is set before the page loads so its timers run on it, and every line the page logs
+    is kept, with what it throws.
+    """
+    context = browser.new_context(timezone_id="UTC")
+    logged: list[str] = []
+    page = context.new_page()
+    page.on("console", lambda message: logged.append(f"{message.type}: {message.text}"))
+    page.on("pageerror", lambda error: logged.append(f"thrown: {error}"))
+    page.clock.install(time=at)
+    page.goto(f"{root}code/")
+    says_it_stands(page, "live")
+    return context, page, logged
+
+
+def noise(logged: list[str]) -> list[str]:
+    return [line for line in logged if line.startswith(("warning:", "error:", "thrown:"))]
 
 
 def test_code_draws_every_repository_live(code_page: Page) -> None:
@@ -281,6 +306,61 @@ def test_a_sites_server_that_goes_is_said_stale(code_opened: Opened, code_served
     _, server = code_served
     server.kill()
     says_it_stands(code_page, "stale")
+
+
+def test_ages_move_on_while_nothing_is_written(
+    browser: Browser, code_served: Served, repos_daemon: StandIn
+) -> None:
+    root, _ = code_served
+    # Two hours on from mid-morning stay within the day, so only the ages may change.
+    at = "2026-11-17T10:00:00Z"
+    context, page, logged = clocked(browser, root, at)
+    try:
+        repos_daemon.tell(
+            "repository", changed=[{"key": "repository:github:owl/core", "written_at": at}]
+        )
+        grove_written_now(repos_daemon, at)
+        when = row(page, "github:owl/core").locator(".when")
+        expect(when, "a repository written now wasn't said so").to_have_text("1m", timeout=PACE_MS)
+        trees = page.locator("#open .tree")
+        expect(trees.first, "core's drawer drew no tree to step into").to_be_visible(
+            timeout=PACE_MS
+        )
+        # A tree stepped into holds focus. Marking the element itself shows the minute told its
+        # age in place: a redraw would focus a new element, the same tree drawn again.
+        stepped_in = page.locator('#open .tree[aria-current="true"]')
+        page.locator(".head .keys").get_by_text("Return", exact=True).focus()
+        page.keyboard.press("Enter")
+        expect(stepped_in, "Return didn't step into the tree").to_be_focused()
+        stepped_in.evaluate("tree => { tree.kept = true; }")
+        page.clock.fast_forward("02:00:00")
+        expect(when, "an age stood still while nothing was written").to_have_text(
+            "2h", timeout=PACE_MS
+        )
+        expect(stepped_in.locator(".when"), "a tree's age stood still").to_have_text("2h")
+        expect(stepped_in, "telling the ages again took focus away").to_be_focused()
+        kept = page.evaluate("() => document.activeElement?.kept === true")
+        assert kept, "the minute drew the focused tree again rather than telling its age"
+        assert noise(logged) == [], f"Code logged while its ages moved on: {noise(logged)}"
+    finally:
+        context.close()
+
+
+def test_the_day_turning_makes_todays_growth_yesterdays(
+    browser: Browser, code_served: Served, repos_daemon: StandIn
+) -> None:
+    root, _ = code_served
+    at = "2026-11-17T23:30:00Z"
+    context, page, logged = clocked(browser, root, at)
+    try:
+        grove_written_now(repos_daemon, at)
+        growing = page.locator("#n-growing")
+        expect(growing, "a tree written now grew nothing").to_have_text("1", timeout=PACE_MS)
+        page.clock.fast_forward("01:00:00")
+        expect(growing, "yesterday's tree still grew today").to_have_text("0", timeout=PACE_MS)
+        assert noise(logged) == [], f"Code logged as the day turned: {noise(logged)}"
+    finally:
+        context.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)
