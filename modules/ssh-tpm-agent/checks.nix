@@ -4,7 +4,9 @@
   account,
   bareNixos,
   holds,
+  pkgs,
   self,
+  workstation,
   ...
 }:
 {
@@ -21,4 +23,25 @@
       !machine.config.services.gnome.gcr-ssh-agent.enable
       && (account machine).services.ssh-tpm-agent.enable
     );
+
+  # The agent holding Joel's keys reads its gate from where its unit says,
+  # and it's built with its tests, which judge ./gate-cases.txt by ./gate.conf, so
+  # this check builds only once the agent refuses what each case says.
+  ssh-tpm-agent-refuses-agents =
+    let
+      user = account workstation;
+      agent = user.services.ssh-tpm-agent.package;
+      told = holds "ssh-tpm-agent-is-told-of-its-gate" "ssh-tpm-agent isn't told of core's gate." (
+        user.xdg.configFile."ssh-tpm-agent/gate".source == ./gate.conf
+        &&
+          user.systemd.user.services.ssh-tpm-agent.Service.Environment == [
+            "SSH_TPM_AGENT_GATE=${user.xdg.configHome}/ssh-tpm-agent/gate"
+          ]
+        && builtins.elem ./refuses-agents.patch agent.patches
+        && agent.doCheck
+      );
+    in
+    pkgs.runCommandLocal "ssh-tpm-agent-refuses-agents" { inherit agent told; } ''
+      touch $out
+    '';
 }

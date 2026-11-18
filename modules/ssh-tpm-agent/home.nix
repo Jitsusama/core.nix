@@ -65,6 +65,15 @@
     # there to type it.
     systemd.user.services.ssh-tpm-agent.Unit.X-SwitchMethod = "keep-old";
 
+    # The gate is read again for each connection, so a switch changes it
+    # without the restart that would ask for the PIN again. Only this agent,
+    # the one holding Joel's keys, has one; the agents' own signing agents
+    # run the same program without it.
+    xdg.configFile."ssh-tpm-agent/gate".source = ./gate.conf;
+    systemd.user.services.ssh-tpm-agent.Service.Environment = [
+      "SSH_TPM_AGENT_GATE=${config.xdg.configHome}/ssh-tpm-agent/gate"
+    ];
+
     # The login key, which the agent loads from ~/.ssh when it starts and
     # which asks for its PIN once a session.
     jitsusama.tpmKeys = [
@@ -100,12 +109,27 @@
     # the kernel, not the agent, so they're skipped. The pattern has no
     # parentheses or question marks: the build's shell reads those as a glob and
     # drops the flag without a word.
+    #
+    # Agents run as Joel's own account, so the agent's socket, open to the
+    # account, served them every key it holds: his GitHub login, his cloud
+    # one and his way into his work Mac among them. The fourth patch refuses
+    # each connection from where agents' work runs, which ./gate.conf names
+    # and ./gate-cases.txt proves, by the cgroups of the process asking and its
+    # parents; its build runs those cases. It catches an agent's mistake,
+    # never one set on getting round it: a process of the account's can
+    # start itself somewhere unnamed, and keeping it in is the fence's work.
     services.ssh-tpm-agent.package = pkgs.ssh-tpm-agent.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./keys-before-serving.patch
         ./free-cached-pin.patch
         ./locked-key-blocks-nothing.patch
+        ./refuses-agents.patch
       ];
+      preCheck = (old.preCheck or "") + ''
+        mkdir -p agent/testdata
+        cp ${./gate.conf} agent/testdata/gate
+        cp ${./gate-cases.txt} agent/testdata/gate-cases
+      '';
       checkFlags = (old.checkFlags or [ ]) ++ [
         "-skip=^TestNoKey$|^TestRemoveKey$|^TestNoKeyThreaded$|^TestRemoveKeyThreaded$"
       ];

@@ -150,6 +150,22 @@ def test_both_keys_are_made_in_the_tpm_and_the_agent_holds_them(joel: Joel, keys
     assert keys.agent in listed
 
 
+def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: Keys) -> None:
+    """A process in the agents' slice is refused the keys Joel's own session is served.
+
+    The gate's cases are the agent's own build's tests; this proves only that the agent reads
+    its gate and the cgroup the kernel puts the asking process in.
+    """
+    socket = f"{joel.runtime}/ssh-tpm-agent.sock"
+    listing = (
+        f"systemd-run --user --slice=agents --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
+        " $(command -v ssh-add) -l 2>&1"
+    )
+    said = joel.run(listing, succeed=False)
+    assert "refused" in said
+    assert keys.joel not in said
+
+
 def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:
     """Git trusts the signers the module lists."""
     signers = joel.run('cat "$(git config gpg.ssh.allowedSignersFile)"')
