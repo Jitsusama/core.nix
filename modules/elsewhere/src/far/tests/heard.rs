@@ -78,13 +78,63 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
         code == Some(75) && err.contains("didn't reach"),
         "a file that never crossed wasn't waited out ({code:?}): {err}"
     );
-    // Its limit, a last pass that began just inside it, and a second's
-    // slack for a busy machine; counted passes would take fifteen.
-    let most = std::time::Duration::from_secs(super::WAITS + 2 + 3);
+    // Its limit, a last pass of two seconds begun just inside it, the
+    // second slept after that, and two for a busy machine. Counted passes,
+    // three seconds each, would take fifteen and more.
+    let most = std::time::Duration::from_secs(super::WAITS + 2 + 1 + 2);
     assert!(
-        took < most,
-        "a {}s wait lasted {took:?}, so it counts passes",
+        took >= std::time::Duration::from_secs(super::WAITS) && took < most,
+        "a {}s wait lasted {took:?}, so it gave up early or counts passes",
         super::WAITS
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// How far apart the files in the next test cross: inside the wait, but
+/// together past it.
+const A_GAP: std::time::Duration = std::time::Duration::from_secs(3);
+
+#[test]
+fn the_far_wait_runs_from_the_last_file_that_crossed() {
+    // Three files a gap apart, the last well past the wait from its start
+    // but inside it from the one before, as a large tree crosses.
+    let (code, err, home) = far_line(
+        "1\tx\n1\ty\n1\tz\nend\n",
+        &[],
+        "cat x y z > ../ran",
+        &kind(""),
+        Some(&|tree| {
+            std::fs::create_dir_all(tree).unwrap();
+            for name in ["x", "y", "z"] {
+                std::fs::write(tree.join(name), name).unwrap();
+                std::thread::sleep(A_GAP);
+            }
+        }),
+        &[],
+    );
+    assert!(
+        code == Some(0)
+            && std::fs::read_to_string(home.join("s/ran")).ok().as_deref() == Some("xyz"),
+        "files still crossing were given up on ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
+    // One that answers in words, which arithmetic can't read, so the wait
+    // falls back to counting its passes rather than dying unsaid.
+    let (code, err, home) = far_line(
+        "3\tx\nend\n",
+        &[("x", "x")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[("date", "echo not a time")],
+    );
+    assert!(
+        code == Some(75) && err.contains("didn't reach") && err.contains("waiting on x"),
+        "a far date with no time ended the line unsaid ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

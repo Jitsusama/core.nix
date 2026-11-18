@@ -30,6 +30,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
 use terminal_kit::Exit;
 
 /// Where a job's folder lies within a quest's scratch.
@@ -289,25 +290,41 @@ pub fn script(
 work={work}
 tab=$(printf '\t')
 arrived() {{
-  waiting='its list of them'
+  waiting='its list of them' got=0
   [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
+  waiting=
   while IFS="$tab" read -r size path; do
-    [ "$size" = {END} ] && return 0
+    [ "$size" = {END} ] && break
     case "/$path/" in //*|*/../*|*/./*) continue ;; esac
-    waiting=$path
-    [ -f "$job/{TREE}/$path" ] || return 1
-    [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
+    if [ -f "$job/{TREE}/$path" ] && [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ]; then
+      got=$((got + 1))
+    elif [ -z "$waiting" ]; then
+      waiting=$path
+    fi
   done < "$job/{LEFT}"
-  return 1
+  [ -z "$waiting" ]
+}}
+# The time in seconds, or where a date can't say it, the passes so far.
+tick() {{
+  now=$(date +%s 2>/dev/null)
+  case $now in ''|*[!0-9]*) ticks=$((ticks + 1)); now=$ticks ;; esac
 }}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
-# By the clock, since a pass over a large tree takes long itself.
-began=$(date +%s)
+# By the clock, since a pass over a large tree takes long itself, and
+# from the last time more crossed, as the near side waits, or the clock
+# stepped back.
+ticks=0 had=0
+tick
+began=$now
 until arrived; do
-  if [ "$(($(date +%s) - began))" -ge {CROSSES_WITHIN} ]; then
-    printf "elsewhere: the job's files didn't reach %s within {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
+  tick
+  if [ "$got" -gt "$had" ] || [ "$now" -lt "$began" ]; then
+    began=$now had=$got
+  fi
+  if [ "$((now - began))" -ge {CROSSES_WITHIN} ]; then
+    printf "elsewhere: the job's files didn't reach %s within {CROSSES_WITHIN}s of the last that did, waiting on %s\n" "$(uname -n)" "$waiting" >&2
     say {untaken}
     exit {UNTAKEN}
   fi
@@ -472,7 +489,9 @@ pub fn bring_back(
     if brings_back.is_empty() {
         return Ok(0);
     }
-    let (mut waited, mut most, mut seen, mut said) = (0, 0, None, false);
+    // By a clock that never steps, since a pass over a large list takes
+    // long itself.
+    let (mut since, mut most, mut seen, mut said) = (Instant::now(), 0, None, false);
     loop {
         let bytes = list(job);
         // A share carries a list whole, so one past the bound is one every
@@ -504,12 +523,13 @@ pub fn bring_back(
         // not its list has crossed yet.
         let arrived = arrived(job);
         if arrived > most {
-            (most, waited) = (arrived, 0);
+            (most, since) = (arrived, Instant::now());
         }
+        let waited = since.elapsed().as_secs();
         if waited >= within {
             break;
         }
-        if waited == SAYS_IT_WAITS && !said {
+        if waited >= SAYS_IT_WAITS && !said {
             eprintln!(
                 "waiting for what it made to come home, until {within}s pass with none of it crossing"
             );
@@ -518,7 +538,6 @@ pub fn bring_back(
         // Each end of a shared quest looks once a second, so looking more
         // often finds nothing new.
         std::thread::sleep(std::time::Duration::from_secs(1));
-        waited += 1;
     }
     match seen {
         Some((text, whole, short)) => landed(job, folder, brings_back, &text, &whole, &short),
