@@ -668,6 +668,14 @@ holds each lock to the manifests it reaches by path, as cargo locks them:
 an optional dependency of a crate outside the workspace may be locked or
 not, since it follows features the rule doesn't read.
 
+`nix fmt` hands mypy only the scripts that changed, and mypy finds a
+module only beside a script it's given or on its path, so a script that
+imports from another folder passes beside that folder's scripts and
+fails the first time it changes alone. `every-script-finds-what-it-imports`
+hands the mypy core's treefmt runs each folder's scripts alone, and fails
+a folder whose scripts fail then: what they import from elsewhere goes on
+`jitsusama.mypy.paths`.
+
 A ruff rule switched off for some files only waves the next finding
 through once nothing there breaks it. `every-ruff-exception-hides-a-finding`
 runs ruff over core with each per-file exception in ruff.toml taken off in
