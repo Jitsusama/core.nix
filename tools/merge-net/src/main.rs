@@ -536,7 +536,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
-            let rerun = answers::Verdict::Regate(answers::Rerun::Checks);
+            let rerun = answers::Verdict::Regate(answers::Rerun::Files);
             answers::keep(commit, rerun, &shared);
             eprintln!(
                 "merge-net: the same change passed at {}, but main has since moved {}; {}",

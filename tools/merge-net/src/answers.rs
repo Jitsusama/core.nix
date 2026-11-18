@@ -8,9 +8,11 @@
 //! epoch; the head asked about; `ok`, `hold` or `regate`; and the files
 //! the answer turned on. For a hold, those an earlier gate shares; for a
 //! run again, those main moved under the change; for `ok`, the change's
-//! own. A run again says `why` besides: `lists`, when main moved only
-//! lists each change adds to and their own checks run, or
-//! `changed-checks`, when it runs whole. An answer that turns on no
+//! own. A run again says `why` besides, what main moved: `lists`, only
+//! lists each change adds to, whose own checks run again; or `files`,
+//! files its checks read, so changed-checks runs again over it, alone or
+//! on the merge train, as the train's own record says. Lines kept
+//! before 18 November have no `why`. An answer that turns on no
 //! file, a head off main or one never run, isn't kept, so a change
 //! edited after its pass is never counted here.
 
@@ -39,8 +41,9 @@ pub enum Verdict {
 pub enum Rerun {
     /// Main moved only lists each change adds to, so their own checks run.
     Lists,
-    /// Main moved a file changed-checks reads, so it runs again whole.
-    Checks,
+    /// Main moved a file its checks read, so changed-checks runs again
+    /// over it, alone or on the merge train.
+    Files,
 }
 
 impl Verdict {
@@ -57,7 +60,7 @@ impl Rerun {
     fn said(self) -> &'static str {
         match self {
             Self::Lists => "lists",
-            Self::Checks => "changed-checks",
+            Self::Files => "files",
         }
     }
 }
@@ -109,7 +112,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("merge-net-answers-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let held = line(5, "abc", Verdict::Hold, &["flake.nix".to_owned()]);
-        let ran = line(6, "def", Verdict::Regate(Rerun::Checks), &[]);
+        let ran = line(6, "def", Verdict::Regate(Rerun::Files), &[]);
         keep_in(&root, &held).unwrap();
         keep_in(&root, &ran).unwrap();
         let kept = fs::read_to_string(root.join("answers.jsonl")).unwrap_or_default();
@@ -126,20 +129,25 @@ mod tests {
     }
 
     #[test]
-    fn a_run_again_says_whether_lists_or_changed_checks_run() {
+    fn a_run_again_says_whether_main_moved_only_lists_or_files_its_checks_read() {
         let said = |rerun| {
             let kept = line(7, "abc", Verdict::Regate(rerun), &["a.nix".to_owned()]);
-            serde_json::from_str::<serde_json::Value>(&kept).unwrap_or_default()["why"].clone()
+            serde_json::from_str::<serde_json::Value>(&kept).unwrap_or_default()
         };
         assert_eq!(
-            said(Rerun::Lists),
+            said(Rerun::Lists)["why"],
             "lists",
-            "a run again of lists' own checks didn't say so"
+            "a run again as main moved only lists didn't say so"
         );
         assert_eq!(
-            said(Rerun::Checks),
-            "changed-checks",
-            "a run again of changed-checks didn't say so"
+            said(Rerun::Files)["why"],
+            "files",
+            "a run again as main moved files its checks read didn't say so"
+        );
+        assert_eq!(
+            said(Rerun::Files)["verdict"],
+            "regate",
+            "a run again wasn't kept as the verdict cadence counts"
         );
     }
 }
