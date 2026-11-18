@@ -29,8 +29,17 @@ under a second.
 
 ```sh
 system --json   # system.view/1, one JSON object
-system          # the same, as a person reads it
+system          # the same, as a person reads it, each machine's ties under it
+system machine NAME          # one machine whole, and what can be done with it
+system machine NAME --json   # system.machine/1, that machine's record
 ```
+
+A machine's record is its thing, as in `things` below, with its `key`
+(`machine:NAME`), `part`, and the `machine` and `read_at` it was read
+at.
+
+`system machine` exits 66 (not found) for a name no part lists; a name is
+as the node says it, case and all.
 
 The object has `schema` (system.view/1), `machine` (where it was read),
 `read_at` (RFC 3339, UTC), `health`, `side` (every part's, in order) and
