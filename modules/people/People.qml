@@ -1640,23 +1640,42 @@ Provider {
     // for the slice after it. Those that read the same keep their rows, so
     // this makes only those that changed, and the letter's listing finds
     // every row it reached kept. Opened into a place or a viewer's command
-    // line, typing searches there alone, so nothing is.
+    // line, typing searches there alone, so nothing is until Joel comes
+    // home: arriving home by any road lists ahead, and leaving ends it.
     property bool listingAhead: false
     // Settable only so a check can make a row a slice.
     property real aheadBudget: 8
     // The listing being made ahead, how far it's got, and which wait for
     // its next slice is the live one, so the frame and the fallback after
-    // it (aheadFallback) run it once, and a shut ends any wait.
-    readonly property var ahead: ({ of: null, at: 0, turn: 0 })
+    // it (aheadFallback) run it once, and a shut ends any wait; the frames
+    // still to let pass before its first slice; and how it's going, for
+    // the line it says once it's made or stopped.
+    readonly property var ahead: ({
+            of: null,
+            at: 0,
+            turn: 0,
+            after: 0,
+            began: 0,
+            slices: 0,
+            fallbacks: 0,
+            longest: 0,
+            said: true
+        })
+    readonly property bool home: listingHome()
+    onHomeChanged: listAhead(false)
     function listingHome() {
         const launcher = provider.launcher;
         return !!launcher?.open && (launcher.held?.length ?? 0) === 0 && !launcher.entering
             && !launcher.viewing && !provider.wanted;
     }
-    function listAhead() {
+    // Woken, the launcher freshens its choices the frame after (wakeNext's
+    // freshen) where they went stale, so the first slice waits a frame more
+    // rather than share that one with it.
+    function listAhead(woken) {
         listingAhead = false;
         ahead.turn += 1;
         aheadFallback.stop();
+        aheadSaid("stopped");
         if (!listingHome() || typeof provider.launcher.afterFrame !== "function")
             return;
         if (provider.launcher.waking) {
@@ -1664,6 +1683,12 @@ Provider {
             return;
         }
         ahead.of = null;
+        ahead.after = woken && provider.launcher.choicesStale === true ? 1 : 0;
+        ahead.began = KeyTimes.now();
+        ahead.slices = 0;
+        ahead.fallbacks = 0;
+        ahead.longest = 0;
+        ahead.said = false;
         listLater();
     }
     // The next slice waits for a frame, or for aheadFallback where none
@@ -1675,20 +1700,37 @@ Provider {
         provider.launcher.afterFrame(() => listAgain(turn));
         aheadFallback.restart();
     }
-    function listAgain(turn) {
+    function listAgain(turn, fallen) {
         if (turn !== ahead.turn)
             return;
         ahead.turn = turn + 1;
         aheadFallback.stop();
+        if (ahead.after > 0) {
+            ahead.after -= 1;
+            listLater();
+            return;
+        }
+        if (!listingHome())
+            return;
+        ahead.slices += 1;
+        if (fallen)
+            ahead.fallbacks += 1;
         listAheadNext();
     }
     function listAheadNext() {
         if (!listingHome())
             return;
+        if (provider.launcher.waking) {
+            listingAhead = true;
+            return;
+        }
         const began = KeyTimes.now();
         const listed = listedPersons();
-        if (listed === listedRows.from)
+        if (listed === listedRows.from) {
+            // A search made it since, so there's nothing to say.
+            ahead.said = true;
             return;
+        }
         const fresh = ahead.of !== listed;
         if (fresh) {
             ahead.of = listed;
@@ -1705,21 +1747,37 @@ Provider {
             listedRow(listed[ahead.at], own);
             ahead.at += 1;
         } while (ahead.at < listed.length && KeyTimes.now() - began < aheadBudget);
+        ahead.longest = Math.max(ahead.longest, KeyTimes.now() - began);
         if (ahead.at < listed.length)
             listLater();
+        else
+            aheadSaid("made");
     }
-    // Whether the listing as it stands now has been made ahead, for the
-    // check that waits on it.
+    // As the waking says its slices (Launcher.qml's wokeSaid), so the
+    // journal shows whether a slow first letter came after a listing made
+    // ahead, one stopped part way, or none at all.
+    function aheadSaid(how) {
+        if (ahead.said || ahead.slices === 0)
+            return;
+        ahead.said = true;
+        const listed = ahead.of?.length ?? 0;
+        console.info(`people: ${how} the listing ahead, ${ahead.at} of ${listed} in `
+            + `${ahead.slices} slices (${ahead.fallbacks} by the fallback) over `
+            + `${Math.round(KeyTimes.now() - ahead.began)} ms, the longest `
+            + `${ahead.longest.toFixed(1)} ms`);
+    }
+    // Whether the listing as it stands now is made, ahead or by a search
+    // since, for the check that waits on it.
     function listedAhead() {
         const listed = listedPersons();
-        return ahead.of === listed && ahead.at >= listed.length;
+        return listed === listedRows.from || ahead.of === listed && ahead.at >= listed.length;
     }
     // Two frames at 60 Hz, as the waking's wakeFallback.
     Timer {
         id: aheadFallback
 
         interval: 33
-        onTriggered: provider.listAgain(provider.ahead.turn)
+        onTriggered: provider.listAgain(provider.ahead.turn, true)
     }
 
     Connections {
@@ -1731,12 +1789,11 @@ Provider {
             if (provider.launcher.open)
                 for (const source of provider.sources)
                     source.woken();
-            provider.listAhead();
         }
 
         function onWakingChanged() {
             if (provider.listingAhead)
-                provider.listAhead();
+                provider.listAhead(true);
         }
     }
 }

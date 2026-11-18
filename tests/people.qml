@@ -67,21 +67,47 @@ ShellRoot {
         property bool viewing: false
         // The place being stepped into, as Launcher.qml's entering.
         property var entering: null
-        // How many frames were asked for, and whether they come: niri
-        // sends none to a surface it needn't draw.
+        // How many frames were asked for, whether they come (niri sends
+        // none to a surface it needn't draw), whether they wait for a
+        // case's frame(), as one late does, and those still due.
         property int framesAsked: 0
         property bool framesCome: true
+        property bool framesHeld: false
+        property var framesDue: []
+        // Whether choices went stale while it was shut, so it freshens
+        // them the frame after the waking (Launcher.qml's wakeNext).
+        property bool choicesStale: false
+
+        // Shut, what waits on a frame runs at once, as the launcher's does.
+        onOpenChanged: {
+            if (!open)
+                frame();
+        }
 
         function wants(source) {
             return wanting;
         }
 
         // The frame after this one, as the launcher's is, here the next
-        // turn of the event loop.
+        // turn of the event loop; one asked for while a frame runs waits
+        // for the next. Shut, it runs at once.
         function afterFrame(then) {
             framesAsked += 1;
-            if (framesCome)
-                Qt.callLater(then);
+            if (!open) {
+                then();
+                return;
+            }
+            if (!framesCome)
+                return;
+            framesDue = framesDue.concat([then]);
+            if (!framesHeld)
+                Qt.callLater(frame);
+        }
+        function frame() {
+            const due = framesDue;
+            framesDue = [];
+            for (const then of due)
+                then();
         }
 
         function enter(row) {
@@ -962,11 +988,14 @@ ShellRoot {
                 root.shutRows = people.tally.rows;
                 launcher.viewing = true;
                 root.opensAt = Date.now();
+                root.framesBefore = launcher.framesAsked;
                 launcher.open = true;
             },
             // A few frames' room for what's made after it opens.
             holds: () => Date.now() - root.opensAt > 200,
             check: () => {
+                expect("no frame asked for", launcher.framesAsked === root.framesBefore,
+                    `${launcher.framesAsked - root.framesBefore} asked`);
                 launcher.open = false;
                 launcher.viewing = false;
                 expect("nobody made", people.tally.rows === root.shutRows,
@@ -978,10 +1007,13 @@ ShellRoot {
             run: () => {
                 launcher.held = [{ row: { key: "calendar:meeting:standup" } }];
                 root.opensAt = Date.now();
+                root.framesBefore = launcher.framesAsked;
                 launcher.open = true;
             },
             holds: () => Date.now() - root.opensAt > 200,
             check: () => {
+                expect("no frame asked for", launcher.framesAsked === root.framesBefore,
+                    `${launcher.framesAsked - root.framesBefore} asked`);
                 launcher.open = false;
                 launcher.held = [];
                 expect("nobody made", people.tally.rows === root.shutRows,
@@ -993,10 +1025,13 @@ ShellRoot {
             run: () => {
                 launcher.entering = ({ key: "calendar:meeting:standup" });
                 root.opensAt = Date.now();
+                root.framesBefore = launcher.framesAsked;
                 launcher.open = true;
             },
             holds: () => Date.now() - root.opensAt > 200,
             check: () => {
+                expect("no frame asked for", launcher.framesAsked === root.framesBefore,
+                    `${launcher.framesAsked - root.framesBefore} asked`);
                 launcher.open = false;
                 launcher.entering = null;
                 expect("nobody made", people.tally.rows === root.shutRows,
@@ -1017,7 +1052,6 @@ ShellRoot {
             check: () => {
                 expect("nobody made while waking", people.tally.rows === root.shutRows,
                     `${people.tally.rows - root.shutRows} rows made`);
-                root.opensAt = Date.now();
                 launcher.waking = false;
             }
         },
@@ -1057,7 +1091,9 @@ ShellRoot {
                 people.aheadBudget = 8;
                 const listed = people.listedPersons().length;
                 const frames = launcher.framesAsked - root.framesBefore;
-                expect("a frame a row", listed > 1 && frames >= listed,
+                // One for the merge, which spends the budget, then one a
+                // row.
+                expect("a frame a row", listed > 1 && frames === listed + 1,
                     `${frames} frames for ${listed} listed`);
                 expect("his row made", people.tally.rows > root.shutRows,
                     `${people.tally.rows - root.shutRows} rows made`);
@@ -1076,12 +1112,153 @@ ShellRoot {
                 launcher.wanting = false;
                 tuple().favoured = ({ "105": { wanted: true, key: "person:cal@example.com" } });
                 root.shutRows = people.tally.rows;
+                people.aheadBudget = 0;
                 launcher.framesCome = false;
                 launcher.open = true;
             },
             holds: () => people.listedAhead(),
             check: () => {
                 launcher.framesCome = true;
+                people.aheadBudget = 8;
+                const listed = people.listedPersons().length;
+                expect("the fallback ran every slice",
+                    listed > 1 && people.ahead.fallbacks === listed + 1,
+                    `${people.ahead.fallbacks} for ${listed} listed`);
+                expect("his row made", people.tally.rows > root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+            }
+        },
+        {
+            // A frame niri sends late, after the fallback ran its slice,
+            // runs none of its own.
+            what: "a frame come late after the fallback runs no slice",
+            run: () => {
+                launcher.open = false;
+                launcher.wanting = false;
+                tuple().favoured = ({});
+                root.shutRows = people.tally.rows;
+                people.aheadBudget = 0;
+                launcher.framesHeld = true;
+                launcher.open = true;
+            },
+            holds: () => people.ahead.fallbacks >= 3,
+            check: () => {
+                // The newest frame is the live wait's, which runs a slice
+                // unless the fallbacks already made the listing.
+                const live = people.listedAhead() ? 0 : 1;
+                root.slicesBefore = people.ahead.slices;
+                launcher.frame();
+                expect("the late frames ran nothing",
+                    people.ahead.slices === root.slicesBefore + live,
+                    `${people.ahead.slices - root.slicesBefore} slices more, ${live} live`);
+                launcher.framesHeld = false;
+            }
+        },
+        {
+            what: "the listing a late frame met is made once",
+            holds: () => people.listedAhead(),
+            check: () => {
+                people.aheadBudget = 8;
+                const listed = people.listedPersons().length;
+                expect("a slice a row and one for the merge",
+                    people.ahead.at === listed && people.ahead.slices === listed + 1,
+                    `${people.ahead.slices} slices for ${listed} listed`);
+            }
+        },
+        {
+            // Shut part way, what was waiting ends, and opened again
+            // while its sources wake, nobody is made until they have.
+            what: "a listing shut part way and opened waking makes nobody",
+            run: () => {
+                launcher.open = false;
+                launcher.wanting = false;
+                tuple().favoured = ({ "105": { wanted: true, key: "person:cal@example.com" } });
+                people.aheadBudget = 0;
+                launcher.framesHeld = true;
+                launcher.open = true;
+                launcher.frame();
+                launcher.frame();
+                root.shutRows = people.tally.rows;
+                launcher.open = false;
+                launcher.waking = true;
+                launcher.open = true;
+                launcher.frame();
+                root.opensAt = Date.now();
+            },
+            // Past the fallback's 33 ms.
+            holds: () => Date.now() - root.opensAt > 100,
+            check: () => {
+                launcher.frame();
+                expect("nobody made while waking", people.tally.rows === root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+                launcher.framesHeld = false;
+                launcher.waking = false;
+            }
+        },
+        {
+            what: "a listing shut part way is made whole once woken",
+            holds: () => people.listedAhead(),
+            check: () => {
+                people.aheadBudget = 8;
+                expect("listed again since it woke", people.ahead.slices > 0,
+                    `${people.ahead.slices} slices`);
+            }
+        },
+        {
+            // Woken with its choices stale, the launcher freshens them the
+            // frame after, and the first slice waits for the one after
+            // that.
+            what: "the first slice after the waking leaves the freshen its frame",
+            run: () => {
+                launcher.open = false;
+                launcher.wanting = false;
+                tuple().favoured = ({});
+                launcher.framesHeld = true;
+                launcher.choicesStale = true;
+                launcher.waking = true;
+                launcher.open = true;
+                launcher.waking = false;
+                root.slicesBefore = people.ahead.slices;
+                launcher.frame();
+                root.slicesFreshened = people.ahead.slices;
+                launcher.frame();
+            },
+            holds: () => true,
+            check: () => {
+                launcher.framesHeld = false;
+                launcher.choicesStale = false;
+                expect("no slice on the freshen's frame",
+                    root.slicesFreshened === root.slicesBefore,
+                    `${root.slicesFreshened - root.slicesBefore} slices`);
+                expect("a slice on the frame after",
+                    people.ahead.slices > root.slicesBefore || people.listedAhead(),
+                    `${people.ahead.slices} slices`);
+            }
+        },
+        {
+            // Opened into a place, as a chord does, nobody is made; back
+            // home, they are.
+            what: "back home from a place, the listing is made ahead",
+            run: () => {
+                launcher.open = false;
+                launcher.wanting = false;
+                tuple().favoured = ({ "105": { wanted: true, key: "person:cal@example.com" } });
+                launcher.held = [{ row: { key: "calendar:meeting:standup" } }];
+                root.shutRows = people.tally.rows;
+                launcher.open = true;
+                root.opensAt = Date.now();
+            },
+            holds: () => Date.now() - root.opensAt > 100,
+            check: () => {
+                expect("nobody made in the place", people.tally.rows === root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+                launcher.held = [];
+            }
+        },
+        {
+            what: "back home from a place, the listing is made",
+            holds: () => people.listedAhead(),
+            check: () => {
                 expect("his row made", people.tally.rows > root.shutRows,
                     `${people.tally.rows - root.shutRows} rows made`);
             }
@@ -1104,6 +1281,10 @@ ShellRoot {
     // how many frames had been asked for by then.
     property real opensAt: 0
     property int framesBefore: 0
+    // The listing ahead's slices before a late frame, and before the
+    // freshen's frame passed.
+    property int slicesBefore: 0
+    property int slicesFreshened: 0
 
     // When the people daemon was stopped, and how many rows People had
     // made once it was gone.
