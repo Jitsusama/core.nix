@@ -108,21 +108,21 @@ pub fn empties(text: &str, when: &[String]) -> bool {
 
 /// Whether one setting, by its name, holds a credential: a login in
 /// `auths`, an address in `proxies` carrying a name and password, and
-/// any other named setting by being there at all.
+/// any other named setting by being there at all. What `auths` says in a
+/// shape Docker can't read counts by being there, since cat reads it.
 fn holds(name: &str, value: &Said) -> bool {
     match folded(name).as_str() {
         "auths" => {
             let Said::Named(logins) = value else {
-                return false;
+                return !is_empty(value);
             };
             logins.iter().any(|(_, login)| {
                 let Said::Named(login) = login else {
-                    return false;
+                    return !is_empty(login);
                 };
-                LOGIN_FIELDS.iter().any(|field_name| {
-                    spelled(login, field_name)
-                        .any(|said| matches!(said, Said::Text(said) if !said.is_empty()))
-                })
+                LOGIN_FIELDS
+                    .iter()
+                    .any(|field_name| spelled(login, field_name).any(|said| !is_empty(said)))
             })
         }
         "proxies" => addresses(value).any(carries_login),
