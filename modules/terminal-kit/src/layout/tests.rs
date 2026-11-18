@@ -5,6 +5,15 @@
 use super::*;
 
 #[test]
+fn a_command_closes_its_runs_of_blanks_keeping_each_as_it_was() {
+    assert_eq!(
+        closed(" eero device 'Den\u{2800}\u{2800}x'   try \u{200d}\t rm\u{200d}s "),
+        "eero device 'Den\u{2800}x' try rm\u{200d}s",
+        "a run of blanks stayed open, or a blank became a break it wasn't"
+    );
+}
+
+#[test]
 fn spaced_words_close_every_blank_to_one_space() {
     assert_eq!(
         spaced(" try \u{2800}\u{115f}rm\u{2800}-rf\t\n~ \u{7}"),

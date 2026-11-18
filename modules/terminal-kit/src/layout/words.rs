@@ -62,6 +62,30 @@ pub fn spaced(words: &str) -> String {
         .join(" ")
 }
 
+/// A command to type on one line, each run of blanks closed to its first,
+/// kept as the character it was, so no blank becomes a break between
+/// arguments the command never had, and none pads the line to where the
+/// terminal's own wrap starts a row reading as a try. A character that
+/// draws nothing inside a run goes with it, or the run would draw as two.
+pub fn closed(words: &str) -> String {
+    let blank = |c: char| c.is_whitespace() || matches!(c, '\u{115f}' | '\u{2800}');
+    let mut kept = String::new();
+    // At the start, as after a blank, so blanks leading it go.
+    let mut after_blank = true;
+    for c in one_line(words).chars() {
+        if blank(c) {
+            if !after_blank {
+                kept.push(c);
+            }
+            after_blank = true;
+        } else if !(after_blank && c.width().unwrap_or(0) == 0) {
+            kept.push(c);
+            after_blank = false;
+        }
+    }
+    kept.trim_end_matches(blank).to_owned()
+}
+
 /// Whether a character parts words without a line break of its own.
 fn parts(c: char) -> bool {
     matches!(

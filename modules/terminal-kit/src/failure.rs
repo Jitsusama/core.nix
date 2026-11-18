@@ -222,14 +222,16 @@ impl Failure {
         }
         if let Some(then) = &self.then {
             // A command to type is never wrapped, so it copies whole, and
-            // is spaced, so a name in it can't draw a second line, nor
+            // is closed, so a name in it can't draw a second line, nor
             // pad itself to where the terminal's own wrap would start a
-            // row reading as this one.
+            // row reading as this one, and no blank in it changes kind.
+            // A failure's other words are spaced, but a blank turned
+            // space here could part an argument where the command didn't.
             lines.push(format!(
                 "{}{}  {}",
                 " ".repeat(inset),
                 pen.role("muted", "try"),
-                pen.role("text", &spaced(then))
+                pen.role("text", &layout::closed(then))
             ));
         }
         lines.join("\n") + "\n"

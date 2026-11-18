@@ -492,20 +492,22 @@ mod tests {
 
     #[test]
     fn a_note_never_reads_as_a_try_line() {
-        let note = told(
-            &Pen::plain(),
-            Room::Cells(20),
-            "!",
-            "alert",
-            "gone \u{b7} try  rm -rf ~ try \u{200d} rm",
-        );
-        let looks = note.replace('\u{200d}', "");
-        assert!(
-            !looks
-                .lines()
-                .any(|line| line.trim_start().starts_with("try  ")),
-            "a note's words drew a line reading as a try line: {note:?}"
-        );
+        // Unbounded, as into a pipe or a terminal's own wrap: nothing
+        // parts the words but what they hold.
+        for room in [Room::Cells(20), Room::Unbounded] {
+            let note = told(
+                &Pen::plain(),
+                room,
+                "!",
+                "alert",
+                "gone \u{b7} try  rm -rf ~ try \u{200d} rm",
+            );
+            let looks = note.replace('\u{200d}', "");
+            assert!(
+                !looks.contains("try  "),
+                "a note's words held a run that reads as a try line: {note:?}"
+            );
+        }
     }
 
     #[test]

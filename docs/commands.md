@@ -191,7 +191,9 @@ without a rebuild:
   semicolon. `say` writes what it's given as it is, so a
   command saying words from outside through it draws them through the
   pen or `layout::one_line` first. The JSON forms keep the words as they
-  are, escaped as JSON escapes them.
+  are, escaped as JSON escapes them, which leaves C1 controls, DEL and
+  direction marks as written: they're for programs, not for reading in a
+  terminal.
 
 ## How It Reads
 
@@ -446,9 +448,10 @@ the order they're read, the most useful last, where the eye ends:
 - **What to do**, where there's something: a command to type after "try",
   or the one thing to check. A command that can't say what to do leaves
   the line out rather than guess. It's never wrapped, so it copies whole,
-  and its runs of blanks are closed to one space as the other parts' are,
-  so a name in it can't pad it to where a terminal's own wrap would start
-  a row reading as a try; a command that finds things by name folds
+  and each run of blanks in it is closed to its first, kept as the
+  character it was, so a name in it can't pad it to where a terminal's
+  own wrap would start a row reading as a try, and no blank becomes a
+  break between arguments; a command that finds things by name folds
   those runs too, so the line still finds what it named.
 
 No stack, no `anyhow` chain and no source path by default; `--verbose`

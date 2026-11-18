@@ -124,8 +124,10 @@ impl<'a, W: Write> Wait<'a, W> {
     }
 
     fn end(mut self, mark: &str, role: &str, words: &str) -> io::Result<()> {
-        // One line, as the wait's own were, so its outcome is one record.
-        let words = &*layout::one_line(words);
+        // One line, as the wait's own were, so its outcome is one record,
+        // and spaced, so its words can't pad themselves to where the
+        // terminal's own wrap starts a row reading as a try line.
+        let words = &layout::spaced(words);
         let clear = if self.terminal { "\r\u{1b}[2K" } else { "" };
         writeln!(
             self.out,
