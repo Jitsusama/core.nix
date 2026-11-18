@@ -3014,7 +3014,7 @@
   '';
   shaper-starts-when-asked = ''
     the shaper starts at boot only on a machine that names its controller, so a machine that
-    imports the module and never asked stays unshaped
+    imports the module and never asked stays unshaped, while its recorder starts either way
   '';
   shaper-stays-through-a-switch = ''
     a switch starts the shaper and its recorder again in place, never stopping them first, so the

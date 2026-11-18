@@ -18,6 +18,7 @@ let
     ]).config.systemd.services;
   unasked = services.shaper.wantedBy == [ ];
   asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
+  recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
 in
 # What follows needs Linux to build or to run, so a Mac leaves it out.
 onLinux {
@@ -48,10 +49,13 @@ onLinux {
   # Only a machine that names the controller shapes from boot: every
   # graphical machine imports the module, and one that never asked for
   # the one-way controller was never shaped before it was the only one.
+  # Its recorder starts either way, so its week can be replayed first.
   shaper-starts-when-asked = holds "shaper-starts-when-asked" (
     if !unasked then
       "The shaper would start at boot on a machine that never named its controller."
-    else
+    else if !asked then
       "The shaper wouldn't start at boot on a machine that named its controller."
-  ) (unasked && asked);
+    else
+      "The recorder wouldn't start at boot on a machine that never named the controller."
+  ) (unasked && asked && recorded);
 }

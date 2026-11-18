@@ -394,6 +394,14 @@ impl Recorder<'_> {
     }
 }
 
+/// The links whose counters the record sums: the recorded one, then those
+/// beside it in name order, so two lists name the same set only when they
+/// are equal, whatever order the routes list them in.
+fn counted_links(link: &str, mut beside: Vec<String>) -> Vec<String> {
+    beside.sort();
+    [vec![link.to_owned()], beside].concat()
+}
+
 /// Record a link's signal while `still` says it's the uplink it was, then
 /// return so the caller finds the next, with a pool of its own. What it
 /// carried counts with what the links `beside` name carried, those that
@@ -414,7 +422,7 @@ pub fn record(
         }
     };
     let _ = fs::create_dir_all(folder);
-    let links = |beside: Vec<String>| [vec![link.to_owned()], beside].concat();
+    let links = |beside: Vec<String>| counted_links(link, beside);
     let counting = links(beside());
     eprintln!(
         "recording {link} on {network}, counting {}, choosing reflectors",
@@ -483,6 +491,26 @@ pub fn record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_links_counted_are_a_set_whatever_order_the_routes_list_them_in() {
+        let names = |names: &[&str]| names.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            counted_links("eth0", names(&["wlan0", "eth1"])),
+            counted_links("eth0", names(&["eth1", "wlan0"])),
+            "two links beside swapping places would read as the set changing"
+        );
+        assert_eq!(
+            counted_links("eth0", names(&["wlan0"])),
+            names(&["eth0", "wlan0"]),
+            "the recorded link comes first, then those beside it"
+        );
+        assert_ne!(
+            counted_links("eth0", names(&["wlan0"])),
+            counted_links("eth0", Vec::new()),
+            "a link leaving is a change"
+        );
+    }
 
     // A kept pool's line is the pool that was, not a choice, and the
     // record says so.
