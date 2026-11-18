@@ -19,18 +19,21 @@
 // a second Return meant for a yes never reaches the window behind. Such a
 // row says it has nothing to do yet (`still`), so the foot names no
 // Return, and has no run, so it has no act for the right arrow to step
-// into; a still row with a run, as the file chooser's, still runs it.
+// into; a still row with a run, as the file chooser's, still runs it. A
+// still row is held whatever else it holds, since it says Return has
+// nothing to do.
 function holdsStill(row) {
     return !!row && row.still === true && typeof row.run !== "function";
 }
 
-// Why a row held still is refused when a terminal asks for it (`held`),
-// or `fallback` where it says none; "" for any other row.
+// Why a row held still does nothing (`stillWhy`), or `fallback` where it
+// says none; "" for any other row.
 function heldWhy(row, fallback) {
     if (!holdsStill(row)) {
         return "";
     }
-    return typeof row.held === "string" && row.held !== "" ? row.held : fallback;
+    const why = row.stillWhy;
+    return typeof why === "string" && why !== "" ? why : fallback;
 }
 
 // Nothing armed.

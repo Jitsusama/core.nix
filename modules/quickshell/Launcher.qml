@@ -1470,7 +1470,10 @@ Scope {
         let things = true;
         const path = [];
         for (const step of String(id).split(catalogueStep)) {
-            const row = rows.find(one => Catalogue.listed(one) && steadyId(one) === step) ?? null;
+            // One held still is found too, so a walk to it is refused with
+            // why, as a terminal's do is, rather than said missing.
+            const row = rows.find(one => (Catalogue.listed(one) || Arming.holdsStill(one))
+                && steadyId(one) === step) ?? null;
             if (row === null)
                 return null;
             path.push(row);
@@ -1666,7 +1669,7 @@ Scope {
             : { done: false, said: `${said}: ${why}` };
         // One held still, as an ask hidden while Joel shares, is refused,
         // saying why, rather than run or said done for nothing.
-        const still = Arming.heldWhy(act, Words.field.becoming?.dropped ?? "");
+        const still = heldWhyOf(target, act);
         if (still !== "")
             return ran(still);
         if (act.given) {
@@ -1885,6 +1888,15 @@ Scope {
 
     // Does what's walked, as doneFromTerminal says; none walked, it's
     // `nothing`, which the terminal says in its own words.
+    // Why a terminal's way to a row is refused for its being held still,
+    // the row's own or its Return's act's, so neither way in acts where
+    // Return holds still; "" for one not held.
+    function heldWhyOf(target, act) {
+        const dropped = Words.field.becoming?.dropped ?? "";
+        const own = Arming.heldWhy(target, dropped);
+        return own !== "" ? own : Arming.heldWhy(act, dropped);
+    }
+
     function doneWalked(walked, words, sure) {
         if (walked.missing !== undefined)
             return { missing: walked.missing, near: walked.near, in: walked.in };
@@ -1932,7 +1944,7 @@ Scope {
         // apart from a daemon with no answer (walkedRun, Reached.answered).
         const ran = why => Reached.answered(why, names, Words.field.becoming?.noAnswer ?? "");
         // One held still is refused, saying why, as the walk refuses it.
-        const still = Arming.heldWhy(act, Words.field.becoming?.dropped ?? "");
+        const still = heldWhyOf(target, act);
         if (still !== "")
             return ran(still);
         if (act.given) {
@@ -1940,6 +1952,10 @@ Scope {
                 return { takes: act.ask ?? "", in: names };
             return ran(walkedRun(() => act.given(words)));
         }
+        // One with nothing to run, as an answered ask, sends nothing and
+        // says so, where Return on it would only close the launcher.
+        if (typeof act.run !== "function")
+            return ran(Words.field.becoming?.dropped ?? "");
         // As the catalogue's run does it, as Return would.
         trials.picked(target, "", trail.length - 1);
         if (act.stays)
@@ -7888,9 +7904,12 @@ Scope {
             return;
         // One held still, as a secret ask hidden while Joel shares, keeps
         // the launcher open and does nothing, so a second Return meant for
-        // a yes never reaches the window behind.
-        if (Arming.holdsStill(choice))
+        // a yes never reaches the window behind; the foot says why, so no
+        // Return goes unanswered.
+        if (Arming.holdsStill(choice)) {
+            say([["\u21b5", Arming.heldWhy(choice, Words.field.becoming?.dropped ?? "")]]);
             return;
+        }
         traces.began("act", { key: choice.key ?? "", depth: held.length });
         // A command puts its start in the field, to be finished there.
         if (choice.start !== undefined) {
@@ -13198,7 +13217,8 @@ Scope {
                                 : arming ? root.pressArming(root.selected, 1)
                                 : root.stepsThing(root.selected) ? "entered"
                                 : root.endsSomething(root.selected) ? "lined"
-                                : root.lands(root.selected) ? "landed" : "ran";
+                                : root.lands(root.selected) ? "landed"
+                                : Arming.holdsStill(root.selected) ? "held" : "ran";
                             // Arming did its own press, armed or done, and
                             // any landing before it is over.
                             if (arming)
@@ -13211,7 +13231,8 @@ Scope {
                                 root.lineFor(root.selected);
                             else if (act === "landed")
                                 root.land(root.selected);
-                            else if (act === "ran")
+                            // Held still, run says why and does nothing.
+                            else if (act === "ran" || act === "held")
                                 root.run(root.selected, false);
                             // A doubled Return is the landing's own press,
                             // so the landing still says what a second does.

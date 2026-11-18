@@ -303,6 +303,8 @@ Provider {
     }
 
     // What a hidden ask's row keeps of the one the daemon serves (row.rs).
+    // A row lent to another place (`lends`) is drawn there, never here,
+    // so the daemon must never serve one on an ask: row.rs serves none.
     readonly property var hiddenKeeps: ["key", "thing", "place", "kind", "state", "glyph",
         "hue", "attention", "order"]
 
@@ -338,15 +340,15 @@ Provider {
                 ? Words.of("verb:release").said?.arms ?? "" : "",
             // What it is and where it's from, which For You filters by.
             forYou: { kind: "do", source: "asks" }
-        }, !hiding || served.state !== "waiting" ? {} : {
-            // Hidden, a waiting ask's Return keeps the launcher open and
-            // does nothing (Arming.holdsStill), since the launcher closes
-            // on a row with no run, and his second Return, meant for a
-            // yes, would then reach the window behind. Still, its foot
-            // names no Return; asked for from a terminal, it's refused
-            // with why it's hidden (`held`).
+        }, !hiding ? {} : {
+            // Hidden, an ask's Return keeps the launcher open and does
+            // nothing (Arming.holdsStill), since the launcher closes on a
+            // row with no run, and his second Return, meant for a yes,
+            // would then reach the window behind. One ended looks the same
+            // while hidden, so it holds too. Still, its foot names no
+            // Return, and Return or a terminal says why (`stillWhy`).
             still: true,
-            held: Niri.castsHeard ? Words.field.becoming?.shared ?? "" : waits
+            stillWhy: Niri.castsHeard ? Words.field.becoming?.shared ?? "" : waits
         }));
     }
 
