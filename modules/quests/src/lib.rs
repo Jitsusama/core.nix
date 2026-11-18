@@ -11,8 +11,11 @@
 //! - [`served`]: each quest's row in the launcher's form, and the summary,
 //!   the open quests' served and the ended ones' made beside them.
 //! - [`search`]: what's typed found among every quest, open and ended.
+//! - [`folders`]: the repositories the open quests work in, where Start
+//!   New Work's words can be said.
 //! - [`words`]: Quests' words, as the launcher's vocabulary says them.
 
+pub mod folders;
 pub mod holder;
 pub mod order;
 pub mod quest;

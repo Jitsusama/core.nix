@@ -1449,7 +1449,7 @@ Provider {
     // Start New Work, after Start a Session (Joel, 16 November: starting new
     // work was too hard to do at all): From a Link, then one row for each
     // repository the open quests work in, each asking for a link or a few
-    // words and asking the realm's node to sprout them (Sprouting.js), a
+    // words and asking the agents daemon to sprout them (Sprouting.js), a
     // quest of its own whose session starts held in no window, which Go To
     // opens. Folded, found by its name, as Start a Session is.
     // Its rows are made only when it's stepped into (inside), so it costs
@@ -1473,8 +1473,7 @@ Provider {
             });
         };
         const inside = () => [act("link", "", Words.name("verb:agents:start-new-work:link"))]
-            .concat(Sprouting.folders(source("quests")?.folders() ?? [],
-                Quickshell.env("HOME") ?? "").map(one => act("in", one.folder,
+            .concat((source("quests")?.folders() ?? []).map(one => act("in", one.folder,
                 Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
         return Object.assign(thingRow({
             key: "agents:start-new-work",
@@ -1495,69 +1494,60 @@ Provider {
     // How each Start New Work act stands, by its key, as that act says it:
     // starting, how it ended (Sprouting.js), why it asked nothing, or that
     // the last is still starting. One runs at a time; `sprouting` is the
-    // key of the act it's for, "" while none runs.
+    // key of the act it's for, "" while none runs, and `sprouts` counts
+    // them, so an answer heard after its patience ran out says nothing.
     property var sproutSaid: ({})
     property string sprouting: ""
+    property int sprouts: 0
     function sproutSays(key, text) {
         sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
     }
     function sprout(key, said, folder) {
         const words = Words.of("agents:start-new-work").said ?? {};
-        if (sprouter.running || sprouting !== "") {
+        // Asked from outside, or with no launcher to say whose Return it
+        // was, it starts nothing (Sprouting.fromJoel).
+        const launcher = provider.launcher ?? null;
+        if (!Sprouting.fromJoel(launcher)) {
+            sproutSays(key, words.outside);
+            launcher?.walkRefused(words.outside);
+            return;
+        }
+        if (sprouting !== "") {
             sproutSays(key, words.busy);
             return;
         }
-        const command = Sprouting.command(Sessions.realm, said, folder);
-        if (command === null) {
-            sproutSays(key, Sprouting.refused(Sessions.realm, said, folder, words));
+        const ask = Sprouting.ask(said, folder);
+        if (ask === null) {
+            sproutSays(key, Sprouting.refused(said, folder, words));
             return;
         }
         sprouting = key;
+        sprouts += 1;
+        const sprout = sprouts;
         sproutSays(key, words.starting);
-        sprouter.heard = {};
-        sprouter.command = command;
-        sprouter.running = true;
         sproutPatience.restart();
+        const heard = answer => {
+            if (sprout === sprouts && sprouting !== "")
+                sprouted(Sprouting.ended(answer, sproutWords()));
+        };
+        if (rowsKind)
+            rowsKind.ask(ask, heard);
+        else
+            heard(null);
     }
-    // Both its streams are heard before how it ended is said, since a
-    // refusal before the node is asked comes on stderr alone. One that
-    // stops with neither ended couldn't start (Quickshell ends neither
-    // then); one still running past its patience is stopped.
-    Process {
-        id: sprouter
-        property var heard: ({})
-        stdout: StdioCollector {
-            onStreamFinished: provider.sproutHeard("out", text)
-        }
-        stderr: StdioCollector {
-            onStreamFinished: provider.sproutHeard("errors", text)
-        }
-        onRunningChanged: {
-            if (!running && provider.sprouting !== "" && !Sprouting.whole(heard))
-                provider.sprouted(Sprouting.unended(false, provider.sproutWords()));
-        }
-    }
-    // The node answers a start once it's placed, in a second or two; a
-    // minute without one is no answer.
+    // The daemon says the node's silence within 50 s (sprout.rs's
+    // PATIENCE); a minute with no answer at all, as from a daemon that
+    // started again while it asked, is no answer.
     Timer {
         id: sproutPatience
         interval: 60000
         onTriggered: {
-            if (provider.sprouting === "")
-                return;
-            provider.sprouted(Sprouting.unended(true, provider.sproutWords()));
-            sprouter.running = false;
+            if (provider.sprouting !== "")
+                provider.sprouted(Sprouting.ended(null, provider.sproutWords()));
         }
     }
     function sproutWords() {
         return Words.of("agents:start-new-work").said ?? {};
-    }
-    function sproutHeard(stream, text) {
-        if (sprouting === "")
-            return;
-        sprouter.heard = Sprouting.hear(sprouter.heard, stream, text);
-        if (Sprouting.whole(sprouter.heard))
-            sprouted(Sprouting.ended(sprouter.heard.out, sprouter.heard.errors, sproutWords()));
     }
     // How the running act ended, said on it and in the journal; another
     // may start from here.

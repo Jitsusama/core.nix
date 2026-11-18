@@ -91,8 +91,17 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
           "%t/daemons/agents.sock"
         ]
       );
-      # git, to read what core and the harness merged from their clones.
-      Environment = [ "PATH=${lib.makeBinPath [ pkgs.git ]}" ];
+      # git, to read what core and the harness merged from their clones;
+      # systemctl, to ask which process is the shell's main one before a
+      # sprout is taken from it (src/asker.rs).
+      Environment = [
+        "PATH=${
+          lib.makeBinPath [
+            pkgs.git
+            pkgs.systemd
+          ]
+        }"
+      ];
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";

@@ -19,6 +19,8 @@
 //! - `inputs`: what every source last said, and every record made of it.
 //! - `sources`: each source followed on its own thread, heard in one loop.
 //! - `acts`: a session's acts, done by asking the node as the shell asks.
+//! - `sprout`: Start New Work, asked of the node as the shell asks.
+//! - `asker`: whether the shell asked, for what only it may ask.
 //! - `reopen`: the sessions there are to reopen, and what Joel said of them.
 //! - `recent`: the sessions closed this boot that Recent lists.
 //! - `landed`: what the sessions landed, and what of it Joel has read.
@@ -44,6 +46,7 @@
 pub mod acts;
 pub mod answered;
 pub mod arrangement;
+pub mod asker;
 pub mod carried;
 pub mod carries;
 pub mod clock;
@@ -66,6 +69,7 @@ pub mod served;
 pub mod session;
 pub mod shape;
 pub mod sources;
+pub mod sprout;
 pub mod standing;
 pub mod summary;
 pub mod talks;

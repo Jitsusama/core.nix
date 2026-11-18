@@ -236,13 +236,12 @@
       "said": {
         "starting": "starting",
         "started": "started on {machine}; it shows in Agents once it's up",
-        "unanswered": "its node didn't answer",
+        "unanswered": "nothing answered in time; it may still start, so look in Agents before asking again",
         "unread": "its node's answer couldn't be read",
-        "unrealmed": "no realm to start it in",
-        "unrun": "mycelium couldn't be run here",
         "empty": "say what the work is: a link or a few words",
         "unplaced": "that folder isn't a whole path",
-        "busy": "still starting the last one; say it again once that's done"
+        "busy": "still starting the last one; say it again once that's done",
+        "outside": "new work starts only from your own Return in the launcher"
       }
     },
     {

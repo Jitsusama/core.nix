@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use daemon_serve::watch::{Held, follow};
+use quests::folders;
 use quests::search::Searched;
 use quests::served::{self, Inputs};
 use quests::words::Words;
@@ -27,7 +28,7 @@ use terminal_kit::{Exit, Failure, Help, flags};
 /// are open.
 const DOMAIN: Domain = Domain {
     name: "quests",
-    kinds: &["row", "summary"],
+    kinds: &["row", "summary", "folders"],
     sole: &[],
     named_only: &[],
 };
@@ -177,7 +178,8 @@ fn serve_quests(args: &Args) -> Result<(), Failure> {
         });
         *searched.lock().unwrap_or_else(PoisonError::into_inner) = Searched::of(&made);
         let summary = served::summary_record(&made.said);
-        if !kept.take(made.open, vec![summary]).is_empty() {
+        let folders = folders::record(&made.open, &home);
+        if !kept.take(made.open, vec![summary, folders]).is_empty() {
             shared.change(kept.all().cloned().collect(), json!({}));
         }
     }

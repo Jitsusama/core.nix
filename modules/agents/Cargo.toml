@@ -16,6 +16,9 @@ daemon-serve = { path = "../daemon-serve" }
 # Files another program writes whole and renames into place, heard as each
 # lands rather than read again on a clock (src/file.rs).
 inotify = { version = "0.11", default-features = false }
+# Who asks on the sprouting socket, by the peer's pidfd and the daemon's
+# own uid, so only the shell starts new work (src/asker.rs).
+libc = "0.2"
 # Dollars said as spend-watch says them, so a network's sum of its
 # sessions' spend reads as each of them does (src/network_drawer.rs), and
 # times sent as the shell words them.
