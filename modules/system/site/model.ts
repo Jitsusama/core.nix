@@ -6,6 +6,7 @@
 
 import type { Held } from "../../local-sites/kit/records.ts";
 import { object, text, texts } from "../../local-sites/kit/records.ts";
+import { copyable, type Ties, tiesOf } from "./ties.ts";
 
 /** How a part or thing stands, as the daemon words it. */
 type Health = "good" | "watch" | "bad" | "unread";
@@ -15,8 +16,12 @@ interface Thing {
   readonly name: string;
   readonly health: Health;
   readonly says: string;
+  /** What in it is worth a look, worded for a side, worst first. */
+  readonly side: readonly string[];
   /** Its home's address from the sites' root, when its home publishes one. */
   readonly address: string | undefined;
+  /** What ties it to the other parts, a machine's (ties.ts). */
+  readonly ties: Ties;
 }
 
 /** The ways deeper into a part. */
@@ -36,6 +41,8 @@ interface Part {
   /** What it holds, counted in a few words; none when it wasn't read. */
   readonly holds: string | undefined;
   readonly things: readonly Thing[];
+  /** How many things it names whose records haven't arrived yet. */
+  readonly untold: number;
   readonly deeper: Deeper;
 }
 
@@ -71,7 +78,7 @@ const NAMES: { readonly [part: string]: string } = {
 
 /**
  * How each health is said, in the system's own words as the `system`
- * command says them: in the legend, on the outlook and to a screen reader.
+ * command says them: in the legend and to a screen reader.
  */
 const WORDS: { readonly [health in Health]: string } = {
   good: "Good",
@@ -79,9 +86,6 @@ const WORDS: { readonly [health in Health]: string } = {
   bad: "Bad",
   unread: "Not read",
 };
-
-/** What a headline says when nothing anywhere is worth a look. */
-const CLEAR = "all good";
 
 /** The numbers a headline says in words, as a sentence would. */
 const NUMBERS = [
@@ -98,15 +102,6 @@ const NUMBERS = [
   "ten",
 ];
 
-/** How the daemon closes a side that had more than it says (parts.rs's side_of). */
-const MORE = /^and (\d+) more worth a look$/u;
-
-/** Words that already end a sentence. */
-const ENDED = /[.?!]$/u;
-
-/** Healths from worst to best, as a lede picks the worst. */
-const WORST: readonly Health[] = ["bad", "watch"];
-
 /** The health the daemon's word `value` says, or unread when it says none. */
 function healthOf(value: string | undefined): Health {
   return (value === undefined ? undefined : HEALTHS.get(value)) ?? "unread";
@@ -114,89 +109,20 @@ function healthOf(value: string | undefined): Health {
 
 /** The part's name as the page says it. */
 function named(part: string): string {
-  return NAMES[part] ?? part;
+  return Object.hasOwn(NAMES, part) ? (NAMES[part] ?? part) : part;
 }
+
+/** Figures as en-CA writes them, their thousands grouped. */
+const FIGURES = new Intl.NumberFormat("en-CA");
 
 /** `count` as a sentence says it: in words to ten, then in figures. */
 function numbered(count: number): string {
-  return NUMBERS[count] ?? String(count);
+  return NUMBERS[count] ?? FIGURES.format(count);
 }
 
 /** `said` with its first letter a capital, as a sentence starts. */
 function capital(said: string): string {
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
-}
-
-/**
- * How many things in `part` are worth a look: its side's items, with the
- * last counted for as many as it says when it says "and N more". A part
- * not read has none, since what it says is why it wasn't.
- */
-function looksIn(part: Part): number {
-  if (part.health === "unread") {
-    return 0;
-  }
-  return part.side.reduce((sum, item) => sum + Number(MORE.exec(item)?.[1] ?? 1), 0);
-}
-
-/** The whole's headline, in its three clauses, the last two only when they count. */
-interface Headline {
-  /** How many parts: "Four parts". */
-  readonly parts: string;
-  /** How many things are worth a look, when any: "six worth a look". */
-  readonly looks: string | undefined;
-  /** How many parts couldn't be read, when any: "one not read". */
-  readonly unread: string | undefined;
-}
-
-/** The whole counted as its headline says it. */
-function headline(system: System): Headline {
-  const looks = system.parts.reduce((sum, part) => sum + looksIn(part), 0);
-  const unread = system.parts.filter((part) => part.health === "unread").length;
-  const { length } = system.parts;
-  return {
-    parts: capital(`${numbered(length)} ${length === 1 ? "part" : "parts"}`),
-    looks: looks === 0 ? undefined : `${numbered(looks)} worth a look`,
-    unread: unread === 0 ? undefined : `${numbered(unread)} not read`,
-  };
-}
-
-/** The headline as one plain sentence, for the title and the text twin. */
-function sentence(said: Headline): string {
-  const clauses = [said.looks, said.unread].filter((clause) => clause !== undefined);
-  return `${said.parts}, ${clauses.length === 0 ? CLEAR : and(clauses)}.`;
-}
-
-/**
- * The one thing the whole most wants a look at, as a sentence: the first
- * item of the worst part, led by the part's name, since an item may start
- * with a name a capital would change, a machine's; or why the first part
- * not read wasn't. None when every part is good.
- */
-function lede(system: System): string | undefined {
-  for (const health of WORST) {
-    const worst = system.parts.find((part) => part.health === health && part.side.length > 0);
-    if (worst !== undefined) {
-      return stopped(`${named(worst.part)}: ${worst.side[0] ?? ""}`);
-    }
-  }
-  const unread = system.parts.find((part) => part.health === "unread");
-  return unread === undefined
-    ? undefined
-    : stopped(`${named(unread.part)} couldn't be read: ${unread.says}`);
-}
-
-/** `words` ended as a sentence, once: an owner's words may end their own. */
-function stopped(words: string): string {
-  return ENDED.test(words) ? words : `${words}.`;
-}
-
-/** `words` joined as a sentence lists them: a, b and c. */
-function and(words: readonly string[]): string {
-  if (words.length < 2) {
-    return words.join("");
-  }
-  return `${words.slice(0, -1).join(", ")} and ${words.at(-1) ?? ""}`;
 }
 
 /**
@@ -218,7 +144,9 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
+    side: texts(record, "side") ?? [],
     address: text(record, "address"),
+    ties: tiesOf(record["ties"]),
   };
 }
 
@@ -234,16 +162,20 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     const value = deeper[field];
     return typeof value === "string" ? value : "";
   };
+  const keys = texts(record, "things") ?? [];
   return {
     part: name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
     side: texts(record, "side") ?? [],
     holds: text(record, "holds"),
-    things: (texts(record, "things") ?? [])
-      .map((key) => thingOf(things, key, unread))
-      .filter((thing) => thing !== undefined),
-    deeper: { command: says("command"), site: says("site"), launcher: says("launcher") },
+    things: keys.map((key) => thingOf(things, key, unread)).filter((thing) => thing !== undefined),
+    untold: keys.filter((key) => things.get(key) === undefined).length,
+    deeper: {
+      command: copyable(says("command")) ? says("command") : "",
+      site: says("site"),
+      launcher: says("launcher"),
+    },
   };
 }
 
@@ -270,5 +202,21 @@ function systemOf(summaries: Held, parts: Held, things: Held): System | undefine
   };
 }
 
-export type { Deeper, Headline, Health, Part, System, Thing };
-export { CLEAR, headline, lede, looksIn, named, sentence, systemOf, WORDS };
+/**
+ * Whether the page may draw: once every watch in `kinds` has told its records
+ * whole, or can't, since it's broken or stale. Drawn sooner, a page paints
+ * the summary's half and then jumps as each later kind lands.
+ */
+function allTold(
+  kinds: readonly string[],
+  told: ReadonlySet<string>,
+  standings: ReadonlyMap<string, { readonly state: string }>,
+): boolean {
+  return kinds.every((kind) => {
+    const state = standings.get(kind)?.state;
+    return told.has(kind) || state === "broken" || state === "stale";
+  });
+}
+
+export type { Deeper, Health, Part, System, Thing };
+export { allTold, capital, named, numbered, systemOf, WORDS };

@@ -75,7 +75,32 @@
         "name": "kestrel",
         "health": "watch",
         "address": null,
-        "says": "is short of processor, has a filling disk, 135 GB free, runs 4 busy and 5 idle sessions"
+        "says": "is short of processor, has a filling disk, 135 GB free, runs 4 busy and 5 idle sessions",
+        "side": ["filling disk, 135 GB free"],
+        "ties": {
+          "cells": { "busy": 4, "idle": 5, "ended": 2 },
+          "network": [
+            { "device": "mac:0a", "by": "2.4 GHz", "point": "Hall", "bars": 4, "room_mbps": 180 }
+          ],
+          "code": { "repositories": 5, "checkouts": 6, "trees": 40, "behind": 2, "changes": 3 },
+          "figures": {
+            "model": "Example 14",
+            "system": "linux",
+            "disk": 1000000000000,
+            "disk_free": 135000000000,
+            "cpu_busy": 0.9,
+            "memory": 64000000000,
+            "memory_available": 20000000000,
+            "charge": 80,
+            "on_battery": false,
+            "updated_at": "2026-11-16T12:00:00Z",
+            "update_step": "done"
+          },
+          "acts": {
+            "link": "mycelium:machine/kestrel?from=system",
+            "commands": ["mycelium sprout --on kestrel", "mycelium update kestrel"]
+          }
+        }
       },
       {
         "key": "machine:osprey",
@@ -84,7 +109,23 @@
         "name": "osprey",
         "health": "watch",
         "address": null,
-        "says": "has a filling disk, 178 GB free, runs 2 busy and 4 idle sessions"
+        "says": "has a filling disk, 178 GB free, runs 2 busy and 4 idle sessions",
+        "side": ["filling disk, 178 GB free"],
+        "ties": {
+          "cells": { "busy": 2, "idle": 4, "ended": 0 },
+          "network": [{ "device": "mac:0b", "by": "wired", "point": "Den", "room_mbps": 900 }],
+          "code": null,
+          "figures": {
+            "system": "macos",
+            "disk": 500000000000,
+            "disk_free": 178000000000,
+            "cpu_busy": 0.2
+          },
+          "acts": {
+            "link": "mycelium:machine/osprey?from=system",
+            "commands": ["mycelium sprout --on osprey", "mycelium update osprey"]
+          }
+        }
       }
     ]
   }

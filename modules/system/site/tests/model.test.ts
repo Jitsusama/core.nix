@@ -7,8 +7,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { escaped, legend, outlookOf, partsOf } from "../draw.ts";
-import { headline, lede, looksIn, sentence, systemOf } from "../model.ts";
+import { escaped, headlineOf, legend, partsOf, placesOf } from "../draw.ts";
+import { machineHeadline } from "../machine.ts";
+import { allTold, systemOf } from "../model.ts";
 
 /** The three watches, told `these` whole, each to its kind's. */
 function told(these: readonly { readonly key: string; readonly kind: string }[]) {
@@ -130,90 +131,6 @@ it("a part's side and what it holds are read apart", () => {
   );
 });
 
-it("a side's closing and N more counts for as many", () => {
-  const { summary, part, machine } = told(records);
-  const machines = systemOf(summary, part, machine)?.parts[0];
-  assert.ok(machines);
-  const side = ["a", "b", "and 4 more worth a look"];
-  assert.equal(looksIn({ ...machines, side }), 6);
-  assert.equal(
-    looksIn({ ...machines, side, health: "unread" }),
-    0,
-    "why it wasn't read is no look",
-  );
-});
-
-it("the headline counts the parts, what is worth a look and what wasn't read", () => {
-  const { summary, part, machine } = told(records);
-  const system = systemOf(summary, part, machine);
-  assert.ok(system);
-  assert.equal(sentence(headline(system)), "Two parts, one worth a look.");
-  const [first, second] = system.parts;
-  assert.ok(first && second);
-  const many = {
-    ...system,
-    parts: [
-      { ...first, side: ["a", "b", "and 10 more worth a look"] },
-      { ...second, health: "unread" as const },
-    ],
-  };
-  assert.equal(sentence(headline(many)), "Two parts, 12 worth a look and one not read.");
-  const good = { ...system, parts: [{ ...first, health: "good" as const, side: [] }] };
-  assert.equal(sentence(headline(good)), "One part, all good.");
-});
-
-it("the lede names the worst part's first look, then why a part wasn't read", () => {
-  const { summary, part, machine } = told(records);
-  const system = systemOf(summary, part, machine);
-  assert.ok(system);
-  assert.equal(lede(system), "Machines: osprey has a filling disk.", "a name keeps its case");
-  const [first, second] = system.parts;
-  assert.ok(first && second);
-  const worse = {
-    ...system,
-    parts: [first, { ...second, health: "bad" as const, side: ["the build is failing"] }],
-  };
-  assert.equal(lede(worse), "Code: the build is failing.", "bad comes before worth a look");
-  const stopped = {
-    ...system,
-    parts: [
-      first,
-      { ...second, health: "bad" as const, side: ["the radio is busy, 20 hours ago."] },
-    ],
-  };
-  assert.equal(
-    lede(stopped),
-    "Code: the radio is busy, 20 hours ago.",
-    "an owner's words that end their own sentence get no second stop",
-  );
-  const asked = {
-    ...system,
-    parts: [first, { ...second, health: "bad" as const, side: ["is the modem on?"] }],
-  };
-  assert.equal(lede(asked), "Code: is the modem on?", "a question keeps its own mark");
-  const unread = {
-    ...system,
-    parts: [
-      { ...first, health: "good" as const, side: [] },
-      { ...second, health: "unread" as const, says: "repos timed out" },
-    ],
-  };
-  assert.equal(lede(unread), "Code couldn't be read: repos timed out.");
-  const unreadStopped = {
-    ...unread,
-    parts: [unread.parts[0], { ...second, health: "unread" as const, says: "repos timed out." }],
-  };
-  assert.equal(
-    lede(unreadStopped),
-    "Code couldn't be read: repos timed out.",
-    "why a part wasn't read gets one stop too",
-  );
-  assert.equal(
-    lede({ ...system, parts: [{ ...first, health: "good" as const, side: [] }] }),
-    undefined,
-  );
-});
-
 /** What `markup` reads as, its tags gone and its spaces run together. */
 function read(markup: string): string {
   return markup
@@ -242,20 +159,27 @@ function said(markup: string): string {
 
 /** A legend item: its mark's health, then its word. */
 const KEY =
-  /<li class="key"><svg class="sky (?<health>\w+) [^"]*"[\s\S]*?<\/svg><span class="word">(?<word>[^<]*)<\/span><\/li>/gu;
+  /<li class="key"><span class="mark (?<health>\w+)" aria-hidden="true"><\/span><span class="word">(?<word>[^<]*)<\/span><\/li>/gu;
 
-/** A part on the outlook: its name, then what it says. */
-const ON_THE_OUTLOOK =
-  /aria-label="(?<heard>[^"]*)">[\s\S]*?<span class="place">(?<place>[^<]*)<\/span><span class="forecast">(?<says>[^<]*)<\/span><\/a>/gu;
+/** A tie's heading, in the order drawn. */
+const TIE = /<section class="tie"><h3>(?<name>[^<]*)<\/h3>/gu;
+
+/** A row the keys step through, by its key. */
+const ROW = /data-row="(?<key>[^"]*)"/gu;
+const PLACE = /data-place="(?<place>[^"]*)"/gu;
+const HIDDEN_BRIDGE = /<figure class="bridge" id="bridge" aria-hidden="true">/u;
+
+/** A time, as the page says one. */
+const when = (at: string): string => `at ${at}`;
 
 /**
  * Where index.html leaves room for the legend: a list of its own, which
  * says its role outright, since Safari drops it from an unbulleted list.
  */
-const LEGEND_LIST = /<ul(?=[^>]*\bid="legend")(?=[^>]*\brole="list")[^>]*><\/ul>/u;
+/** A section's opening tag, cut off its `<section `, saying whose it is. */
+const OPENS_WITH_ITS_PART = /^[^>]*\bdata-part="[\w-]+"/u;
 
-/** A drawn mark's shape: what is inside its svg. */
-const SHAPE = /<svg [^>]*>(?<shape>[\s\S]*?)<\/svg>/gu;
+const LEGEND_LIST = /<ul(?=[^>]*\bid="legend")(?=[^>]*\brole="list")[^>]*><\/ul>/u;
 
 it("the legend gives each health its own item: its own mark, then its word", () => {
   const keys = [...legend().matchAll(KEY)].map((key) => [
@@ -268,41 +192,153 @@ it("the legend gives each health its own item: its own mark, then its word", () 
     ["bad", "Bad"],
     ["unread", "Not read"],
   ]);
-  const shapes = new Set([...legend().matchAll(SHAPE)].map((each) => each.groups?.["shape"]));
-  assert.equal(shapes.size, 4, "each health is drawn in a shape of its own");
+  const shapes = new Set(keys.map(([health]) => health));
+  assert.equal(shapes.size, 4, "each health is drawn in a mark of its own");
 });
 
-it("each part on the outlook says how many are worth a look, or else its health's word", () => {
-  const { summary, part, machine } = told(records);
+/** The system `records` hold, with the machines' records changed by `change`. */
+function systemWith(change: (record: (typeof records)[number]) => object = (record) => record) {
+  const { summary, part, machine } = told(records.map(change) as typeof records);
   const system = systemOf(summary, part, machine);
   assert.ok(system);
-  const [first, second] = system.parts;
-  assert.ok(first && second);
-  const four = {
-    ...system,
-    parts: [
-      { ...first, health: "good" as const, side: [] },
-      { ...second, health: "unread" as const, side: [] },
-      { ...second, health: "watch" as const, side: [] },
-      { ...second, health: "watch" as const, side: ["a"] },
-      { ...second, health: "bad" as const, side: ["a", "b"] },
-    ],
-  };
-  const spoke = [...outlookOf(four).matchAll(ON_THE_OUTLOOK)].map((each) => [
-    each.groups?.["place"],
-    each.groups?.["says"],
-    each.groups?.["heard"],
+  return system;
+}
+
+it("each machine has a section of its own, with its four ties in order", () => {
+  const drawn = partsOf(systemWith(), when);
+  assert.ok(drawn.includes('<section class="machine good" id="machine-1"'));
+  assert.ok(drawn.includes('<section class="machine watch" id="machine-2"'));
+  const [first] = drawn.split('id="machine-2"');
+  const ties = [...(first ?? "").matchAll(TIE)].map((each) => each.groups?.["name"]);
+  assert.deepEqual(ties, ["Cells", "Network", "Code", "Itself"]);
+});
+
+it("turns the headline in its worst health's colour, and names each machine in the places", () => {
+  assert.equal(
+    headlineOf({ machines: "Two machines", stand: "both worth a look", health: "watch" }),
+    'Two machines, <em class="watch">both worth a look.</em>',
+  );
+  const places = placesOf(systemWith());
+  const targets = [...places.matchAll(PLACE)].map((each) => each.groups?.["place"]);
+  assert.deepEqual(targets, ["machine-1", "machine-2", "across"]);
+  assert.ok(places.includes("kestrel") && places.includes("osprey"));
+});
+
+it("says why there are no machines to draw when their part couldn't be read", () => {
+  const system = systemWith((record) =>
+    record.key === "part:machines"
+      ? { ...record, health: "not read", says: "the mycelium couldn't be reached", things: [] }
+      : record,
+  );
+  const drawn = partsOf(system, when);
+  assert.ok(
+    drawn.includes('<p class="bare health unread">'),
+    "the unread part drew no paragraph of its own",
+  );
+  assert.ok(drawn.includes(`The mycelium couldn${escaped("'")}t be reached`));
+  assert.ok(!drawn.includes('class="machine '), "a machine was drawn from an unread part");
+});
+
+it("counts the machines a part names whose records haven't come", () => {
+  const system = systemWith();
+  const { summary, part, machine } = told(
+    records.filter((record) => record.key !== "machine:osprey"),
+  );
+  const partial = systemOf(summary, part, machine);
+  assert.equal(system.parts[0]?.untold, 0);
+  assert.equal(partial?.parts[0]?.things.length, 1);
+  assert.equal(partial?.parts[0]?.untold, 1);
+  assert.ok(partial);
+  assert.equal(machineHeadline(partial).machines, "Two machines");
+});
+
+it("says the machines are awaited, not the part's own words, while none has come", () => {
+  const system = systemWith();
+  const { summary, part, machine } = told(records.filter((record) => record.kind !== "machine"));
+  const awaited = systemOf(summary, part, machine);
+  assert.ok(awaited);
+  const drawn = partsOf(awaited, when);
+  assert.ok(
+    drawn.includes('<p class="bare health unread">'),
+    "the awaited machines drew no line of their own",
+  );
+  assert.ok(drawn.includes("Two machines named, none read yet."));
+  assert.ok(!drawn.includes("Osprey has a filling disk"), "the part's words were said as read");
+  assert.ok(partsOf(system, when).includes('class="machine '));
+});
+
+it("draws no command a shell would read more into", () => {
+  const system = systemWith((record) =>
+    record.key === "part:code"
+      ? { ...record, deeper: { ...deeper, command: "system code | sh" } }
+      : record,
+  );
+  assert.equal(system.parts[1]?.deeper.command, "");
+  assert.ok(!partsOf(system, when).includes("system code | sh"));
+});
+
+it("puts every command y copies inside a section that says whose it is", () => {
+  const drawn = partsOf(systemWith(), when);
+  const sections = drawn.split("<section ").slice(1);
+  assert.ok(sections.some((section) => section.includes('class="copy"')));
+  for (const section of sections.filter((one) => one.includes('class="copy"'))) {
+    assert.match(section, OPENS_WITH_ITS_PART, `${section.slice(0, 60)} says no part`);
+  }
+});
+
+it("steps through each machine's rows, then the parts across them", () => {
+  const keys = [...partsOf(systemWith(), when).matchAll(ROW)].map((each) => each.groups?.["key"]);
+  assert.deepEqual(keys, [
+    "machine:kestrel",
+    "cells:kestrel",
+    "machine:osprey",
+    "cells:osprey",
+    "part:code",
   ]);
-  // What is shown, then what a screen reader hears: with looks, the health
-  // too, as the link's name, so watch and bad don't sound alike while the
-  // text stays what is shown.
-  assert.deepEqual(spoke, [
-    ["Machines", "good", "Machines good"],
-    ["Code", "not read", "Code not read"],
-    ["Code", "watch", "Code watch"],
-    ["Code", "1 worth a look", "Code 1 worth a look (watch)"],
-    ["Code", "2 worth a look", "Code 2 worth a look (bad)"],
-  ]);
+});
+
+it("goes to a machine's place on the network, and offers the launcher only with an act", () => {
+  const system = systemWith((record) =>
+    record.key === "machine:osprey"
+      ? {
+          ...record,
+          ties: {
+            network: [{ device: "mac:a8 b", by: "wired", point: "Den" }],
+            code: { repositories: 3, checkouts: 4 },
+            acts: {
+              link: "mycelium:machine/osprey?from=system",
+              commands: ["mycelium update osprey"],
+            },
+          },
+        }
+      : record,
+  );
+  const drawn = partsOf(system, when);
+  assert.ok(drawn.includes('href="../network/#device=mac%3Aa8%20b"'));
+  assert.ok(drawn.includes('data-row="code:osprey" href="../code/"'));
+  assert.ok(drawn.includes('href="mycelium:machine/osprey?from=system">Open in the Launcher<'));
+  assert.ok(drawn.includes('data-command="mycelium update osprey"'));
+  assert.equal(drawn.split("Open in the Launcher").length - 1, 1, "kestrel has no act");
+});
+
+it("offers the launcher only by its own scheme", () => {
+  const system = systemWith((record) =>
+    record.key === "machine:osprey"
+      ? { ...record, ties: { acts: { link: "javascript:alert(1)", commands: [] } } }
+      : record,
+  );
+  assert.ok(!partsOf(system, when).includes("Open in the Launcher"));
+});
+
+it("draws eight machines whole, and sends the rest to the map", () => {
+  const system = systemWith();
+  const [machines] = system.parts;
+  const [one] = machines?.things ?? [];
+  assert.ok(machines && one);
+  const many = Array.from({ length: 11 }, (_, at) => ({ ...one, name: `m${at}` }));
+  const drawn = partsOf({ ...system, parts: [{ ...machines, things: many }] }, when);
+  assert.equal(drawn.split('<section class="machine ').length - 1, 8);
+  assert.ok(drawn.includes('href="../mycelium/">And 3 more machines, on the map<'));
 });
 
 // The daemon's word for each health, then what a screen reader hears.
@@ -313,19 +349,16 @@ for (const [daemonSays, word] of [
   ["not read", "not read"],
 ] as const) {
   it(`a screen reader hears a part and a machine told ${daemonSays} as "${word}"`, () => {
-    const these = records.map((record) =>
-      record.key === "part:machines" || record.key === "machine:osprey"
+    const system = systemWith((record) =>
+      record.key === "part:code" || record.key === "machine:osprey"
         ? { ...record, health: daemonSays }
         : record,
     );
-    const { summary, part, machine } = told(these);
-    const system = systemOf(summary, part, machine);
-    assert.ok(system);
-    const drawn = partsOf(system);
-    assert.ok(drawn.includes(`Machines<span class="sr"> (${word})</span>`), "the part's heading");
+    const drawn = partsOf(system, when);
+    assert.ok(drawn.includes(`Code<span class="sr"> (${word})</span>`), "the part's heading");
     assert.ok(
       drawn.includes(`osprey</span><span class="sr"> (${word})</span>`),
-      "the machine's row",
+      "the machine's heading",
     );
   });
 }
@@ -344,6 +377,29 @@ it("the page and its words for a model wear no weather words, nor in what is rea
 it("the legend is a list in every browser, so a screen reader hears its words apart", () => {
   const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.match(page, LEGEND_LIST);
+});
+
+it("keeps the whole bridge from a screen reader, since the sections under it say it all", () => {
+  const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(page, HIDDEN_BRIDGE);
+});
+
+it("draws once every watch has told its records, or can't", () => {
+  const kinds = ["summary", "part", "machine"];
+  const live = new Map([
+    ["summary", { state: "live" }],
+    ["part", { state: "live" }],
+    ["machine", { state: "live" }],
+  ]);
+  assert.equal(allTold(kinds, new Set(), new Map()), false, "nothing told yet");
+  assert.equal(allTold(kinds, new Set(["summary", "part"]), live), false, "live is not told");
+  assert.equal(allTold(kinds, new Set(kinds), live), true, "every kind told");
+  for (const state of ["broken", "stale"]) {
+    const stuck = new Map([...live, ["machine", { state }]]);
+    assert.equal(allTold(kinds, new Set(["summary", "part"]), stuck), true, `machine ${state}`);
+  }
+  const connecting = new Map([...live, ["machine", { state: "connecting" }]]);
+  assert.equal(allTold(kinds, new Set(["summary", "part"]), connecting), false, "still connecting");
 });
 
 it("a record's words reach the page as text, never as markup", () => {

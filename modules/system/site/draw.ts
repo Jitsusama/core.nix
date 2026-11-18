@@ -1,39 +1,47 @@
-// The system page's markup: how everything Joel runs stands. Each part
-// stands on one horizon, and how it stands is its health in the system's
-// own words, good, watch, bad or not read, each with its own mark so none
-// is told by colour. The outlook draws the four parts large under the
-// headline; each part below hangs its mark in the gutter, then what in it
-// is worth a look and the way deeper. Every row the keys step through is a
-// link marked data-row, in reading order, so the cursor is focus itself and
-// Return follows it, and a row shows its own keys while it has the cursor.
-// Every word read from a record is escaped before it reaches the page.
+// The system page's markup, machine by machine. A machine is the bridge
+// between the mycelium, the network and the code (Joel, 2026-11-17), so
+// each has a section of its own: its name and how it stands, then its four
+// ties, each said in words with the way to see it whole, then what can be
+// done from here. The other three parts follow, said across the machines.
+// How a thing stands is its health in the system's own words, good, watch,
+// bad or not read, each with its own mark so none is told by colour. Every
+// row the keys step through is a link marked data-row, in reading order,
+// so the cursor is focus itself and Return follows it. Every word read
+// from a record is escaped before it reaches the page.
 
 import {
-  CLEAR,
-  type Headline,
+  cellsSaid,
+  codeSaid,
+  itselfSaid,
+  kindOf,
+  type MachineHeadline,
+  networkSaid,
+  type Said,
+  standing,
+} from "./machine.ts";
+import {
+  capital,
   type Health,
-  looksIn,
   named,
+  numbered,
   type Part,
   type System,
   type Thing,
   WORDS,
 } from "./model.ts";
 
-/**
- * Each health's mark on a 16 grid, its horizon at the foot: the sun half
- * risen with its rays, a cloud resting on the line, a storm cloud with its
- * bolt, and fog in broken lines.
- */
-const MARKS: { readonly [health in Health]: string } = {
-  good: '<path d="M1.5 13h13"/><path d="M4.2 13a3.8 3.8 0 0 1 7.6 0"/><path d="M8 6.4V4.6M4.2 8.1 3 6.9M11.8 8.1 13 6.9"/>',
-  watch: '<path d="M4.6 13h6.9a2.7 2.7 0 0 0 .2-5.4 3.8 3.8 0 0 0-7.3.9A2.3 2.3 0 0 0 4.6 13z"/>',
-  bad: '<path d="M4.6 9.6h6.9a2.6 2.6 0 0 0 .2-5.2 3.7 3.7 0 0 0-7.1.9 2.2 2.2 0 0 0 0 4.3z"/><path d="M8.8 10.2 7.2 12.6h2.1L7.8 15"/>',
-  unread: '<path d="M2 6.5h12M3.5 9.5h9M2 12.5h12" stroke-dasharray="2.4 1.8"/>',
-};
+/** The most machines drawn whole, worst first, so thousands stay short. */
+const MACHINES_DRAWN = 8;
 
-/** The most machines a part draws, worst first, so thousands stay short. */
-const MACHINES_DRAWN = 3;
+/** The other parts, said across the machines, in the order they are drawn. */
+const ACROSS = ["mycelium", "network", "code"] as const;
+
+/** What each other part's link says, to see it whole. */
+const WHOLE: { readonly [part: string]: string } = {
+  mycelium: "See the whole mycelium",
+  network: "See the whole network",
+  code: "See all your code",
+};
 
 const ESCAPES: { readonly [character: string]: string } = {
   "&": "&amp;",
@@ -43,16 +51,11 @@ const ESCAPES: { readonly [character: string]: string } = {
   "'": "&#39;",
 };
 
-/** A row the keys step through: where it goes, its key, and what it shows. */
-interface Row {
-  readonly part: Part;
-  readonly href: string;
-  readonly key: string;
-  readonly inner: string;
-  /** The mark hung in its gutter, when it has one. */
-  readonly health?: Health;
-  /** The keys it answers while it has the cursor, beyond Return. */
-  readonly acts?: string;
+/** One tie of a machine: its name, what it says, and where to see it whole. */
+interface Tie {
+  readonly name: string;
+  readonly said: Said;
+  readonly link?: { readonly href: string; readonly words: string };
 }
 
 /** `text` safe to put in markup, as text or an attribute's value. */
@@ -61,15 +64,15 @@ function escaped(text: string): string {
 }
 
 /** The mark `health` is drawn with, its word said only to a screen reader. */
-function mark(health: Health, size = "small"): string {
-  return `<svg class="sky ${health} ${size}" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${MARKS[health]}</g></svg>`;
+function mark(health: Health): string {
+  return `<span class="mark ${health}" aria-hidden="true"></span>`;
 }
 
 /** How `health` is said to a screen reader, after a name. */
 function spoken(health: Health): string {
   // In parentheses, since a reader takes the hidden span out of flow as a
-  // block and puts a space before it: "Machines (watch)" reads right
-  // where "Machines , watch" would not.
+  // block and puts a space before it: "osprey (watch)" reads right where
+  // "osprey , watch" would not.
   return `<span class="sr"> (${WORDS[health].toLowerCase()})</span>`;
 }
 
@@ -78,149 +81,177 @@ function home(thing: Thing): string {
   return `../${thing.address ?? "mycelium/"}`;
 }
 
-/** The headline, its counts each a link to what it counts. */
-function headlineOf(heading: Headline): string {
-  const looks =
-    heading.looks === undefined
-      ? undefined
-      : `<a href="#parts" data-to="look"><em>${escaped(heading.looks)}</em></a>`;
-  const unread =
-    heading.unread === undefined
-      ? undefined
-      : `<a href="#parts" data-to="unread">${escaped(heading.unread)}</a>`;
-  const clauses = [looks, unread].filter((clause) => clause !== undefined);
-  const rest = clauses.length === 0 ? `<em>${CLEAR}</em>` : clauses.join(" and ");
-  return `<a href="#parts" data-to="part">${escaped(heading.parts)}</a>, ${rest}.`;
+/** The machines drawn whole, worst first as the machines part lists them. */
+function machinesOf(system: System): readonly Thing[] {
+  return system.parts.find((part) => part.part === "machines")?.things ?? [];
 }
 
-/**
- * What one part says under its name on the outlook: how many looks, or its
- * health's word.
- */
-function forecast(part: Part): string {
-  const looks = looksIn(part);
-  if (looks > 0) {
-    return `${looks} worth a look`;
-  }
-  return WORDS[part.health].toLowerCase();
+/** The headline: how many machines, then how they stand in their worst health's colour. */
+function headlineOf(heading: MachineHeadline): string {
+  return `${escaped(heading.machines)}, <em class="${heading.health}">${escaped(heading.stand)}.</em>`;
 }
 
-/**
- * What one part on the outlook says to a screen reader: its name, what it
- * shows, and with looks its health too, since its mark is hidden and watch
- * and bad would otherwise sound the same. It is the link's name rather than
- * hidden text, so the outlook's text stays what is shown.
- */
-function heard(part: Part): string {
-  const said = `${named(part.part)} ${forecast(part)}`;
-  return looksIn(part) > 0 ? `${said} (${WORDS[part.health].toLowerCase()})` : said;
-}
-
-/** The outlook: the four parts on one horizon, each with its mark. */
-function outlookOf(system: System): string {
-  return system.parts
-    .map((part, at) => {
-      const name = escaped(named(part.part));
-      return `<li><a class="station ${part.health}" href="#part-${escaped(part.part)}" data-station="${at + 1}" aria-label="${escaped(heard(part))}">${mark(part.health, "large")}<span class="place">${name}</span><span class="forecast">${forecast(part)}</span></a></li>`;
-    })
-    .join("");
-}
-
-/** The place words at the top: each part's name and how many looks it has. */
+/** The places at the top: the machines drawn whole, then the parts across them. */
 function placesOf(system: System): string {
-  return system.parts
-    .map((part) => {
-      const looks = looksIn(part);
-      const count = looks > 0 ? `<span class="n">${looks}</span>` : "";
-      return `<a class="place" href="#part-${escaped(part.part)}" data-place="${escaped(part.part)}">${escaped(named(part.part))}${count}</a>`;
-    })
-    .join("");
-}
-
-/** The keys a row answers while it has the cursor, shown on the row then. */
-function actsOf(acts: string | undefined): string {
-  const more = acts === undefined ? "" : ` ${acts}`;
-  return `<span class="acts" aria-hidden="true"><kbd>Return</kbd> opens${more}</span>`;
-}
-
-/** A row the keys step through, as a list item. */
-function row(drawn: Row): string {
-  return `<li>${link(drawn)}</li>`;
-}
-
-/** A row's link: its mark in the gutter, its words on the main line, its keys. */
-function link(drawn: Row): string {
-  const gutter = drawn.health === undefined ? "" : mark(drawn.health);
-  const health = drawn.health === undefined ? "" : ` data-health="${drawn.health}"`;
-  return `<a class="row" data-row="${escaped(drawn.key)}" data-part="${escaped(drawn.part.part)}"${health} href="${escaped(drawn.href)}"><span class="gut">${gutter}</span><span class="line">${drawn.inner}</span>${actsOf(drawn.acts)}</a>`;
-}
-
-/** A machine's row: its name, then what it says. */
-function machineRow(part: Part, thing: Thing): string {
-  const inner = `<span class="own" translate="no">${escaped(thing.name)}</span>${spoken(thing.health)} ${escaped(thing.says)}`;
-  return row({
-    part,
-    href: home(thing),
-    key: `machine:${thing.name}`,
-    inner,
-    health: thing.health,
-  });
-}
-
-/** What in `part` is worth a look, as rows: its machines, or its side. */
-function itemsOf(part: Part): string[] {
-  const site = `../${part.deeper.site}`;
-  if (part.things.length > 0) {
-    const drawn = part.things.slice(0, MACHINES_DRAWN).map((thing) => machineRow(part, thing));
-    const more = part.things.length - MACHINES_DRAWN;
-    if (more > 0) {
-      const words = `and ${more} more ${more === 1 ? "machine" : "machines"}`;
-      drawn.push(row({ part, href: site, key: `${part.part}:more`, inner: escaped(words) }));
-    }
-    return drawn;
-  }
-  if (part.health === "unread") {
-    return [];
-  }
-  return part.side.map((item, at) =>
-    row({ part, href: site, key: `${part.part}:${at}`, inner: escaped(item) }),
+  const machines = machinesOf(system)
+    .slice(0, MACHINES_DRAWN)
+    .map(
+      (thing, at) =>
+        `<a class="place" href="#machine-${at + 1}" data-place="machine-${at + 1}" translate="no">${mark(thing.health)}${escaped(thing.name)}${spoken(thing.health)}</a>`,
+    );
+  return [...machines, '<a class="place" href="#across" data-place="across">Across them</a>'].join(
+    "",
   );
 }
 
-/** The ways deeper into `part`: its command, which y copies, and where it is in the launcher. */
-function deeperOf(part: Part): string {
-  const command = escaped(part.deeper.command);
-  return `<p class="deeper"><code>${command}</code><button type="button" class="copy" data-command="${command}" aria-label="Copy ${command}">copy</button><span class="launcher"><span class="sr">In the launcher: </span>${escaped(part.deeper.launcher)}</span></p>`;
+/** A command and the button that copies it, which y presses for its section's first. */
+function command(said: string): string {
+  if (said === "") {
+    return "";
+  }
+  const words = escaped(said);
+  return `<span class="command"><code>${words}</code><button type="button" class="copy" data-command="${words}" aria-label="Copy ${words}">copy</button></span>`;
 }
 
-/** `part`, drawn: its heading, what it holds, what is worth a look and the ways deeper. */
-function partOf(part: Part): string {
-  const id = escaped(part.part);
-  const holds =
-    part.health === "unread"
-      ? `<p class="holds unread">${escaped(part.says)}</p>`
-      : `<p class="holds">${escaped(part.holds ?? "")}</p>`;
-  const items = itemsOf(part);
-  const list = items.length === 0 ? "" : `<ul class="items">${items.join("")}</ul>`;
-  const heading = link({
-    part,
-    href: `../${part.deeper.site}`,
-    key: `part:${part.part}`,
-    inner: `${escaped(named(part.part))}${spoken(part.health)}`,
-    health: part.health,
-    acts: "and <kbd>y</kbd> copies its command",
-  });
-  return `<section class="part ${part.health}" id="part-${id}" aria-labelledby="name-${id}">
-  <h2 class="name" id="name-${id}">${heading}</h2>
-  ${holds}
-  ${list}
-  ${deeperOf(part)}
+/** One tie, drawn: its name, what it says, what is aside, and the way to see it whole. */
+function tieOf(tie: Tie, key: string): string {
+  const link =
+    tie.link === undefined
+      ? ""
+      : `<a class="row deeper" data-row="${escaped(key)}" href="${escaped(tie.link.href)}">${escaped(tie.link.words)}</a>`;
+  return `<section class="tie"><h3>${escaped(tie.name)}</h3><p class="said">${escaped(tie.said.said)}</p><p class="aside">${escaped(tie.said.aside)}</p>${link}</section>`;
+}
+
+/**
+ * A machine's four ties: its cells, the network, its code and itself, read
+ * on the machine `here` names.
+ */
+function tiesOf(thing: Thing, here: string, when: (at: string) => string): readonly Tie[] {
+  const network = networkSaid(thing.ties);
+  const code = codeSaid(thing.ties, thing.name, thing.name === here);
+  return [
+    {
+      name: "Cells",
+      said: cellsSaid(thing.ties),
+      link: { href: home(thing), words: "See them on the map" },
+    },
+    {
+      name: "Network",
+      said: network,
+      ...(network.device === undefined
+        ? {}
+        : {
+            link: {
+              href: `../network/#device=${encodeURIComponent(network.device)}`,
+              words: "See it on the network",
+            },
+          }),
+    },
+    {
+      name: "Code",
+      said: code,
+      ...(code.read ? { link: { href: "../code/", words: "See it in your code" } } : {}),
+    },
+    { name: "Itself", said: itselfSaid(thing.ties, when) },
+  ];
+}
+
+/** What can be done to a machine from here: open it in the launcher, or a command. */
+function actsOf(thing: Thing): string {
+  const { link, commands } = thing.ties.acts;
+  const open =
+    link === undefined
+      ? ""
+      : `<a class="row act" data-row="act:${escaped(thing.name)}" href="${escaped(link)}">Open in the Launcher</a>`;
+  const said = commands.map(command).join("");
+  return open === "" && said === "" ? "" : `<p class="acts">${open}${said}</p>`;
+}
+
+/** One machine, drawn whole: its name, kind and standing, its ties and its acts. */
+function machineOf(thing: Thing, at: number, here: string, when: (at: string) => string): string {
+  const id = `machine-${at + 1}`;
+  const name = escaped(thing.name);
+  const kind = kindOf(thing, here);
+  const kindLine = kind === undefined ? "" : `<p class="kind">${escaped(kind)}</p>`;
+  const ties = tiesOf(thing, here, when)
+    .map((tie) => tieOf(tie, `${tie.name.toLowerCase()}:${thing.name}`))
+    .join("");
+  return `<section class="machine ${thing.health}" id="${id}" data-part="${id}" aria-labelledby="name-${id}">
+  <h2 class="name" id="name-${id}"><a class="row" data-row="machine:${name}" data-health="${thing.health}" href="${escaped(home(thing))}"><span translate="no">${name}</span>${spoken(thing.health)}</a></h2>
+  ${kindLine}
+  <p class="standing health ${thing.health}">${mark(thing.health)}${escaped(standing(thing))}</p>
+  <div class="ties">${ties}</div>
+  ${actsOf(thing)}
 </section>`;
 }
 
-/** Every part of `system`, in its order. */
-function partsOf(system: System): string {
-  return system.parts.map((part) => partOf(part)).join("\n");
+/** What one other part says across the machines: what is worth a look, or what it holds. */
+function partSaid(part: Part): Said {
+  if (part.health === "unread") {
+    return { said: WORDS.unread, aside: capital(part.says) };
+  }
+  const [first, ...rest] = part.side;
+  if (part.health === "good" || first === undefined) {
+    return { said: capital(part.holds ?? part.says), aside: "Nothing in it is worth a look." };
+  }
+  return {
+    said: capital(first),
+    aside: capital(rest.length === 0 ? (part.holds ?? "") : rest.join("; ")),
+  };
+}
+
+/** One other part, across the machines: how it stands, the way to see it whole, its command. */
+function acrossOf(part: Part): string {
+  const said = partSaid(part);
+  const name = escaped(named(part.part));
+  return `<section class="tie part ${part.health}" data-part="part-${escaped(part.part)}"><h3>${mark(part.health)}${name}${spoken(part.health)}</h3><p class="said">${escaped(said.said)}</p><p class="aside">${escaped(said.aside)}</p><div class="onward"><a class="row deeper" data-row="part:${escaped(part.part)}" data-health="${part.health}" href="../${escaped(part.deeper.site)}">${escaped(WHOLE[part.part] ?? `See all of ${named(part.part)}`)}</a>${command(part.deeper.command)}</div></section>`;
+}
+
+/** The machines beyond those drawn whole, said as a row to the map. */
+function moreOf(system: System): string {
+  const more = machinesOf(system).length - MACHINES_DRAWN;
+  if (more <= 0) {
+    return "";
+  }
+  const words = `And ${more.toLocaleString("en-CA")} more ${more === 1 ? "machine" : "machines"}, on the map`;
+  return `<p class="more"><a class="row" data-row="machines:more" href="../mycelium/">${escaped(words)}</a></p>`;
+}
+
+/**
+ * The machines part when it can't be drawn machine by machine: when it
+ * wasn't read, or holds none, it says so in its own words.
+ */
+function bareOf(system: System): string {
+  const part = system.parts.find((one) => one.part === "machines");
+  if (part === undefined || machinesOf(system).length > 0) {
+    return "";
+  }
+  // Its machines' records still to come, its own words would say them read.
+  if (part.untold > 0) {
+    const awaited = `${capital(numbered(part.untold))} ${part.untold === 1 ? "machine" : "machines"}`;
+    return `<p class="bare health unread">${mark("unread")}${escaped(`${awaited} named, none read yet.`)}</p>`;
+  }
+  return `<p class="bare health ${part.health}">${mark(part.health)}${escaped(capital(part.says))}</p>`;
+}
+
+/**
+ * Every machine drawn whole, then the other parts across them. `here` is
+ * the machine the page reads from; `when` says a time, as "at 02:19".
+ */
+function partsOf(system: System, when: (at: string) => string): string {
+  const machines = machinesOf(system)
+    .slice(0, MACHINES_DRAWN)
+    .map((thing, at) => machineOf(thing, at, system.machine, when));
+  const across = ACROSS.map((name) => system.parts.find((part) => part.part === name))
+    .filter((part) => part !== undefined)
+    .map(acrossOf)
+    .join("");
+  return `${bareOf(system)}${machines.join("\n")}${moreOf(system)}
+<section class="across" id="across" data-part="across" aria-labelledby="name-across">
+  <h2 class="name" id="name-across">Across <em>them</em></h2>
+  <div class="ties">${across}</div>
+  <p class="later">Not shown yet: the builders your machines lend work to.</p>
+</section>`;
 }
 
 /**
@@ -236,4 +267,4 @@ function legend(): string {
     .join("");
 }
 
-export { escaped, headlineOf, home, legend, outlookOf, partsOf, placesOf };
+export { escaped, headlineOf, home, legend, MACHINES_DRAWN, machinesOf, partsOf, placesOf };

@@ -1,16 +1,17 @@
-# Your System, Now
+# Your Machines, Now
 
-> A live, read-only view of how Joel's whole system stands at once:
-> every machine on his mycelium, the mycelium itself, his home network
-> and his code, each judged from its own owner's answer, with the way
-> deeper into each.
+> A live, read-only view of how Joel's machines stand and what each
+> carries: the mycelium's cells on it, where it meets his home network,
+> the code it holds and its own figures. Then the mycelium, the network
+> and the code across them, each judged from its own owner's answer.
 
-- [The page](index.html): how everything he runs stands. A headline
-  counting what is worth a look, the outlook of the four parts each
-  with its health (good, watch, bad or not read), and the four parts
-  in one column, walked by keyboard or pointer.
-- [The page as text](index.md): how each part is judged, the keys, and
-  what the data holds.
+- [The page](index.html): a headline counting the machines and how they
+  stand, the machines drawn as the piers of a bridge, a section for
+  each machine with its four ties and what can be done with it through
+  the launcher, then the other three parts across them, each with its
+  health (good, watch, bad or not read), walked by keyboard or pointer.
+- [The page as text](index.md): how each is judged, the keys, and what
+  the data holds.
 - The data: the system daemon's records, which the page watches live
   over the sites' server at /feed/system. An agent on the machine runs
   `system --json` itself.

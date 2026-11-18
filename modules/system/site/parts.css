@@ -1,148 +1,187 @@
-/* The parts under the outlook: each a name and what it holds, what in it is
-   worth a look, and the ways deeper, every row hanging its mark in the
-   gutter so each name starts on the page's one edge (site.css). */
-
-/* ---- The parts: each a name and what it holds on one line, what is
-   worth a look under it, and the ways deeper last. Hairlines, no boxes. ---- */
+/* Each machine under the bridge, then the parts across them: a name large
+   in the serif, its kind and how it stands, its four ties in a grid that
+   wraps to fit, and what can be done from here. Hairlines between the
+   machines, no boxes (site.css holds the head and the bridge). */
 
 .parts {
   margin-block: var(--frames) var(--groups);
 }
 
-.part {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "name holds"
-    "items items"
-    "deeper deeper";
-  align-items: center;
-  column-gap: var(--items);
-  padding-block: var(--mark) var(--items);
+.machine,
+.across {
+  padding-block: var(--groups);
   border-block-start: 1px solid var(--rule);
-  scroll-margin-block-start: 5rem;
+  /* The page's scroll padding keeps it under the masthead; this a breath more. */
+  scroll-margin-block-start: var(--mark);
 }
 
-.part .name {
-  grid-area: name;
+.machine .name,
+.across .name {
   margin: 0;
+  color: var(--strong);
+  font: var(--title-weight) var(--step-display) / 1.05 var(--serif);
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
 }
 
-.part .holds {
-  grid-area: holds;
-  margin: 0;
+.across .name {
+  margin-block-end: var(--items);
+}
+
+.across .name em {
+  color: var(--said);
+  font-style: italic;
+}
+
+.kind {
+  margin: var(--tie) 0 0;
   color: var(--muted);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
-  text-align: end;
+  font: var(--words-weight) var(--step-body) / 1.4 var(--serif);
 }
 
-/* A part not read says why where its holding would be, in the voice. */
-.part .holds.unread {
-  font: var(--voice-weight) var(--step-body) / 1.4 var(--serif);
+/* How a machine stands: its mark, then its health's word and what is
+   worth a look, in the reading voice. */
+.health {
+  display: flex;
+  align-items: center;
+  gap: var(--mark);
+}
+
+.standing.health,
+.bare {
+  margin: var(--mark) 0 var(--items);
+  color: var(--strong);
+  font: var(--voice-weight) var(--step-large) / 1.4 var(--serif);
+  font-style: italic;
+}
+
+.bridge .health {
+  justify-content: center;
+  color: var(--text);
+  font: var(--voice-weight) var(--step-body) / 1.35 var(--serif);
   font-style: italic;
   text-align: start;
 }
 
-.items {
-  grid-area: items;
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* ---- Marks: each health its own shape, so none is told by hue: good a
+   filled disc, watch half filled, bad a diamond, not read a dashed ring. ---- */
+
+/* A span, so the masthead's drawn mark keeps its own look. */
+span.mark {
+  inline-size: 0.7em;
+  block-size: 0.7em;
+  flex: none;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
 }
 
-.deeper {
-  grid-area: deeper;
+.mark.good {
+  border-color: var(--success);
+  background: var(--success);
+}
+
+.mark.watch {
+  border-color: var(--warning);
+  background: linear-gradient(to top, var(--warning) 50%, transparent 50%);
+}
+
+.mark.bad {
+  border-color: var(--alert);
+  border-radius: 0;
+  background: var(--alert);
+  transform: rotate(45deg) scale(0.85);
+}
+
+.mark.unread {
+  border-color: var(--muted);
+  border-style: dashed;
+}
+
+/* ---- The ties: each a name, what it says, what is aside, and the way to
+   see it whole. ---- */
+
+/* Wide enough that none is squeezed, and one to a row on a phone; each
+   tie's parts share their rows with its neighbours', so a name, its words
+   and its aside read level across. */
+.ties {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: var(--groups);
+}
+
+@supports (grid-template-rows: subgrid) {
+  .tie {
+    display: grid;
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+    row-gap: 0;
+    align-content: start;
+  }
+}
+
+.tie h3 {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0 var(--mark);
-  margin: var(--tie) 0 0;
-  padding-inline-start: var(--gutter);
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
+  gap: var(--mark);
+  margin: 0 0 var(--tie);
+  color: var(--said);
+  font: var(--voice-weight) var(--step-body) / 1.3 var(--serif);
+  font-style: italic;
 }
 
-.deeper code {
-  color: var(--text);
-}
-
-.deeper .launcher::before {
-  content: "·";
-  margin-inline-end: var(--mark);
-  color: var(--muted);
-}
-
-.copy {
-  min-block-size: 44px;
-  min-inline-size: 44px;
-  padding: 0 var(--mark);
-  background: none;
-  border: 0;
-  border-radius: var(--radius);
-  color: var(--muted);
-  font: inherit;
-  cursor: pointer;
-}
-
-.copy:hover {
+.tie .said {
+  margin: 0 0 var(--tie);
   color: var(--strong);
+  font: var(--words-weight) var(--step-large) / 1.3 var(--serif);
+  font-feature-settings: "lnum", "tnum";
 }
 
-/* ---- A row: its mark in the gutter, its words on the main line, and the
-   keys it answers at its end while it has the cursor. ---- */
+.tie .aside {
+  margin: 0 0 var(--mark);
+  color: var(--text);
+  font: var(--words-weight) var(--step-body) / 1.5 var(--serif);
+}
+
+.tie.part.watch .said {
+  color: var(--warning);
+}
+
+.tie.part.bad .said {
+  color: var(--alert);
+}
+
+.tie.part.unread .said {
+  color: var(--muted);
+}
+
+/* ---- Rows: every link the keys step through. ---- */
 
 .row {
-  display: grid;
-  grid-template-columns: var(--gutter) minmax(0, 1fr) auto;
-  align-items: baseline;
-  column-gap: 0;
-  min-block-size: 44px;
-  padding-block: var(--tie);
-  padding-inline-end: var(--mark);
   border-radius: var(--radius);
-  color: var(--text);
+  color: var(--strong);
   text-decoration: none;
 }
 
-.row .gut {
-  display: flex;
-  align-self: center;
+.name .row {
+  display: inline-block;
 }
 
-.name .row .line {
-  color: var(--strong);
-  font: var(--title-weight) var(--step-section) / 1.2 var(--serif);
-  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+.deeper {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  font: var(--words-weight) var(--step-body) / 1.3 var(--serif);
+  text-decoration: underline 1px var(--rule);
+  text-underline-offset: 0.25em;
 }
 
-.items .row .line {
-  font: var(--words-weight) var(--step-body) / 1.45 var(--serif);
-  font-variation-settings: "SOFT" var(--words-soft), "WONK" var(--words-wonk);
+.deeper::after {
+  content: " \2192";
+  white-space: pre;
+  color: var(--said);
 }
 
-.items .own {
-  margin-inline-end: 0.35em;
-  color: var(--strong);
-  font: 500 var(--step-small) / 1 var(--mono);
-  font-feature-settings: var(--mono-features);
-}
-
-.row .acts {
-  visibility: hidden;
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.4 var(--serif);
-  white-space: nowrap;
-}
-
-.row:hover .acts,
-.row:focus-visible .acts {
-  visibility: visible;
-}
-
-.row:hover .line {
-  color: var(--strong);
+.deeper:hover {
+  text-decoration-color: currentColor;
 }
 
 /* The cursor: focus itself, a quiet ground and the one accent's ring. */
@@ -156,53 +195,92 @@
   outline-offset: 2px;
 }
 
-.row:focus-visible .line,
-.row:focus-visible .own {
+/* ---- What can be done from here: the launcher, and each command. ---- */
+
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mark) var(--items);
+  margin: var(--groups) 0 0;
+}
+
+.act {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  padding: 0 var(--items);
+  background: var(--tint);
+  color: var(--on-accent);
+  font: 600 var(--step-body) / 1.3 var(--serif);
+}
+
+.act:focus-visible {
+  background: var(--tint);
+}
+
+.command {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tie);
+  color: var(--text);
+}
+
+/* The link to a whole part and its command: set apart so the arrow ends the
+   link, and flush at the start when the command wraps under it. */
+.onward {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--groups);
+}
+
+.command code {
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.copy {
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding: 0 var(--mark);
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font: var(--words-weight) var(--step-small) / 1 var(--serif);
+  cursor: pointer;
+}
+
+.copy:hover {
   color: var(--strong);
 }
 
-/* ---- Marks: each health its own shape, in its hue. ---- */
+.copy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
-.sky {
-  inline-size: 1.15em;
-  block-size: 1.15em;
+.parts > .more {
+  margin: 0;
+  padding-block: var(--items);
+  border-block-start: 1px solid var(--rule);
+  font: var(--voice-weight) var(--step-large) / 1.4 var(--serif);
+  font-style: italic;
+}
+
+.later {
+  margin: var(--groups) 0 0;
   color: var(--muted);
-  flex: none;
-  stroke-width: 1.4;
-}
-
-.sky.large {
-  inline-size: 3rem;
-  block-size: 3rem;
-  stroke-width: 0.9;
-}
-
-/* A heading's mark is sized from the gutter, not the heading's type, so it
-   always ends short of the name rather than running into it. */
-.name .sky {
-  inline-size: min(1.75rem, var(--gutter) - 0.75rem);
-  block-size: min(1.75rem, var(--gutter) - 0.75rem);
-}
-
-.sky.good {
-  color: var(--success);
-}
-
-.sky.watch {
-  color: var(--warning);
-}
-
-.sky.bad {
-  color: var(--alert);
+  font: var(--note-weight) var(--step-small) / 1.5 var(--serif);
+  font-style: italic;
 }
 
 /* ---- The foot: each mark's word, once. ---- */
 
 .note {
-  padding-inline-start: var(--gutter);
   color: var(--muted);
-  font: 400 var(--step-small) / 1.5 var(--mono);
-  font-feature-settings: var(--mono-features);
+  font: 400 var(--step-small) / 1.5 var(--serif);
 }
 
 .note:empty {
@@ -215,8 +293,8 @@
   border-block-start: 1px solid var(--rule);
 }
 
-/* Until a part is drawn the legend explains nothing on screen, and in view
-   it would only be pushed down when the parts arrive. */
+/* Until a machine is drawn the legend explains nothing on screen, and in
+   view it would only be pushed down when the machines arrive. */
 .parts:empty ~ .foot {
   display: none;
 }
@@ -226,7 +304,7 @@
   flex-wrap: wrap;
   gap: var(--tie) var(--groups);
   margin: 0;
-  padding-inline-start: var(--gutter);
+  padding: 0;
   list-style: none;
   color: var(--muted);
   font: 400 var(--step-small) / 1.5 var(--serif);
@@ -244,27 +322,24 @@
 }
 
 @media (max-width: 40rem) {
-  .part {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "name"
-      "holds"
-      "items"
-      "deeper";
-  }
-
-  .part .holds {
-    padding-inline-start: var(--gutter);
-    text-align: start;
-  }
-
-  .row .acts {
-    display: none;
+  .machine .name,
+  .across .name {
+    font-size: var(--step-title);
   }
 }
 
 @media (forced-colors: active) {
-  .row:focus-visible {
+  .row:focus-visible,
+  .copy:focus-visible {
     outline: 2px solid Highlight;
+  }
+
+  .mark {
+    border-color: CanvasText;
+    background: CanvasText;
+  }
+
+  .mark.unread {
+    background: none;
   }
 }
