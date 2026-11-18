@@ -3,6 +3,7 @@
 //! on the session's own log, its window put back, a line to the orchestrator).
 //! The decisions are revive.rs's.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::os::unix::fs::FileTypeExt;
@@ -15,7 +16,7 @@ use jiff::tz::TimeZone;
 use serde::Deserialize;
 
 use crate::mesh::{Mesh, Presence};
-use crate::revive::{self, Gate, Held, Holder, Memory, Seen, Verdict};
+use crate::revive::{self, Gate, Held, Holder, Hosting, Memory, Seen, Verdict};
 
 /// What reviving is told: whom to watch and tell, and how a session is
 /// started, as the words a login shell runs, before `--session <id>`.
@@ -66,6 +67,7 @@ pub fn revive(
     let node = node_holders(revive::realm_of(&reviving.restart));
     let mut said = Vec::new();
     let mut told = Vec::new();
+    let mut stranded = Vec::new();
     for s in revive::watched(
         &seen,
         &reviving.orchestrators,
@@ -93,8 +95,20 @@ pub fn revive(
             |all| revive::held(all, &s.session, lives),
         );
         let named = matches!(hold, Held::Running | Held::Parked);
-        let Verdict::Died { cwd } = revive::judge(s, quest.as_ref(), is_pi, named) else {
-            continue;
+        let cwd = match revive::judge(s, quest.as_ref(), is_pi, named) {
+            Verdict::Died { cwd } => cwd,
+            Verdict::Stranded(why) => {
+                // Said once an hour, gathered for each peer as starts are,
+                // to whoever can bring it back: on 18 November a host left
+                // down would otherwise have left its sessions down unsaid.
+                if revive::strand(&mut memory, &s.session, now) {
+                    let line = format!("{} died and is left down, since {why}.", s.address);
+                    stranded.extend(tell(reviving, s, &line));
+                    said.push(line);
+                }
+                continue;
+            }
+            Verdict::Alive | Verdict::Left(_) => continue,
         };
         let line = match revive::gate(&memory, &s.session, now) {
             Gate::Go => {
@@ -131,7 +145,10 @@ pub fn revive(
         said.push(line);
     }
     fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
-    for (to, text) in revive::gathered(&told) {
+    for (to, text) in revive::gathered(&stranded, "are left down in a host") {
+        send(&to, "finding", text)?;
+    }
+    for (to, text) in revive::gathered(&told, "were started again") {
         let text = if reviving.watcher.as_ref() == Some(&to) {
             format!("Revived: {text}")
         } else {
@@ -313,6 +330,29 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
         .map(|id| id.trim().to_owned());
     let zone = TimeZone::system();
     let records = mesh.root.join("quest-workflow/sessions");
+    // A roster that holds the session decides its host over what any
+    // presence says, so a session a host will resume is never started
+    // here; its unit is asked only for a session that doesn't run.
+    let rosters = mesh.rostered();
+    let mut hosts_back: BTreeMap<String, bool> = BTreeMap::new();
+    let mut hosting = |p: &Presence, running: bool| {
+        let host = rosters.holder(&p.session).or_else(|| p.host())?;
+        if !revive::plain(host) {
+            return Some(Hosting {
+                host: "a host named oddly".into(),
+                holds: false,
+                back: false,
+            });
+        }
+        Some(Hosting {
+            host: host.to_owned(),
+            holds: rosters.holds(host, &p.session),
+            back: running
+                || *hosts_back
+                    .entry(host.to_owned())
+                    .or_insert_with(|| host_back(host)),
+        })
+    };
     mesh.all()
         .into_iter()
         .filter_map(|p: Presence| {
@@ -324,13 +364,15 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
             let ended = fs::read_to_string(records.join(format!("{}.json", p.session)))
                 .ok()
                 .and_then(|record| revive::ended_on_purpose(&record, &zone));
+            let running = p.runs(is_pi, is_host);
             Some(Seen {
                 orchestrates,
                 ended,
                 this_boot: boot.is_some()
                     && p.owner.as_ref().and_then(|o| o.boot_id.as_ref()) == boot.as_ref(),
-                running: p.runs(is_pi, is_host),
+                running,
                 parked: p.state == "parked" || mesh.is_parked(&p.session),
+                hosted: hosting(&p, running),
                 address,
                 orchestrated_by: p.orchestrated_by,
                 quest: p.quest,
@@ -489,6 +531,28 @@ fn held(session: &str) -> bool {
                     && String::from_utf8_lossy(pair[1]).contains(session)
             })
         })
+}
+
+/// Whether the pi host `host` runs or is coming back, by its unit,
+/// `pi-host-<host>.service`. One that can't be asked is taken as down,
+/// so its sessions are told of rather than left unsaid.
+fn host_back(host: &str) -> bool {
+    let unit = format!("pi-host-{host}.service");
+    let ask = |args: &[&str]| {
+        Command::new("systemctl")
+            .arg("--user")
+            .args(args)
+            .arg(&unit)
+            .output()
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    let (Ok(state), Ok(jobs)) = (
+        ask(&["show", "-p", "ActiveState", "--value"]),
+        ask(&["list-jobs", "--no-legend"]),
+    ) else {
+        return false;
+    };
+    revive::back(state.trim(), &jobs)
 }
 
 /// When the graphical session began, if it has: until then there is no

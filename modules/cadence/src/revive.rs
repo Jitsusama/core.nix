@@ -3,6 +3,10 @@
 //! now. The orchestrators and every orchestrator's sessions are watched,
 //! so a crash overnight costs minutes, not the night. Everything here is a
 //! decision over what was read; main.rs reads and starts.
+//!
+//! Long because its cases are over a third of it: each way a gone session
+//! is judged (crashed, ended, hosted, stranded, held, gated) is proven
+//! beside the decision it proves, over private fixtures.
 
 use std::collections::BTreeMap;
 
@@ -54,6 +58,40 @@ pub struct Seen {
     /// How its pi last ended on purpose, by pi's own record of the
     /// session (`ended_on_purpose`), if it did.
     pub ended: Option<String>,
+    /// The shared pi host its presence says it runs in, if one does.
+    pub hosted: Option<Hosting>,
+}
+
+/// A hosted session's host, as far as reviving asks of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hosting {
+    pub host: String,
+    /// Whether the host's roster holds it, so the host resumes it.
+    pub holds: bool,
+    /// Whether the host runs, or is starting again or waits to.
+    pub back: bool,
+}
+
+/// Whether a host's unit, by its `ActiveState` and the jobs systemd has
+/// waiting on it, runs or is coming back, as pi-host-down judges it: one
+/// restarting after a crash is activating, or has a start waiting.
+#[must_use]
+pub fn back(state: &str, jobs: &str) -> bool {
+    // A host whose process died is deactivating while systemd stops what
+    // is left of it, before it starts again.
+    matches!(
+        state,
+        "active" | "activating" | "reloading" | "deactivating"
+    ) || !jobs.trim().is_empty()
+}
+
+/// Whether `id` is one pi or a pi host gives, letters, digits and
+/// hyphens, and so safe in a shell's words, a unit's name or a line sent
+/// under cadence's name: a presence is a file any of Joel's processes
+/// may write.
+#[must_use]
+pub fn plain(id: &str) -> bool {
+    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 /// How a session's pi ended on purpose, by the record pi keeps of each
@@ -113,6 +151,9 @@ pub enum Verdict {
     Died {
         cwd: String,
     },
+    /// Died in a host that won't bring it back, for the reason given, and
+    /// left for its orchestrator to start in a host again, never here.
+    Stranded(String),
 }
 
 /// Whether a died session may be started now.
@@ -139,6 +180,16 @@ pub struct Memory {
     pub starts: BTreeMap<String, Vec<i64>>,
     #[serde(default)]
     pub defects: BTreeMap<String, i64>,
+    /// The hour each session left down in a host was last said in.
+    #[serde(default)]
+    pub stranded: BTreeMap<String, i64>,
+}
+
+/// Whether `session`, left down in a host, is still to be said this hour,
+/// noting it said when it is.
+pub fn strand(memory: &mut Memory, session: &str, now: i64) -> bool {
+    let hour = now / 3600;
+    memory.stranded.insert(session.to_owned(), hour) != Some(hour)
 }
 
 /// The sessions to watch: every orchestrator, and every session of one.
@@ -204,6 +255,16 @@ pub fn judge(
     if seen.running || seen.parked {
         return Verdict::Alive;
     }
+    // A host resumes what its roster holds when it starts again, so one
+    // started here as well runs twice on one log: on 18 November nine
+    // did, after the background host's 03:23 end.
+    if let Some(h) = seen.hosted.as_ref().filter(|h| h.holds && h.back) {
+        return Verdict::Left(format!("its host, {}, resumes it", h.host));
+    }
+    // Its id goes into a login shell's words.
+    if !plain(&seen.session) {
+        return Verdict::Left("its id isn't one pi gives".into());
+    }
     let Some(quest) = quest else {
         return Verdict::Left("it has no quest".into());
     };
@@ -230,6 +291,18 @@ pub fn judge(
     if !seen.this_boot {
         return Verdict::Left("it ended with an earlier boot".into());
     }
+    // Joel ruled that a hosted conversation comes back in a host with no
+    // window, so one its host won't resume is its orchestrator's to place.
+    if let Some(h) = &seen.hosted {
+        // Started in a host while its own still holds it, it would run
+        // twice once that host is back, so the host is what is asked for.
+        let why = if h.holds {
+            "is down: bring the host back, which resumes it"
+        } else {
+            "no longer holds it: start it in a host again"
+        };
+        return Verdict::Stranded(format!("its host, {}, {why}", h.host));
+    }
     Verdict::Died {
         cwd: entry.cwd.clone(),
     }
@@ -250,14 +323,18 @@ pub fn gate(memory: &Memory, session: &str, now: i64) -> Gate {
         return Gate::TooSoon((now - last) / 60);
     }
     if starts.len() >= PER_HOUR {
-        let hour = now / 3600;
-        let report = memory.defects.get(session) != Some(&hour);
         return Gate::Defect {
             starts: starts.len(),
-            report,
+            report: report_due(memory, session, now),
         };
     }
     Gate::Go
+}
+
+/// Whether what keeps `session` down is still to be said this hour.
+#[must_use]
+pub fn report_due(memory: &Memory, session: &str, now: i64) -> bool {
+    memory.defects.get(session) != Some(&(now / 3600))
 }
 
 /// Notes a start of `session` at `now`, keeping only the last hour's.
@@ -436,7 +513,7 @@ pub fn marked(listing: &serde_json::Value, session: &str) -> Vec<(String, Option
 /// 11 November ended about 40 sessions together, and telling of each
 /// alone sent the orchestrator 40 messages and the watcher 40 more.
 #[must_use]
-pub fn gathered(told: &[(String, String)]) -> Vec<(String, String)> {
+pub fn gathered(told: &[(String, String)], what: &str) -> Vec<(String, String)> {
     let mut each: Vec<(String, Vec<&str>)> = Vec::new();
     for (to, line) in told {
         match each.iter_mut().find(|(peer, _)| peer == to) {
@@ -448,11 +525,7 @@ pub fn gathered(told: &[(String, String)]) -> Vec<(String, String)> {
         .map(|(to, lines)| {
             let text = match lines.as_slice() {
                 [one] => (*one).to_owned(),
-                all => format!(
-                    "{} sessions were started again: {}",
-                    all.len(),
-                    all.join(" ")
-                ),
+                all => format!("{} sessions {what}: {}", all.len(), all.join(" ")),
             };
             (to, text)
         })
@@ -476,7 +549,7 @@ mod tests {
         .into();
         let both = "2 sessions were started again: A died; started again. B died; started again.";
         assert_eq!(
-            gathered(&told),
+            gathered(&told, "were started again"),
             [
                 ("top".to_owned(), both.to_owned()),
                 ("watcher".to_owned(), both.to_owned()),
@@ -488,7 +561,7 @@ mod tests {
             "each peer hears one message, with its own sessions' lines"
         );
         assert!(
-            gathered(&[]).is_empty(),
+            gathered(&[], "were started again").is_empty(),
             "a look that started nothing says nothing"
         );
     }
@@ -516,6 +589,7 @@ mod tests {
             this_boot: true,
             orchestrates: false,
             ended: None,
+            hosted: None,
         }
     }
 
@@ -646,6 +720,24 @@ mod tests {
             judge(&gone, Some(&done), |_| false, false),
             Verdict::Left("its quest is concluded".into())
         );
+        let forged = Seen {
+            session: "s-A-1; rm -rf ~".into(),
+            ..gone
+        };
+        let forged_quest = Quest {
+            status: "active".into(),
+            sessions: vec![QuestSession {
+                id: forged.session.clone(),
+                cwd: "/work".into(),
+                status: "active".into(),
+                pid: None,
+            }],
+        };
+        assert_eq!(
+            judge(&forged, Some(&forged_quest), |_| false, false),
+            Verdict::Left("its id isn't one pi gives".into()),
+            "an id that isn't pi's never reaches the shell"
+        );
     }
 
     /// A record as pi writes it: `ending` at its top, as its newest
@@ -695,6 +787,83 @@ mod tests {
             judge(&ended, Some(&q), |_| false, false),
             Verdict::Left("it ended with an earlier boot".into())
         );
+    }
+
+    #[test]
+    fn a_hosted_conversation_is_left_to_its_host() {
+        // At 03:23 on 18 November the background host ran out of memory;
+        // cadence started 33 of its conversations again as pi processes of
+        // their own, in windows, and the host's own restart resumed them
+        // too, so nine had two writers on one log.
+        let hosted = |holds, back| Seen {
+            hosted: Some(Hosting {
+                host: "work-background".into(),
+                holds,
+                back,
+            }),
+            ..seen("A", None, false, "1")
+        };
+        let q = quest_with("active", "active", Some(9));
+        assert_eq!(
+            judge(&hosted(true, true), Some(&q), |_| false, false),
+            Verdict::Left("its host, work-background, resumes it".into()),
+            "a host that runs or restarts resumes what its roster holds"
+        );
+        assert_eq!(
+            judge(&hosted(true, false), Some(&q), |_| false, false),
+            Verdict::Stranded(
+                "its host, work-background, is down: bring the host back, which resumes it".into()
+            ),
+            "a host left down resumes nothing, and no window opens for it"
+        );
+        assert_eq!(
+            judge(&hosted(false, true), Some(&q), |_| false, false),
+            Verdict::Stranded(
+                "its host, work-background, no longer holds it: start it in a host again".into()
+            ),
+            "a presence the host left behind isn't what it resumes"
+        );
+        let done = quest_with("concluded", "active", None);
+        assert_eq!(
+            judge(&hosted(false, false), Some(&done), |_| false, false),
+            Verdict::Left("its quest is concluded".into()),
+            "one that would be left anyway isn't reported"
+        );
+    }
+
+    #[test]
+    fn a_host_restarting_after_a_crash_is_coming_back() {
+        assert!(back("active", ""), "a running host is back");
+        assert!(
+            back("deactivating", ""),
+            "a host whose process died is stopped before it starts again"
+        );
+        assert!(plain("work-background"), "a host's name is plain");
+        assert!(!plain("work-*"), "a glob isn't");
+        assert!(!plain(""), "nor is nothing");
+        assert!(back("activating", ""), "systemd's restart after a crash");
+        assert!(
+            back("failed", "4 pi-host-work-background.service start waiting"),
+            "a start is waiting"
+        );
+        assert!(!back("failed", ""), "left down past its start limit");
+        assert!(!back("inactive", "\n"), "stopped, or no such unit");
+    }
+
+    #[test]
+    fn a_session_left_down_in_a_host_is_said_once_an_hour_apart_from_defects() {
+        let mut memory = Memory::default();
+        assert!(strand(&mut memory, "s", 7_200), "said the first time");
+        assert!(!strand(&mut memory, "s", 7_300), "not again that hour");
+        assert!(
+            strand(&mut memory, "t", 7_300),
+            "another session is its own"
+        );
+        assert!(
+            gate(&memory, "s", 7_300) == Gate::Go && memory.defects.is_empty(),
+            "it takes no defect's hour"
+        );
+        assert!(strand(&mut memory, "s", 10_800), "said again the next hour");
     }
 
     #[test]

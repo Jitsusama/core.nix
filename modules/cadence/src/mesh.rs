@@ -1,11 +1,11 @@
 //! The sessions' mesh, as the pi harness keeps it on disk: what each
 //! session says of itself (presence), the messages between them, and the
-//! markers of parked ones. cadence reads them to know whether the session
-//! keeping the cycle fast is there and answering, and writes a question
+//! markers of parked ones, with each pi host's roster. cadence reads
+//! them to know whether the session keeping the cycle fast is there and answering, and writes a question
 //! the way the harness's own folder transport does: one JSON file per
 //! message, renamed into place whole.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -49,6 +49,33 @@ pub struct Presence {
     pub hosted: Option<Hosted>,
 }
 
+/// The pi hosts' rosters, by host: the sessions each holds, or none when
+/// its roster can't be read now.
+#[derive(Debug, Clone, Default)]
+pub struct Rosters(BTreeMap<String, Option<BTreeSet<String>>>);
+
+impl Rosters {
+    /// The host whose readable roster holds `session`, if one does.
+    #[must_use]
+    pub fn holder(&self, session: &str) -> Option<&str> {
+        self.0
+            .iter()
+            .find(|(_, held)| held.as_ref().is_some_and(|h| h.contains(session)))
+            .map(|(host, _)| host.as_str())
+    }
+
+    /// Whether `host`'s roster holds `session`. One torn mid-rewrite, or
+    /// a host with none, can't rule it out, so holds: a host's rosters are
+    /// written whole, and a host gone for good reads as down by its unit.
+    #[must_use]
+    pub fn holds(&self, host: &str, session: &str) -> bool {
+        self.0
+            .get(host)
+            .and_then(Option::as_ref)
+            .is_none_or(|held| held.contains(session))
+    }
+}
+
 /// The shared pi host a conversation runs in, as its presence names it.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct Hosted {
@@ -78,11 +105,18 @@ impl Presence {
         let Some(pid) = self.owner.as_ref().and_then(|o| o.pid) else {
             return false;
         };
-        let held = self
-            .hosted
+        is_pi(pid) || (self.host().is_some() && is_host(pid))
+    }
+
+    /// The shared pi host it says it runs in, only when that host's
+    /// conversation is this session: a presence a host wrote for another
+    /// conversation says nothing of this one.
+    #[must_use]
+    pub fn host(&self) -> Option<&str> {
+        self.hosted
             .as_ref()
-            .is_some_and(|h| h.conversation == self.session);
-        is_pi(pid) || (held && is_host(pid))
+            .filter(|h| h.conversation == self.session)
+            .map(|h| h.host.as_str())
     }
 }
 
@@ -132,6 +166,37 @@ impl Mesh {
 
     fn parked(&self) -> PathBuf {
         self.root.join("park-workflow/parked")
+    }
+
+    /// Each pi host's roster, by the host's name, its file's stem: what
+    /// the host resumes when it starts again, whatever a presence it left
+    /// behind still says.
+    #[must_use]
+    pub fn rostered(&self) -> Rosters {
+        #[derive(Deserialize)]
+        struct Roster {
+            #[serde(default)]
+            sessions: Vec<serde_json::Value>,
+        }
+        let Ok(entries) = fs::read_dir(self.root.join("host-rosters")) else {
+            return Rosters::default();
+        };
+        let read = |path: &Path| {
+            let roster: Roster = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+            let held = roster
+                .sessions
+                .iter()
+                .filter_map(|e| e["sessionId"].as_str());
+            Some(held.map(str::to_owned).collect())
+        };
+        Rosters(
+            entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().is_some_and(|e| e == "json"))
+                .filter_map(|path| Some((path.file_stem()?.to_str()?.to_owned(), read(&path))))
+                .collect(),
+        )
     }
 
     /// The newest presence going by `address`, if any session does.
@@ -461,6 +526,52 @@ mod tests {
         assert!(
             unhosted.runs(|pid| pid == 1_784_702, |_| false),
             "a pi of its own runs"
+        );
+        assert_eq!(held.host(), Some("work-background"));
+        assert_eq!(unhosted.host(), None, "it says no host");
+        assert_eq!(another.host(), None, "its host holds another conversation");
+    }
+
+    #[test]
+    fn each_hosts_roster_is_read_by_its_name_and_a_torn_one_rules_nothing_out() {
+        let (dir, mesh) = mesh();
+        let rosters = dir.path().join("host-rosters");
+        fs::create_dir_all(&rosters).unwrap();
+        fs::write(
+            rosters.join("work-background.json"),
+            r#"{"v":1,"sessions":[{"sessionId":"a","cwd":"/w"},{"cwd":"/x"}]}"#,
+        )
+        .unwrap();
+        fs::write(rosters.join("work-attended.json"), "{\"sessi").unwrap();
+        fs::write(rosters.join("work-background.json.lock"), "{}").unwrap();
+        let rostered = mesh.rostered();
+        assert_eq!(rostered.holder("a"), Some("work-background"));
+        assert_eq!(rostered.holder("b"), None, "no readable roster holds it");
+        assert!(
+            rostered.holds("work-background", "a"),
+            "a roster that lists it holds it"
+        );
+        assert!(
+            !rostered.holds("work-background", "b"),
+            "a roster that reads and doesn't list it doesn't hold it"
+        );
+        assert!(
+            rostered.holds("work-attended", "b"),
+            "a torn roster, mid-rewrite, can't rule it out"
+        );
+        assert!(
+            rostered.holds("gone-host", "b"),
+            "nor can a host with no roster, whose unit says whether it's down"
+        );
+        fs::write(
+            rosters.join("work-background.json"),
+            r#"{"sessions":[{"sessionId":7},{"sessionId":"a"}]}"#,
+        )
+        .unwrap();
+        assert!(
+            mesh.rostered().holds("work-background", "a")
+                && !mesh.rostered().holds("work-background", "7"),
+            "one badly typed entry doesn't drop the rest"
         );
     }
 
