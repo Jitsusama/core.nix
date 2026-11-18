@@ -189,9 +189,9 @@ It's never over a floating window's face but where the screen's top draws it the
 as its feet sit, and at its corner: with no room over one for its hop, it steps down off the
 end within its own height, paws moving, crossing the corner for a body-length's walk, under
 a fifth of a second, or up to half a second on a short way, the smaller break than walking
-one on the air (WCJQSG
-1ee24751, 2026-11-18: "Stepping down a small ledge with its paws moving is what a cat
-does").
+one on the air (WCJQSG 1ee24751, 2026-11-18: "Stepping down a small ledge with its paws
+moving is what a cat does"). With room for its hop, a drop of a cell or two still walks clear
+of the end, its feet that far over the tops, and steps down, as it did before the ruling.
 
 - Held by `margin-cat-floats.qml`: "onto a floating window it drops straight down from the top
   over it"
@@ -219,10 +219,14 @@ does").
   as slowly as it ambles"
 - Held by `margin-cat-floats.qml`: "at 1.5x it steps its own height down, never sunk; a pixel
   more, it drops"
+- Held by `margin-cat-floats.qml`: "at 1.5x over it on its way, and off one a part-cell over
+  the top, never sunk"
 - Held by `margin-cat-floats.qml`: "off a seat its own height down, it steps; a pixel more,
   it walks clear and drops"
 - Held by `margin-cat-floats.qml`: "at a cell of 2, its own height down off a seat it steps;
   a pixel more, it drops"
+- Held by `margin-cat-floats.qml`: "at a cell of 2, an odd drop off a seat, it goes a cell
+  along first, never sunk"
 - Held by `margin-cat-floats.qml`: "one across the tops on its way, it walks over its top"
 - Held by `margin-cat-floats.qml`: "a floating window a leap up on its way is a step"
 - Held by `margin-cat-floats.qml`: "a floating window off its way changes nothing"

@@ -368,7 +368,10 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 // top at once, as walks() goes, so what it stood over the top is a jump
 // at its edge, as its drop off it is (falls()). Deeper, it walks clear and
 // drops (VKCF3Z 13d5bf97), its feet in the face only as deep as they
-// stood on it.
+// stood on it. With room for its hop, a drop within steps() still walks
+// clear of its end, its feet a cell or two over the tops, and steps
+// down, as it did before the ruling: only a cramped one steps from its
+// edge.
 function stepsDown(way, to, at) {
     const drop = Math.max(to.y, 0) - Math.max(way.y, 0);
     return drop >= 0 && drop <= at.tall + 1e-6;
@@ -377,10 +380,14 @@ function stepsDown(way, to, at) {
 // Down off a floating window's end from its edge to `x`, `y`, as
 // stepsDown() allows. Its moves are drawn on whole cells from where
 // each ends (MarginCatWays.js's onCells()), so a drop not whole cells,
-// as a cell of 4/3 at a ratio of 1.5 gives, takes its part-cell down
-// first, while it's wholly over the face, its body as wide as the
-// step is long: a pixel sunk into it for a frame at 120 Hz. A cell
-// along first and it goes down with its body already past the edge.
+// as a cell of 4/3 at a ratio of 1.5 gives, or an odd one at a cell of
+// 2, takes its part-cell down first, while it's wholly over the face,
+// its body as wide as the step is long: a pixel sunk into it for a
+// frame or more at 120 Hz. A cell along first and it goes down with its
+// body already past the edge. Its drop is measured from where walks()
+// starts it, the screen's top when it stands over it. From a seat at
+// the very end, that cell is the walk's first leg, and its ease-in is
+// held to it (timed()), as on any walk whose first leg is that short.
 function stepOff(way, x, y, at) {
     const from = way.y < 0 ? Math.min(y, 0) : way.y;
     const cells = (y - from) / at.cell;

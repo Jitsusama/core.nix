@@ -431,8 +431,11 @@ QtObject {
         // into the face. A step from its edge, as wide as it's tall, is
         // within by its own shape for a drop a few pixels past its
         // height, so what holds stepsDown()'s bound is a pixel more
-        // falling; within holds the step's shape, down only as it goes
-        // along, and sinking, that it's off the face before it goes down.
+        // falling. Within holds how deep it goes and sinking that it's
+        // partly off the face before it goes down; neither holds its
+        // shape, so "steeper than its step" says where, anywhere over the
+        // face, it's further down past its feet than it's gone past the
+        // end, by more than a cell as the screen draws it.
         const cornerOf = (frames, at, it) => {
             const px = one => Math.round(one * at.ratio);
             const wide = px(at.wide);
@@ -444,12 +447,14 @@ QtObject {
             let longest = 0;
             let crossing = 0;
             let sinks = false;
+            let steep = false;
             for (const frame of frames) {
                 const x = px(frame.x);
                 const y = Math.max(px(frame.y), 0);
                 const across = Math.min(x + wide, box.right) - Math.max(x, box.left);
                 const down = Math.min(y + wide, box.bottom) - Math.max(y, box.top);
                 sinks = sinks || (across >= wide && down > feet + 1e-6);
+                steep = steep || (across > 0 && down - feet > wide - across + px(at.cell) + 1e-6);
                 if (across > 0 && across < wide && down > 0) {
                     deepest = Math.max(deepest, Math.min(across, down));
                     past = Math.max(past, Math.min(across, down - feet));
@@ -463,7 +468,7 @@ QtObject {
                 : `${past} past its feet`;
             const lasts = [200, 300, 500].find(ms => longest < ms);
             return `${deepest} deep, ${within}, ${lasts ? `under ${lasts} ms` : `${longest} ms`}`
-                + (sinks ? ", sinking" : "");
+                + (sinks ? ", sinking" : "") + (steep ? ", steeper than its step" : "");
         };
         // What corner() reports of a crossing `deep` pixels deep, within
         // half its height of its feet, its longest under `ms`.
@@ -497,11 +502,16 @@ QtObject {
         // Its check of sinking fires: down while still wholly over it.
         expect("down into its face while wholly over it, it's seen sinking",
             cornerOf([-3, -2, -1, 0, 1, 2, 3].map(y => ({ x: 700, y })), world(), atEdge),
-            "0 deep, within half its height of its feet, under 200 ms, sinking");
+            `${crossed(0, 200)}, sinking, steeper than its step`);
         // And its check of the corner: down at its edge before going along.
         expect("down into its corner before it goes along, it's seen past its feet",
             cornerOf([0, 2, 4, 6, 8].map(y => ({ x: 744, y })), world(), atEdge),
-            "6 deep, 6 past its feet, under 200 ms");
+            "6 deep, 6 past its feet, under 200 ms, steeper than its step");
+        // And of its shape: a cell along, then straight down 4, within
+        // half its height and never wholly over it, but down too soon.
+        expect("a cell along and then straight down, it's seen steeper than its step",
+            cornerOf([0, 1, 2, 3, 4].map(y => ({ x: 743, y })), world(), atEdge),
+            `${crossed(6, 200)}, steeper than its step`);
         expect("never walking or falling above the screen's top, there or back",
             [offTop(rigOver), offTop(rigBack)], [[], []]);
         expect("over the tiled windows from its step up to its step down, under them either side",
@@ -608,6 +618,19 @@ QtObject {
                 leapsBy(fracDrop, fracFloat, 32 / 3), corner(fracDrop, fracFloat, fracAt(23)),
                 breaks(fracStep), breaks(fracDrop)],
             [[], crossed(9, 300), [], crossed(10, 300), ["falls"], crossed(4, 200), [], []]);
+        // Over it as a route goes, and off one standing a part-cell over
+        // the screen's top, 9 under it, whose drop, 6.75 cells, is whole
+        // only from where it stands: from the top, as walks() starts it.
+        const fracRoute = Paths.walk({ x: 100, y: 10 }, { x: 900, y: 10 }, fracAt(22));
+        const fracNine = float(500, 9, 250, 200);
+        const fracOffNine = Paths.walk({ x: 600, y: -3 }, { x: 100, y: 9 },
+            world({ cell: 4 / 3, ratio: 1.5, wide: 32 / 3, tall: 32 / 3, air: 4 / 3,
+                cols: tilesAt(21), floats: [fracNine] }));
+        expect("at 1.5x over it on its way, and off one a part-cell over the top, never sunk",
+            [leapsBy(fracRoute, fracFloat, 32 / 3), corner(fracRoute, fracFloat, fracAt(22)),
+                breaks(fracRoute), leapsBy(fracOffNine, fracNine, 32 / 3),
+                corner(fracOffNine, fracNine, fracAt(21)), breaks(fracOffNine)],
+            [["crouches", "leaps", "over"], crossed(9, 200), [], [], crossed(8, 300), []]);
         // Up to its own height it walks; a cell taller and it keeps its
         // leap, held at the edge, rather than walk up a wall.
         const capped = float(500, 4, 250, 200);
@@ -711,6 +734,13 @@ QtObject {
                 endsAt(bigOffSixteen), leapsBy(bigOffSeventeen, nearTop, 16),
                 endsAt(bigOffSeventeen), breaks(bigOffSixteen), breaks(bigOffSeventeen)],
             [[], crossed(7, 300), [100, 16], ["falls"], [100, 17], [], []]);
+        // An odd drop there, 15, 7.5 cells: a cell along before it goes
+        // down, as at 1.5x (stepOff()).
+        const bigOffFifteen = Paths.walk({ x: 600, y: -1 }, { x: 100, y: 15 }, bigAt(33));
+        expect("at a cell of 2, an odd drop off a seat, it goes a cell along first, never sunk",
+            [by(bigOffFifteen, nearTop, 16).map(ends).slice(0, 3),
+                corner(bigOffFifteen, nearTop), breaks(bigOffFifteen)],
+            [[[600, -1, 500, -1], [500, -1, 498, -1], [498, 0, 484, 15]], crossed(6, 200), []]);
 
         // Straight up off one 2 under the tops onto them, and straight
         // down onto it from them: steps, never a leap or a fall.
