@@ -9,10 +9,6 @@
     "exits"
     "helps"
   ];
-  passwords-1password = [
-    "kit"
-    "helps"
-  ];
   pi-carry = [ "helps" ];
   pi-verbs = [ "helps" ];
   secret-asks = [
