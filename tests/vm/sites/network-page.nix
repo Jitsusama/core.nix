@@ -3,8 +3,10 @@
 # browser on the machine would: the page as the server's unit mounts it, and
 # its feed reaching net's daemon over the socket systemd holds for it. Away
 # from any home network, as a VM is, net still serves how each of its
-# sources stands, so the feed has something to say before eero has; once the
-# record eero writes is in the runtime folder, net reads the house from it.
+# sources stands, so the feed has something to say before eero has; once a
+# record is where eero writes it in the runtime folder, net's next round
+# reads the house from it. The VM reaches no network beyond itself, so
+# nothing net asks of the house's addresses leaves it.
 # That the page draws what the feed says is network-site-reads-live's,
 # beside stand-in daemons in the build; only a running account's manager,
 # its runtime folder and the units side by side show that they find each
@@ -40,4 +42,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   };
 
   tests = ./network-page-vm-test.py;
+  # What the sites' VM tests share: asking as the account, a feed opened as
+  # a page opens it, and the daemon started again after a test stops it.
+  extraPythonPackages = python: [ (pkgs.callPackage ./sites-session.nix { } python) ];
+  plugins = [ "sites_session" ];
 }

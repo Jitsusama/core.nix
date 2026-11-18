@@ -15,8 +15,8 @@ onLinux {
   # modules render them, over a repository on a real disk.
   vm-the-code-page-reads-its-daemon = import ./code-page.nix { inherit self pkgs; };
   # Whether the sites' server and net's daemon find each other, and net reads
-  # what eero writes where eero writes it, shows only with the account's
-  # manager running the units as their modules render them.
+  # a record at the path eero writes in the runtime folder, shows only with
+  # the account's manager running the units as their modules render them.
   vm-the-network-page-reads-its-daemon = import ./network-page.nix { inherit self pkgs; };
   # Whether the sites' server and the system daemon find each other shows
   # only with the account's manager running both units as their modules

@@ -5574,9 +5574,9 @@
     an account's sites' server, as its home module renders it, serves the network page with the
     strip its build writes, and the page's feed, asked from the page's origin as its kit asks, says
     live with how each of net's sources stands, read over the socket systemd holds for it, eero's
-    saying why it isn't answering before eero has written anything; once eero's record is where its
-    daemon writes it, net's next round tells the house's devices with eero answering; stopping net
-    and its socket makes it say broken, and the socket back makes it live
+    saying it hasn't written before anything is at the path eero's daemon writes; once eero's
+    golden record is put there, the running net's next round tells the house's devices with eero
+    answering; stopping net and its socket makes it say broken, and the socket back makes it live
   '';
   vm-the-system-page-reads-its-daemon = ''
     an account's sites' server, as its home module renders it, serves the system page with the strip
