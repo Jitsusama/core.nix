@@ -1044,15 +1044,17 @@
   every-pixel-mark-stands-level = ''
     every mark the theme draws in pixels, the margin's cat and puppy in each pose, is square, its
     ink touching its top and bottom rows and centred across to within a cell, and the three empty
-    places' marks, the cat's and the puppy's poses are drawn
+    places' marks and the cat's and the puppy's poses it names are drawn
   '';
   every-cat-pose-reads-as-one-cat = ''
     every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
-    pixels within 15% of sitting's, and a leap's rise, tuck and fall are all drawn
+    pixels within 15% of sitting's, each of its four strides steps one pair of feet with its body
+    still, and a leap's rise, tuck and fall are all drawn
   '';
   every-puppy-pose-reads-as-one-puppy = ''
     every pose of the margin's puppy has no lit pixel standing alone, a diagonal touching, and lit
-    pixels within 15% of its own sitting's, and its sitting, bow and four strides are all drawn
+    pixels within 15% of its own sitting's, each of its four strides steps one pair of feet with
+    its body still, and its sitting, bow and four strides are all drawn
   '';
   every-script-finds-what-it-imports = ''
     every folder's Python that nix fmt hands mypy passes it when handed to it alone, as a script
