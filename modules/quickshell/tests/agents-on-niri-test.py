@@ -1953,14 +1953,14 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
     assert did == {
         "done": False,
         "said": "the link named a machine Machines doesn't list: no node of yours has said it"
-        " holds it, or none has answered since the desktop started",
+        " holds it, or none has answered since the desktop last started",
     }, did
     shell.launcher_until(
         lambda shown: (
             shown["open"]
             and shown["held"] == ["machines"]
             # The foot keeps each phrase whole with no-break spaces.
-            and "none has answered since the desktop started"
+            and "none has answered since the desktop last started"
             in " ".join(shown["saying"]).replace("\xa0", " ")
             and "skiff" not in " ".join(shown["saying"])
         )

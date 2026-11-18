@@ -512,7 +512,7 @@
       "said": {
         "here": "this machine",
         "unlisted": "the link named a machine Machines doesn't list",
-        "unlistedWhy": "no node of yours has said it holds it, or none has answered since the desktop started",
+        "unlistedWhy": "no node of yours has said it holds it, or none has answered since the desktop last started",
         "yesterday": "yesterday",
         "ready": "ready",
         "busy": "busy",
