@@ -280,6 +280,7 @@
         backlight = pkgs.callPackage ../../modules/backlight/package.nix { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         bluetooth-links = pkgs.callPackage ../../modules/bluetooth-links/package.nix { };
+        boot-stopped = pkgs.callPackage ../../modules/console/stopped/package.nix { };
         cadence = pkgs.callPackage ../../modules/cadence/package.nix { };
         cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
         call-transcripts = dictation;

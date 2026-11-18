@@ -526,8 +526,8 @@ first, a build refuses it and prints the real one. It holds its commands
 to this page with `core.lib.commandsAgree`, as core does, given the
 commands it builds on the kit and a waiting list of its own.
 
-Inside core, the two crates whose builds the initrd holds, hibernate-unlock
-and console-font, pin the kit to a commit of main too, though by
+Inside core, the three crates whose builds the initrd holds,
+hibernate-unlock, console-font and boot-stopped, pin the kit to a commit of main too, though by
 `fetchgit` in their `package.nix` rather than a git dependency, so a
 change to the kit doesn't rebuild the initrd and need the boot tests.
 Their `Cargo.toml` keeps the path, so cargo in the dev shell, and each

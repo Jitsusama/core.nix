@@ -8,7 +8,7 @@
 # in the initrd, so the disk's prompt has it too. Above each login prompt, a
 # console greets the account as the greeter does and says the way back to
 # the desktop, which kmscon's consoles read too (../kmscon/nixos.nix). A
-# failed boot's shell says what stopped it first (stopped.sh). A machine
+# failed boot's shell says what stopped it first (stopped/). A machine
 # without such an account, or
 # without a theme for it, keeps the kernel's own.
 {
@@ -19,7 +19,7 @@
   ...
 }:
 let
-  inherit (import ../greetd/account.nix { inherit config lib options; }) account theme;
+  inherit (import ../greetd/account.nix { inherit config lib options; }) account home theme;
   terminal = lib.attrByPath [ "terminal" ] null theme;
   face = lib.attrByPath [ "font" "mono" "family" ] null theme;
 
@@ -74,18 +74,16 @@ let
     ""
   ];
 
-  # Says what stopped the boot (stopped.sh), in the theme's colours.
+  # Says what stopped the boot (stopped/), in the account's theme, which
+  # root, whose shell it runs before, has none of: the theme.json the
+  # account's home writes is put where the kit reads one.
+  themed = pkgs.writeTextDir "jitsusama/theme.json" home.xdg.configFile."jitsusama/theme.json".text;
   stopped = pkgs.writeShellApplication {
     name = "boot-stopped";
-    runtimeInputs = [
-      config.systemd.package
-      pkgs.coreutils
-    ];
-    text = lib.concatLines [
-      "alert=${slot "alert"} strong=${slot "strong"} text=${slot "text"} muted=${slot "muted"}"
-      "mark=${lib.escapeShellArg theme.marks.failed.console}"
-      (builtins.readFile ./stopped.sh)
-    ];
+    runtimeInputs = [ config.systemd.package ];
+    text = ''
+      XDG_CONFIG_HOME=${themed} exec ${lib.getExe (pkgs.callPackage ./stopped/package.nix { })} "$@"
+    '';
   };
 
   # What sets a console's font and keymap, given the console.
@@ -143,7 +141,7 @@ in
     })
     # A failed boot's emergency shell says what stopped it, after the face
     # is set, which comes after Plymouth lets go; the initrd's says so too,
-    # since it carries the shell, coreutils and systemd the summary runs on.
+    # since it carries the shell and systemd the summary runs on.
     (lib.mkIf (terminal != null) { environment.etc.issue.text = issue; })
     (lib.mkIf (terminal != null) {
       systemd.services.emergency.serviceConfig.ExecStartPre = lib.mkOrder 1600 [

@@ -1,0 +1,13 @@
+# boot-stopped says on the console what stopped a failed boot, before its
+# shell asks for root (src/main.rs says how).
+[package]
+name = "boot-stopped"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# The shape every command of ours takes (docs/commands.md). Its Nix build
+# puts the kit pinned to a commit at this path (package.nix says why).
+terminal-kit = { path = "../../terminal-kit" }
