@@ -1317,6 +1317,16 @@ QtObject {
                 holds(`a cut ${what} ${ask} is the next ask's whole`, cut(), want);
             }
         }
+        // A cut kept is handed back rather than made again, which is the
+        // whole of what keeping saves.
+        let made = 0;
+        const counted = () => {
+            made += 1;
+            return ["counted"];
+        };
+        Identifier.keptCut("counting", "once", counted);
+        holds("a cut kept is not made again",
+            [Identifier.keptCut("counting", "once", counted), made], [["counted"], 1]);
         // The same words cut at their marks and at their figures stay apart.
         holds("a cut at its marks and one at its figures stay apart",
             [Identifier.cutAtFigures("192.168.1.10"), Identifier.cutAfter("192.168.1.10", ".")],
