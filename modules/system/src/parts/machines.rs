@@ -505,7 +505,12 @@ mod tests {
     fn a_firmware_error_before_the_boot_is_worth_a_look() {
         let mut cut = laptop(&[], "healthy");
         cut["firmware"] = json!({"error_before_boot": 3 * 3_600 + 59});
-        let part = machines(&Ok(realm(std::slice::from_ref(&cut))), &Err(String::new()));
+        let part = machines(
+            &Ok(realm(std::slice::from_ref(&cut))),
+            &Err(String::new()),
+            None,
+            None,
+        );
         assert_eq!(part.health, Health::Watch);
         assert_eq!(
             part.things[0].says,
@@ -522,7 +527,7 @@ mod tests {
             part.says
         );
         cut["firmware"]["error_before_boot"] = json!(90);
-        let part = machines(&Ok(realm(&[cut])), &Err(String::new()));
+        let part = machines(&Ok(realm(&[cut])), &Err(String::new()), None, None);
         assert_eq!(
             part.things[0].says,
             "booted 1 minute ago after a firmware error"
