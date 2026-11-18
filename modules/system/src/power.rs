@@ -56,10 +56,11 @@ pub fn kept_before_boot(said: &Answer, since_boot: u64) -> Option<u64> {
 /// counts time asleep, as the person does.
 #[must_use]
 pub fn since_boot(uptime: &str) -> Option<u64> {
-    let seconds: f64 = uptime.split_whitespace().next()?.parse().ok()?;
-    // Whole seconds are all the view says; a negative or absurd figure
-    // isn't an uptime.
-    (seconds.is_finite() && seconds >= 0.0).then(|| seconds as u64)
+    // Whole seconds are all the view says, so only the figure's whole part
+    // is read, as digits: a negative or absurd figure isn't an uptime.
+    let first = uptime.split_whitespace().next()?;
+    let (whole, _) = first.split_once('.').unwrap_or((first, ""));
+    whole.parse().ok()
 }
 
 /// Puts an error kept before this boot into this machine's record, which
@@ -86,13 +87,13 @@ pub fn note(machines: &mut Answer, ago: u64) {
 mod tests {
     use super::*;
 
-    fn said(message: &str) -> Answer {
-        Ok(json!({ "MESSAGE": message }))
+    fn said(message: &str) -> Value {
+        json!({ "MESSAGE": message })
     }
 
     #[test]
     fn records_found_are_news_for_a_day_after_the_boot() {
-        let one = said("BERT: Total records found: 1");
+        let one = Ok(said("BERT: Total records found: 1"));
         assert_eq!(kept_before_boot(&one, 3_600), Some(3_600));
         assert_eq!(kept_before_boot(&one, NEWS_FOR), Some(NEWS_FOR));
         assert_eq!(
@@ -105,16 +106,19 @@ mod tests {
     #[test]
     fn no_record_or_no_journal_says_nothing() {
         assert_eq!(
-            kept_before_boot(&said("BERT: Total records found: 0"), 60),
+            kept_before_boot(&Ok(said("BERT: Total records found: 0")), 60),
             None
         );
         assert_eq!(
-            kept_before_boot(&said("BERT: [Hardware Error]: Skipped 1 error records"), 60),
+            kept_before_boot(
+                &Ok(said("BERT: [Hardware Error]: Skipped 1 error records")),
+                60
+            ),
             None,
             "only the count is read"
         );
         assert_eq!(
-            kept_before_boot(&said("BERT: Total records found: x"), 60),
+            kept_before_boot(&Ok(said("BERT: Total records found: x")), 60),
             None
         );
         assert_eq!(
@@ -131,6 +135,7 @@ mod tests {
         assert_eq!(since_boot(""), None);
         assert_eq!(since_boot("-1 0"), None);
         assert_eq!(since_boot("NaN 0"), None);
+        assert_eq!(since_boot("12 0"), Some(12), "a figure with no fraction");
     }
 
     #[test]
