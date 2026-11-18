@@ -321,9 +321,7 @@ in
     in
     pkgs.runCommandLocal "the-launcher-holds-a-key-for-its-answers" { } ''
       cp ${../../../tests/awaited.qml} awaited.qml
-      cp ${../launcher/Awaited.js} Awaited.js
-      cp ${../launcher/Pacing.js} Pacing.js
-      cp ${../launcher/Order.js} Order.js
+      ${copied [ "launcher/Awaited.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

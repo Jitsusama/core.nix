@@ -89,9 +89,19 @@ function heldFor(held, listed, bound) {
         { behindOn: timedOut ? behindOn(held, listed, bound) : "" });
 }
 
+// The frame a key held, or an opening felt, goes on noting: the one in
+// flight where a hold or an opening was already `listening`, as a key
+// typed over a held one is, since a frame begun then was being noted;
+// else a fresh one, as a frame begun while nothing listened would be
+// noted from then.
+function frameHeld(frame, listening) {
+    return listening ? frame : Pacing.feltUnframed();
+}
+
 // What the frame being drawn has run that Pacing.feltFramed hasn't said
 // yet, as of `at`: rows laid out for a frame not yet animating, and a sync
-// not yet heard to end, said up to `at`. A key's bound can end on the
+// not yet heard to end, said up to `at`, the bound's timer firing, the
+// first the shell's thread is heard after it. A key's bound can end on the
 // timer queued behind a sync, ahead of the call that notes it, so the work
 // it waited behind would otherwise be said as unnamed (a council,
 // 2026-11-18).

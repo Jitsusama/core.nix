@@ -5587,6 +5587,8 @@ Scope {
             const startedAt = Date.now();
             const started = KeyTimes.now();
             const shown = refreshNow(source);
+            // Asked first, so its name isn't built for every source with
+            // nothing listening, as the one fixed name below needn't be.
             if (spansHeard)
                 feltSpan(`${source.settings.name} changing`, started);
             return { source, startedAt, shown, tookMs: KeyTimes.now() - started };
@@ -7352,9 +7354,7 @@ Scope {
             answersAwaited = { text: prompt.text, due: next.due, sources: next.hold,
                 began: Date.now(), from: KeyTimes.now(), collected: Heap.collected() };
             heldSpans = [];
-            // A frame begun while nothing listened would be noted from then.
-            if (!listening)
-                feltFrame = Pacing.feltUnframed();
+            feltFrame = Awaited.frameHeld(feltFrame, listening);
             answersWaited.restart();
             return;
         }
@@ -7375,7 +7375,7 @@ Scope {
         // yet noted (Awaited.frameOpen).
         if (waited && searchParts)
             Object.assign(searchParts, Awaited.heldFor(waited, { at: listedAt, collected,
-                spans: heldSpans.concat(Awaited.frameOpen(feltFrame, listedAt)) },
+                spans: heldSpans.concat(Awaited.frameOpen(feltFrame, waited.firedAt ?? listedAt)) },
                 answersWaitedFor));
         heldSpans = [];
         if (asking)
@@ -7426,8 +7426,10 @@ Scope {
             if (waited === null)
                 return;
             // Ended by its bound, so the time past it was the thread's
-            // other work, said apart in the key's line (Awaited.waitedOf).
+            // other work, said apart in the key's line (Awaited.waitedOf),
+            // a sync still open said up to now (Awaited.frameOpen).
             waited.timedOut = true;
+            waited.firedAt = KeyTimes.now();
             root.answersLate = { text: waited.text, sources: waited.sources,
                 began: waited.began };
             console.info(`launcher: "${waited.text}" listed without`
@@ -11621,9 +11623,7 @@ Scope {
         feltFrom = from;
         feltFromChord = fromChord;
         feltSpans = [];
-        // A key held for its answers is noting the frame in flight.
-        if (answersAwaited === null)
-            feltFrame = Pacing.feltUnframed();
+        feltFrame = Awaited.frameHeld(feltFrame, answersAwaited !== null);
         feltTicking.start();
     }
     // The named work run while an opening is felt, `{ name, from, to }`, so

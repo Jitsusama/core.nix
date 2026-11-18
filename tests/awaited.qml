@@ -1,14 +1,14 @@
 // What a search does about the answers it waits for, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-launcher-holds-a-key-for-its-answers` check copies
-// modules/quickshell/launcher/Awaited.js, the Pacing.js and Order.js it
-// imports, and tests/lib/Expect.js beside this file and runs it offscreen. A key typed and Return pressed inside
-// the few milliseconds a key is held can't be timed on niri, so each case
-// here is the state Launcher.qml's searchNow finds as a key or a setter
-// comes.
+// modules/quickshell/launcher/Awaited.js, with what it imports, into
+// launcher/ and tests/lib/Expect.js beside this file, and runs it
+// offscreen. A key typed and Return pressed inside the few milliseconds a
+// key is held can't be timed on niri, so each case here is the state
+// Launcher.qml's searchNow finds as a key or a setter comes.
 import QtQuick
 import "Expect.js" as Expect
-import "Awaited.js" as Awaited
+import "launcher/Awaited.js" as Awaited
 
 QtObject {
     // A case that doesn't hold throws, and ends the test as a failure.
@@ -132,6 +132,19 @@ QtObject {
                 { name: "syncing", from: 20, to: 50 }, { name: "laying out", from: 30, to: 34 }]);
         Expect.same("a frame all said has nothing open",
             Awaited.frameOpen({ rows: null, syncFrom: -1 }, 50), []);
+        const syncing = { rows: null, syncFrom: 1010 };
+        Expect.same("a sync still open when the bound fired is what the key waited behind",
+            Awaited.heldFor({ began: 0, from: 1000, collected: 50, timedOut: true },
+                { at: 1060, collected: 50, spans: Awaited.frameOpen(syncing, 1050) }, 8),
+            { waited: 60, behind: 52, behindOn: "syncing 40, 12 unnamed" });
+
+        // A key typed over a held one, or an opening felt while a key is
+        // held, goes on noting the frame in flight; one held with nothing
+        // listening notes a fresh one.
+        Expect.same("a hold begun while another listened keeps the frame in flight",
+            Awaited.frameHeld(syncing, true), syncing);
+        Expect.same("a hold begun with nothing listening notes a fresh frame",
+            Awaited.frameHeld(syncing, false), { rows: null, syncFrom: -1 });
 
         // A held key's line is timed from when it was held by the shell's
         // clock, never the wall clock's, which reads another time: timed
