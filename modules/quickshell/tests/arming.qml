@@ -83,6 +83,20 @@ QtObject {
                 { id: "reboot", keys: 6, at: 2000, counted: 0 }]),
             "armed armed | armed");
 
+        // Return held still, as on an ask hidden while Joel shares: a row
+        // that stays with no run, never one with a run, one that opens a
+        // place, or one that closes.
+        const still = [
+            ["a hidden ask, staying with no run", { stays: true, changes: false }, true],
+            ["one that stays and does something", { stays: true, run: () => {} }, false],
+            ["one that stays and opens a place", { stays: true, opens: {} }, false],
+            ["one with no run that closes", { name: "Ended" }, false],
+            ["no row", null, false]
+        ];
+        for (const [what, row, held] of still)
+            expect(`Return on ${what} ${held ? "is" : "isn't"} held still`,
+                Arming.holdsStill(row), held);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         console.log(`${asked - failures.length} of ${asked} passed`);

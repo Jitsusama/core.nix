@@ -672,7 +672,7 @@ ShellRoot {
         // held still instead, with no run for the right arrow to step
         // into, nor taken for a change a Return from the find lands on.
         same("a Return on it keeps the launcher open, doing nothing",
-            [Catalogue.holdsStill(row()), typeof row()?.run, Catalogue.changesState(row())],
+            [Arming.holdsStill(row()), typeof row()?.run, Catalogue.changesState(row())],
             [true, "undefined", false]);
         same("it still waits for him in For You, hidden there too",
             asks.forYou.map(one => one.row.name), [hidden]);
@@ -820,7 +820,7 @@ ShellRoot {
         same("an ask ended while the screen is shared is hidden", row()?.name,
             "Ask, Hidden While You Share");
         same("and its Return closes the launcher, as an ended ask's does",
-            [Catalogue.holdsStill(row()), row()?.stays === true], [false, false]);
+            [Arming.holdsStill(row()), row()?.stays === true], [false, false]);
         Niri.casts = {};
     }
 }
