@@ -104,7 +104,7 @@ function cutsHeld() {
 
 // The cut `how` makes of `words`, kept, as a copy of its own, so a caller
 // changing what it's handed changes no later answer.
-function kept(how, words, cut) {
+function keptCut(how, words, cut) {
     const key = `${how}\u0000${words}`;
     let pieces = cuts.get(key);
     if (pieces === undefined) {
@@ -119,7 +119,7 @@ function kept(how, words, cut) {
 
 // Words cut after each of `marks`, a figure's dot never among them.
 function cutAfter(words, marks) {
-    return kept(marks, words, () => cutWhere(words, (letters, at) => marks.includes(letters[at])
+    return keptCut(marks, words, () => cutWhere(words, (letters, at) => marks.includes(letters[at])
         && !figureDot(letters, at)));
 }
 
@@ -128,7 +128,7 @@ function cutAfter(words, marks) {
 // (Y2YBTS, 2026-11-09). Kept apart from every cutAfter by a key no marks
 // make.
 function cutAtFigures(words) {
-    return kept("\u0001figures", words, () => cutWhere(words, figureDot));
+    return keptCut("\u0001figures", words, () => cutWhere(words, figureDot));
 }
 
 // Words cut to their letters, each mark kept with the letter before it
