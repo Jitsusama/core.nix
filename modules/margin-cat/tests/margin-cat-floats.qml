@@ -2,7 +2,9 @@
 // JavaScript engine, the one the shell runs it in. The
 // `the-margin-cat-sits-above-its-column` check copies
 // modules/margin-cat's scripts beside this file and runs
-// `qml -platform offscreen margin-cat-floats.qml`.
+// `qml -platform offscreen margin-cat-floats.qml`. Long because
+// every way on and off a float is judged in the one world its
+// helpers build, and a split would copy them into each half.
 import QtQuick
 import "MarginCat.js" as MarginCat
 import "MarginCatPaths.js" as Paths
@@ -544,6 +546,23 @@ QtObject {
             by(stepRoute, nineDown).map(ends),
             [[99, 2, 492, 2], [492, 2, 492, 0], [492, 0, 500, 0], [500, 0, 742, 0],
                 [742, 0, 750, 2], [750, 2, 900, 2]]);
+        // A step down with room for its hop steps from its edge too, off
+        // a seat at a cell of 1 and of 2, and on its way over: walked
+        // clear first, it walked a body-length on the air before it
+        // stepped down (WCJQSG 3697e429).
+        expect("a step down off one with room for its hop, it steps off from its edge",
+            [by(stepsOff, flush).map(ends), by(stepsOver, flush).map(ends),
+                by(bigOff, twoUp, 16).map(ends)],
+            [[[800, 5, 700, 5], [700, 5, 692, 7], [692, 7, 692, 7], [692, 7, 632, 7]],
+                [[632, 7, 692, 7], [692, 7, 692, 5], [692, 5, 700, 5], [700, 5, 892, 5],
+                    [892, 5, 900, 7], [900, 7, 1000, 7]],
+                [[800, 26, 700, 26], [700, 26, 684, 30], [684, 30, 684, 30],
+                    [684, 30, 632, 30]]]);
+        // Its feet a cell over the top, they're no lower than the top as
+        // it goes past the end: drawn on whole pixels, never over its face.
+        expect("stepping down a step from its edge, it's never drawn over its face",
+            [corner(stepsOff, flush), corner(stepsOver, flush), corner(bigOff, twoUp)],
+            [crossed(0, 200), crossed(0, 200), crossed(0, 200)]);
         // Closed from under it there, it drops from where it's drawn.
         const closedTop = Paths.walk({ x: 600, y: -3 }, { x: 100, y: 3 },
             world({ cols: Paths.columns(rigTiles, 0), floated: [atEdge], hurried: true }));
@@ -598,6 +617,61 @@ QtObject {
             world({ cols: tilesAt(17), floats: [dropsTop] }));
         expect("its own height down off it on a short way, it steps off as slowly as it ambles",
             corner(shortDeep, dropsTop), crossed(5, 500));
+        // Its walk replanned partway down its step, as a focus change can,
+        // over the corner of the face: drawn under the tiled windows
+        // there, the part of it over the corner went behind the floating
+        // window for its fall, and stood there as it landed, shook it off
+        // and turned, 740 ms. The ms of `way` it's drawn over `it`'s face,
+        // as the screen draws it, while it's not aboard, till it turns to
+        // set off: on its way on, under it on the tiled windows, it goes
+        // behind it as it should.
+        const behindIt = (way, it) => Array.from({
+            length: Math.floor(way.beats.find(beat => beat.name === "turns")?.begins
+                ?? way.ends) + 1
+        }, (_, t) => Paths.frame(way, t)).filter(frame => frame.aboard !== true
+                && Math.round(frame.x) + 8 > it.left && Math.round(frame.x) < it.right
+                && Math.max(Math.round(frame.y), 0) + 8 > it.top
+                && Math.round(frame.y) < it.bottom).length;
+        const midStep = way => {
+            const step = way.beats.find(beat => beat.name === "goes"
+                && beat.to.y > beat.from.y && beat.to.x !== beat.from.x);
+            const frame = Paths.frame(way, (step.begins + step.ends) / 2);
+            return { x: frame.x, y: frame.y };
+        };
+        const eightWorld = world({ cols: tilesAt(17), floats: [dropsTop] });
+        const fromOff = midStep(offEight);
+        const fromOver = midStep(overEight);
+        // Hurried, going on the way it was stepping, it doesn't turn.
+        const replans = [Paths.walk(fromOff, { x: 100, y: 8 }, eightWorld),
+            Paths.walk(fromOff, { x: 900, y: 8 }, eightWorld),
+            Paths.walk(fromOver, { x: 1000, y: 8 },
+                world({ cols: stairs(12, 17), floats: [dropsTop] })),
+            Paths.walk(fromOver, { x: 100, y: 3 },
+                world({ cols: stairs(12, 17), floats: [dropsTop] })),
+            Paths.walk(fromOff, { x: 100, y: 8 }, world({ cols: tilesAt(17),
+                floats: [dropsTop], hurried: true, facing: -1 }))];
+        expect("replanned partway down its step, it's never behind the window it stepped off",
+            replans.map(way => behindIt(way, dropsTop)), [0, 0, 0, 0, 0]);
+        // Its first leg is the clear, the near way, short of a body-length:
+        // back across the face, it's drawn over it, aboard, which
+        // behindIt() doesn't count.
+        const clearOf = (way, it) => {
+            const leg = way.beats.find(beat => beat.name === "goes");
+            return Math.abs(leg.to.x - leg.from.x) < 8
+                && (leg.to.x + 8 <= it.left || leg.to.x >= it.right);
+        };
+        expect("and it goes on clear of the end it was stepping off, never back across",
+            replans.map(way => clearOf(way, dropsTop)), [true, true, true, true, true]);
+        // Sitting on the tiles with a floating window's corner over it, it's
+        // under that window, as it should be, and walks off under it: drawn
+        // over it as it set off, it came out in front of its face.
+        const overSeat = float(504, 12, 200, 100);
+        const fromUnder = Paths.walk({ x: 500, y: 8 }, { x: 100, y: 8 },
+            world({ cols: tilesAt(17), floats: [overSeat] }));
+        expect("sitting on the tiles under a floating window's corner, it walks off under it",
+            Array.from({ length: Math.floor(fromUnder.ends) + 1 },
+                (_, t) => Paths.frame(fromUnder, t)).filter(frame => frame.aboard).length,
+            0);
         // At a laptop's ratio of 1.5, a cell of 4/3, as the shell draws it
         // (margin-cat-journeys.qml): its own height down, 15 of its 16
         // pixels, and all 16 of them, it steps; a pixel more, it drops. Its
