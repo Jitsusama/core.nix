@@ -55,16 +55,42 @@ fn a_mycelium_with_no_sessions_and_nothing_waiting_is_no_trouble() {
 }
 
 #[test]
-fn a_mycelium_that_names_no_sessions_is_a_trouble() {
+fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
     let place = Place::new("no-sessions");
     place.routes();
     a_day(&place);
-    let hour = hear(&place.ears(), "", &mut |_, _| true).expect("a run");
-    assert!(
+    let minute = 60_000;
+    let run = |at: i64, cells: &str| {
+        let ears = Ears { at, ..place.ears() };
+        let hour = hear(&ears, cells, &mut |_, _| false).expect("a run");
         hour.troubles
             .iter()
-            .any(|t| t.contains("named no sessions")),
-        "{hour:?}"
+            .any(|t| t.contains("named no sessions"))
+    };
+    // A node that blinks as the machine goes down is asked again next
+    // run, so a run or two without it fails nothing.
+    assert!(!run(AT, ""), "a first run without cells fails nothing");
+    assert!(
+        !run(AT + 10 * minute, ""),
+        "ten minutes without cells fails nothing"
+    );
+    assert!(
+        run(AT + 15 * minute, ""),
+        "a quarter hour without cells is a trouble"
+    );
+    // A run that reads cells starts the count again.
+    assert!(
+        !run(AT + 20 * minute, CELLS),
+        "a run with cells has no such trouble"
+    );
+    assert!(
+        !run(AT + 25 * minute, ""),
+        "the count starts again after cells"
+    );
+    // A machine that was off isn't a node that said nothing all along.
+    assert!(
+        !run(AT + 5 * 60 * minute, ""),
+        "a run after hours off starts the count again"
     );
 }
 

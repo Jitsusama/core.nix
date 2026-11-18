@@ -62,6 +62,16 @@ const ASK_AT_MOST: Duration = Duration::from_secs(5);
 /// question every five minutes.
 pub const SEND_TRIES: u32 = 3;
 
+/// How long the node may name no sessions while pains wait before a run
+/// says so as a trouble: three runs, so a node that blinks as the machine
+/// goes down fails nothing, as the next run sends what waited, and one
+/// that stays broken still fails the unit.
+const CELLLESS_AT_MOST_MS: i64 = 15 * 60_000;
+
+/// How old the run before may be for its count of runs without cells to
+/// carry on: two runs' gap, so a machine that was off starts it again.
+const CELLLESS_GAP_MS: i64 = 10 * 60_000;
+
 /// Where a run listens and what it knows of the time.
 pub struct Ears {
     pub sessions: PathBuf,
@@ -116,6 +126,9 @@ pub struct Hour {
     /// as a quiet hour.
     #[serde(default)]
     pub troubles: Vec<String>,
+    /// Since when the node has named no sessions while pains waited.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cellless_since: Option<i64>,
     /// Why no pain can close, when the core the machine runs or the git
     /// to ask of it can't be read: said, though it fails no run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -366,11 +379,18 @@ pub fn hear(
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = unclosed;
     let (waiting, given_up) = unsent(&kept, ears.at);
+    let before: Option<Hour> = fs::read(ears.state.join("hour.json"))
+        .ok()
+        .and_then(|text| serde_json::from_slice(&text).ok())
+        .filter(|before: &Hour| before.at >= ears.at - CELLLESS_GAP_MS);
+    hour.cellless_since = (cells.is_empty() && waiting)
+        .then(|| before.and_then(|b| b.cellless_since).unwrap_or(ears.at));
     hour.troubles = troubles(
         &ears.state,
         &routes,
         (failed, given_up),
-        cells.is_empty() && waiting,
+        hour.cellless_since
+            .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
     crate::write_whole(
         &ears.state.join("hour.json"),
@@ -476,7 +496,8 @@ fn troubles(
         ));
     }
     if routes.sends() && no_cells {
-        troubles.push("the mycelium named no sessions, so none could be routed".into());
+        troubles
+            .push("the mycelium named no sessions for a quarter hour, so none were routed".into());
     }
     troubles
 }
@@ -670,6 +691,7 @@ fn hour_of(kept: &[Heard], at: i64) -> Hour {
             .count(),
         closed: day.iter().filter(|h| h.closed_by.is_some()).count(),
         troubles: Vec::new(),
+        cellless_since: None,
         unclosed: None,
     }
 }
