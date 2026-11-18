@@ -178,6 +178,11 @@ function linked(records, said) {
     return { name, key: listed ? rowKey(name) : null };
 }
 
+// Whether `row` is the one a link's `key`, from linked, lands on.
+function lands(key) {
+    return row => key !== null && row.key === key;
+}
+
 // A fact of the drawer, or none where its value isn't said.
 function fact(label, value, figure) {
     if (value === "" || value === null || value === undefined) {

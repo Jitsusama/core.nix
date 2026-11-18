@@ -112,6 +112,11 @@ Provider {
         return Listed.linked(records, said);
     }
 
+    // Whether a row is the one that link's key lands on (RealmMachines.js's lands).
+    function lands(key) {
+        return Listed.lands(key);
+    }
+
     // What RealmMachines.js needs to say them: the words, the realms, now, this
     // machine's core, how the disk guard bands a disk, and a moment's day and
     // time as the launcher says them everywhere (When.js).

@@ -273,8 +273,15 @@ QtObject {
                 { name: "skiff.gone", key: null },
                 { name: "lant", key: null },
                 { name: "", key: null }]), JSON.stringify(linked));
-        expect("a link's key is the key Machines gives that machine's row",
-            linked.filter(one => one.key !== null).every(one => one.key === Machines.rowKey(one.name)),
-            JSON.stringify(linked));
+        // Among rows keyed as Machines keys them, a link lands on its
+        // machine's row alone, and a miss on none, so it can't match by name.
+        const rows = ["anchor", "tern", "lantern"]
+            .map(name => ({ name: `${name} row`, key: Machines.rowKey(name) }));
+        const landed = ["tern", "lantern", "skiff.gone"]
+            .map(asked => rows.filter(Machines.lands(Machines.linked(realms, asked).key))
+                .map(row => row.name));
+        expect("a link lands on its machine's row and no other, and a miss on none",
+            JSON.stringify(landed) === JSON.stringify([["tern row"], ["lantern row"], []]),
+            JSON.stringify(landed));
     }
 }

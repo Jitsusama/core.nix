@@ -1900,7 +1900,7 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
 
     The system page's Open in the Launcher asks it (BMDYSH and XUBK2E, 2026-11-17), since a
     page can't act. Only the first word names one; a name no node lists opens Machines, its
-    foot saying the machine isn't among Joel's yet. Here one node lists only this machine,
+    foot saying the machine isn't among Joel's. Here one node lists only this machine,
     which Machines lists first, so the case proves the call reaches Machines, not which row it
     lands on: tests/machines.qml holds which row a link names, over several realms' machines,
     by the one key Machines gives its rows.
@@ -1919,13 +1919,22 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
         assert did == {"done": True, "said": f"opening Machines \u203a {name}"}, did
         shell.launcher_until(on(name))
         shell.close_launcher()
+    # The foot says the miss in Machines' own words, never the name, which a page chose.
     did = followed(shell, "machine", "skiff.gone")
     assert did == {
         "done": False,
-        "said": "skiff.gone isn't among your machines yet: "
-        "no node has said it has a machine by that name",
+        "said": "the machine the link named isn't among yours: no node this machine links lists it",
     }, did
-    shell.launcher_until(lambda shown: shown["open"] and shown["held"] == ["machines"])
+    shell.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["held"] == ["machines"]
+            # The foot keeps each phrase whole with no-break spaces.
+            and "no node this machine links lists it"
+            in " ".join(shown["saying"]).replace("\xa0", " ")
+            and "skiff" not in " ".join(shown["saying"])
+        )
+    )
     shell.close_launcher()
 
 
