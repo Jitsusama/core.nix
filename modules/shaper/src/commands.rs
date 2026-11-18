@@ -142,7 +142,7 @@ fn proof() -> Help {
         )
         .exit(
             Exit::TryAgain,
-            "Joel wasn't away long enough to judge, or another proof is running",
+            "Joel wasn't away long enough, the shaper's state was unknown, or a proof is running",
         )
         .exit(Exit::Config, "what it waits on isn't a list of commands")
         .exit(Exit::Interrupted, "stopped, the shaper back as it was")

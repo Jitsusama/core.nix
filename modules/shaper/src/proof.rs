@@ -505,9 +505,13 @@ fn window(
     }
     // The first window's settle and quiet take half a minute with no
     // watch on the gate, so Joel coming back meanwhile is heard here,
-    // before any load starts.
+    // before any load starts. A quiet heard while he came back holds his
+    // own traffic, so it's dropped and heard afresh in the next window.
     if !halted(&stop) && !gate.open() {
         stop.store(true, Ordering::Relaxed);
+        if touched {
+            idle.clear();
+        }
     }
     if halted(&stop) {
         return (Vec::new(), !touched || put_back(was_on));
