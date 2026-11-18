@@ -8,6 +8,7 @@
 //! pigment or near it, found by its colour as modules/theme/nearest.nix
 //! finds it, since a theme may put any pigment in any slot.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -411,15 +412,50 @@ impl Pen {
     }
 
     /// Words that open a URL or a path on a click: a kitty hyperlink
-    /// where there's ink, and the words alone where there's none.
+    /// where there's ink, and the words alone where there's none. The
+    /// words may be inked by this pen already, and keep its colour, but
+    /// nothing else of the terminal's, and are held to one line with the
+    /// target, so neither can end the link early.
     pub fn link(&self, target: &str, words: &str) -> String {
-        let words = one_line(words);
+        let words = inked_on_one_line(words);
         if !self.inks() {
             return words.into_owned();
         }
         let target = one_line(target);
         format!("\u{1b}]8;;{target}\u{1b}\\{words}\u{1b}]8;;\u{1b}\\")
     }
+}
+
+/// Words held to one line, as `layout::one_line` holds them, but keeping
+/// each colour a pen inks them in, `ESC [`, numbers and semicolons, and
+/// `m`, which moves nothing and can't end a link.
+fn inked_on_one_line(words: &str) -> Cow<'_, str> {
+    if !words.chars().any(crate::layout::unseen) {
+        return Cow::Borrowed(words);
+    }
+    let mut held = String::with_capacity(words.len());
+    let mut rest = words;
+    while let Some(c) = rest.chars().next() {
+        let colour = rest.strip_prefix("\u{1b}[").and_then(|after| {
+            let codes = after.len()
+                - after
+                    .trim_start_matches(|c: char| c.is_ascii_digit() || c == ';')
+                    .len();
+            after[codes..].starts_with('m').then_some(2 + codes + 1)
+        });
+        if let Some(colour) = colour {
+            held.push_str(&rest[..colour]);
+            rest = &rest[colour..];
+            continue;
+        }
+        if !crate::layout::unseen(c) {
+            held.push(c);
+        } else if matches!(c, '\n' | '\t' | '\u{2028}' | '\u{2029}') {
+            held.push(' ');
+        }
+        rest = &rest[c.len_utf8()..];
+    }
+    Cow::Owned(held)
 }
 
 #[cfg(test)]
@@ -524,6 +560,37 @@ mod tests {
             "\u{1b}]8;;https://a\\b\u{1b}\\see]8;;x\u{1b}]8;;\u{1b}\\"
         );
         assert_eq!(Pen::plain().link("t", "see\u{7}"), "see");
+        assert_eq!(
+            pen.link("https://a\nb", "see\nthis"),
+            "\u{1b}]8;;https://a b\u{1b}\\see this\u{1b}]8;;\u{1b}\\",
+            "a link's line break would draw a record of its own"
+        );
+    }
+
+    #[test]
+    fn a_link_keeps_the_ink_its_words_were_drawn_in_and_nothing_else() {
+        let pen = Pen::new(Ink::sixteen(), None);
+        assert_eq!(
+            pen.link("t", &pen.role("alert", "hall")),
+            "\u{1b}]8;;t\u{1b}\\\u{1b}[31mhall\u{1b}[0m\u{1b}]8;;\u{1b}\\",
+            "a link stripped the colour its words were drawn in"
+        );
+        assert_eq!(
+            pen.link("t", "\u{1b}[31mhall\u{1b}[2J\u{1b}[0m"),
+            "\u{1b}]8;;t\u{1b}\\\u{1b}[31mhall[2J\u{1b}[0m\u{1b}]8;;\u{1b}\\",
+            "a link kept an escape that isn't a colour"
+        );
+    }
+
+    #[test]
+    fn words_lose_the_marks_that_reorder_them_and_keep_unicode_lines() {
+        let plain = Pen::plain();
+        assert_eq!(
+            plain.role("text", "hall\u{202e}gnp.exe\u{2066}x\u{2069}"),
+            "hallgnp.exex",
+            "a mark that reorders text reached the terminal"
+        );
+        assert_eq!(plain.role("text", "one\u{2028}two"), "one\ntwo");
     }
 
     #[test]

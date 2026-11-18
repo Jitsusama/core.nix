@@ -124,6 +124,8 @@ impl<'a, W: Write> Wait<'a, W> {
     }
 
     fn end(mut self, mark: &str, role: &str, words: &str) -> io::Result<()> {
+        // One line, as the wait's own were, so its outcome is one record.
+        let words = &*layout::one_line(words);
         let clear = if self.terminal { "\r\u{1b}[2K" } else { "" };
         writeln!(
             self.out,
@@ -171,9 +173,10 @@ mod tests {
         let mut wait =
             Wait::begin(&mut out, &pen, Room::Unbounded, "copying\nhall\u{1b}[2J").expect("said");
         wait.step(None, Some("den\r\u{7}")).expect("said");
+        wait.done("copied\nhall\u{1b}]0;owned\u{7}").expect("said");
         assert_eq!(
             String::from_utf8(out).expect("words"),
-            "\u{2192} copying hall[2J\n\u{2192} den\n",
+            "\u{2192} copying hall[2J\n\u{2192} den\n\u{2713} copied hall]0;owned\n",
             "a wait's words broke its line or kept a control"
         );
     }

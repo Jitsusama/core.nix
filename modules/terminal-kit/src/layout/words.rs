@@ -3,7 +3,9 @@
 //! way at its items, a figure held to its unit, no last word left alone,
 //! and a word too long for its line shortened in its middle, never broken.
 //! Lists, facts and tables set their cells with these, once each is
-//! drawn as the terminal may be given it.
+//! drawn as the terminal may be given it. Each holds its words to one
+//! line first, as `one_line` says, since a break of their own would
+//! draw past the inset or the measure they keep.
 
 use std::borrow::Cow;
 
@@ -19,7 +21,10 @@ const SMALL: [&str; 12] = [
 ];
 
 /// Words as the kit draws them: every control character dropped but the
-/// line break, and a tab drawn as a space. A name, a path or a message
+/// line break, a tab drawn as a space and a Unicode line or paragraph
+/// separator as a line break, and the marks that reorder text right to
+/// left dropped too, since one can draw a name backwards over what's
+/// beside it. A name, a path or a message
 /// comes from anyone, an eero device's name or a Wi-Fi network's among
 /// them, and one holding the terminal's own escapes would retitle the
 /// window, clear the screen or draw over a line as it's shown; only the
@@ -27,7 +32,7 @@ const SMALL: [&str; 12] = [
 /// borrowed as they are where they hold none, as nearly all do.
 pub fn drawn(words: &str) -> Cow<'_, str> {
     kept(words, |c| match c {
-        '\n' => Some('\n'),
+        '\n' | '\u{2028}' | '\u{2029}' => Some('\n'),
         '\t' => Some(' '),
         _ => None,
     })
@@ -37,19 +42,32 @@ pub fn drawn(words: &str) -> Cow<'_, str> {
 /// is: a line break is a space too, so no field draws a record of its
 /// own, and every line read through `grep` still names its record.
 pub fn one_line(words: &str) -> Cow<'_, str> {
-    kept(words, |c| matches!(c, '\n' | '\t').then_some(' '))
+    kept(words, |c| {
+        matches!(c, '\n' | '\t' | '\u{2028}' | '\u{2029}').then_some(' ')
+    })
 }
 
-/// Words with each control character given to `instead`, which draws it
-/// as another character or drops it.
+/// Whether the kit keeps `c` from the terminal: a control character, a
+/// Unicode line or paragraph separator, or a mark that embeds, overrides
+/// or isolates a run of text's direction.
+pub(crate) fn unseen(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{2028}' | '\u{2029}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+        )
+}
+
+/// Words with each character `unseen` keeps given to `instead`, which
+/// draws it as another character or drops it.
 fn kept(words: &str, instead: impl Fn(char) -> Option<char>) -> Cow<'_, str> {
-    if !words.chars().any(char::is_control) {
+    if !words.chars().any(unseen) {
         return Cow::Borrowed(words);
     }
     Cow::Owned(
         words
             .chars()
-            .filter_map(|c| if c.is_control() { instead(c) } else { Some(c) })
+            .filter_map(|c| if unseen(c) { instead(c) } else { Some(c) })
             .collect(),
     )
 }
@@ -59,6 +77,8 @@ fn kept(words: &str, instead: impl Fn(char) -> Option<char>) -> Cow<'_, str> {
 /// first word too long for the room alone is shortened in its middle, as
 /// a path is, since a name is never cut at its end inside a word.
 pub fn cut(name: &str, room: usize) -> String {
+    let flat = one_line(name);
+    let name = &*flat;
     if width(name) <= room {
         return name.to_owned();
     }
@@ -93,6 +113,8 @@ pub fn cut(name: &str, room: usize) -> String {
 /// a path whose last part alone is too long, keeps its first and last
 /// letters either side of the cut.
 pub fn shortened(word: &str, room: usize) -> String {
+    let flat = one_line(word);
+    let word = &*flat;
     if width(word) <= room {
         return word.to_owned();
     }
@@ -151,6 +173,8 @@ pub fn shortened(word: &str, room: usize) -> String {
 /// the room, every line at the same inset, so a nested level keeps its
 /// indent wherever it wraps. Into a pipe it's one line.
 pub fn paragraph(words: &str, inset: usize, room: Room) -> Vec<String> {
+    let flat = one_line(words);
+    let words = &*flat;
     let pad = " ".repeat(inset);
     match room.cells() {
         None => vec![format!("{pad}{words}")],
@@ -165,6 +189,8 @@ pub fn paragraph(words: &str, inset: usize, room: Room) -> Vec<String> {
 /// to the room, each further line under the first's words. Into a pipe
 /// they stay one line.
 pub fn hung(words: &str, lead: usize, room: Room) -> String {
+    let flat = one_line(words);
+    let words = &*flat;
     match room.cells() {
         None => words.to_owned(),
         Some(cells) => wrapped(words, cells.saturating_sub(lead).max(1))
@@ -181,6 +207,8 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
 /// doesn't leave the word before it alone, and otherwise on a line of
 /// its own.
 pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
+    let flat = one_line(words);
+    let words = &*flat;
     let mut lines = Vec::new();
     let mut line = String::new();
     for item in words.split(ITEMS).map(str::trim) {

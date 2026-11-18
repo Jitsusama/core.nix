@@ -14,7 +14,14 @@ use crate::ink::Pen;
 
 mod words;
 
+pub(crate) use words::unseen;
 pub use words::{cut, drawn, hung, one_line, paragraph, shortened, wrapped};
+
+/// Whether `words` hold anything the kit keeps from the terminal, so a
+/// layout copies only the rare cell that has to be held to one line.
+fn holds_unseen(words: &str) -> bool {
+    words.chars().any(unseen)
+}
 
 /// How a run of items is joined on one line.
 pub const ITEMS: &str = " \u{b7} ";
@@ -210,6 +217,12 @@ impl Row {
 
     /// The same, its name, words and side each held to one line, so a
     /// list measures what it draws.
+    fn holds_unseen(&self) -> bool {
+        [&self.name, &self.words, &self.side]
+            .into_iter()
+            .any(|words| holds_unseen(words))
+    }
+
     fn on_one_line(&self) -> Self {
         Self {
             name: one_line(&self.name).into_owned(),
@@ -238,7 +251,13 @@ impl Row {
 /// first, then its side, each by whole items from its end, then its name
 /// at a whole word. Each row is held to one line, as `one_line` says.
 pub fn list(rows: &[Row], pen: &Pen, room: Room) -> Vec<String> {
-    let rows: Vec<Row> = rows.iter().map(Row::on_one_line).collect();
+    let held: Vec<Row>;
+    let rows = if rows.iter().any(Row::holds_unseen) {
+        held = rows.iter().map(Row::on_one_line).collect();
+        held.as_slice()
+    } else {
+        rows
+    };
     let lead = if rows.iter().any(|row| row.mark.is_some()) {
         MARK
     } else {
@@ -304,15 +323,24 @@ pub fn facts(facts: &[(&str, Option<&str>)], unknown: &str, pen: &Pen, room: Roo
     fn said<'a>(value: Option<&'a str>, unknown: &'a str) -> (&'a str, &'static str) {
         value.map_or((unknown, "muted"), |value| (value, "text"))
     }
-    let held: Vec<(&str, Option<String>)> = facts
+    let held: Vec<(&str, Option<String>)>;
+    let flat: Vec<(&str, Option<&str>)>;
+    let facts = if facts
         .iter()
-        .map(|(label, value)| (*label, value.map(|value| one_line(value).into_owned())))
-        .collect();
-    let facts: Vec<(&str, Option<&str>)> = held
-        .iter()
-        .map(|(label, value)| (*label, value.as_deref()))
-        .collect();
-    let facts = facts.as_slice();
+        .any(|(_, value)| value.is_some_and(holds_unseen))
+    {
+        held = facts
+            .iter()
+            .map(|(label, value)| (*label, value.map(|value| one_line(value).into_owned())))
+            .collect();
+        flat = held
+            .iter()
+            .map(|(label, value)| (*label, value.as_deref()))
+            .collect();
+        flat.as_slice()
+    } else {
+        facts
+    };
     let fits = |column: usize, value: &str| {
         room.cells().is_none_or(|cells| {
             let longest = value.split_whitespace().map(width).max().unwrap_or(0);
@@ -390,11 +418,16 @@ pub fn table_in(
     room: Room,
     gives_way: &[usize],
 ) -> Vec<String> {
-    let rows: Vec<Vec<String>> = rows
-        .iter()
-        .map(|row| row.iter().map(|cell| one_line(cell).into_owned()).collect())
-        .collect();
-    let rows = rows.as_slice();
+    let held: Vec<Vec<String>>;
+    let rows = if rows.iter().flatten().any(|cell| holds_unseen(cell)) {
+        held = rows
+            .iter()
+            .map(|row| row.iter().map(|cell| one_line(cell).into_owned()).collect())
+            .collect();
+        held.as_slice()
+    } else {
+        rows
+    };
     let Some(cells) = room.cells() else {
         return set_table(columns, rows, pen);
     };
@@ -516,289 +549,4 @@ pub fn joined(blocks: Vec<Vec<String>>) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_table_cell_from_outside_stays_on_its_line_and_in_its_column() {
-        let pen = Pen::plain();
-        let rows = vec![
-            vec!["hall\n2  forged".to_owned(), "on\u{1b}[2J".to_owned()],
-            vec!["den".to_owned(), "off".to_owned()],
-        ];
-        let columns = [("Name", Align::Left), ("State", Align::Left)];
-        assert_eq!(
-            table(&columns, &rows, &pen),
-            [
-                "NAME            STATE",
-                "hall 2  forged  on[2J",
-                "den             off"
-            ]
-            .map(str::to_owned),
-            "a line break in a cell drew a record of its own, or a control moved a column"
-        );
-    }
-
-    #[test]
-    fn a_list_row_from_outside_stays_on_its_line_and_its_side_in_place() {
-        let rows = [
-            Row::named("hall\nforged\u{7}").side("on"),
-            Row::named("den").side("off"),
-        ];
-        assert_eq!(
-            list(&rows, &Pen::plain(), Room::Unbounded),
-            ["hall forged  on", "den         off"].map(str::to_owned),
-            "a row's line break or bell moved what's beside it"
-        );
-    }
-
-    #[test]
-    fn a_fact_from_outside_stays_beside_its_label() {
-        let facts = [("Name", Some("hall\nPassword  hunter2\u{1b}[8m"))];
-        assert_eq!(
-            super::facts(&facts, "unknown", &Pen::plain(), Room::Unbounded),
-            ["Name  hall Password  hunter2[8m"].map(str::to_owned),
-            "a fact's value drew a fact of its own"
-        );
-    }
-
-    #[test]
-    fn overrun_names_the_first_line_past_the_room_and_none_in_a_pipe() {
-        let text = "short\nfar too long\nalso too long";
-        assert_eq!(overrun(text, Room::Cells(5)), Some("far too long"));
-        assert_eq!(overrun(text, Room::Cells(13)), None);
-        assert_eq!(overrun(text, Room::Unbounded), None);
-    }
-
-    fn rows() -> Vec<Row> {
-        vec![
-            Row::named("Now")
-                .marked("active", "voice")
-                .holding("2 need you"),
-            Row::named("Machine")
-                .marked("done", "success")
-                .holding("Disk \u{b7} Power \u{b7} Sound"),
-            Row::named("Disk").side("412 GB free \u{b7} nvme0n1"),
-        ]
-    }
-
-    #[test]
-    fn a_list_holds_a_marks_cells_on_every_row_and_its_side_flush_right() {
-        assert_eq!(
-            list(&rows(), &Pen::plain(), Room::Unbounded),
-            [
-                "\u{25c8} Now  2 need you",
-                "\u{2713} Machine  Disk \u{b7} Power \u{b7} Sound",
-                "  Disk    412 GB free \u{b7} nvme0n1",
-            ]
-        );
-    }
-
-    #[test]
-    fn its_words_give_way_first_then_its_side_by_whole_items() {
-        assert_eq!(
-            list(&rows(), &Pen::plain(), Room::Cells(24)),
-            [
-                "\u{25c8} Now  2 need you",
-                "\u{2713} Machine  Disk \u{b7} Power",
-                "  Disk       412 GB free",
-            ]
-        );
-    }
-
-    #[test]
-    fn a_pipe_cuts_nothing() {
-        let long = [Row::named("A name far longer than any terminal is wide")];
-        assert_eq!(
-            list(&long, &Pen::plain(), Room::Unbounded),
-            ["A name far longer than any terminal is wide"]
-        );
-        assert_eq!(
-            list(&long, &Pen::plain(), Room::Cells(14)),
-            ["A name far\u{2026}"]
-        );
-    }
-
-    #[test]
-    fn a_narrow_table_gives_way_by_column_least_useful_first() {
-        let columns = [
-            ("Machine", Align::Left),
-            ("Builds", Align::Right),
-            ("State", Align::Left),
-        ];
-        let rows = [vec![
-            "second-one".to_owned(),
-            "120".to_owned(),
-            "building now".to_owned(),
-        ]];
-        let pen = Pen::plain();
-        assert_eq!(
-            table_in(&columns, &rows, &pen, Room::Cells(80), &[1]),
-            [
-                "MACHINE     BUILDS  STATE",
-                "second-one     120  building now"
-            ]
-        );
-        assert_eq!(
-            table_in(&columns, &rows, &pen, Room::Cells(24), &[1]),
-            ["MACHINE     STATE", "second-one  building now"]
-        );
-        assert_eq!(
-            table_in(&columns, &rows, &pen, Room::Cells(22), &[1]),
-            ["MACHINE     STATE", "second-one  building\u{2026}"]
-        );
-        assert_eq!(
-            table_in(&columns, &rows, &pen, Room::Unbounded, &[1]),
-            table(&columns, &rows, &pen)
-        );
-    }
-
-    #[test]
-    fn a_long_last_column_is_shortened_before_the_others_give_way() {
-        let columns = [
-            ("Kind", Align::Left),
-            ("Size", Align::Right),
-            ("Path", Align::Left),
-        ];
-        let rows = [vec![
-            "cache".to_owned(),
-            "1 GiB".to_owned(),
-            "/home/someone/.cache/a/very/deep/folder/of/runs/run-48".to_owned(),
-        ]];
-        let pen = Pen::plain();
-        assert_eq!(
-            table_in(&columns, &rows, &pen, Room::Cells(40), &[1]),
-            [
-                "KIND    SIZE  PATH",
-                "cache  1 GiB  /…/folder/of/runs/run-48"
-            ],
-            "a path that can be shortened should leave the size in place"
-        );
-        let narrow = table_in(&columns, &rows, &pen, Room::Cells(28), &[1]);
-        assert!(
-            narrow[0] == "KIND   PATH",
-            "with less room than a shortened path needs, the size should go: {narrow:?}"
-        );
-    }
-
-    #[test]
-    fn facts_set_their_values_in_one_column() {
-        let facts_ = [("Size", Some("1 TB")), ("Temperature", None)];
-        assert_eq!(
-            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(80)),
-            ["Size         1 TB", "Temperature  \u{2026}"]
-        );
-        assert_eq!(
-            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(20)),
-            ["Size         1 TB", "Temperature  \u{2026}"],
-            "facts that fit beside their labels went under them"
-        );
-        assert_eq!(
-            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(12)),
-            ["Size  1 TB", "Temperature", "  \u{2026}"],
-            "only the fact that can't fit beside should go under its label"
-        );
-    }
-
-    #[test]
-    fn a_word_too_long_beside_its_label_goes_under_it_whole() {
-        let urn = "urn:schemas-upnp-org:device:MediaRenderer:1";
-        let facts_ = [("Kind", Some(urn)), ("Name", Some("Stereo"))];
-        assert_eq!(
-            facts(&facts_, "", &Pen::plain(), Room::Cells(46)),
-            ["Kind", &format!("  {urn}"), "Name  Stereo"],
-            "an identifier was cut beside its label when it fits whole under it"
-        );
-        assert_eq!(
-            facts(&facts_, "", &Pen::plain(), Room::Cells(80))[0],
-            format!("Kind  {urn}"),
-            "an identifier that fits beside its label left it"
-        );
-    }
-
-    #[test]
-    fn a_long_value_wraps_under_itself() {
-        let facts_ = [("Note", Some("one two three four"))];
-        assert_eq!(
-            facts(&facts_, "", &Pen::plain(), Room::Cells(14)),
-            ["Note  one two", "      three", "      four"]
-        );
-    }
-
-    #[test]
-    fn a_table_aligns_by_space_and_sets_figures_flush_right() {
-        let columns = [
-            ("Machine", Align::Left),
-            ("Builds", Align::Right),
-            ("State", Align::Left),
-        ];
-        let rows = [
-            vec!["first".to_owned(), "3".to_owned(), "idle".to_owned()],
-            vec![
-                "second-one".to_owned(),
-                "120".to_owned(),
-                "building".to_owned(),
-            ],
-        ];
-        assert_eq!(
-            table(&columns, &rows, &Pen::plain()),
-            [
-                "MACHINE     BUILDS  STATE",
-                "first            3  idle",
-                "second-one     120  building",
-            ]
-        );
-    }
-
-    #[test]
-    fn a_row_ends_at_its_last_cell_that_says_something() {
-        let columns = [
-            ("Port", Align::Left),
-            ("Link", Align::Left),
-            ("Speed", Align::Right),
-            ("Duplex", Align::Left),
-        ];
-        let rows = [
-            vec!["1".into(), "up".into(), "1000".into(), "full".into()],
-            vec!["2".into(), "down".into(), String::new(), String::new()],
-            vec!["3".into(), String::new(), String::new(), String::new()],
-            // A figure last on its line still sits flush right, under its
-            // column's others.
-            vec!["4".into(), "up".into(), "10".into(), String::new()],
-            // An empty cell before one that says something keeps its room.
-            vec!["5".into(), String::new(), "100".into(), String::new()],
-            // A row that says nothing isn't an empty line.
-            vec![String::new(), String::new(), String::new(), String::new()],
-        ];
-        assert_eq!(
-            table(&columns, &rows, &Pen::plain()),
-            [
-                "PORT  LINK  SPEED  DUPLEX",
-                "1     up     1000  full",
-                "2     down",
-                "3",
-                "4     up       10",
-                "5             100",
-                "    ",
-            ],
-            "a row doesn't end at its last word, or a figure left its column"
-        );
-    }
-
-    #[test]
-    fn blocks_part_by_one_empty_line() {
-        assert_eq!(
-            joined(vec![vec!["a".into()], vec![], vec!["b".into(), "c".into()]]),
-            "a\n\nb\nc\n"
-        );
-        assert_eq!(joined(vec![]), "");
-    }
-
-    #[test]
-    fn a_pipe_has_no_width_to_fit() {
-        let environment = Environment::of([false; 3], &[("COLUMNS", "40")]);
-        assert_eq!(Room::of_stdout(&environment), Room::Unbounded);
-        assert_eq!(Room::Unbounded.measure(), MEASURE);
-        assert_eq!(Room::Cells(50).measure(), 50);
-    }
-}
+mod tests;

@@ -303,6 +303,22 @@ mod tests {
     }
 
     #[test]
+    fn a_servers_message_wraps_under_itself_whatever_its_breaks() {
+        let failure =
+            Failure::new(Exit::Failed, "lost\r\u{1b}[2J").because("one\ntwo three\nfour five");
+        assert_eq!(
+            failure.text(&Pen::plain(), Room::Cells(12), false),
+            "\u{2715} lost[2J\n  one two\n  three four\n  five\n",
+            "a message's own line break drew past its inset, or a control reached the terminal"
+        );
+        assert_eq!(
+            failure.text(&Pen::plain(), Room::Unbounded, false),
+            "\u{2715} lost[2J\n  one two three four five\n",
+            "a message's own line break drew a line of its own into a pipe"
+        );
+    }
+
+    #[test]
     fn its_mark_wears_the_alert() {
         let pen = Pen::new(Ink::sixteen(), None);
         let text = Failure::new(Exit::Failed, "lost").text(&pen, Room::Unbounded, false);
