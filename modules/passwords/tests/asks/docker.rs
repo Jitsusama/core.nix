@@ -1,7 +1,8 @@
 //! Docker's settings as a released command finds them: emptied where
 //! they hold a login, through a link to the file it names, and where they
-//! can't be read to tell; and a fence list from before emptied files,
-//! naming none, still lets a yes release.
+//! can't be read to tell; left be where they're missing, a dangling link
+//! or a folder; and a fence list from before emptied files, naming none,
+//! still lets a yes release.
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -48,6 +49,37 @@ fn a_link_to_dockers_settings_empties_the_file_it_names() {
     std::os::unix::fs::symlink(&outside, &docker).unwrap();
     let args = released_with(&running, "b223456789abcdef0123456789abcdef");
     holds(&args, &emptying(&std::fs::canonicalize(&outside).unwrap()));
+    assert!(
+        found(&args, &emptying(&docker)).is_none(),
+        "the link itself was bound over, not only the file it names: {args:?}"
+    );
+}
+
+#[test]
+fn dockers_settings_missing_dangling_or_a_folder_bind_nothing_and_release() {
+    // Most machines have no Docker settings at all, so a listed file that
+    // isn't there, or is no file, must never keep a yes from releasing.
+    for (shape, id) in [
+        ("missing", "d223456789abcdef0123456789abcdef"),
+        ("dangling", "e223456789abcdef0123456789abcdef"),
+        ("folder", "f223456789abcdef0123456789abcdef"),
+    ] {
+        let running = Running::releasing(&format!("asks-docker-{shape}"), &[super::LISTED]);
+        let docker = docker_settings(&running);
+        std::fs::remove_file(&docker).unwrap();
+        match shape {
+            "dangling" => {
+                std::os::unix::fs::symlink(running.folder.join("nowhere.json"), &docker).unwrap();
+            }
+            "folder" => std::fs::create_dir(&docker).unwrap(),
+            _ => {}
+        }
+        let args = released_with(&running, id);
+        assert!(
+            !args.iter().any(|arg| Path::new(arg).starts_with(&docker)),
+            "Docker's settings, {shape}, were bound over: {args:?}"
+        );
+    }
 }
 
 #[test]
