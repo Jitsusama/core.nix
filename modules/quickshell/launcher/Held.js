@@ -64,12 +64,12 @@ function offers(rows, places, empty) {
 // where it now offers nothing, as a collection's own row, never among what
 // it offers, is when its last row leaves; one still offered that offers
 // nothing now is left.
-function own(steps, at, offered, ways) {
+function own(steps, at, offered, ways, looked) {
     const made = steps.slice();
     const step = made[at];
     const now = offered.find(one => ways.same(one, step.row));
     const foundAs = step.row.foundAs === undefined ? undefined
-        : foundNow(step.row.foundAs, offered, ways);
+        : foundNow(step.row.foundAs, offered, looked ?? offered, ways);
     const kept = foundAs !== undefined ? Object.assign({}, foundAs, { foundAs })
         : step.row.from === undefined ? {} : { from: step.row.from };
     const row = now === undefined ? step.row : Object.assign({}, now, kept);
@@ -84,11 +84,16 @@ function own(steps, at, offered, ways) {
 // What the launcher gave a row a search found, with each row the search
 // found, and the one it lands in, as the source offers it now among
 // `offered`: an ask hidden as a share begins is then listed hidden, never
-// as it was found. One the source no longer offers is kept as found, as
-// People's, found beyond what it lists, are.
-function foundNow(foundAs, offered, ways) {
-    const asNow = was => offered.find(one => ways.same(one, was)) ?? was;
-    const found = typeof foundAs.verbs === "function" ? foundAs.verbs().map(asNow) : null;
+// as it was found. One gone from `looked`, all the source searches, is
+// gone from what the step offers too, as an answered ask is, so the step
+// shows it only as any row gone, dimmed until Joel's next key; one it
+// searches beyond what it lists, as Sound's, is kept as found.
+function foundNow(foundAs, offered, looked, ways) {
+    const asNow = was => offered.find(one => ways.same(one, was))
+        ?? (looked.some(one => ways.same(one, was)) ? was : undefined);
+    const found = typeof foundAs.verbs !== "function" ? null
+        : foundAs.verbs().map(asNow).filter(one => one !== undefined);
+    const lands = foundAs.landsIn === undefined ? undefined : asNow(foundAs.landsIn);
     return Object.assign({}, foundAs, found === null ? {} : { verbs: () => found },
-        foundAs.landsIn === undefined ? {} : { landsIn: asNow(foundAs.landsIn) });
+        foundAs.landsIn === undefined ? {} : { landsIn: lands });
 }

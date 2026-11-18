@@ -144,7 +144,9 @@ QtObject {
         const offeredNow = Object.assign(row("s1", "idle", [row("look", "Look")]), {
             side: "", verbs: () => []
         });
-        const ownGathered = Held.own(gathered, 1, [offeredNow], ways);
+        // Its match, Look, is among what the source searches, not what it lists.
+        const looked = [offeredNow, row("look", "Look")];
+        const ownGathered = Held.own(gathered, 1, [offeredNow], ways, looked);
         const kept = ownGathered.steps[1].row;
         const keys = rows => rows.map(one => `${one.key}=${one.says}`).join(" ");
         check("a row found by a search keeps what the launcher gave it",
@@ -156,7 +158,8 @@ QtObject {
         check("nor taken for a row asking for words", typeof kept.given, "undefined");
         // Made again a second time, it still knows what the launcher gave.
         askedAt = [];
-        const keptAgain = Held.own(ownGathered.steps, 1, [offeredNow], ways).steps[1].row;
+        const keptAgain = Held.own(ownGathered.steps, 1, [offeredNow], ways, looked)
+            .steps[1].row;
         check("made again twice, it still keeps what the launcher gave it",
             `${keptAgain.side} ${keys(keptAgain.verbs())}`, "in Agents look=Look");
         // What the search found is each as the source offers it now, so an
