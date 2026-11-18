@@ -269,14 +269,15 @@ impl fmt::Display for Failure {
 impl std::error::Error for Failure {}
 
 /// A word as a shell reads it back whole and runs nothing of: as it is
-/// where it holds only letters, digits and `_@%+=:,./-`, and otherwise
+/// where it holds only letters, digits and `_@%+=:,./-` and doesn't open
+/// with `=`, which zsh turns into a command's path, and otherwise
 /// in single quotes, inside which a shell expands nothing, each quote of
 /// its own closed, escaped and opened again. A name from outside, a
 /// device's `lamp;reboot` among them, would otherwise make a try line
 /// that runs more than it says when pasted.
 pub fn shell_word(word: &str) -> std::borrow::Cow<'_, str> {
     let plain = |c: char| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c);
-    if !word.is_empty() && word.chars().all(plain) {
+    if !word.is_empty() && !word.starts_with('=') && word.chars().all(plain) {
         word.into()
     } else {
         format!("'{}'", word.replace('\'', r"'\''")).into()
@@ -299,6 +300,8 @@ mod tests {
             ("Joel's | sh", r"'Joel'\''s | sh'"),
             ("*", "'*'"),
             ("~", "'~'"),
+            ("=ls", "'=ls'"),
+            ("a=b", "a=b"),
             ("", "''"),
         ] {
             assert_eq!(

@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use serde_json::{Map, Value, json};
+use terminal_kit::failure::shell_word;
 use terminal_kit::layout::{self, Align, ITEMS, Room};
 use terminal_kit::{Exit, Failure, Pen, flags, time};
 
@@ -467,7 +468,7 @@ pub fn repository(
             ]
         })
         .collect();
-    let name = quoted(&repository.name);
+    let name = shell_word(&repository.name);
     let more = |count: usize, what: &str| {
         if count > NEWEST {
             let more = format!("{} more: repos {name} {what}", count - NEWEST);
@@ -572,7 +573,7 @@ pub fn find<'a>(record: &'a Record, word: &str) -> Result<&'a Repository, Failur
                 format!("{} repositories are called {word}", sharing.len()),
             )
             .because(format!("they're {}", flags::and(&keys)))
-            .try_this(format!("repos {}", quoted(&first.key))));
+            .try_this(format!("repos {}", shell_word(&first.key))));
         }
         [] => {}
     }
@@ -583,18 +584,9 @@ pub fn find<'a>(record: &'a Record, word: &str) -> Result<&'a Repository, Failur
     let names: Vec<&str> = names.iter().map(String::as_str).collect();
     let failure = Failure::new(Exit::NotFound, format!("no repository is called {word}"));
     Err(match flags::nearest(&word.to_lowercase(), &names) {
-        Some(near) => failure.try_this(format!("repos {}", quoted(near))),
+        Some(near) => failure.try_this(format!("repos {}", shell_word(near))),
         None => failure.try_this("repos"),
     })
-}
-
-/// A name as a shell takes it as one word.
-fn quoted(name: &str) -> String {
-    if name.contains(|c: char| c.is_whitespace() || "'\"$`\\".contains(c)) {
-        format!("'{}'", name.replace('\'', r"'\''"))
-    } else {
-        name.to_owned()
-    }
 }
 
 /// The names of the record's times, which an answer says in RFC 3339
