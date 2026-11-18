@@ -12,6 +12,7 @@ mod broken;
 mod cells;
 mod locked;
 mod misses;
+mod pains;
 mod reports;
 
 pub use balanced::balanced;
@@ -19,6 +20,7 @@ pub use broken::{Main, broken, failed_in};
 pub use cells::{Quest, cells, mapped, quest};
 pub use locked::read as unlocked;
 pub use misses::{BLIND, HELD, UNREAD, checked, held, ledger, said};
+pub use pains::{keeper, pains};
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
 
 const DAY: i64 = 86_400;
@@ -35,6 +37,8 @@ pub enum Class {
     Ship,
     Cells,
     Clean,
+    /// Joel's pains, last: the hearer routes each to its owner itself.
+    Pains,
 }
 
 impl Class {
@@ -48,6 +52,7 @@ impl Class {
             Self::Ship => "ship",
             Self::Cells => "cell health",
             Self::Clean => "clean zones",
+            Self::Pains => "his pains",
         }
     }
 }
@@ -227,7 +232,7 @@ pub fn to_first_slice(text: &str, now: i64) -> Measure {
 }
 
 /// Who keeps the asks ledger, and so steers how fast asks reach him.
-const ASKS: &str = "WCJQSG";
+pub const ASKS: &str = "WCJQSG";
 
 #[expect(clippy::cast_precision_loss, reason = "seconds stay far below 2^52")]
 fn hours_of(seconds: i64) -> f64 {

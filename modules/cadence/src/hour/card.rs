@@ -64,6 +64,7 @@ pub fn compose(
         Class::Miss,
         Class::Slip,
         Class::Functional,
+        Class::Pains,
         Class::Cells,
         Class::Clean,
     ] {

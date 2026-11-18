@@ -15,6 +15,7 @@ const JUDGES: &[&str] = &[
     "map-cells",
     "merge-to-on",
     "mycelium-to-lock",
+    "pains-open",
     "quarantine-undated",
     "quests-cells-ended",
     "quests-without-cells",
@@ -116,7 +117,7 @@ mod tests {
     use super::super::misses;
     use super::super::tests::{change, miss, repos};
     use super::*;
-    use crate::hour::measures::{cells, mapped, unasked};
+    use crate::hour::measures::{cells, mapped, pains, unasked};
 
     /// Last hour's open misses, as the card kept them, with `miss`'s open.
     fn was_open() -> Vec<String> {
@@ -292,10 +293,14 @@ mod tests {
     }
 
     #[test]
-    fn every_key_the_cell_measures_make_is_one_a_check_can_name() {
+    fn every_key_the_cell_and_pain_measures_make_is_one_a_check_can_name() {
         let made: Vec<Measure> = cells(&[], None, 0, "")
             .into_iter()
-            .chain([mapped(None, "", ""), unasked(&[], None, None, 0, "")])
+            .chain([
+                mapped(None, "", ""),
+                unasked(&[], None, None, 0, ""),
+                pains(None, 0, ""),
+            ])
             .collect();
         for m in made {
             assert!(
