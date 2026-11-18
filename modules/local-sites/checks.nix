@@ -14,6 +14,10 @@
 let
   sites = import ./site.nix { inherit lib pkgs; };
 
+  # What every live site shares, as a machine mounts it at /local-sites/:
+  # the kit and the theme's own web kit, which each page reads.
+  shared = sites.shared (account workstation).xdg.dataFile."jitsusama/web".source;
+
   # The system page, built as the server serves it, which the strip's
   # check reads as well as holding it.
   systemSite = sites.localSite {
@@ -43,8 +47,10 @@ in
   system-site-holds = systemSite;
 
   # Every live page opens with the strip localSite writes, once, after its
-  # skip link, saying only that it's an app; and a page that carries its
-  # own strip fails its build, saying so
+  # skip link, saying only that it's an app, and reads the theme from the
+  # sites' one copy with no kit/ of its own; and a page that carries its own
+  # strip, reads no theme from that copy, or whose styles read a kit/ of
+  # their own, fails its build, saying so
   # (tests/each-live-page-opens-with-the-strip.sh).
   each-live-page-opens-with-the-strip =
     pkgs.runCommandLocal "each-live-page-opens-with-the-strip" { }
@@ -58,7 +64,6 @@ in
             "${./kit}"
             "${../system/site}"
             "system"
-            "${pkgs.emptyDirectory}"
           ]
         }
         touch $out
@@ -271,7 +276,7 @@ in
         env = {
           LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
           SYSTEM_SITE = "${page}";
-          LOCAL_SITES_KIT = "${sites.kit}";
+          LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
@@ -305,7 +310,7 @@ in
       {
         env = {
           LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
-          LOCAL_SITES_KIT = "${sites.kit}";
+          LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
           WEB_KIT = "${(account workstation).xdg.dataFile."jitsusama/web".source}";
@@ -361,7 +366,7 @@ in
           LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
           MYCELIUM_SITE = "${map}";
           NODE_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.node.kinds;
-          LOCAL_SITES_KIT = "${sites.kit}";
+          LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
           # The browsers mycelium-map-check carries, so the map's tests
@@ -416,7 +421,7 @@ in
           LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
           MURMURS_SITE = "${murmurs}";
           NODE_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.node.kinds;
-          LOCAL_SITES_KIT = "${sites.kit}";
+          LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
@@ -456,7 +461,7 @@ in
         env = {
           LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
           CODE_SITE = "${page}";
-          LOCAL_SITES_KIT = "${sites.kit}";
+          LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";

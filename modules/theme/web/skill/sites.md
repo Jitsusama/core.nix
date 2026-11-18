@@ -154,8 +154,9 @@ own links, and none would meet.
 ## The Kit
 
 The theme module writes the theme for the web on every machine, at
-`~/.local/share/jitsusama/web/`. Copy the folder whole into the site (as
-`kit/`), and load it before the site's own CSS:
+`~/.local/share/jitsusama/web/`. A document, or a site deployed
+elsewhere, must stand alone: copy the folder whole into it (as `kit/`),
+and load it before the site's own CSS:
 
 ```html
 <link rel="stylesheet" href="kit/theme.css">
@@ -165,6 +166,13 @@ The theme module writes the theme for the web on every machine, at
 <link rel="preload" href="kit/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="kit/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
 ```
+
+A live site built by `localSite` copies nothing: the sites' server holds
+one copy for every live site at `/local-sites/web/`, so the browser
+fetches the fonts once for them all. Its page, served one folder deep,
+loads `../local-sites/web/theme.css`, `../local-sites/web/base.css` and
+the fonts from `../local-sites/web/fonts/`, and the build refuses a page
+still loading its own `kit/`.
 
 Preload the faces the first screen draws: the heading's italic turn and a
 label put all three on most of them.

@@ -3,12 +3,14 @@
 # straight after the skip link, linking home one folder up and saying only
 # that the page is an app, never a word that reads as how it stands. And
 # that a page carrying a strip of its own fails its build with why, since
-# two strips, or one saying more than the kind, is what this replaces.
+# two strips, or one saying more than the kind, is what this replaces. And
+# that the page reads the theme's web kit from the one copy the sites share,
+# with none of its own, and a page still reading its own kit/ fails too.
 # usage: each-live-page-opens-with-the-strip.sh <built site> <site.sh> <tsc>
-#   <node> <kit> <site source> <name> <web kit>
+#   <node> <kit> <site source> <name>
 set -euo pipefail
 
-built=$1 build=$2 tsc=$3 node=$4 kit=$5 source=$6 name=$7 web=$8
+built=$1 build=$2 tsc=$3 node=$4 kit=$5 source=$6 name=$7
 work=$(mktemp -d)
 trap 'rm -rf "${work}"' EXIT
 
@@ -32,19 +34,57 @@ said=$(grep -A1 '<nav class="sites-strip"' "${page}")
   echo "the strip says more than the way home and that the page is an app: ${said}" >&2
   exit 1
 }
-
-# A page that brings its own strip is refused, saying which page and why.
-cp -r "${source}" "${work}/site"
-chmod -R u+w "${work}/site"
-sed -i '/<a class="skip"/a <nav class="sites-strip"><span>App</span> <span>live</span></nav>' \
-  "${work}/site/index.html"
-if bash "${build}" "${tsc}" "${node}" "${kit}" "${work}/site" "${name}" "${web}" "${work}/out" \
-  black white black white 2>"${work}/said"; then
-  echo "a page with a strip of its own built anyway" >&2
-  exit 1
-fi
-refused=$(<"${work}/said")
-[[ ${refused} == *'index.html carries its own strip'* ]] || {
-  echo "the build refused a page's own strip without saying so: ${refused}" >&2
+shared='<link rel="stylesheet" href="../local-sites/web/theme.css">'
+grep -qF "${shared}" "${page}" || {
+  echo "the page doesn't read the theme from the sites' one copy" >&2
   exit 1
 }
+[[ ! -e ${built}/kit ]] || {
+  echo "the site carries a kit/ of its own" >&2
+  exit 1
+}
+
+# What every build below is handed but the site.
+build_with=("${build}" "${tsc}" "${node}" "${kit}")
+looks=("${name}" "${work}/out" black white black white)
+
+# A copy of the site's source, at `$1`, for a case to change.
+copied() {
+  cp -r "${source}" "$1"
+  chmod -R u+w "$1"
+}
+
+# Builds the site at `$1` and expects it refused, saying `$2`; `$3` names the case.
+refused() {
+  rm -rf "${work}/out"
+  if bash "${build_with[@]}" "$1" "${looks[@]}" 2>"${work}/said"; then
+    echo "$3 built anyway" >&2
+    exit 1
+  fi
+  said=$(<"${work}/said")
+  [[ ${said} == *"$2"* ]] || {
+    echo "the build refused $3 without saying so: ${said}" >&2
+    exit 1
+  }
+}
+
+# A page that brings its own strip is refused, saying which page and why.
+copied "${work}/strip"
+sed -i '/<a class="skip"/a <nav class="sites-strip"><span>App</span> <span>live</span></nav>' \
+  "${work}/strip/index.html"
+refused "${work}/strip" 'index.html carries its own strip' "a page with a strip of its own"
+
+# A page still reading its own kit/, as a document does, is refused too, as
+# are its styles reading one however they spell it.
+copied "${work}/kit"
+sed -i 's|href="../local-sites/web/base.css"|href="kit/base.css"|' "${work}/kit/index.html"
+refused "${work}/kit" 'index.html reads its own kit/' "a page reading its own kit/"
+copied "${work}/styles"
+echo "@font-face { src: url('../KIT/fonts/x.woff2'); }" >>"${work}/styles/site.css"
+refused "${work}/styles" 'site.css reads its own kit/' "styles reading a kit/ a folder up"
+
+# And a page that doesn't read the theme from the sites' one copy at all.
+copied "${work}/themeless"
+sed -i '\|href="../local-sites/web/theme.css"|d' "${work}/themeless/index.html"
+refused "${work}/themeless" "index.html doesn't read the theme from the sites' one copy" \
+  "a page reading no theme"

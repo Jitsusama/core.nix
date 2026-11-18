@@ -7,7 +7,8 @@ keeping what the page logs and the web-design skill's page checks are the same
 for every page, so they live here once and each page's test says only what its
 page holds. A test loads this as a pytest plugin (`-p live_page`), which gives
 it the `browser` fixture. The server and the kit come from LOCAL_SITES and
-LOCAL_SITES_KIT, the home's strip styles from STRIP and the skill from
+LOCAL_SITES_SHARED (what every site shares: the kit, and the theme's web kit
+as web/), the home's strip styles from STRIP and the skill from
 WEB_SKILL, as the check running the test sets them.
 """
 
@@ -72,7 +73,7 @@ def serving(
         "listen": f"127.0.0.1:{port}",
         "names": ["sites.localhost"],
         "documents": str(documents),
-        "mounts": {**mounts, "local-sites": os.environ["LOCAL_SITES_KIT"]},
+        "mounts": {**mounts, "local-sites": os.environ["LOCAL_SITES_SHARED"]},
         "feeds": feeds,
     }
     (folder / "config.json").write_text(json.dumps(config))

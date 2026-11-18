@@ -829,8 +829,10 @@
   '';
   each-live-page-opens-with-the-strip = ''
     every live page opens with the strip localSite writes, once, straight after its skip link,
-    linking home one folder up and saying only that it's an app; and a page carrying a strip of
-    its own fails its build, saying which page
+    linking home one folder up and saying only that it's an app, and reads the theme from the
+    sites' one copy with no kit of its own; and a page carrying a strip of its own, reading no
+    theme from that copy, or with its styles reading a kit of their own, fails its build, saying
+    which page
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and
