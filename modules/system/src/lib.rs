@@ -8,8 +8,9 @@
 //! each owner's own answer and judges it, so a fix in an owner shows here
 //! at once and the two can never disagree. A part whose answer can't be
 //! had is said as not read, with why, and the others still stand. The one
-//! exception is this machine's firmware record of a power loss, which no
-//! owner's command reads yet (power.rs).
+//! exception is the kernel's word on an error the firmware kept before this
+//! machine's boot, which no owner's command says yet, read from this
+//! boot's journal (power.rs).
 //!
 //! What the views read is one record, `system.view/1` (record.rs): the
 //! command's screens here, and next the site, the skill and the launcher's

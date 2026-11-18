@@ -75,15 +75,16 @@ fn run(context: &Context) -> Result<(), Failure> {
 
 /// The system as each owner says it now.
 pub(crate) fn read() -> System {
-    let [mut machines, health, net, repos]: [_; 4] = ask::all(&[
+    let [mut machines, health, net, repos, journal]: [_; 5] = ask::all(&[
         &["mycelium", "machines"],
         &["mycelium", "health"],
         &["net", "--json"],
         &["repos", "--json"],
+        system::power::ASK,
     ])
     .try_into()
     .unwrap_or_else(|_| unreachable!("one answer is given for each command asked"));
-    note_a_power_loss(&mut machines);
+    note_a_firmware_error(&mut machines, &journal);
     let mut system = System {
         machine: terminal_kit::environment::machine(),
         read_at: terminal_kit::time::rfc3339(now()),
@@ -100,26 +101,15 @@ pub(crate) fn read() -> System {
     system
 }
 
-/// Puts a power cut before this boot into this machine's record, which the
-/// node gives first, as `power.lost_before_boot`, the field the machines
-/// part judges (power.rs says why it's read here).
-fn note_a_power_loss(machines: &mut parts::Answer) {
-    let Ok(boot) = std::fs::read_to_string("/proc/sys/kernel/random/boot_id") else {
-        return;
-    };
-    let records = std::path::Path::new(system::power::RECORDS);
-    let Some(ago) = system::power::lost_before_boot(records, boot.trim(), SystemTime::now()) else {
-        return;
-    };
-    if let Some(power) = machines
-        .as_mut()
+/// Puts an error the firmware kept before this boot into this machine's
+/// record, from the journal's answer (power.rs says why it's read here).
+fn note_a_firmware_error(machines: &mut parts::Answer, journal: &parts::Answer) {
+    let since_boot = std::fs::read_to_string("/proc/uptime")
         .ok()
-        .and_then(|said| said.pointer_mut("/Ok/Machines/0"))
-        .and_then(serde_json::Value::as_object_mut)
-        .map(|here| here.entry("power").or_insert_with(|| serde_json::json!({})))
-        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|uptime| system::power::since_boot(&uptime));
+    if let Some(ago) = since_boot.and_then(|since| system::power::kept_before_boot(journal, since))
     {
-        power.insert("lost_before_boot".to_owned(), ago.into());
+        system::power::note(machines, ago);
     }
 }
 

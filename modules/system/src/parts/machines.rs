@@ -187,13 +187,14 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
         let side = format!("on battery at {charge}%");
         words.look(Health::Watch, format!("is {side}"), side);
     }
-    // A power cut is said for a day after the boot it ended in (power.rs),
-    // so the morning after one in the night says it.
+    // An error the firmware kept before the boot, as a power cut leaves, is
+    // said for a day after it (power.rs), so the morning after one in the
+    // night says it.
     if let Some(ago) = said
-        .pointer("/power/lost_before_boot")
+        .pointer("/firmware/error_before_boot")
         .and_then(Value::as_u64)
     {
-        let side = format!("lost power, booted {}", ago_said(ago));
+        let side = format!("firmware error before boot {}", ago_said(ago));
         words.look(Health::Watch, side.clone(), side);
     }
     for part in ITS_OWN {
@@ -499,16 +500,25 @@ mod tests {
     }
 
     #[test]
-    fn a_power_cut_before_the_boot_is_worth_a_look() {
+    fn a_firmware_error_before_the_boot_is_worth_a_look() {
         let mut cut = laptop(&[], "healthy");
-        cut["power"]["lost_before_boot"] = json!(3 * 3_600 + 59);
+        cut["firmware"] = json!({"error_before_boot": 3 * 3_600 + 59});
         let part = machines(&Ok(realm(std::slice::from_ref(&cut))), &Err(String::new()));
         assert_eq!(part.health, Health::Watch);
-        assert_eq!(part.things[0].says, "lost power, booted 3 hours ago");
-        assert_eq!(part.things[0].side, ["lost power, booted 3 hours ago"]);
-        cut["power"]["lost_before_boot"] = json!(90);
+        assert_eq!(
+            part.things[0].says,
+            "firmware error before boot 3 hours ago"
+        );
+        assert_eq!(
+            part.things[0].side,
+            ["firmware error before boot 3 hours ago"]
+        );
+        cut["firmware"]["error_before_boot"] = json!(90);
         let part = machines(&Ok(realm(&[cut])), &Err(String::new()));
-        assert_eq!(part.things[0].says, "lost power, booted 1 minute ago");
+        assert_eq!(
+            part.things[0].says,
+            "firmware error before boot 1 minute ago"
+        );
     }
 
     #[test]
