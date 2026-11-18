@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
 
+use crate::choose;
 use crate::echo;
 use crate::measure::Measured;
 
@@ -95,11 +96,16 @@ impl Learned {
 
     /// Folds in what the access point a card is on carried over the span,
     /// keeping it on the disk where its network is trusted. An echo never
-    /// answered counts as slow as it was waited for.
+    /// answered counts as slow as it was waited for. A minute slowed by
+    /// what the card brings down teaches what it lost but not its slow
+    /// end, which says how much it brought down rather than what the access
+    /// point carries, so points are weighed against each other by minutes
+    /// alike.
     pub fn carried(&mut self, here: &Here, measured: &Measured) -> io::Result<()> {
         if measured.echoes < ECHOES {
             return Ok(());
         }
+        let queued = choose::slowed_by_its_own(measured);
         let p95 = measured.p95.unwrap_or(echo::LOST).as_secs_f64() * 1000.0;
         let step = here.signal.div_euclid(STEP);
         let same = |learnt: &&mut Learnt| {
@@ -107,11 +113,14 @@ impl Learned {
         };
         match self.learnt.iter_mut().find(same) {
             Some(learnt) => {
-                learnt.p95 += (p95 - learnt.p95) * LATEST;
+                if !queued {
+                    learnt.p95 += (p95 - learnt.p95) * LATEST;
+                }
                 learnt.lost += (measured.lost - learnt.lost) * LATEST;
                 learnt.minutes = learnt.minutes.saturating_add(1);
                 learnt.kept = here.trusted;
             }
+            None if queued => return Ok(()),
             None => self.learnt.push(Learnt {
                 network: here.network.to_owned(),
                 point: here.point.to_owned(),
@@ -317,6 +326,74 @@ mod tests {
             learnt.p95
         );
         assert!(learnt.lost > 99.0, "lost {}", learnt.lost);
+    }
+
+    #[test]
+    fn a_minute_slowed_by_what_the_card_moves_teaches_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let downloading = Measured {
+            p50: Some(Duration::from_micros(5800)),
+            moving: Some(52),
+            ..carried(Some(143), 0.0)
+        };
+
+        minutes(
+            &mut learned,
+            &at(HALL, 20, -50),
+            &carried(Some(15), 0.0),
+            10,
+        );
+        learned.carried(&at(HALL, 20, -50), &downloading).unwrap();
+
+        assert_eq!(
+            p95_of(&learned, HALL, 20, -50),
+            Some(15),
+            "a download's queue says how much it brought down"
+        );
+    }
+
+    #[test]
+    fn a_minute_slowed_by_what_the_card_moves_still_teaches_what_it_lost() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let downloading = Measured {
+            p50: Some(Duration::from_micros(5800)),
+            moving: Some(52),
+            ..carried(Some(143), 2.0)
+        };
+
+        minutes(
+            &mut learned,
+            &at(HALL, 20, -50),
+            &carried(Some(15), 0.0),
+            10,
+        );
+        learned.carried(&at(HALL, 20, -50), &downloading).unwrap();
+
+        let lost = learned.of(HALL, 20, -50).unwrap().lost;
+        assert!(lost > 0.1, "its loss is the air's: {lost}");
+    }
+
+    #[test]
+    fn a_first_minute_slowed_by_what_the_card_moves_starts_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let downloading = Measured {
+            p50: Some(Duration::from_micros(5800)),
+            moving: Some(52),
+            ..carried(Some(143), 0.0)
+        };
+
+        minutes(&mut learned, &at(HALL, 20, -50), &downloading, 10);
+        minutes(
+            &mut learned,
+            &at(HALL, 20, -50),
+            &carried(Some(15), 0.0),
+            ENOUGH,
+        );
+
+        assert_eq!(p95_of(&learned, HALL, 20, -50), Some(15));
     }
 
     #[test]
