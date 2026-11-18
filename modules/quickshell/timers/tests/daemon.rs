@@ -5,7 +5,9 @@
 //! notice back; a ring with no server to take it is said once one comes;
 //! a ring lost with its server is said to the one after it; what's kept
 //! outlasts the daemon, its notices with it, one that ended meanwhile
-//! ringing late as it starts again; a timer coming due is heard once,
+//! ringing late as it starts again; a bus that won't let it listen holds
+//! its rings until it does, and one that goes and comes back is heard
+//! again; a timer coming due is heard once,
 //! quietly during a call; an ask it can't do is refused; and a run its
 //! unit wouldn't make ends at once in the terminal kit's words.
 
@@ -87,16 +89,22 @@ impl Server {
 struct Bus {
     daemon: Child,
     address: String,
+    socket: PathBuf,
+    config: PathBuf,
 }
 
-impl Bus {
-    fn new(folder: &Path) -> Bus {
-        let socket = folder.join("bus");
-        let config = folder.join("bus.conf");
-        std::fs::write(
-            &config,
-            format!(
-                r#"<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+/// The bus's config, listening at `socket`; one that doesn't let it listen
+/// turns away every match rule asked for, as `AddMatch` failing does however
+/// it fails, a late answer under load among them.
+fn bus_config(socket: &Path, lets_listen: bool) -> String {
+    let denial = if lets_listen {
+        ""
+    } else {
+        r#"<deny send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus"
+      send_member="AddMatch"/>"#
+    };
+    format!(
+        r#"<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
   <type>session</type>
@@ -106,23 +114,64 @@ impl Bus {
     <allow send_destination="*" eavesdrop="true"/>
     <allow eavesdrop="true"/>
     <allow own="*"/>
+    {denial}
   </policy>
 </busconfig>"#,
-                socket.display()
-            ),
-        )
-        .unwrap();
-        let daemon = Command::new("dbus-daemon")
-            .arg(format!("--config-file={}", config.display()))
-            .arg("--nofork")
-            .stdout(Stdio::null())
-            .spawn()
-            .expect("dbus-daemon runs");
-        waits_for(|| socket.exists());
+        socket.display()
+    )
+}
+
+/// A bus daemon on `config`, once it listens at `socket`.
+fn bus_daemon(config: &Path, socket: &Path) -> Child {
+    let daemon = Command::new("dbus-daemon")
+        .arg(format!("--config-file={}", config.display()))
+        .arg("--nofork")
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("dbus-daemon runs");
+    waits_for(|| socket.exists());
+    daemon
+}
+
+impl Bus {
+    fn new(folder: &Path) -> Bus {
+        let socket = folder.join("bus");
+        let config = folder.join("bus.conf");
+        std::fs::write(&config, bus_config(&socket, true)).unwrap();
+        let daemon = bus_daemon(&config, &socket);
         Bus {
             daemon,
             address: format!("unix:path={}", socket.display()),
+            socket,
+            config,
         }
+    }
+
+    /// Lets match rules be added, or turns each away, from now on: the
+    /// config rewritten and read again, which the bus answers once done.
+    fn lets_listen(&self, lets: bool) {
+        std::fs::write(&self.config, bus_config(&self.socket, lets)).unwrap();
+        Builder::address(self.address.as_str())
+            .unwrap()
+            .build()
+            .unwrap()
+            .call_method(
+                Some("org.freedesktop.DBus"),
+                "/org/freedesktop/DBus",
+                Some("org.freedesktop.DBus"),
+                "ReloadConfig",
+                &(),
+            )
+            .unwrap();
+    }
+
+    /// Ends the bus, as a session's bus going does, and starts it again at
+    /// the same address with nothing on it.
+    fn again(&mut self) {
+        let _ = self.daemon.kill();
+        let _ = self.daemon.wait();
+        let _ = std::fs::remove_file(&self.socket);
+        self.daemon = bus_daemon(&self.config, &self.socket);
     }
 
     /// The stand-in, serving on this bus under the notifications' name.
@@ -408,6 +457,64 @@ fn a_ring_with_no_server_to_take_it_is_said_once_one_comes() {
 }
 
 #[test]
+fn a_bus_that_wont_let_it_listen_is_tried_again_until_it_does() {
+    let folder = folder("listens");
+    let bus = Bus::new(&folder);
+    let (connection, server) = bus.serve();
+    bus.lets_listen(false);
+    let running = Running::start(&folder, &bus);
+    let mut client = running.client();
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
+    client.ask(&json!({"id": 1, "ask": "start", "span": 100, "name": "tea"}));
+    assert_eq!(client.change()["changed"][0]["state"], "rung");
+    // A notice shown now would have an Again that nothing hears, at the
+    // first try or any after it, three seconds apart.
+    std::thread::sleep(Duration::from_secs(4));
+    assert_eq!(
+        server.shown.lock().unwrap().len(),
+        0,
+        "a ring was shown while nothing could hear what Joel does with it"
+    );
+    bus.lets_listen(true);
+    waits_for(|| server.shown.lock().unwrap().len() == 1);
+    signal(&folder, &connection, "ActionInvoked", &(1u32, "again"));
+    let again = loop {
+        let change = client.change();
+        if change["changed"][0]["state"] == "running" {
+            break change;
+        }
+    };
+    assert_eq!(again["changed"][0]["key"], "timer:1");
+    running.stop();
+}
+
+#[test]
+fn a_bus_that_goes_and_comes_back_is_heard_again() {
+    let folder = folder("redials");
+    let mut bus = Bus::new(&folder);
+    let (connection, server) = bus.serve();
+    let running = Running::start(&folder, &bus);
+    let mut client = running.client();
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
+    client.ask(&json!({"id": 1, "ask": "start", "span": 100, "name": "tea"}));
+    waits_for(|| server.shown.lock().unwrap().len() == 1);
+    drop(connection);
+    bus.again();
+    let (connection, server) = bus.serve();
+    // The rung timer is said to the bus come back, so the daemon dialled it.
+    waits_for(|| server.shown.lock().unwrap().len() == 1);
+    signal(&folder, &connection, "ActionInvoked", &(1u32, "again"));
+    let again = loop {
+        let change = client.change();
+        if change["changed"][0]["state"] == "running" {
+            break change;
+        }
+    };
+    assert_eq!(again["changed"][0]["key"], "timer:1");
+    running.stop();
+}
+
+#[test]
 fn what_is_kept_outlasts_the_daemon_and_one_ended_meanwhile_rings_late() {
     let folder = folder("kept");
     let bus = Bus::new(&folder);
@@ -594,7 +701,10 @@ fn a_timer_coming_due_is_heard_once_and_quietly_during_a_call() {
     std::fs::remove_file(&calling).unwrap();
     let running = Running::heard(&folder, &bus, &[&player, &sound, &call]);
     waits_for(|| after.shown.lock().unwrap().len() == 3);
-    assert!(after.shown.lock().unwrap()[2].body.ends_with("rang late"));
+    assert!(
+        after.shown.lock().unwrap()[2].body.ends_with("rang late"),
+        "the timer that ended while the daemon was down never said it rang late"
+    );
     std::fs::write(&calling, "").unwrap();
     let mut client = running.client();
     client.ask(&json!({"id": 4, "ask": "start", "span": 100}));

@@ -122,6 +122,9 @@ enum Tell {
     Ring(String),
     /// Takes back this notice, should its server still be there.
     Withdraw(Notice),
+    /// A listener of the bus dialled this many times over stopped, as one
+    /// does when the bus goes, so nothing hears Joel's presses on it.
+    Deaf(u64),
 }
 
 /// What `timers --help` says: how its unit runs it, and how it ends.
@@ -420,25 +423,51 @@ fn aloud(shared: &Shared) {
 /// needs, holding them until a notifications server answers.
 fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
     let mut connection: Option<Connection> = None;
+    // How many times the bus was dialled, so a listener of one since
+    // given up that stops is told apart from the one listening now.
+    let mut dialled = 0;
+    // Whether the bus was lost, and whether it turned the daemon away,
+    // each said once as it starts and once as it ends, not each try.
+    let mut lost = false;
+    let mut refused = false;
     let mut waiting: Vec<Tell> = Vec::new();
     loop {
-        let next = if waiting.is_empty() {
+        let next = if waiting.is_empty() && !lost {
             told.recv().map_err(|_| RecvTimeoutError::Disconnected)
         } else {
             told.recv_timeout(AGAIN)
         };
         match next {
+            Ok(Tell::Deaf(stopped)) => {
+                if stopped == dialled && connection.take().is_some() {
+                    eprintln!("<4>stopped hearing the session bus, so it's dialled again");
+                    forget_notices(shared);
+                    lost = true;
+                }
+            }
             Ok(tell) => waiting.push(tell),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
         }
-        if connection.is_none() {
-            connection = connect(shared);
-            if connection.is_some() {
-                // Every rung timer, since what was said before may have
-                // gone with a server; each says itself again only where
-                // it isn't up.
-                waiting.extend(rung(shared).into_iter().map(Tell::Ring));
+        if connection.is_none() && (lost || !waiting.is_empty()) {
+            match connect(shared, dialled + 1) {
+                Ok(bus) => {
+                    dialled += 1;
+                    if lost || refused {
+                        eprintln!("<6>hears the session bus again, so what waited is said");
+                    }
+                    (lost, refused) = (false, false);
+                    connection = Some(bus);
+                    // Every rung timer, since what was said before may
+                    // have gone with a server; each says itself again
+                    // only where it isn't up.
+                    waiting.extend(rung(shared).into_iter().map(Tell::Ring));
+                }
+                Err(why) if !refused => {
+                    eprintln!("<4>{why}, so rings wait until it can");
+                    refused = true;
+                }
+                Err(_) => {}
             }
         }
         let Some(bus) = &connection else { continue };
@@ -447,6 +476,7 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
             let done = match &tell {
                 Tell::Ring(key) => ring(shared, bus, words, key),
                 Tell::Withdraw(notice) => withdrawn(bus, notice),
+                Tell::Deaf(_) => Ok(()),
             };
             if let Err(why) = done {
                 eprintln!("<4>the notifications server didn't answer: {why}");
@@ -461,27 +491,34 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
 /// and whether another notifications server takes the place of the last.
 /// Both are listening before it's returned, since its first notice is
 /// said at once: a rule added in its own thread came after the notice
-/// under load, and Joel's press on it went unheard (Y9XISP's flaky case,
-/// 2026-11-17).
-fn connect(shared: &Arc<Shared>) -> Option<Connection> {
+/// under load, and a press on the card that came sooner went unheard. A
+/// rule the bus turns away, as one answering late under load does, gives
+/// no bus, so the notices wait and it's tried again: a notice shown with
+/// nothing hearing it would keep an Again that did nothing for the rest of
+/// the daemon's life.
+/// Each listener, as it stops, says so with `dialled`, the count of this
+/// connection, for the bus to be dialled again.
+fn connect(shared: &Arc<Shared>, dialled: u64) -> Result<Connection, String> {
     let bus = zbus::blocking::connection::Builder::session()
         .and_then(|builder| builder.method_timeout(PATIENCE).build())
-        .map_err(|why| eprintln!("<4>couldn't reach the session bus: {why}"))
-        .ok()?;
-    let listening = |rule: zbus::Result<MatchRule<'static>>| {
+        .map_err(|why| format!("couldn't reach the session bus: {why}"))?;
+    let listening = |rule: zbus::Result<MatchRule<'static>>, what: &str| {
         rule.and_then(|rule| MessageIterator::for_match_rule(rule, &bus, None))
-            .map_err(|why| eprintln!("<4>couldn't listen on the session bus: {why}"))
-            .ok()
+            .map_err(|why| format!("couldn't hear {what} on the session bus: {why}"))
     };
-    if let Some(messages) = listening(acts()) {
-        let shared = Arc::clone(shared);
-        std::thread::spawn(move || hear(&shared, messages));
-    }
-    if let Some(messages) = listening(servers()) {
-        let shared = Arc::clone(shared);
-        std::thread::spawn(move || follow(&shared, messages));
-    }
-    Some(bus)
+    let acted = listening(acts(), "what Joel does with a notice")?;
+    let followed = listening(servers(), "which server takes the notices")?;
+    let heard = Arc::clone(shared);
+    std::thread::spawn(move || {
+        hear(&heard, acted);
+        say(&heard, Tell::Deaf(dialled));
+    });
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || {
+        follow(&shared, followed);
+        say(&shared, Tell::Deaf(dialled));
+    });
+    Ok(bus)
 }
 
 /// The notifications server changing hands.
@@ -513,6 +550,20 @@ fn rung(shared: &Shared) -> Vec<String> {
         .filter(|timer| matches!(timer.standing, Standing::Rung { .. }))
         .map(|timer| timer.key.clone())
         .collect()
+}
+
+/// Forgets every notice shown, as they went with the bus they were shown
+/// on: a bus begun again names its connections from the start, so a new
+/// server may carry the old one's name, and each rung timer would read as
+/// shown there.
+fn forget_notices(shared: &Shared) {
+    let mut daemon = lock(shared);
+    for timer in &mut daemon.held.timers {
+        timer.notice = None;
+    }
+    if let Err(why) = daemon.held.write(&daemon.kept) {
+        eprintln!("<3>couldn't keep the timers: {why}");
+    }
 }
 
 /// The bus name of the notifications server there is now.
