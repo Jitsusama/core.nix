@@ -284,20 +284,28 @@ impl Follow {
         at_ms.saturating_sub(self.last_ms) > SILENT_MS
     }
 
-    /// Why the controller holds the upload where it does, and the upload
-    /// that reason speaks of: the one answered, when it's the controller's
-    /// own rate. Judged at a moment in ms since 1970, and none when nothing
-    /// it judged holds: once the recorder has gone silent, while it lets
-    /// the upload go, and until it steps on a second heard after a silence.
-    pub fn why(&self, at_ms: u64) -> Option<crate::why::Reason> {
-        let own = self.controller.up.limit();
+    /// What the controller's judgement says of the rates `now` hands over
+    /// at a moment in ms since 1970: why it holds the upload where it does,
+    /// and the upload that reason speaks of, the one answered when it's
+    /// the controller's own rate. Nothing it judged holds once the recorder
+    /// has gone silent or while it lets the upload go, and its rate from
+    /// before waits until it steps on a second heard after a silence, or
+    /// after lines that answer no second, as lost probes alone do.
+    pub fn why(&self, at_ms: u64) -> crate::why::Judged {
+        use crate::why::Judged;
+        if self.silent(at_ms) || self.controller.lets_go() {
+            return Judged::Nothing;
+        }
         // The second last stepped on is within the silence of the last line
-        // read, or the reason is from before a silence just ended.
+        // read, or the rate is from before a silence just ended.
         let fresh = self
             .last_at
             .is_some_and(|s| s.saturating_mul(1_000).saturating_add(SILENT_MS) >= self.last_ms);
-        let judged = fresh && !self.silent(at_ms) && !self.controller.lets_go();
-        judged.then(|| crate::why::Reason {
+        if !fresh {
+            return Judged::Waiting;
+        }
+        let own = self.controller.up.limit();
+        Judged::Holds(crate::why::Reason {
             up: self.rates.up.filter(|&up| Some(up) == own),
             said: self.controller.why(),
         })
@@ -397,9 +405,8 @@ impl Live {
         self.follow.heard()
     }
 
-    /// Why the controller holds the upload where it does, now, or none
-    /// while the recorder is silent.
-    pub fn why(&self, now: SystemTime) -> Option<crate::why::Reason> {
+    /// What the controller's judgement says of the rates now (`Follow::why`).
+    pub fn why(&self, now: SystemTime) -> crate::why::Judged {
         self.follow.why(ms(now))
     }
 
@@ -479,6 +486,7 @@ fn ms(at: SystemTime) -> u64 {
 mod tests {
     use super::*;
     use crate::replay;
+    use crate::why::Judged;
     use serde_json::json;
     use std::fs::{self, OpenOptions};
     use std::io::Write;
@@ -664,13 +672,16 @@ mod tests {
             follow.take(&parse(line).expect("a sample"));
         }
         let last = follow.last_ms;
-        assert!(follow.why(last).is_some(), "a heard second gave no reason");
+        assert!(
+            follow.why(last).reason().is_some(),
+            "a heard second gave no reason"
+        );
         let silent = last + SILENT_MS + 1;
         let (_, rates) = follow.now(silent).expect("a link");
         assert_eq!(rates.up, Some(8_500), "the ceiling went with the recorder");
         assert_eq!(
             follow.why(silent),
-            None,
+            Judged::Nothing,
             "a silent recorder gave the last second's reason"
         );
     }
@@ -687,9 +698,10 @@ mod tests {
         let last = follow.last_ms;
         let (_, rates) = follow.now(last).expect("a link");
         assert!(rates.up.is_some(), "the flow held no upload: {rates:?}");
-        let reason = follow.why(last).expect("a reason");
+        let judged = follow.why(last);
+        let reason = judged.reason().expect("a reason");
         assert_eq!(reason.up, rates.up);
-        let line = crate::why::holding("wlp0s20f3", rates.up, None, Some(&reason));
+        let line = crate::why::holding("wlp0s20f3", rates.up, None, Some(reason));
         assert!(line.ends_with(&reason.said), "{line}");
     }
 
@@ -725,17 +737,17 @@ mod tests {
         assert_eq!(rates.up, Some(8_500), "the ceiling wasn't let go to");
         assert_eq!(
             follow.why(last),
-            None,
+            Judged::Nothing,
             "a controller letting go gave a reason"
         );
     }
 
     // A recorder heard again after a minute, past the gap a reading spreads
     // seconds across, has its first lines read before any second after
-    // its silence is stepped on, and the controller's reason then is still
-    // the one from before.
+    // its silence is stepped on: the controller's rate from before holds
+    // then, its reason waiting, and no ceiling is what holds it.
     #[test]
-    fn a_recorder_heard_again_gives_no_reason_until_a_second_after_is_stepped() {
+    fn a_recorder_heard_again_waits_until_a_second_after_is_stepped() {
         let mut follow = waiting(Known::new());
         for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
@@ -751,16 +763,18 @@ mod tests {
             .collect();
         let first = parse(&lines[0]).expect("a sample");
         follow.take(&first);
+        let (_, rates) = follow.now(follow.last_ms).expect("a link");
+        assert!(rates.up.is_some(), "the rate from before let go: {rates:?}");
         assert_eq!(
             follow.why(follow.last_ms),
-            None,
-            "the first line heard again gave the reason from before"
+            Judged::Waiting,
+            "the first line heard again didn't wait for a second after"
         );
         for line in &lines[1..] {
             follow.take(&parse(line).expect("a sample"));
         }
         assert!(
-            follow.why(follow.last_ms).is_some(),
+            follow.why(follow.last_ms).reason().is_some(),
             "seconds heard again gave no reason"
         );
     }

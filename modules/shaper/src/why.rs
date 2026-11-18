@@ -116,6 +116,31 @@ pub struct Reason {
     pub said: String,
 }
 
+/// What the controller's judgement says of the rates the shaper is handed
+/// at a moment.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Judged {
+    /// Its judgement holds them, for this reason.
+    Holds(Reason),
+    /// Nothing it judged holds them: the recorder has gone silent, or the
+    /// controller lets the upload go, so a trial's ceiling holds what is
+    /// held.
+    Nothing,
+    /// Its rate from before a silence holds them while it waits to step on
+    /// a second heard since, so there is nothing new to say of them.
+    Waiting,
+}
+
+impl Judged {
+    /// The reason its judgement holds the rates, while it does.
+    pub fn reason(&self) -> Option<&Reason> {
+        match self {
+            Judged::Holds(reason) => Some(reason),
+            Judged::Nothing | Judged::Waiting => None,
+        }
+    }
+}
+
 /// The journal's line when the one-way controller begins to hold `link`:
 /// what each way held is held to, in kbit/s, none for a way let go, and
 /// the controller's reason where it speaks of the upload held. Another
