@@ -644,6 +644,15 @@ however old, so a call opened on the last frame of the one before, its
 timestamps running backwards, which recorders reject. A patch written here,
 in the [loopback module][18], starts each reader at the next frame written.
 
+The colour camera's service deletes its loopback as it stops, but a delete
+fails while a program still holds it, as a call left waiting on a camera
+giving no frames does, and each start added another. The one left behind
+stayed in every program's list of cameras with no picture, on 10 and 17
+November, until the next boot. Each start now takes the loopback of its name
+already there, and deletes any other of that name nothing holds. Of several,
+it keeps one a program holds, since that program is waiting on it, and the
+module lets the relay write to a loopback a reader still holds.
+
 Unbinding the image processor and binding it again, which brings a hung camera back
 without a reboot, freed the
 capture side's nodes while WirePlumber still held them open, and the kernel

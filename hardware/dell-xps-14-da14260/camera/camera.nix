@@ -144,6 +144,7 @@ let
     icamerasrc
   ];
   loopback = lib.getExe' config.jitsusama.v4l2loopback.package.bin "v4l2loopback-ctl";
+  takeLoopback = pkgs.callPackage ./loopback.nix { ctl = config.jitsusama.v4l2loopback.package.bin; };
   device = "/run/camera/device";
 
   # Dell's tuning has the image processor send full-range video, Y from 0 to
@@ -374,8 +375,10 @@ in
       MemorySwapMax = 0;
     };
     # Four buffers keep the frame rate up, and exclusive capture lets Chrome
-    # list it as a camera.
-    preStart = "${loopback} add -b 4 -x 1 -n 'Built-in Camera' > ${device}";
+    # list it as a camera. A loopback left from before, which a program
+    # still held as the last stop tried to delete it, is taken rather than
+    # added beside (loopback.sh says why).
+    preStart = "${lib.getExe takeLoopback} 'Built-in Camera' ${device} -b 4 -x 1";
     # The HAL writes its log through stdio, which held lines back in batches
     # and lost them at a restart, so it goes out a line at a time.
     script = ''
