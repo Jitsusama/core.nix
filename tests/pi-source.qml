@@ -104,9 +104,9 @@ QtObject {
             standing: "parked", here, machine: "far", at: "2026-11-08T01:00:00Z",
             presence: presence("s-far", "A010", { state: "parked" }) } }).resting[0];
         const parkedSays = JSON.stringify([parkedAt(false)?.here, parkedAt(false)?.machine,
-            parkedAt(true)?.here ?? null]);
+            parkedAt(true)?.here !== false]);
         expect("one parked elsewhere says so, one parked here doesn't",
-            parkedSays === JSON.stringify([false, "far", null]), parkedSays);
+            parkedSays === JSON.stringify([false, "far", true]), parkedSays);
 
         const records = Pi.sessions(sorted, "skiff");
         const of = id => records.find(one => one["gen_ai.conversation.id"] === id);

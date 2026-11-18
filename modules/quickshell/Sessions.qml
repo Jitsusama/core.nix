@@ -3090,28 +3090,41 @@ Singleton {
     // (mycelium's steer_here); any other refusal is said as it was.
     readonly property string unheld: "isn't parked with a holder to wake it this boot"
     // Each session reopened so, by its id, with when, so a second Wake
-    // before pi is up opens no second (Sessions' startsWithin).
+    // before pi is up opens no second: held until it runs here, or for
+    // reopenPatience, far past the slowest pi to load its log.
     property var unwokenReopening: ({})
+    readonly property int reopenPatience: 300000
     function reopensUnwoken(session, answer) {
         const id = String(session?.presence?.session ?? "");
         const why = String(answer?.error?.message ?? "");
-        if (id === "" || session.here === false || !why.endsWith(unheld))
+        // Only one its presence says runs unfenced, since a reopen can't
+        // know a fence to put back (startedWith), and a fenced session must
+        // never come back unfenced; and only an id that's a plain word, as
+        // handedOver holds it, since it's said in a shell's words.
+        if (!/^[A-Za-z0-9._-]+$/.test(id) || session.here === false
+            || session.presence?.fence !== "none" || !why.endsWith(unheld))
             return false;
-        const asked = unwokenReopening[id];
-        if (asked !== undefined && Date.now() - asked < startsWithin
-            || running.some(one => one.here && one.presence?.session === id))
+        const upper = String(session.address).toUpperCase();
+        if (running.some(one => one.here && one.presence?.session === id)) {
+            Report.say(`left ${upper} alone, which runs here already`);
             return true;
+        }
+        const asked = unwokenReopening[id];
+        if (asked !== undefined && Date.now() - asked < reopenPatience) {
+            Report.say(`left ${upper} alone, which is reopening`);
+            return true;
+        }
         unwokenReopening = Object.assign({}, unwokenReopening, { [id]: Date.now() });
         const quest = session.presence?.questInfo?.id ?? session.presence?.quest ?? "";
-        const address = String(session.address).toUpperCase();
         // Only its own session file, never one started afresh; with none,
         // or no folder to open it in, it's said as the refusal was.
         resume(id, String(quest), String(session.folder ?? ""), () => {
             const left = Object.assign({}, unwokenReopening);
             delete left[id];
             unwokenReopening = left;
+            Report.say(`couldn't reopen ${upper}: no session file or folder of its own`);
             unsteered(session, why);
-        }, { done: cwd => Report.say(`reopened ${address}, which nothing held, in ${cwd}`) });
+        }, { done: cwd => Report.say(`reopened ${upper}, which nothing held, in ${cwd}`) });
         return true;
     }
     // Go To on `session`, waking `resting` first, its parked record, when

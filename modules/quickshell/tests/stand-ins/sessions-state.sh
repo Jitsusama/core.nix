@@ -25,6 +25,12 @@ printf '{"type":"session","id":"s-gone","cwd":"%s"}\n' "$state/trees/given-back"
 # One parked whose holder died, which the node can't wake, so Wake reopens it.
 printf '{"type":"session","id":"s-orphan","cwd":"%s"}\n' "$state/trees/karst" \
   >"$sessions/2026-11-17T21-02-11-301Z_s-orphan.jsonl"
+# And three Wake must never reopen, though each has its file: one parked
+# elsewhere, one fenced, and one running here already.
+for id in s-stray s-fenced s-LIVE01; do
+  printf '{"type":"session","id":"%s","cwd":"%s"}\n' "$id" "$state/trees/karst" \
+    >"$sessions/2026-11-17T21-02-12-000Z_$id.jsonl"
+done
 
 # kitty 600 has two windows, the session's the second.
 cat >"$state/bin/kitten" <<EOF
