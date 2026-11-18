@@ -300,8 +300,10 @@ QtObject {
             ["rows into an empty list are", putting([], ["a", "b", "c"]), 3, true],
             ["so are rows sharing none with those they replace",
                 putting(["x", "y"], ["a", "b", "c"]), 3, true],
-            ["rows keeping one of those before aren't",
-                putting(["b"], ["a", "b", "c"]), 3, false]
+            ["nor rows keeping one of those before, put in around it",
+                putting(["b"], ["a", "b", "c"]), 3, false],
+            ["but the same rows turned round past most moving are",
+                putting("abcdefghijk".split(""), "kjihgfedcba".split("")), 11, true]
         ];
         for (const [what, steps, count, afresh] of puts)
             Expect.same(what, RowsKept.allAfresh(steps, count), afresh);

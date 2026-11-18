@@ -6187,11 +6187,17 @@ Scope {
         stepOut = stepTimed && wordsBack
             ? { text: `\u2190 ${leaving.name}`, began, heard, pressed, collected, thread } : null;
         backTo = left;
+        let searched = false;
         try {
             restart(words);
+            searched = true;
         } finally {
             stepOut = null;
             backTo = null;
+            // A search that failed leaves reselect unrun, and its
+            // selection unshown while backTo was set (onCurrentChanged).
+            if (!searched && current >= 0)
+                list.reveal(current);
         }
         placeCaret(onto);
         reselect(left);
@@ -8439,7 +8445,8 @@ Scope {
         // builds rows ahead, and how many it holds, so a test can say a
         // step drew only the rows in reach rather than every one; and how
         // many fact rows the drawer has made and how many it holds, so it
-        // can say an arrow keeps them.
+        // can say an arrow keeps them; and what the rows last kept laid
+        // out (keptLast), so it can say a step back out split them.
         const inside = listBox.mapToItem(card, 0, 0);
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
             numbers: wordsIn(rowsGutter, card), rowTall: root.rowTall,
@@ -8452,7 +8459,7 @@ Scope {
             drawn: root.rowsDrawn, built: root.rowsBuilt, factsMade: drawerCard.factsMade,
             factsHeld: drawerCard.facts.length, widthsAsked: drawerCard.widths.asked,
             widthsMade: drawerCard.widths.made,
-            ahead: list.cacheBuffer, listed: list.count, firstAt,
+            ahead: list.cacheBuffer, listed: list.count, firstAt, kept: list.keptLast,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
     }
@@ -13557,7 +13564,7 @@ Scope {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
                                     laying: Date.now() - laying + aside + split,
-                                    split: { from, took: split },
+                                    split: { back, from, took: split },
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };

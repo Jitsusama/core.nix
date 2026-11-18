@@ -140,13 +140,14 @@ function steppedMaking(making, split) {
 // The rows a laying drew, where it drew any, and where a step back out
 // split a list put in afresh (Launcher.qml's keep), the row it put them in
 // from and how much of the laying that took, so a slow step back says
-// whether the split or the layout after it spent the time.
+// whether the split or the layout after it spent the time; and the row a
+// step back out came to without splitting, as where it kept rows.
 function keptSaid(kept) {
     const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
         ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
-    const split = (kept.split?.from ?? 0) > 0
-        ? `, ${Math.round(kept.split.took)} of it putting them in from row ${kept.split.from} up`
-        : "";
+    const { back = -1, from = 0, took = 0 } = kept.split ?? {};
+    const split = from > 0 ? `, ${Math.round(took)} of it putting them in from row ${from} up`
+        : back > 0 ? `, back to row ${back} unsplit` : "";
     return rows + split;
 }
 

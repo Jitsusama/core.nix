@@ -259,17 +259,21 @@ QtObject {
         expect("a step keeps its making's split", made.each.making === 87
             && made.makingSplit === split, JSON.stringify(made));
         expect("a laying says the rows it built and took back",
-            Trials.keptSaid({ built: 3, reused: 7, split: { from: 0, took: 0 } })
+            Trials.keptSaid({ built: 3, reused: 7, split: { back: -1, from: 0, took: 0 } })
                 === ": 3 rows built, 7 taken back",
-            Trials.keptSaid({ built: 3, reused: 7, split: { from: 0, took: 0 } }));
+            Trials.keptSaid({ built: 3, reused: 7, split: { back: -1, from: 0, took: 0 } }));
         expect("a step back out that split says from which row, and what that took",
-            Trials.keptSaid({ built: 2, reused: 8, split: { from: 9, took: 5.6 } })
+            Trials.keptSaid({ built: 2, reused: 8, split: { back: 16, from: 9, took: 5.6 } })
                 === ": 2 rows built, 8 taken back, 6 of it putting them in from row 9 up",
-            Trials.keptSaid({ built: 2, reused: 8, split: { from: 9, took: 5.6 } }));
-        expect("a laying that drew none, or kept before splits were told, says nothing",
-            Trials.keptSaid({ built: 0, reused: 0 }) === ""
-                && Trials.keptSaid({ fresh: 0, laying: 0 }) === "",
-            Trials.keptSaid({ built: 0, reused: 0 }));
+            Trials.keptSaid({ built: 2, reused: 8, split: { back: 16, from: 9, took: 5.6 } }));
+        expect("one that came back without splitting says to which row",
+            Trials.keptSaid({ built: 1, reused: 9, split: { back: 16, from: 0, took: 0 } })
+                === ": 1 rows built, 9 taken back, back to row 16 unsplit",
+            Trials.keptSaid({ built: 1, reused: 9, split: { back: 16, from: 0, took: 0 } }));
+        expect("a laying that drew none says nothing, and one with no split told no split",
+            Trials.keptSaid({ built: 0, reused: 0, split: { back: -1, from: 0, took: 0 } }) === ""
+                && Trials.keptSaid({ built: 3, reused: 7 }) === ": 3 rows built, 7 taken back",
+            Trials.keptSaid({ built: 3, reused: 7 }));
         expect("a showing says how long rows spent reading what they hold",
             Trials.readingSaid(12.6) === ", 13 reading what they hold"
                 && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",
