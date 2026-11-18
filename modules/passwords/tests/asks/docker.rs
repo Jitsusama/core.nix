@@ -4,7 +4,6 @@
 //! or a folder; and a fence list from before emptied files, naming none,
 //! still lets a yes release.
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -54,9 +53,14 @@ fn settings_are_emptied_to_nothing_where_none_saying_nothing_can_be_written() {
     std::fs::create_dir_all(&runtime).unwrap();
     std::fs::write(runtime.join("passwords"), "").unwrap();
     let args = released_with(&running, "a523456789abcdef0123456789abcdef");
-    holds(
-        &args,
-        &emptying(Path::new("/dev/null"), &docker_settings(&running)),
+    let docker = docker_settings(&running);
+    holds(&args, &emptying(Path::new("/dev/null"), &docker));
+    // Podman refuses /dev/null, so the journal says which file, and why.
+    let logged = running.logged();
+    assert!(
+        logged.contains(&format!("emptying {} with /dev/null", docker.display()))
+            && logged.contains("File exists"),
+        "the journal doesn't say what was emptied with /dev/null, or why: {logged}"
     );
 }
 
@@ -97,6 +101,43 @@ fn settings_ssh_binds_back_are_emptied_over_it() {
     let ssh = running.folder.join("home/.ssh");
     std::fs::write(ssh.join("config"), DOCKER_CONFIG).unwrap();
     let args = released_with(&running, "a723456789abcdef0123456789abcdef");
+    let kept = std::fs::canonicalize(ssh.join("config")).unwrap();
+    let back = found(&args, &[Path::new("--ro-bind"), &kept, &kept]);
+    let over = found(&args, &emptying(&empty_settings(&running), &kept));
+    assert!(
+        matches!((back, over), (Some(back), Some(over)) if back < over),
+        "a file ~/.ssh keeps was not emptied after it was bound back: {args:?}"
+    );
+}
+
+#[test]
+fn settings_deeper_in_ssh_are_left_to_its_emptying() {
+    // ~/.ssh binds back only files directly in it, so one deeper, though
+    // its name is one it keeps, is hidden already.
+    let running = emptying_in_ssh("asks-docker-ssh-deeper", "sub/config");
+    let ssh = running.folder.join("home/.ssh");
+    std::fs::create_dir_all(ssh.join("sub")).unwrap();
+    std::fs::write(ssh.join("sub/config"), DOCKER_CONFIG).unwrap();
+    let args = released_with(&running, "a923456789abcdef0123456789abcdef");
+    let sub = std::fs::canonicalize(ssh.join("sub")).unwrap();
+    assert!(
+        !args.iter().any(|arg| Path::new(arg).starts_with(&sub)),
+        "something deeper in ~/.ssh was bound over: {args:?}"
+    );
+}
+
+#[test]
+fn settings_ssh_keeps_are_emptied_though_the_list_hides_ssh() {
+    // ~/.ssh's own emptying binds back what it keeps after the list's
+    // folder is made empty, so the list hiding ~/.ssh hides none of those.
+    let running = emptying_in_ssh("asks-docker-ssh-listed", "config");
+    let mut list: Value =
+        serde_json::from_str(&std::fs::read_to_string(running.fence_list()).unwrap()).unwrap();
+    list["home"].as_array_mut().unwrap().push(".ssh/".into());
+    std::fs::write(running.fence_list(), list.to_string()).unwrap();
+    let ssh = running.folder.join("home/.ssh");
+    std::fs::write(ssh.join("config"), DOCKER_CONFIG).unwrap();
+    let args = released_with(&running, "aa23456789abcdef0123456789abcdef");
     let kept = std::fs::canonicalize(ssh.join("config")).unwrap();
     let back = found(&args, &[Path::new("--ro-bind"), &kept, &kept]);
     let over = found(&args, &emptying(&empty_settings(&running), &kept));
@@ -194,12 +235,14 @@ fn dockers_settings_missing_dangling_or_a_folder_bind_nothing_and_release() {
 
 #[test]
 fn dockers_settings_that_cant_be_read_are_emptied() {
+    // Settings holding no login but not text can't be read to tell, for
+    // any reader, root too, where a file's mode stops none.
     let running = Running::releasing("asks-docker-unreadable", &[super::LISTED]);
     let docker = docker_settings(&running);
-    std::fs::write(&docker, KEPT_SETTINGS).unwrap();
-    std::fs::set_permissions(&docker, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let mut unreadable = KEPT_SETTINGS.as_bytes().to_vec();
+    unreadable.extend([0xff, 0xfe]);
+    std::fs::write(&docker, unreadable).unwrap();
     let args = released_with(&running, "c223456789abcdef0123456789abcdef");
-    std::fs::set_permissions(&docker, std::fs::Permissions::from_mode(0o600)).unwrap();
     holds(&args, &emptying(&empty_settings(&running), &docker));
 }
 
