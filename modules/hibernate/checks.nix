@@ -1,6 +1,7 @@
 # The checks of hibernate, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -17,8 +18,18 @@ onLinux {
   # tried again with it shut, then powered off, with each seated user told
   # once.
   hibernate-unlock-lets-go-only-after-the-disk-asked = pkgs.callPackage ./unlock/package.nix { };
-  # clippy finds nothing in it, its tests included.
+  # clippy finds nothing in it, its tests included, built on today's kit
+  # rather than the pinned one the initrd takes, so a kit change that would
+  # break it fails here rather than at the next bump.
   hibernate-unlock-passes-clippy = passesClippy "hibernate-unlock-passes-clippy" (
-    pkgs.callPackage ./unlock/package.nix { }
+    pkgs.callPackage ./unlock/package.nix {
+      terminalKit = lib.fileset.toSource {
+        root = ../terminal-kit;
+        fileset = lib.fileset.unions [
+          ../terminal-kit/Cargo.toml
+          ../terminal-kit/src
+        ];
+      };
+    }
   );
 }

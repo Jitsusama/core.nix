@@ -164,8 +164,18 @@
       touch $out
     '';
 
-  # clippy finds nothing in the console's font tool, its tests included.
+  # clippy finds nothing in the console's font tool, its tests included,
+  # built on today's kit rather than the pinned one the initrd takes, so a
+  # kit change that would break it fails here rather than at the next bump.
   console-font-passes-clippy = passesClippy "console-font-passes-clippy" (
-    pkgs.callPackage ./font/package.nix { }
+    pkgs.callPackage ./font/package.nix {
+      terminalKit = lib.fileset.toSource {
+        root = ../terminal-kit;
+        fileset = lib.fileset.unions [
+          ../terminal-kit/Cargo.toml
+          ../terminal-kit/src
+        ];
+      };
+    }
   );
 }
