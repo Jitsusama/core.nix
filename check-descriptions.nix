@@ -4685,7 +4685,7 @@
   '';
   update-to-main-asks-what-nix-offload-answers = ''
     the question a Mac asks before it updates, whether it's over its room, is one the nix-offload
-    it names answers, not words it refuses as asked wrongly
+    it names answers as a question does, with 0, 1 or 69, not words it refuses as asked wrongly
   '';
   update-to-main-outlives-its-switch = ''
     neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never

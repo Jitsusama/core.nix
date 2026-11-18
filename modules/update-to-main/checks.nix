@@ -140,16 +140,21 @@ in
   # refuses as asked wrongly, which update-to-main would read as can't tell
   # and refuse all but one ask in two hours for: while this change was
   # written, nix-offload had no busy yet, and the words alone passed above.
-  # Built here from the package the Mac names, its words answer for help.
+  # Built here from the package the Mac names, its words are asked as the
+  # daemon asks them, and answer as a question does: 0 busy, 1 room, 69
+  # can't say, as on a builder with no sysctl; never 64, asked wrongly.
   update-to-main-asks-what-nix-offload-answers =
     let
       words = lib.tail (lib.head (refusesOnAMac "the Mac is over its room")).command;
       offload = pkgs.callPackage ../nix-offload/offload/package.nix { };
     in
     pkgs.runCommand "update-to-main-asks-what-nix-offload-answers" { } ''
-      ${lib.getExe offload} ${lib.escapeShellArgs words} --help > help
-      grep -qx 'Usage: nix-offload ${lib.concatStringsSep " " words}' help
-      touch $out
+      rc=0
+      ${lib.escapeShellArgs ([ (lib.getExe offload) ] ++ words)} || rc=$?
+      case $rc in
+        0 | 1 | 69) touch $out ;;
+        *) echo "nix-offload ${lib.concatStringsSep " " words} answered $rc, not a question's answer" >&2; exit 1 ;;
+      esac
     '';
   # launchd gives a job 256 open files unless it says otherwise, and git
   # opens every pack it reads: on 16 November a Mac's update failed with

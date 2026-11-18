@@ -3939,11 +3939,25 @@ fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
     fs::write(world.root.join("call"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
+    let mut first = None;
     for ask in 0..2 {
-        let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
+        let (told, ending) = world.asked_by(&|| true);
+        let Line::Refused { why, .. } = ending else {
             panic!("ask {ask} within the most it may refuse should be refused")
         };
         assert_eq!(why, "the machine is over its room");
+        assert!(
+            !told.contains(&Line::Fetching),
+            "a refused ask shouldn't fetch"
+        );
+        let (began, _) = kept_refusals(&world);
+        assert_eq!(
+            *first.get_or_insert(began),
+            began,
+            "a stretch should keep its start across its refusals"
+        );
+        refused_since(&world, began - 60, now());
+        first = Some(began - 60);
     }
     assert_eq!(world.builds(), 0, "a refused ask should build nothing");
     // Refusing since just short of the most it may, it still refuses.
@@ -4015,11 +4029,26 @@ fn a_refusal_record_it_cant_trust_or_keep_refuses_nothing_for_good() {
     let head = world.signed("one");
     world.system(&head);
     refused_since(&world, now() + 2 * HOUR, now() + 2 * HOUR);
-    assert!(matches!(world.asked_by(&|| true).1, Line::Refused { .. }));
+    assert!(
+        matches!(world.asked_by(&|| true).1, Line::Refused { .. }),
+        "a record from the future should start a stretch that still refuses"
+    );
     let (began, last) = kept_refusals(&world);
     assert!(
         began <= now() && last <= now(),
         "a record from the future should start the stretch again"
+    );
+    // One that ends before it began, as a hand or a torn write leaves,
+    // starts again too, rather than counting from a start never refused.
+    refused_since(&world, now() + 2 * HOUR, now() - 60);
+    assert!(
+        matches!(world.asked_by(&|| true).1, Line::Refused { .. }),
+        "a record ending before it began should start a stretch that still refuses"
+    );
+    let (began, _) = kept_refusals(&world);
+    assert!(
+        began <= now(),
+        "a record ending before it began should start the stretch again"
     );
     fs::remove_file(refusals(&world)).unwrap();
     fs::create_dir(refusals(&world)).unwrap();
@@ -4398,7 +4427,10 @@ fn the_grant_switches_what_waited_for_it_though_main_moved_on() {
     let one = world.signed("one");
     let waited = world.system(&one);
     daemon_unit(&waited, "new");
-    assert!(matches!(world.update().1, Line::Refused { .. }));
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "a held daemon's restart should be refused without a grant"
+    );
     // Main moves on while the hold is arranged; the grant's ask switches
     // to what was built, rather than start over at the new head.
     let two = world.signed("two");
@@ -4409,7 +4441,10 @@ fn the_grant_switches_what_waited_for_it_though_main_moved_on() {
     assert_eq!(world.running(), waited);
     assert_eq!(world.builds(), builds, "it built nothing again");
     // The next ask takes the newer head as ever.
-    assert!(matches!(world.update().1, Line::Refused { .. }));
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "the next ask should take the newer head, refused without a grant"
+    );
 }
 
 #[test]
@@ -4550,7 +4585,10 @@ fn a_held_daemons_drop_in_changing_waits_for_a_hold_too() {
     let drop_ins = system.join("etc/systemd/system/nix-daemon.service.d");
     fs::create_dir_all(&drop_ins).unwrap();
     fs::write(drop_ins.join("overrides.conf"), "[Service]\n").unwrap();
-    assert!(matches!(world.update().1, Line::Refused { .. }));
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "a held daemon's new drop-in should be refused without a grant"
+    );
 }
 
 #[test]
@@ -4572,7 +4610,10 @@ fn a_grant_ends_with_the_ask_it_was_made_for_even_when_refused_as_busy() {
     daemon_unit(&system, "new");
     fs::write(world.root.join("given"), "").unwrap();
     fs::write(world.root.join("call"), "").unwrap();
-    assert!(matches!(world.update().1, Line::Refused { .. }));
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "an ask during a call should be refused though it was granted"
+    );
     assert!(!world.root.join("given").exists());
     // Once the call is over, the next ask needs a grant of its own.
     fs::remove_file(world.root.join("call")).unwrap();

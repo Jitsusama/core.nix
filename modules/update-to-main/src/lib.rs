@@ -12,6 +12,8 @@
 //! - `config`: what the module tells it.
 //! - `serve`: the socket, and asks joining the update that's running.
 //! - `update`: one update, from fetching main to its ending.
+//! - `busy`: what the machine is busy with, as its busy commands say, and
+//!   how long the follower's asks may be refused for it.
 //! - `held`: a pause, which refuses the follower's updates, and holds on
 //!   commits, which refuse anyone's, until an asker lets them through.
 //! - `git`: root's copy of main, its history and its signature.
@@ -35,6 +37,7 @@
 
 pub mod ask;
 pub mod batches;
+pub mod busy;
 pub mod config;
 pub mod fetch_log;
 pub mod follow;

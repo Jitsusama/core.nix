@@ -55,9 +55,10 @@ in
       }
       # A Mac past its room is refused the follower's ask, so it fetches and
       # builds nothing, and the next ask with room builds main's newest head
-      # rather than each merge; a person's own ask builds anyway. Only the ask: the build's own load would otherwise
-      # hold its switch. Two hours at most, so a check that can't tell for
-      # good doesn't refuse the update that mends it; a call still does.
+      # rather than each merge; a person's own ask builds anyway. Only the
+      # ask: the build's own load would otherwise hold its switch. Two hours
+      # at most, so a check that can't tell for good doesn't refuse the
+      # update that mends it; a call still does.
       {
         command = [
           (lib.getExe (pkgs.callPackage ../nix-offload/offload/package.nix { }))

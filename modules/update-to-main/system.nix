@@ -606,6 +606,10 @@ in
         message = "jitsusama.update-to-main.refuseWhile's refusesAtMost needs refusesTheAskAlone.";
       }
       {
+        assertion = lib.all (busy: !(busy.followerWaits && busy.refusesTheAskAlone)) cfg.refuseWhile;
+        message = "jitsusama.update-to-main.refuseWhile's refusesTheAskAlone refuses nothing with followerWaits, which never refuses.";
+      }
+      {
         assertion = cfg.batches == null || cfg.system.kind == "nixos";
         message = "jitsusama.update-to-main.batches are for NixOS, whose memory Linux reports.";
       }
