@@ -67,6 +67,7 @@ pub fn revive(
     let node = node_holders(revive::realm_of(&reviving.restart));
     let mut said = Vec::new();
     let mut told = Vec::new();
+    let mut stranded = Vec::new();
     for s in revive::watched(
         &seen,
         &reviving.orchestrators,
@@ -97,7 +98,14 @@ pub fn revive(
         let cwd = match revive::judge(s, quest.as_ref(), is_pi, named) {
             Verdict::Died { cwd } => cwd,
             Verdict::Stranded(why) => {
-                said.extend(strand(reviving, s, &why, &mut memory, now, send)?);
+                // Said once an hour, gathered for each peer as starts are,
+                // to whoever can bring it back: on 18 November a host left
+                // down would otherwise have left its sessions down unsaid.
+                if revive::strand(&mut memory, &s.session, now) {
+                    let line = format!("{} died and is left down, since {why}.", s.address);
+                    stranded.extend(tell(reviving, s, &line));
+                    said.push(line);
+                }
                 continue;
             }
             Verdict::Alive | Verdict::Left(_) => continue,
@@ -137,7 +145,10 @@ pub fn revive(
         said.push(line);
     }
     fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
-    for (to, text) in revive::gathered(&told) {
+    for (to, text) in revive::gathered(&stranded, "are left down in a host") {
+        send(&to, "finding", text)?;
+    }
+    for (to, text) in revive::gathered(&told, "were started again") {
         let text = if reviving.watcher.as_ref() == Some(&to) {
             format!("Revived: {text}")
         } else {
@@ -146,32 +157,6 @@ pub fn revive(
         send(&to, "fyi", text)?;
     }
     Ok(said)
-}
-
-/// Says that `s` is left down in a host that won't bring it back, once an
-/// hour, as a defect is, to whoever can start it in a host again: on 18
-/// November a host left down would otherwise have left its sessions down
-/// unsaid. Gives the line when it was said.
-fn strand(
-    reviving: &Reviving,
-    s: &Seen,
-    why: &str,
-    memory: &mut Memory,
-    now: i64,
-    send: &dyn Fn(&str, &str, String) -> io::Result<()>,
-) -> io::Result<Option<String>> {
-    if !revive::report_due(memory, &s.session, now) {
-        return Ok(None);
-    }
-    memory.defects.insert(s.session.clone(), now / 3600);
-    let line = format!(
-        "{} died and is left down, since {why}: start it in a host again.",
-        s.address
-    );
-    for (to, text) in tell(reviving, s, &line) {
-        send(&to, "finding", text)?;
-    }
-    Ok(Some(line))
 }
 
 /// Whom `line`, of `s` started again, is for: the orchestrator, the session's
@@ -345,16 +330,28 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
         .map(|id| id.trim().to_owned());
     let zone = TimeZone::system();
     let records = mesh.root.join("quest-workflow/sessions");
-    let rostered = mesh.rostered();
+    // A roster that holds the session decides its host over what any
+    // presence says, so a session a host will resume is never started
+    // here; its unit is asked only for a session that doesn't run.
+    let rosters = mesh.rostered();
     let mut hosts_back: BTreeMap<String, bool> = BTreeMap::new();
-    let mut hosting = |host: &str, session: &str| Hosting {
-        host: host.to_owned(),
-        holds: rostered
-            .get(host)
-            .is_some_and(|held| held.contains(session)),
-        back: *hosts_back
-            .entry(host.to_owned())
-            .or_insert_with(|| host_back(host)),
+    let mut hosting = |p: &Presence, running: bool| {
+        let host = rosters.holder(&p.session).or_else(|| p.host())?;
+        if !revive::plain(host) {
+            return Some(Hosting {
+                host: "a host named oddly".into(),
+                holds: false,
+                back: false,
+            });
+        }
+        Some(Hosting {
+            host: host.to_owned(),
+            holds: rosters.holds(host, &p.session),
+            back: running
+                || *hosts_back
+                    .entry(host.to_owned())
+                    .or_insert_with(|| host_back(host)),
+        })
     };
     mesh.all()
         .into_iter()
@@ -367,14 +364,15 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
             let ended = fs::read_to_string(records.join(format!("{}.json", p.session)))
                 .ok()
                 .and_then(|record| revive::ended_on_purpose(&record, &zone));
+            let running = p.runs(is_pi, is_host);
             Some(Seen {
                 orchestrates,
                 ended,
                 this_boot: boot.is_some()
                     && p.owner.as_ref().and_then(|o| o.boot_id.as_ref()) == boot.as_ref(),
-                running: p.runs(is_pi, is_host),
+                running,
                 parked: p.state == "parked" || mesh.is_parked(&p.session),
-                hosted: p.host().map(|host| hosting(host, &p.session)),
+                hosted: hosting(&p, running),
                 address,
                 orchestrated_by: p.orchestrated_by,
                 quest: p.quest,
