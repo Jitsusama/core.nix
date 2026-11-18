@@ -335,7 +335,8 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         # Its drawer lists each of its machines, its cells counted on each.
         expect(page.locator("#panel-title"), "the basin's drawer never opened").to_have_text(BASIN)
         body = page.locator("#panel-body")
-        expect(body, "the drawer didn't say it was a basin").to_contain_text("A basin, drawn as one machine: 2 machines")
+        said = "A basin, drawn as one machine: 2 machines"
+        expect(body, "the drawer didn't say it was a basin").to_contain_text(said)
         for name in BASIN_MACHINES:
             row = body.locator(".health .row", has=page.locator(".name", has_text=name))
             expect(row, f"the drawer left {name} out").to_contain_text(": 1 cell;")
