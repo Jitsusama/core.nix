@@ -83,9 +83,11 @@ function lease(said) {
 }
 
 // The DHCP lease on each connection networkd holds one for, by its name,
-// from Describe's reply.
+// from Describe's reply. It has no prototype, so a connection named as
+// one of an object's own members, __proto__ among them, is one like any
+// other, as the neighbours' is.
 function leases(described) {
-    const out = {};
+    const out = Object.create(null);
     for (const link of described?.Interfaces ?? []) {
         const said = link?.DHCPv4Client?.Lease ?? null;
         if (said !== null) {
@@ -117,7 +119,7 @@ const ACTS = [
 // acting as now, its VLAN and its maker's profile's address (RFC 8520), each
 // null where it doesn't say.
 function neighbours(reply) {
-    const out = {};
+    const out = Object.create(null);
     for (const link of reply?.Neighbors ?? []) {
         out[link.InterfaceName] = (link.Neighbors ?? []).map((one) => ({
             system: one.SystemName ?? null,

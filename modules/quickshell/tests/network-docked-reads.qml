@@ -17,6 +17,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
+import "launcher/Networkd.js" as Networkd
 import "Expect.js" as Expect
 import "Written.js" as Written
 
@@ -170,19 +171,25 @@ ShellRoot {
         property string path: "a file that hangs"
     }
     function askHung(ticksAgo) {
-        const since = Object.assign(Object.create(null), networks.factsSince);
-        since[hungFact.path] = networks.factsTicks - ticksAgo;
+        const since = new Map(networks.factsSince);
+        since.set(hungFact, networks.factsTicks - ticksAgo);
         networks.factsSince = since;
         networks.factsAsked = networks.factsAsked.concat([hungFact]);
+        networks.stillReading = true;
     }
 
     // Every fact under way taken as asked `ticksAgo` ticks back, eight
     // being two seconds.
     function askedAt(ticksAgo) {
-        const since = Object.create(null);
-        for (const path of Object.keys(networks.factsSince))
-            since[path] = networks.factsTicks - ticksAgo;
+        const since = new Map();
+        for (const view of networks.factsSince.keys())
+            since.set(view, networks.factsTicks - ticksAgo);
         networks.factsSince = since;
+    }
+
+    // Every fact's tick, as it stands.
+    function factTicks() {
+        return JSON.stringify([...networks.factsSince.values()]);
     }
 
     // Every fact's hold, as it stands.
@@ -410,18 +417,21 @@ ShellRoot {
     function factsHeld() {
         networks.reloadFacts();
         const asked = networks.factsAsked.length;
+        Expect.expect("a fact is asked on the watch's tick", asked > 0
+            && networks.factsAsked.every(view =>
+                networks.factsSince.get(view) === networks.factsTicks),
+            root.factTicks());
         root.askedAt(5);
         networks.reloadFacts();
         Expect.expect("a fact already loading isn't asked again",
-            asked > 0 && networks.factsAsked.length === asked && networks.factsAsked.every(view =>
-                networks.factsSince[String(view.path)] === networks.factsTicks - 5),
-            JSON.stringify(networks.factsSince));
-        root.askedAt(7);
-        networks.factsGivenUp();
-        Expect.expect("a fact loading under two seconds isn't given up",
+            networks.factsAsked.length === asked && networks.factsAsked.every(view =>
+                networks.factsSince.get(view) === networks.factsTicks - 5),
+            root.factTicks());
+        networks.factsTicked();
+        networks.factsTicked();
+        Expect.expect("a fact loading seven ticks isn't given up",
             networks.factsAsked.length === asked, JSON.stringify(networks.factsStuck));
-        root.askedAt(8);
-        networks.factsGivenUp();
+        networks.factsTicked();
         Expect.expect("facts given up leave nothing reading",
             !networks.stillReading, String(networks.stillReading));
         Expect.expect("a fact held up waits a minute", root.factHolds().length === asked
@@ -465,11 +475,21 @@ ShellRoot {
             waits.until("the facts asked land",
                 within(1000, () => networks.factsAsked.length === 0), () => {
                 root.askHung(0);
-                waits.until("the watch gives up a fact that never lands",
-                    within(3000, () => networks.factsStuck[hungFact.path] !== undefined
-                        && !networks.stillReading), () => {
-                    networks.factsStuck = Object.create(null);
-                    root.retried();
+                const hung = Date.now();
+                waits.until("a second and a half on",
+                    within(2500, () => Date.now() - hung >= 1500), () => {
+                    // Qt's timers only ever fire late, so a fact given up
+                    // this soon was given up early, whatever the machine's load.
+                    Expect.expect("the watch keeps a fact a second and a half",
+                        networks.factsAsked.includes(hungFact)
+                            && networks.factsStuck[hungFact.path] === undefined,
+                        JSON.stringify(networks.factsStuck));
+                    waits.until("the watch gives up a fact that never lands",
+                        within(9000, () => networks.factsStuck[hungFact.path] !== undefined
+                            && !networks.stillReading), () => {
+                        networks.factsStuck = Object.create(null);
+                        root.retried();
+                    });
                 });
             });
         });
@@ -551,6 +571,23 @@ ShellRoot {
         });
     }
 
+    // A card named as one of an object's own members has a lease and
+    // neighbours of its own, and a card named as another has none.
+    function oddlyNamed() {
+        const leases = Networkd.leases({ Interfaces: [
+            { Name: "__proto__", DHCPv4Client: { Lease: { LeaseTimestampUSec: 1000000 } } },
+        ] });
+        Expect.expect("a card named __proto__ has its own lease",
+            leases.__proto__?.got === 1 && leases.toString === undefined,
+            JSON.stringify(Object.keys(leases)));
+        const heard = Networkd.neighbours({ Neighbors: [
+            { InterfaceName: "__proto__", Neighbors: [] },
+        ] });
+        Expect.expect("a card named __proto__ has its own neighbours",
+            Array.isArray(heard.__proto__) && heard.constructor === undefined,
+            JSON.stringify(Object.keys(heard)));
+    }
+
     // The cards pulled out as the first's files load again: what they
     // said is forgotten, and the load under way isn't kept once it lands.
     function unplugged() {
@@ -560,6 +597,7 @@ ShellRoot {
             () => {
             Expect.expect("a card gone is forgotten, though its load was under way",
                 networks.cables.enp0s1 === undefined, JSON.stringify(networks.cables));
+            root.oddlyNamed();
             Qt.exit(0);
         });
     }

@@ -156,26 +156,27 @@ Provider {
     // have landed, a terminal's show asks again, so it prints what they
     // say now rather than what was loaded as the launcher last opened.
     // A fact already loading isn't asked again, so its load keeps the
-    // tick it was asked on (factsSince, by its path), and one given up is
-    // passed over while it's held off.
+    // tick it was asked on (factsSince, by the view itself, so a path
+    // changed as it loads can't lose its tick), and one given up is passed
+    // over while it's held off.
     property var factsAsked: []
-    property var factsSince: Object.create(null)
+    property var factsSince: new Map()
     property int factsTicks: 0
     function reloadFacts() {
         const fresh = [resolv, resolved, up].filter(view => String(view.path) !== ""
             && !factsAsked.includes(view) && !holding(factsStuck[String(view.path)]));
         if (fresh.length === 0)
             return;
-        const since = Object.assign(Object.create(null), factsSince);
+        const since = new Map(factsSince);
         for (const view of fresh)
-            since[String(view.path)] = factsTicks;
+            since.set(view, factsTicks);
         factsSince = since;
         factsAsked = factsAsked.concat(fresh);
         stillReading = true;
         for (const view of fresh)
             view.reload();
     }
-    // A fact still loading eight of the watch's ticks, two seconds,
+    // A fact still loading eight of the watch's ticks, about two seconds,
     // after it was asked is said as last loaded, warned of, and held off
     // as a card is (holdAfter), so a terminal isn't kept asking on a file
     // that never lands, nor a thread taken on it each tick. Each is given
@@ -197,7 +198,7 @@ Provider {
     }
     function factsGivenUp() {
         const late = factsAsked.filter(view =>
-            factsTicks - (factsSince[String(view.path)] ?? 0) >= 8);
+            factsTicks - factsSince.get(view) >= 8);
         if (late.length === 0)
             return;
         const stuck = Object.assign(Object.create(null), factsStuck);
@@ -273,13 +274,14 @@ Provider {
     // What networkd last said over varlink of each connection's DHCP lease
     // and each cable's neighbours, by the connection's name (Networkd.js);
     // empty until it answers, and where it isn't running.
-    property var leases: ({})
-    property var neighbours: ({})
+    property var leases: Object.create(null)
+    property var neighbours: Object.create(null)
 
     // Every listed connection's facts at a glance (glance), by its name, for
     // its drawer and the way out's, made in a turn of their own rather than
-    // inside the launcher's binding that asks: they read files (standing,
-    // sys), and a read there changes what the binding read, so it made the
+    // inside the launcher's binding that asks: making one asks for its
+    // cable (cableOf), which writes what the binding read (stillReading,
+    // cablesAsked), as reading files there once did, which made the
     // drawer again and again, 297,092 loops in one VM run (opens-and-sets,
     // 2026-11-12). Made ahead of the ask, and made again in place as the
     // connections, their leases or their neighbours change and as the
