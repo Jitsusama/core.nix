@@ -202,7 +202,7 @@ in
   # A session handed over while the screen is locked, beside its sender in
   # the sessions' kitty, waits once the lock is gone until the node has
   # said which window is the sender's, then goes to the sender's workspace
-  # (tests/sessions-behind-the-lock.qml), with niri stood in.
+  # (modules/quickshell/tests/sessions-behind-the-lock.qml), with niri stood in.
   a-session-behind-the-lock-waits-for-its-kin =
     let
       # The sender's kitty's two windows, on the second workspace, the
@@ -252,7 +252,7 @@ in
       ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
-      cp ${../../../tests/sessions-behind-the-lock.qml} shell.qml
+      cp ${../tests/sessions-behind-the-lock.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
@@ -317,9 +317,9 @@ in
       touch $out
     '';
 
-  # A fresh session the harness hands over is asked of its spawn decider
-  # before a window opens (tests/sessions-spawn-decides.qml), with niri and
-  # the decider stood in.
+  # A fresh session the harness hands over is asked of its spawn decider before
+  # a window opens (modules/quickshell/tests/sessions-spawn-decides.qml), with
+  # niri and the decider stood in.
   a-spawn-kept-in-the-background-opens-no-window =
     let
       options = singleton "Options.qml" ''
@@ -349,7 +349,7 @@ in
       ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
-      cp ${../../../tests/sessions-spawn-decides.qml} shell.qml
+      cp ${../tests/sessions-spawn-decides.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../tests/stand-ins/hosted-reopen-niri.qml} Niri.qml
       cp ${options} Options.qml
@@ -370,9 +370,10 @@ in
       touch $out
     '';
 
-  # A monitor plugged back in takes back the workspace niri kept on the
-  # laptop's screen, even when niri is late to say the monitor is there
-  # (tests/sessions-screen-comes-home.qml), with niri stood in.
+  # A monitor plugged back in takes back the workspace niri kept on the laptop's
+  # screen, even when niri is late to say the monitor is there
+  # (modules/quickshell/tests/sessions-screen-comes-home.qml), with niri stood
+  # in.
   a-screen-niri-is-late-to-name-takes-its-workspaces-back =
     let
       options = singleton "Options.qml" ''
@@ -402,7 +403,7 @@ in
       ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
-      cp ${../../../tests/sessions-screen-comes-home.qml} shell.qml
+      cp ${../tests/sessions-screen-comes-home.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../tests/stand-ins/hosted-reopen-niri.qml} Niri.qml
       cp ${options} Options.qml

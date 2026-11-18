@@ -13,17 +13,16 @@
   ...
 }:
 {
-  # What was taken lately reads its folder through the programs daemon,
-  # handed a source for it as modules/quickshell/home.nix hands one, and
-  # finds screenshots by their words (Taken.qml), asking a stand-in for the
-  # screen-text daemon
-  # (tests/desktop/stand-in-screen-text.py) over one connection made on the
-  # first search and let go at rest, each text once, the last few kept,
-  # none for fewer than three letters, a ragged line given as one short
-  # one, and finds a few thousand files by name, newest first, as Recent
-  # does should the programs daemon not search, as tests/taken.qml holds it
-  # to, with what each screenshot says in
-  # modules/quickshell/tests/stand-ins/taken-texts.json.
+  # What was taken lately reads its folder through the programs daemon, handed a
+  # source for it as modules/quickshell/home.nix hands one, and finds
+  # screenshots by their words (Taken.qml), asking a stand-in for the
+  # screen-text daemon (tests/desktop/stand-in-screen-text.py) over one
+  # connection made on the first search and let go at rest, each text once, the
+  # last few kept, none for fewer than three letters, a ragged line given as one
+  # short one, and finds a few thousand files by name, newest first, as Recent
+  # does should the programs daemon not search, as
+  # modules/quickshell/tests/taken.qml holds it to, with what each screenshot
+  # says in modules/quickshell/tests/stand-ins/taken-texts.json.
   the-desktop-finds-screenshots-by-their-words =
     let
       standIn = pkgs.writers.writePython3 "stand-in-screen-text" {
@@ -39,7 +38,7 @@
         "Daemon.qml"
         "Taken.qml"
       ]}
-      cp ${../../../tests/taken.qml} shell.qml
+      cp ${../tests/taken.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} SHOTS=$PWD/shots
       ${standIn} runtime/daemons/screen-text.sock texts.json &
@@ -49,17 +48,17 @@
       touch $out
     '';
 
-  # What Capture took says where it is and what kind, when it was taken,
-  # its size and a picture's dimensions or a recording's length, as
-  # tests/captured.qml holds launcher/Captured.js to what Taken.qml reads
-  # and file-preview says.
+  # What Capture took says where it is and what kind, when it was taken, its
+  # size and a picture's dimensions or a recording's length, as
+  # modules/quickshell/tests/captured.qml holds launcher/Captured.js to what
+  # Taken.qml reads and file-preview says.
   a-capture-says-what-it-took =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-capture-says-what-it-took" { } ''
       mkdir launcher
-      cp ${../../../tests/captured.qml} captured.qml
+      cp ${../tests/captured.qml} captured.qml
       ${copied [ "launcher/Captured.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

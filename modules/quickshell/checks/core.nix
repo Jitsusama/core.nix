@@ -93,17 +93,17 @@ in
       };
     };
 
-  # An opening draws home as the closed launcher kept it, each row as it
-  # stood, then fills it in where its rows stand with nothing flashing; and
-  # keys typed as it opens all land (tests/opening-on-niri-test.py); and
-  # chords said by launcher-say as the shell restarts open it once it listens,
-  # and open it at once all through a handover (../shell-hands-over.sh).
-  # Its `lab` times each chord's opening, the one way every launcher change
-  # quotes (docs/testing.md's Timing the Launcher), built only when asked for
-  # by name, since no gate runs it (tests/launcher-lab-on-niri.py), and its
-  # `keys-lab` each key typed from home as Joel types them, with Qt's
-  # profiler at hand for a run that asks (tests/launcher-keys-lab-on-niri.py).
-  # They're passed through, which outlasts the description checks.nix adds.
+  # An opening draws home as the closed launcher kept it, each row as it stood,
+  # then fills it in where its rows stand with nothing flashing; and keys typed
+  # as it opens all land (tests/opening-on-niri-test.py); and chords said by
+  # launcher-say as the shell restarts open it once it listens, and open it at
+  # once all through a handover (../shell-hands-over.sh). Its `lab` times each
+  # chord's opening, the one way every launcher change quotes (docs/testing.md's
+  # Timing the Launcher), built only when asked for by name, since no gate runs
+  # it (modules/quickshell/tests/launcher-lab-on-niri.py), and its `keys-lab`
+  # each key typed from home as Joel types them, with Qt's profiler at hand for
+  # a run that asks (tests/launcher-keys-lab-on-niri.py). They're passed
+  # through, which outlasts the description checks.nix adds.
   the-launcher-opens-on-what-it-kept-on-niri =
     let
       # What niri runs on a chord, said by the cases through a restart.
@@ -133,7 +133,7 @@ in
         passthru = old.passthru or { } // {
           lab = launcherOnNiri {
             name = "the-launcher-lab-on-niri";
-            tests = ../../../tests/launcher-lab-on-niri.py;
+            tests = ../tests/launcher-lab-on-niri.py;
             inherit given;
           };
           keys-lab = launcherOnNiri {
@@ -161,14 +161,14 @@ in
     given = [ "WLRCTL=${lib.getExe pkgs.wlrctl}" ];
   };
 
-  # The launcher finds what's meant: for each query in tests/fuzzy.qml the
-  # right thing comes first, few rows are left, or nothing answers, and a
-  # query keeps within its budget in at least one of five processes, all in
-  # Qt's own JavaScript engine, the one the shell runs the matcher in; and
-  # every case of fuzzy.json, which the daemons' matcher is held to too,
-  # scores and marks as it says.
+  # The launcher finds what's meant: for each query in
+  # modules/quickshell/tests/fuzzy.qml the right thing comes first, few rows are
+  # left, or nothing answers, and a query keeps within its budget in at least
+  # one of five processes, all in Qt's own JavaScript engine, the one the shell
+  # runs the matcher in; and every case of fuzzy.json, which the daemons'
+  # matcher is held to too, scores and marks as it says.
   the-launcher-finds-what-is-meant = pkgs.runCommandLocal "the-launcher-finds-what-is-meant" { } ''
-    cp ${../../../tests/fuzzy.qml} fuzzy.qml
+    cp ${../tests/fuzzy.qml} fuzzy.qml
     ${copied [ "Fuzzy.js" ]}
     cp ${../../ready-rows/fuzzy.json} fuzzy.json
     export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -177,16 +177,16 @@ in
     touch $out
   '';
 
-  # The launcher makes a text ready to match without growing the shell's
-  # memory by more than a few kilobytes a text, kept as it keeps them
-  # (tests/fuzzy-light.qml), in a fresh process of Qt's own JavaScript
-  # engine reading its own memory.
+  # The launcher makes a text ready to match without growing the shell's memory
+  # by more than a few kilobytes a text, kept as it keeps them
+  # (modules/quickshell/tests/fuzzy-light.qml), in a fresh process of Qt's own
+  # JavaScript engine reading its own memory.
   the-launcher-makes-texts-ready-lightly =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-makes-texts-ready-lightly" { } ''
-      cp ${../../../tests/fuzzy-light.qml} fuzzy-light.qml
+      cp ${../tests/fuzzy-light.qml} fuzzy-light.qml
       cp ${../../../tests/lib/Memory.js} Memory.js
       ${copied [ "Fuzzy.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -196,16 +196,16 @@ in
       touch $out
     '';
 
-  # A ready row's name, made ready to match only once it's read, keeps
-  # nothing alive but the row and what makes it ready, as
-  # tests/member-light.qml holds launcher/Member.js to in a fresh process of
-  # Qt's own JavaScript engine reading its own memory.
+  # A ready row's name, made ready to match only once it's read, keeps nothing
+  # alive but the row and what makes it ready, as
+  # modules/quickshell/tests/member-light.qml holds launcher/Member.js to in a
+  # fresh process of Qt's own JavaScript engine reading its own memory.
   the-launcher-makes-rows-lightly =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-makes-rows-lightly" { } ''
-      cp ${../../../tests/member-light.qml} member-light.qml
+      cp ${../tests/member-light.qml} member-light.qml
       cp ${../launcher/Member.js} Member.js
       cp ${../../../tests/lib/Memory.js} Memory.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -235,15 +235,16 @@ in
       touch $out
     '';
 
-  # A list the launcher shows holds still as what's in it changes: its rows
-  # keep their order, new ones come last and the selection keeps its row, as
-  # tests/steady.qml holds launcher/Steady.js to it in Qt's own engine.
+  # A list the launcher shows holds still as what's in it changes: its rows keep
+  # their order, new ones come last and the selection keeps its row, as
+  # modules/quickshell/tests/steady.qml holds launcher/Steady.js to it in Qt's
+  # own engine.
   the-launcher-holds-still-as-it-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-holds-still-as-it-refreshes" { } ''
-      cp ${../../../tests/steady.qml} steady.qml
+      cp ${../tests/steady.qml} steady.qml
       cp ${../launcher/Steady.js} Steady.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -253,15 +254,15 @@ in
     '';
 
   # An opening joins the launcher's rows again each time a daemon answers,
-  # walking only the sources that changed since and indexing the list in
-  # one walk, as tests/joined.qml holds launcher/Joined.js to it in Qt's
-  # own engine.
+  # walking only the sources that changed since and indexing the list in one
+  # walk, as modules/quickshell/tests/joined.qml holds launcher/Joined.js to it
+  # in Qt's own engine.
   the-launcher-joins-only-what-changed =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-joins-only-what-changed" { } ''
-      cp ${../../../tests/joined.qml} joined.qml
+      cp ${../tests/joined.qml} joined.qml
       cp ${../launcher/Joined.js} Joined.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -271,14 +272,15 @@ in
     '';
 
   # Recent means one thing in every place it stands: the last nine things,
-  # newest first, each once, never what's open, as tests/recent.qml holds
-  # launcher/Recent.js to it in Qt's own engine.
+  # newest first, each once, never what's open, as
+  # modules/quickshell/tests/recent.qml holds launcher/Recent.js to it in Qt's
+  # own engine.
   recent-means-one-thing =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "recent-means-one-thing" { } ''
-      cp ${../../../tests/recent.qml} recent.qml
+      cp ${../tests/recent.qml} recent.qml
       cp ${../launcher/Recent.js} Recent.js
       cp ${../launcher/Recents.js} Recents.js
       cp ${../launcher/Order.js} Order.js
@@ -289,17 +291,17 @@ in
       touch $out
     '';
 
-  # The open launcher holds its keys only once niri says no window has them,
-  # so one reopened right after a closing, whose letting go reached niri
-  # late, isn't closed as if a window took them (vm-desktop-looks, 3 of 6
-  # runs, 2026-11-11): tests/keys-held.qml replays each order of events
-  # through launcher/KeysHeld.js in Qt's own engine.
+  # The open launcher holds its keys only once niri says no window has them, so
+  # one reopened right after a closing, whose letting go reached niri late,
+  # isn't closed as if a window took them (vm-desktop-looks, 3 of 6 runs,
+  # 2026-11-11): modules/quickshell/tests/keys-held.qml replays each order of
+  # events through launcher/KeysHeld.js in Qt's own engine.
   the-launcher-closes-only-for-keys-it-held =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-closes-only-for-keys-it-held" { } ''
-      cp ${../../../tests/keys-held.qml} keys-held.qml
+      cp ${../tests/keys-held.qml} keys-held.qml
       cp ${../launcher/KeysHeld.js} KeysHeld.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -312,15 +314,15 @@ in
   # A key whose search awaits a daemon's answer is held a few milliseconds
   # for it, a key typed over it drops its search, and Return searches it at
   # once (Y2YBTS, 2026-11-11). Return inside those milliseconds can't be
-  # timed on niri, so tests/awaited.qml holds launcher/Awaited.js, which
-  # decides each and names what a key held past its bound waited behind,
-  # in Qt's own engine.
+  # timed on niri, so modules/quickshell/tests/awaited.qml holds
+  # launcher/Awaited.js, which decides each and names what a key held past
+  # its bound waited behind, in Qt's own engine.
   the-launcher-holds-a-key-for-its-answers =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-holds-a-key-for-its-answers" { } ''
-      cp ${../../../tests/awaited.qml} awaited.qml
+      cp ${../tests/awaited.qml} awaited.qml
       ${copied [ "launcher/Awaited.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -330,17 +332,17 @@ in
       touch $out
     '';
 
-  # Answers a key's sources find after its search, heard in one turn, are
-  # taken in once, and a key's own search drops what's gathered (VKCF3Z's
-  # owed red for #4647). Three sources answering in one turn can't be made
-  # to on niri, so tests/gathering.qml holds launcher/Gathering.qml, the
+  # Answers a key's sources find after its search, heard in one turn, are taken
+  # in once, and a key's own search drops what's gathered (VKCF3Z's owed red for
+  # #4647). Three sources answering in one turn can't be made to on niri, so
+  # modules/quickshell/tests/gathering.qml holds launcher/Gathering.qml, the
   # very component Launcher.qml gathers with, in Qt's own engine.
   late-answers-are-taken-in-once =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "late-answers-are-taken-in-once" { } ''
-      cp ${../../../tests/gathering.qml} gathering.qml
+      cp ${../tests/gathering.qml} gathering.qml
       cp ${../launcher/Gathering.qml} Gathering.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -371,17 +373,17 @@ in
     '';
 
   # A place tied to a part of the system says how it stands by the system
-  # daemon's judgement of it (VKCF3Z's a1ef0c0a): nothing while it's good or
-  # the daemon's silent, a muted word while it couldn't be read, and else the
+  # daemon's judgement of it (VKCF3Z's a1ef0c0a): nothing while it's good or the
+  # daemon's silent, a muted word while it couldn't be read, and else the
   # daemon's own side in the warning's role or the alert's.
-  # tests/system-part.qml holds launcher/SystemPart.js to it in Qt's own
-  # engine.
+  # modules/quickshell/tests/system-part.qml holds launcher/SystemPart.js to it
+  # in Qt's own engine.
   a-place-stands-by-its-part =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-place-stands-by-its-part" { } ''
-      cp ${../../../tests/system-part.qml} system-part.qml
+      cp ${../tests/system-part.qml} system-part.qml
       cp ${../launcher/SystemPart.js} SystemPart.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -392,8 +394,9 @@ in
     '';
 
   # The shell hears the system daemon's parts, by name, as the daemon tells
-  # them, and holds none once the daemon is gone, so no old judgement reads
-  # as current (tests/system-parts.qml), over a stand-in for the daemon.
+  # them, and holds none once the daemon is gone, so no old judgement reads as
+  # current (modules/quickshell/tests/system-parts.qml), over a stand-in for the
+  # daemon.
   the-shell-hears-the-systems-parts =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # case, or sets what Quickshell runs it with.
@@ -408,7 +411,7 @@ in
       cp ${singleton "Report.qml" ''
         function say(text) { }
       ''} Report.qml
-      cp ${../../../tests/system-parts.qml} shell.qml
+      cp ${../tests/system-parts.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -416,15 +419,16 @@ in
       touch $out
     '';
 
-  # The rows drawn are told where they stand only when it changes, so a
-  # refresh in the place they stay in redraws none of them:
-  # tests/rows-place.qml holds launcher/RowsPlace.js to it in Qt's own engine.
+  # The rows drawn are told where they stand only when it changes, so a refresh
+  # in the place they stay in redraws none of them:
+  # modules/quickshell/tests/rows-place.qml holds launcher/RowsPlace.js to it in
+  # Qt's own engine.
   the-rows-hear-only-a-new-place =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-rows-hear-only-a-new-place" { } ''
-      cp ${../../../tests/rows-place.qml} rows-place.qml
+      cp ${../tests/rows-place.qml} rows-place.qml
       cp ${../launcher/RowsPlace.js} RowsPlace.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -435,11 +439,11 @@ in
     '';
 
   # Each kind of list keeps its one order with nothing typed (docs/design.md,
-  # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in
-  # Qt's own engine, and tests/every-list-keeps-its-kinds-order.py walks each
-  # place that lists things: its sort its kind's order, no A to Z by hand, and
-  # no order of Order.js's sorted by Qt's Array.sort, which shuffles rows alike,
-  # as a stand-in sorting three ways it refuses shows.
+  # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in Qt's
+  # own engine, and modules/quickshell/tests/every-list-keeps-its-kinds-order.py
+  # walks each place that lists things: its sort its kind's order, no A to Z by
+  # hand, and no order of Order.js's sorted by Qt's Array.sort, which shuffles
+  # rows alike, as a stand-in sorting three ways it refuses shows.
   each-list-keeps-its-kinds-order =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -452,7 +456,7 @@ in
       '';
     in
     pkgs.runCommandLocal "each-list-keeps-its-kinds-order" { } ''
-      lint="${lib.getExe pkgs.python3} ${../../../tests/every-list-keeps-its-kinds-order.py}"
+      lint="${lib.getExe pkgs.python3} ${../tests/every-list-keeps-its-kinds-order.py}"
       $lint ${../launcher} ${../../people}
       mkdir unstable
       cp ${unstable} unstable/Unstable.js
@@ -477,14 +481,14 @@ in
     '';
 
   # A row an act asked a daemon to change is drawn as it will be until its
-  # source agrees, as tests/becoming.qml holds launcher/Becoming.js to it in
-  # Qt's own engine.
+  # source agrees, as modules/quickshell/tests/becoming.qml holds
+  # launcher/Becoming.js to it in Qt's own engine.
   an-act-shows-before-its-daemon-answers =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "an-act-shows-before-its-daemon-answers" { } ''
-      cp ${../../../tests/becoming.qml} becoming.qml
+      cp ${../tests/becoming.qml} becoming.qml
       cp ${../launcher/Becoming.js} Becoming.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -564,11 +568,11 @@ in
       touch $out
     '';
 
-  # Each close adds its own opening's line to the file's end and rewrites
-  # none before it, so a close costs the same however many are kept: it
-  # turned all 1,339 of Joel's into text, 39 ms a close at a load of 66
-  # (2026-11-10). The shell starting carries the old list into lines and
-  # lets the oldest go (tests/trials-kept.qml, through Quickshell).
+  # Each close adds its own opening's line to the file's end and rewrites none
+  # before it, so a close costs the same however many are kept: it turned all
+  # 1,339 of Joel's into text, 39 ms a close at a load of 66 (2026-11-10). The
+  # shell starting carries the old list into lines and lets the oldest go
+  # (modules/quickshell/tests/trials-kept.qml, through Quickshell).
   the-launcher-keeps-its-trials-one-by-one =
     # procps gives the case pkill, to end the pipe as a full disk would.
     pkgs.runCommandLocal "the-launcher-keeps-its-trials-one-by-one"
@@ -578,23 +582,24 @@ in
         export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
         mkdir -m 700 launcher $XDG_RUNTIME_DIR
         ${copied [ "Trials.qml" ]}
-        cp ${../../../tests/trials-kept.qml} shell.qml
+        cp ${../tests/trials-kept.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml
         touch $out
       '';
 
-  # Each opening of the launcher is a trace: its steps, backs, acts and
-  # searches spans under it, a void above a list's first row told from a
-  # list scrolled down, and the whole sent in OTLP's JSON mapping, as
-  # tests/traces.qml holds launcher/Traces.js to it in Qt's own engine.
+  # Each opening of the launcher is a trace: its steps, backs, acts and searches
+  # spans under it, a void above a list's first row told from a list scrolled
+  # down, and the whole sent in OTLP's JSON mapping, as
+  # modules/quickshell/tests/traces.qml holds launcher/Traces.js to it in Qt's
+  # own engine.
   the-launcher-traces-each-opening =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-traces-each-opening" { } ''
-      cp ${../../../tests/traces.qml} traces.qml
+      cp ${../tests/traces.qml} traces.qml
       cp ${../launcher/Traces.js} Traces.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -603,15 +608,15 @@ in
       touch $out
     '';
 
-  # A row the launcher listed before is kept wherever it moves, and only a
-  # row new to the list is drawn afresh, as tests/rows-kept.qml holds
-  # launcher/RowsKept.js to it in Qt's own engine.
+  # A row the launcher listed before is kept wherever it moves, and only a row
+  # new to the list is drawn afresh, as modules/quickshell/tests/rows-kept.qml
+  # holds launcher/RowsKept.js to it in Qt's own engine.
   a-row-kept-is-never-drawn-again =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-row-kept-is-never-drawn-again" { } ''
-      cp ${../../../tests/rows-kept.qml} rows-kept.qml
+      cp ${../tests/rows-kept.qml} rows-kept.qml
       cp ${../launcher/RowsKept.js} RowsKept.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -713,13 +718,13 @@ in
     '';
 
   # A long name slides at one reading pace between soft ends, as
-  # tests/reading.qml says, in Qt's own engine.
+  # modules/quickshell/tests/reading.qml says, in Qt's own engine.
   a-long-name-reads-at-one-pace =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-long-name-reads-at-one-pace" { } ''
-      cp ${../../../tests/reading.qml} reading.qml
+      cp ${../tests/reading.qml} reading.qml
       ${copied [
         "Measures.js"
         "Reading.js"
@@ -731,15 +736,15 @@ in
       touch $out
     '';
 
-  # Words that break out of the box they're laid in, the card, or onto
-  # another's are named, as tests/contained.qml holds Contained.js, the
+  # Words that break out of the box they're laid in, the card, or onto another's
+  # are named, as modules/quickshell/tests/contained.qml holds Contained.js, the
   # judge the launcher's `contained` asks on niri.
   no-words-leave-their-room =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "no-words-leave-their-room" { } ''
-      cp ${../../../tests/contained.qml} contained.qml
+      cp ${../tests/contained.qml} contained.qml
       ${copied [ "Contained.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -750,14 +755,15 @@ in
     '';
 
   # A card says how it stands in one status line, the launcher's and held
-  # notices' alike, as tests/status-line.qml holds StatusLine.js to: which
-  # hints give way as room runs short, the keys list's and Return's staying.
+  # notices' alike, as modules/quickshell/tests/status-line.qml holds
+  # StatusLine.js to: which hints give way as room runs short, the keys list's
+  # and Return's staying.
   a-card-says-how-it-stands-in-one-row =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-card-says-how-it-stands-in-one-row" { } ''
-      cp ${../../../tests/status-line.qml} status-line.qml
+      cp ${../tests/status-line.qml} status-line.qml
       ${copied [ "StatusLine.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -798,8 +804,8 @@ in
         function act(action) { acted = acted.concat([action]); }
       '';
       # What open-now says two Neovims in one kitty hold, as
-      # tests/neovim-open-now.sh says.
-      openNow = pkgs.writeShellScript "open-now" (builtins.readFile ../../../tests/neovim-open-now.sh);
+      # modules/quickshell/tests/neovim-open-now.sh says.
+      openNow = pkgs.writeShellScript "open-now" (builtins.readFile ../tests/neovim-open-now.sh);
       # file-preview stood in, saying which process answered.
       previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../../../tests/file-preview.sh);
       programs = pkgs.callPackage ../../programs/package.nix { };

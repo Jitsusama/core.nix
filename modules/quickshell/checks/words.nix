@@ -40,12 +40,12 @@
       + lib.concatStringsSep ", " (lib.take 8 strays)
     ) (strays == [ ]);
 
-  # The launcher's vocabulary, as the account writes it, says each word of
-  # one thing, but where it's listed as meant to find several, names only
-  # what it knows and glyphs the theme has, and gives everything a place
-  # (tests/launcher-words.py), printing each word to settle; and its own
-  # files, each place's, give no key twice in one entry, which the account's
-  # copy hides.
+  # The launcher's vocabulary, as the account writes it, says each word of one
+  # thing, but where it's listed as meant to find several, names only what it
+  # knows and glyphs the theme has, and gives everything a place
+  # (modules/quickshell/tests/launcher-words.py), printing each word to settle;
+  # and its own files, each place's, give no key twice in one entry, which the
+  # account's copy hides.
   the-launcher-means-one-thing-a-word =
     let
       written = import ../launcher/words.nix;
@@ -55,15 +55,15 @@
       words = pkgs.writeText "words.json" home.xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "the-launcher-means-one-thing-a-word" { } ''
-      ${lib.getExe pkgs.python3} ${../../../tests/launcher-words.py} ${words} ${marks} \
+      ${lib.getExe pkgs.python3} ${../tests/launcher-words.py} ${words} ${marks} \
         ${lib.concatMapStringsSep " " (file: "${file}") sources}
       touch $out
     '';
 
   # Each act beside a row's Return takes a key of its own in normal, by its
   # words' `key`, so the vocabulary is held against the keys' table
-  # (tests/act-keys.py): normal would take a key it binds before the act
-  # could, and a row can't give one key two acts.
+  # (modules/quickshell/tests/act-keys.py): normal would take a key it binds
+  # before the act could, and a row can't give one key two acts.
   each-acts-key-is-free-where-its-pressed =
     let
       words =
@@ -71,15 +71,15 @@
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "each-acts-key-is-free-where-its-pressed" { } ''
-      ${lib.getExe pkgs.python3} ${../../../tests/act-keys.py} ${words} ${../QueryKeys.js}
+      ${lib.getExe pkgs.python3} ${../tests/act-keys.py} ${words} ${../QueryKeys.js}
       touch $out
     '';
 
   # The words each daemon's tests are given are the vocabulary's own, as the
-  # account writes it (tests/daemon-words.py), so no daemon passes its tests
-  # on words Joel never reads. A daemon whose tests hold a slice of the
-  # vocabulary adds it to `slices`, by the name the check says it by, so
-  # the script stays as short however many daemons join.
+  # account writes it (modules/quickshell/tests/daemon-words.py), so no daemon
+  # passes its tests on words Joel never reads. A daemon whose tests hold a
+  # slice of the vocabulary adds it to `slices`, by the name the check says it
+  # by, so the script stays as short however many daemons join.
   the-daemons-test-the-launchers-words =
     let
       words =
@@ -102,14 +102,15 @@
     in
     pkgs.runCommandLocal "the-daemons-test-the-launchers-words" { } ''
       ${copies}
-      ${lib.getExe pkgs.python3} ${../../../tests/daemon-words.py} ${words} \
+      ${lib.getExe pkgs.python3} ${../tests/daemon-words.py} ${words} \
         ${lib.concatStringsSep " " (lib.attrNames slices)}
       touch $out
     '';
 
   # Every launcher verb names the command the : line runs it by, one the key
   # language has, with what follows it, and no two on a row alike
-  # (tests/launcher-commands.py), as the account writes the vocabulary.
+  # (modules/quickshell/tests/launcher-commands.py), as the account writes the
+  # vocabulary.
   the-launcher-names-every-action-a-command =
     let
       words =
@@ -118,13 +119,13 @@
       language = ../../keys/language.toml;
     in
     pkgs.runCommandLocal "the-launcher-names-every-action-a-command" { } ''
-      ${lib.getExe pkgs.python3} ${../../../tests/launcher-commands.py} ${words} ${language}
+      ${lib.getExe pkgs.python3} ${../tests/launcher-commands.py} ${words} ${language}
       touch $out
     '';
 
-  # What the launcher shows says the glossary's words, never a name it
-  # replaces, but what tests/launcher-shown.py lists as another sense or a
-  # rename still waiting.
+  # What the launcher shows says the glossary's words, never a name it replaces,
+  # but what modules/quickshell/tests/launcher-shown.py lists as another sense
+  # or a rename still waiting.
   the-launcher-shows-no-replaced-word =
     let
       words =
@@ -134,13 +135,13 @@
     pkgs.runCommandLocal "the-launcher-shows-no-replaced-word" { } ''
       cp ${../../../tests/repository/glossary.py} glossary.py
       cp ${../../../tests/repository/names.py} names.py
-      cp ${../../../tests/launcher-shown.py} launcher-shown.py
+      cp ${../tests/launcher-shown.py} launcher-shown.py
       ${lib.getExe pkgs.python3} launcher-shown.py ${../../../docs/glossary.md} ${words}
       touch $out
     '';
 
-  # A launcher row that names a glossary thing says which with its term,
-  # and is called by it, as tests/launcher-terms.py holds each one.
+  # A launcher row that names a glossary thing says which with its term, and is
+  # called by it, as modules/quickshell/tests/launcher-terms.py holds each one.
   the-launcher-names-each-thing-its-term =
     let
       words =
@@ -149,15 +150,15 @@
     in
     pkgs.runCommandLocal "the-launcher-names-each-thing-its-term" { } ''
       cp ${../../../tests/repository/glossary.py} glossary.py
-      cp ${../../../tests/launcher-terms.py} launcher-terms.py
+      cp ${../tests/launcher-terms.py} launcher-terms.py
       ${lib.getExe pkgs.python3} launcher-terms.py ${../../../docs/glossary.md} ${words}
       touch $out
     '';
 
-  # The launcher's catalogue, what pi-ask's tool lists and runs, tells a
-  # place from an action and offers what ends something rather than doing
-  # it, as tests/catalogue.qml holds launcher/Catalogue.js to it in Qt's
-  # own engine.
+  # The launcher's catalogue, what pi-ask's tool lists and runs, tells a place
+  # from an action and offers what ends something rather than doing it, as
+  # modules/quickshell/tests/catalogue.qml holds launcher/Catalogue.js to it in
+  # Qt's own engine.
   the-launcher-catalogues-what-it-does =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -181,7 +182,7 @@
       );
     in
     pkgs.runCommandLocal "the-launcher-catalogues-what-it-does" { } ''
-      cp ${../../../tests/catalogue.qml} catalogue.qml
+      cp ${../tests/catalogue.qml} catalogue.qml
       cp ${../launcher/Catalogue.js} Catalogue.js
       cp ${../launcher/Reached.js} Reached.js
       cp ${commands} commands.json
@@ -193,14 +194,15 @@
       touch $out
     '';
 
-  # Every command the launcher offers says a little more in its drawer than
-  # its line: what it answers in a sentence, then one or two worked examples
-  # typed as it starts, naming only documentation addresses
-  # (tests/command-drawers.qml), under an eyebrow naming the place that lists
-  # it, as launcher/CommandRow.js makes it from the vocabulary the account
-  # writes. What each example answers is held in the-launcher-answers-what-
-  # is-asked (tests/answers/command-examples.js), where the commands' own
-  # JavaScript runs with the shell's maths and Unicode's names.
+  # Every command the launcher offers says a little more in its drawer than its
+  # line: what it answers in a sentence, then one or two worked examples typed
+  # as it starts, naming only documentation addresses
+  # (modules/quickshell/tests/command-drawers.qml), under an eyebrow naming the
+  # place that lists it, as launcher/CommandRow.js makes it from the vocabulary
+  # the account writes. What each example answers is held in
+  # the-launcher-answers-what- is-asked (tests/answers/command-examples.js),
+  # where the commands' own JavaScript runs with the shell's maths and Unicode's
+  # names.
   every-command-row-has-a-drawer =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -209,7 +211,7 @@
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "every-command-row-has-a-drawer" { } ''
-      cp ${../../../tests/command-drawers.qml} command-drawers.qml
+      cp ${../tests/command-drawers.qml} command-drawers.qml
       cp ${../launcher/CommandRow.js} CommandRow.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${words} words.json
@@ -222,11 +224,11 @@
     '';
 
   # The launcher's answers that build their parts' ids as they answer, the
-  # calculator's bases, the time's, today's, the waits', a hardware
-  # address's, a network's and a character's, name every part as the
-  # vocabulary does (tests/part-names.qml), with tzdata's zones and
-  # Unicode's names kept and lag-watch's last ten seconds stood in for, as
-  # the machine daemon would tell them.
+  # calculator's bases, the time's, today's, the waits', a hardware address's, a
+  # network's and a character's, name every part as the vocabulary does
+  # (modules/quickshell/tests/part-names.qml), with tzdata's zones and Unicode's
+  # names kept and lag-watch's last ten seconds stood in for, as the machine
+  # daemon would tell them.
   the-launcher-names-the-parts-it-builds =
     pkgs.runCommandLocal "the-launcher-names-the-parts-it-builds" { }
       ''
@@ -263,7 +265,7 @@
         cp ${singleton "Timekeeping.qml" ''
           property int watching: 0
           property bool refused: false
-          property var reading: (${builtins.readFile ../../../tests/timekeeping-reading.json})
+          property var reading: (${builtins.readFile ../tests/timekeeping-reading.json})
         ''} Timekeeping.qml
         cp ${singleton "Calendars.qml" ''
           property string asked: ""
@@ -274,7 +276,7 @@
             { day: Qt.formatDate(new Date(), "yyyy-MM-dd") })
           function ask(day) { asked = day; }
         ''} Calendars.qml
-        cp ${../../../tests/part-names.qml} shell.qml
+        cp ${../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
         export FONTCONFIG_FILE=${noFonts}

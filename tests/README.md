@@ -15,10 +15,10 @@ and why.
 | a rule held over every file, and its list   | `rules/`                                  |
 | a check reading the repository as a whole   | `repository/`                             |
 | what several checks are built from          | `lib/`                                    |
-| a test on a nested niri, in the sandbox     | here, `<what>-on-niri-test.py`            |
+| a test on a nested niri, in the sandbox     | beside the shell, or here if a VM reads it |
 | a stand-in for a program or a device        | beside its test, or a folder of its own   |
 | a patch a test's machine takes              | here, `<what>.patch`                      |
-| a shell QML case not yet beside the shell   | here, `<case>.qml`                        |
+| a shell QML case a VM test reads too        | here, `<case>.qml`, until it moves        |
 
 ## Its Folders
 
@@ -40,8 +40,9 @@ and why.
 ## Moving Out
 
 The folder holds more than the 40 entries a folder may, and
-`every-long-file-says-why` waits on it. It isn't kept that way on purpose: the
-QML cases move beside the shell, under `modules/quickshell/`, and the VM tests
-into areas under `vm/`, each as its owner frees it.
+`every-long-file-says-why` waits on it. It isn't kept that way on purpose. The
+shell's own cases are beside it in `modules/quickshell/tests/`; those left here
+are read by a VM test or another module too, and move with them. The VM tests
+go into areas under `vm/`, each as its owner frees it.
 
 [1]: ../docs/testing.md

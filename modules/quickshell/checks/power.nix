@@ -44,14 +44,14 @@
       touch $out
     '';
 
-  # A battery that reports only its charge, as a Bluetooth device's does,
-  # is low and then critical once each, as tests/crossing.qml holds.
+  # A battery that reports only its charge, as a Bluetooth device's does, is low
+  # and then critical once each, as modules/quickshell/tests/crossing.qml holds.
   a-low-charge-is-said-once =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-low-charge-is-said-once" { } ''
-      cp ${../../../tests/crossing.qml} crossing.qml
+      cp ${../tests/crossing.qml} crossing.qml
       ${copied [ "Crossing.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -60,9 +60,9 @@
       touch $out
     '';
 
-  # Each Bluetooth device running low is a thing of its own, by its own
-  # charge, name and kind, as tests/devices.qml holds Devices.js to with
-  # plain objects standing in for BlueZ's devices, since the desktop VM has
+  # Each Bluetooth device running low is a thing of its own, by its own charge,
+  # name and kind, as modules/quickshell/tests/devices.qml holds Devices.js to
+  # with plain objects standing in for BlueZ's devices, since the desktop VM has
   # no Bluetooth. So is an adapter whose controller stopped answering, with
   # bluetooth-again to type for one on PCI, which that command starts, and a
   # restart for any other.
@@ -71,7 +71,7 @@
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-low-device-is-its-own-notice" { } ''
-      cp ${../../../tests/devices.qml} devices.qml
+      cp ${../tests/devices.qml} devices.qml
       ${copied [ "Devices.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

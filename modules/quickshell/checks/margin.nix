@@ -112,15 +112,16 @@
       touch $out
     '';
 
-  # Now's Home Network piece says what ails the home network, worst first,
-  # and nothing while eero is out of reach, as tests/home-network-ails.qml
-  # holds pieces/HomeNetwork.js to records shaped as the eero daemon keeps.
+  # Now's Home Network piece says what ails the home network, worst first, and
+  # nothing while eero is out of reach, as
+  # modules/quickshell/tests/home-network-ails.qml holds pieces/HomeNetwork.js
+  # to records shaped as the eero daemon keeps.
   now-says-what-ails-the-home-network =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "now-says-what-ails-the-home-network" { } ''
-      cp ${../../../tests/home-network-ails.qml} home-network-ails.qml
+      cp ${../tests/home-network-ails.qml} home-network-ails.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "pieces/HomeNetwork.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -157,16 +158,16 @@
     touch $out
   '';
 
-  # Every glyph in the margin stands the same height on the gap's middle
-  # line, however tall its font draws it, and they line up from the corner
-  # by how much each asks, in the colour that says so, and For You's tray
-  # is lit by what For You holds, as tests/marks.qml holds them.
+  # Every glyph in the margin stands the same height on the gap's middle line,
+  # however tall its font draws it, and they line up from the corner by how much
+  # each asks, in the colour that says so, and For You's tray is lit by what For
+  # You holds, as modules/quickshell/tests/marks.qml holds them.
   the-margins-marks-stand-level =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-margins-marks-stand-level" { } ''
-      cp ${../../../tests/marks.qml} marks.qml
+      cp ${../tests/marks.qml} marks.qml
       ${copied [ "Marks.js" ]}
       cp ${../pieces/Holding.js} Holding.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -176,10 +177,10 @@
       touch $out
     '';
 
-  # Every mark the margin can show, each kind a device running low is drawn
-  # as among them, is the theme's drawing of it, standing the grid's full
-  # height and centred across it as Qt draws it, so a row of them is level
-  # and each has the same room either side (tests/drawings.qml).
+  # Every mark the margin can show, each kind a device running low is drawn as
+  # among them, is the theme's drawing of it, standing the grid's full height
+  # and centred across it as Qt draws it, so a row of them is level and each has
+  # the same room either side (modules/quickshell/tests/drawings.qml).
   the-margins-marks-are-drawn-level =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -201,7 +202,7 @@
       '';
     in
     pkgs.runCommandLocal "the-margins-marks-are-drawn-level" { } ''
-      cp ${../../../tests/drawings.qml} drawings.qml
+      cp ${../tests/drawings.qml} drawings.qml
       cp ${drawings} Drawings.js
       ${copied [ "Devices.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -212,13 +213,13 @@
     '';
 
   # A piece standing for several things is a fact for each, known by its
-  # own mark, as tests/facts.qml holds Facts.js to.
+  # own mark, as modules/quickshell/tests/facts.qml holds Facts.js to.
   a-piece-may-stand-for-several =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-piece-may-stand-for-several" { } ''
-      cp ${../../../tests/facts.qml} facts.qml
+      cp ${../tests/facts.qml} facts.qml
       ${copied [ "Facts.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -227,18 +228,18 @@
       touch $out
     '';
 
-  # The margin's cat (modules/margin-cat), which the graphical account's
-  # shell carries, sits over the column the keys are in on a real niri and
-  # follows them, on a layer taking no keys, and goes in fullscreen
-  # (tests/margin-cat-on-niri-test.py). Where over a column it sits is held
-  # in Qt's engine, beside its module. Its shell draws through Qt's GPU
-  # path, on Mesa's software GL as niri here does, rather than Qt's software
-  # renderer: the laptop's shell draws on its GPU, and the software renderer
-  # widens a cell of 1.333 logical pixels to three screen pixels at 1.5,
-  # which a GPU, filling the pixels whose middles it covers, never does.
+  # The margin's cat (modules/margin-cat), which the graphical account's shell
+  # carries, sits over the column the keys are in on a real niri and follows
+  # them, on a layer taking no keys, and goes in fullscreen
+  # (modules/quickshell/tests/margin-cat-on-niri-test.py). Where over a column
+  # it sits is held in Qt's engine, beside its module. Its shell draws through
+  # Qt's GPU path, on Mesa's software GL as niri here does, rather than Qt's
+  # software renderer: the laptop's shell draws on its GPU, and the software
+  # renderer widens a cell of 1.333 logical pixels to three screen pixels at
+  # 1.5, which a GPU, filling the pixels whose middles it covers, never does.
   the-margin-cat-follows-the-keys-on-niri = launcherOnNiri {
     name = "the-margin-cat-follows-the-keys-on-niri";
-    tests = ../../../tests/margin-cat-on-niri-test.py;
+    tests = ../tests/margin-cat-on-niri-test.py;
     # Its doze in 45 s rather than the laptop's three minutes, so a case
     # sees it fall asleep; the tests wake it with a key before each case.
     # Its scenes come a hundred times later than its own rests, so none
@@ -255,14 +256,15 @@
     ];
   };
 
-  # The cat's scale on a real niri (tests/margin-cat-plays-on-niri-test.py):
-  # niri's idle timers and columns reaching its scenes, which Qt's engine
-  # holds beside its module. Paused after 3 s, away after 8 s, and its
-  # scenes fifteen times sooner than the laptop's, so each is seen in
-  # seconds; asleep only long after the cases end.
+  # The cat's scale on a real niri
+  # (modules/quickshell/tests/margin-cat-plays-on-niri-test.py): niri's idle
+  # timers and columns reaching its scenes, which Qt's engine holds beside its
+  # module. Paused after 3 s, away after 8 s, and its scenes fifteen times
+  # sooner than the laptop's, so each is seen in seconds; asleep only long after
+  # the cases end.
   the-margin-cat-plays-more-the-less-he-types-on-niri = launcherOnNiri {
     name = "the-margin-cat-plays-more-the-less-he-types-on-niri";
-    tests = ../../../tests/margin-cat-plays-on-niri-test.py;
+    tests = ../tests/margin-cat-plays-on-niri-test.py;
     shell.cat = {
       dozes = 600;
       pauses = 3;

@@ -38,8 +38,8 @@
 
   # Machines makes again only the machine a node change names, keeping every
   # other row, and makes none while the launcher doesn't want it
-  # (tests/machines-rows.qml), over a stand-in for the realm's node, with the
-  # launcher and pi's sessions stood in.
+  # (modules/quickshell/tests/machines-rows.qml), over a stand-in for the
+  # realm's node, with the launcher and pi's sessions stood in.
   machines-remake-only-the-machine-that-changed =
     let
       sessions = singleton "Sessions.qml" ''
@@ -65,7 +65,7 @@
       cp ${singleton "Niri.qml" "function spawn(command) {}"} Niri.qml
       cp ${singleton "Report.qml" "function say(text) {}"} Report.qml
       cp ${sessions} Sessions.qml
-      cp ${../../../tests/machines-rows.qml} shell.qml
+      cp ${../tests/machines-rows.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -73,11 +73,12 @@
       touch $out
     '';
 
-  # The disk piece hears the guards' status files as tests/disk.qml writes
-  # them, through Quickshell itself and the machine daemon over a machine of
-  # the check's own, with niri stood in for, and systemd too, on a session
-  # bus and a system bus of the check's own (tests/systemd-units.py), so the
-  # daemon asks a silent guard's unit as it does on a machine.
+  # The disk piece hears the guards' status files as
+  # modules/quickshell/tests/disk.qml writes them, through Quickshell itself and
+  # the machine daemon over a machine of the check's own, with niri stood in
+  # for, and systemd too, on a session bus and a system bus of the check's own
+  # (tests/systemd-units.py), so the daemon asks a silent guard's unit as it
+  # does on a machine.
   the-disk-piece-reads-the-guards =
     let
       python = pkgs.python3.withPackages (python: [ python.jeepney ]);
@@ -108,7 +109,7 @@
         "pieces/Disk.qml"
         "pieces/Piece.qml"
       ]}
-      cp ${../../../tests/disk.qml} shell.qml
+      cp ${../tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -136,9 +137,9 @@
       touch $out
     '';
 
-  # The launcher's Lag says what's slowing the desktop in plain words and
-  # what to do about it (tests/waits.qml), over lag-watch's status file as
-  # it writes one, the test writing it in turn and the machine daemon
+  # The launcher's Lag says what's slowing the desktop in plain words and what
+  # to do about it (modules/quickshell/tests/waits.qml), over lag-watch's status
+  # file as it writes one, the test writing it in turn and the machine daemon
   # telling it over a machine of the check's own.
   the-launcher-says-why-the-desktop-lags =
     pkgs.runCommandLocal "the-launcher-says-why-the-desktop-lags" { }
@@ -153,7 +154,7 @@
           "launcher/Waits.qml"
           "launcher/words.json"
         ]}
-        cp ${../../../tests/waits.qml} shell.qml
+        cp ${../tests/waits.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export MACHINE_ROOT=$PWD/root FONTCONFIG_FILE=${noFonts}
         XDG_RUNTIME_DIR=/run/user/1000 \
@@ -165,12 +166,12 @@
         touch $out
       '';
 
-  # The launcher's Machine answers the processors, the memory and the
-  # uptime from the machine daemon, run over the sandbox's own /proc,
-  # without making their parts, the memory's and the uptime's from the
-  # rows it serves ready in the launcher's words, and asks it for the
-  # programs only once a part saying them is looked at (tests/machine.qml),
-  # the queue, niri and the telemetry stood in for.
+  # The launcher's Machine answers the processors, the memory and the uptime
+  # from the machine daemon, run over the sandbox's own /proc, without making
+  # their parts, the memory's and the uptime's from the rows it serves ready in
+  # the launcher's words, and asks it for the programs only once a part saying
+  # them is looked at (modules/quickshell/tests/machine.qml), the queue, niri
+  # and the telemetry stood in for.
   the-machine-answers-from-its-daemon =
     pkgs.runCommandLocal "the-machine-answers-from-its-daemon" { }
       ''
@@ -187,7 +188,7 @@
         cp ${singleton "Jobs.qml" "property var said: null"} Jobs.qml
         cp ${singleton "Niri.qml" "function act(action) {}"} Niri.qml
         cp ${singleton "Facts.qml" "property var all: []"} Facts.qml
-        cp ${../../../tests/machine.qml} shell.qml
+        cp ${../tests/machine.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${lib.getExe machine} "$XDG_RUNTIME_DIR/daemons/machine.sock" \

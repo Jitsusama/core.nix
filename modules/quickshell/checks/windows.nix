@@ -13,12 +13,12 @@
   ...
 }:
 {
-  # The launcher's windows list the one Joel's in as This Window, then the
-  # rest the one used last first, and when the focus moves make again only
-  # the rows of the windows it moved between, as Capture's do
-  # (tests/windows.qml), with what the windows daemon tells given as its
-  # lines, and niri, pi's sessions, the recorder, the shortcuts, what was
-  # taken and file-preview stood in.
+  # The launcher's windows list the one Joel's in as This Window, then the rest
+  # the one used last first, and when the focus moves make again only the rows
+  # of the windows it moved between, as Capture's do
+  # (modules/quickshell/tests/windows.qml), with what the windows daemon tells
+  # given as its lines, and niri, pi's sessions, the recorder, the shortcuts,
+  # what was taken and file-preview stood in.
   the-launcher-remakes-only-the-windows-that-changed =
     let
       # file-preview stood in, saying which process answered, and one that
@@ -87,7 +87,7 @@
         "launcher/words.json"
       ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
-      cp ${../../../tests/windows.qml} shell.qml
+      cp ${../tests/windows.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${recorder} Recorder.qml
@@ -110,9 +110,9 @@
       touch $out
     '';
 
-  # The shell's niri, told niri's events as its stream would, moves the keys
-  # and says a window used without making any list again, and still lists
-  # a window retitled, opened or closed (tests/niri-focus.qml).
+  # The shell's niri, told niri's events as its stream would, moves the keys and
+  # says a window used without making any list again, and still lists a window
+  # retitled, opened or closed (modules/quickshell/tests/niri-focus.qml).
   niri-moving-the-keys-makes-no-list-again =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -122,7 +122,7 @@
         "Niri.qml"
       ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
-      cp ${../../../tests/niri-focus.qml} shell.qml
+      cp ${../tests/niri-focus.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
@@ -131,20 +131,20 @@
       touch $out
     '';
 
-  # The launcher keeps the windows the windows daemon tells of in the order
-  # it lists them, the one used last first, placing each window a change
-  # names and letting those gone go, as tests/held-windows.qml holds
-  # launcher/HeldWindows.js to records made up there, and folds agents'
-  # windows into one row where the one used last was, as
-  # tests/agent-windows.qml holds launcher/AgentWindows.js.
+  # The launcher keeps the windows the windows daemon tells of in the order it
+  # lists them, the one used last first, placing each window a change names and
+  # letting those gone go, as modules/quickshell/tests/held-windows.qml holds
+  # launcher/HeldWindows.js to records made up there, and folds agents' windows
+  # into one row where the one used last was, as
+  # modules/quickshell/tests/agent-windows.qml holds launcher/AgentWindows.js.
   the-launcher-places-each-window-it-hears =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-places-each-window-it-hears" { } ''
       mkdir launcher
-      cp ${../../../tests/held-windows.qml} held-windows.qml
-      cp ${../../../tests/agent-windows.qml} agent-windows.qml
+      cp ${../tests/held-windows.qml} held-windows.qml
+      cp ${../tests/agent-windows.qml} agent-windows.qml
       ${copied [
         "launcher/AgentWindows.js"
         "launcher/HeldWindows.js"
@@ -160,13 +160,13 @@
   # The shell's niri holds what the windows daemon tells in niri's own
   # shape, each window told made again in place, and says to its readers
   # what niri's events said, a window used or a tile moving making no list
-  # again (tests/niri-records.qml over NiriRecords.js).
+  # again (modules/quickshell/tests/niri-records.qml over NiriRecords.js).
   niri-is-held-as-the-windows-daemon-tells-it =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "niri-is-held-as-the-windows-daemon-tells-it" { } ''
-      cp ${../../../tests/niri-records.qml} niri-records.qml
+      cp ${../tests/niri-records.qml} niri-records.qml
       ${copied [ "NiriRecords.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

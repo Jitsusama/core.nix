@@ -17,7 +17,7 @@
   # collection, each named by its title and found by its site, ranked as the
   # daemon answers what's typed, and its Return goes to the Chrome window
   # it's in front of, else Chrome's newest, while a kitty tab's Return asks
-  # the daemon for its tab (tests/tabs.qml), through the real
+  # the daemon for its tab (modules/quickshell/tests/tabs.qml), through the real
   # ReadyRows.qml and Daemon.qml, with niri stood in. Each bookmark served is
   # a row of the main search, found the same way, and its Return runs Chrome
   # with its address.
@@ -57,7 +57,7 @@
       ]}
       cp ${../../chrome/Tabs.qml} launcher/Tabs.qml
       cp ${niri} Niri.qml
-      cp ${../../../tests/tabs.qml} shell.qml
+      cp ${../tests/tabs.qml} shell.qml
       mkdir -p share/applications
       cp ${chrome} share/applications/google-chrome.desktop
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

@@ -299,9 +299,9 @@ let
     assert spawned != null;
     lib.filter (word: word != "" && word != " ") (lib.splitString "\"" (lib.head spawned));
 
-  # The account's notices alone on niri (tests/notices.qml): a script run
-  # against them, given the shell's folder, the logs, the wait for what the
-  # shell says (tests/lib/shell-says.sh) and what more it's given.
+  # The account's notices alone on niri (modules/quickshell/tests/notices.qml):
+  # a script run against them, given the shell's folder, the logs, the wait for
+  # what the shell says (tests/lib/shell-says.sh) and what more it's given.
   noticesOnNiri =
     {
       name,
@@ -311,7 +311,7 @@ let
     }:
     shellOnNiri {
       inherit name away;
-      root = ../../../tests/notices.qml;
+      root = ../tests/notices.qml;
       inputs = [
         pkgs.jq
         pkgs.libnotify
@@ -323,12 +323,12 @@ let
   # wtype, with a file of tests run through pytest against it
   # (tests/launcher_on_niri.py starts the shell and types).
   #
-  # A long file runs in parts side by side, each on a shell of its own:
-  # `parts` names the case each part after the first starts at, and
-  # `every` the cases each part runs last (tests/cases_in_parts.py). The
-  # check is then the parts together, so it fails as any part does. On
-  # 13 November the launcher's 100 cases took 357 to 549 s in one run, the
-  # longest build on the merge path, built 44 times in 12 hours.
+  # A long file runs in parts side by side, each on a shell of its own: `parts`
+  # names the case each part after the first starts at, and `every` the cases
+  # each part runs last (modules/quickshell/tests/cases_in_parts.py). The check
+  # is then the parts together, so it fails as any part does. On 13 November the
+  # launcher's 100 cases took 357 to 549 s in one run, the longest build on the
+  # merge path, built 44 times in 12 hours.
   launcherOnNiri =
     {
       name,
@@ -342,7 +342,7 @@ let
       python = pkgs.python3.withPackages (python: [ python.pytest ]);
       checked = pkgs.runCommandLocal "${name}-tests" { } ''
         install -D -m 644 ${../../../tests/launcher_on_niri.py} $out/launcher_on_niri.py
-        install -D -m 644 ${../../../tests/cases_in_parts.py} $out/cases_in_parts.py
+        install -D -m 644 ${../tests/cases_in_parts.py} $out/cases_in_parts.py
         install -D -m 644 ${tests} $out/${baseNameOf tests}
       '';
       # Each part's bounds: the case it starts at, and the next part's.

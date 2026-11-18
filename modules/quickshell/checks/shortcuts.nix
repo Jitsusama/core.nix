@@ -18,10 +18,10 @@
 }:
 {
   # Shortcuts groups every layer's chords by what each acts on, as
-  # tests/key-groups.qml holds launcher/KeyGroups.js to an account's own
+  # modules/quickshell/tests/key-groups.qml holds launcher/KeyGroups.js to an account's own
   # binds, Neovim's, pi's, Chrome's and Slack's among them, in Qt's own
   # engine, each group named in the account's vocabulary; and steps through them in levels, as
-  # tests/key-map.qml drives launcher/KeyMap.qml through Quickshell itself
+  # modules/quickshell/tests/key-map.qml drives launcher/KeyMap.qml through Quickshell itself
   # over the same account's shortcuts, with niri stood in for. The picture
   # viewer is given a key of its own here, one no viewer would use, so its
   # layer is there to lead over its window whatever keys it has yet.
@@ -78,7 +78,7 @@
       export FONTCONFIG_FILE=${noFonts}
       mkdir groups shell
       cd $TMPDIR/groups
-      cp ${../../../tests/key-groups.qml} key-groups.qml
+      cp ${../tests/key-groups.qml} key-groups.qml
       cp ${../launcher/KeyGroups.js} KeyGroups.js
       cp ${../launcher/KeyLayers.js} KeyLayers.js
       cp ${layers} layers.json
@@ -87,7 +87,7 @@
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml key-groups.qml
       cd $TMPDIR/shell
       mkdir -p runtime launcher && chmod 700 runtime
-      cp ${../../../tests/key-map.qml} shell.qml
+      cp ${../tests/key-map.qml} shell.qml
       ${copied [
         "Words.qml"
         "launcher/KeyMap.qml"
@@ -115,7 +115,7 @@
       "Daemon.qml"
       "Lights.qml"
     ]}
-    cp ${../../../tests/lights.qml} shell.qml
+    cp ${../tests/lights.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
@@ -123,15 +123,15 @@
     touch $out
   '';
 
-  # The launcher's Keyboard collection finds the ErgoDox's keys and actions
-  # and shows what it finds on the layout, and the board's parts among the
-  # keyboards plugged in hold its Layer and Lights, as tests/keyboard.qml
-  # drives them through Quickshell itself, over the firmware's own
-  # description of the board, locked on Numb, with niri, the shortcuts and
-  # the shell's lights stood in for. Unplugged, as the kernel's list and
-  # keyboard-lights' say, the laptop's own layout, keyd's, takes its place.
-  # The machine daemon tells the keyboards and the layer from its files,
-  # under a root of its own.
+  # The launcher's Keyboard collection finds the ErgoDox's keys and actions and
+  # shows what it finds on the layout, and the board's parts among the keyboards
+  # plugged in hold its Layer and Lights, as
+  # modules/quickshell/tests/keyboard.qml drives them through Quickshell itself,
+  # over the firmware's own description of the board, locked on Numb, with niri,
+  # the shortcuts and the shell's lights stood in for. Unplugged, as the
+  # kernel's list and keyboard-lights' say, the laptop's own layout, keyd's,
+  # takes its place. The machine daemon tells the keyboards and the layer from
+  # its files, under a root of its own.
   the-launcher-finds-the-keyboards-keys =
     let
       firmware = import ../../ergodox/firmware.nix pkgs {
@@ -179,7 +179,7 @@
         "launcher/Provider.qml"
         "launcher/words.json"
       ]}
-      cp ${../../../tests/keyboard.qml} shell.qml
+      cp ${../tests/keyboard.qml} shell.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${niri} Niri.qml
       cp ${shortcuts} Shortcuts.qml

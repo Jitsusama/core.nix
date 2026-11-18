@@ -15,11 +15,11 @@
   ...
 }:
 {
-  # A program's step in the launcher holds what controls it, each only where
-  # it applies, in order (tests/program-controls.qml): over three desktop
-  # entries, with niri, the desktop's shortcuts, the notices' history and
-  # what's playing stood in, a player, two streams and two notices its own
-  # and one of each another's.
+  # A program's step in the launcher holds what controls it, each only where it
+  # applies, in order (modules/quickshell/tests/program-controls.qml): over
+  # three desktop entries, with niri, the desktop's shortcuts, the notices'
+  # history and what's playing stood in, a player, two streams and two notices
+  # its own and one of each another's.
   the-launcher-holds-a-programs-controls =
     let
       # Two of the tester's windows, the one on the workspace in front
@@ -253,7 +253,7 @@
         "launcher/Recents.qml"
         "launcher/words.json"
       ]}
-      cp ${../../../tests/program-controls.qml} shell.qml
+      cp ${../tests/program-controls.qml} shell.qml
       cp ${../../../tests/lib/HeardWindows.js} HeardWindows.js
       cp ${../../../tests/lib/NoticesDaemon.qml} NoticesDaemon.qml
       cp ${../../../tests/lib/Watch.js} Watch.js
@@ -330,17 +330,17 @@
       touch $out
     '';
 
-  # A program's drawer says what it is, where its windows are, what it
-  # opens and how it starts, in the order every drawer keeps, as
-  # tests/program-drawer.qml holds launcher/Program.js to the programs
-  # daemon's record of a desktop entry made up there.
+  # A program's drawer says what it is, where its windows are, what it opens and
+  # how it starts, in the order every drawer keeps, as
+  # modules/quickshell/tests/program-drawer.qml holds launcher/Program.js to the
+  # programs daemon's record of a desktop entry made up there.
   a-program-says-all-it-knows =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-program-says-all-it-knows" { } ''
       mkdir launcher
-      cp ${../../../tests/program-drawer.qml} program-drawer.qml
+      cp ${../tests/program-drawer.qml} program-drawer.qml
       ${copied [ "launcher/Program.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

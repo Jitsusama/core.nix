@@ -4016,7 +4016,7 @@
   the-launcher-shows-no-replaced-word = ''
     nothing the launcher's vocabulary shows of a thing, a place or a command says a name
     docs/glossary.md replaces, but the other senses and the renames still waiting that
-    tests/launcher-shown.py lists, each printed with its word, and the check refuses a stand-in
+    modules/quickshell/tests/launcher-shown.py lists, each printed with its word, and the check refuses a stand-in
     vocabulary breaking each of its rules
   '';
   the-launcher-shows-the-moment-in-now = ''

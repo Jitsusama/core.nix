@@ -14,13 +14,13 @@
 }:
 {
   # The askpass prompt says who's asking for what, for each program's words,
-  # as tests/askpass.qml says, in Qt's own engine.
+  # as modules/quickshell/tests/askpass.qml says, in Qt's own engine.
   the-askpass-says-who-asks-for-what =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-askpass-says-who-asks-for-what" { } ''
-      cp ${../../../tests/askpass.qml} askpass.qml
+      cp ${../tests/askpass.qml} askpass.qml
       ${copied [ "Askpass.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -29,15 +29,15 @@
       touch $out
     '';
 
-  # Polkit's prompt names the command asking and the account it would run
-  # as, for run0, pkexec and the rest, as tests/polkit.qml says, in Qt's own
-  # engine.
+  # Polkit's prompt names the command asking and the account it would run as,
+  # for run0, pkexec and the rest, as modules/quickshell/tests/polkit.qml says,
+  # in Qt's own engine.
   polkits-prompt-says-what-runs =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "polkits-prompt-says-what-runs" { } ''
-      cp ${../../../tests/polkit.qml} polkit.qml
+      cp ${../tests/polkit.qml} polkit.qml
       ${copied [ "Polkit.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
