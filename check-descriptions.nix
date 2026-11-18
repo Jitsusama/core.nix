@@ -989,12 +989,14 @@
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,
-    though each file has changed since, and after a gap says its figures are from when last
-    read while it loads again; in the background, it loads one sysfs file for an interface it
-    already knows, its uevent, gap after gap, and none on a load straight after; loads an
-    interface first seen whole; and loads all four again, keeping the kind it had until they
-    land, then taking the kind they say and telling the answer shown, for one made again under
-    its name or whose uevent is empty or gone
+    though each file has changed since, a first rate over the uptime loaded; asked after a gap
+    with the launcher closed, it says its figures are from when last read and loads them
+    again, reading on until a rate of now has landed, or until the counters fail to load; a
+    load asked just after one landed loads nothing; in the background, it loads one sysfs file
+    for an interface it already knows, its uevent, gap after gap, and none on a load straight
+    after; leaves out an interface first seen until it has loaded it whole; and loads all four
+    again, keeping the kind it had until they land, then taking the kind they say and telling
+    the answer shown, for one made again under its name or whose uevent is empty or gone
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a

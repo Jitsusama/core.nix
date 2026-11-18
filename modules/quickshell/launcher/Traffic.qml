@@ -132,10 +132,16 @@ Provider {
     // An answer asked when it isn't, as a terminal's `launcher show` asks
     // with the launcher closed, or as it opens before its load lands, says
     // its figures are from when they were last read, loads them again, and
-    // is still reading until they land (Provider.stillReading), so a
-    // terminal asks again.
+    // is still reading (Provider.stillReading), so a terminal asks again,
+    // until a rate of now has landed and every interface's files with it.
     function current() {
         return reads !== null && Date.now() - reads.last.at <= stale;
+    }
+
+    function caughtUp() {
+        if (stillReading && current() && settled(reads) && probing === null
+            && asking.length === 0)
+            stillReading = false;
     }
 
     // Where each file is, which its case points at files of its own
@@ -144,8 +150,20 @@ Provider {
     property string statusFile: "/run/shaper/status.json"
     property string uptimeFile: "/proc/uptime"
 
+    // When the load in flight was asked, or 0 with none.
+    property real asked: 0
+
     // Loads the counters and the shaper's status again, in the background.
+    // A FileView asked again while it loads loads again, and both land a
+    // moment apart, a rate over that moment; so while one asked within the
+    // last second is in flight, as an opening and an answer both ask, or
+    // for a tenth of a second after one lands, nothing more is loaded.
     function look() {
+        const now = Date.now();
+        if (now - asked < second
+            || reads !== null && Math.abs(now - reads.last.at) < soonest / 2)
+            return;
+        asked = now;
         netdev.reload();
         shaper.reload();
     }
@@ -157,10 +175,7 @@ Provider {
         const now = Date.now();
         const kept = reads;
         const age = kept ? now - kept.last.at : Infinity;
-        // Two loads landing together, as the launcher's opening and an
-        // answer's both ask, would make a rate over a moment, so the later
-        // takes the earlier's place.
-        const together = age < soonest / 2;
+        asked = 0;
         const all = Traffic.counters(netdev.text());
         const known = {};
         for (const name of Object.keys(all)) {
@@ -171,15 +186,22 @@ Provider {
         interfaceKinds = known;
         reads = {
             last: { at: now, all: all },
-            before: together ? kept.before : kept ? kept.last : null
+            // A clock stepped back makes no rate; the read starts afresh.
+            before: kept && age > 0 ? kept.last : null
         };
-        stillReading = false;
         const mirrors = Traffic.mirrors(parsed(shaper.text()));
-        ask(Object.keys(all).filter(name => !mirrors.includes(name) && !known[name]?.sure));
+        probeFor(Object.keys(all).filter(name => !mirrors.includes(name) && !known[name]?.sure));
         if (!settled(reads))
             soon.restart();
+        caughtUp();
         if (shown)
             answered();
+    }
+
+    // The counters couldn't be loaded: nothing more is coming to wait for.
+    function uncounted() {
+        asked = 0;
+        stillReading = false;
     }
 
     // Where sysfs keeps each interface's folder; its case gives a folder
@@ -197,7 +219,7 @@ Provider {
     property var asking: []
     property var probing: null
 
-    function ask(names) {
+    function probeFor(names) {
         const queued = asking.map(one => one.name)
             .concat(probing && !probing.done ? [probing.name] : []);
         asking = asking.concat(names.filter(name => !queued.includes(name))
@@ -211,10 +233,12 @@ Provider {
         asking = asking.slice(1);
         if (probing !== null)
             probeFile();
+        else
+            caughtUp();
     }
 
     function probeFile() {
-        patience.restart();
+        probeWatch.restart();
         const name = probing.name;
         probed[name] = (probed[name] ?? 0) + 1;
         const path = `${interfaces}/${name}/${probing.files[0]}`;
@@ -254,7 +278,7 @@ Provider {
         if (reads?.last.all[one.name] !== undefined)
             interfaceKinds[one.name] = { kind: kind, uevent: uevent, sure: true };
         one.done = true;
-        patience.stop();
+        probeWatch.stop();
         Qt.callLater(probeNext);
         if (kind !== kept?.kind && shown)
             answered();
@@ -574,11 +598,15 @@ Provider {
     // A file that never lands, or a turn that throws, would leave the
     // probe waiting for good and every interface after it left out, so
     // one that takes this long is given up; the next load asks again.
+    // A read that lands after it's given up is taken for the probe then
+    // under way, if any, and corrected when that interface is next asked,
+    // after the next gap.
     Timer {
-        id: patience
+        id: probeWatch
         interval: 2 * provider.second
         onTriggered: {
             provider.probing = null;
+            probe.path = "";
             provider.probeNext();
         }
     }
@@ -591,6 +619,7 @@ Provider {
         path: provider.counterFile
         printErrors: false
         onLoaded: provider.counted()
+        onLoadFailed: provider.uncounted()
     }
     FileView {
         id: shaper
