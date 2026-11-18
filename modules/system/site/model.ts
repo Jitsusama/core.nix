@@ -6,7 +6,7 @@
 
 import type { Held } from "../../local-sites/kit/records.ts";
 import { object, text, texts } from "../../local-sites/kit/records.ts";
-import { type Ties, tiesOf } from "./ties.ts";
+import { copyable, type Ties, tiesOf } from "./ties.ts";
 
 /** How a part or thing stands, as the daemon words it. */
 type Health = "good" | "watch" | "bad" | "unread";
@@ -78,7 +78,7 @@ const NAMES: { readonly [part: string]: string } = {
 
 /**
  * How each health is said, in the system's own words as the `system`
- * command says them: in the legend, on the outlook and to a screen reader.
+ * command says them: in the legend and to a screen reader.
  */
 const WORDS: { readonly [health in Health]: string } = {
   good: "Good",
@@ -109,7 +109,7 @@ function healthOf(value: string | undefined): Health {
 
 /** The part's name as the page says it. */
 function named(part: string): string {
-  return NAMES[part] ?? part;
+  return Object.hasOwn(NAMES, part) ? (NAMES[part] ?? part) : part;
 }
 
 /** Figures as en-CA writes them, their thousands grouped. */
@@ -171,7 +171,11 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     holds: text(record, "holds"),
     things: keys.map((key) => thingOf(things, key, unread)).filter((thing) => thing !== undefined),
     untold: keys.filter((key) => things.get(key) === undefined).length,
-    deeper: { command: says("command"), site: says("site"), launcher: says("launcher") },
+    deeper: {
+      command: copyable(says("command")) ? says("command") : "",
+      site: says("site"),
+      launcher: says("launcher"),
+    },
   };
 }
 

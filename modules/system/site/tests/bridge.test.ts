@@ -123,6 +123,10 @@ it("rounds a pier's cells up once, never busy and idle apart", () => {
   );
   assert.ok(wide.includes("each dot is 2 cells"));
   assert.equal(count(wide, "<circle "), 73);
+  // Busy rounds up too, so kestrel's one idle cell shares its last dot with
+  // busy ones and is drawn busy; osprey's one busy of two fills its dot.
+  assert.equal(count(wide, 'class="busy"'), 73);
+  assert.equal(count(wide, 'class="idle"'), 0);
   const rows = new Set([...wide.matchAll(DOT_Y)].map((one) => one.groups?.["y"]));
   assert.equal(rows.size, 6);
 });

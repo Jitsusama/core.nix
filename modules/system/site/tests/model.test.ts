@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { escaped, headlineOf, legend, partsOf, placesOf } from "../draw.ts";
+import { machineHeadline } from "../machine.ts";
 import { allTold, systemOf } from "../model.ts";
 
 /** The three watches, told `these` whole, each to its kind's. */
@@ -175,6 +176,9 @@ const when = (at: string): string => `at ${at}`;
  * Where index.html leaves room for the legend: a list of its own, which
  * says its role outright, since Safari drops it from an unbulleted list.
  */
+/** A section's opening tag, cut off its `<section `, saying whose it is. */
+const OPENS_WITH_ITS_PART = /^[^>]*\bdata-part="[\w-]+"/u;
+
 const LEGEND_LIST = /<ul(?=[^>]*\bid="legend")(?=[^>]*\brole="list")[^>]*><\/ul>/u;
 
 it("the legend gives each health its own item: its own mark, then its word", () => {
@@ -233,6 +237,53 @@ it("says why there are no machines to draw when their part couldn't be read", ()
   );
   assert.ok(drawn.includes(`The mycelium couldn${escaped("'")}t be reached`));
   assert.ok(!drawn.includes('class="machine '), "a machine was drawn from an unread part");
+});
+
+it("counts the machines a part names whose records haven't come", () => {
+  const system = systemWith();
+  const { summary, part, machine } = told(
+    records.filter((record) => record.key !== "machine:osprey"),
+  );
+  const partial = systemOf(summary, part, machine);
+  assert.equal(system.parts[0]?.untold, 0);
+  assert.equal(partial?.parts[0]?.things.length, 1);
+  assert.equal(partial?.parts[0]?.untold, 1);
+  assert.ok(partial);
+  assert.equal(machineHeadline(partial).machines, "Two machines");
+});
+
+it("says the machines are awaited, not the part's own words, while none has come", () => {
+  const system = systemWith();
+  const { summary, part, machine } = told(records.filter((record) => record.kind !== "machine"));
+  const awaited = systemOf(summary, part, machine);
+  assert.ok(awaited);
+  const drawn = partsOf(awaited, when);
+  assert.ok(
+    drawn.includes('<p class="bare health unread">'),
+    "the awaited machines drew no line of their own",
+  );
+  assert.ok(drawn.includes("Two machines named, none read yet."));
+  assert.ok(!drawn.includes("Osprey has a filling disk"), "the part's words were said as read");
+  assert.ok(partsOf(system, when).includes('class="machine '));
+});
+
+it("draws no command a shell would read more into", () => {
+  const system = systemWith((record) =>
+    record.key === "part:code"
+      ? { ...record, deeper: { ...deeper, command: "system code | sh" } }
+      : record,
+  );
+  assert.equal(system.parts[1]?.deeper.command, "");
+  assert.ok(!partsOf(system, when).includes("system code | sh"));
+});
+
+it("puts every command y copies inside a section that says whose it is", () => {
+  const drawn = partsOf(systemWith(), when);
+  const sections = drawn.split("<section ").slice(1);
+  assert.ok(sections.some((section) => section.includes('class="copy"')));
+  for (const section of sections.filter((one) => one.includes('class="copy"'))) {
+    assert.match(section, OPENS_WITH_ITS_PART, `${section.slice(0, 60)} says no part`);
+  }
 });
 
 it("steps through each machine's rows, then the parts across them", () => {

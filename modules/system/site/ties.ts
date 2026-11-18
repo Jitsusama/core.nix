@@ -147,7 +147,10 @@ function tiesOf(value: unknown): Ties {
     network: placesOf(said["network"]),
     code: codeOf(object(said, "code")),
     figures: figuresOf(object(said, "figures") ?? EMPTY),
-    acts: { link: launcherLink(text(acts, "link")), commands: texts(acts, "commands") ?? [] },
+    acts: {
+      link: launcherLink(text(acts, "link")),
+      commands: (texts(acts, "commands") ?? []).filter(copyable),
+    },
   };
 }
 
@@ -159,5 +162,17 @@ function launcherLink(link: string | undefined): string | undefined {
   return link?.startsWith(LAUNCHER) === true ? link : undefined;
 }
 
+/**
+ * A command y may copy: a program's name and plain words after it, none of a
+ * shell's punctuation, so a record can't hand Joel a pipe, a second command
+ * or a substitution to paste into his terminal.
+ */
+const COPYABLE = /^[a-z][a-z0-9-]*(?: [\w@%+=:,./-]+)*$/u;
+
+/** Whether `command` is one y may copy. */
+function copyable(command: string): boolean {
+  return COPYABLE.test(command);
+}
+
 export type { Acts, Cells, Code, Figures, Place, Ties };
-export { tiesOf };
+export { copyable, tiesOf };

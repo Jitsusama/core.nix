@@ -19,7 +19,16 @@ import {
   type Said,
   standing,
 } from "./machine.ts";
-import { capital, type Health, named, type Part, type System, type Thing, WORDS } from "./model.ts";
+import {
+  capital,
+  type Health,
+  named,
+  numbered,
+  type Part,
+  type System,
+  type Thing,
+  WORDS,
+} from "./model.ts";
 
 /** The most machines drawn whole, worst first, so thousands stay short. */
 const MACHINES_DRAWN = 8;
@@ -97,6 +106,9 @@ function placesOf(system: System): string {
 
 /** A command and the button that copies it, which y presses for its section's first. */
 function command(said: string): string {
+  if (said === "") {
+    return "";
+  }
   const words = escaped(said);
   return `<span class="command"><code>${words}</code><button type="button" class="copy" data-command="${words}" aria-label="Copy ${words}">copy</button></span>`;
 }
@@ -213,6 +225,11 @@ function bareOf(system: System): string {
   const part = system.parts.find((one) => one.part === "machines");
   if (part === undefined || machinesOf(system).length > 0) {
     return "";
+  }
+  // Its machines' records still to come, its own words would say them read.
+  if (part.untold > 0) {
+    const awaited = `${capital(numbered(part.untold))} ${part.untold === 1 ? "machine" : "machines"}`;
+    return `<p class="bare health unread">${mark("unread")}${escaped(`${awaited} named, none read yet.`)}</p>`;
   }
   return `<p class="bare health ${part.health}">${mark(part.health)}${escaped(capital(part.says))}</p>`;
 }

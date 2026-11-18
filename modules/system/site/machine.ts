@@ -95,20 +95,22 @@ function machineHeadline(system: System): MachineHeadline {
   if (awaited || part.health === "unread") {
     return { machines: "Your machines", stand: "not read", health: "unread" };
   }
-  const { length } = things;
-  const machines = capital(`${numbered(length)} ${length === 1 ? "machine" : "machines"}`);
-  if (length === 0) {
+  // Those named whose records haven't come are counted, as not read.
+  const all = things.length + part.untold;
+  const machines = capital(`${numbered(all)} ${all === 1 ? "machine" : "machines"}`);
+  if (all === 0) {
     return { machines, stand: "none known", health: "unread" };
   }
   const stands = STANDS.map(([health, words]) => {
-    const count = things.filter((thing) => thing.health === health).length;
+    const untold = health === "unread" ? part.untold : 0;
+    const count = things.filter((thing) => thing.health === health).length + untold;
     return { health, count, words };
   }).filter((each) => each.count > 0);
   const [worst] = stands;
   if (worst === undefined) {
     return { machines, stand: "all ready", health: "good" };
   }
-  const stand = stands.map((each) => `${howMany(each.count, length)} ${each.words}`).join(" and ");
+  const stand = stands.map((each) => `${howMany(each.count, all)} ${each.words}`).join(" and ");
   return { machines, stand, health: worst.health };
 }
 
@@ -144,12 +146,15 @@ function restOf(others: readonly Part[]): string | undefined {
     .map((health) => others.find((part) => part.health === health && part.side.length > 0))
     .find((part) => part !== undefined);
   if (other !== undefined) {
-    return stopped(`And ${WHERE[other.part] ?? `in ${named(other.part)}`}: ${other.side[0] ?? ""}`);
+    const where = Object.hasOwn(WHERE, other.part) ? WHERE[other.part] : `in ${named(other.part)}`;
+    return stopped(`And ${where}: ${other.side[0] ?? ""}`);
   }
   const unread = others.find((part) => part.health === "unread");
   return unread === undefined
     ? undefined
-    : stopped(`And ${WHAT[unread.part] ?? named(unread.part)} couldn't be read: ${unread.says}`);
+    : stopped(
+        `And ${Object.hasOwn(WHAT, unread.part) ? WHAT[unread.part] : named(unread.part)} couldn't be read: ${unread.says}`,
+      );
 }
 
 /** How a node's system is said, its own word for one the page doesn't know. */

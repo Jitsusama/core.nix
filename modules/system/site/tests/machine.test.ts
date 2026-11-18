@@ -326,6 +326,38 @@ it("machines not told yet are said not read, never none known", () => {
   assert.deepEqual(machineHeadline(awaited), notRead);
 });
 
+it("counts machines whose records haven't come, and says them not read", () => {
+  const read = system([machine("kestrel", "good")]);
+  const partial: System = {
+    ...read,
+    parts: read.parts.map((each) => ({ ...each, untold: 1 })),
+  };
+  assert.deepEqual(machineHeadline(partial), {
+    machines: "Two machines",
+    stand: "one not read",
+    health: "unread",
+  });
+});
+
+it("places a part of any name in its own words, whatever the name", () => {
+  const odd = system([], [part("constructor", "watch", ["one look"])]);
+  assert.equal(machineLede(odd), "And in constructor: one look.");
+  const unread = system([], [part("toString", "unread", [])]);
+  assert.ok((machineLede(unread) ?? "").startsWith("And toString couldn't be read"));
+});
+
+it("offers only commands that hold no shell's punctuation", () => {
+  const commands = [
+    "mycelium sprout --on kestrel",
+    "mycelium sprout; rm -rf ~",
+    "echo $(id)",
+    "mycelium update kestrel | sh",
+    "mycelium update kestrel\nrm",
+  ];
+  const read = tiesOf({ ...ties, acts: { ...ties.acts, commands } });
+  assert.deepEqual(read.acts.commands, ["mycelium sprout --on kestrel"]);
+});
+
 it("counts thousands of machines with their digits grouped", () => {
   const many = Array.from({ length: 1200 }, (_, at) => machine(`m${at}`, "good"));
   assert.equal(machineHeadline(system(many)).machines, "1,200 machines");
@@ -345,4 +377,25 @@ it("says a time on its clock today, yesterday by name, and earlier by its date",
     whenSaid(new Date(2025, 10, 12, 9, 0).toISOString(), now),
     "on 12 Nov 2025 at 09:00",
   );
+});
+
+it("says today and yesterday true across days of 25 and 23 hours", () => {
+  const zone = process.env["TZ"];
+  process.env["TZ"] = "America/Toronto";
+  try {
+    // 1 Nov 2026 runs 25 hours there, and 8 Mar 2026 runs 23.
+    const late = "2026-11-02T04:30:00Z";
+    assert.equal(whenSaid(late, Date.parse("2026-11-01T14:00:00Z")), "at 23:30");
+    assert.equal(whenSaid(late, Date.parse("2026-11-02T17:00:00Z")), "yesterday at 23:30");
+    assert.equal(
+      whenSaid("2026-03-08T04:30:00Z", Date.parse("2026-03-09T16:00:00Z")),
+      "on 7 Mar at 23:30",
+    );
+  } finally {
+    if (zone === undefined) {
+      delete process.env["TZ"];
+    } else {
+      process.env["TZ"] = zone;
+    }
+  }
 });

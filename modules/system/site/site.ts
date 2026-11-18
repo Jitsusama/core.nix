@@ -40,9 +40,13 @@ const keys = element("#keys", HTMLDialogElement);
 const mast = element(".mast", HTMLElement);
 
 // Whatever the keys land on stays clear of the masthead, however many lines
-// it wraps to: on a phone its places and keys take three or four.
+// it wraps to. On a phone it scrolls away with the page, so nothing need
+// clear it there.
 const clearOfMast = new ResizeObserver(() => {
-  document.documentElement.style.scrollPaddingBlockStart = `${mast.offsetHeight}px`;
+  const sticks = getComputedStyle(mast).position === "sticky";
+  document.documentElement.style.scrollPaddingBlockStart = sticks
+    ? `${mast.offsetHeight}px`
+    : "0px";
 });
 clearOfMast.observe(mast);
 
@@ -58,6 +62,17 @@ const standings = new Map<string, Standing>();
 // The watches that have told their records whole, since a watch answers
 // every record it holds first, none included.
 const told = new Set<string>();
+// How long the page waits for every watch before it draws what it has, so
+// one stuck connecting never leaves it blank.
+const PATIENCE = 5000;
+let waiting = true;
+setTimeout(() => {
+  waiting = false;
+  draw();
+}, PATIENCE);
+// What the note last said of problems, so a redraw that finds the same ones
+// leaves the note, and what y said there, alone.
+let problemsSaid = "";
 // The last thing each watch couldn't read, said until it reads another.
 const heard = new Map<string, string>();
 
@@ -104,7 +119,11 @@ function sayWhen(): void {
     words.length === 0 ? "Reaching the system daemon." : `${words.join(" · ")}.`;
   standingLine.dataset["state"] = now?.state ?? "connecting";
   const problems = [...(system?.unread ?? []), ...heard.values()];
-  note.textContent = problems.length > 0 ? `Couldn't read: ${problems.join("; ")}.` : "";
+  const unreadNote = problems.length > 0 ? `Couldn't read: ${problems.join("; ")}.` : "";
+  if (unreadNote !== problemsSaid) {
+    problemsSaid = unreadNote;
+    note.textContent = unreadNote;
+  }
 }
 
 /** Every row the keys step through, in reading order. */
@@ -180,7 +199,7 @@ function markPlace(): void {
 }
 
 function draw(): void {
-  if (!allTold(KINDS, told, standings)) {
+  if (waiting && !allTold(KINDS, told, standings)) {
     sayWhen();
     return;
   }
@@ -265,19 +284,19 @@ function copy(command: string): void {
 }
 
 /**
- * The first command of the section the cursor is in, and none outside one,
- * so y never copies a machine's command the cursor isn't on.
+ * Copies the first command of the machine or part the cursor is in, or says
+ * why there is none, so y never copies a command the cursor isn't on.
  */
-function commandHere(): string | undefined {
-  const section = document.activeElement?.closest<HTMLElement>("[data-part]");
-  return section?.querySelector<HTMLButtonElement>("button.copy")?.dataset["command"];
-}
-
-/** Copies the command here, or says why there is none. */
 function copyHere(): void {
-  const command = commandHere();
+  const section = document.activeElement?.closest<HTMLElement>("[data-part]");
+  if (section === null || section === undefined) {
+    note.textContent =
+      "Nothing to copy here: y copies a command of the machine or part the cursor is on.";
+    return;
+  }
+  const command = section.querySelector<HTMLButtonElement>("button.copy")?.dataset["command"];
   if (command === undefined) {
-    note.textContent = "Nothing to copy here: y copies a command of the machine the cursor is on.";
+    note.textContent = "Nothing to copy here: this one has no command.";
     return;
   }
   copy(command);

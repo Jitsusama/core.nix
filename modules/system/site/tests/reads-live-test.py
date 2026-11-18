@@ -97,11 +97,21 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
     assert section_of_the_cursor(system_page) == "machine-1"
     keyboard.press("2")
     assert section_of_the_cursor(system_page) == "machine-2"
-    clear = system_page.evaluate(
-        "document.activeElement.getBoundingClientRect().top"
-        " >= document.querySelector('.mast').getBoundingClientRect().bottom"
-    )
-    assert clear is True, "the row the keys landed on sits under the masthead"
+    # From the page's end, 1 scrolls up to its row, which lands at the top
+    # edge: clear of the masthead only while the scroll padding holds it.
+    keyboard.press("G")
+    scrolled = system_page.evaluate("window.scrollY")
+    assert isinstance(scrolled, int | float)
+    assert scrolled > 0, "G didn't scroll the page"
+    keyboard.press("1")
+    assert section_of_the_cursor(system_page) == "machine-1"
+    landed = system_page.evaluate("document.activeElement.getBoundingClientRect().top")
+    mast = system_page.evaluate("document.querySelector('.mast').getBoundingClientRect().bottom")
+    assert isinstance(landed, int | float)
+    assert isinstance(mast, int | float)
+    assert landed >= mast, f"the row landed at {landed}, under the masthead to {mast}"
+    assert landed < mast + 40, f"the row landed at {landed}, not scrolled up to the masthead"
+    keyboard.press("2")
     keyboard.press("k")
     assert section_of_the_cursor(system_page) == "machine-1"
     place = system_page.locator('#places a[data-place="machine-2"]')
