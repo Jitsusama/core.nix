@@ -2,8 +2,9 @@
 //! record of it. A laptop whose embedded controller cuts the power leaves no
 //! word in the journal, since nothing ran to write one; the firmware keeps
 //! an error record across the cut instead, its boot error region (ACPI
-//! BERT), which modules/firmware-errors copies where an account may read it
-//! at every boot. No command owns that record, so this reads it, as the
+//! BERT), which modules/firmware-errors copies where an administrator may
+//! read it at every boot; for any other account it can't be read, and this
+//! says nothing. No command owns that record, so this reads it, as the
 //! machine's node will once it says it of every machine.
 //!
 //! It is worth a look for a day after the boot: long enough to be seen the
