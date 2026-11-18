@@ -15,6 +15,8 @@ use std::time::Duration;
 use crate::common::{Client, RELEASED_VALUE, Running, stored_folder, until};
 use serde_json::{Value, json};
 
+mod docker;
+mod fence;
 mod grants;
 mod history;
 mod watch;
@@ -578,9 +580,17 @@ fn a_released_command_is_kept_from_what_the_fence_hides() {
             && !copied.contains("npm-made-up-token"),
         "the copy of ~/.npmrc: {copied}"
     );
+    let empty = running.folder.join("runtime/passwords/emptied.json");
+    let docker = holds(&args, &[ro, &empty, &home.join(".docker/config.json")]);
+    assert!(
+        !args
+            .iter()
+            .any(|arg| Path::new(arg) == home.join(".kept-settings.json")),
+        "settings holding no credential were emptied: {args:?}"
+    );
     let tree = &running.folder;
     assert!(
-        holds(&args, &[Path::new("--bind"), tree, tree]) < first,
+        holds(&args, &[Path::new("--bind"), tree, tree]) < first.min(docker),
         "what the fence hides was hidden before the tree was bound writable: {args:?}"
     );
 }
@@ -682,36 +692,6 @@ fn a_released_command_without_throwaway_layers_reads_the_caches_that_take_them()
         !args.iter().any(|arg| arg.contains("overlay")),
         "a bubblewrap without layers was asked for one: {args:?}"
     );
-}
-
-#[test]
-fn an_ask_is_refused_unseen_without_the_fences_list_or_with_one_it_cant_read() {
-    let running = Running::releasing("asks-unfenced", &[LISTED]);
-    let bash = stored_bash();
-    let argv = saying(&bash);
-    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
-    std::fs::remove_file(running.fence_list()).unwrap();
-    let missing = "c123456789abcdef0123456789abcdef";
-    put_up(&running, missing, LISTED, &argv);
-    let answered = answer(&running, missing);
-    assert_eq!(answered["state"], "refused", "the answer: {answered}");
-    assert_eq!(
-        answered["why"], "no fence list to hide by",
-        "the answer: {answered}"
-    );
-    std::fs::write(
-        running.fence_list(),
-        crate::common::FENCE_LIST.replace("\"version\": 1", "\"version\": 2"),
-    )
-    .unwrap();
-    let unknown = "d123456789abcdef0123456789abcdef";
-    put_up(&running, unknown, LISTED, &argv);
-    let answered = answer(&running, unknown);
-    assert_eq!(
-        answered["why"], "no fence list to hide by",
-        "the answer: {answered}"
-    );
-    assert!(!released(&running), "the manager was asked to release");
 }
 
 #[test]

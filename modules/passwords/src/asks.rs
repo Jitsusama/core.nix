@@ -22,8 +22,10 @@
 //! runtime folder and pi's sessions are emptied, and so is all the
 //! fence's list names, read at every ask and every release so the
 //! harness's own update reaches it: each file, folder and link's target
-//! it lists, ~/.ssh but for its settings and public keys, and ~/.npmrc
-//! but for its tokens, as `fence.ts` hides them. Abstract sockets and
+//! it lists, ~/.ssh but for its settings and public keys, ~/.npmrc but
+//! for its tokens, as `fence.ts` hides them, and each file it empties
+//! where it holds a login, as Docker's settings, bound over with
+//! settings saying nothing. Abstract sockets and
 //! the network stay in its reach, as they do a fenced agent's.
 
 use std::collections::HashMap;
@@ -42,6 +44,8 @@ use serde_json::json;
 
 use crate::{Shared, ask_of, asking};
 
+mod emptied;
+mod npmrc;
 mod sweep;
 
 use sweep::Gits;
@@ -64,12 +68,23 @@ const NOT_ROOTS: &str = "not a root-owned program";
 const NOT_IN_A_PROFILE: &str =
     "not in a profile; ask for direnv exec . <cmd> to use the project's own tools";
 
-/// Why an ask is refused while the fence's list can't be read.
+/// Why an ask is refused while there's no fence list.
 const UNFENCED: &str = "no fence list to hide by";
 
-/// The fence's list's form this reads; any other is refused as unread,
-/// since what it hides may have moved.
-const FENCE_VERSION: u32 = 1;
+/// Why an ask is refused while the fence's list is there but unread, as
+/// one from a harness newer than this daemon, told apart from none.
+const UNREAD: &str = "a fence list this daemon can't read";
+
+/// The fence's list's forms this reads; any other is refused as unread,
+/// since what it hides may have moved. Version 2 is version 1 naming
+/// the files it empties, so a daemon from before those refuses a list
+/// naming them, rather than releasing with them whole: a version 1 list
+/// naming them, which such a daemon would read, is refused here too, and
+/// a version 2 list naming none is a list gone wrong.
+const FENCE_VERSIONS: std::ops::RangeInclusive<u32> = 1..=2;
+
+/// The version that names the files the list empties.
+const NAMES_EMPTIED: u32 = 2;
 
 /// The parts of a git folder git writes as it commits, fetches and
 /// rebases, bound back writable in a read-only one, as the fence's
@@ -94,14 +109,6 @@ const TOOL_CACHES: [&str; 2] = [".npm/_cacache", ".npm/_logs"];
 /// where bubblewrap lays none, reads them as they are.
 const LAYERED_CACHES: [&str; 3] = [".cargo/registry", ".cargo/git", ".gem"];
 
-/// A setting in npm's settings that is a credential, bare or for one
-/// registry, as `fence-npmrc.ts` finds it.
-const NPM_CREDENTIAL: &str = r"^\s*((?:[^=;#\s]*:)?_(?:authToken|auth|password))\s*=";
-
-/// A setting whose value is an address carrying a name and password,
-/// which npm sends as the registry's credential.
-const NPM_USERINFO: &str = r"^\s*([^=;#\s]+)\s*=.*://[^/@\s]+@";
-
 /// The agent fence's list of what it hides, as the harness publishes it.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -113,6 +120,16 @@ struct FenceList {
     ssh_kept: Vec<String>,
     /// npm's settings, from home.
     npmrc: Option<String>,
+    /// Files emptied only where they hold a credential, such as
+    /// Docker's settings, named from version 2 on.
+    emptied: Option<Vec<emptied::Emptied>>,
+}
+
+/// A list's version alone, read before its shape, since a version this
+/// daemon doesn't know may say its fields another way.
+#[derive(Deserialize)]
+struct Versioned {
+    version: u32,
 }
 
 /// The fence's list, read and its patterns made.
@@ -120,26 +137,64 @@ struct Fence {
     home: Vec<String>,
     ssh_kept: Vec<Regex>,
     npmrc: Option<String>,
+    emptied: Vec<emptied::Emptied>,
 }
 
 impl Fence {
-    /// The list at `path`, or none where it isn't there, isn't the form
-    /// this reads or a pattern won't make.
-    fn read(path: &Path) -> Option<Fence> {
-        let text = std::fs::read_to_string(path).ok()?;
-        let list: FenceList = serde_json::from_str(&text).ok()?;
-        if list.version != FENCE_VERSION {
-            return None;
+    /// The list at `path`, or why an ask is refused: none where it isn't
+    /// there, and unread where it can't be read, isn't a list, is of a
+    /// version this doesn't know, isn't that version's form or a pattern
+    /// won't make, the journal saying which.
+    fn read(path: &Path) -> Result<Fence, &'static str> {
+        let unread = |why: String| {
+            eprintln!("<3>passwords: {} {why}", path.display());
+            UNREAD
+        };
+        let text = std::fs::read_to_string(path).map_err(|why| {
+            if why.kind() == std::io::ErrorKind::NotFound {
+                return UNFENCED;
+            }
+            unread(format!("can't be read: {why}"))
+        })?;
+        let Versioned { version } = serde_json::from_str(&text)
+            .map_err(|why| unread(format!("isn't a fence list: {why}")))?;
+        if !FENCE_VERSIONS.contains(&version) {
+            return Err(unread(format!(
+                "is version {version}, not {} to {}",
+                FENCE_VERSIONS.start(),
+                FENCE_VERSIONS.end()
+            )));
         }
+        let list: FenceList = serde_json::from_str(&text)
+            .map_err(|why| unread(format!("isn't version {version}'s form: {why}")))?;
+        let emptied = match (list.version >= NAMES_EMPTIED, list.emptied) {
+            (true, Some(emptied)) => emptied,
+            (false, None) => Vec::new(),
+            (true, None) => {
+                return Err(unread(format!(
+                    "names no emptied files at version {}",
+                    list.version
+                )));
+            }
+            (false, Some(_)) => {
+                return Err(unread(format!(
+                    "names emptied files at version {}, which a daemon from before them ignores",
+                    list.version
+                )));
+            }
+        };
         let ssh_kept = list
             .ssh_kept
             .iter()
-            .map(|pattern| Regex::new(pattern).ok())
-            .collect::<Option<Vec<_>>>()?;
-        Some(Fence {
+            .map(|pattern| {
+                Regex::new(pattern).map_err(|why| unread(format!("can't make {pattern}: {why}")))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Fence {
             home: list.home,
             ssh_kept,
             npmrc: list.npmrc,
+            emptied,
         })
     }
 }
@@ -216,9 +271,9 @@ impl Passwords {
         }
     }
 
-    /// The fence's list as it stands now.
-    fn fence(&self) -> Option<Fence> {
-        Fence::read(self.hidden.as_deref()?)
+    /// The fence's list as it stands now, or why an ask is refused.
+    fn fence(&self) -> Result<Fence, &'static str> {
+        Fence::read(self.hidden.as_deref().ok_or(UNFENCED)?)
     }
 
     /// bubblewrap's arguments for what the command may write: its tree,
@@ -293,18 +348,104 @@ impl Passwords {
                 args.extend(["--ro-bind".into(), "/dev/null".into(), over.into()]);
             }
         }
-        args.extend(self.ssh(fence));
+        // One listing of ~/.ssh says both what's bound back in it and what
+        // may be bound over there, so the two never differ.
+        let ssh = self.ssh_kept(fence);
+        args.extend(Self::ssh(ssh.as_ref()));
         args.extend(self.npmrc(fence));
+        args.extend(self.emptied(fence, ssh.as_ref()));
+        args
+    }
+
+    /// bubblewrap's arguments emptying each file the list empties, where
+    /// it holds a credential the entry names or can't be read to tell. A
+    /// link's target is emptied rather than the link.
+    ///
+    /// Each is bound over with settings saying nothing, `{}`, since
+    /// Podman, the docker command here, refuses a file of no bytes. Where
+    /// that file can't be written, /dev/null is bound instead, so a login
+    /// is never left readable for want of it.
+    ///
+    /// A file a folder already made empty hides, one the list hides or
+    /// ~/.ssh but for the files it binds back, is left alone: the folder
+    /// hides it, and bubblewrap can't make a file to bind over inside it.
+    /// ~/.ssh is made empty again after the list's folders, so only its
+    /// own emptying says what it hides, the list naming it or not.
+    fn emptied(&self, fence: &Fence, ssh: Option<&(PathBuf, Vec<PathBuf>)>) -> Vec<OsString> {
+        let ssh = ssh.and_then(|(ssh, kept)| {
+            let kept: Vec<PathBuf> = kept.iter().filter_map(|path| real(path)).collect();
+            Some((real(ssh)?, kept))
+        });
+        let hidden: Vec<PathBuf> = fence
+            .home
+            .iter()
+            .filter_map(|listed| listed.strip_suffix('/'))
+            .filter_map(|named| real(&self.home.join(named)))
+            .filter(|folder| is_folder(folder))
+            .filter(|folder| ssh.as_ref().is_none_or(|(ssh, _)| folder != ssh))
+            .collect();
+        let mut args: Vec<OsString> = Vec::new();
+        let mut empty: Option<Result<PathBuf, String>> = None;
+        for listed in &fence.emptied {
+            let Some(over) = real(&self.home.join(&listed.path)) else {
+                continue;
+            };
+            if !is_file(&over)
+                || hidden.iter().any(|folder| over.starts_with(folder))
+                || ssh
+                    .as_ref()
+                    .is_some_and(|(ssh, kept)| over.starts_with(ssh) && !kept.contains(&over))
+            {
+                continue;
+            }
+            let holds = std::fs::read_to_string(&over)
+                .map_or(true, |text| emptied::empties(&text, &listed.when));
+            if holds {
+                let written = empty.get_or_insert_with(|| {
+                    self.written("emptied.json", "{}\n")
+                        .map_err(|why| why.to_string())
+                });
+                let source: OsString = match written {
+                    Ok(path) => path.clone().into(),
+                    Err(why) => {
+                        // Podman refuses /dev/null, so the journal says,
+                        // for each file, why Docker then fails.
+                        eprintln!(
+                            "<4>passwords: emptying {} with /dev/null, unwritten: {why}",
+                            over.display()
+                        );
+                        "/dev/null".into()
+                    }
+                };
+                args.extend(["--ro-bind".into(), source, over.into()]);
+            }
+        }
         args
     }
 
     /// bubblewrap's arguments for ~/.ssh: emptied, with only the files
     /// the fence keeps bound back read-only, so no private key or TPM
     /// key's handle can be read.
-    fn ssh(&self, fence: &Fence) -> Vec<OsString> {
+    fn ssh(listed: Option<&(PathBuf, Vec<PathBuf>)>) -> Vec<OsString> {
+        let Some((ssh, kept)) = listed else {
+            return Vec::new();
+        };
+        let mut args: Vec<OsString> = vec!["--tmpfs".into(), ssh.clone().into()];
+        for path in kept {
+            args.extend(["--ro-bind".into(), path.clone().into(), path.clone().into()]);
+        }
+        args.extend(["--remount-ro".into(), ssh.clone().into()]);
+        args
+    }
+
+    /// ~/.ssh where it's a folder itself, bubblewrap mounting on no link,
+    /// and the files directly in it the fence keeps, each a file itself,
+    /// in order: what `ssh` binds back, and all `emptied` may bind over
+    /// inside it, listed once a release for both so the two never differ.
+    fn ssh_kept(&self, fence: &Fence) -> Option<(PathBuf, Vec<PathBuf>)> {
         let ssh = self.home.join(".ssh");
         if !is_folder(&ssh) {
-            return Vec::new();
+            return None;
         }
         let mut entries: Vec<String> = std::fs::read_dir(&ssh)
             .map(|entries| {
@@ -315,71 +456,50 @@ impl Passwords {
             })
             .unwrap_or_default();
         entries.sort();
-        let mut args: Vec<OsString> = vec!["--tmpfs".into(), ssh.clone().into()];
-        for entry in entries {
-            let path = ssh.join(&entry);
-            if fence.ssh_kept.iter().any(|kept| kept.is_match(&entry)) && is_file(&path) {
-                args.extend(["--ro-bind".into(), path.clone().into(), path.into()]);
-            }
-        }
-        args.extend(["--remount-ro".into(), ssh.into()]);
-        args
+        let kept = entries
+            .into_iter()
+            .filter(|entry| fence.ssh_kept.iter().any(|kept| kept.is_match(entry)))
+            .map(|entry| ssh.join(entry))
+            .filter(|path| is_file(path))
+            .collect();
+        Some((ssh, kept))
     }
 
-    /// bubblewrap's arguments for npm's settings: a copy without their
-    /// credentials bound over them, or /dev/null where they hold one and
-    /// no copy can be written, so a token is never left readable for want
-    /// of a copy.
-    fn npmrc(&self, fence: &Fence) -> Vec<OsString> {
-        let Some(named) = &fence.npmrc else {
-            return Vec::new();
-        };
-        let Some(over) = real(&self.home.join(named)) else {
-            return Vec::new();
-        };
-        if !is_file(&over) {
-            return Vec::new();
-        }
-        let Ok(text) = std::fs::read_to_string(&over) else {
-            return vec!["--ro-bind".into(), "/dev/null".into(), over.into()];
-        };
-        let Some(kept) = without_npm_credentials(&text) else {
-            return Vec::new();
-        };
-        let copy = self.copy_of_npmrc(&kept);
-        let source: OsString = copy.map_or_else(|| "/dev/null".into(), Into::into);
-        vec!["--ro-bind".into(), source, over.into()]
-    }
-
-    /// Writes npm's settings without their credentials where only the
-    /// account reads them, in the daemon's own folder in the runtime
-    /// folder, whole or not at all.
-    fn copy_of_npmrc(&self, kept: &str) -> Option<PathBuf> {
+    /// Writes `kept` as `name` where only the account reads it, in the
+    /// daemon's own folder in the runtime folder, whole or not at all, as
+    /// npm's settings without their credentials are.
+    fn written(&self, name: &str, kept: &str) -> std::io::Result<PathBuf> {
         use std::io::Write;
         use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        // Releases run at once, so each writes under a name of its own and
+        // none renames another's file away or binds it half written.
+        static WRITES: AtomicU64 = AtomicU64::new(0);
         let folder = self.runtime.join("passwords");
         std::fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)
-            .create(&folder)
-            .ok()?;
-        let copy = folder.join("npmrc");
-        let writing = folder.join(format!("npmrc.{}", std::process::id()));
+            .create(&folder)?;
+        let copy = folder.join(name);
+        let write = WRITES.fetch_add(1, Ordering::Relaxed);
+        let writing = folder.join(format!("{name}.{}.{write}", std::process::id()));
+        // A daemon stopped mid-write before may have left this name, under
+        // a pid since given to this one.
         let _ = std::fs::remove_file(&writing);
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .mode(0o600)
-            .open(&writing)
-            .ok()?;
+            .open(&writing)?;
         let written = file
             .write_all(kept.as_bytes())
-            .and_then(|()| file.sync_all());
-        if written.is_err() || std::fs::rename(&writing, &copy).is_err() {
+            .and_then(|()| file.sync_all())
+            .and_then(|()| std::fs::rename(&writing, &copy));
+        if let Err(why) = written {
             let _ = std::fs::remove_file(&writing);
-            return None;
+            return Err(why);
         }
-        Some(copy)
+        Ok(copy)
     }
 
     /// The command's PATH: the profiles root alone chose, each where it
@@ -469,35 +589,6 @@ fn is_file(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file())
 }
 
-/// npm's settings with each credential's line replaced by a comment
-/// naming its setting, never its value, as `fence-npmrc.ts` makes them;
-/// or none where they hold no credential and need no copy.
-fn without_npm_credentials(text: &str) -> Option<String> {
-    let credential = Regex::new(NPM_CREDENTIAL).expect("npm's credential pattern makes");
-    let userinfo = Regex::new(NPM_USERINFO).expect("npm's address pattern makes");
-    let setting = |line: &str| {
-        credential
-            .captures(line)
-            .or_else(|| userinfo.captures(line))
-            .and_then(|found| found.get(1))
-            .map(|found| found.as_str().to_owned())
-    };
-    let lines: Vec<&str> = text.split('\n').collect();
-    if !lines.iter().any(|line| setting(line).is_some()) {
-        return None;
-    }
-    let kept: Vec<String> = lines
-        .iter()
-        .map(|line| {
-            setting(line).map_or_else(
-                || (*line).to_owned(),
-                |setting| format!("; {setting} is held back by the agent fence"),
-            )
-        })
-        .collect();
-    Some(kept.join("\n"))
-}
-
 /// Where a path comes to, followed one entry at a time, when only root
 /// chose each step: every folder and link on the way is root's, and no
 /// folder is writable by a group or anybody else unless it's sticky, as
@@ -564,8 +655,8 @@ impl Releaser for Passwords {
         if let Err(why) = self.program(named) {
             return Some(why.to_owned());
         }
-        if self.fence().is_none() {
-            return Some(UNFENCED.to_owned());
+        if let Err(why) = self.fence() {
+            return Some(why.to_owned());
         }
         None
     }
@@ -604,7 +695,7 @@ impl Releaser for Passwords {
     fn command(&self, ask: &Ask, value: &Secret) -> Result<Command, String> {
         let (named, rest) = ask.argv.split_first().ok_or("it names no program")?;
         let program = self.program(named)?;
-        let fence = self.fence().ok_or(UNFENCED)?;
+        let fence = self.fence()?;
         let path = std::env::join_paths(self.path()).map_err(|why| why.to_string())?;
         let mut command = Command::new(&self.bwrap);
         command
@@ -688,34 +779,6 @@ mod tests {
         assert_eq!(chosen_by_root(&link), None);
         assert_eq!(chosen_by_root(&link.join("bash")), None);
         std::fs::remove_dir_all(&mine).unwrap();
-    }
-
-    #[test]
-    fn npms_credentials_are_held_back_by_name_and_all_else_kept() {
-        let kept = without_npm_credentials(
-            "registry=https://registry.example/\n\
-             //registry.example/:_authToken=made-up\n\
-             _auth = made-up\n\
-             @scope:registry=https://name:made-up@registry.example/\n\
-             tokenHelper=/a/helper\n",
-        )
-        .expect("settings holding credentials need a copy");
-        assert_eq!(
-            kept,
-            "registry=https://registry.example/\n\
-             ; //registry.example/:_authToken is held back by the agent fence\n\
-             ; _auth is held back by the agent fence\n\
-             ; @scope:registry is held back by the agent fence\n\
-             tokenHelper=/a/helper\n"
-        );
-    }
-
-    #[test]
-    fn npms_settings_holding_no_credential_need_no_copy() {
-        assert_eq!(
-            without_npm_credentials("registry=https://registry.example/\n; a comment\n"),
-            None
-        );
     }
 
     #[test]
