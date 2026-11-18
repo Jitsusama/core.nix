@@ -191,17 +191,25 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
 }
 
 #[test]
-fn a_far_date_that_fails_once_keeps_the_wait_on_the_clock() {
+fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
     // Readings lost, as a date can fail on a busy machine, from a clock
     // some seconds on at each reading, and how many readings the wait
     // takes to end. The first two, before the wait has a time, whose
     // passes carry over to the clock with the one that found it: one that
     // forgot either takes seven, and one that chose its clock once reads
-    // it once. One inside it, on a clock two on a reading, which costs the
+    // it once. The same on a clock two on a reading: one that kept
+    // counting while it read the clock takes six. One inside it, on a clock two on a reading, which costs the
     // clock nothing: one that went back to counting takes five. Five in a
     // row inside it, each a pass: one that let a lost pass go uncounted
     // takes seven.
-    for (lost, step, readings) in [("0 1", 1, 6), ("1", 2, 4), ("1 2 3 4 5", 1, 6)] {
+    assert_eq!(super::WAITS, 5, "these counts are worked out for a 5s wait");
+    let cases = [
+        ("0 1", 1, 6),
+        ("0 1", 2, 5),
+        ("1", 2, 4),
+        ("1 2 3 4 5", 1, 6),
+    ];
+    for (lost, step, readings) in cases {
         let date = format!(
             "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
              echo $((n + 1)) > \"$HOME/clock\"\n\
@@ -224,8 +232,7 @@ fn a_far_date_that_fails_once_keeps_the_wait_on_the_clock() {
         assert_eq!(
             read.trim().parse::<u64>().ok(),
             Some(readings),
-            "a {}s wait whose date failed at reading {lost} read it wrongly often",
-            super::WAITS
+            "a wait whose date failed at readings {lost}, {step}s apart, read it wrongly often"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
