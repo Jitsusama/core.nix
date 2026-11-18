@@ -93,19 +93,6 @@
     "test": "vm-desktop-looks"
   },
   {
-    "at": 1794849317,
-    "commit": "8213d198a802746ea1634186cd295d7b71ca88e7",
-    "due": "2026-11-18",
-    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: Quickshell warns of a dangling screen as every screen goes",
-    "owner_pr": 4953,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at 8213d198a802",
-    "subtests": [
-      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
-    ],
-    "test": "vm-screens-keep-the-launcher"
-  },
-  {
     "at": 1794855899,
     "commit": "ae64e1cb0afab0edef976c2886b759858fdf29d0",
     "due": "2026-11-18",
