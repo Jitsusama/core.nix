@@ -164,12 +164,17 @@ reads processes from /proc alone; only the check's build reads a stand-in.
 
 Any other window an agent opens that takes the focus as it opens is put
 behind Joel's work (src/behind.rs): niri moves it, unfocused, to the empty
-workspace it keeps last on that screen, and the window Joel had focused is
-focused again. It's what niri does for a sandbox's windows
-(modules/niri/sandboxed-windows-stay-behind.patch), for agents outside one.
-The window shows for as long as niri takes to answer, a frame or two, so a
-key Joel presses then can reach it. One that opens unfocused, or takes the
-focus later, stays where it opened.
+workspace it keeps last on that screen. First the last of Joel's own
+windows that had the focus has it again, never another agent's, and only
+while the agent's window still holds it, so a window he focused himself
+meanwhile keeps it. It's like what niri does for a sandbox's windows
+(modules/niri/sandboxed-windows-stay-behind.patch), for agents outside one,
+though a window put behind can still ask to be activated later. The window
+shows for as long as niri takes to answer, a frame or two, so a key Joel
+presses then can reach it. One that opens unfocused, or takes the focus
+later, stays where it opened, as do the plain kitty windows Joel opens from
+a pi window, which the sessions' kitty runs. An X11 window is missed, as an
+X11 prompter is below.
 
 It stops an agent's accident, not an agent set on getting past it: the
 cgroup is a label an agent could change. Three gaps are known. gpg-agent

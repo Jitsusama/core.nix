@@ -119,7 +119,16 @@ def prompts_close(joel: Connection, cgroup: Path, lines: Path, told: Path, own: 
 def only_prompts_close(joel: Connection, lines: Path) -> list[str]:
     """Cases 3 and 4: the job's terminal stays, and a second prompt is closed but not told."""
     failures: list[str] = []
+    # Joel's own prompt, case 1's and niri's first, has the focus as the terminal opens, so it's
+    # his window the focus goes back to, not the agent's prompt case 2 only asked to close.
+    joels = min(
+        int(one["id"]) for one in ask("Windows")["Windows"] if one["app_id"] == "gcr-prompter"
+    )
+    ask({"Action": {"FocusWindow": {"id": joels}}})
+    settle(joel)
     before = focused_window()
+    if before != joels:
+        failures.append(f"6: Joel's prompt {joels} didn't take the focus, {before} has it")
     terminal = joel.window("foot")
     if not said(lines, 'an agent opened a window over Joel\'s work: "foot"'):
         failures.append(f"3: the journal never said the terminal: {lines.read_text()!r}")

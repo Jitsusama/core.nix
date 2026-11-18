@@ -8,19 +8,24 @@
 //! for agents that run outside a sandbox, known by their cgroup
 //! (unasked.rs), so it stops an agent's accident, not one set on it.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::{Value, json};
 
 use crate::order;
-use crate::unasked::Unasked;
+use crate::unasked::{self, Unasked};
 
-/// The window niri's focus is on, and the one it was on before, as the
-/// event stream says them.
+/// The window niri's focus is on, and the last of Joel's it was on before,
+/// as the event stream says them. An agent's window is never the one
+/// before, so a second agent's window opening focused gives the focus
+/// back to Joel's rather than to the first, which would bring Joel's view
+/// to where that one was hidden.
 #[derive(Default, Debug)]
 pub struct Focus {
     now: Option<u64>,
     before: Option<u64>,
+    agents: BTreeSet<u64>,
 }
 
 impl Focus {
@@ -45,11 +50,32 @@ impl Focus {
                 said["window"]["id"].as_u64()
             }
             "WindowFocusChanged" => said["id"].as_u64(),
+            "WindowClosed" => {
+                let gone = said["id"].as_u64();
+                if self.before == gone {
+                    self.before = None;
+                }
+                if let Some(gone) = gone {
+                    self.agents.remove(&gone);
+                }
+                return;
+            }
             _ => return,
         };
         if to != self.now {
-            self.before = self.now;
+            if self.now.is_some_and(|now| !self.agents.contains(&now)) {
+                self.before = self.now;
+            }
             self.now = to;
+        }
+    }
+
+    /// Marks `window` as an agent's, so it's never the one given the
+    /// focus back.
+    pub fn agents(&mut self, window: u64) {
+        self.agents.insert(window);
+        if self.before == Some(window) {
+            self.before = None;
         }
     }
 
@@ -63,6 +89,14 @@ impl Focus {
             None
         }
     }
+}
+
+/// Whether an agent's window is put behind when it takes the focus: not a
+/// prompt, which is closed instead, nor a window of the sessions' own
+/// kitty, whose plain windows Joel opens from a pi window himself.
+#[must_use]
+pub fn moved(unasked: &Unasked) -> bool {
+    !unasked::prompts(&unasked.app) && unasked.unit != "sessions-kitty.service"
 }
 
 /// The workspace a window that just opened focused opened on, from the
@@ -96,20 +130,43 @@ pub fn emptiest(workspaces: &[Value], on: u64) -> Option<u64> {
         .and_then(|workspace| workspace["id"].as_u64())
 }
 
+/// Where niri's focus is now, by window, or `None` when niri didn't say;
+/// `Some(None)` when no window has it.
+fn focused(niri: &Path) -> Option<Option<u64>> {
+    let answer = order::answer(niri, &json!("FocusedWindow"))?;
+    let window = answer.get("Ok")?.get("FocusedWindow")?;
+    Some(window["id"].as_u64())
+}
+
 /// Puts an agent's window that took the focus behind Joel's work, off
-/// the stream's thread so no event waits on niri: moved without focus to
-/// the empty workspace last on its screen, then the window he had
-/// focused, `back`, focused again. Each step niri refuses is said in the
-/// journal and ends it.
+/// the stream's thread so no event waits on niri. The window he had
+/// focused, `back`, is focused again first, so his keys leave the
+/// agent's window as soon as they can, and only while the agent's window
+/// still has the focus, so a window he focused himself meanwhile keeps
+/// it, as order.rs's putting back leaves his own press. Then the agent's
+/// window moves without focus to the empty workspace last on its screen.
+/// Each step niri refuses is said in the journal; a refused move ends it.
 pub fn put(niri: &Path, unasked: &Unasked, on: u64, back: Option<u64>) {
     let niri = niri.to_owned();
     let window = unasked.window;
     let from = unasked.unit.clone();
     std::thread::spawn(move || {
-        let listed = order::answer(&niri, &json!("Workspaces"));
-        let workspaces = listed
-            .as_ref()
-            .and_then(|listed| listed["Ok"]["Workspaces"].as_array())
+        if let Some(back) = back
+            && focused(&niri) == Some(Some(window))
+        {
+            let again = json!({"Action": {"FocusWindow": {"id": back}}});
+            if let Some(why) = order::refused(&niri, &again) {
+                eprintln!(
+                    "<4>niri didn't focus window {back} again after an agent's took it: {why}"
+                );
+            }
+        }
+        let Some(listed) = order::answer(&niri, &json!("Workspaces")) else {
+            eprintln!("<4>niri didn't list its workspaces, so agent's window {window} stayed");
+            return;
+        };
+        let workspaces = listed["Ok"]["Workspaces"]
+            .as_array()
             .map_or(&[][..], Vec::as_slice);
         let Some(behind) = emptiest(workspaces, on) else {
             eprintln!("<4>niri had no empty workspace to put an agent's window {window} behind");
@@ -125,13 +182,6 @@ pub fn put(niri: &Path, unasked: &Unasked, on: u64, back: Option<u64>) {
             return;
         }
         eprintln!("<4>put an agent's window behind Joel's work: window {window}, from {from}");
-        let Some(back) = back else {
-            return;
-        };
-        let again = json!({"Action": {"FocusWindow": {"id": back}}});
-        if let Some(why) = order::refused(&niri, &again) {
-            eprintln!("<4>niri didn't focus window {back} again after an agent's took it: {why}");
-        }
     });
 }
 
@@ -168,6 +218,63 @@ mod tests {
             focus.taken_by(1),
             None,
             "a window without the focus was taken to have taken it"
+        );
+    }
+
+    #[test]
+    fn a_second_agents_window_gives_the_focus_back_to_joels_not_the_firsts() {
+        let mut focus = Focus::default();
+        focus.heard(&event(
+            r#"{"WindowsChanged":{"windows":[{"id":2,"is_focused":true}]}}"#,
+        ));
+        // Opening focused says the focus moved, with no WindowFocusChanged.
+        focus.heard(&event(
+            r#"{"WindowOpenedOrChanged":{"window":{"id":7,"is_focused":true}}}"#,
+        ));
+        focus.agents(7);
+        assert_eq!(
+            focus.taken_by(7),
+            Some(2),
+            "a window opening focused, with no focus change said, didn't give back Joel's"
+        );
+        focus.heard(&event(
+            r#"{"WindowOpenedOrChanged":{"window":{"id":8,"is_focused":true}}}"#,
+        ));
+        focus.agents(8);
+        assert_eq!(
+            focus.taken_by(8),
+            Some(2),
+            "a second agent's window gave the focus back to the first agent's"
+        );
+        focus.heard(&event(r#"{"WindowClosed":{"id":2}}"#));
+        focus.heard(&event(r#"{"WindowFocusChanged":{"id":9}}"#));
+        assert_eq!(
+            focus.taken_by(9),
+            None,
+            "a closed window, or an agent's, was kept as the one to give the focus back to"
+        );
+    }
+
+    #[test]
+    fn the_sessions_own_kitty_and_prompts_are_never_moved() {
+        let opened = |app: &str, unit: &str| Unasked {
+            window: 7,
+            app: app.to_owned(),
+            title: String::new(),
+            unit: unit.to_owned(),
+            folder: None,
+        };
+        assert!(
+            moved(&opened("foot", "run-r1.scope")),
+            "an agent's terminal wasn't moved"
+        );
+        assert!(
+            !moved(&opened("kitty", "sessions-kitty.service")),
+            "a kitty window Joel opened from a pi window was moved"
+        );
+        assert!(
+            !moved(&opened("gcr-prompter", "run-r1.scope")),
+            "a prompt was moved rather than left to be closed"
         );
     }
 

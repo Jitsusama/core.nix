@@ -370,9 +370,10 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
         focus.heard(&event);
         if let Some(unasked) = watched.heard(&event, cgroup, folder) {
             eprintln!("{}", unasked::line(&unasked));
+            focus.agents(unasked.window);
             // A prompt is closed instead, below.
             if let Some(on) = behind::opened_focused(&event)
-                && !unasked::prompts(&unasked.app)
+                && behind::moved(&unasked)
             {
                 behind::put(niri, &unasked, on, focus.taken_by(unasked.window));
             }
