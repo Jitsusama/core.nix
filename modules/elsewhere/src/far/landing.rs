@@ -41,6 +41,10 @@ const OPEN_NONBLOCKING: i32 = 0x4;
 /// share one.
 static NEXT_LANDING: AtomicU32 = AtomicU32::new(0);
 
+/// How many landing names a landing tries before it gives up: more than
+/// any run killed in the last minute under the same process id leaves.
+const LANDING_TRIES: usize = 64;
+
 /// Puts `from` at `into` under a name of its own first and then moves it
 /// there, so whatever is already at `into`, a hard link to a file
 /// elsewhere or a symbolic link, is replaced rather than written through.
@@ -52,22 +56,8 @@ pub(super) fn land(from: &Path, into: &Path, swept: &mut HashSet<PathBuf>) -> io
         sweep(parent);
     }
     let mut source = opened_plain(from)?;
-    let bits = source.metadata()?.permissions().mode() & LANDS_WITH;
-    // Made new, so nothing already at the name, a link perhaps, is opened,
-    // and short, so any name that fits its folder lands.
-    let landing = parent.join(format!(
-        "{MARK}-{}-{}",
-        std::process::id(),
-        NEXT_LANDING.fetch_add(1, Ordering::Relaxed)
-    ));
-    // Made with its bits, so the umask takes what it would from any new
-    // file. They always let its owner read it, as it was read to land, so
-    // a sweep can open it if its run is killed.
-    let mut to = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(bits)
-        .open(&landing)?;
+    let bits = landing_bits(source.metadata()?.permissions().mode());
+    let (landing, mut to) = landing_name(parent, bits)?;
     let landed = held(&to)
         .and_then(|()| io::copy(&mut source, &mut to))
         .and_then(|_| fs::rename(&landing, into));
@@ -75,6 +65,42 @@ pub(super) fn land(from: &Path, into: &Path, swept: &mut HashSet<PathBuf>) -> io
         // What's left would be in the person's folder; it's spent anyway.
         let _ = fs::remove_file(&landing);
     })
+}
+
+/// The bits a file of `mode` lands with, before the umask: never setuid,
+/// setgid, sticky or writable by anyone.
+fn landing_bits(mode: u32) -> u32 {
+    mode & LANDS_WITH
+}
+
+/// Makes a landing name in `parent` with `bits`, passing over any a run
+/// killed under the same process id left too young to sweep.
+fn landing_name(parent: &Path, bits: u32) -> io::Result<(PathBuf, fs::File)> {
+    for _ in 0..LANDING_TRIES {
+        // Made new, so nothing already at the name, a link perhaps, is
+        // opened, and short, so any name that fits its folder lands.
+        let landing = parent.join(format!(
+            "{MARK}-{}-{}",
+            std::process::id(),
+            NEXT_LANDING.fetch_add(1, Ordering::Relaxed)
+        ));
+        // Made with its bits, so the umask takes what it would from any
+        // new file. They always let its owner read it, as it was read to
+        // land, so a sweep can open it if its run is killed.
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(bits)
+            .open(&landing)
+        {
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            opened => return opened.map(|file| (landing, file)),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!("{LANDING_TRIES} landing names in a row were taken"),
+    ))
 }
 
 /// Locks a landing name while it lands, so a sweep knows it is no

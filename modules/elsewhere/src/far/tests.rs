@@ -2,7 +2,9 @@ use super::{Missed, bring_back, crossing, listed, plain_quest, quoted, script, s
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
-fn kind(setup: &str) -> Kind {
+mod crossing;
+
+pub(super) fn kind(setup: &str) -> Kind {
     Kind {
         description: String::new(),
         programs: vec!["tla-rs".into()],
@@ -165,10 +167,15 @@ fn a_name_a_share_keeps_home_crosses_marked_and_a_marked_one_twice() {
 
 /// How long the far line waits for a job's files in these tests, in
 /// seconds, rather than the five minutes a real crossing gets.
-const WAITS: u64 = 5;
+pub(super) const WAITS: u64 = 5;
+
+/// How many files, and bytes, a share carries in these tests' far lines,
+/// so a test can pass them without making ten thousand files.
+pub(super) const SHARE_FILES: usize = 4;
+pub(super) const SHARE_BYTES: u64 = 1000;
 
 /// The job's handover folder in a far run's `home`.
-fn handover(home: &Path) -> PathBuf {
+pub(super) fn handover(home: &Path) -> PathBuf {
     home.join(format!(
         ".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/{}/1",
         super::HANDOVER
@@ -180,7 +187,11 @@ fn handover(home: &Path) -> PathBuf {
 /// own, and answers how it ended, what it said on stderr, and the home.
 /// It waits only `WAITS` for the files, so a list they never match ends
 /// quickly.
-fn far_run(list: &str, files: &[(&str, &str)], run: &str) -> (Option<i32>, String, PathBuf) {
+pub(super) fn far_run(
+    list: &str,
+    files: &[(&str, &str)],
+    run: &str,
+) -> (Option<i32>, String, PathBuf) {
     far_line(list, files, run, &kind(""), None, &[])
 }
 
@@ -188,7 +199,7 @@ fn far_run(list: &str, files: &[(&str, &str)], run: &str) -> (Option<i32>, Strin
 /// `meanwhile` to the job's tree a second after it starts, as a share
 /// still crossing would, with each of `programs`, a name and its script,
 /// ahead of the rest on its path.
-fn far_line(
+pub(super) fn far_line(
     list: &str,
     files: &[(&str, &str)],
     run: &str,
@@ -238,6 +249,16 @@ fn far_line(
     );
     assert!(line.contains(&waits), "the far line's wait moved:\n{line}");
     let line = line.replace(&waits, &format!("-ge {WAITS}"));
+    let most = format!(
+        "most_files={} most_bytes={}",
+        super::MOST_FILES,
+        super::MOST_BYTES
+    );
+    assert!(line.contains(&most), "the far line's totals moved:\n{line}");
+    let line = line.replace(
+        &most,
+        &format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
+    );
     let far = std::process::Command::new("sh")
         .args(["-c", &line])
         .env("HOME", &home)
@@ -261,9 +282,7 @@ fn far_line(
 
 #[test]
 fn what_is_left_is_listed_at_the_size_its_copy_came_to() {
-    let root = std::env::temp_dir().join(format!("elsewhere-left-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
+    let root = scratch("left");
     std::fs::write(root.join("x"), "xyz").unwrap();
     let job = root.join("job");
     super::left(&root, ["x"], &job).unwrap();
@@ -389,7 +408,7 @@ fn what_a_share_can_t_carry_is_refused_and_the_rest_lands_at_once() {
     let large = super::LARGEST_FILE + 1;
     std::fs::write(
         job.join(super::BROUGHT),
-        format!("{large}\tout/a\n1\tout/b\nend\n"),
+        format!(">{large}\tout/a\n1\tout/b\nend\n"),
     )
     .unwrap();
     let into = home.join("near");
@@ -411,7 +430,8 @@ fn what_a_share_can_t_carry_is_refused_and_the_rest_lands_at_once() {
         Some("b"),
         "one too large for a share stopped the rest landing"
     );
-    // More files than a share carries at all are refused at once too.
+    // A far side saying more crossed than a share carries at all is
+    // refused at once, rather than waited for.
     let many = "1\tout/x\n".repeat(super::MOST_FILES + 1);
     std::fs::write(job.join(super::BROUGHT), format!("{many}end\n")).unwrap();
     let landed = bring_back(&job, &into, &["out".into()], WAITS);
@@ -433,19 +453,26 @@ fn what_a_share_can_t_carry_is_refused_and_the_rest_lands_at_once() {
 #[test]
 fn the_far_side_lists_what_a_share_can_t_hold_but_never_copies_it() {
     let large = super::LARGEST_FILE + 1;
-    let (code, err, home) = far_run(
+    // The large one in a folder brought back first, so it comes before
+    // the rest whatever order find walks a folder in.
+    let mut kind = kind("");
+    kind.brings_back = vec!["big".into(), "out".into()];
+    let (code, err, home) = far_line(
         "1\tx\nend\n",
         &[("x", "x")],
         &format!(
-            "mkdir out && printf a > out/a && \
-             dd if=/dev/zero of=out/big bs=1 count=0 seek={large} 2>/dev/null"
+            "mkdir big out && printf a > out/a && \
+             dd if=/dev/zero of=big/big bs=1 count=0 seek={large} 2>/dev/null"
         ),
+        &kind,
+        None,
+        &[],
     );
     assert_eq!(code, Some(0), "the job didn't run: {err}");
     let job = handover(&home);
     let list = std::fs::read_to_string(job.join(super::BROUGHT)).unwrap();
     assert!(
-        list.contains(&format!("{large}\tout/big\n")),
+        list.contains(&format!(">{large}\tbig/big\n")),
         "what a share can't hold wasn't listed at its size: {list}"
     );
     assert_eq!(
@@ -454,10 +481,11 @@ fn the_far_side_lists_what_a_share_can_t_hold_but_never_copies_it() {
         "what a share can't hold was copied to cross: {list}"
     );
     let into = home.join("near");
-    let landed = bring_back(&job, &into, &["out".into()], WAITS);
+    let landed = bring_back(&job, &into, &kind.brings_back, WAITS);
     assert!(
         matches!(&landed, Err(Missed::Refused(why))
-            if why.contains("out/big is") && why.contains("the other 1 landed")),
+            if why.contains(&format!("big/big is {large} bytes"))
+                && why.contains("the other 1 landed")),
         "what a share can't hold wasn't refused beside the rest: {landed:?}"
     );
     assert_eq!(
@@ -580,8 +608,7 @@ fn past_a_file_refused_for_a_link_the_rest_lands() {
 
 #[test]
 fn what_comes_back_never_lands_through_a_link_out_of_its_folder() {
-    let home = std::env::temp_dir().join(format!("elsewhere-links-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
+    let home = scratch("links");
     // What the far side left, written here in an order of its own: a
     // line the kind doesn't bring back first, so each file's number is
     // its line in the list, then out/a ahead of out/b.

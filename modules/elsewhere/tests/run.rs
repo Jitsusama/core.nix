@@ -413,6 +413,26 @@ fn a_job_told_there_that_can_t_go_says_why_and_is_never_made_here() {
         emptied(&realm.handover()),
         "the handover kept a job that never left"
     );
+    // What another try meets again isn't the far side being away.
+    let output = realm.run_in(
+        &["run", "check", "--there", "--", "/bin/sh", "-c", "pwd"],
+        None,
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(78),
+        "--there with no quest to carry it didn't end 78: {:?}",
+        said(&output)
+    );
+    realm.settings("far");
+    realm.tracked("named\twith a tab", "");
+    let output = realm.check(&["--there"], "pwd");
+    assert_eq!(
+        output.status.code(),
+        Some(77),
+        "--there with a file it can't carry didn't end 77: {:?}",
+        said(&output)
+    );
 }
 
 #[test]
@@ -509,8 +529,8 @@ fn a_far_job_whose_output_won_t_land_fails_saying_so() {
     let (_, err) = said(&output);
     assert_eq!(
         output.status.code(),
-        Some(1),
-        "a job whose output didn't land didn't end 1: {err}"
+        Some(77),
+        "a job whose output didn't land didn't end 77: {err}"
     );
     for says in ["couldn't land here", "out/n didn't land", "--here"] {
         assert!(err.contains(says), "it didn't say {says}: {err}");

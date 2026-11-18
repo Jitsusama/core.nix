@@ -337,7 +337,8 @@ echo {started}
   }} && exec {job_line}
 )
 code=$?
-mkdir -p "$job/{BACK}"
+# Made fresh, so no copy is written through whatever sat at its number.
+rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
 {bringing}echo {END} >> "$job/{BROUGHT}"
 cd "$HOME" && rm -rf "$work" "$job/{TREE}"
 exit "$code"
@@ -368,26 +369,36 @@ fn bringing(kind: &Kind) -> String {
     -exec printf "elsewhere: %s is a link, so it isn't brought back\n" {{}} \; >&2
   find "$path" -type f ! -path '*/.*' ! -name '.*'
 done | {{
-  n=0 files=0 bytes=0
+  n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
+  # One that can't be read or copied keeps its number, listed with no
+  # size, so the near side lands the rest and says it's missing.
+  missing() {{
+    rm -f "$job/{BACK}/$n"
+    printf "elsewhere: %s didn't come back\n" "$file" >&2
+    printf '%s\t%s\n' - "$file"
+    n=$((n + 1))
+  }}
+  # One past what a share holds, alone or with what crossed before it,
+  # is listed marked with its size and never crosses, so the near side
+  # lands the rest and says why without waiting for it.
+  past() {{
+    [ $1 -gt {LARGEST_FILE} ] || [ $((files + 1)) -gt $most_files ] ||
+      [ $(($bytes + $1)) -gt $most_bytes ]
+  }}
+  kept() {{
+    rm -f "$job/{BACK}/$n"
+    printf '>%s\t%s\n' $(($1)) "$file"
+    n=$((n + 1))
+  }}
   while IFS= read -r file; do
-    # One past what a share holds is listed but never copied, so it never
-    # crosses and the near side lands the rest and says why.
-    size=$(($(wc -c < "$file")))
-    [ "$size" -le {LARGEST_FILE} ] && files=$((files + 1)) && bytes=$((bytes + size))
-    if [ "$size" -gt {LARGEST_FILE} ] || [ "$files" -gt {MOST_FILES} ] || [ "$bytes" -gt {MOST_BYTES} ]; then
-      printf '%s\t%s\n' "$size" "$file"
-      n=$((n + 1))
-      continue
-    fi
-    # One that won't copy keeps its number, listed with no size, so the
-    # near side lands the rest and says it's missing.
-    cp "$file" "$job/{BACK}/$n" || {{
-      printf "elsewhere: %s didn't come back\n" "$file" >&2
-      printf '%s\t%s\n' - "$file"
-      n=$((n + 1))
-      continue
-    }}
-    printf '%s\t%s\n' "$(($(wc -c < "$job/{BACK}/$n")))" "$file"
+    size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
+    past $size && {{ kept $size; continue; }}
+    cp "$file" "$job/{BACK}/$n" && copied=$(wc -c < "$job/{BACK}/$n") ||
+      {{ missing; continue; }}
+    # Only what crossed counts toward the totals, at the size it crossed.
+    past $copied && {{ kept $copied; continue; }}
+    files=$((files + 1)) bytes=$(($bytes + $copied))
+    printf '%s\t%s\n' $(($copied)) "$file"
     n=$((n + 1))
   done
 }} > "$job/{BROUGHT}"
@@ -469,6 +480,16 @@ fn brought_back(path: &str, brings_back: &[String]) -> bool {
         })
 }
 
+/// What the far side's list `text` says it kept back as past what a share
+/// holds, each its size and path, of what the kind brings back.
+fn kept<'a>(text: &'a str, brings_back: &'a [String]) -> impl Iterator<Item = (u64, &'a str)> {
+    text.lines().filter_map(move |line| {
+        let (size, path) = line.strip_prefix('>')?.split_once('\t')?;
+        let size = size.parse().ok()?;
+        brought_back(path, brings_back).then_some((size, path))
+    })
+}
+
 /// Why what a job made didn't all come home.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Missed {
@@ -491,8 +512,9 @@ impl Missed {
     }
 }
 
-/// Whether `files`, each no larger than a share holds, are more than it
-/// holds at all, so the far side never copied the rest of them.
+/// Whether `files`, all said to have crossed, are more than a share
+/// carries, which only a far side counting otherwise than this one's
+/// would say, so nobody waits for what never crosses.
 fn too_many(files: &[Brought]) -> Option<String> {
     let bytes = files
         .iter()
@@ -507,8 +529,10 @@ fn too_many(files: &[Brought]) -> Option<String> {
 }
 
 /// Copies what the far machine brought back for the job in the handover
-/// folder `job` into `folder`, once it has all crossed `within` seconds,
-/// or says why not. Everything that can land does, whatever else didn't.
+/// folder `job` into `folder`, once it has all crossed, or says why not.
+/// It waits up to `within` seconds past the last time more crossed, and
+/// then lands what did. Everything that can land does, whatever else
+/// didn't.
 pub fn bring_back(
     job: &Path,
     folder: &Path,
@@ -518,52 +542,69 @@ pub fn bring_back(
     if brings_back.is_empty() {
         return Ok(0);
     }
-    let numbered = |brought: &Brought| job.join(BACK).join(brought.number.to_string());
-    let arrived = |files: &[Brought]| {
-        // Only a plain file, since a link crossing would be followed.
-        files.iter().all(|brought| {
-            fs::symlink_metadata(numbered(brought))
-                .is_ok_and(|meta| meta.is_file() && meta.len() == brought.size)
-        })
-    };
-    for look in 0..=within {
+    let (mut waited, mut most, mut seen) = (0, 0, None);
+    loop {
         let text = fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();
         if let Some(files) = listed(&text, brings_back) {
-            // One past what a share holds in a file the far side never
-            // copies, so only the rest is waited for.
-            let (fits, large): (Vec<_>, Vec<_>) = files
-                .into_iter()
-                .partition(|brought| brought.size <= LARGEST_FILE);
-            if let Some(why) = too_many(&fits) {
+            if let Some(why) = too_many(&files) {
                 return Err(Missed::Refused(why));
             }
-            if arrived(&fits) {
-                return landed(job, folder, brings_back, &text, &fits, &large);
+            let crossed: u64 = files
+                .iter()
+                .map(|brought| crossing_so_far(job, brought))
+                .sum();
+            let (whole, short): (Vec<_>, Vec<_>) = files
+                .into_iter()
+                .partition(|brought| crossing_so_far(job, brought) == brought.size);
+            if short.is_empty() {
+                return landed(job, folder, brings_back, &text, &whole, &[]);
             }
+            // A share still carrying it is no share that lost it.
+            if crossed > most {
+                (most, waited) = (crossed, 0);
+            }
+            seen = Some((text, whole, short));
         }
-        if look == SAYS_IT_WAITS {
+        if waited >= within {
+            break;
+        }
+        if waited == SAYS_IT_WAITS {
             eprintln!("waiting up to {within}s for what it made to come home");
         }
         // Each end of a shared quest looks once a second, so looking more
         // often finds nothing new.
         std::thread::sleep(std::time::Duration::from_secs(1));
+        waited += 1;
     }
-    Err(Missed::Lost(format!(
-        "it didn't cross home within {within}s"
-    )))
+    match seen {
+        Some((text, whole, short)) => landed(job, folder, brings_back, &text, &whole, &short),
+        None => Err(Missed::Lost(format!(
+            "it didn't cross home within {within}s"
+        ))),
+    }
+}
+
+/// How much of `brought` has crossed into the handover folder `job`, up
+/// to its listed size: none unless it's a plain file, since a link
+/// crossing would be followed.
+fn crossing_so_far(job: &Path, brought: &Brought) -> u64 {
+    fs::symlink_metadata(job.join(BACK).join(brought.number.to_string()))
+        .ok()
+        .filter(fs::Metadata::is_file)
+        .map_or(0, |meta| meta.len().min(brought.size))
 }
 
 /// Lands `files`, all crossed whole into the handover folder `job`, in
 /// `folder`, all but those that would land through a link they mustn't,
-/// and says what didn't land, come back from the far side or cross for
-/// being `large`, `text` being the far side's list.
+/// and says what didn't land, what the far side kept or couldn't bring
+/// back, by `text`, its list, and what never crossed `short`.
 fn landed(
     job: &Path,
     folder: &Path,
     brings_back: &[String],
     text: &str,
     files: &[Brought],
-    large: &[Brought],
+    short: &[Brought],
 ) -> Result<usize, Missed> {
     let (mut refused, mut unlanded, mut landed) = (Vec::new(), Vec::new(), 0);
     let mut swept = HashSet::new();
@@ -582,11 +623,12 @@ fn landed(
             Err(error) => unlanded.push(format!("{} didn't land: {error}", brought.path)),
         }
     }
-    refused.extend(large.iter().map(|brought| {
-        format!(
-            "{} is {} bytes, past the {LARGEST_FILE} a share holds in one file",
-            brought.path, brought.size
-        )
+    refused.extend(kept(text, brings_back).map(|(size, path)| {
+        if size > LARGEST_FILE {
+            format!("{path} is {size} bytes, past the {LARGEST_FILE} a share holds in one file")
+        } else {
+            format!("{path} is past the {MOST_FILES} files or {MOST_BYTES} bytes a share carries")
+        }
     }));
     let mut missed: Vec<String> = refused.iter().chain(&unlanded).cloned().collect();
     let lost: Vec<&str> = text
@@ -599,6 +641,10 @@ fn landed(
             "{} didn't come back from the far side",
             lost.join(", ")
         ));
+    }
+    if !short.is_empty() {
+        let short: Vec<&str> = short.iter().map(|brought| brought.path.as_str()).collect();
+        missed.push(format!("{} didn't cross home", short.join(", ")));
     }
     if missed.is_empty() {
         return Ok(landed);

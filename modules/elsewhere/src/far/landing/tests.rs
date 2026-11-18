@@ -103,6 +103,12 @@ fn a_file_lands_under_a_long_name_without_its_special_bits() {
         0o775 & allowed,
         "it landed with setuid or a write for anyone, or past the umask: {mode:o}"
     );
+    // What the umask and the sandbox hide above, said outright.
+    assert_eq!(
+        super::landing_bits(0o7777),
+        0o775,
+        "a landing keeps setuid, setgid, sticky or a write for anyone"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -171,5 +177,33 @@ fn a_folder_is_swept_once_a_bring_back() {
     land(&root.join("from"), &root.join("b"), &mut swept).unwrap();
     assert!(left.exists(), "a folder already swept was swept again");
     assert_eq!(swept.len(), 1, "a folder swept was counted twice");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_young_name_left_under_this_process_s_id_is_passed_over() {
+    let root = scratch("young");
+    std::fs::write(root.join("from"), "new").unwrap();
+    // A run killed moments ago under this process's id, as a pid comes
+    // round again, left the names this one would take next.
+    let next = super::NEXT_LANDING.load(std::sync::atomic::Ordering::Relaxed);
+    let own = std::process::id();
+    let left: Vec<_> = (next..next + 32)
+        .map(|number| root.join(format!("{MARK}-{own}-{number}")))
+        .collect();
+    for path in &left {
+        std::fs::write(path, "old").unwrap();
+    }
+    landed(&root.join("from"), &root.join("into")).expect("a young leftover stopped it");
+    assert_eq!(
+        std::fs::read_to_string(root.join("into")).unwrap(),
+        "new",
+        "what landed wasn't what came back"
+    );
+    assert!(
+        left.iter().all(|path| path.exists()),
+        "a young leftover was taken: {:?}",
+        names(&root)
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
