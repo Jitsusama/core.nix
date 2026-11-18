@@ -1,8 +1,9 @@
 //! What a machine's ties to the other three parts (parts/ties.rs) are
 //! said in, in a terminal: its cells, its network, its code and itself,
-//! each as its main words and what goes beside them. The system page says
-//! the same ties in the same words (site/machine.ts), each opening with a
-//! capital there and lower case here, where each follows its label.
+//! each as its main words and what goes beside them. The system page's
+//! machines say the same ties in the same words, each opening with a
+//! capital there and lower case here, where each follows its label; a
+//! word changed here is changed there in the same change.
 
 use serde_json::Value;
 use terminal_kit::time::span;
@@ -48,22 +49,24 @@ pub fn cells(ties: &Value) -> Said {
         return Said::new(NOT_READ, "the mycelium's health couldn't be had");
     };
     let of = |key: &str| cells.get(key).and_then(Value::as_u64).unwrap_or(0);
-    let busy = match of("busy") {
+    let none_or = |count: u64| match count {
         0 => "none".to_owned(),
-        busy => grouped(busy),
+        count => grouped(count),
+    };
+    let said = match (of("busy"), of("idle")) {
+        (0, 0) => "none busy or idle".to_owned(),
+        (busy, idle) => format!("{} busy and {} idle", none_or(busy), none_or(idle)),
     };
     let aside = match of("ended") {
         0 => "none has ended".to_owned(),
         ended => format!("and {} that have ended", grouped(ended)),
     };
-    Said::new(
-        format!("{busy} busy and {} idle", grouped(of("idle"))),
-        aside,
-    )
+    Said::new(said, aside)
 }
 
 /// Where a machine meets the network, a clause for each place, and how
-/// well: its radio's signal, and the most room any place has.
+/// well each reaches, in the same order: its radio's signal and its room,
+/// so no place's figure is said as another's.
 pub fn network(ties: &Value) -> Said {
     let Some(places) = ties.get("network").and_then(Value::as_array) else {
         return Said::new(NOT_READ, "the network's answer couldn't be had");
@@ -75,23 +78,30 @@ pub fn network(ties: &Value) -> Said {
         );
     }
     let said = places.iter().map(meets).collect::<Vec<_>>().join(", and ");
-    let how = places
-        .iter()
-        .filter(|place| place.get("by").and_then(Value::as_str) != Some("wired"))
-        .find_map(|place| place.get("bars").and_then(Value::as_u64))
-        .map(signal);
-    let room = places
-        .iter()
-        .filter_map(|place| place.get("room_mbps").and_then(Value::as_f64))
-        .reduce(f64::max)
-        .map(|mbps| format!("{} Mb/s of room", mbps.round()));
-    let aside = match (how, room) {
-        (Some(how), Some(room)) => format!("{how}, with {room}"),
-        (Some(how), None) => how.to_owned(),
-        (None, Some(room)) => format!("with {room}"),
-        (None, None) => "how much room it has isn't measured".to_owned(),
+    let reaches: Vec<String> = places.iter().filter_map(reach).collect();
+    let aside = if reaches.is_empty() {
+        "how much room it has isn't measured".to_owned()
+    } else {
+        reaches.join("; ")
     };
     Said::new(said, aside)
+}
+
+/// How well one place reaches, as far as it's measured: a radio's signal,
+/// then its room.
+fn reach(place: &Value) -> Option<String> {
+    let how = (place.get("by").and_then(Value::as_str) != Some("wired"))
+        .then(|| place.get("bars").and_then(Value::as_u64).map(signal))
+        .flatten();
+    let room = place
+        .get("room_mbps")
+        .and_then(Value::as_f64)
+        .map(|mbps| format!("{} Mb/s of room", mbps.round()));
+    match (how, room) {
+        (Some(how), Some(room)) => Some(format!("{how}, with {room}")),
+        (Some(how), None) => Some(how.to_owned()),
+        (None, room) => room,
+    }
 }
 
 /// Where one place meets the network, as a clause. Wi-Fi is a name, so it
@@ -120,25 +130,38 @@ fn signal(bars: u64) -> &'static str {
 }
 
 /// A machine's code, counted where it was read, and said not read from
-/// another, as `repos` reads only the machine it runs on.
-pub fn code(ties: &Value, name: &str) -> Said {
+/// another, as `repos` reads only the machine it runs on; on the machine
+/// it's read on, `here`, no code is a read that failed.
+pub fn code(ties: &Value, name: &str, here: bool) -> Said {
     let Some(code) = ties.get("code").filter(|code| code.is_object()) else {
+        if here {
+            return Said::new(NOT_READ, "repos couldn't be had");
+        }
         return Said::new(
             "not read from here",
             format!("its code is read on {name} itself"),
         );
     };
     let of = |key: &str| code.get(key).and_then(Value::as_u64).unwrap_or(0);
+    let behind = match of("behind") {
+        behind @ (0 | 1) => format!(
+            "{} behind its upstream",
+            many(behind, "checkout", "checkouts")
+        ),
+        behind => format!(
+            "{} behind their upstreams",
+            many(behind, "checkout", "checkouts")
+        ),
+    };
     Said::new(
         format!(
-            "{} in {}",
-            many(of("repositories"), "repository", "repositories"),
-            many(of("checkouts"), "checkout", "checkouts")
+            "{} of {}",
+            many(of("checkouts"), "checkout", "checkouts"),
+            many(of("repositories"), "repository", "repositories")
         ),
         format!(
-            "{}; {} behind their upstream; {}",
+            "{}; {behind}; {}",
             many(of("trees"), "tree", "trees"),
-            many(of("behind"), "checkout", "checkouts"),
             many(of("changes"), "open change", "open changes")
         ),
     )
@@ -167,14 +190,16 @@ pub fn itself(ties: &Value, now: i64) -> Said {
         ));
     }
     if let Some(charge) = number("charge") {
-        let on_battery = figures.get("on_battery").and_then(Value::as_bool) == Some(true);
-        clauses.push(if on_battery {
-            format!("{charge}% charged, on battery")
-        } else if charge >= FULL {
-            "fully charged and plugged in".to_owned()
-        } else {
-            format!("{charge}% charged and plugged in")
-        });
+        let full = charge >= FULL;
+        clauses.push(
+            match (figures.get("on_battery").and_then(Value::as_bool), full) {
+                (Some(true), _) => format!("{charge}% charged, on battery"),
+                (Some(false), true) => "fully charged and plugged in".to_owned(),
+                (Some(false), false) => format!("{charge}% charged and plugged in"),
+                (None, true) => "fully charged".to_owned(),
+                (None, false) => format!("{charge}% charged"),
+            },
+        );
     }
     let parts = [
         (!clauses.is_empty()).then(|| clauses.join(", ")),
@@ -187,11 +212,13 @@ pub fn itself(ties: &Value, now: i64) -> Said {
 }
 
 /// A machine's last update, as a clause, when its node says one: how long
-/// ago it was, where its time reads, and how it ended.
+/// ago it was, where its time reads and isn't ahead of this clock, and
+/// how it ended.
 fn updated(figures: &Value, now: i64) -> Option<String> {
     let at = figures.get("updated_at").and_then(Value::as_str)?;
-    let ago =
-        moment(at).map(|then| format!("{} ago", span(now.saturating_sub(then).unsigned_abs())));
+    let ago = moment(at)
+        .filter(|then| *then <= now)
+        .map(|then| format!("{} ago", span(now.saturating_sub(then).unsigned_abs())));
     let step = figures.get("update_step").and_then(Value::as_str);
     Some(match (step, ago) {
         (Some("done"), Some(ago)) => format!("updated {ago}"),
@@ -224,9 +251,14 @@ pub fn kind(ties: &Value, name: &str, here: &str) -> Option<String> {
     Some(words.into_iter().chain(this).collect::<Vec<_>>().join(", "))
 }
 
-/// `count` of a thing, `one` or `more` as it's one or not.
+/// `count` of a thing, `one` or `more` as it's one or not, and no `one`
+/// for none.
 fn many(count: u64, one: &str, more: &str) -> String {
-    format!("{} {}", grouped(count), if count == 1 { one } else { more })
+    match count {
+        0 => format!("no {one}"),
+        1 => format!("1 {one}"),
+        count => format!("{} {more}", grouped(count)),
+    }
 }
 
 /// A count with its thousands set apart by commas, as Canada writes one.
@@ -253,9 +285,16 @@ fn size(bytes: f64) -> String {
 }
 
 /// The moment an RFC 3339 time in UTC names, `2026-11-17T22:45:18Z`, in
-/// seconds since 1970, by Howard Hinnant's days-from-civil arithmetic, as
-/// the kit's `time` says one; none for any other form.
+/// seconds since 1970, as the kit's `time` says one; none for any other
+/// form, or for a field out of its range, which the kit wouldn't say back
+/// as it was given.
 fn moment(at: &str) -> Option<i64> {
+    civil(at).filter(|seconds| terminal_kit::time::rfc3339(*seconds) == at)
+}
+
+/// The seconds since 1970 an RFC 3339 time's fields add up to, by Howard
+/// Hinnant's days-from-civil arithmetic, whatever their range.
+fn civil(at: &str) -> Option<i64> {
     let at = at.strip_suffix('Z')?;
     let (date, time) = at.split_once('T')?;
     let numbers = |text: &str, sep: char| -> Option<Vec<i64>> {
@@ -301,6 +340,11 @@ mod tests {
             of(0, 3, 5),
             said("none busy and 3 idle", "and 5 that have ended")
         );
+        assert_eq!(of(4, 0, 0), said("4 busy and none idle", "none has ended"));
+        assert_eq!(
+            of(0, 0, 1),
+            said("none busy or idle", "and 1 that have ended")
+        );
         assert_eq!(
             cells(&json!({"cells": null})),
             said("not read", "the mycelium's health couldn't be had")
@@ -308,15 +352,23 @@ mod tests {
     }
 
     #[test]
-    fn the_network_says_each_place_and_how_well_it_reaches() {
+    fn the_network_says_each_place_and_how_well_each_reaches() {
         let at = |places: Value| network(&json!({"network": places}));
         let wifi = json!({"by": "5 GHz", "point": "Hall", "bars": 5, "room_mbps": 183});
         let wired = json!({"by": "wired", "point": "Den", "bars": null, "room_mbps": 941});
         assert_eq!(
-            at(json!([wired, wifi])),
+            at(json!([wired, wifi.clone()])),
             said(
                 "wired to the Den point, and Wi-Fi to the Hall point, on 5 GHz",
-                "a strong signal, with 941 Mb/s of room"
+                "941 Mb/s of room; a strong signal, with 183 Mb/s of room"
+            ),
+            "each place's figures stay with it, in the order the places are said"
+        );
+        assert_eq!(
+            at(json!([wifi])),
+            said(
+                "Wi-Fi to the Hall point, on 5 GHz",
+                "a strong signal, with 183 Mb/s of room"
             )
         );
         let weak = json!({"by": "2.4 GHz", "point": null, "bars": 2, "room_mbps": null});
@@ -344,18 +396,32 @@ mod tests {
 
     #[test]
     fn code_is_counted_where_it_was_read_and_said_unread_elsewhere() {
-        let read = json!({"code": {"repositories": 12, "checkouts": 1, "trees": 3,
+        let read = json!({"code": {"repositories": 12, "checkouts": 14, "trees": 3,
                                    "behind": 1, "changes": 0}});
         assert_eq!(
-            code(&read, "kestrel"),
+            code(&read, "kestrel", true),
             said(
-                "12 repositories in 1 checkout",
-                "3 trees; 1 checkout behind their upstream; 0 open changes"
+                "14 checkouts of 12 repositories",
+                "3 trees; 1 checkout behind its upstream; no open change"
+            )
+        );
+        let more = json!({"code": {"repositories": 1, "checkouts": 1, "trees": 0,
+                                   "behind": 2, "changes": 1}});
+        assert_eq!(
+            code(&more, "kestrel", true),
+            said(
+                "1 checkout of 1 repository",
+                "no tree; 2 checkouts behind their upstreams; 1 open change"
             )
         );
         assert_eq!(
-            code(&json!({"code": null}), "osprey"),
+            code(&json!({"code": null}), "osprey", false),
             said("not read from here", "its code is read on osprey itself")
+        );
+        assert_eq!(
+            code(&json!({"code": null}), "kestrel", true),
+            said("not read", "repos couldn't be had"),
+            "on the machine it's read on, an unread code is a read that failed"
         );
     }
 
@@ -391,6 +457,45 @@ mod tests {
                 "40% charged, on battery; its last update says building"
             )
         );
+        let unsaid = json!({"figures": {"disk_free": 2_000_000_000_000_u64, "charge": 40}});
+        assert_eq!(
+            itself(&unsaid, now),
+            said("2 TB free", "40% charged"),
+            "a charge whose node doesn't say its plug says no plug"
+        );
+        let ahead = json!({"figures": {"disk_free": 2_000_000_000_000_u64,
+                                       "updated_at": "2025-11-17T23:25:18Z",
+                                       "update_step": "done"}});
+        assert_eq!(
+            itself(&ahead, now),
+            said("2 TB free", "updated"),
+            "an update stamped ahead of this clock says no age rather than a false one"
+        );
+    }
+
+    #[test]
+    fn a_moment_is_read_back_from_the_kits_own_times_and_no_other_form() {
+        for seconds in [
+            0,
+            951_782_400,   // 2000-02-29, a leap day of a century leap year.
+            1_709_251_199, // 2024-02-29T23:59:59Z.
+            1_735_689_599, // 2024-12-31T23:59:59Z.
+            1_763_420_718,
+            4_102_444_800, // 2100-01-01, after a century that isn't a leap year.
+        ] {
+            let at = terminal_kit::time::rfc3339(seconds);
+            assert_eq!(moment(&at), Some(seconds), "{at}");
+        }
+        for odd in [
+            "2025-11-17T22:45:18.5Z",
+            "2025-11-17T22:45:18+00:00",
+            "2025-13-17T22:45:18Z",
+            "2025-02-30T22:45:18Z",
+            "2025-11-17T24:45:18Z",
+            "soon",
+        ] {
+            assert_eq!(moment(odd), None, "{odd}");
+        }
     }
 
     #[test]

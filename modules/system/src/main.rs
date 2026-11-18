@@ -74,12 +74,18 @@ fn run(context: &Context) -> Result<(), Failure> {
         }
         [machine, name] if machine == "machine" => {
             let system = read();
-            let missing = || {
-                Failure::new(
+            let missing = || match system.machines_unread() {
+                Some(why) => Failure::new(
+                    Exit::Unavailable,
+                    "system couldn't read which machines there are",
+                )
+                .because(why)
+                .try_this("mycelium machines"),
+                None => Failure::new(
                     Exit::NotFound,
                     format!("no part lists a machine named {name}"),
                 )
-                .try_this("system")
+                .try_this("system"),
             };
             if context.format().is_json() {
                 context.answer(&system.machine(name).ok_or_else(missing)?)
@@ -135,7 +141,7 @@ pub(crate) fn read() -> System {
                 &health,
                 net.as_ref().ok(),
                 repos.as_ref().ok(),
-                backup_age(),
+                backup(),
             ),
             parts::mycelium(&health),
             parts::network(&net),
@@ -173,22 +179,20 @@ fn sites() -> Option<PathBuf> {
     Some(data.join("jitsusama/sites"))
 }
 
-/// How long ago, in seconds, this machine's quest backup last landed, as
-/// the backup writes it under its state home (epoch seconds); none where
-/// this machine keeps no backup or the file says no time.
-fn backup_age() -> Option<u64> {
+/// How this machine's quest backup last landed, as the backup writes it
+/// under its state home (epoch seconds); none where this machine keeps no
+/// backup.
+fn backup() -> Option<parts::Backup> {
     let state = std::env::var_os("XDG_STATE_HOME")
         .filter(|state| !state.is_empty())
         .map(PathBuf::from)
         .or_else(|| {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
         })?;
-    let landed: i64 = std::fs::read_to_string(state.join("quest-backup/landed"))
-        .ok()?
-        .trim()
-        .parse()
-        .ok()?;
-    Some(now().saturating_sub(landed).max(0).unsigned_abs())
+    parts::backup(
+        std::fs::read_to_string(state.join("quest-backup/landed")),
+        now(),
+    )
 }
 
 fn now() -> i64 {

@@ -4,8 +4,9 @@
 //! reasons (what a node reports, and what Joel can act on from a machine),
 //! which the other three parts don't share.
 
+use std::io;
+
 use serde_json::Value;
-use terminal_kit::time::span;
 
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
@@ -20,6 +21,51 @@ const LOW_CHARGE: u64 = 20;
 const BACKUP_LATE: u64 = 2 * 3_600;
 /// A quest backup older than this, in seconds, is failing.
 const BACKUP_FAILING: u64 = 6 * 3_600;
+/// How far ahead of this clock, in seconds, a landing may say it was
+/// before it's taken as a time this clock can't count from: a clock's
+/// small step back is no fault.
+const BACKUP_AHEAD: i64 = 60;
+/// An hour, in seconds, the unit a late backup is said in.
+const HOUR: u64 = 3_600;
+/// Where a late backup's run says why, where its runs are user services.
+const BACKUP_HINT: &str = if cfg!(target_os = "linux") {
+    " (journalctl --user -u quest-backup says why)"
+} else {
+    ""
+};
+
+/// How this machine's quest backup last landed, as its landing file says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backup {
+    /// It landed this many seconds ago.
+    Landed(u64),
+    /// Its file is there but says no time this clock can count from, and
+    /// why.
+    Unread(&'static str),
+}
+
+/// What a quest backup's landing file, as read, says at `now`, in seconds
+/// since 1970; none where there's no file, as on a machine keeping no
+/// backup. A file that can't be read, says no time, or says a time ahead
+/// of this clock is said, since a broken writer would otherwise go quiet.
+pub fn backup(read: io::Result<String>, now: i64) -> Option<Backup> {
+    let text = match read {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
+        Err(_) => return Some(Backup::Unread("its landing file can't be read")),
+    };
+    let Ok(landed) = text.trim().parse::<i64>() else {
+        return Some(Backup::Unread("its landing file says no time"));
+    };
+    if landed > now.saturating_add(BACKUP_AHEAD) {
+        return Some(Backup::Unread(
+            "its landing file says a time ahead of this clock",
+        ));
+    }
+    Some(Backup::Landed(
+        now.saturating_sub(landed).max(0).unsigned_abs(),
+    ))
+}
 
 /// The parts of another machine's own health this takes in: those only
 /// that machine reads. Its machines, mycelium and network are the same
@@ -31,14 +77,14 @@ const ITS_OWN: [&str; 1] = ["code"];
 /// The machines of the realm, from `mycelium machines`, each with its
 /// sessions from `mycelium health` where that was read, and its ties to
 /// the network and the code from `net --json` and `repos --json` where
-/// those were, and this machine's with how long ago its quest backup
-/// last landed, in seconds, where it keeps one.
+/// those were, and this machine's with how its quest backup last landed,
+/// where it keeps one.
 pub fn machines(
     machines: &Answer,
     health: &Answer,
     net: Option<&Value>,
     repos: Option<&Value>,
-    backup: Option<u64>,
+    backup: Option<Backup>,
 ) -> Part {
     let deeper = Deeper {
         command: "mycelium machines",
@@ -153,7 +199,7 @@ fn machine(
     said: &Value,
     sessions: Option<&Value>,
     own: Option<&Value>,
-    backup: Option<u64>,
+    backup: Option<Backup>,
 ) -> (Thing, Vec<String>) {
     let mut words = Said::default();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
@@ -228,8 +274,8 @@ fn machine(
             _ => {}
         }
     }
-    if let Some(age) = backup {
-        backup_looks(&mut words, age);
+    if let Some(backup) = backup {
+        backup_looks(&mut words, backup);
     }
     let Said {
         mut line,
@@ -273,22 +319,32 @@ fn ago_said(seconds: u64) -> String {
     }
 }
 
-/// A quest backup that last landed `age` seconds ago, said only once it
-/// is late, with where to read why.
-fn backup_looks(words: &mut Said, age: u64) {
+/// A quest backup, said only once it is late, with where to read why, or
+/// when when it last landed can't be told. A late one is said in whole
+/// hours, so its words change once an hour rather than each minute, and
+/// every watcher isn't sent them anew.
+fn backup_looks(words: &mut Said, backup: Backup) {
+    let age = match backup {
+        Backup::Unread(why) => {
+            words.look(
+                Health::Watch,
+                format!("can't tell when its quest backup last landed ({why})"),
+                "quest backup unread".to_owned(),
+            );
+            return;
+        }
+        Backup::Landed(age) => age,
+    };
     let health = match age {
         age if age > BACKUP_FAILING => Health::Bad,
         age if age > BACKUP_LATE => Health::Watch,
         _ => return,
     };
+    let hours = age / HOUR;
     words.look(
         health,
-        format!(
-            "landed its quest backup {} ago \
-             (journalctl --user -u quest-backup says why)",
-            span(age)
-        ),
-        format!("quest backup {} old", span(age)),
+        format!("hasn't landed a quest backup in {hours} h{BACKUP_HINT}"),
+        format!("no quest backup in {hours} h"),
     );
 }
 
@@ -342,7 +398,7 @@ mod tests {
                 &Err(String::new()),
                 None,
                 None,
-                age,
+                age.map(Backup::Landed),
             );
             let of = |name: &str| {
                 part.things
@@ -360,17 +416,25 @@ mod tests {
         assert_eq!(health, Health::Watch);
         assert_eq!(
             laptop.says,
-            "landed its quest backup 2 h 1 m ago \
+            "hasn't landed a quest backup in 2 h \
              (journalctl --user -u quest-backup says why)"
         );
-        assert_eq!(laptop.side, ["quest backup 2 h 1 m old"]);
+        assert_eq!(laptop.side, ["no quest backup in 2 h"]);
+        assert_eq!(
+            at(Some(2 * 3_600 + 59 * 60)).1.says,
+            laptop.says,
+            "its words keep to whole hours, so a watcher isn't sent them anew each minute"
+        );
         assert_eq!(
             desk_late.health,
             Health::Good,
             "only this machine's backup is read"
         );
+        let (health, laptop, _) = at(Some(6 * 3_600));
+        assert_eq!((health, laptop.health), (Health::Watch, Health::Watch));
         let (health, laptop, _) = at(Some(6 * 3_600 + 1));
         assert_eq!((health, laptop.health), (Health::Bad, Health::Bad));
+        assert_eq!(laptop.side, ["no quest backup in 6 h"]);
         let (health, laptop, _) = at(None);
         assert_eq!(
             (health, laptop.says.as_str()),
@@ -378,6 +442,51 @@ mod tests {
             "a machine keeping no backup says nothing of one"
         );
         assert_eq!(desk.health, Health::Good);
+    }
+
+    #[test]
+    fn a_landing_file_says_its_age_and_one_that_cant_be_counted_is_worth_a_look() {
+        let now = 1_000_000;
+        let read = |text: &str| backup(Ok(text.to_owned()), now);
+        assert_eq!(read("999000\n"), Some(Backup::Landed(1_000)));
+        assert_eq!(
+            backup(Err(io::ErrorKind::NotFound.into()), now),
+            None,
+            "no file is a machine keeping no backup"
+        );
+        assert_eq!(
+            backup(Err(io::ErrorKind::PermissionDenied.into()), now),
+            Some(Backup::Unread("its landing file can't be read"))
+        );
+        assert_eq!(
+            read("yesterday"),
+            Some(Backup::Unread("its landing file says no time"))
+        );
+        assert_eq!(
+            read("1000030"),
+            Some(Backup::Landed(0)),
+            "a clock's small step back"
+        );
+        assert_eq!(
+            read("1003600"),
+            Some(Backup::Unread(
+                "its landing file says a time ahead of this clock"
+            ))
+        );
+        let part = super::machines(
+            &Ok(realm(&[laptop(&[], "healthy")])),
+            &Err(String::new()),
+            None,
+            None,
+            read("yesterday"),
+        );
+        let laptop = &part.things[0];
+        assert_eq!(laptop.health, Health::Watch);
+        assert_eq!(
+            laptop.says,
+            "can't tell when its quest backup last landed (its landing file says no time)"
+        );
+        assert_eq!(laptop.side, ["quest backup unread"]);
     }
 
     fn laptop(over: &[&str], band: &str) -> Value {

@@ -38,7 +38,9 @@ A machine's record is its thing, as in `things` below, with its `key`
 (`machine:NAME`), `part`, and the `machine` and `read_at` it was read
 at.
 
-`system machine` exits 66 (not found) for a name no part lists; a name is
+`system machine` exits 66 (not found) for a name no part lists, and 69
+(unavailable) when the machines couldn't be read at all, so a node that
+isn't answering is never taken for a machine that isn't there; a name is
 as the node says it, case and all.
 
 The object has `schema` (system.view/1), `machine` (where it was read),
@@ -92,9 +94,15 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
   in its machine record. Only code is taken from it, since the network,
   machines and mycelium are the same whole read from every machine.
   The machine `system` runs on also says its quest backup once the last
-  landing (`quest-backup/landed` under the state home) is over 2 hours
-  old, worth a look, or over 6, bad; a machine keeping no backup says
-  nothing of one.
+  landing (`quest-backup/landed` under the state home, epoch seconds) is
+  over 2 hours old, worth a look, or over 6, bad, said in whole hours. A
+  landing file that can't be read, says no time, or says one more than a
+  minute ahead of the clock is worth a look, so a broken writer isn't
+  quiet; no file says nothing, as on a machine keeping no backup, and so
+  does a backup that has never landed. Only that machine's backup is
+  read, since the file is its own; from another machine it says nothing
+  of it. The backup runs hourly and catches up on waking, so a laptop
+  waking from a night reads late for the minute or two that run takes.
 - **Mycelium.** A link that isn't up is bad. A session whose process is
   gone is an agent's leftover, said in what the part holds ("3 sessions
   gone") and never worth a look.

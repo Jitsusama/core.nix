@@ -101,7 +101,7 @@ pub fn system(system: &System, pen: &Pen, room: Room) -> String {
                 thing.says.clone(),
                 home(thing),
             );
-            std::iter::once(line).chain(tied(thing))
+            std::iter::once(line).chain(tied(thing, &system.machine))
         })
         .collect();
     let further: Vec<Vec<String>> = system
@@ -153,23 +153,31 @@ fn home(thing: &Thing) -> Option<String> {
 }
 
 /// A machine's three ties to the other parts, a line each naming it, in
-/// their main words; none for a machine with no ties.
-fn tied(thing: &Thing) -> Vec<Record> {
+/// their main words, read on the machine `here` names; none for a machine
+/// with no ties.
+fn tied(thing: &Thing, here: &str) -> Vec<Record> {
     if thing.ties.is_null() {
         return Vec::new();
     }
     [
         ("cells", said::cells(&thing.ties)),
         ("network", said::network(&thing.ties)),
-        ("code", said::code(&thing.ties, &thing.name)),
+        (
+            "code",
+            said::code(&thing.ties, &thing.name, thing.name == here),
+        ),
     ]
     .into_iter()
     .map(|(tie, said)| (format!("{} {tie}", thing.name), None, said.said, None))
     .collect()
 }
 
-/// A tie whole, its main words and what goes beside them.
+/// A tie whole, its main words and what goes beside them, when anything
+/// does.
 fn told(said: &Said) -> String {
+    if said.aside.is_empty() {
+        return said.said.clone();
+    }
     format!("{}{ITEMS}{}", said.said, said.aside)
 }
 
@@ -204,7 +212,10 @@ pub fn machine(system: &System, name: &str, pen: &Pen, room: Room, now: i64) -> 
         ("kind", said::kind(ties, name, &system.machine)),
         ("cells", Some(told(&said::cells(ties)))),
         ("network", Some(told(&said::network(ties)))),
-        ("code", Some(told(&said::code(ties, name)))),
+        (
+            "code",
+            Some(told(&said::code(ties, name, name == system.machine))),
+        ),
         ("itself", Some(told(&said::itself(ties, now)))),
         ("home", home(thing)),
         (
@@ -340,7 +351,7 @@ mod tests {
             [
                 "laptop cells 3 busy and 1 idle",
                 "laptop network Wi-Fi to the Hall point, on 5 GHz",
-                "laptop code 12 repositories in 14 checkouts",
+                "laptop code 14 checkouts of 12 repositories",
             ],
             "{said}"
         );
@@ -364,7 +375,7 @@ mod tests {
             "kind Example 14, Linux, this machine",
             "cells 3 busy and 1 idle · none has ended",
             "network Wi-Fi to the Hall point, on 5 GHz · a strong signal, with 183 Mb/s of room",
-            "code 12 repositories in 14 checkouts · 3 trees; 1 checkout behind their upstream; \
+            "code 14 checkouts of 12 repositories · 3 trees; 1 checkout behind its upstream; \
              2 open changes",
             "itself 248 GB of 1 TB free · updated 20 m ago",
             "home http://sites.localhost:8484/mycelium/#machine=laptop",
@@ -393,6 +404,19 @@ mod tests {
                 "{label} isn't offered: {said}"
             );
         }
+    }
+
+    #[test]
+    fn a_tie_with_nothing_aside_ends_with_its_words() {
+        let mut bare = whole();
+        bare.parts[0].things[0].ties["figures"] = serde_json::json!({});
+        let said = machine(&bare, "laptop", &Pen::plain(), Room::Unbounded, NOW)
+            .expect("the laptop is listed");
+        let itself = said
+            .lines()
+            .find(|line| line.starts_with("itself"))
+            .expect("itself is drawn");
+        assert!(itself.ends_with("its disk not said"), "{itself:?}");
     }
 
     #[test]
@@ -430,7 +454,7 @@ mod tests {
         for cells in [40, 60, 80, 120] {
             let said = system(&whole(), &Pen::plain(), Room::Cells(cells));
             let one = machine(&whole(), "laptop", &Pen::plain(), Room::Cells(cells), NOW)
-                .unwrap_or_default();
+                .expect("the laptop is listed");
             for line in said.lines().chain(one.lines()) {
                 assert!(
                     layout::width(line) <= cells,

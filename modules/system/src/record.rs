@@ -141,6 +141,15 @@ impl System {
         Some(said)
     }
 
+    /// Why the machines couldn't be read, when they couldn't, so a machine
+    /// asked for by name is said unanswered rather than unknown.
+    pub fn machines_unread(&self) -> Option<&str> {
+        self.parts
+            .iter()
+            .find(|part| part.name == "machines" && part.health == Health::Unread)
+            .map(|part| part.says.as_str())
+    }
+
     /// The record split as the daemon holds it, in the shell's daemon
     /// interface: the whole's `summary`, a `part` record for each part and
     /// one for each thing in a part, a `machine` for now. Each holds only
@@ -268,6 +277,16 @@ mod tests {
         assert_eq!(said["machine"], system.machine);
         assert_eq!(said["read_at"], system.read_at);
         assert_eq!(system.machine("Laptop"), None, "named as the node names it");
+        assert_eq!(system.machines_unread(), None);
+    }
+
+    #[test]
+    fn machines_that_couldnt_be_read_say_why() {
+        let mut machines = part("machines", Health::Unread);
+        machines.says = "mycelium isn't answering".to_owned();
+        let system = system(vec![machines]);
+        assert_eq!(system.machine("laptop"), None);
+        assert_eq!(system.machines_unread(), Some("mycelium isn't answering"));
     }
 
     #[test]

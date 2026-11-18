@@ -12,7 +12,7 @@ use crate::record::{Deeper, Health, Part};
 mod machines;
 mod ties;
 
-pub use machines::machines;
+pub use machines::{Backup, backup, machines};
 
 /// An owner's answer: its record, or why it couldn't be had.
 pub type Answer = Result<Value, String>;
