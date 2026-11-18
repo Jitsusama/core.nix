@@ -1608,7 +1608,7 @@ impl Guard {
         // healthy root nothing else would bring upkeep for six hours.
         let looked = self
             .budget_looked
-            .is_some_and(|at| tick.wall - at < crate::survey::BUDGET_RECENT);
+            .is_some_and(|at| tick.wall - at < crate::survey::BUDGET_LOOKS_EVERY);
         if !looked && crate::survey::past_budget(&self.config) {
             self.budget_looked = Some(tick.wall);
             self.memory.upkept = None;

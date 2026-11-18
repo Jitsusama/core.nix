@@ -971,8 +971,17 @@ fn trees_under(
 
 /// How long a build stays after its last use, whatever the budget, since
 /// a run of checks reuses one build minutes apart and a cap that took it
-/// the moment its cargo ended would have every check rebuild it.
-pub const BUDGET_RECENT: f64 = 3600.0;
+/// the moment its cargo ended would have every check rebuild it. A
+/// quarter of an hour rather than an hour, since on 18 November a
+/// builds disk held 56 GiB against its 20, 55 of it in builds used
+/// within the hour; cargo's own locks and a shell sitting in one keep a
+/// build someone is at, however long ago it was last written.
+pub const BUDGET_RECENT: f64 = 900.0;
+
+/// How often a builds disk still past its budget makes upkeep due, since
+/// one whose builds are all recent stays past it after the pass, and a
+/// survey reads every build.
+pub const BUDGET_LOOKS_EVERY: f64 = 3600.0;
 
 /// The bytes a cargo source's budget allows, in its first root's disk.
 /// A share of a disk that can't be measured, and a budget that comes to

@@ -77,13 +77,20 @@ or launchd, and [`home.nix`][2] the account's.
   `cargo` source given a `budget` (a size, or a share of the disk its
   first root is on) keeps its builds newest first while they fit; past
   it, the least recently used go whatever the band. A build a session
-  sits in, or one used within the hour, counts but stays, a build
-  already spent takes no room, and a build a cargo runs in is never
-  offered. A budget that comes to nothing, as a share of a disk that
-  can't be measured does, is none. While the first root's disk holds
-  more than the budget, the guard makes upkeep due, at most once an
-  hour. Cargo's shared builds folder held 63 GiB on 17 November, 59 of
-  it written within a day, which no idle window reached. A temp entry
+  sits in, or one used within the last 15 minutes, counts but stays, a
+  build already spent takes no room, and a build a cargo runs in, which
+  holds its lock, is never offered. A budget that comes to nothing, as a
+  share of a disk that can't be measured does, is none. While the first
+  root's disk holds more than the budget, the guard makes upkeep due, at
+  most once an hour. Cargo's shared builds folder held 63 GiB on 17
+  November, 59 of it written within a day, which no idle window
+  reached, and 56 GiB against its 20 on 18 November, 55 of it used
+  within the hour, so the floor came down from an hour. Incremental
+  sessions are most of what a one-shot build writes and never reads
+  again, so one-shot runs set `CARGO_INCREMENTAL=0`: gates, councils'
+  builds, and clippy and test sweeps. A session iterating on a crate
+  keeps incremental builds, since quick iteration is the point of them,
+  and the budget takes them once it moves on. A temp entry
   nothing has changed since the last boot goes whatever the band and
   whatever its name, since whatever made it ended with that boot. A browser profile in the `tmp/`
   of a quest still at work goes once nothing has changed in it for an

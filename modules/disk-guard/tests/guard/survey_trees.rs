@@ -511,16 +511,19 @@ fn a_budget_of_nothing_spends_nothing() {
 }
 
 #[test]
-fn a_build_used_within_the_hour_or_sat_in_counts_but_stays() {
+fn a_build_used_within_a_quarter_hour_or_sat_in_counts_but_stays() {
     // A run of checks reuses one build minutes apart, and a shell sits in
     // a build it will use again: both hold room, but neither is taken for
     // the budget, so the next least recently used goes in their place.
+    // One left 20 minutes goes: on 18 November the builds disk held 56
+    // GiB against its 20, 55 of it used within the hour.
     let (_home, made, config) = budgeted(
         &[
-            ("c-recent", 0.2),
+            ("c-recent", 0.1),
             ("a-sat-in", 5.0),
-            ("f-recent", 0.5),
+            ("f-recent", 0.2),
             ("e-old", 4.0),
+            ("b-left", 20.0 / 60.0),
         ],
         1,
     );
@@ -535,7 +538,11 @@ fn a_build_used_within_the_hour_or_sat_in_counts_but_stays() {
     let offered = |app: &Path| find(&found, &app.join("target")).candidate.clone();
     assert!(
         !offered(&made[0]).spent && !offered(&made[2]).spent,
-        "builds used within the hour stay, even past the budget"
+        "builds used within a quarter hour stay, even past the budget"
+    );
+    assert!(
+        offered(&made[4]).spent,
+        "a build left 20 minutes goes past the budget"
     );
     assert!(
         offered(&made[1]).occupied && !offered(&made[1]).spent,
