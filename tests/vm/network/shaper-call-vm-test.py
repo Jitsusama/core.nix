@@ -65,6 +65,8 @@ ALONE_SECONDS = 5
 HEARING = dt.timedelta(seconds=10)
 # The file the client's stand-in for a-call-is-on reads: a call is on while it's there.
 CALL_FLAG = "/run/call-is-on"
+# What systemctl exits with when it's asked to stop a unit that isn't loaded.
+NOT_LOADED = 5
 
 
 @dataclass
@@ -73,6 +75,9 @@ class Rig:
 
     client: BaseMachine
     router: BaseMachine
+    server: BaseMachine
+    # Every machine's counts as the loads that are on started, for a failure's trace.
+    since: str | None = None
 
     def cake(self, dev: str) -> Json:
         """Give the CAKE on one of the client's devices, with its counts: on a link, Joel's."""
@@ -89,8 +94,14 @@ class Rig:
         return f"shaper{index:x}"
 
     def holding(self) -> bool:
-        """Give whether the controller holds eth1 under a queue it took back."""
-        links: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
+        """Give whether the controller holds eth1 under a queue it took back.
+
+        A shaper with no status, gone or starting again, holds nothing.
+        """
+        status, text = self.client.execute("cat /run/shaper/status.json")
+        if status:
+            return False
+        links: list[Json] = json.loads(text)
         return any(link["name"] == "eth1" and link["state"] == "holding" for link in links)
 
     def start(self, unit: str, slice_name: str, flows: int, script: str) -> None:
@@ -101,10 +112,23 @@ class Rig:
             " done) & done; wait'"
         )
 
-    def stop(self, *units: str) -> None:
-        """Stop units the loads run in."""
+    def stop(self, *units: str) -> list[str]:
+        """Stop units the loads run in, each tried, and give those that wouldn't stop.
+
+        It fails nothing itself, so a stop after a failure never takes its place. A unit that
+        isn't loaded, never started or already gone, is stopped as far as the next start goes.
+        """
+        stuck = []
         for unit in units:
-            self.client.succeed(f"systemctl -M alice@ --user stop {unit}.service")
+            status, reply = self.client.execute(
+                f"systemctl -M alice@ --user stop {unit}.service 2>&1"
+            )
+            if status not in (0, NOT_LOADED):
+                print(f"the loads in {unit} wouldn't stop: {reply.strip()}")
+                stuck.append(unit)
+            # A unit that failed stays loaded, stopped or not, and takes its name with it.
+            self.client.execute(f"systemctl -M alice@ --user reset-failed {unit}.service")
+        return stuck
 
     def calls(self, names: list[str] | None = None, seconds: int = CALL_SECONDS) -> dict[str, Json]:
         """Hold calls at once from an app, both unless named, and give what iperf3 made of each."""
@@ -129,10 +153,16 @@ class Rig:
         medians of the delays out and back, in ms, as the controller reads them before
         taking the reflector's least off.
         """
-        text = self.client.succeed("cat /var/lib/shaper-record/*.jsonl")
+        status, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl 2>&1")
+        if status:
+            return f"the recorder's samples couldn't be read: {text.strip()}"
         seconds: dict[int, list[Json]] = {}
         for line in text.splitlines():
-            sample: Json = json.loads(line)
+            try:
+                sample: Json = json.loads(line)
+            except json.JSONDecodeError:
+                # The recorder keeps writing while a trace reads, so its last line may be half.
+                continue
             if "tx" in sample:
                 seconds.setdefault(sample["at"] // 1000, []).append(sample)
         rows = []
@@ -152,20 +182,55 @@ class Rig:
             )
         return "\n".join(rows)
 
-    def trace(self) -> str:
-        """Give what the shaper said, held and heard, and every queue's counts, for a failure."""
+    def counted(self) -> str:
+        """Give every machine's counts of what it queued, dropped and lost, since it booted.
+
+        They count every test's traffic, so a failure that needs this one's alone takes them
+        before as well as after. Each machine's links give what it sent and took in, so what
+        one sent and the next never took in is the host's, between them; nstat gives only
+        what a machine itself sent or took, never what the router forwards. Read while the
+        loads run, as a wait's last try reads them, a gap is also what's still in flight or
+        queued, so it counts as loss only once the loads have stopped.
+        """
+        gaps = "ip -s link; nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"
         return "\n".join(
             [
-                self.seconds(),
-                self.client.succeed("journalctl -u shaper -o cat --no-pager"),
-                self.client.succeed("cat /run/shaper/status.json"),
-                self.client.succeed(
-                    f"tc -s qdisc show dev eth1; tc -s qdisc show dev {self.ifb()}"
-                ),
-                self.client.succeed("nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
-                self.router.succeed("tc -s qdisc show dev eth1; tc -s qdisc show dev eth2"),
+                said(self.client, "tc -s qdisc show dev eth1"),
+                said(self.client, f"tc -s qdisc show dev {self.ifb()}"),
+                said(self.client, gaps),
+                said(self.router, "tc -s qdisc show dev eth1; tc -s qdisc show dev eth2"),
+                said(self.router, gaps),
+                said(self.server, gaps),
             ]
         )
+
+    def trace(self) -> str:
+        """Give what the shaper said, held and heard, and every count, for a failure.
+
+        Each part that can't be read says so rather than raising, since a failure's trace is
+        taken when things are wrong: with the shaper stopped, its status and IFB are gone.
+        The counts from when the loads started come beside those now, so they tell this
+        test's losses from every earlier test's.
+        """
+        parts = [
+            self.seconds(),
+            said(self.client, "journalctl -u shaper -o cat --no-pager"),
+            said(self.client, "cat /run/shaper/status.json"),
+        ]
+        if self.since is not None:
+            parts.append(f"counted as the loads started:\n{self.since}\ncounted now:")
+        parts.append(self.counted())
+        return "\n".join(parts)
+
+
+def said(machine: BaseMachine, command: str) -> str:
+    """Give what a command printed, or that it failed and what it said, for a trace.
+
+    Each opens with the machine's name, since every machine's links print alike.
+    """
+    status, output = machine.execute(f"( {command} ) 2>&1")
+    said = output if status == 0 else f"failed ({status}): {output.strip()}"
+    return f"{machine.name}: {command}\n{said}"
 
 
 @pytest.fixture(scope="module")
@@ -179,7 +244,7 @@ def rig(machines: dict[str, BaseMachine]) -> Rig:
     router.wait_for_unit("connection.service")
     client.wait_for_unit("user@1000.service")
     client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=COMING_UP)
-    held = Rig(client=client, router=router)
+    held = Rig(client=client, router=router, server=server)
     client.wait_until_succeeds(
         f"tc -j qdisc show dev {held.ifb()} | grep -q cake", timeout=COMING_UP
     )
@@ -193,6 +258,13 @@ def received(result: Json, way: str) -> Json:
     return summary
 
 
+def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
+    """Give whether a wait is met, saying otherwise with the trace on its last try."""
+    if last_try and not now:
+        print(f"{otherwise}:\n{rig.trace()}")
+    return now
+
+
 def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
     """Hold both calls while the jobs and an app fill the connection, and give what each lost.
 
@@ -200,31 +272,60 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
     Shaped, they run on until the controller holds the link too, as it has all day on a
     connection the jobs keep full: a call that starts in the seconds before it does crosses
-    the router's queue as an unshaped one would.
+    the router's queue as an unshaped one would. The loads stop however the calls end, so a
+    test that fails here leaves the next its own loads to start.
     """
     download = f"{BIN}/cat < /dev/tcp/{FAR}/{SOURCE_PORT} > /dev/null"
     upload = f"{BIN}/cat /dev/zero > /dev/tcp/{FAR}/{SINK_PORT}"
     rx = "cat /sys/class/net/eth1/statistics/rx_bytes"
     first = int(rig.client.succeed(rx))
-    rig.start("jobs-downloads", "jobs.slice", JOBS_DOWNLOADS, download)
-    rig.start("jobs-uploads", "jobs.slice", JOBS_UPLOADS, upload)
-    rig.start("app-downloads", "app.slice", APP_DOWNLOADS, download)
-    retry(lambda _: int(rig.client.succeed(rx)) - first >= FULL_BYTES, timeout=FILLING)
-    if shaped:
-        retry(lambda _: rig.holding(), timeout=FILLING)
-    results = rig.calls()
-    rig.stop("jobs-downloads", "jobs-uploads", "app-downloads")
+    rig.since = rig.counted()
+    loads = [
+        ("jobs-downloads", "jobs.slice", JOBS_DOWNLOADS, download),
+        ("jobs-uploads", "jobs.slice", JOBS_UPLOADS, upload),
+        ("app-downloads", "app.slice", APP_DOWNLOADS, download),
+    ]
+    try:
+        for unit, slice_name, flows, script in loads:
+            rig.start(unit, slice_name, flows, script)
+        retry(
+            lambda last_try: met(
+                rig,
+                now=int(rig.client.succeed(rx)) - first >= FULL_BYTES,
+                last_try=last_try,
+                otherwise="the loads never filled the line",
+            ),
+            timeout=FILLING,
+        )
+        if shaped:
+            retry(
+                lambda last_try: met(
+                    rig,
+                    now=rig.holding(),
+                    last_try=last_try,
+                    otherwise="the controller never held the link",
+                ),
+                timeout=FILLING,
+            )
+        results = rig.calls()
+    finally:
+        # Every load, started or not: a start can fail after making its unit.
+        stuck = rig.stop(*(unit for unit, _, _, _ in loads))
     lost: dict[str, dict[str, int]] = {}
     for name, result in results.items():
-        assert "error" not in result, f"the {name} call failed: {result['error']}"
+        # The messages are made only on a failure, so the trace is taken only then.
+        assert "error" not in result, f"the {name} call failed: {result['error']}\n{rig.trace()}"
         lost[name] = {}
         for way in ["up", "down"]:
             summary = received(result, way)
             assert summary.get("packets", 0) >= CALL_LEAST, (
-                f"the {name} call took {summary.get('packets')} datagrams {way}, under {CALL_LEAST}"
+                f"the {name} call took {summary.get('packets')} datagrams {way},"
+                f" under {CALL_LEAST}\n{rig.trace()}"
             )
             lost[name][way] = int(summary["lost_packets"])
     print(f"lost by call and way: {lost}")
+    # Last, so a load that wouldn't stop never takes the place of what the calls met.
+    assert not stuck, f"the loads in {stuck} wouldn't stop"
     return lost
 
 
@@ -235,14 +336,17 @@ def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
     from a page's QUIC: on 12 November one went as best effort while the jobs filled the
     upload, and its picture went blocky.
     """
-    rig.client.succeed(f"touch {CALL_FLAG}")
-    rig.client.wait_until_succeeds(
-        "journalctl -u shaper -o cat | grep -q 'a call is on'", timeout=HEARING
-    )
-    before = rig.counts("eth1", "sent_packets")
-    result = rig.calls(["page"], seconds=ALONE_SECONDS)["page"]
-    after = rig.counts("eth1", "sent_packets")
-    rig.client.succeed(f"rm {CALL_FLAG}")
+    try:
+        rig.client.succeed(f"touch {CALL_FLAG}")
+        rig.client.wait_until_succeeds(
+            "journalctl -u shaper -o cat | grep -q 'a call is on'", timeout=HEARING
+        )
+        before = rig.counts("eth1", "sent_packets")
+        result = rig.calls(["page"], seconds=ALONE_SECONDS)["page"]
+        after = rig.counts("eth1", "sent_packets")
+    finally:
+        # A call left on would put the next tests' calls in the video tin by the flag alone.
+        rig.client.succeed(f"rm -f {CALL_FLAG}")
     sent = dict(zip(TINS, (a - b for a, b in zip(after, before, strict=True)), strict=True))
     call = int(received(result, "up").get("packets", 0))
     assert call > 0, f"the call sent nothing up: {result}"
@@ -292,7 +396,12 @@ def test_unshaped(rig: Rig) -> None:
     """
     rig.client.succeed("systemctl stop shaper.service")
     lost = under_load(rig, shaped=False)
-    for name, ways in lost.items():
-        assert ways["down"] <= DOWN_MOST, (
-            f"the {name} call lost {ways['down']} datagrams down unshaped, over {DOWN_MOST}"
-        )
+    if any(ways["down"] > DOWN_MOST for ways in lost.values()):
+        # Unshaped, only the router's queues and the machines' own gaps are left to lose
+        # them, which their counts as the loads started and now tell apart.
+        trace = rig.trace()
+        for name, ways in lost.items():
+            assert ways["down"] <= DOWN_MOST, (
+                f"the {name} call lost {ways['down']} datagrams down unshaped,"
+                f" over {DOWN_MOST}\n{trace}"
+            )
