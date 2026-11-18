@@ -322,26 +322,18 @@ def replugged(on_eth2: Connection) -> Replugged:
     plugging it back makes it anew under a new index, as unbinding a virtio NIC from its
     driver and binding it again does here. Its address comes back by itself, and the
     default route is put back as the network's DHCP would.
-
-    It's plugged back only once the unplugged link's address unit has stopped, as a person's
-    seconds between the two let it. Plugged back while that unit still stops, systemd refuses
-    to start it again ("Requested transaction contradicts existing jobs"), so the link comes
-    back with no address, which once failed this and every test after it on eth2.
     """
     client = on_eth2.client
     device = client.succeed("basename $(readlink /sys/class/net/eth2/device)").strip()
     unplugged_ifb = on_eth2.ifb("eth2")
     client.succeed(f"echo {device} > /sys/bus/virtio/drivers/virtio_net/unbind")
-    client.wait_until_succeeds("! ip link show eth2", timeout=SHAPING)
+    # Plugged back while its address unit still stops, eth2 would come back with no address.
+    stopped = "systemctl show -P ActiveState network-addresses-eth2 | grep -qx inactive"
+    client.wait_until_succeeds(f"! ip link show eth2 && {stopped}", timeout=SHAPING)
     client.wait_until_succeeds(
         "journalctl -u shaper | grep -q 'eth2 no longer routes'", timeout=SHAPING
     )
     client.succeed(f"! ip link show {unplugged_ifb}")
-    client.wait_until_succeeds(
-        "systemctl show -P ActiveState network-addresses-eth2.service"
-        " | grep -Eqx 'inactive|failed'",
-        timeout=SHAPING,
-    )
     client.succeed(f"echo {device} > /sys/bus/virtio/drivers/virtio_net/bind")
     client.wait_until_succeeds(
         "ip -4 -o address show dev eth2 | grep -q 192.168.3.", timeout=COMING_UP
