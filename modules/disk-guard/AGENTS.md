@@ -60,8 +60,11 @@ or launchd, and [`home.nix`][2] the account's.
   rests: a concluded or retired quest's scratch ten minutes after its last
   write, and the builds in every tree its README lists, at once, whatever
   the band. So do the builds in a tree the tree broker's records say no
-  running process holds, unless a quest at work lists it (a quest parked
-  on the bench or for someday isn't: its builds are a cache), and a temp
+  running process holds and no session a pi host's roster holds was cut
+  for (a restarted host resumes its sessions under a new process, while
+  the record goes on naming the old one), unless a quest at work lists
+  it (a quest parked on the bench or for someday isn't: its builds are a
+  cache), and a temp
   entry nothing has changed since the last boot, whatever its name, since
   whatever made it ended with that boot. A browser profile in the `tmp/`
   of a quest still at work goes once nothing has changed in it for an

@@ -229,27 +229,34 @@ struct Owner {
     started_at: f64,
 }
 
-/// A tree broker's record of one tree it cut: where, and who holds it.
+/// A tree broker's record of one tree it cut: where, who holds it, and the
+/// sessions it was cut for.
 #[derive(Deserialize)]
 struct Record {
     path: PathBuf,
     #[serde(default)]
     owners: Vec<Owner>,
+    #[serde(default)]
+    sessions: Vec<String>,
 }
 
 /// The trees a tree broker's records in `records` name that nobody holds:
 /// every process a record names has ended, and no quest at work lists the
-/// tree as its own. Their builds were their holders', and go with them. A
-/// quest parked on the bench or for someday isn't at work, so keeps none:
-/// its builds are a cache nobody uses until it's picked up again.
-/// `running` says whether a pid still runs as the process that started at
-/// a wall second, so a pid the kernel has given another since holds
-/// nothing. A record that can't be read names no tree, so keeps its own.
+/// tree as its own, and no session it was cut for is a conversation a pi
+/// host's roster in `rosters` holds. Their builds were their holders', and
+/// go with them. A quest parked on the bench or for someday isn't at work,
+/// so keeps none: its builds are a cache nobody uses until it's picked up
+/// again. `running` says whether a pid still runs as the process that
+/// started at a wall second, so a pid the kernel has given another since
+/// holds nothing. A record that can't be read names no tree, so keeps its
+/// own.
 pub fn unheld_trees(
     records: &Path,
     quests: &Path,
+    rosters: Option<&Path>,
     running: impl Fn(u32, f64) -> bool,
 ) -> Vec<PathBuf> {
+    let hosted = rosters.map_or_default(hosted_sessions);
     let going: Vec<PathBuf> = quest_frontmatters(quests)
         .iter()
         .filter(|(_, frontmatter, over)| !over && !parked(frontmatter))
@@ -257,19 +264,25 @@ pub fn unheld_trees(
         .collect();
     read_records(records)
         .into_iter()
-        .filter(|record| !record.held(&running) && !going.contains(&record.path))
+        .filter(|record| !record.held(&running, &hosted) && !going.contains(&record.path))
         .map(|record| record.path)
         .collect()
 }
 
 /// The trees a tree broker's records in `records` name a holder of that is
-/// still `running`, as `unheld_trees` reads a pid. A held tree is in use
-/// whatever its branch says: a session goes on in the tree whose branch it
-/// has just merged, to cut its next branch there.
-pub fn held_trees(records: &Path, running: impl Fn(u32, f64) -> bool) -> Vec<PathBuf> {
+/// still `running`, as `unheld_trees` reads a pid, or a session of which a
+/// host's roster in `rosters` holds. A held tree is in use whatever its
+/// branch says: a session goes on in the tree whose branch it has just
+/// merged, to cut its next branch there.
+pub fn held_trees(
+    records: &Path,
+    rosters: Option<&Path>,
+    running: impl Fn(u32, f64) -> bool,
+) -> Vec<PathBuf> {
+    let hosted = rosters.map_or_default(hosted_sessions);
     read_records(records)
         .into_iter()
-        .filter(|record| record.held(&running))
+        .filter(|record| record.held(&running, &hosted))
         .map(|record| record.path)
         .collect()
 }
@@ -287,11 +300,17 @@ fn read_records(records: &Path) -> Vec<Record> {
 }
 
 impl Record {
-    /// Whether any process the record names still runs as it started.
-    fn held(&self, running: impl Fn(u32, f64) -> bool) -> bool {
+    /// Whether any process the record names still runs as it started, or
+    /// any session it was cut for is among those `hosted`. A host that
+    /// restarts resumes every conversation its roster holds under a new
+    /// process, while the record goes on naming the old one; on 17
+    /// November a tree read as nobody's for that reason lost its packages
+    /// four times to a session working in it.
+    fn held(&self, running: impl Fn(u32, f64) -> bool, hosted: &HashSet<String>) -> bool {
         self.owners
             .iter()
             .any(|owner| running(owner.pid, owner.started_at / 1000.0))
+            || self.sessions.iter().any(|session| hosted.contains(session))
     }
 }
 
@@ -315,13 +334,15 @@ struct Roster {
 #[derive(Deserialize)]
 struct Hosted {
     quest: Option<String>,
+    #[serde(rename = "sessionId")]
+    session: Option<String>,
 }
 
-/// The quests the rosters in `rosters` hold a conversation of, from each
-/// host's JSON file there, leaving out its lock and any torn file.
-fn hosted(rosters: &Path) -> HashSet<String> {
+/// The rosters in `rosters`, from each host's JSON file there, leaving out
+/// its lock and any torn file.
+fn rosters_in(rosters: &Path) -> Vec<Roster> {
     let Ok(entries) = fs::read_dir(rosters) else {
-        return HashSet::new();
+        return Vec::new();
     };
     entries
         .filter_map(Result::ok)
@@ -331,6 +352,22 @@ fn hosted(rosters: &Path) -> HashSet<String> {
                 .is_some_and(|extension| extension == "json")
         })
         .filter_map(|path| serde_json::from_slice::<Roster>(&fs::read(path).ok()?).ok())
+        .collect()
+}
+
+/// The sessions the rosters in `rosters` hold a conversation of.
+fn hosted_sessions(rosters: &Path) -> HashSet<String> {
+    rosters_in(rosters)
+        .into_iter()
+        .flat_map(|roster| roster.sessions)
+        .filter_map(|hosted| hosted.session)
+        .collect()
+}
+
+/// The quests the rosters in `rosters` hold a conversation of.
+fn hosted(rosters: &Path) -> HashSet<String> {
+    rosters_in(rosters)
+        .into_iter()
         .flat_map(|roster| roster.sessions)
         .filter_map(|hosted| hosted.quest)
         .collect()

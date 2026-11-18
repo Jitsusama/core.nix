@@ -234,12 +234,57 @@ fn a_tree_whose_holders_have_all_ended_is_over_unless_a_live_quest_lists_it() {
         300 => (started - 1_060.0).abs() <= 2.0,
         _ => false,
     };
-    let mut over = disk_guard::workspaces::unheld_trees(&records, &quests, running);
+    let mut over = disk_guard::workspaces::unheld_trees(&records, &quests, None, running);
     over.sort();
     assert_eq!(
         over,
         ["/t/ended", "/t/nobody", "/t/worn"].map(PathBuf::from),
         "a tree is held while any owner runs as it started, or a live quest lists it"
+    );
+}
+
+#[test]
+fn a_tree_is_held_while_a_hosts_roster_holds_its_session() {
+    // On 17 November a pi host restarted at 11:06 and resumed the
+    // conversations its roster held, but a tree's record still named the
+    // host's old process as its owner. Read as nobody's, the tree's merged
+    // branch made it spent, and the guard took its packages four times
+    // that afternoon while the session ran its merge gate there.
+    let root = tempfile::tempdir().unwrap();
+    let (records, quests, rosters) = (
+        root.path().join("cut"),
+        root.path().join("quests"),
+        root.path().join("rosters"),
+    );
+    fs::create_dir_all(&records).unwrap();
+    fs::create_dir_all(&rosters).unwrap();
+    let record = |key: &str, sessions: &str| {
+        let body = format!(
+            r#"{{"path":"/t/{key}","owners":[{{"pid":200,"startedAt":1000000}}],"sessions":[{sessions}]}}"#
+        );
+        fs::write(records.join(format!("{key}.json")), body).unwrap();
+    };
+    record("resumed", r#""s-hosted""#);
+    record("ended", r#""s-gone""#);
+    record("unsaid", "");
+    fs::write(
+        rosters.join("work-background.json"),
+        r#"{"sessions":[{"sessionId":"s-hosted","quest":"QEST-20261115-AAA111"}]}"#,
+    )
+    .unwrap();
+    let running = |_: u32, _: f64| false;
+    let mut over =
+        disk_guard::workspaces::unheld_trees(&records, &quests, Some(&rosters), running);
+    over.sort();
+    assert_eq!(
+        over,
+        ["/t/ended", "/t/unsaid"].map(PathBuf::from),
+        "a tree whose session a host's roster holds isn't over"
+    );
+    assert_eq!(
+        disk_guard::workspaces::held_trees(&records, Some(&rosters), running),
+        [PathBuf::from("/t/resumed")],
+        "a tree whose session a host's roster holds is held"
     );
 }
 
@@ -276,7 +321,7 @@ fn a_parked_quests_tree_is_over_once_its_holders_have_ended() {
     listing("QEST-20261002-CCC333", "bench", "held");
     listing("QEST-20261002-DDD444", "queued", "queued");
     let running = |pid: u32, started: f64| pid == 100 && (started - 1_000.0).abs() <= 2.0;
-    let mut over = disk_guard::workspaces::unheld_trees(&records, &quests, running);
+    let mut over = disk_guard::workspaces::unheld_trees(&records, &quests, None, running);
     over.sort();
     assert_eq!(
         over,
