@@ -1,0 +1,77 @@
+{
+  "domain": "node",
+  "kinds": {
+    "forage": [
+      {
+        "key": "forage:KESTRL",
+        "kind": "forage",
+        "heard": 0,
+        "cell": "KESTRL",
+        "session": "0000-kestrl",
+        "machine": "kestrel",
+        "quest": "QEST-20261116-KESTRL",
+        "purpose": "KESTRL learns to hover over one field.",
+        "status": "active",
+        "documents": [
+          {
+            "id": "PLAN-20261116-HOVERS",
+            "kind": "plan",
+            "title": "Hover Over the Field",
+            "stage": "build",
+            "ticked": 2,
+            "open": 3
+          }
+        ],
+        "lineage": { "started_by": null, "parent": null },
+        "waits": [
+          {
+            "id": "wind",
+            "title": "Say which field to hover over",
+            "why": "Two fields are in reach and only one can be watched.",
+            "minutes": 2,
+            "when": "today",
+            "ready": true
+          }
+        ]
+      },
+      {
+        "key": "forage:SKIFFS",
+        "kind": "forage",
+        "heard": 0,
+        "cell": "SKIFFS",
+        "session": "0000-skiffs",
+        "machine": "kestrel",
+        "quest": "QEST-20261116-SKIFFS",
+        "purpose": "SKIFFS rigs the skiff for the season.",
+        "status": "active",
+        "documents": [],
+        "lineage": { "started_by": "KESTRL", "parent": "QEST-20261116-KESTRL" }
+      },
+      {
+        "key": "forage:OSPREY",
+        "kind": "forage",
+        "heard": 0,
+        "cell": "OSPREY",
+        "session": "0000-osprey",
+        "machine": "kestrel",
+        "quest": "QEST-20261116-OSPREY",
+        "purpose": "",
+        "status": "active",
+        "documents": [],
+        "lineage": { "started_by": null, "parent": null }
+      },
+      {
+        "key": "forage:TERNAA",
+        "kind": "forage",
+        "heard": 0,
+        "cell": "TERNAA",
+        "session": "0000-ternaa",
+        "machine": "kestrel",
+        "quest": "QEST-20261116-TERNAA",
+        "purpose": "TERNAA counts the terns on the cistern.",
+        "status": "active",
+        "documents": []
+      }
+    ]
+  }
+}

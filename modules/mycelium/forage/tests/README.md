@@ -24,3 +24,9 @@ run by Node's own test runner when the local sites build the page.
 Each test builds the records it reads, so none needs a browser or a node.
 The page as drawn is walked by keys alone in a headless browser until the
 local sites' page test covers it.
+
+`forage-reads-live-test.py` is `forage-site-reads-live`, run by Nix rather
+than as the page builds: the page Nix builds, read in a headless browser
+through the sites' server beside a stand-in node holding `node.json`, four
+cells' forage on one machine, as the records change, stop and come back,
+within its budget and passing the web-design skill's page checks.

@@ -3290,6 +3290,16 @@
     added up, how many cells have no purpose written, what each quest waits on its person for, and
     a record it can't read said, not dropped
   '';
+  forage-site-reads-live = ''
+    the forage page, served by the local sites' server beside a stand-in node, reads live in
+    headless Chromium: every cell drawn in order, a started cell under the one that started it and
+    a record with no lineage at the top, what waits on its person said in its lede and its panel, a
+    purpose written followed and drawn as words though it holds markup, a cell going, broken while
+    the node is away and live with its cells read again once it's back, stale once the server goes
+    with its cells kept, a first visit within its budget and a second answered unchanged, the
+    web-design skill's page checks passing at a phone's width and a desk's in both looks, and
+    nothing logged but what a test causes
+  '';
   forage-feed-passes-what-its-page-reads = ''
     the node's feed, as a machine in a realm declares it, passes every field the forage page reads
     off a forage record, so nothing the page draws goes missing live

@@ -439,6 +439,60 @@ in
           ${../mycelium/murmurs/tests}/murmurs-reads-live-test.py
         touch $out
       '';
+  # The forage page, built on the theme's own web kit as a machine builds it,
+  # read in headless Chromium through the server beside a stand-in node
+  # (modules/mycelium/forage/tests/forage-reads-live-test.py): live with
+  # every cell drawn in order, a started cell under the one that started it
+  # and a record with no lineage at the top, what waits on its person said
+  # in its lede and its panel, a purpose written followed and drawn as words,
+  # a cell going, broken while the node is away and live once it's back,
+  # stale once the server goes with its cells kept, within its budget, and
+  # the web-design skill's page checks passing at two widths in both looks
+  # with nothing logged. The node's feed is the one home.nix declares for a
+  # machine in a realm, so a field it drops fails here. Chromium builds only
+  # on Linux.
+  forage-site-reads-live =
+    let
+      inRealm = account (bareNixos [
+        self.nixosModules.workstation
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.local-sites ];
+            jitsusama.mycelium.realm = "harbour";
+          };
+        }
+      ]);
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+      forage = sites.localSite {
+        name = "forage";
+        src = ../mycelium/forage;
+        webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+        tint = "program";
+      };
+    in
+    pkgs.runCommandLocal "forage-site-reads-live"
+      {
+        env = {
+          LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
+          FORAGE_SITE = "${forage}";
+          NODE_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.node.kinds;
+          LOCAL_SITES_SHARED = "${shared}";
+          STRIP = "${./home/strip.css}";
+          WEB_SKILL = "${../theme/web/skill}";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
+          PYTHONPATH = "${./tests}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p live_page \
+          --import-mode=importlib --basetemp="$TMPDIR/pytest" \
+          ${../mycelium/forage/tests}/forage-reads-live-test.py
+        touch $out
+      '';
   # Code, built on the theme's own web kit as a machine builds it, read in
   # headless Chromium through the server beside a stand-in repos daemon and a
   # stand-in node (modules/repos/site/tests/code-reads-live-test.py): live
