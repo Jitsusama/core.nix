@@ -5587,7 +5587,8 @@ Scope {
             const startedAt = Date.now();
             const started = KeyTimes.now();
             const shown = refreshNow(source);
-            feltSpan(`${source.settings.name} changing`, started);
+            if (spansHeard)
+                feltSpan(`${source.settings.name} changing`, started);
             return { source, startedAt, shown, tookMs: KeyTimes.now() - started };
         });
         if (done.some(one => one.shown)) {
@@ -7339,6 +7340,9 @@ Scope {
             asking: asking }, () => awaitedFor(prompt.text));
         if (next === null)
             return;
+        // A key typed over a held one keeps the frame in flight that the
+        // hold was already noting.
+        const listening = spansHeard;
         keysDue = [];
         answersAwaited = null;
         answersWaited.stop();
@@ -7349,7 +7353,7 @@ Scope {
                 began: Date.now(), from: KeyTimes.now(), collected: Heap.collected() };
             heldSpans = [];
             // A frame begun while nothing listened would be noted from then.
-            if (!feltTicking.running)
+            if (!listening)
                 feltFrame = Pacing.feltUnframed();
             answersWaited.restart();
             return;
@@ -7367,13 +7371,11 @@ Scope {
         const into = steppedByKey;
         steppedByKey = "";
         // Its key's time holds the wait, said apart in the journal, with
-        // what the time past its bound went on, both by the shell's clock,
-        // so the time behind and what it names add up.
+        // what the time past its bound went on, and the frame's work not
+        // yet noted (Pacing.feltOpen).
         if (waited && searchParts)
-            Object.assign(searchParts, Awaited.waitedOf({ began: waited.from }, listedAt,
-                answersWaitedFor, waited.timedOut === true), { behindOn: waited.timedOut === true
-                    ? Awaited.behindOn(waited, listedAt, answersWaitedFor, heldSpans, collected)
-                    : "" });
+            Object.assign(searchParts, Awaited.heldFor(waited, listedAt, answersWaitedFor,
+                heldSpans.concat(Pacing.feltOpen(feltFrame, listedAt)), collected));
         heldSpans = [];
         if (asking)
             return;
@@ -7439,8 +7441,10 @@ Scope {
         const waited = answersAwaited;
         answersAwaited = null;
         answersWaited.stop();
-        if (waited === null || !open)
+        if (waited === null || !open) {
+            heldSpans = [];
             return;
+        }
         searchedNow(waited.due, waited);
     }
     // The sources whose search of `text` awaits an answer, each asked now:
@@ -11616,7 +11620,9 @@ Scope {
         feltFrom = from;
         feltFromChord = fromChord;
         feltSpans = [];
-        feltFrame = Pacing.feltUnframed();
+        // A key held for its answers is noting the frame in flight.
+        if (answersAwaited === null)
+            feltFrame = Pacing.feltUnframed();
         feltTicking.start();
     }
     // The named work run while an opening is felt, `{ name, from, to }`, so

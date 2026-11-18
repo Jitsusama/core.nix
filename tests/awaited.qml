@@ -1,8 +1,8 @@
 // What a search does about the answers it waits for, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-launcher-holds-a-key-for-its-answers` check copies
-// modules/quickshell/launcher/Awaited.js and tests/lib/Expect.js beside
-// this file and runs it offscreen. A key typed and Return pressed inside
+// modules/quickshell/launcher/Awaited.js, the Pacing.js and Order.js it
+// imports, and tests/lib/Expect.js beside this file and runs it offscreen. A key typed and Return pressed inside
 // the few milliseconds a key is held can't be timed on niri, so each case
 // here is the state Launcher.qml's searchNow finds as a key or a setter
 // comes.
@@ -105,7 +105,7 @@ QtObject {
         // "mut" waited 77 ms on answers, 69 of it behind the shell's other
         // work, unnamed (RTOIMQ, 2026-11-17). Where two run at once, the
         // one begun last has the time, so none counts twice; the collector
-        // is said of the hold, since it may run inside any of them.
+        // is said of the whole wait, since it may run inside any of them.
         const held = { from: 1000, collected: 50 };
         const noted = [
             { name: "agents changing", from: 1000, to: 1012 },
@@ -114,14 +114,26 @@ QtObject {
         ];
         Expect.same("a wait past its bound names what ran past it, most first",
             Awaited.behindOn(held, 1098, 8, noted, 60),
-            "syncing 40, laying out 30, agents changing 2, 18 unnamed; the collector 10 of it");
-        Expect.same("work done before the bound isn't what the key waited behind",
+            "syncing 40, laying out 30, agents changing 2, 18 unnamed;"
+                + " collecting 10 over the whole wait");
+        Expect.same("work done before the bound isn't what the key waited behind,"
+            + " nor a collector that took none",
             Awaited.behindOn(held, 1098, 8, [{ name: "showing", from: 1000, to: 1008 }], 50),
-            "90 unnamed; the collector 0 of it");
+            "90 unnamed");
         Expect.same("a wait ended on its bound names nothing",
             Awaited.behindOn(held, 1008, 8, noted, 60), "");
-        Expect.same("a hold whose collector wasn't read names the work alone",
-            Awaited.behindOn({ from: 1000 }, 1098, 8, noted, 60),
-            "syncing 40, laying out 30, agents changing 2, 18 unnamed");
+
+        // A held key's line is timed from when it was held by the shell's
+        // clock, never the wall clock's, which reads another time: timed
+        // apart, one said 2 ms behind and named 1 (the keys lab,
+        // 2026-11-18).
+        const late = { began: 1712000000000, from: 1000, collected: 50, timedOut: true };
+        Expect.same("a key its bound ended says its wait and what held it, on one clock",
+            Awaited.heldFor(late, 1098, 8, noted, 50),
+            { waited: 98, behind: 90, behindOn: "syncing 40, laying out 30, agents changing 2,"
+                + " 18 unnamed" });
+        Expect.same("a key its answers ended was behind nothing, whatever ran",
+            Awaited.heldFor({ began: 1712000000000, from: 1000, collected: 50 }, 1030, 8,
+                noted, 60), { waited: 30, behind: 0, behindOn: "" });
     }
 }

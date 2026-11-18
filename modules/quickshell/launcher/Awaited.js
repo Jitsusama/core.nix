@@ -60,16 +60,29 @@ function waitedOf(held, now, bound, timedOut) {
 // when the wait ended, are: most first, then what none named, as an
 // opening's stall is (Pacing.stallSpent). Joel's fastest letters spent
 // 730 of their 1,054 ms past 50 behind the shell's other work, which said
-// nothing of what (RTOIMQ, 2026-11-17). The collector's time over the
-// hold, from `held.collected` to `collected`, is said after, since it
-// runs inside whatever was running; left out where it wasn't read. Ended
-// on its bound, or before, it names nothing.
+// nothing of what (RTOIMQ, 2026-11-17). The collector's time, from
+// `held.collected` to `collected`, is said after as the whole wait's,
+// since the count is read only as the key is held and listed, and it runs
+// inside whatever was running; left out where it took none. Ended on its
+// bound, or before, it names nothing.
 function behindOn(held, at, bound, spans, collected) {
     const past = held.from + bound;
     if (!(at > past)) {
         return "";
     }
-    const spent = Pacing.stallSpent(spans, past, at);
-    return held.collected === undefined ? spent
-        : `${spent}; the collector ${Math.round(collected - held.collected)} of it`;
+    const collecting = Math.round(collected - held.collected);
+    return [Pacing.stallSpent(spans, past, at),
+        collecting > 0 ? `collecting ${collecting} over the whole wait` : ""]
+        .filter(part => part !== "").join("; ");
+}
+
+// A held key's wait as its line says it, once it's listed at `at`: how
+// long, how far past its bound, and what that was behind, all from
+// `held.from` by the shell's clock, so the time behind and what it names
+// add up. Timed from `held.began`, the wall clock's, one said 2 ms behind
+// and named 1 (the keys lab, 2026-11-18).
+function heldFor(held, at, bound, spans, collected) {
+    const timedOut = held.timedOut === true;
+    return Object.assign(waitedOf({ began: held.from }, at, bound, timedOut),
+        { behindOn: timedOut ? behindOn(held, at, bound, spans, collected) : "" });
 }
