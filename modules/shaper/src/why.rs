@@ -107,7 +107,9 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
 }
 
 /// The controller's reason for the upload, as `say` gave it, and the
-/// upload it speaks of, in kbit/s: none while the controller lets it go.
+/// upload it speaks of, in kbit/s, as the shaper was answered: none when
+/// the answer isn't the controller's own rate, as when it lets the upload
+/// go, has given up, or hears no reflector and a trial's ceiling holds.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reason {
     pub up: Option<u64>,
@@ -115,20 +117,31 @@ pub struct Reason {
 }
 
 /// The journal's line when the one-way controller begins to hold `link`:
-/// what each way is held to, in kbit/s, and the controller's reason where
-/// it speaks of the upload held. Another upload's reason would give the
-/// line two rates: one the shaper clamped, or a trial's ceiling holding
-/// what the controller let go, or none while only the download is held.
-pub fn holding(link: &str, up: u64, down: u64, reason: Option<&Reason>) -> String {
-    let held = format!(
-        "{link}: held to {} up and {} down",
-        mbit(lossless(up)),
-        mbit(lossless(down))
-    );
-    match reason.filter(|reason| reason.up == Some(up)) {
+/// what each way held is held to, in kbit/s, none for a way let go, and
+/// the controller's reason where it speaks of the upload held. Another
+/// upload's reason would give the line two rates: one the shaper clamped,
+/// or a trial's ceiling holding what the controller let go, or none while
+/// only the download is held.
+pub fn holding(link: &str, up: Option<u64>, down: Option<u64>, reason: Option<&Reason>) -> String {
+    let ways: Vec<String> = [(up, "up"), (down, "down")]
+        .into_iter()
+        .filter_map(|(rate, way)| rate.map(|r| format!("{} {way}", mbit(lossless(r)))))
+        .collect();
+    let held = format!("{link}: held to {}", ways.join(" and "));
+    match reason.filter(|reason| reason.up.is_some() && reason.up == up) {
         Some(reason) => format!("{held}. {}", reason.said),
         None => format!("{held}."),
     }
+}
+
+/// The journal's line when a trial's ceiling alone holds `link`'s upload,
+/// at `up` kbit/s, since the recorder has gone silent and the controller
+/// hears nothing to hold it by.
+pub fn silent(link: &str, up: u64) -> String {
+    format!(
+        "{link}: held to {} up by a trial's ceiling alone, since the recorder is silent.",
+        mbit(lossless(up))
+    )
 }
 
 fn lossless(kbit: u64) -> f64 {
@@ -264,9 +277,9 @@ mod tests {
             said: say(Why::Clear, Some(10_800), Some(12_000.0), 5.0),
         };
         assert_eq!(
-            holding("wlp0s20f3", 10_800, 2_000_000, Some(&clear)),
-            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down. Upload 10.8 Mb/s of \
-             12.0 Mb/s, the line's rate: clear for 5 s."
+            holding("wlp0s20f3", Some(10_800), None, Some(&clear)),
+            "wlp0s20f3: held to 10.8 Mb/s up. Upload 10.8 Mb/s of 12.0 Mb/s, the line's \
+             rate: clear for 5 s."
         );
     }
 
@@ -275,8 +288,34 @@ mod tests {
     #[test]
     fn a_hold_with_no_reason_names_no_cause() {
         assert_eq!(
-            holding("wlp0s20f3", 10_800, 2_000_000, None),
-            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down."
+            holding("wlp0s20f3", Some(10_800), None, None),
+            "wlp0s20f3: held to 10.8 Mb/s up."
+        );
+    }
+
+    // A way let go goes at whatever the link carries: a rate beside it
+    // would say it's held, and on Wi-Fi the rate is a 2 Gb/s placeholder.
+    #[test]
+    fn a_hold_names_only_the_ways_held() {
+        assert_eq!(
+            holding("wlp0s20f3", Some(10_800), Some(80_000), None),
+            "wlp0s20f3: held to 10.8 Mb/s up and 80.0 Mb/s down."
+        );
+        assert_eq!(
+            holding("wlp0s20f3", None, Some(80_000), None),
+            "wlp0s20f3: held to 80.0 Mb/s down."
+        );
+    }
+
+    // Under a silent recorder the controller hears nothing, so what holds
+    // is a trial's ceiling, and the line says so rather than naming no
+    // cause.
+    #[test]
+    fn a_ceiling_holding_alone_says_the_recorder_is_silent() {
+        assert_eq!(
+            silent("wlp0s20f3", 8_500),
+            "wlp0s20f3: held to 8.5 Mb/s up by a trial's ceiling alone, since the recorder \
+             is silent."
         );
     }
 
@@ -298,8 +337,8 @@ mod tests {
             ),
         };
         assert_eq!(
-            holding("wlp0s20f3", 10_800, 2_000_000, Some(&cut)),
-            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down."
+            holding("wlp0s20f3", Some(10_800), None, Some(&cut)),
+            "wlp0s20f3: held to 10.8 Mb/s up."
         );
     }
 
@@ -312,8 +351,8 @@ mod tests {
             said: say(Why::Ceiling, None, Some(12_000.0), 5.0),
         };
         assert_eq!(
-            holding("wlp0s20f3", 8_500, 2_000_000, Some(&let_go)),
-            "wlp0s20f3: held to 8.5 Mb/s up and 2000.0 Mb/s down."
+            holding("wlp0s20f3", Some(8_500), None, Some(&let_go)),
+            "wlp0s20f3: held to 8.5 Mb/s up."
         );
     }
 
@@ -326,8 +365,8 @@ mod tests {
             said: say(Why::Clear, None, Some(12_000.0), 5.0),
         };
         assert_eq!(
-            holding("wlp0s20f3", 10_800, 80_000, Some(&clear)),
-            "wlp0s20f3: held to 10.8 Mb/s up and 80.0 Mb/s down."
+            holding("wlp0s20f3", None, Some(80_000), Some(&clear)),
+            "wlp0s20f3: held to 80.0 Mb/s down."
         );
     }
 

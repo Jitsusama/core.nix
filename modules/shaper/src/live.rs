@@ -278,12 +278,20 @@ impl Follow {
         Some((link, heard))
     }
 
+    /// Whether the recorder has gone silent by a moment in ms since 1970,
+    /// judged once for the rates and the reason alike.
+    fn silent(&self, at_ms: u64) -> bool {
+        at_ms.saturating_sub(self.last_ms) > SILENT_MS
+    }
+
     /// Why the controller holds the upload where it does, and the upload
-    /// that reason speaks of, at a moment in ms since 1970: none once the
+    /// that reason speaks of: the one answered, when it's the controller's
+    /// own rate. Judged at a moment in ms since 1970, and none once the
     /// recorder has gone silent, when what holds is no longer what it heard.
     pub fn why(&self, at_ms: u64) -> Option<crate::why::Reason> {
-        (at_ms.saturating_sub(self.last_ms) <= SILENT_MS).then(|| crate::why::Reason {
-            up: self.controller.up.limit(),
+        let own = self.controller.up.limit();
+        (!self.silent(at_ms)).then(|| crate::why::Reason {
+            up: self.rates.up.filter(|&up| Some(up) == own),
             said: self.controller.why(),
         })
     }
@@ -292,7 +300,7 @@ impl Follow {
     /// moment in ms since 1970: no limit once the recorder has gone silent.
     pub fn now(&self, at_ms: u64) -> Option<(&str, Rates)> {
         let link = self.link.as_deref()?;
-        if at_ms.saturating_sub(self.last_ms) > SILENT_MS {
+        if self.silent(at_ms) {
             // A trial's ceiling still holds what nothing else does.
             let up = self.trial.and_then(|t| t.most_kbit).map(crate::rate::whole);
             return Some((link, Rates { up, down: None }));
@@ -659,17 +667,37 @@ mod tests {
         );
     }
 
-    // The reason is the controller's, so it speaks of the controller's
-    // own upload, which the journal holds against what the shaper holds.
+    // The journal holds a reason against the upload the shaper was
+    // answered, so a heard second's reason speaks of that upload and
+    // reaches the line.
     #[test]
-    fn a_reason_speaks_of_the_controller_s_own_upload() {
+    fn a_reason_speaks_of_the_upload_the_shaper_is_answered() {
         let mut follow = waiting(Known::new());
         for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
         }
+        let last = follow.last_ms;
+        let (_, rates) = follow.now(last).expect("a link");
+        assert!(rates.up.is_some(), "the flow held no upload: {rates:?}");
+        let reason = follow.why(last).expect("a reason");
+        assert_eq!(reason.up, rates.up);
+        let line = crate::why::holding("wlp0s20f3", rates.up, None, Some(&reason));
+        assert!(line.ends_with(&reason.said), "{line}");
+    }
+
+    // A guard that gives up, or a second no reflector answers, answers the
+    // trial's ceiling or no limit, while the controller's own rate stays
+    // the connection's: its reason then speaks of no upload held.
+    #[test]
+    fn a_reason_speaks_of_no_upload_when_the_answer_isn_t_the_controller_s() {
+        let mut follow = waiting(Known::new());
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        follow.rates.up = Some(8_500);
+        assert_ne!(follow.controller.up.limit(), Some(8_500));
         let reason = follow.why(follow.last_ms).expect("a reason");
-        assert_eq!(reason.up, follow.controller.up.limit());
-        assert_eq!(reason.said, follow.controller.why());
+        assert_eq!(reason.up, None, "{reason:?}");
     }
 
     // A trial set before a stay begins tunes it too: the A/B it serves
