@@ -32,6 +32,8 @@
 //!   it ran over.
 //! - [`phone`] says the same alert in Joel's own note-to-self IM in
 //!   Slack, the one place it can send to, so it reaches his phone.
+//! - [`deaf`] tells Joel where Slack isn't needed when the Slack reader
+//!   can't hear Slack, since that alert goes through it.
 //!
 //! Readers hand it sayings from each platform, Slack first
 //! (src/bin/pineapple-slack.rs), then GitHub
@@ -40,6 +42,7 @@
 //! so anything else judging a saying can be held to the same answers.
 
 pub mod acts;
+pub mod deaf;
 mod decide;
 pub mod gate;
 pub mod github;

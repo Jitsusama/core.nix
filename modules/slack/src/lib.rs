@@ -500,6 +500,22 @@ pub enum Refused {
     Unreachable(String),
 }
 
+/// The words Slack refuses a sign-in with, each mended by signing in
+/// again, kept once so every reader of Slack counts the same ones.
+const SIGN_IN_REFUSALS: [&str; 5] = [
+    "invalid_auth",
+    "not_authed",
+    "account_inactive",
+    "token_revoked",
+    "token_expired",
+];
+
+/// Whether Slack's error word `error` refuses the sign-in itself.
+#[must_use]
+pub fn refuses_the_sign_in(error: &str) -> bool {
+    SIGN_IN_REFUSALS.contains(&error)
+}
+
 /// How long Slack is left alone after refusing for its limit without
 /// saying for how long.
 const WAIT_UNSAID: Duration = Duration::from_secs(30);
@@ -983,9 +999,7 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
     }
     match said.get("error").and_then(Value::as_str).unwrap_or("") {
         "users_not_found" => Ok(nobody()),
-        "invalid_auth" | "not_authed" | "account_inactive" | "token_revoked" | "token_expired" => {
-            Err(Refused::SignedOut)
-        }
+        error if refuses_the_sign_in(error) => Err(Refused::SignedOut),
         other => Err(Refused::Unreachable(format!(
             "Slack refused the look-up: {other}"
         ))),
