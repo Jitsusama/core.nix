@@ -138,23 +138,22 @@ impl Learned {
         let same = |learnt: &Learnt| {
             learnt.point == here.point && learnt.hour == here.hour && learnt.step == step
         };
-        let learnt = match self.learnt.iter().position(same) {
-            Some(at) => &mut self.learnt[at],
-            None => {
-                self.learnt.push(Learnt {
-                    network: here.network.to_owned(),
-                    point: here.point.to_owned(),
-                    hour: here.hour,
-                    step,
-                    p95,
-                    lost: measured.lost,
-                    minutes: 0,
-                    idle: 0,
-                    loaded: None,
-                    kept: here.trusted,
-                });
-                self.learnt.last_mut().expect("just pushed")
-            }
+        let learnt = if let Some(at) = self.learnt.iter().position(same) {
+            &mut self.learnt[at]
+        } else {
+            self.learnt.push(Learnt {
+                network: here.network.to_owned(),
+                point: here.point.to_owned(),
+                hour: here.hour,
+                step,
+                p95,
+                lost: measured.lost,
+                minutes: 0,
+                idle: 0,
+                loaded: None,
+                kept: here.trusted,
+            });
+            self.learnt.last_mut().expect("just pushed")
         };
         if loaded {
             let under = learnt.loaded.get_or_insert(Loaded { p95, minutes: 0 });
@@ -248,10 +247,13 @@ fn figured(figures: impl Iterator<Item = (f64, u32, f64, u32)>, signal: i16) -> 
     if timed < ENOUGH {
         return None;
     }
+    // A figure kept negative or past what a duration holds is a file
+    // written by hand or broken, and says nothing.
+    let p95 = Duration::try_from_secs_f64(p95 / f64::from(timed) / 1000.0).ok()?;
     Some(Measured {
         echoes: 0,
         p50: None,
-        p95: Some(Duration::from_secs_f64(p95 / f64::from(timed) / 1000.0)),
+        p95: Some(p95),
         lost: lost / f64::from(counted.max(1)),
         retried: 0.0,
         failed: 0.0,
@@ -435,9 +437,9 @@ mod tests {
     fn what_an_access_point_carried_under_load_is_learned_apart() {
         let dir = tempfile::tempdir().unwrap();
         let mut learned = Learned::kept_in(&dir.path().join("carried"));
-        let quick_download = Measured {
+        let slow_download = Measured {
             moving: Some(25),
-            ..carried(Some(20), 0.0)
+            ..carried(Some(120), 0.0)
         };
 
         minutes(
@@ -446,7 +448,7 @@ mod tests {
             &carried(Some(15), 0.0),
             10,
         );
-        minutes(&mut learned, &at(HALL, 20, -50), &quick_download, 10);
+        minutes(&mut learned, &at(HALL, 20, -50), &slow_download, 10);
         minutes(
             &mut learned,
             &at(HALL, 20, -50),
@@ -456,12 +458,12 @@ mod tests {
 
         assert_eq!(
             loaded_p95_of(&learned, HALL, -50),
-            Some(20),
+            Some(120),
             "a minute moving 25 Mbit/s is under load, slowed or not"
         );
         let idle = p95_of(&learned, HALL, 20, -50).unwrap();
         assert!(
-            (24..=26).contains(&idle),
+            (24..=25).contains(&idle),
             "idle is of the idle minutes alone: {idle}"
         );
     }
@@ -515,9 +517,13 @@ mod tests {
 
         assert_eq!(p95_of(&learned, HALL, 20, -50), Some(15));
         learned
-            .carried(&at(HALL, 20, -50), &carried(Some(15), 0.0))
+            .carried(&at(HALL, 20, -50), &carried(Some(25), 0.0))
             .unwrap();
-        assert_eq!(p95_of(&Learned::kept_in(&file), HALL, 20, -50), Some(15));
+        assert_eq!(
+            p95_of(&Learned::kept_in(&file), HALL, 20, -50),
+            Some(16),
+            "a minute of 25 is folded into the kept 15, not put in its place"
+        );
         assert_eq!(learned.loaded(HALL, -50), None);
     }
 
@@ -542,10 +548,16 @@ mod tests {
     #[test]
     fn a_first_minute_slowed_by_what_the_card_moves_starts_nothing_idle() {
         let dir = tempfile::tempdir().unwrap();
-        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let file = dir.path().join("carried");
+        let mut learned = Learned::kept_in(&file);
 
         minutes(&mut learned, &at(HALL, 20, -50), &downloading(143, 0.0), 10);
         assert_eq!(learned.of(HALL, 20, -50), None, "nothing idle is known yet");
+        assert_eq!(
+            Learned::kept_in(&file).of(HALL, 20, -50),
+            None,
+            "nor once read back after a restart"
+        );
         minutes(
             &mut learned,
             &at(HALL, 20, -50),
