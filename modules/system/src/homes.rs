@@ -3,14 +3,14 @@
 //! Every Thing). An address is only ever read from there, never built by
 //! hand, so every surface opens the same page, and a home that moves moves
 //! everywhere at once. A site may instead say a pattern in its row of
-//! `sites.json`, `{"kind": "machine", "address": "#machine={name}"}`, when
+//! `rows.json`, `{"kind": "machine", "address": "#machine={name}"}`, when
 //! every thing of a kind has its page there by construction, as the mycelium
 //! map's machines do: the pattern is the site's own word, so it is read, not
 //! guessed, and no record listing the things has to be kept beside a source
 //! that already knows them. A pattern holds its whole kind, so a row can't
 //! give a kind a pattern once an earlier row has claimed it by name, and no
 //! row's record is read for a kind a pattern holds. Which row holds a kind
-//! is decided by `sites.json` alone, never by whether a record read. A
+//! is decided by the rows alone, never by whether a record read. A
 //! thing whose home site says nothing of it has no address, and none is
 //! guessed.
 //!
@@ -19,6 +19,7 @@
 //! is pinned by the case that would break it.
 
 use std::collections::{HashMap, HashSet};
+use std::io::ErrorKind;
 use std::path::Path;
 
 use serde_json::Value;
@@ -39,32 +40,45 @@ pub struct Homes {
 const NAME: &str = "{name}";
 
 impl Homes {
-    /// The homes the sites under `root` say they hold. A record that can't
-    /// be read holds none, and the other sites' still count.
+    /// The homes the sites under `root` say they hold, by the rows the home
+    /// lists in its `rows.json`. A home from before it listed them apart
+    /// keeps every row in its record, `sites.json`, so only a home with no
+    /// rows file is read from there; rows that can't be read hold none,
+    /// rather than the record's, whose live rows it no longer keeps. A
+    /// site's record that can't be read holds none, and the other sites'
+    /// still count.
     pub fn read(root: &Path) -> Self {
-        let read = |path: &Path| -> Option<Value> {
-            let said = std::fs::read_to_string(path).ok()?;
-            serde_json::from_str(&said).ok()
+        let parsed = |said: String| serde_json::from_str::<Value>(&said).ok();
+        let rows = match std::fs::read_to_string(root.join("rows.json")) {
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                std::fs::read_to_string(root.join("sites.json")).ok()
+            }
+            said => said.ok(),
         };
-        let Some(sites) = read(&root.join("sites.json")) else {
+        let Some(sites) = rows.and_then(parsed) else {
             return Self::default();
         };
-        Self::from_sites(&sites, |site| read(&root.join(site).join("homes.json")))
+        Self::from_sites(&sites, |site| {
+            std::fs::read_to_string(root.join(site).join("homes.json"))
+                .ok()
+                .and_then(parsed)
+        })
     }
 
-    /// The homes `sites`, the sites' record, lists: each row naming kinds
+    /// The homes `sites`, the home's rows, lists: each row naming kinds
     /// it's home to, read from its `homes.json` as `homes` gives it by the
     /// row's path, or patterns, which give every thing of a kind a home and
-    /// read no record. Where two records give one thing a home, the first
-    /// row's address stands, as the record orders them. A pattern holds its
-    /// kind against every later row, and against its own row's record, but
-    /// not against an earlier row that claimed that kind by name, whether
-    /// or not its record could be read. A row or a pattern this can't read
-    /// claims nothing, so the next row that serves its kind does: the
-    /// record is kept newest first, and a row just added above the site
-    /// already serving a kind mustn't take that site's links. A record
-    /// gives only the kinds its row claims by name, and only addresses that
-    /// are a fragment on its row's own page, their bytes plain.
+    /// read no record. A row's path may start with one `./`, as the home
+    /// reads it. Where two records give one thing a home, the first row's
+    /// address stands, as the rows order them. A pattern holds its kind
+    /// against every later row, and against its own row's record, but not
+    /// against an earlier row that claimed that kind by name, whether or
+    /// not its record could be read. A row or a pattern this can't read
+    /// claims nothing, so the next row that serves its kind does: the rows
+    /// are kept newest first, and a row just added above the site already
+    /// serving a kind mustn't take that site's links. A record gives only
+    /// the kinds its row claims by name, and only addresses that are a
+    /// fragment on its row's own page, their bytes plain.
     pub fn from_sites(sites: &Value, homes: impl Fn(&str) -> Option<Value>) -> Self {
         let mut addresses = HashMap::new();
         let mut patterns: HashMap<String, String> = HashMap::new();
@@ -78,6 +92,7 @@ impl Homes {
             let Some(path) = row
                 .get("path")
                 .and_then(Value::as_str)
+                .map(|path| path.strip_prefix("./").unwrap_or(path))
                 .filter(|path| inside(path))
             else {
                 continue;
@@ -674,7 +689,7 @@ mod tests {
 
     #[test]
     fn a_row_that_isnt_read_leaves_its_kind_to_the_next_row_that_serves_it() {
-        // sites.json is kept newest first, so a row this can't read is most
+        // The rows are kept newest first, so a row this can't read is most
         // often one just added above the site that already serves the kind.
         for first in [
             json!({"path": "mycelium/", "homes": [
@@ -749,6 +764,161 @@ mod tests {
             "off", "up", "coded", "deeper", "esc", "slash", "quote", "angle", "tick", "space",
         ] {
             assert_eq!(homes.address("repository", name), None, "{name:?}");
+        }
+    }
+
+    /// A home's folder holding the files `files` names, each with its text,
+    /// fresh under the system's temporary folder for the test `name`.
+    fn folder(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("homes-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (file, said) in files {
+            let path = root.join(file);
+            std::fs::create_dir_all(path.parent().expect("a file sits in a folder"))
+                .expect("the home's folder is made");
+            std::fs::write(path, said).expect("the home's file is written");
+        }
+        root
+    }
+
+    /// A row home to repositories at `path`, as the home writes it.
+    fn repositories(path: &str) -> String {
+        json!({"sites": [{"path": path, "homes": ["repository"]}]}).to_string()
+    }
+
+    /// A site's record at `site`, home to the repository core.
+    fn core_at(site: &str) -> String {
+        home(
+            "repository",
+            "core",
+            "core",
+            &[],
+            &format!("{site}#repo=core"),
+        )
+        .to_string()
+    }
+
+    #[test]
+    fn the_home_reads_its_rows_before_its_record() {
+        let old = home("repository", "other", "other", &[], "old/#repo=other").to_string();
+        let root = folder(
+            "rows",
+            &[
+                ("rows.json", &repositories("code/")),
+                ("sites.json", &repositories("old/")),
+                ("code/homes.json", &core_at("code/")),
+                ("old/homes.json", &old),
+            ],
+        );
+        let homes = Homes::read(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            homes.address("repository", "core"),
+            Some("code/#repo=core".into()),
+            "the rows the home lists hold"
+        );
+        assert_eq!(
+            homes.address("repository", "other"),
+            None,
+            "the record's rows aren't read beside the rows file"
+        );
+    }
+
+    #[test]
+    fn rows_that_are_there_but_wont_read_hold_no_homes() {
+        let root = folder(
+            "unreadable",
+            &[
+                ("rows.json/kept", "a folder where the rows file goes"),
+                ("sites.json", &repositories("old/")),
+                ("old/homes.json", &core_at("old/")),
+            ],
+        );
+        let homes = Homes::read(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            homes,
+            Homes::default(),
+            "only a missing rows file sends the reader to the record"
+        );
+    }
+
+    #[test]
+    fn a_home_with_no_rows_reads_its_record() {
+        let root = folder(
+            "record",
+            &[
+                ("sites.json", &repositories("old/")),
+                ("old/homes.json", &core_at("old/")),
+            ],
+        );
+        let homes = Homes::read(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            homes.address("repository", "core"),
+            Some("old/#repo=core".into()),
+            "a home from before it listed its rows apart keeps them in its record"
+        );
+    }
+
+    #[test]
+    fn rows_that_cant_be_read_hold_no_homes_rather_than_the_records() {
+        let root = folder(
+            "broken",
+            &[
+                ("rows.json", "{"),
+                ("sites.json", &repositories("old/")),
+                ("old/homes.json", &core_at("old/")),
+            ],
+        );
+        let homes = Homes::read(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            homes,
+            Homes::default(),
+            "the record no longer keeps the live rows, so it isn't read"
+        );
+    }
+
+    #[test]
+    fn a_rows_path_may_start_at_its_own_folder_once() {
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "./code/", "homes": ["repository"]}])),
+            |site| {
+                (site == "code/")
+                    .then(|| home("repository", "core", "core", &[], "code/#repo=core"))
+            },
+        );
+        assert_eq!(
+            homes.address("repository", "core"),
+            Some("code/#repo=core".into()),
+            "a row at ./code/ is the site at code/"
+        );
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "./map/", "homes": [
+                {"kind": "machine", "address": "#machine={name}"},
+            ]}])),
+            |_| None,
+        );
+        assert_eq!(
+            homes.address("machine", "kestrel"),
+            Some("map/#machine=kestrel".into()),
+            "a pattern on a row at ./map/ is on the site at map/"
+        );
+        for path in ["././code/", "./", "./../code/", ".//code/"] {
+            let homes = Homes::from_sites(
+                &sites(&json!([{"path": path, "homes": ["repository"]}])),
+                |site| {
+                    Some(home(
+                        "repository",
+                        "core",
+                        "core",
+                        &[],
+                        &format!("{site}#repo=core"),
+                    ))
+                },
+            );
+            assert_eq!(homes, Homes::default(), "{path:?} isn't read");
         }
     }
 
