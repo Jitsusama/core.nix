@@ -820,12 +820,33 @@ mod tests {
             follow.last.is_none(),
             "stepped on a second before the start"
         );
-        assert_eq!(
-            follow.controller.up.limit(),
-            None,
-            "held from a stay the shaper wasn't in"
-        );
         assert_eq!(follow.network, "home", "the stay's network wasn't named");
+    }
+
+    #[test]
+    fn a_declared_network_s_stay_starts_at_its_anchor_s_hold_each_time_it_is_met() {
+        let mut follow = Follow::new();
+        follow.anchor(Anchors::from([("home".to_owned(), 12_000.0)]));
+        let hold = Some(crate::rate::whole(12_000.0 * oneway::ANCHOR_HOLD));
+        let start = |follow: &mut Follow, network: &str| {
+            follow.take(&parse(&pool(NOV3, Some(network))).expect("a pool line"));
+            follow.controller.up.limit()
+        };
+        assert_eq!(
+            start(&mut follow, "home"),
+            hold,
+            "home didn't start at its hold"
+        );
+        assert_eq!(
+            start(&mut follow, "cafe"),
+            None,
+            "an undeclared network started held"
+        );
+        assert_eq!(
+            start(&mut follow, "home"),
+            hold,
+            "home met again didn't start at its hold"
+        );
     }
 
     #[test]

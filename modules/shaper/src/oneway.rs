@@ -1646,7 +1646,7 @@ mod tests {
     use crate::replay::{self, Base, Stay};
 
     /// Where a direction starts a test, in kbit/s: a base and a plateau,
-    /// as a stay reaches them, or an anchor gives a plateau at its start.
+    /// as a stay reaches them partway through.
     #[derive(Clone, Copy, Default)]
     struct Learned {
         base: Option<f64>,
@@ -1654,9 +1654,9 @@ mod tests {
     }
 
     impl Way {
-        /// A direction at `learned`'s base, held under its plateau and
-        /// counting the plateau as reached through the start's seconds, as
-        /// a start at an anchor does.
+        /// A direction partway through a stay, at `learned`'s base and held
+        /// under its plateau, counting the plateau as reached. A start
+        /// builds its own (`start_at_the_anchor`, pinned by its test).
         fn from_learned(learned: Learned) -> Way {
             let mut way = Way::new(learned.base);
             if let Some(plateau) = learned.plateau {
@@ -3644,6 +3644,37 @@ mod tests {
             at += 0.1;
         }
         lowest
+    }
+
+    #[test]
+    fn a_stay_on_a_declared_network_starts_at_its_anchor_s_hold() {
+        let mut c = Controller::new(None, None);
+        c.anchor(Some(12_000.0));
+        c.start_at_the_anchor();
+        let hold = 12_000.0 * ANCHOR_HOLD;
+        assert_eq!(
+            c.up.limit(),
+            Some(crate::rate::whole(hold)),
+            "not held at the anchor's hold"
+        );
+        let plateau = hold / c.up.tuning.hold;
+        assert_eq!(
+            c.up.plateau,
+            Some(plateau),
+            "its plateau isn't the anchor's"
+        );
+        assert!(
+            (c.up.started_from - plateau).abs() < 1e-9,
+            "the start's seconds wouldn't count the plateau as reached: {}",
+            c.up.started_from
+        );
+        let mut unanchored = Controller::new(None, None);
+        unanchored.start_at_the_anchor();
+        assert_eq!(
+            unanchored.up.limit(),
+            None,
+            "an undeclared network started held"
+        );
     }
 
     fn anchored(plateau: f64) -> Controller {

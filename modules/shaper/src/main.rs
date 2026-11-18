@@ -783,8 +783,8 @@ fn run(options: &Options) -> Result<(), Failure> {
     let _ = fs::create_dir_all(&options.runtime);
     // Where each network's rates were kept from one stay to the next, by
     // the round trip's controller and then the one-way one, which nothing
-    // reads now.
-    for kept in ["connections.json", "learned.json"] {
+    // reads now, with the half-written copy its writer could leave.
+    for kept in ["connections.json", "learned.json", "learned.json.new"] {
         let _ = fs::remove_file(options.state.join(kept));
     }
     let (send, echoes): (_, Receiver<Echo>) = channel();
