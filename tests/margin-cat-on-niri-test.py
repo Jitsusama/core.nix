@@ -74,6 +74,14 @@ STEPS_ON = 2
 ON_THEIR_WAY = 3
 # How long niri may take to say its layers have changed.
 LAYERED = 10.0
+# How long a pointer's move or click may take to move niri's focus.
+FOCUSES_BY = 10.0
+# How long a window's layout must hold for it to have stopped sliding to its place.
+STILL_FOR = 0.5
+# How far inside a window's corner, in logical pixels, the pointer goes, past its border.
+INSIDE = 24
+# How far from that point, down and right in logical pixels, a float is put out of its way.
+CLEAR = 96
 POLL = 0.05
 # Looks running at a sitting cat, each begun well after it last said anything, that find it
 # drawn otherwise than it said: a cat that sat still that long and is still wrong is a fault.
@@ -1167,31 +1175,65 @@ def test_a_click_beside_the_cat_reaches_the_window(shell: Shell) -> None:
     """The cat's layer spans the screen, yet only its cells take the pointer.
 
     So a click on the window beside it focuses that window: the cat never takes a click Joel
-    meant for his work. It sits on a floating window, where its layer is over the windows:
-    on a tiled one it's under them, where the window would take the click with no mask at
-    all, and niri's focus following the pointer would pass the case on the pointer's move.
+    meant for his work. It sits on a floating window, where its layer is over the windows: on
+    a tiled one it's under them, where the window would take the pointer with no mask at all.
+    With the mask, niri's focus following the pointer focuses the window on the pointer's move,
+    before the click; with none, the layer takes the move and the click alike, and focus stays.
     """
     beside = shell.opened("a column clicked into past the cat")
     since = shell.mark()
     floated = shell.opened("a floating window the cat sits on as the pointer passes")
-    shell.as_account(f"niri msg action toggle-window-floating --id {floated['id']}")
-    now = next(window for window in shell.windows() if window["id"] == beside["id"])
-    place = now["layout"]["tile_pos_in_workspace_view"]
-    # Clear of the column's top left corner, which the pointer goes to.
-    shell.as_account(
-        f"niri msg action move-floating-window --id {floated['id']}"
-        f" -x {round(place[0] + 4 * NEAR)} -y {round(place[1] + 120)}"
-    )
-    sits_over(shell, floated, since)
-    on_layer(shell, "Top")
-    point(shell, place[0] + NEAR, place[1] + NEAR)
-    shell.as_account(f"{os.environ['WLRCTL']} pointer click left")
+    try:
+        shell.as_account(f"niri msg action toggle-window-floating --id {floated['id']}")
+        # The column left alone is centred again, so its corner is read once it's still.
+        place = laid_out(shell, beside)["tile_pos_in_workspace_view"]
+        corner = (place[0] + INSIDE, place[1] + INSIDE)
+        shell.as_account(
+            f"niri msg action move-floating-window --id {floated['id']}"
+            f" -x {round(corner[0] + CLEAR)} -y {round(corner[1] + CLEAR)}"
+        )
+        layout = laid_out(shell, floated)
+        left, top = layout["tile_pos_in_workspace_view"]
+        assert corner[0] < left or corner[1] < top, f"the float covers the click: {layout}"
+        # A report on the window while it was still tiled passes this, so the Top layer,
+        # which only a floating seat gives, is what says it sits over the windows.
+        sits_over(shell, floated, since, timedelta(seconds=SETTLES_BY))
+        on_layer(shell, "Top")
+        focused = json.loads(shell.as_account("niri msg --json focused-window"))
+        assert focused["id"] == floated["id"], f"the column had the keys first: {focused}"
+        click(shell, *corner)
+        deadline = time.monotonic() + FOCUSES_BY
+        while focused["id"] != beside["id"]:
+            if time.monotonic() >= deadline:
+                said, _ = shell.said_since(since)
+                last = next((one for one in reversed(said) if one.startswith(SITS)), "")
+                layers = [layer["layer"] for layer in cat_layers(shell)]
+                stayed = f"focus stayed on {focused['title']!r}, the cat on {layers}: {last}"
+                failed = f"a click beside the cat never reached the window; {stayed}"
+                raise AssertionError(failed)
+            time.sleep(POLL)
+            focused = json.loads(shell.as_account("niri msg --json focused-window"))
+    finally:
+        # Closed even on a failure, so the cases after start with no float over the columns.
+        for window in (floated, beside):
+            shell.close(window)
+
+
+def laid_out(shell: Shell, window: Json) -> Json:
+    """Give where niri lays this window out, once it has stopped moving there.
+
+    niri slides a window to its place, so its layout is read until it holds still.
+    """
     deadline = time.monotonic() + LAYERED
-    while json.loads(shell.as_account("niri msg --json focused-window"))["id"] != beside["id"]:
-        assert time.monotonic() < deadline, "a click beside the cat never reached the window"
+    held = 0.0
+    last: Json = {}
+    while held < STILL_FOR:
+        assert time.monotonic() < deadline, f"the window never held still: {last}"
         time.sleep(POLL)
-    for window in (floated, beside):
-        shell.close(window)
+        now = next(one for one in shell.windows() if one["id"] == window["id"])["layout"]
+        held = held + POLL if now == last else 0.0
+        last = dict(now)
+    return last
 
 
 def lying(said: str) -> Json | None:
