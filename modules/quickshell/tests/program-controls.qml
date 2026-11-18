@@ -94,6 +94,8 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
+        // Whether it's drawing its first frame, before `open` follows.
+        property bool opening: false
         // The row chosen, whose drawer shows; Applications ends a program's
         // watch once it's off the program's row.
         property var selected: null

@@ -151,6 +151,8 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
+        // Whether it's drawing its first frame, before `open` follows.
+        property bool opening: false
         // Whether a source's rows are wanted (Provider.qml's wanted), as
         // they aren't while the launcher is shut or open elsewhere.
         property bool wanting: true
@@ -313,6 +315,13 @@ ShellRoot {
     // What the case waits to have been served, or "" while it waits on
     // nothing.
     property string waiting: ""
+    // How many times the notices daemon was asked for the rows past the
+    // page once the launcher had closed, so History made ahead is seen to
+    // ask for none while it's shut.
+    property int rowsAskedShut: -1
+    // When the launcher opened again, so the case waits a while, not a
+    // count of ticks a slow builder stretches, for History to fill in.
+    property real reopenedAt: 0
     function madeNow() {
         return [pastNotices.tally.rows, now.tally.rows];
     }
@@ -596,6 +605,9 @@ ShellRoot {
             expect("and the rows past the page go as the launcher closes",
                 pastNotices.pastWhole.kept === null,
                 JSON.stringify(pastNotices.pastWhole.kept?.keys));
+            root.rowsAskedShut = noticesDaemon.rowsAsked;
+            expect("and nothing's on its way as it closes",
+                root.asksNone(root.rowsAskedShut), root.asksSaid(root.rowsAskedShut));
             // A look done with while the launcher is shut, which the case
             // then waits to find among History's rows made, asking for none.
             looksDaemon.looks = looksDaemon.looks.concat([{ id: "f", kind: "page",
@@ -617,8 +629,120 @@ ShellRoot {
             const made = now.historyKept.rows[""].row;
             expect("a step into History finds its rows made while the launcher was shut",
                 now.historyRows() === made, "made again at the step");
+            // Each answer come while it's shut is let go, so asking for one
+            // made History's 1.7 MB of Joel's arrive for nothing, about once
+            // a minute (the census, 2026-11-18).
+            expect("and made shut, it asks for none of the rows past the page",
+                root.asksNone(root.rowsAskedShut), root.asksSaid(root.rowsAskedShut));
+            // A pick learns as the launcher closes, reading every
+            // collection's keys, so its notices' are read without asking.
+            // It's opened for this, as a pick is made while it's still
+            // open: shut, nothing would ask whatever the keys were read by.
+            theLauncher.open = true;
+            const keys = pastNotices.keysKnown().map(one => one.key);
+            expect("a pick's keys ask for none of the rows past the page",
+                root.asksNone(root.rowsAskedShut), root.asksSaid(root.rowsAskedShut));
+            const page = pastNotices.all().map(row => row.key);
+            expect("and they're the page's keys, as everything() gave",
+                keys.length > 0 && keys.join() === page.join(), keys.join());
+            // Drawing its first frame, before `open` follows, it isn't shut:
+            // History asks for the rows past its page, and keeps them.
+            theLauncher.open = false;
+            theLauncher.opening = true;
+            pastNotices.pastRows(["desktop", "slack"]);
+            expect("opening, History asks for the rows past its page",
+                pastNotices.pastWhole.asking, root.asksSaid(root.rowsAskedShut));
         }))
-            Qt.exit(0);
+            waiting = "opening";
+    }
+    // The answer to History's ask made as the launcher draws its first
+    // frame, come before `open` follows, is kept rather than let go, and
+    // stays once the frame is drawn, as the launcher fills in (filled):
+    // `open` turns true, then `opening` false.
+    Timer {
+        running: root.waiting === "opening"
+        interval: 50
+        repeat: true
+        onTriggered: {
+            if (pastNotices.pastWhole.asking)
+                return;
+            root.waiting = "";
+            if (root.tried(() => {
+                root.expect("and its answer come while opening is kept",
+                    pastNotices.pastWhole.kept !== null, "let go");
+                theLauncher.open = true;
+                theLauncher.opening = false;
+                root.expect("and filled in, it keeps what came while opening",
+                    pastNotices.pastWhole.kept !== null, "let go");
+                // Shut, then opening again, History asks anew.
+                theLauncher.open = false;
+                theLauncher.opening = true;
+                pastNotices.pastRows(["desktop", "slack"]);
+                root.expect("opening again, History asks for the rows past its page",
+                    pastNotices.pastWhole.asking, root.asksSaid(root.rowsAskedShut));
+            }))
+                root.waiting = "unfilled";
+        }
+    }
+    // An opening shut again before its first frame, as a second press of
+    // the chord does, lets go of what came while it opened.
+    Timer {
+        running: root.waiting === "unfilled"
+        interval: 50
+        repeat: true
+        onTriggered: {
+            if (pastNotices.pastWhole.asking)
+                return;
+            root.waiting = "";
+            if (root.tried(() => {
+                root.expect("and its answer come while opening again is kept",
+                    pastNotices.pastWhole.kept !== null, "let go");
+                // Shut again before its first frame, `open` never changed.
+                theLauncher.opening = false;
+                root.expect("shut before its first frame, it lets that answer go",
+                    pastNotices.pastWhole.kept === null, "still held");
+                // So opened again, its step asks anew for what it lists.
+                root.reopenedAt = Date.now();
+                theLauncher.open = true;
+                root.stepIn();
+            }))
+                root.waiting = "reopened";
+        }
+    }
+    // What was asked since `since`, for a failure to say which of
+    // asksNone's three it was.
+    function asksSaid(since) {
+        return `${noticesDaemon.rowsAsked - since} asks, asking ${pastNotices.whole.asking}`
+            + ` and ${pastNotices.pastWhole.asking} past`;
+    }
+    // Whether the notices daemon was asked for no rows past the page since
+    // `since`, neither answered nor on their way, so the count read on the
+    // daemon's side can't pass for an ask it hasn't read yet.
+    function asksNone(since) {
+        return noticesDaemon.rowsAsked === since && !pastNotices.whole.asking
+            && !pastNotices.pastWhole.asking;
+    }
+    // Opened again, a step into History asks for the rows past its page and
+    // lists them, as it did before the launcher shut.
+    Timer {
+        running: root.waiting === "reopened"
+        interval: 50
+        repeat: true
+        onTriggered: {
+            // Tried, so a step that throws says so at once rather than
+            // waiting out the watchdog.
+            root.tried(() => {
+                const history = root.stepIn().history;
+                if (history.some(one => one.name === "Parcel delivered")) {
+                    root.waiting = "";
+                    Qt.exit(0);
+                } else if (Date.now() - root.reopenedAt > 15000) {
+                    root.waiting = "";
+                    root.expect("opened again, History lists past its page",
+                        false, JSON.stringify(history.map(one => one.name)));
+                }
+            });
+        }
     }
     Timer {
         running: root.waiting === "made ahead"
