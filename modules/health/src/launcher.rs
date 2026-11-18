@@ -376,6 +376,7 @@ mod tests {
     use super::*;
     use crate::day::Day;
     use crate::day::tests::entry;
+    use crate::journal::{Entry, Origin};
 
     /// The shell's lines as its journal holds them, colours and all.
     const SAID: [&str; 9] = [
@@ -492,6 +493,21 @@ mod tests {
             day.things.get(IDENTIFIER).map(|thing| thing.lines),
             Some(1),
             "the shell's warning wasn't counted as its own, or its timing was"
+        );
+    }
+
+    #[test]
+    fn a_labs_shell_timing_isnt_his_launchers() {
+        let mut day = Day::new("2026-11-12");
+        for origin in [Origin::Jobs, Origin::Elsewhere, Origin::Unknown] {
+            day.take(&Entry {
+                origin,
+                ..entry(IDENTIFIER, 6, SAID[4])
+            });
+        }
+        assert_eq!(
+            day.launcher.keys.count, 0,
+            "a shell run outside his session timed keys that weren't his"
         );
     }
 

@@ -21,12 +21,18 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::journal::{Entry, Job};
+use crate::journal::{Entry, Job, Origin};
 use crate::launcher::percent;
 use crate::reloads::{self, Asker};
 
 /// What the windows daemon writes its journal as.
 pub const IDENTIFIER: &str = "windows";
+
+/// The windows daemon's unit, as modules/windows/home.nix names it: its
+/// openings and ends are taken only from there, since any command can
+/// write itself as `windows`, but a unit a job starts can't take that name
+/// while the daemon's unit file is there.
+pub const UNIT: &str = "windows.service";
 
 /// What `journalctl --grep` follows for these lines.
 pub const FOLLOWED: &str = "^(opened .* ms after its process started|closed .*; its process )";
@@ -154,9 +160,14 @@ impl Launches {
                 }
             }
             None => {
-                if let Some(asker) = reloads::asker(&entry.message) {
+                // Who asked is systemd's to say, as a restart is.
+                if let Some(asker) =
+                    reloads::asker(&entry.message).filter(|_| entry.origin == Origin::Systemd)
+                {
                     self.reloaded.insert(asker == Asker::Switch, entry.at);
-                } else if self.took(unit, &entry.message) {
+                } else if (unit != IDENTIFIER || entry.ran_in.as_deref() == Some(UNIT))
+                    && self.took(unit, &entry.message)
+                {
                     self.served(entry);
                 } else {
                     return false;

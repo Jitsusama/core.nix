@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 use serde_json::Value;
 
-use crate::journal::{Entry, Whose};
+use crate::journal::{Entry, Origin, Whose};
 use crate::unified;
 
 /// Where the system keeps its reports; the account's are in the same place
@@ -109,6 +109,7 @@ pub fn parse(report: &str) -> Option<Entry> {
         crashed: Some(program),
         whose: Some(whose),
         agents: false,
+        origin: Origin::Elsewhere,
         restart: false,
         kernel: false,
         boot: String::new(),

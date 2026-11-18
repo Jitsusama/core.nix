@@ -13,10 +13,10 @@ use crate::busy::Busy;
 use crate::defunct::Defunct;
 use crate::disk::Disks;
 use crate::feel::Pain;
-use crate::journal::{Entry, Mark, Whose};
+use crate::journal::{Entry, Mark, Origin, Whose};
 use crate::kernel;
 use crate::launcher::{self, Launcher};
-use crate::launches::Launches;
+use crate::launches::{self, Launches};
 use crate::memory::Memory;
 use crate::sessions::{Heard, Said};
 use crate::sign;
@@ -262,9 +262,17 @@ impl Day {
             self.asks.took(ask);
             return;
         }
+        // The launcher's timings are taken only from his shell's own unit,
+        // and a program's ready never from the jobs slice nor from no
+        // cgroup: a lab's shell or a test says those too. A pi's
+        // start is taken from anywhere, since agents start pi in all of
+        // those: councils and helpers in the jobs slice, busy sessions moved
+        // there, and quick ones gone before journald looks.
+        let his_shell = entry.thing == launcher::IDENTIFIER && entry.origin == Origin::Shell;
+        let anywhere = entry.thing == launches::PI;
         if entry.priority > 4
-            && ((entry.thing == launcher::IDENTIFIER && self.launcher.took(&entry.message))
-                || self.launches.heard(entry))
+            && (anywhere || !matches!(entry.origin, Origin::Jobs | Origin::Unknown))
+            && ((his_shell && self.launcher.took(&entry.message)) || self.launches.heard(entry))
         {
             return;
         }
