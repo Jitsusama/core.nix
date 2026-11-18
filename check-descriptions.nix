@@ -629,15 +629,17 @@
     and every name, branch, change title, address and failed check drawn as words, never markup
   '';
   code-site-reads-live = ''
-    the code page, served by the local sites' server beside a stand-in repos daemon and node,
-    reads live in headless Chromium: every repository drawn, one growing once a tree is written
-    and one going, a cell at work drawn and linked to its home on the map, broken while the daemon
-    is away and live with its repositories again once it's back, stale once the server goes, the
-    web-design skill's page checks and its homes check passing at a phone's width and a desk's in
-    both looks, a repository's weight and due upkeep said in its row and drawer, its ages told
-    again each minute in place with the focused tree kept, today's growth yesterday's once the day
-    turns, no row moving as the cursor steps, a reload not shifting as the feeds arrive, a second's
-    burst of records drawing the list a few times, and nothing logged
+    the code page, served by the local sites' server beside a stand-in repos daemon and node, reads
+    live in headless Chromium: every repository drawn, one growing once a tree is written and one
+    going, a cell at work drawn and linked to its home on the map, broken while the daemon is away
+    and live with its repositories again once it's back, stale once the server goes, the web-design
+    skill's page checks and its homes check passing at a phone's width and a desk's in both looks, a
+    repository's weight and due upkeep said in its row and drawer, its ages told again each minute
+    in place with the focused tree kept, today's growth yesterday's once the day turns, no row
+    moving as the cursor steps, a reload not shifting as the feeds arrive, a second's burst of
+    records drawing the list a few times, a first visit within its budget of files, bytes and
+    elements, both visits reaching only the sites' server and the second answered unchanged, and
+    nothing logged
   '';
   code-site-keeps-its-last-homes = ''
     the code site's writer, while repos fails, ends well in one line and leaves the last homes as
@@ -1735,14 +1737,15 @@
     not served
   '';
   mycelium-site-reads-live = ''
-    the mycelium map, served by the local sites' server beside a stand-in node through the node
-    feed as home.nix declares it for a machine in a realm, reads live in headless Chromium: the
-    realm drawn and counted, a cell moving and one going, broken while the node is away with the
-    realm kept drawn and live once it's back, stale once the server goes with the realm kept, a
-    record's words drawn as words and never as markup, the web-design skill's page
-    checks and the map's own (each opened thing in view, its drawer saying what it is, no more
-    names than it's engaged with) passing at a phone's width and a desk's in both looks, and
-    nothing logged
+    the mycelium map, served by the local sites' server beside a stand-in node through the node feed
+    as home.nix declares it for a machine in a realm, reads live in headless Chromium: the realm
+    drawn and counted, a cell moving and one going, broken while the node is away with the realm
+    kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
+    words drawn as words and never as markup, the web-design skill's page checks and the map's own
+    (each opened thing in view, its drawer saying what it is, no more names than it's engaged with)
+    passing at a phone's width and a desk's in both looks, a first visit within its budget of files,
+    bytes and elements, both visits reaching only the sites' server and the second answered
+    unchanged, and nothing logged
   '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its open and ended quests, the
@@ -3176,9 +3179,10 @@
   system-site-reads-live = ''
     the system page, served by the local sites' server beside a stand-in system daemon, reads live
     in headless Chromium: every part drawn and the whole counted, a part turning and a machine
-    going, broken while the daemon is away and live once it's back, stale once the server goes,
-    the web-design skill's page checks passing at a phone's width and a desk's in both looks, and
-    nothing logged
+    going, broken while the daemon is away and live once it's back, stale once the server goes, the
+    web-design skill's page checks passing at a phone's width and a desk's in both looks, a first
+    visit within its budget of files, bytes and elements, both visits reaching only the sites'
+    server and the second answered unchanged, and nothing logged
   '';
   forage-site-holds = ''
     the forage page typechecks on the kit at its strictest and builds, its tests passing: each
@@ -3196,14 +3200,15 @@
     sentence's turns, the quote cut on a word, and a record it can't read said, not dropped
   '';
   murmurs-site-reads-live = ''
-    the murmurs page, served by the local sites' server beside a stand-in node through the node
-    feed as home.nix declares it for a machine in a realm, reads live in headless Chromium: every
-    murmur drawn newest first and counted, one said, settled or gone, one it can't read said while
-    the rest draw, broken while the node is away with the murmurs kept and live once it's back,
-    stale once the server goes with them kept, a murmur's words drawn as words and never as markup,
-    j, k, g, G and ? answering, a tap on a key its head shows doing what typing it does, the
-    web-design skill's page checks passing at a phone's width and a desk's in both looks, and
-    nothing logged
+    the murmurs page, served by the local sites' server beside a stand-in node through the node feed
+    as home.nix declares it for a machine in a realm, reads live in headless Chromium: every murmur
+    drawn newest first and counted, one said, settled or gone, one it can't read said while the rest
+    draw, broken while the node is away with the murmurs kept and live once it's back, stale once
+    the server goes with them kept, a murmur's words drawn as words and never as markup, j, k, g, G
+    and ? answering, a tap on a key its head shows doing what typing it does, the web-design skill's
+    page checks passing at a phone's width and a desk's in both looks, a first visit within its
+    budget of files, bytes and elements, both visits reaching only the sites' server and the second
+    answered unchanged, and nothing logged
   '';
   start-new-work-asks-only-a-sprout = ''
     Start New Work asks the realm's node only a sprout of the trimmed words or link, after --,

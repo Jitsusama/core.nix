@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Opened, Served, serving
+from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, Page, expect
 from stand_in_daemon import StandIn
 
@@ -31,6 +31,8 @@ PACE_MS = 6000
 RETRY_MS = 35000
 # What system.json comes to: four parts, and seven things worth a look among them.
 COUNTED = "Four parts, seven worth a look."
+# What a first visit to the page may cost, drawn from system.json.
+BUDGET = Budget(files=21, kilobytes=450, elements=330)
 
 
 @pytest.fixture
@@ -115,6 +117,18 @@ def test_a_sites_server_that_goes_is_said_stale(system_page: Page, system_served
     _, server = system_served
     server.kill()
     says_it_stands(system_page, "stale")
+
+
+def test_the_system_page_keeps_to_its_budget(browser: Browser, system_served: Served) -> None:
+    root, _ = system_served
+    opened = Opened(browser, f"{root}system/", SIZES[-1], "dark")
+    try:
+        says_it_stands(opened.page, "live")
+        counted(opened.page)
+        opened.keeps_to(BUDGET)
+        says_it_stands(opened.page, "live")
+    finally:
+        opened.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)

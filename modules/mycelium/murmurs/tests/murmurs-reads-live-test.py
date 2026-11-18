@@ -20,7 +20,7 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Opened, Served, serving
+from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, Page, expect
 from stand_in_daemon import StandIn
 
@@ -41,6 +41,8 @@ REDRAWN_MS = 1500
 UNREACHED = "WebSocket connection to"
 # What the three murmurs come to: all said, one of them settled.
 COUNTED = "Three murmured, two still in the air."
+# What a first visit to the page may cost, drawn from the three murmurs.
+BUDGET = Budget(files=20, kilobytes=440, elements=145)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
 
@@ -293,6 +295,18 @@ def test_a_tap_on_a_key_the_head_shows_does_what_typing_it_does(
     the_cursor_is_on(page, f"murmur:OSPREY:{osprey}", "a key typed after a tap didn't step")
     shown.filter(has_text="?").click()
     expect(page.locator("#keys"), "a tap on ? didn't show the keys").to_be_visible()
+
+
+def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: Served) -> None:
+    root, _ = murmurs_served
+    opened = Opened(browser, f"{root}web/", SIZES[-1], "dark")
+    try:
+        the_page_stands(opened.page, "live")
+        the_page_counts(opened.page, COUNTED, "the murmurs page didn't draw")
+        opened.keeps_to(BUDGET)
+        the_page_stands(opened.page, "live")
+    finally:
+        opened.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)
