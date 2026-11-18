@@ -13,7 +13,11 @@ onLinux {
   # playback are left out; and a-call-is-on says a call once the same node
   # still records two seconds on, in any account's PipeWire, none for a
   # moment's recording or with nobody logged in, and that it can't tell
-  # when a PipeWire won't answer.
+  # when a PipeWire won't answer; and that a fresh call on another of the
+  # person's machines, as a stand-in mycelium node tells it, is a call
+  # unless it's asked about here alone, a stale or quiet one none, one
+  # declaring no call probe named unseen, and a probe with no answer or a
+  # node that won't answer can't tell.
   calls-tells-a-call = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in it, its tests included.
   calls-passes-clippy = passesClippy "calls-passes-clippy" (pkgs.callPackage ./package.nix { });

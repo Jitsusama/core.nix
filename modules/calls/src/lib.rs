@@ -9,6 +9,10 @@
 //! whatever mustn't cut one. On a Mac it asks Core Audio which processes
 //! record ([`MacRecording`]), and counts them the same way.
 
+pub mod elsewhere;
+#[cfg(target_os = "linux")]
+pub mod nodes;
+
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};

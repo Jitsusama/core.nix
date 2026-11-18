@@ -1,15 +1,20 @@
 //! a-call-is-on against a stand-in pw-dump, which prints the graph in
 //! graph.json in the runtime folder it's given, or later.json once asked
-//! before when there is one, and fails while that folder holds `fails`.
-//! A Mac reads no PipeWire, so these are Linux's; src/lib.rs's tests say
-//! what counts as a call on a Mac.
+//! before when there is one, and fails while that folder holds `fails`,
+//! and against a stand-in mycelium node in an account's runtime folder,
+//! which tells one other machine's record. A Mac reads no PipeWire, so
+//! these are Linux's; src/lib.rs's tests say what counts as a call on a
+//! Mac.
 #![cfg(target_os = "linux")]
 
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::time::{Duration, Instant};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 struct World {
     _dir: tempfile::TempDir,
@@ -191,5 +196,153 @@ fn a_pipewire_that_wont_answer_cant_tell() {
     assert!(
         String::from_utf8_lossy(&told.stderr).contains("couldn't tell whether a call is on"),
         "it didn't say it couldn't tell: {told:?}"
+    );
+}
+
+/// A stand-in mycelium node for the account `uid`, serving `realm`: it
+/// answers each `Machines` request with a list holding `peer`, as a node
+/// lists what it heard from another machine, for as long as the test runs.
+fn node(world: &World, uid: &str, realm: &str, peer: &str) {
+    let folder = world.runtimes.join(uid).join("mycelium");
+    fs::create_dir_all(&folder).expect("a node's folder");
+    let listener = UnixListener::bind(folder.join(format!("{realm}.sock"))).expect("a socket");
+    let answer = format!("{{\"Ok\":{{\"Machines\":[{peer}]}}}}\n");
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut asked = String::new();
+            let _ = BufReader::new(&stream).read_line(&mut asked);
+            if asked.trim() == "\"Machines\"" {
+                let _ = (&stream).write_all(answer.as_bytes());
+            }
+        }
+    });
+}
+
+/// A peer's record, measured `ago` seconds since, declaring the call
+/// probe when `probed`, its probes saying `reached`.
+fn peer(ago: u64, probed: bool, reached: &str) -> String {
+    let at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_secs()
+        - ago;
+    let measured = Command::new("date")
+        .args(["-u", "-d", &format!("@{at}"), "+%Y-%m-%dT%H:%M:%S.5Z"])
+        .output()
+        .expect("date ran");
+    let measured = String::from_utf8(measured.stdout).expect("a time");
+    let probes = if probed {
+        r#"{"call":{"run":["a-call-is-on","--here"]}}"#
+    } else {
+        r#"{"home":{"run":["probe"]}}"#
+    };
+    format!(
+        r#"{{"name":"skiff","measured_at":"{}","declared":{{"probes":{probes}}},"reached":{reached}}}"#,
+        measured.trim()
+    )
+}
+
+#[test]
+fn a_call_on_another_machine_is_a_call_without_waiting_on_pipewire() {
+    let world = World::new();
+    world.account("1000", "[]");
+    node(&world, "1000", "work", &peer(10, true, r#"{"call":true}"#));
+    let (code, took) = world.asked();
+    assert_eq!(code, 0, "a call on a peer wasn't a call");
+    assert!(took < Duration::from_secs(2), "it waited: {took:?}");
+}
+
+#[test]
+fn asked_about_here_alone_a_call_elsewhere_is_none() {
+    let world = World::new();
+    world.account("1000", "[]");
+    node(&world, "1000", "work", &peer(10, true, r#"{"call":true}"#));
+    let runtimes = world.runtimes.to_str().expect("a folder as text");
+    let told = world.told(&["--here", runtimes]);
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "here alone heard a peer: {told:?}"
+    );
+    let world = World::new();
+    world.account("1000", &recording(40, "zoom"));
+    let told = world.told(&["--here", world.runtimes.to_str().expect("a folder as text")]);
+    assert_eq!(
+        told.status.code(),
+        Some(0),
+        "here alone missed its own: {told:?}"
+    );
+}
+
+#[test]
+fn a_peer_saying_no_call_and_a_call_gone_stale_are_no_call() {
+    for (record, why) in [
+        (peer(10, true, r#"{"call":false}"#), "a fresh no"),
+        (
+            peer(240, true, r#"{"call":true}"#),
+            "a yes four minutes old",
+        ),
+        (peer(240, true, "{}"), "a stale record with no reading"),
+    ] {
+        let world = World::new();
+        world.account("1000", "[]");
+        node(&world, "1000", "personal", &record);
+        let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
+        assert_eq!(
+            told.status.code(),
+            Some(1),
+            "{why} wasn't no call: {told:?}"
+        );
+        assert!(told.stderr.is_empty(), "{why} said something: {told:?}");
+    }
+}
+
+#[test]
+fn a_peer_whose_probe_said_nothing_cant_tell() {
+    let world = World::new();
+    world.account("1000", "[]");
+    node(&world, "1000", "work", &peer(10, true, "{}"));
+    let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
+    assert_eq!(
+        told.status.code(),
+        Some(69),
+        "no reading wasn't can't tell: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("skiff"),
+        "it didn't name the peer: {told:?}"
+    );
+}
+
+#[test]
+fn a_peer_declaring_no_call_probe_is_named_unseen_and_no_wait() {
+    let world = World::new();
+    world.account("1000", "[]");
+    node(&world, "1000", "work", &peer(10, false, r#"{"home":true}"#));
+    let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "an unseen peer was a wait: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("skiff declares no call probe"),
+        "it didn't name the unseen peer: {told:?}"
+    );
+}
+
+#[test]
+fn a_node_that_wont_answer_cant_tell() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let folder = world.runtimes.join("1000").join("mycelium");
+    fs::create_dir_all(&folder).expect("a node's folder");
+    // A socket left by a node that has stopped: nothing listens on it.
+    drop(UnixListener::bind(folder.join("personal.sock")).expect("a socket"));
+    let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
+    assert_eq!(
+        told.status.code(),
+        Some(69),
+        "a silent node wasn't can't tell: {told:?}"
     );
 }
