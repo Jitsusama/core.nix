@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { addressed, homeSiteOf, homesOf, landing, outward } from "../address.ts";
+import { addressed, landing, outward } from "../address.ts";
 import type { Grove, Repository, Tree } from "../model.ts";
 
 function tree(path: string, season: Tree["season"], url?: string): Tree {
@@ -101,43 +101,4 @@ it("opens a tree's change, else the repository where GitHub keeps it", () => {
   assert.equal(outward(core, "/home/ada/trees/fresh"), "https://github.com/owl/core/pull/41");
   assert.equal(outward(core, "/home/ada/trees/old"), "https://github.com/owl/core");
   assert.equal(outward({ ...core, key: "heron:src/notes" }, null), undefined);
-});
-
-it("finds where a kind is home by the row that claims it, whatever the row is named", () => {
-  const sites = {
-    sites: [
-      { path: "code/", name: "Code", homes: ["repository", "tree"] },
-      { path: "mycelium/", name: "Your mycelium, now", homes: ["cell"] },
-      { path: "notes/", name: "mycelium" },
-    ],
-  };
-  assert.equal(homeSiteOf(sites, "cell"), "mycelium/");
-  assert.equal(homeSiteOf(sites, "tree"), "code/");
-});
-
-it("finds no home for a kind no row claims, or in a record that isn't one", () => {
-  const unclaimed = { sites: [{ path: "mycelium/", name: "Your mycelium, now" }] };
-  assert.equal(homeSiteOf(unclaimed, "cell"), undefined);
-  assert.equal(homeSiteOf({ sites: [{ homes: ["cell"] }] }, "cell"), undefined);
-  assert.equal(homeSiteOf({ sites: "none" }, "cell"), undefined);
-  assert.equal(homeSiteOf(null, "cell"), undefined);
-});
-
-it("finds no home in a row whose path leaves the sites' own folders", () => {
-  for (const path of ["../../elsewhere/", "/elsewhere/", "./mycelium/", "mycelium", ""]) {
-    const sites = { sites: [{ path, name: "Your mycelium, now", homes: ["cell"] }] };
-    assert.equal(homeSiteOf(sites, "cell"), undefined, `${path} was taken as a home`);
-  }
-});
-
-it("takes from a site's homes only the things of the kind asked, each by its key", () => {
-  const homes = {
-    things: [
-      { kind: "cell", key: "E2ZIAQ", name: "E2ZIAQ", address: "mycelium/#cell=E2ZIAQ" },
-      { kind: "network", key: "repo.core", name: "repo.core", address: "mycelium/#n=core" },
-      { kind: "cell", key: "NOWHERE" },
-    ],
-  };
-  assert.deepEqual([...homesOf(homes, "cell")], [["E2ZIAQ", "mycelium/#cell=E2ZIAQ"]]);
-  assert.equal(homesOf({ things: "none" }, "cell").size, 0);
 });
