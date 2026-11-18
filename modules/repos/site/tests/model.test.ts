@@ -212,6 +212,14 @@ it("joins repositories one cell works across, by the networks it's in", () => {
   assert.deepEqual(grove?.repositories[1]?.joined, [], "world has no cell of its own at work");
 });
 
+it("joins a repository by its name as the mesh spells it, lower-cased and hyphened", () => {
+  const named = records.map((each) => (each === world ? { ...each, name: "_World..Nix" } : each));
+  const cell = { ...map.cells[0], networks: ["repo.world-nix", "repo.core"] };
+  const grove = groveOf(told(named), cellsOf({ cells: [cell] }), NOW);
+  const drawn = grove?.repositories.find((each) => each.key === "github:owl/core");
+  assert.deepEqual(drawn?.joined, ["github:owl/world"], "_World..Nix wasn't joined");
+});
+
 it("hangs each change on its repository and on the tree that names it", () => {
   const drawn = groveOf(told(records), [], NOW)?.repositories[0];
   assert.deepEqual(
