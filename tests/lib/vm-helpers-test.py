@@ -387,17 +387,68 @@ def test_a_band_the_picture_doesnt_hold_is_refused(top: int, bottom: int) -> Non
         alike(picture("..", "ww", "ww", ".."), picture("..", "ww", "ww", ".."))
 
 
-def test_an_edge_moving_in_the_rows_read_keeps_the_wait_from_settling() -> None:
+def test_a_wait_on_the_rows_read_settles_while_the_cat_walks_above_them() -> None:
+    # The cat walks along the tops each look, which keeps a wait on the whole picture from
+    # ever settling, while the windows below it stand still.
     looked = iter(range(1000))
-    clock = FadingGuest(frames=0, apart=1.0)
 
-    def moving() -> bytes:
-        clock.now += FadingGuest.LOOKING
-        return picture("..", "w." if next(looked) % 2 else "ww", "ww", "..")
+    def walking(clock: FadingGuest) -> Callable[[], bytes]:
+        def screen() -> bytes:
+            clock.now += FadingGuest.LOOKING
+            return picture("c." if next(looked) % 2 else ".c", "ww", "ww", "..")
+
+        return screen
 
     def nothing_counted() -> dict[str, int]:
         return {}
 
+    whole, rows = FadingGuest(frames=0, apart=1.0), FadingGuest(frames=0, apart=1.0)
     alike = vm_helpers.alike_between_rows(1, 3)
-    why = vm_helpers.settled(moving, nothing_counted, 0.5, 5, clock=clock.clock, alike=alike)
-    assert why, "an edge moving every look in the rows read was taken for rest"
+    assert vm_helpers.settled(walking(whole), nothing_counted, 0.5, 5, clock=whole.clock), (
+        "the whole picture settled though the cat moved every look"
+    )
+    why = vm_helpers.settled(walking(rows), nothing_counted, 0.5, 5, clock=rows.clock, alike=alike)
+    assert why is None, f"the cat walking above rows 1 to 3 kept the wait from settling: {why}"
+
+
+def test_where_the_rows_read_changed_is_said_in_the_screens_own_rows() -> None:
+    where = vm_helpers.changed_between_rows(1, 3)
+    said = where(picture("...", "...", "...", "..."), picture("c..", "...", ".ww", "..."))
+    assert said == " from 1,2 to 3,3", f"the edge in row 2, columns 1 and 2, was said as {said!r}"
+
+
+def test_a_change_only_outside_the_rows_read_is_said_as_none() -> None:
+    where = vm_helpers.changed_between_rows(1, 3)
+    said = where(picture("c.", "ww", "ww", ".."), picture(".c", "ww", "ww", "c."))
+    assert not said, f"the cat outside rows 1 to 3 was said as a change {said!r}"
+
+
+def test_the_first_tap_goes_at_once_and_the_next_only_once_its_gap_has_passed() -> None:
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+    assert taps.due(), "the first tap waited for a gap no tap had opened"
+    taps.send()
+    clock.now += 4.9
+    assert not taps.due(), "a second tap was due 4.9 s into a 5 s gap"
+    clock.now += 0.1
+    assert taps.due(), "a second tap wasn't due once the 5 s gap had passed"
+
+
+def test_a_tap_still_on_its_way_holds_the_count_until_its_gap_has_passed() -> None:
+    # Two taps sent and the first heard: the second may still land, after the count starts.
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+    taps.send()
+    clock.now += 5
+    taps.send()
+    clock.now += 1
+    assert not taps.landed(1), "one of two taps heard counted as all landed 1 s after the last"
+    clock.now += 4
+    assert taps.landed(1), "the last tap's 5 s gap passed and still it wasn't counted landed"
+
+
+def test_every_tap_sent_heard_is_landed_at_once() -> None:
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+    taps.send()
+    assert taps.landed(1), "the one tap sent was heard, and still its gap was waited out"

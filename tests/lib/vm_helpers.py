@@ -11,7 +11,7 @@ import os
 import re
 import shlex
 import time
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -155,6 +155,39 @@ def nowhere(_before: bytes, _now: bytes) -> str:
 PPM_HEADER = re.compile(rb"P6\s+(?P<width>\d+)\s+(?P<height>\d+)\s+\d+\s")
 
 
+class Band(NamedTuple):
+    """The rows of a PPM from one up to another: its header, its width and those rows' pixels."""
+
+    header: bytes
+    width: int
+    pixels: bytes
+
+    def row(self, at: int) -> bytes:
+        """Give one of the band's rows, counted from its first."""
+        across = self.width * 3
+        return self.pixels[at * across : (at + 1) * across]
+
+
+def band(shot: bytes, top: int, bottom: int) -> Band:
+    """Read the rows from top up to bottom of one of QEMU's pictures, a PPM."""
+    # A PPM opens with four words, its kind, width, height and greatest level, and one
+    # whitespace byte after them; its pixels follow, three bytes each, and may start with a
+    # byte that reads as whitespace too.
+    header = PPM_HEADER.match(shot)
+    if header is None:
+        message = f"not a PPM: {shot[:16]!r}"
+        raise ValueError(message)
+    # A band the picture doesn't hold would read as alike every time, so a wait would pass
+    # without looking at anything.
+    high = int(header["height"])
+    if not 0 <= top < bottom <= high:
+        message = f"rows {top} to {bottom} aren't in a picture {high} high"
+        raise ValueError(message)
+    width = int(header["width"])
+    pixels = shot[header.end() :]
+    return Band(header[0], width, pixels[top * width * 3 : bottom * width * 3])
+
+
 def alike_between_rows(top: int, bottom: int) -> Callable[[bytes, bytes], bool]:
     """Say two of QEMU's pictures, PPMs, are alike in the rows from top up to bottom.
 
@@ -162,28 +195,67 @@ def alike_between_rows(top: int, bottom: int) -> Callable[[bytes, bytes], bool]:
     margin cat walks along the windows' tops and sits at the screen's foot.
     """
 
-    def rows(shot: bytes) -> tuple[bytes, bytes]:
-        # A PPM opens with four words, its kind, width, height and greatest level, and one
-        # whitespace byte after them; its pixels follow, three bytes each, and may start with
-        # a byte that reads as whitespace too.
-        header = PPM_HEADER.match(shot)
-        if header is None:
-            message = f"not a PPM: {shot[:16]!r}"
-            raise ValueError(message)
-        # A band the picture doesn't hold would read as alike every time, so the wait would
-        # pass without looking at anything.
-        high = int(header["height"])
-        if not 0 <= top < bottom <= high:
-            message = f"rows {top} to {bottom} aren't in a picture {high} high"
-            raise ValueError(message)
-        across = int(header["width"]) * 3
-        pixels = shot[header.end() :]
-        return header[0], pixels[top * across : bottom * across]
-
     def alike(before: bytes, now: bytes) -> bool:
-        return rows(before) == rows(now)
+        return band(before, top, bottom) == band(now, top, bottom)
 
     return alike
+
+
+def changed_between_rows(top: int, bottom: int) -> Callable[[bytes, bytes], str]:
+    """Say where two of QEMU's pictures differ in the rows from top up to bottom, as a box.
+
+    The box is in the screen's own pixels, from its first changed one up to past its last, so
+    it reads as the whole picture's would, and names nothing the band leaves out.
+    """
+
+    def where(before: bytes, now: bytes) -> str:
+        was, now_band = band(before, top, bottom), band(now, top, bottom)
+        if was.header != now_band.header:
+            return " in its size"
+        changed = [at for at in range(bottom - top) if was.row(at) != now_band.row(at)]
+        if not changed:
+            return ""
+        columns = [
+            column
+            for at in changed
+            for column in range(was.width)
+            if was.row(at)[column * 3 : column * 3 + 3]
+            != now_band.row(at)[column * 3 : column * 3 + 3]
+        ]
+        return (
+            f" from {min(columns)},{top + changed[0]} to {max(columns) + 1},{top + changed[-1] + 1}"
+        )
+
+    return where
+
+
+class Taps:
+    """Taps sent at most one a gap, and whether each sent has been heard or had its gap to land.
+
+    A tap sent before the compositor has the device is lost, and one sent after takes a while
+    to be heard, so one goes each gap until one is heard; one sent just before it may still be
+    on its way, and a count started then would miss it.
+    """
+
+    def __init__(self, gap: float, clock: Callable[[], float] = time.monotonic) -> None:
+        """Send at most one tap each gap, in seconds, by the clock."""
+        self.gap = gap
+        self.clock = clock
+        self.sent = 0
+        self.last: float | None = None
+
+    def due(self) -> bool:
+        """Say whether the gap since the last tap sent has passed, as it has before the first."""
+        return self.last is None or self.clock() - self.last >= self.gap
+
+    def send(self) -> None:
+        """Count a tap as sent now."""
+        self.sent += 1
+        self.last = self.clock()
+
+    def landed(self, heard: int) -> bool:
+        """Say whether every tap sent has been heard, or the last has had its gap to land in."""
+        return heard >= self.sent or self.due()
 
 
 def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where and alike read pictures.

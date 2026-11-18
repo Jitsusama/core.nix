@@ -50,6 +50,10 @@ HEARING = timedelta(seconds=5)
 # The cat crosses them only climbing a side or falling as a column narrows, which ends, so a
 # wait outlasts it rather than passing over it.
 BELOW_THE_CAT = (100, 700)
+# How long those rows have to stand still in: the cat climbing a side across all 600 of them,
+# at its hurry of 80 cells a second and a pixel a cell, takes 7.5 s, and the wait wants two
+# still spans after it.
+OUTLASTING = timedelta(seconds=20)
 
 
 def test_the_machine_boots_without_an_ordering_cycle(desktop: Desktop) -> None:
@@ -253,30 +257,32 @@ class Touchscreen:
         The stand-in makes its device at once, but Cage takes it only once udev hands it on, and
         a tap before that reaches nobody: on a busy host, a tap a few seconds after the device
         was made went before Cage had it. Once one is heard, it waits out the gap after the last
-        tap sent, so one still on its way lands before the subtest counts what wev heard.
+        tap sent, unless every tap sent is heard, so one still on its way lands before the
+        subtest counts what wev heard.
         """
-        gap = HEARING.total_seconds() * vm_helpers.pace(vm_helpers.busyness())
-        sent = -gap
+        pace = vm_helpers.pace(vm_helpers.busyness())
+        taps = vm_helpers.Taps(HEARING.total_seconds() * pace)
 
         def tapped(_: bool) -> bool:
-            nonlocal sent
-            waited = time.monotonic() - sent >= gap
             if self.touches("up"):
-                return waited
-            if waited:
+                return True
+            if taps.due():
                 self.desktop.machine.succeed("echo '1 tap 0.5' > /run/touchscreen")
-                sent = time.monotonic()
+                taps.send()
             return False
 
         try:
             retry(tapped, timeout=TAKING)
         except Exception as error:
-            message = f"wev heard no tap in {TAKING.total_seconds():.0f} s: Cage never took it"
+            given = TAKING.total_seconds() * pace
+            message = f"wev heard none of {taps.sent} taps in about {given:.0f} s: Cage had none"
             raise AssertionError(message) from error
+        # Twice the gap, as the wait's own pace stretches it, is room for the last to land.
+        retry(lambda _: taps.landed(self.touches("up")), timeout=2 * HEARING)
 
     def settled(self) -> None:
         """Wait for the windows to stand still, whatever the margin cat does along their tops."""
-        why = self.desktop.unsettled(between=BELOW_THE_CAT)
+        why = self.desktop.unsettled(OUTLASTING, between=BELOW_THE_CAT)
         assert why is None, f"the view never settled: {why}"
 
     def swiped(
@@ -317,21 +323,28 @@ def touchscreen(desktop: Desktop) -> Iterator[Touchscreen]:
         timeout=SAYING,
     )
     machine.succeed(f"systemd-run --unit=touchscreen {values['touchscreen']}")
-    machine.wait_for_file("/run/touchscreen", timeout=SAYING)
-    desktop.as_account(
-        "systemd-run --user --collect --quiet --unit=wev -- sh -c "
-        f"'{values['coreutils']}/bin/stdbuf -oL {values['wev']}/bin/wev > /tmp/wev.log 2>&1'"
-    )
-    retry(lambda _: any(window["title"] == "wev" for window in desktop.windows()), timeout=SAYING)
-    desktop.as_account("niri msg action maximize-column")
-    screen = Touchscreen(desktop)
     try:
+        machine.wait_for_file("/run/touchscreen", timeout=SAYING)
+        desktop.as_account(
+            "systemd-run --user --collect --quiet --unit=wev -- sh -c "
+            f"'{values['coreutils']}/bin/stdbuf -oL {values['wev']}/bin/wev > /tmp/wev.log 2>&1'"
+        )
+        retry(
+            lambda _: any(window["title"] == "wev" for window in desktop.windows()),
+            timeout=SAYING,
+        )
+        desktop.as_account("niri msg action maximize-column")
+        screen = Touchscreen(desktop)
         screen.heard()
         yield screen
     finally:
-        # wev too, should the test end before its own stop.
-        desktop.as_account("systemctl --user stop wev wev-right || true")
-        machine.succeed("systemctl stop touchscreen")
+        # The touchscreen first, which needs only the machine, then wev, should the test end
+        # before its own stop. Neither stop raises, so a failure says what the test saw.
+        machine.execute("systemctl stop touchscreen")
+        machine.execute(
+            desktop.in_session("systemctl --user stop wev wev-right"),
+            timeout=int(SAYING.total_seconds()),
+        )
 
 
 def test_the_screens_warmth_starts_only_when_asked(desktop: Desktop) -> None:
