@@ -27,6 +27,21 @@ in
         touch $out
       '';
 
+  # Expect.run, which every QML test's check that runs its cases through
+  # it relies on to fail, run once for each way a case can end.
+  expect-run-fails-each-case-that-throws =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "expect-run-fails-each-case-that-throws" { } ''
+      cp ${./expect-test.qml} expect-test.qml
+      cp ${./Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${pkgs.bash}/bin/bash ${./expect-test.sh} ${qt} $PWD
+      touch $out
+    '';
+
   # The halves of core.lib.evaluates that every machine core checks passes,
   # and that a repository built on core relies on: a machine that warns
   # fails it, saying the check and each warning, and so does one whose
