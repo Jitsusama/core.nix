@@ -1,6 +1,7 @@
 //! Times as a JSON answer says them: RFC 3339 with their offset
-//! (docs/commands.md, The Answer), in UTC, whose offset is `Z`, so the
-//! kit needs no time zone database and every command says a time alike.
+//! (docs/commands.md, The Answer), in UTC, whose offset is `Z`, so an
+//! answer needs no time zone database and every command says a time alike;
+//! a local time, for a person, is `local`'s.
 //! The date comes from Howard Hinnant's days-to-civil arithmetic, which
 //! holds for every day a 64-bit count of seconds reaches.
 
@@ -20,9 +21,9 @@ pub fn rfc3339(seconds: i64) -> String {
 
 /// How long `seconds` is, for a person, in its two largest units, the
 /// second left off where it's nought: `4 s`, `2 m 14 s`, `3 h`, `1 d 2 h`.
-/// as durations read (docs/commands.md, Figures and Words). The kit holds
-/// no time zone, so a moment is said to a person as how long ago it was,
-/// which reads at a glance where a time in UTC wouldn't.
+/// as durations read (docs/commands.md, Figures and Words). A moment is
+/// said to a person as how long ago it was, which reads at a glance where
+/// a time in UTC wouldn't.
 pub fn span(seconds: u64) -> String {
     const UNITS: [(u64, &str); 4] = [(86_400, "d"), (3_600, "h"), (60, "m"), (1, "s")];
     let first = UNITS

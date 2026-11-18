@@ -8,7 +8,6 @@
 //! nothing, as a start on a busy machine does.
 
 use std::fmt;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const DAY: u16 = 24 * 60;
 
@@ -68,28 +67,6 @@ pub fn clock(minute: u16) -> String {
     format!("{:02}:{:02}", minute / 60, minute % 60)
 }
 
-/// glibc's broken-down time.
-#[repr(C)]
-#[derive(Default)]
-struct Tm {
-    sec: i32,
-    min: i32,
-    hour: i32,
-    mday: i32,
-    mon: i32,
-    year: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32,
-    gmtoff: i64,
-    zone: usize,
-}
-
-// std links libc, so this comes from it.
-unsafe extern "C" {
-    fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
-}
-
 /// The minute of the day now, by the local clock; None when the clock
 /// can't be read. A zone glibc can't read is UTC's, for the timer that
 /// starts the job as much as here, so the two agree. A test's machine can stand a file holding
@@ -99,14 +76,7 @@ pub fn now() -> Option<u16> {
     if let Some(file) = std::env::var_os("NIGHT_SHIFT_CLOCK") {
         return minute(std::fs::read_to_string(file).ok()?.trim());
     }
-    let seconds =
-        i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs()).ok()?;
-    let mut tm = Tm::default();
-    // SAFETY: both pointers are to values alive across the call.
-    if unsafe { localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
-        return None;
-    }
-    let minute = u16::try_from(tm.hour * 60 + tm.min).ok()?;
+    let minute = u16::try_from(terminal_kit::local::now()?.minute_of_day()).ok()?;
     (minute < DAY).then_some(minute)
 }
 

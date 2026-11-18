@@ -20,7 +20,6 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
@@ -188,20 +187,7 @@ impl Learned {
 /// The hour of the day here, by the machine's own time zone; midnight's
 /// where the time can't be read.
 pub fn hour_here() -> u8 {
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let Ok(now) = libc::time_t::try_from(since.as_secs()) else {
-        return 0;
-    };
-    // SAFETY: a tm is plain numbers and a pointer, for which zero is null.
-    let mut here: libc::tm = unsafe { std::mem::zeroed() };
-    // SAFETY: it reads the one time and writes the one tm it's given.
-    let read = unsafe { libc::localtime_r(&raw const now, &raw mut here) };
-    if read.is_null() {
-        return 0;
-    }
-    u8::try_from(here.tm_hour).unwrap_or(0)
+    terminal_kit::local::now().map_or(0, |here| u8::try_from(here.hour).unwrap_or(0))
 }
 
 #[cfg(test)]

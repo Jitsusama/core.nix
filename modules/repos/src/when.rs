@@ -74,44 +74,20 @@ fn day_number(when: When) -> i64 {
     days_from_civil(when.year, when.month, when.day)
 }
 
-/// glibc's broken-down time, as `localtime_r` fills it on Linux and macOS.
-#[repr(C)]
-#[derive(Default)]
-struct Tm {
-    sec: i32,
-    min: i32,
-    hour: i32,
-    mday: i32,
-    mon: i32,
-    year: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32,
-    gmtoff: i64,
-    zone: usize,
-}
-
-unsafe extern "C" {
-    fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
-}
-
 /// A moment as the machine's own time zone reads it, or the world's where
 /// the C library can't say.
 pub fn local(seconds: u64) -> When {
     let at = i64::try_from(seconds).unwrap_or(i64::MAX);
-    let mut tm = Tm::default();
-    // SAFETY: both pointers are to values alive across the call, and Tm
-    // is laid out as the C library's struct tm.
-    if unsafe { localtime_r(&raw const at, &raw mut tm) }.is_null() {
+    let Some(local) = terminal_kit::local::at(at) else {
         return utc(seconds);
-    }
+    };
     When {
-        year: i64::from(tm.year) + 1900,
-        month: i64::from(tm.mon) + 1,
-        day: i64::from(tm.mday),
-        weekday: usize::try_from(tm.wday).unwrap_or(0),
-        hour: i64::from(tm.hour),
-        minute: i64::from(tm.min),
+        year: i64::from(local.year),
+        month: i64::from(local.month),
+        day: i64::from(local.day),
+        weekday: usize::try_from(local.weekday).unwrap_or(0),
+        hour: i64::from(local.hour),
+        minute: i64::from(local.minute),
     }
 }
 

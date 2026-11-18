@@ -13,20 +13,8 @@ use serde::{Deserialize, Serialize};
 /// past a month's end rolls into the next, as `mktime` normalizes it.
 pub(crate) fn local(fields: [i32; 6]) -> Option<f64> {
     let [year, month, day, hour, minute, second] = fields;
-    // SAFETY: tm is plain data, zeroed is a valid value, and mktime reads
-    // and normalizes only the struct it's given.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    tm.tm_year = year - 1900;
-    tm.tm_mon = month - 1;
-    tm.tm_mday = day;
-    tm.tm_hour = hour;
-    tm.tm_min = minute;
-    tm.tm_sec = second;
-    // Whether daylight saving applies is for mktime to work out.
-    tm.tm_isdst = -1;
-    // SAFETY: as above.
-    let seconds = unsafe { libc::mktime(&raw mut tm) };
-    (seconds != -1).then_some(crate::units::wall(seconds, 0))
+    let seconds = terminal_kit::local::moment(year, month, day, hour, minute, second)?;
+    Some(crate::units::wall(seconds, 0))
 }
 
 /// A wall time as the local date and time to the second, as a log reads,
@@ -36,22 +24,13 @@ pub fn stamp(wall: f64) -> String {
     // Whole seconds without a cast, which the Mac's lints and Linux's read
     // differently; a wall time before 1970 or past time_t reads as 0.
     let whole = std::time::Duration::try_from_secs_f64(wall).map_or(0, |since| since.as_secs());
-    let seconds = libc::time_t::try_from(whole).unwrap_or(0);
-    // SAFETY: tm is plain data, zeroed is a valid value, and localtime_r
-    // writes only the struct it's given.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    // SAFETY: as above; seconds lives for the call.
-    if unsafe { libc::localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
-        return format!("{seconds}");
-    }
-    format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-        tm.tm_year + 1900,
-        tm.tm_mon + 1,
-        tm.tm_mday,
-        tm.tm_hour,
-        tm.tm_min,
-        tm.tm_sec
+    let seconds = i64::try_from(whole).unwrap_or(0);
+    terminal_kit::local::at(seconds).map_or_else(
+        || format!("{seconds}"),
+        |local| {
+            let (hour, minute, second) = (local.hour, local.minute, local.second);
+            format!("{} {hour:02}:{minute:02}:{second:02}", local.date())
+        },
     )
 }
 
@@ -59,15 +38,8 @@ pub fn stamp(wall: f64) -> String {
 /// C library as `stamp` reads it; none for a time it can't place.
 pub fn minute_of_day(wall: f64) -> Option<u32> {
     let whole = std::time::Duration::try_from_secs_f64(wall).ok()?.as_secs();
-    let seconds = libc::time_t::try_from(whole).ok()?;
-    // SAFETY: tm is plain data, zeroed is a valid value, and localtime_r
-    // writes only the struct it's given.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    // SAFETY: as above; seconds lives for the call.
-    if unsafe { libc::localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
-        return None;
-    }
-    u32::try_from(tm.tm_hour * 60 + tm.tm_min).ok()
+    let local = terminal_kit::local::at(i64::try_from(whole).ok()?)?;
+    Some(local.minute_of_day())
 }
 
 /// One reading of the clocks, in seconds: wall time, time since boot

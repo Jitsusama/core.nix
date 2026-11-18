@@ -3223,7 +3223,8 @@
     the terminal kit takes the shared flags out of a command line and leaves the rest in order,
     inks by --color, NO_COLOR, FORCE_COLOR and the terminal in that order, lays rows out giving way
     by whole items, reads help examples first, says a failure in three parts with its exit code,
-    and makes a panic a bug
+    makes a panic a bug, and reads a local time and writes one back as Eastern time's clocks say
+    them, summer's hour included
   '';
   terminal-kit-passes-clippy = ''
     clippy finds nothing in terminal-kit, the library every command takes its shape from
