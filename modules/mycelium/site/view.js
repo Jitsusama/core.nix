@@ -572,7 +572,9 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       .map((n) => ({ key: n.name, shape: n.shape, short: n.short || n.name, title: n.title, cells: n.cells.map((a) => byAddress.get(a)).filter(Boolean) }))
       .filter((n) => n.cells.length >= 2);
     const repositories = new Set(cells.map((s) => s.repo).filter(Boolean)).size || shared.filter((n) => n.shape === "repository").length;
-    return { at: now.at, hubs, cells, byAddress, byId, shared, machines, standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, repositories };
+    // A feeding is drawn only where both its ends are, as a tie is.
+    const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
+    return { at: now.at, hubs, cells, byAddress, byId, shared, machines, standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -782,6 +784,8 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   let groundLayers = [];
   let talkLayer = []; // talk of the last ten minutes, over the lines
   let talkBetween = 0; // of it, the talk with two ends on the map to join
+  let fedShapes = []; // each receptor's feeding of a cell, the last ten minutes
+  let fedLayer = []; // those feedings, over the talk
   let cellLayer = []; // the cells, over everything else on the ground
   // Each network's ground, [key, x, y, r], so a click on it opens it.
   let groundsAt = [];
@@ -880,7 +884,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     const X = (x) => x * k + tx;
     const Y = (y) => y * k + ty;
     const off = (x0, y0, x1, y1) => x1 < -GROUND_PAD || y1 < -GROUND_PAD || x0 > w + GROUND_PAD || y0 > h + GROUND_PAD;
-    for (const layer of [...groundLayers, talkLayer, cellLayer]) {
+    for (const layer of [...groundLayers, talkLayer, fedLayer, cellLayer]) {
       // Consecutive shapes in one ink share a path, so a frame strokes
       // once per ink rather than once per line.
       let open = null;
@@ -962,10 +966,11 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   // How many lines the canvas paints, by kind, said for the site's own
   // checks: the lines across networks, the talk arcs, the talk held, the
   // talk with two ends to draw (talk inside one folded network has one),
-  // and how many networks are folded into their grounds.
+  // the feedings, and how many networks are folded into their grounds.
   groundEl.painted = () => ({
     across: (groundLayers[1] || []).length,
     talk: talkLayer.length,
+    fed: fedLayer.length,
     said: talk.size,
     between: talkBetween,
     folded: folded.size,
@@ -975,7 +980,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     const box = groundEl.getBoundingClientRect();
     const [w, h] = [box.width, box.height];
     const out = [];
-    for (const [p, c, q] of [...lineShapes, ...talkShapes]) {
+    for (const [p, c, q] of [...lineShapes, ...talkShapes, ...fedShapes]) {
       const xs = [p[0], c[0], q[0]].map((x) => x * k + tx);
       const ys = [p[1], c[1], q[1]].map((y) => y * k + ty);
       if (Math.max(...xs) < 0 || Math.max(...ys) < 0 || Math.min(...xs) > w || Math.min(...ys) > h) continue;
@@ -1008,7 +1013,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   const lineAt = (x, y, onGround) => {
     let best = null;
     let nearest = TOUCH_PX;
-    for (const shapes of [talkShapes, lineShapes]) {
+    for (const shapes of [fedShapes, talkShapes, lineShapes]) {
       for (const line of shapes) {
         if (!line.opens || (onGround && line.within)) continue;
         const [p, c, q] = line.map(([px, py]) => [px * k + tx, py * k + ty]);
@@ -1755,7 +1760,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   const linesOnScreen = (w, h) => {
     const grid = new Map();
     const on = ([x, y]) => [x * k + tx, y * k + ty];
-    for (const [p0, c0, q0] of [...lineShapes, ...talkShapes]) {
+    for (const [p0, c0, q0] of [...lineShapes, ...talkShapes, ...fedShapes]) {
       const [p, c, q] = [on(p0), on(c0), on(q0)];
       let a = p;
       for (let i = 1; i <= LINE_PIECES; i++) {
@@ -3056,6 +3061,9 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     const body = `<span class="what"><span class="name">${esc(label)}</span><span class="fact">${verdictMark(v)}: ${esc(words)}</span></span>`;
     return go ? `<li><button type="button" class="row" data-go="${esc(go)}">${body}</button></li>` : `<li class="row still">${body}</li>`;
   };
+  // What a receptor fed a cell, in words, by the node's word for its kind.
+  const FED_WORDS = { review: "a review asked of you" };
+  const fedWords = (kind) => FED_WORDS[kind] || "something from outside";
   const factList = (facts) => (facts.length ? `<dl class="facts">${facts.map(([k2, v]) => `<div><dt>${k2}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : "");
   const glance = (purpose, doing, health) =>
     `<dl class="glance">` +
@@ -3353,6 +3361,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>A cell moving: in a turn now</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>Quiet: waiting for its next word</dd></div>` +
       `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, its dot filled while it is reading</dd></div>` +
+      (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Handed: a dotted arc from a receptor to the one cell it handed something from outside, such as a review asked of you, drawn for ten minutes</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
@@ -3477,6 +3486,12 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       s.kind === "receptor" ? `at the network's edge, on ${on}, where ${s.purpose || "the outside"} comes in` : s.hub ? `in the ${s.hub.name} network, on ${on}` : `working alone on ${on}`;
     const receptor = s.kind === "receptor";
     const purpose = receptor ? `Brings ${s.purpose || "what it hears"} in from outside, for the cells that read it.` : s.purpose || NO_PURPOSE;
+    // What a receptor fed it, or what it fed, in the last ten minutes.
+    const fedFact = (m.fed || [])
+      .filter((f) => f.cell === s.address || f.receptor === s.address)
+      .map((f) => (f.cell === s.address ? `${fedWords(f.kind)}, by ${m.byAddress.get(f.receptor)?.short || f.receptor}` : `${m.byAddress.get(f.cell)?.short || f.cell}, ${fedWords(f.kind)}`) + `, at ${clock(f.at, false)}`)
+      .join("; ");
+    if (fedFact) facts.push(["Handed", fedFact]);
     const networks = s.networks.map((name) => {
       const h = m.hubs.get(name);
       if (h) return `<li><button type="button" class="row" data-go="net=${esc(h.key)}">${glyph(h.shape, 10)}<span class="what"><span class="name">${esc(h.name)}</span><span class="fact">${h === s.hub ? "its own" : "also on it"}${s.leads.includes(h.key) ? ", leads it" : ""}</span></span></button></li>`;
@@ -4171,13 +4186,14 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
   // The arc between two marks, leaving the sender's ring and ending at the
-  // receiver's. Both ways round share one curve, so a reply retraces it.
-  const arcOf = (from, to) => {
+  // receiver's. Both ways round share one curve, so a reply retraces it;
+  // a bow of the other sign curves to the other side of the same two.
+  const arcOf = (from, to, bow = ARC_BOW) => {
     const [lo, hi] = from < to ? [from, to] : [to, from];
     const a = spots.get(lo);
     const b = spots.get(hi);
     if (!a || !b) return null;
-    const c = control(a, b, ARC_BOW);
+    const c = control(a, b, bow);
     const edge = (at, key) => {
       const vx = c[0] - at[0];
       const vy = c[1] - at[1];
@@ -4300,6 +4316,23 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       // An opened talk is drawn alone; the rest step back with the map.
       const open = chosen?.kind === "talk" ? (chosen.id === e ? " lit" : " far") : "";
       talkLayer.push({ tag: "path", cls: `m-talk warm${warmLevel(n)}${open}${faint}`, line });
+    }
+    // A receptor's feeding bows off the hyphae as talk does, so it never
+    // lies over the marks between, but dotted and to the other side, so
+    // the two read apart even between the same two. It is drawn whole
+    // until a choice that doesn't touch it, being rare and gone in ten
+    // minutes, and opens the cell it fed.
+    fedShapes = [];
+    fedLayer = [];
+    for (const f of current.fed || []) {
+      const [a, b] = [endOf(`c:${f.receptor}`), endOf(`c:${f.cell}`)];
+      const arc = a && b && a !== b ? arcOf(a, b, -ARC_BOW) : null;
+      if (!arc) continue;
+      const line = [arc.p, arc.c, arc.q];
+      fedShapes.push(opens(line, "cell", current.byAddress.get(f.cell).id));
+      const ends = [`c:${f.receptor}`, `c:${f.cell}`];
+      const faint = near && !(own ? ends.includes(own) : ends.every(touches)) ? " faint" : "";
+      fedLayer.push({ tag: "path", cls: `m-fed${faint}`, line });
     }
     if (!paint) return;
     // The names keep off talk too, so they move when it does.
