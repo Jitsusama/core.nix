@@ -3,7 +3,7 @@
 //! and for `cadence day` to judge.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -131,11 +131,45 @@ pub struct Day {
     /// The most defunct children one parent left at a look, and who.
     #[serde(default)]
     pub defunct: Defunct,
+    /// The faults health saw itself, which no journal says again, so each
+    /// start keeps them; each is in `things` too.
+    #[serde(default)]
+    pub seen: Vec<Fault>,
+    /// What health still sees gone wrong, each counted once until it
+    /// clears: kept, so a start counts none of it again.
+    #[serde(default)]
+    pub seeing: Seeing,
     /// When the kernel said its last line, in microseconds, so a report's
     /// later lines are known by following it closely. It isn't kept, since
     /// each start reads the day's kernel lines again.
     #[serde(skip)]
     pub kernel_said: i64,
+}
+
+/// A fault health saw itself, as `Day::fault` counted it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fault {
+    /// The thing it was of.
+    pub name: String,
+    /// Which kind that is.
+    pub kind: Kind,
+    /// What it said.
+    pub message: String,
+    /// When, in microseconds since the epoch.
+    pub at: i64,
+}
+
+/// What health still sees gone wrong, so it counts each once. A day's,
+/// it's kept through a start on the same day, a reboot's included, since a
+/// fault never seen to clear is the one fault; a new day starts with none,
+/// so a fault still seen at midnight counts once in each day.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Seeing {
+    /// The lid reads wrong, until it reads open or the screen goes dark.
+    pub lid: bool,
+    /// The disk guards' status files found stopped, until each beats.
+    pub guards: Vec<PathBuf>,
 }
 
 /// How one boot started and stopped, as far as the day saw it, each in
@@ -378,7 +412,9 @@ impl Day {
 
     /// Take from a day kept before this run what the journals don't say
     /// again: the sessions' tallies, how far each log was read, the
-    /// memory the watched programs held, the disks and the defunct.
+    /// memory the watched programs held, the disks, the defunct, and the
+    /// faults health saw and still sees. Of a thing the journals say too,
+    /// only the faults are kept, since the replay says its lines again.
     pub fn resume(&mut self, kept: Self) {
         if kept.date != self.date {
             return;
@@ -389,11 +425,24 @@ impl Day {
         self.disks = kept.disks;
         self.busy = kept.busy;
         self.defunct = kept.defunct;
-        self.things.extend(
-            kept.things
-                .into_iter()
-                .filter(|(_, thing)| matches!(thing.kind, Some(Kind::Tools | Kind::Words))),
-        );
+        let whole: BTreeMap<String, Thing> = kept
+            .things
+            .into_iter()
+            .filter(|(_, thing)| matches!(thing.kind, Some(Kind::Tools | Kind::Words)))
+            .collect();
+        // A thing kept whole, such as a session's place named as a fault's
+        // thing is, already holds the fault, so it's kept, not counted again.
+        for seen in kept.seen {
+            if whole.contains_key(&seen.name) {
+                self.seen.push(seen);
+            } else {
+                self.fault(&seen.name, seen.kind, &seen.message, seen.at);
+            }
+        }
+        for (name, thing) in whole {
+            self.things.insert(name, thing);
+        }
+        self.seeing = kept.seeing;
     }
 
     /// Count a fault health saw itself, which no journal said: a line at
@@ -405,6 +454,12 @@ impl Day {
         thing.lines += 1;
         thing.errors += 1;
         thing.said(message, 3, at);
+        self.seen.push(Fault {
+            name: name.to_owned(),
+            kind,
+            message: message.to_owned(),
+            at,
+        });
     }
 
     /// Say when a boot that stopped in the day ended, from the journal's
