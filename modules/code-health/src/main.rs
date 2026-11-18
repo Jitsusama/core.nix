@@ -250,18 +250,23 @@ fn run(context: &Context) -> Result<(), Failure> {
     })
 }
 
-/// Each Terraform measure of a repository's files, where it holds any;
-/// the tools' reads are left out whole when one of them can't run.
 /// What a tool said, its lines joined with semicolons, since the kit
-/// holds a warning to one line and would otherwise run them together.
+/// holds a warning to one line and would otherwise run them together. A
+/// line ending in a colon already leads into the next, so only a space
+/// follows it.
 fn joined(said: &str) -> String {
-    said.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("; ")
+    let mut out = String::new();
+    for line in said.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if !out.is_empty() {
+            out.push_str(if out.ends_with(':') { " " } else { "; " });
+        }
+        out.push_str(line);
+    }
+    out
 }
 
+/// Each Terraform measure of a repository's files, where it holds any;
+/// the tools' reads are left out whole when one of them can't run.
 fn put_terraform(
     health: &mut measure::Health,
     paths: &[String],
@@ -471,7 +476,7 @@ mod tests {
     fn a_tools_lines_are_joined_for_a_warning() {
         assert_eq!(
             joined("tofu validate ended 2 in infra:\n\n  Error: bad\nmore\n"),
-            "tofu validate ended 2 in infra:; Error: bad; more",
+            "tofu validate ended 2 in infra: Error: bad; more",
             "a tool's lines weren't each kept, joined on one line"
         );
     }
