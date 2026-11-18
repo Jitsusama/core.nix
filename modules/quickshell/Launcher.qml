@@ -10525,10 +10525,13 @@ Scope {
             // frame (fillFound), since the card already shows what was
             // kept: inside `open` they were a third of the fill's 14 ms on
             // a builder, and the fill's "opening" held a median 27 ms of
-            // 32 of Joel's 53 longest stalls (2026-11-18).
-            fillFinding = filling;
+            // 32 of Joel's 53 longest stalls (2026-11-18). Only a fill
+            // that filled() runs, whose slice is sure to follow, and with
+            // home kept, whose rows the card stands on until then; any
+            // other open joins, and finds home, here as ever.
+            fillFinding = filling && fillOpening && homeKept.length > 0;
             fillFoundBy = "";
-            if (!filling)
+            if (!fillFinding)
                 freshen();
             lap("joining");
             trials.opened(KeyTimes.now());
@@ -10565,8 +10568,8 @@ Scope {
             // kept yet it's found, since the card's height is home's. Over a
             // viewer no row is shown at all (over), so neither is home.
             const homeFound = !(openingInto || viewing) || homeKept.length === 0;
-            fillFindsHome = filling && homeFound;
-            if (homeFound && !filling) {
+            fillFindsHome = fillFinding && homeFound;
+            if (homeFound && !fillFinding) {
                 restart("");
                 homeKept = matches;
             }
@@ -11302,6 +11305,8 @@ Scope {
         // Each part of the fill is felt by its own name inside filling,
         // which held 31 to 68 ms of Joel's openings' longest stalls with
         // nothing saying which part (BXNMUC, 2026-11-14, 09:18 to 09:45).
+        const joinedBefore = choicesJoined;
+        fillOpening = true;
         const ordering = KeyTimes.now();
         wakeQueue = wakingOrder();
         for (const source of wakeQueue)
@@ -11326,6 +11331,8 @@ Scope {
             open = true;
             feltSpan("opening", opened);
         }
+        fillOpening = false;
+        fillJoined = choicesJoined - joinedBefore;
         wakeBegan = KeyTimes.now();
         feltSpan("filling", began);
         wakeLater();
@@ -11395,10 +11402,11 @@ Scope {
     function wakeNext() {
         if (!open || !waking)
             return;
-        // The fill's own finding is the first slice, alone.
+        // The fill's own finding is the first slice, alone, said apart
+        // from the sources' (wokeSaid), whose first waits from its end.
         if (fillFinding) {
+            fillFoundFrom = KeyTimes.now() - wakeBegan;
             fillFound("slice");
-            wakeBegan = KeyTimes.now();
             wakeLater();
             return;
         }
@@ -11434,8 +11442,14 @@ Scope {
     // source's change would, so none waits on becameLate.
     property bool fillFinding: false
     property bool fillFindsHome: false
-    // What ran it, and what it took, said with the sources' waking.
+    // Whether filled() is opening it, as only a fill it runs has a slice
+    // to come, and how many times the choices were joined inside it.
+    property bool fillOpening: false
+    property int fillJoined: 0
+    // What ran it, when after the fill a slice did, and what it took, said
+    // with the sources' waking.
     property string fillFoundBy: ""
+    property real fillFoundFrom: 0
     property real fillFoundTook: 0
     function fillFound(by) {
         if (!fillFinding)
@@ -11469,27 +11483,34 @@ Scope {
     function wokeSaid(span) {
         const slices = wakeSlices.map(one => ({ from: Math.round(one.from),
             took: Math.round(one.took), woke: one.woke.map(each => each.name) }));
-        const longest = slices.reduce((most, one) => Math.max(most, one.took), 0);
+        // The fill's finding, where a slice of its own ran it, is one
+        // slice more, before the sources' first.
+        const sliced = fillFoundBy === "slice";
+        const found = sliced ? { from: fillFoundFrom, took: fillFoundTook } : null;
+        const longest = Math.max(slices.reduce((most, one) => Math.max(most, one.took), 0),
+            sliced ? Math.round(fillFoundTook) : 0);
         // The longest a slice waited after the one before ended, or the
         // first after the opening filled in, for its frame or the fallback
         // in its place.
-        const waited = Math.round(wakeSlices.reduce((most, one, at) => Math.max(most,
-            at === 0 ? one.from : one.from - wakeSlices[at - 1].from - wakeSlices[at - 1].took),
+        const timed = (found ? [found] : []).concat(wakeSlices);
+        const waited = Math.round(timed.reduce((most, one, at) => Math.max(most,
+            at === 0 ? one.from : one.from - timed[at - 1].from - timed[at - 1].took),
             0));
         const last = openingsTimed[openingsTimed.length - 1];
         if (last?.kept && last.slices === undefined) {
             openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last,
-                { slices, longestSlice: longest, longestWake: waited, foundBy: fillFoundBy })]);
+                { slices, longestSlice: longest, longestWake: waited, foundBy: fillFoundBy,
+                    foundTook: Math.round(fillFoundTook) })]);
         }
         const said = wakeSlices.map(one => one.woke.map(each =>
             `${each.name} ${Math.round(each.took)}`).join(", ")).join("; ");
-        const found = fillFoundBy === "" ? ""
+        const foundSaid = fillFoundBy === "" ? ""
             : `, ${fillFindsHome ? "home found again" : "joined again"} in`
                 + ` ${Math.round(fillFoundTook)} ms`
                 + (fillFoundBy === "slice" ? " in a slice of its own" : ` for a ${fillFoundBy}`);
         console.info(`launcher: woke the opening's sources in ${slices.length} slices over`
             + ` ${Math.round(span)} ms, the longest ${longest} ms, the longest wait between`
-            + ` them ${waited} ms (${said})${found}`);
+            + ` them ${waited} ms (${said})${foundSaid}`);
     }
 
     // Shuts it however it's shown, for a source done with it: shut again
@@ -11703,6 +11724,7 @@ Scope {
             return;
         const worked = Math.round(fillWorked);
         const filled = { filling: Math.round(took), fillWorked: worked, fillParts: fillParts,
+            fillJoined: fillJoined,
             fillFrom: Math.round(fillFrom), verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy, woke: openWoke,
             madeBy: madeBy() };
         openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, filled)]);

@@ -1694,9 +1694,11 @@ def test_a_kept_opening_finds_home_again_in_a_slice_after_its_frame(shell: Shell
 
     def slept(_: Json) -> bool:
         woke[:] = [each for each in openings(shell) if each.get("nth") == nth]
-        return bool(woke) and "slices" in woke[0]
+        # The fill says itself once niri has presented it, which can come after its slices.
+        return bool(woke) and "slices" in woke[0] and "fillJoined" in woke[0]
 
     shell.launcher_until(slept)
+    assert woke[0].get("fillJoined") == 0, f"the fill joined the choices inside `open`: {woke}"
     assert woke[0].get("foundBy") == "slice", f"home wasn't found in a slice of its own: {woke}"
     after = settled(shell)
     assert after["keys"], f"home found again listed nothing: {after}"
