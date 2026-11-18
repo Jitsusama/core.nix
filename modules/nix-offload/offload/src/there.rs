@@ -4285,12 +4285,17 @@ pub fn fetches(machine: &Nearby, asked: &Asked, scratch: &Path, ssh: &str) -> bo
 /// 08:58 on 17 November two runs went to a Mac whose five-minute load was
 /// 60 to 80 on 12 processors, through a gate that read the last minute in
 /// a lull. Nor is five alone, which a build its person has just begun
-/// takes a minute or two to reach.
+/// takes a minute or two to reach. Nor is load alone: at 04:50 on 18
+/// November the net's comparison went to a Mac at 35 over five, under its
+/// room, while a session's darwin build already ran there, and the two
+/// took it to 60. So it counts the runs sent to it that build there now
+/// too, by the turns they hold ([`in_turn_nearby`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Load {
     pub minute: f64,
     pub five: f64,
     pub cores: u32,
+    pub building: u32,
 }
 
 /// Runnable work for each processor past which a Mac has no room. On 16
@@ -4308,7 +4313,9 @@ impl Load {
     /// then `12`, the first two averages being the last minute's and the
     /// last five's, or none when it says something else: a figure missing
     /// or one too many, or one that isn't a load, so it's never read from
-    /// the wrong place.
+    /// the wrong place. A line after the processors, as [`building_read`]
+    /// says, is how many runs sent to it build there now, and none is read
+    /// as none, as a Mac's own `sysctl` says it to `nix-offload busy`.
     pub fn parse(said: &str) -> Option<Load> {
         let mut lines = said.lines();
         let averages = lines.next()?.trim();
@@ -4328,10 +4335,18 @@ impl Load {
             .parse::<u32>()
             .ok()
             .filter(|&cores| cores > 0)?;
+        let building = match lines.next() {
+            Some(line) => line.trim().parse::<u32>().ok()?,
+            None => 0,
+        };
+        if lines.next().is_some() {
+            return None;
+        }
         Some(Load {
             minute,
             five,
             cores,
+            building,
         })
     }
 
@@ -4352,6 +4367,22 @@ impl Load {
     }
 }
 
+/// What a shell runs to say how many runs sent to its machine build there
+/// now: the turns in its turns folder ([`in_turn_nearby`]) held by a shell
+/// alive in this boot, as a run waiting for a turn reads them. A machine
+/// with no folder builds none.
+pub fn building_read() -> String {
+    format!(
+        "turns=\"${{NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}}\"; \
+         boot=$({BOOT_READ}); building=0; \
+         for k in $(ls \"$turns\" 2>/dev/null); do holder=$(readlink \"$turns/$k\" 2>/dev/null); \
+         pid=${{holder%% *}}; case \"$pid\" in ''|*[!0-9]*|0*|????????*) continue;; esac; \
+         if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
+         kill -0 \"$pid\" 2>/dev/null; then building=$((building + 1)); fi; done; \
+         echo \"$building\""
+    )
+}
+
 /// A Mac nearby's load, `Err` saying why when it couldn't be asked here or
 /// took past [`LOAD_PATIENCE`] to say it, and `Ok(None)` when it said
 /// nothing a load reads from, as an ssh that couldn't reach it says
@@ -4368,7 +4399,10 @@ pub fn load_of(machine: &Nearby, scratch: &Path, ssh: &str) -> Result<Option<Loa
     let spawned = reaching(ssh, &said)
         .args(["-o", "ConnectTimeout=20"])
         .arg(&machine.host)
-        .arg(far("sysctl -n vm.loadavg hw.ncpu"))
+        .arg(far(&format!(
+            "sysctl -n vm.loadavg hw.ncpu && {}",
+            building_read()
+        )))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -4802,9 +4836,15 @@ mod tests {
             Some(Load {
                 minute: 120.98,
                 five: 88.31,
-                cores: 12
+                cores: 12,
+                building: 0,
             }),
             "a Mac's sysctl wasn't read as its minute's and five minutes' loads"
+        );
+        assert_eq!(
+            Load::parse("{ 20.00 35.00 40.00 }\n12\n1\n").map(|load| load.building),
+            Some(1),
+            "the runs building on a Mac weren't read from the line after its processors"
         );
         assert_eq!(
             Load::parse("{20.00 60.00 80.00}\n12\n").map(|load| load.five),
@@ -4826,6 +4866,8 @@ mod tests {
             "{ 20.00 60.00 80.00 }\n",
             "{ 20.00 60.00 }\n12\n",
             "{ 20.00 60.00 80.00 90.00 }\n12\n",
+            "{ 20.00 60.00 80.00 }\n12\nmany\n",
+            "{ 20.00 60.00 80.00 }\n12\n1\n2\n",
         ] {
             assert_eq!(
                 Load::parse(unread),
@@ -4836,11 +4878,53 @@ mod tests {
     }
 
     #[test]
+    fn a_macs_builds_are_counted_by_the_live_turns_of_its_own_boot() {
+        let folder = tempfile::tempdir().unwrap();
+        let turns = folder.path().join("turns");
+        fs::create_dir_all(&turns).unwrap();
+        let boot = Command::new("sh").args(["-c", BOOT_READ]).output().unwrap();
+        let boot = String::from_utf8(boot.stdout).unwrap().trim().to_owned();
+        let mut live = Command::new("sleep").arg("30").spawn().unwrap();
+        let link = |turn: &str, holder: String| {
+            std::os::unix::fs::symlink(holder, turns.join(turn)).unwrap();
+        };
+        link("1", format!("{} {boot}", live.id()));
+        link("2", format!("{} another-boot", live.id()));
+        link("3", format!("9999999 {boot}"));
+        link("4", "0 nothing".to_owned());
+        // A Mac's login shell is zsh, which ends a command on a glob that
+        // matches nothing, so the count lists its folder rather than glob.
+        for shell in ["dash", "zsh"] {
+            let counted = |turns: &Path| {
+                let said = Command::new(shell)
+                    .args(["-c", &building_read()])
+                    .env("NIX_OFFLOAD_TURNS", turns)
+                    .output()
+                    .unwrap();
+                String::from_utf8(said.stdout).unwrap()
+            };
+            assert_eq!(
+                counted(&turns),
+                "1\n",
+                "{shell}: a turn held by a live shell of this boot wasn't counted alone"
+            );
+            assert_eq!(
+                counted(&folder.path().join("none")),
+                "0\n",
+                "{shell}: a Mac with no turns folder wasn't read as building nothing"
+            );
+        }
+        live.kill().unwrap();
+        live.wait().unwrap();
+    }
+
+    #[test]
     fn a_mac_has_no_room_once_either_load_is_past_three_a_processor() {
         let at = |minute: f64, five: f64| Load {
             minute,
             five,
             cores: 12,
+            building: 0,
         };
         assert!(
             at(20.0, 60.0).over(),
