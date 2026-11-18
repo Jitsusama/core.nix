@@ -1782,7 +1782,8 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
         return sorted(set(inbox.glob("*.json")) - steered)
 
     try:
-        did = followed(shell, "talkTo", "LISTEN", quiet=False)
+        # Its keys land past the quiet, as a loaded builder's did.
+        did = followed(shell, "talkTo", "LISTEN", quiet=True)
         assert did["done"], did
         shell.launcher_until(
             lambda shown: (
