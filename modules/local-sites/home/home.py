@@ -4,9 +4,10 @@ It writes the list, its llms.txt and Markdown twin, and the strip at the top
 of every page whose row asks for one, and puts the home's own styles in
 place beside them; its keys and theme switch are the kit's
 /local-sites/kit/home.js. A row may name pages of its site that say their
-own kind in the strip, as "pages": {"tree.html": "test"}. The home's
-theme-color takes each look's ground from the kit's theme.css, and its
-favicon each look's tint, so both turn with the theme. A document, any
+own kind in the strip, as "pages": {"tree.html": "test"}. The home reads
+the theme's web kit from the one copy the sites share, /local-sites/web/,
+and its theme-color takes each look's ground from that kit's theme.css, and
+its favicon each look's tint, so both turn with the theme. A document, any
 row but an app, takes its keys and theme switch from the kit's
 /local-sites/kit/document.js, so what it says names every document loading
 a script file of its own, which is a copy that won't learn what the kit
@@ -20,13 +21,14 @@ row the home lists, each as it was written, goes into rows.json beside it,
 for the pages that read what each site is home to, so they read a live
 site's row as its declaration says it rather than the record's.
 
-usage: home.py <sources> <root> [<declared>], where sources holds the home's
-page and its files, root is the sites' folder, and declared is the rows the
-Nix config declares. It rewrites index.html, index.md, rows.json and
-llms.txt whole, and in each stripped page only what sits between the strip's
-two markers, so a run with nothing changed leaves every file as it was.
-Without declared rows, a root with no sites.json yet is left alone; with
-them, they make the home, the root made if need be.
+usage: home.py <sources> <root> <theme> [<declared>], where sources holds the
+home's page and its files, root is the sites' folder, theme is the web kit's
+theme.css the sites share, and declared is the rows the Nix config declares. It
+rewrites index.html, index.md, rows.json and llms.txt whole, and in each
+stripped page only what sits between the strip's two markers, so a run with
+nothing changed leaves every file as it was. Without declared rows, a root with
+no sites.json yet is left alone; with them, they make the home, the root made
+if need be.
 """
 
 import html
@@ -67,6 +69,7 @@ KIT = "/local-sites/kit/"
 # which home.nix's astray spells again for the rows Nix declares.
 STEP = re.compile(r"[A-Za-z0-9_~-][A-Za-z0-9._~-]*")
 LIGHT = "@media (prefers-color-scheme: light)"
+USAGE = "usage: home.py <sources> <root> <theme> [<declared>]"
 
 
 @dataclass(frozen=True)
@@ -197,15 +200,14 @@ def home(page: str, sites: list[Site]) -> str:
     return page.replace("@contents@", contents).replace("@standing@", standing(sites))
 
 
-def looks(root: Path) -> dict[str, str]:
+def looks(theme: Path) -> dict[str, str]:
     """Each look's ground and tint in the kit's theme.css, by the placeholder each fills.
 
     The kit writes the dark look first and the light one under its media query,
     so the first of each on either side of that query is the look's own. What
-    the kit doesn't name, or doesn't write as a colour, or a root with no kit,
-    is left out, and a value refused as no colour is said on stderr.
+    the kit doesn't name, or doesn't write as a colour, or a theme that isn't
+    there, is left out, and a value refused as no colour is said on stderr.
     """
-    theme = root / "kit" / "theme.css"
     css = theme.read_text(encoding="utf-8") if theme.exists() else ""
     dark_side, _, light_side = css.partition(LIGHT)
     found = {}
@@ -221,13 +223,13 @@ def looks(root: Path) -> dict[str, str]:
     return found
 
 
-def grounds(page: str, root: Path) -> str:
+def grounds(page: str, theme: Path) -> str:
     """Fill the page's theme-color with each look's ground from the kit's theme.css.
 
     Without both, the page names no ground rather than one that would drift
     from the kit's.
     """
-    kit = looks(root)
+    kit = looks(theme)
     if not {"@dark-ground@", "@light-ground@"} <= kit.keys():
         return "".join(line for line in page.splitlines(keepends=True) if "-ground@" not in line)
     return page.replace("@dark-ground@", kit["@dark-ground@"]).replace(
@@ -235,14 +237,14 @@ def grounds(page: str, root: Path) -> str:
     )
 
 
-def marked(mark: str, root: Path) -> str:
+def marked(mark: str, theme: Path) -> str:
     """Draw the home's mark, its favicon, in each look's tint from the kit's theme.css.
 
     A favicon can't read the page's properties, so the colours are written in.
     A look the kit names no tint for takes the other look's, and where it names
     neither the mark draws in currentColor, which a favicon draws black.
     """
-    kit = looks(root)
+    kit = looks(theme)
     dark, light = kit.get("@dark-tint@"), kit.get("@light-tint@")
     mark = mark.replace("@dark-tint@", dark or light or "currentColor")
     return mark.replace("@light-tint@", light or dark or "currentColor")
@@ -431,8 +433,8 @@ def folder(path: str) -> str:
     return "/".join(part for part in path.split("/") if part not in {"", "."}) + "/"
 
 
-def build(sources: Path, root: Path, declared: Path | None = None) -> str:
-    """Build the home in root from its sources, root's sites.json and the declared rows.
+def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) -> str:
+    """Build the home in root from its sources, root's sites.json, the theme and declared rows.
 
     It says what it did.
     """
@@ -461,9 +463,10 @@ def build(sources: Path, root: Path, declared: Path | None = None) -> str:
     sites = [site for site in sites if ours(site.row["path"])]
     for name in FILES:
         write(root / name, (sources / name).read_text(encoding="utf-8"))
-    write(root / "favicon.svg", marked((sources / "favicon.svg").read_text(encoding="utf-8"), root))
+    mark = (sources / "favicon.svg").read_text(encoding="utf-8")
+    write(root / "favicon.svg", marked(mark, theme))
     shell = (sources / "index.html").read_text(encoding="utf-8")
-    write(root / "index.html", grounds(home(shell, sites), root))
+    write(root / "index.html", grounds(home(shell, sites), theme))
     # Only once the page that no longer loads them is in place.
     for name in GONE:
         (root / name).unlink(missing_ok=True)
@@ -488,9 +491,16 @@ def build(sources: Path, root: Path, declared: Path | None = None) -> str:
 
 
 if __name__ == "__main__":
-    # The program and its two folders, then the declared rows when given.
-    folders, with_rows = 3, 4
-    if len(sys.argv) not in {folders, with_rows}:
-        sys.exit("usage: home.py <sources> <root> [<declared>]")
-    rows = Path(sys.argv[folders]) if len(sys.argv) == with_rows else None
-    print(build(Path(sys.argv[1]), Path(sys.argv[2]), rows))
+    # The program, its two folders and the theme, then the declared rows when given.
+    given, with_rows = 4, 5
+    if len(sys.argv) not in {given, with_rows}:
+        sys.exit(USAGE)
+    rows = Path(sys.argv[given]) if len(sys.argv) == with_rows else None
+    theme = Path(sys.argv[3])
+    # A caller still on the old shape hands the declared rows where the theme
+    # now goes, which would read as a theme naming nothing.
+    if theme.suffix != ".css":
+        sys.exit(f"home: the theme {theme} isn't a stylesheet; {USAGE}")
+    if not theme.exists():
+        print(f"home: the theme {theme} isn't there, so no look is named", file=sys.stderr)
+    print(build(Path(sys.argv[1]), Path(sys.argv[2]), theme, rows))

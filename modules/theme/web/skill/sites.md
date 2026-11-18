@@ -170,9 +170,24 @@ and load it before the site's own CSS:
 A live site built by `localSite` copies nothing: the sites' server holds
 one copy for every live site at `/local-sites/web/`, so the browser
 fetches the fonts once for them all. Its page, served one folder deep,
-loads `../local-sites/web/theme.css`, `../local-sites/web/base.css` and
-the fonts from `../local-sites/web/fonts/`, and the build refuses a page
-still loading its own `kit/`.
+loads the same lines from there, preloads included, and the build refuses
+a page still loading its own `kit/`:
+
+```html
+<link rel="stylesheet" href="../local-sites/web/theme.css">
+<link rel="stylesheet" href="../local-sites/web/base.css">
+<link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="site.css">
+<link rel="preload" href="../local-sites/web/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../local-sites/web/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../local-sites/web/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
+```
+
+The server holds two folders there that sound alike. `/local-sites/web/`
+is the theme's web kit: `theme.css`, `base.css` and the fonts.
+`/local-sites/kit/` is the sites' own scripts and switch: `feed.js`,
+`keys.js`, `document.js`, the rest built from the kit's TypeScript, and
+`switch.css`. Neither holds the other's files.
 
 Preload the faces the first screen draws: the heading's italic turn and a
 label put all three on most of them.

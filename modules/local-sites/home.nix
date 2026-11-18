@@ -53,8 +53,8 @@ let
   cfg = config.jitsusama.local-sites;
   local-sites = pkgs.callPackage ./package.nix { };
   sites = import ./site.nix { inherit lib pkgs; };
-  # The theme's web kit (modules/theme/web), which every site's page reads
-  # from the one copy the sites share.
+  # The theme's web kit (modules/theme/web), which every site's page and the
+  # home read from the one copy the sites share.
   webKit = config.xdg.dataFile."jitsusama/web".source;
   documents = "${config.xdg.dataHome}/jitsusama/sites";
   # Loopback, under the names a browser sends there by itself.
@@ -176,6 +176,7 @@ let
     "${./home/home.py}"
     "${./home}"
     "${config.xdg.dataHome}/jitsusama/sites"
+    "${webKit}/theme.css"
     "${declared}"
   ];
 in

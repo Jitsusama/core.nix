@@ -1,18 +1,19 @@
 """The home of the local sites, as its builder writes it, answers its keys in a browser.
 
-The home is the one home.py builds from a record of three sites and the
-theme's web kit, served by the real local-sites server with the kit's
-scripts mounted where every site reads them. In headless Chromium j and k,
-and the arrows, step its cursor from site to site and hold it at the ends,
-g twice (and not once) and G go to the first and the last, Return opens the
-site the cursor is on, ? and F1 open its list of keys and Escape closes it,
-the keys its head shows answer a tap, the arrows on the theme switch choose
-a look and leave the cursor where it was, and the look chosen holds on the
-next visit. Its mark is drawn in each look's own tint from the kit. It
-passes the web-design skill's page checks at a phone's width and a desk's in
-both looks, and anything it logs fails it. A document whose head is a hero
-rather than a head answers a tap on its shown keys too. The server, the
-browser and the tab are modules/local-sites/tests/live_page.py's.
+The home is the one home.py builds from a record of three sites and the theme's
+web kit, served by the real local-sites server with the kit's scripts and the
+web kit mounted where every site reads them, so a theme or font it can't reach
+there is logged. In headless Chromium j and k, and the arrows, step its cursor
+from site to site and hold it at the ends, g twice (and not once) and G go to
+the first and the last, Return opens the site the cursor is on, ? and F1 open
+its list of keys and Escape closes it, the keys its head shows answer a tap,
+the arrows on the theme switch choose a look and leave the cursor where it was,
+and the look chosen holds on the next visit. Its mark is drawn in each look's
+own tint from the kit. It passes the web-design skill's page checks at a
+phone's width and a desk's in both looks, and anything it logs fails it. A
+document whose head is a hero rather than a head answers a tap on its shown
+keys too. The server, the browser and the tab are
+modules/local-sites/tests/live_page.py's.
 """
 
 import json
@@ -78,8 +79,8 @@ def home(tmp_path: Path) -> Iterator[str]:
     """Serve the home as home.py builds it among the documents, giving its address."""
     with serving(tmp_path, {}, {}) as (address, _):
         documents = tmp_path / "documents"
-        # The theme's kit sits in the sites' folder, since the server follows
-        # no link out of it.
+        # The documents keep a kit of their own, as a document must stand
+        # alone; the home reads none of it, but the copy the sites share.
         shutil.copytree(os.environ["WEB_KIT"], documents / "kit")
         record = {"about": "a stand-in", "sites": SITES}
         (documents / "sites.json").write_text(json.dumps(record))
@@ -91,7 +92,8 @@ def home(tmp_path: Path) -> Iterator[str]:
         (documents / "heron").mkdir()
         (documents / "heron" / "index.html").write_text(DOCUMENT)
         sources = Path(os.environ["HOME_SOURCES"])
-        subprocess.run([sys.executable, sources / "home.py", sources, documents], check=True)
+        theme = Path(os.environ["WEB_KIT"]) / "theme.css"
+        subprocess.run([sys.executable, sources / "home.py", sources, documents, theme], check=True)
         yield address
 
 
