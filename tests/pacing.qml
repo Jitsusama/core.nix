@@ -871,7 +871,7 @@ QtObject {
     // Wi-Fi's drawers made in a median of 6 ms, yet 5 of the 6 from a key
     // came the frame after (F8TT8O, 2026-11-18).
     function kept(failures) {
-        const wifi = Pacing.drawerKind("Network", { key: "wifi:grrbrr" });
+        const wifi = Pacing.drawerKind("Network", { key: "wifi:harbour" });
         let made = {};
         for (const making of [6, 5, 7])
             made = Pacing.drawerMade(made, wifi, making);
