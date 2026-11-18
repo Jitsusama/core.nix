@@ -351,19 +351,22 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 // "Stepping down a small ledge with its paws moving is what a cat
 // does"); measured from where it stands over the top, not where it's
 // drawn, a float 3 pixels under the top still did it. Stepping, it
-// crosses the corner of the window's face for a stride, the one break of
-// never over its face, and the smaller: a body as wide as it's tall goes
-// a body's width along as it goes down, so for a drop no more than its
-// height it goes no more than half its height deeper into the corner
-// than its feet sit on it. At the screen's top, drawn no higher than it,
-// they already sit in the face; under it, a pixel over it, so the
-// crossing is fresh, and still the smaller break than the walk on the
-// air. For that stride its cells take the pointer over the corner, often
-// the window's title bar, as they do wherever it stands. While a
-// workspace move draws it over the top, sliding with the screen, the
-// step goes as far down as it stands over it, and so deeper for that
-// stride. Deeper, it walks clear and drops (VKCF3Z 13d5bf97), its feet
-// in the face only as deep as they stood on it.
+// crosses the corner of the window's face for a body-length's walk, the
+// one break of never over its face, and the smaller: a body as wide as
+// it's tall goes a body's width along as it goes down, so for a drop no
+// more than its height it goes no more than half its height deeper into
+// the corner than its feet sit on it. Drawn no higher than the screen's
+// top, on a window whose top is under its own height down they already
+// sit in the face; lower, up to its air over it, so the crossing is
+// fresh, and still the smaller break than the walk on the air. Its walk
+// is timed by the ground it covers along and down, so the deeper the
+// step the longer, up to twice a body-length's walk. For that walk its
+// cells take the pointer over the corner, often the window's title bar,
+// as they do wherever it stands. While a workspace move draws it over
+// the top, sliding with the screen, the step goes as far down as it
+// stands over it, and so deeper for that walk. Deeper, it walks clear
+// and drops (VKCF3Z 13d5bf97), its feet in the face only as deep as
+// they stood on it.
 function stepsDown(way, to, at) {
     const drop = Math.max(to.y, 0) - Math.max(way.y, 0);
     return drop >= 0 && drop <= at.tall + 1e-6;

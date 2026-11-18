@@ -187,7 +187,7 @@ closes or loses focus"
 
 It's never over a floating window's face but at its corner: with no room over one for its
 hop, it steps down off the end within its own height, paws moving, crossing the corner for a
-stride, the smaller break than walking a body-length on the air (WCJQSG 1ee24751,
+body-length's walk, the smaller break than walking one on the air (WCJQSG 1ee24751,
 2026-11-18: "Stepping down a small ledge with its paws moving is what a cat does").
 
 - Held by `margin-cat-floats.qml`: "onto a floating window it drops straight down from the top
@@ -202,8 +202,10 @@ stride, the smaller break than walking a body-length on the air (WCJQSG 1ee24751
 - Held by `margin-cat-floats.qml`: "leaping off one, over them until it lands on the ledge"
 - Held by `margin-cat-floats.qml`: "with no floating window on its way, never over them"
 - Held by `margin-cat-floats.qml`: "never over its face, on or off it"
-- Held by `margin-cat-floats.qml`: "crossing the corner of its face 3 deep, for a stride at
-  its walk's pace"
+- Held by `margin-cat-floats.qml`: "crossing the corner of its face 3 deep, for a
+  body-length's walk"
+- Held by `margin-cat-floats.qml`: "cramped a step down, it steps off from its edge rather
+  than walk clear first"
 - Held by `margin-cat-floats.qml`: "its own height down off one at the screen's top, it
   steps off; a pixel more, drops"
 - Held by `margin-cat-floats.qml`: "off a seat its own height down, it steps; a pixel more,
