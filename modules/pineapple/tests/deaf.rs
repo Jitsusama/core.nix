@@ -90,7 +90,8 @@ fn a_row_left_by_a_tell_that_failed_after_it_is_still_taken_away() {
     let _ = deaf.heard(Round::Heard, AT);
     let refused = Round::Deaf(Deafness::Refused);
     let _ = deaf.heard(refused, AT);
-    assert!(matches!(deaf.heard(refused, AT + 30_000), Change::Tell(_)));
+    let told = deaf.heard(refused, AT + 30_000);
+    assert!(matches!(told, Change::Tell(_)), "told: {told:?}");
     // Written; then a new why, whose rewrite fails.
     let rewrite = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 60_000);
     assert!(matches!(rewrite, Change::Tell(_)), "retold: {rewrite:?}");
@@ -99,6 +100,18 @@ fn a_row_left_by_a_tell_that_failed_after_it_is_still_taken_away() {
         deaf.heard(Round::Heard, AT + 90_000),
         Change::Untell,
         "the first row still stands, so hearing Slack takes it away"
+    );
+}
+
+#[test]
+fn a_round_slack_couldnt_be_asked_in_doesnt_count_toward_telling() {
+    let mut deaf = Deaf::new();
+    let _ = deaf.heard(Round::Heard, AT);
+    assert_eq!(deaf.heard(Round::Unasked, AT), Change::Keep);
+    assert_eq!(
+        deaf.heard(Round::Deaf(Deafness::Refused), AT),
+        Change::Keep,
+        "one refusal beside a blip is still only one"
     );
 }
 

@@ -32,14 +32,15 @@ onLinux {
   # pineapple-slack starts at login, reads pi's Slack sign-in from the
   # keyring as slack-unreads does, comes back as the new one after a
   # switch and after it fails, runs in the background slice, reads as its
-  # own name in ps, and runs live.
+  # own name in ps, runs live, and takes its row in For You with it as it
+  # stops.
   pineapple-slack-starts-with-the-sign-in =
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.pineapple ]; } ]);
       unit = home.systemd.user.services.pineapple-slack;
     in
     holds "pineapple-slack-starts-with-the-sign-in"
-      "pineapple-slack lacks its login start, keyring, switch restart, restart, slice, name or --live."
+      "pineapple-slack lacks its login start, keyring, switch restart, restart, slice, name, --live or row cleanup."
       (
         lib.elem "default.target" unit.Install.WantedBy
         && !(home.systemd.user.paths ? pineapple-slack)
@@ -51,6 +52,7 @@ onLinux {
         && lib.any (lib.hasSuffix "/bin/pineapple-slack pineapple-slack run --live") (
           lib.toList unit.Service.ExecStart
         )
+        && lib.hasInfix "rm -f %S/mission/waiting/pineapple.json %S/mission/waiting/.writing/pineapple.json" unit.Service.ExecStopPost
       );
   # pineapple-github starts at login, reads Joel's GitHub sign-in through
   # gh, comes back as the new one after a switch and after it fails, runs

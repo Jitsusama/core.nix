@@ -174,17 +174,10 @@ in
           Restart = "on-failure";
           RestartSec = 30;
           # Its row in For You saying it can't hear Slack (src/deaf.rs) goes
-          # as it stops, as slack-unreads' does, so a reader taken away or
-          # rolled back leaves nothing standing that nothing would clear.
-          ExecStopPost =
-            let
-              waiting = "${config.xdg.stateHome}/mission/waiting/pineapple.json";
-            in
-            lib.concatStringsSep " " [
-              "${pkgs.coreutils}/bin/rm -f"
-              (lib.escapeShellArg waiting)
-              (lib.escapeShellArg "${dirOf waiting}/.writing/${baseNameOf waiting}")
-            ];
+          # however it stops, as eero's does, so a reader stopped or taken
+          # away leaves nothing standing that nothing would clear. %S is the
+          # XDG_STATE_HOME the program reads its path from.
+          ExecStopPost = "${pkgs.coreutils}/bin/rm -f %S/mission/waiting/pineapple.json %S/mission/waiting/.writing/pineapple.json";
         };
         # Started at login rather than once a sign-in file appears, since pi
         # keeps its sign-in in the keyring now and the file may never come.

@@ -73,6 +73,7 @@ fn a_refused_sign_in_is_told_in_for_you_until_slack_is_heard_again() {
         "it says why: {row}"
     );
     assert!(untold, "and untold once Slack is heard again");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]
@@ -102,6 +103,7 @@ fn a_refusal_in_either_search_is_told_though_the_other_cant_be_asked() {
             "a refusal isn't hidden by a search that wasn't asked \
              (the phrase's refused: {phrase_refused}): {row}"
         );
+        std::fs::remove_dir_all(&home).expect("the case's home goes");
     }
 }
 
@@ -122,6 +124,7 @@ fn no_sign_in_to_read_is_told_too() {
         says(&row, "The safe word has no Slack sign-in it can read"),
         "it says why: {row}"
     );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]
@@ -143,6 +146,7 @@ fn a_sign_in_that_doesnt_say_who_joel_is_is_told_as_none() {
         told && says(&row, "The safe word has no Slack sign-in it can read"),
         "a sign-in naming nobody can't be read for him: {row}"
     );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]
@@ -187,5 +191,6 @@ fn a_slack_failing_in_ways_signing_in_cant_mend_isnt_told_as_deaf() {
             !waiting(&home).exists(),
             "{failing}: nothing of Joel's to do that signing in would mend"
         );
+        std::fs::remove_dir_all(&home).expect("the case's home goes");
     }
 }
