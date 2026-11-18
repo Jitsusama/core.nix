@@ -392,8 +392,9 @@ QtObject {
         // At the screen's top, as on the GPU rig: the tops stand 3 down
         // and a floating window across the gap stands 3 above the screen,
         // where a leap's arc would be off it, drawn held at the edge. It
-        // walks up beside its edge, along its top and down off its far
-        // end, never through its face (VKCF3Z 299fb911).
+        // walks up beside its edge as far as the screen shows, along its
+        // top and off its far end, and drops from there, never through
+        // its face (VKCF3Z 299fb911, 13d5bf97).
         const rigTiles = [
             { left: 16, top: 12, width: 600, height: 772, column: 0 },
             { left: 632, top: 12, width: 600, height: 772, column: 1 }
@@ -402,33 +403,41 @@ QtObject {
         const atEdge = float(500, 6, 250, 200);
         const rigOver = Paths.walk({ x: 100, y: 3 }, { x: 900, y: 3 }, rig(atEdge));
         const rigBack = Paths.walk({ x: 900, y: 3 }, { x: 100, y: 3 }, rig(atEdge));
-        expect("at the screen's top, a float with no room for an arc is walked over both ways",
-            [walks(rigOver, atEdge, 8), walks(rigBack, atEdge, 8), endsAt(rigOver),
+        // Where it walks or falls above the screen's top, drawn there
+        // standing still with its paws going, or hanging in its falling
+        // drawing (VKCF3Z 13d5bf97).
+        const offTop = way => way.beats.filter(beat => ["goes", "falls"].includes(beat.kind)
+            && Math.abs(Math.min(beat.from.y, 0) - Math.min(beat.to.y, 0)) > 1e-6).map(ends);
+        expect("at the screen's top, a float with no room for an arc is walked on, dropped off",
+            [leapsBy(rigOver, atEdge), leapsBy(rigBack, atEdge), endsAt(rigOver),
                 endsAt(rigBack), overFace(rigOver, atEdge), overFace(rigBack, atEdge)],
-            [true, true, [900, 3], [100, 3], [], []]);
-        expect("up beside its edge and down beside its far one",
+            [["falls"], ["falls"], [900, 3], [100, 3], [], []]);
+        expect("up beside its edge to the screen's top, off its far end and down from there",
             by(rigOver, atEdge).map(ends).slice(1),
-            [[492, 3, 492, -3], [492, -3, 500, -3], [500, -3, 742, -3],
-                [742, -3, 750, -3], [750, -3, 750, 3], [750, 3, 900, 3]]);
-        expect("over the tiled windows from its step up to its step down, under them either side",
+            [[492, 3, 492, 0], [492, -3, 500, -3], [500, -3, 742, -3],
+                [742, -3, 750, -3], [750, 0, 750, 3], [750, 3, 750, 3], [750, 3, 900, 3]]);
+        expect("never walking or falling above the screen's top, there or back",
+            [offTop(rigOver), offTop(rigBack)], [[], []]);
+        expect("over the tiled windows from its step up to its drop, under them either side",
             by(rigOver, atEdge).map(beat =>
                 Paths.frame(rigOver, (beat.begins + beat.ends) / 2).aboard === true),
-            [false, true, true, true, true, true, false]);
+            [false, true, true, true, true, true, false, false]);
         // And onto a seat on it and off it again, as lands() and off() go.
         const seatOn = Paths.walk({ x: 100, y: 3 }, { x: 600, y: -3 }, rig(atEdge));
         const seatOff = Paths.walk({ x: 600, y: -3 }, { x: 100, y: 3 }, rig(atEdge));
-        expect("at the screen's top, it walks onto a seat on it and off it again",
-            [walks(seatOn, atEdge, 8), walks(seatOff, atEdge, 8), endsAt(seatOn),
-                endsAt(seatOff), overFace(seatOn, atEdge), overFace(seatOff, atEdge)],
-            [true, true, [600, -3], [100, 3], [], []]);
+        expect("at the screen's top, it walks onto a seat on it, and off it it drops",
+            [walks(seatOn, atEdge, 8), leapsBy(seatOff, atEdge), endsAt(seatOn),
+                endsAt(seatOff), overFace(seatOn, atEdge), overFace(seatOff, atEdge),
+                offTop(seatOn), offTop(seatOff)],
+            [true, ["falls"], [600, -3], [100, 3], [], [], [], []]);
         // Up to its own height it walks; a cell taller and it keeps its
         // leap, held at the edge, rather than walk up a wall.
         const capped = float(500, 4, 250, 200);
         const pastCap = float(500, 3, 250, 200);
         expect("its own height up at the screen's top, it walks; a cell more, it leaps",
-            [walks(Paths.walk({ x: 100, y: 3 }, { x: 900, y: 3 }, rig(capped)), capped, 8),
+            [leapsBy(Paths.walk({ x: 100, y: 3 }, { x: 900, y: 3 }, rig(capped)), capped),
                 leapsBy(Paths.walk({ x: 100, y: 3 }, { x: 900, y: 3 }, rig(pastCap)), pastCap)],
-            [true, ["crouches", "leaps", "over", "crouches", "hops", "falls"]]);
+            [["falls"], ["crouches", "leaps", "over", "falls"]]);
         // Its apex is its first leap's, to a cell under its landing: on
         // the screen there, it leaps, though its landing stands at its top.
         const toTheTop = float(500, 9, 250, 200);
@@ -448,8 +457,16 @@ QtObject {
         const underHigh = float(700, 12, 200, 100);
         const upHigh = Paths.walk({ x: 800, y: 3 }, { x: 1000, y: -3 },
             world({ cols: Paths.columns(highTiles, 0), floats: [underHigh] }));
-        expect("up off one onto a ledge above the screen's top, it walks",
-            [walks(upHigh, underHigh, 8), ends(upHigh.beats[0])], [true, [800, 3, 800, -3]]);
+        expect("up off one onto a ledge above the screen's top, it walks as far as it shows",
+            [walks(upHigh, underHigh, 8), ends(upHigh.beats[0]), offTop(upHigh)],
+            [true, [800, 3, 800, 0], []]);
+        // And down from such a ledge onto one well below: its fall begins
+        // where it's drawn, at the screen's top.
+        const dropsHigh = Paths.walk({ x: 1000, y: -3 }, { x: 800, y: 91 },
+            world({ cols: Paths.columns(highTiles, 0), floats: [float(700, 100, 200, 100)] }));
+        expect("down from a ledge above the screen's top, it falls from the top, never hanging",
+            [ends(named(dropsHigh, "falls")), offTop(dropsHigh), endsAt(dropsHigh)],
+            [[800, 0, 800, 91], [], [800, 91]]);
         // At a cell of 2 its apex is 2 pixels over its first leap's end,
         // so 1 over the screen's top it walks, and 1 under it, it leaps.
         const highBig = [
@@ -462,12 +479,12 @@ QtObject {
         const roomTop = float(500, 19, 250, 200);
         // Its hop off rises half a cell, so its apex there is 1 pixel
         // over where it stands, at the screen's top: on it, so it hops.
-        expect("at a cell of 2, its apex over the screen's top it walks, under it it leaps",
-            [walks(Paths.walk({ x: 100, y: 6 }, { x: 1000, y: 6 }, bigHigh(nearTop)),
-                nearTop, 16, 16),
+        expect("at a cell of 2, its apex over the screen's top it walks on, under it it leaps",
+            [leapsBy(Paths.walk({ x: 100, y: 6 }, { x: 1000, y: 6 }, bigHigh(nearTop)),
+                nearTop, 16),
                 leapsBy(Paths.walk({ x: 100, y: 6 }, { x: 1000, y: 6 }, bigHigh(roomTop)),
                     roomTop, 16)],
-            [true, ["crouches", "leaps", "over", "crouches", "hops", "falls"]]);
+            [["falls"], ["crouches", "leaps", "over", "crouches", "hops", "falls"]]);
 
         // Straight up off one 2 under the tops onto them, and straight
         // down onto it from them: steps, never a leap or a fall.
