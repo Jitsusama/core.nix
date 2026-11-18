@@ -99,10 +99,12 @@ let
   # Each declared row as home.py reads it: an app, growing, and live. Its
   # strip is the one its build writes, so the home writes none. The home
   # writes every row it lists into rows.json, these as declared, for the
-  # homes' readers (system's, the web-design skill's, Code's). Until each
-  # reads that, they read sites.json, so its live rows stay there, and
-  # rolling this back stays safe. A session's edit to a live row there no
-  # longer reaches the home, since the declaration stands in for it.
+  # homes' readers (system's, the web-design skill's, Code's). System's and
+  # Code's read it first and sites.json only without it, and its live rows
+  # stay in sites.json too, so rolling this back means taking rows.json
+  # away as well, or they keep reading the last rows it wrote. A session's
+  # edit to a live row there no longer reaches the home, since the
+  # declaration stands in for it.
   declared = pkgs.writeText "local-sites-rows.json" (
     builtins.toJSON {
       sites = lib.mapAttrsToList (

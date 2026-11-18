@@ -326,7 +326,7 @@ def ours(path: object) -> bool:
     Only plain steps pass, after the ./ some sessions open with, so no
     scheme, host, backslash, step up or escape can ride in, nor whitespace a
     browser drops before reading the rest, nor a path that isn't a string.
-    System's homes take no ./, so a reader of rows.json sees one as written.
+    The system's homes take one ./ as well. A reader of rows.json sees it as written.
     """
     if not isinstance(path, str):
         return False
