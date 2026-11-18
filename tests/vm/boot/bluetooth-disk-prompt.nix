@@ -23,7 +23,7 @@ let
   # unseen. Here it takes this long, and the prompt has to ask well before.
   unsealSeconds = 15;
 
-  btvirt = import ../../btvirt.nix { inherit pkgs; };
+  btvirt = import ../../stand-ins/btvirt.nix { inherit pkgs; };
 
   # Each machine's second serial port, ttyS1, to btvirt.
   controller = [

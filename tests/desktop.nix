@@ -1523,7 +1523,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           # whichever the launcher looks from hears the other. Only there, so
           # no other area's test moves with it.
           // pkgs.lib.optionalAttrs isLooks {
-            btvirt = "${import ./btvirt.nix { inherit pkgs; }}/bin/btvirt";
+            btvirt = "${import ./stand-ins/btvirt.nix { inherit pkgs; }}/bin/btvirt";
           }
           # WARP's contract, for the stand-in warp-cli to answer with, only
           # where WARP is shown.

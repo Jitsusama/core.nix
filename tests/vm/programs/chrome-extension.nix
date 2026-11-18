@@ -38,7 +38,7 @@ let
     echo '<title>Two</title>' > $out/two.html
   '';
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "chrome-extension";
 
   nodes.machine = {
@@ -62,7 +62,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       pkgs.chromium
       pkgs.curl
       pkgs.xvfb-run
-      (pkgs.callPackage ../modules/chrome/session/package.nix { })
+      (pkgs.callPackage ../../../modules/chrome/session/package.nix { })
       (pkgs.runCommandLocal "chromium-takes-the-open-tabs-extension" { } ''
         mkdir -p $out/share/chromium/extensions
         ln -s /usr/share/google-chrome/extensions/${id}.json $out/share/chromium/extensions/

@@ -168,11 +168,6 @@ let
 
   # The virtual machine tests. Each has to show something nothing cheaper can.
   vmTestsOn = pkgs: {
-    # Only Chrome, started, says whether it installed what the preferences
-    # file names, and writes a session file as it browses.
-    vm-chrome-says-its-open-tabs = import ./tests/chrome-extension.nix {
-      inherit self pkgs;
-    };
     # The desktop, in areas of a minute or two each on one machine
     # (tests/desktop.nix).
     vm-desktop-starts-clean = import ./tests/desktop.nix {
@@ -734,6 +729,7 @@ gather {
     ./tests/vm/guide/checks.nix
     ./tests/vm/keys/checks.nix
     ./tests/vm/network/checks.nix
+    ./tests/vm/programs/checks.nix
     ./tests/vm/sites/checks.nix
     ./tests/vm/sound/checks.nix
     ./tools/changed-checks/checks.nix

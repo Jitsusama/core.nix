@@ -16,8 +16,8 @@ and why.
 | a check reading the repository as a whole   | `repository/`                             |
 | what several checks are built from          | `lib/`                                    |
 | a test on a nested niri, in the sandbox     | beside the shell, or here if a VM reads it |
-| a stand-in for a program or a device        | beside its test, or `stand-ins/`          |
-| a patch a test's machine takes              | here, `<what>.patch`                      |
+| a program's or device's stand-in, its patch | beside its test, or `stand-ins/`          |
+| a patch a test's machine takes, not a stand-in's | here, `<what>.patch`                 |
 | a shell QML case a VM test reads too        | here, `<case>.qml`, until it moves        |
 
 ## Its Folders

@@ -1,7 +1,7 @@
 # btvirt, BlueZ's emulator of Bluetooth controllers, for the VM tests that
 # need a radio: as a server two machines' serial ports reach
-# (vm/boot/bluetooth-disk-prompt.nix), or as controllers of the machine's own
-# through the kernel's vhci (desktop.nix's looks area).
+# (tests/vm/boot/bluetooth-disk-prompt.nix), or as controllers of the
+# machine's own through the kernel's vhci (tests/desktop.nix's looks area).
 #
 # btvirt is built only with BlueZ's tests, which nixpkgs leaves out. Its
 # server reads every client into one buffer and loses the start of a
