@@ -60,24 +60,66 @@ fn settings_are_emptied_to_nothing_where_none_saying_nothing_can_be_written() {
     );
 }
 
+/// A daemon whose list also empties `named` under ~/.ssh where it holds
+/// a registry's login.
+fn emptying_in_ssh(test: &str, named: &str) -> Running {
+    let running = Running::releasing(test, &[super::LISTED]);
+    let mut list: Value = serde_json::from_str(FENCE_LIST).unwrap();
+    let inside = serde_json::json!({"path": format!(".ssh/{named}"), "when": ["auths"]});
+    list["emptied"].as_array_mut().unwrap().push(inside);
+    std::fs::write(running.fence_list(), list.to_string()).unwrap();
+    running
+}
+
 #[test]
 fn settings_in_ssh_are_left_to_its_emptying() {
     // ~/.ssh is made empty and read-only too, so a file the list empties
     // inside it is hidden already, and bubblewrap couldn't bind over it.
-    let running = Running::releasing("asks-docker-in-ssh", &[super::LISTED]);
-    let mut list: Value = serde_json::from_str(FENCE_LIST).unwrap();
-    let inside = serde_json::json!({"path": ".ssh/settings.json", "when": ["auths"]});
-    list["emptied"].as_array_mut().unwrap().push(inside);
-    std::fs::write(running.fence_list(), list.to_string()).unwrap();
+    let running = emptying_in_ssh("asks-docker-in-ssh", "settings.json");
     let ssh = running.folder.join("home/.ssh");
     std::fs::write(ssh.join("settings.json"), DOCKER_CONFIG).unwrap();
     let args = released_with(&running, "a623456789abcdef0123456789abcdef");
+    let ssh = std::fs::canonicalize(&ssh).unwrap();
+    holds(&args, &[Path::new("--tmpfs"), &ssh]);
     assert!(
         !args
             .iter()
             .any(|arg| Path::new(arg) == ssh.join("settings.json")),
         "something inside ~/.ssh was bound over: {args:?}"
     );
+}
+
+#[test]
+fn settings_ssh_binds_back_are_emptied_over_it() {
+    // ~/.ssh binds back the files it keeps, so one the list empties among
+    // them would be read whole unless it's bound over after.
+    let running = emptying_in_ssh("asks-docker-ssh-kept", "config");
+    let ssh = running.folder.join("home/.ssh");
+    std::fs::write(ssh.join("config"), DOCKER_CONFIG).unwrap();
+    let args = released_with(&running, "a723456789abcdef0123456789abcdef");
+    let kept = std::fs::canonicalize(ssh.join("config")).unwrap();
+    let back = found(&args, &[Path::new("--ro-bind"), &kept, &kept]);
+    let over = found(&args, &emptying(&empty_settings(&running), &kept));
+    assert!(
+        matches!((back, over), (Some(back), Some(over)) if back < over),
+        "a file ~/.ssh keeps was not emptied after it was bound back: {args:?}"
+    );
+}
+
+#[test]
+fn settings_through_a_linked_ssh_are_emptied() {
+    // A linked ~/.ssh is not made empty, bubblewrap mounting on no link,
+    // so a file the list empties through it is no folder's to hide.
+    let running = emptying_in_ssh("asks-docker-ssh-linked", "settings.json");
+    let ssh = running.folder.join("home/.ssh");
+    let outside = running.folder.join("outside-ssh");
+    std::fs::remove_dir_all(&ssh).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, &ssh).unwrap();
+    std::fs::write(outside.join("settings.json"), DOCKER_CONFIG).unwrap();
+    let args = released_with(&running, "a823456789abcdef0123456789abcdef");
+    let settings = std::fs::canonicalize(outside.join("settings.json")).unwrap();
+    holds(&args, &emptying(&empty_settings(&running), &settings));
 }
 
 #[test]

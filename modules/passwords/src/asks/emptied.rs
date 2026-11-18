@@ -344,6 +344,16 @@ mod tests {
     }
 
     #[test]
+    fn a_proxys_login_said_as_a_name_empties_the_file() {
+        // Docker reads no login there, but cat reads every name as well.
+        let text = r#"{"proxies": {"http://joel:made-up@proxy.example": {}}}"#;
+        assert!(
+            empties(text, &docker()),
+            "a proxy's login said as a name was left: {text}"
+        );
+    }
+
+    #[test]
     fn a_proxy_with_no_at_is_no_login() {
         for text in [
             r#"{"proxies": {"default": {"httpProxy": "http://proxy.example:3128/path"}}}"#,
