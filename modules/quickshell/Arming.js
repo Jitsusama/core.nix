@@ -17,11 +17,20 @@
 
 // Whether Return on the row keeps the launcher open and does nothing, so
 // a second Return meant for a yes never reaches the window behind. Such a
-// row stays and has no run, so it has no act for the right arrow to step
-// into, and none that changes how things stand; one that opens a place
-// opens it.
+// row says it has nothing to do yet (`still`), so the foot names no
+// Return, and has no run, so it has no act for the right arrow to step
+// into; a still row with a run, as the file chooser's, still runs it.
 function holdsStill(row) {
-    return !!row && row.stays === true && typeof row.run !== "function" && !row.opens;
+    return !!row && row.still === true && typeof row.run !== "function";
+}
+
+// Why a row held still is refused when a terminal asks for it (`held`),
+// or `fallback` where it says none; "" for any other row.
+function heldWhy(row, fallback) {
+    if (!holdsStill(row)) {
+        return "";
+    }
+    return typeof row.held === "string" && row.held !== "" ? row.held : fallback;
 }
 
 // Nothing armed.

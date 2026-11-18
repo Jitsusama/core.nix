@@ -302,9 +302,9 @@ Provider {
             noteSelected();
     }
 
-    // What a hidden ask's row keeps of the one the daemon serves.
+    // What a hidden ask's row keeps of the one the daemon serves (row.rs).
     readonly property var hiddenKeeps: ["key", "thing", "place", "kind", "state", "glyph",
-        "hue", "attention", "order", "gone", "sure", "unfinished"]
+        "hue", "attention", "order"]
 
     // An ask's row, from the one the daemon serves, with what For You
     // reads of it: whether it waits on Joel, and since when.
@@ -340,12 +340,13 @@ Provider {
             forYou: { kind: "do", source: "asks" }
         }, !hiding || served.state !== "waiting" ? {} : {
             // Hidden, a waiting ask's Return keeps the launcher open and
-            // does nothing (Catalogue.holdsStill), since the launcher
-            // closes on a row with no run, and his second Return, meant
-            // for a yes, would then reach the window behind. It has no run,
-            // so nothing takes it for an act that changes things.
-            stays: true,
-            changes: false
+            // does nothing (Arming.holdsStill), since the launcher closes
+            // on a row with no run, and his second Return, meant for a
+            // yes, would then reach the window behind. Still, its foot
+            // names no Return; asked for from a terminal, it's refused
+            // with why it's hidden (`held`).
+            still: true,
+            held: Niri.castsHeard ? Words.field.becoming?.shared ?? "" : waits
         }));
     }
 

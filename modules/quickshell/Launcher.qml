@@ -1664,6 +1664,11 @@ Scope {
         // Said done only where nothing refused it as it ran (walkedRun).
         const ran = why => why === "" ? { done: true, said: said }
             : { done: false, said: `${said}: ${why}` };
+        // One held still, as an ask hidden while Joel shares, is refused,
+        // saying why, rather than run or said done for nothing.
+        const still = Arming.heldWhy(act, Words.field.becoming?.dropped ?? "");
+        if (still !== "")
+            return ran(still);
         if (act.given) {
             if ((words ?? "") === "")
                 return { error: `${said} takes words: ${act.ask ?? ""}` };
@@ -1926,6 +1931,10 @@ Scope {
         // Said done only where nothing refused it as it ran, else why, kept
         // apart from a daemon with no answer (walkedRun, Reached.answered).
         const ran = why => Reached.answered(why, names, Words.field.becoming?.noAnswer ?? "");
+        // One held still is refused, saying why, as the walk refuses it.
+        const still = Arming.heldWhy(act, Words.field.becoming?.dropped ?? "");
+        if (still !== "")
+            return ran(still);
         if (act.given) {
             if (words === "")
                 return { takes: act.ask ?? "", in: names };
