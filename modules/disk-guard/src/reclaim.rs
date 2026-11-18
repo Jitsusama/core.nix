@@ -429,7 +429,8 @@ pub fn entry(
 /// session may have come back to it meanwhile, as one did on 16 November.
 /// It's kept if anything in it was written after `written`, the newest
 /// write its survey found, or it holds work now. With no `written`, it's
-/// any other entry, reclaimed as [`entry`] does.
+/// any other entry, reclaimed as [`entry`] does, and so is one gone since,
+/// which [`entry`] reports as it would any.
 pub fn live_entry(
     root: &Dir,
     root_path: &Path,
@@ -441,11 +442,14 @@ pub fn live_entry(
     let Some(written) = written else {
         return entry(root, root_path, candidate, looker, unlinked);
     };
-    match crate::scratch::live_reading(&candidate.path) {
+    let mut budget = crate::scratch::LIVE_BUDGET;
+    match crate::scratch::live_reading(&candidate.path, &mut budget) {
         crate::scratch::Live::Written(now) if now > written => {
             Outcome::Kept("written since it was surveyed".to_owned())
         }
-        crate::scratch::Live::Written(_) => entry(root, root_path, candidate, looker, unlinked),
+        crate::scratch::Live::Written(_) | crate::scratch::Live::Gone => {
+            entry(root, root_path, candidate, looker, unlinked)
+        }
         crate::scratch::Live::Holds(why) => Outcome::Kept(why),
     }
 }

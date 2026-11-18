@@ -560,6 +560,7 @@ fn offer_workspaces(
     let (over, working): (Vec<_>, Vec<_>) = workspaces::find(path, quests)
         .into_iter()
         .partition(workspaces::over);
+    let mut left = scratch::LIVE_SURVEY_BUDGET;
     for workspace in working {
         let tmp = workspace.path.join("tmp");
         let profiles = temp::profiles(&tmp, world.uid, world.now);
@@ -594,7 +595,7 @@ fn offer_workspaces(
             }
             // The shallow date can miss a live session's edit far down, so
             // what passes it is read whole, and dated again by that.
-            let whole = live && scratch::dated_whole(&mut entry);
+            let whole = live && !(world.stop)() && scratch::dated_whole(&mut entry, &mut left);
             if live && (!whole || scratch::idle(&entry, world.awake, world.now) < unwritten) {
                 continue;
             }

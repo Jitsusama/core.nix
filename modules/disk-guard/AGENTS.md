@@ -100,14 +100,22 @@ or launchd, and [`home.nix`][2] the account's.
   quest a live session works on keeps all it left beside `tmp/`, and in
   `tmp/` what it wrote within two days awake: on 16 November a laptop's
   guard took 188 entries of a working session's `tmp/`, a script it wrote
-  that evening among them. Past two days with nothing written anywhere in
+  that evening among them. Past two days with nothing changed anywhere in
   it, however deep, a live quest's `tmp/` entry goes by the same windows,
   unless a process works in it or it is or holds a `handover`, a
-  repository (`.git`, `.jj` or a bare one), a link into the store or a
-  folder that can't be read, at any depth, since the guard can't ask
-  whether a clone's commits are on a remote. One past 100,000 entries is
-  kept, as it can't be read whole. Each is read whole again just before it
-  goes, as a pass can reach it hours after its survey. On 18 November
+  repository (git, bare or not, jj, Mercurial, Sapling, Pijul, Subversion
+  or Fossil), a link into the store, a folder or entry that can't be read
+  or another filesystem mounted, at any depth, since the guard can't ask
+  whether a clone's commits are on a remote. It's dated by each entry's
+  later of its modification and change times, as an archive unpacked or
+  a tree copied keeping its times carries old modification times but new
+  inodes. One past 100,000 entries is kept, as it can't be read whole, and
+  a survey reads a million entries of all live quests at most, keeping
+  the rest for a later one. Each is read whole again just before it goes,
+  as a pass can reach it hours after its survey. Two days unchanged isn't
+  two days unread: the disk keeps no access times, so a lab only read is
+  dated by its last change. When the sessions folder can't be read, every
+  quest is held to this rule. On 18 November
   quests' `tmp/` entries two days unwritten held 38 GB on one laptop, kept
   while their sessions lived. Its browser profiles at rest
   go as any quest's do. A session lives while its process runs as the
