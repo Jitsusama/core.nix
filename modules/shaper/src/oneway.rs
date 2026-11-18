@@ -656,11 +656,17 @@ impl Way {
         };
         // With our CAKE holding nothing, the link carrying under its rate
         // is held back past it. With CAKE holding a queue, the link carries
-        // the rate, and a router past it dropping a share of that is over
-        // its line: as when a plateau was found while the router's buffer
-        // still took more than its line, or remembered from a faster day.
+        // what CAKE sent, and a router past it dropping a share of that is
+        // over its line: as when a plateau was found while the router's
+        // buffer still took more than its line, or remembered from a
+        // faster day. A CAKE sending under its rate, as a starved machine's
+        // does, is judged by what it sent, so its shortfall isn't taken for
+        // the router's.
+        let offered = ours.sent.map_or(self.rate * share, |sent| {
+            (self.rate * share).min(crate::rate::float(sent))
+        });
         let held_back = if ours.queued {
-            through < self.rate * share * (1.0 - DROPPED_PAST)
+            through < offered * (1.0 - DROPPED_PAST)
         } else {
             through < self.rate * UNDER
         };
@@ -4024,6 +4030,49 @@ mod tests {
             }
         }
         c.up.plateau
+    }
+
+    // On 18 November, in the rate test's starved VM, our CAKE held a queue
+    // yet sent a twentieth or so under its rate, and nothing was lost past
+    // it. Taken for the router holding it back, each shortfall lowered the
+    // plateau and put the next probe off a minute, from 3252 down to 2145
+    // on an 8000 line, until the guard let go.
+    #[test]
+    fn a_cake_sending_under_its_rate_keeps_the_plateau() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(8_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let mut at = 0.0;
+        while at < 50.0 {
+            let rate = c.up.limit().map_or(16_000.0, crate::rate::float);
+            let sent = rate * 0.94;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a positive rate far under u64's range"
+            )]
+            let kbit = |k: f64| k as u64;
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: sent,
+                up_ours: Some(Ours {
+                    queued: true,
+                    waiting: true,
+                    resent: kbit((sent - 8_000.0).max(0.0)),
+                    sent: Some(kbit(sent)),
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(
+            plateau >= 7_900.0,
+            "our CAKE's shortfall lowered it: {plateau}"
+        );
     }
 
     #[test]
