@@ -524,6 +524,24 @@ first, a build refuses it and prints the real one. It holds its commands
 to this page with `core.lib.commandsAgree`, as core does, given the
 commands it builds on the kit and a waiting list of its own.
 
+Inside core, the two crates whose builds the initrd holds, hibernate-unlock
+and console-font, pin the kit to a commit of main too, though by
+`fetchgit` in their `package.nix` rather than a git dependency, so a
+change to the kit doesn't rebuild the initrd and need the boot tests.
+Their `Cargo.toml` keeps the path, so cargo in the dev shell, and each
+crate's clippy check, still build them against the working copy's kit: a
+kit change that would break either fails there, not at the next bump.
+
+A bump moves the rev to a commit of main, never a branch's, which GitHub
+lets go once the branch is rebased. It sets the hash to `lib.fakeHash`
+first, since a fixed-output fetch with its old hash quietly keeps the old
+kit, and takes the hash the build prints. It runs the VM tests each
+package's header names. Each crate has one `Cargo.lock`, which
+`every-lock-agrees-with-its-manifests` holds to the working copy's kit, so
+a change to the kit's own dependencies needs a bump in the same change.
+And `commands-agree` holds the pinned programs to today's rules, so a kit
+change that tightens them needs one too.
+
 ## When a Command Doesn't Agree Yet
 
 The `commands-agree` check ([`tests/rules/commands-agree.py`][check])
