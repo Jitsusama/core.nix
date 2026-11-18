@@ -11,7 +11,8 @@
 // never repeating the side, and leaves out what no node said; Start a
 // Session says why the node won't place on one, else how it stands; an
 // update says how it ended, as its updater said it, or why it couldn't
-// be asked. It exits 0 once every case holds, and otherwise 1, saying
+// be asked; a machine link lands on the row its first word names. It
+// exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
 import QtQuick
 import "RealmMachines.js" as Machines
@@ -254,5 +255,34 @@ QtObject {
                 "skiff refused the update", "couldn't update skiff: its node didn't answer",
                 "couldn't update skiff: skiff is out of reach",
                 "couldn't update skiff: its node didn't answer"]), JSON.stringify(ended));
+
+        // The row a mycelium:machine/ link lands on: any realm's machine,
+        // tern listed by the work realm alone, named by the first word said,
+        // and none for a name no node lists. Its key is the one Machines
+        // gives the row (rowKey), so a link can't name a row by another.
+        const realms = [...records,
+            { name: "tern", realm: "work", state: "ready", system: "linux", measured_at: at(1, 57) }];
+        const linked = ["lantern", "  hermit update ", "anchor", "tern", "skiff.gone", "lant", ""]
+            .map(asked => Machines.linked(realms, asked));
+        expect("a link lands on the row of the machine its first word names, any realm's",
+            JSON.stringify(linked) === JSON.stringify([
+                { name: "lantern", key: "machines:lantern" },
+                { name: "hermit", key: "machines:hermit" },
+                { name: "anchor", key: "machines:anchor" },
+                { name: "tern", key: "machines:tern" },
+                { name: "skiff.gone", key: null },
+                { name: "lant", key: null },
+                { name: "", key: null }]), JSON.stringify(linked));
+        // Among rows keyed as Machines keys them, a link lands on its
+        // machine's row alone, and a miss on none, so it can't match by name.
+        const rows = ["anchor", "tern", "lantern"]
+            .map(name => ({ name: `${name} row`, key: Machines.rowKey(name) }))
+            .concat([{ name: "keyless row", key: null }]);
+        const landed = ["tern", "lantern", "skiff.gone"]
+            .map(asked => rows.filter(Machines.lands(Machines.linked(realms, asked).key))
+                .map(row => row.name));
+        expect("a link lands on its machine's row and no other, and a miss on none",
+            JSON.stringify(landed) === JSON.stringify([["tern row"], ["lantern row"], []]),
+            JSON.stringify(landed));
     }
 }

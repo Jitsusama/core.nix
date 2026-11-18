@@ -15,6 +15,8 @@ const SHORT_COMMIT = 7;
 // A pressure is said to a tenth.
 const TENTHS = 10;
 const BETWEEN = " \u00b7 ";
+// Where one word of what a link says ends.
+const SPACES = /\s+/u;
 
 // The words Machines says, filled in: `said` is the vocabulary's own,
 // words.json's machines.said.
@@ -159,6 +161,26 @@ function ordered(records) {
     };
     return Order.sorted(Object.values(latest),
         Order.live({ stands: rank, name: record => record.name }));
+}
+
+// The key of the machine `name`'s row, which Machines gives its rows and
+// a mycelium:machine/ link lands on, so the two can't drift apart.
+function rowKey(name) {
+    return `machines:${name}`;
+}
+
+// The row a mycelium:machine/ link lands on, as Machines keys it: the
+// machine its first word names, whichever realm's node lists it, and
+// none for a name no node lists, whole names only.
+function linked(records, said) {
+    const [name] = String(said ?? "").trim().split(SPACES);
+    const listed = name !== "" && records.some(record => record.name === name);
+    return { name, key: listed ? rowKey(name) : null };
+}
+
+// Whether `row` is the one a link's `key`, from linked, lands on.
+function lands(key) {
+    return row => key !== null && row.key === key;
 }
 
 // A fact of the drawer, or none where its value isn't said.

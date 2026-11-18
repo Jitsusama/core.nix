@@ -1547,11 +1547,13 @@ Scope {
     }
 
     // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking
-    // talkTo or network, never opens over: what he's typed, and where he is, stay as they are,
-    // and the link opens nothing (ISXEG8's ruling, 2026-11-15 [dd375f5e]). A link opens either
-    // only from closed, holding his first keys back (Prompt.qml's linked).
+    // talkTo, goToCell, showNetwork or showMachine, never opens over: what he's typed, and
+    // where he is, stay as they are, and the link opens nothing (ISXEG8's ruling, 2026-11-15
+    // [dd375f5e]). A link opens either only from closed, holding his first keys back
+    // (Prompt.qml's linked). One still opening counts, since open is set only once its
+    // first frame is drawn, and his keys are already the launcher's before then.
     function inUse() {
-        return open || talkLine.up;
+        return open || opening || talkLine.up;
     }
     readonly property var inUseSaid: ({
             done: false,
@@ -1591,6 +1593,37 @@ Scope {
         landOn = row => steadyId(row) === spot;
         landed();
         return { done: true, said: `opened ${walk.rows.map(row => row.name).join(" \u203a ")}` };
+    }
+
+    // Opens Machines on the row of the machine `said` names, selected, as `qs ipc call launcher
+    // machine` asks, the way a machine's Open in the Launcher on the system page does: its
+    // row's own acts, Start a Session Here and Update It, are Joel's to pick there, since a page
+    // can't act (BMDYSH and XUBK2E, 2026-11-17). Only the first word said names one. A name
+    // no node lists, as every other machine is just after the shell starts and before its
+    // nodes answer, opens Machines with its foot saying so, as goToCell does for a session
+    // gone, so Joel's click never goes nowhere unsaid. The foot's words are Machines' own,
+    // never the name, so a page can't put words of its choosing in the launcher. Says what
+    // it did as JSON, as talkTo does: "opening", since the row is landed on once Machines
+    // lists it. A miss isn't landed on later, when the node lists it: by then Joel's keys
+    // may be moving the cursor, and a row jumping under them would take his place.
+    function showMachine(said) {
+        const machines = collections.find(one => one.settings.name === "machines") ?? null;
+        if (machines === null)
+            return { error: "the launcher has no Machines" };
+        const { name, key } = machines.linked(said);
+        console.info(`launcher: asked from outside to show the machine ${JSON.stringify(name)}`);
+        if (inUse())
+            return inUseSaid;
+        if (key === null) {
+            const words = Words.of("machines").said ?? {};
+            toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
+            into("machines");
+            prompt.linked();
+            return { done: false, said: `${words.unlisted ?? ""}: ${words.unlistedWhy ?? ""}` };
+        }
+        intoOn("machines", machines.lands(key));
+        prompt.linked();
+        return { done: true, said: `opening Machines \u203a ${name}` };
     }
 
     function catalogueRunWalked(id, words) {
@@ -7983,6 +8016,12 @@ Scope {
         // as a step in and down to it would (root's showNetwork).
         function network(name: string): string {
             return JSON.stringify(root.showNetwork(name));
+        }
+
+        // Opens Machines on a machine's row by its name, selected, its
+        // acts a step in (root's showMachine).
+        function machine(name: string): string {
+            return JSON.stringify(root.showMachine(name));
         }
 
         // What a place or a row shows, its drawer and the rows inside it,

@@ -365,7 +365,7 @@ LINK_TRIES = 5
 
 
 def followed(shell: Shell, verb: str, said: str, *, quiet: bool = True) -> Json:
-    """Ask the launcher what a mycelium: link asks, talkTo or network, and give its answer.
+    """Ask the launcher what a mycelium: link asks (talkTo, goTo, network, machine), and answer.
 
     What a link opens drops every key for a moment, so unless the case is that moment, it's
     waited out before the case presses one.
@@ -1893,18 +1893,71 @@ def test_network_opens_on_its_row_in_networks_selected_and_on_nothing_none_has(
     assert not shell.showing()["open"], shell.showing()
 
 
+def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
+    shell: Shell,
+) -> None:
+    """Machine and a machine's name opens Machines, that machine's row selected.
+
+    The system page's Open in the Launcher asks it (BMDYSH and XUBK2E, 2026-11-17), since a
+    page can't act. Only the first word names one; a name no node lists opens Machines, its
+    foot saying Machines doesn't list it, and why. Here one node lists only this machine,
+    which Machines lists first, so the case proves the call reaches Machines, not which row it
+    lands on: tests/machines.qml holds which row a link names, over several realms' machines,
+    by the one key Machines gives its rows.
+    """
+    name = here()
+
+    def on(wanted: str) -> Callable[[Json], bool]:
+        return lambda shown: (
+            shown["open"]
+            and shown["held"] == ["machines"]
+            and (shown["selected"] or {}).get("name") == wanted
+        )
+
+    for said in (name, f"{name} update"):
+        did = followed(shell, "machine", said)
+        assert did == {"done": True, "said": f"opening Machines \u203a {name}"}, did
+        shell.launcher_until(on(name))
+        shell.close_launcher()
+    # The foot says the miss in Machines' own words, never the name, which a page chose.
+    did = followed(shell, "machine", "skiff.gone")
+    assert did == {
+        "done": False,
+        "said": "the link named a machine Machines doesn't list: no node of yours has said it"
+        " holds it, or none has answered since the shell started",
+    }, did
+    shell.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["held"] == ["machines"]
+            # The foot keeps each phrase whole with no-break spaces.
+            and "none has answered since the shell started"
+            in " ".join(shown["saying"]).replace("\xa0", " ")
+            and "skiff" not in " ".join(shown["saying"])
+        )
+    )
+    shell.close_launcher()
+
+
 def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: Shell) -> None:
-    """A link asking talkTo or network while Joel has the launcher or the line up opens nothing.
+    """A link while Joel has the launcher or the line up opens nothing: talkTo, network, machine.
 
     A page picks when its link is followed, so one followed while he's typing would take his
     place and his words (ISXEG8, 2026-11-15 [dd375f5e]): what he's typed and where he is stay
-    as they are, and the link is told the launcher's in use.
+    as they are, and the link is told the launcher's in use. A machine no node lists is asked
+    too, since its miss opens Machines and says why, and must not do so over him either.
     """
     in_use = {"done": False, "said": "the launcher is in use, so the link opened nothing"}
+    links = (
+        ("talkTo", "LISTEN"),
+        ("network", "repo.core-nix"),
+        ("machine", here()),
+        ("machine", "skiff.gone"),
+    )
     opened(shell)
     shell.type_in("listening")
     was = shell.showing()
-    for verb, said in (("talkTo", "LISTEN"), ("network", "repo.core-nix")):
+    for verb, said in links:
         assert followed(shell, verb, said, quiet=False) == in_use, (verb, said)
     shown = shell.showing()
     kept = ("open", "held", "typed", "mode", "asking")
@@ -1914,7 +1967,7 @@ def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: S
     shell.as_account(shell.ipc("line"))
     shell.launcher_until(lambda shown: shown["line"]["up"] and shown["line"]["keys"])
     try:
-        for verb, said in (("talkTo", "LISTEN"), ("network", "repo.core-nix")):
+        for verb, said in links:
             assert followed(shell, verb, said, quiet=False) == in_use, (verb, said)
         assert not shell.showing()["open"], shell.showing()
     finally:

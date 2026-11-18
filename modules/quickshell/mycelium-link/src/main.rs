@@ -4,6 +4,10 @@
 //! and `mycelium:network/<name>` opens Agents' Networks on that network's
 //! row, selected, as `qs ipc call launcher network` does. The realm's map
 //! links its cells and networks so (XUBK2E, 2026-11-15 [2b5c927a]).
+//! `mycelium:machine/<name>` opens Machines on that machine's row,
+//! selected, as `qs ipc call launcher machine` does, which the system page
+//! offers as each machine's Open in the Launcher: the page can't act, so
+//! the row's own acts are where Joel starts a session there or updates it.
 //! `mycelium:cell/<ADDRESS>/go` goes to that session instead, its window
 //! raised or one opened on it, as `qs ipc call launcher goTo` does, which a
 //! notice from a session offers as its Go To. A cell may say where it runs
@@ -55,12 +59,14 @@ const QS: &str = match option_env!("MYCELIUM_LINK_QS") {
 };
 
 /// What a link names: a cell to talk to or to go to, by its session's
-/// address, or a network, by its name, each as the mesh says it.
+/// address, or a network or a machine, by its name, each as the mesh says
+/// it.
 #[derive(Debug, PartialEq, Eq)]
 enum Link {
     Cell(String),
     GoTo(String),
     Network(String),
+    Machine(String),
 }
 
 impl Link {
@@ -70,6 +76,7 @@ impl Link {
             Self::Cell(address) => ["talkTo", address],
             Self::GoTo(address) => ["goTo", address],
             Self::Network(name) => ["network", name],
+            Self::Machine(name) => ["machine", name],
         }
     }
 }
@@ -146,7 +153,11 @@ fn read(link: &str) -> Result<Link, Failure> {
         "network" => Err(wrong(
             "it names no network in letters, digits, dots, hyphens or underscores",
         )),
-        _ => Err(wrong("its kind is neither cell nor network")),
+        "machine" if named(name) => Ok(Link::Machine(name.to_owned())),
+        "machine" => Err(wrong(
+            "it names no machine in letters, digits, dots, hyphens or underscores",
+        )),
+        _ => Err(wrong("its kind is none of cell, network or machine")),
     }
 }
 
@@ -207,11 +218,16 @@ fn help() -> Help {
         "mycelium-link mycelium:network/repo.core-nix",
         "opens Agents' Networks on core.nix's network",
     )
+    .example(
+        "mycelium-link mycelium:machine/osprey",
+        "opens Machines on osprey",
+    )
     .argument(
         "<link>",
-        "mycelium:cell/<ADDRESS>[@machine][/go][#anchor] or mycelium:network/<name>",
+        "mycelium:cell/<ADDRESS>[@machine][/go][#anchor], mycelium:network/<name> \
+         or mycelium:machine/<name>",
     )
-    .exit(Exit::Usage, "the link names no cell or network")
+    .exit(Exit::Usage, "the link names no cell, network or machine")
     .exit(Exit::Failed, "qs couldn't be run")
 }
 
@@ -366,6 +382,49 @@ mod tests {
             ["network", "machines"]
         );
         assert_eq!(Link::Cell("VOID".to_owned()).call(), ["talkTo", "VOID"]);
+    }
+
+    #[test]
+    fn a_machine_link_names_its_machine_and_nothing_after_it() {
+        for link in [
+            "mycelium:machine/osprey",
+            "mycelium://machine/osprey",
+            "mycelium:machine/osprey/go",
+            "mycelium:machine/osprey/update",
+            "mycelium:machine/osprey?from=system",
+            "mycelium:machine/osprey#figures",
+        ] {
+            assert_eq!(
+                named_by(link),
+                Ok(Link::Machine("osprey".to_owned())),
+                "{link} named another"
+            );
+        }
+        assert_eq!(
+            named_by("mycelium:machine/heron-linux"),
+            Ok(Link::Machine("heron-linux".to_owned()))
+        );
+        assert_eq!(
+            Link::Machine("osprey".to_owned()).call(),
+            ["machine", "osprey"],
+            "a machine opens its row and acts on nothing"
+        );
+    }
+
+    #[test]
+    fn a_machine_link_with_a_misshaped_name_is_refused() {
+        for link in [
+            "mycelium:machine/",
+            "mycelium:machine",
+            "mycelium:machine/-help",
+            "mycelium:machine/.hidden",
+            "mycelium:machine/opti%20mus",
+            "mycelium:machine/osprey;rm",
+            "mycelium:machine/osprey@here",
+            &format!("mycelium:machine/{}", "m".repeat(LONGEST + 1)),
+        ] {
+            assert!(read(link).is_err(), "{link} was followed");
+        }
     }
 
     #[test]
