@@ -7297,15 +7297,19 @@ Scope {
             flashed[copy.at] = true;
         flashing = flashed;
         // The flash is timed from the first frame that draws it, so a frame
-        // held back past the flash's length still shows it. A flash still
-        // running stops, and an earlier yank still waiting on its frame
-        // starts nothing, so neither ends this one before it's drawn.
+        // held back past the flash's length still shows it. An earlier
+        // flash's timer stops, and an earlier yank still waiting on its
+        // frame starts nothing, so neither ends this one before it's drawn.
+        // Its time is asked for the way the showing report is
+        // (showingTurnDue), a turn later on each side of the frame, so both
+        // wait on the same frame and the report that says it flashed is
+        // made before its time can run out.
         flash.stop();
         const yank = ++yanks;
-        afterFrame(() => {
+        Qt.callLater(() => afterFrame(() => Qt.callLater(() => {
             if (yank === yanks)
                 flash.restart();
-        });
+        })));
         Report.say(`yanked ${copies.length}`);
     }
 
