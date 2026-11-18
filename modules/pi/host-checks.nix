@@ -161,6 +161,8 @@ in
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
         && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
+        # Room for the heap of every conversation it holds, past node's 4 GB.
+        && lib.hasInfix " --max-old-space-size=16384 " (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts ${kind}" (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
         && lib.elem ''"MYCELIUM_REALM=one"'' environment

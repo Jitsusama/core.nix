@@ -130,6 +130,7 @@ let
             host.node
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
+            "--max-old-space-size=${toString host.heapMb}"
             entry
             kind
           ]
@@ -289,6 +290,17 @@ in
               realm's launcher finds on a shell's PATH and a user service's
               lacks: those the host runs for its credential, and those its
               conversations' tools run.
+            '';
+          };
+          heapMb = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 16384;
+            description = ''
+              The most JavaScript heap each of the realm's hosts may hold, in MB.
+              node's own limit is about 4 GB, and on 18 November the background
+              host, holding some sixty conversations, ran out of it and aborted,
+              ending every one of their turns. A machine with less memory sets
+              less.
             '';
           };
           environment = lib.mkOption {
