@@ -180,8 +180,12 @@ fn side(held: &Held, words: &Words) -> Value {
         State::Ended => "side:ended",
     };
     // Where the row hasn't room for both, when the ask came gives way
-    // first, since how it stands is what the row is read for.
-    json!([{"said": words.fill(stands, &[]), "keep": 2}, {"at": came, "keep": 1}])
+    // first, since how it stands is what the row is read for. The time
+    // carries its keep itself, since the shell words an item as a time only
+    // where the item names its form.
+    let mut came = came;
+    came["keep"] = json!(1);
+    json!([{"said": words.fill(stands, &[]), "keep": 2}, came])
 }
 
 /// The fact saying what came of an answered ask, or none while it waits.
@@ -520,6 +524,13 @@ mod tests {
         assert!(
             side[0]["keep"].as_u64() > side[1]["keep"].as_u64(),
             "how an answered ask stands gives way before when it came: {side}"
+        );
+        // The shell words an item as a time only where the item itself
+        // names its form, so a time held inside an item is never drawn.
+        assert_eq!(
+            (side[1]["as"].as_str(), side[1]["at"].is_i64()),
+            (Some("came"), true),
+            "when an answered ask came is a time the shell can word: {side}"
         );
         let (word, items, _) = said(State::Refused);
         assert_eq!(
