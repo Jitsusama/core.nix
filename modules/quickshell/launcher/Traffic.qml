@@ -9,8 +9,9 @@
 // The counters are read from one kernel file, /proc/net/dev, and a rate is
 // the difference between two reads, so the last is kept with its time. It's
 // loaded in the background as the launcher opens and once a second while
-// it's open, and an answer says what was last loaded: nothing is read or
-// waited on for a key, and nothing is spawned. What the line can carry is
+// it's open, and an answer says what was last loaded, or, when that's
+// old, that it's from when last read while it loads again: nothing is
+// read or waited on for a key, and nothing is spawned. What the line can carry is
 // never measured here; it's read from the file the shaper writes, loaded
 // beside the counters, and a machine without the shaper simply has no
 // Connection or Round trip.
@@ -127,6 +128,22 @@ Provider {
         return kept !== null && kept.before !== null && kept.last.at - kept.before.at <= stale;
     }
 
+    // Whether the last load is recent enough to say what's happening now.
+    // An answer asked when it isn't, as a terminal's `launcher show` asks
+    // with the launcher closed, or as it opens before its load lands, says
+    // its figures are from when they were last read, loads them again, and
+    // is still reading until they land (Provider.stillReading), so a
+    // terminal asks again.
+    function current() {
+        return reads !== null && Date.now() - reads.last.at <= stale;
+    }
+
+    // Where each file is, which its case points at files of its own
+    // (tests/traffic-reads.qml), so it can tell an answer reads none.
+    property string counterFile: "/proc/net/dev"
+    property string statusFile: "/run/shaper/status.json"
+    property string uptimeFile: "/proc/uptime"
+
     // Loads the counters and the shaper's status again, in the background.
     function look() {
         netdev.reload();
@@ -140,6 +157,10 @@ Provider {
         const now = Date.now();
         const kept = reads;
         const age = kept ? now - kept.last.at : Infinity;
+        // Two loads landing together, as the launcher's opening and an
+        // answer's both ask, would make a rate over a moment, so the later
+        // takes the earlier's place.
+        const together = age < soonest / 2;
         const all = Traffic.counters(netdev.text());
         const known = {};
         for (const name of Object.keys(all)) {
@@ -150,8 +171,9 @@ Provider {
         interfaceKinds = known;
         reads = {
             last: { at: now, all: all },
-            before: kept ? kept.last : null
+            before: together ? kept.before : kept ? kept.last : null
         };
+        stillReading = false;
         const mirrors = Traffic.mirrors(parsed(shaper.text()));
         ask(Object.keys(all).filter(name => !mirrors.includes(name) && !known[name]?.sure));
         if (!settled(reads))
@@ -163,18 +185,21 @@ Provider {
     // Where sysfs keeps each interface's folder; its case gives a folder
     // of its own, since a build has no sysfs (tests/traffic-reads.qml).
     property string interfaces: "/sys/class/net"
-    // How many sysfs files it has read of each interface, each a blocking
-    // read, so its case holds a step to reading few.
+    // How many sysfs files it has loaded of each interface, so its case
+    // holds it to loading few.
     property var probed: ({})
 
     // The interfaces whose files are still to be asked, in turn, and the
-    // one being asked, { name, files, said }: its uevent first, and the
-    // other three only when that isn't the uevent its kind was read from.
+    // one being asked, { name, files, said, done }: its uevent first, and
+    // the other three only when that isn't the uevent its kind was read
+    // from. One whose files have all landed is done, so it's asked again
+    // if a load wants it.
     property var asking: []
     property var probing: null
 
     function ask(names) {
-        const queued = asking.map(one => one.name).concat(probing ? [probing.name] : []);
+        const queued = asking.map(one => one.name)
+            .concat(probing && !probing.done ? [probing.name] : []);
         asking = asking.concat(names.filter(name => !queued.includes(name))
             .map(name => ({ name: name, files: ["uevent"], said: {} })));
         if (probing === null)
@@ -189,6 +214,7 @@ Provider {
     }
 
     function probeFile() {
+        patience.restart();
         const name = probing.name;
         probed[name] = (probed[name] ?? 0) + 1;
         const path = `${interfaces}/${name}/${probing.files[0]}`;
@@ -227,6 +253,8 @@ Provider {
         // One gone from the counters while it was asked is forgotten.
         if (reads?.last.all[one.name] !== undefined)
             interfaceKinds[one.name] = { kind: kind, uevent: uevent, sure: true };
+        one.done = true;
+        patience.stop();
         Qt.callLater(probeNext);
         if (kind !== kept?.kind && shown)
             answered();
@@ -333,6 +361,7 @@ Provider {
 
     function since(kept) {
         return !kept.before ? "since the machine started"
+            : !current() ? "when last read"
             : settled(kept) ? "just now" : "since you last asked";
     }
 
@@ -363,6 +392,10 @@ Provider {
 
     function told() {
         const kept = reads;
+        if (!current()) {
+            stillReading = true;
+            look();
+        }
         if (kept === null || Object.keys(kept.last.all).length === 0)
             return null;
         const status = parsed(shaper.text());
@@ -538,23 +571,35 @@ Provider {
         onTriggered: provider.look()
     }
 
+    // A file that never lands, or a turn that throws, would leave the
+    // probe waiting for good and every interface after it left out, so
+    // one that takes this long is given up; the next load asks again.
+    Timer {
+        id: patience
+        interval: 2 * provider.second
+        onTriggered: {
+            provider.probing = null;
+            provider.probeNext();
+        }
+    }
+
     // None blocks, even on its first load, so nothing is ever waited on;
     // each loads as it's made, and uptime only then, for the first rate,
     // since the machine started.
     FileView {
         id: netdev
-        path: "/proc/net/dev"
+        path: provider.counterFile
         printErrors: false
         onLoaded: provider.counted()
     }
     FileView {
         id: shaper
-        path: "/run/shaper/status.json"
+        path: provider.statusFile
         printErrors: false
     }
     FileView {
         id: up
-        path: "/proc/uptime"
+        path: provider.uptimeFile
         printErrors: false
     }
     FileView {

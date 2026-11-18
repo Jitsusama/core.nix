@@ -988,11 +988,13 @@
     changes only the kernel's use counts; and loads them again as the links change
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
-    Traffic's answer reads no file and waits on none, even as the launcher opens after a gap;
-    in the background after, it loads one sysfs file for an interface it already knows, its
-    uevent, rather than all four again; loads an interface first seen whole; and loads all four
-    again, taking the kind they say now and telling the answer shown, for one made again under
-    its name or whose uevent can't be read
+    Traffic's answer says the counters, the shaper's status and the uptime as last loaded,
+    though each file has changed since, and after a gap says its figures are from when last
+    read while it loads again; in the background, it loads one sysfs file for an interface it
+    already knows, its uevent, gap after gap, and none on a load straight after; loads an
+    interface first seen whole; and loads all four again, keeping the kind it had until they
+    land, then taking the kind they say and telling the answer shown, for one made again under
+    its name or whose uevent is empty or gone
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a
