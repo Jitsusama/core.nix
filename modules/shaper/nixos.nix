@@ -146,7 +146,9 @@ in
             that shapes the upload itself, a little under that router's
             rate, so the queue stands here, where Joel's traffic goes
             first, rather than in the router's. A trial may hold it lower,
-            never higher.
+            never higher. Under nine tenths of `up`, it also stands for
+            the line's hold below: the router's queue is looked for, and
+            the guard returns the upload, against it rather than `up`.
           '';
         };
       }

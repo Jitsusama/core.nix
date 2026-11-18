@@ -151,6 +151,8 @@ impl Follow {
     /// Holds each network's upload under its ceiling, the stay's from now.
     pub fn ceil(&mut self, ceilings: Ceilings) {
         self.ceilings = ceilings;
+        self.controller
+            .ceil(self.ceilings.get(&self.network).copied());
         self.controller.up.tune(self.tuning());
     }
 
@@ -208,9 +210,11 @@ impl Follow {
             if let Some(network) = network {
                 self.reading = Reading::new(network.clone());
                 self.controller = oneway::Controller::new(None, None);
-                // Tuned before the start, whose plateau reads the trial's
-                // hold; the first step holds it under the network's ceiling.
+                // Ceiled and tuned before the start, which begins at the
+                // hold of the line the network's ceiling leaves, and whose
+                // plateau reads the trial's hold.
                 self.network.clone_from(network);
+                self.controller.ceil(self.ceilings.get(network).copied());
                 self.controller.up.tune(self.tuning());
                 self.controller.anchor(self.anchors.get(network).copied());
                 self.controller.start_at_the_anchor();
@@ -238,8 +242,8 @@ impl Follow {
             self.rates = self.controller.second(&second);
             if self.controller.guarded > guarded {
                 eprintln!(
-                    "the upload was held under {:.0}% of {}'s anchor for a minute with no cut \
-                     that drained a queue, so it's back to the anchor's hold",
+                    "the upload was held under {:.0}% of {}'s line for a minute with no cut \
+                     that drained a queue, so it's back to the line's hold",
                     oneway::ANCHOR_LOW * 100.0,
                     self.network
                 );
@@ -617,7 +621,7 @@ mod tests {
         for line in &lines[1..] {
             follow.take(&parse(line).expect("a sample"));
         }
-        let stepped = up(&follow, follow.last_ms);
+        let stepped = follow.controller.up.limit();
         assert!(
             stepped.is_some_and(|up| up <= 9_500),
             "stepped: {stepped:?}"
@@ -628,6 +632,8 @@ mod tests {
         assert_eq!(up(&follow, NOV3 + 11_000), None, "another network");
         follow.take(&parse(&pool(NOV3 + 12_000, Some("home"))).expect("a sample"));
         assert_eq!(up(&follow, NOV3 + 12_000), Some(9_500), "home again");
+        let limit = follow.controller.up.limit();
+        assert_eq!(limit, Some(9_500), "its start again");
     }
 
     // What a stay learned of a network that isn't declared starts nothing

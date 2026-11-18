@@ -92,7 +92,7 @@ mod tests {
     }
 
     #[test]
-    fn each_network_s_anchor_is_read_by_its_router_in_lower_case() {
+    fn each_network_s_anchor_and_ceiling_are_read_by_its_router_in_lower_case() {
         let folder = std::env::temp_dir().join(format!("shaper-anchors-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(&folder).expect("a folder");
@@ -132,6 +132,12 @@ mod tests {
             ceilings(&file).is_empty(),
             "one under a trial's least, as the controller would refuse"
         );
+        fs::write(
+            &file,
+            r#"{"00:00:5e:00:53:01": {"up": 12000, "most": 4000}}"#,
+        )
+        .expect("the least ceiling");
+        assert_eq!(ceilings(&file).len(), 1, "the least nixos.nix takes");
         fs::write(&file, "not json").expect("a broken file");
         assert!(anchors(&file).is_empty(), "a broken file anchors nothing");
         assert!(ceilings(&file).is_empty(), "nor sets a ceiling");
