@@ -6,11 +6,9 @@
 //! back; only Slack's reading methods are asked; a restart judges
 //! nothing twice; and an alert for Joel's phone finds his own IM and, in
 //! shadow, is only written down. The reader let go live is in live.rs,
-//! with a keyring that hangs in keyring.rs, telling Joel in For You when
-//! Slack can't be heard in deaf.rs, and GitHub's reader, against its own
-//! stand-in, in github.rs.
+//! with a keyring that hangs in keyring.rs, and GitHub's reader, against
+//! its own stand-in, in github.rs.
 
-mod deaf;
 mod github;
 mod keyring;
 mod live;

@@ -173,11 +173,6 @@ in
           Environment = [ "SIGN_IN_KEYRING=${keyring}" ];
           Restart = "on-failure";
           RestartSec = 30;
-          # Its row in For You saying it can't hear Slack (src/deaf.rs) goes
-          # however it stops, as eero's does, so a reader stopped or taken
-          # away leaves nothing standing that nothing would clear. %S is the
-          # XDG_STATE_HOME the program reads its path from.
-          ExecStopPost = "${pkgs.coreutils}/bin/rm -f %S/mission/waiting/pineapple.json %S/mission/waiting/.writing/pineapple.json";
         };
         # Started at login rather than once a sign-in file appears, since pi
         # keeps its sign-in in the keyring now and the file may never come.

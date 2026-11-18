@@ -102,7 +102,9 @@ fn answered(said: &Value) -> Result<&Value, Failed> {
         return Ok(said);
     }
     match said.get("error").and_then(Value::as_str).unwrap_or("") {
-        error if crate::refuses_the_sign_in(error) => Err(Failed::SignedOut),
+        "invalid_auth" | "not_authed" | "account_inactive" | "token_revoked" | "token_expired" => {
+            Err(Failed::SignedOut)
+        }
         "ratelimited" => Err(Failed::Busy),
         other => Err(Failed::Unreachable(format!("Slack refused: {other}"))),
     }

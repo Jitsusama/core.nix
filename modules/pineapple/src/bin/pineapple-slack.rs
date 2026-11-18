@@ -47,7 +47,6 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use pineapple::deaf::{self, Deaf, Deafness, Round};
 use pineapple::gate::{Asked, gate};
 use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
 use pineapple::record::{self, Source};
@@ -355,10 +354,6 @@ fn run(how: &Run) -> Result<(), Failure> {
     let rest = slack_people::REST.min(how.every * SIGN_IN_ROUNDS);
     // A locked keyring doesn't end a sign-in, so stops are still heard.
     let mut last = LastSignIn::new();
-    // Where For You reads what waits on Joel: told there when Slack
-    // can't be heard, since the phone's alert goes through Slack.
-    let waiting = env_dir("XDG_STATE_HOME", ".local/state").join("mission/waiting/pineapple.json");
-    let mut deaf = Deaf::new();
     loop {
         let now = Instant::now();
         let signed = Account::signed(&credentials, patience, rest);
@@ -385,22 +380,13 @@ fn run(how: &Run) -> Result<(), Failure> {
             // Said as it began, or by what follows.
             Signed::In(_) | Signed::Resting => {}
         }
-        let heard = match last.heard(signed, now) {
+        match last.heard(signed, now) {
             Some(account) if !account.user.is_empty() => {
-                let heard = round(&slack, &reader, &account, &state, &mut judged);
+                round(&slack, &reader, &account, &state, &mut judged);
                 tell_phone(&slack, &mut phone, &account, &state);
-                heard
             }
-            Some(_) => {
-                eprintln!("<4>the Slack sign-in doesn't say who Joel is");
-                Round::Deaf(Deafness::NoSignIn)
-            }
-            None => Round::Deaf(Deafness::NoSignIn),
-        };
-        let change = deaf.heard(heard, millis());
-        if let Err(error) = deaf::make(&waiting, &change) {
-            eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
-            deaf.failed(&change);
+            Some(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
+            None => {}
         }
         std::thread::sleep(how.every);
     }
@@ -504,15 +490,8 @@ struct Reader {
     shadow: bool,
 }
 
-/// One search of each kind, and each new message judged and written down;
-/// what it came to, a refused sign-in before a Slack that couldn't be asked.
-fn round(
-    slack: &Slack,
-    reader: &Reader,
-    account: &Account,
-    state: &Path,
-    judged: &mut Judged,
-) -> Round {
+/// One search of each kind, and each new message judged and written down.
+fn round(slack: &Slack, reader: &Reader, account: &Account, state: &Path, judged: &mut Judged) {
     let joel = Joel {
         slack_ids: vec![account.user.clone()],
         logins: Vec::new(),
@@ -521,16 +500,11 @@ fn round(
     let tag = format!("<@{}>", account.user);
     // A round counts as read only once both searches answered, so
     // judged.json's read_at never says Slack was read when it wasn't.
-    let (phrase, tagged) = match (
+    let (Some(phrase), Some(tagged)) = (
         search(slack, account, "pineapple"),
         search(slack, account, &tag),
-    ) {
-        (Ok(phrase), Ok(tagged)) => (phrase, tagged),
-        (phrase, tagged) => {
-            let refused = Round::Deaf(Deafness::Refused);
-            let either = [phrase.err(), tagged.err()].contains(&Some(refused));
-            return if either { refused } else { Round::Unasked };
-        }
+    ) else {
+        return;
     };
     let mut seen = HashSet::new();
     let mut heard: Vec<&Message> = phrase
@@ -551,12 +525,11 @@ fn round(
     let over = judged.keys.len().saturating_sub(KEPT);
     judged.keys.drain(..over);
     write_judged(state, judged);
-    Round::Heard
 }
 
-/// The newest messages a search finds, oldest first; else whether Slack
-/// refused the sign-in or couldn't be asked now, tried again next round.
-fn search(slack: &Slack, account: &Account, query: &str) -> Result<Vec<Message>, Round> {
+/// The newest messages a search finds, oldest first; nothing when Slack
+/// can't be asked now, which the next round tries again.
+fn search(slack: &Slack, account: &Account, query: &str) -> Option<Vec<Message>> {
     let asked = [
         ("query", query),
         ("count", COUNT),
@@ -568,17 +541,16 @@ fn search(slack: &Slack, account: &Account, query: &str) -> Result<Vec<Message>,
         Ok(said) => said,
         Err(why) => {
             eprintln!("<4>couldn't search Slack: {why:?}");
-            return Err(Round::Unasked);
+            return None;
         }
     };
-    found(&said).map_err(|why| {
-        eprintln!("<4>Slack refused a search: {why}");
-        if deaf::refuses_the_sign_in(&why) {
-            Round::Deaf(Deafness::Refused)
-        } else {
-            Round::Unasked
+    match found(&said) {
+        Ok(messages) => Some(messages),
+        Err(why) => {
+            eprintln!("<4>Slack refused a search: {why}");
+            None
         }
-    })
+    }
 }
 
 /// One message judged where it was said, and written down.
