@@ -25,8 +25,10 @@ function remade(steps, from, rows, ways) {
     let offered = rows;
     for (let at = from; at < made.length; at++) {
         const step = made[at];
-        // A row the step above keeps as gone, dimmed, is the row gone.
-        const now = offered.find(row => !row.gone && ways.same(row, step.row));
+        // A row the step above keeps as gone, Steady.kept's copy marked
+        // `went`, is the row gone; one its source serves dimmed, as an act
+        // done with, is still the row.
+        const now = offered.find(row => !row.went && ways.same(row, step.row));
         const thing = now ?? ((step.typed ?? "") !== "" ? step.row : undefined);
         const into = thing === undefined ? null : ways.into(thing, at, made);
         if (!into && (now !== undefined || thing === undefined)) {
