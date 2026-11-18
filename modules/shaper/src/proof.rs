@@ -23,10 +23,23 @@
 //! before its microphone opens, and Joel has been idle two minutes, as
 //! Wayland's idle notice tells swayidle. The moment any of them changes,
 //! every load stops, the shaper goes back as it was, the pair under way
-//! is dropped, and it waits for his next idle stretch. It
-//! waits `--wait` seconds from its start in all, and exits 75 if they run
-//! out before every pair is measured, writing what it measured to
-//! `--out`. The call's packets are src/call.rs's.
+//! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT,
+//! SIGHUP and SIGTSTP end it the same way, and so does any SIGCONT, since
+//! a proof paused by SIGSTOP counts as gone and its keeper may already
+//! have put the shaper back; it writes what it measured to `--out` and
+//! exits 130. Each window reads the shaper afresh and owns it only while
+//! it runs, so a switch or Joel's own change between windows stands. A
+//! proof killed outright can put nothing back itself, but its load and
+//! probes end within about two seconds, and a keeper beside it puts the
+//! shaper back as its window found it, or, failing that, the next proof
+//! does before it waits. One proof runs at a time; another exits 75 at
+//! once. It waits `--wait` seconds from its start in all, and exits 75 if
+//! they run out before every pair is measured, writing what it measured
+//! to `--out`. It exits 69 if it couldn't put the shaper back, saying how
+//! to, and leaves the shaper to Joel, and 69 too once swayidle has gone,
+//! since nothing then hears him come back. When systemd doesn't say whether
+//! the shaper is on, no window opens on it, and it exits 75 with the
+//! shaper left as it stood. The call's packets are src/call.rs's.
 //!
 //! It passes when, with the shaper on, the call's 99th percentile is
 //! within `CALL_MARGIN_MS` of its median through the shaper before the
@@ -38,18 +51,29 @@
 //! in either block. A request never answered still counts, since a
 //! shaper starving Joel would look the same.
 
+mod gate;
+mod keeper;
+mod load;
+mod lock;
+mod probes;
+mod stop;
 mod verdict;
+mod windows;
 
 use crate::qdisc;
+use gate::{Gate, WAITS_ENV, waits_while};
+use load::{end_group, stop_scopes};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+use stop::{STOPPED, halted, put_back, systemctl, tell};
 use terminal_kit::{Exit, Failure};
 use verdict::{Block, answers, judge, percentile};
+use windows::{across_windows, opened, pay};
 
 /// Where the server is named when `--server` doesn't: the machine's
 /// `jitsusama.shaper.speedServer`, which the wrapper sets.
@@ -58,12 +82,6 @@ const SERVER_ENV: &str = "SHAPER_SPEED_SERVER";
 /// queue back within ten seconds of the load, and the router's queue
 /// drains as long once it's off.
 const SETTLE: Duration = Duration::from_secs(15);
-/// What the gate's idle notice waits for, in seconds.
-const IDLE_S: u32 = 120;
-/// Where the commands the proof waits on are named, as a JSON list of
-/// commands, each a list of its program and arguments: the machine's
-/// `jitsusama.shaper.proofWaitsWhile`, which the wrapper sets.
-const WAITS_ENV: &str = "SHAPER_PROOF_WAITS_WHILE";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Arm {
@@ -125,141 +143,54 @@ fn asked(args: &[String], named: Option<String>) -> Result<Asked, String> {
         .ok_or("no speed server: give --server, or set jitsusama.shaper.speedServer")?
         .trim_end_matches('/')
         .to_string();
+    // Anything else would reach curl as an option, not an address.
+    if !a.server.starts_with("https://") && !a.server.starts_with("http://") {
+        return Err(format!(
+            "--server {}: not an http or https address",
+            a.server
+        ));
+    }
     Ok(a)
-}
-
-/// Reads the commands the proof waits on from `named`, the machine's;
-/// none named waits on none.
-fn waits_while(named: Option<&str>) -> Result<Vec<Vec<String>>, String> {
-    let commands: Vec<Vec<String>> = match named.filter(|n| !n.trim().is_empty()) {
-        Some(n) => serde_json::from_str(n).map_err(|e| format!("{WAITS_ENV}: {e}"))?,
-        None => Vec::new(),
-    };
-    if commands.iter().any(Vec::is_empty) {
-        return Err(format!("{WAITS_ENV}: a command with no program"));
-    }
-    Ok(commands)
-}
-
-/// Whether any of `commands` says the machine is busy: each exits 1
-/// while it isn't, and anything else, a program that won't run
-/// included, counts as busy, since it couldn't tell.
-fn busy(commands: &[Vec<String>]) -> bool {
-    commands.iter().any(|command| {
-        !Command::new(&command[0])
-            .args(&command[1..])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.code() == Some(1))
-    })
-}
-
-/// Joel's being away and no call on, held as swayidle tells it.
-struct Gate {
-    mark: PathBuf,
-    idle: Child,
-    /// What else the load waits on, as `jitsusama.shaper.proofWaitsWhile`
-    /// names it.
-    waits: Vec<Vec<String>>,
-}
-
-impl Gate {
-    fn new(waits: Vec<Vec<String>>) -> Option<Gate> {
-        let runtime = std::env::var_os("XDG_RUNTIME_DIR")?;
-        let mark = PathBuf::from(runtime).join(format!("shaper-proof-idle-{}", std::process::id()));
-        let _ = fs::remove_file(&mark);
-        let shown = mark.display().to_string();
-        let idle = Command::new("swayidle")
-            .args(["timeout", &IDLE_S.to_string(), &format!("touch {shown}")])
-            .args(["resume", &format!("rm -f {shown}")])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .spawn()
-            .ok()?;
-        Some(Gate { mark, idle, waits })
-    }
-
-    /// Whether the link may carry the load now. A call detector that
-    /// can't tell is taken for a call, and so is audio playing, and the
-    /// commands waited on are asked last, being the slowest.
-    fn open(&self) -> bool {
-        self.mark.exists()
-            && Command::new("a-call-is-on")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|s| s.code() == Some(1))
-            && !audio_plays()
-            && !busy(&self.waits)
-    }
-}
-
-/// Whether audio plays, as `pw-dump` shows PipeWire's graph. Joel may
-/// watch a stream without touching the keys, so idle alone doesn't say
-/// he's away. A graph that can't be read is taken for audio playing.
-fn audio_plays() -> bool {
-    Command::new("pw-dump")
-        .stderr(Stdio::null())
-        .output()
-        .ok()
-        .filter(|out| out.status.success())
-        .and_then(|out| serde_json::from_slice(&out.stdout).ok())
-        .is_none_or(|graph| plays(&graph))
-}
-
-/// Whether any sink runs in `graph`: a sink runs while a stream plays to
-/// it, and is idle or suspended otherwise.
-fn plays(graph: &serde_json::Value) -> bool {
-    graph.as_array().is_some_and(|objects| {
-        objects.iter().any(|object| {
-            object["type"] == "PipeWire:Interface:Node"
-                && object["info"]["props"]["media.class"] == "Audio/Sink"
-                && object["info"]["state"] == "running"
-        })
-    })
-}
-
-impl Drop for Gate {
-    fn drop(&mut self) {
-        let _ = self.idle.kill();
-        let _ = self.idle.wait();
-        let _ = fs::remove_file(&self.mark);
-    }
 }
 
 /// Starts `command` in a scope of its own under `slice`, named so the
 /// proof can stop every scope it started at once.
 fn scoped(slice: &str, name: &str, command: &[&str]) -> Command {
+    scoped_as(
+        slice,
+        &format!("shaper-proof-{name}-{}", std::process::id()),
+        command,
+    )
+}
+
+/// Starts `command` in a scope named `unit` under `slice`. A scope runs
+/// its command in this process, which leads a group of its own, so what
+/// it starts can end all of it at once, and a terminal's Ctrl-C or
+/// Ctrl-Z reaches only the proof, which ends it. The command is passed
+/// as it stands, since systemd-run would read a shell's `${...}` itself.
+/// Its memory ceiling, far over what curl or a shell needs, keeps the
+/// jobs sorter from taking a scope an agent starts back into its work:
+/// Joel's probes there would be agents' traffic, and the keeper would
+/// end with the agent's command.
+fn scoped_as(slice: &str, unit: &str, command: &[&str]) -> Command {
+    use std::os::unix::process::CommandExt;
     let mut c = Command::new("systemd-run");
-    c.args(["--user", "--quiet", "--collect", "--scope"])
-        .arg(format!("--slice={slice}"))
-        .arg(format!("--unit=shaper-proof-{name}-{}", std::process::id()))
-        .arg("--")
-        .args(command)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null());
+    c.process_group(0);
+    c.args([
+        "--user",
+        "--quiet",
+        "--collect",
+        "--scope",
+        "--expand-environment=no",
+    ])
+    .arg("--property=MemoryMax=128M")
+    .arg(format!("--slice={slice}"))
+    .arg(format!("--unit={unit}"))
+    .arg("--")
+    .args(command)
+    .stdin(Stdio::null())
+    .stderr(Stdio::null());
     c
-}
-
-/// Stops every scope this proof started.
-fn stop_scopes() {
-    let _ = Command::new("systemctl")
-        .args([
-            "--user",
-            "stop",
-            &format!("shaper-proof-*-{}.scope", std::process::id()),
-        ])
-        .status();
-}
-
-fn systemctl(verb: &str) -> bool {
-    Command::new("systemctl")
-        .args([verb, "shaper.service"])
-        .stdout(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
 }
 
 /// The link the default route leaves by.
@@ -283,70 +214,36 @@ fn kbit(bytes: f64, seconds: f64) -> f64 {
     bytes * 8.0 / 1_000.0 / seconds
 }
 
-/// A shell loop asking `request` again until `seconds` have passed, and
-/// waiting `every` after each. A server that refused one, its status 400
-/// or more, is given a second before the next: asked again at once, it
-/// went on refusing for most of an hour.
-fn repeated(seconds: &str, request: &str, every: &str) -> String {
-    format!(
-        "end=$((SECONDS + {seconds})); while [ $SECONDS -lt $end ]; do a=$({request}); \
-         echo \"$a\"; case $a in [45]*) sleep 1;; esac; {every} done"
-    )
-}
-
 /// Measures one block: Joel's four probes for `seconds`, while the load
 /// runs, reading CAKE's queue each second.
 fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block> {
     let seconds = asked.seconds;
     let server = &asked.server;
-    let s = seconds.to_string();
     let me = std::env::current_exe().ok()?;
     let me = me.to_str()?;
-    // Each probe says each answer's status beside what it measured, so a
-    // server refusing Joel's requests is told from a shaper slowing them,
-    // and the upload is repeated as the download is, since a server may
-    // end one early. The download comes in pieces of 5 MB, since the
-    // server refuses one of 10 MB or more once it has sent many.
-    let up = repeated(
-        &s,
-        &format!(
-            "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
-             --max-time $((end - SECONDS + 1)) -w '%{{http_code}} %{{size_upload}}\\n' \
-             '{server}/__up'"
-        ),
-        "",
-    );
-    let down = repeated(
-        &s,
-        &format!(
-            "curl -s -o /dev/null --max-time $((end - SECONDS + 1)) \
-             -w '%{{http_code}} %{{size_download}}\\n' '{server}/__down?bytes=5000000'"
-        ),
-        "",
-    );
-    let first = repeated(
-        &s,
-        &format!(
-            "curl -s -o /dev/null -w '%{{http_code}} %{{time_starttransfer}}\\n' \
-             '{server}/__down?bytes=0'"
-        ),
-        // A fresh connection a second, as a page's would be.
-        "sleep 1;",
-    );
-    let probes: Vec<Child> = [
-        scoped("app.slice", "up", &["sh", "-c", &up]),
-        scoped("app.slice", "down", &["sh", "-c", &down]),
-        scoped("app.slice", "first", &["sh", "-c", &first]),
-        scoped("app.slice", "call", &[me, "proof-call", s.as_str()]),
+    let [up, down, first, call] = probes::scripts(seconds);
+    let spawned: Vec<_> = [
+        scoped("app.slice", "up", &["sh", "-c", &up, "sh", server]),
+        scoped("app.slice", "down", &["sh", "-c", &down, "sh", server]),
+        scoped("app.slice", "first", &["sh", "-c", &first, "sh", server]),
+        scoped("app.slice", "call", &["sh", "-c", &call, "sh", me]),
     ]
     .into_iter()
     .map(|mut c| c.stdout(Stdio::piped()).spawn())
-    .collect::<Result<_, _>>()
-    .ok()?;
+    .collect();
+    // A block missing a probe measures nothing, and those started end.
+    if spawned.iter().any(Result::is_err) {
+        for mut probe in spawned.into_iter().flatten() {
+            end_group(&probe);
+            let _ = probe.wait();
+        }
+        return None;
+    }
+    let probes: Vec<Child> = spawned.into_iter().flatten().collect();
     let sent_then = sent_bytes(link);
     let began = Instant::now();
     let mut owned = false;
-    while began.elapsed() < Duration::from_secs(seconds) && !stop.load(Ordering::Relaxed) {
+    while began.elapsed() < Duration::from_secs(seconds) && !halted(stop) {
         if arm == Arm::On
             && let Ok(out) = Command::new("tc")
                 .args(["-s", "-j", "qdisc", "show", "dev", link])
@@ -360,15 +257,14 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     }
     let elapsed = began.elapsed().as_secs_f64();
     let sent = sent_bytes(link).saturating_sub(sent_then);
+    // A stop ends the probes at once, whether or not systemd has their
+    // scopes yet, and one held past its block ends then.
+    let by = began + Duration::from_secs(seconds) + probes::GRACE;
     let outs: Vec<String> = probes
         .into_iter()
-        .map(|c| {
-            c.wait_with_output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-                .unwrap_or_default()
-        })
+        .map(|p| probes::finish(p, by, || halted(stop)))
         .collect();
-    if stop.load(Ordering::Relaxed) {
+    if halted(stop) {
         return None;
     }
     #[expect(clippy::cast_precision_loss, reason = "bytes far under 2^52")]
@@ -389,29 +285,31 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     })
 }
 
-/// The call's round trips with nothing loading the link.
-fn idle_call(seconds: u64) -> Vec<f64> {
+/// The call's round trips with nothing loading the link, until `seconds`
+/// pass or a stop.
+fn idle_call(seconds: u64, stop: &AtomicBool) -> Vec<f64> {
     let Some(me) = std::env::current_exe().ok() else {
         return Vec::new();
     };
-    let s = seconds.to_string();
     let Some(me) = me.to_str() else {
         return Vec::new();
     };
-    scoped("app.slice", "idle", &[me, "proof-call", s.as_str()])
+    let call = probes::call(seconds);
+    let Ok(probe) = scoped("app.slice", "idle", &["sh", "-c", &call, "sh", me])
         .stdout(Stdio::piped())
-        .output()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .filter_map(|l| l.parse().ok())
-                .collect()
-        })
-        .unwrap_or_default()
+        .spawn()
+    else {
+        return Vec::new();
+    };
+    let by = Instant::now() + Duration::from_secs(seconds) + probes::GRACE;
+    probes::finish(probe, by, || halted(stop))
+        .lines()
+        .filter_map(|l| l.parse().ok())
+        .collect()
 }
 
 fn say(block: &Block, arm: Arm) {
-    eprintln!("{}", said(block, arm));
+    tell(&said(block, arm));
 }
 
 /// What one block measured, as a line of the run's progress.
@@ -440,8 +338,26 @@ fn said(block: &Block, arm: Arm) -> String {
 
 /// `shaper proof`: the run itself.
 pub fn command(args: &[String]) -> Result<(), Failure> {
+    // Heard from the start, so a stop while swayidle starts still ends it.
+    stop::hear_stops();
     let asked =
         asked(args, std::env::var(SERVER_ENV).ok()).map_err(|e| crate::wrongly("proof", e))?;
+    // Gone however this proof ends before its own is written, so an
+    // earlier proof's report is never read for this one's, even when
+    // this one is refused the lock.
+    if let Some(out) = &asked.out {
+        let _ = fs::remove_file(out);
+    }
+    let marker = stop::marker();
+    // Held to the end, released however the proof ends.
+    let _alone = marker.as_deref().map(alone).transpose()?;
+    // Paid before anything else can end the proof, so a killed proof's
+    // debt is paid by the next however far that one gets.
+    let paid = marker
+        .as_deref()
+        .map(|marker| owed(marker, asked.out.as_deref()))
+        .transpose()?
+        .flatten();
     let Some(link) = uplink() else {
         return Err(Failure::new(
             Exit::Unavailable,
@@ -458,28 +374,56 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     };
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
-    let was_on = systemctl("is-active");
+    // Only a window starts or stops the shaper, so each owns it only while
+    // it runs, reading it afresh first: between windows it is whoever's
+    // sets it, a switch's or Joel's, and nothing puts it back.
     let mut idle: Vec<f64> = Vec::new();
-    let (pairs, complete) = across_windows(
+    let windows = across_windows(
         asked.pairs,
-        || opened(&gate, deadline),
-        |from| window(&asked, &link, &gate, was_on, from, &mut idle),
+        || opened(|| gate.open(), || gate.lost(), deadline, &STOPPED),
+        stop::shaper_on,
+        |from, on| {
+            stop::owning(marker.as_deref(), on, || {
+                window(&asked, &link, &gate, on, from, &mut idle)
+            })
+        },
     );
-    if pairs.is_empty() {
+    // Asked before the gate ends, since ending it ends swayidle; a stopped
+    // proof's swayidle may have been ended by the same signal.
+    let lost = gate.lost() && !STOPPED.load(Ordering::Relaxed);
+    // Ended here, since a watch left unjoined still holds the gate.
+    gate.end();
+    let stopped = STOPPED.load(Ordering::Relaxed);
+    let pairs = &windows.pairs;
+    let verdict = (!pairs.is_empty()).then(|| judge(&idle, pairs));
+    if let Some(verdict) = &verdict {
+        tell(&verdict.said());
+    }
+    // Written however the proof ends, its verdict null with no pairs, so
+    // a report left by an earlier proof is never read for this one's.
+    report(
+        asked.out.as_deref(),
+        &serde_json::json!({
+            "verdict": verdict, "complete": windows.complete, "stopped": stopped,
+            "shaper_back": windows.back, "swayidle_lost": lost,
+            "idle_call_ms": idle, "pairs": pairs
+        }),
+    );
+    windows.ending(paid, stopped)?;
+    // Said as itself, since waiting on would only time out and blame
+    // Joel's idle for it.
+    if lost && !windows.complete {
+        return Err(
+            Failure::new(Exit::Unavailable, "swayidle went away").because(
+                "nothing was left to hear whether Joel is away, so the proof stopped waiting",
+            ),
+        );
+    }
+    let Some(verdict) = verdict else {
         return Err(Failure::new(Exit::TryAgain, "not loading the link")
             .because("Joel hasn't been idle two minutes, or a call, audio or a meeting is on"));
-    }
-    let verdict = judge(&idle, &pairs);
-    verdict.say();
-    if let Some(out) = &asked.out {
-        let report = serde_json::json!({
-            "verdict": verdict, "complete": complete, "idle_call_ms": idle, "pairs": pairs
-        });
-        if fs::write(out, report.to_string()).is_err() {
-            eprintln!("couldn't write {}", out.display());
-        }
-    }
-    if !complete {
+    };
+    if !windows.complete {
         return Err(
             Failure::new(Exit::TryAgain, "not enough to judge").because(format!(
                 "the wait ran out after {} of {} pairs",
@@ -499,55 +443,54 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     }
 }
 
-/// Starts the agents' uploads, from jobs.slice, each going again as it ends.
-fn load(uploads: u32, server: &str) {
-    let load = format!(
-        "while :; do head -c 400000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
-         --max-time 120 '{server}/__up'; done"
-    );
-    for n in 0..uploads {
-        let _ = scoped("jobs.slice", &format!("load{n}"), &["sh", "-c", &load])
-            .stdout(Stdio::null())
-            .spawn();
+/// Writes `report` to `out`, when asked for, saying when it can't.
+fn report(out: Option<&Path>, report: &serde_json::Value) {
+    if let Some(out) = out
+        && fs::write(out, report.to_string()).is_err()
+    {
+        tell(&format!("couldn't write {}", out.display()));
     }
 }
 
-/// Gathers the pairs across Joel's idle windows, `opened` waiting for the
-/// next and `window` measuring from the pair it's given until the gate
-/// closes. Each window starts after the last pair kept, since a pair's
-/// arms run back to back and so compare alike in any window. Returns the
-/// pairs and whether all were measured before the wait ran out.
-fn across_windows(
-    pairs: u32,
-    mut opened: impl FnMut() -> bool,
-    mut window: impl FnMut(u32) -> Vec<[Block; 2]>,
-) -> (Vec<[Block; 2]>, bool) {
-    let mut kept: Vec<[Block; 2]> = Vec::new();
-    while kept.len() < pairs as usize {
-        if !opened() {
-            return (kept, false);
-        }
-        let from = u32::try_from(kept.len()).unwrap_or(pairs);
-        kept.extend(window(from));
+/// Pays what an earlier proof killed outright left owing in `marker`,
+/// so the shaper isn't left wrong through this one's wait, then starts
+/// this proof's own keeper. The word goes either way: once paid, or once
+/// Joel is told by the 69, with a report in `out` saying so.
+fn owed(marker: &Path, out: Option<&Path>) -> Result<Option<bool>, Failure> {
+    let paying = pay(stop::debt(marker), put_back);
+    stop::forget(marker);
+    if paying.is_err() {
+        report(
+            out,
+            &serde_json::json!({
+                "verdict": null, "complete": false, "stopped": false,
+                "shaper_back": false, "idle_call_ms": [], "pairs": []
+            }),
+        );
     }
-    (kept, true)
+    let paid = paying?;
+    keeper::keep(marker);
+    Ok(paid)
 }
 
-/// Waits for the gate to open, until `deadline`.
-fn opened(gate: &Gate, deadline: Instant) -> bool {
-    while !gate.open() {
-        if Instant::now() >= deadline {
-            return false;
+/// The lock beside `marker` that only one proof holds at a time.
+fn alone(marker: &Path) -> Result<fs::File, Failure> {
+    lock::alone(marker).map_err(|why| match why {
+        lock::NotAlone::Another(who) => Failure::new(
+            Exit::TryAgain,
+            format!("another proof is running, pid {who}"),
+        )
+        .because("two at once would load the link twice"),
+        lock::NotAlone::Unopened(e) => {
+            Failure::new(Exit::Unavailable, "couldn't open the proof's lock").because(e)
         }
-        // The gate is asked once a second while it's waited for.
-        thread::sleep(Duration::from_secs(1));
-    }
-    true
+    })
 }
 
 /// One idle window: the load and the pairs from `from` on, until they're
-/// done or the gate closes, the shaper going back to `was_on` after. The
-/// call's quiet is heard first, in the run's first window.
+/// done or the gate closes, the shaper going back to `was_on` after, and
+/// whether it went back. The call's quiet is heard first, in the run's
+/// first window.
 fn window(
     asked: &Asked,
     link: &str,
@@ -555,65 +498,107 @@ fn window(
     was_on: bool,
     from: u32,
     idle: &mut Vec<f64>,
-) -> Vec<[Block; 2]> {
+) -> (Vec<[Block; 2]>, bool) {
     // The rest of the machine's traffic runs through the whole proof, and
     // with the router alone it bloats the router's queue: the first run's
     // idle median was 81 ms, where a loaded call through the shaper took
     // 38. So the call's quiet is heard with the shaper on, and the bar
     // asks what the proof's own load adds to it.
-    if idle.is_empty() {
-        systemctl("start");
-        // The shaper settles before its quiet counts, as SETTLE says.
-        thread::sleep(SETTLE);
-        eprintln!(
-            "idle: the call's round trips through the shaper, with the proof loading nothing"
-        );
-        *idle = idle_call(asked.seconds.min(15));
-    }
     let stop = Arc::new(AtomicBool::new(false));
+    // A stop heard as the window opened starts nothing.
+    let mut touched = false;
+    if idle.is_empty() && !halted(&stop) {
+        touched = true;
+        systemctl("start");
+        // The shaper settles before its quiet counts.
+        settle(&stop);
+        if !halted(&stop) {
+            tell("idle: the call's round trips through the shaper, with the proof loading nothing");
+            *idle = idle_call(asked.seconds.min(15), &stop);
+        }
+    }
+    // The first window's settle and quiet take half a minute with no
+    // watch on the gate, so Joel coming back meanwhile is heard here,
+    // before any load starts. A quiet heard while he came back holds his
+    // own traffic, so it's dropped and heard afresh in the next window.
+    if !halted(&stop) && !gate.open() {
+        stop.store(true, Ordering::Relaxed);
+        tell(&format!("{}: not starting the load", gate.why_shut()));
+        if touched {
+            idle.clear();
+        }
+    }
+    if halted(&stop) {
+        return (Vec::new(), !touched || put_back(was_on));
+    }
     let watch = {
         let (stop, gate) = (Arc::clone(&stop), Arc::clone(gate));
         thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
-                if !gate.open() {
-                    eprintln!(
-                        "Joel is back, or a call, audio or a meeting started: stopping the load"
-                    );
+                // The load is stopped before anything is said, since
+                // saying it may fail.
+                if STOPPED.load(Ordering::Relaxed) {
                     stop.store(true, Ordering::Relaxed);
                     stop_scopes();
+                    tell("asked to stop: ending the load");
+                } else if !gate.open() {
+                    stop.store(true, Ordering::Relaxed);
+                    stop_scopes();
+                    tell(&format!("{}: stopping the load", gate.why_shut()));
                 }
                 // The gate is asked once a second while the load runs.
                 thread::sleep(Duration::from_secs(1));
             }
         })
     };
-    load(asked.uploads, &asked.server);
-    let pairs = run_pairs(asked, link, &stop, from);
-    let stopped = stop.swap(true, Ordering::Relaxed);
+    load::start(asked.uploads, &asked.server, &stop);
+    let pairs = run_pairs(asked, link, &stop, from, &mut touched);
+    let closed = stop.swap(true, Ordering::Relaxed);
     stop_scopes();
-    let _ = watch.join();
-    systemctl(if was_on { "start" } else { "stop" });
-    if stopped {
-        eprintln!(
-            "kept {} pairs, the one under way dropped; waiting for Joel's next idle",
-            from as usize + pairs.len()
-        );
+    // Put back before the watch is joined, since it may be stuck asking
+    // the gate; once stopped, it isn't waited for, ending with the proof.
+    // One stopped before it touched the shaper leaves it as it found it,
+    // since a put-back then could only undo a change made since.
+    let back = !touched || put_back(was_on);
+    if !STOPPED.load(Ordering::Relaxed) {
+        let _ = watch.join();
     }
-    pairs
+    if closed && !STOPPED.load(Ordering::Relaxed) {
+        let next = if gate.lost() {
+            ""
+        } else {
+            "; waiting for Joel's next idle"
+        };
+        tell(&format!(
+            "kept {} pairs, the one under way dropped{next}",
+            from as usize + pairs.len()
+        ));
+    }
+    (pairs, back)
 }
 
 /// Measures the pairs, the shaper on for one block of each and off for the
-/// other, until they're done or the gate closes.
-fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Block; 2]> {
+/// other, until they're done or the gate closes, `touched` once an arm
+/// has started or stopped it.
+fn run_pairs(
+    asked: &Asked,
+    link: &str,
+    stop: &AtomicBool,
+    from: u32,
+    touched: &mut bool,
+) -> Vec<[Block; 2]> {
     let mut pairs: Vec<[Block; 2]> = Vec::new();
     'pairs: for pair in from..asked.pairs {
-        eprintln!("pair {} of {}", pair + 1, asked.pairs);
+        tell(&format!("pair {} of {}", pair + 1, asked.pairs));
         let mut done: Vec<Block> = Vec::new();
         for arm in arms(pair) {
+            if halted(stop) {
+                break 'pairs;
+            }
+            *touched = true;
             systemctl(if arm == Arm::On { "start" } else { "stop" });
-            // Each arm settles before it counts, as SETTLE says.
-            thread::sleep(SETTLE);
-            if stop.load(Ordering::Relaxed) {
+            settle(stop);
+            if halted(stop) {
                 break 'pairs;
             }
             let Some(b) = block(arm, link, asked, stop) else {
@@ -629,11 +614,45 @@ fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Bl
     pairs
 }
 
+/// Lets an arm settle before it counts, as SETTLE says, or until a stop
+/// or a signal.
+fn settle(stop: &AtomicBool) {
+    let began = Instant::now();
+    while began.elapsed() < SETTLE && !halted(stop) {
+        // A stop is heard within a second of a settle.
+        thread::sleep(Duration::from_secs(1));
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::verdict::tests::pairs;
     use super::*;
-    use serde_json::json;
+
+    #[test]
+    fn a_stop_ends_the_settle_at_once() {
+        let began = Instant::now();
+        settle(&AtomicBool::new(true));
+        assert!(
+            began.elapsed() < Duration::from_secs(2),
+            "a stop waited {:?} for the settle",
+            began.elapsed()
+        );
+        // And a stop that comes while it waits.
+        let stopped = Arc::new(AtomicBool::new(false));
+        let later = Arc::clone(&stopped);
+        let raiser = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(300));
+            later.store(true, Ordering::Relaxed);
+        });
+        let began = Instant::now();
+        settle(&stopped);
+        let _ = raiser.join();
+        assert!(
+            began.elapsed() < Duration::from_secs(2),
+            "a stop on the way waited {:?}",
+            began.elapsed()
+        );
+    }
 
     #[test]
     fn a_block_is_said_in_words_without_padding() {
@@ -653,63 +672,6 @@ mod tests {
         assert!(!line.trim_start().contains("  "), "{line}");
     }
 
-    fn node(class: &str, state: &str) -> serde_json::Value {
-        json!({
-            "type": "PipeWire:Interface:Node",
-            "info": { "state": state, "props": { "media.class": class } },
-        })
-    }
-
-    #[test]
-    fn a_running_sink_is_audio_playing() {
-        let quiet = json!([
-            node("Audio/Sink", "suspended"),
-            node("Audio/Sink", "idle"),
-            node("Audio/Source", "running"),
-            { "type": "PipeWire:Interface:Client", "info": { "state": "running" } },
-        ]);
-        assert!(
-            !plays(&quiet),
-            "took a graph with no sink running for audio"
-        );
-        let playing = json!([
-            node("Audio/Sink", "suspended"),
-            node("Audio/Sink", "running")
-        ]);
-        assert!(plays(&playing), "missed a sink running");
-    }
-
-    #[test]
-    fn pairs_measured_in_three_windows_are_kept_as_one_run() {
-        let mut froms = Vec::new();
-        let mut windows = [5, 0, 7].into_iter();
-        let (kept, complete) = across_windows(
-            12,
-            || true,
-            |from| {
-                froms.push(from);
-                pairs(windows.next().unwrap_or(0), 0.8, 0.05)
-            },
-        );
-        assert_eq!((kept.len(), complete), (12, true));
-        assert_eq!(
-            froms,
-            [0, 5, 5],
-            "a window didn't start after the last pair kept"
-        );
-    }
-
-    #[test]
-    fn a_wait_that_runs_out_keeps_the_pairs_measured() {
-        let mut opens = [true, false].into_iter();
-        let (kept, complete) = across_windows(
-            12,
-            || opens.next().unwrap_or(false),
-            |_| pairs(4, 0.8, 0.05),
-        );
-        assert_eq!((kept.len(), complete), (4, false));
-    }
-
     #[test]
     fn the_shaper_goes_first_in_every_other_pair() {
         assert_eq!(arms(0), [Arm::On, Arm::Off]);
@@ -717,61 +679,25 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_request_waits_before_it_is_asked_again() {
-        let refused = repeated("2", "echo '429 0'", "");
-        let out = Command::new("sh")
-            .args(["-c", &refused])
-            .output()
-            .expect("a shell");
-        let asked = String::from_utf8_lossy(&out.stdout).lines().count();
+    fn a_scopes_shell_gets_its_own_dollars() {
+        // systemd-run would otherwise read ${20} and ${s##*) } itself, as
+        // nothing, and every watcher would take a live proof for gone.
+        let c = scoped_as("app.slice", "u", &["sh", "-c", "${20}"]);
+        let args: Vec<_> = c.get_args().map(|a| a.to_string_lossy()).collect();
+        let ends = args.iter().position(|a| a == "--").expect("its command");
         assert!(
-            (1..=3).contains(&asked),
-            "asked {asked} times in two seconds a server refused"
+            args[..ends].iter().any(|a| a == "--expand-environment=no"),
+            "systemd-run is left to expand the command: {args:?}"
         );
-        // Answered, a probe waits only what it asks to between requests.
-        let answered = repeated("2", "echo '200 5'", "sleep 0.4;");
-        let out = Command::new("sh")
-            .args(["-c", &answered])
-            .output()
-            .expect("a shell");
-        let asked = String::from_utf8_lossy(&out.stdout).lines().count();
+        assert_eq!(args[ends + 1..], ["sh", "-c", "${20}"]);
+        // The sorter sends a scope with no ceiling, started from an
+        // agent's work, back into that work, where Joel's probes would be
+        // agents' traffic and the keeper would die with the agent's command.
         assert!(
-            (2..=6).contains(&asked),
-            "asked {asked} times, not every 0.4 s"
-        );
-    }
-
-    #[test]
-    fn a_command_waited_on_that_says_busy_holds_the_load() {
-        let exits = |code: u8| vec!["sh".to_string(), "-c".into(), format!("exit {code}")];
-        assert!(busy(&[exits(1), exits(0)]), "loaded through a meeting");
-        assert!(
-            busy(&[exits(2)]),
-            "loaded through a calendar it couldn't read"
-        );
-        assert!(
-            busy(&[vec!["no-such-program-here".into()]]),
-            "loaded where a command waited on wouldn't run"
-        );
-        assert!(!busy(&[exits(1), exits(1)]), "held with nothing busy");
-        assert!(!busy(&[]), "held with nothing to wait on");
-    }
-
-    #[test]
-    fn the_commands_waited_on_are_read() {
-        let named = r#"[["a-meeting-is-near", "/calls", "/off"]]"#;
-        assert_eq!(
-            waits_while(Some(named)).expect("a command"),
-            vec![vec!["a-meeting-is-near", "/calls", "/off"]]
-        );
-        assert_eq!(waits_while(None).expect("none"), Vec::<Vec<String>>::new());
-        assert!(
-            waits_while(Some("[[]]")).is_err(),
-            "took a command with no program"
-        );
-        assert!(
-            waits_while(Some("a-meeting-is-near")).is_err(),
-            "took what isn't JSON"
+            args[..ends]
+                .iter()
+                .any(|a| a == "--property=MemoryMax=128M"),
+            "a scope an agent starts is taken back into its work: {args:?}"
         );
     }
 
@@ -790,5 +716,9 @@ mod tests {
             "a flag with no value taken"
         );
         assert!(asked(&[], None).is_err(), "a proof with no server to load");
+        assert!(
+            asked(&[], Some("-K/etc/passwd".into())).is_err(),
+            "took a server curl would read as its option"
+        );
     }
 }
