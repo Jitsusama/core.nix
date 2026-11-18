@@ -102,12 +102,19 @@ class Rig:
         The status the shaper wrote before it began on eth1 doesn't name it yet,
         which a wait read as soon as the shaper had started.
         """
-        return int(self.link().get("up", 0))
+        _, link = self.link()
+        return int(link.get("up", 0))
 
-    def link(self) -> Json:
-        """Give what the shaper says of eth1, or nothing before it names it."""
-        status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
-        return next((link for link in status if link["name"] == "eth1"), {})
+    def link(self) -> tuple[int, Json]:
+        """Give the guest's second, as the trace names its rows, and what the shaper says of eth1.
+
+        What it says is nothing before it names eth1. Both are read in one command, so a
+        reading costs the guest one round trip.
+        """
+        now, _, text = self.client.succeed("date +%s; cat /run/shaper/status.json").partition("\n")
+        status: list[Json] = json.loads(text)
+        link = next((link for link in status if link["name"] == "eth1"), {})
+        return int(now) % 1000, link
 
     def backlog(self) -> int:
         """Give the bytes waiting in the connection's queue at the router."""
@@ -152,10 +159,13 @@ class Rig:
 
         The rate is read once a second while the pings go, since any one reading can
         find the shaper just past a cut, under where it settles: on a busy builder, one
-        reading taken after the pings was 5974 kbit/s, against 6000. Each reading's
-        plateau and reason go into `said` as they're read, under the guest's second as
-        the trace names it, as the journal tells only where a spell of limits begins
-        and ends, and a reading that fails partway still leaves what it heard.
+        reading taken after the pings was 5974 kbit/s, against 6000.
+
+        Each reading's plateau and reason go into `said` too, since the journal tells only
+        where a spell of limits begins and ends. They're filed under the second they were
+        read, which is a second or so after the one the shaper last heard; the trace's own
+        rows give each recorded second's hold and plateau exactly. `said` is the caller's,
+        so a reading that fails partway still leaves what it heard.
         """
         self.client.succeed(
             f"systemd-run -M alice@ --user --collect --slice=app.slice --unit=ping-{name}"
@@ -165,13 +175,13 @@ class Rig:
 
         def ended(_last_try: bool) -> bool:
             """Read the rate and why, and say whether the pings are done."""
-            second = int(self.client.succeed("date +%s")) % 1000
-            link = self.link()
+            second, link = self.link()
             rates.append(int(link.get("up", 0)))
             heard = link.get("heard") or {}
             plateau = heard.get("plateau")
             plateau = None if plateau is None else round(plateau)
-            said.append(f"{second:03d} {rates[-1]} kbit/s, plateau {plateau}: {heard.get('why')}")
+            why = heard.get("why")
+            said.append(f"{second:03d} read {rates[-1]} kbit/s, plateau {plateau}: {why}")
             status, _ = self.client.execute(
                 f"systemctl -M alice@ --user is-active --quiet ping-{name}"
             )
@@ -197,9 +207,23 @@ class Rig:
 
         Each second's upload over every link to the router, in kbit/s, from their counters,
         and the median of its own delays up, in ms, before the controller takes each
-        reflector's least off. A line the recorder is still writing is passed over.
+        reflector's least off; then what the shaper held the upload to that second, the
+        plateau it held under, and whether its queue was ours, from its own trace. A line
+        either is still writing is passed over.
         """
         # Read as it stands, so a missing file can't bury the failure it explains.
+        _, text = self.client.execute("cat /var/lib/shaper/heard/*.jsonl")
+        held: dict[int, str] = {}
+        for line in text.splitlines():
+            try:
+                step: Json = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if step.get("link") == "eth1":
+                queued = (step.get("ours") or {}).get("queued")
+                held[step["at"]] = (
+                    f", held {step.get('up')}, plateau {step.get('plateau')}, queued {queued}"
+                )
         _, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl")
         seconds: dict[int, tuple[list[int], list[float]]] = {}
         for line in text.splitlines():
@@ -220,7 +244,9 @@ class Rig:
             kbit = (max(sent) - last[1]) * 8 // 1000 // (second - last[0]) if last else 0
             last = (second, max(sent))
             median = sorted(delays)[len(delays) // 2] if delays else None
-            rows.append(f"{second % 1000:03d} {kbit:6d} kbit/s up, out {median}")
+            rows.append(
+                f"{second % 1000:03d} {kbit:6d} kbit/s up, out {median}{held.get(second, '')}"
+            )
         _, said = self.client.execute("journalctl -u shaper -u shaper-record -o cat --no-pager")
         _, status = self.client.execute("cat /run/shaper/status.json")
         return "\n".join([*rows, said, status])
@@ -296,7 +322,9 @@ def test_finds_the_connection(loaded: Rig) -> None:
         assert shaped < SHAPED, f"{shaped} ms shaped at {rates} kbit/s"
     except Exception:
         # The rates show where it settled, not what took it there.
-        print("while the pings went, the shaper said:", *said, loaded.trace(), sep="\n")
+        # Said first, as it needs nothing more of a guest that may have gone.
+        print("while the pings went, the shaper said:", *said, sep="\n")
+        print(loaded.trace())
         raise
 
 
