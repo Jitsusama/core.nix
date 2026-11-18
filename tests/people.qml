@@ -380,10 +380,11 @@ ShellRoot {
             // merged again at each answer, 13 ms of Joel's shell at p90
             // and 62 at most (his journal, 2026-11-14 to 17). Among equals,
             // the daemon's order: each address finds them as well as the
-            // next, as gus's does, so in the order the daemon heard them,
-            // which puts Zoë ahead of Gus, so a shell sorting by name is
-            // seen. Those listed are shown as listed, and the rest made of
-            // their records.
+            // next, as gus's does, so in the order the daemon heard them:
+            // Eli, whom Tuple and the facts stand-in both name first, then
+            // Zoë, whom Tuple lists ahead of Gus, so a shell sorting by name
+            // is seen. Those listed are shown as listed, and the rest made
+            // of their records.
             what: "those listed first, then the rest, as the daemon finds them, merging no one",
             run: () => {
                 root.mergedBefore = people.merging.merges;
