@@ -24,6 +24,8 @@ import pytest
 from test_driver.machine import retry
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from test_driver.machine import BaseMachine
 
 # A JSON object as tc or the shaper gives it, whose fields the test reads as it finds them.
@@ -35,8 +37,8 @@ CONNECTION = "tbf rate {} burst 32kbit limit 1000000"
 # The connection at its full rate and halved, in kbit/s.
 FULL = 8000
 HALVED = 4000
-# The shaper probes a little past the connection and cuts at the queue that
-# builds, so any moment finds it within a tenth of the connection; at a
+# The shaper finds the connection from the delay its upload adds and holds
+# near it, so any moment finds it within a tenth over the connection; at a
 # quarter under, it's still draining a cut.
 PROBED = 8800
 SETTLED = 6000
@@ -177,6 +179,52 @@ class Rig:
         """Say whether the shaper holds under that rate with the connection's queue drained."""
         return self.up() < kbit and self.backlog() < DRAINED
 
+    def trace(self) -> str:
+        """Give what the recorder saw each second, and what the shaper said, for a failure.
+
+        Each second's upload over every link to the router, in kbit/s, from their counters,
+        and the median of its own delays up, in ms, before the controller takes each
+        reflector's least off. A line the recorder is still writing is passed over.
+        """
+        # Read as it stands, so a missing file can't bury the failure it explains.
+        _, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl")
+        seconds: dict[int, tuple[list[int], list[float]]] = {}
+        for line in text.splitlines():
+            try:
+                sample: Json = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "tx" not in sample:
+                continue
+            sent, delays = seconds.setdefault(sample["at"] // 1000, ([], []))
+            sent.append(sample["tx"])
+            if "out" in sample:
+                delays.append(sample["out"])
+        rows = []
+        last = None
+        for second, (sent, delays) in sorted(seconds.items()):
+            # A second the recorder skipped shares what crossed with the ones beside it.
+            kbit = (max(sent) - last[1]) * 8 // 1000 // (second - last[0]) if last else 0
+            last = (second, max(sent))
+            median = sorted(delays)[len(delays) // 2] if delays else None
+            rows.append(f"{second % 1000:03d} {kbit:6d} kbit/s up, out {median}")
+        _, said = self.client.execute("journalctl -u shaper -u shaper-record -o cat --no-pager")
+        _, status = self.client.execute("cat /run/shaper/status.json")
+        return "\n".join([*rows, said, status])
+
+    def waits_for(self, holds: Callable[[], bool], timeout: dt.timedelta, what: str) -> None:
+        """Wait until the shaper holds as asked, and say what it saw if it never does."""
+
+        def held(last_try: bool) -> bool:
+            """Say whether it holds, with the trace on the last try if it doesn't."""
+            done = holds()
+            if last_try and not done:
+                print(f"never {what}, at {self.up()} kbit/s, {self.backlog()} B queued:")
+                print(self.trace())
+            return done
+
+        retry(held, timeout=timeout)
+
 
 @pytest.fixture(scope="module")
 def rig(machines: dict[str, BaseMachine]) -> Rig:
@@ -201,11 +249,11 @@ def loaded(rig: Rig) -> Rig:
     """Give the rig with the jobs' uploads filling the connection, the shaper holding under it."""
     rig.uploads()
 
-    def found(_last_try: bool) -> bool:
+    def found() -> bool:
         """Say whether the shaper holds under the connection with its queue drained."""
         return SETTLED < rig.up() < FULL and rig.backlog() < DRAINED
 
-    retry(found, timeout=FINDING)
+    rig.waits_for(found, FINDING, "found the connection")
     return rig
 
 
@@ -213,7 +261,7 @@ def loaded(rig: Rig) -> Rig:
 def dropped(loaded: Rig) -> Rig:
     """Give the loaded rig once its connection is halved and the shaper has followed it down."""
     loaded.connection(HALVED)
-    retry(lambda _last_try: loaded.holds_under(HALVED), timeout=FOLLOWING)
+    loaded.waits_for(lambda: loaded.holds_under(HALVED), FOLLOWING, "followed it down")
     return loaded
 
 
@@ -221,7 +269,7 @@ def dropped(loaded: Rig) -> Rig:
 def returned(dropped: Rig) -> Rig:
     """Give the rig once its connection is back at full rate and the shaper has climbed to it."""
     dropped.connection(FULL)
-    retry(lambda _last_try: dropped.up() > SETTLED, timeout=CLIMBING)
+    dropped.waits_for(lambda: dropped.up() > SETTLED, CLIMBING, "climbed back")
     return dropped
 
 
@@ -275,6 +323,13 @@ def test_second_link(returned: Rig) -> None:
         return any(link["name"] == "eth2" and link.get("follows") == "eth1" for link in status)
 
     retry(follows, timeout=FOLLOWING)
+    # The recorder counts eth2 beside eth1 now, by its router: the last
+    # line saying what it counts, not any line since boot.
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper-record -o cat | grep -F counting | tail -n1"
+        " | grep -qE 'counting eth1, eth2(,|$)'",
+        timeout=int(FOLLOWING.total_seconds()),
+    )
     # eth1's controller judges by its last second or so of traffic, so it
     # must have none of its own left before only eth2 carries the uploads:
     # then it sees the connection fill only if it counts what eth2 sends.
@@ -296,7 +351,7 @@ def test_second_link(returned: Rig) -> None:
     started = rig.sent_by("eth2")
     retry(lambda _last_try: rig.sent_by("eth2") - started >= APP_SENDS, timeout=SENDING)
     rig.connection(HALVED)
-    retry(lambda _last_try: rig.holds_under(HALVED), timeout=FOLLOWING)
+    rig.waits_for(lambda: rig.holds_under(HALVED), FOLLOWING, "held under a second link")
     rig.client.succeed("systemctl stop second-link-uploads.service")
     rig.connection(FULL)
     rig.uploads()

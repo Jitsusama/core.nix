@@ -14,7 +14,18 @@
 { self, pkgs }:
 let
   inherit (pkgs) lib;
-  server = "192.168.2.3";
+  # The server is past the router at a public address, a documentation
+  # one, as the shaper counts only what waits to go past this network.
+  server = "203.0.113.3";
+  router = "203.0.113.2";
+  public = address: {
+    addresses = lib.mkForce [
+      {
+        inherit address;
+        prefixLength = 24;
+      }
+    ];
+  };
   connection = rate: "tbf rate ${rate} burst 32kbit limit 1000000";
 in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
@@ -62,8 +73,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     networking.firewall.checkReversePath = "loose";
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
-    # The module starts only the one-way controller at boot; the test runs this one.
-    systemd.services.shaper.wantedBy = [ "multi-user.target" ];
+    jitsusama.shaper.controller = "one-way";
+    systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
     users.users.alice = {
       isNormalUser = true;
       linger = true;
@@ -82,6 +93,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     networking.useDHCP = false;
     networking.firewall.enable = false;
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
+    networking.interfaces.eth2.ipv4 = public router;
     # The connection: 20 ms away, then 8 Mbit/s with a second of buffer.
     systemd.services.connection = {
       wantedBy = [ "multi-user.target" ];
@@ -101,13 +113,15 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     virtualisation.vlans = [ 2 ];
     networking.useDHCP = false;
     networking.firewall.enable = false;
-    networking.interfaces.eth1.ipv4.routes = [
-      {
-        address = "192.168.1.0";
-        prefixLength = 24;
-        via = "192.168.2.2";
-      }
-    ];
+    networking.interfaces.eth1.ipv4 = public server // {
+      routes = [
+        {
+          address = "192.168.1.0";
+          prefixLength = 24;
+          via = router;
+        }
+      ];
+    };
     systemd.services.sink = {
       wantedBy = [ "multi-user.target" ];
       script = "exec ${lib.getExe pkgs.socat} -u TCP-LISTEN:5201,fork,reuseaddr OPEN:/dev/null";

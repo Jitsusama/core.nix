@@ -18,6 +18,8 @@ pub struct RealTime {
     seen: Option<(u64, f64)>,
     /// Until when it counts as flowing.
     until: f64,
+    /// What the last count gave.
+    flows: bool,
 }
 
 impl RealTime {
@@ -32,7 +34,13 @@ impl RealTime {
             }
         }
         self.seen = Some((packets, now));
-        now < self.until
+        self.flows = now < self.until;
+        self.flows
+    }
+
+    /// Whether real-time traffic flowed at the last count.
+    pub fn flows(&self) -> bool {
+        self.flows
     }
 }
 
@@ -46,12 +54,14 @@ mod tests {
         assert!(!live.count(0, 0.0), "nothing counted was a call");
         // A call's audio, 50 packets a second each way.
         assert!(live.count(100, 1.0), "a call's audio wasn't a call");
+        assert!(live.flows(), "the call counted wasn't kept");
         // Silence for a while keeps it, as talk pauses.
         assert!(live.count(100, 20.0), "a pause in talk ended the call");
         assert!(
             !live.count(100, 32.0),
             "half a minute's silence kept the call"
         );
+        assert!(!live.flows(), "the call that ended was still kept");
     }
 
     #[test]

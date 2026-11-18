@@ -11,15 +11,21 @@
 }:
 let
   services = (bareNixos [ self.nixosModules.shaper ]).config.systemd.services;
+  named =
+    (bareNixos [
+      self.nixosModules.shaper
+      { jitsusama.shaper.controller = "one-way"; }
+    ]).config.systemd.services;
+  unasked = services.shaper.wantedBy == [ ];
+  asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
+  recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
 in
 # What follows needs Linux to build or to run, so a Mac leaves it out.
 onLinux {
-  # The shaper's tests run as it builds: a queue is read from delayed pings
-  # and not from one late one or a host that stays silent, the rate cuts to
-  # under what the connection carried and climbs while nothing waits, and
-  # each set, route and queue is read from what the kernel prints, a
-  # recorded week replays through a controller and is scored, and the
-  # rebuilt controller sets each direction from that direction's own delay.
+  # The shaper's tests run as it builds: each set, route and queue is read
+  # from what the kernel prints, every link to one router counts on its
+  # line, a recorded week replays through a controller and is scored, and
+  # the one-way controller sets each direction from its own delay.
   shaper-finds-the-rate = pkgs.callPackage ./package.nix { };
 
   # clippy finds nothing in the shaper, its tests included.
@@ -39,4 +45,17 @@ onLinux {
         && services.shaper-record.restartIfChanged
         && !services.shaper-record.stopIfChanged
       );
+
+  # Only a machine that names the controller shapes from boot: every
+  # graphical machine imports the module, and one that never asked for
+  # the one-way controller was never shaped before it was the only one.
+  # Its recorder starts either way, so its week can be replayed first.
+  shaper-starts-when-asked = holds "shaper-starts-when-asked" (
+    if !unasked then
+      "The shaper would start at boot on a machine that never named its controller."
+    else if !asked then
+      "The shaper wouldn't start at boot on a machine that named its controller."
+    else
+      "The recorder wouldn't start at boot on a machine that never named the controller."
+  ) (unasked && asked && recorded);
 }

@@ -80,15 +80,68 @@ pub fn expired(names: &[String]) -> Vec<String> {
     days[..keep].iter().map(|n| (*n).clone()).collect()
 }
 
-/// What the link carried in total, received and sent, in bytes.
-fn carried(link: &str) -> (u64, u64) {
+/// What the link carried in total, received and sent, in bytes, or None
+/// when either count can't be read, as when the link went.
+fn counters(link: &str) -> Option<(u64, u64)> {
     let read = |which: &str| {
         fs::read_to_string(format!("/sys/class/net/{link}/statistics/{which}_bytes"))
             .ok()
             .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0)
     };
-    (read("rx"), read("tx"))
+    Some((read("rx")?, read("tx")?))
+}
+
+/// What this machine's links to one connection carried together, received
+/// and sent, in bytes. A second link to the same router, as Wi-Fi is beside
+/// a cable, sends over the same connection, so an upload there fills the
+/// queue the recorded link's probes meet, and the record has to count it.
+/// The total runs on as a link joins or leaves, so neither reads as a
+/// second's burst or a fall.
+struct Counted {
+    last: BTreeMap<String, (u64, u64)>,
+    total: (u64, u64),
+}
+
+impl Counted {
+    /// Starts from what `link` has carried since it came up, so a link
+    /// alone reads as its own counters; one that couldn't be read starts
+    /// at nothing and counts from its first good read.
+    fn new(link: &str, carried: Option<(u64, u64)>) -> Self {
+        Counted {
+            last: carried.map(|c| (link.to_owned(), c)).into_iter().collect(),
+            total: carried.unwrap_or_default(),
+        }
+    }
+
+    /// Adds what each link carried since it was last read, given its
+    /// counters now, and gives the total; a link not read before counts
+    /// from here.
+    fn add(&mut self, read: Vec<(String, (u64, u64))>) -> (u64, u64) {
+        for (link, (rx, tx)) in &read {
+            if let Some(&(was_rx, was_tx)) = self.last.get(link) {
+                self.total.0 += rx.saturating_sub(was_rx);
+                self.total.1 += tx.saturating_sub(was_tx);
+            }
+        }
+        self.last = read.into_iter().collect();
+        self.total
+    }
+
+    /// Reads `links`' counters and adds what they carried. A link whose
+    /// counters can't be read is left out, as one that left is, so it
+    /// counts again from its next read rather than from nothing.
+    fn read(
+        &mut self,
+        links: &[String],
+        counters: impl Fn(&str) -> Option<(u64, u64)>,
+    ) -> (u64, u64) {
+        self.add(
+            links
+                .iter()
+                .filter_map(|l| Some((l.clone(), counters(l)?)))
+                .collect(),
+        )
+    }
 }
 
 fn now_ms() -> u64 {
@@ -166,6 +219,10 @@ fn pool_line(reflectors: &[(&'static str, Ipv4Addr)], kept: bool) -> Value {
 /// One link's recording under way.
 struct Recorder<'a> {
     link: &'a str,
+    /// The recorded link and the others that reach its router, and what
+    /// they carried together.
+    links: Vec<String>,
+    counted: Counted,
     gateway: Option<Ipv4Addr>,
     id: u16,
     socket: Socket,
@@ -204,7 +261,7 @@ impl Recorder<'_> {
             return;
         }
         let (counted, since) = self.window;
-        let total = carried(self.link);
+        let total = self.counted.read(&self.links, counters);
         let bits = (total.0 + total.1).saturating_sub(counted.0 + counted.1) * 8;
         let over = now.duration_since(since);
         self.next = now + pace(bits, over);
@@ -256,7 +313,7 @@ impl Recorder<'_> {
                 return;
             }
         }
-        let (rx, tx) = carried(self.link);
+        let (rx, tx) = self.counted.read(&self.links, counters);
         if let Some(reply) = stamped
             && let Some(sent) = self.outstanding.remove(&reply.seq)
             && let Some((operator, address)) = sent.to
@@ -337,14 +394,24 @@ impl Recorder<'_> {
     }
 }
 
+/// The links whose counters the record sums: the recorded one, then those
+/// beside it in name order, so two lists name the same set only when they
+/// are equal, whatever order the routes list them in.
+fn counted_links(link: &str, mut beside: Vec<String>) -> Vec<String> {
+    beside.sort();
+    [vec![link.to_owned()], beside].concat()
+}
+
 /// Record a link's signal while `still` says it's the uplink it was, then
-/// return so the caller finds the next, with a pool of its own.
+/// return so the caller finds the next, with a pool of its own. What it
+/// carried counts with what the links `beside` name carried, those that
+/// reach the same router.
 pub fn record(
     link: &str,
     network: &str,
     gateway: Option<Ipv4Addr>,
     folder: &Path,
-    still: &dyn Fn() -> bool,
+    (still, beside): (&dyn Fn() -> bool, &dyn Fn() -> Vec<String>),
 ) {
     let id = u16::try_from(std::process::id() & 0xffff).unwrap_or(1);
     let socket = match Socket::bound(link, Duration::from_millis(50)) {
@@ -355,7 +422,12 @@ pub fn record(
         }
     };
     let _ = fs::create_dir_all(folder);
-    eprintln!("recording {link} on {network}, choosing reflectors");
+    let links = |beside: Vec<String>| counted_links(link, beside);
+    let counting = links(beside());
+    eprintln!(
+        "recording {link} on {network}, counting {}, choosing reflectors",
+        counting.join(", ")
+    );
     let mut journal = Journal {
         folder: folder.to_path_buf(),
         file: None,
@@ -367,9 +439,14 @@ pub fn record(
     first["choosing"] = json!(true);
     first["link"] = json!(link);
     first["network"] = json!(network);
+    first["counting"] = json!(counting);
     journal.write(&first);
+    let counted = Counted::new(link, counters(link));
+    let window = (counted.total, Instant::now());
     let mut recorder = Recorder {
         link,
+        links: counting,
+        counted,
         gateway,
         id,
         socket,
@@ -379,7 +456,7 @@ pub fn record(
         seq: 0,
         turn: 0,
         next: Instant::now(),
-        window: (carried(link), Instant::now()),
+        window,
         asking: None,
     };
     recorder.ask(Instant::now());
@@ -390,6 +467,17 @@ pub fn record(
         if now.duration_since(checked) > Duration::from_secs(10) {
             if !still() {
                 return;
+            }
+            let counting = links(beside());
+            // The record's rx and tx are these links' together, so both
+            // the record and systemd's journal say when the set changes; a
+            // line with no sample in it is one replay passes over.
+            if counting != recorder.links {
+                eprintln!("recording {link}, counting {}", counting.join(", "));
+                recorder
+                    .journal
+                    .write(&json!({ "at": now_ms(), "link": link, "counting": counting }));
+                recorder.links = counting;
             }
             checked = now;
         }
@@ -403,6 +491,26 @@ pub fn record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_links_counted_are_a_set_whatever_order_the_routes_list_them_in() {
+        let names = |names: &[&str]| names.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            counted_links("eth0", names(&["wlan0", "eth1"])),
+            counted_links("eth0", names(&["eth1", "wlan0"])),
+            "two links beside swapping places would read as the set changing"
+        );
+        assert_eq!(
+            counted_links("eth0", names(&["wlan0"])),
+            names(&["eth0", "wlan0"]),
+            "the recorded link comes first, then those beside it"
+        );
+        assert_ne!(
+            counted_links("eth0", names(&["wlan0"])),
+            counted_links("eth0", Vec::new()),
+            "a link leaving is a change"
+        );
+    }
 
     // A kept pool's line is the pool that was, not a choice, and the
     // record says so.
@@ -446,6 +554,55 @@ mod tests {
             day_file(Path::new("/r"), leap),
             PathBuf::from("/r/2000-02-29.jsonl")
         );
+    }
+
+    // On 18 November the rate test's upload over a second link to the
+    // router left the recorded link looking idle, so it was probed rarely
+    // and never cut, while the connection's queue stood at 430 ms.
+    #[test]
+    fn a_second_link_s_traffic_counts_on_the_connection() {
+        let mut counted = Counted::new("eth1", Some((1_000, 5_000)));
+        let at = |eth1: (u64, u64), eth2: (u64, u64)| {
+            vec![("eth1".to_owned(), eth1), ("eth2".to_owned(), eth2)]
+        };
+        // eth2 joins with what it carried before: none of that counts.
+        assert_eq!(
+            counted.add(at((1_100, 5_000), (90_000, 70_000))),
+            (1_100, 5_000)
+        );
+        assert_eq!(
+            counted.add(at((1_200, 5_000), (90_500, 80_000))),
+            (1_700, 15_000),
+            "what eth2 sent counts beside eth1's"
+        );
+        // eth2 leaves: the total carries on from where it was.
+        assert_eq!(
+            counted.add(vec![("eth1".to_owned(), (1_300, 5_100))]),
+            (1_800, 15_100)
+        );
+    }
+
+    // A link whose counters can't be read, at the start or along the way,
+    // counts from its next good read: its lifetime's bytes never land on
+    // one interval as a burst.
+    #[test]
+    fn a_link_read_after_failing_counts_from_there() {
+        let links = ["eth1".to_owned()];
+        let mut counted = Counted::new("eth1", None);
+        let at = |n: (u64, u64)| move |_: &str| Some(n);
+        assert_eq!(
+            counted.read(&links, at((90_000, 70_000))),
+            (0, 0),
+            "a first read that failed"
+        );
+        assert_eq!(counted.read(&links, at((90_100, 70_200))), (100, 200));
+        assert_eq!(counted.read(&links, |_| None), (100, 200), "a failed read");
+        assert_eq!(
+            counted.read(&links, at((95_000, 80_000))),
+            (100, 200),
+            "what it carried while unread doesn't count"
+        );
+        assert_eq!(counted.read(&links, at((95_500, 81_000))), (600, 1_200));
     }
 
     #[test]

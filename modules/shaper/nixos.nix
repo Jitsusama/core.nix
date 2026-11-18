@@ -11,10 +11,12 @@
 # can take, through
 # CAKE, and the queue forms here instead, short and sorted. How fast that is
 # differs on every network, and on Wi-Fi from minute to minute, so the
-# shaper finds it from what pings to four distant resolvers do, cutting
-# the moment they slow and climbing while they don't, and keeps what each
-# network held, by its router's hardware address. A network never met
-# starts at 10 Mbit/s up and 50 down and climbs within seconds.
+# shaper finds it from each direction's own delay, as shaper-record
+# measures it with ICMP timestamps, and keeps what each network's upload
+# learned, by its router's hardware address. A network whose line is
+# declared in jitsusama.shaper.networks starts at its hold, and one never
+# met at 10 Mbit/s up, until the controller's first second leaves it
+# unlimited, as it stays until a queue stands on it.
 #
 # CAKE's four tins follow the slices: voice for names, time and the
 # shaper's own pings; video for Tuple's daemon, an app's UDP other than
@@ -86,7 +88,6 @@ let
     speedServer != null
   ) "--set-default SHAPER_SPEED_SERVER ${lib.escapeShellArg speedServer}";
   vpns = config.jitsusama.shaper.vpns;
-  oneWay = config.jitsusama.shaper.controller == "one-way";
   networks = config.jitsusama.shaper.networks;
   networksFile = pkgs.writeText "shaper-networks.json" (builtins.toJSON networks);
 in
@@ -109,16 +110,19 @@ in
   };
 
   options.jitsusama.shaper.controller = lib.mkOption {
-    type = lib.types.enum [
-      "round-trip"
-      "one-way"
-    ];
-    default = "round-trip";
+    type = lib.types.nullOr (lib.types.enum [ "one-way" ]);
+    default = null;
     description = ''
-      What sets the shaper's rates. `round-trip` is the controller it has
-      had (src/rate.rs), from pings to distant resolvers. `one-way` is its
-      rebuild (src/oneway.rs), from each direction's own delay as
-      shaper-record measures it, the controller `shaper replay` scores.
+      What sets the shaper's rates, and whether it starts at boot: `one-way`
+      (src/oneway.rs), from each direction's own delay as shaper-record
+      measures it, the controller `shaper replay` scores, and the only one
+      left. Left null, the shaper is installed and nothing starts it, as a
+      machine that never named the one-way controller had it before; the
+      recorder runs either way, so a machine's week can be replayed before
+      it shapes. Setting
+      it back to null takes the start at boot away but leaves a running
+      shaper shaping until `systemctl stop shaper` or the next boot. The
+      round trip's, from pings to distant resolvers, went on 18 November.
     '';
   };
 
@@ -221,21 +225,25 @@ in
 
   config.systemd.services.shaper = {
     description = "Keep the network's queue here, sorted by the slices";
-    # The one-way controller starts at boot: a day of it on against off
-    # on a real link, eighteen pairs overnight, found it as good or better
-    # on every bar, and a boot that left it off left agents' uploads
-    # filling the router's queue until someone started it. A switch never
-    # starts a shaper someone stopped, so `systemctl stop shaper` stays
-    # the way to turn it off. The round-trip controller stays wanted by
-    # nothing: five faults in four days came from guessing whose queue a
-    # round trip shows, and on 3 November it held a 312 Mbit/s download
-    # at 81. Its VM tests start it themselves.
-    wantedBy = lib.optional oneWay "multi-user.target";
+    # A machine that names the controller has it at boot: a day of the
+    # one-way controller on against off on a real link, eighteen pairs
+    # overnight, found it as good or better on every bar, and a boot that
+    # left it off left agents' uploads filling the router's queue until
+    # someone started it. One that never named it isn't shaped by an
+    # update. A switch never starts a shaper someone stopped, so
+    # `systemctl stop shaper` stays the way to turn it off. The round
+    # trip's controller, which set rates from pings, is gone: five faults
+    # in four days came from guessing whose queue a round trip shows, and
+    # on 3 November it held a 312 Mbit/s download at 81.
+    wantedBy = lib.optional (config.jitsusama.shaper.controller != null) "multi-user.target";
     # The table must be there before the shaper fills its sets, and its
     # queues must be on a link before the first connection leaves by it.
-    # The one-way controller reads what the recorder writes, so it wants
-    # the recorder running; a recorder that stops leaves the link unlimited.
-    wants = [ "network-pre.target" ] ++ lib.optional oneWay "shaper-record.service";
+    # The controller reads what the recorder writes, so it wants the
+    # recorder running; a recorder that stops leaves the link unlimited.
+    wants = [
+      "network-pre.target"
+      "shaper-record.service"
+    ];
     before = [ "network-pre.target" ];
     after = [ "nftables.service" ];
     requires = [ "nftables.service" ];
@@ -258,7 +266,6 @@ in
       ExecStart =
         "${shaper}/bin/shaper run"
         + lib.optionalString (vpns != [ ]) " --vpns ${lib.concatStringsSep "," vpns}"
-        + lib.optionalString oneWay " --controller one-way --record /var/lib/shaper-record"
         + lib.optionalString (networks != { }) " --networks ${networksFile}";
       ExecStopPost = "${shaper}/bin/shaper stop --unless-restarting shaper.service";
       Restart = "always";
@@ -287,13 +294,13 @@ in
     };
   };
 
-  # The shaper's next signal, recorded while the shaper stays off
-  # (src/record.rs): each direction's own delay from ICMP timestamps, the
-  # gateway's round trip and what the link carried, a file a day for eight
-  # days, so a new controller is replayed over a real week before it shapes
-  # anything. It needs a raw socket and nothing else. It runs as a user of
-  # its own rather than a dynamic one, whose state systemd keeps in a folder
-  # only root can open: the days are replayed by the machine's user, and they
+  # What the shaper sets its rates from (src/record.rs): each direction's
+  # own delay from ICMP timestamps, the gateway's round trip and what the
+  # link carried, a file a day for eight days, so a change to the
+  # controller is replayed over a real week before it shapes anything. It
+  # needs a raw socket and nothing else. It runs as a user of its own rather
+  # than a dynamic one, whose state systemd keeps in a folder only root can
+  # open: the days are replayed by the machine's user, and they
   # hold only delays to public resolvers and what the link carried.
   config.users.users.shaper-record = {
     isSystemUser = true;
@@ -302,7 +309,7 @@ in
   config.users.groups.shaper-record = { };
 
   config.systemd.services.shaper-record = {
-    description = "Record each direction's delay, for the shaper's rebuild";
+    description = "Record each direction's delay, for the shaper's controller and replays";
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" ];
     path = [ pkgs.iproute2 ];

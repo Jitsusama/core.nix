@@ -483,7 +483,7 @@ def test_pi_sessions(connection: Connection) -> None:
 
 
 def test_real_time(connection: Connection) -> None:
-    """A call's packets make the shaper keep the connection's queue here.
+    """A call's packets show in the shaper's status and its journal.
 
     Datagrams an app sends past 443 are a call's, in the video tin, and a few hundred in a
     second are as many as a call's audio sends; the shaper looks once a second.
@@ -696,10 +696,13 @@ def test_route_moves(on_eth2: Connection) -> None:
 
 
 def test_status(on_eth2: Connection) -> None:
-    """Its status says what it holds the link to."""
+    """Its status names the link, its quiet round trips and its own CPU."""
+    # A host's quiet round trip is only said once eth2's pings were heard.
+    on_eth2.client.wait_until_succeeds(
+        "shaper status | grep -E 'quiet round trips: [^ ]+ [0-9]+ ms'", timeout=SHAPING
+    )
     status = on_eth2.client.succeed("shaper status")
     assert "eth2" in status, status
-    assert "held under load" in status, status
     assert "cpu: the shaper" in status, status
 
 
