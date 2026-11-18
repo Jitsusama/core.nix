@@ -988,11 +988,11 @@
     changes only the kernel's use counts; and loads them again as the links change
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
-    Traffic, asked after a gap as each step into Network asks it, reads one sysfs file for an
-    interface it already knows, its uevent, rather than all four again; reads an interface
-    first seen whole, and nothing again when asked straight after; and reads all four again,
-    taking the kind they say now, for one made again under its name or whose uevent can't be
-    read
+    Traffic's answer reads no file and waits on none, even as the launcher opens after a gap;
+    in the background after, it loads one sysfs file for an interface it already knows, its
+    uevent, rather than all four again; loads an interface first seen whole; and loads all four
+    again, taking the kind they say now and telling the answer shown, for one made again under
+    its name or whose uevent can't be read
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a

@@ -1,12 +1,13 @@
 // Drives Traffic's answer through Quickshell itself, over the sandbox's own
 // /proc/net/dev and a sysfs folder of its own for lo, counting the files it
-// reads of lo to tell what it is. Each is a blocking read, and a step into
-// Network asks Traffic after a gap every time, so an answer after a gap
-// reads one file for an interface it already knows, its uevent, rather
-// than all four again: four interfaces' sixteen reads took a median 6 ms
-// and up to 49 ms on Joel's laptop (2026-11-17), of a step that has 50 ms
-// for all of it. A build has no sysfs, so the folder is written here, in
-// sys/lo beside the case, which whoever runs it makes first.
+// reads of lo to tell what it is. A step into Network asks Traffic after a
+// gap every time, and a blocking read of each file took a median 6 to 14 ms
+// and up to 133 under load on Joel's laptop (2026-11-17), of a step that
+// has 50 ms for all of it. So an answer reads no file and waits on none: the
+// counters are loaded as the launcher opens, and an interface's files are
+// loaded in the background after, one uevent for an interface already known
+// rather than all four again. A build has no sysfs, so the folder is written
+// here, in sys/lo beside the case, which whoever runs it makes first.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -21,9 +22,38 @@ ShellRoot {
 
     readonly property string sys: `${Quickshell.shellDir}/sys`
 
+    // The launcher, as much of it as Traffic reads: whether it's open, and
+    // the answer shown, which is Traffic's own, so a changed kind is told.
+    QtObject {
+        id: shown
+
+        property bool open: false
+        property var held: []
+        property var answer: ({ live: traffic })
+    }
+
     Launcher.Traffic {
         id: traffic
         interfaces: root.sys
+        launcher: shown
+    }
+
+    // How many times Traffic told the launcher to ask again, and how many
+    // loads of the counters landed, since each tells while its answer is
+    // shown: a tell past them is a kind's.
+    property int told: 0
+    property int loads: 0
+
+    Connections {
+        target: traffic
+
+        function onAnswered() {
+            root.told++;
+        }
+
+        function onReadsChanged() {
+            root.loads++;
+        }
     }
 
     // One for each file, each at its own path for good, since a write to
@@ -41,15 +71,18 @@ ShellRoot {
         printErrors: false
     }
 
-    Component.onCompleted: Qt.callLater(root.begun)
+    Until {
+        id: waits
+    }
 
-    function begun() {
-        try {
-            asked();
-            Qt.exit(0);
-        } catch (error) {
-            Expect.fail(error.message ?? error);
-        }
+    readonly property string loopback: Interfaces.sysKind("lo", { uevent: "IFINDEX=1", type: "772" })
+    readonly property string bare: Interfaces.sysKind("lo", { uevent: "IFINDEX=99", type: "65534" })
+
+    // lo's folder is written before Traffic's first load lands, since the
+    // counters load in the background as it's made.
+    Component.onCompleted: {
+        made("INTERFACE=lo\nIFINDEX=1\n", "772\n");
+        waits.until("lo known", () => idle() && traffic.interfaceKinds.lo?.sure, root.first);
     }
 
     // lo's sysfs folder, as the kernel would write it for the facts given.
@@ -71,53 +104,93 @@ ShellRoot {
         };
     }
 
-    // How many of lo's files an answer read.
-    function reads() {
-        const before = traffic.probed.lo ?? 0;
-        Expect.expect("speed answers", traffic.answer("speed") !== null, "null");
-        return (traffic.probed.lo ?? 0) - before;
+    // Whether nothing is being asked of sysfs.
+    function idle() {
+        return traffic.probing === null && traffic.asking.length === 0;
     }
 
     // What lo is, as Traffic last told it.
     function kind() {
-        return traffic.interfaceKinds.lo?.kind;
+        return traffic.interfaceKinds.lo?.kind ?? "";
     }
 
-    function asked() {
-        const names = Object.keys(traffic.sample().last.all);
-        Expect.expect("the sandbox counts lo", names.includes("lo"), JSON.stringify(names));
-        made("INTERFACE=lo\nIFINDEX=1\n", "772\n");
-        Expect.expect("an interface first seen is read whole, four files", reads() === 4,
-            `${traffic.probed.lo}`);
-        const loopback = Interfaces.sysKind("lo", { uevent: "IFINDEX=1", type: "772" });
-        Expect.expect("it's what its files say", kind() === loopback, `${kind()}`);
+    function probed() {
+        return traffic.probed.lo ?? 0;
+    }
 
+    // An answer, which must read no file.
+    function answered(what) {
+        const before = probed();
+        Expect.expect("speed answers", traffic.answer("speed") !== null, "null");
+        Expect.expect(what, probed() === before && idle(), `${probed() - before} read`);
+    }
+
+    // After a gap, as the launcher opens: the counters load, and lo's
+    // files are asked once they land.
+    function reopened() {
         aged(60000);
-        let read = reads();
+        shown.open = false;
+        shown.open = true;
+    }
+
+    property int mark: 0
+
+    function first() {
+        const names = Object.keys(traffic.reads.last.all);
+        Expect.expect("the sandbox counts lo", names.includes("lo"), JSON.stringify(names));
+        Expect.expect("an interface first seen is read whole, four files", probed() === 4,
+            `${probed()}`);
+        Expect.expect("it's what its files say", kind() === loopback, `${kind()}`);
+        answered("an answer reads no file");
+
+        reopened();
+        answered("an answer as the launcher opens after a gap reads no file");
+        mark = probed();
+        waits.until("lo asked after the gap", () => probed() > mark && idle(), root.gapped);
+    }
+
+    function gapped() {
+        const read = probed() - mark;
         Expect.expect("after a gap, an interface already known is read once, its uevent",
             read === 1, `${read}`);
-        read = reads();
-        Expect.expect("straight after, nothing is read again", read === 0, `${read}`);
+        Expect.expect("it's sure of it again", traffic.interfaceKinds.lo.sure, "unsure");
 
         // The same name made again as something else, as WARP's tunnel
         // is: its uevent names another index.
-        made("INTERFACE=lo\nIFINDEX=99\n", "65534\n");
-        aged(60000);
-        read = reads();
-        Expect.expect("an interface made again under its name is read whole again",
-            read === 4, `${read}, kept ${JSON.stringify(traffic.interfaceKinds.lo)}`);
-        const bare = Interfaces.sysKind("lo", { uevent: "IFINDEX=99", type: "65534" });
         Expect.expect("the case makes it something else", bare !== loopback, `${bare}`);
-        Expect.expect("an interface made again is what its files say now", kind() === bare,
-            `${kind()} for ${bare}`);
+        made("INTERFACE=lo\nIFINDEX=99\n", "65534\n");
+        reopened();
+        answered("an answer before the files land reads none");
+        Expect.expect("until its files land, it's what it was", kind() === loopback, `${kind()}`);
+        mark = probed();
+        told = 0;
+        loads = 0;
+        waits.until("lo made again known", () => kind() === bare && idle(), root.remade);
+    }
+
+    function remade() {
+        const read = probed() - mark;
+        Expect.expect("an interface made again under its name is read whole again", read === 4,
+            `${read}, kept ${JSON.stringify(traffic.interfaceKinds.lo)}`);
+        Expect.expect("a kind changed tells the answer shown", told > loads,
+            `${told} tells for ${loads} loads`);
 
         // A uevent that can't be read proves nothing, gap after gap.
         made("", "65534\n");
-        for (const gap of [1, 2]) {
-            aged(60000);
-            read = reads();
-            Expect.expect(`an unreadable uevent has all four read again, gap ${gap}`,
-                read === 4, `${read}`);
-        }
+        unread(1);
+    }
+
+    function unread(gap) {
+        reopened();
+        mark = probed();
+        waits.until(`lo asked after gap ${gap}`, () => probed() > mark && idle(), () => {
+            const read = probed() - mark;
+            Expect.expect(`an unreadable uevent has all four read again, gap ${gap}`, read === 4,
+                `${read}`);
+            if (gap < 2)
+                unread(gap + 1);
+            else
+                Qt.exit(0);
+        });
     }
 }
