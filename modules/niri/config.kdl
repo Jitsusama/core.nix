@@ -135,10 +135,15 @@ layer-rule {
 // notification popups"), its copies hiding what they hold meanwhile
 // (launcher/Shared.js). Notices are kept out of the
 // screenshots niri takes by itself as well, so one never lands in the next
-// shot; picking a region still sees them.
+// shot; picking a region still sees them. polkit, askpass and 1Password are
+// kept out of every capture, since a screen recorder reads through
+// screencopy, which a screencast's rule never reaches, and a recording is a
+// share made later: one showed what a password unlocked, how long it was
+// and when each letter came, and 1Password's vault and any password
+// revealed in it (5GLTPH, 2026-11-17).
 layer-rule {
     match namespace="^(polkit|askpass)$"
-    block-out-from "screencast"
+    block-out-from "screen-capture"
 }
 
 layer-rule {
@@ -146,9 +151,11 @@ layer-rule {
     block-out-from "screen-capture"
 }
 
+// 1Password's window names itself by its class on X, and by its entry's
+// StartupWMClass on Wayland, so both are matched.
 window-rule {
-    match app-id="^1Password$"
-    block-out-from "screencast"
+    match app-id="^(1Password|com\\.onepassword\\.OnePassword)$"
+    block-out-from "screen-capture"
 }
 
 // Chrome's bar saying a page shares the screen. Its Hide asks to be

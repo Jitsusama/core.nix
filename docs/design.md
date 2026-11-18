@@ -2029,8 +2029,9 @@ works the same way everywhere.
   it. A call's share shows the launcher too, since Joel shows people his
   desktop through it, though a copy in Super+V then says only its kind
   and age. Polkit's password, askpass's PIN, 1Password, the notices,
-  Chrome's sharing bar and Slack's huddle are kept out of a share, and
-  the notices out of screenshots too.
+  Chrome's sharing bar and Slack's huddle are kept out of a share;
+  polkit, askpass, 1Password and the notices out of recordings and
+  screenshots too.
 - **Return pastes where the launcher opened.** On a copy in Super+V or an
   emoji in Super+E, Return puts it on the clipboard and pastes it into the
   window the launcher opened over, Ctrl+Shift+V in a terminal and Ctrl+V

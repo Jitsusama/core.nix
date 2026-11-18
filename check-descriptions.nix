@@ -1969,8 +1969,9 @@
     log filter
   '';
   niri-shares-the-launcher-but-no-password = ''
-    no layer rule in the account's niri keeps the launcher out of a shared screen, and polkit,
-    askpass and the notices are each kept out by one, by a line not commented out
+    no layer rule in the account's niri keeps the launcher out of a shared screen, and the last
+    rule saying of polkit, askpass and the notices keeps each out of every capture, a recording's
+    screencopy as much as a share
   '';
   niri-starts-able-to-go-first = ''
     the session's niri starts through its wrapper, which holds CAP_SYS_NICE
