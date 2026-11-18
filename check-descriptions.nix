@@ -3284,6 +3284,10 @@
     visit within its budget of files, bytes and elements, both visits reaching only the sites'
     server and the second answered unchanged, and nothing logged
   '';
+  forage-feed-passes-what-its-page-reads = ''
+    the node's feed, as a machine in a realm declares it, passes every field the forage page reads
+    off a forage record, so nothing the page draws goes missing live
+  '';
   forage-site-holds = ''
     the forage page typechecks on the kit at its strictest and builds, its tests passing: each
     cell's forage under the cell that started it, even in a ring, plans first with their steps
@@ -3292,17 +3296,14 @@
   '';
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
-    headless Chromium: every cell drawn in order, a started cell under the one that started it and
-    a record with no lineage at the top, what waits on its person said in its lede and its panel, a
-    purpose written followed and drawn as words though it holds markup, a cell going, broken while
-    the node is away and live with its cells read again once it's back, stale once the server goes
-    with its cells kept, a first visit within its budget and a second answered unchanged, the
-    web-design skill's page checks passing at a phone's width and a desk's in both looks, and
-    nothing logged but what a test causes
-  '';
-  forage-feed-passes-what-its-page-reads = ''
-    the node's feed, as a machine in a realm declares it, passes every field the forage page reads
-    off a forage record, so nothing the page draws goes missing live
+    headless Chromium: every cell drawn in order, a started or split cell under the one it grew
+    from, what waits on its person and the plan furthest to go said in its lede, each cell's plans,
+    quest, needs and split in its panel and a need as a dotted arc, its keys stepping the cursor, a
+    purpose written followed and drawn as words though it holds markup, a wait answered no longer
+    said, a cell going, broken while the node is away with its cells kept and live with them read
+    again once it's back, stale once the server goes with its cells kept, a first visit within its
+    budget and a second answered unchanged, the web-design skill's page checks passing at a phone's
+    width and a desk's in both looks, and nothing logged but what a test causes
   '';
   murmurs-site-holds = ''
     the murmurs page typechecks on the kit at its strictest and builds, its tests passing: murmurs

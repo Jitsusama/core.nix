@@ -3,15 +3,18 @@
 The page is the one Nix builds, served by the real local-sites server beside a
 stand-in node (modules/local-sites/tests/stand_in_daemon.py) holding four cells'
 forage on kestrel (node.json): one with a purpose, a plan and a thing it waits
-on its person for, one it started, one with no purpose written, and one whose
-record carries no lineage at all. Its feed is trimmed to the fields home.nix
-declares for a machine in a realm (NODE_KINDS). It must say it's live with every
-cell drawn, each started cell under the one that started it, say what waits on
-its person in its lede and its panel, follow a purpose written, drawn as words
-though it holds markup, and a cell going, say broken when the node stops and
-live again, its cells read again, when it's back, say stale when the server
-goes and keep what it drew, keep to its budget, and pass the web-design skill's
-page checks at a phone's width and a desk's in both looks.
+on its person for, relying on a need the one it started serves, one with no
+purpose written, split from one whose lineage names nothing but that split.
+Its feed is trimmed to the fields home.nix declares for a machine in a realm
+(NODE_KINDS). It must say it's live with every cell drawn, each started or
+split cell under the one it grew from, say what waits on its person and the
+plan furthest from done in its lede, draw each cell's plans, quest, needs and
+split in its panel and the need as a dotted arc, step its cursor by keys,
+follow a purpose written, drawn as words though it holds markup, a wait
+answered and a cell going, say broken when the node stops with its cells kept
+and live again, its cells read again, when it's back, say stale when the
+server goes and keep what it drew, keep to its budget, and pass the
+web-design skill's page checks at a phone's width and a desk's in both looks.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
@@ -42,9 +45,11 @@ UNREACHED = "WebSocket connection to"
 REDRAWN_MS = 2500
 # A purpose a cell's writer chose, with markup in it.
 WRITTEN = "OSPREY keeps watch over the <i>harbour</i>."
-# Every cell node.json holds, in the order the page lists them: those nothing here started by
-# address, each followed by the cells it started.
-CELLS = ["KESTRL", "SKIFFS", "OSPREY", "TERNAA"]
+# The need SKIFFS serves KESTRL, as node.json says it, with markup in it.
+NEED = "a <b>calm</b> field"
+# Every cell node.json holds, in the order the page lists them: those that grew from none here
+# by address, each followed by the cells started by it or split from it.
+CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
 # What a first visit to the forage page may cost, drawn from the stand-in's cells.
 BUDGET = Budget(files=22, kilobytes=545, elements=255)
 
@@ -93,11 +98,22 @@ def every_cell_drawn(page: Page) -> None:
     expect(rows, "the page listed cells node.json doesn't hold").to_have_count(len(CELLS))
 
 
-def forage_of(name: str, **more: object) -> dict[str, object]:
-    """Give `name`'s forage as node.json holds it, with `more` over its fields."""
-    records = json.loads((HERE / "node.json").read_text())["kinds"]["forage"]
-    held: dict[str, object] = next(each for each in records if each["cell"] == name)
-    return {**held, **more}
+def opened_on(page: Page, name: str) -> Locator:
+    """Press `name`'s row, and give its panel once it draws that cell."""
+    cell(page, name).click()
+    panel = page.locator("#panel-body")
+    expect(panel.locator("h3"), f"the panel didn't open {name}").to_have_text(name)
+    return panel
+
+
+def fact(panel: Locator, said: str) -> Locator:
+    """Give what the panel says beside the term `said`."""
+    term = panel.page.locator("dt", has_text=said)
+    return panel.locator(".facts > div").filter(has=term).locator("dd")
+
+
+def selected(page: Page, name: str, why: str) -> None:
+    expect(cell(page, name), why).to_have_attribute("aria-selected", "true")
 
 
 def test_the_forage_page_draws_every_cell_live(forage_page: Page) -> None:
@@ -111,32 +127,76 @@ def test_the_forage_page_draws_every_cell_live(forage_page: Page) -> None:
     )
 
 
-def test_a_cell_started_by_another_stands_under_it(forage_page: Page) -> None:
+def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: Page) -> None:
     says_it_stands(forage_page, "live")
     every_cell_drawn(forage_page)
-    expect(cell(forage_page, "SKIFFS"), "SKIFFS wasn't drawn under KESTRL").to_have_attribute(
-        "style", "--depth:1"
+    for name, depth in [("KESTRL", 0), ("SKIFFS", 1), ("TERNAA", 0), ("OSPREY", 1)]:
+        expect(cell(forage_page, name), f"{name} wasn't drawn {depth} deep").to_have_attribute(
+            "style", f"--depth:{depth}"
+        )
+    panel = opened_on(forage_page, "OSPREY")
+    expect(fact(panel, "Split from"), "OSPREY didn't say it split from TERNAA").to_contain_text(
+        "TERNAA"
     )
-    # A record with no lineage at all, as some cells' are, still draws, at the top.
-    expect(cell(forage_page, "TERNAA"), "TERNAA didn't stand at the top").to_have_attribute(
-        "style", "--depth:0"
+    panel = opened_on(forage_page, "TERNAA")
+    expect(fact(panel, "Split into"), "TERNAA didn't say it split into OSPREY").to_contain_text(
+        "OSPREY"
     )
 
 
 def test_what_waits_on_its_person_is_said_first(forage_page: Page) -> None:
     says_it_stands(forage_page, "live")
     every_cell_drawn(forage_page)
-    expect(forage_page.locator("#lede"), "the lede didn't say what waits").to_contain_text(
+    lede = forage_page.locator("#lede")
+    expect(lede, "the lede didn't say what waits").to_contain_text(
         "One thing waits on you, from KESTRL."
     )
-    cell(forage_page, "KESTRL").click()
-    panel = forage_page.locator("#panel-body")
-    expect(panel, "KESTRL's panel didn't say what it waits on").to_contain_text(
-        "Say which field to hover over"
+    expect(lede, "the lede didn't say the plan furthest to go").to_contain_text(
+        "KESTRL has furthest to go, 2 of 5 steps done."
     )
-    expect(panel, "KESTRL's wait didn't say it's ready").to_contain_text("Ready now")
-    cell(forage_page, "SKIFFS").click()
+    # The cursor stands on the first row, so its panel is open from the start.
+    panel = forage_page.locator("#panel-body")
+    expect(panel.locator("h3"), "the panel didn't open the first row").to_have_text("KESTRL")
+    for said in ["Say which field to hover over", "Ready now", "Hover Over the Field"]:
+        expect(panel, f"KESTRL's panel didn't say {said!r}").to_contain_text(said)
+    expect(fact(panel, "Its quest"), "KESTRL's panel didn't name its quest").to_have_text(
+        "QEST-20261116-KESTRL active"
+    )
+    panel = opened_on(forage_page, "SKIFFS")
+    expect(panel, "SKIFFS's panel didn't say its purpose").to_contain_text(
+        "SKIFFS rigs the skiff for the season."
+    )
     expect(panel, "SKIFFS's panel drew KESTRL's wait").not_to_contain_text("What It Waits On")
+
+
+def test_a_need_one_cell_serves_another_is_drawn_at_both_ends(forage_page: Page) -> None:
+    says_it_stands(forage_page, "live")
+    every_cell_drawn(forage_page)
+    expect(forage_page.locator("#floor path.join"), "the need drew no arc").to_have_count(1)
+    panel = opened_on(forage_page, "SKIFFS")
+    serves = fact(panel, "Serves")
+    expect(serves, "SKIFFS didn't say whom it serves").to_contain_text("KESTRL")
+    expect(serves, "the need wasn't drawn as words").to_contain_text(NEED)
+    expect(panel.locator("b"), "the need was read as markup").to_have_count(0)
+    panel = opened_on(forage_page, "KESTRL")
+    expect(fact(panel, "Relies on"), "KESTRL didn't say whom it relies on").to_contain_text(
+        "SKIFFS"
+    )
+
+
+def test_the_keys_step_the_cursor(forage_page: Page) -> None:
+    says_it_stands(forage_page, "live")
+    every_cell_drawn(forage_page)
+    selected(forage_page, "KESTRL", "the cursor didn't start on the first row")
+    forage_page.keyboard.press("j")
+    selected(forage_page, "SKIFFS", "j didn't step down")
+    forage_page.keyboard.press("-")
+    selected(forage_page, "KESTRL", "- didn't step up to the starter")
+    forage_page.keyboard.press("G")
+    selected(forage_page, "OSPREY", "G didn't go to the last row")
+    expect(forage_page.locator("#panel-body h3"), "the panel didn't follow").to_have_text("OSPREY")
+    forage_page.keyboard.press("g")
+    selected(forage_page, "KESTRL", "g didn't go to the first row")
 
 
 def test_a_purpose_written_and_a_cell_gone_are_followed(
@@ -145,20 +205,40 @@ def test_a_purpose_written_and_a_cell_gone_are_followed(
     says_it_stands(forage_page, "live")
     every_cell_drawn(forage_page)
     headline = forage_page.locator("#headline")
-    mycelium_node.tell("forage", changed=[forage_of("OSPREY", purpose=WRITTEN)])
+    # A change carries only what moved, as the node sends it.
+    mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": WRITTEN}])
     expect(headline, "a purpose written wasn't followed").to_have_text(
         "4 cells, each with its purpose.", timeout=PACE_MS
     )
     expect(cell(forage_page, "OSPREY"), "OSPREY's purpose wasn't drawn as words").to_contain_text(
         WRITTEN
     )
-    expect(forage_page.locator("#cells i"), "OSPREY's purpose was read as markup").to_have_count(0)
+    panel = opened_on(forage_page, "OSPREY")
+    expect(panel.locator(".lead"), "OSPREY's panel didn't draw its purpose").to_have_text(WRITTEN)
+    expect(forage_page.locator("main i"), "OSPREY's purpose was read as markup").to_have_count(0)
     mycelium_node.tell("forage", gone=["forage:TERNAA"])
     expect(cell(forage_page, "TERNAA"), "the gone cell was still drawn").to_have_count(
         0, timeout=PACE_MS
     )
     expect(headline, "the count didn't follow the cell going").to_have_text(
         "3 cells, each with its purpose."
+    )
+
+
+def test_a_wait_answered_is_no_longer_said(forage_page: Page, mycelium_node: StandIn) -> None:
+    says_it_stands(forage_page, "live")
+    every_cell_drawn(forage_page)
+    lede = forage_page.locator("#lede")
+    expect(lede, "the lede didn't say what waits").to_contain_text("waits on you")
+    mycelium_node.tell("forage", changed=[{"key": "forage:KESTRL", "waits": None}])
+    expect(lede, "the answered wait was still said").not_to_contain_text(
+        "waits on you", timeout=PACE_MS
+    )
+    expect(lede, "the lede lost what follows the wait").to_contain_text(
+        "OSPREY has no purpose written yet."
+    )
+    expect(forage_page.locator("#panel-body"), "KESTRL's panel kept its wait").not_to_contain_text(
+        "What It Waits On"
     )
 
 
@@ -169,6 +249,8 @@ def test_a_node_that_stops_is_said_broken_then_live(
     every_cell_drawn(forage_page)
     mycelium_node.leave()
     says_it_stands(forage_page, "broken")
+    forage_page.wait_for_timeout(REDRAWN_MS)
+    every_cell_drawn(forage_page)
     # What the node holds moves while it's away, so only reading it again shows it.
     mycelium_node.tell("forage", gone=["forage:TERNAA"])
     mycelium_node.start()
@@ -213,6 +295,7 @@ def test_the_forage_page_passes_the_skills_page_checks(
     try:
         says_it_stands(opened.page, "live")
         every_cell_drawn(opened.page)
+        # KESTRL's panel, open from the start, holds its wait, its plan and the need it relies on.
         opened.passes_the_skills_checks()
     finally:
         # Closed whatever failed, so what the page logged is said too.

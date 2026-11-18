@@ -23,6 +23,9 @@
           }
         ],
         "lineage": { "started_by": null, "parent": null },
+        "relies": [
+          { "cell": "SKIFFS", "need": "a <b>calm</b> field", "since": "2026-11-16T09:00:00Z" }
+        ],
         "waits": [
           {
             "id": "wind",
@@ -45,7 +48,10 @@
         "purpose": "SKIFFS rigs the skiff for the season.",
         "status": "active",
         "documents": [],
-        "lineage": { "started_by": "KESTRL", "parent": "QEST-20261116-KESTRL" }
+        "lineage": { "started_by": "KESTRL", "parent": "QEST-20261116-KESTRL" },
+        "serves": [
+          { "cell": "KESTRL", "need": "a <b>calm</b> field", "since": "2026-11-16T09:00:00Z" }
+        ]
       },
       {
         "key": "forage:OSPREY",
@@ -58,7 +64,7 @@
         "purpose": "",
         "status": "active",
         "documents": [],
-        "lineage": { "started_by": null, "parent": null }
+        "lineage": { "started_by": null, "parent": null, "split_from": "TERNAA" }
       },
       {
         "key": "forage:TERNAA",
@@ -70,7 +76,8 @@
         "quest": "QEST-20261116-TERNAA",
         "purpose": "TERNAA counts the terns on the cistern.",
         "status": "active",
-        "documents": []
+        "documents": [],
+        "lineage": { "split_into": ["OSPREY"] }
       }
     ]
   }

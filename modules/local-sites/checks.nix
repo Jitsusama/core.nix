@@ -442,15 +442,17 @@ in
   # The forage page, built on the theme's own web kit as a machine builds it,
   # read in headless Chromium through the server beside a stand-in node
   # (modules/mycelium/forage/tests/forage-reads-live-test.py): live with
-  # every cell drawn in order, a started cell under the one that started it
-  # and a record with no lineage at the top, what waits on its person said
-  # in its lede and its panel, a purpose written followed and drawn as words,
-  # a cell going, broken while the node is away and live once it's back,
-  # stale once the server goes with its cells kept, within its budget, and
-  # the web-design skill's page checks passing at two widths in both looks
-  # with nothing logged. The node's feed is the one home.nix declares for a
-  # machine in a realm, so a field it drops fails here. Chromium builds only
-  # on Linux.
+  # every cell drawn in order, a started or split cell under the one it grew
+  # from, what waits on its person and the plan furthest to go in its lede,
+  # plans, quest, needs and splits in its panel, its keys, a purpose written
+  # followed and drawn as words, a wait answered, a cell going, broken while
+  # the node is away and live once it's back, stale once the server goes
+  # with its cells kept, within its budget, and the web-design skill's page
+  # checks passing at two widths in both looks with nothing logged. The
+  # node's feed is the one home.nix declares for a machine in a realm, so
+  # dropping a field the page draws (cell, machine, quest, purpose, status,
+  # documents, lineage, waits, serves or relies) fails here. Chromium builds
+  # only on Linux.
   forage-site-reads-live =
     let
       inRealm = account (bareNixos [
