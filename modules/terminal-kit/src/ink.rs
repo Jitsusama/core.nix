@@ -417,7 +417,9 @@ impl Pen {
     /// nothing else of the terminal's, and are held to one line with the
     /// target, so neither can end the link early. A colour its words
     /// leave open is closed with the link, so none runs on past it, and
-    /// a pen without ink draws no colour at all.
+    /// a pen without ink draws no colour at all. Its words are to come
+    /// from this pen, as `role` draws them: a colour spelled in words
+    /// from outside would pass as one of the pen's own.
     pub fn link(&self, target: &str, words: &str) -> String {
         if !self.inks() {
             return one_line(words).into_owned();

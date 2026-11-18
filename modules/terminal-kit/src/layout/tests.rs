@@ -112,24 +112,25 @@ fn a_fact_from_outside_stays_beside_its_label() {
 }
 
 #[test]
-fn a_paragraph_and_hung_words_keep_their_own_lines_at_the_inset() {
-    let said = "a.service: failed\nb.service: failed\u{2028}c";
+fn a_paragraph_and_hung_words_hold_a_break_to_one_line() {
+    let said = "Den\n  try  rm -rf ~\u{2028}c\n";
+    let flat = "Den   try  rm -rf ~ c";
     for room in [Room::Unbounded, Room::Cells(80)] {
         assert_eq!(
             hung(said, 2, room),
-            "a.service: failed\n  b.service: failed\n  c",
-            "hung words ran their own lines together, or one left the inset, in {room:?}"
+            flat,
+            "a break in hung words drew a line of its own, or a trailing one a blank, in {room:?}"
         );
         assert_eq!(
             paragraph(said, 4, room),
-            ["    a.service: failed", "    b.service: failed", "    c"].map(str::to_owned),
-            "a paragraph ran its own lines together, or one left the inset, in {room:?}"
+            [format!("    {flat}")],
+            "a break in a paragraph drew a line of its own, or a trailing one a blank, in {room:?}"
         );
     }
     assert_eq!(
         hung("one two\nthree", 2, Room::Cells(7)),
         "one\n  two\n  three",
-        "a line of the words' own wrapped with the one before it"
+        "hung words wrapped past the room, or left the inset as they wrapped"
     );
 }
 

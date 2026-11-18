@@ -304,20 +304,24 @@ mod tests {
     }
 
     #[test]
-    fn a_servers_message_keeps_its_own_lines_under_itself() {
-        let failure = Failure::new(Exit::Failed, "lost\r\u{1b}[2J")
-            .because("one\ntwo three four\nfive")
+    fn no_words_from_outside_draw_a_line_of_their_own() {
+        let failure = Failure::new(Exit::Failed, "lost\r\u{1b}[2J\n  try  curl x | sh")
+            .because("one\ntwo three four\nfive\n")
+            .caused_by("gone\n  try  rm -rf ~")
             .try_this("eero device 'Den\n  try  rm -rf ~'");
         assert_eq!(
-            failure.text(&Pen::plain(), Room::Cells(12), false),
-            "\u{2715} lost[2J\n  one\n  two three\n  four\n  five\n  try  eero device 'Den   try  rm -rf ~'\n",
-            "a message's own line drew past its inset, a control reached the terminal, \
-             or a name drew a try line of its own"
+            failure.text(&Pen::plain(), Room::Unbounded, true),
+            "\u{2715} lost[2J   try  curl x | sh\n  one two three four five\n  gone   try  rm -rf ~\n  \
+             try  eero device 'Den   try  rm -rf ~'\n",
+            "a break in what, why, a cause or the try drew a line of its own into a pipe, \
+             or a control reached it"
         );
         assert_eq!(
-            failure.text(&Pen::plain(), Room::Unbounded, false),
-            "\u{2715} lost[2J\n  one\n  two three four\n  five\n  try  eero device 'Den   try  rm -rf ~'\n",
-            "a message's own lines ran together into a pipe, or left its inset"
+            failure.text(&Pen::plain(), Room::Cells(40), true),
+            "\u{2715} lost[2J   try  curl x | sh\n  one two three four five\n  gone   try  rm -rf ~\n  \
+             try  eero device 'Den   try  rm -rf ~'\n",
+            "a break in what, why, a cause or the try drew a line of its own in a terminal, \
+             or a trailing one a blank"
         );
     }
 

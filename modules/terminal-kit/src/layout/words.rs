@@ -5,8 +5,11 @@
 //! Lists, facts and tables set their cells with these, once each is
 //! drawn as the terminal may be given it. Each holds its words to one
 //! line first, as `one_line` says, since a break of their own would
-//! draw past the inset or the measure they keep; a paragraph and hung
-//! words keep their own lines instead, each set at the inset.
+//! draw past the inset or the measure they keep. A paragraph and hung
+//! words do too: the kit can't tell a break a command wrote from one in
+//! a name it was given, and one in a name would draw a line of its own
+//! at the inset, where it could pass for a failure's try line. A command
+//! with several lines to say sets each apart.
 
 use std::borrow::Cow;
 
@@ -51,18 +54,25 @@ pub fn one_line(words: &str) -> Cow<'_, str> {
 /// Whether the kit keeps `c` from the terminal: a control character, a
 /// Unicode line or paragraph separator, or a mark that sets, embeds,
 /// overrides or isolates a run of text's direction, the implicit ones
-/// (left-to-right, right-to-left and Arabic letter marks) among them.
+/// (left-to-right, right-to-left and Arabic letter marks) among them, or
+/// one that draws nothing and joins nothing (the zero-width space, the
+/// word joiner and the invisible operators after it, and the byte-order
+/// mark), which would let two names that read the same pass for two.
+/// The joiners that shape a script or an emoji stay.
 pub(crate) fn unseen(c: char) -> bool {
     c.is_control()
         || matches!(
             c,
             '\u{061c}'
+                | '\u{200b}'
                 | '\u{200e}'
                 | '\u{200f}'
                 | '\u{2028}'
                 | '\u{2029}'
                 | '\u{202a}'..='\u{202e}'
+                | '\u{2060}'..='\u{2064}'
                 | '\u{2066}'..='\u{2069}'
+                | '\u{feff}'
         )
 }
 
@@ -179,35 +189,32 @@ pub fn shortened(word: &str, room: usize) -> String {
 
 /// Words set as a paragraph `inset` cells in: wrapped at whole words to
 /// the room, every line at the same inset, so a nested level keeps its
-/// indent wherever it wraps. A line the words break themselves stays a
-/// line of its own, at the inset too; into a pipe each is one line.
+/// indent wherever it wraps. The words are held to one line first, as
+/// the module says; into a pipe that one line is the paragraph.
 pub fn paragraph(words: &str, inset: usize, room: Room) -> Vec<String> {
     let pad = " ".repeat(inset);
-    own_lines(words, inset, room)
+    set(words, inset, room)
         .into_iter()
         .map(|line| format!("{pad}{line}"))
         .collect()
 }
 
 /// Words set after something `lead` cells wide: wrapped at whole words
-/// to the room, each further line under the first's words. A line the
-/// words break themselves, as a list of what failed is, stays a line of
-/// its own under them too; into a pipe each is one line.
+/// to the room, each further line under the first's words. The words are
+/// held to one line first, as the module says; into a pipe they stay on
+/// it.
 pub fn hung(words: &str, lead: usize, room: Room) -> String {
-    own_lines(words, lead, room).join(&format!("\n{}", " ".repeat(lead)))
+    set(words, lead, room).join(&format!("\n{}", " ".repeat(lead)))
 }
 
-/// Each line of the words as drawn, wrapped to the room left after
-/// `inset` cells, ready to set at the inset. Only the words' own breaks
-/// part them into a pipe, where nothing wraps.
-fn own_lines(words: &str, inset: usize, room: Room) -> Vec<String> {
-    drawn(words)
-        .split('\n')
-        .flat_map(|line| match room.cells() {
-            None => vec![line.to_owned()],
-            Some(cells) => wrapped(line, cells.saturating_sub(inset).max(1)),
-        })
-        .collect()
+/// The words held to one line, wrapped to the room left after `inset`
+/// cells, ready to set at the inset; into a pipe, where nothing wraps,
+/// the one line without the space a trailing break left.
+fn set(words: &str, inset: usize, room: Room) -> Vec<String> {
+    match room.cells() {
+        None => vec![one_line(words).trim_end().to_owned()],
+        Some(cells) => wrapped(words, cells.saturating_sub(inset).max(1)),
+    }
 }
 
 /// Words wrapped to `measure` cells: a run gives way at its items first,
@@ -496,7 +503,8 @@ mod tests {
     fn every_mark_that_reorders_text_is_kept_from_the_terminal() {
         let marks = [
             '\u{061c}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}',
-            '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+            '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{200b}', '\u{2060}',
+            '\u{2061}', '\u{2062}', '\u{2063}', '\u{2064}', '\u{feff}',
         ];
         for mark in marks {
             let words = format!("abc{mark}def");

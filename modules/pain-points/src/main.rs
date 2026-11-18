@@ -179,7 +179,9 @@ fn main() -> ExitCode {
             if troubled {
                 return Err(
                     Failure::new(Exit::Failed, "pain-points couldn't route all it heard")
-                        .because(said),
+                        // The kit holds a reason to one line, so each line
+                        // heard is parted by a semicolon rather than a break.
+                        .because(said.lines().collect::<Vec<_>>().join("; ")),
                 );
             }
             println!("{said}");
