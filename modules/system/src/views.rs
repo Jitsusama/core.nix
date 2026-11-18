@@ -165,6 +165,7 @@ mod tests {
                         says: "is short of memory, runs 3 busy sessions".to_owned(),
                         side: Vec::new(),
                         address: Some("mycelium/#machine=laptop".to_owned()),
+                        ties: serde_json::Value::Null,
                     }],
                     deeper: deeper(
                         "mycelium machines",
