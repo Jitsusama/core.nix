@@ -1037,10 +1037,11 @@ impl Used {
     /// watch last heard anything right in its profile or `deps` opened.
     /// Only the budget reads opens: a reader such as a backup would
     /// otherwise hold back every other window. The quarter-hour floor
-    /// stands only where the watch has heard those folders for a whole
-    /// one, since an open it missed would make a build in use look old:
-    /// one not yet marked, one past an overflow or a start, or anywhere
-    /// without a watch, as on macOS, keeps its hour.
+    /// stands only where this guard's marks have heard those folders, as
+    /// they are now, for a whole one, since an open it missed would make
+    /// a build in use look old: one not yet marked since the guard
+    /// started, one made anew since its mark, one past lost events, and
+    /// anywhere nothing hears, as on macOS or in `plan`, keeps its hour.
     fn of(build: &Candidate, uses: &Uses, now: f64) -> Self {
         let dirs = crate::replaced::watched_dirs(&build.path);
         let idle = uses

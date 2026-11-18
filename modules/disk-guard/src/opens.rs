@@ -142,6 +142,9 @@ impl Watch {
                 || length < header
                 || length > events.len()
             {
+                // The rest of the read can't be told apart, and could hold
+                // opens of anything marked.
+                seen.push(Seen::Lost);
                 return;
             }
             if event.mask & libc::FAN_Q_OVERFLOW != 0 {

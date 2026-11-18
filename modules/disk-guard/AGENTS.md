@@ -84,11 +84,15 @@ or launchd, and [`home.nix`][2] the account's.
   anything right in its profile or `deps` opened, as every cargo opens
   its profile's `.cargo-build-lock`: a cargo that finds every unit fresh
   writes nothing, so a run of checks over an unchanged crate would
-  otherwise look idle between them. Other windows read writes alone,
-  so a reader such as a backup holds none of them back. The 15 minutes
-  hold only where the watch has heard a build's folders for 15 minutes
-  without a gap; one not yet marked, one after an overflow or the
-  guard's start, and every build where nothing watches, as on macOS,
+  otherwise look idle between them. Any reader of a profile, such as
+  rust-analyzer or a backup, holds its build back from the budget the
+  same way, which costs room, never a build in use. Other windows read
+  writes alone, so such a reader holds none of them back. The 15
+  minutes hold only where this guard's own marks have heard a build's
+  folders, as they are now, for 15 minutes without a gap. A build not
+  marked since the guard started, one whose profile or `deps` was made
+  anew since its mark, one after lost events, and every build where
+  nothing hears, as on macOS, in `plan`, or once the watch fails,
   keeps the hour. A budget that comes to nothing, as a share of
   a disk that can't be measured does, is none. While the first root's
   disk holds more than the budget, the guard makes upkeep due, at most

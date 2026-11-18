@@ -536,7 +536,9 @@ fn a_build_used_within_a_quarter_hour_or_sat_in_counts_but_stays() {
         readable: true,
         ..Default::default()
     };
-    let found = offers(&config, &[shell], &|_| false);
+    // Heard throughout, so the quarter hour is the floor in force.
+    let uses = heard(&made, 3.0);
+    let found = offers_using(&config, &[shell], &|_| false, &BTreeMap::new(), &uses);
     let offered = |app: &Path| find(&found, &app.join("target")).candidate.clone();
     assert!(
         !offered(&made[2]).spent,
@@ -572,15 +574,21 @@ fn a_build_the_watch_may_have_missed_keeps_its_hour() {
     // stayed before opens were heard.
     let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-left", JUST_PAST)], 1);
     let watched_lately = heard(&made, 0.1);
-    let mut restarted = heard(&made, 3.0);
-    restarted.started(now() - 600.0);
     let mut overflowed = heard(&made, 3.0);
     overflowed.lost(now() - 600.0);
+    let mut deafened = heard(&made, 3.0);
+    deafened.deaf();
+    // Only an earlier guard's word for it, since its marks died with it.
+    let mut earlier = Uses::default();
+    for dir in watched_dirs(&made[1].join("target")) {
+        earlier.watching(&dir, now() - 3.0 * 3600.0);
+    }
     for (why, uses) in [
         ("nothing watches it", Uses::default()),
-        ("it was first watched minutes ago", watched_lately),
-        ("the guard started minutes ago", restarted),
+        ("it was first marked minutes ago", watched_lately),
         ("the watch lost events minutes ago", overflowed),
+        ("the guard stopped hearing", deafened),
+        ("only an earlier guard watched it", earlier),
     ] {
         let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
         assert!(
@@ -588,15 +596,36 @@ fn a_build_the_watch_may_have_missed_keeps_its_hour() {
             "a build left a minute past the floor went past the budget though {why}"
         );
     }
+    // Last, since it changes the build itself: cleaned and built again,
+    // as the guard's own take of a target leaves it, so its old mark
+    // hears nothing of the folders there now.
+    let remade = heard(&made, 3.0);
+    let deps = made[1].join("target/debug/deps");
+    std::fs::rename(&deps, made[1].join("target/debug/old-deps")).unwrap();
+    std::fs::create_dir(&deps).unwrap();
+    // Written no later than the rest of the build, so only the mark
+    // tells it apart from one heard throughout.
+    aged(&made[1].join("target"), JUST_PAST);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &remade);
+    assert!(
+        !find(&found, &made[1].join("target")).candidate.spent,
+        "a build left a minute past the floor went past the budget though its deps was made anew since its mark"
+    );
 }
 
-/// What the watch says of `apps`' builds when it has heard their profiles
-/// and `deps` for `hours` and nothing was opened in them.
+/// What the watch says of `apps`' builds when this guard has marked their
+/// profiles and `deps` for `hours` and nothing was opened in them.
 fn heard(apps: &[PathBuf], hours: f64) -> Uses {
     let mut uses = Uses::default();
     for app in apps {
         for dir in watched_dirs(&app.join("target")) {
             uses.watching(&dir, now() - hours * 3600.0);
+            uses.marked(&dir, now() - hours * 3600.0);
+            assert!(
+                uses.heard.contains_key(&dir),
+                "{} wasn't marked",
+                dir.display()
+            );
         }
     }
     uses

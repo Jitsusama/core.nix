@@ -182,39 +182,63 @@ fn a_target_is_last_opened_when_its_lock_or_a_build_in_its_deps_was() {
 }
 
 #[test]
-fn a_target_is_heard_since_its_folders_all_were_and_the_guard_last_started() {
+fn a_target_is_heard_since_this_guard_marked_its_folders_as_they_are() {
     // An open the watch missed would make a build in use look old, so
-    // what it says is trusted only from when it last heard everything.
-    let dirs = [PathBuf::from("/t/debug"), PathBuf::from("/t/debug/deps")];
+    // what it says is trusted only from when this guard's marks last
+    // heard everything, on the folders there now.
+    let root = tempfile::tempdir().unwrap();
+    let dirs = [root.path().join("debug"), root.path().join("debug/deps")];
+    fs::create_dir_all(&dirs[1]).unwrap();
     let mut uses = Uses::default();
+    uses.watching(&dirs[0], 1.0);
+    uses.watching(&dirs[1], 1.0);
     assert_eq!(
         uses.heard_since(&dirs),
         None,
-        "an unwatched target was heard"
+        "a target an earlier guard watched was heard by this one"
     );
-    uses.watching(&dirs[0], 100.0);
+    uses.marked(&dirs[0], 100.0);
     assert_eq!(
         uses.heard_since(&dirs),
         None,
-        "a target with an unwatched deps was heard"
+        "a target with an unmarked deps was heard"
     );
-    uses.watching(&dirs[1], 300.0);
+    uses.marked(&dirs[1], 300.0);
+    uses.marked(&dirs[1], 400.0);
     assert_eq!(
         uses.heard_since(&dirs),
         Some(300.0),
-        "a target isn't heard from when its last folder was first watched"
-    );
-    uses.started(500.0);
-    assert_eq!(
-        uses.heard_since(&dirs),
-        Some(500.0),
-        "a target isn't heard from when the guard last started"
+        "a target isn't heard from when its last folder was first marked"
     );
     uses.lost(700.0);
     assert_eq!(
         uses.heard_since(&dirs),
         Some(700.0),
         "a target isn't heard from when the watch last lost events"
+    );
+    // Cleaned and built again: the mark went with the old folder.
+    fs::rename(&dirs[1], root.path().join("old-deps")).unwrap();
+    fs::create_dir(&dirs[1]).unwrap();
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a deps made anew was heard through the old one's mark"
+    );
+    uses.marked(&dirs[1], 900.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        Some(900.0),
+        "a deps made anew isn't heard from when it was marked again"
+    );
+    fs::remove_dir(&dirs[1]).unwrap();
+    assert_eq!(uses.heard_since(&dirs), None, "a gone deps was heard");
+    uses.deaf();
+    fs::create_dir(&dirs[1]).unwrap();
+    uses.marked(&dirs[1], 1000.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a deaf guard still heard a profile it had marked"
     );
     assert_eq!(
         uses.heard_since(&[]),

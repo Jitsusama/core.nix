@@ -2135,6 +2135,10 @@ fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
     assert!(kept.watched.contains_key(&deps), "{kept:?}");
+    assert!(
+        kept.watched.contains_key(deps.parent().unwrap()),
+        "the profile, whose lock a fresh cargo opens, went unwatched: {kept:?}"
+    );
     assert!(kept.opened.contains_key(&rlib), "{kept:?}");
     assert!(
         kept.opened.contains_key(&lock),

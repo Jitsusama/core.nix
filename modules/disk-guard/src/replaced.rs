@@ -33,11 +33,24 @@ pub struct Build {
 pub struct Uses {
     pub opened: BTreeMap<PathBuf, f64>,
     pub watched: BTreeMap<PathBuf, f64>,
-    /// The last moment the watch may have missed an open anywhere: an
-    /// overflow, or the guard starting, since nothing heard the opens
-    /// while it was stopped, nor those it heard and never saved.
-    #[serde(default)]
+    /// Each folder this guard holds a mark on: when the mark landed, and
+    /// the folder it landed on. Never kept, since a mark dies with the
+    /// guard that placed it, and one on a folder since made anew hears
+    /// nothing of the new one.
+    #[serde(skip)]
+    pub heard: BTreeMap<PathBuf, Heard>,
+    /// The last moment the watch lost events, which could have been opens
+    /// of anything it marks. Never kept, as the marks aren't.
+    #[serde(skip)]
     pub unheard: f64,
+}
+
+/// A mark this guard placed on a folder: when, and on which inode.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Heard {
+    pub since: f64,
+    pub dev: u64,
+    pub ino: u64,
 }
 
 impl Uses {
@@ -51,30 +64,50 @@ impl Uses {
         self.watched.entry(dir.to_owned()).or_insert(at);
     }
 
+    /// This guard's mark landed on `dir` at `at`. A mark again on the
+    /// folder it already marked keeps its time; one on a folder made anew
+    /// at the same path starts afresh. A folder it can't read is left
+    /// unheard.
+    pub fn marked(&mut self, dir: &Path, at: f64) {
+        let Ok(meta) = dir.metadata() else { return };
+        let now = Heard {
+            since: at,
+            dev: meta.dev(),
+            ino: meta.ino(),
+        };
+        let heard = self.heard.entry(dir.to_owned()).or_insert(now);
+        if (heard.dev, heard.ino) != (now.dev, now.ino) {
+            *heard = now;
+        }
+    }
+
     /// The watch lost events at `at`, which could have been opens of
     /// anything it watches, so everything counts as used then.
     pub fn lost(&mut self, at: f64) {
         for since in self.watched.values_mut() {
             *since = since.max(at);
         }
-        self.started(at);
-    }
-
-    /// The guard starts hearing again at `at`, having heard nothing
-    /// before it since it last saved.
-    pub fn started(&mut self, at: f64) {
         self.unheard = self.unheard.max(at);
     }
 
-    /// Since when every one of `dirs` has been heard without a gap, or
-    /// nothing when one isn't watched, or there are none.
+    /// Forgets every mark, for a guard that hears nothing.
+    pub fn deaf(&mut self) {
+        self.heard.clear();
+    }
+
+    /// Since when this guard has heard every one of `dirs` without a gap:
+    /// its mark on each, on the folder there now, and its last lost
+    /// events. Nothing when one isn't marked, or was made anew since, or
+    /// there are none.
     pub fn heard_since(&self, dirs: &[PathBuf]) -> Option<f64> {
         if dirs.is_empty() {
             return None;
         }
-        dirs.iter()
-            .map(|dir| self.watched.get(dir).copied())
-            .try_fold(self.unheard, |since, watched| Some(since.max(watched?)))
+        dirs.iter().try_fold(self.unheard, |since, dir| {
+            let heard = self.heard.get(dir)?;
+            let meta = dir.metadata().ok()?;
+            ((meta.dev(), meta.ino()) == (heard.dev, heard.ino)).then_some(since.max(heard.since))
+        })
     }
 
     /// Drops what's no longer there, so the store holds only what's built.

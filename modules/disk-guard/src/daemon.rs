@@ -443,6 +443,9 @@ pub struct Guard {
     /// marked what's built.
     opens: Option<Arc<crate::opens::Watch>>,
     marked_at: Option<f64>,
+    /// Whether what hears the opens still does: its thread ends on an
+    /// error reading them, after which nothing is heard.
+    listening: Arc<AtomicBool>,
     /// Nix's own `min-free`, and when it was read.
     min_free: Option<(f64, Option<u64>)>,
     /// The account's home, which sentences write as `~`, for a guard run
@@ -739,13 +742,6 @@ impl Guard {
         let uses_path = state.join("uses.json");
         let mut uses: Uses = state::load(&uses_path).ok().flatten().unwrap_or_default();
         uses.forget_gone();
-        // What was opened while it was stopped, or heard and never saved,
-        // went unheard, so the budget waits an hour before trusting it.
-        uses.started(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_or(0.0, |since| since.as_secs_f64()),
-        );
         let home = matches!(config.scope, crate::config::Scope::User)
             .then(|| std::env::var_os("HOME").map(PathBuf::from))
             .flatten();
@@ -800,6 +796,7 @@ impl Guard {
             uses_path,
             opens: None,
             marked_at: None,
+            listening: Arc::new(AtomicBool::new(false)),
             min_free: None,
             home,
             freeze: None,
@@ -1074,17 +1071,29 @@ impl Guard {
 
     /// Hears from `watch` who opens the artifacts of the targets it finds,
     /// on a thread of its own, so a busy build's thousands of opens never
-    /// wait on a step. The thread ends with the guard.
+    /// wait on a step. The thread ends with the guard, or on an error
+    /// reading them, after which the guard counts itself deaf.
     pub fn listen(&mut self, watch: Arc<crate::opens::Watch>) {
         let uses = Arc::downgrade(&self.uses);
         let heard = Arc::clone(&watch);
+        let listening = Arc::clone(&self.listening);
+        listening.store(true, Ordering::SeqCst);
         let spawned = std::thread::Builder::new()
             .name("opens".to_owned())
             .spawn(move || {
                 loop {
                     let seen = heard.wait(Duration::from_secs(1));
                     let Some(uses) = uses.upgrade() else { return };
-                    let Ok(seen) = seen else { return };
+                    let seen = match seen {
+                        Ok(seen) => seen,
+                        Err(error) => {
+                            listening.store(false, Ordering::SeqCst);
+                            eprintln!(
+                                "disk-guard: stopped hearing opens ({error}), so builds keep the hour"
+                            );
+                            return;
+                        }
+                    };
                     if seen.is_empty() {
                         continue;
                     }
@@ -1102,13 +1111,16 @@ impl Guard {
             });
         if spawned.is_ok() {
             self.opens = Some(watch);
+        } else {
+            self.listening.store(false, Ordering::SeqCst);
         }
     }
 
     /// Marks every profile and its `deps` in the targets the cargo sources
     /// hold, at first and hourly after, so a build made since is heard too.
     /// A folder that was made anew loses its mark with the old one and gets
-    /// one again.
+    /// one again, heard from then. Each is dated as its mark lands, since
+    /// the walk can take minutes in which an unmarked folder hears nothing.
     fn mark(&mut self, tick: &Tick) {
         let Some(watch) = &self.opens else { return };
         if self.marked_at.is_some_and(|at| tick.wall - at < MARK_EVERY) {
@@ -1135,15 +1147,19 @@ impl Guard {
                     }
                     for dir in crate::replaced::watched_dirs(&tree.path) {
                         if watch.watch(&dir).is_ok() {
-                            marked.push(dir);
+                            let at = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .map_or(0.0, |since| since.as_secs_f64());
+                            marked.push((dir, at));
                         }
                     }
                 }
             }
         }
         let mut uses = self.uses.lock().unwrap_or_else(PoisonError::into_inner);
-        for dir in marked {
+        for (dir, at) in marked {
             uses.watching(&dir, tick.wall);
+            uses.marked(&dir, at);
         }
     }
 
@@ -2253,17 +2269,16 @@ impl Guard {
     }
 
     /// When each build's artifacts were last opened: a copy, so a long
-    /// survey never holds up what hears the opens. A guard that doesn't
-    /// listen hears nothing from now on, so the copy says so, whatever an
-    /// earlier guard watched.
+    /// survey never holds up what hears the opens. A guard that no longer
+    /// listens hears nothing, so the copy says so, whatever it marked.
     fn uses_now(&self) -> Uses {
         let mut uses = self
             .uses
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
-        if self.opens.is_none() {
-            uses.started(f64::MAX);
+        if self.opens.is_none() || !self.listening.load(Ordering::SeqCst) {
+            uses.deaf();
         }
         uses
     }
