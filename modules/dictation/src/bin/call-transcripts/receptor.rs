@@ -7,9 +7,9 @@
 //! from when each Tuple call Joel missed rang (rings.rs, which reads when
 //! alone and never who), and whether the book could be read. A missed
 //! ring is a call that asked for Joel as much as one he took, so it
-//! counts in each, and every one is addressed to him. No title, person, event or folder of a
-//! call is ever an argument, so nothing a call's files say reaches the
-//! node, whatever they hold. mycelium is run by its store path, its
+//! counts in each, and every one is addressed to him. No title, person,
+//! event or folder of a call is ever an argument, so nothing a call's
+//! files say reaches the node, whatever they hold. mycelium is run by its store path, its
 //! arguments given one by one and never through a shell, by the speaker
 //! every daemon's receptors share (../receptor-say).
 //!
@@ -158,27 +158,14 @@ fn counted(held: &book::Book, missed: &[u64], now: u64, midnight: u64) -> Counts
     Counts::of(held.starts().chain(missed.iter().copied()), now, midnight)
 }
 
-/// What the log says when Tuple's missed calls stop or start being
-/// counted, or nothing when that hasn't changed since `before`.
-fn told(before: Option<&'static str>, now: Option<&'static str>) -> Option<String> {
-    match (before, now) {
-        (before, Some(why)) if before != Some(why) => {
-            Some(format!("Tuple's missed calls aren't counted: {why}"))
-        }
-        (Some(_), None) => Some("Tuple's missed calls are counted again".to_owned()),
-        _ => None,
-    }
-}
-
 /// Says how the calls stand, every `EVERY`, for as long as the daemon
 /// runs. A failure is said once, when it starts, rather than each round,
 /// and so is a Tuple file that can't be counted from, and its recovery.
 pub fn keep(receptor: &Receptor, book: &book::Shared) {
     let pid = std::process::id();
     let tuple = rings::file();
-    let mut heard = rings::Heard::default();
+    let mut following = rings::Following::default();
     let mut said: Option<String> = None;
-    let mut unread: Option<&'static str> = None;
     loop {
         let now = book::now();
         let midnight = midnight(now);
@@ -186,15 +173,10 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
             Rings::Unread("no absolute folder names where tuple-call keeps its calls"),
             rings::read,
         );
-        let why = match rang {
-            Rings::Unread(why) => Some(why),
-            Rings::Missed(_) => None,
-        };
-        if let Some(line) = told(unread, why) {
+        let (missed, logged) = following.round(&rang, midnight);
+        if let Some(line) = logged {
             eprintln!("call-transcripts: {line}");
         }
-        unread = why;
-        let missed = heard.hear(&rang, midnight);
         let (counts, failing) = {
             let held = book.lock();
             (counted(&held, &missed, now, midnight), held.failing())
@@ -365,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn a_call_from_the_last_hour_of_yesterday_counts_in_neither() {
+    fn only_today_s_calls_count_in_the_hour() {
         let midnight = NOW - HOUR / 2;
         assert_eq!(
             Counts::of([midnight - 1, midnight], NOW, midnight),
@@ -442,7 +424,7 @@ mod tests {
         )
         .unwrap();
         let held = book::Book::read(&calls);
-        let missed = rings::Heard::default().hear(&rings::read(&recent), MIDNIGHT);
+        let (missed, _) = rings::Following::default().round(&rings::read(&recent), MIDNIGHT);
         let counts = counted(&held, &missed, NOW, MIDNIGHT);
         assert_eq!(
             counts,
@@ -462,29 +444,6 @@ mod tests {
             ["reading", "--hour", "1", "--today", "1", "--addressed", "1"],
             "the missed call wasn't said as one addressed to Joel"
         );
-    }
-
-    #[test]
-    fn a_tuple_file_that_cant_be_counted_from_is_logged_once_and_so_is_its_return() {
-        let unread = "its file isn't a plain file";
-        assert!(
-            told(None, Some(unread)).is_some_and(|line| line.contains(unread)),
-            "a file that can't be counted from wasn't logged"
-        );
-        assert_eq!(
-            told(Some(unread), Some(unread)),
-            None,
-            "it was logged again"
-        );
-        assert!(
-            told(Some(unread), Some("tuple-call has kept no calls")).is_some(),
-            "a new reason wasn't logged"
-        );
-        assert!(
-            told(Some(unread), None).is_some_and(|line| line.contains("again")),
-            "its return wasn't logged"
-        );
-        assert_eq!(told(None, None), None, "a sound file was logged");
     }
 
     #[test]

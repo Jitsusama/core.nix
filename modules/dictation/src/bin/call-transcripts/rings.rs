@@ -70,7 +70,9 @@ pub fn read(path: &Path) -> Rings {
     if !file.metadata().is_ok_and(|meta| meta.is_file()) {
         return Rings::Unread("its file isn't a plain file");
     }
-    let mut bytes = Vec::new();
+    // Room for the most that's read, taken before reading, so the buffer
+    // never grows and leaves a copy of what it held behind it unzeroed.
+    let mut bytes = Vec::with_capacity(usize::try_from(LARGEST_FILE + 1).unwrap_or(usize::MAX));
     let rings = match file.take(LARGEST_FILE + 1).read_to_end(&mut bytes) {
         Err(_) => Rings::Unread("its file couldn't be read"),
         Ok(length) if u64::try_from(length).map_or(true, |length| length > LARGEST_FILE) => {
@@ -83,10 +85,11 @@ pub fn read(path: &Path) -> Rings {
 }
 
 /// Zeroes what the file said before letting it go, so the names in it
-/// don't sit in freed memory.
+/// don't sit in freed memory. `black_box` is what keeps the zeroing from
+/// being taken out as a write nothing reads; Rust promises that only as
+/// best it can, short of the volatile writes this crate doesn't make.
 fn forget(mut bytes: Vec<u8>) {
     bytes.fill(0);
-    // So the zeroing isn't taken out as a write nothing reads.
     std::hint::black_box(&bytes);
 }
 
@@ -113,7 +116,11 @@ fn of(bytes: &[u8]) -> Rings {
 /// The missed calls heard today, kept between reads: tuple-call keeps
 /// only its newest nine calls, so a ring missed this morning leaves its
 /// file once Joel takes enough calls, and would stop being counted while
-/// it's still today's. Only when each rang is kept.
+/// it's still today's. Only when each rang is kept, and only in memory,
+/// so a restart of the daemon forgets those that left the file; keeping
+/// them on disk would be a store of its own, with terms of its own.
+/// While the file can't be read, nothing is counted, those already heard
+/// included, since a count from a file that can't be trusted is a guess.
 #[derive(Clone, Debug, Default)]
 pub struct Heard {
     rang: BTreeSet<u64>,
@@ -134,6 +141,35 @@ impl Heard {
             }
             Rings::Unread(_) => Vec::new(),
         }
+    }
+}
+
+/// Tuple's missed calls as the receptor follows them round to round:
+/// those heard today, and why the file last couldn't be counted from,
+/// so the log says each change once rather than every round.
+#[derive(Clone, Debug, Default)]
+pub struct Following {
+    heard: Heard,
+    unread: Option<&'static str>,
+}
+
+impl Following {
+    /// When each missed call heard today rang, after this round's read,
+    /// and the line for the log if whether they're counted changed.
+    pub fn round(&mut self, rings: &Rings, midnight: u64) -> (Vec<u64>, Option<String>) {
+        let why = match rings {
+            Rings::Unread(why) => Some(*why),
+            Rings::Missed(_) => None,
+        };
+        let logged = match (self.unread, why) {
+            (before, Some(why)) if before != Some(why) => {
+                Some(format!("Tuple's missed calls aren't counted: {why}"))
+            }
+            (Some(_), None) => Some("Tuple's missed calls are counted from its file".to_owned()),
+            _ => None,
+        };
+        self.unread = why;
+        (self.heard.hear(rings, midnight), logged)
     }
 }
 
@@ -260,6 +296,45 @@ mod tests {
                 .hear(&Rings::Missed(Vec::new()), midnight + 10)
                 .is_empty(),
             "a ring was still heard the next day"
+        );
+    }
+
+    #[test]
+    fn rounds_keep_what_was_heard_and_log_each_change_once() {
+        let midnight = 10_000;
+        let plain = Rings::Unread("its file isn't a plain file");
+        let none = Rings::Unread("tuple-call has kept no calls");
+        let mut following = Following::default();
+        let (missed, logged) = following.round(&Rings::Missed(vec![midnight + 5]), midnight);
+        assert_eq!(missed, [midnight + 5]);
+        assert_eq!(logged, None, "a sound file was logged");
+        let (missed, logged) = following.round(&plain, midnight);
+        assert!(
+            missed.is_empty(),
+            "a file that can't be read was counted from"
+        );
+        assert!(
+            logged.is_some_and(|line| line.contains("isn't a plain file")),
+            "a file that can't be counted from wasn't logged"
+        );
+        assert_eq!(
+            following.round(&plain, midnight).1,
+            None,
+            "it was logged again"
+        );
+        assert!(
+            following.round(&none, midnight).1.is_some(),
+            "a new reason wasn't logged"
+        );
+        let (missed, logged) = following.round(&Rings::Missed(vec![midnight + 9]), midnight);
+        assert_eq!(
+            missed,
+            [midnight + 5, midnight + 9],
+            "a ring heard before the file went unread was forgotten"
+        );
+        assert!(
+            logged.is_some_and(|line| line.contains("counted from its file")),
+            "its return wasn't logged"
         );
     }
 }
