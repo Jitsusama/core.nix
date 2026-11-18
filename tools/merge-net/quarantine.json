@@ -180,5 +180,20 @@
     "owner_session": "orchestrator",
     "reason": "failed, then passed, at 28d1e29f9bd6",
     "test": "vm-guide-recovers"
+  },
+  {
+    "at": 1795029367,
+    "commit": "aaf54771c2dbb59db1730ef204b10be828821cdb",
+    "due": "2026-11-20",
+    "owner_pr": 5478,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #5478, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "subtests": [
+      "test_now_leads_with_what_waits_on_joel",
+      "test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next",
+      "test_waiting_on_you_holds_only_what_is_true",
+      "test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps"
+    ],
+    "test": "vm-desktop-launcher-waits-on-joel"
   }
 ]
