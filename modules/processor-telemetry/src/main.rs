@@ -23,6 +23,7 @@ mod service;
 
 use std::path::Path;
 use std::process::ExitCode;
+use std::time::Instant;
 
 use terminal_kit::{Exit, Failure, Help};
 use zlink::Server;
@@ -63,6 +64,7 @@ fn main() -> ExitCode {
 }
 
 async fn serve() -> Result<(), Failure> {
+    let started = Instant::now();
     let class = Path::new("/sys/class/intel_pmt");
     let region = service::find(class, layout::GUID);
     let resting = service::find(class, resting::GUID);
@@ -96,6 +98,10 @@ async fn serve() -> Result<(), Failure> {
         resting,
         clusters,
     };
+    // Health times a restart from this line to the stop before it, and
+    // names a daemon that says none to its owner (modules/health,
+    // src/launches.rs).
+    println!("<6>ready in {} ms", started.elapsed().as_millis());
     Server::new(listener, telemetry)
         .run()
         .await
