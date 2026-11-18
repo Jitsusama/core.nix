@@ -537,6 +537,11 @@ fn a_warning_or_failure_is_marked_one_only_in_the_journal() {
         "a failure into the journal wasn't marked one"
     );
     assert_eq!(
+        as_marked("health: n", true, NOTICE),
+        "<5>health: n",
+        "a notice into the journal wasn't marked one"
+    );
+    assert_eq!(
         as_marked("health: w", false, WARNING),
         "health: w",
         "a warning elsewhere carried the journal's mark"
