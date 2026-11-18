@@ -12,9 +12,15 @@ use serde_json::Value;
 use super::{found, holds, released_with};
 use crate::common::{DOCKER_CONFIG, FENCE_LIST, KEPT_SETTINGS, Running};
 
-/// Bubblewrap's arguments emptying `file`.
-fn emptying(file: &Path) -> [&Path; 3] {
-    [Path::new("--ro-bind"), Path::new("/dev/null"), file]
+/// Bubblewrap's arguments emptying `file`, by binding settings that say
+/// nothing over it, from the daemon's own folder.
+fn emptying<'a>(empty: &'a Path, file: &'a Path) -> [&'a Path; 3] {
+    [Path::new("--ro-bind"), empty, file]
+}
+
+/// The settings saying nothing the daemon binds over a file it empties.
+fn empty_settings(running: &Running) -> PathBuf {
+    running.folder.join("runtime/passwords/emptied.json")
 }
 
 /// Docker's settings in the running home, by the path the daemon binds:
@@ -34,8 +40,28 @@ fn a_fence_list_from_before_emptied_files_still_releases() {
     let args = released_with(&running, "a223456789abcdef0123456789abcdef");
     let docker = docker_settings(&running);
     assert!(
-        found(&args, &emptying(&docker)).is_none(),
+        !args.iter().any(|arg| Path::new(arg) == docker),
         "a list naming no emptied files emptied Docker's settings: {args:?}"
+    );
+}
+
+#[test]
+fn settings_in_a_folder_the_list_hides_are_left_to_it() {
+    // Bubblewrap can't make a file to bind over inside a folder already
+    // made empty and read-only, so binding there too would keep every yes
+    // from releasing; the folder hides them already.
+    let running = Running::releasing("asks-docker-in-hidden", &[super::LISTED]);
+    let mut list: Value = serde_json::from_str(FENCE_LIST).unwrap();
+    list["home"].as_array_mut().unwrap().push(".docker/".into());
+    std::fs::write(running.fence_list(), list.to_string()).unwrap();
+    let args = released_with(&running, "a423456789abcdef0123456789abcdef");
+    let folder = docker_settings(&running).parent().unwrap().to_path_buf();
+    holds(&args, &[Path::new("--tmpfs"), &folder]);
+    assert!(
+        !args
+            .iter()
+            .any(|arg| Path::new(arg).starts_with(&folder) && Path::new(arg) != folder),
+        "something inside a folder the list hides was bound over: {args:?}"
     );
 }
 
@@ -48,9 +74,13 @@ fn a_link_to_dockers_settings_empties_the_file_it_names() {
     std::fs::remove_file(&docker).unwrap();
     std::os::unix::fs::symlink(&outside, &docker).unwrap();
     let args = released_with(&running, "b223456789abcdef0123456789abcdef");
-    holds(&args, &emptying(&std::fs::canonicalize(&outside).unwrap()));
+    let empty = empty_settings(&running);
+    holds(
+        &args,
+        &emptying(&empty, &std::fs::canonicalize(&outside).unwrap()),
+    );
     assert!(
-        found(&args, &emptying(&docker)).is_none(),
+        found(&args, &emptying(&empty, &docker)).is_none(),
         "the link itself was bound over, not only the file it names: {args:?}"
     );
 }
@@ -75,8 +105,11 @@ fn dockers_settings_missing_dangling_or_a_folder_bind_nothing_and_release() {
             _ => {}
         }
         let args = released_with(&running, id);
+        let nowhere = running.folder.join("nowhere.json");
         assert!(
-            !args.iter().any(|arg| Path::new(arg).starts_with(&docker)),
+            !args
+                .iter()
+                .any(|arg| Path::new(arg).starts_with(&docker) || Path::new(arg) == nowhere),
             "Docker's settings, {shape}, were bound over: {args:?}"
         );
     }
@@ -90,5 +123,21 @@ fn dockers_settings_that_cant_be_read_are_emptied() {
     std::fs::set_permissions(&docker, std::fs::Permissions::from_mode(0o000)).unwrap();
     let args = released_with(&running, "c223456789abcdef0123456789abcdef");
     std::fs::set_permissions(&docker, std::fs::Permissions::from_mode(0o600)).unwrap();
-    holds(&args, &emptying(&docker));
+    holds(&args, &emptying(&empty_settings(&running), &docker));
+}
+
+#[test]
+fn emptied_settings_say_nothing_in_a_shape_every_reader_takes() {
+    // Podman, which is the docker command here, refuses settings of no
+    // bytes at all, where Docker reads them as none, so what's bound over
+    // a file emptied is settings saying nothing rather than no settings.
+    let running = Running::releasing("asks-docker-empty-shape", &[super::LISTED]);
+    let args = released_with(&running, "a323456789abcdef0123456789abcdef");
+    let empty = empty_settings(&running);
+    holds(&args, &emptying(&empty, &docker_settings(&running)));
+    assert_eq!(
+        std::fs::read_to_string(&empty).unwrap(),
+        "{}\n",
+        "the settings bound over Docker's say something"
+    );
 }

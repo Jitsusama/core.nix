@@ -579,7 +579,8 @@ fn a_released_command_is_kept_from_what_the_fence_hides() {
             && !copied.contains("npm-made-up-token"),
         "the copy of ~/.npmrc: {copied}"
     );
-    let docker = holds(&args, &[ro, null, &home.join(".docker/config.json")]);
+    let empty = running.folder.join("runtime/passwords/emptied.json");
+    let docker = holds(&args, &[ro, &empty, &home.join(".docker/config.json")]);
     assert!(
         !args
             .iter()
