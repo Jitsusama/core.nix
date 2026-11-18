@@ -9,7 +9,7 @@ import { createInterface } from "node:readline";
 
 const [, , node] = process.argv;
 if (node === undefined) {
-  throw new Error("usage: pi-host-ignores-sigusr1.mjs NODE");
+  throw new Error("usage: pi-hosts-ignore-sigusr1.mjs NODE");
 }
 
 // How long the control's inspector may take to open, at most.

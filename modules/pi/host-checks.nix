@@ -87,8 +87,8 @@ in
   # A node given the flag a host's unit gives it outlives SIGUSR1 with its
   # inspector shut, where one without opens it; on node 22, which pi is
   # built with and a host runs.
-  pi-host-ignores-sigusr1 = pkgs.runCommandLocal "pi-host-ignores-sigusr1" { } ''
-    ${lib.getExe pkgs.nodejs_22} ${./tests/pi-host-ignores-sigusr1.mjs} ${lib.getExe pkgs.nodejs_22}
+  pi-hosts-ignore-sigusr1 = pkgs.runCommandLocal "pi-hosts-ignore-sigusr1" { } ''
+    ${lib.getExe pkgs.nodejs_22} ${./tests/pi-hosts-ignore-sigusr1.mjs} ${lib.getExe pkgs.nodejs_22}
     touch $out
   '';
 

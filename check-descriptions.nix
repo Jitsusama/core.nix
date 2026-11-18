@@ -2644,7 +2644,7 @@
     started at most three times in ten minutes and said to be down once left down, never at a
     restart, and a machine naming none, or a Mac, gets none
   '';
-  pi-host-ignores-sigusr1 = ''
+  pi-hosts-ignore-sigusr1 = ''
     node 22, given the --disable-sigusr1 a pi host's unit gives it, outlives SIGUSR1 with its
     inspector shut, beside a node without it whose inspector the same signal opens
   '';
