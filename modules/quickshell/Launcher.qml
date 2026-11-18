@@ -7675,10 +7675,13 @@ Scope {
         if (!choice.run && enter(choice))
             return;
         // One with nothing to do, inside or opened, as an ask once
-        // answered, does nothing and keeps the launcher, where running it
-        // threw and closed it; one opened below another needs no run.
-        if (!choice.run && !choice.opens && !(below && choice.below))
+        // answered, keeps the launcher, where running it threw and closed
+        // it, and says Return is not here, as a key with no meaning does;
+        // one opened below another needs no run.
+        if (!choice.run && !choice.opens && !(below && choice.below)) {
+            say([[hintKey("run"), (Words.field.hints ?? {}).notHere ?? ""]]);
             return;
+        }
         // One that changes something, or whose outcome takes a while, keeps
         // the launcher, its row saying how it stands now; the right arrow
         // then Return does it and closes (stepRows).
