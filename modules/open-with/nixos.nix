@@ -55,4 +55,17 @@
       "org.freedesktop.impl.portal.FileChooser" = lib.mkForce "launcher";
     };
   };
+
+  # The document portal hands files across, a dragged one or one a
+  # sandboxed program chose, as paths under its FUSE mount in the runtime
+  # folder, and exits 21 once that mount goes. Another document portal
+  # starting with the same runtime folder takes it: it lazily unmounts
+  # whatever it finds there first. On 17 November a private bus an agent
+  # ran for a test started one twice, and Joel's portal stayed down for 9
+  # and 6 minutes after it noticed, until something asked for it again.
+  # It comes back in a second, with the mount.
+  systemd.user.services.xdg-document-portal.serviceConfig = {
+    Restart = "on-failure";
+    RestartSec = "1s";
+  };
 }
