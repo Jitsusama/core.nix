@@ -147,11 +147,13 @@ the measurement that shows it. A rule that no longer holds a number goes.
 - A merge whose build leaves the machine unchanged counts as on from the
   moment the switch finds that, not from the next switch that changes
   something; counting it late made a quarantine look 54 minutes slow.
-- Every merge to main goes through GitHub, which signs it with the key
-  machines trust main by, and a switch takes no tip signed otherwise. On
-  2026-11-18 a train ride started before a switch kept its old build, which
-  pushed its own merges: three landed under Joel's key at 02:38 and 02:58,
-  and the next switch waited on a GitHub merge for over an hour.
+- Every merge to main goes through GitHub, which signs it with a key the
+  machines' allowed signers name. A switch checks only main's tip, so one
+  merge pushed any other way stops every switch until a GitHub merge lands
+  on top. On 2026-11-18 the merge train's ride, `merge-net ride`, started
+  before a switch and went on running the build from before it, which
+  pushed its own merges: #5426 at 02:38, and #5460 with #5321 at 02:58,
+  all under Joel's key, and the next switch waited past 04:00.
 
 [1]: testing.md
 [2]: ../tools/merge-net/must-run.txt
