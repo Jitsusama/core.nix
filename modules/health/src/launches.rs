@@ -731,6 +731,28 @@ mod tests {
     }
 
     #[test]
+    fn a_stop_at_shutdown_and_a_start_in_the_next_boot_are_no_restart() {
+        // The day is read through every boot, so a shutdown's stops come
+        // before the next boot's starts, a reboot's length apart.
+        let mut day = Day::new("2026-11-17");
+        let job = |boot: &str, at, job| Entry {
+            at,
+            job: Some(job),
+            boot: boot.to_owned(),
+            ..entry("google.service", 6, "")
+        };
+        day.take(&job("before", 1_000_000, Job::Stopping));
+        day.take(&job("after", 41_000_000, Job::Started));
+        day.take(&job("after", 50_000_000, Job::Stopping));
+        day.take(&job("after", 50_300_000, Job::Started));
+        assert_eq!(
+            day.launches.restarted,
+            BTreeMap::from([("google.service".to_owned(), vec![300])]),
+            "a reboot was timed as a restart, or a restart in one boot was missed"
+        );
+    }
+
+    #[test]
     fn a_pis_start_is_held_to_its_own_budget_apart_from_the_daemons() {
         let mut launches = Launches::default();
         for line in [
