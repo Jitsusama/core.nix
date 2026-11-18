@@ -4,7 +4,9 @@
 # begins, says it's ready as the host does once it listens, and pings the
 # watchdog each second from its own loop. A file named hang in its folder
 # makes one start stop pinging while it stays alive, as a host whose loop
-# is wedged does; one named crash makes every start fail once it's ready,
+# is wedged does, and one named deaf does the same deaf to the watchdog's
+# SIGABRT, as a node does whose loop spins with a JavaScript listener for
+# it; one named crash makes every start fail once it's ready,
 # and one named refuse makes it exit 78 before it's ready, as a host does
 # when it refuses what it was given. One named hog makes one start run a
 # command that takes a gigabyte, as a conversation's build might, which
@@ -27,6 +29,11 @@ while true; do
   fi
   # Only one start hangs, so the next comes back to a loop that turns.
   if mv "$dir/hang" "$dir/hung" 2>/dev/null; then
+    exec sleep infinity
+  fi
+  # An ignored signal stays ignored through exec, so sleep ignores it too.
+  if mv "$dir/deaf" "$dir/deafened" 2>/dev/null; then
+    trap '' ABRT
     exec sleep infinity
   fi
   if mv "$dir/hog" "$dir/hogged" 2>/dev/null; then

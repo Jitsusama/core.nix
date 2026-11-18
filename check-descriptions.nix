@@ -2503,7 +2503,8 @@
     once it says so, in agents.slice with its realm's environment and its folders first on its
     PATH, left stopped after refusing
     what it was given and left running through a switch and through the kernel killing one of its
-    commands for memory, watched by a two-minute watchdog, given 150 s to park its conversations
+    commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
+    on, given 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
     with it, with a core limit of 0, soft and hard,
     started at most three times in ten minutes and said to be down once left down, never at a
@@ -5289,7 +5290,8 @@
   vm-a-wedged-pi-starts-again = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
     killed by the watchdog and started again once its loop stops pinging, its abort recorded by
-    systemd-coredump with no core kept, and one that crashes
+    systemd-coredump with no core kept, and killed 10 s on when it ignores that abort, and one that
+    crashes
     at every start is started three times, then left failed with start-limit-hit, and one that
     refuses what it was given is left down at once, each saying which host is down and why, and
     one whose command the kernel kills for memory stays up, unrestarted
