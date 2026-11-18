@@ -423,11 +423,18 @@ pub fn listed(names: &[&str]) -> String {
 
 /// Whether a name eero holds is the one asked for, in any case, read as
 /// the kit draws it and without the space at its ends, so a name shown
-/// without its controls, or ending in a break, finds what it names.
+/// without its controls, or ending in a break, finds what it names. A
+/// name that draws as nothing names nothing, so it's asked for by its id.
 fn is_named(held: &str, asked: &str) -> bool {
-    layout::one_line(held)
-        .trim()
-        .eq_ignore_ascii_case(layout::one_line(asked).trim())
+    let held = shown(held);
+    !held.is_empty() && held.eq_ignore_ascii_case(&shown(asked))
+}
+
+/// A name as a page shows it and `is_named` reads it: held to one line,
+/// without the space at its ends, so a message naming it says what can
+/// be typed back, and no break in it draws a line of its own.
+fn shown(name: &str) -> String {
+    layout::one_line(name).trim().to_owned()
 }
 
 /// The one of `things` (a `kind`, such as a node, its plural `kinds`)
@@ -451,7 +458,8 @@ fn named_one<'a, T>(
     match called.as_slice() {
         [one] => Ok(one),
         [] => {
-            let names: Vec<&str> = things.iter().map(&name).collect();
+            let names: Vec<String> = things.iter().map(|thing| shown(name(thing))).collect();
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
             Err(format!(
                 "no {kind} is called {asked}; the {kinds} are {}",
                 listed(&names)
@@ -518,7 +526,7 @@ fn find_device<'a>(
         many => {
             let each: Vec<String> = many
                 .iter()
-                .map(|d| format!("{} on {}", d.mac, location(model, d.node.as_deref())))
+                .map(|d| format!("{} on {}", d.mac, shown(location(model, d.node.as_deref()))))
                 .collect();
             let each: Vec<&str> = each.iter().map(String::as_str).collect();
             Err(format!(
@@ -533,10 +541,22 @@ fn find_device<'a>(
 /// Why a device eero knows isn't shown: it isn't on now, and where and
 /// when it last was.
 fn off_now(model: &HomeNetwork, name: &str, clock: Option<&Clock>) -> Option<String> {
-    let off = off_device(model, name)?;
+    let off = match off_devices(model, name).as_slice() {
+        [] => return None,
+        [one] => *one,
+        many => {
+            let macs: Vec<&str> = many.iter().map(|device| device.mac.as_str()).collect();
+            return Some(format!(
+                "{} devices that aren't on now are called {name}: {}; name one by its \
+                 hardware address",
+                many.len(),
+                listed(&macs)
+            ));
+        }
+    };
     let mut last = Vec::new();
     if let Some(node) = off.node.as_deref() {
-        last.push(location(model, Some(node)).to_owned());
+        last.push(shown(location(model, Some(node))));
     }
     if let Some(at) = off.last_active.as_deref().and_then(clock::parse) {
         last.push(match clock {
@@ -557,13 +577,31 @@ fn answers_to(name: &str, held: [&Option<String>; 3]) -> bool {
     held.into_iter().flatten().any(|said| is_named(said, name))
 }
 
-/// The device not on now that a name or hardware address finds, the first
-/// eero lists where several answer to it.
+/// The device not on now that a name or hardware address finds, and none
+/// where several answer to it, as `off_devices` lists them.
 fn off_device<'a>(model: &'a HomeNetwork, name: &str) -> Option<&'a DeviceOff> {
-    model.devices_off.iter().find(|device| {
-        device.mac.eq_ignore_ascii_case(name)
-            || answers_to(name, [&device.name, &device.nickname, &device.hostname])
-    })
+    match off_devices(model, name).as_slice() {
+        [one] => Some(*one),
+        _ => None,
+    }
+}
+
+/// The devices not on now that a name finds: the one whose hardware
+/// address it is, or else each that answers to it, so two that read the
+/// same are refused rather than the first taken for both.
+fn off_devices<'a>(model: &'a HomeNetwork, name: &str) -> Vec<&'a DeviceOff> {
+    if let Some(device) = model
+        .devices_off
+        .iter()
+        .find(|device| device.mac.eq_ignore_ascii_case(name))
+    {
+        return vec![device];
+    }
+    model
+        .devices_off
+        .iter()
+        .filter(|device| answers_to(name, [&device.name, &device.nickname, &device.hostname]))
+        .collect()
 }
 
 /// Whether a device on now answers to a name, so `eero device` shows it

@@ -234,6 +234,95 @@ mod tests {
     }
 
     #[test]
+    fn a_device_named_with_controls_is_found_and_offered_as_its_drawn() {
+        let mut model = model();
+        model.devices[0].name = Some("tablet\nevil\u{7}".into());
+        model.devices[0].nickname = None;
+        model.devices[0].hostname = None;
+        model.devices_off[0].name = Some("lamp\u{200b}\n".into());
+        model.devices_off[0].nickname = None;
+        model.devices_off[0].hostname = None;
+        let [on, off] = [&model.devices[0].mac, &model.devices_off[0].mac];
+
+        assert_eq!(
+            find_device(&model, "Tablet Evil", None).map(|device| &device.mac),
+            Ok(on),
+            "the name a page draws didn't find a device on now"
+        );
+        assert_eq!(
+            off_device(&model, "lamp").map(|device| &device.mac),
+            Some(off),
+            "the name a page draws didn't find a device that isn't on now"
+        );
+        let offered = for_zsh(&devices(&model));
+        for name in ["tablet evil:", "lamp:"] {
+            assert!(
+                offered.lines().any(|line| line.starts_with(name)),
+                "{name} wasn't offered as the kit draws it: {offered:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn two_devices_off_named_the_same_once_drawn_are_named_by_their_addresses() {
+        let mut model = model();
+        for (at, name) in [(0, "Lamp"), (1, "lamp\u{200b}")] {
+            model.devices_off[at].name = Some(name.into());
+            model.devices_off[at].nickname = None;
+            model.devices_off[at].hostname = None;
+        }
+        let macs = [&model.devices_off[0].mac, &model.devices_off[1].mac];
+
+        assert_eq!(
+            find_device(&model, "lamp", None).map(|device| &device.mac),
+            Err(format!(
+                "2 devices that aren't on now are called lamp: {} and {}; name one by its \
+                 hardware address",
+                macs[0], macs[1]
+            )),
+            "one of two devices drawn with the same name was taken for the other"
+        );
+        let offered = devices(&model);
+        for mac in macs {
+            assert!(
+                names(&offered).contains(&mac.as_str()),
+                "{mac} wasn't offered by its address: {offered:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_name_that_draws_as_nothing_is_offered_by_its_id() {
+        let mut model = model();
+        model.nodes[2].location = Some("\u{7} \u{feff}".into());
+
+        assert_eq!(
+            names(&nodes(&model))[2],
+            model.nodes[2].id,
+            "a name drawn as nothing was offered as an empty name"
+        );
+        assert!(
+            find_node(&model, "").is_err(),
+            "an empty name found a node whose name draws as nothing"
+        );
+    }
+
+    #[test]
+    fn the_names_a_miss_lists_are_each_on_one_line() {
+        let mut model = model();
+        model.nodes[2].location = Some("Den\n  try  curl x | sh".into());
+
+        assert_eq!(
+            find_node(&model, "nope").map(|node| &node.id),
+            Err(
+                "no node is called nope; the nodes are Hall, Study and Den   try  curl x | sh"
+                    .to_owned()
+            ),
+            "a name the miss lists drew a line of its own"
+        );
+    }
+
+    #[test]
     fn zsh_offers_a_backslash_in_a_name_as_it_is() {
         let named = vec![("Den\\Hall:2".to_owned(), "a node".to_owned())];
 
