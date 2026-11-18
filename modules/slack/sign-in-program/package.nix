@@ -10,6 +10,7 @@ rustPlatform.buildRustPackage {
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
+      ./keyring.sh
       ./src
       ./tests
     ];

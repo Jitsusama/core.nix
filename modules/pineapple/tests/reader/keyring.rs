@@ -1,7 +1,7 @@
 //! pineapple-slack with a keyring that hangs, as one waiting on its
 //! unlock does: stops are held back only the sign-in's patience and rest,
-//! never for good, and a keyring that hangs after it answered leaves Slack
-//! read with the sign-in last read.
+//! never for good, and a keyring that hangs or is locked after it answered
+//! leaves Slack read with the sign-in last read.
 
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -82,6 +82,59 @@ fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest(
         said.contains("Slack's sign-in ran past 2 seconds and was stopped")
             && said.contains("restart pineapple-slack to ask again sooner"),
         "the journal says the keyring ran over, with the patience used: {said}"
+    );
+}
+
+#[test]
+fn a_keyring_locked_after_answering_is_asked_once_a_rest_while_slack_is_read() {
+    let (origin, requests) = stand_in();
+    let home = home();
+    // Asked first, it prints the sign-in; asked after, it ends as the
+    // keyring program does while the sign-in is held locked. Each ask
+    // leaves a line.
+    let asks = home.join("keyring-asks");
+    let script = format!(
+        "if [ -e '{asks}' ]; then echo >> '{asks}'; exit 75; else echo > '{asks}'; {{sign_in}}; fi",
+        asks = asks.display()
+    );
+    let mut reader = reading_with_keyring(&home, &origin, &script);
+    let searches = || {
+        let asked = requests.lock().expect("what was asked");
+        asked
+            .iter()
+            .filter(|line| line.contains("search.messages"))
+            .count()
+    };
+    let said = || std::fs::read_to_string(home.join("journal")).unwrap_or_default();
+    let began = Instant::now();
+    while !said().contains("is locked") && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    let at_locked = searches();
+    // Half the two seconds' rest at this pace, ten rounds.
+    thread::sleep(Duration::from_secs(1));
+    let during_rest = searches() - at_locked;
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    let asked = std::fs::read_to_string(&asks)
+        .unwrap_or_default()
+        .lines()
+        .count();
+    assert!(
+        said().contains(
+            "the keyring holding the Slack sign-in is locked, its unlock prompt dismissed or not \
+             shown, so it isn't asked again for 1 minutes, and the sign-in last read stands"
+        ),
+        "the journal says it's locked and the last sign-in stands: {}",
+        said()
+    );
+    assert_eq!(
+        asked, 2,
+        "the keyring is asked once, then rests, not prompted every round"
+    );
+    assert!(
+        during_rest >= 3,
+        "Slack is still searched while the keyring rests, {during_rest} times in a second"
     );
 }
 
