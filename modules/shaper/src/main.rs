@@ -1663,22 +1663,28 @@ mod tests {
 
     #[test]
     fn a_follower_s_queue_is_its_leader_s_and_only_a_vpn_s_stays_the_vpn_s() {
-        // Whether a queue stood, and whether only a VPN's did: the leader's
-        // and the follower's, and what the leader reads after.
+        // Whether a queue stood, whether only a VPN's did and whether a
+        // VPN's did beside the link's own: the leader's and the follower's,
+        // and the first two as the leader reads them after.
         let cases = [
-            ((false, false), (false, false), (false, false)),
-            ((false, false), (true, true), (true, true)),
-            ((false, false), (true, false), (true, false)),
-            ((true, true), (false, false), (true, true)),
-            ((true, true), (true, true), (true, true)),
-            ((true, true), (true, false), (true, false)),
-            ((true, false), (true, true), (true, false)),
+            ((false, false, false), (false, false, false), (false, false)),
+            ((false, false, false), (true, true, true), (true, true)),
+            ((false, false, false), (true, false, false), (true, false)),
+            ((true, true, true), (false, false, false), (true, true)),
+            ((true, true, true), (true, true, true), (true, true)),
+            ((true, true, true), (true, false, false), (true, false)),
+            ((true, false, false), (true, true, true), (true, false)),
+            ((true, false, true), (false, false, false), (true, false)),
+            ((true, false, true), (true, true, true), (true, false)),
         ];
         for (leader, follower, after) in cases {
-            let ours = |(queued, in_vpn): (bool, bool)| oneway::Ours {
+            // Resends are the machine's, said to every link alike, so the
+            // follower's never add to the leader's.
+            let ours = |(queued, in_vpn, vpn_queued): (bool, bool, bool)| oneway::Ours {
                 queued,
                 in_vpn,
-                vpn_queued: in_vpn,
+                vpn_queued,
+                resent: 3,
                 ..oneway::Ours::default()
             };
             let mut seen = BTreeMap::from([
@@ -1691,9 +1697,10 @@ mod tests {
             assert_eq!(read, after, "leader {leader:?}, follower {follower:?}");
             assert_eq!(
                 seen["eth1"].vpn_queued,
-                leader.1 || follower.1,
+                leader.2 || follower.2,
                 "a VPN's queue on either: leader {leader:?}, follower {follower:?}"
             );
+            assert_eq!(seen["eth1"].resent, 3, "the follower's resends added");
         }
     }
 

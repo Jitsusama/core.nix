@@ -110,15 +110,15 @@ in
   };
 
   options.jitsusama.shaper.controller = lib.mkOption {
-    type = lib.types.enum [ "one-way" ];
-    default = "one-way";
+    type = lib.types.nullOr (lib.types.enum [ "one-way" ]);
+    default = null;
     description = ''
-      What sets the shaper's rates: `one-way` (src/oneway.rs), from each
-      direction's own delay as shaper-record measures it, the controller
-      `shaper replay` scores, and the only one left. The round trip's,
-      from pings to distant resolvers, went on 18 November; the option
-      stays so a machine that names `one-way` still builds, until none
-      does.
+      What sets the shaper's rates, and whether it starts at boot: `one-way`
+      (src/oneway.rs), from each direction's own delay as shaper-record
+      measures it, the controller `shaper replay` scores, and the only one
+      left. Left null, the shaper is installed and nothing starts it, as a
+      machine that never named the one-way controller had it before. The
+      round trip's, from pings to distant resolvers, went on 18 November.
     '';
   };
 
@@ -230,7 +230,9 @@ in
     # from pings, is gone: five faults in four days came from guessing
     # whose queue a round trip shows, and on 3 November it held a
     # 312 Mbit/s download at 81.
-    wantedBy = [ "multi-user.target" ];
+    # Only a machine that names the controller has it at boot, so one that
+    # never asked isn't shaped by an update.
+    wantedBy = lib.optional (config.jitsusama.shaper.controller != null) "multi-user.target";
     # The table must be there before the shaper fills its sets, and its
     # queues must be on a link before the first connection leaves by it.
     # The controller reads what the recorder writes, so it wants the

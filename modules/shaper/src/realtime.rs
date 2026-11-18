@@ -61,6 +61,7 @@ mod tests {
             !live.count(100, 32.0),
             "half a minute's silence kept the call"
         );
+        assert!(!live.flows(), "the call that ended was still kept");
     }
 
     #[test]

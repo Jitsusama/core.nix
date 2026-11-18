@@ -11,6 +11,13 @@
 }:
 let
   services = (bareNixos [ self.nixosModules.shaper ]).config.systemd.services;
+  named =
+    (bareNixos [
+      self.nixosModules.shaper
+      { jitsusama.shaper.controller = "one-way"; }
+    ]).config.systemd.services;
+  unasked = services.shaper.wantedBy == [ ];
+  asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
 in
 # What follows needs Linux to build or to run, so a Mac leaves it out.
 onLinux {
@@ -37,4 +44,12 @@ onLinux {
         && services.shaper-record.restartIfChanged
         && !services.shaper-record.stopIfChanged
       );
+
+  # Only a machine that names the controller shapes from boot: every
+  # graphical machine imports the module, and one that never asked for
+  # the one-way controller was never shaped before it was the only one.
+  shaper-starts-when-asked =
+    holds "shaper-starts-when-asked"
+      "The shaper would start at boot on a machine that never asked, or not on one that did."
+      (unasked && asked);
 }

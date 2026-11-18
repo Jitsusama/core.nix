@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import re
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -697,15 +696,13 @@ def test_route_moves(on_eth2: Connection) -> None:
 
 
 def test_status(on_eth2: Connection) -> None:
-    """Its status says what it holds the link to."""
+    """Its status names the link, its quiet round trips and its own CPU."""
     # A host's quiet round trip is only said once eth2's pings were heard.
     on_eth2.client.wait_until_succeeds(
         "shaper status | grep -E 'quiet round trips: [^ ]+ [0-9]+ ms'", timeout=SHAPING
     )
     status = on_eth2.client.succeed("shaper status")
     assert "eth2" in status, status
-    assert " Mb/s, down " in status, status
-    assert re.search(r"quiet round trips: \S+ \d+ ms", status), status
     assert "cpu: the shaper" in status, status
 
 

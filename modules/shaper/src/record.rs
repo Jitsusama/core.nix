@@ -80,11 +80,6 @@ pub fn expired(names: &[String]) -> Vec<String> {
     days[..keep].iter().map(|n| (*n).clone()).collect()
 }
 
-/// What the link carried in total, received and sent, in bytes.
-fn carried(link: &str) -> (u64, u64) {
-    counters(link).unwrap_or_default()
-}
-
 /// What the link carried in total, received and sent, in bytes, or None
 /// when either count can't be read, as when the link went.
 fn counters(link: &str) -> Option<(u64, u64)> {
@@ -109,11 +104,12 @@ struct Counted {
 
 impl Counted {
     /// Starts from what `link` has carried since it came up, so a link
-    /// alone reads as its own counters.
-    fn new(link: &str, carried: (u64, u64)) -> Self {
+    /// alone reads as its own counters; one that couldn't be read starts
+    /// at nothing and counts from its first good read.
+    fn new(link: &str, carried: Option<(u64, u64)>) -> Self {
         Counted {
-            last: BTreeMap::from([(link.to_owned(), carried)]),
-            total: carried,
+            last: carried.map(|c| (link.to_owned(), c)).into_iter().collect(),
+            total: carried.unwrap_or_default(),
         }
     }
 
@@ -134,7 +130,11 @@ impl Counted {
     /// Reads `links`' counters and adds what they carried. A link whose
     /// counters can't be read is left out, as one that left is, so it
     /// counts again from its next read rather than from nothing.
-    fn read(&mut self, links: &[String]) -> (u64, u64) {
+    fn read(
+        &mut self,
+        links: &[String],
+        counters: impl Fn(&str) -> Option<(u64, u64)>,
+    ) -> (u64, u64) {
         self.add(
             links
                 .iter()
@@ -261,7 +261,7 @@ impl Recorder<'_> {
             return;
         }
         let (counted, since) = self.window;
-        let total = self.counted.read(&self.links);
+        let total = self.counted.read(&self.links, counters);
         let bits = (total.0 + total.1).saturating_sub(counted.0 + counted.1) * 8;
         let over = now.duration_since(since);
         self.next = now + pace(bits, over);
@@ -313,7 +313,7 @@ impl Recorder<'_> {
                 return;
             }
         }
-        let (rx, tx) = self.counted.read(&self.links);
+        let (rx, tx) = self.counted.read(&self.links, counters);
         if let Some(reply) = stamped
             && let Some(sent) = self.outstanding.remove(&reply.seq)
             && let Some((operator, address)) = sent.to
@@ -428,7 +428,8 @@ pub fn record(
     first["network"] = json!(network);
     journal.write(&first);
     let links = |beside: Vec<String>| [vec![link.to_owned()], beside].concat();
-    let counted = Counted::new(link, carried(link));
+    let counted = Counted::new(link, counters(link));
+    let window = (counted.total, Instant::now());
     let mut recorder = Recorder {
         link,
         links: links(beside()),
@@ -442,7 +443,7 @@ pub fn record(
         seq: 0,
         turn: 0,
         next: Instant::now(),
-        window: (carried(link), Instant::now()),
+        window,
         asking: None,
     };
     recorder.ask(Instant::now());
@@ -454,7 +455,13 @@ pub fn record(
             if !still() {
                 return;
             }
-            recorder.links = links(beside());
+            let counting = links(beside());
+            // The record's rx and tx are these links' together, so the
+            // journal says when the set changes.
+            if counting != recorder.links {
+                eprintln!("recording {link}, counting {}", counting.join(", "));
+                recorder.links = counting;
+            }
             checked = now;
         }
         recorder.probe(now);
@@ -517,7 +524,7 @@ mod tests {
     // and never cut, while the connection's queue stood at 430 ms.
     #[test]
     fn a_second_link_s_traffic_counts_on_the_connection() {
-        let mut counted = Counted::new("eth1", (1_000, 5_000));
+        let mut counted = Counted::new("eth1", Some((1_000, 5_000)));
         let at = |eth1: (u64, u64), eth2: (u64, u64)| {
             vec![("eth1".to_owned(), eth1), ("eth2".to_owned(), eth2)]
         };
@@ -536,6 +543,29 @@ mod tests {
             counted.add(vec![("eth1".to_owned(), (1_300, 5_100))]),
             (1_800, 15_100)
         );
+    }
+
+    // A link whose counters can't be read, at the start or along the way,
+    // counts from its next good read: its lifetime's bytes never land on
+    // one interval as a burst.
+    #[test]
+    fn a_link_read_after_failing_counts_from_there() {
+        let links = ["eth1".to_owned()];
+        let mut counted = Counted::new("eth1", None);
+        let at = |n: (u64, u64)| move |_: &str| Some(n);
+        assert_eq!(
+            counted.read(&links, at((90_000, 70_000))),
+            (0, 0),
+            "a first read that failed"
+        );
+        assert_eq!(counted.read(&links, at((90_100, 70_200))), (100, 200));
+        assert_eq!(counted.read(&links, |_| None), (100, 200), "a failed read");
+        assert_eq!(
+            counted.read(&links, at((95_000, 80_000))),
+            (100, 200),
+            "what it carried while unread doesn't count"
+        );
+        assert_eq!(counted.read(&links, at((95_500, 81_000))), (600, 1_200));
     }
 
     #[test]

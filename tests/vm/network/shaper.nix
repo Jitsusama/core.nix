@@ -38,6 +38,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     # The test's only distant host is the server.
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
+    jitsusama.shaper.controller = "one-way";
     systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
     # Nothing limits this connection's download, which then goes straight
     # in; the tests count each class's downloads in its IFB's CAKE.

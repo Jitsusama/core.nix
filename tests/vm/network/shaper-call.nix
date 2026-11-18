@@ -52,6 +52,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       interface = "eth1";
     };
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
+    jitsusama.shaper.controller = "one-way";
     systemd.services.shaper.path = lib.mkBefore [ callIsOn ];
     systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
     users.users.alice = {
