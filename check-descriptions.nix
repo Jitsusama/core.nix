@@ -4728,8 +4728,9 @@
     clippy finds nothing in the cameras' holders watcher or its tests
   '';
   vm-firmware-records-reach-an-account = ''
-    a boot copies the firmware's platform health table where an account reads it, under the
-    boot's own folder, and a boot whose firmware gives no error record table still passes
+    a boot copies the firmware's platform health table, its boot error record table and the
+    error region that table points at under the boot's own folder, where an administrator
+    reads them and an account that isn't one reads none
   '';
   vm-firmware-asks-an-administrator = ''
     in an administrator's active, local session, writing firmware, changing a device's settings and

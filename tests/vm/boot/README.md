@@ -3,14 +3,14 @@
 Starting and stopping a machine, on machines booted in QEMU: the disk's ask
 in the boot theme, on one screen and on two, with a Bluetooth keyboard, and
 back from hibernation; the greeter that signs in; the firmware's records
-kept for an account; and a reboot that can't hang. Each test's opening comment says what it types, reads or stands in
-for.
+kept for an administrator; and a reboot that can't hang. Each test's opening
+comment says what it types, reads or stands in for.
 
 | File                                           | Holds                                                         |
 | ---------------------------------------------- | ------------------------------------------------------------- |
 | `bluetooth-disk-prompt.nix`, `-vm-test.py`     | a paired Bluetooth keyboard typing at the disk prompt         |
 | `bluetooth-keyboard-stand-in.py`               | the keyboard that test pairs with and types from              |
-| `firmware-errors.nix`, `-vm-test.py`           | the firmware's health table copied where an account reads it  |
+| `firmware-errors.nix`, `-vm-test.py`           | the firmware's records copied where an administrator reads them |
 | `greeter.nix`, `-vm-test.py`                   | the greeter asking, signing in, and showing again after       |
 | `plymouth.nix`, `-vm-test.py`                  | the theme asking for the disk, naming jobs, and shutting down |
 | `plymouth-screens.nix`, `-vm-test.py`          | the theme's ask shown whole on two screens of different sizes |
