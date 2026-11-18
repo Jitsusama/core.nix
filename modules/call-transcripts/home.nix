@@ -44,11 +44,12 @@
 # follows the same socket, so People makes no row of it itself; and a
 # meeting whose call was written down offers Open the Transcript.
 #
-# How many calls there were, and nothing else of them, the daemon says to
-# the machine's realm as its calls receptor, a cell on the mycelium map:
-# it runs mycelium by its store path, given only fixed words and counts
-# (src/bin/call-transcripts/receptor.rs). A machine in no realm says
-# nothing.
+# How many calls there were, and the calendar event of each summed up by
+# its id alone, the daemon says to the machine's realm as its calls
+# receptor, a cell on the mycelium map: it runs mycelium by its store
+# path, given only fixed words, counts and ids, never a title, person or
+# summary (src/bin/call-transcripts/receptor.rs). A machine in no realm
+# says nothing.
 {
   mycelium,
   people,

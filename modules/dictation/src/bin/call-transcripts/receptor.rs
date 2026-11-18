@@ -57,12 +57,13 @@ const LONGEST_EVENT: usize = 200;
 const SHORTEST_EVENT: usize = 5;
 
 /// Whether mycelium takes `event` as an event's id: its own id in
-/// base32hex, lowercase `a` to `v` and digits, then any `_` parts of
-/// digits and `R`, `T` or `Z` a recurring event's splits and instances
-/// add, as mycelium's feed rule says. One it wouldn't take is left out,
-/// since one refused refuses the counts beside it.
+/// base32hex, lowercase `a` to `v` and digits, after a `_` when an
+/// outside invitation made it, then any `_` parts of digits and `R`, `T`
+/// or `Z` a recurring event's splits and instances add, as mycelium's
+/// feed rule says. One it wouldn't take is left out, since one refused
+/// refuses the counts beside it.
 fn is_event(event: &str) -> bool {
-    let mut parts = event.split('_');
+    let mut parts = event.strip_prefix('_').unwrap_or(event).split('_');
     let own = parts.next().unwrap_or_default();
     event.len() <= LONGEST_EVENT
         && own.len() >= SHORTEST_EVENT
@@ -80,9 +81,8 @@ fn is_event(event: &str) -> bool {
 /// The events to name at `now`, of `summarized` calls as the book gives
 /// them, each its event, when it ended and its folder: those that ended
 /// within [`NAMED_FOR`] and not after now, whose summary is still in
-/// their folder, so a call forgotten or moved away stops being named,
-/// and whose id mycelium takes; the newest first, at most
-/// [`MOST_EVENTS`], each once.
+/// their folder and was written since they last ended, and whose id
+/// mycelium takes; the newest first, at most [`MOST_EVENTS`], each once.
 fn named<'a>(
     summarized: impl IntoIterator<Item = (&'a str, u64, &'a Path)>,
     now: u64,
@@ -92,8 +92,7 @@ fn named<'a>(
         .filter(|&(event, ended, folder)| {
             now.checked_sub(ended).is_some_and(|age| age < NAMED_FOR)
                 && is_event(event)
-                && std::fs::symlink_metadata(folder.join(book::SUMMARY))
-                    .is_ok_and(|summary| summary.is_file())
+                && written_since(&folder.join(book::SUMMARY), ended)
         })
         .map(|(event, ended, _)| (ended, event))
         .collect();
@@ -104,6 +103,31 @@ fn named<'a>(
         .take(MOST_EVENTS)
         .map(|(_, event)| event.to_owned())
         .collect()
+}
+
+/// Whether `summary` is a plain file written at or after `ended`, in
+/// milliseconds since the epoch. So a call forgotten or moved away stops
+/// being named, and a meeting rejoined after it was summed up isn't named
+/// again on its first summary, only once the one for its last leg is
+/// written. One that can't be looked at for now is as the book has it,
+/// since only a summary gone should stop its naming: unnamed for a round,
+/// the node would let it go and tell its cell again the next.
+fn written_since(summary: &Path, ended: u64) -> bool {
+    match std::fs::symlink_metadata(summary) {
+        Ok(found) => {
+            found.is_file()
+                && found
+                    .modified()
+                    .ok()
+                    .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                    .and_then(|at| u64::try_from(at.as_millis()).ok())
+                    .is_some_and(|at| at >= ended)
+        }
+        Err(why) => !matches!(
+            why.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+        ),
+    }
 }
 
 /// How many calls started in the last hour, and since local midnight.
@@ -285,17 +309,22 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
                 summarized,
             )
         };
-        // The summaries are looked for with the book let go, so a slow
-        // disk holds up no one reading it.
-        let events = named(
-            summarized
-                .iter()
-                .map(|(event, ended, folder)| (event.as_str(), *ended, folder.as_path())),
-            now,
-        );
-        let outcome = receptor
-            .say(State::of(counts, failing), counts, &events, pid)
-            .err();
+        // A book that couldn't be read whole can't say which calls
+        // stand, so it names none, and mycelium keeps those it had. The
+        // summaries are looked for with the book let go, so a slow disk
+        // holds up no one reading it.
+        let state = State::of(counts, failing);
+        let events = if matches!(state, State::Reading | State::Quiet) {
+            named(
+                summarized
+                    .iter()
+                    .map(|(event, ended, folder)| (event.as_str(), *ended, folder.as_path())),
+                now,
+            )
+        } else {
+            Vec::new()
+        };
+        let outcome = receptor.say(state, counts, &events, pid).err();
         if outcome != said {
             if let Some(why) = &outcome {
                 eprintln!("call-transcripts: saying the calls receptor: {why}");
@@ -603,8 +632,19 @@ mod tests {
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("meta.json"), meta.to_string()).unwrap();
         if let Some(summary) = summary {
-            std::fs::write(folder.join(book::SUMMARY), summary).unwrap();
+            written(&folder.join(book::SUMMARY), summary, NOW);
         }
+    }
+
+    /// `summary` written to `file`, as written at `at`.
+    fn written(file: &Path, summary: &str, at: u64) {
+        std::fs::write(file, summary).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(file)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + Duration::from_millis(at))
+            .unwrap();
     }
 
     #[test]
@@ -684,7 +724,12 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let with = folder.path().join("with");
         std::fs::create_dir_all(&with).unwrap();
-        std::fs::write(with.join(book::SUMMARY), "kept").unwrap();
+        written(&with.join(book::SUMMARY), "kept", NOW);
+        // A meeting rejoined after its first summary: it last ended
+        // after that summary was written.
+        let rejoined = folder.path().join("rejoined");
+        std::fs::create_dir_all(&rejoined).unwrap();
+        written(&rejoined.join(book::SUMMARY), "first leg", NOW - 10);
         let gone = folder.path().join("gone");
         let linked = folder.path().join("linked");
         std::fs::create_dir_all(&linked).unwrap();
@@ -695,26 +740,80 @@ mod tests {
             ("abcdef2", NOW - 5, linked.as_path()),
             ("abcdef3", NOW - NAMED_FOR, with.as_path()),
             ("abcdef4", NOW - NAMED_FOR + 1, with.as_path()),
+            ("abcdef5", NOW - 5, rejoined.as_path()),
+            ("abcdef6", NOW - 10, rejoined.as_path()),
             ("Pay review", NOW - 5, with.as_path()),
             ("pay_review", NOW - 5, with.as_path()),
             (EVENT, NOW - 9, with.as_path()),
         ];
         assert_eq!(
             named(held, NOW),
-            [EVENT, "abcdef4"],
-            "a summary gone or linked, one past its days, a title or a repeat was named"
+            [EVENT, "abcdef6", "abcdef4"],
+            "a summary gone, linked or from before the last end, one past its days, a title \
+             or a repeat was named"
         );
+    }
+
+    #[test]
+    fn an_event_whose_summary_cant_be_looked_at_for_now_stays_named() {
+        let folder = tempfile::tempdir().unwrap();
+        let shut = folder.path().join("shut");
+        std::fs::create_dir_all(&shut).unwrap();
+        written(&shut.join(book::SUMMARY), "kept", NOW);
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let events = named([(EVENT, NOW - 5, shut.as_path())], NOW);
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            events,
+            [EVENT],
+            "a summary that couldn't be looked at unnamed it"
+        );
+    }
+
+    #[test]
+    fn only_an_id_mycelium_takes_is_named() {
+        let folder = tempfile::tempdir().unwrap();
+        written(&folder.path().join(book::SUMMARY), "kept", NOW);
+        let longest = "a".repeat(LONGEST_EVENT);
+        for taken in [
+            longest.as_str(),
+            "abcde",
+            "abc123def_R20261101T150000_20261118T150000Z",
+            "_6tlnaqrle5p6cpb4dhmj4phpehk62qbd5l9mqr39dpq7arbg",
+            "_6tlnaqrle5p6cpb4dhmj4phpe_20261118T150000Z",
+        ] {
+            assert_eq!(
+                named([(taken, NOW - 5, folder.path())], NOW),
+                [taken],
+                "{taken} wasn't named"
+            );
+        }
         let long = "a".repeat(LONGEST_EVENT + 1);
-        assert!(
-            named([(long.as_str(), NOW - 5, with.as_path())], NOW).is_empty(),
-            "an id past the longest was named"
-        );
+        for refused in [
+            long.as_str(),
+            "",
+            "abcd",
+            "_abcd",
+            "__abcdef",
+            "abcdefw",
+            "Abcdef",
+            "abcdef_",
+            "abcdef_x",
+            "abcdef__20261118",
+            "abc-def",
+            "--realm",
+        ] {
+            assert!(
+                named([(refused, NOW - 5, folder.path())], NOW).is_empty(),
+                "{refused:?} was named"
+            );
+        }
     }
 
     #[test]
     fn the_newest_events_are_named_and_no_more_than_mycelium_keeps() {
         let folder = tempfile::tempdir().unwrap();
-        std::fs::write(folder.path().join(book::SUMMARY), "kept").unwrap();
+        written(&folder.path().join(book::SUMMARY), "kept", NOW);
         let ids: Vec<String> = (0..=MOST_EVENTS)
             .map(|each| format!("abcde{each:04}"))
             .collect();
@@ -732,6 +831,23 @@ mod tests {
         assert!(
             !events.contains(&ids[0]),
             "the oldest was named over a newer one"
+        );
+        // The newest named twice, beside itself, still takes one place,
+        // so a repeat is dropped before the most are counted.
+        let held = ids
+            .iter()
+            .enumerate()
+            .map(|(at, id)| {
+                let at = u64::try_from(at).unwrap();
+                (id.as_str(), NOW - 10_000 + at, folder.path())
+            })
+            .chain([(ids[MOST_EVENTS].as_str(), NOW - 9_800, folder.path())]);
+        let events = named(held, NOW);
+        assert_eq!(events.len(), MOST_EVENTS, "a repeat took a place");
+        assert_eq!(
+            events[MOST_EVENTS - 1],
+            ids[1],
+            "a repeat pushed out a call"
         );
     }
 }
