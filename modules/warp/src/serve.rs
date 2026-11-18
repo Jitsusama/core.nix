@@ -631,6 +631,10 @@ fn answer_each<A: Ask>(shared: &Shared<A>, stream: UnixStream, connection: u64) 
             break;
         }
     }
+    // Shut both ways however the reading ended, an answer that couldn't be
+    // queued or a line that couldn't be read, or the writer stays blocked
+    // on a client that never reads, holding the socket until it goes.
+    let _ = hangup.shutdown(Shutdown::Both);
     lock(&shared.held)
         .watches
         .retain(|watch| watch.connection != connection);
