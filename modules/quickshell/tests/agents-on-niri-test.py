@@ -1893,6 +1893,38 @@ def test_network_opens_on_its_row_in_networks_selected_and_on_nothing_none_has(
     assert not shell.showing()["open"], shell.showing()
 
 
+def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
+    shell: Shell,
+) -> None:
+    """Machine and a machine's name opens Machines, that machine's row selected.
+
+    The system page's Open in the Launcher asks it (BMDYSH and XUBK2E, 2026-11-17), since a
+    page can't act: the row's own acts are a step in. Only the first word names one; a name
+    no node lists is said as one the launcher hasn't, and opens nothing.
+    """
+    here = shell.as_account("uname -n").strip()
+
+    def on(name: str) -> Callable[[Json], bool]:
+        return lambda shown: (
+            shown["open"]
+            and shown["held"] == ["machines"]
+            and (shown["selected"] or {}).get("name") == name
+        )
+
+    for said in (here, f"{here} update"):
+        did = followed(shell, "machine", said)
+        assert did == {"done": True, "said": f"opened Machines \u203a {here}"}, did
+        shell.launcher_until(on(here))
+        shell.close_launcher()
+    did = followed(shell, "machine", "skiff.gone", quiet=False)
+    assert did == {"error": "the launcher has no machine called skiff.gone"}, did
+    assert not shell.showing()["open"], shell.showing()
+    opened(shell)
+    in_use = {"done": False, "said": "the launcher is in use, so the link opened nothing"}
+    assert followed(shell, "machine", here, quiet=False) == in_use
+    shell.close_launcher()
+
+
 def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: Shell) -> None:
     """A link asking talkTo or network while Joel has the launcher or the line up opens nothing.
 
