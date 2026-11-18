@@ -153,6 +153,14 @@ mod tests {
         text.lines().collect()
     }
 
+    /// Holds the summary to have this line whole among its own.
+    fn says(summary: &str, line: &str) {
+        assert!(
+            summary.lines().any(|said| said == line),
+            "no line {line:?} in {summary:?}"
+        );
+    }
+
     #[test]
     fn nothing_failed_says_nothing() {
         assert_eq!(text(&[], 0, &console(), Room::Cells(80)), "");
@@ -182,11 +190,15 @@ mod tests {
             &console(),
             Room::Cells(80),
         );
+        says(
+            &summary,
+            "     mount: /home: wrong fs type, bad option, bad superblock on",
+        );
+        says(
+            &summary,
+            "     /dev/mapper/data, missing codepage or helper program, or other error.",
+        );
         let lines = lines(&summary);
-        assert!(lines.contains(&"     mount: /home: wrong fs type, bad option, bad superblock on"));
-        assert!(lines.contains(
-            &"     /dev/mapper/data, missing codepage or helper program, or other error."
-        ));
         assert!(
             lines.iter().all(|line| layout::width(line) <= 80),
             "a line is wider than the console: {summary}"
@@ -206,7 +218,7 @@ mod tests {
             &console(),
             Room::Unbounded,
         );
-        assert!(summary.contains(&format!("     {}\n", said.trim_end())));
+        says(&summary, &format!("     {}", said.trim_end()));
     }
 
     #[test]
@@ -222,9 +234,8 @@ mod tests {
             &console(),
             Room::Cells(80),
         );
-        let lines = lines(&summary);
-        assert!(lines.contains(&"  x  nameless.service"));
-        assert!(lines.contains(&"  x  long.service"));
+        says(&summary, "  x  nameless.service");
+        says(&summary, "  x  long.service");
     }
 
     #[test]
@@ -241,7 +252,7 @@ mod tests {
                 .count(),
             SHOWN
         );
-        assert!(lines(&summary).contains(&"     and 2 more"));
+        says(&summary, "     and 2 more");
     }
 
     #[test]
@@ -260,10 +271,9 @@ mod tests {
             !summary.chars().any(|c| c.is_control() && c != '\n'),
             "a control character reached the console: {summary:?}"
         );
-        let lines = lines(&summary);
-        assert!(lines.contains(&"  x  bell.service  Rings[2J"));
-        assert!(lines.contains(&"     reading its label"));
-        assert!(lines.contains(&"     a gap]0;title"));
+        says(&summary, "  x  bell.service  Rings[2J");
+        says(&summary, "     reading its label");
+        says(&summary, "     a gap]0;title");
     }
 
     #[test]
