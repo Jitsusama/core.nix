@@ -56,16 +56,18 @@
     its page at the root, reading the theme and the kit from its own web/ and kit/ with no strip
     and the page whole; a site that still loads something from outside fails its build, naming
     the file and the address, whether a page's link, image, object, poster, background or
-    xlink:href in any case, quoted or not and past a quoted >, a style's url() or @import in
-    any case, inline or in a stylesheet, a module's import, bare or dynamic, or its fetch, the
-    global one's too, spaced, holding the other quote or wrapped over lines, in its file or
-    inline, an address at a root, on another host, of data: or built whole as the module runs,
-    or a file the folder lacks, as does a srcset, an import map, an image-set(), a strip whose
-    ends don't pair, share a line or no longer read, a site with no index.html, or a folder
-    laid over one already there, which stays; a refused build leaves no folder; and a link to
-    another of the sites stays, as do a data-src, a query, a folder's index, an address built
-    from a start as a module runs in its file or inline, a page's new URL() and another
-    object's fetch method
+    xlink:href in any case, quoted or not, past a quoted > or after a link's open quote, a
+    style's url() or @import in any case, inline or in a stylesheet, a module's import, bare
+    or dynamic, or its fetch, the global one's too, spaced, holding the other quote, wrapped
+    over lines or after two comments or one's closing line, in its file, the kit's or inline,
+    an address at a root, on another host, of data:, built whole as the module runs or added
+    to from a climb, or a file the folder lacks, a tag's template taken as written, as does a
+    srcset, an import map, an image-set(), a strip whose ends don't pair, share a line or no
+    longer read, a site with no index.html, or a folder laid over one already there, which
+    stays as it was; a refused build leaves no folder; and a link to another of the sites
+    stays, as do a data-src, a query, a folder's index, an address built from a start as a
+    module runs, by a template or by adding to it, in its file or inline, a page's new URL()
+    and another object's fetch method
   '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and

@@ -4,19 +4,21 @@
 # with no strip. A site that still loads something from outside the folder
 # fails its build, saying which file and which address, and leaves no folder
 # behind: a page's link, image, object, poster, background or xlink:href, in
-# any case, quoted or not and past a quoted >; a style's url() or @import in
-# any case, inline or in a stylesheet; a module's import, bare or dynamic,
-# or its fetch, the global one's too, spaced from its parenthesis, holding
-# the other quote, in its file or inline, after or between comments, wrapped
-# over lines or built from the root; an address at a root, on another host,
-# of data: or built whole as it runs; a file the folder lacks; a srcset, an
-# import map or an image-set(). So does a strip whose ends don't pair, share
-# a line or no longer read, a site with no index.html, and a folder laid over
-# one already there, which stays. A link to another of the sites is followed
-# rather than loaded, so it stays, as do a data-src, an address with a query
-# or naming a folder, one a module builds from a start as it runs in its file
-# or inline, a page's new URL(), another object's fetch method and words
-# that only read like an import.
+# any case, quoted or not, past a quoted > or after a link's open quote; a
+# style's url() or @import in any case, inline or in a stylesheet; a
+# module's import, bare or dynamic, or its fetch, the global one's too,
+# spaced from its parenthesis, holding the other quote, in its file, the
+# kit's or inline, after, between or closing comments, wrapped over lines,
+# built from the root or added to from a climb; an address at a root, on
+# another host, of data: or built whole as it runs; a file the folder lacks,
+# a tag's ${ taken as written; a srcset, an import map or an image-set().
+# So does a strip whose ends don't pair, share a line or no longer read, a
+# site with no index.html, and a folder laid over one already there, which
+# stays. A link to another of the sites is followed rather than loaded, so
+# it stays, as do a data-src, an address with a query or naming a folder,
+# one a module builds from a start as it runs in its file or inline, by a
+# template or by adding to it, a page's new URL(), another object's fetch
+# method and words that only read like an import.
 # usage: a-live-site-stands-alone-as-a-folder.sh <folder> <standalone.sh> <site>
 #   <kit> <web kit>
 set -euo pipefail
@@ -158,14 +160,40 @@ refuses fetching site.js "\$a void fetch(\"../sites.json\");" \
   "site.js: ../sites.json, outside the folder"
 refuses styled site.css "\$a body { background: url(../ground.png); }" \
   "site.css: ../ground.png, outside the folder"
+refuses two-comments site.js "\$a /* a */ /* b */ import \"../two.js\";" \
+  "site.js: ../two.js, outside the folder"
+refuses comment-tail site.js "\$a /*\n * why\n */ import \"../tail.js\";" \
+  "site.js: ../tail.js, outside the folder"
+refuses joined site.js "\$a void fetch(\"../rows/\" + name);" \
+  "site.js: ../rows/, outside the folder"
+refuses joined-whole site.js "\$a void fetch(\"\" + where);" \
+  "site.js: a string added to, built whole as it runs"
+refuses tag-template index.html "s|</body>|<img alt=\"\" src=\"./a\${x}.png\"></body>|" \
+  "index.html: ./a\${x}.png, which the folder lacks"
+refuses stray-quote index.html \
+  "s|</body>|<a href=./ title=it's><img src=\"../stray.png\"> it's></body>|" \
+  "index.html: ../stray.png, outside the folder"
 
-# A folder laid over one already there would nest inside it.
+# A load in the kit's own copy is judged as the site's are.
+cp -rL "${kit}" "${work}/bad-kit"
+chmod -R u+w "${work}/bad-kit"
+printf '%s\n' 'import "../../outside.js";' >>"${work}/bad-kit/feed.js"
+if bash "${standalone}" "${site}" "${work}/bad-kit" "${web}" "${work}/bad-kit-out" \
+  2>"${work}/bad-kit-said"; then
+  fail "a kit loading from outside the folder built anyway"
+fi
+grep -qF 'kit/feed.js: ../../outside.js, outside the folder' "${work}/bad-kit-said" ||
+  fail "a kit loading from outside the folder didn't say so: $(<"${work}/bad-kit-said")"
+
+# A folder laid over one already there would keep what's in it, so it's
+# refused, and the folder stays as it was.
+touch "${work}/over-kept"
 if bash "${standalone}" "${site}" "${kit}" "${web}" "${work}" 2>"${work}/over-said"; then
   fail "a site laid over a folder already there built anyway"
 fi
+[[ -f ${work}/over-kept ]] || fail "a refusal to lay a site over a folder took the folder"
 grep -qF 'is already there' "${work}/over-said" ||
   fail "a site laid over a folder already there didn't say so: $(<"${work}/over-said")"
-[[ -f ${work}/over-said ]] || fail "a refusal to lay a site over a folder took the folder"
 
 # A site with no page to stand at the root fails, and leaves no folder.
 cp -r "${site}" "${work}/no-index"
@@ -189,6 +217,7 @@ printf '%s\n' '/** Read from "../nowhere.js" once. */' 'export const words = ["f
   "export const rows = (name) => fetch(\`./\${name}.json\`);" \
   'export const asked = (them) => them.fetch("../theirs.json");' \
   'export const other = (notwindow) => notwindow.fetch("../theirs.json");' \
+  'export const listed = (name) => fetch("./rows/" + name);' \
   >>"${work}/linking/site.js"
 printf '%s\n' '/* <!-- sites strip: localSite writes this --> */' '.kept {}' \
   >>"${work}/linking/site.css"

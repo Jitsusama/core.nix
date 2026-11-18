@@ -57,8 +57,10 @@ apart, unlike the one `kit/` a document carries. Anything the folder
 still loads from outside fails the build, naming the file and the
 address, while a link to another of the sites stays as drawn. Its feed is
 still asked of `/feed/<name>`, so on a host that bridges none the page
-says the sites' server can't be reached and keeps trying. How a folder
-reaches a host stays outside core.
+says the sites' server can't be reached and keeps trying. On a host that
+answers there, whatever answers is what the page draws, the commands it
+offers to copy among them, so a folder belongs only on a host whose feed
+the reader trusts. How a folder reaches a host stays outside core.
 
 A document takes its keys and its theme switch from the kit, loading
 `/local-sites/kit/document.js` as a module rather than a copy of its own,

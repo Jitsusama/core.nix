@@ -72,38 +72,6 @@ in
         touch $out
       '';
 
-  # The system page, laid out as a folder that stands alone, loads nothing
-  # from outside it and opens with no strip; a site that still loads
-  # something from outside fails its build, saying which file and address;
-  # and a link to another site stays
-  # (tests/a-live-site-stands-alone-as-a-folder.sh).
-  a-live-site-stands-alone-as-a-folder =
-    let
-      # Built on the real web kit, as a folder that leaves would be, so the
-      # one it carries in is the theme's own.
-      site = sites.localSite {
-        name = "system";
-        src = ../system/site;
-        inherit webKit;
-        tint = "action";
-      };
-    in
-    pkgs.runCommandLocal "a-live-site-stands-alone-as-a-folder" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/a-live-site-stands-alone-as-a-folder.sh} ${
-        lib.escapeShellArgs [
-          "${sites.standalone {
-            name = "system";
-            inherit site;
-          }}"
-          ./standalone.sh
-          "${site}"
-          "${sites.kit}/kit"
-          "${site.webKit}"
-        ]
-      }
-      touch $out
-    '';
-
   # The forage page typechecks on the kit and builds, its tests passing
   # (modules/mycelium/forage/tests), on the same plain looks.
   forage-site-holds = sites.localSite {
@@ -542,4 +510,37 @@ in
   local-sites-passes-clippy = passesClippy "local-sites-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );
+
+  # The system page, laid out as a folder that stands alone, loads nothing
+  # from outside it and opens with no strip; a site that still loads
+  # something from outside fails its build, saying which file and address;
+  # and a link to another site stays
+  # (tests/a-live-site-stands-alone-as-a-folder.sh). Its web kit is the
+  # Linux workstation's, so it builds only here too.
+  a-live-site-stands-alone-as-a-folder =
+    let
+      # Built on the real web kit, as a folder that leaves would be, so the
+      # one it carries in is the theme's own.
+      site = sites.localSite {
+        name = "system";
+        src = ../system/site;
+        inherit webKit;
+        tint = "action";
+      };
+    in
+    pkgs.runCommandLocal "a-live-site-stands-alone-as-a-folder" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/a-live-site-stands-alone-as-a-folder.sh} ${
+        lib.escapeShellArgs [
+          "${sites.standalone {
+            name = "system";
+            inherit site;
+          }}"
+          ./standalone.sh
+          "${site}"
+          "${sites.kit}/kit"
+          "${site.webKit}"
+        ]
+      }
+      touch $out
+    '';
 }
