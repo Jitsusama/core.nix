@@ -8097,6 +8097,14 @@ Scope {
             return String(root.framesDrawn);
         }
 
+        // Asks the card for a frame and gives how many it has drawn, for
+        // a check that reads words only once a frame has laid them out.
+        function drawAFrame(): string {
+            root.framesCounted = true;
+            card.Window.window.update();
+            return String(root.framesDrawn);
+        }
+
         // The spans of the last openings (Traces.qml), oldest first, as
         // JSON: each opening, and each step, back, act and search in it
         // with where its list laid its first row.
