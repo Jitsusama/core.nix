@@ -988,6 +988,21 @@ ShellRoot {
                 playing.name = "Other";
                 playing.properties = playingWas;
             }
+            // A stream is listed before its sound is bound, as PipeWire
+            // gives a node its audio a moment after: a program's own as it
+            // starts to play, so it's seen as it gets its sound.
+            const streamsWere = Launcher.Playing.streams;
+            Launcher.Playing.streams = streamsWere.filter(node => node !== playing);
+            same("held while a stream isn't listed, it starts only", program("lone").actsOnly, true);
+            playing.audio = null;
+            owning("application.name", "Lone");
+            Launcher.Playing.streams = streamsWere;
+            same("a stream of its own listed with no sound yet, it starts only",
+                program("lone").actsOnly, true);
+            playing.audio = playing;
+            same("and as its sound is bound, it asks again, and its Sound holds more",
+                holds("Sound"), "false true");
+            playing.properties = playingWas;
             // And a recorder: a level meter's monitor records nothing, so a
             // meter of its own starts only, until it records.
             const metering = Launcher.Playing.recorders[1];
@@ -1001,6 +1016,8 @@ ShellRoot {
             metering.properties = meteringWas;
             const playerNamed = Launcher.Playing.players[1];
             for (const name of ["identity", "desktopEntry"]) {
+                same(`held before its player's ${name} is its own, it starts only`,
+                    program("lone").actsOnly, true);
                 const was = playerNamed[name];
                 playerNamed[name] = name === "identity" ? "Lone" : "lone";
                 same(`a player whose ${name} is its own asks again, and its Media holds more`,
@@ -1026,14 +1043,25 @@ ShellRoot {
             playerTitled.trackTitle = title;
             playerTitled.isPlaying = !playerTitled.isPlaying;
             playing.volume = volumeWas;
+            // A stream of no program's coming and going, as an agent's done
+            // chime's does, asks each held answer only whether it plays.
+            const chimed = applications.stepsCounted.made;
+            playing.name = "A chime";
+            same("a stream of no program's lets nothing go",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - chimed}`, "true 0");
+            playing.name = "Other";
             // A giver saying it changed asks again only of what it gives:
             // kitty says so as any window of its is retitled, which an
             // agent's is with each command.
             const givenAsked = applications.stepsCounted.made;
+            const giverAsked = giver.asked.acts;
             giver.changed();
-            same("a giver of others' acts saying it changed lets nothing go",
-                `${program("lone").actsOnly} ${applications.stepsCounted.made - givenAsked}`,
-                "true 0");
+            same("a giver of others' acts saying it changed lets nothing go, asked once",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - givenAsked} `
+                + `${giver.asked.acts - giverAsked}`, "true 0 1");
+            const askedOnce = giver.asked.acts;
+            same("and asked again, that giver isn't",
+                `${program("lone").actsOnly} ${giver.asked.acts - askedOnce}`, "true 0");
             for (const [said, change] of [
                 ["a walk from outside asks again", () => {
                     theLauncher.cataloguing = true;
@@ -1054,8 +1082,10 @@ ShellRoot {
             ]) {
                 change();
                 const asked = applications.stepsCounted.made;
-                same(said, `${program("lone").actsOnly} ${applications.stepsCounted.made - asked}`,
-                    "true 1");
+                const giverWas = giver.asked.acts;
+                // Each giver is asked once as the step is made.
+                same(said, `${program("lone").actsOnly} ${applications.stepsCounted.made - asked} `
+                    + `${giver.asked.acts - giverWas}`, "true 1 1");
             }
             giver.hiddenPrograms = ["pair"];
             // A source made by hand that can't say it changed couldn't let
@@ -1100,6 +1130,7 @@ ShellRoot {
             root.loneRow = null;
             joiner.gives = true;
             joiner.changed();
+            same("held as its giver gives, it holds more", program("lone").actsOnly, false);
             theLauncher.sources = theLauncher.sources.filter(source => source !== joiner);
             same("and once it's gone, giving still, it starts only again",
                 program("lone").actsOnly, true);

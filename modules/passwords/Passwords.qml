@@ -123,6 +123,10 @@ Provider {
     // its daemon nothing, so only Joel's keys in the launcher reach an
     // entry, a manager's let-in or a check.
     readonly property bool outside: provider.launcher?.cataloguing === true
+    // Said, since a manager's program is given its acts only while it isn't
+    // (programActs), and Programs holds what each giver gave a closed one
+    // until it says it changed; the walk's own letting go may come first.
+    onOutsideChanged: changed()
     // Whether a line from outside the launcher opened it into this place,
     // over qs ipc or its socket, which any process of the account's can
     // write and no chord of Joel's does. Opened so, the place lists as
