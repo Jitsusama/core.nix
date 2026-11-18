@@ -2,8 +2,9 @@
 //! home to it says in its `homes.json` (the web-design skill's One Home for
 //! Every Thing). An address is only ever read from there, never built by
 //! hand, so every surface opens the same page, and a home that moves moves
-//! everywhere at once. A site may instead say a pattern in its row of
-//! `rows.json`, `{"kind": "machine", "address": "#machine={name}"}`, when
+//! everywhere at once. A site may instead say a pattern in its row, as the
+//! home lists it in `rows.json`,
+//! `{"kind": "machine", "address": "#machine={name}"}`, when
 //! every thing of a kind has its page there by construction, as the mycelium
 //! map's machines do: the pattern is the site's own word, so it is read, not
 //! guessed, and no record listing the things has to be kept beside a source
@@ -825,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn rows_that_are_there_but_wont_read_hold_no_homes() {
+    fn rows_that_are_there_but_wont_open_hold_no_homes() {
         let root = folder(
             "unreadable",
             &[
@@ -840,6 +841,24 @@ mod tests {
             homes,
             Homes::default(),
             "only a missing rows file sends the reader to the record"
+        );
+    }
+
+    #[test]
+    fn a_home_with_rows_and_no_record_reads_its_rows() {
+        let root = folder(
+            "no-record",
+            &[
+                ("rows.json", &repositories("code/")),
+                ("code/homes.json", &core_at("code/")),
+            ],
+        );
+        let homes = Homes::read(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            homes.address("repository", "core"),
+            Some("code/#repo=core".into()),
+            "a home that has only ever listed rows apart needs no record"
         );
     }
 
@@ -862,7 +881,7 @@ mod tests {
     }
 
     #[test]
-    fn rows_that_cant_be_read_hold_no_homes_rather_than_the_records() {
+    fn rows_that_wont_parse_hold_no_homes_rather_than_the_records() {
         let root = folder(
             "broken",
             &[
