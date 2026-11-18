@@ -1,6 +1,6 @@
 //! eero as it's run: the views take their marks and their ink from the
 //! kit's pen, so the console's font is given the stand-ins it can draw
-//! and the colour flag and NO_COLOR are settled as every command settles
+//! and the colour flag and `NO_COLOR` are settled as every command settles
 //! them. Run as the binary, since the marks a view draws are taken once,
 //! for the whole run, which a test inside eero's own tests would share
 //! with the golden pages, and since a page is inked or not by the pen
