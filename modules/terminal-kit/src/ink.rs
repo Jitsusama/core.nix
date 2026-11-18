@@ -16,6 +16,7 @@ use serde_json::Value;
 
 use crate::environment::Environment;
 use crate::flags::Colour;
+use crate::layout::{drawn, one_line};
 
 /// How a stream is inked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -338,13 +339,14 @@ impl Pen {
     }
 
     fn escaped(&self, codes: &[&str], words: &str) -> String {
+        let words = drawn(words);
         let codes: Vec<&str> = codes
             .iter()
             .copied()
             .filter(|code| !code.is_empty())
             .collect();
         if words.is_empty() || !self.inks() || codes.is_empty() {
-            return words.to_owned();
+            return words.into_owned();
         }
         format!("\u{1b}[{}m{words}\u{1b}[0m", codes.join(";"))
     }
@@ -411,9 +413,11 @@ impl Pen {
     /// Words that open a URL or a path on a click: a kitty hyperlink
     /// where there's ink, and the words alone where there's none.
     pub fn link(&self, target: &str, words: &str) -> String {
+        let words = one_line(words);
         if !self.inks() {
-            return words.to_owned();
+            return words.into_owned();
         }
+        let target = one_line(target);
         format!("\u{1b}]8;;{target}\u{1b}\\{words}\u{1b}]8;;\u{1b}\\")
     }
 }
@@ -483,6 +487,43 @@ mod tests {
         assert_eq!(pen.faint("rule", "r"), "\u{1b}[2;33mr\u{1b}[0m");
         // Its text is the terminal's own foreground, so it's left as it is.
         assert_eq!(pen.role("text", "t"), "t");
+    }
+
+    #[test]
+    fn words_from_outside_reach_the_terminal_without_its_controls() {
+        // A device's or a network's name is anyone's to set, and one
+        // holding the terminal's escapes would retitle the window, clear
+        // the screen or ring the bell as it's drawn.
+        let named = "eero\u{1b}]0;owned\u{7}\u{1b}[2J \u{9b}31mhall\u{8}\u{7f}";
+        let plain = Pen::plain();
+        assert_eq!(plain.role("text", named), "eero]0;owned[2J 31mhall");
+        let inked = Pen::new(Ink::sixteen(), Some(&osaka_jade()));
+        assert_eq!(
+            inked.role("alert", named),
+            "\u{1b}[31meero]0;owned[2J 31mhall\u{1b}[0m",
+            "an inked word kept a control of its own"
+        );
+        assert_eq!(
+            plain.title("a\rb"),
+            "ab",
+            "a return would draw over the line"
+        );
+    }
+
+    #[test]
+    fn words_keep_their_lines_and_a_tab_is_a_space() {
+        let pen = Pen::plain();
+        assert_eq!(pen.role("text", "one\ntwo\tthree"), "one\ntwo three");
+    }
+
+    #[test]
+    fn a_link_cant_be_ended_early_by_its_target_or_its_words() {
+        let pen = Pen::new(Ink::sixteen(), None);
+        assert_eq!(
+            pen.link("https://a\u{1b}\\b", "see\u{1b}]8;;x\u{7}"),
+            "\u{1b}]8;;https://a\\b\u{1b}\\see]8;;x\u{1b}]8;;\u{1b}\\"
+        );
+        assert_eq!(Pen::plain().link("t", "see\u{7}"), "see");
     }
 
     #[test]

@@ -14,7 +14,7 @@ use crate::ink::Pen;
 
 mod words;
 
-pub use words::{cut, hung, paragraph, shortened, wrapped};
+pub use words::{cut, drawn, hung, one_line, paragraph, shortened, wrapped};
 
 /// How a run of items is joined on one line.
 pub const ITEMS: &str = " \u{b7} ";
@@ -208,6 +208,17 @@ impl Row {
         self
     }
 
+    /// The same, its name, words and side each held to one line, so a
+    /// list measures what it draws.
+    fn on_one_line(&self) -> Self {
+        Self {
+            name: one_line(&self.name).into_owned(),
+            words: one_line(&self.words).into_owned(),
+            side: one_line(&self.side).into_owned(),
+            ..self.clone()
+        }
+    }
+
     fn needs(lead: usize, name: &str, words: &str, side: &str) -> usize {
         let then = |words: &str| {
             if words.is_empty() {
@@ -225,8 +236,9 @@ impl Row {
 /// words in muted after it; and its side flush right at the widest row,
 /// in one column for the list. Into a terminal a row's words give way
 /// first, then its side, each by whole items from its end, then its name
-/// at a whole word.
+/// at a whole word. Each row is held to one line, as `one_line` says.
 pub fn list(rows: &[Row], pen: &Pen, room: Room) -> Vec<String> {
+    let rows: Vec<Row> = rows.iter().map(Row::on_one_line).collect();
     let lead = if rows.iter().any(|row| row.mark.is_some()) {
         MARK
     } else {
@@ -286,11 +298,21 @@ fn line(row: &Row, lead: usize, across: usize, pen: &Pen) -> String {
 /// judged on its own: one that can't fit beside the column, whole on its
 /// line, or wrapping in no more than half the room without cutting a word
 /// of it, as an identifier, that would fit whole under, goes under its
-/// label, two cells in. A long value wraps under itself.
+/// label, two cells in. A long value wraps under itself, and is held to
+/// one line first, as `one_line` says.
 pub fn facts(facts: &[(&str, Option<&str>)], unknown: &str, pen: &Pen, room: Room) -> Vec<String> {
     fn said<'a>(value: Option<&'a str>, unknown: &'a str) -> (&'a str, &'static str) {
         value.map_or((unknown, "muted"), |value| (value, "text"))
     }
+    let held: Vec<(&str, Option<String>)> = facts
+        .iter()
+        .map(|(label, value)| (*label, value.map(|value| one_line(value).into_owned())))
+        .collect();
+    let facts: Vec<(&str, Option<&str>)> = held
+        .iter()
+        .map(|(label, value)| (*label, value.as_deref()))
+        .collect();
+    let facts = facts.as_slice();
     let fits = |column: usize, value: &str| {
         room.cells().is_none_or(|cells| {
             let longest = value.split_whitespace().map(width).max().unwrap_or(0);
@@ -359,7 +381,8 @@ pub const SHORTENED: usize = 24;
 /// what's still too wide has its last column's words cut at a whole word.
 /// A last column of words is weighed at `SHORTENED` cells at most, since
 /// it can be cut and the columns before it can't. The first column names
-/// each record, so it never goes. Into a pipe nothing goes.
+/// each record, so it never goes. Into a pipe nothing goes. Each cell is
+/// held to one line first, as `one_line` says.
 pub fn table_in(
     columns: &[(&str, Align)],
     rows: &[Vec<String>],
@@ -367,6 +390,11 @@ pub fn table_in(
     room: Room,
     gives_way: &[usize],
 ) -> Vec<String> {
+    let rows: Vec<Vec<String>> = rows
+        .iter()
+        .map(|row| row.iter().map(|cell| one_line(cell).into_owned()).collect())
+        .collect();
+    let rows = rows.as_slice();
     let Some(cells) = room.cells() else {
         return set_table(columns, rows, pen);
     };
@@ -490,6 +518,49 @@ pub fn joined(blocks: Vec<Vec<String>>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_table_cell_from_outside_stays_on_its_line_and_in_its_column() {
+        let pen = Pen::plain();
+        let rows = vec![
+            vec!["hall\n2  forged".to_owned(), "on\u{1b}[2J".to_owned()],
+            vec!["den".to_owned(), "off".to_owned()],
+        ];
+        let columns = [("Name", Align::Left), ("State", Align::Left)];
+        assert_eq!(
+            table(&columns, &rows, &pen),
+            [
+                "NAME            STATE",
+                "hall 2  forged  on[2J",
+                "den             off"
+            ]
+            .map(str::to_owned),
+            "a line break in a cell drew a record of its own, or a control moved a column"
+        );
+    }
+
+    #[test]
+    fn a_list_row_from_outside_stays_on_its_line_and_its_side_in_place() {
+        let rows = [
+            Row::named("hall\nforged\u{7}").side("on"),
+            Row::named("den").side("off"),
+        ];
+        assert_eq!(
+            list(&rows, &Pen::plain(), Room::Unbounded),
+            ["hall forged  on", "den         off"].map(str::to_owned),
+            "a row's line break or bell moved what's beside it"
+        );
+    }
+
+    #[test]
+    fn a_fact_from_outside_stays_beside_its_label() {
+        let facts = [("Name", Some("hall\nPassword  hunter2\u{1b}[8m"))];
+        assert_eq!(
+            super::facts(&facts, "unknown", &Pen::plain(), Room::Unbounded),
+            ["Name  hall Password  hunter2[8m"].map(str::to_owned),
+            "a fact's value drew a fact of its own"
+        );
+    }
 
     #[test]
     fn overrun_names_the_first_line_past_the_room_and_none_in_a_pipe() {

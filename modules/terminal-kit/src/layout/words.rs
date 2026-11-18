@@ -2,7 +2,10 @@
 //! Gives Way): prose wrapped at whole words keeping its inset, a run giving
 //! way at its items, a figure held to its unit, no last word left alone,
 //! and a word too long for its line shortened in its middle, never broken.
-//! Lists, facts and tables set their cells with these.
+//! Lists, facts and tables set their cells with these, once each is
+//! drawn as the terminal may be given it.
+
+use std::borrow::Cow;
 
 use unicode_width::UnicodeWidthChar;
 
@@ -14,6 +17,42 @@ use super::{CUT, ITEMS, Room, width};
 const SMALL: [&str; 12] = [
     "a", "an", "the", "of", "for", "with", "to", "in", "on", "and", "so", "from",
 ];
+
+/// Words as the kit draws them: every control character dropped but the
+/// line break, and a tab drawn as a space. A name, a path or a message
+/// comes from anyone, an eero device's name or a Wi-Fi network's among
+/// them, and one holding the terminal's own escapes would retitle the
+/// window, clear the screen or draw over a line as it's shown; only the
+/// kit spells escapes (docs/commands.md, Colour and Marks). The words are
+/// borrowed as they are where they hold none, as nearly all do.
+pub fn drawn(words: &str) -> Cow<'_, str> {
+    kept(words, |c| match c {
+        '\n' => Some('\n'),
+        '\t' => Some(' '),
+        _ => None,
+    })
+}
+
+/// The same, held to one line, as a table's cell, a list's row or a fact
+/// is: a line break is a space too, so no field draws a record of its
+/// own, and every line read through `grep` still names its record.
+pub fn one_line(words: &str) -> Cow<'_, str> {
+    kept(words, |c| matches!(c, '\n' | '\t').then_some(' '))
+}
+
+/// Words with each control character given to `instead`, which draws it
+/// as another character or drops it.
+fn kept(words: &str, instead: impl Fn(char) -> Option<char>) -> Cow<'_, str> {
+    if !words.chars().any(char::is_control) {
+        return Cow::Borrowed(words);
+    }
+    Cow::Owned(
+        words
+            .chars()
+            .filter_map(|c| if c.is_control() { instead(c) } else { Some(c) })
+            .collect(),
+    )
+}
 
 /// A name cut to `room` cells at a whole word, ending in an ellipsis, and
 /// never after a small word, though its first word is kept whatever. A

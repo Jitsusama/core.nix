@@ -48,6 +48,8 @@ pub struct Wait<'a, W: Write> {
 impl<'a, W: Write> Wait<'a, W> {
     /// A wait begun, said at once: what's being done.
     pub fn begin(mut out: W, pen: &'a Pen, room: Room, words: &str) -> io::Result<Self> {
+        // One line, since a wait into a terminal draws over its own.
+        let words = &*crate::layout::one_line(words);
         let terminal = room.cells().is_some();
         if !terminal {
             writeln!(out, "{}{words}", pen.marked("running", "muted"))?;
@@ -68,6 +70,8 @@ impl<'a, W: Write> Wait<'a, W> {
     /// How far along it is, and what it's doing now. Into a pipe a change
     /// of words is a line, and a fraction alone says nothing.
     pub fn step(&mut self, fraction: Option<f64>, words: Option<&str>) -> io::Result<()> {
+        let words = words.map(layout::one_line);
+        let words = words.as_deref();
         let changed = words.is_some_and(|words| words != self.words);
         if let Some(words) = words {
             words.clone_into(&mut self.words);
@@ -157,6 +161,20 @@ mod tests {
         assert_eq!(
             String::from_utf8(out).expect("words"),
             "\u{2192} building\n\u{2192} testing\n\u{2713} built example-nixos\n"
+        );
+    }
+
+    #[test]
+    fn a_wait_says_words_from_outside_on_its_one_line() {
+        let pen = Pen::plain();
+        let mut out = Vec::new();
+        let mut wait =
+            Wait::begin(&mut out, &pen, Room::Unbounded, "copying\nhall\u{1b}[2J").expect("said");
+        wait.step(None, Some("den\r\u{7}")).expect("said");
+        assert_eq!(
+            String::from_utf8(out).expect("words"),
+            "\u{2192} copying hall[2J\n\u{2192} den\n",
+            "a wait's words broke its line or kept a control"
         );
     }
 
