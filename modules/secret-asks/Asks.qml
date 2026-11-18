@@ -302,6 +302,10 @@ Provider {
             noteSelected();
     }
 
+    // What a hidden ask's row keeps of the one the daemon serves.
+    readonly property var hiddenKeeps: ["key", "thing", "place", "kind", "state", "glyph",
+        "hue", "attention", "order"]
+
     // An ask's row, from the one the daemon serves, with what For You
     // reads of it: whether it waits on Joel, and since when.
     function made(served, key) {
@@ -310,15 +314,16 @@ Provider {
         // knowing, so a windows daemon that never says is told apart from
         // a share; while shared, its name says why.
         const waits = Niri.castsHeard ? "" : Words.field.becoming?.unheard ?? "";
-        const drawn = !hiding ? served : Object.assign({}, served, {
+        // Hidden, it keeps only what says it's an ask and where it's
+        // listed, so a field the daemon serves later is withheld until
+        // it's named here; its acts, side and search words go with the rest.
+        const drawn = !hiding ? served : Object.assign(provider.hiddenKeeps.reduce((kept, name) =>
+            name in served ? Object.assign(kept, { [name]: served[name] }) : kept, {}), {
             name: hidden,
             note: waits,
-            side: [],
-            acts: [],
-            keywords: [],
             drawer: { eyebrow: "", title: hidden, body: waits, facts: [] }
         });
-        return ready.thing(drawn, key, {
+        return ready.thing(drawn, key, Object.assign({
             thing: true,
             key: served.thing,
             // The record's key, by which a frame presenting it is noted.
@@ -333,7 +338,18 @@ Provider {
                 ? Words.of("verb:release").said?.arms ?? "" : "",
             // What it is and where it's from, which For You filters by.
             forYou: { kind: "do", source: "asks" }
-        });
+        }, !hiding || served.state !== "waiting" ? {} : {
+            // Hidden, a waiting ask's Return keeps the launcher open and
+            // does nothing, as the launcher closes on a row with no run,
+            // and his second Return, meant for a yes, would then reach the
+            // window behind.
+            stays: true,
+            run: provider.holdsHidden
+        }));
+    }
+
+    // A hidden waiting ask's Return, which answers nothing.
+    function holdsHidden() {
     }
 
     // Each waiting ask as For You weighs a thing to do: it blocks the
