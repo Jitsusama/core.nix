@@ -5,6 +5,7 @@
 //! which the other three parts don't share.
 
 use serde_json::Value;
+use terminal_kit::time::span;
 
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
@@ -14,6 +15,11 @@ use crate::record::{Deeper, Health, Part, Thing};
 const GIGABYTE: f64 = 1e9;
 /// A battery at or under this, off the charger, is worth a look.
 const LOW_CHARGE: u64 = 20;
+/// A quest backup older than this, in seconds, is worth a look: it runs
+/// every hour, so two missed runs in a row.
+const BACKUP_LATE: u64 = 2 * 3_600;
+/// A quest backup older than this, in seconds, is failing.
+const BACKUP_FAILING: u64 = 6 * 3_600;
 
 /// The parts of another machine's own health this takes in: those only
 /// that machine reads. Its machines, mycelium and network are the same
@@ -25,12 +31,14 @@ const ITS_OWN: [&str; 1] = ["code"];
 /// The machines of the realm, from `mycelium machines`, each with its
 /// sessions from `mycelium health` where that was read, and its ties to
 /// the network and the code from `net --json` and `repos --json` where
-/// those were.
+/// those were, and this machine's with how long ago its quest backup
+/// last landed, in seconds, where it keeps one.
 pub fn machines(
     machines: &Answer,
     health: &Answer,
     net: Option<&Value>,
     repos: Option<&Value>,
+    backup: Option<u64>,
 ) -> Part {
     let deeper = Deeper {
         command: "mycelium machines",
@@ -56,7 +64,8 @@ pub fn machines(
         .map(|(at, said)| {
             let others = (at > 0).then(|| said.get("health")).flatten();
             let its = sessions.and_then(|all| all.get(name_of(said)));
-            let (mut thing, looks) = machine(said, its, others);
+            let here = (at == 0).then_some(backup).flatten();
+            let (mut thing, looks) = machine(said, its, others, here);
             // A health read that lists none on a machine says none there.
             let cells = sessions.map(|_| its.unwrap_or(&Value::Null));
             thing.ties = ties(said, cells, net, repos);
@@ -140,7 +149,12 @@ impl Said {
 /// Being short of room is said but never worth a look: agents' builds
 /// hold the processor nearly all day, which isn't Joel's to act on, and
 /// memory waits for a day measured to tell a held shortage from a spike.
-fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thing, Vec<String>) {
+fn machine(
+    said: &Value,
+    sessions: Option<&Value>,
+    own: Option<&Value>,
+    backup: Option<u64>,
+) -> (Thing, Vec<String>) {
     let mut words = Said::default();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
         words.look(
@@ -214,6 +228,9 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
             _ => {}
         }
     }
+    if let Some(age) = backup {
+        backup_looks(&mut words, age);
+    }
     let Said {
         mut line,
         mut looks,
@@ -256,6 +273,25 @@ fn ago_said(seconds: u64) -> String {
     }
 }
 
+/// A quest backup that last landed `age` seconds ago, said only once it
+/// is late, with where to read why.
+fn backup_looks(words: &mut Said, age: u64) {
+    let health = match age {
+        age if age > BACKUP_FAILING => Health::Bad,
+        age if age > BACKUP_LATE => Health::Watch,
+        _ => return,
+    };
+    words.look(
+        health,
+        format!(
+            "landed its quest backup {} ago \
+             (journalctl --user -u quest-backup says why)",
+            span(age)
+        ),
+        format!("quest backup {} old", span(age)),
+    );
+}
+
 /// A resource a node says a machine is short of, in Joel's words for it.
 fn resource(said: &str) -> &str {
     match said {
@@ -284,6 +320,65 @@ mod tests {
 
     use super::*;
     use crate::parts::tests::{NO_LOOK, said_health};
+
+    /// The machines, read with no quest backup on this machine, as every
+    /// case but the backup's reads them.
+    fn machines(
+        machines: &Answer,
+        health: &Answer,
+        net: Option<&Value>,
+        repos: Option<&Value>,
+    ) -> Part {
+        super::machines(machines, health, net, repos, None)
+    }
+
+    #[test]
+    fn this_machines_quest_backup_is_worth_a_look_past_two_hours_and_bad_past_six() {
+        let here = laptop(&[], "healthy");
+        let other = json!({"name": "desk", "state": "ready"});
+        let at = |age: Option<u64>| {
+            let part = super::machines(
+                &Ok(realm(&[here.clone(), other.clone()])),
+                &Err(String::new()),
+                None,
+                None,
+                age,
+            );
+            let of = |name: &str| {
+                part.things
+                    .iter()
+                    .find(|thing| thing.name == name)
+                    .cloned()
+                    .expect("each machine is listed")
+            };
+            (part.health, of("laptop"), of("desk"))
+        };
+        let (health, laptop, desk) = at(Some(2 * 3_600));
+        assert_eq!(health, Health::Good, "two hours is on time");
+        assert_eq!(laptop.says, "is ready");
+        let (health, laptop, desk_late) = at(Some(2 * 3_600 + 60));
+        assert_eq!(health, Health::Watch);
+        assert_eq!(
+            laptop.says,
+            "landed its quest backup 2 h 1 m ago \
+             (journalctl --user -u quest-backup says why)"
+        );
+        assert_eq!(laptop.side, ["quest backup 2 h 1 m old"]);
+        assert_eq!(
+            desk_late.health,
+            Health::Good,
+            "only this machine's backup is read"
+        );
+        let (health, laptop, _) = at(Some(6 * 3_600 + 1));
+        assert_eq!((health, laptop.health), (Health::Bad, Health::Bad));
+        let (health, laptop, _) = at(None);
+        assert_eq!(
+            (health, laptop.says.as_str()),
+            (Health::Good, "is ready"),
+            "a machine keeping no backup says nothing of one"
+        );
+        assert_eq!(desk.health, Health::Good);
+    }
 
     fn laptop(over: &[&str], band: &str) -> Value {
         json!({"name": "laptop", "state": "ready", "disk_free": 278_819_094_528_u64,

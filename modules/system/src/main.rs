@@ -130,7 +130,13 @@ pub(crate) fn read() -> System {
         machine: terminal_kit::environment::machine(),
         read_at: terminal_kit::time::rfc3339(now()),
         parts: vec![
-            parts::machines(&machines, &health, net.as_ref().ok(), repos.as_ref().ok()),
+            parts::machines(
+                &machines,
+                &health,
+                net.as_ref().ok(),
+                repos.as_ref().ok(),
+                backup_age(),
+            ),
             parts::mycelium(&health),
             parts::network(&net),
             parts::code(&repos),
@@ -165,6 +171,24 @@ fn sites() -> Option<PathBuf> {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
         })?;
     Some(data.join("jitsusama/sites"))
+}
+
+/// How long ago, in seconds, this machine's quest backup last landed, as
+/// the backup writes it under its state home (epoch seconds); none where
+/// this machine keeps no backup or the file says no time.
+fn backup_age() -> Option<u64> {
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .filter(|state| !state.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
+        })?;
+    let landed: i64 = std::fs::read_to_string(state.join("quest-backup/landed"))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    Some(now().saturating_sub(landed).max(0).unsigned_abs())
 }
 
 fn now() -> i64 {

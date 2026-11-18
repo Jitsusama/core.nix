@@ -338,6 +338,7 @@ mod tests {
             &Ok(said_health()),
             None,
             None,
+            None,
         );
         assert_eq!(part.health, Health::Unread);
         assert_eq!(part.says, "mycelium isn't installed");

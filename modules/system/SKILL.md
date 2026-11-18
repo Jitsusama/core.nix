@@ -91,6 +91,10 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
   whose code wants a look is worth a look; its node carries that word
   in its machine record. Only code is taken from it, since the network,
   machines and mycelium are the same whole read from every machine.
+  The machine `system` runs on also says its quest backup once the last
+  landing (`quest-backup/landed` under the state home) is over 2 hours
+  old, worth a look, or over 6, bad; a machine keeping no backup says
+  nothing of one.
 - **Mycelium.** A link that isn't up is bad. A session whose process is
   gone is an agent's leftover, said in what the part holds ("3 sessions
   gone") and never worth a look.
