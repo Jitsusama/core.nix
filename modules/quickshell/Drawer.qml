@@ -587,6 +587,8 @@ Floating {
             // back into never says it went round before anything's sought.
             lastSought = null;
             landing = "";
+            // And y's flash, which the next row's page would wear.
+            unflash();
         }
     }
     // Visual, as on a page: what it chooses by, "letters" or "lines", or
@@ -783,7 +785,6 @@ Floating {
     // Into it: the cursor on the title's first letter where it's in view,
     // else the first line in view, so nothing moves as the keys come in.
     function enter() {
-        unflash();
         lastChosen = null;
         began = choosing !== "" ? began : null;
         laid = lines();
@@ -808,7 +809,10 @@ Floating {
     }
     // y's flash ends with the page it was given on: what it took is that
     // page's letters, so a page stepped into would wear them as its own.
+    // A start still waiting on its frame is no longer the newest yank's, so
+    // it starts nothing.
     function unflash() {
+        ++yanks;
         flash.stop();
         flashing = [];
     }
