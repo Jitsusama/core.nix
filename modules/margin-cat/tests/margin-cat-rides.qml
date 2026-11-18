@@ -266,15 +266,34 @@ QtObject {
                 MarginCat.closeHeard(closeKept, 2000).closed,
                 MarginCat.closeHeard(closeKept, 2000).before === belowInPlace],
             [true, 7, true, 8, false, true]);
-        const replanned = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
+        // A walk that rides nothing is never the close's, and after it the
+        // window it stood on gone is closed under it all the same.
+        const nullSeen = MarginCat.closeHeard(Object.assign({}, closeKept, { seen: null }),
+            1001);
+        expect("a walk riding nothing within the close hears none of it; after, its window gone",
+            [nullSeen.closed, nullSeen.on, nullSeen.before,
+                MarginCat.closeHeard(Object.assign({}, closeKept, { gone: true }), 2000).closed],
+            [false, 8, null, true]);
+        // Set again partway down its fall, as niri lays the column out: in
+        // the window over it grown down, it falls on to the row below...
+        const midFall = Paths.walk({ x: 532, y: 300 }, { x: 532, y: 399 }, among({
             hurried: true, closed: keptHeard.closed, on: keptHeard.on,
             cols: Paths.columns(grown, 0), before: Paths.columns(keptHeard.before, 0),
             ahead: 63, frame: 1000 / 120 }));
-        expect("its walk set again as the column's laid out, it falls onto the row below",
-            [replanned.beats.map(beat => beat.name).slice(0, 3),
-                posed(replanned, "rides").every(one => one.pose === "falling"),
-                ends(replanned)],
+        expect("set again partway down its fall, it falls on onto the row below",
+            [midFall.beats.map(beat => beat.name).slice(0, 3),
+                posed(midFall, "rides").every(one => one.pose === "falling"), ends(midFall)],
             [["rides", "lands", "shakes"], true, [532, 399]]);
+        // ...and in the row below, risen into the closed one's place, it
+        // is set on that row's top, never through its face to the floor
+        // and climbing back.
+        const risenInto = Paths.walk({ x: 532, y: 300 }, { x: 532, y: 257 }, among({
+            hurried: true, closed: true, on: 7, cols: Paths.columns(belowInPlace, 0),
+            before: Paths.columns(rows, 0), ahead: 63, frame: 1000 / 120 }));
+        expect("set again inside the row below risen into its place, it goes up onto it",
+            [risenInto.beats.some(beat => beat.name === "climbs"),
+                seen(risenInto).every(at => at.y <= 300), ends(risenInto)],
+            [false, true, [532, 257]]);
         const opened = ided.concat([{ id: 9, left: 432, top: 500, width: 400, height: 284,
             column: 1 }]);
         const staysOn = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({

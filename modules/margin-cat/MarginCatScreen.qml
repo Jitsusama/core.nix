@@ -438,6 +438,8 @@ PanelWindow {
     function moveTo(way: int): void {
         landedOn = null;
         halt();
+        // A close is owned only by the walks it set going.
+        closedOn = null;
         resting.stop();
         leaving.stop();
         movingTo = null;
@@ -769,6 +771,7 @@ PanelWindow {
         if (place === null || moving !== null)
             return;
         halt();
+        closedOn = null;
         resting.stop();
         leaving.stop();
         endStroll();
@@ -837,6 +840,7 @@ PanelWindow {
     function plays(playing: var): void {
         if (playing === null)
             return;
+        closedOn = null;
         roams = null;
         landedOn = null;
         shown = [];
@@ -909,6 +913,7 @@ PanelWindow {
             if (window.there !== null || window.emptied)
                 return;
             window.halt();
+            window.closedOn = null;
             window.endStroll();
             resting.stop();
             window.sat = window.wanted;

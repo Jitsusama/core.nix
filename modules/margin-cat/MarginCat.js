@@ -80,9 +80,12 @@ const CLOSING = 1000;
 // below down sitting (a builder's nested niri, 2026-11-17: niri moved
 // that row up into the closed one's place as the cat set off, and it
 // rode, turned and landed). After, as it `stands` now: the window it
-// stands on, whether that's `gone`, and the windows it last `seen`.
+// stands on, whether that's `gone`, and the windows it last `seen`; so
+// too a walk that rides nothing, its `seen` null (a fall to the floor,
+// or a move cut short), which is never the close's.
 function closeHeard(close, now) {
-    if (close.on !== null && close.on !== undefined && now - close.at < CLOSING) {
+    const closes = close.on !== null && close.on !== undefined && close.seen !== null;
+    if (closes && now - close.at < CLOSING) {
         return { closed: true, on: close.on, before: close.saw };
     }
     return { closed: close.gone, on: close.stands, before: close.seen };

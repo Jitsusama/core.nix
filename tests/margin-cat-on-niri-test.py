@@ -1041,6 +1041,12 @@ def test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below(shell: Shel
     # Onto the row below, never through its face to the floor and back up (the GPU rig,
     # 2026-11-15).
     assert "climbs" not in way, f"the cat fell past the row below, its way {way}: {told}"
+    # And so every walk set again as niri lays the column out, which the shell plans whether or
+    # not a frame of it is drawn: never riding the row below down and walking on (a builder,
+    # 2026-11-17: rides, turns, lands), nor climbing back from the floor.
+    ways = {tuple(step["walk"]["beats"]) for step in walked}
+    rode = [one for one in ways if "climbs" in one or ("rides", "turns") in itertools.pairwise(one)]
+    assert not rode, f"a walk after the close rode or climbed, its ways {rode}: {told}"
     # Falling wherever a frame of its fall is drawn. The slow software niri may draw none (a
     # builder, 2026-11-17: from y 258 straight to its landing), so the drawing every frame of
     # it shows is margin-cat-rides.qml's to prove, at 120 Hz.
