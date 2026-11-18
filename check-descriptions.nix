@@ -3345,8 +3345,11 @@
     into a place, nor over rows a landing Return, the command line or an ask from outside left,
     Release It from its verbs counting from its line, typing or an ask from outside starts the
     time again and lets a frame asked for go, each case reads a yes it sent, a withheld yes says
-    why, the entries told over the connection leave the asks' rows be, and a yes walked from
-    outside the launcher is never sent
+    why, the entries told over the connection leave the asks' rows be, a yes walked from
+    outside the launcher is never sent, and while the screen is shared or niri hasn't said its
+    casts each ask's row names only that it's hidden, offers no act, times no frame and counts
+    nothing once shown again until his next move, a yes from a row made before the share is
+    never sent and is told as hidden, and the shell's own recording of one window hides nothing
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,

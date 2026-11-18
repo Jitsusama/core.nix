@@ -47,6 +47,7 @@ Provider {
         active: provider.overPasswords ? provider.passwordsLink !== null
             : !!Quickshell.env("XDG_RUNTIME_DIR")
         stamp: (key, ask) => provider.stamped(key, ask)
+        toldAs: key => provider.hiding ? Words.name("asks:hidden") : ready.served(key)?.name ?? ""
         place: "asks"
         beside: ["summary"]
         make: (row, key) => provider.made(row, key)
@@ -195,8 +196,12 @@ Provider {
     // A verb's ask as it's sent, a yes saying how long its line was shown,
     // or null for a yes walked from outside the launcher, which is never
     // sent. Only the passwords child reads the time; the experiments' own
-    // daemon is sent the ask as served.
+    // daemon is sent the ask as served. While hiding no yes is sent, by
+    // either daemon, since a row made before the share, as a step held
+    // into its verbs keeps, still offers its Release It.
     function stamped(key, ask) {
+        if (hiding && ask?.ask === "release")
+            return null;
         const said = Shown.stamped(ask, seen, key, {
             now: KeyTimes.now(),
             opening: launcher?.openingsDrawn ?? 0,

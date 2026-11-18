@@ -243,8 +243,8 @@ ShellRoot {
             returnedInto, returnedIntoShown, steeredOut, walkedInto, walkedIntoShown,
             walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
             typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore,
-            typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown, overRowsThenTold,
-            toldOverRows, toldOverRowsShown, landed, landedThenMoved, landedThenShown, commanded,
+            typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown,
+            overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved, landedThenShown, commanded,
             commandedThenRun, commandedThenMoved, commandedThenShown, timedBeforeSharing,
             timedMove, sharing, sharedYes, sharingMoved, sharingMovedAsked, unshared,
             unsharedShown, unsharedMoved, unsharedMovedShown, unheard, ownRecording]);
