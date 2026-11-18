@@ -71,21 +71,32 @@ function walked(map: MycelialMap, from: number, way: Way): number | undefined {
 
 const counted = (count: number): string => `${count}\u00a0${count === 1 ? "cell" : "cells"}`;
 
-/** What the row at `index` is tied to, the most cells first, as a sentence. */
-function saidOf(map: MycelialMap, index: number): string {
+/**
+ * What the row at `index` is tied to, the most cells first, as a sentence, each other row's
+ * name written by `named`: as it is for a reader's label, or as a link home on the page.
+ */
+function saidOf(
+  map: MycelialMap,
+  index: number,
+  named: (row: Row) => string = (row) => row.name,
+): string {
   const row = map.rows[index];
   if (row === undefined) {
     return "";
   }
-  const name = (key: string): string => map.rows.find((each) => each.key === key)?.name ?? key;
+  const rowOf = (key: string): Row =>
+    map.rows.find((each) => each.key === key) ?? { key, name: key, address: "" };
   const others = map.ties
     .filter((tie) => tie.ends.includes(row.key))
     .map((tie) => ({
-      name: name(tie.ends[0] === row.key ? tie.ends[1] : tie.ends[0]),
+      row: rowOf(tie.ends[0] === row.key ? tie.ends[1] : tie.ends[0]),
       cells: tie.cells.length,
     }))
-    .sort((one, other) => other.cells - one.cells || one.name.localeCompare(other.name, "en-CA"))
-    .map((other) => `${other.name} by ${counted(other.cells)}`);
+    .sort(
+      (one, other) =>
+        other.cells - one.cells || one.row.name.localeCompare(other.row.name, "en-CA"),
+    )
+    .map((other) => `${named(other.row)} by ${counted(other.cells)}`);
   const last = others.pop();
   const listed = others.length === 0 ? last : `${others.join(", ")}, and ${last}`;
   return `Joined to ${listed}.`;
