@@ -141,29 +141,28 @@ function steppedMaking(making, split) {
 // came to (Launcher.qml's keep): where it split a list put in afresh, how
 // much of the laying that took and the row it split at, so a slow step
 // back says whether the split or the layout after it spent the time; else
-// why it didn't split.
-function keptSaid(kept) {
+// why it didn't split. What else the showing took (between) goes before
+// where the step came to, so it isn't read as part of it.
+function keptSaid(kept, between = "") {
     const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
         ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
-    return rows + landedSaid(kept.split);
+    return rows + between + landedSaid(kept.split ?? {});
 }
 
 // Whether a key's showing says how its rows were kept: where laying them
-// out took any time, or where it was a step back out, which says where it
-// came to even when it kept every row as it stood.
+// out took time, or for a step back out, even one that kept every row.
 function keptShown(kept) {
     return !!kept && (kept.fresh + kept.laying > 0 || kept.split?.stepping === true);
 }
 
 // Where a step back out came to and how its rows went in, or nothing for a
 // keeping that was no step back. Rows count from 1 among the list's own,
-// a heading taking one as it does there, so past a heading the number
-// runs ahead of the card's. One that comes to no row stands above them,
-// on the line or an answer's headline, unless the place has none left. A
-// list put in afresh with its view at its top has no rows above to split
-// off; rows kept aren't put in.
+// a heading taking one, so past a heading the number runs ahead of the
+// card's. One that comes to no row stands above them, on the line or an
+// answer's headline, unless the place has none left. A list put in afresh
+// with its view at its top has nothing above to split off.
 function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = false,
-    empty = false } = {}) {
+    empty = false }) {
     if (!stepping) {
         return "";
     }

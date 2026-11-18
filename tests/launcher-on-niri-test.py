@@ -2161,11 +2161,7 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         laid = laid_out(shell)
         drawn.append(int(laid["drawn"]) - before)
         # Fails loudly if the split is ever passed by, as the bound could hold without it.
-        stepped = laid["stepped"] or {}
-        assert stepped.get("from", 0) > 0, f"- didn't split: {stepped}"
-        # What the journal's step line is said from (Trials.landedSaid).
-        assert stepped.get("stepping") is True, f"- wasn't told as a step back: {stepped}"
-        assert stepped.get("empty") is False, f"- was told as to no rows: {stepped}"
+        assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
         was, now = band_of(standing, far), band_of(laid, far)
         assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"

@@ -292,10 +292,15 @@ QtObject {
             Trials.keptSaid({ fresh: 0, laying: 0, split: unchanged })
                 === "; back to row 5 among rows kept",
             Trials.keptSaid({ fresh: 0, laying: 0, split: unchanged }));
-        const none = { back: -1, from: 0, took: 0, whole: false, stepping: false };
-        expect("a laying that drew none and was no step back says nothing",
+        const none = { back: 16, from: 9, took: 5, whole: true, stepping: false };
+        expect("a laying that drew none and was no step back says nothing, split or not",
             Trials.keptSaid({ built: 0, reused: 0, split: none }) === "",
             Trials.keptSaid({ built: 0, reused: 0, split: none }));
+        expect("what else a step back's showing took goes before where it came to",
+            Trials.keptSaid({ built: 2, reused: 8, split: parted }, ", 5 weighing their keys")
+                === ": 2 rows built, 8 taken back, 5 weighing their keys;"
+                + " 6 of that splitting them at row 10, back to row 17",
+            Trials.keptSaid({ built: 2, reused: 8, split: parted }, ", 5 weighing their keys"));
         expect("a keeping that took time is shown",
             Trials.keptShown({ fresh: 2, laying: 0, split: unstepped })
                 && Trials.keptShown({ fresh: 0, laying: 3, split: unstepped }), "hidden");
