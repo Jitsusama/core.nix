@@ -6,6 +6,7 @@ use crate::survey::{
     DAY, config, find, now, offers, offers_using, real, src, surveyed, surveyed_pinned, written_ago,
 };
 use disk_guard::activity::Process;
+use disk_guard::config::Config;
 use disk_guard::plan::{self, Class, Group};
 use disk_guard::replaced::Uses;
 use disk_guard::survey::{Action, Sizes};
@@ -429,5 +430,119 @@ fn cargo_builds_past_their_budget_go_least_recently_used_first() {
         plan::windows(&find(&found, &oldest).candidate).0,
         Group::Waste,
         "in any band"
+    );
+}
+
+/// Dates everything under `path` to `hours` ago, so a checkout and its
+/// build read as last used then.
+fn aged(path: &Path, hours: f64) {
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path).unwrap() {
+            aged(&entry.unwrap().path(), hours);
+        }
+    }
+    written_ago(path, hours * 3600.0);
+}
+
+/// Checkouts under one root, each with a build last used `hours` ago,
+/// made in the order given, and a cargo source over them with `budget`
+/// bytes: as much as one build holds, times `builds`.
+fn budgeted(checkouts: &[(&str, f64)], builds: u64) -> (tempfile::TempDir, Vec<PathBuf>, Config) {
+    let kept = tempfile::tempdir().unwrap();
+    let home = real(kept.path());
+    let roots = dir(&home.join("src"));
+    let made: Vec<PathBuf> = checkouts
+        .iter()
+        .map(|(name, hours)| {
+            let app = checkout(&roots, name, ".");
+            let target = dir(&app.join("target"));
+            file(&target.join("CACHEDIR.TAG"), CARGO_TAG);
+            file(
+                &target.join("debug/deps/libapp-0123456789abcdef.rlib"),
+                &"x".repeat(8192),
+            );
+            aged(&app, *hours);
+            app
+        })
+        .collect();
+    let source = |budget: &str| {
+        config(&format!(
+            r#""cargo": {{ "kind": "cargo", "roots": ["{}"]{budget} }}"#,
+            roots.display()
+        ))
+    };
+    let unbudgeted = offers(&source(""), &[], &|_| false);
+    let one = find(&unbudgeted, &made[0].join("target")).candidate.size;
+    (
+        kept,
+        made,
+        source(&format!(r#", "budget": {}"#, one * builds)),
+    )
+}
+
+#[test]
+fn a_build_already_spent_takes_no_room_in_the_budget() {
+    // A finished tree's build goes anyway; counting it against the
+    // budget would spend a build that fits in its place.
+    let (_home, made, config) =
+        budgeted(&[("z-older", 3.0), ("m-done", 1.5), ("a-oldest", 4.0)], 1);
+    let done = made[1].clone();
+    let found = offers(&config, &[], &|dir| dir == done);
+    let spent = |app: &Path| find(&found, &app.join("target")).candidate.spent;
+    assert!(spent(&made[1]), "the finished tree's build is spent");
+    assert!(
+        !spent(&made[0]),
+        "the next most recently used fits the budget the spent one doesn't use"
+    );
+    assert!(spent(&made[2]), "the one past the budget goes");
+}
+
+#[test]
+fn a_budget_of_nothing_spends_nothing() {
+    // A budget that comes to nothing, as a share of a disk that can't be
+    // measured would, is no budget, rather than one that takes every build.
+    let (_home, made, config) = budgeted(&[("a-old", 3.0), ("b-older", 4.0)], 0);
+    let found = offers(&config, &[], &|_| false);
+    assert!(
+        made.iter()
+            .all(|app| !find(&found, &app.join("target")).candidate.spent),
+        "a budget of nothing spends no build"
+    );
+}
+
+#[test]
+fn a_build_used_within_the_hour_or_sat_in_counts_but_stays() {
+    // A run of checks reuses one build minutes apart, and a shell sits in
+    // a build it will use again: both hold room, but neither is taken for
+    // the budget, so the next least recently used goes in their place.
+    let (_home, made, config) = budgeted(
+        &[
+            ("c-recent", 0.2),
+            ("a-sat-in", 5.0),
+            ("f-recent", 0.5),
+            ("e-old", 4.0),
+        ],
+        1,
+    );
+    let shell = Process {
+        pid: 4242,
+        name: "zsh".into(),
+        cwd: Some(made[1].clone()),
+        readable: true,
+        ..Default::default()
+    };
+    let found = offers(&config, &[shell], &|_| false);
+    let offered = |app: &Path| find(&found, &app.join("target")).candidate.clone();
+    assert!(
+        !offered(&made[0]).spent && !offered(&made[2]).spent,
+        "builds used within the hour stay, even past the budget"
+    );
+    assert!(
+        offered(&made[1]).occupied && !offered(&made[1]).spent,
+        "a build a shell sits in stays"
+    );
+    assert!(
+        offered(&made[3]).spent,
+        "the least recently used nobody sits in goes past the budget"
     );
 }

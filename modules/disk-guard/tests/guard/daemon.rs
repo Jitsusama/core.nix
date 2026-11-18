@@ -1527,6 +1527,54 @@ fn a_held_snapshots_build_goes_an_hour_after_its_last_use() {
 }
 
 #[test]
+fn a_builds_disk_past_its_budget_makes_upkeep_due_at_most_hourly() {
+    // On 17 November a shared builds disk held 63 GiB against the 20 its
+    // budget allows while the root disk was healthy, so no band, and no
+    // holder's end, brought the upkeep that would hold it to its budget.
+    for (budget, past) in [("1", true), (r#""100%""#, false)] {
+        let home = Home::new();
+        fs::create_dir_all(home.root.join("builds")).unwrap();
+        let config = Config::parse(&format!(
+            r#"{{ "version": 1, "scope": "user", "notify": false,
+                 "bands": {{ "filling": "0%", "nearly_full": "0%", "critically_full": "0%",
+                            "target": "0%" }},
+                 "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+                 "sources": {{
+                   "builds": {{ "kind": "cargo", "roots": ["{0}/builds"], "depth": 2,
+                                "budget": {budget} }},
+                   "trash": {{ "kind": "trash", "path": "{0}/Trash" }} }} }}"#,
+            home.root.display()
+        ))
+        .unwrap();
+        let mut guard = home.guard(config);
+        let after = |seconds: f64| Tick {
+            wall: tick().wall + seconds,
+            monotonic: 3_600.0 + seconds,
+            ..tick()
+        };
+        // Trash long expired goes at any upkeep, so whether it's still
+        // there says whether one came.
+        let probe = || home.trashed("old.txt", "2001-09-09T01:46:40");
+        let first = probe();
+        guard.step(&after(0.0), &CALM).unwrap();
+        guard.step(&after(61.0), &CALM).unwrap();
+        assert!(!first.exists(), "the guard's first upkeep ran");
+        let within = probe();
+        guard.step(&after(1_800.0), &CALM).unwrap();
+        assert!(
+            within.exists(),
+            "a disk still past its budget asks again only an hour on"
+        );
+        guard.step(&after(3_800.0), &CALM).unwrap();
+        assert_eq!(
+            !within.exists(),
+            past,
+            "a disk past its budget makes upkeep due an hour on; one within it doesn't"
+        );
+    }
+}
+
+#[test]
 fn a_snapshot_cut_since_the_last_survey_is_looked_at_an_hour_on() {
     // On 17 November a gate's snapshot was cut, and built in, after the
     // guard's upkeep, so no survey had timed its build's hour, and it

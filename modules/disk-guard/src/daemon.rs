@@ -413,6 +413,10 @@ pub struct Guard {
     /// The pinned snapshots the last look at the owners found, so one cut
     /// since, which no survey has offered yet, times its own hour.
     snapshots_known: Option<Vec<PathBuf>>,
+    /// When, in wall seconds, a cargo source's disk past its budget last
+    /// made upkeep due, so one still past it after the pass, its builds
+    /// all recent, asks again only an hour on.
+    budget_looked: Option<f64>,
     /// Whether a root left since the listing began, or a process holding
     /// paths ended, either of which makes garbage the listing lacks.
     root_left: bool,
@@ -770,6 +774,7 @@ impl Guard {
             produced: Vec::new(),
             snapshot_spends: None,
             snapshots_known: None,
+            budget_looked: None,
             root_left: false,
             held_ended: false,
             collect: false,
@@ -1581,6 +1586,15 @@ impl Guard {
         let snapshot_spent = self.snapshot_spends.is_some_and(|at| tick.wall >= at);
         if snapshot_spent {
             self.snapshot_spends = None;
+            self.memory.upkept = None;
+        }
+        // A builds disk passing its budget changes no holder, and on a
+        // healthy root nothing else would bring upkeep for six hours.
+        let looked = self
+            .budget_looked
+            .is_some_and(|at| tick.wall - at < crate::survey::BUDGET_RECENT);
+        if !looked && crate::survey::past_budget(&self.config) {
+            self.budget_looked = Some(tick.wall);
             self.memory.upkept = None;
         }
         let ended = self.memory.owners.as_ref().is_none_or(|before| {
