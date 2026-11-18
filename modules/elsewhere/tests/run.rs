@@ -391,20 +391,23 @@ fn a_job_placed_here_runs_here() {
 }
 
 #[test]
-fn a_job_mycelium_can_t_run_far_runs_here_saying_why() {
+fn a_job_told_there_that_can_t_go_says_why_and_is_never_made_here() {
     let realm = Realm::new(true);
     realm.settings("gone");
     let output = realm.check(&["--there"], "pwd");
     let (out, err) = said(&output);
-    assert!(output.status.success(), "the job didn't run here: {err}");
     assert_eq!(
-        fs::canonicalize(out.trim()).ok(),
-        fs::canonicalize(realm.folder()).ok(),
-        "a job gone couldn't run wasn't run here: {err}"
+        output.status.code(),
+        Some(69),
+        "a job --there couldn't send didn't end 69: {err}"
     );
     assert!(
-        err.contains("check runs here") && err.contains("gone"),
-        "it didn't say why the job stayed: {err}"
+        out.trim().is_empty() && !err.contains("runs here"),
+        "a job --there couldn't send was made here: {out} {err}"
+    );
+    assert!(
+        err.contains("couldn't be sent to gone") && err.contains("--here"),
+        "it didn't say why the job couldn't go, or point at --here: {err}"
     );
     assert!(
         emptied(&realm.handover()),
@@ -498,7 +501,7 @@ fn a_far_job_whose_output_can_t_land_fails_and_writes_nothing_outside() {
 }
 
 #[test]
-fn a_far_job_whose_output_won_t_land_ends_try_again() {
+fn a_far_job_whose_output_won_t_land_fails_saying_so() {
     let realm = Realm::new(true);
     // A folder where out/n would land, which no file replaces.
     fs::create_dir_all(realm.folder().join("out/n/kept")).unwrap();
@@ -506,10 +509,10 @@ fn a_far_job_whose_output_won_t_land_ends_try_again() {
     let (_, err) = said(&output);
     assert_eq!(
         output.status.code(),
-        Some(75),
-        "a job whose output didn't land didn't end 75: {err}"
+        Some(1),
+        "a job whose output didn't land didn't end 1: {err}"
     );
-    for says in ["didn't come home", "out/n didn't land", "--here"] {
+    for says in ["couldn't land here", "out/n didn't land", "--here"] {
         assert!(err.contains(says), "it didn't say {says}: {err}");
     }
 }

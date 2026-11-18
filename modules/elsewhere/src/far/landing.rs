@@ -116,8 +116,18 @@ fn sweep(folder: &Path) {
             .metadata()
             .and_then(|meta| meta.modified())
             .is_ok_and(|at| at.elapsed().is_ok_and(|age| age >= SWEEPS_AFTER));
-        if old && file.try_lock().is_ok() {
-            // Removed while still locked, so no run takes it between.
+        // A shared lock, which a file opened only to read can take, as an
+        // NFS client's emulated lock asks; a live run's own lock refuses it.
+        if !old || file.try_lock_shared().is_err() {
+            continue;
+        }
+        // Still the file locked at the name, so one made there since by a
+        // run whose pid came round again is never the one removed.
+        let same = file.metadata().is_ok_and(|locked| {
+            fs::symlink_metadata(&path)
+                .is_ok_and(|named| named.dev() == locked.dev() && named.ino() == locked.ino())
+        });
+        if same {
             let _ = fs::remove_file(&path);
         }
     }

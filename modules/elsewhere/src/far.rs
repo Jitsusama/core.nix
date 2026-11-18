@@ -49,7 +49,8 @@ const BACK: &str = "back";
 const BUILT: [&str; 2] = ["target", "node_modules"];
 const MARK: &str = ".elsewhere";
 
-/// What a shared folder carries at most, as mycelium refuses past it.
+/// What a shared folder may hold at most, as mycelium refuses to name
+/// one holding more and holds each file whole as it lands.
 const MOST_FILES: usize = 10_000;
 const MOST_BYTES: u64 = 1 << 30;
 const LARGEST_FILE: u64 = 64 << 20;
@@ -367,8 +368,17 @@ fn bringing(kind: &Kind) -> String {
     -exec printf "elsewhere: %s is a link, so it isn't brought back\n" {{}} \; >&2
   find "$path" -type f ! -path '*/.*' ! -name '.*'
 done | {{
-  n=0
+  n=0 files=0 bytes=0
   while IFS= read -r file; do
+    # One past what a share holds is listed but never copied, so it never
+    # crosses and the near side lands the rest and says why.
+    size=$(($(wc -c < "$file")))
+    [ "$size" -le {LARGEST_FILE} ] && files=$((files + 1)) && bytes=$((bytes + size))
+    if [ "$size" -gt {LARGEST_FILE} ] || [ "$files" -gt {MOST_FILES} ] || [ "$bytes" -gt {MOST_BYTES} ]; then
+      printf '%s\t%s\n' "$size" "$file"
+      n=$((n + 1))
+      continue
+    fi
     # One that won't copy keeps its number, listed with no size, so the
     # near side lands the rest and says it's missing.
     cp "$file" "$job/{BACK}/$n" || {{
@@ -465,8 +475,10 @@ pub enum Missed {
     /// It would land somewhere it mustn't, or is more than a share
     /// carries, which another try won't change.
     Refused(String),
-    /// Some of it didn't cross, or didn't land, which another try may not
-    /// meet.
+    /// Some of it crossed but couldn't land in the folder, which another
+    /// try meets the same way until the folder changes.
+    Unlanded(String),
+    /// Some of it didn't cross, which another try may not meet.
     Lost(String),
 }
 
@@ -474,15 +486,17 @@ impl Missed {
     /// Why, in words.
     pub fn why(&self) -> &str {
         match self {
-            Missed::Refused(why) | Missed::Lost(why) => why,
+            Missed::Refused(why) | Missed::Unlanded(why) | Missed::Lost(why) => why,
         }
     }
 }
 
-/// Whether `files` are more than a share carries at all, so waiting for
-/// them is waiting for nothing.
+/// Whether `files`, each no larger than a share holds, are more than it
+/// holds at all, so the far side never copied the rest of them.
 fn too_many(files: &[Brought]) -> Option<String> {
-    let bytes: u64 = files.iter().map(|brought| brought.size).sum();
+    let bytes = files
+        .iter()
+        .fold(0_u64, |bytes, brought| bytes.saturating_add(brought.size));
     if files.len() > MOST_FILES || bytes > MOST_BYTES {
         return Some(format!(
             "its {} files of {bytes} bytes are past the {MOST_FILES} files or {MOST_BYTES} bytes a share carries",
@@ -515,14 +529,14 @@ pub fn bring_back(
     for look in 0..=within {
         let text = fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();
         if let Some(files) = listed(&text, brings_back) {
-            if let Some(why) = too_many(&files) {
-                return Err(Missed::Refused(why));
-            }
-            // One past what a share carries in a file never crosses, so
-            // only the rest is waited for.
+            // One past what a share holds in a file the far side never
+            // copies, so only the rest is waited for.
             let (fits, large): (Vec<_>, Vec<_>) = files
                 .into_iter()
                 .partition(|brought| brought.size <= LARGEST_FILE);
+            if let Some(why) = too_many(&fits) {
+                return Err(Missed::Refused(why));
+            }
             if arrived(&fits) {
                 return landed(job, folder, brings_back, &text, &fits, &large);
             }
@@ -540,9 +554,9 @@ pub fn bring_back(
 }
 
 /// Lands `files`, all crossed whole into the handover folder `job`, in
-/// `folder`, unless one would land through a link it mustn't, and says
-/// what didn't land, come back from the far side or cross for being
-/// `large`, `text` being the far side's list.
+/// `folder`, all but those that would land through a link they mustn't,
+/// and says what didn't land, come back from the far side or cross for
+/// being `large`, `text` being the far side's list.
 fn landed(
     job: &Path,
     folder: &Path,
@@ -551,27 +565,30 @@ fn landed(
     files: &[Brought],
     large: &[Brought],
 ) -> Result<usize, Missed> {
-    let through = files
-        .iter()
-        .find_map(|brought| landing::linked(folder, &brought.path).map(|link| (brought, link)));
-    if let Some((brought, (link, leads))) = through {
-        return Err(Missed::Refused(format!(
-            "{} would land through the link {}, which {leads}",
-            brought.path,
-            link.display()
-        )));
-    }
+    let (mut refused, mut unlanded, mut landed) = (Vec::new(), Vec::new(), 0);
     let mut swept = HashSet::new();
-    let mut missed: Vec<String> = files
-        .iter()
-        .filter_map(|brought| {
-            let from = job.join(BACK).join(brought.number.to_string());
-            landing::land(&from, &folder.join(&brought.path), &mut swept)
-                .err()
-                .map(|error| format!("{} didn't land: {error}", brought.path))
-        })
-        .collect();
-    let unlanded = missed.len();
+    for brought in files {
+        if let Some((link, leads)) = landing::linked(folder, &brought.path) {
+            refused.push(format!(
+                "{} would land through the link {}, which {leads}",
+                brought.path,
+                link.display()
+            ));
+            continue;
+        }
+        let from = job.join(BACK).join(brought.number.to_string());
+        match landing::land(&from, &folder.join(&brought.path), &mut swept) {
+            Ok(()) => landed += 1,
+            Err(error) => unlanded.push(format!("{} didn't land: {error}", brought.path)),
+        }
+    }
+    refused.extend(large.iter().map(|brought| {
+        format!(
+            "{} is {} bytes, past the {LARGEST_FILE} a share holds in one file",
+            brought.path, brought.size
+        )
+    }));
+    let mut missed: Vec<String> = refused.iter().chain(&unlanded).cloned().collect();
     let lost: Vec<&str> = text
         .lines()
         .filter_map(|line| line.strip_prefix("-\t"))
@@ -583,26 +600,22 @@ fn landed(
             lost.join(", ")
         ));
     }
-    for brought in large {
-        missed.push(format!(
-            "{} is {} bytes, past the {LARGEST_FILE} a share carries in one file",
-            brought.path, brought.size
-        ));
-    }
     if missed.is_empty() {
-        return Ok(files.len());
+        return Ok(landed);
     }
     // So nobody takes the folder for untouched, or for whole.
-    if unlanded < files.len() {
-        missed.push(format!("the other {} landed", files.len() - unlanded));
+    if landed > 0 {
+        missed.push(format!("the other {landed} landed"));
     }
     let missed = missed.join("; ");
-    // One too large is too large every time; a file that didn't land or
-    // cross may on another try.
-    Err(if large.is_empty() {
-        Missed::Lost(missed)
-    } else {
+    // What is refused is refused every time, and what couldn't land meets
+    // the same folder; only what didn't cross may on another try.
+    Err(if !refused.is_empty() {
         Missed::Refused(missed)
+    } else if !unlanded.is_empty() {
+        Missed::Unlanded(missed)
+    } else {
+        Missed::Lost(missed)
     })
 }
 

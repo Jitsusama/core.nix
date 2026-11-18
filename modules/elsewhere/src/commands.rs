@@ -40,11 +40,11 @@ fn run() -> Help {
     .option("--here", "runs it here, without asking mycelium")
     .option(
         "--there",
-        "sends it to the first machine, without asking mycelium",
+        "sends it to the first machine, without asking mycelium, and never makes it here",
     )
     .exit(
         Exit::Failed,
-        "the job couldn't be left in the quest's handover, or didn't start",
+        "the job couldn't be left in the quest's handover, didn't start, or what it made couldn't land here",
     )
     .exit(
         Exit::Usage,
@@ -53,9 +53,13 @@ fn run() -> Help {
     .exit(Exit::NotFound, "no kind goes by that name")
     .exit(
         Exit::Refused,
-        "the job's program isn't one its kind may start, or what it made would land through a link or is past what a share carries",
+        "the job's program isn't one its kind may start, or what it made would land through a link or is past what a share holds",
     )
-    .exit(Exit::TryAgain, "what it made didn't all come home")
+    .exit(
+        Exit::Unavailable,
+        "--there couldn't send it, so it wasn't made here instead",
+    )
+    .exit(Exit::TryAgain, "what it made didn't all cross home")
     .exit(
         Exit::Config,
         "its settings can't be read, or --there can't send it: no machine, or what it makes couldn't come home",

@@ -1,15 +1,8 @@
 use super::{SWEEPS_AFTER, land, opened_plain};
 use crate::far::MARK;
+use crate::far::tests::scratch;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-
-/// A folder of the test's own, named for `what`, emptied.
-fn scratch(what: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("elsewhere-{what}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
-    root
-}
+use std::path::Path;
 
 /// The names in `folder`, sorted.
 fn names(folder: &Path) -> Vec<String> {

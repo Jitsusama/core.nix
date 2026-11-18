@@ -373,7 +373,7 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
 }
 
 /// A folder of the test's own, named for `what`, emptied.
-fn scratch(what: &str) -> PathBuf {
+pub(super) fn scratch(what: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("elsewhere-{what}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
@@ -419,6 +419,52 @@ fn what_a_share_can_t_carry_is_refused_and_the_rest_lands_at_once() {
         matches!(&landed, Err(Missed::Refused(why)) if why.contains("files of")),
         "more files than a share carries weren't refused: {landed:?}"
     );
+    // As are more bytes, in files each small enough.
+    let many = format!("{}\tout/x\n", super::LARGEST_FILE).repeat(17);
+    std::fs::write(job.join(super::BROUGHT), format!("{many}end\n")).unwrap();
+    let landed = bring_back(&job, &into, &["out".into()], WAITS);
+    assert!(
+        matches!(&landed, Err(Missed::Refused(why)) if why.contains("files of")),
+        "more bytes than a share carries weren't refused: {landed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_far_side_lists_what_a_share_can_t_hold_but_never_copies_it() {
+    let large = super::LARGEST_FILE + 1;
+    let (code, err, home) = far_run(
+        "1\tx\nend\n",
+        &[("x", "x")],
+        &format!(
+            "mkdir out && printf a > out/a && \
+             dd if=/dev/zero of=out/big bs=1 count=0 seek={large} 2>/dev/null"
+        ),
+    );
+    assert_eq!(code, Some(0), "the job didn't run: {err}");
+    let job = handover(&home);
+    let list = std::fs::read_to_string(job.join(super::BROUGHT)).unwrap();
+    assert!(
+        list.contains(&format!("{large}\tout/big\n")),
+        "what a share can't hold wasn't listed at its size: {list}"
+    );
+    assert_eq!(
+        std::fs::read_dir(job.join(super::BACK)).unwrap().count(),
+        1,
+        "what a share can't hold was copied to cross: {list}"
+    );
+    let into = home.join("near");
+    let landed = bring_back(&job, &into, &["out".into()], WAITS);
+    assert!(
+        matches!(&landed, Err(Missed::Refused(why))
+            if why.contains("out/big is") && why.contains("the other 1 landed")),
+        "what a share can't hold wasn't refused beside the rest: {landed:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(into.join("out/a")).ok().as_deref(),
+        Some("a"),
+        "the rest didn't land past what a share can't hold"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -441,8 +487,8 @@ fn a_file_that_won_t_land_is_said_with_the_lost_and_the_rest_land() {
     std::fs::write(into.join("out/a"), "mine").unwrap();
     let landed = bring_back(&job, &into, &["out".into()], WAITS);
     let why = match &landed {
-        Err(Missed::Lost(why)) => why.clone(),
-        other => panic!("a file that couldn't land wasn't said as lost: {other:?}"),
+        Err(Missed::Unlanded(why)) => why.clone(),
+        other => panic!("a file that couldn't land wasn't said as such: {other:?}"),
     };
     for says in [
         "out/a/x didn't land",
@@ -493,6 +539,42 @@ fn the_near_side_waits_for_each_file_at_its_listed_size() {
         "a link in the handover was followed: {landed:?}"
     );
     assert!(!into.join("out/a").exists(), "a linked file landed");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn past_a_file_refused_for_a_link_the_rest_lands() {
+    let home = scratch("past-link");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(super::BACK)).unwrap();
+    // The one refused first, so the one after it is the one that lands.
+    for (number, text) in ["a", "x"].iter().enumerate() {
+        std::fs::write(job.join(super::BACK).join(number.to_string()), text).unwrap();
+    }
+    std::fs::write(job.join(super::BROUGHT), "1\tout/a\n1\tother/x\nend\n").unwrap();
+    let elsewhere = home.join("elsewhere");
+    let into = home.join("near");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    std::fs::create_dir_all(&into).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, into.join("out")).unwrap();
+    let both = ["other".to_owned(), "out".to_owned()];
+    let landed = bring_back(&job, &into, &both, WAITS);
+    assert!(
+        matches!(&landed, Err(Missed::Refused(why))
+            if why.contains("out/a would land through the link") && why.contains("the other 1 landed")),
+        "a file refused for a link stopped the rest, or went unsaid: {landed:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(into.join("other/x"))
+            .ok()
+            .as_deref(),
+        Some("x"),
+        "a file beside one refused for a link didn't land"
+    );
+    assert!(
+        !elsewhere.join("a").exists(),
+        "a file landed through the link"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 

@@ -354,6 +354,13 @@ fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
             code,
             format!("{} ended {code} on {machine}", asked.command[0]),
         )),
+        // Told to send it, it isn't made here instead.
+        Sent::Stayed(why) if asked.there => Err(Failure::new(
+            Exit::Unavailable,
+            format!("{} couldn't be sent to {machine}", asked.kind),
+        )
+        .because(why)
+        .try_this("--here, to make it here")),
         Sent::Stayed(why) => {
             eprintln!("{} runs here: {why}", asked.kind);
             Err(here_now(&asked.command))
@@ -513,11 +520,17 @@ fn send(
     }
     // The job passed but its work never reached the folder, so it isn't
     // done here; made here, it would be. A refusal would refuse it again,
-    // so only a loss is worth another try.
+    // and what couldn't land would meet the same folder, so only a loss
+    // is worth another try.
     let failure = match missed {
         far::Missed::Refused(why) => Failure::new(
             Exit::Refused,
             format!("what it made on {machine} was refused as it came home"),
+        )
+        .because(why),
+        far::Missed::Unlanded(why) => Failure::new(
+            Exit::Failed,
+            format!("what it made on {machine} couldn't land here"),
         )
         .because(why),
         far::Missed::Lost(why) => Failure::new(
