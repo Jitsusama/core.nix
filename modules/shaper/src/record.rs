@@ -5,73 +5,24 @@
 //! replayed over before it shapes anything (src/replay.rs), and `shaper
 //! record` writes it while the shaper stays off.
 //!
-//! The pool is chosen on each new network from public resolvers that
-//! answer timestamps, one per operator first, since one operator's outage
-//! or a queue near its servers would otherwise speak for all of them. With
-//! fewer than three operators answering, the samples still go down, marked
-//! so, since a controller has nothing to vote with there.
+//! The pool is chosen on each new network, and again when it's due or
+//! failing, as src/reflectors.rs says.
 //!
 //! Probes go every 0.3 s while the link carries anything, and every 5 s
 //! once it has carried under 1 Mbit/s for a minute, so an idle machine
 //! wakes for it rarely while the baselines still follow the path.
 
 use crate::icmp::{self, Socket};
+use crate::reflectors::{Asking, ENOUGH, Pool, candidates, operators};
 use crate::stamp;
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// Public resolvers, by operator, that a timestamp may be asked of. On
-/// 3 November four of eleven tried answered from a home connection.
-pub const CANDIDATES: &[(&str, [u8; 4])] = &[
-    ("Quad9", [9, 9, 9, 9]),
-    ("Quad9", [149, 112, 112, 112]),
-    ("Quad9", [9, 9, 9, 11]),
-    ("AdGuard", [94, 140, 14, 14]),
-    ("AdGuard", [94, 140, 15, 15]),
-    ("CleanBrowsing", [185, 228, 168, 9]),
-    ("CleanBrowsing", [185, 228, 169, 9]),
-    ("OpenDNS", [208, 67, 222, 222]),
-    ("OpenDNS", [208, 67, 220, 220]),
-    ("Level 3", [4, 2, 2, 1]),
-    ("Level 3", [4, 2, 2, 2]),
-    ("Control D", [76, 76, 2, 0]),
-    ("Control D", [76, 76, 10, 0]),
-    ("Verisign", [64, 6, 64, 6]),
-    ("Verisign", [64, 6, 65, 6]),
-    ("SafeDNS", [195, 46, 39, 39]),
-    ("DNS.Watch", [84, 200, 69, 80]),
-    ("Hurricane Electric", [74, 82, 42, 42]),
-    ("Yandex", [77, 88, 8, 8]),
-    ("UltraDNS", [156, 154, 70, 1]),
-    ("Comodo", [8, 26, 56, 26]),
-];
-
-/// The reflectors to ask: `SHAPER_REFLECTORS`, comma-separated, when a
-/// network of its own names them, a test's among them, and otherwise the
-/// public resolvers.
-fn candidates() -> Vec<(&'static str, Ipv4Addr)> {
-    match std::env::var("SHAPER_REFLECTORS") {
-        Ok(named) => named
-            .split(',')
-            .filter_map(|a| a.trim().parse().ok())
-            .map(|a| ("named", a))
-            .collect(),
-        Err(_) => CANDIDATES
-            .iter()
-            .map(|&(operator, octets)| (operator, Ipv4Addr::from(octets)))
-            .collect(),
-    }
-}
-
-/// At most this many reflectors are probed, in turn.
-const POOL: usize = 6;
-/// Fewer operators than this answering leaves nothing to vote with.
-pub const ENOUGH: usize = 3;
 const BUSY_EVERY: Duration = Duration::from_millis(300);
 const IDLE_EVERY: Duration = Duration::from_secs(5);
 /// A link carrying under this many bits a second for a minute is idle.
@@ -81,35 +32,6 @@ const IDLE_FOR: Duration = Duration::from_secs(60);
 const LOST_AFTER: Duration = Duration::from_secs(1);
 /// How many days' files are kept: a week to replay, and the day under way.
 const KEEP_DAYS: usize = 8;
-/// A pool member lost this many times running is replaced.
-const MISSES: u32 = 3;
-const REPOOL: Duration = Duration::from_secs(3_600);
-const EMPTY_REPOOL: Duration = Duration::from_secs(300);
-
-/// The reflectors to probe from those that answered: one per operator in
-/// the order they answered, then more of the same operators, up to the
-/// pool's size.
-pub fn pool(answered: &[(&'static str, Ipv4Addr)]) -> Vec<(&'static str, Ipv4Addr)> {
-    let mut chosen: Vec<(&'static str, Ipv4Addr)> = Vec::new();
-    let mut seen = BTreeSet::new();
-    for &(operator, address) in answered {
-        if chosen.len() < POOL && seen.insert(operator) {
-            chosen.push((operator, address));
-        }
-    }
-    for &(operator, address) in answered {
-        if chosen.len() < POOL && !chosen.contains(&(operator, address)) {
-            chosen.push((operator, address));
-        }
-    }
-    chosen
-}
-
-/// How many operators a pool reaches.
-pub fn operators(pool: &[(&'static str, Ipv4Addr)]) -> usize {
-    pool.iter().map(|(o, _)| *o).collect::<BTreeSet<_>>().len()
-}
-
 /// How often to probe, given the bits the link carried over the last
 /// `over`: often while it carries anything, rarely once it's been idle a
 /// minute.
@@ -227,48 +149,18 @@ struct Sent {
     at: Instant,
 }
 
-/// How long the candidates asked for a pool are waited on.
-const ASKING_FOR: Duration = Duration::from_millis(1_500);
-
-/// The candidates asked for a pool, and those that answered so far. It's
-/// heard in the loop beside the probes rather than waited on, since the
-/// 1.5 s it takes left the gateway unsampled at each start and each hour:
-/// a switch on 16 November restarted the shaper inside one.
-struct Asking {
-    asked: BTreeMap<u16, (&'static str, Ipv4Addr)>,
-    heard: Vec<(&'static str, Ipv4Addr)>,
-    until: Instant,
-}
-
-impl Asking {
-    /// Take a timestamp reply numbered `seq`, from `from`, whose clock is
-    /// `standard` or not, and say whether it answers an ask, so it's kept
-    /// out of the record. A candidate is heard once, from its own address,
-    /// and only with a clock one-way delays can be read from.
-    fn answered(&mut self, seq: u16, from: Option<Ipv4Addr>, standard: bool) -> bool {
-        let Some(&candidate) = self.asked.get(&seq) else {
-            return false;
-        };
-        if standard && from == Some(candidate.1) && !self.heard.contains(&candidate) {
-            self.heard.push(candidate);
-        }
-        true
-    }
-
-    /// Whether the asks have been waited on long enough at `now`.
-    fn done(&self, now: Instant) -> bool {
-        now >= self.until
-    }
-}
-
-/// The pool's line in the journal.
-fn pool_line(reflectors: &[(&'static str, Ipv4Addr)]) -> Value {
-    json!({
+/// The pool's line in the journal, which says when a choice `kept` it.
+fn pool_line(reflectors: &[(&'static str, Ipv4Addr)], kept: bool) -> Value {
+    let mut line = json!({
         "at": now_ms(),
         "pool": reflectors.iter().map(|(o, a)| json!([o, a.to_string()])).collect::<Vec<_>>(),
         "operators": operators(reflectors),
         "enough": operators(reflectors) >= ENOUGH,
-    })
+    });
+    if kept {
+        line["kept"] = json!(true);
+    }
+    line
 }
 
 /// One link's recording under way.
@@ -278,17 +170,13 @@ struct Recorder<'a> {
     id: u16,
     socket: Socket,
     journal: Journal,
-    reflectors: Vec<(&'static str, Ipv4Addr)>,
-    pooled: Instant,
-    misses: BTreeMap<Ipv4Addr, u32>,
+    pool: Pool,
     outstanding: BTreeMap<u16, Sent>,
     seq: u16,
     turn: usize,
     next: Instant,
     window: ((u64, u64), Instant),
     asking: Option<Asking>,
-    /// Whether a pool has been chosen yet, so the first is said.
-    chosen: bool,
 }
 
 impl Recorder<'_> {
@@ -306,11 +194,7 @@ impl Recorder<'_> {
                 }
             }
         }
-        self.asking = Some(Asking {
-            asked,
-            heard: Vec::new(),
-            until: now + ASKING_FOR,
-        });
+        self.asking = Some(Asking::new(asked, now));
     }
 
     /// Send the next probes when they're due: a timestamp to the next
@@ -327,10 +211,8 @@ impl Recorder<'_> {
         if over >= IDLE_FOR {
             self.window = (total, now);
         }
-        if let Some(&reflector) = self
-            .reflectors
-            .get(self.turn % self.reflectors.len().max(1))
-        {
+        let reflectors = self.pool.reflectors();
+        if let Some(&reflector) = reflectors.get(self.turn % reflectors.len().max(1)) {
             self.seq = self.seq.wrapping_add(1);
             let request =
                 stamp::request(self.id, self.seq, stamp::since_midnight(SystemTime::now()));
@@ -379,7 +261,7 @@ impl Recorder<'_> {
             && let Some(sent) = self.outstanding.remove(&reply.seq)
             && let Some((operator, address)) = sent.to
         {
-            self.misses.remove(&address);
+            self.pool.heard(address);
             let finished = stamp::since_midnight(SystemTime::now());
             let rtt = ms(arrived.duration_since(sent.at));
             let mut line = json!({
@@ -406,9 +288,7 @@ impl Recorder<'_> {
     }
 
     /// Write down each probe that hasn't come back in time, as lost, and
-    /// count it against its reflector if it was sent to the pool there is:
-    /// one sent to the last, still out as the pool was chosen, would set
-    /// off another choice at once.
+    /// tell the pool of it.
     fn expire(&mut self) {
         let late: Vec<u16> = self
             .outstanding
@@ -422,9 +302,7 @@ impl Recorder<'_> {
             };
             let line = match sent.to {
                 Some((operator, address)) => {
-                    if sent.at >= self.pooled {
-                        *self.misses.entry(address).or_default() += 1;
-                    }
+                    self.pool.missed(address, sent.at);
                     json!({"at": now_ms(), "reflector": address.to_string(),
                            "operator": operator, "lost": true})
                 }
@@ -434,41 +312,26 @@ impl Recorder<'_> {
         }
     }
 
-    /// Choose the pool again when one of it keeps missing or an hour has
-    /// passed; an empty pool asks again only every five minutes, so a
-    /// network that answers no timestamps isn't flooded with them. The old
-    /// pool is probed until the new is chosen.
+    /// Writes the pool in use, naming its link, so a shaper started
+    /// mid-stay (src/live.rs) learns within the hour which link it holds,
+    /// a kept pool's choice included, which says so.
+    fn write_pool(&mut self) {
+        let mut line = pool_line(self.pool.reflectors(), self.pool.kept());
+        line["link"] = json!(self.link);
+        self.journal.write(&line);
+    }
+
+    /// Choose the pool again when it's due (src/reflectors.rs says when),
+    /// probing the old until the new is chosen.
     fn repool(&mut self, now: Instant) {
         if let Some(asking) = self.asking.take_if(|asking| asking.done(now)) {
-            let chosen = pool(&asking.heard);
-            // Said as it changes, not every five minutes on a network
-            // that answers no timestamps.
-            if chosen != self.reflectors || !self.chosen {
-                eprintln!(
-                    "recording {} with {} reflectors from {} operators",
-                    self.link,
-                    chosen.len(),
-                    operators(&chosen)
-                );
+            if let Some(said) = self.pool.settle(self.link, &asking, now) {
+                eprintln!("{said}");
             }
-            self.reflectors = chosen;
-            self.chosen = true;
-            self.pooled = now;
-            self.misses.clear();
-            // Each pool names its link, so a shaper started mid-stay
-            // (src/live.rs) learns within the hour which link it holds.
-            let mut line = pool_line(&self.reflectors);
-            line["link"] = json!(self.link);
-            self.journal.write(&line);
+            self.write_pool();
             return;
         }
-        let failing = self.misses.values().any(|m| *m >= MISSES);
-        let due = if self.reflectors.is_empty() {
-            EMPTY_REPOOL
-        } else {
-            REPOOL
-        };
-        if self.asking.is_none() && (failing || self.pooled.elapsed() > due) {
+        if self.asking.is_none() && self.pool.asks_again(now) {
             self.ask(now);
         }
     }
@@ -500,7 +363,7 @@ pub fn record(
     // The recording opens with its network, which begins a stay
     // (src/live.rs), before any sample; its pool follows once chosen, so
     // this one says it's choosing rather than that nothing answered.
-    let mut first = pool_line(&[]);
+    let mut first = pool_line(&[], false);
     first["choosing"] = json!(true);
     first["link"] = json!(link);
     first["network"] = json!(network);
@@ -511,16 +374,13 @@ pub fn record(
         id,
         socket,
         journal,
-        reflectors: Vec::new(),
-        pooled: Instant::now(),
-        misses: BTreeMap::new(),
+        pool: Pool::new(Instant::now(), &candidates()),
         outstanding: BTreeMap::new(),
         seq: 0,
         turn: 0,
         next: Instant::now(),
         window: (carried(link), Instant::now()),
         asking: None,
-        chosen: false,
     };
     recorder.ask(Instant::now());
     let mut buffer = [0_u8; 1_500];
@@ -544,40 +404,13 @@ pub fn record(
 mod tests {
     use super::*;
 
-    fn at(n: u8) -> Ipv4Addr {
-        Ipv4Addr::new(10, 0, 0, n)
-    }
-
+    // A kept pool's line is the pool that was, not a choice, and the
+    // record says so.
     #[test]
-    fn a_pool_takes_one_of_each_operator_before_seconds() {
-        let answered = [
-            ("Quad9", at(1)),
-            ("Quad9", at(2)),
-            ("AdGuard", at(3)),
-            ("CleanBrowsing", at(4)),
-        ];
-        let chosen = pool(&answered);
-        assert_eq!(
-            chosen,
-            vec![
-                ("Quad9", at(1)),
-                ("AdGuard", at(3)),
-                ("CleanBrowsing", at(4)),
-                ("Quad9", at(2))
-            ]
-        );
-        assert_eq!(operators(&chosen), 3);
-    }
-
-    #[test]
-    fn a_pool_stops_at_six() {
-        let answered: Vec<(&'static str, Ipv4Addr)> = (1..=9).map(|n| ("Quad9", at(n))).collect();
-        assert_eq!(pool(&answered).len(), 6);
-        assert_eq!(
-            operators(&pool(&answered)),
-            1,
-            "one operator is still one vote"
-        );
+    fn a_kept_pool_s_line_says_it_was_kept() {
+        let pool = [("Quad9", Ipv4Addr::new(9, 9, 9, 9))];
+        assert_eq!(pool_line(&pool, true)["kept"], json!(true));
+        assert_eq!(pool_line(&pool, false).get("kept"), None);
     }
 
     #[test]
@@ -612,71 +445,6 @@ mod tests {
         assert_eq!(
             day_file(Path::new("/r"), leap),
             PathBuf::from("/r/2000-02-29.jsonl")
-        );
-    }
-
-    /// Asks of one operator twice and another once, waited on until `until`.
-    fn asking(until: Instant) -> Asking {
-        let quad9 = ("Quad9", at(9));
-        Asking {
-            asked: BTreeMap::from([(1, quad9), (2, ("AdGuard", at(1))), (3, quad9)]),
-            heard: Vec::new(),
-            until,
-        }
-    }
-
-    #[test]
-    fn a_candidate_asked_twice_is_heard_once() {
-        let mut asked = asking(Instant::now());
-        assert!(
-            asked.answered(1, Some(at(9)), true),
-            "the first ask's reply went to the record"
-        );
-        assert!(
-            asked.answered(3, Some(at(9)), true),
-            "the second ask's reply went to the record"
-        );
-        assert_eq!(asked.heard, vec![("Quad9", at(9))]);
-    }
-
-    #[test]
-    fn an_answer_from_another_address_is_kept_out_but_not_heard() {
-        let mut asked = asking(Instant::now());
-        assert!(
-            asked.answered(2, Some(at(66)), true),
-            "an ask's reply went to the record"
-        );
-        assert!(asked.heard.is_empty(), "heard {:?}", asked.heard);
-    }
-
-    #[test]
-    fn an_answer_whose_clock_is_not_standard_is_not_heard() {
-        let mut asked = asking(Instant::now());
-        assert!(
-            asked.answered(2, Some(at(1)), false),
-            "an ask's reply went to the record"
-        );
-        assert!(asked.heard.is_empty(), "heard {:?}", asked.heard);
-    }
-
-    #[test]
-    fn a_probe_reply_is_no_answer_to_the_asks() {
-        let mut asked = asking(Instant::now());
-        assert!(
-            !asked.answered(4, Some(at(9)), true),
-            "a probe's reply was taken as an ask's"
-        );
-        assert!(asked.heard.is_empty(), "heard {:?}", asked.heard);
-    }
-
-    #[test]
-    fn the_asks_are_waited_on_until_their_time() {
-        let now = Instant::now();
-        let asked = asking(now + ASKING_FOR);
-        assert!(!asked.done(now), "the asks were done as they were sent");
-        assert!(
-            asked.done(now + ASKING_FOR),
-            "the asks were waited on past their time"
         );
     }
 
