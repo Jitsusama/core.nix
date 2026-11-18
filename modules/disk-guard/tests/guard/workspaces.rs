@@ -273,8 +273,7 @@ fn a_tree_is_held_while_a_hosts_roster_holds_its_session() {
     )
     .unwrap();
     let running = |_: u32, _: f64| false;
-    let mut over =
-        disk_guard::workspaces::unheld_trees(&records, &quests, Some(&rosters), running);
+    let mut over = disk_guard::workspaces::unheld_trees(&records, &quests, Some(&rosters), running);
     over.sort();
     assert_eq!(
         over,
