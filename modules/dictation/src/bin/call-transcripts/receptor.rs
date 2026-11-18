@@ -90,8 +90,7 @@ fn named<'a>(
     let mut held: Vec<(u64, &str)> = summarized
         .into_iter()
         .filter(|&(event, ended, folder)| {
-            ended <= now
-                && now - ended < NAMED_FOR
+            now.checked_sub(ended).is_some_and(|age| age < NAMED_FOR)
                 && is_event(event)
                 && std::fs::symlink_metadata(folder.join(book::SUMMARY))
                     .is_ok_and(|summary| summary.is_file())
