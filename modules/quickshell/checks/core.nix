@@ -515,6 +515,7 @@ in
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../../../tests/pacing.qml} pacing.qml
+      cp ${../launcher/Makings.js} Makings.js
       cp ${../launcher/Order.js} Order.js
       cp ${../launcher/Pacing.js} Pacing.js
       cp ${../launcher/Presented.js} Presented.js

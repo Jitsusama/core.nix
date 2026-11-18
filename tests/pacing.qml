@@ -18,6 +18,7 @@
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
 import QtQuick
+import "Makings.js" as Makings
 import "Pacing.js" as Pacing
 import "Presented.js" as Presented
 import "Spots.js" as Spots
@@ -863,6 +864,49 @@ QtObject {
             [true, false].map(joined => Pacing.drawerCame(joined)).join("; "),
             "in the key's frame; the frame after");
         resting(failures);
+        kept(failures);
+    }
+
+    // The makings are kept across the shell's restarts, which emptied them:
+    // Wi-Fi's drawers made in a median of 6 ms, yet 5 of the 6 from a key
+    // came the frame after (F8TT8O, 2026-11-18).
+    function kept(failures) {
+        const wifi = Pacing.drawerKind("Network", { key: "wifi:harbour" });
+        let made = {};
+        for (const making of [6, 5, 7])
+            made = Pacing.drawerMade(made, wifi, making);
+        const read = Makings.read(JSON.stringify(made));
+        check(failures, "a kind made cheaply before a restart comes in the key's frame after it",
+            Pacing.drawerJoinsKey(read, wifi, false), true);
+        check(failures, "text that isn't JSON can't be read",
+            Makings.read("{\"Network wifi\": [6,"), null);
+        check(failures, "an empty file keeps none and is no fault",
+            JSON.stringify(Makings.read("")), "{}");
+        check(failures, "nor a list in place of the kinds", Makings.read("[6, 5]"), null);
+        check(failures, "nor a file past what's read",
+            Makings.read(JSON.stringify({ home: [1], pad: "x".repeat(70000) })), null);
+        // A kind named as every object's own is left out, rather than
+        // throwing as it's read and losing every good kind with it.
+        const named = Makings.read(
+            "{\"__proto__\": [1], \"constructor\": [2], \"toString\": [3], \"home\": [4]}");
+        check(failures, "a kind named as an object's own is left out",
+            JSON.stringify(named), JSON.stringify({ home: [4] }));
+        const odd = Makings.read(JSON.stringify({
+            home: [1, "2", -3, null, 2],
+            broken: "7",
+            none: []
+        }));
+        check(failures, "only a kind's times in ms are kept", JSON.stringify(odd.home), "[1,2]");
+        check(failures, "and a kind with none is no kind", Object.keys(odd).join(","), "home");
+        const many = Makings.read(JSON.stringify({ home: [9, 9, 9, 9, 9, 1, 1, 1, 1, 1] }));
+        check(failures, "a kind keeps its last eight", JSON.stringify(many.home),
+            "[9,9,9,1,1,1,1,1]");
+        // This shell's own come after what the file kept, as they're newer.
+        const before = { home: [20, 20] };
+        const joined = Makings.joined(before, { home: [1, 1, 1], agents: [3] });
+        check(failures, "what this shell made follows what was kept",
+            JSON.stringify(joined), JSON.stringify({ home: [20, 20, 1, 1, 1], agents: [3] }));
+        check(failures, "and neither is changed", before.home.length, 2);
     }
 
     // A drawer a letter brought waits until the letters rest, longer than
