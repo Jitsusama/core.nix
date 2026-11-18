@@ -2003,7 +2003,7 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
     each time, up to 43 ms of laying them out (2026-11-13 and 14). Now the rows it lets go
     are given to those it lists.
     """
-    built, kept, new = [], [], []
+    built, kept, new, tallied = [], [], [], []
     for _ in range(3):
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
@@ -2012,6 +2012,13 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
         shell.type_in("m")
         laid = laid_out(shell)
         built.append(int(laid["built"]) - before)
+        # Every row the last laying drew is tallied under a kind, and none once it's done.
+        assert not laid["laying"], "a laying still listens for rows once it's done"
+        last = laid["kept"] or {}
+        if "laidBy" in last:
+            by = {kind: int(each["rows"]) for kind, each in last["laidBy"].items()}
+            assert all(by), f"a row tallied under no kind: {by}"
+            tallied.append((sum(by.values()), int(last["built"]) + int(last["reused"])))
         now = set(shell.showing()["rows"])
         kept.append(len(now & was))
         new.append(len(now - was))
@@ -2021,6 +2028,8 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
     assert min(kept) > 0, f"rows of home kept by each 'm': {kept}"
     assert min(new) > 0, f"rows new to each 'm': {new}"
     assert built[1:] == [0, 0], f"rows built by each 'm' from home: {built}"
+    assert any(drew > 0 for _, drew in tallied), f"no laying drew a row: {tallied}"
+    assert all(rows == drew for rows, drew in tallied), f"rows tallied, drawn: {tallied}"
 
 
 def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:

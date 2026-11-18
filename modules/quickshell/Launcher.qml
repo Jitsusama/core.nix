@@ -8544,7 +8544,10 @@ Scope {
         // many fact rows the drawer has made and how many it holds, so it
         // can say an arrow keeps them; and how the last step back out laid
         // out its rows (steppedLast), so it can say the step split them,
-        // whatever kept them since.
+        // whatever kept them since. And the list's last keeping, with
+        // whose rows its laying spent on, and whether a laying still
+        // listens for rows, so it can say every row a laying drew was
+        // tallied, and none after.
         const inside = listBox.mapToItem(card, 0, 0);
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
             numbers: wordsIn(rowsGutter, card), rowTall: root.rowTall,
@@ -8559,6 +8562,7 @@ Scope {
             factsHeld: drawerCard.facts.length, widthsAsked: drawerCard.widths.asked,
             widthsMade: drawerCard.widths.made,
             ahead: list.cacheBuffer, listed: list.count, firstAt, stepped: list.steppedLast,
+            kept: list.keptLast, laying: list.laidBy !== null,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
     }
@@ -13529,8 +13533,12 @@ Scope {
                             // What the laying in hand spent on each kind of
                             // row it built or took back, `{ kind: { rows, ms
                             // } }` (RowsKept.tallied), or null outside one,
-                            // so no other row's drawing adds to it.
+                            // so no other row's drawing adds to it; and when
+                            // it began, so a row begun before it, such as one
+                            // made ahead and only finished now, counts only
+                            // what it took within it.
                             property var laidBy: null
+                            property real laidFrom: 0
                             // Whether keeping them last put every row in
                             // again (RowsKept.afresh), so they stand from
                             // the list's start, whatever it was scrolled to.
@@ -13596,7 +13604,9 @@ Scope {
                                 // few rows, which isn't listed afresh, his
                                 // "m" from home 8 in 43 ms (2026-11-14).
                                 // Its laying is said with the rest.
-                                const asideFrom = Date.now();
+                                // Read on the rows' own clock, so the laying
+                                // begins where their times do (laidUntil).
+                                const asideFrom = KeyTimes.now();
                                 const built = root.rowsBuilt;
                                 const drawn = root.rowsDrawn;
                                 // Whose rows it spends on is said too, since
@@ -13605,11 +13615,74 @@ Scope {
                                 // (2026-11-18), and the lab holds none of his
                                 // agents, runs or people.
                                 const laidBy = RowsKept.untallied();
+                                list.laidUntil = asideFrom;
                                 list.laidBy = laidBy;
-                                if (steps.some(one => one.remove !== undefined)
-                                    && steps.some(one => one.insert !== undefined))
+                                let aside = 0;
+                                let laying = 0;
+                                let placed = null;
+                                try {
+                                    if (steps.some(one => one.remove !== undefined)
+                                        && steps.some(one => one.insert !== undefined))
+                                        list.forceLayout();
+                                    aside = KeyTimes.now() - asideFrom;
+                                    placed = list.placeAll(steps, marking, rows, landing);
+                                    // Laid out now rather than at the next
+                                    // frame, so the rows drawn stand where
+                                    // they will and the selection is placed
+                                    // from them (rowY). How many rows the
+                                    // laying built and took back from those
+                                    // let go are said beside it, since Joel's
+                                    // "ca" laid for 191 ms with 15 rows new
+                                    // and "batt" for 1 with 1 (2026-11-11):
+                                    // rows moving into view are drawn too,
+                                    // and a laying long for the rows it drew
+                                    // is spent elsewhere. A row finished from
+                                    // here is given none of the placing before,
+                                    // which the laying leaves out too.
+                                    laying = KeyTimes.now();
+                                    list.laidUntil = laying;
+                                    // A step back out lays them out around
+                                    // the row it comes back to (root.backTo),
+                                    // scrolled there alone: positionViewAtIndex
+                                    // would lay them out where the list stood
+                                    // first, and then again there. Where rows
+                                    // are kept, those drawn still stand where
+                                    // they stood until laid out, so a row put
+                                    // in or moved above it puts this off by
+                                    // its height, and reselect lays them out
+                                    // again where the row stands: twice, as
+                                    // before.
+                                    if (landing >= 0)
+                                        list.contentY = root.scrollFor(landing, root.backTo.above);
                                     list.forceLayout();
-                                const aside = Date.now() - asideFrom;
+                                } finally {
+                                    list.laidBy = null;
+                                }
+                                const { from, whole, split } = placed;
+                                list.keptLast = {
+                                    fresh: steps.reduce((all, step) => all
+                                        + (step.keys ?? []).length, 0),
+                                    // Whole milliseconds, as the journal has
+                                    // always said it, though the rows' clock
+                                    // reads finer.
+                                    laying: Math.round(KeyTimes.now() - laying + aside + split),
+                                    split: Object.assign({ from, took: split, whole }, arrival),
+                                    built: root.rowsBuilt - built,
+                                    reused: root.rowsDrawn - drawn - (root.rowsBuilt - built),
+                                    laidBy
+                                };
+                                if (root.backTo !== null)
+                                    list.steppedLast = list.keptLast.split;
+                                return false;
+                            }
+
+                            // Puts the rows `steps` move or bring in where
+                            // they go, each new run given its marks
+                            // (`marking`), once those they replace are
+                            // aside, and says where a step back out to
+                            // `landing` among `rows` split them, whether
+                            // it put every row in, and what its split took.
+                            function placeAll(steps, marking, rows, landing) {
                                 // Told where they stand before they go in,
                                 // once those they replace are aside, so each
                                 // is laid out once, wearing its place: told
@@ -13670,46 +13743,7 @@ Scope {
                                         }
                                     }
                                 }
-                                // Laid out now rather than at the next frame,
-                                // so the rows drawn stand where they will and
-                                // the selection is placed from them (rowY).
-                                // How many rows the laying built and took
-                                // back from those let go are said beside it,
-                                // since Joel's "ca" laid for 191 ms with 15
-                                // rows new and "batt" for 1 with 1
-                                // (2026-11-11): rows moving into view are
-                                // drawn too, and a laying long for the rows
-                                // it drew is spent elsewhere.
-                                const laying = Date.now();
-                                // A step back out lays them out around
-                                // the row it comes back to (root.backTo),
-                                // scrolled there alone: positionViewAtIndex
-                                // would lay them out where the list stood
-                                // first, and then again there. Where rows
-                                // are kept, those drawn still stand where
-                                // they stood until laid out, so a row put
-                                // in or moved above it puts this off by its
-                                // height, and reselect lays them out again
-                                // where the row stands: twice, as before.
-                                try {
-                                    if (landing >= 0)
-                                        list.contentY = root.scrollFor(landing, root.backTo.above);
-                                    list.forceLayout();
-                                } finally {
-                                    list.laidBy = null;
-                                }
-                                list.keptLast = {
-                                    fresh: steps.reduce((all, step) => all
-                                        + (step.keys ?? []).length, 0),
-                                    laying: Date.now() - laying + aside + split,
-                                    split: Object.assign({ from, took: split, whole }, arrival),
-                                    built: root.rowsBuilt - built,
-                                    reused: root.rowsDrawn - drawn - (root.rowsBuilt - built),
-                                    laidBy
-                                };
-                                if (root.backTo !== null)
-                                    list.steppedLast = list.keptLast.split;
-                                return false;
+                                return { from, whole, split };
                             }
 
                             // Whether the rows shown have been laid out since
@@ -14086,11 +14120,15 @@ Scope {
                                 }
                                 // What it took, from `from` to `to`, added to
                                 // its kind's while a laying listens, so a
-                                // dear one says whose rows were dear.
+                                // dear one says whose rows were dear. A row
+                                // of no kind, as an act, a step's field or an
+                                // answer's part, is said by how it's drawn
+                                // (sort), never as an answer it isn't.
                                 function laid(from, to) {
                                     if (list.laidBy !== null)
                                         RowsKept.tallied(list.laidBy,
-                                            entry.modelData.what || "answer", to - from);
+                                            entry.modelData.what || entry.sort,
+                                            to - Math.max(from, list.laidFrom));
                                 }
                                 // Its own glyph, or the glyph of what it's
                                 // inside (rowsGlyph), for an act.

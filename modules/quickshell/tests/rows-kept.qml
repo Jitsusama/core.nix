@@ -60,15 +60,15 @@ QtObject {
         // A laying's rows are tallied by kind as each is laid, in place, so
         // a dear laying says whose rows it spent on.
         const tally = RowsKept.untallied();
-        Expect.same("a tally adds to itself in place",
-            RowsKept.tallied(tally, "agent", 30.5) === tally, true);
+        RowsKept.tallied(tally, "agent", 30.5);
         RowsKept.tallied(tally, "run", 2);
         RowsKept.tallied(tally, "agent", 59.5);
         Expect.same("a tally counts each kind's rows and their time", JSON.stringify(tally),
             JSON.stringify({ agent: { rows: 2, ms: 90 }, run: { rows: 1, ms: 2 } }));
+        const ownNamed = RowsKept.untallied();
+        RowsKept.tallied(ownNamed, "constructor", 4);
         Expect.same("a kind named as one of Object's own is tallied as any other",
-            RowsKept.tallied(RowsKept.untallied(), "constructor", 4).constructor,
-            { rows: 1, ms: 4 });
+            ownNamed.constructor, { rows: 1, ms: 4 });
         // Each row held keeps its mark wherever the steps move it, and a
         // row put in is given the next, so a row reads what it shows by its
         // mark, which no other row's coming or going changes: read by its

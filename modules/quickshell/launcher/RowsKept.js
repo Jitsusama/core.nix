@@ -328,7 +328,7 @@ function untallied() {
     return bare();
 }
 
-// `tally` with one more row of `kind` that took `ms`, added in place, as
+// Adds one more row of `kind` that took `ms` to `tally`, in place, as
 // `{ kind: { rows, ms } }`, so a laying long for the rows it drew says
 // whose rows it spent on. Added in place, since a row adds to it as it's
 // laid and a new tally a row would be made for every row of a key.
@@ -340,5 +340,4 @@ function tallied(tally, kind, ms) {
         was.rows += 1;
         was.ms += ms;
     }
-    return tally;
 }

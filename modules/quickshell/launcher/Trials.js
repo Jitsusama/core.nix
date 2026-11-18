@@ -216,18 +216,21 @@ function madeOfKinds(took) {
     return each.length > 0 ? ` (${each.map(([kind, ms]) => `${kind} ${ms}`).join(", ")})` : "";
 }
 
-// Whose rows a laying spent on, in parentheses, each kind whose rows took
-// a millisecond or more, most first then by name, with how many it laid:
-// " (agent 3 in 90, run 5 in 20)". Joel's "aq" took 8 rows back in 112
-// ms, where the keys lab's rows take 0.9 ms each (2026-11-18), so his
-// own rows are dear and this says which. Nothing where none took one.
+// Whose rows a laying spent on, built or taken back alike, in parentheses:
+// each kind whose rows took a millisecond once rounded, so half of one or
+// more, most first then by name, with how many it laid: " (by kind, built
+// or taken back: run 3 in 90, agent 5 in 20)". Joel's "aq" took 8 rows
+// back in 112 ms, where the keys lab's rows take 0.9 ms each
+// (2026-11-18), so his own rows are dear and this says which. Nothing
+// where none took one.
 function laidOfKinds(tally) {
     const each = Object.entries(tally ?? {})
         .map(([kind, laid]) => [kind, laid.rows, Math.round(laid.ms)])
         .filter(([, , ms]) => ms >= 1)
         .sort((one, other) => other[2] - one[2] || (one[0] < other[0] ? -1 : 1));
     return each.length > 0
-        ? ` (${each.map(([kind, rows, ms]) => `${kind} ${rows} in ${ms}`).join(", ")})`
+        ? ` (by kind, built or taken back: ${each.map(([kind, rows, ms]) =>
+            `${kind} ${rows} in ${ms}`).join(", ")})`
         : "";
 }
 
