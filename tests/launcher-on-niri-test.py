@@ -4011,8 +4011,8 @@ def typed_from_home(shell: Shell, text: str, until: Callable[[int], None]) -> li
     return said
 
 
-def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> None:
-    """Letters typed faster than they rest make the drawer once, for where the typing stops.
+def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -> None:
+    """Letters typed faster than they rest make a dear drawer once, for where the typing stops.
 
     Joel types letters 100 to 150 ms apart, and each letter that moved the selection had its
     drawer made right after its frame, so the next letter waited behind it: "ca" 198 ms behind
