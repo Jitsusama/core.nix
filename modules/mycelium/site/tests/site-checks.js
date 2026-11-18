@@ -192,7 +192,8 @@
     const shownKeys = new Set(names().map((el) => el.dataset.name));
     const asking = marks("[data-asks]").filter((el) => inView(el.getBoundingClientRect()));
     const askingNamed = asking.filter((el) => shownKeys.has(el.dataset.key)).length;
-    const netsNamed = [...shownKeys].filter((key) => /^[hn]:/.test(key)).length;
+    // The network he's engaged with is named beyond the seven, so it doesn't count.
+    const netsNamed = names().filter((el) => !el.classList.contains("engaged") && /^[hn]:/.test(el.dataset.name)).length;
     if (asking.length > askingNamed && netsNamed > 0) {
       faults.push(`screen: ${what} names ${netsNamed} networks while ${asking.length - askingNamed} cells that need him go unnamed`);
     }
