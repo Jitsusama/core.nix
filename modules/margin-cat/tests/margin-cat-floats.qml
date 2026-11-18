@@ -544,6 +544,23 @@ QtObject {
             by(stepRoute, nineDown).map(ends),
             [[99, 2, 492, 2], [492, 2, 492, 0], [492, 0, 500, 0], [500, 0, 742, 0],
                 [742, 0, 750, 2], [750, 2, 900, 2]]);
+        // A step down with room for its hop steps from its edge too, off
+        // a seat and on its way over, at a cell of 1 and of 2: walked
+        // clear first, it walked a body-length on the air before it
+        // stepped down (WCJQSG 3697e429).
+        expect("a step down off one with room for its hop, it steps off from its edge",
+            [by(stepsOff, flush).map(ends), by(stepsOver, flush).map(ends),
+                by(bigOff, twoUp, 16).map(ends)],
+            [[[800, 5, 700, 5], [700, 5, 692, 7], [692, 7, 692, 7], [692, 7, 632, 7]],
+                [[632, 7, 692, 7], [692, 7, 692, 5], [692, 5, 700, 5], [700, 5, 892, 5],
+                    [892, 5, 900, 7], [900, 7, 1000, 7]],
+                [[800, 26, 700, 26], [700, 26, 684, 30], [684, 30, 684, 30],
+                    [684, 30, 632, 30]]]);
+        // Its feet a cell over the top, they're no lower than the top as
+        // it goes past the end: drawn on whole pixels, never over its face.
+        expect("stepping down a step from its edge, it's never drawn over its face",
+            [corner(stepsOff, flush), corner(stepsOver, flush), corner(bigOff, twoUp)],
+            [crossed(0, 200), crossed(0, 200), crossed(0, 200)]);
         // Closed from under it there, it drops from where it's drawn.
         const closedTop = Paths.walk({ x: 600, y: -3 }, { x: 100, y: 3 },
             world({ cols: Paths.columns(rigTiles, 0), floated: [atEdge], hurried: true }));
