@@ -168,8 +168,18 @@ ShellRoot {
             return true;
         }
 
+        // Each row held as it becomes, by its key, as the launcher's own
+        // becoming holds it (Launcher.qml's becomesAll).
+        property var becoming: ({})
+
         function becomesAll(source, holds, how) {
             becameNames = becameNames.concat([how?.name ?? ""]);
+            const now = Object.assign({}, becoming);
+            for (const one of holds) {
+                now[one.key] = Object.assign({ key: one.key, from: source, row: one.row },
+                    how);
+            }
+            becoming = now;
         }
 
         function becameNot(key, why) {
@@ -247,9 +257,10 @@ ShellRoot {
             typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore,
             typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown,
             overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved,
-            landedThenShown, commanded, commandedThenRun, commandedThenMoved, commandedThenShown, timedBeforeSharing,
-            timedMove, sharing, sharedYes, sharingMoved, sharingMovedAsked, unshared,
-            unsharedShown, unsharedMoved, unsharedMovedShown, unheard, ownRecording, sharedNo]);
+            landedThenShown, commanded, commandedThenRun, commandedThenMoved,
+            commandedThenShown, timedBeforeSharing, timedMove, sharing, sharedYes,
+            sharingMoved, sharingMovedAsked, unshared, unsharedShown, unsharedMoved,
+            unsharedMovedShown, unheard, ownRecording, sharedNo, heldThenShared]);
     }
 
     function arming() {
@@ -634,7 +645,8 @@ ShellRoot {
             [hidden, "", "", 0]);
         same("it has no act, so no Return answers it unseen", [row()?.arms, typeof row()?.run],
             ["", "undefined"]);
-        same("it still waits for him in For You", asks.forYou.length, 1);
+        same("it still waits for him in For You, hidden there too",
+            asks.forYou.map(one => one.row.name), [hidden]);
         same("and its line's time starts again", asks.seen, {});
     }
 
@@ -688,16 +700,22 @@ ShellRoot {
         Niri.castsHeard = false;
         same("before niri says its casts, an ask's row is hidden", row()?.name,
             "Ask, Hidden While You Share");
+        const told = stage.toldWhys.length;
+        root.madeBefore.run();
+        same("and a yes then is told it waits on knowing, not on a share",
+            stage.toldWhys.slice(told), ["not until it's known whether your screen is shared"]);
         Niri.castsHeard = true;
     }
 
     // The shell's own recording of one window shows nothing of the launcher.
     function ownRecording() {
+        const before = Recorder.windowSession;
         Recorder.windowSession = 7;
         Niri.casts = { "2": { kind: "PipeWire", session_id: 7 } };
         same("the shell's own recording of a window hides no ask", row()?.name,
             "op://Private/Kiln/password");
         Niri.casts = {};
+        Recorder.windowSession = before;
     }
 
     // A no from the row as it was before the share goes, since it releases
@@ -708,6 +726,23 @@ ShellRoot {
         same("a no from a row made before the share still goes", said.ask, "refuse");
         same("and the row it's held as names only that it's hidden",
             stage.becameNames.slice(-1), ["Ask, Hidden While You Share"]);
+        Niri.casts = {};
+    }
+
+    // A no from the line just before the share is held as the row it
+    // becomes until the daemon answers; the share hides that row too, and
+    // the name told if the no is refused or comes late.
+    function heldThenShared() {
+        stage.becoming = {};
+        root.sent(row().verbs()[1]);
+        const held = () => Object.values(stage.becoming)[0] ?? {};
+        same("a no before the share is held under the ask's own name", held().name,
+            "op://Private/Kiln/password");
+        const act = held().act;
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        const hidden = "Ask, Hidden While You Share";
+        same("the share holds it again named only as hidden, its row hidden too",
+            [held().name, held().row?.name, held().act], [hidden, hidden, act]);
         Niri.casts = {};
     }
 }
