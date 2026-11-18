@@ -2,10 +2,10 @@
   {
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
-    "due": "2026-11-17",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-17 23:59 UTC and takes it off if it holds, or fixes it; a day later than the rest, after tonight's builder work",
+    "due": "2026-11-19",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-19 23:59 UTC: 9 of its 40 net runs from 15 Nov to 18 Nov 05:30 UTC named a listed subtest, so a rerun alone wouldn't take it off",
     "owner_pr": 3304,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 042387bc604a",
     "subtests": [
       "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart",
@@ -18,10 +18,10 @@
   {
     "at": 1794519380,
     "commit": "b0e3be7a0f1bf6c0be687e741bc129afcbb83cd7",
-    "due": "2026-11-17",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-17 23:59 UTC and takes it off if it holds, or fixes it; a day later than the rest, after tonight's builder work",
+    "due": "2026-11-19",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-19 23:59 UTC: 5 of its 56 net runs from 15 Nov to 18 Nov 05:30 UTC named its subtest, so a rerun alone wouldn't take it off",
     "owner_pr": 3794,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at b0e3be7a0f1b",
     "subtests": [
       "test_y_flashes_its_rows_and_a_waiting_d_says_what_it_takes"
@@ -45,9 +45,10 @@
   {
     "at": 1794709157,
     "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
-    "due": "2026-11-17",
+    "due": "2026-11-19",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-19 23:59 UTC: 6 of its 38 net runs from 15 Nov to 18 Nov 05:30 UTC named its subtest, so a rerun alone wouldn't take it off",
     "owner_pr": 671,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 1242616f and at e5dbb0d1 on 14 Nov",
     "subtests": [
       "test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window"
