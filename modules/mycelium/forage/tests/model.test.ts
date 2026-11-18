@@ -322,9 +322,10 @@ it("an ancestor's split takes in each cell here naming it, so both ends agree", 
 });
 
 it("a cell its ancestor lists splits from it, though it names none itself", () => {
-  const { forages } = foragesOf(
+  const { forages, unread } = foragesOf(
     told([
       forage("KESTRL", { lineage: { split_into: ["TERNAA"] } }),
+      // The node sends null for a lineage field a cell lacks, which is no fault.
       forage("TERNAA", { lineage: { split_from: null, split_into: null } }),
     ]),
   );
@@ -335,6 +336,24 @@ it("a cell its ancestor lists splits from it, though it names none itself", () =
       ["TERNAA", 1, "KESTRL"],
     ],
   );
+  assert.deepEqual(unread, []);
+});
+
+it("a split cell's own word stands where its ancestor's list disagrees", () => {
+  const { forages } = foragesOf(
+    told([
+      forage("KESTRL", { lineage: { split_into: ["TERNAA", "SKIFFS"] } }),
+      forage("OSPREY"),
+      forage("TERNAA", { lineage: { split_from: "OSPREY" } }),
+      // One naming a cell not here still drops out of the list naming it.
+      forage("SKIFFS", { lineage: { split_from: "FARAWAY" } }),
+    ]),
+  );
+  const cell = (address: string) => forages.find((each) => each.cell === address);
+  assert.deepEqual(cell("KESTRL")?.splitInto, []);
+  assert.deepEqual(cell("OSPREY")?.splitInto, ["TERNAA"]);
+  assert.equal(cell("TERNAA")?.splitFrom, "OSPREY");
+  assert.equal(cell("SKIFFS")?.splitFrom, "FARAWAY");
 });
 
 it("reads what it can of a split, and says what it couldn't", () => {

@@ -268,6 +268,21 @@ follow(
   },
 );
 
+/**
+ * Draws the panel again as the day turns, though no record changed, since
+ * a need's since says its day only once it isn't today's.
+ */
+function redrawAtMidnight(): void {
+  const next = new Date();
+  next.setHours(24, 0, 1, 0);
+  setTimeout(() => {
+    drawPanel();
+    redrawAtMidnight();
+  }, next.getTime() - Date.now());
+}
+
+redrawAtMidnight();
+
 /** The index `by` steps to from `at` among `count`, kept inside them. */
 function stepped(at: number, by: number, count: number): number {
   if (by === Number.POSITIVE_INFINITY) {

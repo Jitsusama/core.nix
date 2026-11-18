@@ -274,13 +274,15 @@ const AWAY_FOR = /<code>FARAWAY<\/code>, not standing here<\/span>, for /u;
 const JOIN_FROM_FIRST_TO_SECOND = /<path class="join" d="M39 84Q54 \d+ 69 84"\/>/u;
 
 it("says a need taken today by the clock alone", () => {
-  const now = new Date().toISOString();
+  const now = Date.parse("2026-11-18T15:00:00");
+  const since = new Date(now - 60_000).toISOString();
   const panel = panelOf(
-    forage({ serves: [{ cell: "OSPREY", need: "", since: now }] }),
+    forage({ serves: [{ cell: "OSPREY", need: "", since }] }),
     new Set(["KESTRL"]),
     [],
+    now,
   );
-  assert.ok(panel.includes(`">${clockTime(Date.parse(now))}</time>`), panel);
+  assert.ok(panel.includes(`">${clockTime(Date.parse(since))}</time>`), panel);
 });
 
 it("escapes an address not standing here, and names six needs before counting the rest", () => {

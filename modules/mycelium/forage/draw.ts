@@ -381,15 +381,16 @@ function sinceOf(since: string | undefined, now: number): string {
  * the need was about in the asking cell's own words, and since when.
  * `asker` names who said each need's words: the cell at the other end of
  * one this cell serves, or this cell's own quest for one it relies on.
+ * `now` is when the panel draws.
  */
 function needsOf(
   joins: readonly Join[],
   here: ReadonlySet<string>,
+  now: number,
   asker: (join: Join) => string,
 ): string {
   // As with the cells a cell started, a long list names six and counts the rest.
   const named = joins.length > MOST_STARTED + 1 ? MOST_STARTED : joins.length;
-  const now = Date.now();
   const lines = joins.slice(0, named).map((join) => {
     const need =
       join.need === "" ? "" : `, for <span${saidBy(asker(join))}>${escaped(join.need)}</span>`;
@@ -407,7 +408,7 @@ function needsOf(
  * and relies on. Each is said only when it holds, since most cells split
  * from none and a need fades once it's done.
  */
-function joinsOf(forage: Forage, here: ReadonlySet<string>): string {
+function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): string {
   const facts: string[] = [];
   if (forage.splitFrom !== undefined) {
     facts.push(`<div><dt>Split from</dt><dd>${cellOrAway(forage.splitFrom, here)}</dd></div>`);
@@ -417,11 +418,11 @@ function joinsOf(forage: Forage, here: ReadonlySet<string>): string {
     facts.push(`<div><dt>Split into</dt><dd><span>${into}</span></dd></div>`);
   }
   if (forage.serves.length > 0) {
-    const said = needsOf(forage.serves, here, (join) => join.cell);
+    const said = needsOf(forage.serves, here, now, (join) => join.cell);
     facts.push(`<div><dt>Serves</dt><dd class="needs">${said}</dd></div>`);
   }
   if (forage.relies.length > 0) {
-    const said = needsOf(forage.relies, here, () => forage.quest);
+    const said = needsOf(forage.relies, here, now, () => forage.quest);
     facts.push(`<div><dt>Relies on</dt><dd class="needs">${said}</dd></div>`);
   }
   return facts.map((fact) => `\n    ${fact}`).join("");
@@ -437,7 +438,12 @@ function cellLink(cell: string): string {
  * The panel of `forage`, the cell the cursor is on; `here` holds every cell
  * drawn, and `started` the cells it started among them.
  */
-function panelOf(forage: Forage, here: ReadonlySet<string>, started: readonly string[]): string {
+function panelOf(
+  forage: Forage,
+  here: ReadonlySet<string>,
+  started: readonly string[],
+  now: number = Date.now(),
+): string {
   const said = escaped(command(forage));
   const quiet = forage.purpose === "" ? " quiet" : "";
   return `
@@ -450,7 +456,7 @@ ${waitsOf(forage)}${documentsOf(forage)}
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
     <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
-    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>${joinsOf(forage, here)}
+    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>
