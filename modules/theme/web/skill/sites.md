@@ -40,10 +40,12 @@ that is awesome" (2026-11-11).
   core's `modules/local-sites/home.nix`, beside its mount, and stands in
   for its row in `sites.json`. Its words change there, as a change to
   core, and reach the home at the next switch; an edit to its
-  `sites.json` row no longer reaches the home. That row stays for now,
-  since the homes' readers still read `sites.json`, so a change to a live
-  site's homes is made in both. A document's row in `sites.json` is still
-  the whole job.
+  `sites.json` row no longer reaches the home. The home writes every row
+  it lists, the declared ones as declared, to `rows.json` beside
+  `sites.json`, and the homes' readers move onto it one by one. That
+  row stays until the last has, since the system's and Code's still read
+  `sites.json`, so a change to a live site's homes is made in both. A
+  document's row in `sites.json` is still the whole job.
 - **A document on the kit.** A document takes its keys and its theme
   switch from the kit, never a script file of its own (the lines in its
   head that set the kept look before the first paint stay): it loads

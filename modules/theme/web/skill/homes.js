@@ -1,7 +1,7 @@
 // The gate's probe for sites.md's "One Home for Every Thing" (checks.md),
 // beside gate.js, layout.js and map.js and run the same way: whole, as one
 // expression in the page as published. It reads every home site's
-// homes.json through sites.json, then answers with each place the page names
+// homes.json through the home's rows, then answers with each place the page names
 // a thing that has a home without linking it there, each in a line saying
 // what to do. An empty answer passes. It ends without a semicolon, since an
 // eval asked for one expression answers nothing for a statement.
@@ -19,9 +19,17 @@
 // it as a name: in code, kbd or samp, or in a link. In running prose it is the
 // word, and "No documents yet" names no repository (2026-11-16).
 //
-// A check that finds nothing to test fails rather than passing, so a
-// sites.json no home site answers, or a homes.json that lists nothing, is
-// a fault, never a quiet pass.
+// The home's rows are rows.json, every row the home lists with a live
+// site's as Nix declares it, which the home writes beside sites.json
+// (2026-11-17). Until every home has one, a sites root that serves none (a
+// 404) is read through sites.json. One that is there but won't read as rows
+// is a fault rather than a reason to read the other, which may be older.
+// The home rewrites rows.json at each build, so a fault in a row is fixed
+// where the row is written: sites.json, or home.nix for a live site.
+//
+// A check that finds nothing to test fails rather than passing, so rows no
+// home site answers, or a homes.json that lists nothing, is a fault, never
+// a quiet pass.
 (async () => {
   const missing = [];
   const page = document;
@@ -63,10 +71,52 @@
   const skipped = "script, style, pre, title, [aria-hidden='true'], [data-map], [data-said-by], "
     + "nav.sites-strip";
 
-  const sites = await read("sites.json");
-  if (sites === null || !Array.isArray(sites.sites)) {
-    return ["sites.json at the sites' root, for the homes to be read from"];
+  // A list of rows the sites serve at the root: {absent} where they serve
+  // none (a 404), {rows} where it reads as {"sites": [...]}, and otherwise
+  // {fault}, saying what went wrong in words that end a fault line.
+  const notFound = 404;
+  const served = async (address) => {
+    let answer;
+    try {
+      answer = await fetch(new URL(address, root), { cache: "no-store" });
+    } catch {
+      return { fault: "couldn't be fetched from the sites' server" };
+    }
+    if (answer.status === notFound) {
+      return { absent: true };
+    }
+    if (!answer.ok) {
+      return { fault: `answered ${answer.status} from the sites' server` };
+    }
+    try {
+      const body = await answer.json();
+      if (body !== null && Array.isArray(body.sites)) {
+        return { rows: body.sites };
+      }
+    } catch {
+      // Not JSON at all, which is the same fault as JSON of another shape.
+    }
+    return { fault: "won't read as rows, {\"sites\": [...]}" };
+  };
+  const listed = await served("rows.json");
+  const fromRows = listed.absent !== true;
+  const record = fromRows ? "rows.json" : "sites.json";
+  const fixIn = fromRows ? "sites.json, or home.nix for a live site" : "sites.json";
+  const recorded = await served("sites.json");
+  if (fromRows && listed.fault !== undefined) {
+    return [
+      `rows.json at the sites' root ${listed.fault}: read the home that writes it and the `
+        + "server that serves it, `journalctl --user -u local-sites-home -u local-sites`",
+    ];
   }
+  if (!fromRows && recorded.rows === undefined) {
+    return [
+      recorded.absent
+        ? "sites.json at the sites' root, for the homes to be read from"
+        : `sites.json at the sites' root ${recorded.fault}`,
+    ];
+  }
+  const sites = { sites: fromRows ? listed.rows : recorded.rows };
   // A row's homes are kinds, each read from its homes.json, or patterns,
   // {"kind", "address"}, giving every thing of a kind a home at the address
   // with its name, percent-encoded, for {name}. Both are held to what the
@@ -113,19 +163,53 @@
   const claim = (kind, path) => {
     if (claimed.has(kind)) {
       missing.push(
-        `${kind} has two homes, ${claimed.get(kind)} and ${path}: keep one in sites.json`,
+        `${kind} has two homes, ${claimed.get(kind)} and ${path}: keep one in ${fixIn}`,
       );
       return false;
     }
     claimed.set(kind, path);
     return true;
   };
+  // rows.json is what the home last built, so sites.json, which it builds
+  // from, is read beside it. A sites.json that won't read leaves the last
+  // build serving; a row whose path the home won't link it leaves out; and
+  // a row missing from rows.json for no such reason is one the home hasn't
+  // built yet. Each is named, since rows.json alone would pass it quietly.
+  if (fromRows && recorded.fault !== undefined) {
+    missing.push(
+      `sites.json at the sites' root ${recorded.fault}, so the home kept its last rows.json: `
+        + "fix sites.json",
+    );
+  }
+  const folderOf = (path) =>
+    `${path.split("/").filter((step) => step !== "" && step !== ".").join("/")}/`;
+  const built = new Set(
+    sites.sites.map((site) => site.path).filter((path) => typeof path === "string").map(folderOf),
+  );
+  for (const site of fromRows ? (recorded.rows ?? []) : []) {
+    const path = site.path;
+    if (!Array.isArray(site.homes) || site.homes.length === 0) {
+      continue;
+    }
+    const bare = typeof path === "string" && path.startsWith("./") ? path.slice(2) : path;
+    if (!plainPath(bare)) {
+      missing.push(
+        `${JSON.stringify(path)} in sites.json homes things on no plain path, so the home `
+          + "leaves it out: steps of letters, digits and -._~, none starting with a dot",
+      );
+    } else if (!built.has(folderOf(path))) {
+      missing.push(
+        `${JSON.stringify(path)} in sites.json isn't in rows.json, so the home hasn't built `
+          + "since it was written: read `journalctl --user -u local-sites-home`",
+      );
+    }
+  }
   for (const site of sites.sites) {
     const path = site.path;
     const claims = site.homes ?? [];
     if (!Array.isArray(claims)) {
       missing.push(
-        `${JSON.stringify(path)}'s homes in sites.json are ${JSON.stringify(claims)}: `
+        `${JSON.stringify(path)}'s homes in ${record} are ${JSON.stringify(claims)}: `
           + "a list of kinds and patterns",
       );
       continue;
@@ -133,9 +217,18 @@
     if (claims.length === 0) {
       continue;
     }
+    // The home lists a row written ./code/, as sessions write it, but the
+    // system's homes take its path as written and refuse the dot step.
+    if (typeof path === "string" && path.startsWith("./") && plainPath(path.slice(2))) {
+      missing.push(
+        `${JSON.stringify(path)} in ${record} homes things, which the system's homes refuse: `
+          + "drop its ./ in sites.json",
+      );
+      continue;
+    }
     if (!plainPath(path)) {
       missing.push(
-        `${JSON.stringify(path)} in sites.json homes things on no plain path: `
+        `${JSON.stringify(path)} in ${record} homes things on no plain path: `
           + "steps of letters, digits and -._~, none starting with a dot",
       );
       continue;
@@ -148,7 +241,7 @@
       const written = typeof each.address === "string" ? each.address : "";
       const fragment = written.startsWith(path) ? written.slice(path.length) : written;
       if (typeof each.kind !== "string") {
-        missing.push(`${path}'s pattern ${JSON.stringify(each)} in sites.json names no kind`);
+        missing.push(`${path}'s pattern ${JSON.stringify(each)} in ${record} names no kind`);
       } else if (!(fragment.startsWith("#") && fragment.includes(slot) && plainText(fragment))) {
         missing.push(
           `${path}'s pattern for ${each.kind}, ${JSON.stringify(each.address)}, must be a `
@@ -163,7 +256,7 @@
     for (const each of claims.filter((said) => !isPattern(said))) {
       if (typeof each !== "string") {
         missing.push(
-          `${path}'s homes in sites.json hold ${JSON.stringify(each)}: `
+          `${path}'s homes in ${record} hold ${JSON.stringify(each)}: `
             + `a kind, or a pattern {"kind", "address"}`,
         );
       } else if (!own.has(each) && !kinds.includes(each) && claim(each, path)) {
@@ -182,7 +275,7 @@
     for (const thing of homes.things) {
       if (!kinds.includes(thing.kind)) {
         missing.push(
-          `${folder}homes.json lists a ${thing.kind}, which sites.json doesn't give it by name`,
+          `${folder}homes.json lists a ${thing.kind}, which ${record} doesn't give it by name`,
         );
       } else if (typeof thing.address !== "string" || !onItsPage(thing.address, path)) {
         missing.push(
@@ -230,7 +323,7 @@
   // page that links none of a pattern's things has nothing of it to
   // measure, which isn't.
   if (claimed.size === 0) {
-    missing.push("a row in sites.json home to a kind, for any mention to be measured");
+    missing.push(`a row in ${record} home to a kind, for any mention to be measured`);
     return missing;
   }
 

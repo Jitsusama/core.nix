@@ -109,6 +109,9 @@ def code_served(tmp_path: Path, repos_daemon: StandIn, mycelium_node: StandIn) -
     with serving(tmp_path, {"code": os.environ["CODE_SITE"]}, feeds) as served:
         documents = tmp_path / "documents"
         (documents / "sites.json").write_text(json.dumps(SITES))
+        # The rows the home lists, which it writes beside the record and the skill's link
+        # check reads.
+        (documents / "rows.json").write_text(json.dumps(SITES))
         (documents / CELLS_SITE).mkdir()
         thing = {"kind": "cell", "key": "E2ZIAQ", "name": "E2ZIAQ", "address": CELL_HOME}
         (documents / CELLS_SITE / "homes.json").write_text(json.dumps({"things": [thing]}))
