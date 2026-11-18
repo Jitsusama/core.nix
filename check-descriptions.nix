@@ -297,8 +297,9 @@
   '';
   agents-runs-in-each-account = ''
     the agents daemon runs in each account of a machine in a realm, following its node and the
-    to-do daemon and reading the launcher's words, its socket systemd's, a switch restarting it,
-    and on a machine in no realm follows no node but still serves the sessions to reopen
+    to-do daemon and reading the launcher's words and the record of switches, its socket
+    systemd's, a switch restarting it, and on a machine in no realm follows no node but still
+    serves the sessions to reopen
   '';
   agents-work-runs-without-real-time = ''
     the jobs sorter takes real time from work under jobs.service, jobs-work.slice and

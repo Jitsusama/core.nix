@@ -34,7 +34,8 @@ onLinux {
   # realm, with no sessions to show, follows no node, but still serves the
   # sessions there are to reopen. It reads what of core runs from
   # update-to-main's answer and cadence's clone, so a try waits for its
-  # switch.
+  # switch, and the integration's record of switches, so a landing says
+  # since when the machine has had it.
   agents-runs-in-each-account =
     let
       home = account (bareNixos [
@@ -61,7 +62,8 @@ onLinux {
         && lib.hasInfix "/quickshell/by-shell --socket" started
         && lib.hasInfix "--switched /run/update-to-main/last.json --clone " started
         && lib.hasInfix "/cadence/core.git --harness " started
-        && lib.hasInfix "/pi-packages/github.com/Jitsusama/agentic-harness.pi --shells" started
+        && lib.hasInfix "/pi-packages/github.com/Jitsusama/agentic-harness.pi --switches " started
+        && lib.hasInfix "/integration/switches.jsonl --shells" started
         && lib.elem "PATH=${
           lib.makeBinPath [
             pkgs.git
