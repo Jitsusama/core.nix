@@ -63,6 +63,10 @@ WINDOWS = 4
 # two frames or three seconds at most once home is kept, with room for a loaded builder.
 PRIMED_S = 6
 
+# How long a presented opening waits to say it's usable, in seconds: its sources wake a few a
+# frame after it fills in, well inside this on a loaded builder.
+USABLE_S = 3
+
 # How many notices are on screen as it runs, when it times Super+N's opening ("notices").
 NOTICES = 3
 
@@ -125,20 +129,46 @@ def opened(shell: Shell, place: str) -> Json:
     return each[-1]
 
 
+def usable_after(shell: Shell, nth: int) -> Json:
+    """Give the opening numbered once it has said when it was usable, or as it is after a while.
+
+    An opening says it once a key could act on it, which can come after it's presented; one
+    shut first never says it, so the wait gives up and gives the opening as it stands.
+    """
+    each: list[Json] = []
+    giving_up = time.monotonic() + USABLE_S
+    while time.monotonic() < giving_up:
+        each[:] = [one for one in openings(shell) if one.get("nth") == nth]
+        if each and "stalled" in each[0]:
+            break
+        time.sleep(launcher_on_niri.POLL)
+    return each[0] if each else {}
+
+
 def p90(spans: list[int]) -> int:
     """Give the span nine in ten openings came within."""
     ordered = sorted(spans)
     return ordered[min(len(ordered) - 1, round(0.9 * (len(ordered) - 1)))]
 
 
-def said_of(place: str, presented: list[int], took: list[int]) -> str:
-    """Say a place's openings: presented, and that split at the shell's swap of its frame."""
+def said_of(place: str, presented: list[int], took: list[int], stalled: list[int]) -> str:
+    """Say a place's openings: presented, split at the shell's swap, and the longest stall.
+
+    The longest stall is the longest the shell's thread held a key back, from the ask until
+    the opening was usable, so a fill that moves its work after its frame shows here, where
+    its presented time doesn't.
+    """
     niri = [whole - shell for whole, shell in zip(presented, took, strict=True)]
+    stalls = (
+        f"; its longest stall a median {round(statistics.median(stalled))} ms, p90 {p90(stalled)}"
+        if stalled
+        else ""
+    )
     return (
         f"lab-place {place}: {len(presented)} presented a median "
         f"{round(statistics.median(presented))} ms, p90 {p90(presented)}; the shell's frame a "
         f"median {round(statistics.median(took))} ms, niri's after it a median "
-        f"{round(statistics.median(niri))} ms, p90 {p90(niri)}"
+        f"{round(statistics.median(niri))} ms, p90 {p90(niri)}{stalls}"
     )
 
 
@@ -199,6 +229,7 @@ def test_each_chord_opening_is_timed(
     # From the ask to the shell's swap of the frame at the card's size, which `presented` runs
     # on from to niri's presented frame.
     took: dict[str, list[int]] = {place: [] for place in places}
+    stalled: dict[str, list[int]] = {place: [] for place in places}
     for round_ in range(rounds):
         # Each round starts one place further on, so no place always follows the same one.
         for place in places[round_ % len(places) :] + places[: round_ % len(places)]:
@@ -211,6 +242,8 @@ def test_each_chord_opening_is_timed(
                 "took": opening.get("took"),
                 "niri": opening["presented"] - cast("int", opening["took"]),
                 "rows": opening.get("rows"),
+                "filling": opening.get("filling"),
+                "stalled": opening.get("stalled"),
             }
             with capsys.disabled():
                 print(f"lab-opening {os.environ.get('LAB_RUN', '')} {json.dumps(said)}", flush=True)
@@ -218,11 +251,19 @@ def test_each_chord_opening_is_timed(
                 pytest.fail(f"{place}'s opening closed unpresented: {opening}")
             timed[place].append(opening["presented"])
             took[place].append(cast("int", opening["took"]))
+            # Said once it's usable, which presented alone doesn't wait for.
+            usable = usable_after(shell, cast("int", opening["nth"]))
+            if isinstance(usable.get("stalled"), int):
+                stalled[place].append(cast("int", usable["stalled"]))
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
     for place, spans in timed.items():
         with capsys.disabled():
-            print(os.environ.get("LAB_RUN", ""), said_of(place, spans, took[place]), flush=True)
+            print(
+                os.environ.get("LAB_RUN", ""),
+                said_of(place, spans, took[place], stalled[place]),
+                flush=True,
+            )
 
 
 def said_after(shell: Shell, mark: int, *wanted: str) -> list[str]:
