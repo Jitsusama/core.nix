@@ -11,30 +11,81 @@ use super::{Class, Measure, count};
 /// minutes, so three missed writes mean it has stopped.
 const STALE_AFTER: i64 = 15 * 60;
 
+/// How far ahead of the hour's clock a summary may be dated, in seconds,
+/// for clocks a moment apart; one later than that would read fresh forever.
+const AHEAD_AT_MOST: i64 = 60;
+
 /// The most characters of the worst pain's words the card quotes.
 const QUOTED: usize = 120;
 
-/// `words` cut at a word boundary to at most `QUOTED` characters.
+/// `words` on one line, cut at a word boundary to at most `QUOTED`
+/// characters, his own double quotes made single so they can't close the
+/// card's.
 fn quoted(words: &str) -> String {
-    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    let words = words
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace('"', "'");
     if words.chars().count() <= QUOTED {
         return words;
     }
-    let cut: String = words.chars().take(QUOTED).collect();
-    let cut = cut.rsplit_once(' ').map_or(cut.as_str(), |(kept, _)| kept);
-    format!("{cut} ...")
+    // One character past the cut says whether it fell inside a word.
+    let cut: String = words.chars().take(QUOTED + 1).collect();
+    let kept = cut.rsplit_once(' ').map_or(&cut[..0], |(kept, _)| kept);
+    format!("{kept} ...")
+}
+
+/// How many times, in words.
+fn times(hits: u64) -> String {
+    match hits {
+        1 => "once".to_owned(),
+        n => format!("{n} times"),
+    }
+}
+
+/// The keeper of Joel's ledgers, from the hearer's `routes.json`, who
+/// carries a pain into them.
+#[must_use]
+pub fn keeper(routes: Option<&str>) -> Option<String> {
+    let routes: Value = serde_json::from_str(routes?).ok()?;
+    routes.get("ledgers")?.as_str().map(str::to_owned)
+}
+
+/// Why the summary `read` says nothing at `now`, if it doesn't.
+fn unread(read: &Value, now: i64) -> Option<String> {
+    if read.get("open").and_then(Value::as_u64).is_none() {
+        return Some("the pain-points summary names no count".to_owned());
+    }
+    match read.get("at").and_then(Value::as_i64).map(|ms| ms / 1000) {
+        None => Some("the pain-points summary isn't dated".to_owned()),
+        Some(at) if now - at > STALE_AFTER => Some(format!(
+            "the pain-points summary is {} min old",
+            (now - at) / 60
+        )),
+        Some(at) if at - now > AHEAD_AT_MOST => Some(format!(
+            "the pain-points summary is dated {} min ahead",
+            (at - now) / 60
+        )),
+        Some(_) => None,
+    }
 }
 
 /// The measure from `summary`, the hearer's `hour.json` (none when it
 /// can't be read), at `now` in seconds, steered by `owner`: unjudged when
-/// the summary is missing, torn, stale or names its own troubles, since a
-/// count from a hearer that isn't hearing says nothing.
+/// the summary is missing, torn, uncounted, undated, stale or ahead, since
+/// a count from a hearer that isn't hearing says nothing. Its own troubles
+/// are all of routing, so they're named beside a count that still holds.
+/// A pain is open for a day unless the ledgers carry it, as the hearer
+/// counts it. Its class comes last, so it takes the drag only once the
+/// rest are in: the hearer routes each pain to its owner itself, and a
+/// drag every hour would keep broken checks and slow merges from theirs.
 #[must_use]
 pub fn pains(summary: Option<&str>, now: i64, owner: &str) -> Measure {
     let mut measure = Measure {
         key: "pains-open".to_owned(),
-        class: Class::Functional,
-        says: "pains Joel said that are still open".to_owned(),
+        class: Class::Pains,
+        says: "pains Joel said in the last day that nobody has taken up".to_owned(),
         now: 0.0,
         target: Some(0.0),
         owner: owner.to_owned(),
@@ -50,39 +101,31 @@ pub fn pains(summary: Option<&str>, now: i64, owner: &str) -> Measure {
     };
     let open = read.get("open").and_then(Value::as_u64).unwrap_or_default();
     measure.now = count(usize::try_from(open).unwrap_or(usize::MAX));
-    let at = read.get("at").and_then(Value::as_i64).map(|ms| ms / 1000);
-    let troubles = read
-        .get("troubles")
-        .and_then(Value::as_array)
-        .map_or(0, Vec::len);
-    let why = match at {
-        None => Some("the pain-points summary isn't dated".to_owned()),
-        Some(at) if now - at > STALE_AFTER => Some(format!(
-            "the pain-points summary is {} min old",
-            (now - at) / 60
-        )),
-        _ if troubles > 0 => Some(format!("the pain-points hearer names {troubles} troubles")),
-        _ => None,
-    };
-    if let Some(why) = why {
+    if let Some(why) = unread(&read, now) {
         measure.target = None;
         measure.says = format!("{} (unjudged: {why})", measure.says);
+    }
+    let troubles: Vec<&str> = read
+        .get("troubles")
+        .and_then(Value::as_array)
+        .map(|all| all.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    if !troubles.is_empty() {
+        measure.says = format!(
+            "{} (the hearer couldn't route: {})",
+            measure.says,
+            troubles.join("; ")
+        );
     }
     if let Some(worst) = read.get("worst").and_then(Value::as_str) {
         let hits = read.get("worst_hits").and_then(Value::as_u64).unwrap_or(1);
         measure.behind.push(format!(
-            "the worst, said {hits} times: \"{}\"",
+            "the worst, said {}: \"{}\"",
+            times(hits),
             quoted(worst)
         ));
     }
     measure
-}
-
-/// The keeper of Joel's ledgers, from the hearer's `routes.json`, who
-/// carries a pain into them.
-#[must_use]
-pub fn keeper(_routes: Option<&str>) -> Option<String> {
-    None
 }
 
 #[cfg(test)]

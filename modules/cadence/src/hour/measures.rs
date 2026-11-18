@@ -20,7 +20,7 @@ pub use broken::{Main, broken, failed_in};
 pub use cells::{Quest, cells, mapped, quest};
 pub use locked::read as unlocked;
 pub use misses::{BLIND, HELD, UNREAD, checked, held, ledger, said};
-pub use pains::pains;
+pub use pains::{keeper, pains};
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
 
 const DAY: i64 = 86_400;
@@ -37,6 +37,8 @@ pub enum Class {
     Ship,
     Cells,
     Clean,
+    /// Joel's pains, last: the hearer routes each to its owner itself.
+    Pains,
 }
 
 impl Class {
@@ -50,6 +52,7 @@ impl Class {
             Self::Ship => "ship",
             Self::Cells => "cell health",
             Self::Clean => "clean zones",
+            Self::Pains => "his pains",
         }
     }
 }
