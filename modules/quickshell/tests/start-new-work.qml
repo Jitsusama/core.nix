@@ -75,18 +75,52 @@ QtObject {
 
         // Which running session is the one it started, to open for him (Joel, 18 November:
         // "start new work does not seem to work from the launcher"): here, by its holder's
-        // id; on another machine, by the words that attach it, which name that id.
-        const here = { address: "ONE", held: "h1", attach: null };
-        const there = { address: "TWO", held: null,
+        // id; on the machine the node named, by the words that attach it, which end in that
+        // id, as PiSource.js keeps a session elsewhere (here: false, held: null).
+        const here = { address: "ONE", here: true, held: "h1", attach: null };
+        const there = { address: "TWO", here: false, machine: "kestrel", held: null,
             attach: ["mycelium", "--realm", "work", "attach", "h2"] };
-        const other = { address: "THREE", held: "h3", attach: ["mycelium", "attach", "h3"] };
+        const other = { address: "THREE", here: true, held: "h3",
+            attach: ["mycelium", "attach", "h3"] };
         Expect.same("one held here is found by its holder's id",
-            Sprouting.sproutedOf([other, here], "h1")?.address, "ONE");
+            Sprouting.sproutedOf([other, here], "h1", "optimus")?.address, "ONE");
         Expect.same("one on another machine is found by its attach words",
-            Sprouting.sproutedOf([other, there], "h2")?.address, "TWO");
-        Expect.same("none is found before it's up", Sprouting.sproutedOf([other], "h1"), null);
+            Sprouting.sproutedOf([other, there], "h2", "kestrel")?.address, "TWO");
+        Expect.same("none is found before it's up",
+            Sprouting.sproutedOf([other], "h1", "optimus"), null);
         Expect.same("no id finds none, never the first held",
-            Sprouting.sproutedOf([{ address: "FOUR", held: "", attach: [] }], ""), null);
+            Sprouting.sproutedOf([{ address: "FOUR", here: true, held: "", attach: [] }], "",
+                "optimus"), null);
+        Expect.same("the same id on another machine than the node named finds none",
+            Sprouting.sproutedOf([there], "h2", "falcon"), null);
+        Expect.same("a session here whose attach words name the id isn't it",
+            Sprouting.sproutedOf([{ address: "FIVE", here: true, held: "h9",
+                attach: ["mycelium", "attach", "h2"] }], "h2", "kestrel"), null);
+        Expect.same("attach words naming the id but not at their end aren't it",
+            Sprouting.sproutedOf([{ address: "SIX", here: false, machine: "kestrel", held: null,
+                attach: ["mycelium", "attach", "h2", "--then", "x"] }], "h2", "kestrel"), null);
+
+        // Whether Joel still waits on the act in the launcher, so it may close for its
+        // window and take the keys: open, on the act itself or held in its ask, where
+        // Return leaves him with the field emptied for another try.
+        const act = "verb:agents:start-new-work:link";
+        Expect.same("held in the act's ask, it waits",
+            Sprouting.waitsOn({ open: true, asking: { key: act }, selected: null }, act), true);
+        Expect.same("on the act's row, it waits",
+            Sprouting.waitsOn({ open: true, asking: null, selected: { key: act } }, act), true);
+        Expect.same("on another row, it doesn't",
+            Sprouting.waitsOn({ open: true, asking: null, selected: { key: "other" } }, act),
+            false);
+        Expect.same("closed, it doesn't",
+            Sprouting.waitsOn({ open: false, asking: { key: act }, selected: null }, act), false);
+        Expect.same("no launcher, it doesn't", Sprouting.waitsOn(null, act), false);
+
+        // Which waiting to open are past the minute, at `now`, and which still wait.
+        const openings = [{ key: "a", held: "h1", since: 1000 }, { key: "b", held: "h2",
+            since: 50000 }];
+        Expect.same("past the minute, one goes",
+            Sprouting.overdue(openings, 62000, 60000).map(one => one.key), ["a"]);
+        Expect.same("within it, none goes", Sprouting.overdue(openings, 30000, 60000), []);
 
         // What the act that ran says.
         Expect.same("started names the machine",

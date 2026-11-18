@@ -1564,48 +1564,66 @@ Provider {
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
         if (how.started && how.held !== "") {
-            opening = { key: key, held: how.held, machine: how.machine };
-            openPatience.restart();
+            openings = openings.concat([{ key: key, held: how.held, machine: how.machine,
+                since: Date.now() }]);
             openSprouted();
         }
     }
 
-    // The sprout whose window opens once its session is up, as `{ key,
-    // held, machine }`, or null: Joel asked for it, so it opens for him, on
-    // the workspace a session goes to and focused (Sessions.goTo), rather
-    // than in no window (Joel, 18 November: "start new work does not seem
-    // to work from the launcher"). The launcher closes for it only while
-    // it still stands on the act he pressed, so a search begun since keeps.
-    property var opening: null
+    // The sprouts waiting for their sessions, each `{ key, held, machine,
+    // since }`: Joel asked for each, so each opens for him, on the workspace
+    // a session goes to and focused (Sessions.goTo), rather than in no
+    // window (Joel, 18 November: "start new work does not seem to work from
+    // the launcher"). A list, so a second sprout never loses the first.
+    property var openings: []
+    readonly property int openingPatience: 60000
+    // Each that's up opens and goes, but takes the keys only while Joel
+    // still waits on its act in the launcher (Sprouting.waitsOn): once he's
+    // at something else, what he types could land in an agent's prompt, so
+    // the foot says it's up and Go To in Agents opens it.
     function openSprouted() {
-        const it = opening;
-        const session = it === null ? null : Sprouting.sproutedOf(Sessions.running, it.held);
-        if (session === null)
+        const up = openings.filter(one => sessionOf(one) !== null);
+        if (up.length === 0)
             return;
-        opening = null;
-        openPatience.stop();
-        sproutSays(it.key, String(sproutWords().opened ?? "").replace("{machine}", it.machine));
+        openings = openings.filter(one => !up.includes(one));
+        up.forEach(one => openOne(one, sessionOf(one)));
+    }
+    function sessionOf(one) {
+        return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
+    }
+    function openOne(one, session) {
         const launcher = provider.launcher ?? null;
-        if (launcher?.open === true && launcher.selected?.key === it.key)
-            launcher.open = false;
+        if (!Sprouting.waitsOn(launcher, one.key)) {
+            const text = String(sproutWords().up ?? "").replace("{machine}", one.machine);
+            sproutSays(one.key, text);
+            launcher?.tellOnOpen([[one.machine, text]]);
+            Report.say(`new work's session ${session.address} is up; left for Go To`);
+            return;
+        }
+        sproutSays(one.key, String(sproutWords().opening ?? "").replace("{machine}", one.machine));
+        launcher.open = false;
         Sessions.goTo(session);
-        Report.say(`opened new work's session ${session.address}`);
+        Report.say(`opening new work's session ${session.address}`);
     }
     // A session comes up in seconds; one not up within a minute is said in
     // the foot, at once or when the launcher next opens, never as a notice,
     // and opens no window later, when Joel may be at something else.
     Timer {
-        id: openPatience
-        interval: 60000
+        interval: 5000
+        repeat: true
+        running: provider.openings.length > 0
         onTriggered: {
-            const it = provider.opening;
-            if (it === null)
+            const late = Sprouting.overdue(provider.openings, Date.now(),
+                provider.openingPatience);
+            if (late.length === 0)
                 return;
-            provider.opening = null;
-            const text = String(provider.sproutWords().unopened ?? "")
-                .replace("{machine}", it.machine);
-            provider.sproutSays(it.key, text);
-            provider.launcher?.tellOnOpen([[it.machine, text]]);
+            provider.openings = provider.openings.filter(one => !late.includes(one));
+            late.forEach(one => {
+                const text = String(provider.sproutWords().unopened ?? "")
+                    .replace("{machine}", one.machine);
+                provider.sproutSays(one.key, text);
+                provider.launcher?.tellOnOpen([[one.machine, text]]);
+            });
         }
     }
 

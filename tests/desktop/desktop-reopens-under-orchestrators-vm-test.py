@@ -916,16 +916,20 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
 
 
 def opened_focused(desktop: Desktop, before: set[int]) -> None:
-    """Wait for one window more than `before`, holding the keys.
+    """Wait for one window more than `before`, a pi session's, holding the keys.
 
-    Up to a minute and a half, past the shell's minute, since it hears a new session through
-    the node and the agents daemon before it opens it.
+    Up to a little past the shell's minute, after which it opens nothing: it hears a new
+    session through the node and the agents daemon before it opens it.
     """
-    deadline = time.monotonic() + 90
+    deadline = time.monotonic() + 65
     while True:
         brought = [one for one in desktop.windows() if one["id"] not in before]
         focused = json.loads(desktop.as_account("niri msg --json focused-window"))
-        if len(brought) == 1 and (focused or {}).get("id") == brought[0]["id"]:
+        if (
+            len(brought) == 1
+            and str(brought[0].get("app_id") or "").startswith("pi-session.")
+            and (focused or {}).get("id") == brought[0]["id"]
+        ):
             return
         assert time.monotonic() < deadline, (
             f"its window didn't open focused: brought {brought}, focused {focused}"

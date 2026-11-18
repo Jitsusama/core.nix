@@ -236,7 +236,8 @@
       "said": {
         "starting": "starting",
         "started": "started on {machine}; its window opens once it's up",
-        "opened": "started on {machine} and opened",
+        "opening": "started on {machine}; opening it",
+        "up": "started on {machine} and up; Go To in Agents opens it",
         "unopened": "started on {machine}, but not up within a minute; it shows in Agents once it is",
         "unanswered": "nothing answered in time; it may still start, so look in Agents before asking again",
         "unread": "its node's answer couldn't be read",

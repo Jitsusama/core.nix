@@ -77,15 +77,35 @@ function ended(answer, said) {
 }
 
 // The session among `running` (Sessions.running) that the sprout held by
-// `held` started, or null before it's up: here by its holder's id, and on
-// another machine, which keeps no holder's id here, by the words that
-// attach it, which name that id.
-function sproutedOf(running, held) {
+// `held` on `machine` started, or null before it's up: here by its holder's
+// id, and elsewhere, which keeps no holder's id here, only on the machine the
+// node named, by the words that attach it, whose last names that id. A
+// session here whose attach words name it is another's, never this one.
+function sproutedOf(running, held, machine) {
     if (held === "") {
         return null;
     }
-    return running.find(one => one.held === held
-        || (Array.isArray(one.attach) && one.attach.includes(held))) ?? null;
+    const attaches = one => Array.isArray(one.attach) && one.attach[one.attach.length - 1] === held;
+    return (
+        running.find(one =>
+            one.here === false ? one.machine === machine && attaches(one) : one.held === held
+        ) ?? null
+    );
+}
+
+// Whether Joel still waits on the act `key` in `launcher`: open, on its row
+// or held in its ask, where Return leaves him with the field emptied. Only
+// then may its window take the keys; otherwise what he types next could go
+// into an agent's prompt.
+function waitsOn(launcher, key) {
+    const on = row => row?.key === key;
+    return launcher?.open === true && (on(launcher.asking) || on(launcher.selected));
+}
+
+// Which of `openings` ({key, held, machine, since}) have waited past
+// `patience` milliseconds at `now`, to say each unopened and drop it.
+function overdue(openings, now, patience) {
+    return openings.filter(one => now - one.since >= patience);
 }
 
 // What the act that ran says of how it ended, in `said`'s words.
