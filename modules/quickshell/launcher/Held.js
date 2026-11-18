@@ -64,14 +64,14 @@ function offers(rows, places, empty) {
 // where it now offers nothing, as a collection's own row, never among what
 // it offers, is when its last row leaves, though what its search found is
 // still each as offered now; one still offered that offers nothing now is
-// left. `looked` gives all the source searches, read only when a match
-// isn't among `offered`.
-function own(steps, at, offered, ways, looked) {
+// left. `ways.looked` gives all the source searches, read only when a
+// match isn't among `offered`.
+function own(steps, at, offered, ways) {
     const made = steps.slice();
     const step = made[at];
     const now = offered.find(one => ways.same(one, step.row));
     const foundAs = step.row.foundAs === undefined ? undefined
-        : foundNow(step.row.foundAs, offered, looked ?? (() => []), ways);
+        : foundNow(step.row.foundAs, offered, ways);
     const kept = foundAs !== undefined ? Object.assign({}, foundAs, { foundAs })
         : step.row.from === undefined ? {} : { from: step.row.from };
     const row = Object.assign({}, now ?? step.row, kept);
@@ -85,16 +85,16 @@ function own(steps, at, offered, ways, looked) {
 
 // What the launcher gave a row a search found, with each row the search
 // found, and the one it lands in, as the source offers it now among
-// `offered`, or else among all it searches, `looked`, as Sound's found by
-// ear are: an ask hidden as a share begins is then listed hidden, never as
-// it was found. A match ranked flat, as Agents' search gives its sessions,
-// is ranked as it stands. One found in neither is kept as found, never
+// `offered`, or else among all it searches, `ways.looked`, as Sound's
+// found by ear are: an ask hidden as a share begins is then listed hidden,
+// never as it was found. A match ranked flat, as Agents' search gives its
+// sessions, is ranked as it stands. One found in neither is kept as found, never
 // dropped, since a source can find past both: Notices past its page,
 // People with a search Joel has typed past, or Agents inside a fold.
-function foundNow(foundAs, offered, looked, ways) {
+function foundNow(foundAs, offered, ways) {
     let lookedNow = null;
     const inLooked = was => {
-        lookedNow = lookedNow ?? looked();
+        lookedNow = lookedNow ?? ways.looked?.() ?? [];
         return lookedNow.find(one => ways.same(one, was));
     };
     const asNow = was => offered.find(one => ways.same(one, was)) ?? inLooked(was);

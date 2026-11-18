@@ -5953,10 +5953,7 @@ Scope {
         // kept a row that had left it, undimmed, until it was left (PN2VZC,
         // a7b9d465: Work Network's row, past 30 s in one of four runs).
         const offered = from < 0 ? [] : source.everything();
-        // What a search found in it is read among all it searches too,
-        // only when it isn't listed (Held.js's foundNow).
-        if (from >= 0 && !heldAgain(steps, Held.own(steps, from, offered, heldWays(),
-            () => source.looksThrough())))
+        if (from >= 0 && !heldAgain(steps, Held.own(steps, from, offered, heldWays(source))))
             return false;
         const above = top ? own : offered;
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
@@ -5967,9 +5964,12 @@ Scope {
 
     // How Held.js finds a held step's row among those offered now, what a
     // row stepped into offers, as enter makes it, and how those rows keep
-    // the order the step shows them in.
-    function heldWays() {
+    // the order the step shows them in; and, for `source`, all it
+    // searches, which Held.js reads only for what a search found in it
+    // that isn't listed (foundNow).
+    function heldWays(source) {
         return {
+            looked: () => source ? source.looksThrough() : [],
             same: sameRow,
             into: (thing, at, steps) => {
                 const things = asThing(thing, at === 0 || collects(steps[at - 1]));

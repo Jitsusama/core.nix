@@ -146,7 +146,9 @@ QtObject {
         });
         // Its match, Look, is among what the source searches, not what it lists.
         const looked = () => [offeredNow, row("look", "Look")];
-        const ownGathered = Held.own(gathered, 1, [offeredNow], ways, looked);
+        // The launcher's ways for a source that searches what `looked` gives.
+        const lookingIn = all => Object.assign({}, ways, { looked: all });
+        const ownGathered = Held.own(gathered, 1, [offeredNow], lookingIn(looked));
         const kept = ownGathered.steps[1].row;
         const keys = rows => rows.map(one => `${one.key}=${one.says}`).join(" ");
         check("a row found by a search keeps what the launcher gave it",
@@ -158,7 +160,7 @@ QtObject {
         check("nor taken for a row asking for words", typeof kept.given, "undefined");
         // Made again a second time, it still knows what the launcher gave.
         askedAt = [];
-        const keptAgain = Held.own(ownGathered.steps, 1, [offeredNow], ways, looked)
+        const keptAgain = Held.own(ownGathered.steps, 1, [offeredNow], lookingIn(looked))
             .steps[1].row;
         check("made again twice, it still keeps what the launcher gave it",
             `${keptAgain.side} ${keys(keptAgain.verbs())}`, "in Agents look=Look");
@@ -172,27 +174,28 @@ QtObject {
                 verbs: matched, landsIn: working } })
         })];
         const hiddenNow = [row("s1", "hidden"), row("k1", "hidden")];
-        const ownSearched = Held.own(searched, 1, hiddenNow, ways, () => hiddenNow).steps[1];
+        const ownSearched = Held.own(searched, 1, hiddenNow, lookingIn(() => hiddenNow))
+            .steps[1];
         check("what a search found is listed as the source offers it now",
             `${keys(ownSearched.row.verbs())} ${keys(ownSearched.rows)}`,
             "k1=hidden k2=Kettle k1=hidden k2=Kettle");
         check("and where it lands is the row as it is now", ownSearched.row.landsIn?.says,
             "hidden");
         const shownNow = [row("s1", "hidden"), row("k1", "shown")];
-        const searchedAgain = Held.own([steps[0], ownSearched], 1, shownNow, ways,
-            () => shownNow).steps[1].row;
+        const searchedAgain = Held.own([steps[0], ownSearched], 1, shownNow,
+            lookingIn(() => shownNow)).steps[1].row;
         check("made again twice, it lists them as they are then", keys(searchedAgain.verbs()),
             "k1=shown k2=Kettle");
         // One the source searches beyond what it lists, as Sound's found
         // by ear, is as that search has it now.
-        const beyond = Held.own(searched, 1, hiddenNow, ways,
-            () => hiddenNow.concat([row("k2", "boiling")])).steps[1].row;
+        const beyond = Held.own(searched, 1, hiddenNow,
+            lookingIn(() => hiddenNow.concat([row("k2", "boiling")]))).steps[1].row;
         check("one it searches beyond what it lists is as it stands there",
             keys(beyond.verbs()), "k1=hidden k2=boiling");
         // All it searches is read only for a match it doesn't list.
         let lookedFor = 0;
-        Held.own(searched, 1, hiddenNow.concat([row("k2", "hidden")]), ways,
-            () => { lookedFor += 1; return []; });
+        Held.own(searched, 1, hiddenNow.concat([row("k2", "hidden")]),
+            lookingIn(() => { lookedFor += 1; return []; }));
         check("what it searches isn't read while it lists every match", lookedFor, 0);
         // A match it ranks flat, as Agents' search gives a session found in
         // its tree, is ranked as it stands.
