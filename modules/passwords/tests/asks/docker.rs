@@ -46,6 +46,41 @@ fn a_fence_list_from_before_emptied_files_still_releases() {
 }
 
 #[test]
+fn settings_are_emptied_to_nothing_where_none_saying_nothing_can_be_written() {
+    // A login is never left readable for want of a file to bind over it:
+    // with the daemon's folder taken by a file, /dev/null is bound instead.
+    let running = Running::releasing("asks-docker-unwritten", &[super::LISTED]);
+    let runtime = running.folder.join("runtime");
+    std::fs::create_dir_all(&runtime).unwrap();
+    std::fs::write(runtime.join("passwords"), "").unwrap();
+    let args = released_with(&running, "a523456789abcdef0123456789abcdef");
+    holds(
+        &args,
+        &emptying(Path::new("/dev/null"), &docker_settings(&running)),
+    );
+}
+
+#[test]
+fn settings_in_ssh_are_left_to_its_emptying() {
+    // ~/.ssh is made empty and read-only too, so a file the list empties
+    // inside it is hidden already, and bubblewrap couldn't bind over it.
+    let running = Running::releasing("asks-docker-in-ssh", &[super::LISTED]);
+    let mut list: Value = serde_json::from_str(FENCE_LIST).unwrap();
+    let inside = serde_json::json!({"path": ".ssh/settings.json", "when": ["auths"]});
+    list["emptied"].as_array_mut().unwrap().push(inside);
+    std::fs::write(running.fence_list(), list.to_string()).unwrap();
+    let ssh = running.folder.join("home/.ssh");
+    std::fs::write(ssh.join("settings.json"), DOCKER_CONFIG).unwrap();
+    let args = released_with(&running, "a623456789abcdef0123456789abcdef");
+    assert!(
+        !args
+            .iter()
+            .any(|arg| Path::new(arg) == ssh.join("settings.json")),
+        "something inside ~/.ssh was bound over: {args:?}"
+    );
+}
+
+#[test]
 fn settings_in_a_folder_the_list_hides_are_left_to_it() {
     // Bubblewrap can't make a file to bind over inside a folder already
     // made empty and read-only, so binding there too would keep every yes
