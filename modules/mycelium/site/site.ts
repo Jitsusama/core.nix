@@ -22,7 +22,7 @@
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said } from "../../local-sites/kit/status.ts";
-import { BALANCE_FRESH_MS, FED_SHOWN_MS, type Heard, type Now, nowOf } from "./model.ts";
+import { expiryOf, type Heard, nowOf } from "./model.ts";
 import { asked, sayReach } from "./reach.ts";
 
 /** The least time between two readings handed to the drawing. */
@@ -103,15 +103,6 @@ function handOver(): void {
   globalThis.clearTimeout(expires);
   const due = expiryOf(now);
   expires = due === undefined ? undefined : globalThis.setTimeout(owe, due - handed + 1);
-}
-
-/** When the first thing drawn of `now` goes out of date, if anything will. */
-function expiryOf(now: Now): number | undefined {
-  const dues = [
-    ...(now.balance === null ? [] : [Date.parse(now.balance.at) + BALANCE_FRESH_MS]),
-    ...(now.fed ?? []).map((each) => Date.parse(each.at) + FED_SHOWN_MS),
-  ];
-  return dues.length > 0 ? Math.min(...dues) : undefined;
 }
 
 /** Hands a reading over once the floor allows, and while the tab shows. */

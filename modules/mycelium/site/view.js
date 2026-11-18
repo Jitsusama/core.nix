@@ -3063,7 +3063,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   };
   // What a receptor fed a cell, in words, by the node's word for its kind.
   const FED_WORDS = { review: "a review asked of you" };
-  const fedWords = (kind) => FED_WORDS[kind] || "something from outside";
+  const fedWords = (kind) => (Object.hasOwn(FED_WORDS, kind) ? FED_WORDS[kind] : "something from outside");
   const factList = (facts) => (facts.length ? `<dl class="facts">${facts.map(([k2, v]) => `<div><dt>${k2}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : "");
   const glance = (purpose, doing, health) =>
     `<dl class="glance">` +
@@ -4329,7 +4329,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       const arc = a && b && a !== b ? arcOf(a, b, -ARC_BOW) : null;
       if (!arc) continue;
       const line = [arc.p, arc.c, arc.q];
-      fedShapes.push(opens(line, "cell", current.byAddress.get(f.cell).id));
+      fedShapes.push(opens(line, "cell", f.cell));
       const ends = [`c:${f.receptor}`, `c:${f.cell}`];
       const faint = near && !(own ? ends.includes(own) : ends.every(touches)) ? " faint" : "";
       fedLayer.push({ tag: "path", cls: `m-fed${faint}`, line });

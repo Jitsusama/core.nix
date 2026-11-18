@@ -343,7 +343,10 @@ function fedOf(held: Held | undefined, at: number): Fed[] | null {
     const cell = text(record, "cell");
     const said = text(record, "at");
     const when = said === undefined ? Number.NaN : Date.parse(said);
-    if (receptor && cell && said && at - when < FED_SHOWN_MS) {
+    // One said a little ahead of this clock is drawn rather than held back
+    // until something else moves, but as with a balance, never one so far
+    // either side that the clocks can't both be right.
+    if (receptor && cell && said && Math.abs(at - when) < FED_SHOWN_MS) {
       // The record's own `kind` is the interface's, so the node moves the
       // feeding's, its word for what was handed, under `source`.
       const kind = text(object(record, "source") ?? {}, "kind") ?? null;
@@ -351,6 +354,19 @@ function fedOf(held: Held | undefined, at: number): Fed[] | null {
     }
   }
   return fed.sort((one, other) => other.when - one.when).map((each) => each.said);
+}
+
+/**
+ * When the first thing drawn of `now` goes out of date, if anything will: a
+ * balance reading going stale, or a feeding's ten minutes ending. The page
+ * draws again then, so either leaves on time with nothing else moving.
+ */
+function expiryOf(now: Now): number | undefined {
+  const dues = [
+    ...(now.balance === null ? [] : [Date.parse(now.balance.at) + BALANCE_FRESH_MS]),
+    ...(now.fed ?? []).map((each) => Date.parse(each.at) + FED_SHOWN_MS),
+  ];
+  return dues.length > 0 ? Math.min(...dues) : undefined;
 }
 
 /** A tie's two ends from its key, when it is a pair's and not a cell's own. */
@@ -473,4 +489,4 @@ function nowOf(heard: Heard, at: number): Now {
 }
 
 export type { Balance, Fed, Heard, Message, Now, Tie, Wait };
-export { BALANCE_FRESH_MS, FED_SHOWN_MS, LATEST_MESSAGES, nowOf };
+export { BALANCE_FRESH_MS, expiryOf, FED_SHOWN_MS, LATEST_MESSAGES, nowOf };

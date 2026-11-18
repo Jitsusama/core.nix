@@ -390,8 +390,8 @@ in
       # waits, never its words either. Of each tie between two cells, when
       # they last talked, how much each said and of what kinds, and how
       # strong it stood then, never where it went. Of each feeding, which
-      # receptor handed which cell something, when and of what kind, whole,
-      # since the node keeps the change itself out of it. Of each murmur the
+      # receptor handed which cell something, when and of what kind, which
+      # the node keeps under `source`, never the change itself. Of each murmur the
       # murmurs page reads only what it draws, not the machine it was said
       # on.
       node = {
@@ -459,7 +459,12 @@ in
             "intents"
             "strength"
           ];
-          fed = { };
+          fed.fields = [
+            "receptor"
+            "cell"
+            "at"
+            "source"
+          ];
         };
       };
     }

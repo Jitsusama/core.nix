@@ -494,11 +494,6 @@ def test_a_basin_passes_the_maps_own_checks(browser: Browser, basins_served: Ser
         opened.close()
 
 
-def drawn_fed(page: Page) -> int:
-    """How many feedings the map's ground paints."""
-    return int(page.evaluate("document.getElementById('map-ground').painted().fed"))
-
-
 def test_a_receptor_handing_a_cell_something_is_drawn_between_the_two(
     browser: Browser, fed_served: Served, fed_node: StandIn
 ) -> None:
@@ -513,10 +508,15 @@ def test_a_receptor_handing_a_cell_something_is_drawn_between_the_two(
         title = page.locator("#panel-title")
         body = page.locator("#panel-body")
         receptor = title.inner_text()
-        expect(body, "the receptor's drawer left out what it handed").to_contain_text(FED_SAID)
         page.evaluate(f"location.hash = '#cell={FED_CELL}'")
+        expect(title, "the cell's drawer never opened").not_to_have_text(receptor)
+        cell = title.inner_text()
         expect(body, "the cell's drawer left out what it was handed").to_contain_text(
             f"{FED_SAID}, by {receptor}", timeout=PACE_MS
+        )
+        page.evaluate(f"location.hash = '#cell={FED_RECEPTOR}'")
+        expect(body, "the receptor's drawer left out what it handed to whom").to_contain_text(
+            f"{cell}, {FED_SAID}", timeout=PACE_MS
         )
         found = page.evaluate((HERE / "site-checks.js").read_text())
         assert found == [], f"site-checks.js on a realm with a feeding found {found}"
@@ -525,7 +525,6 @@ def test_a_receptor_handing_a_cell_something_is_drawn_between_the_two(
         page.wait_for_function(
             "document.getElementById('map-ground').painted().fed === 0", timeout=PACE_MS
         )
-        assert drawn_fed(page) == 0, "the feeding stayed drawn once the node let it go"
     finally:
         opened.close()
 
