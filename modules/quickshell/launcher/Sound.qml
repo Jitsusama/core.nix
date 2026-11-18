@@ -134,15 +134,57 @@ Provider {
     // 2026-11-17 (tests/sound-served.qml).
     property var listing: []
 
-    function relist() {
-        const named = new Set();
-        for (const key of ready.keys) {
-            const node = ready.served(key)?.held?.node ?? "";
-            if (node !== "")
-                named.add(node);
+    // The keys of the rows served inside each row, by the key they're
+    // inside, in the daemon's order: found in one pass over the keys each
+    // time ReadyRows places them, which it does as a new list, rather than
+    // every key looked through for each device's ports, facts and parts.
+    // The spots asked for those at each slice of a closing, which made
+    // thousands of lists of every key between two of the collector's runs
+    // in Joel's shell on 2026-11-17. It holds because each record
+    // ReadyRows hears is placed as a new list of keys (ReadyRows.js's
+    // placed), so no row inside another changes while the list stays the
+    // same. A plain object, so writing it as a binding asks notifies
+    // nothing; each list is frozen, since every caller shares it; `made`
+    // counts the passes, for tests/sound-served.qml.
+    readonly property var insideKept: ({ keys: null, by: null, made: 0 })
+
+    function insideOf(parent) {
+        const keys = ready.keys;
+        if (insideKept.keys !== keys) {
+            const by = new Map();
+            for (let at = 0; at < keys.length; at++) {
+                const under = ready.served(keys[at])?.parent;
+                if (under === undefined || under === null)
+                    continue;
+                if (!by.has(under))
+                    by.set(under, []);
+                by.get(under).push(keys[at]);
+            }
+            by.forEach(list => Object.freeze(list));
+            insideKept.keys = keys;
+            insideKept.by = by;
+            insideKept.made += 1;
         }
-        const now = Array.from(named);
-        if (now.length !== listing.length || now.some((name, at) => name !== listing[at]))
+        return insideKept.by.get(parent) ?? [];
+    }
+
+    // Stepped through by index, since each step of a for-of makes an object
+    // of its own in Qt's engine, and this runs at every record told.
+    function relist() {
+        const keys = ready.keys;
+        const seen = new Set();
+        const now = [];
+        for (let at = 0; at < keys.length; at++) {
+            const node = ready.served(keys[at])?.held?.node ?? "";
+            if (node !== "" && !seen.has(node)) {
+                seen.add(node);
+                now.push(node);
+            }
+        }
+        let same = now.length === listing.length;
+        for (let at = 0; same && at < now.length; at++)
+            same = now[at] === listing[at];
+        if (!same)
             listing = now;
     }
 
@@ -445,11 +487,8 @@ Provider {
     // it last inside the device's row (desk.rs), so the shell reads no
     // file for it: the keys of those rows, in the daemon's order.
     function factKeys(node) {
-        const parent = `row:sound:${node.name}`;
-        return ready.keys.filter(key => {
-            const row = ready.served(key);
-            return row?.parent === parent && row.kind === "fact";
-        });
+        return insideOf(`row:sound:${node.name}`)
+            .filter(key => ready.served(key)?.kind === "fact");
     }
 
     // Each fact by its own name and what it says, as the Hardware and the
@@ -776,8 +815,7 @@ Provider {
         const held = ready.served(part);
         if (!held)
             return [];
-        const inside = ready.keys.filter(key => ready.served(key)?.parent === part);
-        return [held].concat(inside.map(key => ready.served(key)));
+        return [held].concat(insideOf(part).map(key => ready.served(key)));
     }
 
     function portPart(node) {
@@ -1286,16 +1324,17 @@ Provider {
     // (RSCH-20261030-GB56HX: choices keep their natural order).
     function ordered(among) {
         // Each found by its name once, rather than a search of `among` for
-        // each name listed, which made a function for each.
+        // each name listed, which made a function for each, and stepped
+        // through by index, as relist is.
         const byName = new Map();
-        for (const node of among) {
-            if (!byName.has(node.name))
-                byName.set(node.name, node);
+        for (let at = 0; at < among.length; at++) {
+            if (!byName.has(among[at].name))
+                byName.set(among[at].name, among[at]);
         }
         const out = [];
-        for (const name of listing) {
-            if (byName.has(name))
-                out.push(byName.get(name));
+        for (let at = 0; at < listing.length; at++) {
+            if (byName.has(listing[at]))
+                out.push(byName.get(listing[at]));
         }
         return out;
     }
@@ -1320,22 +1359,24 @@ Provider {
     // sound daemon told, shut or not, each device's facts filtered from
     // every key it serves. A knock and its stream going idle held Joel's
     // chord 1,699 ms on 2026-11-16 at 11:11:57, and in 79 s of that hour
-    // it took 2.8 s of the 7.9 the shell's main thread ran. So the facts
-    // are found in one pass over the keys, too.
+    // it took 2.8 s of the 7.9 the shell's main thread ran. So each
+    // device's ports and facts are found among the rows inside it
+    // (insideOf), never by looking through every key.
     function spotsStamp() {
-        const facts = {};
-        for (const key of ready.keys) {
-            const row = ready.served(key);
-            if (row?.kind === "fact")
-                facts[row.parent] = (facts[row.parent] ?? []).concat([row.held?.fact ?? ""]);
-        }
-        return JSON.stringify(ordered(outputs).concat(ordered(inputs))
-            .filter(node => !!node.audio).map(node => [node.name, named(node), chosen(node),
-                switches(node), ready.served(`row:sound:${node.name}:programs`)?.side ?? [],
+        const among = ordered(outputs).concat(ordered(inputs));
+        const stamp = [];
+        for (let at = 0; at < among.length; at++) {
+            const node = among[at];
+            if (!node.audio)
+                continue;
+            stamp.push([node.name, named(node), chosen(node), switches(node),
+                ready.served(`row:sound:${node.name}:programs`)?.side ?? [],
                 filtersHeld(node).filters,
                 portsServed(node).slice(1).map(choice => choice.held.port),
                 Array.from(node.audio.channels ?? []).length, carried(node),
-                facts[`row:sound:${node.name}`] ?? []]));
+                factsOf(node).map(fact => fact.name)]);
+        }
+        return JSON.stringify(stamp);
     }
 
     // And what one device's spots are made of, so a change to one device
@@ -1347,7 +1388,7 @@ Provider {
     // of a device now, so it's made again. The daemon serving every part
     // ready, by 13 November, ends it.
     function spotsStampOf(thing) {
-        if (ready.stampOf(thing) === null)
+        if (!ready.madeNow(thing))
             return null;
         const key = ready.madeOf[thing.key];
         const row = ready.served(key);
@@ -1355,8 +1396,7 @@ Provider {
         if (!node?.audio)
             return null;
         const steady = one => [one.name ?? "", one.glyph ?? "", one.hue ?? ""];
-        const parts = ready.keys.filter(one => ready.served(one)?.parent === key)
-            .map(one => [one].concat(steady(ready.served(one))));
+        const parts = insideOf(key).map(one => [one].concat(steady(ready.served(one))));
         return JSON.stringify([key, steady(row), parts, named(node), kind(node), chosen(node),
             switches(node), ready.served(`${key}:programs`)?.side ?? [],
             filtersHeld(node).filters,

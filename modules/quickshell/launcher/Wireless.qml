@@ -386,7 +386,7 @@ Provider {
     // network now, so it's made again. Wireless's figures served ready as
     // parts, apart from their values, would end it.
     function spotsStampOf(thing) {
-        if (ready.stampOf(thing) === null)
+        if (!ready.madeNow(thing))
             return null;
         const key = ready.madeOf[thing.key];
         const row = ready.served(key);
