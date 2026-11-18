@@ -154,7 +154,7 @@ pub fn owner(
 }
 
 /// His local time of day for a moment, as HH:MM.
-fn clock(at: i64, offset_s: i64) -> String {
+pub(super) fn clock(at: i64, offset_s: i64) -> String {
     let minutes = (at / 1000 + offset_s).rem_euclid(86_400) / 60;
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }

@@ -6,6 +6,7 @@ use serde_json::json;
 use std::fs;
 use std::io::Write;
 
+mod day;
 mod troubles;
 
 /// 20:00 UTC on 16 November 2026.
@@ -37,6 +38,7 @@ impl Place {
             void: self.root.join("void"),
             at: AT,
             offset_s: -5 * 3600,
+            zone_known: true,
         }
     }
 
@@ -456,7 +458,7 @@ fn with_no_routes_nothing_is_sent_and_every_pain_waits() {
 }
 
 #[test]
-fn a_pain_hours_old_when_first_heard_goes_to_the_ledgers_keeper_alone() {
+fn a_pain_hours_old_when_first_heard_goes_to_no_one() {
     let place = Place::new("stale");
     place.routes();
     place.log(
@@ -481,12 +483,15 @@ fn a_pain_hours_old_when_first_heard_goes_to_the_ledgers_keeper_alone() {
     );
     let note = &sent.iter().find(|(to, _)| to == "ORCH01").expect("noted").1;
     assert!(
-        note.contains("status update please") && note.contains("broken"),
-        "{note}"
+        note.contains("broken") && !note.contains("status update please"),
+        "the keeper hears only what's new, and the old one in its day's count: {note}"
     );
     assert!(
-        place.heard().iter().all(|h| h.routed_at.is_some()),
-        "the old one went to the keeper: {:?}",
+        place
+            .heard()
+            .iter()
+            .any(|h| h.entry == "old" && h.routed_at.is_none()),
+        "{:?}",
         place.heard()
     );
 }
