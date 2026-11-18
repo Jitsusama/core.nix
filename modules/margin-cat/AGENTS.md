@@ -200,8 +200,8 @@ closes or loses focus"
 - Stepping down off a floating window's end from its edge, paws moving, it crosses the
   corner of its face for one stride, no deeper than half its height; deeper, it walks
   clear and drops (WCJQSG 1ee24751, 2026-11-18: "Stepping down a small ledge with its paws
-  moving is what a cat does"). Held by `margin-cat-floats.qml`: "crossing 2.2 deep or just
-  4, it steps off; 4.3, it walks clear and drops"
+  moving is what a cat does"). Held by `margin-cat-floats.qml`: "crossing 2 deep or just
+  4, it steps off; deeper, it walks clear and drops"
 - Held by `margin-cat-floats.qml`: "one across the tops on its way, it walks over its top"
 - Held by `margin-cat-floats.qml`: "a floating window a leap up on its way is a step"
 - Held by `margin-cat-floats.qml`: "a floating window off its way changes nothing"

@@ -454,12 +454,13 @@ QtObject {
             by(rigOver, atEdge).map(ends).slice(1),
             [[492, 3, 492, 0], [492, -3, 500, -3], [500, -3, 742, -3], [742, 0, 750, 3],
                 [750, 3, 900, 3]]);
-        // A stride's time at its walk's pace: on the rig's long way, a
-        // fiftieth of a second; on a short one, ambling, a fifth.
+        // A stride's time at its walk's pace: about a fifth of a second on
+        // the rig's long way, and a little more on a short one, easing
+        // to its stop.
         const shortOff = Paths.walk({ x: 700, y: -3 }, { x: 780, y: 3 }, rig(atEdge));
-        expect("crossing the corner of its face 3.6 deep, for a stride at its walk's pace",
+        expect("crossing the corner of its face 3 deep, for a stride at its walk's pace",
             [rigOver, rigBack, shortOff].map(way => corner(way, atEdge)),
-            ["3.6 20", "3.6 20", "3.6 200"]);
+            ["3.0 208", "3.0 208", "3.0 280"]);
         expect("never walking or falling above the screen's top, there or back",
             [offTop(rigOver), offTop(rigBack)], [[], []]);
         expect("over the tiled windows from its step up to its step down, under them either side",
@@ -473,7 +474,7 @@ QtObject {
             [walks(seatOn, atEdge, 8), walks(seatOff, atEdge, 8), endsAt(seatOn),
                 endsAt(seatOff), overFace(seatOn, atEdge), corner(seatOff, atEdge),
                 offTop(seatOn), offTop(seatOff), breaks(seatOn), breaks(seatOff)],
-            [true, true, [600, -3], [100, 3], [], "3.6 20", [], [], [], []]);
+            [true, true, [600, -3], [100, 3], [], "3.0 158", [], [], [], []]);
         // Closed from under it there, it drops from where it's drawn.
         const closedTop = Paths.walk({ x: 600, y: -3 }, { x: 100, y: 3 },
             world({ cols: Paths.columns(rigTiles, 0), floated: [atEdge], hurried: true }));
@@ -497,13 +498,13 @@ QtObject {
             world({ cols: tilesAt(13), floats: [dropsTop] }));
         const dropsOverTop = Paths.walk({ x: 100, y: 5 }, { x: 900, y: 5 },
             world({ cols: tilesAt(14), floats: [dropsTop] }));
-        expect("crossing 2.2 deep or just 4, it steps off; 4.3, it walks clear and drops",
+        expect("crossing 2 deep or just 4, it steps off; deeper, it walks clear and drops",
             [walks(stepsOverTop, stepsTop, 8), corner(stepsOverTop, stepsTop),
                 walks(halfOverTop, dropsTop, 8), corner(halfOverTop, dropsTop),
                 leapsBy(dropsOverTop, dropsTop), ends(named(dropsOverTop, "falls")),
                 overFace(dropsOverTop, dropsTop), breaks(stepsOverTop), breaks(halfOverTop),
                 breaks(dropsOverTop), offTop(dropsOverTop)],
-            [true, "2.2 20", true, "4.0 20", ["falls"], [750, 0, 750, 5], [], [], [], [], []]);
+            [true, "2.0 91", true, "4.0 218", ["falls"], [750, 0, 750, 5], [], [], [], [], []]);
         // Up to its own height it walks; a cell taller and it keeps its
         // leap, held at the edge, rather than walk up a wall.
         const capped = float(500, 4, 250, 200);
