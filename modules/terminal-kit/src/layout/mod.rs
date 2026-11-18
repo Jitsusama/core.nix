@@ -18,7 +18,8 @@ pub(crate) use words::unseen;
 pub use words::{cut, drawn, hung, one_line, paragraph, shortened, wrapped};
 
 /// Whether `words` hold anything the kit keeps from the terminal, so a
-/// layout copies only the rare cell that has to be held to one line.
+/// layout copies only the rare table, list or row that has to be held
+/// to one line, and leaves every other as it was given.
 fn holds_unseen(words: &str) -> bool {
     words.chars().any(unseen)
 }
