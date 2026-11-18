@@ -3,8 +3,9 @@
 //! was, a call's round trip through the VPN, the rate it held the upload
 //! to, and the ceiling a trial held it under. A replay (src/replay.rs)
 //! puts these back into the recorded seconds, so a bite that came
-//! through our own queues or the VPN is replayed rather than passed as clean, and the rates the shaper really
-//! held are scored beside any a controller would set.
+//! through our own queues or the VPN is replayed rather than passed as
+//! clean, and the rates the shaper really held are scored beside any a
+//! controller would set.
 //!
 //! One short line a second, about 20 MB a day, kept for as many days as
 //! the recorder keeps.
