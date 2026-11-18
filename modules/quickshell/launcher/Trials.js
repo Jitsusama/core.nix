@@ -137,22 +137,21 @@ function steppedMaking(making, split) {
     return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
 }
 
-// The rows a laying drew, where it drew any, and where a step back out
-// came to (Launcher.qml's keep): where it split a list put in afresh, how
-// much of the laying that took and the row it split at, so a slow step
-// back says whether the split or the layout after it spent the time; else
-// why it didn't split. What else the showing took (between) goes before
-// where the step came to, so it isn't read as part of it.
-function keptSaid(kept, between = "") {
+// The rows a laying drew, where it drew any, what else the showing took
+// (others), then where a step back out came to (Launcher.qml's keep), so a
+// slow step back says whether its split or the layout after spent the time.
+function keptSaid(kept, others = "") {
     const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
         ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
-    return rows + between + landedSaid(kept.split ?? {});
+    return rows + others + landedSaid(kept.split ?? {});
 }
 
-// Whether a key's showing says how its rows were kept: where laying them
-// out took time, or for a step back out, even one that kept every row.
-function keptShown(kept) {
-    return !!kept && (kept.fresh + kept.laying > 0 || kept.split?.stepping === true);
+// How a key's showing kept its rows, where laying them out took time or it
+// was a step back out, even one that kept every row; else nothing.
+function keptPart(kept, others = "") {
+    return kept && (kept.fresh + kept.laying > 0 || kept.split?.stepping === true)
+        ? ` (${kept.fresh} rows new, ${kept.laying} laying them out${keptSaid(kept, others)})`
+        : "";
 }
 
 // Where a step back out came to and how its rows went in, or nothing for a
@@ -171,7 +170,7 @@ function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = f
     }
     const to = `back to row ${back + 1}`;
     if (from > 0) {
-        return `; ${Math.round(took)} of that splitting them at row ${from + 1}, ${to}`;
+        return `; ${Math.round(took)} of the laying splitting them at row ${from + 1}, ${to}`;
     }
     return whole ? `; ${to}, the view at the list's top` : `; ${to} among rows kept`;
 }

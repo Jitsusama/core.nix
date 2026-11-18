@@ -147,10 +147,8 @@ Scope {
     // and last where a step back out came to.
     function composed(parts) {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
-            + (Trials.keptShown(parts.kept)
-                ? ` (${parts.kept.fresh} rows new, ${parts.kept.laying}`
-                + ` laying them out${Trials.keptSaid(parts.kept, weighed(parts.weighing)
-                    + Trials.readingSaid(parts.reading))})` : "")
+            + Trials.keptPart(parts.kept,
+                weighed(parts.weighing) + Trials.readingSaid(parts.reading))
             : "";
     }
 
