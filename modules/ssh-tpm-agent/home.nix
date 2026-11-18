@@ -73,21 +73,29 @@
     # the one holding Joel's keys, has one; the agents' own signing agents
     # run the same program without it. It sits in his own config, which
     # anything running as him may rewrite, so it catches accidents rather
-    # than escapes. One emptied, unreadable, refusing nowhere or gone before
-    # the agent ever read it refuses everyone, since it looks just like one
-    # that works, until a switch puts it back. One gone after the
-    # agent read it, as rolling back to before the gate leaves it, is judged
-    # by what it last said, so Joel isn't shut out until a restart asks for
-    # the PIN again and agents' work stays refused.
-    xdg.configFile."ssh-tpm-agent/gate".source = ./gate.conf;
+    # than escapes. One the agent never read whole, emptied, unreadable,
+    # refusing nowhere or gone, refuses everyone, since it looks just like
+    # one that works, until a switch puts it back, which serves Joel at the
+    # next connection with no restart; the journal says so. One the agent
+    # read that is gone, unreadable or garbled since, as rolling back to
+    # before the gate or a later gate in a format this agent predates
+    # leaves it, is judged by what it last said, so Joel isn't shut out
+    # until a restart asks for the PIN again and agents' work stays refused.
+    # A file put in the link's place is replaced at the next switch, rather
+    # than stopping the switch that puts the gate back.
+    xdg.configFile."ssh-tpm-agent/gate" = {
+      source = ./gate.conf;
+      force = true;
+    };
     systemd.user.services.ssh-tpm-agent.Service.Environment = [
       "SSH_TPM_AGENT_GATE=${config.xdg.configHome}/ssh-tpm-agent/gate"
     ];
 
     # The agent holds the login key's PIN, and a core of it would put that
-    # PIN in a file Joel's account may read, as anything running as him
-    # may: so it keeps none, with a hard limit no process of his can raise
-    # with prlimit.
+    # PIN in a file, wherever the kernel's core pattern sends it: so it
+    # keeps none, with a hard limit no process of his can raise with
+    # prlimit. It closes only that way out; anything running as Joel that
+    # may trace his processes can still read the agent's memory.
     systemd.user.services.ssh-tpm-agent.Service.LimitCORE = 0;
 
     # Home Manager has every shell not reached over SSH point SSH_AUTH_SOCK
