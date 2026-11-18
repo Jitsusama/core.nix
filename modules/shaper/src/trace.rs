@@ -157,21 +157,18 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
                 .iter_mut()
                 .map(|second| {
                     let at = began + crate::rate::whole(second.t_s);
-                    let up = match lines.get(&at) {
-                        Some(line) => {
-                            second.up_ours = line.ours;
-                            second.vpn_ms = line.vpn_ms;
-                            second.ceiling = line.ceiling;
-                            last = Some((at, line));
-                            line.up
-                        }
-                        None => {
-                            let standing = last.filter(|(then, _)| at - then <= STANDS_S);
-                            // A step that missed a write held the same
-                            // trial, so its seconds are the trial's too.
-                            second.ceiling = standing.and_then(|(_, l)| l.ceiling);
-                            standing.and_then(|(_, l)| l.up)
-                        }
+                    let up = if let Some(line) = lines.get(&at) {
+                        second.up_ours = line.ours;
+                        second.vpn_ms = line.vpn_ms;
+                        second.ceiling = line.ceiling;
+                        last = Some((at, line));
+                        line.up
+                    } else {
+                        let standing = last.filter(|(then, _)| at - then <= STANDS_S);
+                        // A step that missed a write held the same trial,
+                        // so its seconds are the trial's too.
+                        second.ceiling = standing.and_then(|(_, l)| l.ceiling);
+                        standing.and_then(|(_, l)| l.up)
                     };
                     Rates { up, down: None }
                 })
