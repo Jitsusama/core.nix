@@ -185,10 +185,12 @@ Joel, 2026-11-13 18:59: "we need to have the cat support jumping down on to
 a floating window, and then jumping to the top of a non floating one when it
 closes or loses focus"
 
-It's never over a floating window's face but at its corner: with no room over one for its
-hop, it steps down off the end within its own height, paws moving, crossing the corner for a
-body-length's walk, the smaller break than walking one on the air (WCJQSG 1ee24751,
-2026-11-18: "Stepping down a small ledge with its paws moving is what a cat does").
+It's never over a floating window's face but where the screen's top draws it there, as deep
+as its feet sit, and at its corner: with no room over one for its hop, it steps down off the
+end within its own height, paws moving, crossing the corner for a body-length's walk, or up
+to twice that on a short way, the smaller break than walking one on the air (WCJQSG
+1ee24751, 2026-11-18: "Stepping down a small ledge with its paws moving is what a cat
+does").
 
 - Held by `margin-cat-floats.qml`: "onto a floating window it drops straight down from the top
   over it"
@@ -204,10 +206,18 @@ body-length's walk, the smaller break than walking one on the air (WCJQSG 1ee247
 - Held by `margin-cat-floats.qml`: "never over its face, on or off it"
 - Held by `margin-cat-floats.qml`: "crossing the corner of its face 3 deep, for a
   body-length's walk"
+- Held by `margin-cat-floats.qml`: "down into its corner before it goes along, it's seen
+  past its feet"
 - Held by `margin-cat-floats.qml`: "cramped a step down, it steps off from its edge rather
   than walk clear first"
-- Held by `margin-cat-floats.qml`: "its own height down off one at the screen's top, it
-  steps off; a pixel more, drops"
+- Held by `margin-cat-floats.qml`: "cramped a step down on its way over one, it steps off
+  from its edge too"
+- Held by `margin-cat-floats.qml`: "up to its own height down off one at the top, it steps
+  off; a pixel more, drops"
+- Held by `margin-cat-floats.qml`: "its own height down off it on a short way, it steps off
+  as slowly as it ambles"
+- Held by `margin-cat-floats.qml`: "at 1.5x it steps its own height down, a pixel sunk first;
+  a pixel more, it drops"
 - Held by `margin-cat-floats.qml`: "off a seat its own height down, it steps; a pixel more,
   it walks clear and drops"
 - Held by `margin-cat-floats.qml`: "at a cell of 2, its own height down off a seat it steps;

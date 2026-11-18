@@ -358,15 +358,19 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 // the corner than its feet sit on it. Drawn no higher than the screen's
 // top, on a window whose top is under its own height down they already
 // sit in the face; lower, up to its air over it, so the crossing is
-// fresh, and still the smaller break than the walk on the air. Its walk
+// fresh, and still the smaller break than the walk on the air. At a
+// ratio of 1.5 a drop not whole cells snaps to cells from its end, so
+// its first cell down can come under a frame before its first along, a
+// pixel into the face while still over it. Its walk
 // is timed by the ground it covers along and down, so the deeper the
 // step the longer, up to twice a body-length's walk. For that walk its
 // cells take the pointer over the corner, often the window's title bar,
-// as they do wherever it stands. While a workspace move draws it over
-// the top, sliding with the screen, the step goes as far down as it
-// stands over it, and so deeper for that walk. Deeper, it walks clear
-// and drops (VKCF3Z 13d5bf97), its feet in the face only as deep as
-// they stood on it.
+// as they do wherever it stands. Standing over the top, as a workspace
+// move can draw it sliding with the screen, its step starts from the
+// top at once, as walks() goes, so what it stood over the top is a jump
+// at its edge, as its drop off it is (falls()). Deeper, it walks clear and
+// drops (VKCF3Z 13d5bf97), its feet in the face only as deep as they
+// stood on it.
 function stepsDown(way, to, at) {
     const drop = Math.max(to.y, 0) - Math.max(way.y, 0);
     return drop >= 0 && drop <= at.tall + 1e-6;

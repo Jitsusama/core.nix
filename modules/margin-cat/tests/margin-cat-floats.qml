@@ -418,29 +418,37 @@ QtObject {
                 || Math.abs(Math.max(beat.from.y, 0) - Math.max(way.beats[i].to.y, 0)) > 1e-6)
             .map(ends);
         // How it crosses the corner of a float's face, over `frames`, a
-        // way's frame each ms: how deep into the face it's drawn at most;
-        // whether that's within half its height past where its feet sit
-        // standing on it, as stepsDown() says; and how long its longest
-        // crossing lasts, about a body-length's walk. A step down off its
-        // end crosses the corner (WCJQSG 1ee24751), as a step up beside
-        // its edge at the screen's top does. Drawn as the screen draws it,
-        // at whole pixels at 1x and no higher than its top. Partly past
-        // the float's end, that's the corner; wholly over it, its feet go
-        // no deeper than they sit, in the face or over it, or it's
-        // "sinking" into the face.
-        const cornerOf = (frames, cell, it) => {
-            const wide = 8 * cell;
-            const feet = Math.max(it.top - 9 * cell, 0) + wide - it.top;
+        // way's frame each ms, in `at`'s world: how deep into the face
+        // it's drawn at most, the smaller of how far across and how far
+        // down; whether that's within half its height past where its feet
+        // sit standing on it; and how long its longest crossing lasts,
+        // about a body-length's walk. A step down off its end crosses the
+        // corner (WCJQSG 1ee24751), as a step up beside its edge at the
+        // screen's top does. Drawn as the screen draws it, in its own
+        // pixels at its ratio and no higher than its top. Partly past the
+        // float's end, that's the corner; wholly over it, its feet go no
+        // deeper than they sit, in the face or over it, or it's "sinking"
+        // into the face. A step from its edge, as wide as it's tall, is
+        // within by its own shape for a drop a few pixels past its
+        // height, so what holds stepsDown()'s bound is a pixel more
+        // falling; within holds the step's shape, down only as it goes
+        // along, and sinking, that it's off the face before it goes down.
+        const cornerOf = (frames, at, it) => {
+            const px = one => Math.round(one * at.ratio);
+            const wide = px(at.wide);
+            const box = { left: px(it.left), right: px(it.right), top: px(it.top),
+                bottom: px(it.bottom) };
+            const feet = px(Math.max(it.top - at.tall - at.air, 0) + at.tall) - box.top;
             let deepest = 0;
             let past = 0;
             let longest = 0;
             let crossing = 0;
             let sinks = false;
-            for (const at of frames) {
-                const x = Math.round(at.x);
-                const y = Math.max(Math.round(at.y), 0);
-                const across = Math.min(x + wide, it.right) - Math.max(x, it.left);
-                const down = Math.min(y + wide, it.bottom) - Math.max(y, it.top);
+            for (const frame of frames) {
+                const x = px(frame.x);
+                const y = Math.max(px(frame.y), 0);
+                const across = Math.min(x + wide, box.right) - Math.max(x, box.left);
+                const down = Math.min(y + wide, box.bottom) - Math.max(y, box.top);
                 sinks = sinks || (across >= wide && down > feet + 1e-6);
                 if (across > 0 && across < wide && down > 0) {
                     deepest = Math.max(deepest, Math.min(across, down));
@@ -451,7 +459,7 @@ QtObject {
                     crossing = 0;
                 }
             }
-            const within = past <= 4 * cell + 1e-6 ? "within half its height of its feet"
+            const within = past <= wide / 2 + 1e-6 ? "within half its height of its feet"
                 : `${past} past its feet`;
             const lasts = [200, 300, 500].find(ms => longest < ms);
             return `${deepest} deep, ${within}, ${lasts ? `under ${lasts} ms` : `${longest} ms`}`
@@ -461,9 +469,11 @@ QtObject {
         // half its height of its feet, its longest under `ms`.
         const crossed = (deep, ms) =>
             `${deep} deep, within half its height of its feet, under ${ms} ms`;
-        const corner = (way, it) => cornerOf(
+        // Over `way`'s frames in `at`, or at 1x at its cell.
+        const corner = (way, it, at) => cornerOf(
             Array.from({ length: Math.floor(way.ends) + 1 }, (_, t) => Paths.frame(way, t)),
-            way.cell, it);
+            at ?? world({ cell: way.cell, wide: 8 * way.cell, tall: 8 * way.cell,
+                air: way.cell }), it);
         // "A cat walking a body-length on thin air reads as a bug, not
         // whimsy. Stepping down a small ledge with its paws moving is what
         // a cat does" (WCJQSG 1ee24751).
@@ -486,8 +496,12 @@ QtObject {
             [crossed(3, 200), crossed(3, 200), crossed(3, 300)]);
         // Its check of sinking fires: down while still wholly over it.
         expect("down into its face while wholly over it, it's seen sinking",
-            cornerOf([-3, -2, -1, 0, 1, 2, 3].map(y => ({ x: 700, y })), 1, atEdge),
+            cornerOf([-3, -2, -1, 0, 1, 2, 3].map(y => ({ x: 700, y })), world(), atEdge),
             "0 deep, within half its height of its feet, under 200 ms, sinking");
+        // And its check of the corner: down at its edge before going along.
+        expect("down into its corner before it goes along, it's seen past its feet",
+            cornerOf([0, 2, 4, 6, 8].map(y => ({ x: 744, y })), world(), atEdge),
+            "6 deep, 6 past its feet, under 200 ms");
         expect("never walking or falling above the screen's top, there or back",
             [offTop(rigOver), offTop(rigBack)], [[], []]);
         expect("over the tiled windows from its step up to its step down, under them either side",
@@ -502,19 +516,24 @@ QtObject {
                 endsAt(seatOff), overFace(seatOn, atEdge), corner(seatOff, atEdge),
                 offTop(seatOn), offTop(seatOff), breaks(seatOn), breaks(seatOff)],
             [true, true, [600, -3], [100, 3], [], crossed(3, 200), [], [], [], []]);
-        // Cramped a step down, it steps from its edge, not on the air.
+        // Cramped a step down, it steps from its edge, not on the air,
+        // off a seat on it as off() goes and over it as a route goes.
         const nineDown = float(500, 9, 250, 200);
-        const stepTwo = Paths.walk({ x: 600, y: 0 }, { x: 100, y: 2 },
-            world({
-                cols: Paths.columns([
-                    { left: 16, top: 11, width: 600, height: 773, column: 0 },
-                    { left: 632, top: 11, width: 600, height: 773, column: 1 }
-                ], 0), floats: [nineDown]
-            }));
+        const nineWorld = world({
+            cols: Paths.columns([
+                { left: 16, top: 11, width: 600, height: 773, column: 0 },
+                { left: 632, top: 11, width: 600, height: 773, column: 1 }
+            ], 0), floats: [nineDown]
+        });
+        const stepTwo = Paths.walk({ x: 600, y: 0 }, { x: 100, y: 2 }, nineWorld);
         expect("cramped a step down, it steps off from its edge rather than walk clear first",
-            [by(stepTwo, nineDown).map(ends), corner(stepTwo, nineDown)],
-            [[[600, 0, 500, 0], [500, 0, 492, 2], [492, 2, 492, 2], [492, 2, 100, 2]],
-                crossed(0, 200)]);
+            by(stepTwo, nineDown).map(ends),
+            [[600, 0, 500, 0], [500, 0, 492, 2], [492, 2, 492, 2], [492, 2, 100, 2]]);
+        const stepRoute = Paths.walk({ x: 100, y: 2 }, { x: 900, y: 2 }, nineWorld);
+        expect("cramped a step down on its way over one, it steps off from its edge too",
+            by(stepRoute, nineDown).map(ends),
+            [[99, 2, 492, 2], [492, 2, 492, 0], [492, 0, 500, 0], [500, 0, 742, 0],
+                [742, 0, 750, 2], [750, 2, 900, 2]]);
         // Closed from under it there, it drops from where it's drawn.
         const closedTop = Paths.walk({ x: 600, y: -3 }, { x: 100, y: 3 },
             world({ cols: Paths.columns(rigTiles, 0), floated: [atEdge], hurried: true }));
@@ -522,11 +541,10 @@ QtObject {
             [names(closedTop).slice(0, 2), ends(closedTop.beats[0]), offTop(closedTop),
                 breaks(closedTop)],
             [["falls", "lands"], [600, 0, 600, 3], [], []]);
-        // Its own height down or less, it steps off its end from its edge,
-        // as it steps up; a pixel more, it walks clear and drops, its feet
-        // in the face only as deep as they stood on it, 2. Measured as
-        // drawn: wholly over the top, its steps and drops show nothing,
-        // and it walks along the top.
+        // Up to its own height down, it steps off its end from its edge,
+        // as it steps up: off stepsTop 3 down onto the rig's tops, and off
+        // dropsTop 8 down as drawn; a pixel more, it walks clear and
+        // drops, its feet in the face only as deep as they stood on it, 2.
         const stepsTop = float(500, 8, 250, 200);
         const dropsTop = float(500, 6, 250, 200);
         const tilesAt = top => Paths.columns([
@@ -544,7 +562,7 @@ QtObject {
             world({ cols: stairs(12, 17), floats: [dropsTop] }));
         const overNine = Paths.walk({ x: 100, y: 3 }, { x: 900, y: 9 },
             world({ cols: stairs(12, 18), floats: [dropsTop] }));
-        expect("its own height down off one at the screen's top, it steps off; a pixel more, drops",
+        expect("up to its own height down off one at the top, it steps off; a pixel more, drops",
             [walks(stepsOverTop, stepsTop, 8), corner(stepsOverTop, stepsTop),
                 leapsBy(overEight, dropsTop), corner(overEight, dropsTop), endsAt(overEight),
                 leapsBy(overNine, dropsTop), ends(named(overNine, "falls")),
@@ -570,6 +588,21 @@ QtObject {
             world({ cols: tilesAt(17), floats: [dropsTop] }));
         expect("its own height down off it on a short way, it steps off as slowly as it ambles",
             corner(shortDeep, dropsTop), crossed(5, 500));
+        // At a laptop's ratio of 1.5, a cell of 4/3, as the shell draws it
+        // (margin-cat-journeys.qml): its own height down, 15 of its 16
+        // pixels, it steps; a pixel more, it drops. Its drop, 7.5 cells,
+        // snaps to cells from its end, so its first down comes 12 ms
+        // before its first along: a pixel into the face, under a frame.
+        const fracFloat = float(500, 8, 250, 200);
+        const fracAt = top => world({ cell: 4 / 3, ratio: 1.5, wide: 32 / 3, tall: 32 / 3,
+            air: 4 / 3, cols: tilesAt(top), floats: [fracFloat] });
+        const fracStep = Paths.walk({ x: 600, y: -4 }, { x: 100, y: 10 }, fracAt(22));
+        const fracDrop = Paths.walk({ x: 600, y: -4 }, { x: 100, y: 11 }, fracAt(23));
+        expect("at 1.5x it steps its own height down, a pixel sunk first; a pixel more, it drops",
+            [leapsBy(fracStep, fracFloat, 32 / 3), corner(fracStep, fracFloat, fracAt(22)),
+                leapsBy(fracDrop, fracFloat, 32 / 3), corner(fracDrop, fracFloat, fracAt(23)),
+                breaks(fracStep), breaks(fracDrop)],
+            [[], `${crossed(10, 300)}, sinking`, ["falls"], crossed(4, 200), [], []]);
         // Up to its own height it walks; a cell taller and it keeps its
         // leap, held at the edge, rather than walk up a wall.
         const capped = float(500, 4, 250, 200);
