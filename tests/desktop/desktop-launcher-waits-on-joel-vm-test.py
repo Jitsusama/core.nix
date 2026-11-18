@@ -981,10 +981,11 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
 
 
 def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:
-    """A session wanting Joel is in For You as its Agents row, and Now has no pi row.
+    """A session wanting Joel is in For You's Agents Asking, and Now has no pi row.
 
     Super+O, Return, Return goes to its window: Now opens on For You, which counts it,
-    Return steps in to the session, selected, and its Return goes to its window.
+    Return steps in to Agents Asking, leading, then to the session, selected, and its
+    Return goes to its window.
     """
     machine = desktop.machine
     desktop.pi_session()
@@ -1009,9 +1010,19 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         )
         assert "pi" not in desktop.showing()["rows"], desktop.showing()
         machine.send_key("ret")
+        # What agents ask stands together, never loose among the to-dos (Joel,
+        # 2026-11-18 10:18).
         desktop.launcher_until(
             lambda shown: (
                 shown["held"] == ["now", "For You"]
+                and shown["rows"][:1] == ["Agents Asking"]
+                and (shown["selected"] or {}).get("verb") == "more"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "For You", "Agents Asking"]
                 and shown["rows"][:1] == ["A quest of its own & whole"]
                 and (shown["selected"] or {}).get("verb") == "more"
             )
@@ -1021,7 +1032,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now", "For You", "A quest of its own & whole"]
+                shown["held"] == ["now", "For You", "Agents Asking", "A quest of its own & whole"]
                 and shown["rows"] == ["Deal With It", "Go To", "Put It Off"]
             )
         )
@@ -1057,9 +1068,11 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
         )
     )
     machine.send_key("ret")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents Asking")
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["now", "For You"]
+            shown["held"] == ["now", "For You", "Agents Asking"]
             and (shown["selected"] or {}).get("side") == "needs your answer \u00b7 2 choices"
         )
     )

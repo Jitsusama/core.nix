@@ -114,6 +114,20 @@ QtObject {
             { kind: "look", since: now - hour }), ["try"]);
         expect("a kind with no row of its own needs him now", band("notice",
             { kind: "look" }), ["now"]);
+        // What agents ask stands together in Agents Asking, never loose
+        // among the to-dos, however it presses (Joel, 2026-11-18 10:18).
+        expect("what an agent asks goes in Agents Asking", band("agent",
+            { kind: "todo", blocks: 1 }), ["agent"]);
+        expect("even overdue", band("agent", { kind: "todo", blocks: 1, due: now - hour }),
+            ["agent"]);
+        const asking = ForYou.banded([
+            { kind: "agent", thing: { kind: "todo", blocks: 1, since: now - hour }, name: "a" },
+            { kind: "do", thing: { kind: "todo" }, name: "b" },
+            { kind: "agent", thing: { kind: "todo", blocks: 1, since: now - 9 * hour },
+                name: "c" }
+        ], now);
+        expect("agents heaviest first, the to-dos apart", [asking.agent.map(one => one.name),
+            asking.now.map(one => one.name)], [["c", "a"], ["b"]]);
         // A look that asks nothing stands To Read, never lifted, since it
         // asks nothing of him however long it's been (VKCF3Z, 2026-11-12).
         expect("a look that asks nothing goes in To Read", band("read",
@@ -136,8 +150,8 @@ QtObject {
             [25, 25, 10, 10, 5]);
         expect("the rest in their own band", [looked.now.map(one => one.name),
             looked.try.length], [["f"], 0]);
-        expect("no items, four empty bands", ForYou.banded(undefined, now),
-            { now: [], look: [], try: [], read: [] });
+        expect("no items, five empty bands", ForYou.banded(undefined, now),
+            { now: [], agent: [], look: [], try: [], read: [] });
         // The next moment time alone lifts a row into what needs him now, as
         // its due comes within the day, so For You bands again then: banded
         // only as its items changed, a look due tomorrow stayed in To Look

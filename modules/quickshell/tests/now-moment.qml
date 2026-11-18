@@ -1013,12 +1013,23 @@ ShellRoot {
         now.lookTexts = { "d.json": lookAt("d", "Read D") };
         Sessions.wanting = [{ address: "WANTB", title: "Session B", presence: {
             session: "s-b", addresses: [], wants: { kind: "question", said: "Which?" } } }];
-        const forYou = () => now.waiting.verbs();
+        // The sessions stand in Agents Asking, read here beside the rest.
+        const agentsAsking = "on:waitingOnYou:kind:agent";
+        const forYou = () => now.waiting.verbs().reduce((all, row) => all.concat([row],
+            row.key === agentsAsking ? row.verbs() : []), []);
         const keys = rows => JSON.stringify(rows.map(row => row.key).sort());
         const heldFirst = forYou();
         expect("For You holds the session, the to-dos and To Look At", keys(heldFirst)
             === JSON.stringify(["on:waiting:Say Yes", "on:waiting:Sign In",
-                "on:waiting:want:WANTB", "on:waitingOnYou:kind:look"]), keys(heldFirst));
+                "on:waiting:want:WANTB", agentsAsking, "on:waitingOnYou:kind:look"]),
+            keys(heldFirst));
+        // Agents Asking leads, and the session stands in it alone, never
+        // loose among the to-dos (Joel, 2026-11-18 10:18).
+        const led = now.waiting.verbs();
+        expect("Agents Asking leads For You, holding the session", led[0]?.key === agentsAsking
+            && led.every(row => row.key !== "on:waiting:want:WANTB")
+            && led[0].verbs().map(row => row.key).join() === "on:waiting:want:WANTB",
+            JSON.stringify(led.map(row => row.key)));
         const same = (rows, from) => rows.length === from.length
             && rows.every((row, at) => row === from[at]);
         let forYouBefore = now.tally.rows;
@@ -1380,7 +1391,9 @@ ShellRoot {
         WaitingOnYou.now = [toDo("Sign In")];
         WaitingOnYou.later = [toDo("Renew It")];
         Sessions.wanting = [session(false, "Which?", "d1")];
-        const forYou = () => now.waiting.verbs();
+        // Agents Asking's sessions read beside the rest.
+        const forYou = () => now.waiting.verbs().reduce((all, row) => all.concat([row],
+            row.key === "on:waitingOnYou:kind:agent" ? row.verbs() : []), []);
         const byKey = rows => rows.reduce((keyed, row) => Object.assign(keyed,
             { [row.key]: row }), {});
         const first = byKey(forYou());

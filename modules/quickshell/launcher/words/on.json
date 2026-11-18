@@ -544,6 +544,13 @@
       "term": "Desktop/to-do"
     },
     {
+      "id": "for-you:kind:agent",
+      "in": "on:waiting",
+      "name": "Agents Asking",
+      "term": "Desktop/agents asking",
+      "glyph": "agent"
+    },
+    {
       "id": "for-you:kind:look",
       "in": "on:waiting",
       "name": "To Look At",
