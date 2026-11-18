@@ -1022,9 +1022,11 @@
     the load begun before not kept; a card whose load is given up is said as the daemon tells
     it, drawer and all, leaves nothing reading, and isn't loaded again at once, though waiting
     its turn, but a minute on, then twice as long if held up again, to an hour, held though its
-    link changes, asked again once the clock steps back, and held up no more once loaded; facts
-    given up leave nothing reading and aren't waited on again until they land; and a card gone
-    is forgotten, though its load was under way
+    link changes, asked again once the clock steps back or it's plugged in again, and held up
+    no more once loaded; facts given up leave nothing reading and aren't waited on again until
+    they land, then are; a fact that never lands, asked each tick, is given up two seconds after
+    it was first asked, not on an earlier ask's two seconds; and a card gone is forgotten,
+    though its load was under way
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,

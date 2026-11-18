@@ -162,6 +162,26 @@ ShellRoot {
     // stood when its files began to load.
     property var kept: []
 
+    // A fact whose load never lands, since no file in a sandbox hangs a
+    // read, asked again each half second as the tick asks the facts.
+    QtObject {
+        id: hungFact
+
+        property string path: "a file that hangs"
+    }
+    Timer {
+        id: asking
+
+        interval: 500
+        repeat: true
+        onTriggered: root.askHung()
+    }
+    function askHung() {
+        networks.reloadFacts();
+        if (!networks.factsHung.includes(hungFact))
+            networks.factsAsked = networks.factsAsked.concat([hungFact]);
+    }
+
     Until {
         id: waits
     }
@@ -377,7 +397,39 @@ ShellRoot {
                     && !networks.cablesAsked.includes("enp0s2"),
                 JSON.stringify([networks.cableLoading, networks.cablesAsked]));
             waits.until("a card held up has its drawer made as the daemon says it",
-                within(2000, () => networks.glances.enp0s2 !== undefined), root.retried);
+                within(2000, () => networks.glances.enp0s2 !== undefined), root.watched);
+        });
+    }
+
+    // Facts given up are waited on again once they land; one that never
+    // does, asked again as the tick asks, is given up two seconds after
+    // it was first asked, and leaves nothing reading.
+    function watched() {
+        waits.until("facts given up are waited on again once they land",
+            within(2000, () => networks.factsHung.length === 0), () => {
+            networks.reloadFacts();
+            const first = Date.now();
+            waits.until("the facts asked land",
+                within(1000, () => networks.factsAsked.length === 0), () => {
+                waits.until("a second and a half on",
+                    within(2500, () => Date.now() - first >= 1500), () => {
+                    root.askHung();
+                    asking.start();
+                    waits.until("two and a half seconds on",
+                        within(2000, () => Date.now() - first >= 2500), () => {
+                        Expect.expect("a fact asked late isn't given up on an earlier ask's watch",
+                            !networks.factsHung.includes(hungFact),
+                            JSON.stringify(networks.factsHung.map(view => view.path)));
+                        waits.until("a fact that never lands is given up as it's asked again",
+                            within(3000, () => networks.factsHung.includes(hungFact)
+                                && !networks.stillReading), () => {
+                            asking.stop();
+                            networks.factsHung = [];
+                            root.retried();
+                        });
+                    });
+                });
+            });
         });
     }
 
@@ -435,7 +487,20 @@ ShellRoot {
         networks.recable();
         waits.until("a card held up is loaded once the clock steps back", within(2000, () =>
             root.swept() && networks.cables.enp0s2 !== undefined
-                && networks.cablesStuck.enp0s2 === undefined), root.unplugged);
+                && networks.cablesStuck.enp0s2 === undefined), root.replugged);
+    }
+
+    // Held up once more, then unplugged and plugged in again: it's let
+    // go, and loaded anew.
+    function replugged() {
+        networks.recable();
+        Expect.expect("the second card's load is under way again",
+            networks.cableLoading?.name === "enp0s2", JSON.stringify(networks.cableLoading));
+        networks.cableGivenUp();
+        networks.links = [docked];
+        networks.links = [second, docked];
+        waits.until("a card held up and plugged in again is loaded anew", within(2000, () =>
+            root.swept() && networks.cables.enp0s2 !== undefined), root.unplugged);
     }
 
     // The cards pulled out as the first's files load again: what they

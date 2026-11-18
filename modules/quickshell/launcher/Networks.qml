@@ -164,14 +164,15 @@ Provider {
             if (!factsWatch.running)
                 factsWatch.start();
         }
-        for (const view of views)
+        for (const view of factsAsked)
             view.reload();
     }
     // A fact still loading two seconds after it was first asked, since
     // the tick asks again each second while a cable is shown, is said as
-    // last loaded and warned of, and isn't waited on again until it
-    // lands, so a terminal isn't kept asking on a file that never does.
-    // Asking again for a load under way starts no other.
+    // last loaded and warned of, and isn't asked or waited on again until
+    // it lands, so a terminal isn't kept asking on a file that never does.
+    // The watch ends once every fact asked has landed, so a later ask
+    // has its own two seconds.
     property var factsHung: []
     Timer {
         id: factsWatch
@@ -190,6 +191,8 @@ Provider {
     function factLanded(view) {
         factsAsked = factsAsked.filter(each => each !== view);
         factsHung = factsHung.filter(each => each !== view);
+        if (factsAsked.length === 0)
+            factsWatch.stop();
         settled();
     }
     // Read once nothing loading for an answer is still under way.
@@ -520,8 +523,9 @@ Provider {
     // daemon says has changed since their files began to load, forgotten,
     // so its newer word is said until they're loaded again; and a card
     // gone, or changed, under way or waiting, isn't kept once loaded. One
-    // given up stays held off through either, so a link that flaps can't
-    // take another thread on a hung file each time.
+    // given up stays held off though its link changes, so a link that
+    // flaps can't take another thread on a hung file each time, but is
+    // let go once it's gone, so a card plugged in again is asked anew.
     function forgetCables() {
         const cards = Object.create(null);
         for (const link of links ?? [])
@@ -539,6 +543,12 @@ Provider {
             cableStates = states;
         }
         cablesAsked = cablesAsked.filter(name => cards[name] !== undefined);
+        const held = Object.create(null);
+        for (const name of Object.keys(cablesStuck))
+            if (cards[name] !== undefined)
+                held[name] = cablesStuck[name];
+        if (Object.keys(held).length !== Object.keys(cablesStuck).length)
+            cablesStuck = held;
         if (cableLoading !== null && cards[cableLoading.name] !== cableLoading.state)
             cableLoading.stale = true;
     }
