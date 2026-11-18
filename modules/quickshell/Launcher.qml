@@ -4948,18 +4948,39 @@ Scope {
     // was searched again may have moved it, or else by where it was, and
     // scrolls the list back to where it stood.
     function reselect(left) {
-        const byKey = left.key === "" ? -1
-            : matches.findIndex(row => steadyId(row) === left.key);
-        const lowest = answer || lineHeads ? -1 : 0;
-        const at = left.at === -1 && (answer || lineHeads) ? -1
-            : byKey >= 0 ? byKey : Math.max(lowest, Math.min(left.at, matches.length - 1));
-        current = at;
-        if (current < 0)
-            return;
-        list.positionViewAtIndex(current, ListView.Contain);
-        const above = Math.max(0, Math.min(left.above ?? 0, list.height - list.rowHeight(current)));
-        list.contentY = list.clamped(list.rowY(current) - above);
+        current = leftAt(left, matches);
+        if (current >= 0)
+            standAt(current, left.above);
     }
+
+    // Where what was selected before stands among these rows.
+    function leftAt(left, rows) {
+        const byKey = left.key === "" ? -1
+            : rows.findIndex(row => steadyId(row) === left.key);
+        const lowest = answer || lineHeads ? -1 : 0;
+        return left.at === -1 && (answer || lineHeads) ? -1
+            : byKey >= 0 ? byKey : Math.max(lowest, Math.min(left.at, rows.length - 1));
+    }
+
+    // Scrolls the list so the row stands as far below its top as it did.
+    function standAt(at, above) {
+        list.positionViewAtIndex(at, ListView.Contain);
+        list.contentY = scrollFor(at, above);
+    }
+
+    // How far the list scrolls for the row to stand as far below its top
+    // as it did, worked out from the rows' heights where it isn't drawn.
+    function scrollFor(at, above) {
+        const room = Math.max(0, Math.min(above ?? 0, list.height - list.rowHeight(at)));
+        return list.clamped(list.rowY(at) - room);
+    }
+
+    // Where a step back out lands while its rows are searched again
+    // (here()), so they're laid out there and not first from the list's
+    // top: laid out at the top, then scrolled twenty rows down to the
+    // row left, Joel's - out of a notice took 68 ms, 41 of it after the
+    // rows were shown (his journal, 2026-11-17 16:39:52). Null otherwise.
+    property var backTo: null
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
     // A row on offer now by its key, as it reads now: in the step held, or
@@ -6158,10 +6179,12 @@ Scope {
         // rather than the words alone and timed only from the field.
         stepOut = stepTimed && wordsBack
             ? { text: `\u2190 ${leaving.name}`, began, heard, pressed, collected, thread } : null;
+        backTo = left;
         try {
             restart(words);
         } finally {
             stepOut = null;
+            backTo = null;
         }
         placeCaret(onto);
         reselect(left);
@@ -6413,7 +6436,8 @@ Scope {
             compose(!steadying);
             if (steadying)
                 return;
-            list.positionViewAtBeginning();
+            if (backTo === null)
+                list.positionViewAtBeginning();
             searchParts = { before: searchedAt - searchBegan, lists: foundAt - searchedAt,
                 rows: 0, answers: Date.now() - foundAt, each: {}, within: null,
                 composing: composeParts, beforeParts: { counting: countedAt - searchBegan,
@@ -6482,7 +6506,7 @@ Scope {
             current = Math.max(lined ? -1 : 0, kept);
             if (kept >= 0)
                 list.positionViewAtIndex(kept, ListView.Contain);
-            else
+            else if (backTo === null)
                 list.positionViewAtBeginning();
             // Said as the top level's are: finding the place's rows, then
             // showing them, with how many were new to the list and how long
@@ -6619,7 +6643,7 @@ Scope {
         // a hundred times an opening: the highlight went its own way and
         // the list stopped short of its first row (Joel, 2026-11-08).
         compose(!steadying);
-        if (!steadying)
+        if (!steadying && backTo === null)
             list.positionViewAtBeginning();
         searchParts = { before: began - searchBegan, lists: listed - began, rows: matched - listed,
             answers: Date.now() - matched, each: listsTook, within: costs,
@@ -13441,14 +13465,53 @@ Scope {
                                 // after, every row of a step in from home
                                 // was laid out again for it.
                                 root.rowsPlaced(false);
-                                let puts = 0;
-                                for (const step of steps.filter(one => one.remove === undefined)) {
+                                const back = root.backTo === null ? -1
+                                    : root.leftAt(root.backTo, rows);
+                                const puts = steps.filter(one => one.remove === undefined);
+                                const whole = puts.length === 1 && puts[0].insert === 0
+                                    && puts[0].keys.length === rows.length;
+                                const from = back > 0 && whole
+                                    ? list.topRowAt(root.scrollFor(back, root.backTo.above)
+                                        - list.rowY(0), back)
+                                    : 0;
+                                let put = 0;
+                                let split = 0;
+                                for (const step of puts) {
                                     if (step.move !== undefined) {
                                         rowsKept.move(step.move, step.to, 1);
                                     } else {
-                                        const marks = marking.given[puts++];
-                                        rowsKept.insert(step.insert,
-                                            step.keys.map((key, at) => ({ key, mark: marks[at] })));
+                                        const marks = marking.given[put++];
+                                        const entries = step.keys.map((key, at) =>
+                                            ({ key, mark: marks[at] }));
+                                        // A step back out to a row well down
+                                        // a list put in afresh puts in the
+                                        // rows from the view's top first, then
+                                        // those above them: a view putting
+                                        // rows into none makes every row from
+                                        // the first down to the view's foot,
+                                        // though it shows only the last, and
+                                        // rows put in above those drawn make
+                                        // only those in its buffer, the view
+                                        // held still (Qt's QQuickListViewPrivate
+                                        // ::applyInsertionChange). Above those
+                                        // in view, not merely drawn: so the
+                                        // first go in scrolled a row down,
+                                        // more than the buffer's row less a
+                                        // pixel. Coming back to a notice
+                                        // sixteen rows down drew 18 rows for
+                                        // the 10 it shows.
+                                        if (from > 0) {
+                                            const splitFrom = Date.now();
+                                            list.contentY = list.rowY(0)
+                                                + list.rowHeight(from);
+                                            rowsKept.insert(0, entries.slice(from));
+                                            list.forceLayout();
+                                            rowsKept.insert(0, entries.slice(0, from));
+                                            list.forceLayout();
+                                            split = Date.now() - splitFrom;
+                                        } else {
+                                            rowsKept.insert(step.insert, entries);
+                                        }
                                     }
                                 }
                                 // Laid out now rather than at the next frame,
@@ -13462,11 +13525,18 @@ Scope {
                                 // drawn too, and a laying long for the rows
                                 // it drew is spent elsewhere.
                                 const laying = Date.now();
+                                // A step back out lays them out around
+                                // the row it comes back to (root.backTo),
+                                // scrolled there alone: positionViewAtIndex
+                                // would lay them out where the list stood
+                                // first, and then again there.
+                                if (back >= 0)
+                                    list.contentY = root.scrollFor(back, root.backTo.above);
                                 list.forceLayout();
                                 list.keptLast = {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
-                                    laying: Date.now() - laying + aside,
+                                    laying: Date.now() - laying + aside + split,
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };
@@ -13572,6 +13642,16 @@ Scope {
 
                             function pick() {
                                 list.pickY = list.fillAt(root.current);
+                            }
+
+                            // The row at the top of a view scrolled this far
+                            // down the rows: the lowest, from the one given
+                            // up, whose top is no further down than that.
+                            function topRowAt(down, at) {
+                                let top = at;
+                                while (top > 0 && list.rowTop(top) > down)
+                                    top -= 1;
+                                return top;
                             }
 
                             // Where a row's own place starts and ends in the
