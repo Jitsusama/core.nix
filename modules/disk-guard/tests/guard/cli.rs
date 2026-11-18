@@ -284,6 +284,49 @@ fn status_says_what_a_second_version_guard_says_in_words() {
     assert!(!out.contains("~/d.log"), "three at most: {out}");
 }
 
+// A laptop's disk wrote 4.2 TB in 16 hours of one boot, a year from its
+// rated wear at that pace, and nothing said so.
+#[test]
+fn status_says_how_hard_each_disk_is_written_and_how_worn() {
+    let machine = Machine::new();
+    let at = wall() - 5.0;
+    write_file(
+        &machine.env.system_status,
+        &format!(
+            r#"{{ "version": 2, "heartbeat": {at}, "filesystems": [],
+                 "disks": [
+                   {{ "name": "nvme0n1", "written_this_boot": 4617948836659,
+                      "written_per_hour": 254476812288.0, "used_percent": 2,
+                      "written_in_life": 45079976738816,
+                      "rated_wear_in": 28954800.0 }},
+                   {{ "name": "sda", "written_this_boot": 1073741824,
+                      "written_per_hour": null, "used_percent": null,
+                      "written_in_life": null, "rated_wear_in": null }}
+                 ] }}"#
+        ),
+    );
+    let (code, out, _) = machine.run("status");
+    assert_eq!(code, 0);
+    let said = |name: &str| {
+        out.lines()
+            .find(|line| line.trim_start().starts_with(name))
+            .unwrap_or_else(|| panic!("no {name}: {out}"))
+            .to_owned()
+    };
+    let nvme = said("nvme0n1");
+    for part in [
+        "2% worn",
+        "wrote 237.0 GiB the last hour",
+        "4.2 TiB since boot",
+        "rated wear in about 335 d at this boot's pace",
+    ] {
+        assert!(nvme.contains(part), "{part}: {nvme}");
+    }
+    let sda = said("sda");
+    assert!(sda.contains("1.0 GiB since boot"), "{sda}");
+    assert!(!sda.contains("worn"), "what isn't known isn't said: {sda}");
+}
+
 // The holders were only in the JSON, so asking the guard in words what
 // held the disk answered with what it had cleared, never what it hadn't.
 #[test]

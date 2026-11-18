@@ -35,6 +35,7 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
         notice: None,
         holders: Vec::new(),
         holders_at: None,
+        disks: Vec::new(),
     }
 }
 

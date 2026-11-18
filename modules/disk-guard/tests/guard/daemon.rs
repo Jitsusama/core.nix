@@ -834,6 +834,39 @@ fn a_status_is_stamped_when_it_is_written_not_when_its_step_began() {
     assert!(age < 5.0, "written {age:.0} seconds ago");
 }
 
+/// One disk that has written its bytes and is 3% worn.
+struct OneDisk(u64);
+
+impl disk_guard::disks::Disks for OneDisk {
+    fn read(&mut self, health: bool) -> Vec<disk_guard::disks::Reading> {
+        vec![disk_guard::disks::Reading {
+            name: "nvme0n1".into(),
+            written: self.0,
+            wear: health.then_some(disk_guard::disks::Wear {
+                used: 3,
+                written: 60 * self.0,
+            }),
+        }]
+    }
+}
+
+#[test]
+fn a_guard_watching_disks_says_their_writes_and_wear_and_one_not_says_none() {
+    let home = Home::new();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    assert_eq!(home.status().get("disks"), None, "{}", home.status());
+
+    guard.watch_disks(Box::new(OneDisk(1 << 30)));
+    guard.step(&tick(), &CALM).unwrap();
+    let disk = &home.status()["disks"][0];
+    assert_eq!(disk["name"], "nvme0n1", "{disk}");
+    assert_eq!(disk["written_this_boot"], 1u64 << 30);
+    assert_eq!(disk["used_percent"], 3);
+    assert_eq!(disk["written_in_life"], 60u64 << 30);
+    assert!(disk["rated_wear_in"].as_f64().is_some(), "{disk}");
+}
+
 /// A restarted guard's first step can take minutes, in which the status
 /// the last one left went quiet and the desktop took a restart for a
 /// guard that had stopped. It beats from its first moment, on what the
@@ -933,6 +966,7 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         notice: None,
         holders: Vec::new(),
         holders_at: None,
+        disks: Vec::new(),
     };
     let said = "The disk has room.";
     let written = status(

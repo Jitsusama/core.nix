@@ -285,6 +285,20 @@ or launchd, and [`home.nix`][2] the account's.
   every half hour, and while the disks' use has moved less than a
   gibibyte since the last, only every six hours; `holders_at` says when.
   A clear measures again at once. `src/holders.rs` holds it.
+- **Wear.** The machine's guard on Linux also says how hard each disk
+  is written and how worn it is: what it wrote since boot, from the
+  kernel's count at every step, and over the last hour awake, once ten
+  minutes are watched; and for an NVMe disk its health log, which only
+  root may ask for, once an hour awake, with the share of its rated wear
+  used and what it wrote in its life. From those, once a percent is worn
+  and the boot is an hour old, it says when the disk reaches its rating
+  at the boot's pace, a quarter either way at 2%, since the disk says
+  its wear in whole percents. A laptop's disk wrote 4.2 TB in 16 hours
+  of one boot on 18 November, nearly all of it builds, about a year from
+  its rating at that pace, and nothing said so. The counts move every
+  step, so they're written with the status each half minute rather than
+  being news; a disk coming or going, or its health read, is.
+  `src/disks.rs` holds it.
 - **The ledger.** Each measurement of the holders goes in the state
   folder's `ledger.json`, kept two days. A holder's `grew` is how much it
   grew since the earliest measurement within the last day that's at least
@@ -359,6 +373,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
+| `src/disks.rs`            | how hard each disk is written, and how worn              |
 | `src/keeps.rs`            | the folders Joel keeps, and why                          |
 | `src/ledger.rs`           | what held each disk over two days, and what grew         |
 | `src/clears.rs`           | the folders Joel asked cleared now                       |

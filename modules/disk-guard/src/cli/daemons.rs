@@ -118,6 +118,12 @@ pub(super) fn daemon(
     }
     #[cfg(not(target_os = "linux"))]
     let _ = freezes;
+    // Only the machine's guard says the disks' writes and wear: only root
+    // may ask a disk its health. A Mac's disks aren't read yet.
+    #[cfg(target_os = "linux")]
+    if scope == Scope::System {
+        guard.watch_disks(Box::new(crate::disks::Sysfs::machine()));
+    }
     // Without a watch nothing dates an older build, so it stays.
     if builds {
         match crate::opens::Watch::new() {
