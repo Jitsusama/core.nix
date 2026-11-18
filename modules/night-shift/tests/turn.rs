@@ -571,8 +571,7 @@ const TICKING: &str = "until [ -e switched ]; do echo . >> ticks; sleep 0.05; do
 
 /// A switch's build that says it ran alone if nothing added to `ticks`
 /// while it ran.
-const ALONE: &str =
-    r#"a=$(wc -c < ticks); sleep 1; b=$(wc -c < ticks); [ "$a" = "$b" ] && touch alone; touch switched"#;
+const ALONE: &str = r#"a=$(wc -c < ticks); sleep 1; b=$(wc -c < ticks); [ "$a" = "$b" ] && touch alone; touch switched"#;
 
 #[test]
 fn a_running_night_job_pauses_for_a_job_joel_waits_on() {
@@ -648,7 +647,11 @@ fn a_night_jobs_most_counts_not_its_pauses() {
         "the night job never ran"
     );
     let switch = account
-        .turn("switch", &["--ahead", "--wait-at-most", "10"], "sleep 5; touch switched")
+        .turn(
+            "switch",
+            &["--ahead", "--wait-at-most", "10"],
+            "sleep 5; touch switched",
+        )
         .output()
         .unwrap();
     assert!(switch.status.success(), "{}", warned(&switch));

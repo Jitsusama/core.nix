@@ -114,7 +114,11 @@ impl<'a> Sharing<'a> {
 
     /// How long the job has been paused in all.
     pub fn paused(&self) -> Duration {
-        self.before + self.paused.as_ref().map_or(Duration::ZERO, |now| now.since.elapsed())
+        self.before
+            + self
+                .paused
+                .as_ref()
+                .map_or(Duration::ZERO, |now| now.since.elapsed())
     }
 
     /// Looks once: a job holding the turn pauses when one Joel waits on
@@ -163,8 +167,8 @@ impl<'a> Sharing<'a> {
     /// it can't pause whole keeps the turn and runs on.
     fn pause(&mut self, waiter: &str) -> io::Result<()> {
         self.hold.set(true)?;
-        let marked =
-            Ahead::paused(self.runtime, self.name).and_then(|mark| self.lock.unlock().map(|()| mark));
+        let marked = Ahead::paused(self.runtime, self.name)
+            .and_then(|mark| self.lock.unlock().map(|()| mark));
         match marked {
             Ok(mark) => {
                 self.left = None;
@@ -197,8 +201,7 @@ mod tests {
 
     #[test]
     fn a_cgroup_is_frozen_and_thawed_by_its_freeze_file() {
-        let cgroup =
-            std::env::temp_dir().join(format!("night-shift-pause-{}", std::process::id()));
+        let cgroup = std::env::temp_dir().join(format!("night-shift-pause-{}", std::process::id()));
         fs::create_dir_all(&cgroup).unwrap();
         let hold = Hold::Cgroup(cgroup.clone());
         hold.set(true).unwrap();
