@@ -43,8 +43,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
 
 use agents::acts;
-use agents::asker;
 use agents::arrangement::{Arrangement, Still};
+use agents::asker;
 use agents::clock;
 use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
@@ -295,6 +295,23 @@ fn own(
     })
 }
 
+/// Start New Work, asked of `node` only for the shell, told apart by the
+/// connection it came on; feedback and a sprout wait on the node, so
+/// neither holds up an ask after it.
+fn sprouts_for_the_shell(shared: &Shared, node: Option<PathBuf>) {
+    shared.peered(
+        &[sprout::ASK],
+        Box::new(move |said, stream| {
+            Some(sprout::answer(
+                said,
+                asker::the_shell(stream),
+                node.as_deref(),
+            ))
+        }),
+    );
+    shared.slow(&["feedback", sprout::ASK]);
+}
+
 /// Follows the node: every kind of record it holds that Agents reads.
 fn follow_node(node: &Path, to: &mpsc::Sender<Heard>) {
     sources::follow(node.to_owned(), "session", Heard::Sessions, to.clone());
@@ -426,18 +443,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         kept,
     );
     let shared = Shared::new(DOMAIN, own);
-    // Start New Work is asked of the node only for the shell, told apart
-    // by the connection it came on.
-    let node = args.node.clone();
-    shared.peered(
-        &[sprout::ASK],
-        Box::new(move |said, stream| {
-            Some(sprout::answer(said, asker::the_shell(stream), node.as_deref()))
-        }),
-    );
-    // Feedback and a sprout wait on the node, so neither holds up an ask
-    // after it.
-    shared.slow(&["feedback", sprout::ASK]);
+    sprouts_for_the_shell(&shared, args.node.clone());
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {

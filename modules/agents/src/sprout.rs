@@ -126,8 +126,10 @@ mod tests {
         assert_eq!(
             request_of(&ask(&json!({"folder": "/home/j/src/r", "on": "skiff",
                 "from": "P9R1KI", "cwd": "/home/j/elsewhere"}))),
-            Ok(json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"],
-                "folder": "/home/j/src/r", "on": "skiff", "from": "P9R1KI"}})),
+            Ok(
+                json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"],
+                "folder": "/home/j/src/r", "on": "skiff", "from": "P9R1KI"}})
+            ),
             "a folder, a machine and a cell it comes from go as said; a cwd never does"
         );
         assert_eq!(
@@ -143,7 +145,10 @@ mod tests {
             (json!({"ask": ASK, "text": "  "}), "no words"),
             (json!({"ask": ASK}), "no text"),
             (json!({"ask": ASK, "text": 7}), "text that isn't words"),
-            (ask(&json!({"folder": "src/r"})), "a folder that isn't a whole path"),
+            (
+                ask(&json!({"folder": "src/r"})),
+                "a folder that isn't a whole path",
+            ),
             (ask(&json!({"folder": 7})), "a folder that isn't a path"),
             (ask(&json!({"on": 7})), "a machine that isn't a name"),
         ] {
@@ -157,10 +162,8 @@ mod tests {
     /// A node at a socket of its own, answering one line with `reply`,
     /// and what it was asked.
     fn node(name: &str, reply: &'static str) -> (std::path::PathBuf, thread::JoinHandle<String>) {
-        let socket = std::env::temp_dir().join(format!(
-            "agents-sprout-{name}-{}.sock",
-            std::process::id()
-        ));
+        let socket =
+            std::env::temp_dir().join(format!("agents-sprout-{name}-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).expect("a socket to stand in for the node");
         let asked = thread::spawn(move || {
@@ -183,7 +186,11 @@ mod tests {
                 r#""folder": "/home/j/src/r", "attach": ["mycelium", "join", "h1"]}}}"#,
             ),
         );
-        let answer = answer(&ask(&json!({"folder": "/home/j/src/r"})), Ok(()), Some(&socket));
+        let answer = answer(
+            &ask(&json!({"folder": "/home/j/src/r"})),
+            Ok(()),
+            Some(&socket),
+        );
         // The answer is held to first, so one that never asked fails here
         // rather than waiting on a node nothing reaches.
         assert_eq!(
@@ -205,7 +212,10 @@ mod tests {
 
     #[test]
     fn a_sprout_the_node_refuses_says_the_nodes_words() {
-        let (socket, asked) = node("refused", r#"{"Err": "/home/j isn't a repository's folder"}"#);
+        let (socket, asked) = node(
+            "refused",
+            r#"{"Err": "/home/j isn't a repository's folder"}"#,
+        );
         let answer = answer(&ask(&json!({})), Ok(()), Some(&socket));
         assert_eq!(
             answer,

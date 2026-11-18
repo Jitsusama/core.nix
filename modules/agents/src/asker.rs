@@ -52,9 +52,20 @@ pub fn of_the_shell(cgroup: &str) -> bool {
     };
     let steps: Vec<&str> = path.split('/').collect();
     match steps.as_slice() {
-        ["", "user.slice", account, manager, "session.slice", "quickshell.service"] => {
-            account.strip_prefix("user-").and_then(|uid| uid.strip_suffix(".slice"))
-                == manager.strip_prefix("user@").and_then(|uid| uid.strip_suffix(".service"))
+        [
+            "",
+            "user.slice",
+            account,
+            manager,
+            "session.slice",
+            "quickshell.service",
+        ] => {
+            account
+                .strip_prefix("user-")
+                .and_then(|uid| uid.strip_suffix(".slice"))
+                == manager
+                    .strip_prefix("user@")
+                    .and_then(|uid| uid.strip_suffix(".service"))
                 && account.len() > "user-.slice".len()
         }
         _ => false,
@@ -141,7 +152,8 @@ mod tests {
             "the shell's unit"
         );
         for other in [
-            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/pi-host.service\n".to_owned(),
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/pi-host.service\n"
+                .to_owned(),
             format!("{SESSION}/quickshell.service/fenced.scope\n"),
             format!("{SESSION}/not-quickshell.service\n"),
             format!("{SESSION}/quickshell.service.d\n"),

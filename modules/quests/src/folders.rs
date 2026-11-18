@@ -17,7 +17,10 @@ pub const KEY: &str = "folders:quests";
 /// The record of the folders `rows` work in, each the folder its `held`
 /// says, as `{ folder, name }`, for `home`.
 pub fn record(rows: &[Value], home: &str) -> Value {
-    let folders = of(rows.iter().filter_map(|row| row["held"]["folder"].as_str()), home);
+    let folders = of(
+        rows.iter().filter_map(|row| row["held"]["folder"].as_str()),
+        home,
+    );
     json!({"key": KEY, "kind": "folders", "folders": folders})
 }
 

@@ -126,8 +126,10 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
     client.ask(&json!({"id": 1, "ask": "hello"}));
     // The node's three watches may land as more than one making, so the
     // watch waits for what it brings: the session holding B.
-    client.send(&json!({"id": 2, "ask": "watch", "kind": ["row", "summary", "folders"],
-        "place": "quests"}));
+    client.send(
+        &json!({"id": 2, "ask": "watch", "kind": ["row", "summary", "folders"],
+        "place": "quests"}),
+    );
     let mut held: BTreeMap<String, Value> = BTreeMap::new();
     let all_heard = |held: &BTreeMap<String, Value>| {
         held.get("row:quests:QEST-B")
