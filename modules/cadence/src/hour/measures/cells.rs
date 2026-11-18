@@ -102,14 +102,18 @@ fn once<'a>(cells: impl Iterator<Item = Cell<'a>>) -> Vec<Cell<'a>> {
 }
 
 /// A measure of the cells with no target where what it reads couldn't be
-/// read, named by `unread`, since a quiet 0 would read as met.
+/// read, named by `unread`, since a quiet 0 would read as met. Its lines
+/// are grouped by the owner each ends with, for the orchestrator to send
+/// on as they stand; sorting is stable, so each owner's keep the order
+/// they were read in.
 fn judged(
     key: &str,
     says: &str,
-    behind: Vec<String>,
+    mut behind: Vec<String>,
     unread: Option<&str>,
     fallback: &str,
 ) -> Measure {
+    behind.sort_by(|a, b| owner_of(a).cmp(owner_of(b)));
     let read = unread.is_none();
     Measure {
         key: key.to_owned(),
@@ -123,6 +127,11 @@ fn judged(
         owner: fallback.to_owned(),
         behind,
     }
+}
+
+/// The owner a cell measure's line ends with, after its last " · ".
+fn owner_of(line: &str) -> &str {
+    line.rsplit_once(" · ").map_or("", |(_, owner)| owner)
 }
 
 /// The four measures of the cells, from each realm's `mycelium sessions`
@@ -483,8 +492,8 @@ pub(super) mod tests {
         assert_eq!(
             measure(&all, "cells-parked-done").behind,
             [
-                "AAAAAA parked, its quest concluded · PARENT",
-                "BBBBBB parked, its quest retired · FALLBACK"
+                "BBBBBB parked, its quest retired · FALLBACK",
+                "AAAAAA parked, its quest concluded · PARENT"
             ],
             "a parked cell on a quest still open counted, or an owner was wrong"
         );
@@ -663,5 +672,21 @@ pub(super) mod tests {
                 "a check that couldn't read the node, or didn't run, judged it: {exit:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_cell_measures_lines_are_grouped_by_owner_in_the_order_read() {
+        let lines = [
+            "AAAAAA driving, every cell ended · WM4KSZ",
+            "BBBBBB active, every cell ended · 1GB1PI",
+            "CCCCCC driving, every cell ended · WM4KSZ",
+            "DDDDDD active, every cell ended · 1GB1PI",
+        ];
+        let m = judged("k", "s", lines.map(str::to_owned).to_vec(), None, "F");
+        assert_eq!(
+            m.behind,
+            [lines[1], lines[3], lines[0], lines[2]],
+            "not grouped by owner, or an owner's lines reordered"
+        );
     }
 }

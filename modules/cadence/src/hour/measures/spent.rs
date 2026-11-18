@@ -61,7 +61,8 @@ pub fn landed_by<'a>(
             continue;
         }
         let mut words = note.split_whitespace();
-        let (Some(quest), Some("landed"), Some(change)) = (words.next(), words.next(), words.next())
+        let (Some(quest), Some("landed"), Some(change)) =
+            (words.next(), words.next(), words.next())
         else {
             continue;
         };
@@ -121,7 +122,9 @@ pub fn beside(
         owner: owner.to_owned(),
         behind: named
             .into_iter()
-            .map(|(quest, dollars, changes)| format!("${dollars:.0} today, {} · {quest}", what(changes)))
+            .map(|(quest, dollars, changes)| {
+                format!("${dollars:.0} today, {} · {quest}", what(changes))
+            })
             .collect(),
     }
 }
@@ -131,7 +134,11 @@ fn what(changes: &BTreeSet<String>) -> String {
     if changes.is_empty() {
         return "landed nothing".to_owned();
     }
-    let shown: Vec<&str> = changes.iter().take(CHANGES_NAMED).map(String::as_str).collect();
+    let shown: Vec<&str> = changes
+        .iter()
+        .take(CHANGES_NAMED)
+        .map(String::as_str)
+        .collect();
     let more = changes.len().saturating_sub(CHANGES_NAMED);
     if more == 0 {
         format!("landed {}", shown.join(", "))
@@ -165,15 +172,15 @@ mod tests {
     fn landed() -> BTreeMap<String, BTreeSet<String>> {
         landed_by(
             [
-            "Y2YBTS landed core.nix#5536, Bring a Windowless Session Forward on Go To. \
+                "Y2YBTS landed core.nix#5536, Bring a Windowless Session Forward on Go To. \
              For the person: Go To. Said by the mesh; feedback to Y2YBTS.",
-            "Y2YBTS landed core.nix#5526, Again. Said by the mesh; feedback to Y2YBTS.",
-            "ZINAWZ landed world#2476563, Route. Said by the mesh; feedback to ZINAWZ.",
-            // A session's own word of a landing the mesh already said.
-            "ZINAWZ landed core #5544 \"Give pi-fence's Census the Package It Loads\"",
-            "ZINAWZ landed world#2476563, Route. Said by the mesh; feedback to ZINAWZ.",
-            "6EAC3DA6 landed core.nix#5545, Say Why. Said by the mesh; feedback to 6EAC3DA6.",
-        ],
+                "Y2YBTS landed core.nix#5526, Again. Said by the mesh; feedback to Y2YBTS.",
+                "ZINAWZ landed world#2476563, Route. Said by the mesh; feedback to ZINAWZ.",
+                // A session's own word of a landing the mesh already said.
+                "ZINAWZ landed core #5544 \"Give pi-fence's Census the Package It Loads\"",
+                "ZINAWZ landed world#2476563, Route. Said by the mesh; feedback to ZINAWZ.",
+                "6EAC3DA6 landed core.nix#5545, Say Why. Said by the mesh; feedback to 6EAC3DA6.",
+            ],
             quest_of,
         )
     }
@@ -203,7 +210,11 @@ mod tests {
             ],
             "the order or the words, or a quest under $30 named"
         );
-        assert!((m.now - 2.0).abs() < f64::EPSILON, "two landed nothing: {}", m.now);
+        assert!(
+            (m.now - 2.0).abs() < f64::EPSILON,
+            "two landed nothing: {}",
+            m.now
+        );
     }
 
     #[test]
@@ -226,10 +237,16 @@ mod tests {
         let notes: Vec<String> = (1..=5)
             .map(|n| format!("Y2YBTS landed core.nix#{n}, T. Said by the mesh; feedback."))
             .collect();
-        let m = beside(COLLECTION, &landed_by(notes.iter().map(String::as_str), quest_of), "WCJQSG");
+        let m = beside(
+            COLLECTION,
+            &landed_by(notes.iter().map(String::as_str), quest_of),
+            "WCJQSG",
+        );
         assert!(
-            m.behind
-                .contains(&"$148 today, landed core.nix#1, core.nix#2, core.nix#3 and 2 more · Y2YBTS".to_owned()),
+            m.behind.contains(
+                &"$148 today, landed core.nix#1, core.nix#2, core.nix#3 and 2 more · Y2YBTS"
+                    .to_owned()
+            ),
             "{:?}",
             m.behind
         );
