@@ -354,7 +354,10 @@ pub fn find<'a>(network: &'a Network, word: &str) -> Result<&'a Device, Failure>
                 format!("{} devices are called {word}", count(sharing.len() as u64)),
             )
             .because(each.join(ITEMS))
-            .try_this(format!("net devices {}", picking(network, first))));
+            .try_this(format!(
+                "net devices {}",
+                terminal_kit::failure::shell_word(&picking(network, first))
+            )));
         }
         [] => {}
     }
@@ -702,6 +705,21 @@ mod tests {
         );
         let failure = find(&network, "garage").expect_err("garage isn't a device");
         assert_eq!(failure.then.as_deref(), Some("net devices"), "{failure:?}");
+    }
+
+    #[test]
+    fn a_shared_name_is_told_apart_so_pasting_it_runs_nothing_else() {
+        let mut network = network();
+        network.devices[0].addresses.clear();
+        network.devices[0].id = "dev;reboot".to_owned();
+        let name = network.devices[0].name.clone();
+        network.devices[1].name.clone_from(&name);
+        let failure = find(&network, &name).expect_err("two share the name");
+        assert_eq!(
+            failure.then.as_deref(),
+            Some("net devices 'dev;reboot'"),
+            "{failure:?}"
+        );
     }
 
     #[test]
