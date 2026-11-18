@@ -163,7 +163,8 @@ in
   # gateway or its cost and never for the kernel's use counts alone
   # (tests/network-routes.qml), since a step into Network asks Address
   # and Ethernet, which each read both routing tables. The case writes its
-  # own tables in net/, made here.
+  # own tables in net/, made here. Kept in Nix because each line copies a
+  # file Nix gives it beside the case, or sets what the shell runs it with.
   address-waits-on-no-route-file = pkgs.runCommandLocal "address-waits-on-no-route-file" { } ''
     mkdir -p launcher runtime net && chmod 700 runtime
     ${copied [
