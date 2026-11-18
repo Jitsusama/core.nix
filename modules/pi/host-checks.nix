@@ -157,6 +157,8 @@ in
         && unit.Service.TimeoutStartSec or null == "20min"
         # Its core is kept until 20 November (host.nix says why).
         && unit.Service.LimitCORE or null == "infinity"
+        # Told of no agent but the agents' proxy.
+        && lib.elem "SSH_TPM_AUTH_SOCK" (lib.toList (unit.Service.UnsetEnvironment or [ ]))
         && unit.Unit.StartLimitIntervalSec or null == 600
         && unit.Unit.StartLimitBurst or null == 3
         && unit.Unit.OnFailure or null == [ "pi-host-down@%N.service" ]
