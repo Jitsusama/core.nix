@@ -122,7 +122,7 @@
     "at": 1794849317,
     "commit": "8213d198a802746ea1634186cd295d7b71ca88e7",
     "due": "2026-11-18",
-    "due_why": "Its owner, the launcher's, fixes it with this test's other entry by 2026-11-18 23:59 UTC",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: Quickshell warns of a dangling screen as every screen goes",
     "owner_pr": 4953,
     "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 8213d198a802",

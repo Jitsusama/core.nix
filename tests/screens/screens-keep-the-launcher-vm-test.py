@@ -45,25 +45,24 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
     since = machine.succeed("date +%s").strip()
     # Starts alone are counted, since the stop above may share the mark's second: one repeat
     # turns it off again, which the last look finds, and two start it twice.
-    started = screens.in_niri(
-        f"journalctl --user -u keep-awake.service --since @{since} -o cat"
-        " | grep -c '^Starting ' || true"
-    )
+    started = screens.in_niri(f"journalctl --user -u keep-awake.service --since @{since} -o cat")
     # Each time niri runs the chord's launcher-say, systemd starts it a scope of its own. They're
     # counted, rather than the launcher looked at, since a repeat toggles it shut and the next
     # one open again, faster than a look sees.
-    chords = screens.in_niri(
-        "journalctl --user -o cat | grep -c 'Started app-niri-launcher.x2dsay' || true"
-    )
+    chords = screens.in_niri("journalctl --user -o cat")
+    chord = "Started app-niri-launcher\\x2dsay-"
 
-    def counted(lines: str) -> int:
-        # The unit is up before journald has stored systemd's line for it, so a count read the
-        # moment it's active found none in 14 of the net's runs: journald writes out all it was
-        # sent first, and a second start can't hide either.
+    def counted(read: str, said: str) -> int:
+        """Count the journal's lines that open with what systemd said, once journald holds all."""
+        # journald stores a line a moment after systemd says it, so a unit already running was
+        # counted before its start reached the journal, and 14 of the net's runs found none.
+        # Syncing waits until journald has written everything sent to it. It can only add
+        # lines, so a second start can't hide. They're counted here rather than by grep, so a
+        # journal that can't be read fails the test rather than counting nothing.
         machine.succeed("journalctl --sync")
-        return int(machine.succeed(lines))
+        return sum(line.startswith(said) for line in machine.succeed(read).splitlines())
 
-    before = counted(chords)
+    before = counted(chords, chord)
     # Held a second, past the 200 ms delay at 40 a second, a key repeats some thirty times.
     held = 1.0
     try:
@@ -71,7 +70,7 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
         machine.send_monitor_command(f"sendkey meta_l-spc {int(held * 1000)}")
         # Counted once it's let go and a second after, since a repeat comes only while held.
         time.sleep(held + 1)
-        ran = counted(chords) - before
+        ran = counted(chords, chord) - before
         assert ran == 1, f"a held Super+Space ran the launcher {ran} times"
         screens.launcher_until(
             lambda shown: shown["open"] and shown["keys"], "took the keys at a held chord"
@@ -98,10 +97,14 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
             assert time.monotonic() < deadline, "a held Return never started Keep Awake"
             time.sleep(0.2)
         # Watched for as long as it's held and a second after, since a repeat comes only then.
+        # The last count is taken past the deadline, so a start late in the watch is seen too.
         deadline = time.monotonic() + held + 1
-        while time.monotonic() < deadline:
-            said = counted(started)
-            assert said == 1, f"a held Return started Keep Awake {said} times"
+        while True:
+            past = time.monotonic() >= deadline
+            said = counted(started, "Starting ")
+            assert said == 1, f"the journal, synced, holds {said} starts from a held Return"
+            if past:
+                break
             time.sleep(0.2)
         assert screens.awake(), "a held Return turned Keep Awake on and off again"
     finally:
