@@ -174,14 +174,18 @@ Provider {
     // program held from the top again (Launcher.qml's refreshed): Pause
     // turns to Play when a media key pauses its player, Previous comes
     // once there's a track before, and the volume's bar moves with Louder.
-    // A stream's names are in it too, since they're heard only once it's
-    // bound, and they say whose it is (streamsOf).
+    // A player's names and a stream's are in it too, since they may be
+    // heard only once it's listed or bound, and they say whose it is
+    // (playerOf, streamsOf, recordersOf).
     readonly property string playingNow: Playing.players.map(player => [player.dbusName,
-        player.isPlaying, player.canPlay, player.canPause, player.canGoNext,
-        player.canGoPrevious, player.trackTitle, player.trackArtist].join("\u241f"))
+        player.desktopEntry, player.identity, player.isPlaying, player.canPlay,
+        player.canPause, player.canGoNext, player.canGoPrevious, player.trackTitle,
+        player.trackArtist].join("\u241f"))
         .concat((Playing.streams.concat(Playing.recorders ?? [])).map(node => [node.id,
             node.name, node.properties?.["application.name"],
-            node.properties?.["application.process.binary"]].join(" ")
+            node.properties?.["application.process.binary"],
+            node.properties?.["node.link-group"], node.properties?.["stream.monitor"]]
+            .join("\u241f")
             + (node.audio ? ` ${node.audio.volume} ${node.audio.muted}` : "")))
         .join("\u241e")
 
@@ -1765,7 +1769,8 @@ Provider {
             return held.only;
         const only = provider.controls(entry, start, below)
             .every(one => one.key === "verb:start" || one.key === "verb:below");
-        provider.startsHeld.by.set(entry.id, { entry, only });
+        if (provider.holdsSafely)
+            provider.startsHeld.by.set(entry.id, { entry, only });
         return only;
     }
 
@@ -1792,17 +1797,29 @@ Provider {
     // entry stays: the acts and notices other providers give it, each
     // provider's `changed` saying its own did (Provider.qml); the programs
     // others declare hidden; a walk from outside, which some providers
-    // give less to; and what's playing, above.
+    // give less to; and what's playing, above. Each opening starts afresh
+    // too, so the hold saves only the asks of one opening's keys: a giver
+    // may read only as it's asked, as Spotify does once an opening, and a
+    // change one forgot to say lasts no longer than the opening it came in.
     onHookingChanged: startsAgain()
     onDeclaredChanged: startsAgain()
     Connections {
         target: provider.launcher
         ignoreUnknownSignals: true
 
+        function onOpenChanged() {
+            provider.startsAgain();
+        }
+
         function onCataloguingChanged() {
             provider.startsAgain();
         }
     }
+    // Whether every giver can say it changed; a source made by hand with
+    // no `changed` couldn't let its answers go, so none is held.
+    readonly property bool holdsSafely: provider.hooking.programActs
+        .concat(provider.hooking.sentBy)
+        .every(other => typeof other.changed === "function")
     Variants {
         model: (provider.launcher?.sources ?? []).filter(other => other !== provider
             && typeof other.changed === "function"
