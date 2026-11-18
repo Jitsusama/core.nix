@@ -55,10 +55,12 @@ fn called<'a>(
     mac: &'a str,
     made: &str,
 ) -> Cow<'a, str> {
+    // A name counts only where it draws something, so one of controls
+    // alone gives way as a blank one does, rather than showing nothing.
     let given = names
         .into_iter()
         .flatten()
-        .find(|name| !name.trim().is_empty());
+        .find(|name| !terminal_kit::layout::one_line(name).trim().is_empty());
     if let Some(name) = given {
         return Cow::Borrowed(name);
     }

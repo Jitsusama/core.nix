@@ -10,7 +10,7 @@
 
 use super::{
     VIEWS, device_name, find_device, find_node, find_profile, location, node_name, off_device,
-    off_name, on_now_answers_to, profile_name,
+    off_name, on_now_answers_to, profile_name, shown,
 };
 use terminal_kit::layout;
 
@@ -33,14 +33,16 @@ pub fn nodes(model: &HomeNetwork) -> Vec<Named> {
         .nodes
         .iter()
         .map(|node| {
-            let name = node_name(node);
-            let found = find_node(model, name).is_ok_and(|found| found.id == node.id);
+            // Asked for as it's offered, drawn, so a word offered finds
+            // what it names.
+            let name = shown(node_name(node));
+            let found = find_node(model, &name).is_ok_and(|found| found.id == node.id);
             let what = [node.model.clone(), node.gateway.then(|| "gateway".into())]
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>()
                 .join(", ");
-            (if found { name } else { &node.id }.to_owned(), what)
+            (if found { name } else { node.id.clone() }, what)
         })
         .collect()
 }
@@ -50,17 +52,17 @@ pub fn nodes(model: &HomeNetwork) -> Vec<Named> {
 /// since `eero device` says where and when that one was last on.
 pub fn devices(model: &HomeNetwork) -> Vec<Named> {
     let on = model.devices.iter().map(|device| {
-        let name = device_name(device);
+        let name = shown(&device_name(device));
         let found = find_device(model, &name, None).is_ok_and(|found| found.mac == device.mac);
         let on = location(model, device.node.as_deref());
         if found {
-            (name.into_owned(), format!("on {on}"))
+            (name, format!("on {on}"))
         } else {
             (device.mac.clone(), format!("{name} on {on}"))
         }
     });
     let off = model.devices_off.iter().map(|device| {
-        let name = off_name(device);
+        let name = shown(&off_name(device));
         let found = !on_now_answers_to(model, &name)
             && off_device(model, &name).is_some_and(|found| found.mac == device.mac);
         let last = match device.node.as_deref() {
@@ -68,7 +70,7 @@ pub fn devices(model: &HomeNetwork) -> Vec<Named> {
             None => "not on now".to_owned(),
         };
         if found {
-            (name.into_owned(), last)
+            (name, last)
         } else {
             (device.mac.clone(), format!("{name}, {last}"))
         }
@@ -82,10 +84,10 @@ pub fn profiles(model: &HomeNetwork) -> Vec<Named> {
         .profiles
         .iter()
         .map(|profile| {
-            let name = profile_name(profile);
-            let found = find_profile(model, name).is_ok_and(|found| found.id == profile.id);
+            let name = shown(profile_name(profile));
+            let found = find_profile(model, &name).is_ok_and(|found| found.id == profile.id);
             (
-                if found { name } else { &profile.id }.to_owned(),
+                if found { name } else { profile.id.clone() },
                 super::counted(profile.devices.len(), "device"),
             )
         })
@@ -339,16 +341,69 @@ mod tests {
 
     #[test]
     fn names_that_differ_only_by_what_draws_nothing_are_refused_as_two() {
-        let mut model = model();
-        for (at, name) in [(0, "Lamp"), (1, "Lamp\u{ad}\u{fe0f}")] {
-            model.devices_off[at].name = Some(name.into());
-            model.devices_off[at].nickname = None;
-            model.devices_off[at].hostname = None;
+        // One of each folded range, by its ends.
+        for shaping in [
+            '\u{ad}',
+            '\u{115f}',
+            '\u{1160}',
+            '\u{180b}',
+            '\u{180f}',
+            '\u{200c}',
+            '\u{200d}',
+            '\u{fe00}',
+            '\u{fe0f}',
+            '\u{e0020}',
+            '\u{e007f}',
+            '\u{e0100}',
+            '\u{e01ef}',
+        ] {
+            let mut model = model();
+            for (at, name) in [(0, "Lamp".to_owned()), (1, format!("La{shaping}mp"))] {
+                model.devices_off[at].name = Some(name);
+                model.devices_off[at].nickname = None;
+                model.devices_off[at].hostname = None;
+            }
+            let found = find_device(&model, "lamp", None).map(|device| &device.mac);
+            assert!(
+                found
+                    .as_ref()
+                    .is_err_and(|why| why.starts_with("2 devices that aren't on now")),
+                "with {shaping:?}, one of two names drawn alike was taken for the other: \
+                 {found:?}"
+            );
         }
+    }
 
+    #[test]
+    fn an_off_devices_address_is_offered_as_its_own_though_one_on_now_is_so_named() {
+        let mut model = model();
+        // A device eero names nothing, so it's offered by its address.
+        let off = model.devices_off[3].mac.clone();
+        model.devices[0].hostname = Some(off.clone());
+
+        let offered = devices(&model);
+        let entry = offered.iter().find(|(name, _)| *name == off);
         assert!(
-            off_device(&model, "lamp").is_none(),
-            "one of two names drawn alike was taken for the other"
+            entry.is_some_and(|(_, what)| what.starts_with("not on now")),
+            "an off device's address was offered as though a device on now held it: {entry:?}"
+        );
+    }
+
+    #[test]
+    fn a_name_of_controls_alone_gives_way_to_what_else_names_it() {
+        let mut model = model();
+        model.nodes[2].location = Some("\u{7}\u{feff}".into());
+        model.devices[0].name = Some("\u{7}".into());
+        model.devices[0].nickname = None;
+
+        assert_eq!(
+            node_name(&model.nodes[2]),
+            model.nodes[2].id,
+            "a blank node name was kept"
+        );
+        assert!(
+            !device_name(&model.devices[0]).contains('\u{7}'),
+            "a device name of controls alone was kept"
         );
     }
 

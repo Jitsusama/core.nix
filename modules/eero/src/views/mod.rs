@@ -360,7 +360,11 @@ fn head(page: &mut Page, model: &HomeNetwork, clock: &Clock, title: Line) {
 
 /// A node's name, its location, or its id where eero gives none.
 pub fn node_name(node: &Node) -> &str {
-    node.location.as_deref().unwrap_or(&node.id)
+    // A location that draws as nothing names nothing, so the id does.
+    node.location
+        .as_deref()
+        .filter(|name| !spelled(name).is_empty())
+        .unwrap_or(&node.id)
 }
 
 /// The location of the node with an id.
@@ -525,7 +529,11 @@ fn find_node<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Node, String>
 
 /// A profile's name, or its id where eero gives none.
 fn profile_name(profile: &Profile) -> &str {
-    profile.name.as_deref().unwrap_or(&profile.id)
+    profile
+        .name
+        .as_deref()
+        .filter(|name| !spelled(name).is_empty())
+        .unwrap_or(&profile.id)
 }
 
 fn find_profile<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Profile, String> {
@@ -656,14 +664,14 @@ fn off_devices<'a>(model: &'a HomeNetwork, name: &str) -> Vec<&'a DeviceOff> {
 fn on_now_answers_to(model: &HomeNetwork, name: &str) -> bool {
     let is_address = |mac: &String| mac.eq_ignore_ascii_case(name);
     model.devices.iter().any(|device| is_address(&device.mac))
-        || !model
+        || (!model
             .devices_off
             .iter()
             .any(|device| is_address(&device.mac))
             && model
                 .devices
                 .iter()
-                .any(|device| answers_to(name, [&device.name, &device.nickname, &device.hostname]))
+                .any(|device| answers_to(name, [&device.name, &device.nickname, &device.hostname])))
 }
 
 /// A count and its noun, the noun made plural past one: 1 device, 15 devices.
