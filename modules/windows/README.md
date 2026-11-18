@@ -162,6 +162,15 @@ switch, or one naming itself late, is closed too.
 Joel's own prompts come from his services and stay. The installed daemon
 reads processes from /proc alone; only the check's build reads a stand-in.
 
+Any other window an agent opens that takes the focus as it opens is put
+behind Joel's work (src/behind.rs): niri moves it, unfocused, to the empty
+workspace it keeps last on that screen, and the window Joel had focused is
+focused again. It's what niri does for a sandbox's windows
+(modules/niri/sandboxed-windows-stay-behind.patch), for agents outside one.
+The window shows for as long as niri takes to answer, a frame or two, so a
+key Joel presses then can reach it. One that opens unfocused, or takes the
+focus later, stays where it opened.
+
 It stops an agent's accident, not an agent set on getting past it: the
 cgroup is a label an agent could change. Three gaps are known. gpg-agent
 starts on demand from whoever first runs gpg, so an agent that started it

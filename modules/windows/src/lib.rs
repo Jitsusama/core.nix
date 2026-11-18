@@ -16,6 +16,7 @@
 //! what's said only so a row can be placed, its `order`, is when its
 //! window was last looked at, in milliseconds.
 
+pub mod behind;
 pub mod capture;
 pub mod closing;
 pub mod desktop;

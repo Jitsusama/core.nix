@@ -87,7 +87,8 @@ onLinux {
       '';
   # A password prompt an agent opens is closed as it opens, and Joel told
   # which scope it came from, while his own prompt and an agent's other
-  # windows stay: the account's niri, nested in the sandbox, gets
+  # windows stay, put behind his work when they open focused: the
+  # account's niri, nested in the sandbox, gets
   # gcr-prompter from app.slice and from a job's scope, a terminal from
   # the scope, and a prompt open as the daemon starts again, through a
   # stand-in /proc and notify-send (tests/closes-agents-password-prompts.py).

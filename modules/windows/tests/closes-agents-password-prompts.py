@@ -17,6 +17,8 @@ before each window, and its notices go to a stand-in notify-send that keeps what
 5. An agent's prompt from another scope, already open as the daemon starts again, as after a
    switch, is closed once it hears niri, and Joel's own from case 1 still isn't. The agent's is
    opened by a process of its own, `--prompt`, so the two are weighed by their own cgroups.
+6. Case 3's terminal, which opened focused, is put behind, on a workspace no screen shows, and
+   the window focused before it is focused again.
 
 Case 4's count is read once case 5's notice is written, so a second notice for case 4's scope,
 which would go up as the second prompt closed, has had time to land.
@@ -39,10 +41,11 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stand_in import PATIENCE, Connection
+from stand_in import PATIENCE, Connection, ask, focused_window, settle
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Any
 
 APP = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-gcr-prompter-1.scope\n"
 JOB = (
@@ -116,11 +119,13 @@ def prompts_close(joel: Connection, cgroup: Path, lines: Path, told: Path, own: 
 def only_prompts_close(joel: Connection, lines: Path) -> list[str]:
     """Cases 3 and 4: the job's terminal stays, and a second prompt is closed but not told."""
     failures: list[str] = []
+    before = focused_window()
     terminal = joel.window("foot")
     if not said(lines, 'an agent opened a window over Joel\'s work: "foot"'):
         failures.append(f"3: the journal never said the terminal: {lines.read_text()!r}")
     if joel.asked_to_close(terminal, CLOSING):
         failures.append("3: an agent's terminal was closed")
+    failures += goes_behind(joel, before)
 
     again = joel.window("gcr-prompter")
     if not joel.asked_to_close(again, CLOSING):
@@ -129,6 +134,34 @@ def only_prompts_close(joel: Connection, lines: Path) -> list[str]:
     if written(lines, closing, SCOPES_PROMPTS).count(closing) < SCOPES_PROMPTS:
         failures.append(f"4: the journal didn't say the second was closed: {lines.read_text()!r}")
     return failures
+
+
+def newest(app_id: str) -> dict[str, Any] | None:
+    """Find the window niri opened last with this app id, as it lists it, if it lists one."""
+    windows = [window for window in ask("Windows")["Windows"] if window["app_id"] == app_id]
+    return max(windows, key=lambda window: int(window["id"]), default=None)
+
+
+def in_view(window: dict[str, Any]) -> bool:
+    """Whether a screen shows the workspace this window is on."""
+    listed = ask("Workspaces")["Workspaces"]
+    return any(one["is_active"] for one in listed if one["id"] == window["workspace_id"])
+
+
+def goes_behind(joel: Connection, before: int | None) -> list[str]:
+    """Case 6: the job's terminal goes behind, and the window focused before has it again."""
+    if before is None:
+        return ["6: no window had the focus before the terminal opened"]
+    until = time.monotonic() + PATIENCE
+    while (terminal := newest("foot")) is None or in_view(terminal):
+        if time.monotonic() > until:
+            return [f"6: an agent's terminal stayed where Joel sees it: {terminal}"]
+        joel.pump(time.monotonic() + 0.05)
+    settle(joel)
+    after = focused_window()
+    if after != before:
+        return [f"6: the focus went from window {before} to {after}, not back"]
+    return []
 
 
 def prompt_elsewhere() -> None:
@@ -187,7 +220,7 @@ def told_once(told: Path, lines: Path) -> list[str]:
 
 
 def main() -> None:
-    """Run the five cases against the daemon, and fail naming each that didn't hold."""
+    """Run the six cases against the daemon, and fail naming each that didn't hold."""
     if sys.argv[1] == "--prompt":
         prompt_elsewhere()
         return
@@ -240,7 +273,10 @@ def main() -> None:
         journal.close()
     if failures:
         sys.exit("\n".join(failures))
-    print("an agent's password prompts close, told once, and neither Joel's nor its terminal does")
+    print(
+        "an agent's password prompts close, told once, and neither Joel's nor its terminal does;"
+        " its terminal goes behind"
+    )
 
 
 if __name__ == "__main__":
