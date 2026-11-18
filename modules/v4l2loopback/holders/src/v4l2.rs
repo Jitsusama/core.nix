@@ -32,6 +32,10 @@ const BOOLEAN: u32 = 2;
 const MENU: u32 = 3;
 const INTEGER_MENU: u32 = 9;
 
+// The errors that end a list of controls, as errno-base.h numbers them.
+const EINVAL: i32 = 22;
+const ENOTTY: i32 = 25;
+
 #[repr(C)]
 struct Formatted {
     kind: u32,
@@ -160,21 +164,29 @@ pub fn asked_rate(file: &File) -> io::Result<f64> {
     Ok(f64::from(asked.denominator) / f64::from(asked.numerator))
 }
 
-/// A control, the value it reads, and for a menu, the name of the item
-/// it's at.
+/// A control, the value it reads or why it doesn't, and for a menu, the
+/// name of the item it's at.
 pub struct Value {
     pub name: String,
-    pub reads: i32,
+    pub reads: Result<i32, &'static str>,
     pub item: Option<String>,
 }
 
+/// A camera's controls, and why the list ends short when it does.
+#[derive(Default)]
+pub struct Controls {
+    pub values: Vec<Value>,
+    pub cut_short: Option<String>,
+}
+
 /// Every control a number says the value of, in the driver's order. A
-/// control that won't say is left out rather than failing the rest, and
-/// joins those unanswered, which aren't asked again: uvcvideo asks the
-/// camera itself for a control that changes on its own, such as exposure
-/// while it's automatic, and waits five seconds on one that doesn't
-/// answer.
-pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Vec<Value> {
+/// control that won't say is said so rather than failing the rest. One
+/// that timed out joins those unanswered, which aren't asked again:
+/// uvcvideo asks the camera itself for a control that changes on its own,
+/// such as exposure while it's automatic, and waits five seconds on one
+/// that doesn't answer. Any other failure is asked again next time, since
+/// a camera may refuse a control only while its stream starts.
+pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
     let mut values = Vec::new();
     let mut id = NEXT;
     loop {
@@ -190,13 +202,25 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Vec<Value> {
             reserved: [0; 2],
         };
         // SAFETY: QUERY_CONTROL names a v4l2_queryctrl, as Queried is.
-        if unsafe { ask(file, QUERY_CONTROL, &mut queried) }.is_err() {
-            return values;
+        if let Err(error) = unsafe { ask(file, QUERY_CONTROL, &mut queried) } {
+            // The list ends with EINVAL, and a node that isn't V4L2's has
+            // none; anything else ends it early, with the control unknown.
+            let ended = matches!(error.raw_os_error(), Some(EINVAL | ENOTTY));
+            let cut_short = (!ended).then(|| error.to_string());
+            return Controls { values, cut_short };
         }
         id = queried.id | NEXT;
         let said = matches!(queried.kind, INTEGER | BOOLEAN | MENU | INTEGER_MENU);
-        if !said || queried.flags & (DISABLED | WRITE_ONLY) != 0 || unanswered.contains(&queried.id)
-        {
+        if !said || queried.flags & (DISABLED | WRITE_ONLY) != 0 {
+            continue;
+        }
+        let name = text(&queried.name);
+        if unanswered.contains(&queried.id) {
+            values.push(Value {
+                name,
+                reads: Err("unanswered"),
+                item: None,
+            });
             continue;
         }
         let mut control = Control {
@@ -204,8 +228,16 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Vec<Value> {
             value: 0,
         };
         // SAFETY: GET_CONTROL names a v4l2_control, as Control is.
-        if unsafe { ask(file, GET_CONTROL, &mut control) }.is_err() {
-            unanswered.insert(queried.id);
+        if let Err(error) = unsafe { ask(file, GET_CONTROL, &mut control) } {
+            let timed_out = error.kind() == io::ErrorKind::TimedOut;
+            if timed_out {
+                unanswered.insert(queried.id);
+            }
+            values.push(Value {
+                name,
+                reads: Err(if timed_out { "unanswered" } else { "unread" }),
+                item: None,
+            });
             continue;
         }
         let item = (queried.kind == MENU).then(|| {
@@ -221,8 +253,8 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Vec<Value> {
                 .map(|()| text(&{ menu.name }))
         });
         values.push(Value {
-            name: text(&queried.name),
-            reads: control.value,
+            name,
+            reads: Ok(control.value),
             item: item.flatten(),
         });
     }

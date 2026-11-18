@@ -12,9 +12,12 @@
 //! fewer frames than were asked for, beside the exposure it chose. The
 //! count is read at each of the watch's wakes, once a second while anyone
 //! streams, and added up, so a program that stops and starts the stream
-//! between two lines, as a call does when it changes resolution, is still
-//! counted whole rather than from its last start. A pause shorter than a
-//! stretch keeps the stretch, so a wake that lands in one loses nothing.
+//! between two wakes, as a call does when it changes resolution, is still
+//! counted whole rather than from its last start. A stream that a wake
+//! sees stopped is said one last time, over what it gave since the last
+//! line and ending `then stopped`, its time taken to that wake, up to a
+//! second after; the next is counted from its own start, so no time
+//! nobody streamed is counted as the camera's.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -194,7 +197,7 @@ pub struct Gave {
 pub struct Asked {
     pub format: Option<v4l2::Format>,
     pub rate: Option<f64>,
-    pub controls: Vec<v4l2::Value>,
+    pub controls: v4l2::Controls,
 }
 
 /// The line said of a streaming camera: who streams, each name quoted so
@@ -253,32 +256,67 @@ pub fn line(
             }
         }
     }
-    if let Ok(asked) = asked
-        && !asked.controls.is_empty()
-    {
-        said.push(';');
-        for control in &asked.controls {
-            let _ = write!(said, " {}={}", called(&control.name), control.reads);
-            if let Some(item) = &control.item {
-                let _ = write!(said, " ({item})");
+    if let Ok(asked) = asked {
+        let controls = &asked.controls;
+        if !controls.values.is_empty() {
+            said.push(';');
+        }
+        for control in &controls.values {
+            let _ = write!(said, " {}=", called(&control.name));
+            match control.reads {
+                Ok(value) => {
+                    let _ = write!(said, "{value}");
+                }
+                Err(why) => said.push_str(why),
             }
+            // Quoted, as a holder is, since a mapping can name its items.
+            if let Some(item) = &control.item {
+                let _ = write!(said, " ({item:?})");
+            }
+        }
+        if let Some(why) = &controls.cut_short {
+            let _ = write!(said, "; controls cut short: {why}");
         }
     }
     said
 }
 
 /// A camera's stream as the record follows it, from when anyone streams
-/// until nobody has for a stretch.
+/// until a wake sees nobody does.
 #[derive(Default)]
 struct Stream {
     since: Option<Instant>,
     counted: BTreeMap<u32, PathBuf>,
     tallies: BTreeMap<u32, Tally>,
+    /// Who streamed when it was last seen, for the line said once it stops.
+    holders: Vec<String>,
     /// The node, held while the stream is, so asking it every ten seconds
     /// doesn't open it each time and wake the watch's own inotify.
     file: Option<File>,
-    /// Since when nobody has streamed, in a pause.
-    paused: Option<Instant>,
+}
+
+impl Stream {
+    /// Adds what each interface counted since the last wake.
+    fn count(&mut self, at: Instant) {
+        for (interface, stats) in &self.counted {
+            let tally = self.tallies.entry(*interface).or_default();
+            match fs::read_to_string(stats) {
+                Ok(text) => match counts(&text) {
+                    Some(counts) => tally.add(counts, at),
+                    None => tally.unread = Some(format!("{} didn't read", stats.display())),
+                },
+                Err(error) => tally.unread = Some(format!("{}: {error}", stats.display())),
+            }
+        }
+    }
+
+    /// What each interface gave since the last line.
+    fn take(&mut self, at: Instant) -> BTreeMap<u32, Result<Gave, String>> {
+        self.tallies
+            .iter_mut()
+            .map(|(interface, tally)| (*interface, tally.take(at)))
+            .collect()
+    }
 }
 
 /// What the record follows of a camera's stream.
@@ -303,46 +341,38 @@ impl Record {
 
     /// While the camera streams, counts what it gave and, once ten seconds
     /// have passed since the last line, the line to say; the first of a
-    /// stream counts from its first wake. A camera not streaming lets go
-    /// of the node at once, and starts afresh once it's been a stretch.
+    /// stream counts from its first wake. Once it stops, the last line
+    /// says what it gave since, the node is let go of, and the next stream
+    /// starts afresh.
     pub fn now(&mut self, node: &Path, holders: &[String]) -> Option<String> {
         self.at(Instant::now(), node, holders)
     }
 
     fn at(&mut self, at: Instant, node: &Path, holders: &[String]) -> Option<String> {
         if holders.is_empty() {
-            self.stream.file = None;
-            let paused = *self.stream.paused.get_or_insert(at);
-            if at.duration_since(paused) >= EVERY {
-                self.stream = Stream::default();
+            let mut stopped = std::mem::take(&mut self.stream);
+            stopped.since?;
+            // uvcvideo keeps a stopped stream's count until the next starts.
+            stopped.count(at);
+            let gave = stopped.take(at);
+            if !gave.values().any(Result::is_ok) {
+                return None;
             }
-            return None;
+            let asked = Asked::default();
+            return Some(line(&stopped.holders, Ok(&asked), &gave) + "; then stopped");
         }
         let stream = &mut self.stream;
-        stream.paused = None;
+        holders.clone_into(&mut stream.holders);
         let since = *stream.since.get_or_insert_with(|| {
             stream.counted = counted(&self.sysfs, &self.debugfs, node);
             at
         });
-        for (interface, stats) in &stream.counted {
-            let tally = stream.tallies.entry(*interface).or_default();
-            match fs::read_to_string(stats) {
-                Ok(text) => match counts(&text) {
-                    Some(counts) => tally.add(counts, at),
-                    None => tally.unread = Some(format!("{} didn't read", stats.display())),
-                },
-                Err(error) => tally.unread = Some(format!("{}: {error}", stats.display())),
-            }
-        }
+        stream.count(at);
         if at.duration_since(since) < EVERY {
             return None;
         }
         stream.since = Some(at);
-        let gave = stream
-            .tallies
-            .iter_mut()
-            .map(|(interface, tally)| (*interface, tally.take(at)))
-            .collect();
+        let gave = stream.take(at);
         let file = match &mut stream.file {
             Some(file) => file,
             file @ None => match File::open(node) {
@@ -458,18 +488,26 @@ mod tests {
                 height: 1080,
             }),
             rate: Some(30.0),
-            controls: vec![
-                v4l2::Value {
-                    name: "Auto Exposure".to_owned(),
-                    reads: 3,
-                    item: Some("Aperture Priority Mode".to_owned()),
-                },
-                v4l2::Value {
-                    name: "Exposure, Dynamic Framerate".to_owned(),
-                    reads: 1,
-                    item: None,
-                },
-            ],
+            controls: v4l2::Controls {
+                values: vec![
+                    v4l2::Value {
+                        name: "Auto Exposure".to_owned(),
+                        reads: Ok(3),
+                        item: Some("Aperture Priority Mode".to_owned()),
+                    },
+                    v4l2::Value {
+                        name: "Exposure, Dynamic Framerate".to_owned(),
+                        reads: Ok(1),
+                        item: None,
+                    },
+                    v4l2::Value {
+                        name: "Exposure Time, Absolute".to_owned(),
+                        reads: Err("unanswered"),
+                        item: None,
+                    },
+                ],
+                cut_short: Some("Broken pipe (os error 32)".to_owned()),
+            },
         };
         let gave = BTreeMap::from([(
             1,
@@ -483,7 +521,8 @@ mod tests {
             line(&["chrome".to_owned()], Ok(&asked), &gave),
             "streams to \"chrome\"; MJPG 1920x1080 at 30.0 fps asked; \
              gave 15.0 fps, 0 packets in error; \
-             auto_exposure=3 (Aperture Priority Mode) exposure_dynamic_framerate=1"
+             auto_exposure=3 (\"Aperture Priority Mode\") exposure_dynamic_framerate=1 \
+             exposure_time_absolute=unanswered; controls cut short: Broken pipe (os error 32)"
         );
     }
 
@@ -559,32 +598,49 @@ mod tests {
             Some("streams to \"chrome\"; gave 12.5 fps, 2 packets in error")
         );
         assert!(record.stream.file.is_some(), "the node isn't held");
-        // Nobody streams: the node is let go of at once, and after a
-        // stretch the next stream counts from its own start.
-        assert_eq!(record.at(later, &camera.node, &[]), None);
+        // Nobody streams: what it gave since is said, the node let go of.
+        count(&stats, 190, 2);
+        let stopped = later + Duration::from_secs(2);
+        assert_eq!(
+            record.at(stopped, &camera.node, &[]).as_deref(),
+            Some("streams to \"chrome\"; gave 15.0 fps, 0 packets in error; then stopped")
+        );
         assert!(record.stream.file.is_none(), "the node is still held");
-        assert_eq!(record.at(later + EVERY, &camera.node, &[]), None);
-        let again = later + EVERY + Duration::from_secs(1);
+        assert_eq!(record.at(stopped, &camera.node, &[]), None);
+        // An hour on, with no wake between, the next stream counts from its
+        // own start rather than the last one's.
+        count(&stats, 0, 0);
+        let again = stopped + Duration::from_secs(3600);
         assert_eq!(record.at(again, &camera.node, &holders), None);
+        let soon = again + Duration::from_secs(5);
+        assert_eq!(record.at(soon, &camera.node, &holders), None);
     }
 
     #[test]
-    fn a_pause_shorter_than_a_stretch_keeps_its_frames() {
-        let (camera, stats, mut record) = streaming("record-pause");
+    fn a_stopped_stream_is_said_and_the_next_counts_from_its_own_start() {
+        let (camera, stats, mut record) = streaming("record-stopped");
         let holders = ["chrome".to_owned()];
         let start = Instant::now();
         count(&stats, 0, 0);
         assert_eq!(record.at(start, &camera.node, &holders), None);
+        // A stream seen stopped before it was counted says nothing.
+        assert_eq!(record.at(start, &camera.node, &[]), None);
+        assert_eq!(record.at(start, &camera.node, &holders), None);
         count(&stats, 120, 0);
-        let paused = start + Duration::from_secs(4);
-        assert_eq!(record.at(paused, &camera.node, &holders), None);
-        assert_eq!(record.at(paused, &camera.node, &[]), None);
-        // It starts again at a new size, and uvcvideo counts afresh.
-        count(&stats, 90, 0);
-        let later = start + Duration::from_secs(10);
+        let stopped = start + Duration::from_secs(4);
         assert_eq!(
-            record.at(later, &camera.node, &holders).as_deref(),
-            Some("streams to \"chrome\"; gave 21.0 fps, 0 packets in error, restarted")
+            record.at(stopped, &camera.node, &[]).as_deref(),
+            Some("streams to \"chrome\"; gave 30.0 fps, 0 packets in error; then stopped")
+        );
+        // It starts again at a new size, and uvcvideo counts afresh, past
+        // where the last stream's count was; none of the pause is counted.
+        let again = start + Duration::from_secs(5);
+        count(&stats, 10, 0);
+        assert_eq!(record.at(again, &camera.node, &holders), None);
+        count(&stats, 310, 0);
+        assert_eq!(
+            record.at(again + EVERY, &camera.node, &holders).as_deref(),
+            Some("streams to \"chrome\"; gave 30.0 fps, 0 packets in error")
         );
     }
 

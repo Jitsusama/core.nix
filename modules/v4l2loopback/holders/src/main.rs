@@ -193,6 +193,14 @@ enum Ended {
     Stopped,
 }
 
+/// Says what went wrong in the log. Under the unit, stderr is the same
+/// journal stream as stdout, so when one can't be written to neither can
+/// the other, and eprintln! would panic and stop the watch, leaving the
+/// file naming whoever held the node; there's nowhere left to say it.
+fn complain(what: std::fmt::Arguments) {
+    let _ = writeln!(io::stderr().lock(), "{what}");
+}
+
 /// Says who holds the node until it goes. With sysfs, the node is a USB
 /// camera's, named only while it streams, and with a record, said in the
 /// log as it does.
@@ -205,7 +213,7 @@ fn watch(
     mut record: Option<&mut Record>,
 ) -> Ended {
     if let Err(error) = events.watch(node) {
-        eprintln!("can't watch {}: {error}", node.display());
+        complain(format_args!("can't watch {}: {error}", node.display()));
         return match events.sleep(Duration::from_secs(5)) {
             Woken::Stopped => Ended::Stopped,
             _ => Ended::Gone,
@@ -224,7 +232,7 @@ fn watch(
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ended::Gone,
             Err(error) => {
-                eprintln!("{}: {error}", node.display());
+                complain(format_args!("{}: {error}", node.display()));
                 BTreeSet::new()
             }
         };
@@ -233,18 +241,17 @@ fn watch(
         if said.as_ref() != Some(&shown)
             && let Err(error) = write(output, &shown)
         {
-            eprintln!("{}: {error}", output.display());
+            complain(format_args!("{}: {error}", output.display()));
         }
         // The record asks the camera itself, which a stalling camera can
         // keep waiting, so it comes after the file is right.
         if let Some(record) = record.as_deref_mut() {
             let streaming: Vec<String> = shown.iter().cloned().collect();
-            // A log that can't be written to mustn't stop the watch, which
-            // would leave the file naming whoever streamed.
+            // A log that can't be written to mustn't stop the watch.
             if let Some(line) = record.now(node, &streaming)
                 && let Err(error) = writeln!(io::stdout().lock(), "{line}")
             {
-                eprintln!("can't say how it streams: {error}");
+                complain(format_args!("can't say how it streams: {error}"));
             }
         }
         said = Some(shown);
