@@ -1,8 +1,8 @@
 //! What the live shaper heard and held each second that the recorder's
 //! lines can't say, kept as day files of its own: whose the upload's queue
 //! was, a call's round trip through the VPN, the rate it held the upload
-//! to, and the ceiling a trial held it under. A replay (src/replay.rs) puts these back into the recorded
-//! seconds, so a bite that came through our own queues or the VPN is
+//! to, and the ceiling a trial held it under. A replay (src/replay.rs)
+//! puts these back into the recorded seconds, so a bite that came through our own queues or the VPN is
 //! replayed rather than passed as clean, and the rates the shaper really
 //! held are scored beside any a controller would set.
 //!
@@ -145,13 +145,14 @@ pub fn read(folder: &Path) -> Result<BTreeMap<u64, Line>, String> {
 
 /// Puts what the shaper heard back into each stay's seconds, and gives
 /// the rates it held at each, in the stays' order: a second with no line
-/// holds the last rate for up to `STANDS_S`, and no limit after.
+/// holds the last rate, and the trial's ceiling over it, for up to
+/// `STANDS_S`, and no limit after.
 pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>> {
     stays
         .iter_mut()
         .map(|stay| {
             let began = stay.began_ms / 1_000;
-            let mut last: Option<(u64, Option<u64>)> = None;
+            let mut last: Option<(u64, &Line)> = None;
             stay.seconds
                 .iter_mut()
                 .map(|second| {
@@ -161,18 +162,31 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
                             second.up_ours = line.ours;
                             second.vpn_ms = line.vpn_ms;
                             second.ceiling = line.ceiling;
-                            last = Some((at, line.up));
+                            last = Some((at, line));
                             line.up
                         }
-                        None => last
-                            .filter(|(then, _)| at - then <= STANDS_S)
-                            .and_then(|(_, up)| up),
+                        None => {
+                            let standing = last.filter(|(then, _)| at - then <= STANDS_S);
+                            // A step that missed a write held the same
+                            // trial, so its seconds are the trial's too.
+                            second.ceiling = standing.and_then(|(_, l)| l.ceiling);
+                            standing.and_then(|(_, l)| l.up)
+                        }
                     };
                     Rates { up, down: None }
                 })
                 .collect()
         })
         .collect()
+}
+
+/// Forgets the trials' ceilings `merge` put in, for a controller other
+/// than the live one: a trial held only the live shaper's rates, so the
+/// seconds a replayed controller holds are all its own.
+pub fn forget_trials(stays: &mut [Stay]) {
+    for second in stays.iter_mut().flat_map(|s| s.seconds.iter_mut()) {
+        second.ceiling = None;
+    }
 }
 
 /// Keeps, of each stay and the rates `merge` gave it, only the stretch
@@ -248,6 +262,28 @@ mod tests {
     }
 
     #[test]
+    fn a_line_says_the_ceiling_a_trial_holds_the_upload_under() {
+        let heard = |most_kbit| crate::live::Heard {
+            up_limit: Some(9_500),
+            trial: Some(crate::oneway::Tuning {
+                most_kbit,
+                ..crate::oneway::Tuning::default()
+            }),
+            ..crate::live::Heard::default()
+        };
+        let at = |h: &crate::live::Heard| Line::of(NOV16, "wlan0", h).ceiling;
+        assert_eq!(at(&heard(Some(9_500.4))), Some(9_500), "a trial's ceiling");
+        assert_eq!(at(&heard(None)), None, "a trial with no ceiling");
+        assert_eq!(at(&crate::live::Heard::default()), None, "no trial");
+        // Written only when there is one, so a day's lines stay short.
+        let line = serde_json::to_string(&Line::of(NOV16, "wlan0", &heard(None)));
+        assert!(
+            !line.expect("a line").contains("ceiling"),
+            "wrote no ceiling"
+        );
+    }
+
+    #[test]
     fn a_trace_is_written_once_a_second_and_read_back() {
         let folder = std::env::temp_dir().join(format!("shaper-trace-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
@@ -311,10 +347,20 @@ mod tests {
         );
         assert_eq!(s[2].ceiling, Some(4_800), "a trial's ceiling: {:?}", s[2]);
         assert_eq!(s[1].ceiling, None, "none, with no trial: {:?}", s[1]);
+        let ceilings: Vec<Option<u64>> = s.iter().map(|s| s.ceiling).collect();
+        let mut want = vec![None, None];
+        want.extend([Some(4_800); 6]);
+        want.extend([None; 4]);
+        assert_eq!(ceilings, want, "the trial standing with its rate");
         assert_eq!(
             s[3].up_ours, None,
             "nothing heard, nothing put in: {:?}",
             s[3]
+        );
+        forget_trials(&mut stays);
+        assert!(
+            stays[0].seconds.iter().all(|s| s.ceiling.is_none()),
+            "a replayed controller held under the live one's trial"
         );
     }
 

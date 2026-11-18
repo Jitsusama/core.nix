@@ -953,6 +953,8 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
         if asked.controller == Choice::Held {
             // Only what the trace saw was held by anything it can say.
             (stays, held) = trace::traced(stays, held, &lines);
+        } else {
+            trace::forget_trials(&mut stays);
         }
     }
     let windows = match &asked.windows {
@@ -1002,6 +1004,33 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::fs;
+
+    #[test]
+    fn a_bar_says_the_time_a_trial_held_it_and_only_then() {
+        let bar = |trial_s| bars::Bar {
+            anchor: 12_000,
+            seconds: 600,
+            trial_s,
+            ..bars::Bar::default()
+        };
+        let judged = bars::Judged {
+            networks: BTreeMap::from([("home".to_owned(), bar(290))]),
+            windows: BTreeMap::from([("night".to_owned(), bar(0))]),
+        };
+        let mut out = String::new();
+        judged_lines(&mut out, &judged);
+        assert!(out.contains("; a trial's ceiling set aside\n"), "{out}");
+        let home = out.lines().find(|l| l.starts_with("home,")).expect("home");
+        assert!(
+            home.ends_with("; 4 min 50 s at a trial's ceiling"),
+            "{home}"
+        );
+        let night = out
+            .lines()
+            .find(|l| l.starts_with("night,"))
+            .expect("night");
+        assert!(!night.contains("trial"), "a trial said with none: {night}");
+    }
 
     /// Midnight in UTC on 3 November 2026, in ms.
     const NOV3: u64 = 1_793_664_000_000;

@@ -488,6 +488,40 @@ mod tests {
     }
 
     #[test]
+    fn a_trial_is_read_under_the_ceiling_its_rate_was_answered_in() {
+        // A rate answered in one second holds through the next, so the
+        // ceiling it's judged by is that of the second it was answered in:
+        // here a second's alone, at 0 with no limit and at 5 over it.
+        let mut s = under_a_trial(stay(10, 7_000.0, |_| 2.0), 8_000, 0..1);
+        s.seconds[5].ceiling = Some(8_000);
+        let rates = held(
+            |t| match t {
+                0 => None,
+                5 => Some(9_000),
+                _ => Some(10_800),
+            },
+            10,
+        );
+        let bar = at_home(&s, &rates, 12_000);
+        assert_eq!(bar.trial_s, 2, "seconds 1 and 6 were the trial's: {bar:?}");
+        assert_eq!(bar.seconds, 7, "the rest the controller's: {bar:?}");
+    }
+
+    #[test]
+    fn a_trial_ends_a_spell_rather_than_bridging_two() {
+        // Held low with no cause for 50 s either side of a trial: neither
+        // stretch is past the grace alone, and the trial joins neither.
+        let s = under_a_trial(stay(111, 4_500.0, |_| 2.0), 8_000, 50..60);
+        let rates = held(
+            |t| Some(if (50..60).contains(&t) { 8_000 } else { 4_500 }),
+            111,
+        );
+        let bar = at_home(&s, &rates, 12_000);
+        assert_eq!(bar.trial_s, 10, "the trial's seconds: {bar:?}");
+        assert_eq!(bar.breached_s, 0, "two short spells, not one: {bar:?}");
+    }
+
+    #[test]
     fn a_cut_under_a_trial_s_ceiling_is_still_the_controller_s() {
         let s = under_a_trial(stay(400, 4_500.0, |_| 2.0), 8_000, 0..400);
         let rates = held(|t| Some(if t < 10 { 8_000 } else { 4_500 }), 400);
