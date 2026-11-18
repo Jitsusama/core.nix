@@ -187,6 +187,15 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
         let side = format!("on battery at {charge}%");
         words.look(Health::Watch, format!("is {side}"), side);
     }
+    // A power cut is said for a day after the boot it ended in (power.rs),
+    // so the morning after one in the night says it.
+    if let Some(ago) = said
+        .pointer("/power/lost_before_boot")
+        .and_then(Value::as_u64)
+    {
+        let side = format!("lost power, booted {}", ago_said(ago));
+        words.look(Health::Watch, side.clone(), side);
+    }
     for part in ITS_OWN {
         match own.and_then(|own| own.pointer(&format!("/parts/{part}"))?.as_str()) {
             Some("watch") => words.look(
@@ -232,6 +241,15 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
         ties: Value::Null,
     };
     (thing, named)
+}
+
+/// How long ago, in the largest whole unit up to hours.
+fn ago_said(seconds: u64) -> String {
+    match seconds {
+        0..60 => "just now".to_owned(),
+        60..3_600 => format!("{} ago", count(seconds / 60, "minute", "minutes")),
+        _ => format!("{} ago", count(seconds / 3_600, "hour", "hours")),
+    }
 }
 
 /// A resource a node says a machine is short of, in Joel's words for it.
@@ -478,6 +496,19 @@ mod tests {
         low["power"]["on_battery"] = json!(false);
         let charging = machines(&Ok(realm(&[low])), &Err(String::new()), None, None);
         assert_eq!(charging.health, Health::Good);
+    }
+
+    #[test]
+    fn a_power_cut_before_the_boot_is_worth_a_look() {
+        let mut cut = laptop(&[], "healthy");
+        cut["power"]["lost_before_boot"] = json!(3 * 3_600 + 59);
+        let part = machines(&Ok(realm(std::slice::from_ref(&cut))), &Err(String::new()));
+        assert_eq!(part.health, Health::Watch);
+        assert_eq!(part.things[0].says, "lost power, booted 3 hours ago");
+        assert_eq!(part.things[0].side, ["lost power, booted 3 hours ago"]);
+        cut["power"]["lost_before_boot"] = json!(90);
+        let part = machines(&Ok(realm(&[cut])), &Err(String::new()));
+        assert_eq!(part.things[0].says, "lost power, booted 1 minute ago");
     }
 
     #[test]

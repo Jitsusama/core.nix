@@ -75,7 +75,7 @@ fn run(context: &Context) -> Result<(), Failure> {
 
 /// The system as each owner says it now.
 pub(crate) fn read() -> System {
-    let [machines, health, net, repos]: [_; 4] = ask::all(&[
+    let [mut machines, health, net, repos]: [_; 4] = ask::all(&[
         &["mycelium", "machines"],
         &["mycelium", "health"],
         &["net", "--json"],
@@ -83,6 +83,7 @@ pub(crate) fn read() -> System {
     ])
     .try_into()
     .unwrap_or_else(|_| unreachable!("one answer is given for each command asked"));
+    note_a_power_loss(&mut machines);
     let mut system = System {
         machine: terminal_kit::environment::machine(),
         read_at: terminal_kit::time::rfc3339(now()),
@@ -97,6 +98,29 @@ pub(crate) fn read() -> System {
         Homes::read(&sites).place(&mut system);
     }
     system
+}
+
+/// Puts a power cut before this boot into this machine's record, which the
+/// node gives first, as `power.lost_before_boot`, the field the machines
+/// part judges (power.rs says why it's read here).
+fn note_a_power_loss(machines: &mut parts::Answer) {
+    let Ok(boot) = std::fs::read_to_string("/proc/sys/kernel/random/boot_id") else {
+        return;
+    };
+    let records = std::path::Path::new(system::power::RECORDS);
+    let Some(ago) = system::power::lost_before_boot(records, boot.trim(), SystemTime::now()) else {
+        return;
+    };
+    if let Some(power) = machines
+        .as_mut()
+        .ok()
+        .and_then(|said| said.pointer_mut("/Ok/Machines/0"))
+        .and_then(serde_json::Value::as_object_mut)
+        .map(|here| here.entry("power").or_insert_with(|| serde_json::json!({})))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        power.insert("lost_before_boot".to_owned(), ago.into());
+    }
 }
 
 /// Where the local sites are kept on this machine (modules/local-sites),
