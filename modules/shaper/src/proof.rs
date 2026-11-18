@@ -36,9 +36,9 @@
 //! once. It waits `--wait` seconds from its start in all, and exits 75 if
 //! they run out before every pair is measured, writing what it measured
 //! to `--out`. It exits 69 if it couldn't put the shaper back, saying how
-//! to, and its keeper tries once more as it exits. When systemd doesn't
-//! say whether the shaper is on, no window opens on it, and it exits 75
-//! with the shaper left as it stood. The call's packets are src/call.rs's.
+//! to, and leaves the shaper to Joel. When systemd doesn't say whether
+//! the shaper is on, no window opens on it, and it exits 75 with the
+//! shaper left as it stood. The call's packets are src/call.rs's.
 //!
 //! It passes when, with the shaper on, the call's 99th percentile is
 //! within `CALL_MARGIN_MS` of its median through the shaper before the

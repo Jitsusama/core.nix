@@ -137,13 +137,14 @@ pub fn shaper_on() -> Option<bool> {
     settled(unit_state, SETTLES, Duration::from_millis(250))
 }
 
-/// What systemd says of the shaper: its `ActiveState`, and whether a job
-/// on it is under way; None when systemd doesn't answer.
+/// What systemd says of the shaper, as `state_said` reads it; None when
+/// systemd doesn't answer.
 fn unit_state() -> Option<(String, bool)> {
     use std::os::unix::process::CommandExt;
     let out = Command::new("systemctl")
         .args([
             "show",
+            "--property=LoadState",
             "--property=ActiveState",
             "--property=Job",
             "shaper.service",
@@ -154,12 +155,21 @@ fn unit_state() -> Option<(String, bool)> {
         .output()
         .ok()
         .filter(|out| out.status.success())?;
-    let said = String::from_utf8_lossy(&out.stdout).into_owned();
+    state_said(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// The `ActiveState` in what `systemctl show` said, and whether a job on
+/// the unit is under way; None unless the unit is loaded, since systemd
+/// says `inactive` of a unit it doesn't know, or one masked.
+fn state_said(said: &str) -> Option<(String, bool)> {
     let value = |key: &str| {
         said.lines()
             .find_map(|line| line.strip_prefix(key)?.strip_prefix('='))
             .map(str::trim)
     };
+    if value("LoadState")? != "loaded" {
+        return None;
+    }
     let active = value("ActiveState")?.to_string();
     Some((active, value("Job").is_some_and(|job| !job.is_empty())))
 }
@@ -168,10 +178,12 @@ fn unit_state() -> Option<(String, bool)> {
 /// stopping and no job on it is under way, or `takes` runs out. A
 /// restart's job reads `inactive` between its stop and its start, so a
 /// state read while one is under way says nothing settled. Run out, one
-/// still starting counts as on, since it's on its way there, as one an
-/// automatic restart waits on is; one still stopping with no job after
-/// it counts as off; and one whose job is still under way, or that
-/// systemd doesn't say, is None, since either guess could undo it.
+/// still starting counts as on, with or without its job, since it's on
+/// its way there, as one an automatic restart waits on is. One still
+/// stopping with no job is None: a stop asked for holds a job until it
+/// is done, so with none it is a crash cleaning up before systemd starts
+/// it again. So is one whose job is still under way, or that systemd
+/// doesn't say, since either guess could undo it.
 fn settled(
     mut state: impl FnMut() -> Option<(String, bool)>,
     takes: Duration,
@@ -187,7 +199,7 @@ fn settled(
         }
         return match (active.as_str(), job) {
             ("activating", _) | ("active" | "reloading" | "refreshing", false) => Some(true),
-            ("inactive" | "failed" | "deactivating", false) => Some(false),
+            ("inactive" | "failed", false) => Some(false),
             _ => None,
         };
     }
@@ -224,16 +236,20 @@ fn debt_within(marker: &Path, takes: Duration, stands: Duration) -> Option<bool>
             Some("off") => Some(false),
             _ => None,
         });
+    // A word whose age can't be told, as one dated ahead of a clock set
+    // back, may be any age, so it's taken for an old one.
     let age = fs::metadata(marker)
         .and_then(|m| m.modified())
         .ok()
-        .and_then(|at| at.elapsed().ok())
-        .unwrap_or_default();
-    if earlier.is_some() && age > stands {
+        .and_then(|at| at.elapsed().ok());
+    if earlier.is_some() && age.is_none_or(|age| age > stands) {
+        let when = age.map_or_else(
+            || "at a time it can't tell".to_string(),
+            |age| format!("{} min ago", age.as_secs() / 60),
+        );
         tell(&format!(
-            "an earlier proof didn't put the shaper back {} min ago: left as it is now, \
-             since Joel or a switch has likely set it since",
-            age.as_secs() / 60
+            "an earlier proof didn't put the shaper back {when}: left as it is now, \
+             since Joel or a switch has likely set it since"
         ));
         forget(marker);
         return None;
@@ -249,27 +265,44 @@ fn debt_within(marker: &Path, takes: Duration, stands: Duration) -> Option<bool>
 
 /// Runs one window owning the shaper, found `on`: claimed in `marker`
 /// while it runs, freshened every `FRESHENS`, so a keeper puts it back
-/// if the proof is killed, and given up once the window says it put the
-/// shaper back. One that couldn't keeps its claim, so the keeper tries
-/// once more as the proof exits 69, and the next proof, failing that,
-/// within `DEBT_STANDS`: either puts it as the 69 tells Joel to. Between
-/// windows it is nobody's, so a switch or Joel's own change then stands.
+/// if the proof is killed, and given up once the window ends, however it
+/// does: one that couldn't put the shaper back ends the proof 69, which
+/// hands the shaper to Joel, and a later proof paying the word would undo
+/// what he does. Between windows it is nobody's, so a switch or Joel's
+/// own change then stands.
 pub fn owning<T>(marker: Option<&Path>, on: bool, window: impl FnOnce() -> (T, bool)) -> (T, bool) {
+    owning_every(marker, on, FRESHENS, window)
+}
+
+/// `owning`, freshening the word every `every`.
+fn owning_every<T>(
+    marker: Option<&Path>,
+    on: bool,
+    every: Duration,
+    window: impl FnOnce() -> (T, bool),
+) -> (T, bool) {
+    /// Ends the freshening as the window ends, a panic included: the
+    /// scope joins its threads before a panic leaves it, so one left
+    /// freshening would hold the proof alive for good, its load running
+    /// and its keeper never acting.
+    struct Ends<'a>(&'a AtomicBool);
+    impl Drop for Ends<'_> {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
     let Some(marker) = marker else {
         return window();
     };
     claim(marker, on);
     let ended = AtomicBool::new(false);
-    let (got, back) = thread::scope(|scope| {
-        scope.spawn(|| freshen(marker, &ended, FRESHENS));
-        let got = window();
-        ended.store(true, Ordering::Relaxed);
-        got
+    let got = thread::scope(|scope| {
+        scope.spawn(|| freshen(marker, &ended, every));
+        let _ends = Ends(&ended);
+        window()
     });
-    if back {
-        forget(marker);
-    }
-    (got, back)
+    forget(marker);
+    got
 }
 
 /// Marks `marker` as written now every `every`, until `ended`, so a
@@ -499,10 +532,52 @@ pub mod tests {
         // A word left long ago is dropped: the shaper stands as Joel or a
         // switch has set it since.
         claim(&marker, true);
+        age(&marker, Duration::from_mins(29));
+        assert_eq!(owed(), Some(true), "dropped a word still standing");
         age(&marker, DEBT_STANDS + Duration::from_mins(1));
         assert_eq!(owed(), None, "undid what was set since an old proof");
         assert!(!marker.exists(), "kept a word too old to act on");
+        // One dated ahead, as a clock set back leaves it, may be any age.
+        claim(&marker, true);
+        fs::File::options()
+            .write(true)
+            .open(&marker)
+            .and_then(|f| f.set_modified(std::time::SystemTime::now() + Duration::from_hours(1)))
+            .expect("a marker dated ahead");
+        assert_eq!(owed(), None, "took a word of no age it can tell");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn systemds_own_words_are_read() {
+        let said = |text: &str| state_said(text);
+        assert_eq!(
+            said("LoadState=loaded\nActiveState=active\nJob=\n"),
+            Some(("active".to_string(), false)),
+            "a shaper on, no job"
+        );
+        assert_eq!(
+            said("LoadState=loaded\nActiveState=inactive\nJob=1234\n"),
+            Some(("inactive".to_string(), true)),
+            "a job under way"
+        );
+        assert_eq!(
+            said("LoadState=loaded\nActiveState=failed\n"),
+            Some(("failed".to_string(), false)),
+            "no Job line is no job"
+        );
+        // systemd says `inactive` of a unit it doesn't know, or a masked one.
+        assert_eq!(
+            said("LoadState=not-found\nActiveState=inactive\nJob=\n"),
+            None,
+            "a unit systemd doesn't know"
+        );
+        assert_eq!(
+            said("LoadState=masked\nActiveState=inactive\nJob=\n"),
+            None,
+            "a masked unit"
+        );
+        assert_eq!(said(""), None, "nothing said");
     }
 
     #[test]
@@ -556,13 +631,19 @@ pub mod tests {
             None,
             "no answer once starting"
         );
-        // Never settling, it is read as where it was heading, unless a job
-        // may yet turn it round.
+        // Never settling, a start is read as on, its job or not; a stop
+        // with no job is a crash cleaning up before its restart, and
+        // neither.
         assert_eq!(read(&["activating"], Duration::ZERO), Some(true), "a start");
         assert_eq!(
+            read(&["activating+"], Duration::ZERO),
+            Some(true),
+            "a start with its job"
+        );
+        assert_eq!(
             read(&["deactivating"], Duration::ZERO),
-            Some(false),
-            "a stop"
+            None,
+            "a crash before its restart"
         );
         assert_eq!(
             read(&["inactive+"], Duration::ZERO),
@@ -589,8 +670,9 @@ pub mod tests {
         assert!(back, "a window's put-back went unsaid");
         assert_eq!(said(&marker), None, "held the shaper between windows");
         // The next window finds the shaper off, as a switch or Joel left
-        // it, and claims that, not what the first found; it can't put the
-        // shaper back, so its word stays for the keeper's last try.
+        // it, and claims that, not what the first found. It can't put the
+        // shaper back, and its 69 hands the shaper to Joel, so no later
+        // proof is left a word that would undo him.
         let ((), back) = owning(Some(&marker), false, || {
             assert_eq!(
                 said(&marker),
@@ -600,10 +682,24 @@ pub mod tests {
             ((), false)
         });
         assert!(!back, "a failed put-back went unsaid");
+        assert_eq!(said(&marker), None, "left a word after its 69");
+        // A window that panics ends as the panic does, its word kept for
+        // the keeper, rather than held alive by its freshening.
+        let began = Instant::now();
+        let panicked = std::panic::catch_unwind(|| {
+            owning(Some(&marker), true, || -> ((), bool) {
+                panic!("a window's panic")
+            })
+        });
+        assert!(panicked.is_err(), "a window's panic was lost");
+        assert!(
+            began.elapsed() < Duration::from_secs(1),
+            "a panicking window held the proof"
+        );
         assert_eq!(
             said(&marker),
-            Some(format!("off {me}\n")),
-            "forgot a shaper it couldn't put back"
+            Some(format!("on {me}\n")),
+            "a panic forgot the keeper's word"
         );
         let _ = fs::remove_dir_all(&dir);
     }
@@ -613,6 +709,20 @@ pub mod tests {
         let dir = std::env::temp_dir().join(format!("shaper-fresh-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
+        // A window running long has its word freshened as it runs.
+        let ((), _) = owning_every(Some(&marker), true, Duration::from_millis(20), || {
+            age(&marker, Duration::from_mins(20));
+            let began = Instant::now();
+            while aged(&marker) > Duration::from_mins(1) && began.elapsed() < Duration::from_secs(2)
+            {
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert!(
+                aged(&marker) < Duration::from_mins(1),
+                "a window left its word to age"
+            );
+            ((), true)
+        });
         claim(&marker, true);
         age(&marker, Duration::from_mins(20));
         let ended = AtomicBool::new(false);
