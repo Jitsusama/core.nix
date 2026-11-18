@@ -6001,9 +6001,10 @@ Scope {
         // Said in the journal, so a step that closes under Joel by itself
         // can be told from one his key left: how many, as back() may leave
         // two at once, and never the row's name, which a source served.
-        if (held.length < before)
-            console.info(`launcher: left ${before - held.length} steps by themselves, `
-                + "as they offer nothing now");
+        const left = before - held.length;
+        if (left > 0)
+            console.info(`launcher: left ${left} ${left === 1 ? "step" : "steps"} by `
+                + "itself, as what it held offers nothing now");
         return false;
     }
 
