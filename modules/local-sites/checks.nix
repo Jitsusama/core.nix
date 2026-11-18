@@ -481,13 +481,14 @@ in
   # The network page, built on the theme's own web kit as a machine builds
   # it, read in headless Chromium through the server beside a stand-in net
   # and a stand-in node (modules/net/site/tests/network-reads-live-test.py):
-  # live with every device drawn, one going, a machine mycelium runs on
-  # linked to its place on the map, broken while net is away and live once
-  # it's back, stale once the server goes, within its budget, the web-design
-  # skill's page checks passing at two widths in both looks, and nothing
-  # logged. Both feeds are the ones home.nix declares for a machine in a
-  # realm, so the server under test passes the page what a machine's does.
-  # Chromium builds only on Linux.
+  # live with every device drawn in its tree and on its map, a name from
+  # the Wi-Fi drawn as words, one going with its link, a machine mycelium
+  # runs on following the node and linked to its place on the map, broken
+  # while net is away and live once it's back, stale once the server goes,
+  # within its budget, the web-design skill's page checks passing at two
+  # widths in both looks, and nothing logged. Both feeds are the ones
+  # home.nix declares for a machine in a realm, so the server under test
+  # passes the page what a machine's does. Chromium builds only on Linux.
   network-site-reads-live =
     let
       inRealm = account (bareNixos [
@@ -520,7 +521,7 @@ in
           LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
-          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
           PYTHONPATH = "${./tests}";
           PYTHONDONTWRITEBYTECODE = "1";
         };

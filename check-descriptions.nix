@@ -1906,11 +1906,13 @@
   '';
   network-site-reads-live = ''
     the network page, served by the local sites' server beside a stand-in net and node, reads live
-    in headless Chromium: every device drawn, one going, a machine mycelium runs on saying its
-    cells and linked to its place on the mycelium map, broken while net is away and live with its
-    devices read again once it's back, stale once the server goes, a first visit within its budget
-    and a second answered unchanged, the web-design skill's page checks passing at a phone's width
-    and a desk's in both looks, and nothing logged but what a test causes
+    in headless Chromium: every device drawn in its tree and on its map, a name with markup in it
+    drawn as words, one going with its link, a machine mycelium runs on saying its cells as the
+    node moves and linked to its place on the mycelium map, broken while net is away and live with
+    its devices read again once it's back, stale once the server goes and keeping what it drew, a
+    first visit within its budget and a second answered unchanged, the web-design skill's page
+    checks passing at a phone's width and a desk's in both looks, and nothing logged but what a
+    test causes
   '';
   network-revive-looks-once-the-network-settles = ''
     network-revive looks at the network once a burst of changes goes quiet, or anyway if it never
