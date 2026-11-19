@@ -51,7 +51,9 @@ NEED = "a <b>calm</b> field"
 # Every cell node.json holds, in the order the page lists them: those that grew from none here
 # by address, each followed by the cells started by it or split from it.
 CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
-# What a first visit to the forage page may cost, drawn from the stand-in's cells.
+# What a first visit to the forage page may cost, drawn from the stand-in's cells. Its files sit
+# at what the page asks for now, on purpose: each module is one more file a first visit waits
+# on, so splitting one out raises this as a choice rather than slipping past it.
 BUDGET = Budget(files=22, kilobytes=545, elements=255)
 
 
