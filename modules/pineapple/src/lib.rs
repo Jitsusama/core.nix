@@ -34,6 +34,8 @@
 //!   Slack, the one place it can send to, so it reaches his phone.
 //! - [`deaf`] tells Joel where Slack isn't needed when the Slack reader
 //!   can't hear Slack, since that alert goes through it.
+//! - [`judged`] keeps how far the Slack reader has read, so a restart
+//!   neither judges a message twice nor misses one.
 //!
 //! Readers hand it sayings from each platform, Slack first
 //! (src/bin/pineapple-slack.rs), then GitHub
@@ -47,6 +49,7 @@ mod decide;
 pub mod gate;
 pub mod github;
 mod judge;
+pub mod judged;
 pub mod peer;
 pub mod phone;
 pub mod progress;

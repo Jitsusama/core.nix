@@ -35,11 +35,9 @@
 //! Slack is Slack's own, unless a test names a stand-in with `--origin`
 //! and a quicker pace with `--every`.
 //!
-//! Which messages it has judged is kept in judged.json beside the log, so a restart
-//! neither judges a message twice nor misses one said while it was down,
-//! as far back as a search's twenty newest reach. It goes by the messages
-//! rather than by the newest one's time, since Slack's search can find a
-//! message a while after a newer one. Starting with nothing kept, it
+//! Which messages it has judged is kept in judged.json beside the log
+//! (src/judged.rs), so a restart neither judges a message twice nor
+//! misses one said while it was down. Starting with nothing kept, it
 //! begins ten minutes back rather than judging Slack's whole history.
 
 use std::collections::HashSet;
@@ -49,6 +47,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pineapple::deaf::{self, Deaf, Deafness, Round};
 use pineapple::gate::{Asked, gate};
+use pineapple::judged::{self, Afresh, Judged};
 use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
@@ -99,24 +98,6 @@ const MICROS: u128 = 1_000_000;
 
 /// Slack's own origin.
 const SLACK: &str = "https://slack.com";
-
-/// How many judged messages are kept: far more than two searches' twenty
-/// newest, so one of those is never forgotten while it's still found.
-const KEPT: usize = 1000;
-
-/// Which messages it has judged: those since `since`, by their keys,
-/// newest last.
-struct Judged {
-    since: String,
-    keys: Vec<String>,
-}
-
-impl Judged {
-    /// Whether a message is yet to be judged.
-    fn is_new(&self, message: &Message) -> bool {
-        micros(&message.ts) > micros(&self.since) && !self.keys.contains(&message.key())
-    }
-}
 
 /// What it says of itself, set as help and read by the check.
 fn help() -> Help {
@@ -272,10 +253,7 @@ fn heard(context: &terminal_kit::Context) -> Result<(), Failure> {
     let newest = &lines[lines.len().saturating_sub(NEWEST)..];
     // When Slack was last read whole, so a quiet reader is told from one
     // that isn't reading at all.
-    let read_at = std::fs::read_to_string(state().join("judged.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|kept| kept.get("read_at").and_then(Value::as_u64));
+    let read_at = judged::read_at(&state());
     let written = match context.format() {
         Format::Text if newest.is_empty() => context.say(&match read_at {
             Some(at) => format!(
@@ -341,10 +319,18 @@ fn run(how: &Run) -> Result<(), Failure> {
         words: Words::from_object(REPLIES).unwrap_or_default(),
         shadow: how.shadow,
     };
-    let mut judged = read_judged(&state).unwrap_or_else(|| Judged {
-        since: format!("{}.000000", seconds().saturating_sub(LOOK_BACK)),
-        keys: Vec::new(),
-    });
+    let (mut judged, afresh) = judged::read(&state, seconds().saturating_sub(LOOK_BACK));
+    match afresh {
+        Some(Afresh::Unreadable) => eprintln!(
+            "<4>how far Slack was read can't all be read, so it reads from ten minutes back, \
+             keeping what it can of what was judged"
+        ),
+        Some(Afresh::Unjudged) => eprintln!(
+            "<4>which Slack messages were judged can't all be read, so any of the newest said \
+             since it first started may be judged, and answered, again"
+        ),
+        Some(Afresh::Nothing) | None => {}
+    }
     let mut phone = Phone {
         origin: how.origin.clone(),
         own: None,
@@ -356,15 +342,19 @@ fn run(how: &Run) -> Result<(), Failure> {
     // A locked keyring doesn't end a sign-in, so stops are still heard.
     let mut last = LastSignIn::new();
     // Where For You reads what waits on Joel: told there when Slack
-    // can't be heard, since the phone's alert goes through Slack. The
-    // unit names it, as the file its stop removes (home.nix); one that
-    // isn't a whole path is no name.
-    let waiting = std::env::var_os("SAFE_WORD_WAITING")
-        .map(PathBuf::from)
-        .filter(|named| named.is_absolute())
-        .unwrap_or_else(|| {
-            env_dir("XDG_STATE_HOME", ".local/state").join("mission/waiting/pineapple.json")
-        });
+    // can't be heard, since the phone's alert goes through Slack.
+    let waiting = deaf::waiting(
+        std::env::var_os("SAFE_WORD_WAITING").as_deref(),
+        &env_dir("XDG_STATE_HOME", ".local/state"),
+    );
+    if let Some(refused) = &waiting.refused {
+        eprintln!(
+            "<4>SAFE_WORD_WAITING names {:?}, which isn't a whole path, so For You is told in \
+             {:?}, which the unit's stop won't take away",
+            refused.to_string_lossy(),
+            waiting.file.to_string_lossy()
+        );
+    }
     let mut deaf = Deaf::new();
     loop {
         let now = Instant::now();
@@ -405,7 +395,7 @@ fn run(how: &Run) -> Result<(), Failure> {
             None => Round::Deaf(Deafness::NoSignIn),
         };
         let change = deaf.heard(heard, millis());
-        if let Err(error) = deaf::make(&waiting, &change) {
+        if let Err(error) = deaf::make(&waiting.file, &change) {
             eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
             deaf.failed(&change);
         }
@@ -525,6 +515,14 @@ fn round(
         logins: Vec::new(),
         emails: Vec::new(),
     };
+    // Checked each round, as a clock set back while it runs leaves a
+    // since that would pass over everything said until it caught up.
+    if judged.look_back_to(seconds().saturating_sub(LOOK_BACK)) {
+        eprintln!(
+            "<4>how far Slack was read starts later than ten minutes ago, as a clock set back \
+             leaves it, so it reads from ten minutes back"
+        );
+    }
     let tag = format!("<@{}>", account.user);
     // A round counts as read only once both searches answered, so
     // judged.json's read_at never says Slack was read when it wasn't.
@@ -549,15 +547,15 @@ fn round(
     for message in heard {
         // The reader's own alert quotes others as Joel, so it's no saying.
         if message.author == account.user && phone::is_alert(&message.text) {
-            judged.keys.push(message.key());
+            judged.judged(message);
             continue;
         }
         judge(slack, reader, account, state, &joel, message);
-        judged.keys.push(message.key());
+        judged.judged(message);
     }
-    let over = judged.keys.len().saturating_sub(KEPT);
-    judged.keys.drain(..over);
-    write_judged(state, judged);
+    if let Err(error) = judged::write(state, judged, millis()) {
+        eprintln!("<3>couldn't keep how far it has read: {error}");
+    }
     Round::Heard
 }
 
@@ -753,35 +751,6 @@ fn thread_root(slack: &Slack, account: &Account, channel: &str, thread: &str) ->
 fn replies_off(state: &Path) -> bool {
     std::fs::read_to_string(state.join("replies-switch"))
         .is_ok_and(|said| said.lines().any(|line| line.trim() == "off"))
-}
-
-fn read_judged(state: &Path) -> Option<Judged> {
-    let text = std::fs::read_to_string(state.join("judged.json")).ok()?;
-    let kept: Value = serde_json::from_str(&text).ok()?;
-    let since = kept.get("since").and_then(Value::as_str)?.to_owned();
-    let keys = kept
-        .get("keys")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_owned)
-        .collect();
-    Some(Judged { since, keys })
-}
-
-/// Keeps what was judged whole, and when Slack was read, through a file
-/// renamed into place. Written every round, a few hundred bytes each 30 s.
-fn write_judged(state: &Path, judged: &Judged) {
-    let kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": millis() });
-    let path = state.join("judged.json");
-    let written = path.with_extension("new");
-    let wrote = std::fs::create_dir_all(state)
-        .and_then(|()| std::fs::write(&written, kept.to_string()))
-        .and_then(|()| std::fs::rename(&written, &path));
-    if let Err(error) = wrote {
-        eprintln!("<3>couldn't keep how far it has read: {error}");
-    }
 }
 
 fn since_epoch() -> Duration {

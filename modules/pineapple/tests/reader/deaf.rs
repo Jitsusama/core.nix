@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::keyring::reading_with_keyring;
-use super::{Answered, PATIENCE, answer, answering_whole, home, reader, reading};
+use super::{Answered, PATIENCE, answer, answering_whole, home, journal, reader, reading};
 
 /// Where For You reads what the safe word waits on Joel for.
 fn waiting(home: &Path) -> PathBuf {
@@ -100,13 +100,28 @@ fn the_row_goes_where_the_unit_names_it() {
 fn a_name_that_isnt_a_whole_path_is_no_name() {
     let (origin, _) =
         answering_whole(|_, _| Answered::ok(json!({"ok": false, "error": "invalid_auth"})));
-    for named in ["", "named/pineapple.json"] {
+    // A name with a quote and a line break is said escaped, so it can't
+    // forge a journal line of its own.
+    for named in ["", "named/pineapple.json", "named\"\n<3>forged"] {
         let home = home();
         let mut reader = reading(&home, &origin, &[], Some(Path::new(named)));
         let told = until(&waiting(&home), true);
         reader.kill().expect("the reader stops");
         reader.wait().expect("the reader is gone");
         assert!(told, "named {named:?}, the reader tells For You in its own");
+        let said = journal(&home);
+        assert!(
+            said.contains(&format!(
+                "<4>SAFE_WORD_WAITING names {named:?}, which isn't a whole path, so For You is \
+                 told in {:?}, which",
+                waiting(&home).to_string_lossy()
+            )),
+            "and its journal says the name was passed over, and for where: {said}"
+        );
+        assert!(
+            !said.lines().any(|line| line.starts_with("<3>forged")),
+            "and no line of it is the name's own: {said}"
+        );
         std::fs::remove_dir_all(&home).expect("the case's home goes");
     }
 }

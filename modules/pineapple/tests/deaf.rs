@@ -1,7 +1,12 @@
 //! When the safe word's Slack reader tells Joel it can't hear Slack, and
 //! what it asks of him.
 
-use pineapple::deaf::{Change, Deaf, Deafness, ROUNDS, Round, make, refuses_the_sign_in, waits};
+use std::ffi::OsStr;
+use std::path::Path;
+
+use pineapple::deaf::{
+    Change, Deaf, Deafness, ROUNDS, Round, Waiting, make, refuses_the_sign_in, waiting, waits,
+};
 
 const AT: u64 = 1_795_000_000_000;
 
@@ -224,4 +229,36 @@ fn the_row_is_written_whole_and_taken_away() {
     assert!(!file.exists(), "gone");
     make(&file, &Change::Untell).expect("taking none away is fine");
     let _ = std::fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn the_row_goes_where_a_whole_name_says_and_a_part_name_is_said() {
+    let home = Path::new("/home/joel/.local/state");
+    let own = home.join("mission/waiting/pineapple.json");
+    assert_eq!(
+        waiting(Some(OsStr::new("/run/named/pineapple.json")), home),
+        Waiting {
+            file: "/run/named/pineapple.json".into(),
+            refused: None,
+        },
+        "a whole path is where the row goes"
+    );
+    assert_eq!(
+        waiting(None, home),
+        Waiting {
+            file: own.clone(),
+            refused: None,
+        },
+        "none named is For You's own, and nothing to say"
+    );
+    for part in ["", "named/pineapple.json"] {
+        assert_eq!(
+            waiting(Some(OsStr::new(part)), home),
+            Waiting {
+                file: own.clone(),
+                refused: Some(part.into()),
+            },
+            "{part:?} names nothing, and is kept to be said"
+        );
+    }
 }
