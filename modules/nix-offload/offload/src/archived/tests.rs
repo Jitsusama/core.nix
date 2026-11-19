@@ -228,6 +228,10 @@ fn a_sparse_file_git_cant_read_as_cones_is_refused() {
         "!/*/\n/*\n/a/\n",
         "/*\n!/*/\n!/b/*/\n/b/\n",
         "/*\n!/*/\n/a/\n!/a/*/\n!/b/*/\n",
+        // A folder taken out before it's held, or never held, with a cone
+        // under it, which git reads as no cone at all.
+        "/*\n!/*/\n!/b/*/\n/b/c/\n",
+        "/*\n!/*/\n!/b/*/\n/b/\n/b/c/\n",
         "/*\n!/*/\n/a/\n!/a/*/\n",
         "/*\n!/*/\n/a\\b/\n",
         "/*\n!/*/\n/a/\n/a/\n",
@@ -376,6 +380,12 @@ fn what_a_run_that_ended_left_is_swept() {
     let _going = left(&scratch, "run-2-going", old, Some(true));
     left(&scratch, "run-3-unlocked", old, None);
     left(&scratch, "run-4-newborn", Duration::ZERO, None);
+    // Made in the future, as a clock stepped back after a resume leaves.
+    left(&scratch, "run-5-future", Duration::ZERO, Some(false));
+    fs::File::open(scratch.join("run-5-future"))
+        .unwrap()
+        .set_modified(SystemTime::now() + NEWBORN * 2)
+        .unwrap();
     fs::write(scratch.join("uplink-1"), "").unwrap();
 
     let packed = packed(&top, &commit, None, &scratch, LARGEST);
@@ -394,6 +404,28 @@ fn what_a_run_that_ended_left_is_swept() {
         "only what the ended runs left was swept"
     );
     assert!(own.join("tree.tgz").exists(), "its own tarball waits to go");
+}
+
+// A run waits for a builder for minutes after packing, and its tarball
+// must still be there to send once another run has swept the scratch.
+#[test]
+fn a_packed_runs_tarball_outlives_another_runs_sweep() {
+    let folder = tempfile::tempdir().unwrap();
+    let top = repository(folder.path(), &[("file", "x")]);
+    let commit = git(&top, &["rev-parse", "HEAD"]);
+    let scratch = folder.path().join("scratch");
+    let first = packed(&top, &commit, None, &scratch, LARGEST).unwrap();
+    let made = SystemTime::now() - NEWBORN * 2;
+    fs::File::open(first.archive.parent().unwrap())
+        .unwrap()
+        .set_modified(made)
+        .unwrap();
+
+    packed(&top, &commit, None, &scratch, LARGEST).unwrap();
+    assert!(
+        first.archive.exists(),
+        "the waiting run's tarball was swept"
+    );
 }
 
 // Others reach a scratch in a shared /tmp, so one others can read is
@@ -469,6 +501,77 @@ fn unchanged_reads_what_the_tree_holds() {
     assert!(
         fs::read_dir(&scratch).unwrap().next().is_none(),
         "nothing is left in the scratch"
+    );
+}
+
+// A split index keeps most of its entries in a shared file beside it,
+// which a copy of the index alone wouldn't find, and a tree a large
+// repository's checkout splits so would then never send.
+#[test]
+fn unchanged_reads_a_split_index() {
+    let folder = tempfile::tempdir().unwrap();
+    let top = coned(folder.path());
+    git(&top, &["update-index", "--split-index"]);
+    let head = git(&top, &["rev-parse", "HEAD"]);
+    let scratch = folder.path().join("scratch");
+    assert!(
+        fs::read_dir(top.join(".git")).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("sharedindex.")),
+        "the index is split"
+    );
+
+    assert_eq!(unchanged(&top, &head, &scratch), Ok(true));
+    fs::write(top.join("a/x"), "changed").unwrap();
+    assert_eq!(unchanged(&top, &head, &scratch), Ok(false), "changed");
+}
+
+// A sparse index holds a folder outside the cones as one entry, which the
+// borrowing repository, sparse in no way of its own, has to read too.
+#[test]
+fn unchanged_reads_a_sparse_index() {
+    let folder = tempfile::tempdir().unwrap();
+    let top = coned(folder.path());
+    git(
+        &top,
+        &["sparse-checkout", "set", "--cone", "--sparse-index", "a"],
+    );
+    let head = git(&top, &["rev-parse", "HEAD"]);
+    let scratch = folder.path().join("scratch");
+    let listed = git(&top, &["ls-files", "--sparse"]);
+    assert!(
+        listed.lines().any(|line| line == "b/"),
+        "b is one entry: {listed}"
+    );
+
+    assert_eq!(unchanged(&top, &head, &scratch), Ok(true));
+    fs::write(top.join("a/x"), "changed").unwrap();
+    assert_eq!(unchanged(&top, &head, &scratch), Ok(false), "changed");
+}
+
+// An index a session planted as a pipe would hold the run forever, and
+// one past a tarball's size would fill the run's folder, most often in
+// memory.
+#[test]
+fn unchanged_copies_only_an_index_that_is_a_file() {
+    let folder = tempfile::tempdir().unwrap();
+    let top = repository(folder.path(), &[("file", "x")]);
+    let head = git(&top, &["rev-parse", "HEAD"]);
+    fs::remove_file(top.join(".git/index")).unwrap();
+    let made = Command::new("mkfifo")
+        .arg(top.join(".git/index"))
+        .status()
+        .unwrap();
+    assert!(made.success(), "the test plants a pipe");
+
+    let refused = unchanged(&top, &head, &folder.path().join("scratch"));
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|why| why.contains("isn't a file")),
+        "{refused:?}"
     );
 }
 

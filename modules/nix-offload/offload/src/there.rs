@@ -2224,7 +2224,9 @@ const ELSEWHERE: [&str; 6] = [
 /// so nothing in it may start a program or reach outside it: no hook,
 /// such as the reference transaction `update-ref` runs, no file system
 /// monitor, which a diff would start, no replaced object and none from a
-/// caller's alternates.
+/// caller's alternates. Nor is a missing object fetched: a partial clone's
+/// promisor remote, which the tree's config names, would run its transport
+/// as the person.
 fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
     git_with(top, arguments, index, &[])
 }
@@ -2248,6 +2250,7 @@ pub fn git_with(
         .arg(top)
         .args(arguments)
         .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .env("GIT_NO_LAZY_FETCH", "1")
         .envs(vars.iter().copied());
     for name in ELSEWHERE {
         command.env_remove(name);
@@ -2407,6 +2410,7 @@ pub fn for_run(folder: &Path, scratch: &Path) -> Result<ForRun, String> {
     let top = git(&canonical, &["rev-parse", "--show-toplevel"], None)
         .map(PathBuf::from)
         .ok_or_else(|| not("isn't in a git tree"))?;
+    its_own(&canonical, &top).map_err(not)?;
     let on_github = git(&top, &["remote", "get-url", "origin"], None)
         .as_deref()
         .and_then(github_of)
@@ -2430,6 +2434,61 @@ pub fn for_run(folder: &Path, scratch: &Path) -> Result<ForRun, String> {
         sized(size)
     );
     Ok(ForRun::Archived(archived))
+}
+
+/// Whether `top`, which git found for `canonical`, is that tree's own
+/// repository. A fenced session can write its repository's config, and a
+/// linked worktree's `commondir`, so either could name another repository
+/// it can't read, whose files `--run` would then send as the person:
+/// `core.worktree` makes git's top any folder, and `commondir` takes the
+/// objects and index from any git folder. So `--run` is refused a tree
+/// outside its top, one whose config sets `core.worktree`, a top whose git
+/// folder isn't the tree's own, and a git folder that is neither the common
+/// one, as the top's `.git` folder, nor one of its worktrees whose `gitdir`
+/// names the top's `.git` file: a `.git` file can name any repository's git
+/// folder, or a worktree of it that the session didn't make. Each is asked
+/// from the tree itself, since from a top elsewhere git would read that
+/// repository's config instead. A submodule's git folder sets
+/// `core.worktree`, so `--run` is refused one.
+fn its_own(canonical: &Path, top: &Path) -> Result<(), &'static str> {
+    if !canonical.starts_with(top) {
+        return Err("isn't within the repository git finds for it");
+    }
+    if git(canonical, &["config", "--get", "core.worktree"], None).is_some() {
+        return Err("has a repository whose config names its files elsewhere");
+    }
+    let at = |from: &Path, what: &str| {
+        git(from, &["rev-parse", "--path-format=absolute", what], None)
+            .and_then(|dir| fs::canonicalize(dir).ok())
+    };
+    let (Some(dir), Some(common)) = (
+        at(canonical, "--git-dir"),
+        at(canonical, "--git-common-dir"),
+    ) else {
+        return Err("has no git folder that can be found");
+    };
+    if at(top, "--git-dir").as_ref() != Some(&dir) {
+        return Err("isn't within the repository git finds for it");
+    }
+    let dotgit = fs::canonicalize(top.join(".git")).ok();
+    let worktree = dir.parent().filter(|parent| parent.ends_with("worktrees"));
+    let named = || {
+        fs::read_to_string(dir.join("gitdir"))
+            .ok()
+            .and_then(|named| fs::canonicalize(dir.join(named.trim())).ok())
+    };
+    let own = if dir == common {
+        dotgit.as_ref() == Some(&dir)
+    } else {
+        worktree.and_then(Path::parent) == Some(common.as_path())
+            && dotgit.is_some()
+            && named() == dotgit
+    };
+    if own {
+        Ok(())
+    } else {
+        Err("has a git folder whose objects are another repository's")
+    }
 }
 
 /// The commit the git tree `top` is built at: its HEAD, or, with changes to

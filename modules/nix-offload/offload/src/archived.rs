@@ -162,6 +162,13 @@ fn diffed(top: &Path, head: &str, run: &Run) -> Result<bool, String> {
         .map_err(|error| format!("has no index to read its changes by: {error}"))?;
     let index = run.dir.join("index");
     copied(own, &index).map_err(|error| format!("couldn't copy its index: {error}"))?;
+    // A split index keeps most of its entries in a shared file beside it,
+    // which git looks for beside the index it's given too.
+    for shared in shared_indexes(top) {
+        in_git_dir(top, None, &shared)
+            .and_then(|file| copied(file, &run.dir.join(&shared)))
+            .map_err(|error| format!("couldn't copy its split index's {shared}: {error}"))?;
+    }
     let diffed = borrowed
         .git()
         .current_dir(top)
@@ -187,10 +194,11 @@ fn diffed(top: &Path, head: &str, run: &Run) -> Result<bool, String> {
 }
 
 /// The file `name` in the git tree `top`'s own git folder, or in its
-/// folder `within` there, opened without following a link to either, as a
-/// session could plant one to a file it can't read. git's own answer of
-/// where it is, `rev-parse --path-format=absolute --git-path`, follows
-/// every link in it.
+/// folder `within` there, opened without following a link at its last
+/// part, as a session could plant one to a file it can't read. git's own
+/// answer of where the git folder is resolves every link on the way to it,
+/// so a `.git` naming another repository is refused before this, by
+/// `there::for_run`, which ties the git folder to the tree's own `.git`.
 fn in_git_dir(top: &Path, within: Option<&str>, name: &str) -> io::Result<fs::File> {
     let dir = there::git_with(top, &["rev-parse", "--absolute-git-dir"], None, &[])
         .ok_or_else(|| io::Error::other("its git folder can't be found"))?;
@@ -219,10 +227,33 @@ fn in_git_dir(top: &Path, within: Option<&str>, name: &str) -> io::Result<fs::Fi
     Ok(unsafe { fs::File::from_raw_fd(fd) })
 }
 
+/// The shared files of the git tree `top`'s split index, by name, none for
+/// an index that isn't split.
+fn shared_indexes(top: &Path) -> Vec<String> {
+    there::git_with(top, &["rev-parse", "--absolute-git-dir"], None, &[])
+        .and_then(|dir| fs::read_dir(dir).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|name| name.starts_with("sharedindex."))
+        .collect()
+}
+
 /// `from` copied to `to`, a file new to it, with its time, so git's
 /// check of a file changed in the second its index was written holds.
-fn copied(mut source: fs::File, to: &Path) -> io::Result<()> {
-    let modified = source.metadata()?.modified()?;
+/// Only a file no larger than a tarball may be is copied, since the run's
+/// folder is most often in memory, and a session could plant a pipe or a
+/// file that never ends.
+fn copied(source: fs::File, to: &Path) -> io::Result<()> {
+    let meta = source.metadata()?;
+    if !meta.is_file() {
+        return Err(io::Error::other("it isn't a file"));
+    }
+    if meta.len() > LARGEST {
+        return Err(io::Error::other(format!("it's past {LARGEST} bytes")));
+    }
+    let modified = meta.modified()?;
+    let mut source = source.take(LARGEST);
     let mut target = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -237,7 +268,12 @@ fn copied(mut source: fs::File, to: &Path) -> io::Result<()> {
 /// could swap the borrowing repository for its own, whose config git
 /// reads, or read the files packed.
 fn owned(scratch: &Path) -> Result<(), String> {
-    let refused = |why: &str| Err(format!("has no scratch to pack it in: {why}"));
+    let refused = |why: &str| {
+        Err(format!(
+            "has no scratch of its own in {} to read it in: {why}",
+            scratch.display()
+        ))
+    };
     if let Some(parent) = scratch.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -558,13 +594,14 @@ fn swept(scratch: &Path) {
 }
 
 /// Whether the run whose folder is `dir` ended: past [`NEWBORN`], its lock
-/// can be taken, or it never made one.
+/// can be taken, or it never made one. A folder made in the future, as a
+/// clock stepped back after a resume leaves, is asked its lock too, since
+/// the lock is what decides and it would otherwise wait out the clock.
 fn ended(dir: &Path) -> bool {
     let newborn = fs::symlink_metadata(dir)
         .and_then(|meta| meta.modified())
         .ok()
-        .and_then(|made| made.elapsed().ok())
-        .is_none_or(|age| age < NEWBORN);
+        .is_none_or(|made| made.elapsed().is_ok_and(|age| age < NEWBORN));
     if newborn {
         return false;
     }
@@ -651,7 +688,9 @@ impl Drop for Borrowed {
 /// git told of no config, attributes, hook, replaced object or other
 /// repository but what it's given, whatever the caller's environment says.
 fn clean() -> Command {
-    let mut command = Command::new("git");
+    // The store's git, where package.nix gives one, has every feature this
+    // reads: its own gzip, GIT_ATTR_SOURCE and absolute paths.
+    let mut command = Command::new(option_env!("NIX_OFFLOAD_GIT").unwrap_or("git"));
     for (name, _) in env::vars_os() {
         if name.to_string_lossy().starts_with("GIT_") {
             command.env_remove(name);

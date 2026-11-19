@@ -6237,6 +6237,80 @@ fn a_run_refuses_a_tree_that_borrows_objects_and_reads_only_its_own() {
     );
 }
 
+// A session can write its repository's config and its `.git` file, and
+// each of these would have sent another repository's files as the person:
+// `core.worktree` naming another folder, a `.git` file naming another
+// repository's git folder or a worktree of it, and a planted worktree
+// whose `commondir` names another repository's objects. A worktree git
+// made itself still goes.
+#[test]
+fn a_run_refuses_a_tree_whose_git_folder_is_another_repositorys() {
+    let run = RunTree::new();
+    let (hidden, _) = run.hidden();
+    let elsewhere = run.folder.path().join("elsewhere");
+    git(
+        &hidden,
+        &run.config,
+        &["worktree", "add", "-q", &elsewhere.to_string_lossy()],
+    );
+
+    run.git(&["config", "core.worktree", &hidden.to_string_lossy()]);
+    run.refused(&run.run(&[]), "isn't within the repository git finds");
+    // A folder holding the tree makes a top the tree is within.
+    run.git(&[
+        "config",
+        "core.worktree",
+        &run.folder.path().to_string_lossy(),
+    ]);
+    run.refused(&run.run(&[]), "names its files elsewhere");
+    run.git(&["config", "--unset", "core.worktree"]);
+
+    let own = run.tree.join(".git");
+    let aside = run.folder.path().join("aside");
+    fs::rename(&own, &aside).unwrap();
+    fs::write(&own, format!("gitdir: {}\n", hidden.join(".git").display())).unwrap();
+    run.refused(&run.run(&[]), "objects are another repository's");
+    let theirs = hidden.join(".git/worktrees/elsewhere");
+    fs::write(&own, format!("gitdir: {}\n", theirs.display())).unwrap();
+    run.refused(&run.run(&[]), "objects are another repository's");
+    let planted = run.folder.path().join("planted");
+    fs::create_dir(&planted).unwrap();
+    fs::write(planted.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+    fs::write(
+        planted.join("commondir"),
+        format!("{}\n", hidden.join(".git").display()),
+    )
+    .unwrap();
+    fs::write(planted.join("gitdir"), format!("{}\n", own.display())).unwrap();
+    fs::write(&own, format!("gitdir: {}\n", planted.display())).unwrap();
+    run.refused(&run.run(&[]), "objects are another repository's");
+    fs::remove_file(&own).unwrap();
+    fs::rename(&aside, &own).unwrap();
+
+    let linked = run.folder.path().join("linked");
+    run.git(&[
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        "linked",
+        &linked.to_string_lossy(),
+    ]);
+    let ran = there_command(&run.bin, &run.offload, run.folder.path())
+        .args(["--never-ask", "--run", "--", "pnpm", "test"])
+        .current_dir(&linked)
+        .env("GIT_CONFIG_GLOBAL", &run.config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "a worktree of its own: {ran:?}");
+    assert_eq!(
+        run.sent().as_deref(),
+        Some(run.head.as_str()),
+        "its HEAD went"
+    );
+}
+
 // A gitlink a session commits names another repository's commit, and the
 // run carries that name alone: the hidden commit and what it holds stay
 // behind, since the builder never fetches a submodule.
