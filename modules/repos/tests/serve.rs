@@ -52,14 +52,15 @@ impl Drop for Serving {
     }
 }
 
-/// The daemon, looking under `at` and writing Code's homes to `homes(at)`
-/// as the local sites tell its unit to, serving in a runtime folder of its
-/// own, named for `at` as `place` names it, so no two tests share one.
+/// The daemon, looking under `at`, writing Code's homes to `homes(at)` as
+/// the local sites tell its unit to when `writing`, and otherwise none, as
+/// a machine without them runs it; serving in a runtime folder of its own,
+/// named for `at` as `place` names it, so no two tests share one.
 /// That folder is named short, and not past its link, since a socket's
 /// path stops at 108 bytes. It's made afresh, readable by this account
 /// alone, so nothing else sharing the temporary folder reaches the socket
 /// or puts one of its own there first.
-fn serve(at: &Path) -> (Serving, PathBuf) {
+fn serve(at: &Path, writing: bool) -> (Serving, PathBuf) {
     let name = at
         .file_name()
         .and_then(|name| name.to_str())
@@ -71,15 +72,17 @@ fn serve(at: &Path) -> (Serving, PathBuf) {
         .mode(0o700)
         .create(&run)
         .expect("a runtime folder of its own");
-    let child = Command::new(env!("CARGO_BIN_EXE_repos"))
+    let mut daemon = Command::new(env!("CARGO_BIN_EXE_repos"));
+    daemon
         .arg("serve")
         .env_clear()
         .env("HOME", at)
         .env("XDG_RUNTIME_DIR", &run)
-        .env("REPOS_ROOTS", at.join("src"))
-        .env("REPOS_HOMES", homes(at))
-        .spawn()
-        .expect("repos serve started");
+        .env("REPOS_ROOTS", at.join("src"));
+    if writing {
+        daemon.env("REPOS_HOMES", homes(at));
+    }
+    let child = daemon.spawn().expect("repos serve started");
     let socket = run.join("daemons/repos.sock");
     (Serving { child, run }, socket)
 }
@@ -160,7 +163,7 @@ fn the_homes_are_written_at_the_first_reading_and_again_as_a_tree_is_cut() {
     );
     written(&git.join("HEAD"), "ref: refs/heads/main\n");
     written(&git.join("refs/heads/main"), &format!("{FIRST}\n"));
-    let (serving, _socket) = serve(&at);
+    let (serving, _socket) = serve(&at, true);
     let homes = homes(&at);
     homes_until(&homes, |things| {
         holding(things, "github:Jitsusama/core.nix")
@@ -197,7 +200,7 @@ fn a_watch_is_told_as_a_branch_moves_and_a_tree_is_cut() {
     );
     written(&git.join("HEAD"), "ref: refs/heads/main\n");
     written(&git.join("refs/heads/main"), &format!("{FIRST}\n"));
-    let (serving, socket) = serve(&at);
+    let (serving, socket) = serve(&at, false);
 
     let stream = connect(&socket);
     let mut lines = BufReader::new(stream.try_clone().expect("a reader"));
@@ -244,7 +247,11 @@ fn a_watch_is_told_as_a_branch_moves_and_a_tree_is_cut() {
         at.join("src/core.nix").display().to_string()
     );
     assert_eq!(cut["present"], true);
-    // Stopped first, or a writing of its homes could land as the place goes.
+    // Told none, as a machine without the local sites runs it, it writes none.
+    assert!(
+        !homes(&at).parent().expect("a folder").exists(),
+        "homes were written with none named"
+    );
     drop(serving);
     fs::remove_dir_all(&at).expect("cleaned");
 }

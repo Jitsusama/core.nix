@@ -195,6 +195,24 @@ fn homes_unchanged_on_the_disk_are_not_written_again() {
 }
 
 #[test]
+fn homes_the_server_can_not_read_are_written_again() {
+    // The server reads as the daemon's own account, so homes closed to it are
+    // homes the skip can't open to judge either.
+    let folder = folder("unreadable");
+    let file = folder.join("homes.json");
+    let mut homes = Homes::at(file.clone());
+    homes.write(&record()).expect("written");
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).expect("closed to all");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "homes closed to their readers were taken as the same"
+    );
+    let mode = fs::metadata(&file).expect("the homes").permissions().mode();
+    assert_eq!(mode & 0o777, 0o644, "the homes were left at {mode:o}");
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
 fn homes_changed_to_the_same_length_are_written_again() {
     let folder = folder("same-length");
     let file = folder.join("homes.json");
@@ -366,6 +384,13 @@ fn a_failure_for_another_reason_is_said_again() {
     let temp = folder.join(".homes.json.writing");
     fs::create_dir_all(temp.join("in the way")).expect("a folder in the hidden file's way");
     let then = homes.keep(&record()).expect("another failure said");
+    assert!(
+        then.starts_with(&format!(
+            "repos: couldn't write Code's homes to {}",
+            file.display()
+        )),
+        "the second failure said {then:?}"
+    );
     assert_ne!(
         then, first,
         "the second failure gave the first one's reason"
