@@ -12333,23 +12333,23 @@ Scope {
     // The key is the one heard as the drawer said the keys were coming, or
     // for a key a program typed with no time, when that was, read before the
     // drawer laid its lines, so the lay is the key's.
-    property real intoFrom: 0
+    // Each going-in is its own record, made here before the drawer lays its
+    // lines, so the after-frame its lay asks for takes this one as it's
+    // asked, and a quick second going-in neither silences the first nor
+    // takes a frame that began before it.
+    property var intoGoing: null
     function intoComing() {
         const pressed = KeyTimes.pressed();
-        intoFrom = pressed > 0 ? pressed : KeyTimes.now();
+        intoGoing = { from: pressed > 0 ? pressed : KeyTimes.now(), laid: -1 };
     }
     // The frame awaited is the next to begin, read once the lines are laid
     // and before any frame can sync them, as a key's is.
-    // Each going-in waits here for its frame's count, so a quick second one
-    // doesn't leave the first unsaid.
-    property var intoWaiting: []
     function intoTimed() {
-        const from = intoFrom;
-        intoFrom = 0;
-        if (!open || from <= 0)
+        const one = intoGoing;
+        intoGoing = null;
+        if (!open || !one)
             return;
-        const one = { key: drawerRow?.key || drawerRow?.name || "", from, laid: -1 };
-        intoWaiting.push(one);
+        one.key = drawerRow?.key || drawerRow?.name || "";
         // The frame presentedAwait waits on, whose swap says the shell's part.
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
@@ -12361,14 +12361,12 @@ Scope {
     // The lines the frame the keys came in laid, counted as its swap is
     // heard and before the rest is laid after it, so a key typed with the
     // chord that laid the whole run before the frame is counted with it.
-    // Every going-in still waiting was drawn by that frame.
-    function intoDrawn(laid) {
-        const drawn = intoWaiting;
-        intoWaiting = [];
-        for (const one of drawn) {
-            one.laid = laid;
-            intoSay(one);
-        }
+    // A page shown anew while the keys stay has no going-in, so nothing.
+    function intoDrawn(one, laid) {
+        if (!one)
+            return;
+        one.laid = laid;
+        intoSay(one);
     }
     // Said once both its presentation and its count are in, whichever is
     // heard last.
@@ -15416,10 +15414,14 @@ Scope {
             // laid in the swap's own handler it held the others and the
             // swap's stamp behind it: the drawer lab read its swap some
             // 390 ms after niri presented it (2026-11-19).
-            afterFrame: then => root.afterFrame(() => {
-                root.intoDrawn(drawerCard.laid.length);
-                Qt.callLater(then);
-            })
+            // The going-in it's for, if any, is the one the keys coming made.
+            afterFrame: then => {
+                const going = root.intoGoing;
+                root.afterFrame(() => {
+                    root.intoDrawn(going, drawerCard.laid.length);
+                    Qt.callLater(then);
+                });
+            }
             // The search being typed on the line, washed as it's typed.
             seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
             seekingForward: !prompt.standing.seek || prompt.standing.seek.forward
