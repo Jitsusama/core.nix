@@ -92,6 +92,20 @@ def test_each_count_goes_to_its_own_turn_and_a_turning_to_neither() -> None:
     assert ledger.turns[False] == (5, 50), f"frozen the ledger kept {ledger.turns[False]}"
 
 
+def test_a_turn_that_never_finished_keeps_what_follows_in_neither() -> None:
+    """A freeze that fails partway leaves the ledger between turns, keeping each count after."""
+    ledger = Ledger(stat(0, 0))
+    ledger.count(stat(10, 100), turn=True)
+    ledger.turning()
+    ledger.count(stat(40, 400), turn=True)
+    assert ledger.between, "a turn begun and never finished left the ledger out of it"
+    assert ledger.turns[True] == (10, 100), f"under load the ledger kept {ledger.turns[True]}"
+    ledger.turned()
+    ledger.count(stat(45, 450), turn=False)
+    assert not ledger.between, "a finished turn left the ledger between turns"
+    assert ledger.turns[False] == (5, 50), f"frozen the ledger kept {ledger.turns[False]}"
+
+
 def test_the_ledger_says_each_turns_ticks_and_the_share() -> None:
     """What a subtest says names each turn's stolen and busy ticks, and the share they give."""
     ledger = Ledger(stat(0, 0))
@@ -111,5 +125,12 @@ def test_the_ledger_says_no_share_for_a_turn_it_never_counted() -> None:
     said = ledger.said()
     assert said == (
         "the guest counted 500 of 1000 busy ticks stolen under load, against 0 of 0 frozen,"
+        " so no share"
+    ), f"the ledger said {said!r}"
+    frozen = Ledger(stat(0, 0))
+    frozen.count(stat(500, 1000), turn=False)
+    said = frozen.said()
+    assert said == (
+        "the guest counted 0 of 0 busy ticks stolen under load, against 500 of 1000 frozen,"
         " so no share"
     ), f"the ledger said {said!r}"
