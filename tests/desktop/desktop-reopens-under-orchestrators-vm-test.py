@@ -939,32 +939,15 @@ def test_new_work_that_starts_nothing_is_told_once_the_launcher_is_shut(
     must be seen through." Here the node takes the ask and falls silent, so the end comes after
     he's gone, as the agents daemon's patience runs out; the shell's journal says it too.
     """
-    machine = desktop.machine
     # A repository with no checkout, so the ask the node reads once it runs again starts nothing.
     link = "https://github.com/harbour/nowhere/issues/8"
     since = desktop.mark()
     before = starts_noticed(desktop, UNANSWERED)
     desktop.as_account("systemctl --user kill --signal=STOP mycelium")
     try:
-        desktop.as_account("qs ipc call launcher toggle")
-        desktop.launcher_ready()
-        desktop.type_in("new work", selecting="Start New Work")
-        machine.send_key("ret")
-        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
-        desktop.step_in("ret")
-        desktop.launcher_until(lambda shown: shown["mode"] == "insert")
-        machine.send_chars(link)
-        machine.send_key("ret")
-        # Return empties the field once it's taken the words, and then he leaves.
-        desktop.launcher_until(lambda shown: shown["typed"] == "")
-        desktop.as_account("qs ipc call launcher toggle")
-        desktop.launcher_until(lambda shown: shown["open"] is False)
+        asked_from_a_link(desktop, link)
         # The daemon gives up on a silent node within 50 s, the shell on the daemon within 60.
-        told = f"[{STARTS_NOTICED} | select(.body == {json.dumps(UNANSWERED)})] | length > {before}"
-        machine.wait_until_succeeds(
-            desktop.in_session(f"jq -e {shlex.quote(told)} {desktop.NOTICES_KEPT}"),
-            timeout=dt.timedelta(seconds=90),
-        )
+        noticed(desktop, UNANSWERED, before, dt.timedelta(seconds=90))
         said = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(since)}"
@@ -980,6 +963,91 @@ def test_new_work_that_starts_nothing_is_told_once_the_launcher_is_shut(
         desktop.launcher_left_closed()
 
 
+def test_a_start_the_shell_restarted_under_is_told_by_the_shell_started_again(
+    desktop: Desktop,
+) -> None:
+    """A start whose shell restarts before it ends is told by the shell that comes up.
+
+    The agents daemon keeps each start from his Return until the shell says it told him, so a
+    shell started again mid-start, as a switch or a crash does, still says how it ended (Joel,
+    2026-11-18: "things I send in must be seen through"). Here the node falls silent, so the
+    start ends after the old shell has gone, as the daemon's patience runs out.
+    """
+    machine = desktop.machine
+    link = "https://github.com/harbour/nowhere/issues/9"
+    before = starts_noticed(desktop, UNANSWERED)
+    desktop.as_account("systemctl --user kill --signal=STOP mycelium")
+    try:
+        asked_from_a_link(desktop, link)
+        desktop.as_account("systemctl --user restart quickshell")
+        machine.wait_until_succeeds(
+            desktop.in_session("qs ipc call launcher list > /dev/null"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        noticed(desktop, UNANSWERED, before, dt.timedelta(seconds=90))
+    finally:
+        desktop.as_account("systemctl --user kill --signal=CONT mycelium")
+        desktop.launcher_left_closed()
+
+
+def test_a_start_a_switch_cut_off_is_told_once(desktop: Desktop) -> None:
+    """A start cut off by a switch's restarts is told once, as one that may still start.
+
+    A switch restarts the agents daemon and the shell together, so neither hears the node's
+    answer; the daemon finds the start it kept with no end and ends it so, since the node may
+    have started it and asking again blind could start it twice. Told, it's told no more,
+    however often the shell starts again.
+    """
+    machine = desktop.machine
+    link = "https://github.com/harbour/nowhere/issues/10"
+    before = starts_noticed(desktop, CUT_OFF)
+    desktop.as_account("systemctl --user kill --signal=STOP mycelium")
+    try:
+        asked_from_a_link(desktop, link)
+        desktop.as_account("systemctl --user restart agents quickshell")
+        noticed(desktop, CUT_OFF, before, dt.timedelta(seconds=120))
+        desktop.as_account("systemctl --user restart quickshell")
+        machine.wait_until_succeeds(
+            desktop.in_session("qs ipc call launcher list > /dev/null"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        # The shell is told what's kept as it connects, so a told start would be noticed again
+        # within moments of its list answering.
+        machine.sleep(NOTICE_LANDS)
+        told = starts_noticed(desktop, CUT_OFF)
+        assert told == before + 1, f"a cut-off start was noticed {told - before} times"
+    finally:
+        desktop.as_account("systemctl --user kill --signal=CONT mycelium")
+        desktop.launcher_left_closed()
+
+
+def asked_from_a_link(desktop: Desktop, link: str) -> None:
+    """Start New Work on `link` from the launcher with Joel's own Return, then shut it."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("new work", selecting="Start New Work")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+    machine.send_chars(link)
+    machine.send_key("ret")
+    # Return empties the field once it's taken the words, and then he leaves.
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_until(lambda shown: shown["open"] is False)
+
+
+def noticed(desktop: Desktop, body: str, before: int, within: dt.timedelta) -> None:
+    """Wait `within` for Start New Work to notice `body` once more than `before`."""
+    told = f"[{STARTS_NOTICED} | select(.body == {json.dumps(body)})] | length > {before}"
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f"jq -e {shlex.quote(told)} {desktop.NOTICES_KEPT}"),
+        timeout=within,
+    )
+
+
 # Start New Work's notices, and what the agents daemon says of a start its node took and fell
 # silent on (modules/agents/src/sprout.rs's SILENT).
 WALK_ENDED = shlex.quote("launcher: new work wasn't started")
@@ -989,6 +1057,11 @@ NOTICE_LANDS = 3
 STARTS_NOTICED = '.notices[]? | select(.app == "Agents" and .summary == "Start New Work")'
 UNANSWERED = (
     "the node didn't answer in time; it may still start it, so look in Agents before asking again"
+)
+# What the agents daemon says of a start it kept that a restart cut off (starts.rs's CUT_OFF).
+CUT_OFF = (
+    "a restart cut it off before the node answered; it may still start it, so look in Agents"
+    " before asking again"
 )
 
 
