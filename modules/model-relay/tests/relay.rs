@@ -10,7 +10,9 @@
 //! of them sharing one opened for them, and is a 502 when reset again or
 //! with nowhere to go, one a fallen connection lost is a 502 and no reset,
 //! the origin hearing a lost one once, a body too large or left unfinished
-//! goes nowhere, the counts are said as the relay leaves, an origin out of
+//! goes nowhere, the latter as pi's cancel, never a 421, a relay failing
+//! past its share stands down, sending pi direct, and takes requests
+//! again after, the counts are said as the relay leaves, an origin out of
 //! reach is said as a 502 or a 504 without queueing, a
 //! connection that won't open isn't asked for again on every request, nor
 //! does a failure outlast the origin coming back, the relay leaves once
@@ -62,6 +64,16 @@ const STREAM_GAP: Duration = Duration::from_millis(1500);
 const LONG_GAP: Duration = Duration::from_secs(3);
 /// How long the origin holds each request the sharing test sends.
 const HELD: Duration = Duration::from_millis(300);
+/// How long the origin holds `/reset-once-held` the first time before it
+/// resets it, long past the twenty requests that stand a relay down.
+const HELD_THEN_RESET: Duration = Duration::from_secs(8);
+
+/// How long `/cut` waits after its first half before its connection falls,
+/// and `/broken` before its answer breaks, so the relay has the half first.
+const CUT_AFTER: Duration = Duration::from_millis(100);
+/// How long `/cut-late` waits after its first half before its connection
+/// falls, long past a stand-down of a second and the return after it.
+const CUT_LATE: Duration = Duration::from_secs(10);
 /// How long the tests wait for the relay to listen.
 const LISTENS_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay is given to hear the origin's goodbye on a
@@ -271,10 +283,14 @@ const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 /// The origin's answer: `/echo` hands the body back, `/held` waits a
 /// moment first, `/stream` sends its halves a gap apart and `/long` a
 /// longer one, `/sized` names its length and ends in a frame of its own,
-/// `/broken` fails after its first half, `/bye` answers
+/// `/broken` fails after its first half, `/cut` lets its connection fall
+/// with no word after its first half, `/cut-late` does so `CUT_LATE`
+/// after it, `/bye` answers
 /// and lets its connection go, `/reset` reads the request and resets
 /// its stream rather than answer, `/reset-once` does so the first time
-/// it's asked and echoes after, `/reset-on-the-first` does so on the
+/// it's asked and echoes after, `/reset-held` holds each request
+/// `HELD_THEN_RESET` and then resets it, `/reset-once-held` does so the
+/// first time it's asked and echoes after, `/reset-on-the-first` does so on the
 /// origin's first connection and echoes on any other,
 /// `/reset-but-on-the-second` does so on every connection but the
 /// origin's second, `/calm-down` resets saying to calm down, and `/drop`
@@ -314,47 +330,14 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             .filter(|handed| handed.uri.ends_with(&path))
             .count()
     };
+    if (path == "/reset-once-held" && heard == 1) || path == "/reset-held" {
+        tokio::time::sleep(HELD_THEN_RESET).await;
+    }
     if let Some(reason) = resets(&path, heard, connection) {
         return Err(h2::Error::from(reason));
     }
     let answer = match path.as_str() {
-        "/stream" | "/long" => {
-            let gap = if path == "/long" {
-                LONG_GAP
-            } else {
-                STREAM_GAP
-            };
-            let (mut sender, body) = Channel::<Bytes, Infallible>::new(2);
-            tokio::spawn(async move {
-                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
-                // An answer paused mid-body for its route's named gap, so
-                // the relay is seen passing what came before the rest.
-                tokio::time::sleep(gap).await;
-                let _ = sender.send_data(Bytes::from_static(b"second\n")).await;
-            });
-            Response::builder()
-                .header("content-type", "text/event-stream")
-                .body(boxed(body))
-        }
-        "/sized" => {
-            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
-            tokio::spawn(async move {
-                let _ = sender.send_data(Bytes::from_static(SIZED)).await;
-            });
-            Response::builder()
-                .header("content-length", SIZED.len().to_string())
-                .body(boxed(body))
-        }
-        "/broken" => {
-            let (mut sender, body) = Channel::<Bytes, io::Error>::new(1);
-            tokio::spawn(async move {
-                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
-                sender.abort(io::Error::other("the origin breaks off this answer"));
-            });
-            Response::builder()
-                .header("content-type", "text/event-stream")
-                .body(body.boxed())
-        }
+        "/stream" | "/long" | "/sized" | "/broken" | "/cut" | "/cut-late" => in_halves(&path, gone),
         "/held" => {
             let now = held.now.fetch_add(1, Ordering::SeqCst) + 1;
             held.most.fetch_max(now, Ordering::SeqCst);
@@ -379,6 +362,72 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
     Ok(answer.expect("an answer"))
 }
 
+/// The origin's answer for `path`, one of the routes `answer` names whose
+/// body comes in halves, or ends or fails after its first; `/cut` and
+/// `/cut-late` let its connection fall by `gone`.
+fn in_halves(path: &str, gone: Arc<Notify>) -> hyper::http::Result<Response<Answer>> {
+    match path {
+        "/sized" => {
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(SIZED)).await;
+            });
+            Response::builder()
+                .header("content-length", SIZED.len().to_string())
+                .body(boxed(body))
+        }
+        "/broken" => {
+            let (mut sender, body) = Channel::<Bytes, io::Error>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                // The first half goes out before the answer breaks, so it's
+                // broken off midway rather than never begun.
+                tokio::time::sleep(CUT_AFTER).await;
+                sender.abort(io::Error::other("the origin breaks off this answer"));
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(body.boxed())
+        }
+        "/cut" | "/cut-late" => {
+            let after = if path == "/cut-late" {
+                CUT_LATE
+            } else {
+                CUT_AFTER
+            };
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                // The first half goes out before the connection falls, so
+                // the answer is broken off midway rather than never begun.
+                tokio::time::sleep(after).await;
+                gone.notify_one();
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(boxed(body))
+        }
+        _ => {
+            let gap = if path == "/long" {
+                LONG_GAP
+            } else {
+                STREAM_GAP
+            };
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(2);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                // An answer paused mid-body for its route's named gap, so
+                // the relay is seen passing what came before the rest.
+                tokio::time::sleep(gap).await;
+                let _ = sender.send_data(Bytes::from_static(b"second\n")).await;
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(boxed(body))
+        }
+    }
+}
+
 /// The reason the origin resets a request for `path` with, the `heard`th
 /// it was asked for, on its `connection`, if it does: `answer` says which
 /// routes do. Each says a protocol error, as the resets of 18 November
@@ -387,8 +436,8 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
 fn resets(path: &str, heard: usize, connection: usize) -> Option<h2::Reason> {
     let resets = match path {
         "/calm-down" => return Some(h2::Reason::ENHANCE_YOUR_CALM),
-        "/reset" => true,
-        "/reset-once" => heard == 1,
+        "/reset" | "/reset-held" => true,
+        "/reset-once" | "/reset-once-held" => heard == 1,
         "/reset-on-the-first" => connection == 0,
         "/reset-but-on-the-second" => connection != 1,
         _ => false,
@@ -501,7 +550,12 @@ struct Got {
 }
 
 /// Asks the socket as pi does, in HTTP/1.1 with the Host it names.
-async fn ask(socket: &Path, request: Request<Full<Bytes>>) -> Got {
+async fn ask<B>(socket: &Path, request: Request<B>) -> Got
+where
+    B: hyper::body::Body + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
     let stream = UnixStream::connect(socket)
         .await
         .expect("the socket answers");
@@ -551,6 +605,8 @@ async fn a_request_passes_whole_and_nothing_of_it_is_logged() {
     // hyper's own stripping reads past, since it reads only the first.
     headers.append("connection", "x-this-hop".parse().expect("a value"));
     headers.insert("x-this-hop", "1".parse().expect("a value"));
+    // Spelt as h2 refuses to send it, which the relay mustn't pass on.
+    headers.insert("te", "Trailers".parse().expect("a value"));
 
     let got = ask(&relay.socket, asked).await;
 
@@ -591,6 +647,11 @@ async fn a_request_passes_whole_and_nothing_of_it_is_logged() {
         "a header Connection named went on"
     );
     assert_eq!(value("host"), None, "HTTP/2 names its host as :authority");
+    assert_eq!(
+        value("te").as_deref(),
+        Some(&b"trailers"[..]),
+        "a TE of trailers wasn't said as h2 sends it"
+    );
 
     let said = relay.said();
     assert!(
@@ -661,6 +722,18 @@ async fn only_its_origin_is_reached() {
         let got = ask(&relay.socket, asked).await;
         assert_eq!(got.status, StatusCode::MISDIRECTED_REQUEST, "{what}");
     }
+    // Its body read whole first, so pi isn't left writing what the relay
+    // stopped reading.
+    let (got, answered_after_the_body) = ask_in_halves(&relay.socket, "example.com", "/echo").await;
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "another host, its body in halves"
+    );
+    assert!(
+        answered_after_the_body,
+        "the other-origin 421 came before the body was read whole"
+    );
     assert_eq!(
         origin.handed.lock().expect("the record").len(),
         0,
@@ -1101,16 +1174,92 @@ async fn a_burst_reset_while_no_connection_opens_waits_on_one_attempt() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
+async fn a_body_over_64_mib_goes_nowhere_its_421s_said_and_one_pi_left_its_cancel() {
     let origin = origin().await;
     let host = origin.address.to_string();
     let mut relay = Relay::start_with(
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--idle-exit", "1"],
+        &["--idle-exit", "4", "--stand-down-for", "10"],
     );
-    let stream = UnixStream::connect(&relay.socket)
+
+    let answer = asked_too_much(&relay.socket, &host).await;
+    assert!(
+        answer.starts_with(b"HTTP/1.1 413"),
+        "a body too large was answered {:?}",
+        String::from_utf8_lossy(&answer)
+    );
+    assert_eq!(handed_to(&origin, "/echo"), 0, "a body too large went on");
+    // For another origin, it's the 421 that sends pi direct all the same.
+    let answer = asked_too_much(&relay.socket, "example.com").await;
+    assert!(
+        answer.starts_with(b"HTTP/1.1 421"),
+        "another origin's body too large was answered {:?}",
+        String::from_utf8_lossy(&answer)
+    );
+    // A body pi leaves is its cancel, though, not a 421 nobody hears.
+    left_halfway(&relay.socket, "example.com").await;
+    // And standing down, the 421 too, as the origin asked directly may
+    // take what the relay won't.
+    fail_past_its_share(&relay.socket, &host).await;
+    let answer = asked_too_much(&relay.socket, &host).await;
+    assert!(
+        answer.starts_with(b"HTTP/1.1 421"),
+        "a body too large while it stood down was answered {:?}",
+        String::from_utf8_lossy(&answer)
+    );
+    // And one pi leaves while it stands down is its cancel all the same.
+    left_halfway(&relay.socket, &host).await;
+
+    assert!(
+        relay.left_within(LISTENS_WITHIN * 2).is_some(),
+        "the relay didn't leave once idle"
+    );
+    let said = relay.said();
+    assert_eq!(
+        said.matches("a request's body passed 64 MiB, so it's refused")
+            .count(),
+        1,
+        "a body too large went unsaid, or another origin's was said as one: {said}"
+    );
+    assert!(
+        said.contains("25 asked, 3 refused, 17 failed")
+            && said.contains("; pi cancelled 2;")
+            && said.contains("; 1 refused as it stood down"),
+        "a body too large wasn't counted as refused, or one pi left as its cancel: {said}"
+    );
+    // Nothing came once its stand-down was over, so the last were all
+    // asked within it, as the counts need.
+    assert!(
+        !said.contains("so it takes requests again"),
+        "a request came once its stand-down was over, so proves nothing of it: {said}"
+    );
+}
+
+/// Asks for `/echo` at `host` as a pi that leaves halfway through its
+/// body, as on Escape, letting be whatever the relay says after.
+async fn left_halfway(socket: &Path, host: &str) {
+    let stream = UnixStream::connect(socket)
+        .await
+        .expect("the socket answers");
+    let (mut reading, mut writing) = stream.into_split();
+    let head = format!("POST /echo HTTP/1.1\r\nhost: {host}\r\ncontent-length: 10\r\n\r\nhi");
+    writing
+        .write_all(head.as_bytes())
+        .await
+        .expect("half a body written");
+    writing.shutdown().await.expect("pi leaves");
+    let mut left = Vec::new();
+    // Whatever the relay says to a pi that left, if it says anything,
+    // since only its counts tell what it made of it.
+    let _ = tokio::time::timeout(LISTENS_WITHIN, reading.read_to_end(&mut left)).await;
+}
+
+/// What the relay answers, its head alone, to a request for `/echo` at
+/// `host` with a body one byte over what it carries.
+async fn asked_too_much(socket: &Path, host: &str) -> Vec<u8> {
+    let stream = UnixStream::connect(socket)
         .await
         .expect("the socket answers");
     let (mut reading, mut writing) = stream.into_split();
@@ -1135,30 +1284,558 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
     })
     .await;
     writer.abort();
-
     assert!(
         answered.is_ok(),
         "the relay never answered a body too large"
     );
-    assert!(
-        answer.starts_with(b"HTTP/1.1 413"),
-        "a body too large was answered {:?}",
-        String::from_utf8_lossy(&answer)
+    answer
+}
+
+/// What pi gets asking with a body in halves, the second sent a while
+/// after the first, and whether the answer came only once both had gone.
+async fn ask_in_halves(socket: &Path, host: &str, path: &str) -> (Got, bool) {
+    let (mut halves, body) = Channel::<Bytes, Infallible>::new(1);
+    let written = tokio::spawn(async move {
+        let _ = halves
+            .send_data(Bytes::from_static(b"the first half, "))
+            .await;
+        tokio::time::sleep(HELD).await;
+        let _ = halves
+            .send_data(Bytes::from_static(b"then the second"))
+            .await;
+        Instant::now()
+    });
+    let asked = Request::builder()
+        .method("POST")
+        .uri(path)
+        .header("host", host)
+        .body(body)
+        .expect("a request");
+    let got = ask(socket, asked).await;
+    let answered = Instant::now();
+    let written = written.await.expect("the body written");
+    (got, answered >= written)
+}
+
+/// Three requests answered and seventeen reset, so seventeen failed of
+/// twenty finished, past the share that stands the relay down.
+async fn fail_past_its_share(socket: &Path, host: &str) {
+    for _ in 0..3 {
+        let got = ask(socket, request(host, "/echo", b"hi")).await;
+        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
+    }
+    // Each is reset, and then reset again or kept with nowhere else to go.
+    for _ in 0..17 {
+        let got = ask(socket, request(host, "/reset", b"")).await;
+        assert_eq!(
+            got.status,
+            StatusCode::BAD_GATEWAY,
+            "a request the origin reset"
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes_requests_again() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "6", "--stand-down-for", "26"],
     );
-    assert_eq!(handed_to(&origin, "/echo"), 0, "a body too large went on");
-    drop(reading);
+
+    fail_past_its_share(&relay.socket, &host).await;
+    let stood_down = Instant::now();
+
+    // Standing down from the last of them, it sends the next direct.
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request while the relay stands down"
+    );
+    let words = String::from_utf8_lossy(&got.body).into_owned();
+    assert!(
+        words.starts_with("this relay ") && words.trim_end().ends_with("so go directly"),
+        "the stand-down's 421 doesn't say what sends pi direct: {words}"
+    );
+    // Standing down retires its connections, so none stays open on the
+    // path it stood down from.
+    let retiring = Instant::now();
+    while origin.ended.load(Ordering::SeqCst) < origin.connections.load(Ordering::SeqCst) {
+        assert!(
+            retiring.elapsed() < Duration::from_secs(2),
+            "a connection stayed open while it stood down"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let first = retry_after(&got);
+    assert!(
+        first.is_some_and(|seconds| (1..=27).contains(&seconds)),
+        "the stand-down's 421 doesn't say it's over within its 26 s: {first:?}"
+    );
+
+    // Quiet past its idle time, and the time it takes to see it and go,
+    // it's still there, standing down: leaving would forget it. The body
+    // comes in halves, the second a while after the head, and is read
+    // whole before the 421, so pi isn't left writing what the relay
+    // stopped reading: pi's client hands back an answer that came early.
+    tokio::time::sleep_until((stood_down + Duration::from_secs(11)).into()).await;
+    let (got, answered_after_the_body) = ask_in_halves(&relay.socket, &host, "/echo").await;
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request while the relay stands down, past its idle time"
+    );
+    assert!(
+        answered_after_the_body,
+        "the stand-down's 421 came before the body was read whole"
+    );
+    let words = String::from_utf8_lossy(&got.body).into_owned();
+    assert!(
+        words.contains("stands down from it"),
+        "past its idle time, the 421 isn't the stand-down's: {words}"
+    );
+    let later = retry_after(&got);
+    assert!(
+        later.is_some_and(|seconds| (1..=16).contains(&seconds) && Some(seconds) < first),
+        "the stand-down's 421 11 s in doesn't count down from {first:?}: {later:?}"
+    );
+    assert_eq!(
+        handed_to(&origin, "/echo"),
+        3,
+        "a request went on while it stood down"
+    );
+
+    // Past its stand-down, and within its idle time after, it carries one,
+    // on a connection opened afresh. It may not ask sooner than the
+    // stand-down's end, which came before the last reset was answered.
+    // Asked 30 s in, a relay that didn't hold on past its stand-down has
+    // left, being idle from 17 s and seeing it once its 26 s are over, by
+    // 27.5, and one that did is still there until 32 at the soonest.
+    tokio::time::sleep_until((stood_down + Duration::from_secs(30)).into()).await;
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request once it stood down"
+    );
+    assert_eq!(got.body, b"hi");
+
+    // Left once idle, it says its counts.
+    assert!(
+        relay.left_within(Duration::from_secs(20)).is_some(),
+        "the relay didn't leave once idle after its stand-down"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains(
+            "17 of the 20 requests it finished in ten minutes failed, so it stands down for 26 \
+             s, retiring its connections"
+        ),
+        "the stand-down went unsaid: {said}"
+    );
+    let again = said
+        .find("it stood down 26 s, so it takes requests again, on connections opened afresh")
+        .unwrap_or_else(|| panic!("taking requests again went unsaid: {said}"));
+    // The connection's own line, as the counts said on leaving say
+    // "opened" too. This only shows one opened after the return; that the
+    // return retires those before it is the retire test's to pin.
+    assert!(
+        said[again..]
+            .lines()
+            .any(|line| line.starts_with("model-relay: connection ") && line.contains(" opened, ")),
+        "no connection was opened afresh once it took requests again: {said}"
+    );
+    assert!(
+        said.contains("; 2 refused as it stood down"),
+        "the counts don't say what the stand-down sent direct: {said}"
+    );
+}
+
+/// The seconds a 421's Retry-After says, if it says any.
+fn retry_after(got: &Got) -> Option<u64> {
+    got.headers
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok()?.parse::<u64>().ok())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--stand-down-for", "12"],
+    );
+
+    // Taken before the stand-down, and held by the origin through its
+    // start, then reset, so it goes once more on a connection opened while
+    // the relay stands down.
+    let socket = relay.socket.clone();
+    let to = host.clone();
+    let held =
+        tokio::spawn(async move { ask(&socket, request(&to, "/reset-once-held", b"held")).await });
+    let reached = Instant::now();
+    while handed_to(&origin, "/reset-once-held") == 0 {
+        assert!(
+            reached.elapsed() < LISTENS_WITHIN,
+            "the held request never reached the origin"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    fail_past_its_share(&relay.socket, &host).await;
+    let stood_down = Instant::now();
+    assert!(
+        !held.is_finished() && handed_to(&origin, "/reset-once-held") == 1,
+        "the held request went once more before the stand-down, so proves nothing"
+    );
+    let got = held.await.expect("the held request");
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "the held request, sent once more"
+    );
+    assert!(
+        stood_down.elapsed() < Duration::from_secs(11),
+        "the held request was answered after the stand-down, so proves nothing"
+    );
+    let opened_meanwhile = got.headers.get("x-origin-connection").cloned();
+
+    tokio::time::sleep_until((stood_down + Duration::from_secs(13)).into()).await;
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request once it stood down"
+    );
+    assert!(
+        opened_meanwhile.is_some(),
+        "the held request's answer didn't say its connection"
+    );
+    assert_ne!(
+        got.headers.get("x-origin-connection").cloned(),
+        opened_meanwhile,
+        "taking requests again, it went on the connection opened while it stood down"
+    );
+    let said = relay.said();
+    // The requests reset to stand it down go again too, but before it
+    // does, so the last sent again is the held request.
+    let stood = said.find("so it stands down for 12 s");
+    let again = said.rfind("is sent again on connection");
+    assert!(
+        stood.is_some() && again.is_some() && stood < again,
+        "it didn't stand down before the held request went once more: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn answers_broken_off_midway_as_their_connection_falls_stand_it_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    // Its stand-down and idle time short, so it leaves and says its counts,
+    // yet the stand-down long enough to outlast the request asked after it.
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1", "--stand-down-for", "3"],
+    );
+
+    for _ in 0..3 {
+        let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
+    }
+    // Each answer begins, so carrying it went well, and is lost midway with
+    // its connection: judged only as its answer ends, it fails.
+    for _ in 0..17 {
+        let (mut pi, connection) = pi_asks(&relay.socket).await;
+        let cut = pi
+            .send_request(request(&host, "/cut", b""))
+            .await
+            .expect("an answer begun");
+        assert_eq!(cut.status(), StatusCode::OK, "an answer to be cut off");
+        assert!(
+            cut.into_body().collect().await.is_err(),
+            "an answer cut off midway came whole"
+        );
+        drop(pi);
+        connection.abort();
+    }
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "answers broken off midway didn't stand it down"
+    );
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle after its stand-down"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("17 of the 20 requests it finished in ten minutes failed"),
+        "the answers broken off weren't judged as failed: {said}"
+    );
+    assert!(
+        said.contains("; 17 broken off midway"),
+        "the counts don't say how many answers broke off: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn answers_pi_gives_up_on_never_stand_it_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
+
+    // pi hangs up partway through each answer, as its person pressing
+    // Escape does: the relay's path did nothing wrong.
+    for _ in 0..25 {
+        let (mut pi, connection) = pi_asks(&relay.socket).await;
+        let long = pi
+            .send_request(request(&host, "/long", b""))
+            .await
+            .expect("an answer begun");
+        drop(long);
+        drop(pi);
+        connection.abort();
+    }
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    let left = relay.left_within(LISTENS_WITHIN);
+
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request after pi gave up on 25"
+    );
+    assert!(left.is_some(), "the relay didn't leave once idle");
+    let said = relay.said();
+    assert!(
+        !said.contains("stands down") && said.contains("pi cancelled 25"),
+        "answers pi gave up on were judged, or not counted as its cancels: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn answers_sent_before_it_took_requests_again_are_never_judged() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--stand-down-for", "1"],
+    );
+
+    // Twenty answers begun before the stand-down, on the one connection,
+    // which falls only once the relay takes requests again: they rode a
+    // connection it has since retired, so they say nothing of the path.
+    let mut late = Vec::new();
+    for _ in 0..20 {
+        let (mut pi, connection) = pi_asks(&relay.socket).await;
+        let cut = pi
+            .send_request(request(&host, "/cut-late", b""))
+            .await
+            .expect("an answer begun");
+        assert_eq!(cut.status(), StatusCode::OK, "an answer to be cut off late");
+        late.push((tokio::spawn(cut.into_body().collect()), pi, connection));
+    }
+    fail_past_its_share(&relay.socket, &host).await;
+    let stood_down = Instant::now();
+    tokio::time::sleep_until((stood_down + Duration::from_millis(1500)).into()).await;
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request once it stood down"
+    );
+    assert!(
+        late.iter().all(|(cut, _, _)| !cut.is_finished()),
+        "the answers were cut off before it took requests again, so prove nothing"
+    );
+    for (cut, pi, connection) in late {
+        assert!(
+            cut.await.expect("an answer read").is_err(),
+            "an answer cut off late came whole"
+        );
+        drop(pi);
+        connection.abort();
+    }
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "answers sent before it took requests again stood it down"
+    );
+    let said = relay.said();
+    assert_eq!(
+        said.matches("so it stands down for").count(),
+        1,
+        "answers sent before it took requests again were judged: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn requests_sent_again_after_it_took_requests_again_are_judged() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--stand-down-for", "1"],
+    );
+
+    // Twenty first sent before the stand-down, each held and then reset
+    // every time it's heard, so each is sent again once the relay takes
+    // requests again: judged by when that attempt went, they fail.
+    let held: Vec<_> = (0..20)
+        .map(|_| {
+            let socket = relay.socket.clone();
+            let to = host.clone();
+            tokio::spawn(async move { ask(&socket, request(&to, "/reset-held", b"")).await })
+        })
+        .collect();
+    let reached = Instant::now();
+    while handed_to(&origin, "/reset-held") < 20 {
+        assert!(
+            reached.elapsed() < LISTENS_WITHIN,
+            "the held requests never all reached the origin"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    fail_past_its_share(&relay.socket, &host).await;
+    let stood_down = Instant::now();
+    tokio::time::sleep_until((stood_down + Duration::from_millis(1500)).into()).await;
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request once it stood down"
+    );
+    assert_eq!(
+        handed_to(&origin, "/reset-held"),
+        20,
+        "the held requests went again before it took requests again, so prove nothing"
+    );
+    assert!(
+        held.iter().all(|asked| !asked.is_finished()),
+        "the held requests were answered before it took requests again, so prove nothing"
+    );
+    for asked in held {
+        let got = asked.await.expect("a held request");
+        assert_eq!(
+            got.status,
+            StatusCode::BAD_GATEWAY,
+            "a held request reset each time"
+        );
+    }
+
+    let said = relay.said();
+    assert_eq!(
+        said.matches("so it stands down for").count(),
+        2,
+        "requests sent again after it took requests again went unjudged: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn answers_the_origin_breaks_off_itself_never_stand_it_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    // Its idle time short, so it leaves and says its counts.
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
+
+    // Each answer begins, then fails with an error of the origin's own,
+    // which would fail direct too: the relay's path did nothing wrong.
+    for _ in 0..20 {
+        let (mut pi, connection) = pi_asks(&relay.socket).await;
+        let broken = pi
+            .send_request(request(&host, "/broken", b""))
+            .await
+            .expect("an answer begun");
+        assert_eq!(
+            broken.status(),
+            StatusCode::OK,
+            "an answer to be broken off"
+        );
+        assert!(
+            broken.into_body().collect().await.is_err(),
+            "an answer the origin broke off came whole"
+        );
+        drop(pi);
+        connection.abort();
+    }
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "answers the origin broke off itself stood it down"
+    );
     assert!(
         relay.left_within(LISTENS_WITHIN).is_some(),
         "the relay didn't leave once idle"
     );
     let said = relay.said();
     assert!(
-        said.contains("a request's body passed 64 MiB, so it's refused"),
-        "a body too large went unsaid: {said}"
+        !said.contains("stands down"),
+        "answers the origin broke off itself were judged as the path failing: {said}"
     );
     assert!(
-        said.contains("1 asked, 1 refused, 0 failed"),
-        "a body too large wasn't counted as refused: {said}"
+        said.contains("; 20 broken off midway"),
+        "the counts don't say the answers broken off unjudged: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn connections_falling_before_an_answer_stand_it_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+
+    for _ in 0..3 {
+        let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
+    }
+    // Each reaches the origin, which lets its connection fall before it
+    // answers: the path failing.
+    for _ in 0..17 {
+        let got = ask(&relay.socket, request(&host, "/drop", b"")).await;
+        assert_eq!(
+            got.status,
+            StatusCode::BAD_GATEWAY,
+            "a request whose connection fell"
+        );
+    }
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "connections falling before an answer didn't stand it down"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("17 of the 20 requests it finished in ten minutes failed"),
+        "connections falling weren't judged as failed: {said}"
     );
 }
 
@@ -1475,6 +2152,56 @@ async fn an_origin_out_of_reach_is_said_as_a_502() {
     assert!(
         !said.contains("sekrit"),
         "the relay logged a header or a body: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn requests_no_connection_would_take_never_stand_it_down() {
+    let origin = origin().await;
+    // A port nothing listens on: bound, read and let go.
+    let closed = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = closed.local_addr().expect("its address");
+    drop(closed);
+    let host = address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+
+    // Never sent, each would fail direct too, so none is judged, and
+    // the last is a 502 like the first rather than a stand-down's 421.
+    for _ in 0..25 {
+        let got = ask(&relay.socket, request(&host, "/v1/messages", b"")).await;
+        assert_eq!(
+            got.status,
+            StatusCode::BAD_GATEWAY,
+            "a request no connection would take"
+        );
+    }
+    let said = relay.said();
+    assert!(
+        !said.contains("stands down"),
+        "requests never sent stood it down: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn resets_saying_to_calm_down_never_stand_it_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+
+    // The origin's own verdict, each would fail direct too, so none is
+    // judged, and the last is a 502 like the first.
+    for _ in 0..25 {
+        let got = ask(&relay.socket, request(&host, "/calm-down", b"")).await;
+        assert_eq!(
+            got.status,
+            StatusCode::BAD_GATEWAY,
+            "a request the origin said to calm down for"
+        );
+    }
+    let said = relay.said();
+    assert!(
+        !said.contains("stands down"),
+        "resets saying to calm down stood it down: {said}"
     );
 }
 

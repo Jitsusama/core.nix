@@ -43,12 +43,32 @@
 //! may now and then be asked for twice, which pi's own retry of the whole
 //! turn would do anyway. To send one again, it reads each body whole, to
 //! 64 MiB, before it goes, from pi on this machine, and holds it until its
-//! answer begins. After the machine sleeps, the connections it held are retired and opened afresh, since
-//! the network they ran on may be gone and pings would take their time to
-//! say so. A ping is what finds a lost connection, and an unanswered one
-//! fails every request on it, so below h2 each layer holds little ahead
-//! of one: a body goes in short frames, through few records and a kernel
-//! holding little unsent, and on a slow uplink a ping is answered in time.
+//! answer begins. After the machine sleeps, the connections it held are
+//! retired and opened afresh, since the network they ran on may be gone
+//! and pings would take their time to say so. A ping is what finds a lost
+//! connection, and an unanswered one fails every request on it, so below
+//! h2 each layer holds little ahead of one: a body goes in short frames,
+//! through few records and a kernel holding little unsent, and on a slow
+//! uplink a ping is answered in time.
+//!
+//! Past 15 in 100 failed of the requests it finished in ten minutes, 20
+//! at least, it stands down (src/standing.rs says why): it retires its
+//! connections and answers each request with its own 421, forwarding
+//! nothing, so pi sends it direct, until ten minutes have passed, or
+//! twice the last stand-down, to an hour, when the last ended under an
+//! hour before. A request is judged once its answer ends, so one broken
+//! off midway fails, and only one that went down a connection, or that
+//! each connection it was offered closed under before it went: one that
+//! never reached the origin, as when none would open, would fail direct
+//! too, so it says nothing of the relay's connections. Nor does a reset
+//! giving the origin's own verdict, such as to calm down, so it isn't
+//! judged. Standing down, and for its idle time after, it doesn't leave,
+//! which would forget it; taking requests again, it retires the
+//! connections opened meanwhile by requests it had already taken, and
+//! judges none of those. The last stand-down, which the next doubles, is
+//! forgotten when it leaves or restarts. A sleep forgets a stand-down,
+//! and what was sent before it, as the clock it ran on stopped and the
+//! network it judged may be gone.
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
@@ -99,6 +119,10 @@ use tokio::net::{TcpStream, UnixListener};
 use tokio::sync::{Mutex, Notify, watch};
 use tokio_rustls::TlsConnector;
 
+use standing::{Standing, Taking};
+
+mod standing;
+
 /// The port an https origin names when it names none.
 const HTTPS_PORT: u16 = 443;
 /// How long a connection to the origin may take to open, TLS included,
@@ -107,6 +131,11 @@ pub const CONNECT_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay waits, asked nothing and answering nothing, before
 /// it leaves, unless told otherwise.
 pub const IDLE_EXIT: Duration = Duration::from_secs(120);
+/// How long its first stand-down lasts, unless the relay is told
+/// otherwise.
+pub const STANDS_DOWN_FOR: Duration = Duration::from_secs(600);
+/// The longest a first stand-down may be told to last.
+pub const STANDS_DOWN_FOR_AT_MOST: Duration = Duration::from_hours(24);
 /// How often an open connection is pinged, so one the network lost is
 /// found before a request is sent down it.
 const PING_EVERY: Duration = Duration::from_secs(20);
@@ -335,6 +364,8 @@ pub struct Clocks {
     pub connect_within: Duration,
     /// How long it sits asked nothing before it leaves, if ever.
     pub idle_exit: Option<Duration>,
+    /// How long its first stand-down lasts.
+    pub stands_down_for: Duration,
 }
 
 impl Default for Clocks {
@@ -342,6 +373,7 @@ impl Default for Clocks {
         Clocks {
             connect_within: CONNECT_WITHIN,
             idle_exit: Some(IDLE_EXIT),
+            stands_down_for: STANDS_DOWN_FOR,
         }
     }
 }
@@ -360,9 +392,15 @@ struct Counts {
     cancelled: AtomicU64,
     opened: AtomicU64,
     open: AtomicUsize,
+    /// Requests refused as it stood down, so each went direct, counted
+    /// with the refused too.
+    stood_down: AtomicU64,
+    /// Answers broken off midway, judged or not, so a stand-down for
+    /// streams that broke shows in the counts as well as resets do.
+    broken: AtomicU64,
     /// What the counts were when last said, but for how many connections
     /// were taking requests.
-    said_as: Held<[u64; 7]>,
+    said_as: Held<[u64; 9]>,
 }
 
 impl Counts {
@@ -377,6 +415,8 @@ impl Counts {
             &self.again,
             &self.cancelled,
             &self.opened,
+            &self.stood_down,
+            &self.broken,
         ]
         .map(|count| count.load(Ordering::Relaxed));
         {
@@ -386,11 +426,22 @@ impl Counts {
             }
             *said_as = now;
         }
-        let [asked, refused, failed, reset, again, cancelled, opened] = now;
+        let [
+            asked,
+            refused,
+            failed,
+            reset,
+            again,
+            cancelled,
+            opened,
+            stood_down,
+            broken,
+        ] = now;
         eprintln!(
             "model-relay: {asked} asked, {refused} refused, {failed} failed, {reset} of them \
              reset; {again} reset and sent again; pi cancelled {cancelled}; {opened} \
-             connections opened, {} taking requests",
+             connections opened, {} taking requests; {stood_down} refused as it stood down; \
+             {broken} broken off midway",
             self.open.load(Ordering::Relaxed),
         );
     }
@@ -494,6 +545,9 @@ struct OnTheWay {
     tally: Arc<Tally>,
     counts: Arc<Counts>,
     ended: AtomicBool,
+    /// When it was sent, so a request sent before a sleep, or before the
+    /// relay took requests again, isn't judged.
+    sent: Instant,
 }
 
 impl OnTheWay {
@@ -504,12 +558,14 @@ impl OnTheWay {
             tally: Arc::clone(tally),
             counts: Arc::clone(counts),
             ended: AtomicBool::new(false),
+            sent: Instant::now(),
         }
     }
 
-    /// It came to an end of its own: answered whole, or failed.
-    fn end(&self) {
-        self.ended.store(true, Ordering::Relaxed);
+    /// It came to an end of its own: answered whole, or failed. Says
+    /// whether it ended just now, rather than before.
+    fn end(&self) -> bool {
+        !self.ended.swap(true, Ordering::Relaxed)
     }
 
     /// hyper handed it back unsent, so it was never this connection's.
@@ -529,24 +585,46 @@ impl Drop for OnTheWay {
 }
 
 /// An answer's body, whose request ends once the body has: read to its
-/// end, or as far as its length said, or failed.
+/// end, or as far as its length said, or failed. The relay judges the
+/// request then, so one broken off midway is judged failed.
 struct Answering<B> {
     body: B,
     on_the_way: OnTheWay,
     left: Option<u64>,
+    relay: Arc<Relay>,
 }
 
 impl<B: HttpBody> Answering<B> {
-    /// `body`, the answer to the request `on_the_way`.
-    fn new(body: B, on_the_way: OnTheWay) -> Self {
+    /// `body`, the answer to the request `on_the_way`, which `relay`
+    /// carried.
+    fn new(body: B, on_the_way: OnTheWay, relay: Arc<Relay>) -> Self {
         let left = body.size_hint().exact();
-        if left == Some(0) {
-            on_the_way.end();
-        }
-        Self {
+        let answering = Self {
             body,
             on_the_way,
             left,
+            relay,
+        };
+        if left == Some(0) {
+            answering.ended(None);
+        }
+        answering
+    }
+}
+
+impl<B> Answering<B> {
+    /// Ends the request, answered whole or failing with `why`, and has
+    /// the relay judge it, once, as `fails_the_path` says.
+    fn ended(&self, why: Option<&(dyn std::error::Error + 'static)>) {
+        if !self.on_the_way.end() {
+            return;
+        }
+        let Some(why) = why else {
+            return self.relay.finished(self.on_the_way.sent, false);
+        };
+        self.relay.counts.broken.fetch_add(1, Ordering::Relaxed);
+        if fails_the_path(why) {
+            self.relay.finished(self.on_the_way.sent, true);
         }
     }
 }
@@ -554,6 +632,7 @@ impl<B: HttpBody> Answering<B> {
 impl<B> HttpBody for Answering<B>
 where
     B: HttpBody + Unpin,
+    B::Error: std::error::Error + 'static,
 {
     type Data = B::Data;
     type Error = B::Error;
@@ -564,7 +643,10 @@ where
     ) -> Poll<Option<Result<Frame<B::Data>, B::Error>>> {
         let read = Pin::new(&mut self.body).poll_frame(cx);
         match &read {
-            Poll::Ready(None | Some(Err(_))) => self.on_the_way.end(),
+            Poll::Ready(None) => self.ended(None),
+            Poll::Ready(Some(Err(why))) => {
+                self.ended(Some(why as &(dyn std::error::Error + 'static)));
+            }
             Poll::Ready(Some(Ok(frame))) => {
                 let length = frame.data_ref().map_or(0, |data| data.remaining() as u64);
                 // hyper stops reading an answer once it has written the
@@ -572,7 +654,7 @@ where
                 if let Some(left) = self.left.as_mut() {
                     *left = left.saturating_sub(length);
                     if *left == 0 {
-                        self.on_the_way.end();
+                        self.ended(None);
                     }
                 }
             }
@@ -586,7 +668,7 @@ where
         // where an answer read whole may be heard of last.
         let ended = self.body.is_end_stream();
         if ended {
-            self.on_the_way.end();
+            self.ended(None);
         }
         ended
     }
@@ -857,14 +939,16 @@ pub struct Relay {
     next: AtomicUsize,
     /// When an attempt to open a connection last failed, and why.
     failed: Held<Option<(Instant, Unreachable)>>,
-    /// The relay's clock and the wall's when a connection was last asked
-    /// for, to tell when the machine slept between.
+    /// The relay's clock and the wall's when a request was last taken, or a
+    /// connection last asked for, to tell when the machine slept between.
     asked_at: Held<(Instant, SystemTime)>,
     /// Whether it has begun to leave, when a request is sent direct.
     leaving: AtomicBool,
     connections: Arc<Connections>,
     counts: Arc<Counts>,
     busy: Arc<Busy>,
+    /// Whether it takes requests, judged by those it finished lately.
+    standing: Standing,
 }
 
 impl Relay {
@@ -904,6 +988,7 @@ impl Relay {
                 now: AtomicUsize::new(0),
                 quiet_since: Held::new(Instant::now()),
             }),
+            standing: Standing::new(clocks.stands_down_for),
         })
     }
 
@@ -1020,12 +1105,14 @@ impl Relay {
         }
     }
 
-    /// Whether it has had nothing in hand for its idle time.
+    /// Whether it has had nothing in hand for its idle time, and hasn't
+    /// stood down within it, which leaving would forget.
     fn is_idle(&self) -> bool {
         self.clocks.idle_exit.is_some_and(|idle_exit| {
             self.busy
                 .quiet_for()
                 .is_some_and(|quiet| quiet >= idle_exit)
+                && !self.standing.holds_on(Instant::now(), idle_exit)
         })
     }
 
@@ -1042,6 +1129,21 @@ impl Relay {
                 .uri
                 .authority()
                 .is_none_or(|named| self.origin.is_named_by(named.as_str()));
+        // Another origin's request is no work of the relay's, so it's no
+        // reason to stay, even while its body is read.
+        let in_hand = names_origin.then(|| self.busy.one());
+        // Its body read whole before any 421, so pi isn't writing one the
+        // relay has stopped reading, failing on a broken pipe, when the
+        // 421 would send it direct. A body too large still gets the 421, as
+        // it was never to go to the origin anyway.
+        let read = read_whole(body).await;
+        // A body pi left, or one still coming past its deadline, which pi
+        // would have written at once, is a cancel whatever else, as nobody
+        // waits on a 421 for it. The tests can't wait out the deadline, so
+        // a late body's place here is held by reading alone.
+        if let Err(why @ (Unread::Gone | Unread::Late)) = read {
+            return self.unread(why);
+        }
         if !names_origin {
             self.counts.refused.fetch_add(1, Ordering::Relaxed);
             return said(
@@ -1056,11 +1158,20 @@ impl Relay {
                 "this relay is leaving, so go directly\n",
             );
         }
-        let in_hand = self.busy.one();
-        let whole = match self.readied(&mut parts, body).await {
+        // The sleep looked for first, as a sleep forgets a stand-down, and
+        // the stand-down's 421 said for a body too large too, as the origin
+        // asked directly may take one the relay won't.
+        self.retire_after_a_sleep();
+        if let Some(standing_down) = self.standing_down() {
+            return standing_down;
+        }
+        let whole = match read {
             Ok(whole) => whole,
-            Err(refused) => return *refused,
+            Err(unread) => return self.unread(unread),
         };
+        if let Err(refused) = self.pointed(&mut parts) {
+            return *refused;
+        }
         let (answer, on_the_way) = match self.carry(&parts, &whole).await {
             Ok(answered) => answered,
             Err(not_carried) => return *not_carried,
@@ -1070,20 +1181,71 @@ impl Relay {
         without_connection_headers(&mut parts.headers);
         // The request stays in hand until its answer is sent or given up on,
         // so the relay never leaves mid-answer.
-        let body = Answering::new(body, on_the_way).map_err(move |why| {
+        let body = Answering::new(body, on_the_way, Arc::clone(self)).map_err(move |why| {
             let _ = &in_hand;
             why
         });
         Response::from_parts(parts, body.boxed())
     }
 
-    /// Points a request pi asked of the origin at the origin itself, and
-    /// reads its body whole, or says why pi is refused.
-    async fn readied(
-        &self,
-        parts: &mut hyper::http::request::Parts,
-        body: Incoming,
-    ) -> Result<Bytes, Box<Response<Body>>> {
+    /// The relay's own 421, sending pi direct, while it stands down; or
+    /// none, said as it takes requests again when it does just now.
+    fn standing_down(&self) -> Option<Response<Body>> {
+        match self.standing.taking(Instant::now()) {
+            Taking::Yes => None,
+            Taking::Again(lasted) => {
+                // Requests it had taken before it stood down may have
+                // opened connections since, on the path it stood down from.
+                self.retire_every();
+                eprintln!(
+                    "model-relay: it stood down {} s, so it takes requests again, on \
+                     connections opened afresh",
+                    lasted.as_secs()
+                );
+                None
+            }
+            Taking::No(more) => {
+                self.counts.refused.fetch_add(1, Ordering::Relaxed);
+                self.counts.stood_down.fetch_add(1, Ordering::Relaxed);
+                // Its words hold the ones pi goes direct on, as for the
+                // 421 of a request for another host, and are true here
+                // too.
+                let mut answer = said(
+                    StatusCode::MISDIRECTED_REQUEST,
+                    "this relay forwards to its own origin alone, and stands down from it for \
+                     now, so go directly\n",
+                );
+                answer
+                    .headers_mut()
+                    .insert(header::RETRY_AFTER, (more.as_secs() + 1).into());
+                Some(answer)
+            }
+        }
+    }
+
+    /// Hears a request `sent` down a connection, and answered or `failed`
+    /// for its path, and stands down when the share failed lately says to.
+    /// A sleep is looked for first, as the streams it cut break before pi
+    /// asks anything new, and they're not to be judged. No test can sleep
+    /// the machine, so this order is held by reading it alone.
+    fn finished(&self, sent: Instant, failed: bool) {
+        self.retire_after_a_sleep();
+        let Some(stood) = self.standing.heard(Instant::now(), sent, failed) else {
+            return;
+        };
+        eprintln!(
+            "model-relay: {} of the {} requests it finished in ten minutes failed, so it \
+             stands down for {} s, retiring its connections, and pi goes directly",
+            stood.failed,
+            stood.finished,
+            stood.lasting.as_secs()
+        );
+        self.retire_every();
+    }
+
+    /// Points a request pi asked of the origin at the origin itself, or
+    /// says why pi is refused.
+    fn pointed(&self, parts: &mut hyper::http::request::Parts) -> Result<(), Box<Response<Body>>> {
         let path = parts
             .uri
             .path_and_query()
@@ -1104,41 +1266,43 @@ impl Relay {
         parts.uri = uri;
         parts.version = Version::HTTP_2;
         without_connection_headers(&mut parts.headers);
-        // Read whole so it can go again. pi's requests carry no trailers
-        // to keep.
-        let reading = tokio::time::timeout(BODY_WITHIN, Limited::new(body, BODY_AT_MOST).collect());
-        match reading.await {
-            Ok(Ok(read)) => Ok(read.to_bytes()),
-            Ok(Err(why)) if why.is::<LengthLimitError>() => {
+        Ok(())
+    }
+
+    /// What pi is answered for a body that wasn't read whole, counted and
+    /// said.
+    fn unread(&self, why: Unread) -> Response<Body> {
+        match why {
+            Unread::TooLarge => {
                 self.counts.refused.fetch_add(1, Ordering::Relaxed);
                 eprintln!("model-relay: a request's body passed 64 MiB, so it's refused");
-                Err(Box::new(said(
+                said(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "this relay carries a body of 64 MiB at most\n",
-                )))
+                )
             }
             // Still coming after the deadline, it's said, so a pi writing
             // slowly is told from one that left.
-            Err(_) => {
+            Unread::Late => {
                 self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
                 eprintln!(
                     "model-relay: a request's body was still coming after {} s, so it's \
                      dropped",
                     BODY_WITHIN.as_secs()
                 );
-                Err(Box::new(said(
+                said(
                     StatusCode::REQUEST_TIMEOUT,
                     "this relay waited too long on the request's body\n",
-                )))
+                )
             }
             // pi went before its body ended, as it does when its person
             // presses Escape, so it's a cancel, and nobody hears the answer.
-            Ok(Err(_)) => {
+            Unread::Gone => {
                 self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
-                Err(Box::new(said(
+                said(
                     StatusCode::BAD_REQUEST,
                     "this relay couldn't read the request's body\n",
-                )))
+                )
             }
         }
     }
@@ -1150,7 +1314,7 @@ impl Relay {
         parts: &hyper::http::request::Parts,
         whole: &Bytes,
     ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
-        let mut request = sendable(parts, whole);
+        let (mut request, mut went) = (sendable(parts, whole), Instant::now());
         let mut sent = 0;
         let mut taken = self.sender().await;
         // The connection the origin reset this request on, once it has.
@@ -1170,9 +1334,12 @@ impl Relay {
                 Ok(taken) => taken,
                 Err(why) => {
                     self.counts.failed.fetch_add(1, Ordering::Relaxed);
+                    // Never sent, it says nothing of the connections, as
+                    // it would have failed direct too, so it isn't judged.
                     let Some((was_at, was)) = reset_on else {
                         return Err(Box::new(why.said()));
                     };
+                    self.finished(went, true);
                     // Reset, and then not sent again, so it's counted with
                     // the requests reset that failed, and a 502 as any
                     // reset is, never a 421 sending pi direct: the origin
@@ -1185,13 +1352,13 @@ impl Relay {
                     return Err(Box::new(not_answered()));
                 }
             };
-            // Dropped while it waits for the answer, as when pi hangs up,
-            // it's counted as cancelled on this connection.
+            // Dropped while it waits for the answer, as when pi hangs up, it's
+            // counted as cancelled here; judged, it's by when this attempt went.
             let on_the_way = OnTheWay::sent(&tally, &self.counts);
-            down = (at, number, tally);
-            let went = sender.try_send_request(request).await;
+            (went, down) = (on_the_way.sent, (at, number, tally));
+            let tried = sender.try_send_request(request).await;
             let mut unread = None;
-            let failed = match went {
+            let failed = match tried {
                 Ok(answer) => Ok(answer),
                 Err(mut failed) => {
                     unread = failed.take_message();
@@ -1263,6 +1430,10 @@ impl Relay {
                 }
             }
         };
+        // Answered, it's judged once its answer ends, as it may break off.
+        if answered.as_ref().is_err_and(|why| fails_the_path(why)) {
+            self.finished(went, true);
+        }
         answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
     }
 
@@ -1418,7 +1589,7 @@ impl Relay {
     }
 
     /// Retires every connection when the wall clock ran ahead of the
-    /// relay's own since it was last asked, as it does while the machine
+    /// relay's own since it was last asked or heard, as it does while the machine
     /// sleeps: the network they ran on may be gone, and their pings would
     /// take up to `PING_EVERY` and `PING_ANSWERED_WITHIN` to say so. An
     /// answer already streaming on one carries on.
@@ -1432,6 +1603,15 @@ impl Relay {
             return;
         }
         eprintln!("model-relay: the machine slept, so its connections are opened afresh");
+        self.retire_every();
+        if self.standing.forget(now.0) {
+            eprintln!("model-relay: the machine slept, so it no longer stands down");
+        }
+    }
+
+    /// Retires every connection, so each is opened afresh when next asked
+    /// for. An answer already streaming on one carries on.
+    fn retire_every(&self) {
         for slot in &self.slots {
             *slot.open.lock().unwrap_or_else(PoisonError::into_inner) = None;
         }
@@ -1620,6 +1800,30 @@ fn goes_again(reason: h2::Reason) -> bool {
     [h2::Reason::REFUSED_STREAM, h2::Reason::PROTOCOL_ERROR].contains(&reason)
 }
 
+/// Whether a request failing with `why` failed for the relay's path to
+/// the origin, and so is judged: its connection lost, or the origin
+/// resetting it or saying goodbye with a refused stream or a protocol
+/// error, as on 18 November. The origin's own verdict, such as to calm
+/// down or an error of its own, says nothing of the path, as it would
+/// fail direct too. What hyper or h2 raise themselves is judged, whether
+/// a connection's task gone, which hyper calls the user's error, or h2
+/// refusing to send what was asked: the request's body is whole in
+/// memory and can't fail, and pi direct speaks HTTP/1.1, so it wouldn't
+/// meet h2's refusals, and a stand-down sending it there is the cure.
+fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
+    let mut beneath = Some(why);
+    while let Some(cause) = beneath {
+        if let Some(h2) = cause.downcast_ref::<h2::Error>() {
+            return match h2.reason() {
+                Some(reason) if h2.is_remote() => goes_again(reason),
+                _ => true,
+            };
+        }
+        beneath = cause.source();
+    }
+    true
+}
+
 /// The reason the origin gave for resetting the request's stream, when it
 /// reset it, found in the h2 error beneath hyper's.
 fn reset_saying(why: &hyper::Error) -> Option<h2::Reason> {
@@ -1707,13 +1911,22 @@ async fn reach_any(addresses: &[SocketAddr], within: Duration) -> io::Result<Tcp
 /// Whether the machine slept between `then` and `now`, each the relay's
 /// clock and the wall's: the wall ran more than `SLEPT_AT_LEAST` ahead.
 /// This takes `Instant` to stand still in a suspend, as Linux's monotonic
-/// clock does; a wall clock set back is no sleep.
+/// clock does; a wall clock set back is no sleep. One stepped forward
+/// reads as one, ending a stand-down early, which costs a return judged
+/// afresh.
 fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
     let on_the_wall = now.1.duration_since(then.1).unwrap_or_default();
     on_the_wall > now.0.duration_since(then.0) + SLEPT_AT_LEAST
 }
 
 /// An answer of the relay's own: a status and a line saying why.
+///
+/// A 421 of the relay's own is said only when nothing of the request
+/// went to the origin, as pi sends a request the relay answers with one
+/// straight to the origin itself. pi knows one by its whole body being
+/// one line, "this relay forwards to its own origin alone", or one that
+/// begins "this relay " and ends "so go directly", so a new one is
+/// worded so. A refusal once something went is a 5xx.
 fn said(status: StatusCode, why: &'static str) -> Response<Body> {
     let mut answer = Response::new(
         Full::new(Bytes::from_static(why.as_bytes()))
@@ -1774,8 +1987,39 @@ fn without_connection_headers(headers: &mut HeaderMap) {
         .get_all(header::TE)
         .iter()
         .all(|value| value.as_bytes().eq_ignore_ascii_case(b"trailers"));
-    if !only_trailers {
+    // hyper drops a TE spelt any way but "trailers" exactly before h2
+    // sees it, so one kept is said that way, or it would be lost.
+    if only_trailers && headers.contains_key(header::TE) {
+        headers.insert(header::TE, header::HeaderValue::from_static("trailers"));
+    } else {
         headers.remove(header::TE);
+    }
+}
+
+/// Why a request's body wasn't read whole.
+#[derive(Clone, Copy, Debug)]
+enum Unread {
+    /// It passed `BODY_AT_MOST`.
+    TooLarge,
+    /// It was still coming after `BODY_WITHIN`.
+    Late,
+    /// pi went before it ended.
+    Gone,
+}
+
+/// Reads a request's body whole, so it can go again. pi's requests carry
+/// no trailers to keep.
+async fn read_whole<B>(body: B) -> Result<Bytes, Unread>
+where
+    B: hyper::body::Body<Data = Bytes>,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    let reading = tokio::time::timeout(BODY_WITHIN, Limited::new(body, BODY_AT_MOST).collect());
+    match reading.await {
+        Ok(Ok(read)) => Ok(read.to_bytes()),
+        Ok(Err(why)) if why.is::<LengthLimitError>() => Err(Unread::TooLarge),
+        Err(_) => Err(Unread::Late),
+        Ok(Err(_)) => Err(Unread::Gone),
     }
 }
 
@@ -1807,9 +2051,44 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot,
-        goes_again, reach, reach_any, slept, with_causes,
+        BODY_WITHIN, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST,
+        Sender, Slot, Unread, fails_the_path, goes_again, reach, reach_any, read_whole, slept,
+        with_causes,
     };
+
+    #[tokio::test(start_paused = true)]
+    async fn a_body_still_coming_past_its_deadline_is_late_and_one_pi_left_is_gone() {
+        // A piece halfway, and the rest never, so a deadline on the whole
+        // body is told from one on each piece.
+        let (mut writing, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+        let coming = tokio::spawn(async move {
+            tokio::time::sleep(BODY_WITHIN / 2).await;
+            let _ = writing.send_data(Bytes::from_static(b"hi")).await;
+            // Held open for good, since letting go would end the body.
+            std::future::pending::<()>().await;
+        });
+        let began = tokio::time::Instant::now();
+        // Bounded itself, so a read_whole with no deadline fails here
+        // rather than leaving paused time with nothing to wake it.
+        let read = tokio::time::timeout(BODY_WITHIN * 2, read_whole(body))
+            .await
+            .expect("read_whole waited on a body with no deadline");
+        let waited = began.elapsed();
+        assert!(
+            matches!(read, Err(Unread::Late))
+                && (BODY_WITHIN..BODY_WITHIN + Duration::from_millis(5)).contains(&waited),
+            "a body still coming past its deadline was read as {read:?} after {waited:?}"
+        );
+        coming.abort();
+
+        let (writing, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+        writing.abort(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        let read = read_whole(body).await;
+        assert!(
+            matches!(read, Err(Unread::Gone)),
+            "a body pi left was read as {read:?}"
+        );
+    }
 
     #[test]
     fn only_a_reset_refusing_its_stream_or_saying_a_protocol_error_goes_again() {
@@ -2104,17 +2383,73 @@ mod tests {
         );
     }
 
+    /// The socket lost or a reason h2 gives itself fails the path, beneath
+    /// hyper's error or alone. The origin's own verdicts come in a frame
+    /// from it, which only the relay's tests can send, and h2's refusals
+    /// can't be built outside it.
+    #[test]
+    fn what_the_socket_and_h2_raise_fails_the_path() {
+        let lost = std::io::Error::from(std::io::ErrorKind::BrokenPipe);
+        assert!(fails_the_path(&lost), "a socket lost wasn't judged");
+        for reason in [
+            h2::Reason::PROTOCOL_ERROR,
+            h2::Reason::CANCEL,
+            h2::Reason::INTERNAL_ERROR,
+        ] {
+            let raised = Beneath("http2 error", h2::Error::from(reason));
+            assert!(fails_the_path(&raised), "h2's own {reason:?} wasn't judged");
+        }
+    }
+
+    /// A connection's task gone with a request in hand fails the path,
+    /// though hyper calls it the user's error.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_connections_task_gone_fails_the_path() {
+        use tokio::io::AsyncReadExt as _;
+
+        let (near, mut far) = tokio::io::duplex(HELD_AHEAD_AT_MOST);
+        let (mut sender, connection) = hyper::client::conn::http1::handshake::<_, Full<Bytes>>(
+            hyper_util::rt::TokioIo::new(near),
+        )
+        .await
+        .expect("a connection");
+        let task = tokio::spawn(connection);
+        let asked = sender.send_request(
+            hyper::Request::get("/")
+                .header(hyper::header::HOST, "origin")
+                .body(Full::new(Bytes::new()))
+                .expect("a request"),
+        );
+        // Its head written, so the connection's task holds the request.
+        let mut piece = [0; 64];
+        let read = far.read(&mut piece).await.expect("the request's head");
+        assert!(read > 0, "the connection's task wrote nothing");
+        task.abort();
+
+        let why = asked
+            .await
+            .expect_err("a request answered once its connection's task went");
+        assert!(
+            why.is_user(),
+            "hyper no longer calls it the user's error: {why:?}"
+        );
+        assert!(
+            fails_the_path(&why),
+            "a connection's task gone wasn't judged: {why:?}"
+        );
+    }
+
     /// An error with one beneath it, as hyper's are.
     #[derive(Debug)]
-    struct Beneath(&'static str, std::io::Error);
+    struct Beneath<E>(&'static str, E);
 
-    impl std::fmt::Display for Beneath {
+    impl<E> std::fmt::Display for Beneath<E> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(self.0)
         }
     }
 
-    impl std::error::Error for Beneath {
+    impl<E: std::error::Error + 'static> std::error::Error for Beneath<E> {
         fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
             Some(&self.1)
         }
