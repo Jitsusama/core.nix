@@ -18,7 +18,13 @@
 //! - Its order is its time, newest first, so a landing coming moves no
 //!   other's record: two thousand of them were the realm's on 2026-11-11.
 //! - How many landed each day, by Joel's own clock, is served beside them,
-//!   so Landed's row says today's without the shell counting them all.
+//!   so Landed's row says today's without the shell counting them all,
+//!   and the days before today, newest first, which Landed lists a row
+//!   for each of.
+//! - Only those that landed within the last day are in Agents' place;
+//!   each before is in its day's, `landed:2026-11-17:<key>`, told only to
+//!   a watch naming that day, so the shell holds a day's landings, and
+//!   makes their rows, only while Joel is in it (`landing_place`).
 //! - Each landing's drawer is a record of its own (`DRAWER`), the landing
 //!   naming it by its key, told only to a watch naming it, as the shell
 //!   does for the drawers it's about to draw. The drawers were 1.3 MB of
@@ -478,8 +484,10 @@ fn drawer<S: BuildHasher>(
 /// What sessions landed: the harness's (`kept`, the node's `landing`
 /// records) and those the sessions running or parked (`sessions`) still
 /// carry, each once, worth Joel's reading. Each is a whole record, keyed
-/// by its landing's key, ordered by its time, newest first, saying when
-/// Joel read it (`read`), with the record of how many landed each day.
+/// by its place and its landing's key, ordered by its time, newest first,
+/// saying the date it landed on (`day`) and when Joel read it (`read`),
+/// with the record of how many landed each day and of the days before
+/// today.
 /// Answers the keys held too, which Joel's reading is kept of. Those
 /// asking him to try something wait in To Try a day from `now`, in
 /// milliseconds since 1970, each with a `try` record naming it: `read`
@@ -526,9 +534,12 @@ pub fn landed<'a>(
     let mut records: Vec<Value> = all
         .into_iter()
         .map(|(key, at, mut said)| {
-            if let Some(at) = at {
-                *days.entry(clock::date_of(at)).or_default() += 1;
+            let day = at.map(clock::date_of).unwrap_or_default();
+            if !day.is_empty() {
+                *days.entry(day.clone()).or_default() += 1;
             }
+            let place = landing_place(at, &day, now);
+            said["day"] = json!(day);
             // When Joel read it, `true` where he read it before the shell
             // kept when, and null while he hasn't.
             said["read"] = match read.at.get(&key) {
@@ -536,15 +547,43 @@ pub fn landed<'a>(
                 Some(None) => json!(true),
                 None => Value::Null,
             };
-            let read_by = format!("landed:{PLACE}:{key}");
+            let read_by = format!("landed:{place}:{key}");
             json!({"key": read_by, "kind": "landed", "order": -at.unwrap_or(0), "landed": said})
         })
         .collect();
     records.sort_by_key(|record| record["order"].as_i64());
     let tries: Vec<Value> = records.iter().filter_map(tried).collect();
     records.extend(tries);
-    records.push(json!({"key": days_key(), "kind": "landed-days", "days": days}));
+    let earlier = earlier(&days, &clock::date_of(now));
+    records
+        .push(json!({"key": days_key(), "kind": "landed-days", "days": days, "earlier": earlier}));
     (records, held)
+}
+
+/// The place a landing's record is in: Agents' own while it landed within
+/// the day its asking lasts, else the date it landed on, `2026-11-17`, so
+/// a watch of Agents' place, as the shell's is, holds only the newest,
+/// and a day's landings are told only to a watch naming that day, as the
+/// shell watches the day stepped into. Every landing was the shell's to
+/// hold, 4,270 of them and 3.95 MB on 19 November, and each made a row,
+/// most of what the shell weighed (WCJQSG, bea3796d). One with no time or
+/// no date stays in Agents' place, since no day would hold it.
+fn landing_place(at: Option<i64>, day: &str, now: i64) -> String {
+    match at {
+        Some(at) if !day.is_empty() && now - at >= TRY_FOR_MS => day.to_owned(),
+        _ => PLACE.to_owned(),
+    }
+}
+
+/// The days before `today` that anything landed on, newest first, each
+/// with how many landed, as Landed lists a row for each after today's
+/// landings.
+fn earlier(days: &BTreeMap<String, u64>, today: &str) -> Vec<Value> {
+    days.iter()
+        .rev()
+        .filter(|(day, _)| day.as_str() < today)
+        .map(|(day, count)| json!({"day": day, "count": count}))
+        .collect()
 }
 
 #[cfg(test)]
@@ -803,6 +842,78 @@ mod tests {
             .filter_map(Value::as_u64)
             .sum();
         assert_eq!(counted, 3, "each landing counted on its day");
+    }
+
+    #[test]
+    fn a_landing_past_its_day_is_told_only_to_a_watch_naming_its_date() {
+        let landings = [
+            kept(
+                "s",
+                "o#1",
+                "2026-11-11T11:00:00Z",
+                "After the next switch, open Agents.",
+            ),
+            kept(
+                "s",
+                "o#2",
+                "2026-11-10T11:00:00Z",
+                "After the next switch, open Agents.",
+            ),
+            kept("s", "o#3", "2026-11-09T11:00:00Z", ""),
+        ];
+        let (records, _) = landed(landings.iter(), &[], &Reading::default(), now());
+        let date = |at: &str| clock::date_of(clock::ms_of(&json!(at)).expect("a time"));
+        let keys: Vec<&Value> = records[..3].iter().map(|one| &one["key"]).collect();
+        assert_eq!(
+            keys,
+            [
+                &json!("landed:agents:s o#1 2026-11-11T11:00:00Z"),
+                &json!(format!(
+                    "landed:{}:s o#2 2026-11-10T11:00:00Z",
+                    date("2026-11-10T11:00:00Z")
+                )),
+                &json!(format!(
+                    "landed:{}:s o#3 2026-11-09T11:00:00Z",
+                    date("2026-11-09T11:00:00Z")
+                )),
+            ],
+            "within the day in Agents' place, each before in its date's, which a watch of \
+             Agents' place never hears"
+        );
+        assert_eq!(
+            records[1]["landed"]["day"],
+            json!(date("2026-11-10T11:00:00Z")),
+            "each says the date it landed on"
+        );
+        let tried: Vec<&Value> = records
+            .iter()
+            .filter(|one| one["kind"] == TRY)
+            .map(|one| &one["try"]["landing"])
+            .collect();
+        assert_eq!(
+            tried,
+            [&records[0]["key"]],
+            "what waits in To Try is in Agents' place, so For You holds it"
+        );
+        let days = records.last().expect("the days");
+        let earlier: Vec<&Value> = days["earlier"]
+            .as_array()
+            .expect("the days before today")
+            .iter()
+            .map(|one| &one["day"])
+            .collect();
+        let before = [date("2026-11-10T11:00:00Z"), date("2026-11-09T11:00:00Z")];
+        let today = date("2026-11-11T12:00:00Z");
+        let meant: Vec<Value> = before
+            .iter()
+            .filter(|day| **day < today)
+            .map(|day| json!(day))
+            .collect();
+        assert_eq!(
+            earlier,
+            meant.iter().collect::<Vec<_>>(),
+            "the days before today, newest first"
+        );
     }
 
     #[test]

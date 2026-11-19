@@ -42,17 +42,31 @@ impl Landings {
         let held = records
             .filter(|record| record["kind"] == "landed")
             .filter_map(|record| {
-                Some((record["key"].as_str()?.to_owned(), record["landed"].clone()))
+                Some((
+                    own_key(record["key"].as_str()?).to_owned(),
+                    record["landed"].clone(),
+                ))
             })
             .collect();
         *self.0.lock().unwrap_or_else(PoisonError::into_inner) = held;
     }
 
-    /// The landing whose record is `key`.
+    /// The landing whose record is `key`, in whichever place.
     fn get(&self, key: &str) -> Option<Value> {
         let held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        held.get(key).cloned()
+        held.get(own_key(key)).cloned()
     }
+}
+
+/// A landing's own key, from its record's, `landed:<place>:<key>`: the
+/// same whichever place the record is in, since a landing over a day old
+/// moves to its date's (landed.rs's `landing_place`), and what Joel said
+/// of it, kept by the key it had then, still finds it.
+fn own_key(record: &str) -> &str {
+    record
+        .strip_prefix("landed:")
+        .and_then(|rest| rest.split_once(':'))
+        .map_or(record, |(_, key)| key)
 }
 
 /// How long the node may take to send it, since Joel waits on the foot
@@ -256,7 +270,7 @@ pub fn told<S: std::hash::BuildHasher>(
         let key = record["key"].as_str().unwrap_or("");
         let mut said: Vec<(&Value, Option<&Talk>)> = lines
             .iter()
-            .filter(|line| line["landing"] == key)
+            .filter(|line| own_key(line["landing"].as_str().unwrap_or("")) == own_key(key))
             .map(|line| (line, talks.get(line["sent"].as_str().unwrap_or(""))))
             .collect();
         if said.is_empty() {

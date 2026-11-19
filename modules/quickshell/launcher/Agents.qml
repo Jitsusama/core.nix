@@ -167,7 +167,7 @@ Provider {
             if (provider.launcher?.open)
                 return;
             const began = KeyTimes.now();
-            const all = provider.landings;
+            const all = provider.landingsToday;
             const kept = provider.landedKept(String(Calendars.today ?? ""));
             let at = from;
             while (at < all.length && KeyTimes.now() - began < budget) {
@@ -456,6 +456,22 @@ Provider {
                 if (state === "answering")
                     provider.sproutsKept(held);
             }
+        }
+    }
+    // The day Joel is in under Landed, watched alone, each landing it
+    // tells moving that day's rows (landingsOn); no watch at all while
+    // he's in none, so what it held goes with it.
+    readonly property var landedDayKind: landedDayLink.item
+    LazyLoader {
+        id: landedDayLink
+        active: !!Quickshell.env("XDG_RUNTIME_DIR") && provider.landedDayIn !== ""
+
+        Daemon {
+            socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
+            kind: ["landed"]
+            watching: ({ place: provider.landedDayIn })
+            answersWhole: true
+            onHeard: () => provider.landedDayMoves += 1
         }
     }
     readonly property string summaryKey: "summary:agents"
@@ -2097,11 +2113,42 @@ Provider {
             .filter(one => one?.kind === "landed" && one.landed);
         return Order.sorted(held, Order.smaller(one => one.order)).map(one => one.landed);
     }
+    // The landings of a day before today: those of the last day, held
+    // already, then the rest as the day's own watch tells them, newest
+    // first by their own time. The daemon tells a landing over a day old
+    // only to a watch naming its date (landed.rs's landing_place), and the
+    // shell watches only the day Joel is in (landedDayIn), so it makes no
+    // row of a day he isn't in: all 4,270 of the past 30 days' landings
+    // were held and made rows, most of what the shell weighed (WCJQSG,
+    // bea3796d; 19 November).
+    property int landedDayMoves: 0
+    readonly property string landedDayIn: {
+        const step = heldKeys().find(key => key.startsWith("agents:landed-day:")) ?? "";
+        return step.slice("agents:landed-day:".length);
+    }
+    function landingsOn(day) {
+        void landedMoves;
+        void landedDayMoves;
+        const told = Object.values(landedDayKind?.held ?? {})
+            .filter(one => one?.kind === "landed" && one.landed?.day === day);
+        return landings.filter(one => one.day === day)
+            .concat(Order.sorted(told, Order.smaller(one => one.order)).map(one => one.landed));
+    }
+    // A landing's record by its own key, in Agents' place or the day's.
+    function landingRecord(key) {
+        void landedMoves;
+        void landedDayMoves;
+        const own = (rowsKind?.held ?? {})[`landed:agents:${key}`];
+        return own ?? Object.values(landedDayKind?.held ?? {})
+            .find(one => one?.kind === "landed" && one.landed?.key === key) ?? null;
+    }
+    // The landings listed where Joel is: the day he's in, else the newest.
+    readonly property var landingsNear: landedDayIn === "" ? landings : landingsOn(landedDayIn)
     // Where each landing stands among them, by its key, so its drawer drawn
     // finds those beside it.
     readonly property var landingAt: {
         const at = new Map();
-        landings.forEach((one, index) => at.set(one.key, index));
+        landingsNear.forEach((one, index) => at.set(one.key, index));
         return at;
     }
     // What For You holds of them, as the daemon serves it (landed.rs's
@@ -2124,7 +2171,7 @@ Provider {
     property var landingDrawersAhead: []
     function landingDrawerOf(one) {
         const at = landingAt.get(one.key) ?? -1;
-        const near = [landings[at - 1], one, landings[at + 1]]
+        const near = [landingsNear[at - 1], one, landingsNear[at + 1]]
             .filter(beside => typeof beside?.drawer === "string")
             .map(beside => beside.drawer);
         if (near.join("\n") !== landingDrawersAhead.join("\n"))
@@ -2153,7 +2200,7 @@ Provider {
     // Joel reads a landing, which the daemon keeps, and tells as its record
     // moves; one read already is asked nothing.
     function readLanding(key) {
-        const one = (rowsKind?.held ?? {})[`landed:agents:${key}`]?.landed;
+        const one = landingRecord(key)?.landed;
         if (!one || one.read !== null)
             return;
         rowsKind.ask({ ask: "read", keys: [key] });
@@ -2195,7 +2242,7 @@ Provider {
     // session's talk is, after those said here it hasn't served yet.
     function feedbackTalks(key) {
         void landedMoves;
-        const served = (rowsKind?.held ?? {})[`landed:agents:${key}`]?.landed?.said ?? [];
+        const served = landingRecord(key)?.landed?.said ?? [];
         const said = Words.of("agents:landed").said ?? {};
         const stages = Words.of("orchestrators:talk").said ?? {};
         const words = Object.assign({}, Words.of("agents:line").said ?? {}, {
@@ -2229,7 +2276,8 @@ Provider {
         };
         fedBack = String(said.sending ?? "");
         told(fedBack);
-        rowsKind?.ask({ ask: "feedback", landing: `landed:agents:${key}`, words: text },
+        const landing = landingRecord(key)?.key ?? `landed:agents:${key}`;
+        rowsKind?.ask({ ask: "feedback", landing, words: text },
             answer => {
                 const to = String(answer?.to ?? "");
                 const why = { "no-one": said.toNoOne, "no-mesh": said.noMesh }[
@@ -2243,10 +2291,15 @@ Provider {
                 told(fedBack);
             });
     }
-    // Where a landing lives, Agents \u203a Landed \u203a it, which For You's rows
-    // step into rather than show a copy of (VKCF3Z, 2026-11-10).
+    // Where a landing lives, Agents \u203a Landed \u203a it, or through its day
+    // where it landed before today, which For You's rows step into rather
+    // than show a copy of (VKCF3Z, 2026-11-10). What waits in To Try is
+    // of the last day, held already, so its day lists it at once.
     function landingTrail(one) {
-        return ["collection:agents", "agents:landed", `agents:landed:${one.key}`];
+        const day = String(one.day ?? "");
+        const before = day !== "" && day !== String(Calendars.today ?? "");
+        return ["collection:agents", "agents:landed"]
+            .concat(before ? [`agents:landed-day:${day}`] : [], [`agents:landed:${one.key}`]);
     }
     // A landing as both its rows show it, in Landed and in For You, one
     // component the same in both: when it landed at its side (Landed.js's
@@ -2299,12 +2352,55 @@ Provider {
     // Return (2026-11-14). A plain object, written in place, so keeping
     // them notifies nothing.
     readonly property var landedWhole: ({ rows: null, of: [] })
+    // A day's rows kept as Landed's are, apart, so stepping into one day
+    // lets go of none of today's.
+    readonly property var landedDayKeeping: keeper()
+    // What landed today, Landed's own rows, the rest under their days.
+    readonly property var landingsToday: {
+        const today = String(Calendars.today ?? "");
+        return landings.filter(one => (one.day ?? "") === "" || one.day === today);
+    }
+    // The days before today something landed on, newest first, with how
+    // many, as the daemon counts them (landed.rs's earlier).
+    readonly property var landedEarlier: {
+        void landedMoves;
+        return (rowsKind?.held ?? {})["landed-days:agents"]?.earlier ?? [];
+    }
+    // A day's row in Landed: its name the day as a side says one
+    // ("Yesterday", "Tuesday", "17 Nov"), its side how many landed, and
+    // its landings made rows only as Joel steps into it, which is when
+    // the daemon tells them (landedDayIn).
+    function landedDayName(day) {
+        const named = When.day(new Date(`${day}T00:00:00`).getTime(), Date.now(), {
+            yesterday: Words.name("agents:landed:yesterday"),
+            date: (date, format) => Qt.formatDate(date, format)
+        });
+        return named === "" ? day : named;
+    }
+    function landedDay(each, today) {
+        const words = Words.of("agents:landed").said ?? {};
+        const day = String(each.day);
+        return thingRow({
+            key: `agents:landed-day:${day}`,
+            name: landedDayName(day),
+            side: String(words.count ?? "").replace("{count}", String(each.count)),
+            glyph: Words.glyph("agents:landed"),
+            hue: "action"
+        }, () => {
+            const kept = provider.landedKept(today, landedDayKeeping);
+            provider.keepingBegun(landedDayKeeping);
+            const rows = provider.landingsOn(day).map(kept);
+            provider.keptOnly(landedDayKeeping);
+            provider.tally.looked += rows.length;
+            return rows;
+        });
+    }
 
     // What keeps a landing's row in Landed for the day `today` names: the
     // row kept while the landing, where its Return goes and the day are the
     // same, else made anew. Landed's rows read and the warm below both keep
     // them through it, so a row warmed is the row Landed shows.
-    function landedKept(today) {
+    function landedKept(today, keeping = landedKeeping) {
         const read = one => provider.readLanding(one.key);
         const act = (id, fields) => thing(Object.assign({
             key: `verb:agents:landed:${id}`,
@@ -2401,7 +2497,7 @@ Provider {
         }, provider.landingShows(one)));
         return one => {
             const way = goes(one, windowedNow);
-            return provider.keptAlike(landedKeeping, one.key, [one, way, today],
+            return provider.keptAlike(keeping, one.key, [one, way, today],
                 () => landing(one, way));
         };
     }
@@ -2409,6 +2505,8 @@ Provider {
     readonly property var landed: {
         if (!readNow)
             return madeBefore("landed", null);
+        // Made again as the day Joel is in is told, so its step is too.
+        void landedDayMoves;
         const words = Words.of("agents:landed");
         return thingRow({
             key: "agents:landed",
@@ -2418,8 +2516,9 @@ Provider {
             // A place's drawer is drawn once it names what it holds, as a
             // Recent's is (Launcher.qml's drawable); with nothing landed,
             // it has nothing to say past its row.
-            heldNames: landings.map(one => one.name ?? one.what),
-            drawer: landings.length === 0 ? undefined : () => ({
+            heldNames: landingsToday.map(one => one.name ?? one.what)
+                .concat(landedEarlier.map(each => landedDayName(String(each.day)))),
+            drawer: landings.length + landedEarlier.length === 0 ? undefined : () => ({
                 eyebrow: (Words.field.drawer ?? {}).place ?? "",
                 title: Words.name("agents:landed"),
                 body: (words.tells ?? {}).holding ?? ""
@@ -2428,17 +2527,18 @@ Provider {
             hue: "action"
         }, () => {
             const today = String(Calendars.today ?? "");
-            const of = [landings, today, Sessions.running, Sessions.parked];
+            const of = [landingsToday, today, Sessions.running, Sessions.parked, landedEarlier];
             if (landedWhole.rows !== null
                 && of.every((part, at) => part === landedWhole.of[at]))
                 return landedWhole.rows;
             const kept = provider.landedKept(today);
             provider.keepingBegun(landedKeeping);
-            const rows = landings.map(kept);
+            const rows = landingsToday.map(kept)
+                .concat(landedEarlier.map(each => provider.landedDay(each, today)));
             provider.keptOnly(landedKeeping);
             // Each landing looked at is counted, as Windows counts each window it
             // hears, for the check that Landed read again looks at none.
-            provider.tally.looked += landings.length;
+            provider.tally.looked += landingsToday.length;
             landedWhole.rows = rows;
             landedWhole.of = of;
             return rows;

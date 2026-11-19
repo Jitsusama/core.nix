@@ -1261,6 +1261,63 @@ def test_landed_read_again_with_nothing_changed_looks_at_no_landing(shell: Shell
     shell.close_launcher()
 
 
+# The days within which When.js names a day by its weekday.
+LATELY_DAYS = 6
+
+
+def earlier_days() -> list[tuple[str, int]]:
+    """Give Landed's days before today, newest first, as each is named, and how many landed."""
+    today = datetime.now().astimezone().date()
+    counted: dict[tuple[str, str], int] = {}
+    for one in LANDINGS:
+        day = datetime.fromisoformat(one["at"]).astimezone().date()
+        if "core.nix#" in one["ref"] and day < today:
+            before = (today - day).days
+            named = (
+                "Yesterday"
+                if before == 1
+                else day.strftime("%A")
+                if before <= LATELY_DAYS
+                else f"{day.day} {day.strftime('%b')}"
+            )
+            key = (day.isoformat(), named)
+            counted[key] = counted.get(key, 0) + 1
+    return [(named, count) for (_, named), count in sorted(counted.items(), reverse=True)]
+
+
+def test_landed_lists_a_row_a_day_before_today_whose_landings_come_only_inside(
+    shell: Shell,
+) -> None:
+    """Landed lists today's landings, then a row for each day before, saying how many landed.
+
+    Joel's shell held every one of the past 30 days' landings, 4,270 and 3.95 MB of them, and
+    made each a row as it started, about 45% of the rows it made (WCJQSG, bea3796d; 19
+    November). A day's landings reach the shell only once he steps into it, so it keeps only
+    today's as it starts, and the day lists its own, newest first.
+    """
+    days = earlier_days()
+    shell.reported(
+        "landings kept as the shell started: ",
+        lambda rest: int(rest) < EARLIER,
+        shell.launched,
+    )
+    opened(shell)
+    shell.launcher_until(lambda shown: "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"][-len(days) :] == [day for day, _ in days])
+    rows = shell.showing()["rows"]
+    assert not any(row.startswith("Earlier change") for row in rows), rows
+    newest, count = days[0]
+    shell.down_to(newest)
+    assert shell.showing()["selected"]["side"] == f"{count} landed", shell.showing()
+    shell.step_in()
+    shell.launcher_until(
+        lambda shown: len(shown["rows"]) == count and shown["rows"][0] == "Earlier change 0."
+    )
+    shell.close_launcher()
+
+
 def walked_into_landed(shell: Shell) -> dict[str, Json]:
     """Return on To Try's row, which walks into it in Landed, and give the picks kept before.
 
