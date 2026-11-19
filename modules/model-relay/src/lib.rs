@@ -46,8 +46,8 @@
 //! answer begins. After the machine sleeps, the connections it held are
 //! retired and opened afresh, since the network they ran on may be gone
 //! and pings would take their time to say so. A ping is what finds a lost
-//! connection, and an unanswered one fails every request on it, so below h2 each layer holds little ahead
-//! of one: a body goes in short frames, through few records and a kernel
+//! connection, and an unanswered one fails every request on it, so below
+//! h2 each layer holds little ahead of one: a body goes in short frames, through few records and a kernel
 //! holding little unsent, and on a slow uplink a ping is answered in time.
 //!
 //! Past 15 in 100 failed of the requests it finished in ten minutes, 20
@@ -55,8 +55,13 @@
 //! connections and answers each request with its own 421, forwarding
 //! nothing, so pi sends it direct, until ten minutes have passed, or
 //! twice the last stand-down, to an hour, when the last ended under an
-//! hour before. Standing down, and for its idle time after, it doesn't
-//! leave, which would forget it.
+//! hour before. A request is judged once it went down a connection: one
+//! that never reached the origin, as when none would open, would fail
+//! direct too, so it says nothing of the relay's connections. Standing
+//! down, and for its idle time after, it doesn't leave, which would forget
+//! it; taking requests again, it retires the connections opened meanwhile
+//! by requests it had already taken. A sleep forgets a stand-down, as the
+//! clock it ran on stopped and the network it judged may be gone.
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
@@ -122,6 +127,8 @@ pub const IDLE_EXIT: Duration = Duration::from_secs(120);
 /// How long its first stand-down lasts, unless the relay is told
 /// otherwise.
 pub const STANDS_DOWN_FOR: Duration = Duration::from_secs(600);
+/// The longest a first stand-down may be told to last.
+pub const STANDS_DOWN_FOR_AT_MOST: Duration = Duration::from_hours(24);
 /// How often an open connection is pinged, so one the network lost is
 /// found before a request is sent down it.
 const PING_EVERY: Duration = Duration::from_secs(20);
@@ -1079,6 +1086,8 @@ impl Relay {
                 "this relay is leaving, so go directly\n",
             );
         }
+        // Before the stand-down is asked about, as a sleep forgets it.
+        self.retire_after_a_sleep();
         if let Some(standing_down) = self.standing_down() {
             return standing_down;
         }
@@ -1087,9 +1096,7 @@ impl Relay {
             Ok(whole) => whole,
             Err(refused) => return *refused,
         };
-        let carried = self.carry(&parts, &whole).await;
-        self.finished(carried.is_err());
-        let (answer, on_the_way) = match carried {
+        let (answer, on_the_way) = match self.carry(&parts, &whole).await {
             Ok(answered) => answered,
             Err(not_carried) => return *not_carried,
         };
@@ -1112,9 +1119,13 @@ impl Relay {
             Taking::Yes => None,
             Taking::Again(lasted) => {
                 eprintln!(
-                    "model-relay: it stood down {} s, so it takes requests again",
+                    "model-relay: it stood down {} s, so it takes requests again, on \
+                     connections opened afresh",
                     lasted.as_secs()
                 );
+                // Requests it had taken before it stood down may have
+                // opened connections since, on the path it stood down from.
+                self.retire_every();
                 None
             }
             Taking::No(more) => {
@@ -1135,8 +1146,8 @@ impl Relay {
         }
     }
 
-    /// Hears a request it carried, or `failed` to, until its answer
-    /// began, and stands down when the share failed lately says to.
+    /// Hears a request that went down a connection, and was answered or
+    /// `failed`, and stands down when the share failed lately says to.
     fn finished(&self, failed: bool) {
         let Some(stood) = self.standing.heard(Instant::now(), failed) else {
             return;
@@ -1244,9 +1255,12 @@ impl Relay {
                 Ok(taken) => taken,
                 Err(why) => {
                     self.counts.failed.fetch_add(1, Ordering::Relaxed);
+                    // Never sent, it says nothing of the connections, as
+                    // it would have failed direct too, so it isn't judged.
                     let Some((was_at, was)) = reset_on else {
                         return Err(Box::new(why.said()));
                     };
+                    self.finished(true);
                     // Reset, and then not sent again, so it's counted with
                     // the requests reset that failed, and a 502 as any
                     // reset is, never a 421 sending pi direct: the origin
@@ -1337,6 +1351,7 @@ impl Relay {
                 }
             }
         };
+        self.finished(answered.is_err());
         answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
     }
 
@@ -1472,7 +1487,6 @@ impl Relay {
     /// other that is while the next is opened behind it, or, with none
     /// open, the next not being opened already, once it's opened.
     async fn sender(self: &Arc<Relay>) -> Result<(usize, Kept), Unreachable> {
-        self.retire_after_a_sleep();
         let count = self.slots.len();
         let at = self.next.fetch_add(1, Ordering::Relaxed) % count;
         if let Some(kept) = self.slots[at].sender() {
@@ -1507,6 +1521,9 @@ impl Relay {
         }
         eprintln!("model-relay: the machine slept, so its connections are opened afresh");
         self.retire_every();
+        if self.standing.forget() {
+            eprintln!("model-relay: the machine slept, so it no longer stands down");
+        }
     }
 
     /// Retires every connection, so each is opened afresh when next asked

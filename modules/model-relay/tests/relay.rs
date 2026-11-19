@@ -1172,11 +1172,17 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--idle-exit", "2", "--stand-down-for", "4"],
+        &["--idle-exit", "10", "--stand-down-for", "4"],
     );
 
+    // Three answered count as finished, not failed, so seventeen failed
+    // of the twenty finished stand it down.
+    for _ in 0..3 {
+        let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
+    }
     // Each is reset, and then reset again or kept with nowhere else to go.
-    for _ in 0..20 {
+    for _ in 0..17 {
         let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
         assert_eq!(
             got.status,
@@ -1186,8 +1192,7 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     }
     let stood_down = Instant::now();
 
-    // Past its idle time, it's still there, standing down.
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // Standing down from the last of them, it sends the next direct.
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
     assert_eq!(
         got.status,
@@ -1200,17 +1205,23 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
             && words.contains("so go directly"),
         "the stand-down's 421 doesn't say what sends pi direct: {words}"
     );
+    let retry_after = got
+        .headers
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok()?.parse::<u64>().ok());
     assert!(
-        got.headers.contains_key("retry-after"),
-        "the stand-down's 421 doesn't say when to try it again"
+        retry_after.is_some_and(|seconds| (1..=5).contains(&seconds)),
+        "the stand-down's 421 doesn't say it's over within its 4 s: {retry_after:?}"
     );
     assert_eq!(
         handed_to(&origin, "/echo"),
-        0,
+        3,
         "a request went on while it stood down"
     );
 
-    // Past its stand-down, and within its idle time after, it carries one.
+    // Past its stand-down, and within its idle time after, it carries one,
+    // on a connection opened afresh. It may not ask sooner than the
+    // stand-down's end, which came before the last reset was answered.
     tokio::time::sleep_until((stood_down + Duration::from_secs(5)).into()).await;
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
     assert_eq!(
@@ -1223,14 +1234,17 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     let said = relay.said();
     assert!(
         said.contains(
-            "20 of the 20 requests it finished in ten minutes failed, so it stands down for 4 \
+            "17 of the 20 requests it finished in ten minutes failed, so it stands down for 4 \
              s, retiring its connections"
         ),
         "the stand-down went unsaid: {said}"
     );
+    let again = said
+        .find("it stood down 4 s, so it takes requests again, on connections opened afresh")
+        .unwrap_or_else(|| panic!("taking requests again went unsaid: {said}"));
     assert!(
-        said.contains("it stood down 4 s, so it takes requests again"),
-        "taking requests again went unsaid: {said}"
+        said[again..].contains(" opened, "),
+        "no connection was opened afresh once it took requests again: {said}"
     );
 }
 

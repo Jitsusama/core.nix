@@ -14,6 +14,8 @@ use std::collections::VecDeque;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use crate::STANDS_DOWN_FOR_AT_MOST;
+
 /// How far back the requests it judges itself by go.
 const LOOKS_BACK: Duration = Duration::from_secs(600);
 
@@ -71,10 +73,12 @@ pub(crate) enum Taking {
 }
 
 impl Standing {
-    /// Taking requests, with a first stand-down of `first`.
+    /// Taking requests, with a first stand-down of `first`, to
+    /// `STANDS_DOWN_FOR_AT_MOST`, so the arithmetic on its doublings and
+    /// its end can't overflow.
     pub(crate) fn new(first: Duration) -> Standing {
         Standing {
-            first,
+            first: first.min(STANDS_DOWN_FOR_AT_MOST),
             held: Mutex::new(State::default()),
         }
     }
@@ -99,10 +103,10 @@ impl Standing {
         if finished < JUDGED_ON_AT_LEAST || state.failed * 100 <= finished * FAILED_PAST_PERCENT {
             return None;
         }
-        let longest = self.first * LONGEST_TIMES;
+        let longest = self.first.saturating_mul(LONGEST_TIMES);
         let lasting = match state.last {
             Some((ended, was)) if at.saturating_duration_since(ended) < longest => {
-                (was * 2).min(longest)
+                was.saturating_mul(2).min(longest)
             }
             _ => self.first,
         };
@@ -133,13 +137,25 @@ impl Standing {
 
     /// Whether it stands down `at`, or stood down within `after` before,
     /// so it mustn't leave: leaving, it would forget a stand-down, and one
-    /// just ended is a time pi is sent back to it, as being asked is.
+    /// just ended is a time pi is sent back to it, as being asked is. Once
+    /// a request has heard it take requests again, that request is what
+    /// holds the relay its idle time, so only a stand-down nobody has
+    /// asked past is held on for.
     pub(crate) fn holds_on(&self, at: Instant, after: Duration) -> bool {
         let state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
         state
             .down
-            .or(state.last)
-            .is_some_and(|(ended, _)| at < ended + after)
+            .is_some_and(|(until, _)| until.checked_add(after).is_none_or(|ended| at < ended))
+    }
+
+    /// Forgets its stand-down and all it finished, as after the machine
+    /// sleeps: its clock stopped meanwhile, and the network it judged may
+    /// be gone. Says whether it was standing down.
+    pub(crate) fn forget(&self) -> bool {
+        let mut state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        let was_down = state.down.is_some();
+        *state = State::default();
+        was_down
     }
 }
 
@@ -148,6 +164,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{JUDGED_ON_AT_LEAST, Standing, StoodDown, Taking};
+    use crate::STANDS_DOWN_FOR_AT_MOST;
 
     const TEN_MINUTES: Duration = Duration::from_secs(600);
     const A_SECOND: Duration = Duration::from_secs(1);
@@ -189,10 +206,91 @@ mod tests {
     }
 
     #[test]
+    fn what_finished_ten_minutes_ago_to_the_moment_still_counts() {
+        let from = Instant::now();
+        for (since, stands_down) in [(TEN_MINUTES, true), (TEN_MINUTES + A_SECOND, false)] {
+            let standing = Standing::new(TEN_MINUTES);
+            for _ in 0..4 {
+                assert_eq!(standing.heard(from, true), None, "four alone are judged");
+            }
+            let mut stood = None;
+            for _ in 0..16 {
+                stood = standing.heard(from + since, false).or(stood);
+            }
+            assert_eq!(
+                stood.is_some(),
+                stands_down,
+                "four failed {} s before sixteen answered",
+                since.as_secs()
+            );
+        }
+    }
+
+    #[test]
+    fn another_an_hour_after_to_the_moment_starts_over() {
+        let an_hour = TEN_MINUTES * 6;
+        let all_but_a_second = Duration::from_secs(3599);
+        for (after, lasting) in [(all_but_a_second, TEN_MINUTES * 2), (an_hour, TEN_MINUTES)] {
+            let standing = Standing::new(TEN_MINUTES);
+            let from = Instant::now();
+            hears(&standing, from, 0, 20).expect("it stands down");
+            let back = from + A_SECOND * 19 + TEN_MINUTES;
+            assert_eq!(standing.taking(back), Taking::Again(TEN_MINUTES));
+
+            // Twenty heard a second apart stand it down at the last.
+            let first_heard = (back + after)
+                .checked_sub(A_SECOND * 19)
+                .expect("after the stand-down");
+            let stood = hears(&standing, first_heard, 0, 20);
+            assert_eq!(
+                stood.map(|stood| stood.lasting),
+                Some(lasting),
+                "another {} s after the last ended",
+                after.as_secs()
+            );
+        }
+    }
+
+    #[test]
+    fn a_sleep_forgets_a_stand_down_and_the_one_before() {
+        let standing = Standing::new(TEN_MINUTES);
+        let from = Instant::now();
+        hears(&standing, from, 0, 20).expect("it stands down");
+        let back = from + A_SECOND * 19 + TEN_MINUTES;
+        assert_eq!(standing.taking(back), Taking::Again(TEN_MINUTES));
+        hears(&standing, back, 0, 20).expect("it stands down again");
+
+        assert!(standing.forget(), "it didn't say it was standing down");
+        assert_eq!(standing.taking(back + A_SECOND * 20), Taking::Yes);
+        assert!(!standing.forget(), "it said it stood down after forgetting");
+        assert_eq!(
+            hears(&standing, back + A_SECOND * 20, 0, 20).map(|stood| stood.lasting),
+            Some(TEN_MINUTES),
+            "a stand-down after a sleep doubled the one before it"
+        );
+    }
+
+    #[test]
+    fn a_first_stand_down_past_a_day_is_a_day_and_its_doublings_dont_overflow() {
+        let standing = Standing::new(Duration::MAX);
+        let from = Instant::now();
+
+        let stood = hears(&standing, from, 0, 20).expect("it stands down");
+        assert_eq!(stood.lasting, STANDS_DOWN_FOR_AT_MOST);
+        assert!(
+            standing.holds_on(from + STANDS_DOWN_FOR_AT_MOST, Duration::MAX),
+            "an idle time too long to add wasn't held on for"
+        );
+    }
+
+    #[test]
     fn never_down_it_holds_nothing_on() {
         let standing = Standing::new(TEN_MINUTES);
 
-        assert!(!standing.holds_on(Instant::now(), TEN_MINUTES));
+        assert!(
+            !standing.holds_on(Instant::now(), TEN_MINUTES),
+            "a relay that never stood down held itself on"
+        );
     }
 
     #[test]
@@ -240,10 +338,22 @@ mod tests {
             standing.taking(down_at + A_SECOND),
             Taking::No(Duration::from_secs(599))
         );
-        assert!(standing.holds_on(down_at + A_SECOND, Duration::ZERO));
-        assert!(!standing.holds_on(down_at + TEN_MINUTES, Duration::ZERO));
-        assert!(standing.holds_on(down_at + TEN_MINUTES, A_SECOND));
-        assert!(!standing.holds_on(down_at + TEN_MINUTES + A_SECOND, A_SECOND));
+        assert!(
+            standing.holds_on(down_at + A_SECOND, Duration::ZERO),
+            "it didn't hold on while standing down"
+        );
+        assert!(
+            !standing.holds_on(down_at + TEN_MINUTES, Duration::ZERO),
+            "it held on past its stand-down, with no time after"
+        );
+        assert!(
+            standing.holds_on(down_at + TEN_MINUTES, A_SECOND),
+            "it didn't hold on within its time after the stand-down"
+        );
+        assert!(
+            !standing.holds_on(down_at + TEN_MINUTES + A_SECOND, A_SECOND),
+            "it held on past its time after the stand-down"
+        );
         assert_eq!(
             standing.taking(down_at + TEN_MINUTES),
             Taking::Again(TEN_MINUTES)
@@ -275,7 +385,11 @@ mod tests {
         for _ in 0..5 {
             let stood = hears(&standing, from, 0, 20).expect("it stands down");
             let back = from + A_SECOND * 19 + stood.lasting;
-            assert!(matches!(standing.taking(back), Taking::Again(_)));
+            assert_eq!(
+                standing.taking(back),
+                Taking::Again(stood.lasting),
+                "it didn't take requests again once its stand-down was over"
+            );
             lasted.push(stood.lasting.as_secs() / 60);
             from = back;
         }
