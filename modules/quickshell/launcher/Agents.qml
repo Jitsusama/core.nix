@@ -1543,8 +1543,11 @@ Provider {
         sproutSays(key, words.starting);
         sproutPatience.restart();
         const heard = answer => {
+            const how = Sprouting.ended(answer, sproutWords());
             if (sprout === sprouts && sprouting !== "")
-                sprouted(Sprouting.ended(answer, sproutWords()));
+                sprouted(how);
+            else
+                console.info(`launcher: late, ${Sprouting.reach(how, sproutWords()).journal}`);
         };
         if (rowsKind)
             rowsKind.ask(ask, heard);
@@ -1583,20 +1586,44 @@ Provider {
     }
 
     // Says how a start ended beyond its own row (Sprouting.reach): in the
-    // journal always, and when it started nothing, in the foot while the
-    // launcher is open or as a notice while it's shut, so no start Joel
-    // gives ends unseen. That's a notice where an act's end is otherwise
-    // the foot's alone, since a shut launcher may not open for hours
-    // (Joel, 18 November: "things I send in must be seen through").
+    // journal always, and told Joel when it opens no window, so no start
+    // he gives ends unseen.
     function sproutReaches(how) {
-        const launcher = provider.launcher ?? null;
-        const reach = Sprouting.reach(how, launcher?.open === true);
+        const reach = Sprouting.reach(how, sproutWords());
         console.info(`launcher: ${reach.journal}`);
+        if (reach.told !== null)
+            sproutTell([reach.told]);
+    }
+    // Tells Joel how starts ended: in the foot while the card is up, and
+    // as a notice while it's shut or if it shuts before a key is pressed
+    // after the foot said it (sproutFooted), since a shut launcher may not
+    // open for hours. That's a notice where an act's end is otherwise the
+    // foot's alone (Joel, 18 November, of a start he shut the launcher on
+    // five seconds after: "things I send in must be seen through").
+    function sproutTell(told) {
+        const launcher = provider.launcher ?? null;
         const name = Words.name("agents:start-new-work");
-        if (reach.foot)
-            launcher.tellOnOpen([[name, how.why]], true);
-        else if (reach.notice)
-            Niri.spawn(["notify-send", "--app-name=Agents", name, how.why]);
+        if (launcher !== null && (launcher.open || launcher.opening)) {
+            launcher.tellOnOpen(told.map(text => [name, text]), true);
+            const unread = sproutFooted?.keys === launcher.keysTaken ? sproutFooted.told : [];
+            sproutFooted = { told: unread.concat(told), keys: launcher.keysTaken };
+        } else {
+            sproutNoticed(told);
+        }
+    }
+    property var sproutFooted: null
+    function sproutNoticed(told) {
+        const name = Words.name("agents:start-new-work");
+        told.forEach(text => Niri.spawn(["notify-send", "--app-name=Agents", "--", name,
+            text]));
+    }
+    // The launcher shut: what the foot said of a start with no key since
+    // is noticed, as it may not have been read.
+    function sproutShut() {
+        const footed = sproutFooted;
+        sproutFooted = null;
+        if (footed !== null && provider.launcher?.keysTaken === footed.keys)
+            sproutNoticed(footed.told);
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
@@ -1628,8 +1655,7 @@ Provider {
                 told.push(text);
         });
         if (told.length > 0)
-            provider.launcher?.tellOnOpen(told.map(text => [Words.name("agents:start-new-work"),
-                text]));
+            sproutTell(told);
     }
     function sessionOf(one) {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
@@ -1787,8 +1813,10 @@ Provider {
             provider.wrapAhead();
             provider.wrapForTyping();
             // Shut, no drawer shows, so none is watched.
-            if (!provider.launcher.open)
+            if (!provider.launcher.open) {
                 provider.drawerWanted = "";
+                provider.sproutShut();
+            }
         }
     }
 

@@ -847,6 +847,7 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
         f"rm -f {opened} {first} && mkdir -p {folder} && touch $XDG_RUNTIME_DIR/pi-stays"
     )
     before = {window["id"] for window in desktop.windows()}
+    noticed = starts_noticed(desktop)
     try:
         # Any program of Joel's can ask the shell's catalogue, an agent among them, so From a
         # Link asked that way starts nothing: only his own Return sprouts (#5456's council).
@@ -859,6 +860,8 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
             )
         )
         assert walked.get("done") is not True, f"a walk from outside sprouted: {walked}"
+        # Nor does it put a notice on his screen, which any program could then do.
+        assert starts_noticed(desktop) == noticed, "a walk from outside raised a notice"
         # The launcher in a terminal walks the same way, even told --yes.
         status, said = machine.execute(
             desktop.in_session(
@@ -929,6 +932,7 @@ def test_new_work_that_starts_nothing_is_told_once_the_launcher_is_shut(
     # A repository with no checkout, so the ask the node reads once it runs again starts nothing.
     link = "https://github.com/harbour/nowhere/issues/8"
     since = desktop.mark()
+    before = starts_noticed(desktop)
     desktop.as_account("systemctl --user kill --signal=STOP mycelium")
     try:
         desktop.as_account("qs ipc call launcher toggle")
@@ -945,19 +949,41 @@ def test_new_work_that_starts_nothing_is_told_once_the_launcher_is_shut(
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_until(lambda shown: shown["open"] is False)
         # The daemon gives up on a silent node within 50 s, the shell on the daemon within 60.
+        told = f"[{STARTS_NOTICED} | select(.body == {json.dumps(UNANSWERED)})] | length > {before}"
         machine.wait_until_succeeds(
-            desktop.notice_kept('.app == "Agents" and .summary == "Start New Work"'),
+            desktop.in_session(f"jq -e {shlex.quote(told)} {desktop.NOTICES_KEPT}"),
             timeout=dt.timedelta(seconds=90),
         )
         said = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(since)}"
         )
-        assert "launcher: new work wasn't started: " in said, f"its end wasn't journalled: {said}"
-        assert link not in said, "the journal kept his words"
+        assert f"launcher: new work wasn't started: {UNANSWERED}" in said, (
+            f"its end wasn't journalled: {said}"
+        )
+        # The test's own reports (report[...]), off on his machine, show the line as typed.
+        kept = [line for line in said.splitlines() if "report[" not in line]
+        assert not [line for line in kept if link in line], "the journal kept his words"
     finally:
         desktop.as_account("systemctl --user kill --signal=CONT mycelium")
         desktop.launcher_left_closed()
+
+
+# Start New Work's notices, and what the agents daemon says of a start its node took and fell
+# silent on (modules/agents/src/sprout.rs's SILENT).
+STARTS_NOTICED = '.notices[]? | select(.app == "Agents" and .summary == "Start New Work")'
+UNANSWERED = (
+    "the node didn't answer in time; it may still start it, so look in Agents before asking again"
+)
+
+
+def starts_noticed(desktop: Desktop) -> int:
+    """Give how many notices Start New Work has raised, none before the first."""
+    return int(
+        desktop.as_account(
+            f"jq '[{STARTS_NOTICED}] | length' {desktop.NOTICES_KEPT} 2>/dev/null || echo 0"
+        ).strip()
+    )
 
 
 def opened_focused(desktop: Desktop, before: set[int]) -> None:

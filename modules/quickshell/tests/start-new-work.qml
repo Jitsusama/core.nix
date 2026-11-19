@@ -66,7 +66,8 @@ QtObject {
                 message: "only the launcher starts new work here" } }, said),
             { started: false, why: "only the launcher starts new work here" });
         Expect.same("no daemon to ask is no answer",
-            Sprouting.ended(null, said), { started: false, why: "its node didn't answer" });
+            Sprouting.ended(null, said),
+            { started: false, unanswered: true, why: "its node didn't answer" });
         Expect.same("an answer that isn't a sprout's is unread",
             Sprouting.ended({ id: "ask-3", sprouted: {} }, said),
             { started: false, why: "its node's answer couldn't be read" });
@@ -149,21 +150,23 @@ QtObject {
         // Where each end is said beyond its own row, which Joel may have left.
         const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };
         const startedEnd = { started: true, machine: "kestrel", held: "h1" };
-        Expect.same("one refused with the launcher open is said in the foot, and journalled",
-            Sprouting.reach(refusedEnd, true), {
+        Expect.same("one refused is told why, and journalled",
+            Sprouting.reach(refusedEnd, said), {
                 journal: "new work wasn't started: /home/j isn't a repository's folder",
-                foot: true, notice: false
+                told: "/home/j isn't a repository's folder"
             });
-        Expect.same("one refused with the launcher shut is a notice, and journalled",
-            Sprouting.reach(refusedEnd, false), {
-                journal: "new work wasn't started: /home/j isn't a repository's folder",
-                foot: false, notice: true
+        Expect.same("one unanswered is told, and journalled as one that may yet start",
+            Sprouting.reach(Sprouting.ended(null, said), said), {
+                journal: "new work's start went unanswered; it may still start",
+                told: said.unanswered
             });
-        Expect.same("one unanswered is no start, so it's said as one refused is",
-            Sprouting.reach({ started: false, why: said.unanswered }, false).notice, true);
-        for (const open of [true, false])
-            Expect.same(`one started is journalled, and says itself as it comes up (${open})`,
-                Sprouting.reach(startedEnd, open),
-                { journal: "new work started on kestrel", foot: false, notice: false });
+        Expect.same("one started with no holder's id opens no window, so it's told",
+            Sprouting.reach({ started: true, machine: "kestrel", held: "" }, said), {
+                journal: "new work started on kestrel",
+                told: "started on kestrel; in Agents once up"
+            });
+        Expect.same("one held is journalled, and says itself as it comes up",
+            Sprouting.reach(startedEnd, said),
+            { journal: "new work started on kestrel", told: null });
     }
 }

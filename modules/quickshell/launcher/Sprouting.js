@@ -62,7 +62,7 @@ function refused(text, folder, said) {
 // `said`'s where no daemon answered (null) or its answer can't be read.
 function ended(answer, said) {
     if (answer === null || answer === undefined) {
-        return { started: false, why: String(said.unanswered ?? "") };
+        return { started: false, unanswered: true, why: String(said.unanswered ?? "") };
     }
     const begun = answer.sprouted;
     if (typeof begun?.machine === "string" && begun.machine !== "") {
@@ -144,14 +144,23 @@ function told(how, said) {
 // launcher he'd shut five seconds after his Return, and so it vanished
 // ("That can never happen, things I send in must be seen through"). Every
 // end is journalled, without his words, so the next one missed can be
-// found. One that started nothing is said in the foot while the launcher
-// is open, and as a notice while it's shut, since it may not open again
-// for hours. One that started says itself as its session comes up
-// (Agents' openSprouted).
-function reach(how, open) {
-    const journal = how.started
-        ? `new work started on ${how.machine}`
-        : `new work wasn't started: ${how.why}`;
-    const refused = how.started !== true;
-    return { journal, foot: refused && open === true, notice: refused && open !== true };
+// found; one unanswered may yet start, so it isn't journalled as not.
+// One that opens no window is `told` Joel in `said`'s words (Agents'
+// sproutTell says where); one held to open says itself as its session
+// comes up, or is told then (Agents' openSprouted).
+function reach(how, said) {
+    const tell = how.started !== true || how.held === "";
+    return { journal: journalled(how), told: tell ? told(how, said) : null };
+}
+
+// The journal's line for how a start ended, in the machine's words or
+// the why, never Joel's.
+function journalled(how) {
+    if (how.started) {
+        return `new work started on ${how.machine}`;
+    }
+    if (how.unanswered) {
+        return "new work's start went unanswered; it may still start";
+    }
+    return `new work wasn't started: ${how.why}`;
 }
