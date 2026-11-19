@@ -161,7 +161,9 @@ Provider {
             // As it was copied, lines and all, which the row cuts short.
             reads: held.reads
         };
-        const hidden = !hiding ? {} : {
+        // Made showing, it says so, so no way back goes to a place holding
+        // it once a share hides copies (Steady.hiddenGone).
+        const hidden = !hiding ? { shownBy: provider } : {
             name: Words.name(picture ? "copies:hidden:picture" : "copies:hidden:text"),
             note: "",
             reads: "",
