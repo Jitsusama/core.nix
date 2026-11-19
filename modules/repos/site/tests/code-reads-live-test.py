@@ -67,8 +67,9 @@ BACK_MS = 15000
 KINDS = ["reading", "repository", "checkout", "tree", "change"]
 # What a first visit to Code may cost, drawn from the stand-in's repositories: two of the files
 # are the map of ties, its view and its logic, and the kilobytes and elements count its section,
-# its keys' lines in the list of keys and the tying cell's link too.
-BUDGET = Budget(files=33, kilobytes=570, elements=275)
+# its keys' lines in the list of keys and the tying cell's link too, and two of the kilobytes
+# lead each tree's cells on to the other repositories they work across.
+BUDGET = Budget(files=33, kilobytes=572, elements=275)
 CELLS_SITE = "cells/"
 
 
