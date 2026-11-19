@@ -5375,7 +5375,8 @@
     Now leads with what waits on Joel and For You's to-dos hold only what's true, one waiting on a
     file going by itself as the to-do daemon finds it done, a session wanting him waits as the
     session, its notice going to it and going read once it stops waiting; the agents list every
-    session from the shell's start and hold still as one changes, and pi's runs are found
+    session from the shell's start and hold still as one changes, and pi's runs are found; and
+    the safe word's Slack reader stays down, telling For You nothing of its own
   '';
   vm-desktop-locks-and-asks = ''
     the lock screen takes only the right password, kills a hung check and tries it again, lets go

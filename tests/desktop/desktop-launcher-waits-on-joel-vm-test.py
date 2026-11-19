@@ -459,6 +459,22 @@ def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     desktop.as_account("niri msg output winit scale 1")
 
 
+def test_the_safe_words_slack_reader_stays_down_and_tells_for_you_nothing(
+    desktop: Desktop,
+) -> None:
+    """pineapple-slack stays down here, and For You holds no row of its.
+
+    With no sign-in to read, a reader up would rightly tell For You it can't hear Slack, and
+    Now would lead with that rather than what each test writes (servesTheSafeWord in
+    tests/desktop.nix). Said once here, so a reader back up names itself rather than showing
+    as other tests timing out behind its row.
+    """
+    reading = desktop.as_account("systemctl --user is-active pineapple-slack || true").strip()
+    assert reading == "inactive", f"the safe word's Slack reader is {reading}, not down"
+    told = desktop.as_account(f"ls {MISSION}/waiting/pineapple.json 2>/dev/null || true")
+    assert not told.strip(), "the safe word's Slack reader told For You it can't hear Slack"
+
+
 def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     """Now leads with what waits on Joel, and Return goes to where it's done."""
     machine = desktop.machine
