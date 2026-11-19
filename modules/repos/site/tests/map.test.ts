@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { ties } from "../joins.ts";
-import { bowed, mapOf, saidOf, THREADS_A_TIE, walked } from "../map.ts";
+import { bowed, kept, mapOf, saidOf, THREADS_A_TIE, walked } from "../map.ts";
 import type { Cell, Repository } from "../model.ts";
 
 /** A cell at work, in the networks named. */
@@ -90,10 +90,11 @@ it("says each row's ties, the most cells first, and ties of as many by name", ()
   const map = mapOf(grove);
   assert.equal(saidOf(map, 0), "Joined to world by 3\u00a0cells, and harness by 1\u00a0cell.");
   assert.equal(saidOf(map, 1), "Joined to core by 1\u00a0cell.");
+  // Their keys sort the other way to their names, so only the names can put alpha first.
   const alike = mapOf([
     repository("core", [cell("Z", ["repo.zeta"]), cell("A", ["repo.alpha"])]),
-    repository("zeta"),
-    repository("alpha"),
+    { ...repository("zeta"), key: "github:owl/a-zeta" },
+    { ...repository("alpha"), key: "github:owl/z-alpha" },
   ]);
   assert.equal(saidOf(alike, 0), "Joined to alpha by 1\u00a0cell, and zeta by 1\u00a0cell.");
 });
@@ -112,6 +113,36 @@ it("bows each of a tie's threads apart, the farthest tie's too, inside the gutte
   const bows = map.threads.map((each) => bowed(each, map.rows.length));
   assert.equal(new Set(bows).size, THREADS_A_TIE, `two threads bowed alike: ${bows}`);
   assert.ok(Math.max(...bows) <= 96, `a thread bowed past the gutter: ${bows}`);
+});
+
+it("bows a farther tie deeper than a nearer one", () => {
+  const map = mapOf(grove);
+  const [near, far] = map.threads.map((each) => bowed(each, map.rows.length));
+  assert.ok((near ?? 0) < (far ?? 0), `the tie past a row bowed ${far}, the next row's ${near}`);
+});
+
+it("ties nothing by a cell that's quiet or resting, as the page counts only cells at work", () => {
+  const resting = ["quiet", "dormant"].map((standing, at) => ({
+    ...cell(`R${at}`, ["repo.world"]),
+    standing,
+  }));
+  const map = mapOf([repository("core", resting), repository("world")]);
+  assert.deepEqual(map.ties, [], "a cell not at work tied two repositories");
+});
+
+it("keeps the keys on their repository as rows come and go around it", () => {
+  // Harness ties in above world, so world moves a row down, and the keys move with it.
+  const before = mapOf([
+    repository("core", [cell("A", ["repo.world"])]),
+    repository("harness"),
+    repository("world"),
+  ]);
+  const after = mapOf(grove);
+  assert.equal(after.rows[kept(before, 1, after)]?.name, "world", "the keys stayed on the row");
+  // World's tie goes, so the keys rest on the row nearest the one they left.
+  const gone = mapOf([repository("core", [cell("B", ["repo.harness"])]), repository("harness")]);
+  assert.equal(kept(after, 2, gone), 1, "the keys left the map");
+  assert.equal(kept(after, 0, mapOf([])), 0, "the keys rested past an empty map");
 });
 
 it("writes each other row's name as it's asked, so the page can link it home", () => {

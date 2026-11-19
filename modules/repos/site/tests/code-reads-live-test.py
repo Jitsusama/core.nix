@@ -66,9 +66,9 @@ BACK_MS = 15000
 # The kinds the repos daemon serves, each told whole, as home.nix declares them.
 KINDS = ["reading", "repository", "checkout", "tree", "change"]
 # What a first visit to Code may cost, drawn from the stand-in's repositories: two of the files
-# are the map of ties, its view and its logic, and the elements count its section, its keys'
-# lines in the list of keys and the tying cell's link too.
-BUDGET = Budget(files=33, kilobytes=565, elements=275)
+# are the map of ties, its view and its logic, and the kilobytes and elements count its section,
+# its keys' lines in the list of keys and the tying cell's link too.
+BUDGET = Budget(files=33, kilobytes=570, elements=275)
 CELLS_SITE = "cells/"
 
 
@@ -941,11 +941,21 @@ def test_the_maps_keys_walk_its_rows_and_open_one(code_page: Page, mycelium_node
     code_page.keyboard.press("j")
     expect(said, "a step left the last words standing").to_have_text("")
     code_page.keyboard.press("k")
+    # Home on the first row has nowhere to go, as the arrows past an end don't.
+    code_page.keyboard.press("Home")
+    expect(said, "Home on the first row said nothing").to_have_text(
+        "Nothing lies before core on the map."
+    )
     # The list's own keys act on the list's cursor, which the map doesn't hold, so they say
-    # where they act rather than act on another repository than the one marked.
+    # where they act rather than act on another repository than the one marked, and in other
+    # words when pressed again, so a repeat is heard too.
     code_page.keyboard.press("z")
     expect(said, "z on the map didn't say where it acts").to_have_text(
         "z acts on the list: Return takes the keys to core there."
+    )
+    code_page.keyboard.press("z")
+    expect(said, "a second z said the same").to_have_text(
+        "z still acts on the list: Return takes the keys to core there."
     )
     # Escape on the map holds on to a find the list holds.
     find = code_page.locator("#find")
@@ -954,21 +964,43 @@ def test_the_maps_keys_walk_its_rows_and_open_one(code_page: Page, mycelium_node
     code_page.keyboard.press("Escape")
     expect(find, "Escape on the map let go of the find").to_have_value("o")
     expect(rows.first, "Escape moved the map").to_have_attribute("aria-selected", "true")
+    code_page.keyboard.press("Tab")
+    left = code_page.evaluate("() => document.activeElement.id !== 'ties-map'")
+    assert left, "Tab didn't leave the map"
+
+
+def test_return_on_the_map_opens_a_repository_as_the_list_does(
+    code_page: Page, mycelium_node: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    spanning(mycelium_node)
+    rows = code_page.locator(TIE_ROWS)
+    expect(rows, "the map wasn't drawn").to_have_count(2)
+    chosen = code_page.locator("#list .row[aria-selected='true']")
+    find = code_page.locator("#find")
+    tied = code_page.locator("#ties-map")
+    tied.focus()
+    # Opening a repository moves the list's cursor, which takes the place of the address it
+    # had, as the list's own moves do, rather than adding a step to Back.
+    steps = code_page.evaluate("() => history.length")
     code_page.keyboard.press("End")
     code_page.keyboard.press("Enter")
     expect(code_page, "Return didn't open notes").to_have_url(re.compile(r"#repo=notes$"))
+    assert code_page.evaluate("() => history.length") == steps, "Return added a step to Back"
     expect(chosen, "notes wasn't the repository opened").to_have_attribute(
         "data-key", "local:~/src/notes"
     )
     lister = code_page.locator("#list")
     expect(lister, "Return didn't take the keys to the list").to_be_focused()
-    # The repository already open is opened as a link to it would be: the keys go to it.
+    # The repository already open is opened as a link to it would be: the keys go to it, shown
+    # in the list even where a find had hidden it.
+    find.fill("core")
     tied.focus()
     code_page.keyboard.press("Enter")
     expect(lister, "Return on the repository open did nothing").to_be_focused()
+    expect(find, "the find hid the repository opened").to_have_value("")
+    expect(chosen, "the list didn't show notes as opened").to_have_attribute(
+        "data-key", "local:~/src/notes"
+    )
     rows.first.click()
     expect(code_page, "a click didn't open core").to_have_url(re.compile(r"#repo=owl%2Fcore$"))
-    tied.focus()
-    code_page.keyboard.press("Tab")
-    left = code_page.evaluate("() => document.activeElement.id !== 'ties-map'")
-    assert left, "Tab didn't leave the map"
