@@ -469,6 +469,18 @@ function frame(route, t) {
     return off === 0 ? at : Object.assign(at, { y: at.y + off });
 }
 
+// What a walk set off from `drawn`, a frame as frame() gives it, takes
+// from it: the way it faces, the stride it's drawn in, how far into it
+// and whether at its pace, so a way found again strides on (Ways.timed).
+function setOffFrom(drawn) {
+    return {
+        facing: drawn?.facing ?? 0,
+        drawnIn: drawn?.pose ?? null,
+        drawnInto: drawn?.into ?? null,
+        drawnAtPace: drawn?.atPace ?? false
+    };
+}
+
 // How far down the screen niri's slide still has a move's ground `t` ms
 // in, in pixels, where it's walked as one screen: the workspace it left
 // as far as the slide hasn't taken it, and so the one it goes to, which

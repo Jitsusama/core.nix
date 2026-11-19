@@ -111,8 +111,14 @@ QtObject {
                 && (on % 2 === 0 || (on === 3
                     && !(one.pose === "walkingB" && standsIn.includes(one.beat))));
         };
-        const flashes = (journey, said) => {
-            let run = null;
+        // A journey set off from `from`, a frame of another, is judged
+        // from it, so the step across the change is held too, and the
+        // first pose it changes to is held to the 33 ms the others are.
+        const posed = one => (one.y + at.tall > 0 && one.y < at.height && one.beat !== "rides"
+            ? one.pose : undefined);
+        const flashes = (journey, said, from) => {
+            let run = from && { pose: posed(from), begins: 0, ends: 0, first: from, last: from,
+                walks: walking.includes(from.beat), goes: striding.includes(from.beat) };
             const skids = () => {
                 const went = Math.abs(run.last.x - run.first.x)
                     + Math.abs(run.last.y - run.first.y);
@@ -124,8 +130,7 @@ QtObject {
             };
             for (let t = 0; t <= journey.ends; t += 1) {
                 const one = Paths.frame(journey, t);
-                const shown = one.y + at.tall > 0 && one.y < at.height;
-                const pose = shown && one.beat !== "rides" ? one.pose : undefined;
+                const pose = posed(one);
                 if (run !== null && pose === run.pose) {
                     run.ends = t;
                     run.last = one;
@@ -134,7 +139,8 @@ QtObject {
                     continue;
                 }
                 const ms = run === null ? 0 : run.ends - run.begins + 1;
-                if (run !== null && run.begins > 0 && run.pose && ms < 33)
+                if (run !== null && (run.begins > 0 || (from && run.first !== from)) && run.pose
+                    && ms < 33)
                     wrong.push(`${said} shows ${run.pose} ${ms} ms at ${run.begins} ms, `
                         + `${run.first.beat} to ${run.last.beat}`);
                 if (run !== null && run.pose)
@@ -148,8 +154,8 @@ QtObject {
         };
         // Every frame of `journey` a cat's, in none of `solid`'s windows
         // but where a window shoved it, and ending on `to`.
-        const check = (journey, solid, said, to) => {
-            flashes(journey, said);
+        const check = (journey, solid, said, to, from = null) => {
+            flashes(journey, said, from);
             const last = Paths.frame(journey, journey.ends);
             if (Math.abs(last.x - to.x) > 0.01 || Math.abs(last.y - to.y) > 0.01)
                 wrong.push(`${said} ends at ${last.x},${last.y}`);
@@ -219,19 +225,21 @@ QtObject {
             const said = `${n} (${way}, ${JSON.stringify(from)} to ${JSON.stringify(to)})`;
             check(journey, now, said, to);
             // And the windows changed under it somewhere on its way past
-            // the slide, its way found again from where it's got to.
+            // the slide, its way found again from where it's got to, in
+            // the stride it's drawn in as the screen sets it off
+            // (MarginCatScreen.qml's walkTo()).
             const t = journey.beats[0].ends + random() * (journey.ends - journey.beats[0].ends);
             const here = Paths.frame(journey, t);
             const changed = changes(now, random);
             const then = seatOn(changed);
             const again = then === null ? null : Paths.walk({ x: here.x, y: here.y }, then,
                 Object.assign({ cols: Paths.columns(changed, 0), hurried: true,
-                    before: Paths.columns(now, 0) }, at));
+                    before: Paths.columns(now, 0) }, at, Paths.setOffFrom(here)));
             const starts = again === null ? here : Paths.frame(again, 0);
             if (Math.hypot(starts.x - here.x, starts.y - here.y) > 0.01)
                 wrong.push(`${said} changed jumps from ${here.x},${here.y}`);
             if (again !== null)
-                check(again, changed, `${said} changed at ${Math.round(t)} ms`, then);
+                check(again, changed, `${said} changed at ${Math.round(t)} ms`, then, here);
         }
         expect("150 journeys thrown at it", made, 150);
         expect("each ends on its seat, every frame of it a cat's", wrong.slice(0, 5), []);

@@ -79,9 +79,7 @@ onLinux {
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
-      for case in *.qml; do
-        QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml "$case"
-      done
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml $BASH ${./tests/runs-every-case.sh} ${qt}/bin/qml
       touch $out
     '';
 

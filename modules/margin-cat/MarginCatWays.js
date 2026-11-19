@@ -258,10 +258,9 @@ function joined(was, beat) {
             + (was.to.y - was.from.y) * (beat.to.y - beat.from.y) >= 0;
 }
 
-// A way's legs as beats in time: its pace by all the ground it walks, as
-// a walk's is, about CRUISES ms where it can and never past HURRIES; its
-// stride by that pace; the theme's slowdown on all of it but the ride,
-// which niri's own clock already slows.
+// A way's legs as beats in time: its pace by all the ground it walks, as a walk's is, about CRUISES
+// ms where it can and never past HURRIES; its stride by that pace; the theme's slowdown on all of
+// it but the ride, which niri's own clock already slows.
 function timed(way) {
     const at = way.at;
     const slow = at.slowdown ?? 1;
@@ -327,12 +326,13 @@ function timed(way) {
         beat.since = joined(was, beat) ? was.since : beat.begins;
         beat.joins = joined(beat, beats[i + 1]);
     }
-    // A striding beat too short to be seen, joined to none before it, goes
-    // on in the pose before it, and those it joins stride from that pose.
+    // A striding beat too short to be seen, joined to none before it, holds the pose before it:
+    // if first, the stride it set off in, not a pose that would slide; those joined stride from it.
     for (const [i, beat] of beats.entries()) {
-        if (i > 0 && STRIDING[beat.kind] && !STRIDING[beats[i - 1].kind]
+        const first = i === 0 && !mid && STRIDING.goes.includes(route.drawnIn);
+        if ((first || (i > 0 && !STRIDING[beats[i - 1].kind])) && STRIDING[beat.kind]
             && beat.ends - beat.begins < SHOWN) {
-            beat.held = frame(route, beat.begins - 1e-6).pose;
+            beat.held = first ? route.drawnIn : frame(route, beat.begins - 1e-6).pose;
             const on = beats.filter((one, j) => j > i && one.since === beat.since);
             const [held, since] = [on[0]?.walked, on[0]?.begins];
             for (const one of on) {
