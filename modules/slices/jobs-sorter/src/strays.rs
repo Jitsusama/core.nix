@@ -35,7 +35,8 @@ impl Told {
     /// A line for each of systemd-run's services under `under` not said of
     /// yet, reading its first process's command from `proc`. One with no
     /// process yet, or whose process is still systemd's executor setting it
-    /// up, waits for a later look, and one gone is forgotten, so a name used
+    /// up under either of its names, waits for a later look, and one gone is
+    /// forgotten, so a name used
     /// again is said of again.
     pub fn look(&mut self, under: &[PathBuf], proc: &Path) -> Vec<String> {
         let found: Vec<PathBuf> = under.iter().flat_map(|slice| made_by_run(slice)).collect();
@@ -79,11 +80,16 @@ fn made_by_run(slice: &Path) -> Vec<PathBuf> {
 /// Whether a command is still systemd's executor, which runs in a new
 /// service's process until it hands over to the service's own command, so
 /// a look between the two would name the executor rather than the command.
+/// It starts as `systemd-executor`, then renames itself to the command's
+/// name in brackets, `(sleep)`, as it sets the process up, the way `ps`
+/// shows `(sd-pam)`; a look then once said a stray ran `(sleep)`.
 fn starting(command: &[u8]) -> bool {
     let program = command.split(|byte| *byte == 0).next().unwrap_or_default();
-    Path::new(&*String::from_utf8_lossy(program))
-        .file_name()
-        .is_some_and(|name| name == "systemd-executor")
+    let renamed = program.len() > 2 && program.starts_with(b"(") && program.ends_with(b")");
+    renamed
+        || Path::new(&*String::from_utf8_lossy(program))
+            .file_name()
+            .is_some_and(|name| name == "systemd-executor")
 }
 
 /// A cgroup's first process, if it has one.
@@ -190,6 +196,12 @@ mod tests {
             told.look(&under, &proc),
             Vec::<String>::new(),
             "systemd's executor hasn't started the command yet, so it waits for a later look"
+        );
+        fs::write(dir.join("proc/46/cmdline"), b"(sleep)\x00").unwrap();
+        assert_eq!(
+            told.look(&under, &proc),
+            Vec::<String>::new(),
+            "the executor names itself after the command in brackets as it sets up, and still waits"
         );
         fs::write(dir.join("proc/46/cmdline"), b"sleep\x001008\x00").unwrap();
         assert_eq!(
