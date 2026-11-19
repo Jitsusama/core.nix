@@ -83,6 +83,99 @@ QtObject {
                 { id: "reboot", keys: 6, at: 2000, counted: 0 }]),
             "armed armed | armed");
 
+        // Return held still, as on an ask hidden while Joel shares: a row
+        // saying it has nothing to do yet, with no run, whatever else it
+        // holds; never a still row that runs, nor one not still with no run
+        // whose Return does something else.
+        const nothing = () => {};
+        const still = [
+            ["a hidden ask, still with no run", { still: true }, true],
+            ["a still row with no run that asks for words", { still: true, given: nothing },
+                true],
+            ["a still row with no run that starts a command", { still: true, start: "x" }, true],
+            ["a still row that runs, as the file chooser's", { still: true, stays: true,
+                run: nothing }, false],
+            ["one staying with no run that asks for words", { stays: true, given: nothing },
+                false],
+            ["one staying with no run that starts a command", { stays: true, start: "x" },
+                false],
+            ["one staying with no run that holds rows", { stays: true, category: {} }, false],
+            ["one staying with no run that opens a place", { stays: true, opens: {} }, false],
+            ["one with no run that closes", { name: "Ended" }, false],
+            // A row gone, as Steady keeps it dimmed until the next key,
+            // does nothing on Return, held or not, and says so nowhere.
+            ["a hidden ask gone, kept dimmed", { still: true, gone: true, went: true }, false],
+            ["no row", null, false]
+        ];
+        for (const [what, row, held] of still)
+            expect(`Return on ${what} ${held ? "is" : "isn't"} held still`,
+                Arming.holdsStill(row), held);
+        // Asked from a terminal, a row held still is refused, saying why:
+        // its own reason, or the launcher's when it gives none; any other
+        // row isn't refused for it, which says null, so a held row with no
+        // words anywhere is still refused rather than run.
+        expect("a row held still is refused for its own reason",
+            Arming.heldWhy({ still: true, stillWhy: "not while shared" }, "nothing sent"),
+            "not while shared");
+        expect("or the launcher's, giving none",
+            Arming.heldWhy({ still: true }, "nothing sent"), "nothing sent");
+        expect("while a row that acts isn't refused for it",
+            Arming.heldWhy({ still: true, run: nothing, stillWhy: "x" }, "nothing sent"), null);
+        expect("and one held with no words anywhere is held, not run",
+            Arming.heldWhy({ still: true }, ""), "");
+        // A way in from outside is refused where any step on it is held,
+        // not only the last, or where the last one's Return's act is, so
+        // nothing a held row holds is reached past it.
+        const held = { still: true, stillWhy: "not while shared" };
+        const acts = { stays: true, run: nothing };
+        expect("a way through a held row is refused for it",
+            Arming.wayHeldWhy([acts, held, acts], acts, "nothing sent"), "not while shared");
+        expect("as is a way to a row whose Return's act is held",
+            Arming.wayHeldWhy([acts, acts], held, "nothing sent"), "not while shared");
+        expect("while a way held nowhere isn't refused for it",
+            Arming.wayHeldWhy([acts, acts], acts, "nothing sent"), null);
+        expect("nor is one that reaches nothing",
+            Arming.wayHeldWhy([], null, "nothing sent"), null);
+
+        // The foot's word for a held Return is let go only while the foot
+        // still says it: another word said since, another place's, stays.
+        const heldWord = [["\u21b5", "not while shared"]];
+        expect("the foot saying why Return held lets it go",
+            Arming.letsHeldGo([["\u21b5", "not while shared"]], heldWord), true);
+        expect("but not another word said since",
+            Arming.letsHeldGo([["q", "quit"]], heldWord), false);
+        expect("nor an empty foot", Arming.letsHeldGo([], heldWord), false);
+        expect("nor a word with no held Return said",
+            Arming.letsHeldGo([["q", "quit"]], []), false);
+
+        // Which places may be kept to draw at once at the next opening
+        // (Launcher.qml's keepPlace): never one whose rows a share hides,
+        // since a share starting while it's shut would leave the kept copy
+        // drawing its first frame as it was before (ISXEG8, 2026-11-19).
+        expect("a place that hides its rows is never kept",
+            Arming.keepsPlace({ keptNever: true }), false);
+        expect("any other place is", Arming.keepsPlace({}), true);
+        expect("and so is one no source has", Arming.keepsPlace(null), true);
+
+        // What Return does on the selected row, as onAccepted asks: a held
+        // row is held before anything else it might be stepped into,
+        // lined or landed on, as every other way in asks it first.
+        const every = { arming: true, steps: true, ends: true, lands: true };
+        expect("a held row is held, whatever else it is",
+            Arming.returnAct(Object.assign({ held: true }, every)), "held");
+        expect("but an answer being given is given",
+            Arming.returnAct(Object.assign({ asking: true, held: true }, every)), "gave");
+        expect("even just after a landing",
+            Arming.returnAct(Object.assign({ asking: true, landed: true }, every)), "gave");
+        expect("and a Return doubling a landing does nothing more",
+            Arming.returnAct(Object.assign({ landed: true, held: true }, every)), "");
+        expect("one not held arms first", Arming.returnAct(every), "arming");
+        expect("then steps in", Arming.returnAct({ steps: true, ends: true, lands: true }),
+            "entered");
+        expect("then lines", Arming.returnAct({ ends: true, lands: true }), "lined");
+        expect("then lands", Arming.returnAct({ lands: true }), "landed");
+        expect("and otherwise runs", Arming.returnAct({}), "ran");
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         console.log(`${asked - failures.length} of ${asked} passed`);

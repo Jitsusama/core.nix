@@ -74,6 +74,21 @@ function forgotten(rows) {
     return rows.filter(row => !row.went);
 }
 
+// The rows without those that left, and where the selection goes in them
+// from `at`: { rows, at }. A share's start takes them off the screen at
+// once (Launcher.qml's untold), since a copy kept from before it names
+// what the share hides, and the cursor keeps to its row as a refresh
+// keeps it; on a row that left, it stays where it stood.
+function forgottenAt(rows, at, id) {
+    const left = forgotten(rows);
+    if (left.length === rows.length || at < 0) {
+        return { rows: left, at };
+    }
+    const on = at < rows.length && !rows[at].went ? id(rows[at]) : "";
+    const nth = on === "" ? 0 : alikeAbove(left, left.indexOf(rows[at]), id);
+    return { rows: left, at: selection(left, { row: on, at, lowest: 0, nth }, id) };
+}
+
 // Where the selection goes in them, from where it `was`: { row, at,
 // lowest, nth }, the id of the row it was on ("" for none), its place, and
 // how many rows alike in that id stood above it. It goes onto that row, the

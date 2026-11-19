@@ -10,7 +10,93 @@
 // keysTaken), which counts every key, Return too, before the launcher
 // hears it, so a Return counts itself (`counted` 1) and a click doesn't
 // (0).
+//
+// A row may also hold Return still (holdsStill), as a secret ask hidden
+// while Joel shares his screen, which neither arms nor acts.
 .pragma library
+
+// Whether Return on the row keeps the launcher open and does nothing, so
+// a second Return meant for a yes never reaches the window behind. Such a
+// row says it has nothing to do yet (`still`), so the foot names no
+// Return, and has no run, so it has no act for the right arrow to step
+// into; a still row with a run, as the file chooser's, still runs it. A
+// still row is held whatever else it holds, since it says Return has
+// nothing to do; never one gone, as Steady keeps it dimmed, whose Return
+// does nothing and says so nowhere.
+function holdsStill(row) {
+    return !!row && row.still === true && typeof row.run !== "function" && row.gone !== true;
+}
+
+// Why a row held still does nothing (`stillWhy`), or `fallback` where it
+// says none; null for any other row, so one held with no words anywhere
+// is still told from one not held.
+function heldWhy(row, fallback) {
+    if (!holdsStill(row)) {
+        return null;
+    }
+    const why = row.stillWhy;
+    return typeof why === "string" && why !== "" ? why : fallback;
+}
+
+// Why a way in from outside is refused for a row held still: the first
+// step on it held, not only the last, or the last one's Return's act
+// (`act`), so nothing a held row holds is reached past it; null where
+// none is held.
+function wayHeldWhy(trail, act, fallback) {
+    for (const row of trail.concat(act ? [act] : [])) {
+        const why = heldWhy(row, fallback);
+        if (why !== null) {
+            return why;
+        }
+    }
+    return null;
+}
+
+// Whether the foot, `saying`, lets go of the word it said for a Return
+// held still, `heldSaying`, once what held it may no longer: only while
+// it still says that word, so another said since, another place's
+// among them, stays.
+function letsHeldGo(saying, heldSaying) {
+    return saying.length > 0 && JSON.stringify(saying) === JSON.stringify(heldSaying);
+}
+
+// What Return does on the selected row, from what `how` says of it: an
+// answer being given is given, a Return doubling a landing does nothing
+// more, and a held row is held before anything else, as every other
+// way in asks it first; then one that arms arms ("arming", for the
+// caller to press), one that steps in is entered, one that ends
+// something is lined, one that changes something is landed on, and any
+// other runs.
+function returnAct(how) {
+    if (how.asking) {
+        return "gave";
+    }
+    if (how.landed) {
+        return "";
+    }
+    if (how.held) {
+        return "held";
+    }
+    if (how.arming) {
+        return "arming";
+    }
+    if (how.steps) {
+        return "entered";
+    }
+    if (how.ends) {
+        return "lined";
+    }
+    return how.lands ? "landed" : "ran";
+}
+
+// Whether the place a source `source` lists may be kept, to draw at once
+// at the next opening (Launcher.qml's keepPlace): never one that says its
+// rows are never kept, as Asks does, since a share starting while the
+// launcher is shut would leave the kept copy drawing its first frame as
+// it was before the share, naming what the share hides.
+function keepsPlace(source) {
+    return source?.keptNever !== true;
+}
 
 // Nothing armed.
 function rest() {

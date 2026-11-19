@@ -17,7 +17,8 @@
 // only that it's hidden, with no acts and no frame timed, and shown again it
 // counts nothing until his next move (Niri and Recorder stood in by the
 // check). It exits 0 once every case holds, and otherwise 1, saying which
-// didn't.
+// didn't. Long because every case runs on one stand-in connection, launcher
+// and frame clock, which a split would have to copy into each half.
 import qs
 import Quickshell
 import QtQuick
@@ -45,6 +46,9 @@ ShellRoot {
             key: root.key, thing, place: "asks", kind: "ask", state: "waiting",
             name: "op://Private/Kiln/password", glyph: "passwords", hue: "action",
             note: "S1", side: [{ said: "from S1", keep: 2 }], attention: 1000, digest,
+            // Fields no hidden row draws, as a daemon may serve more later.
+            reads: "op://Private/Kiln/password", graph: { shape: "bar", values: [1] },
+            keywords: ["kilnfiring"],
             order: 1024, acts: [act("release"), act("refuse")],
             drawer: { eyebrow: "S1", title: "op://Private/Kiln/password",
                 body: "To fire the kiln.", facts: [{ name: "Runs", said: "make kiln" }] }
@@ -69,6 +73,25 @@ ShellRoot {
         function tell(digest) {
             const next = Object.assign({}, held);
             next[root.key] = root.record(digest);
+            held = next;
+            heard([root.key], []);
+        }
+
+        // The ask ended, as the daemon serves it then: no state, no acts.
+        function tellEnded() {
+            const next = Object.assign({}, held);
+            const was = held[root.key] ?? root.record("");
+            next[root.key] = Object.assign({}, was, {
+                // Its row as row.rs serves an ask no longer waiting: no
+                // state, how it stands before when it came, and a fact of
+                // what came of it, so the hidden row is shown to keep none.
+                row: Object.assign({}, was.row, { state: null, hue: "machine",
+                    attention: undefined, acts: [],
+                    side: [{ said: "ended", keep: 2 }, { said: "from S1", keep: 1 }],
+                    drawer: Object.assign({}, was.row.drawer, {
+                        facts: was.row.drawer.facts.concat([{ name: "Came to", said: "ended" }])
+                    }) })
+            });
             held = next;
             heard([root.key], []);
         }
@@ -191,6 +214,12 @@ ShellRoot {
             untolds += 1;
         }
 
+        // How many times the foot's word for a Return held still was let go.
+        property int unhelds: 0
+        function unheld() {
+            unhelds += 1;
+        }
+
         function afterFrame(then) {
             then();
         }
@@ -266,7 +295,7 @@ ShellRoot {
             landedThenShown, commanded, commandedThenRun, commandedThenMoved,
             commandedThenShown, timedBeforeSharing, timedMove, sharing, sharedYes,
             sharingMoved, sharingMovedAsked, unshared, unsharedShown, unsharedMoved,
-            unsharedMovedShown, unheard, ownRecording, sharedNo, heldThenShared]);
+            unsharedMovedShown, unheard, ownRecording, sharedNo, heldThenShared, sharedEnded]);
     }
 
     function arming() {
@@ -633,6 +662,17 @@ ShellRoot {
         stage.press("j", true);
     }
 
+    // What a field holding a function reads as, called with nothing, so a
+    // row's field drawn later can't hide behind JSON, which says any
+    // function as null.
+    function called(read) {
+        try {
+            return read();
+        } catch (error) {
+            return `threw ${error?.name}`;
+        }
+    }
+
     function sharing() {
         stage.present(800);
         same("the line is timed before the screen is shared", Object.keys(asks.seen),
@@ -649,8 +689,41 @@ ShellRoot {
         same("its drawer says neither what it asks for, where from, nor why",
             [drawer.title, drawer.eyebrow, drawer.body, drawer.facts?.length],
             [hidden, "", "", 0]);
+        // Nor in any field the row carries, each that's a function as it
+        // reads, so a field the launcher draws later fails here if it's
+        // let through, not only the fields named below.
+        const told = one => JSON.stringify(Object.keys(one ?? {}).map(field => [field,
+            typeof one[field] === "function" ? called(one[field]) : one[field]]));
+        // Kept apart from every other hidden ask, by its thing and the
+        // record's key, since all read alike.
+        same("and it's still its own ask, by the keys its row is kept by",
+            [row()?.key, row()?.shownKey], [`ask:${root.id}`, root.key]);
+        same("nor anything of what it asks for or where from, in any field",
+            ["Kiln", "kiln", "S1"].filter(word => told(row()).includes(word)), []);
+        same("nor anything else the daemon serves, only what it may show",
+            [row()?.reads, row()?.graph], ["", null]);
+        // The words it's found by go too, so no search finds it by what it
+        // asks for; they were there before the share.
+        const finds = one => JSON.stringify(one?.keywords ?? []).includes("kilnfiring");
+        same("nor its search words", [finds(root.madeBefore), finds(row())], [true, false]);
+        // What a ready row draws of the kept fields: its glyph.
+        same("while keeping what says it's an ask", row()?.glyph, root.madeBefore?.glyph);
         same("it has no act, so no key answers it unseen",
-            [row()?.arms, typeof row()?.run, row()?.verbs ?? null], ["", "undefined", null]);
+            [row()?.arms, row()?.verbs ?? null], ["", null]);
+        // The launcher closes on a Return with no run, so his second
+        // Return, meant for a yes, would reach the window behind. It's
+        // held still instead, the foot naming no Return, with no run for
+        // the right arrow to step into.
+        same("its row says it holds Return still, with no run",
+            [Arming.holdsStill(row()), row()?.still, typeof row()?.run],
+            [true, true, "undefined"]);
+        // Walked to from a terminal, it's refused, saying why, rather than
+        // said done for nothing or thrown on the run it hasn't.
+        same("its row gives the share as why it's held",
+            Arming.heldWhy(row(), "nothing sent"), "not while your screen is shared");
+        // How it stands goes too, or the foot would say a hidden ask
+        // waits where an answered one says nothing.
+        same("nor does it say how it stands", typeof row()?.state, "undefined");
         same("it still waits for him in For You, hidden there too",
             asks.forYou.map(one => one.row.name), [hidden]);
         same("and its line's time starts again", asks.seen, {});
@@ -688,10 +761,19 @@ ShellRoot {
     }
 
     function unshared() {
+        const untolds = stage.untolds;
+        const unhelds = stage.unhelds;
         Niri.casts = {};
         stage.selected = row();
         same("the share over, the ask's row says what it asks for again", row()?.name,
             "op://Private/Kiln/password");
+        // The foot lets go of why Return held it, or it would say the
+        // screen is shared over an ask that would arm (Arming.letsHeldGo
+        // decides whether it still says it), and what another place told
+        // during the share stays, since nothing hidden is in it.
+        same("and the launcher is asked to let go only of why Return held it",
+            [stage.untolds - untolds, stage.unhelds - unhelds], [0, 1]);
+        same("nor is it held still", [row()?.still, row()?.stillWhy], [undefined, undefined]);
     }
 
     function unsharedShown() {
@@ -716,6 +798,8 @@ ShellRoot {
         const waiting = "not until it's known whether your screen is shared";
         same("saying on the row that it waits on knowing, not on a share",
             [row()?.note, row()?.drawer?.()?.body], [waiting, waiting]);
+        same("and its row gives waiting on knowing as why it's held",
+            Arming.heldWhy(row(), "nothing sent"), waiting);
         const told = stage.toldWhys.length;
         root.madeBefore.run();
         same("and a yes then is told it waits on knowing, not on a share",
@@ -727,8 +811,11 @@ ShellRoot {
         const held = () => Object.values(stage.becoming).find(one => one.from !== stage) ?? {};
         same("a no while it's unknown is held as a row waiting on knowing", held().row?.note,
             waiting);
+        const unhelds = stage.unhelds;
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         Niri.castsHeard = true;
+        same("niri then saying there's a share lets go of why Return held it, waiting on knowing",
+            stage.unhelds, unhelds + 1);
         same("niri then saying there's a share, the row no longer says it waits on knowing",
             [row()?.name, row()?.note], ["Ask, Hidden While You Share", ""]);
         same("nor does the row it's held as", [held().row?.name, held().row?.note],
@@ -787,5 +874,41 @@ ShellRoot {
         same("the share ended holds it again as itself", [held().name, held().row?.name],
             [real, real]);
         same("still saying when it's done after, as it did", held().done === done, true);
+    }
+
+    // An ask ended while the screen is shared is hidden too, and draws and
+    // holds as a waiting one does, where unshared its Return closes.
+    function sharedEnded() {
+        // Heard here, so the case stands without the ones before it.
+        Niri.castsHeard = true;
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        // A ready row's state is read as it's drawn, since JSON says any
+        // function, and so any state, as null.
+        const stands = one => typeof one?.state === "function" ? one.state() : one?.state;
+        // Every field it carries, each that's a function as it reads, but
+        // whether it waits and since when, which For You counts (a named
+        // limit).
+        const drawn = one => JSON.stringify(Object.keys(one ?? {}).sort()
+            .filter(field => field !== "waiting" && field !== "asked")
+            .map(field => [field, field === "state" ? stands(one) ?? null
+                : typeof one[field] === "function" ? called(one[field]) : one[field]]));
+        same("it waits before it ends", row()?.waiting, true);
+        const waiting = drawn(row());
+        link.tellEnded();
+        same("the ended ask is its own row, no longer waiting", row()?.waiting, false);
+        same("an ask ended while the screen is shared is hidden", row()?.name,
+            "Ask, Hidden While You Share");
+        // Its hue and state go with the rest, or one watching the share
+        // could tell the hidden rows apart, and see one answered elsewhere
+        // change as they watched; how many wait is For You's to say.
+        same("and draws as a hidden waiting one does", drawn(row()), waiting);
+        same("in the hue every hidden ask draws in", row()?.hue, "machine");
+        // Hidden, it looks as a waiting one does, so Return on it holds
+        // still too, rather than closing for his next to land behind.
+        same("and its row holds Return still too, saying why",
+            [Arming.holdsStill(row()), Arming.heldWhy(row(), "nothing sent")],
+            [true, "not while your screen is shared"]);
+        Niri.casts = {};
+        same("the share over, the ended ask isn't held still", Arming.holdsStill(row()), false);
     }
 }

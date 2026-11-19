@@ -92,6 +92,26 @@ QtObject {
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
 
+        // [what, the rows shown, the rows now, where the selection was, what's
+        // shown after and where the selection goes]: a share's start takes
+        // what left off the screen at once, since its copy names what the
+        // share hides (Launcher.qml's untold), and the cursor keeps to its
+        // row as a refresh keeps it.
+        const forgetsAt = [
+            ["a row that left goes, the cursor kept on its row", "a b c", "a c", 2, "a c", 1],
+            ["on the row that left, it stays where it stood", "a b c", "a c", 1, "a c", 1],
+            ["a row its source dims stays", "a b c", "a b- c", 2, "a b- c", 2],
+            ["nothing selected stays so", "a b c", "a c", -1, "a c", -1],
+            ["everything gone, it goes to the top", "a b", "", 1, "", 0]
+        ];
+        for (const [what, shown, now, at, want, wantAt] of forgetsAt) {
+            const left = Steady.forgottenAt(Steady.kept(rows(shown), rows(now), id), at, id);
+            const got = JSON.stringify([read(left.rows), left.at]);
+            const wanted = JSON.stringify([want, wantAt]);
+            if (got !== wanted)
+                failures.push(`${what}: ${got}, not ${wanted}`);
+        }
+
         // A row that arrives while the list is shown comes at the end, out
         // of the place a tree would give it, so it reads as it would ranked
         // flat, as a session a step in under its orchestrator does once

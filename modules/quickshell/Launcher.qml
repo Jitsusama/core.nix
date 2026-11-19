@@ -1464,20 +1464,26 @@ Scope {
         }
     }
 
-    // The rows an id is the path to, from home, or null for one not there.
+    // The rows an id is the path to, from home (`path`), and whether it
+    // names them all (`whole`), or only those found before a step that
+    // names nothing.
     function catalogued(id) {
         let rows = home();
         let things = true;
         const path = [];
         for (const step of String(id).split(catalogueStep)) {
-            const row = rows.find(one => Catalogue.listed(one) && steadyId(one) === step) ?? null;
+            // One held still is found too, so a walk to it is refused with
+            // why, as a terminal's do is, rather than said missing; never
+            // one gone, as no listed row is, nor held (Arming.holdsStill).
+            const row = rows.find(one => (Catalogue.listed(one) || Arming.holdsStill(one))
+                && steadyId(one) === step) ?? null;
             if (row === null)
-                return null;
+                return { path, whole: false };
             path.push(row);
             rows = catalogueHolds(row, things);
             things = collects({ row: row });
         }
-        return path.length > 0 ? path : null;
+        return { path, whole: path.length > 0 };
     }
 
     // Does what an id names, as asked from outside, saying what it did: a
@@ -1639,13 +1645,34 @@ Scope {
 
     function catalogueRunWalked(id, words) {
         freshen();
-        const path = catalogued(id);
-        if (path === null)
-            return { error: `the launcher has nothing called ${id}` };
+        const walked = catalogued(id);
+        if (!walked.whole) {
+            // A step missed under one held still, as an ask's Release It
+            // under the row a share hides, which holds no acts, is refused
+            // for it, saying why, rather than said gone, as it isn't.
+            const stillOn = heldWhyOf(walked.path, null);
+            if (stillOn === null)
+                return { error: `the launcher has nothing called ${id}` };
+            console.info(`launcher: refused from outside, held still: ${stillOn}`);
+            return { done: false, said: walked.path.map(row => row.name).join(" \u203a ")
+                + `: ${stillOn}` };
+        }
+        const path = walked.path;
         const target = path[path.length - 1];
         const said = path.map(row => row.name).join(" \u203a ");
         const ids = path.map(row => steadyId(row));
         console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} ${said}`);
+        // One held still, as an ask hidden while Joel shares, is refused,
+        // saying why, rather than run or said done for nothing: any step on
+        // the way, or the last one's Return's act, asked first, so a held
+        // row is never opened or offered, nor anything it holds reached,
+        // as Return on it does neither.
+        const refused = why => ({ done: false, said: why === "" ? said : `${said}: ${why}` });
+        const stillHere = heldWhyOf(path, returnOf(target));
+        if (stillHere !== null) {
+            console.info(`launcher: refused from outside, held still: ${stillHere}`);
+            return refused(stillHere);
+        }
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
@@ -1669,6 +1696,11 @@ Scope {
                 return { error: `${said} takes words: ${act.ask ?? ""}` };
             return ran(walkedRun(() => act.given(words)));
         }
+        // One whose Return's act has nothing to run, which the catalogue
+        // lists none of today, does nothing and says so, as a terminal's do
+        // does, rather than throw.
+        if (typeof act.run !== "function")
+            return refused(Words.field.becoming?.idle ?? "");
         // As Return does it, save that what's typed, Ask's question, picks
         // nothing: one whose outcome takes a while keeps the launcher, and
         // the rest close it first.
@@ -1840,7 +1872,7 @@ Scope {
             const found = rows.find(one => !!one && !one.gone && steadyId(one) === ids[at]);
             if (!found)
                 return { missing: String(steps[at] ?? ids[at]), near: [],
-                    in: trail.map(one => one.name) };
+                    in: trail.map(one => one.name), trail: trail };
             trail.push(found);
             among = things;
             rows = catalogueHolds(found, things);
@@ -1878,11 +1910,27 @@ Scope {
         }
     }
 
+    // Why a way in from outside, `trail`, or its last step's Return's act,
+    // is refused for a row held still on it, so no way in acts where
+    // Return holds still; null for one held nowhere.
+    function heldWhyOf(trail, act) {
+        return Arming.wayHeldWhy(trail, act, Words.field.becoming?.dropped ?? "");
+    }
+
     // Does what's walked, as doneFromTerminal says; none walked, it's
     // `nothing`, which the terminal says in its own words.
     function doneWalked(walked, words, sure) {
-        if (walked.missing !== undefined)
-            return { missing: walked.missing, near: walked.near, in: walked.in };
+        if (walked.missing !== undefined) {
+            // A step missed under one held still is refused for it, saying
+            // why, as the walk from outside refuses it, rather than said
+            // missing: a sure ask's Release It, under an ask a share began
+            // to hide since, is still there once the share ends.
+            const stillOn = heldWhyOf(walked.trail ?? [], null);
+            if (stillOn === null)
+                return { missing: walked.missing, near: walked.near, in: walked.in };
+            console.info(`launcher: refused from a terminal, held still: ${stillOn}`);
+            return { refused: stillOn, in: walked.in };
+        }
         const trail = walked.trail;
         if (trail.length === 0)
             return { nothing: true };
@@ -1892,6 +1940,15 @@ Scope {
         const ids = trail.map(one => steadyId(one));
         console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)}`
             + ` ${names.join(" \u203a ")}`);
+        // One held still on the way, or as the last step's Return's act, is
+        // refused, saying why, as the walk refuses it: first, so it's never
+        // opened or asked about, and never said done.
+        const refused = why => ({ refused: why, in: names });
+        const stillHere = heldWhyOf(trail, returnOf(target));
+        if (stillHere !== null) {
+            console.info(`launcher: refused from a terminal, held still: ${stillHere}`);
+            return refused(stillHere);
+        }
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
@@ -1931,6 +1988,11 @@ Scope {
                 return { takes: act.ask ?? "", in: names };
             return ran(walkedRun(() => act.given(words)));
         }
+        // One with nothing to run, as an answered ask or a figure, does
+        // nothing and says so, where Return on it would only close the
+        // launcher.
+        if (typeof act.run !== "function")
+            return refused(Words.field.becoming?.idle ?? "");
         // As the catalogue's run does it, as Return would.
         trials.picked(target, "", trail.length - 1);
         if (act.stays)
@@ -2925,8 +2987,8 @@ Scope {
         linedAt = Date.now();
     }
 
-    // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", or ""
-    // for one doubled), and when it was pressed, heard and done, in
+    // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", "held"
+    // on a row held still, or "" for one doubled), and when it was pressed, heard and done, in
     // milliseconds of the monotonic clock, so a test sees that a name and
     // one Return opens with no wait between.
     property var returned: ({})
@@ -3299,13 +3361,37 @@ Scope {
     // share hides (secret-asks/Asks.qml). Not yet knowing whether the
     // screen is shared counts as shared, so the journal says how many were
     // forgotten, never their words, for the word lost in a gap to be found.
+    // A row kept dimmed where it left (Steady.kept) is its copy as last
+    // shown, before the share, so it goes too, from the steps and the
+    // rows on screen alike, since a refresh keeps on screen what it shows
+    // (Steady.forgottenAt), rather than naming what the share hides until
+    // the next key; and an arm made before goes, so no Return after the
+    // share releases on a line read before it.
     function untold() {
         const forgotten = toldOnOpen.length + saying.length;
         toldOnOpen = [];
         say([]);
+        forgetGone();
+        const shown = Steady.forgottenAt(matches, current, pairedId);
+        if (shown.rows.length !== matches.length) {
+            matches = shown.rows;
+            current = shown.at;
+        }
+        armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `
                 + "as the screen may be shared");
+    }
+
+    // Lets go of the foot's word for a Return held still (run), once what
+    // held it may no longer, as a share ending lets an ask arm. Only while
+    // the foot still says it (Arming.letsHeldGo): what else it says, or
+    // waits to say as the launcher next opens, stays.
+    property var heldSaying: []
+    function unheld() {
+        if (Arming.letsHeldGo(saying, heldSaying))
+            say([]);
+        heldSaying = [];
     }
     function tellOnOpen(told, loose) {
         if (open) {
@@ -7877,6 +7963,20 @@ Scope {
         // Its thing has gone, so there's nothing left to do it to.
         if (choice.gone)
             return;
+        // One held still, as a secret ask hidden while Joel shares, keeps
+        // the launcher open and does nothing, so a second Return meant for
+        // a yes never reaches the window behind; the foot says why, so no
+        // Return goes unanswered. A row whose Return's act is held is held
+        // with it.
+        const stillWhy = heldWhyOf([choice], choice.returns);
+        if (stillWhy !== null) {
+            // Journalled, so a Return that did nothing can be told from
+            // one lost: the reason only, which names nothing hidden.
+            console.info(`launcher: Return held still: ${stillWhy}`);
+            heldSaying = [["\u21b5", stillWhy]];
+            say(heldSaying);
+            return;
+        }
         traces.began("act", { key: choice.key ?? "", depth: held.length });
         // A command puts its start in the field, to be finished there.
         if (choice.start !== undefined) {
@@ -10079,8 +10179,10 @@ Scope {
     // being timed came by, said in its line.
     property string openInto: ""
     property string openChord: ""
+    // A place whose rows a share hides is never kept (Arming.keepsPlace).
     function keepPlace(name) {
-        if (held.length === 0)
+        if (held.length === 0
+            || !Arming.keepsPlace(collections.find(one => one.settings.name === name)))
             return;
         placesKept[name] = { held: held, matches: matches, depth: homeDepth,
             under: keptUnder(name), led: ledPlaces.includes(name) };
@@ -10501,6 +10603,9 @@ Scope {
         markOpen(open);
         if (!open) {
             Report.say("closing");
+            // Why Return held still was about the row it was on: closed,
+            // it would come back over another, whose Return runs.
+            unheld();
             drafts.flush();
             drawerMakingsKeep();
             landOn = null;
@@ -13176,15 +13281,22 @@ Scope {
                             const pressed = KeyTimes.pressed();
                             root.searchNow();
                             trials.pressed("returns");
-                            // One that ends the session arms first, and a
-                            // second Return does it (pressArming).
-                            const arming = !root.asking && !root.landedJustNow()
-                                && root.arms(root.selected);
-                            const act = root.asking ? "gave" : root.landedJustNow() ? ""
-                                : arming ? root.pressArming(root.selected, 1)
-                                : root.stepsThing(root.selected) ? "entered"
-                                : root.endsSomething(root.selected) ? "lined"
-                                : root.lands(root.selected) ? "landed" : "ran";
+                            // A held row is held before all else
+                            // (Arming.returnAct); one that ends the session
+                            // arms first, and a second Return does it
+                            // (pressArming).
+                            const one = root.selected;
+                            const chosen = Arming.returnAct({
+                                asking: !!root.asking,
+                                landed: root.landedJustNow(),
+                                held: root.heldWhyOf([one], one?.returns) !== null,
+                                arming: !!root.arms(one),
+                                steps: root.stepsThing(one),
+                                ends: root.endsSomething(one),
+                                lands: root.lands(one)
+                            });
+                            const arming = chosen === "arming";
+                            const act = arming ? root.pressArming(one, 1) : chosen;
                             // Arming did its own press, armed or done, and
                             // any landing before it is over.
                             if (arming)
@@ -13197,7 +13309,8 @@ Scope {
                                 root.lineFor(root.selected);
                             else if (act === "landed")
                                 root.land(root.selected);
-                            else if (act === "ran")
+                            // Held still, run says why and does nothing.
+                            else if (act === "ran" || act === "held")
                                 root.run(root.selected, false);
                             // A doubled Return is the landing's own press,
                             // so the landing still says what a second does.
