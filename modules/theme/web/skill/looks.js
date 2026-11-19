@@ -199,8 +199,10 @@
   for (const element of [...document.body.querySelectorAll("*")].filter(drawn)) {
     for (const part of [null, "::before", "::after"]) {
       const style = getComputedStyle(element, part);
-      for (const address of painted.flatMap((property) => addresses(style[property]))) {
-        looks.add(`art ${named(address)}`);
+      for (const property of painted) {
+        for (const address of addresses(style[property])) {
+          looks.add(`art ${named(address)}`);
+        }
       }
     }
   }
