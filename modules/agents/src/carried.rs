@@ -34,10 +34,10 @@
 //! a merge away and brought it again. The time is shown only for a merge
 //! the machine is known to carry, and only while the record's newest
 //! switch ran the core that runs, so a switch back leaves no date on
-//! what it took away, nor does one the record hasn't told. The harness's merges carry no time yet: the
-//! markers pi-packages leaves in `retired` go with a version it sweeps,
-//! and one is written for a build never swapped to, so they don't say
-//! each swap.
+//! what it took away, nor does one the record hasn't told yet. The
+//! harness's merges carry no time yet: the markers pi-packages leaves
+//! in `retired` go with a version it sweeps, and one is written for a
+//! build never swapped to, so they don't say each swap.
 //!
 //! Long because more than half of it is the tests beside it, which build
 //! real histories and records for each way an arrival is told; the code
@@ -57,8 +57,9 @@ use crate::{clock, file};
 /// in ms: 34 s, the most seen on 13 November.
 const RECORDED_WITHIN: i64 = 34_000;
 
-/// How many of the latest arrivals are read: a few weeks of switches,
-/// past which a landing's own drawer is long gone.
+/// How many of the latest arrivals are read, so a read stays bounded
+/// however long the record grows: a merge older than them goes undated,
+/// since a switch at every merge passes them in days, not weeks.
 const ARRIVALS_READ: usize = 200;
 
 /// One arrival: when, the commit running before and the commit after;
@@ -260,8 +261,9 @@ fn brought(arrivals: &[Arrival], log: impl Fn(&str, &str) -> Option<String>) -> 
 }
 
 /// Whether the newest of `arrivals` ran the core `running`: past a
-/// switch the record hasn't told yet, or one it never will, as a boot
-/// into an older generation, its dates may be from before a switch back.
+/// switch the record hasn't told yet, its dates may be from before a
+/// switch back. A boot into an older generation isn't seen here, since
+/// `running` is then the core the last done switch kept, not what booted.
 fn ends_on(arrivals: &[Arrival], running: Option<&str>) -> bool {
     match (arrivals.last(), running) {
         (Some(Some((_, _, now))), Some(running)) => now == running,
