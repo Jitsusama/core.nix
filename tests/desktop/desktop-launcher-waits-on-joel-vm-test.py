@@ -980,11 +980,17 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         desktop.as_account("systemctl --user stop keep-awake.service")
 
 
+# The heading over what TESTQA's session wants of Joel, in For You: its name and where it
+# stands, as the agents daemon says it (What Needs Me, 2026-11-18).
+WANTS_HEADING = "A quest of its own & whole \u00b7 needs you"
+
+
 def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:
     """A session wanting Joel is in For You as its Agents row, and Now has no pi row.
 
     Super+O, Return, Return goes to its window: Now opens on For You, which counts it,
-    Return steps in to the session, selected, and its Return goes to its window.
+    Return steps in to the session, selected under its cell's heading, which says where
+    it stands in the agents daemon's own words, and its Return goes to its window.
     """
     machine = desktop.machine
     desktop.pi_session()
@@ -1012,8 +1018,9 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.launcher_until(
             lambda shown: (
                 shown["held"] == ["now", "For You"]
-                and shown["rows"][:1] == ["A quest of its own & whole"]
-                and (shown["selected"] or {}).get("verb") == "more"
+                and shown["rows"][:2] == [WANTS_HEADING, "A quest of its own & whole"]
+                and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
+                and shown["selected"]["verb"] == "more"
             )
         )
         # Return steps into what it asks, never straight into the session, and
@@ -1089,6 +1096,8 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
 def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
     """A session wanting Joel to do one of its items is in For You once, as the item.
 
+    Under the session's heading, since the item is its own.
+
     And it's said once, by For You's notice: the session's own notice for the same thing
     put two up in the same second (2026-11-06), and a session's want posts none now.
     """
@@ -1123,7 +1132,10 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
         retry(lambda _: tray_counted(desktop) == 1, timeout=dt.timedelta(seconds=10))
         desktop.machine.send_key("ret")
         desktop.launcher_until(
-            lambda shown: shown["held"] == ["now", "For You"] and shown["rows"] == ["Sign the Form"]
+            lambda shown: (
+                shown["held"] == ["now", "For You"]
+                and shown["rows"] == [WANTS_HEADING, "Sign the Form"]
+            )
         )
         desktop.close_launcher()
         # By the time For You lists it, the shell has heard the session's want, and

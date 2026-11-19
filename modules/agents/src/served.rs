@@ -181,7 +181,8 @@ fn session(row: &Row, fold: Option<&str>) -> Value {
     let address = row.key.trim_start_matches("agent:");
     let acts: Vec<Value> = row.acts.iter().map(|id| row.act(id)).collect();
     let mut held = json!({
-        "also": row.also, "note": row.note, "state": row.state, "gone": row.gone,
+        "also": row.also, "note": row.note, "state": row.state, "doing": row.doing,
+        "gone": row.gone,
         "orchestrates": row.orchestrates,
         "returns": format!("verb:agent:{}", row.returns),
         "ranked": {"note": row.ranked.note, "side": items(&row.ranked.side_items),
@@ -364,6 +365,7 @@ mod tests {
             orchestrates: false,
             gone: false,
             state: "working",
+            doing: "working".to_owned(),
             returns: "switch",
             acts: vec!["switch", "talk"],
             leaves: String::new(),
