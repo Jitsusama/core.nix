@@ -274,7 +274,15 @@ function rowMeta(repository: Repository): string {
     repository.changes.length > 0 ? plural(repository.changes.length, "change") : "",
     weighedBriefly(weightOfAll(repository.checkouts.map((each) => each.weight))),
   ].filter(Boolean);
-  return parts.join(" · ");
+  return parts.map(counted).join(" · ");
+}
+
+/**
+ * `words` with each number held to the word after it, so a row wraps "6.0 MB" whole. Each part
+ * of a line goes alone, so a part ending in a digit isn't held to the separator after it.
+ */
+function counted(words: string): string {
+  return words.replace(/(\d) /gu, "$1\u00a0");
 }
 
 /** One repository as a row: its marks in the gutter, then its name and facts. */
@@ -288,7 +296,7 @@ function row(repository: Repository, now: number): string {
     <span class="g-change">${change === undefined ? "" : bud(change)}</span>
     <span class="t-cell"><span class="t" translate="no">${escaped(repository.name)}</span>
       <span class="meta">${escaped(rowMeta(repository))}</span></span>
-    <span class="cells">${cells > 0 ? `<svg class="mk" viewBox="0 0 16 16" aria-hidden="true"><path class="thread" d="M8 2v5c0 3-3 4-5 7M8 7c0 3 3 4 5 7"/></svg>${plural(cells, "cell")}` : ""}</span>
+    <span class="cells">${cells > 0 ? `<svg class="mk" viewBox="0 0 16 16" aria-hidden="true"><path class="thread" d="M8 2v5c0 3-3 4-5 7M8 7c0 3 3 4 5 7"/></svg>${counted(plural(cells, "cell"))}` : ""}</span>
     ${when(repository.writtenAt, now)}
     <span class="row-keys" aria-hidden="true"><kbd>Return</kbd> step in · <kbd>o</kbd> open</span>
   </a>`;
@@ -310,7 +318,9 @@ function rows(repositories: readonly Repository[], now: number, query: string): 
 function cellName(cell: Cell, homes: Homes): string {
   const home = homes(cell.name);
   const name = `<code class="cell-name">${escaped(cell.name)}</code>`;
-  return home === undefined ? name : `<a href="../${escaped(home)}">${name}</a>`;
+  // Its key names the link apart from another cell's to one home, so a redraw keeps focus on it.
+  const key = `data-key="cell:${escaped(cell.name)}"`;
+  return home === undefined ? name : `<a href="../${escaped(home)}" ${key}>${name}</a>`;
 }
 
 /** The cells at work in a folder, as a line under it. */
@@ -343,9 +353,6 @@ function treeRow(tree: Tree, cutIn: string | undefined, context: Context): strin
   const where = repeats
     ? ""
     : `<span class="path" translate="no">${escaped(own ?? tilde(tree.path, home))}</span>`;
-  const keys = `<span class="row-keys" aria-hidden="true"><kbd>y</kbd> copy its folder${
-    tree.change?.url === undefined ? "" : " · <kbd>o</kbd> open its change"
-  } · <kbd>-</kbd> step out</span>`;
   const branch = tree.branch ?? (tree.commit === undefined ? "" : tree.commit.slice(0, 10));
   const change =
     tree.change === undefined
@@ -354,7 +361,7 @@ function treeRow(tree: Tree, cutIn: string | undefined, context: Context): strin
   return `<li class="tree ${tree.season}" data-path="${escaped(tree.path)}" data-home="code/${escaped(treeAddress(tree.path))}" tabindex="-1">
     <span class="g-season">${leaf(tree.season)}</span>
     <span class="tree-body"><span class="branch" translate="no">${escaped(branch)}${tree.snapshot ? ' <span class="snap">snapshot</span>' : ""}</span>
-    ${where}${cellsLine(tree.cells, homes)}${keys}</span>
+    ${where}${cellsLine(tree.cells, homes)}</span>
     ${change}${when(tree.writtenAt, now)}
   </li>`;
 }
@@ -425,7 +432,7 @@ function drawer(
       ].filter(Boolean);
       const weight = weighedFully(each.weight);
       return `<li class="checkout"><span class="path" translate="no">${escaped(tilde(each.path, home))}</span>
-        <span class="meta">${escaped([at, ...drift, weight].filter(Boolean).join(" · "))}</span>${cellsLine(each.cells, homes)}</li>`;
+        <span class="meta">${escaped([at, ...drift, weight].filter(Boolean).map(counted).join(" · "))}</span>${cellsLine(each.cells, homes)}</li>`;
     })
     .join("");
   const joined = repository.joined

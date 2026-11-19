@@ -138,7 +138,7 @@
   max-inline-size: 96px;
   font-family: var(--serif);
   font-style: italic;
-  font-size: 0.88rem;
+  font-size: var(--step-small);
   line-height: 1.2;
   text-align: center;
   color: var(--text);
@@ -154,13 +154,16 @@
   stroke: var(--leaf);
 }
 
+/* The grove holds focus and the stand chosen in it shows it, in the kit's one ring drawn just
+   inside the stand, so it never reaches past the grove or moves a thing. */
 .grove:focus-visible {
   outline: none;
 }
 
-.grove:focus-visible .stand[aria-selected="true"] .nm {
-  text-decoration: underline var(--ring) var(--accent);
-  text-underline-offset: 0.25em;
+.grove:focus-visible .stand[aria-selected="true"] {
+  outline: var(--ring) solid var(--accent);
+  outline-offset: calc(-1 * var(--ring));
+  border-radius: var(--radius);
 }
 
 .caption {

@@ -70,4 +70,34 @@ function outward(open: Repository, inner: string | null): string | undefined {
   return change?.url ?? (github === undefined ? undefined : `https://github.com/${github}`);
 }
 
-export { addressed, type Landing, landing, outward, type Place };
+/** What the page draws now that a reload's room depends on. */
+interface Drawn {
+  readonly query: string;
+  readonly place: Place;
+  /** The repository open in the drawer. */
+  readonly cursor: string | null;
+  /** Each repository's seasons unfolded, beyond those open from the start. */
+  readonly unfolded: ReadonlyMap<string, ReadonlySet<Season>>;
+}
+
+/**
+ * The parts a reload at `hash` won't draw as they're drawn now, so they keep no room: the list,
+ * when it was narrowed by a name found or by a place the address doesn't name, and the drawer,
+ * when it shows a folding season's trees that the address doesn't open again by naming one.
+ */
+function forgotten(hash: string, grove: Grove | undefined, drawn: Drawn): ("list" | "open")[] {
+  const said = grove === undefined ? undefined : landing(hash, grove);
+  const place = said?.kind === "place" ? said.place : "every";
+  const reopens = said?.kind === "tree" && said.key === drawn.cursor ? said.season : undefined;
+  const list = drawn.query.trim() !== "" || drawn.place !== place;
+  const open = grove?.repositories.find((each) => each.key === drawn.cursor);
+  // Only resting and gone fold, and unfolding one with no trees draws nothing more.
+  const shows = (season: Season): boolean =>
+    (season === "resting" || season === "gone") &&
+    season !== reopens &&
+    open?.trees.some((each) => each.season === season) === true;
+  const drawer = [...(drawn.unfolded.get(drawn.cursor ?? "") ?? [])].some(shows);
+  return [...(list ? (["list"] as const) : []), ...(drawer ? (["open"] as const) : [])];
+}
+
+export { addressed, type Drawn, forgotten, type Landing, landing, outward, type Place };

@@ -7,9 +7,8 @@
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
-import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { addressed, landing, outward, type Place } from "./address.ts";
+import { addressed, forgotten, landing, outward, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
 import { footOf, headOf, worst } from "./head.ts";
 import { NOWHERE } from "./homes.ts";
@@ -27,11 +26,13 @@ import { type Mycelium, watchMycelium } from "./mycelium.ts";
 import {
   copyFolder,
   element,
+  keepIn,
   keepRoom,
   keepTime,
   markRows,
   markTree,
   paced,
+  pressHead,
   write,
 } from "./page.ts";
 
@@ -60,7 +61,10 @@ const heard = new Map<string, string>();
 const arrived = new Set<string>();
 let cellsHeard = false;
 const repos = (): boolean => arrived.size === KINDS.length;
-const roomDrawn = keepRoom();
+// A reload draws again only what the address says, so what it won't keeps no room.
+const roomDrawn = keepRoom(() =>
+  forgotten(location.hash, grove, { query, place, cursor, unfolded }),
+);
 let mycelium: Mycelium = { cells: [], home: undefined, homes: NOWHERE };
 
 let place: Place = "every";
@@ -120,16 +124,16 @@ function drawOpen(): void {
     write(opened, '<p class="quiet">Step onto a repository to open it here.</p>');
     return;
   }
-  if (inner !== null && !open.trees.some((each) => each.path === inner)) {
-    inner = null;
-  }
   const at = { now: Date.now(), home: mycelium.home, homes: mycelium.homes };
   write(opened, drawer(open, grove, at, unfolded.get(open.key) ?? new Set()));
-  markInner(false);
+  if (!markInner(false) && inner !== null) {
+    inner = null;
+    follows();
+  }
 }
 
 /** Marks the tree the cursor is on inside the open repository. */
-const markInner = (focus: boolean): void => markTree(opened, inner, focus);
+const markInner = (focus: boolean): boolean => markTree(opened, inner, focus);
 
 function draw(): void {
   grove = groveOf(held, mycelium.cells, Date.now());
@@ -147,10 +151,8 @@ function draw(): void {
   write(stand, groveOfTrees(grove));
   drawList();
   drawOpen();
-  if (wasIn && inner !== null) {
-    markInner(true);
-  } else if (wasIn && !opened.contains(document.activeElement)) {
-    opened.focus({ preventScroll: true });
+  if (wasIn) {
+    keepIn(opened, inner);
   }
   roomDrawn(repos() && cellsHeard);
   land();
@@ -489,7 +491,7 @@ for (const link of document.querySelectorAll<HTMLAnchorElement>(".places [data-p
 }
 
 // A tapped key at the head acts as pressed; the list takes the keys unless the act gave them on.
-pressable(".head .keys kbd", { ...actions, Return: goIn, "?": () => toggle(keys) }, () => {
+pressHead({ ...actions, Return: goIn, "?": () => toggle(keys) }, () => {
   if (document.activeElement?.closest(".head .keys")) {
     list.focus({ preventScroll: true });
   }

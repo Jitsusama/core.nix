@@ -100,6 +100,43 @@ it("puts a repository's name in its row as words", () => {
   assert.ok(asWords(markup), `a row put a name in as markup: ${markup}`);
 });
 
+it("holds each number in a row to the word it counts, so a row never wraps between them", () => {
+  const markup = rows(grove().repositories, NOW, "");
+  for (const count of ["1\u00a0tree", "1\u00a0cell"]) {
+    assert.ok(markup.includes(count), `a row could wrap ${count} from its word: ${markup}`);
+  }
+});
+
+it("holds a count to its own word only, never a part ending in a digit to the next", () => {
+  const head = { branch: "v2", commit: "a1", upstream: { count: { behind: 3, ahead: 0 } } };
+  const told2 = records.map((each) => (each.kind === "checkout" ? { ...each, head } : each));
+  const whole = groveOf(told(told2), cells, NOW);
+  const [opened] = whole?.repositories ?? [];
+  assert.ok(whole !== undefined && opened !== undefined, "the records drew no repository");
+  const context = { now: NOW, home: "/home/ada", homes: () => HOSTILE };
+  const markup = drawer(opened, whole, context, new Set());
+  assert.ok(markup.includes("v2 · 3\u00a0behind"), `a branch was held to the separator: ${markup}`);
+});
+
+it("names each cell's link to one home apart, so a redraw finds the cell's own again", () => {
+  const two = cellsOf({
+    cells: ["E2ZIAQ", "Q3NEWS"].map((name) => ({
+      name,
+      title: "at work",
+      standing: "moving",
+      cwd: `${tree}/src`,
+    })),
+  });
+  const whole = groveOf(told(records), two, NOW);
+  const [opened] = whole?.repositories ?? [];
+  assert.ok(whole !== undefined && opened !== undefined, "the records drew no repository");
+  const context = { now: NOW, home: "/home/ada", homes: () => "cells/#c=1" };
+  const markup = drawer(opened, whole, context, new Set(["today"]));
+  for (const name of ["E2ZIAQ", "Q3NEWS"]) {
+    assert.ok(markup.includes(`data-key="cell:${name}"`), `${name}'s link wasn't named: ${markup}`);
+  }
+});
+
 it("puts what was searched for as words when nothing is named like it", () => {
   const markup = rows([], NOW, HOSTILE);
   assert.ok(asWords(markup), `the list put what was searched for in as markup: ${markup}`);
