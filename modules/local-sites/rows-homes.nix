@@ -1,9 +1,10 @@
 # What a switch refuses in the declared rows' homes, read as the homes'
 # readers read them (modules/system/src/homes.rs and the web-design
 # skill's modules/theme/web/skill/homes.js): a kind two declared sites are
-# home to, and a pattern the readers would drop. home.nix asserts both are
-# empty; local-sites-rows-homes-read-as-readers-do holds them to rows that trip
-# each rule.
+# home to, a pattern the readers would drop, and a kind one site gives two
+# patterns. home.nix asserts each is empty;
+# local-sites-rows-homes-read-as-readers-do holds them to rows that trip each
+# rule.
 { lib }:
 rows:
 let
@@ -24,25 +25,37 @@ let
       fragment = lib.removePrefix "${path}/" address;
     in
     lib.hasPrefix "#" fragment && lib.hasInfix "{name}" fragment && plain fragment;
+  # Whether a row's home is a pattern the readers would keep, were it the
+  # first its row gives its kind.
+  keeps = path: home: !lib.isString home && home ? kind && home ? address && kept path home.address;
   # Each of a row's homes, a kind's name or a kind with its pattern, and
-  # whether the readers would take it as a home.
+  # whether the readers would take it as a home. Both readers take a row's
+  # first kept pattern for a kind and pass over any later one without a
+  # word, so a later one is marked as the first's `again`.
   claims = lib.concatLists (
     lib.mapAttrsToList (
       path: row:
-      map (
-        home:
+      lib.imap0 (
+        at: home:
         if lib.isString home then
           {
             inherit path;
             kind = home;
             homes = true;
+            again = null;
           }
         else
+          let
+            first = lib.findFirst (earlier: keeps path earlier && earlier.kind == home.kind) null (
+              lib.take at row.homes
+            );
+          in
           {
             inherit path;
             kind = home.kind or null;
             address = home.address or null;
-            homes = home ? kind && home ? address && kept path home.address;
+            homes = keeps path home && first == null;
+            again = if keeps path home && first != null then first.address else null;
           }
       ) row.homes
     ) rows
@@ -70,5 +83,16 @@ in
     "${claim.path}'s ${if claim.kind == null then "pattern with no kind" else claim.kind}, ${
       if claim.address == null then "with no address" else builtins.toJSON claim.address
     }"
-  ) (lib.filter (claim: !claim.homes) claims);
+  ) (lib.filter (claim: !claim.homes && claim.again == null) claims);
+  # Kinds a site gives a second pattern the readers would keep. Neither
+  # reader says a word of it: each takes the first, so the second's links
+  # are never drawn.
+  patternedTwice = map (
+    claim:
+    let
+      first = builtins.toJSON claim.again;
+      second = builtins.toJSON claim.address;
+    in
+    "${claim.path}'s ${claim.kind}, ${first} and ${second}"
+  ) (lib.filter (claim: claim.again != null) claims);
 }

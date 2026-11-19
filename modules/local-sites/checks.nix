@@ -327,6 +327,38 @@ in
             { kind = "device"; }
           ];
       };
+      # A row giving one kind two patterns, of which the readers keep the
+      # first alone, and a second pattern the readers drop anyway, which
+      # leaves the first standing. Another kind's pattern between them
+      # doesn't hide the second, and a dropped pattern ahead of a kept one
+      # is no first.
+      again = homes {
+        network.homes = [
+          {
+            kind = "device";
+            address = "#d";
+          }
+          {
+            kind = "device";
+            address = "#device={name}";
+          }
+        ];
+        system.homes = [
+          machines
+          {
+            kind = "part";
+            address = "#part={name}";
+          }
+          {
+            kind = "machine";
+            address = "#host={name}";
+          }
+          {
+            kind = "machine";
+            address = "#m";
+          }
+        ];
+      };
       # What the switch says of each, so its words are read as well.
       droppedSaid = [
         ''network's device, "#device"''
@@ -342,7 +374,14 @@ in
         ''network's pattern with no kind, "#device={name}"''
         "network's device, with no address"
       ];
-      found = builtins.toJSON { inherit standing twice dropped; };
+      found = builtins.toJSON {
+        inherit
+          standing
+          twice
+          dropped
+          again
+          ;
+      };
     in
     holds "local-sites-rows-homes-read-as-readers-do"
       "The declared rows' homes aren't refused as their readers would read them: ${found}."
@@ -350,11 +389,21 @@ in
         standing == {
           homedTwice = [ ];
           dropped = [ ];
+          patternedTwice = [ ];
         }
         && twice.homedTwice == [ "machine (network, system)" ]
         && twice.dropped == [ ''health's machine, "#m"'' ]
         && dropped.dropped == droppedSaid
         && dropped.homedTwice == [ ]
+        && again.patternedTwice == [ ''system's machine, "#machine={name}" and "#host={name}"'' ]
+        &&
+          again.dropped == [
+            ''network's device, "#d"''
+            ''system's machine, "#m"''
+          ]
+        && again.homedTwice == [ ]
+        && twice.patternedTwice == [ ]
+        && dropped.patternedTwice == [ ]
       );
 }
 # The server is a Linux user service, and builds only there.

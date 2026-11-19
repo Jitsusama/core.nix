@@ -167,8 +167,9 @@ let
   astray = lib.filter (path: builtins.match "${step}(/${step})*" path == null) (
     lib.attrNames cfg.rows
   );
-  # Kinds two declared sites are home to, and patterns the homes' readers
-  # would drop, each of which takes links away (rows-homes.nix says how).
+  # Kinds two declared sites are home to, patterns the homes' readers would
+  # drop, and kinds one site gives two patterns, each of which takes links
+  # away (rows-homes.nix says how).
   declaredHomes = import ./rows-homes.nix { inherit lib; } cfg.rows;
   roots = config.jitsusama.repos.roots or null;
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
@@ -535,6 +536,14 @@ in
         "jitsusama.local-sites.rows gives patterns the homes' readers drop: "
         "${lib.concatStringsSep "; " declaredHomes.dropped}; give each a kind and an "
         "address that is a fragment (#) on its own page holding {name}, in plain bytes"
+      ];
+    }
+    {
+      assertion = declaredHomes.patternedTwice == [ ];
+      message = lib.concatStrings [
+        "jitsusama.local-sites.rows gives a kind two patterns on one site: "
+        "${lib.concatStringsSep "; " declaredHomes.patternedTwice}; keep one, since the "
+        "homes' readers take the first and never draw the second's links"
       ];
     }
   ];
