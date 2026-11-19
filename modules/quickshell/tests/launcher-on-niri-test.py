@@ -2482,11 +2482,14 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
     assert drawer["at"] == brought["at"], (
         f"the drawer came after its key's frame: {drawer}, {brought}"
     )
-    # Shown in the key's frame, it was shown on the key's screen at the key's refresh, and its
-    # line ends with them, as the key's does, so a docked day's drawers read as the screen's.
-    shown_on = (drawer["screen"], drawer["refresh"])
-    assert shown_on == (brought["screen"], brought["refresh"]), (drawer, brought)
-    assert not drawer["screen"] or any(f"; on {drawer['screen']}" in line for line in lines), lines
+    # Shown in the key's frame, both read niri's refresh from the frame niri answered, so they
+    # agree even where the key's own frame was dropped. The line ends with the screen and its
+    # rate, as the key's does, so a docked day's drawers read as the screen's.
+    assert drawer["refresh"] == brought["refresh"], (drawer, brought)
+    tail = f"; on {drawer['screen']}"
+    if drawer["refresh"] > 0:
+        tail += f" at {round(1000 / drawer['refresh'])} Hz"
+    assert not drawer["screen"] or any(line.endswith(tail) for line in lines), (tail, lines)
     shell.close_launcher()
 
 

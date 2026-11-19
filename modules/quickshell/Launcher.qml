@@ -6812,7 +6812,8 @@ Scope {
             key.frame = frame;
             key.onRow = onRow;
             keysAwaited += 1;
-            presentedAwait(key.pressed, at => keyPresented(key.pressed, at, key));
+            presentedAwait(key.pressed, (at, answered) =>
+                keyPresented(key.pressed, at, key, answered));
         }
         keysDrawing = Pacing.frameBegun(keysDrawing);
     }
@@ -11877,16 +11878,20 @@ Scope {
     // niri presented, so the trial says how many never reached the screen.
     property int keysAwaited: 0
     property int keysReached: 0
-    function keyPresented(from, at, key) {
+    function keyPresented(from, at, key, answered) {
         keysReached += 1;
         const times = surface.FramePresentation.timesOf(key.frame ?? 0);
         // The screen it was shown on and niri's frame there, so a day
         // docked to a 60 Hz screen reads as that (Presented.screensSaid).
+        // The frame is read from the one niri answered, as a drawer's is,
+        // since niri times only that one and the key's may have been
+        // dropped for it.
         // A step in or out says which, by its arrow and place, so a check
         // finds it however fast it was; typed words are never said here.
         const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
-            screen: root.screenHere?.name ?? "", refresh: times.refresh ?? 0,
+            screen: root.screenHere?.name ?? "",
+            refresh: root.refreshOf(answered) || (times.refresh ?? 0),
             step: key.step ?? "" };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
     }
