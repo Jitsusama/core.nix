@@ -31,17 +31,18 @@ let
   # the left one, and the tail's tip is at the top right. What's found, as
   # whether it holds and what it says, for readsAsOne and for the checks
   # showing each fault refused; `walkedFrom` is where the strides were
-  # read from, and `glyphs` the drawings, the theme's unless that check
-  # plants its own. Given `meant`, the words the animal's poses are picked
-  # by (posesOf), each stride drawn must mean them, so rewording what the
-  # strides mean fails rather than quietly picking none by meaning.
+  # read from, or null where nowhere says, and `glyphs` the drawings,
+  # the theme's unless that check plants its own. Given `meant`, the
+  # words the animal's poses are picked by (posesOf), each stride drawn
+  # must mean them, so rewording what the strides mean fails rather than
+  # quietly picking none by meaning.
   poseFaults =
     {
       sitting,
       poses,
       strides,
-      walkedFrom ? null,
-      meant ? null,
+      walkedFrom,
+      meant,
       glyphs ? import ./glyphs.nix { inherit lib; },
     }:
     let
@@ -127,6 +128,9 @@ let
         lib.filter (step: why step != null) steps
       );
       stepping = pair: lib.any (step: lib.elem pair (moved (px step.from) (px step.to))) steps;
+      # A walk with no skid nor shuffle alternates its pairs, so both step:
+      # a pair never stepping comes only beside one of those, and is said
+      # for what it tells of the walk rather than to fail one they pass.
       dragged = lib.optionals (strides != [ ] && lib.all (name: px name != [ ]) strides) (
         lib.filter (pair: !stepping pair) [
           "fore"
@@ -160,6 +164,9 @@ let
       unmeant = lib.optionals (meant != null) (
         lib.filter (stride: lib.elem stride drawn && meansOtherwise stride) strides
       );
+      # The words they must mean as well, as the strides' marks in
+      # glyphs.nix say them.
+      meantSaid = "meant otherwise than ${builtins.toJSON meant} ${builtins.toJSON unmeant}";
       readFrom = lib.optionalString (walkedFrom != null) " read from ${walkedFrom}";
     in
     {
@@ -183,7 +190,7 @@ let
           "never stepping ${builtins.toJSON dragged}"
           "undrawn ${builtins.toJSON missing}"
         ]
-        ++ lib.optional (meant != null) "meant otherwise ${builtins.toJSON unmeant}"
+        ++ lib.optional (meant != null) meantSaid
         # Where they came from, so a pose failing on a change to the code
         # it's walked by says so.
         ++ lib.optional (strides == [ ] || walkedFrom != null) (
@@ -193,16 +200,46 @@ let
     };
 
   # Whether every pose of one of the margin's animals reads as that one
-  # animal, by poseFaults.
+  # animal, by poseFaults, its poses found by posesOf by its `named` and
+  # by the `meant` its strides are held to, with `also` those named
+  # outright. Each is asked for, `named` as null where the animal has no
+  # name of its own and `also` empty where it has no such poses, and
+  # `meant` must be words, so a live check that stops passing one fails to
+  # evaluate rather than quietly holding its poses to fewer rules. poseFaults
+  # and posesOf ask for theirs too, so dropping one on the way fails the
+  # same.
   readsAsOne =
-    { check, animal, ... }@walk:
+    {
+      check,
+      animal,
+      sitting,
+      strides,
+      walkedFrom,
+      meant,
+      named,
+      also,
+    }:
+    assert lib.assertMsg (lib.isString meant) "${check}: meant must be the words its poses mean";
     let
-      found = poseFaults (
-        removeAttrs walk [
-          "check"
-          "animal"
-        ]
-      );
+      found = poseFaults {
+        inherit
+          sitting
+          strides
+          walkedFrom
+          meant
+          ;
+        poses = lib.unique (
+          posesOf {
+            inherit
+              sitting
+              strides
+              named
+              meant
+              ;
+          }
+          ++ also
+        );
+      };
     in
     holds check "The ${animal}'s poses must read as one ${animal}: ${found.said}." found.ok;
 
@@ -218,8 +255,8 @@ let
     {
       sitting,
       strides,
-      named ? null,
-      meant ? null,
+      named,
+      meant,
       glyphs ? import ./glyphs.nix { inherit lib; },
     }:
     let
@@ -417,33 +454,24 @@ in
   # Every pose of the margin's cat reads as the same cat (readsAsOne), its
   # poses all drawn as its sitting's glyph or its paw or meant as its own
   # (posesOf), so they're held whether or not its walk is read. A leap's
-  # rise, tuck and fall are named as well, so this check says one taken
-  # out undrawn rather than no longer reading it as a pose, as every fall
-  # can take the last.
-  every-cat-pose-reads-as-one-cat =
-    let
-      meant = "the margin's cat, in one of its own poses";
-    in
-    readsAsOne {
-      check = "every-cat-pose-reads-as-one-cat";
-      animal = "cat";
-      sitting = "nothingHere";
-      strides = catWalk;
-      walkedFrom = catWalkedFrom;
-      inherit meant;
-      poses = lib.unique (
-        posesOf {
-          sitting = "nothingHere";
-          strides = catWalk;
-          inherit meant;
-        }
-        ++ [
-          "leaping"
-          "tucked"
-          "falling"
-        ]
-      );
-    };
+  # rise, tuck and fall are named as well, so they're held to its rules
+  # whatever glyph or meaning they're drawn with, and one taken out is
+  # said undrawn here, by the cat's own check, as every fall can take the
+  # last.
+  every-cat-pose-reads-as-one-cat = readsAsOne {
+    check = "every-cat-pose-reads-as-one-cat";
+    animal = "cat";
+    sitting = "nothingHere";
+    strides = catWalk;
+    walkedFrom = catWalkedFrom;
+    meant = "the margin's cat, in one of its own poses";
+    named = null;
+    also = [
+      "leaping"
+      "tucked"
+      "falling"
+    ];
+  };
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
   # held to its own sitting, as the cat's are to the cat's, its poses every
@@ -454,29 +482,21 @@ in
   # than a copy that could drift.
   every-puppy-pose-reads-as-one-puppy =
     let
-      named =
+      asPuppy =
         pose:
         "puppy"
         + lib.toUpper (builtins.substring 0 1 pose)
         + builtins.substring 1 (lib.stringLength pose) pose;
-      meant = "the margin's puppy, in one of its own poses";
     in
     readsAsOne {
       check = "every-puppy-pose-reads-as-one-puppy";
       animal = "puppy";
       sitting = "puppySitting";
       walkedFrom = catWalkedFrom;
-      strides = map named catWalk;
-      inherit meant;
-      poses = lib.unique (
-        posesOf {
-          sitting = "puppySitting";
-          strides = map named catWalk;
-          named = "puppy";
-          inherit meant;
-        }
-        ++ [ "puppyBowing" ]
-      );
+      strides = map asPuppy catWalk;
+      meant = "the margin's puppy, in one of its own poses";
+      named = "puppy";
+      also = [ "puppyBowing" ];
     };
 
   # The pose rules refuse what they're for: the cat's own strides out of
@@ -492,18 +512,23 @@ in
   # 15% held and past it refused, and on one of 13, 2 more or fewer
   # refused; a sitting misnamed, or a pose listed but undrawn, said
   # undrawn; a stride no pose lists held to the stray and size rules, and
-  # one meant otherwise than its animal's poses are picked by refused;
-  # the cat's own planted on copies of its drawings; and an animal's poses
+  # one meant otherwise than its animal's poses are picked by refused,
+  # the same strides all meant so held, all meant alike but not as asked
+  # refused, a sitting meant otherwise held, and an undrawn one said
+  # undrawn rather than meant otherwise;
+  # all planted on copies of the cat's own drawings; and an animal's poses
   # found by its glyphs, the start of its name and what a mark means,
   # though a sitting or stride is undrawn, and no mark meant otherwise nor
   # drawn as no glyph beside a sitting drawn so (refusals).
   every-pose-fault-is-refused =
     let
-      unrefused = builtins.toJSON refusals.poses;
+      # Each on a line of its own, as it says itself, rather than as JSON,
+      # whose escaped quotes would bury what each one read.
+      unrefused = lib.concatMapStrings (one: "\n  ${one}") refusals.poses;
       must = "Every pose fault must be refused by its reason";
       also = "its near misses held and its poses found";
     in
-    holds "every-pose-fault-is-refused" "${must}, ${also}: ${unrefused} weren't." (
+    holds "every-pose-fault-is-refused" "${must}, ${also}; these weren't:${unrefused}" (
       refusals.poses == [ ]
     );
 
@@ -516,13 +541,22 @@ in
   the-cats-walk-is-read-only-from-its-lists =
     let
       check = "the-cats-walk-is-read-only-from-its-lists";
+      whole = refusals.reread == refusals.drawnWalk;
+      # Only the half that failed is said, so a failing half never comes
+      # beside the other's passing report as though it were a fault too.
+      failed =
+        lib.optionals (refusals.code != [ ]) (
+          map (one: "not refused or read as meant: ${one}") refusals.code
+        )
+        ++ lib.optional (!whole) (
+          "spaced otherwise, it read ${builtins.toJSON refusals.reread}, wanted "
+          + "${builtins.toJSON refusals.drawnWalk}, for want of ${refusals.rereadSaid}"
+        );
     in
     holds check (
       "The cat's walk must be read only from its frozen lists, and whole however it's "
-      + "spaced: ${builtins.toJSON refusals.code} weren't refused or read as meant, "
-      + "and it read ${builtins.toJSON refusals.reread}, wanted "
-      + "${builtins.toJSON refusals.drawnWalk}, for want of ${refusals.rereadSaid}."
-    ) (refusals.code == [ ] && refusals.reread == refusals.drawnWalk);
+      + "spaced:${lib.concatMapStrings (one: "\n  ${one}") failed}"
+    ) (refusals.code == [ ] && whole);
 
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
   # or by APCA's lightness contrast. WCAG's black on white is 21:1, and

@@ -148,6 +148,8 @@ let
       sitting = "nothingHere";
       poses = [ pose ];
       strides = drawnWalk;
+      walkedFrom = null;
+      meant = null;
       glyphs = planted;
     };
   shown = [
@@ -186,6 +188,7 @@ let
       sitting = "nothingHere";
       poses = [ "nothingHere" ];
       walkedFrom = "here";
+      meant = null;
       glyphs = planted;
       inherit strides;
     };
@@ -196,9 +199,13 @@ let
   # rather than every pose unlike it, and a pose listed but undrawn, as a
   # leap's tuck taken out would be, said so; a stride no pose lists
   # still held to the stray and size rules; and a stride meant otherwise
-  # than the words its animal's poses are picked by refused for it alone.
+  # than the words its animal's poses are picked by refused for it alone,
+  # the same strides all meant so held, all meant alike but not as asked
+  # refused, a sitting meant otherwise held, and an undrawn one said
+  # undrawn rather than meant otherwise.
   sized = poseFaults {
     sitting = "small";
+    walkedFrom = null;
     poses = [
       "atLine"
       "pastLine"
@@ -206,55 +213,124 @@ let
       "underPast"
     ];
     strides = drawnWalk;
+    meant = null;
     glyphs = planted;
   };
   sizedTight = poseFaults {
     sitting = "tight";
+    walkedFrom = null;
     poses = [
       "justPast"
       "justShort"
     ];
     strides = drawnWalk;
+    meant = null;
     glyphs = planted;
   };
   misnamed = poseFaults {
     sitting = "nothingHer";
+    walkedFrom = null;
     poses = [ "walkingA" ];
     strides = drawnWalk;
+    meant = null;
     glyphs = planted;
   };
   untucked = poseFaults {
+    walkedFrom = null;
     sitting = "nothingHere";
     poses = [
       "nothingHere"
       "tucked"
     ];
     strides = drawnWalk;
+    meant = null;
     glyphs = planted;
   };
   unlisted = poseFaults {
+    walkedFrom = null;
     sitting = "nothingHere";
     poses = [ "nothingHere" ];
     strides = drawnWalk ++ [
       "strayed"
       "shrunk"
     ];
+    meant = null;
     glyphs = planted;
   };
-  meaning = poseFaults {
-    sitting = "nothingHere";
-    poses = [ "nothingHere" ];
+  # The words the planted strides mean unless a plant says otherwise.
+  ownPose = "its own pose";
+  meantAs =
+    {
+      otherwise,
+      strides,
+      meant ? ownPose,
+    }:
+    poseFaults {
+      sitting = "nothingHere";
+      poses = [ "nothingHere" ];
+      walkedFrom = null;
+      inherit strides meant;
+      glyphs = lib.mapAttrs (
+        name: mark: mark // { means = if name == otherwise then "another's" else ownPose; }
+      ) planted;
+    };
+  meaning = meantAs {
+    otherwise = "walkingC";
     strides = drawnWalk;
-    meant = "its own pose";
-    glyphs = lib.mapAttrs (
-      name: mark: mark // { means = if name == "walkingC" then "another's" else "its own pose"; }
-    ) planted;
   };
+  allMeant = meantAs {
+    otherwise = null;
+    strides = drawnWalk;
+  };
+  meantUndrawn = meantAs {
+    otherwise = null;
+    strides = drawnWalk ++ [ "unseen" ];
+  };
+  # The same strides, every one agreeing, held to words none of them mean,
+  # so a rule weighing the strides against each other rather than against
+  # `meant` fails.
+  meantElse = meantAs {
+    otherwise = null;
+    strides = drawnWalk;
+    meant = "another's";
+  };
+  # The sitting meant otherwise, as a pose other than a stride may be, so a
+  # rule holding every pose to `meant` rather than the strides alone fails.
+  sittingElse = meantAs {
+    otherwise = "nothingHere";
+    strides = drawnWalk;
+  };
+  # What poseFaults says of the strides meant otherwise than `meant`.
+  meantOtherwise =
+    meant: strides: "meant otherwise than ${builtins.toJSON meant} ${builtins.toJSON strides}";
   edges = [
     {
       faults = meaning;
       reason = "walkingC, a stride meant otherwise, refused for it alone";
-      holds = !meaning.ok && lib.hasInfix ''meant otherwise ["walkingC"]'' meaning.said;
+      holds = !meaning.ok && lib.hasInfix (meantOtherwise ownPose [ "walkingC" ]) meaning.said;
+    }
+    {
+      faults = allMeant;
+      reason = "the same strides, every one meant as its poses are, held";
+      holds = allMeant.ok && lib.hasInfix (meantOtherwise ownPose [ ]) allMeant.said;
+    }
+    {
+      faults = meantUndrawn;
+      reason = "an undrawn stride said undrawn, not meant otherwise";
+      holds =
+        !meantUndrawn.ok
+        && lib.hasInfix ''undrawn ["unseen"]'' meantUndrawn.said
+        && lib.hasInfix (meantOtherwise ownPose [ ]) meantUndrawn.said;
+    }
+    {
+      faults = meantElse;
+      reason = "the same strides, all meant alike but not as asked, each refused";
+      holds = !meantElse.ok && lib.hasInfix (meantOtherwise "another's" drawnWalk) meantElse.said;
+    }
+    {
+      faults = sittingElse;
+      reason = "the sitting meant otherwise than its strides, held";
+      holds = sittingElse.ok && lib.hasInfix (meantOtherwise ownPose [ ]) sittingElse.said;
     }
     {
       faults = sized;
@@ -334,6 +410,7 @@ let
       inherit sitting;
       strides = [ "strode" ];
       glyphs = marks;
+      meant = null;
       inherit named;
     };
   picks = [
@@ -342,6 +419,7 @@ let
         sitting = "sat";
         strides = [ "strode" ];
         glyphs = marks;
+        named = null;
         meant = "its own pose";
       };
       wanted = [
@@ -387,6 +465,8 @@ let
           "absent"
         ];
         glyphs = marks;
+        named = null;
+        meant = null;
       };
       wanted = [
         "asStride"
