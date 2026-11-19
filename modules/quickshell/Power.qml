@@ -21,20 +21,16 @@ Scope {
             if (!root.battery.isLaptopBattery)
                 return;
             root.shown = true;
-            hide.restart();
+            meter.again();
         }
     }
 
-    Timer {
-        id: hide
-        interval: 1500
-        onTriggered: root.shown = false
-    }
-
     Meter {
+        id: meter
         name: "power"
         glyph: UPower.onBattery ? Theme.glyph.charge : Theme.glyph.charging
         visible: root.shown
+        onSpent: root.shown = false
         level: root.battery.percentage
     }
 }

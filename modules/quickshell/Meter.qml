@@ -35,8 +35,47 @@ PanelWindow {
             Report.say(`level ${meter.name} ${meter.figure}`);
     }
 
+    // Its moment is over, which hides it (Moment.qml).
+    signal spent()
+
+    // Begins its moment again, as what shows it says the level changed.
+    function again() {
+        moment.again();
+    }
+
     onFigureChanged: tell()
-    onVisibleChanged: tell()
+    onVisibleChanged: {
+        if (visible)
+            meter.FramePresentation.ask();
+        tell();
+    }
+
+    // Its moment begins as niri says it showed a frame of it, asked again
+    // for one drawn while it couldn't be shown; where the compositor never
+    // tells, at the frame Qt hands it.
+    FramePresentation.onPresented: moment.shown()
+    FramePresentation.onDiscarded: {
+        if (meter.visible && !moment.seen)
+            meter.FramePresentation.ask();
+    }
+
+    Connections {
+        target: meter.FramePresentation.available ? null : card.Window.window
+
+        function onFrameSwapped() {
+            moment.shown();
+        }
+    }
+
+    Moment {
+        id: moment
+        showing: meter.visible
+        onSpent: wasSeen => {
+            if (!wasSeen)
+                console.warn(`meter: ${meter.name} went unseen, no frame of it said shown`);
+            meter.spent();
+        }
+    }
 
     anchors.bottom: true
     implicitWidth: length + 2 * Theme.floating.reach

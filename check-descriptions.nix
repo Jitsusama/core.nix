@@ -4755,6 +4755,16 @@
     jemalloc holds in the shell's own process, and no memfd backs the heap, so each of its
     pages is held once
   '';
+  a-meter-stays-its-moment-once-seen = ''
+    a meter's moment, at a tenth of its length in Qt's engine, is spent its length after the
+    first frame shown of it, or after the last change once one has been, at its most unseen,
+    and never once hidden, waiting anew for a frame when shown again
+  '';
+  a-meter-stays-its-moment-once-drawn-on-niri = ''
+    the screen's brightness picked while the nested niri is held stopped for 2.5 s, longer than
+    a meter's moment, has the brightness meter drawn once niri goes on, and gone between 1.3
+    and 3 s after it was drawn, so its moment ran from its frame and not from its cap
+  '';
   the-shells-list-names-what-it-runs = ''
     the list of the shell's files its companion compares after a switch also names the command
     the shell runs and each setting in its environment, so a new Quickshell is taken too
