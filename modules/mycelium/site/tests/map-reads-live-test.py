@@ -12,8 +12,9 @@ grow one network out of another while a forage says a cell of the one
 started a cell of the other,
 answer a key of each kind keys.ts decides (the keys dialog, find and its
 field, stepping through what was found, Escape's order, the walk, the
-machines, Now, the tree's steps, branches and Return, and the theme
-switch), and pass the web-design
+machines, Now and Escape closing it, the view zoomed, panned and fitted, -
+climbing from a cell to its network, the tree's steps, branches and
+Return, and the theme switch), and pass the web-design
 skill's page checks and the map's own (site-checks.js) at a phone's width
 and a desk's in both looks. Any error the page logs fails it, since that is
 how the map froze on "reading" unseen, and how the drawing says a key
@@ -462,6 +463,74 @@ def test_the_walk_the_tree_and_the_switch_answer_their_keys(mycelium_opened: Ope
     themes.first.focus()
     page.keyboard.press("ArrowLeft")
     expect(themes.last, "the theme switch didn't wrap round").to_be_focused()
+
+
+# What the view's transform says it shows: where its corner sits and how far in it is.
+VIEWED = re.compile(r"translate\((-?[\d.]+),(-?[\d.]+)\) scale\(([\d.]+)\)")
+
+# How far one Shift and a direction moves the map, in pixels, as view.js's PAN.
+PANNED = 80
+
+
+def viewed(page: Page) -> tuple[float, float, float]:
+    """Where the map's view stands now, as its world's transform says."""
+    transform = page.locator("#world").get_attribute("transform") or ""
+    found = VIEWED.fullmatch(transform)
+    assert found, f"the map's world is drawn at {transform!r}, no translate and scale"
+    x, y, k = found.groups()
+    return float(x), float(y), float(k)
+
+
+def settled(page: Page) -> tuple[float, float, float]:
+    """Where the view stands once it has stopped moving, as a fit glides there."""
+    page.wait_for_function(
+        """() => {
+          const now = document.getElementById("world").getAttribute("transform");
+          const still = now === window.lastViewed;
+          window.lastViewed = now;
+          return still;
+        }""",
+        polling=250,
+        timeout=PACE_MS,
+    )
+    return viewed(page)
+
+
+def test_the_view_zooms_pans_fits_and_climbs_to_its_keys(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    whole = settled(page)
+    page.keyboard.press("i")
+    assert viewed(page)[2] > whole[2], f"i didn't zoom in from {whole}: {viewed(page)}"
+    page.keyboard.press("o")
+    assert viewed(page)[2] == pytest.approx(whole[2], rel=1e-3), f"o didn't zoom back out: {whole}"
+    page.keyboard.press("+")
+    assert viewed(page)[2] > whole[2], f"+ didn't zoom in from {whole}: {viewed(page)}"
+    page.keyboard.press("0")
+    assert settled(page) == pytest.approx(whole, abs=0.05), "0 didn't fit the whole map again"
+    page.keyboard.press("Shift+L")
+    panned = (whole[0] - PANNED, whole[1], whole[2])
+    assert viewed(page) == pytest.approx(panned, abs=0.05), (
+        f"Shift and l didn't move the map one step from {whole}: {viewed(page)}"
+    )
+    page.keyboard.press("0")
+    assert settled(page) == pytest.approx(whole, abs=0.05), "0 didn't fit the map after a pan"
+    # Escape closes Now when nothing is open over it.
+    page.keyboard.press(".")
+    expect(page.locator("#panel-title"), ". didn't open Now").to_have_text("Now")
+    page.keyboard.press("Escape")
+    expect(page.locator("#where"), "Escape didn't close Now").to_have_text("Now is closed.")
+    # - climbs from a cell to the network it's in.
+    page.keyboard.press("/")
+    page.keyboard.type(SOUGHT)
+    page.keyboard.press("Enter")
+    expect(page.locator("#panel-title"), "find didn't open its cell").to_have_text(SOUGHT_TITLE)
+    page.keyboard.press("-")
+    expect(page, "- didn't climb to the cell's network").to_have_url(
+        re.compile(r"/mycelium/#net=orchestration\.tern01$"),
+    )
 
 
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:
