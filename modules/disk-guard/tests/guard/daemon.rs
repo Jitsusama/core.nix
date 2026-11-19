@@ -2040,10 +2040,16 @@ const NEW: &str = "2222222222222222";
 impl Home {
     /// A cargo source over `src`, whose app's target holds an older
     /// build of it, last written five days ago, beside the newest.
-    fn replaced_build(&self, filling: &str) -> (Config, PathBuf) {
-        let app = self.root.join("src/app");
+    /// A crate `name` under `src`, built twice, its older build five days
+    /// old, answering its `deps` folder.
+    fn replaced_crate(&self, name: &str) -> PathBuf {
+        let app = self.root.join("src").join(name);
         fs::create_dir_all(app.join("src")).unwrap();
-        fs::write(app.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
+        fs::write(
+            app.join("Cargo.toml"),
+            format!("[package]\nname = \"{name}\"\n"),
+        )
+        .unwrap();
         let deps = app.join("target/debug/deps");
         fs::create_dir_all(&deps).unwrap();
         fs::write(
@@ -2052,12 +2058,21 @@ impl Home {
         )
         .unwrap();
         for digest in [OLD, NEW] {
-            fs::write(deps.join(format!("libapp-{digest}.rlib")), "x".repeat(4096)).unwrap();
+            fs::write(
+                deps.join(format!("lib{name}-{digest}.rlib")),
+                "x".repeat(4096),
+            )
+            .unwrap();
         }
         touch(
-            &deps.join(format!("libapp-{OLD}.rlib")),
+            &deps.join(format!("lib{name}-{OLD}.rlib")),
             crate::whole_seconds(wall()) - 5 * 86_400,
         );
+        deps
+    }
+
+    fn replaced_build(&self, filling: &str) -> (Config, PathBuf) {
+        let deps = self.replaced_crate("app");
         let config = Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
                  "bands": {{ "filling": "{filling}", "nearly_full": "0%", "critically_full": "0%",
@@ -2105,11 +2120,23 @@ fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_byte
     let second = deps.join("libapp-3333333333333333.rlib");
     fs::write(&second, "x".repeat(4096)).unwrap();
     touch(&second, crate::whole_seconds(wall()) - 5 * 86_400);
+    // Another target, whose cargo holds its lock, so its older build is
+    // kept and must not be counted as gone.
+    let held = home.replaced_crate("held");
+    let lock_path = held.parent().unwrap().join(".cargo-lock");
+    fs::write(&lock_path, "").unwrap();
+    let lock = fs::File::open(&lock_path).unwrap();
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::LockShared).unwrap();
     let mut uses = Uses::default();
     uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    uses.watching(&held, wall() - 3.0 * 86_400.0);
     disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
     let mut guard = home.guard(config);
     guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        held.join(format!("libheld-{OLD}.rlib")).exists(),
+        "the build cargo's lock holds was taken, so this case tests nothing"
+    );
     let target = deps.parent().unwrap().parent().unwrap();
     let journal = home.journal();
     let swept: Vec<_> = journal
@@ -2119,7 +2146,7 @@ fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_byte
     assert_eq!(
         swept.len(),
         1,
-        "a pass that took replaced builds left no line per target: {journal:?}"
+        "a pass left other than one line for the one target it took from: {journal:?}"
     );
     assert_eq!(
         (&swept[0]["target"], &swept[0]["count"], &swept[0]["bytes"]),

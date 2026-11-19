@@ -1,6 +1,6 @@
 //! The hour a survey gives a budgeted build's replaced builds, judged by
-//! the opens this guard heard. A Mac hears nothing, so there every
-//! replaced build waits its day, and these run on Linux alone.
+//! the opens this guard heard. A Mac hears nothing, so none goes by the
+//! hour there, and these run on Linux alone.
 
 use crate::discover::file;
 use crate::replaced::{artifact, fingerprinted, runnable};
@@ -21,8 +21,15 @@ fn aged_fingerprint(fingerprint: &Path, hours: f64) {
 }
 
 /// A build of `package`'s integration test in `deps`, written `hours` ago,
-/// with its dep-info and the fingerprint naming its unit.
-fn test_binary(deps: &Path, package: &str, digest: &str, hours: f64) -> PathBuf {
+/// with its dep-info and the fingerprint naming its unit, built as
+/// `variant` changes the plain build.
+fn test_binary(
+    deps: &Path,
+    package: &str,
+    digest: &str,
+    hours: f64,
+    variant: &[(&str, serde_json::Value)],
+) -> PathBuf {
     let unit = "test-integration-test-integration";
     let binary = runnable(deps, &format!("integration-{digest}"), 0);
     file(&binary, &"x".repeat(4096));
@@ -30,7 +37,7 @@ fn test_binary(deps: &Path, package: &str, digest: &str, hours: f64) -> PathBuf 
     for path in [&binary, &info] {
         written_ago(path, hours * 3600.0);
     }
-    aged_fingerprint(&fingerprinted(deps, package, digest, unit, &[]), hours);
+    aged_fingerprint(&fingerprinted(deps, package, digest, unit, variant), hours);
     binary
 }
 
@@ -55,11 +62,21 @@ fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_
         &fingerprinted(&deps, "app", "5555555555555555", "lib-app", &[]),
         3.0,
     );
-    let unused = test_binary(&deps, "server", "1111111111111111", 3.0);
-    let newest = test_binary(&deps, "server", "2222222222222222", 2.0);
+    let unused = test_binary(&deps, "server", "1111111111111111", 3.0, &[]);
+    let newest = test_binary(&deps, "server", "2222222222222222", 2.0, &[]);
+    // The same test built with a feature, never opened: the newest of its
+    // own way of being built, so nothing has replaced it within the hour.
+    let featured = serde_json::json!("[\"x\"]");
+    let other_way = test_binary(
+        &deps,
+        "server",
+        "6666666666666666",
+        3.0,
+        &[("features", featured)],
+    );
     // Another package's test of the same name, the older opened since.
-    let opened = test_binary(&deps, "client", "3333333333333333", 3.0);
-    test_binary(&deps, "client", "4444444444444444", 2.0);
+    let opened = test_binary(&deps, "client", "3333333333333333", 3.0, &[]);
+    test_binary(&deps, "client", "4444444444444444", 2.0, &[]);
     let mut uses = heard(&made, 3.0);
     // One opened a minute inside the hour stays; one a minute past it goes.
     // Written out rather than read from the rule, so a changed hour fails.
@@ -83,6 +100,10 @@ fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_
     assert!(
         !spent(&found, &opened),
         "a replaced test binary opened a minute inside the hour went"
+    );
+    assert!(
+        !spent(&found, &other_way),
+        "a test binary went by the hour though no newer build of its features replaced it"
     );
     assert!(
         found.iter().all(|offer| offer.candidate.path != newest),
