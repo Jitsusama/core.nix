@@ -1581,6 +1581,16 @@ QtObject {
         };
         Figure.runLines("aa \u00b7 bb \u00b7 cc \u00b7 dd \u00b7 ee \u00b7 ff", 70, measuring, 1);
         holds("a drawer's run, to its most: nothing past it is measured", measured, 2);
+        // At rest, a drawer lays what it could show and a line past it, as far
+        // down as the keys left it scrolled: 100 high on lines 10 apart.
+        const rest = [
+            ["at its top, its ten and one past", 0, 11],
+            ["scrolled a line down, a line more", 10, 12],
+            ["scrolled part of a line, the line it cuts", 5, 12],
+            ["scrolled deep, laid as deep", 678, 79]
+        ];
+        for (const [what, scrolled, want] of rest)
+            holds(`a drawer's run, laid at rest: ${what}`, Figure.runMost(scrolled, 100, 10), want);
         // A drawer's prose as five lines at most, the rest in its fold (VKCF3Z's
         // wrap rule 4, 76ba12d0): laid as Qt wraps words, at spaces, and where
         // it runs past, cut after the last word the fifth line holds with room

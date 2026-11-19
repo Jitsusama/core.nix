@@ -329,7 +329,7 @@ Floating {
     // it's scrolled too, since the keys leaving keep the view where they
     // left it; at rest nothing else scrolls it, so a walk lays it once.
     property bool runWhole: false
-    readonly property int runMost: Math.ceil((scrolled + tall) / pitch) + 1
+    readonly property int runMost: Figure.runMost(scrolled, tall, pitch)
     // Whether its title and prose are shown whole (`whole: true`), as a
     // landing asking Joel something is: the title on as many lines as it
     // takes and the prose never cut, since it's one line by contract
@@ -822,6 +822,10 @@ Floating {
             // At once, so the new page's first frame draws none of it.
             unflash();
             Qt.callLater(() => {
+                // Not once the keys have gone meanwhile, which would
+                // lay the run whole at rest.
+                if (!keys)
+                    return;
                 scrolled = 0;
                 enter();
             });

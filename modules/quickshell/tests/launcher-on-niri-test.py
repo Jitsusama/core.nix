@@ -434,7 +434,7 @@ def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) ->
 def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     shell: Shell,
 ) -> None:
-    """Emoji's drawer lays its run whole once Ctrl+W l goes in, and still shows it as left.
+    """Emoji's drawer lays its run short at rest, whole once Ctrl+W l goes in, short as left.
 
     A place's members are laid at rest only as far as the drawer shows, since Emoji's 1,914
     names laid whole cost about 200 ms a drawer (Drawer.qml's runWhole). The keys read every
@@ -454,6 +454,8 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     shell.launcher_until(
         lambda shown: shown["drawer"]["title"] == "Emoji" and shown["drawer"]["more"]
     )
+    rest = shell.showing()["drawer"]["bodyLines"]
+    assert rest < whole_least, f"at rest, {rest} of Emoji's lines were laid, not its view's"
     shell.normal()
     # Ctrl+W then l in one batch, as he types it, so the chord never waits on its second key.
     shell.as_account("wtype -M ctrl -k w -m ctrl -k l")
@@ -461,7 +463,8 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
         lambda shown: (shown["drawer"]["cursor"] or {}).get("lines", 0) > whole_least
     )
     # The cursor counts its lines from one, so it's told by where it began.
-    began = shell.showing()["drawer"]["cursor"]["line"]
+    entered = shell.showing()["drawer"]
+    began, whole = entered["cursor"]["line"], entered["bodyLines"]
     shell.send_chars("j" * deep)
     shell.launcher_until(
         lambda shown: (shown["drawer"]["cursor"] or {}).get("line") == began + deep
@@ -475,7 +478,10 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     assert drawer["bodyLines"] > deep, (
         f"left {deep} lines down, only {drawer['bodyLines']} were laid: {drawer}"
     )
-    assert drawer["more"], f"left {deep} lines down, the run had no more below: {drawer}"
+    # Nor at rest again is it laid whole, which every step past it would pay to take down.
+    assert drawer["bodyLines"] < whole, f"left, all {whole} lines stayed laid: {drawer}"
+    # The foot counts what's below where the view was left, so it still says there's more.
+    assert drawer["moreSays"], f"left {deep} lines down, the foot said no more: {drawer}"
     shell.close_launcher()
 
 

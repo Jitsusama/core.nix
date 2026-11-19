@@ -30,6 +30,14 @@ function runLines(words, wide, width, most = 0) {
     return lines;
 }
 
+// How many lines of a run a drawer lays at rest, `tall` high on lines
+// `pitch` apart and `scrolled` down from its top: every line it could
+// show and one past, so it's still cut and says there's more, as far down
+// as the keys left the view.
+function runMost(scrolled, tall, pitch) {
+    return Math.ceil((scrolled + tall) / pitch) + 1;
+}
+
 // How wide a figure stands in `room`: a stroke, having no letters, takes
 // what room there is up to its `usual` width; a spark keeps its usual
 // width whatever the room.

@@ -19,6 +19,7 @@ since an update is held to it too: 6 of Machine's 20 on Joel's shell took longer
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -322,22 +323,21 @@ DRAWER_PRESENTED = re.compile(
 )
 
 
-def walked_in(shell: Shell, place: str, within: str) -> tuple[list[Json], list[Json]]:
-    """Open the launcher on the place the drawers are walked in, with the windows it opened.
+def walked_in(shell: Shell, place: str, within: str, request: pytest.FixtureRequest) -> list[Json]:
+    """Open the launcher on the place the drawers are walked in, and give its rows with one.
 
     Windows open first, none unless the run says (LAB_DRAWN_WINDOWS), each titled at the
     length LAB_TITLED gives it, so Desktop's Windows names as many, as long, as Joel's Runs
-    do. It gives them, to close once walked, and the rows that have a drawer.
+    do. Each is closed as the test ends, however it ends, since the shell outlives it.
     """
     titled = os.environ.get("LAB_TITLED", "")
     # The window's title goes to niri's spawn in single quotes (Shell.opened).
     if "'" in titled:
         refused = f"LAB_TITLED can't hold an apostrophe: {titled!r}"
         raise ValueError(refused)
-    windows = [
-        shell.opened(f"Lab {nth} {titled}".strip(), app="foot")
-        for nth in range(int(os.environ.get("LAB_DRAWN_WINDOWS", "0")))
-    ]
+    for nth in range(int(os.environ.get("LAB_DRAWN_WINDOWS", "0"))):
+        window = shell.opened(f"Lab {nth} {titled}".strip(), app="foot")
+        request.addfinalizer(functools.partial(shell.close, window))
     opened(shell, "home")
     shell.close_launcher()
     stepped(shell, place)
@@ -353,8 +353,8 @@ def walked_in(shell: Shell, place: str, within: str) -> tuple[list[Json], list[J
     if drawn and str(drawn[0]["is"]).startswith("windows:this"):
         shell.send_chars("j")
         shell.launcher_until(lambda shown: bool((shown["drawer"] or {}).get("shown")))
-        return windows, drawn[1:]
-    return windows, drawn
+        return drawn[1:]
+    return drawn
 
 
 def drawer_said(shell: Shell, mark: int) -> re.Match[str] | None:
@@ -369,7 +369,9 @@ def drawer_said(shell: Shell, mark: int) -> re.Match[str] | None:
     return None
 
 
-def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+def test_each_drawer_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
     """Walk a place's rows by letter, down and up, and print each drawer's line.
 
     The place is a row of Machine's unless the run names another (LAB_DRAWN_IN, LAB_DRAWN), and
@@ -383,7 +385,7 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
     place = os.environ.get("LAB_DRAWN_IN", DRAWN_IN)
     within = os.environ.get("LAB_DRAWN", DRAWN) or place
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    windows, drawn = walked_in(shell, place, within)
+    drawn = walked_in(shell, place, within, request)
     walk = "j" * (len(drawn) - 1) + "k" * (len(drawn) - 1)
     timed: list[int] = []
     others = unsaid = 0
@@ -434,8 +436,6 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
                 )
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"])
-    for window in windows:
-        shell.close(window)
     with capsys.disabled():
         print(
             f"lab-drawer {within}: {len(timed)} presented a median "
