@@ -164,12 +164,15 @@ function forgets(made, leaving, held, steps) {
 // its key, as the launcher's sameRow matches a row remade, so a refresh
 // renaming a held row is no step to a new place; and a row with none,
 // as an answer or a place's own step, by what it is and its name
-// together, since every answer is the same "answer".
+// together, since every answer is the same "answer". An answer's name is
+// the figure it says now, which each re-answer changes, so it's named by
+// the words asked (its chip), which again() keeps.
 function placeOf(steps) {
     return steps.map(step => {
         const row = step.row ?? {};
+        const name = row.is === "answer" ? row.chip ?? row.name : row.name;
         return (row.key ?? "") !== "" ? `key\u0000${row.key}`
-            : `is\u0000${row.is ?? ""}\u0000${row.name ?? ""}`;
+            : `is\u0000${row.is ?? ""}\u0000${name ?? ""}`;
     }).join("\u0001");
 }
 

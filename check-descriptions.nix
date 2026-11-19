@@ -4314,8 +4314,10 @@
     a step the launcher holds is made again with its row as it's offered now, a step whose row
     is gone is kept as it was, and one whose row is still offered but offers nothing now, a typed
     one's too, is left back to the step above it, or past the collection a search found it in,
-    never past a dialog's own collection, which is kept with its rows gone; every place through
-    the spent step goes from the way back, Ctrl+I, Ctrl+T and Tab, which forget where it landed
+    never past a dialog's own collection, which is kept with its rows gone; and, as Held.js
+    answers over histories given it, every place through the spent step goes from the way back,
+    Ctrl+I, Ctrl+T and Tab, which forget where it landed, and an answer saying a new figure is
+    still the same place
   '';
   the-launcher-says-what-counted-most = ''
     the launcher's journal names what counted most, the most first and a tie by name, no more
