@@ -51,6 +51,17 @@ def wifid(machine: BaseMachine) -> Wifid:
     return booted(machine)
 
 
+def launcher_saves_lantern(machine: BaseMachine) -> None:
+    """Save Lantern as the launcher did before wifid had a vault, and start wifid again."""
+    lines = " ".join(f"'{line}'" for line in launcher_lantern)
+    machine.succeed(f"printf '%s\\n' {lines} > {saved}")
+    machine.succeed(
+        "printf 'glowing in the dark' | systemd-creds encrypt --name=lantern"
+        " - /var/lib/wifid/networks/lantern.cred"
+    )
+    machine.succeed("systemctl restart wifid")
+
+
 @pytest.mark.usefixtures("wifid")
 def test_the_boot_waits_on_wifid_for_the_network_not_on_networkd(machine: BaseMachine) -> None:
     """The boot waits on wifid for the network, not on networkd."""
@@ -205,13 +216,7 @@ def test_a_network_saved_from_the_launcher_is_laid_over_the_defaults_and_chosen_
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """A network saved from the launcher is laid over the defaults and chosen first."""
-    lines = " ".join(f"'{line}'" for line in launcher_lantern)
-    machine.succeed(f"printf '%s\\n' {lines} > {saved}")
-    machine.succeed(
-        "printf 'glowing in the dark' | systemd-creds encrypt --name=lantern"
-        " - /var/lib/wifid/networks/lantern.cred"
-    )
-    machine.succeed("systemctl restart wifid")
+    launcher_saves_lantern(machine)
     # Moved into the vault as wifid starts, and opened from it after.
     wifid.says("moved 1 saved password into wifid's vault")
     machine.succeed("! test -e /var/lib/wifid/networks/lantern.cred")
@@ -293,9 +298,29 @@ def test_and_asks_lantern_again_as_the_session_it_gave_ends(wifid: Wifid) -> Non
     )
 
 
-@pytest.mark.usefixtures("wifid")
-def test_a_strangers_network_gets_no_llmnr_or_mdns(machine: BaseMachine) -> None:
+def test_a_strangers_network_gets_no_llmnr_or_mdns(machine: BaseMachine, wifid: Wifid) -> None:
     """A stranger's network gets no LLMNR or mDNS."""
+    # The stranger is Lantern, saved from the launcher and never trusted. Run alone, the card
+    # starts on the Inn, whose own file turns both off and so proves nothing of a stranger's,
+    # so it's saved and joined here first.
+    if machine.execute(f"test -e {saved}")[0] != 0:
+        launcher_saves_lantern(machine)
+        machine.wait_until_succeeds(f"test -e {given}", timeout=timedelta(seconds=30))
+    if machine.execute("wpa_cli -i wlan2 status | grep -qx ssid=Lantern")[0] != 0:
+        # wifid writes Lantern's file as it starts, before it gives wpa_supplicant the network.
+        retry(
+            lambda _: "\tLantern\t" in machine.succeed("wpa_cli -i wlan2 list_networks"),
+            timeout=timedelta(seconds=30),
+        )
+        machine.succeed("wpa_cli -i wlan2 reassociate")
+        wifid.joined("Lantern")
+    wifid.on_file(given)
+    wifid.holds_address("10.42.0.")
+    # resolved takes the link's settings from networkd a moment after it's configured, and
+    # until then reads the Inn's, so it's waited on by Lantern's own DNS server.
+    machine.wait_until_succeeds(
+        "resolvectl dns wlan2 | grep -qw 10.42.0.1", timeout=timedelta(seconds=30)
+    )
     resolving = machine.succeed("resolvectl status wlan2")
     assert "-LLMNR" in resolving, resolving
     assert "-mDNS" in resolving, resolving
