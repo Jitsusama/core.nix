@@ -1,3 +1,7 @@
+//! The idle checks' cases. Long because each way a spell is read wrong
+//! (a restart, midnight, a start dated ahead, a router) is a case of its
+//! own, replayed from the session it misled.
+
 use super::*;
 
 const NOW: i64 = 100_000;
@@ -558,6 +562,33 @@ fn a_spell_across_midnight_or_a_resumed_log_is_asked_and_told_once() {
         due(&[day_began], &mut told, after + 300, clock).is_empty(),
         "the same spell was asked or told of again"
     );
+}
+
+#[test]
+fn one_that_turned_since_it_was_woken_is_idle_from_its_turn_after_a_restart() {
+    // On 19 November 04TNWT, woken at 15:10 the day before to a spell
+    // begun at 14:46, worked all morning; once the 07:12 host restart left
+    // its presence naming no turn, it was said to have sat idle 16 h 28 min.
+    let mut told = Told::default();
+    let s = with_next(WAKE_AFTER);
+    let woken = due(std::slice::from_ref(&s), &mut told, NOW, clock);
+    assert_eq!(woken.len(), 1, "woken: {woken:?}");
+    let later = NOW + 10 * 3600;
+    let moving = Quiet {
+        turned: Some(later - 600),
+        since: Some(later - 600),
+        ..s
+    };
+    let tells = due(std::slice::from_ref(&moving), &mut told, later, clock);
+    assert!(tells.is_empty(), "one that moved was said idle: {tells:?}");
+    let restarted = Quiet {
+        turned: None,
+        since: Some(later + 120),
+        started: Some(later + 60),
+        ..moving
+    };
+    let tells = due(&[restarted], &mut told, later + 300, clock);
+    assert!(tells.is_empty(), "idle from before its turns: {tells:?}");
 }
 
 #[test]

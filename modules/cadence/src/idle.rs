@@ -225,6 +225,13 @@ pub struct Told {
     pub spells: BTreeMap<String, i64>,
     #[serde(default)]
     pub woken: BTreeMap<String, Woken>,
+    /// The end of the last turn each session's presence named, so a spell
+    /// read once it names none begins no earlier: on 19 November a host
+    /// restart left 04TNWT's presence naming no turn, and the spell it was
+    /// woken in the day before, which its turns since had ended, was read
+    /// as 16 h 28 min idle.
+    #[serde(default)]
+    pub turns: BTreeMap<String, i64>,
 }
 
 /// A line for a session itself, to wake it, or for its orchestrator.
@@ -239,7 +246,8 @@ pub struct Tell {
 /// When `s`'s spell began. Its own last turn says so when its presence
 /// names one. Without one, its day began again at midnight, or a host
 /// wrote its log on resuming it, and neither starts a spell: so the spell
-/// already told or woken in stands, unless what was read began later.
+/// already told or woken in stands, unless its last turn seen or what was
+/// read began later.
 fn spell(s: &Quiet, told: &Told) -> Option<i64> {
     let read = read_spell(s, told)?;
     Some(s.starts.map_or(read, |starts| read.max(starts)))
@@ -257,6 +265,7 @@ fn read_spell(s: &Quiet, told: &Told) -> Option<i64> {
         .copied()
         .into_iter()
         .chain(told.woken.get(&s.session).map(|w| w.since))
+        .chain(told.turns.get(&s.session).copied())
         .filter(|kept| *kept <= since)
         .max();
     Some(kept.unwrap_or(since))
@@ -285,6 +294,13 @@ pub fn due(
     let seen = |session: &String| sessions.iter().any(|s| &s.session == session);
     told.spells.retain(|session, _| seen(session));
     told.woken.retain(|session, _| seen(session));
+    told.turns.retain(|session, _| seen(session));
+    for s in sessions {
+        if let Some(turned) = s.turned {
+            let last = told.turns.entry(s.session.clone()).or_insert(turned);
+            *last = (*last).max(turned);
+        }
+    }
     let mut tells = wakes(sessions, told, now, &clock);
     for s in sessions {
         let (Some(by), Some(since)) = (s.led(), spell(s, told)) else {
