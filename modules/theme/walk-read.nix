@@ -28,8 +28,8 @@ let
   # some thousands. Each step's code is made at once, so a long file
   # leaves no chain of joins as deep as its marks are many, though each
   # copies the code so far, so the cost grows with the square of the
-  # marks: small at this one file's size, and a comment on one line, as
-  # the long case plants, is a single mark however long it runs.
+  # marks: small at this one file's size, and a comment's text between its
+  # marks, as the long case plants, is a single piece however long it runs.
   ways =
     let
       step =

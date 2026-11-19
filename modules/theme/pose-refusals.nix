@@ -288,10 +288,11 @@ let
       holds = (said tipped).ok;
     }
   ];
-  # A sitting, a stride and marks drawn as either's glyph or named for
-  # the animal are its poses, and no other mark: not one with the name
-  # inside its own, nor one drawn as no glyph but a sitting drawn so,
-  # even when the sitting or a stride isn't drawn at all.
+  # A sitting, a stride and marks drawn as either's glyph, named for the
+  # animal or meant as its poses are its poses, and no other mark: not one
+  # with the name inside its own, nor one meant otherwise in another
+  # glyph, nor one drawn as no glyph but a sitting drawn so, even when the
+  # sitting or a stride isn't drawn at all.
   markedAs = glyph: { inherit glyph; };
   marks = {
     sat = markedAs "s";
@@ -303,6 +304,14 @@ let
     carpet = markedAs "x";
     bare = { };
     unmarked = { };
+    ownMeant = {
+      glyph = "m";
+      means = "its own pose";
+    };
+    otherMeant = {
+      glyph = "m";
+      means = "another's";
+    };
   };
   picked =
     sitting: named:
@@ -313,6 +322,21 @@ let
       inherit named;
     };
   picks = [
+    {
+      found = posesOf {
+        sitting = "sat";
+        strides = [ "strode" ];
+        glyphs = marks;
+        meant = "its own pose";
+      };
+      wanted = [
+        "asSitting"
+        "asStride"
+        "ownMeant"
+        "sat"
+        "strode"
+      ];
+    }
     {
       found = picked "sat" "pet";
       wanted = [

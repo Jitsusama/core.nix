@@ -130,8 +130,9 @@ let
           "hind"
         ]
       );
-      # Each pair steps in its turn, fore then hind, as the cat's walk does:
-      # a pair stepping twice running shuffles, though each step moves one.
+      # Each pair steps in its turn, the two alternating as the cat's walk
+      # does: a pair stepping twice running shuffles, though each step
+      # moves one.
       paired = map (step: moved (px step.from) (px step.to)) steps;
       shuffling = lib.optionals (lib.all (name: px name != [ ]) strides) (
         map
@@ -197,16 +198,17 @@ let
     holds check "The ${animal}'s poses must read as one ${animal}: ${found.said}." found.ok;
 
   # An animal's poses: its sitting and every mark drawn as its sitting's or
-  # a stride's glyph, or named for it when it has a name of its own, so a
-  # pose added for it in one of those glyphs, or by its name, can't skip
-  # its rules, nor every pose but its sitting when the sitting's glyph
-  # alone changes. The cat has no name of its own, so a pose of its drawn
-  # in a glyph of its own is found by neither.
+  # a stride's glyph, named for it when it has a name of its own, or meant
+  # as one of its poses, so a pose added for it can't skip its rules, nor
+  # one drawn in a glyph of its own, nor every pose but its sitting when
+  # the sitting's glyph alone changes, nor every pose but its strides when
+  # theirs does.
   posesOf =
     {
       sitting,
       strides,
       named ? null,
+      meant ? null,
       glyphs ? import ./glyphs.nix { inherit lib; },
     }:
     let
@@ -220,8 +222,9 @@ let
         let
           drawnAs = lib.elem (mark.glyph or null) its;
           namedFor = named != null && lib.hasPrefix named name;
+          meantFor = meant != null && (mark.means or null) == meant;
         in
-        name == sitting || drawnAs || namedFor
+        name == sitting || drawnAs || namedFor || meantFor
       ) glyphs
     );
 
@@ -401,10 +404,11 @@ in
     );
 
   # Every pose of the margin's cat reads as the same cat (readsAsOne), its
-  # poses all drawn as its sitting's glyph or its paw (posesOf). A leap's
-  # rise, tuck and fall are named as well, so one taken out is said
-  # undrawn rather than no longer read as a pose, and every fall can take
-  # the last.
+  # poses all drawn as its sitting's glyph or its paw or meant as its own
+  # (posesOf), so they're held whether or not its walk is read. A leap's
+  # rise, tuck and fall are named as well, so this check says one taken
+  # out undrawn rather than no longer reading it as a pose, as every fall
+  # can take the last.
   every-cat-pose-reads-as-one-cat = readsAsOne {
     check = "every-cat-pose-reads-as-one-cat";
     animal = "cat";
@@ -415,6 +419,7 @@ in
       posesOf {
         sitting = "nothingHere";
         strides = catWalk;
+        meant = "the margin's cat, in one of its own poses";
       }
       ++ [
         "leaping"
@@ -426,11 +431,11 @@ in
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
   # held to its own sitting, as the cat's are to the cat's, its poses every
-  # mark named for it as well (posesOf), its bow named as the cat's leap
-  # is, so it's said undrawn if taken out. Its strides are drawn for the
-  # cat's walk, so they're the cat's, read from the cat's code and each
-  # named for the puppy, as runningA would be puppyRunningA, rather than a
-  # copy that could drift.
+  # mark named or meant for it as well (posesOf), its bow named as the
+  # cat's leap is, so it's said undrawn if taken out. Its strides are drawn
+  # for the cat's walk, so they're the cat's, read from the cat's code and
+  # each named for the puppy, as runningA would be puppyRunningA, rather
+  # than a copy that could drift.
   every-puppy-pose-reads-as-one-puppy =
     let
       named =
@@ -450,6 +455,7 @@ in
           sitting = "puppySitting";
           strides = map named catWalk;
           named = "puppy";
+          meant = "the margin's puppy, in one of its own poses";
         }
         ++ [ "puppyBowing" ]
       );
@@ -483,10 +489,11 @@ in
     );
 
   # The cat's walk is read only from its frozen lists: its code read as no
-  # walk, by the rule it breaks, when it strides by anything but WALKS's
-  # frozen quoted words or declares either again, though as its walk when
+  # walk, by the rule it breaks, when WALKS holds anything but frozen
+  # quoted words or either is declared again, though as its walk when
   # they're only spaced, quoted or commented otherwise, a long comment too,
-  # or read where it's used, and past a copy commented out (refusals).
+  # or read where it's used, and past a copy commented out (refusals); the
+  # forms walk-read.nix says it doesn't see pass unseen.
   the-cats-walk-is-read-only-from-its-lists =
     let
       check = "the-cats-walk-is-read-only-from-its-lists";
