@@ -2675,25 +2675,29 @@ impl Guard {
             self.failed = None;
         }
         self.last = Some(last);
-        // After the pass's own line, so a journal refusing them, as a full
-        // disk's does, never costs the pass its record.
-        self.journal_replaced(here, &report, tick.wall)?;
+        // After the pass's own line, and told of rather than returned when
+        // refused, as a full disk's journal does: the pass has done its
+        // work, so they cost it neither its record nor the rest of the step.
+        self.journal_replaced(here, &report, tick.wall);
         Ok(report.end)
     }
 
     /// Journals how many replaced builds a pass took from each target among
     /// `here`'s offers, and their bytes.
-    fn journal_replaced(&mut self, here: &[Offer], report: &Report, at: f64) -> io::Result<()> {
+    fn journal_replaced(&mut self, here: &[Offer], report: &Report, at: f64) {
         for (target, (count, bytes)) in replaced_taken(here, &report.actions) {
-            self.journal.write(&Line::Replaced {
+            let from = target.display().to_string();
+            let line = Line::Replaced {
                 at,
                 band: report.band,
                 target,
                 count,
                 bytes,
-            })?;
+            };
+            if let Err(error) = self.journal.write(&line) {
+                eprintln!("disk-guard: journalling the builds taken from {from}: {error}");
+            }
         }
-        Ok(())
     }
 
     /// Notes what came of each action a pass took, whatever it was, so a

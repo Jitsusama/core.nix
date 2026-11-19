@@ -2101,6 +2101,10 @@ fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_byte
     // from it, not only a line per artifact.
     let home = Home::new();
     let (config, deps) = home.replaced_build("100%");
+    // A second older build of the crate, so the line sums two.
+    let second = deps.join("libapp-3333333333333333.rlib");
+    fs::write(&second, "x".repeat(4096)).unwrap();
+    touch(&second, crate::whole_seconds(wall()) - 5 * 86_400);
     let mut uses = Uses::default();
     uses.watching(&deps, wall() - 3.0 * 86_400.0);
     disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
@@ -2112,6 +2116,20 @@ fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_byte
         .iter()
         .filter(|line| line["event"] == "replaced")
         .collect();
+    assert_eq!(
+        swept.len(),
+        1,
+        "a pass that took replaced builds left no line per target: {journal:?}"
+    );
+    assert_eq!(
+        (&swept[0]["target"], &swept[0]["count"], &swept[0]["bytes"]),
+        (
+            &serde_json::json!(target),
+            &serde_json::json!(2),
+            &serde_json::json!(8192)
+        ),
+        "the target's line says the wrong target, count or bytes"
+    );
     let passed = journal.iter().position(|line| line["event"] == "pass");
     let replaced = journal.iter().position(|line| line["event"] == "replaced");
     assert!(
@@ -2119,24 +2137,9 @@ fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_byte
         "the replaced lines came before the pass's own: {journal:?}"
     );
     assert!(
-        swept.first().is_some_and(|line| line["band"].is_string()
-            && passed.is_some_and(|at| line["band"] == journal[at]["band"])),
+        swept[0]["band"].is_string()
+            && passed.is_some_and(|at| swept[0]["band"] == journal[at]["band"]),
         "a replaced line didn't name its pass's band: {journal:?}"
-    );
-    assert_eq!(
-        swept.len(),
-        1,
-        "a pass that took replaced builds left no line per target: {:?}",
-        home.journal()
-    );
-    assert_eq!(
-        (&swept[0]["target"], &swept[0]["count"], &swept[0]["bytes"]),
-        (
-            &serde_json::json!(target),
-            &serde_json::json!(1),
-            &serde_json::json!(4096)
-        ),
-        "the target's line says the wrong target, count or bytes"
     );
 }
 

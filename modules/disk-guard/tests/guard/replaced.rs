@@ -240,7 +240,8 @@ fn only_a_newer_build_of_its_own_variant_says_an_executable_is_done_with() {
 #[test]
 fn a_fingerprint_reached_through_a_link_names_no_unit() {
     // A folder anyone can clone can plant a link where cargo writes its
-    // fingerprint, which could lead anywhere, so none is followed.
+    // fingerprint's JSON, which could lead anywhere, so that last link is
+    // never followed; one higher up leads only to another small file.
     let root = tempfile::tempdir().unwrap();
     let deps = root.path().join("target/debug/deps");
     test_build(&deps, OLD, &[], 1_000);
@@ -309,7 +310,7 @@ fn a_fingerprint_past_its_size_names_no_unit() {
 }
 
 #[test]
-fn a_library_is_replaced_whatever_its_variant_but_never_known_done_with() {
+fn a_library_is_replaced_whatever_its_variant_and_never_by_the_hour() {
     // Two live builds of a library can differ only in how a dependency
     // was built, so only a day unopened says one is done with.
     let root = tempfile::tempdir().unwrap();
