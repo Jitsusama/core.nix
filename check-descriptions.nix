@@ -1085,7 +1085,8 @@
     lands, so one whose uevent landed, given up before the rest land, is held twice as long;
     an interface held isn't asked as a load wants it; and interfaces named constructor and
     __proto__ are each read whole, known and described as any other, and one given up in
-    flight is held and kept hung by its name, not asked again, until its read lands
+    flight is held and kept hung by its name, not asked while its read hangs, though its
+    hold is over, and asked again once that read lands
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a

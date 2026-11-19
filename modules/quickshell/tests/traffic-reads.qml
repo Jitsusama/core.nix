@@ -712,8 +712,9 @@ ShellRoot {
     }
 
     // The object prototype's own key, given up with its read in flight, is
-    // held and kept hung by its name as any other, not asked again, and
-    // its read landing lets its view go.
+    // held and kept hung by its name as any other. Its hold aged out, its
+    // hung read alone keeps it from being asked; that read landing lets its
+    // view go, and it's asked again.
     function oddHeld() {
         const odd = oddNames[1];
         const view = traffic.probe;
@@ -723,12 +724,17 @@ ShellRoot {
             + oddOf(traffic.probesHung, hung => [hung === view]);
         Expect.expect("an odd name given up in flight is held and kept hung by its name",
             holds === '[["__proto__",60000]] and [["__proto__",true]]', holds);
+        traffic.probesStuck[odd].at -= 61000;
         traffic.probeFor([odd]);
-        Expect.expect("and isn't asked again", traffic.probing?.name !== odd
-            && !traffic.asking.some(one => one.name === odd), root.asked());
+        Expect.expect("its hold over, it isn't asked while its read hangs",
+            traffic.probing?.name !== odd && !traffic.asking.some(one => one.name === odd),
+            root.asked());
         traffic.probeLanded(view, "");
         Expect.expect("its read landing lets its view go", traffic.probesHung[odd] === undefined,
             oddOf(traffic.probesHung, () => []));
+        traffic.probeFor([odd]);
+        Expect.expect("and it's asked again", traffic.probing?.name === odd
+            || traffic.asking.some(one => one.name === odd), root.asked());
         Qt.exit(0);
     }
 }
