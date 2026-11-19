@@ -460,6 +460,10 @@ QtObject {
             Wanted.findsLater(Object.assign({}, home, { byFill: false })), false);
         check(failures, "an opening with no home kept finds it there",
             Wanted.findsLater(Object.assign({}, home, { kept: 0 })), false);
+        // Kept from before a share, home could name what the share hides (an
+        // ask, a copy), so while one is on it's found before the frame.
+        check(failures, "home's fill under a share finds home there",
+            Wanted.findsLater(Object.assign({}, home, { shared: true })), false);
         // Found after it, home is searched again by a slice, a key or a
         // click, but a chord only joins, and a step or a word finds its own.
         const stands = { home: true, held: 0, typed: "" };
