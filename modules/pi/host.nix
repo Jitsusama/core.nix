@@ -169,6 +169,13 @@ let
             "--disable-sigusr1"
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
+            # A loop spinning too tight to answer the inspector is recorded with
+            # perf from outside the host, which names only native frames unless
+            # node writes where its compiled functions sit, to /tmp/perf-PID.map.
+            # On 19 November every JS frame of the spins slowing Joel's typing
+            # read as a bare address. Functions only, as code stubs would grow
+            # the map with every inline cache for no name perf reports.
+            "--perf-basic-prof-only-functions"
             "--max-old-space-size=${toString host.heapMb}"
             entry
             kind
