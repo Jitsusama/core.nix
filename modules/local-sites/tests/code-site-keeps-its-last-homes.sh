@@ -37,6 +37,7 @@ if [ -e "$work/silent" ]; then
 fi
 if [ -e "$work/stalled" ]; then
   printf '{"schema":"repos.repositories/1",'
+  # A minute is far past the writer's wait here, so only the writer's own bound ends it.
   exec sleep 60
 fi
 cat << 'RECORD'
