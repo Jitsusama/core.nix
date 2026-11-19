@@ -138,8 +138,8 @@ in
   # (modules/quickshell/tests/traffic-reads.qml), since a blocking read of
   # each cost the step up to 133 ms under load. A file that never lands holds
   # one of the pool's threads, so it's asked again only once it lands and its
-  # hold is over, a minute and then twice as long, so a slow one isn't asked
-  # each second. A build has no sysfs, so the case writes lo's folder in
+  # hold is over, a minute and then twice as long each time, to an hour, so
+  # a slow one isn't asked each second. A build has no sysfs, so the case writes lo's folder in
   # sys/lo, made here.
   traffic-reads-a-known-interface-once-after-a-gap =
     pkgs.runCommandLocal "traffic-reads-a-known-interface-once-after-a-gap" { }

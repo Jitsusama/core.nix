@@ -482,7 +482,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
             "ifb": "shaper9",
             "up": 11830,
             "down": 40000,
-            "state": "climbing",
+            "state": "resting",
             "baselines": [["9.9.9.9", 51.1], ["1.1.1.1", 21.1], ["8.8.8.8", 20.6]],
             "follows": None,
         }
