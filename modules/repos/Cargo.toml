@@ -30,13 +30,16 @@ daemon-serve = { path = "../daemon-serve", optional = true }
 # and the command's alone.
 [target.'cfg(target_os = "linux")'.dependencies]
 inotify = { version = "0.11", default-features = false, optional = true }
+# Opening Code's homes without following a link or waiting on a pipe, so
+# whatever sits there never holds the daemon (src/homes.rs).
+libc = { version = "0.2", optional = true }
 
 [features]
 default = ["github"]
 # Asking GitHub, serving the daemon and saying the receptor, which only the
 # command does. A crate reading repositories through the library leaves it
 # out with `default-features = false`, so it carries no HTTP, TLS or socket.
-github = ["dep:receptor-say", "dep:ureq", "dep:daemon-serve", "dep:inotify"]
+github = ["dep:receptor-say", "dep:ureq", "dep:daemon-serve", "dep:inotify", "dep:libc"]
 
 [[bin]]
 name = "repos"

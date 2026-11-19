@@ -1,4 +1,6 @@
+use std::ffi::CString;
 use std::fs;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
@@ -186,6 +188,38 @@ fn homes_unchanged_on_the_disk_are_not_written_again() {
         "changed homes weren't written"
     );
     assert_eq!(read(&file), of(&more));
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn homes_changed_to_the_same_length_are_written_again() {
+    let folder = folder("same-length");
+    let file = folder.join("homes.json");
+    let mut homes = Homes::at(file.clone());
+    homes.write(&record()).expect("written");
+    let held = fs::read_to_string(&file).expect("the homes");
+    fs::write(&file, held.replace("kind", "KIND")).expect("homes changed in place");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "homes of the same length were taken as the same"
+    );
+    assert_eq!(read(&file), of(&record()));
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn a_pipe_at_the_homes_never_holds_the_writing_and_is_put_right() {
+    // Opened to be read, a pipe nobody writes to would wait for a writer.
+    let folder = folder("pipe");
+    let file = folder.join("homes.json");
+    let named = CString::new(file.as_os_str().as_bytes()).expect("a path without nulls");
+    // SAFETY: `named` is a valid C string that outlives the call.
+    assert_eq!(unsafe { libc::mkfifo(named.as_ptr(), 0o644) }, 0, "a pipe at the homes");
+    let mut homes = Homes::at(file.clone());
+    assert!(homes.write(&record()).expect("written"), "the pipe was read as the homes");
+    let kind = fs::symlink_metadata(&file).expect("the homes").file_type();
+    assert!(kind.is_file(), "the pipe stayed where the homes go");
+    assert_eq!(read(&file), of(&record()));
     let _ = fs::remove_dir_all(&folder);
 }
 

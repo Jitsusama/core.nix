@@ -184,4 +184,6 @@ def test_the_code_sites_homes_say_where_the_repository_is_home(served: BaseMachi
         )
     except Exception:  # noqa: BLE001 # The driver raises a bare Exception when time is up.
         now = served.succeed(f"curl -sf {SITES}/code/homes.json")
-        pytest.fail(f"the tree cut never came home; the homes say:\n{now}")
+        journal = "journalctl --user -u repos.service --no-pager"
+        said = as_account(served, journal, account="alice")
+        pytest.fail(f"the tree cut never came home; the homes say:\n{now}\nand the daemon:\n{said}")
