@@ -195,7 +195,7 @@ in
         && opensInspector "--no_disable_sigusr1"
         && !(opensInspector "--disable-sigusr1 --max-old-space-size=8192");
       # Any process of Joel's may send SIGUSR1, which would open node's
-      # inspector and let it run code as the host, whose word the node takes
+      # inspector and let it run code as the host, whose word mycelium takes
       # for which conversation a spawner serves; so node is told to ignore
       # it, nothing opens the inspector another way, and the unit clears
       # NODE_OPTIONS, so neither the user manager's environment nor a

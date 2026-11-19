@@ -131,9 +131,11 @@ let
             # Any process of the account may send SIGUSR1, which would open
             # node's inspector and let it run code as the host. mycelium
             # takes the host's word for which conversation each pi-spawner
-            # serves only where this is node's first option, as it reads the
-            # host's command line, and NODE_OPTIONS is empty; it refuses
-            # the word of a host started otherwise.
+            # serves only where this is the first option on the host's
+            # command line, no option there opens the inspector, and the
+            # host's environment gives no NODE_OPTIONS (the unit clears
+            # it), LD_PRELOAD or LD_AUDIT. It refuses the word of a host
+            # started otherwise, and logs why.
             "--disable-sigusr1"
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
