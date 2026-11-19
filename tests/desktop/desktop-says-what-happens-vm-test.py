@@ -318,8 +318,13 @@ class InTheDrawer:
         self.pressed_until(
             keys, lambda shown: shown["mode"] == "normal" and not shown["drawer"]["keys"]
         )
+        self.came_back()
+
+    def came_back(self) -> None:
+        """Say the keys are back on the rows, the launcher open on the selection it had."""
         shown = self.desktop.showing()
         assert shown["open"], shown
+        assert shown["mode"] == "normal", shown
         assert shown["selected"]["name"] == self.rows["selected"]["name"], shown
         assert shown["drawer"]["cursor"] is None, shown["drawer"]
 
@@ -779,14 +784,13 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     the clipboard as markdown, the title after its #, and goes back to the page with the
     cursor at its start, the flash it gives what it took ending; o goes to its other end,
     Escape lets it go, and gv brings it back. V grounds each line whole, a band across the
-    measure, where v grounds only the letters. Its pictures at both of Joel's scales show
-    letters chosen over two lines, for a person to judge the selection's ground and the block.
+    measure, where v grounds only the letters. A page stepped into while the flash shows
+    wears none of it, nor does the drawer the keys leave (flash_ends_at_once). Its pictures
+    at both of Joel's scales show letters chosen over two lines, for a person to judge the
+    selection's ground and the block.
     """
     page = InTheDrawer(desktop)
     title = page.into()["line"]
-
-    def chose(by: str, count: int) -> Callable[[Json], bool]:
-        return lambda drawer: drawer["chosen"]["by"] == by and drawer["chosen"]["count"] == count
 
     came = page.until("v", chose("letters", 1))
     assert came["chosen"]["taken"] == [[title, 0, 1]], came
@@ -855,8 +859,96 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
         page.until("v l l l l l j", chose("letters", 2))
         desktop.shoot(f"launcher-drawer-chosen-at-{scale.replace('.', '-')}")
     page.pressed_until("esc", lambda shown: shown["mode"] == "page")
-    page.back("ctrl-w h")
+    flash_ends_at_once(desktop, page, "spc ?", lambda shown: shown["listing"])
+    page.pressed_until("spc ?", lambda shown: not shown["listing"], lambda: page.press("esc"))
+    # More letters than any try above took, so each try's copy differs from the one before.
+    flash_ends_at_once(desktop, page, "ctrl-w h", lambda shown: not shown["drawer"]["keys"], TRIES)
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal")
+    page.came_back()
     desktop.close_launcher()
+
+
+def flash_ends_at_once(
+    desktop: Desktop,
+    page: InTheDrawer,
+    keys: str,
+    came: Callable[[Json], object],
+    more: int = 0,
+) -> None:
+    """Copy with y and press the keys in its batch, and see what they bring wear no flash.
+
+    What y took is its page's letters, so the list of keys Space ? steps into, or the drawer
+    the keys leave for the next row's page, would wear them as its own. The flash's time
+    begins only once a frame has drawn it, so where the keys are read in y's turn the first
+    showing they bring is the one that would flash. A try whose y had a frame of its own
+    first, or whose keys came apart, on a loaded builder, never reached that, and goes again
+    from the drawer's keys. Each try takes one more letter, `more` past two at its first, so
+    a copy unlike the last says this try's y ran.
+    """
+    tried: list[str] = []
+    for attempt in range(TRIES):
+        # From the first line's start, where l has a letter to take.
+        page.until("g g", lambda drawer: drawer["cursor"]["line"] == 0)
+        letters = 2 + more + attempt
+        page.until(" ".join(["v", *["l"] * (letters - 1)]), chose("letters", letters))
+        before = desktop.showing()["drawer"]["chosen"]["copied"]
+        since = desktop.mark()
+        page.press(f"y {keys}")
+        seen: list[Json] = []
+
+        def told(said: str, seen: list[Json] = seen) -> bool:
+            seen.append(json.loads(said))
+            return bool(came(seen[-1]))
+
+        try:
+            desktop.reported("showing ", told, since, TRIED)
+        except AssertionError:
+            seen.clear()
+        # Whatever came, the flash ends with its page, so even a try that
+        # missed y's turn shows the keys' showing bare.
+        if seen:
+            chosen = seen[-1]["drawer"]["chosen"]
+            assert not flashing(seen[-1]), f"what {keys} brought showed the copy's flash: {chosen}"
+        missed = unreached(seen, before)
+        if not missed:
+            return
+        tried.append(missed)
+        from_the_keys(desktop, page)
+    never = f"in {TRIES} tries {keys} never came in y's turn: {', '.join(tried)}"
+    raise AssertionError(never)
+
+
+def chose(by: str, count: int) -> Callable[[Json], bool]:
+    """Say whether the drawer's visual takes this many, by letters or by lines."""
+    return lambda drawer: drawer["chosen"]["by"] == by and drawer["chosen"]["count"] == count
+
+
+def flashing(shown: Json) -> bool:
+    """Say whether the drawer's showing wears y's flash."""
+    return bool(shown["drawer"]["chosen"]["flashing"])
+
+
+def unreached(seen: list[Json], before: str) -> str:
+    """Say how a try never reached keys read in y's turn, or nothing where it did."""
+    if not seen:
+        return f"nothing showed as wanted in {TRIED.total_seconds():.0f} s"
+    if seen[-1]["drawer"]["chosen"]["copied"] == before:
+        return "y copied nothing new"
+    if any(flashing(shown) for shown in seen[:-1]):
+        return "y's frame came first"
+    return ""
+
+
+def from_the_keys(desktop: Desktop, page: InTheDrawer) -> None:
+    """Put back the drawer's keys on its page, as a try that came apart left them."""
+    shown = desktop.showing()
+    if shown["drawer"]["keys"] and shown["mode"] != "page":
+        # A ? come apart from its Space begins a search back, which Escape lets go.
+        page.pressed_until("esc", lambda shown: shown["mode"] == "page")
+    if desktop.showing()["listing"]:
+        page.pressed_until("spc ?", lambda shown: not shown["listing"], lambda: page.press("esc"))
+    if not desktop.showing()["drawer"]["keys"]:
+        page.into()
 
 
 def test_a_notices_action_is_done_from_the_launcher_and_one_let_go_stays_unread(

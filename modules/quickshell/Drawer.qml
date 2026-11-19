@@ -581,6 +581,9 @@ Floating {
         if (keys) {
             enter();
         } else {
+            // y's flash, which the next row's page would wear, goes
+            // first, while the readers its paint() reaches are still made.
+            unflash();
             for (const text of texts())
                 text.reading = false;
             // What the last search found goes with it, so a drawer gone
@@ -658,7 +661,13 @@ Floating {
     Timer {
         id: flash
         interval: drawer.flashFor
-        onTriggered: drawer.flashing = []
+        // Only a flash still showing ends: a start that waited on its frame
+        // may fire after unflash, and an empty list set again would paint
+        // over readers the keys leaving switched off.
+        onTriggered: {
+            if (drawer.flashing.length > 0)
+                drawer.flashing = [];
+        }
     }
     // y's flash is timed from the first frame that draws it, which only the
     // launcher sees, so each yank says it waits, by its count, and the
@@ -796,11 +805,22 @@ Floating {
     // Another page shown while it holds the keys, as its list of keys is:
     // read from its top once Qt has laid it out, as a window opened on it.
     function anew() {
-        if (keys)
+        if (keys) {
+            // At once, so the new page's first frame draws none of it.
+            unflash();
             Qt.callLater(() => {
                 scrolled = 0;
                 enter();
             });
+        }
+    }
+    // y's flash ends with the page it was given on: what it took is that
+    // page's letters, so a page stepped into would wear them as its own.
+    // A start still waiting on its frame only restarts a time with nothing
+    // left to end, and a yank on the new page is newer than it.
+    function unflash() {
+        flash.stop();
+        flashing = [];
     }
     // Laid out anew while it holds the keys, as a fact's value comes or the
     // row refreshes: the lines read again once Qt has laid them out, the
