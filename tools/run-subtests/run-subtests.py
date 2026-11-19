@@ -81,8 +81,11 @@ QUARANTINE = "tools/merge-net/quarantine.json"
 MAIN = "refs/remotes/origin/main"
 
 # A failed pytest test as a build's log says it, read as merge-net's
-# subtests.rs reads it: by its function's name, its parameters dropped.
-FAILED_TEST = re.compile(r"FAILED \S*::(test_\w+)")
+# subtests.rs reads it: by its function's name, its parameters dropped,
+# FAILED or, for one that erred in a fixture, ERROR, and only at the start
+# of pytest's own line, past what Nix puts before it, so a guest's echoed
+# FAILED names none.
+FAILED_TEST = re.compile(r"(?:\s*> |[^ ]+?> )?(?:FAILED|ERROR) \S*::(test_\w+)")
 
 type Chunk = tuple[str | None, list[str]]
 
@@ -334,7 +337,7 @@ def nix_string(text: str) -> str:
 def failed_tests(lines: Iterable[str]) -> frozenset[str]:
     """Give the pytest tests a build's log says failed, by their functions' names."""
     return frozenset(
-        found.group(1) for line in lines if (found := FAILED_TEST.search(line)) is not None
+        found.group(1) for line in lines if (found := FAILED_TEST.match(line)) is not None
     )
 
 

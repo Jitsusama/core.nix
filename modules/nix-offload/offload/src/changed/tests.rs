@@ -542,6 +542,10 @@ fn a_failed_subtest_is_read_from_its_line_of_the_log() {
     assert_eq!(failed_on(line), Some("test_one"));
     assert_eq!(failed_on("vm-test-run-vm-a> 3 passed, 1 FAILED"), None);
     assert_eq!(failed_on("FAILED a.py::helper - boom"), None);
+    let erred = "       > ERROR vm-pytest-a/a-vm-test.py::test_two - Timeout";
+    assert_eq!(failed_on(erred), Some("test_two"), "an error in a fixture");
+    let echoed = "vm-test-run-vm-a> machine # FAILED a-vm-test.py::test_three - echoed";
+    assert_eq!(failed_on(echoed), None, "a guest's echoed failure");
 }
 
 #[test]

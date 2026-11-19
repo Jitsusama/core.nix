@@ -76,6 +76,8 @@ pub fn failed_in(log: impl IntoIterator<Item = impl AsRef<str>>) -> BTreeSet<Str
 /// as surely: on 18 November both runs of vm-the-connection-stays-quick
 /// at 7030d16c46ae erred so in two subtests each, named none, and could
 /// be neither excused by its list nor searched by its subtests.
+/// changed-checks' quarantine.rs, nix-offload's changed.rs and
+/// run-subtests.py read a line alike, so the four change together.
 fn failed_on(line: &str) -> Option<&str> {
     if line.contains(LOST) {
         return None;
@@ -116,11 +118,14 @@ pub fn none_selected(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
 /// Whether a run's log ends in pytest's summary, so every subtest it
 /// selected ran, and those it names no failure of passed: a run killed
 /// at its time limit never says which of the rest would have failed.
+/// Only pytest's own line sums it up, as for a failure, so a guest's
+/// echoed summary finishes nothing.
 #[must_use]
 pub fn finished(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
     log.into_iter().any(|line| {
-        let line = line.as_ref().trim_end();
-        (line.contains(" passed") || line.contains(" failed") || line.contains(" error"))
+        let line = pytests_own(line.as_ref()).trim_end();
+        line.starts_with('=')
+            && (line.contains(" passed") || line.contains(" failed") || line.contains(" error"))
             && line.contains(" in ")
             && line.ends_with("==")
     })
@@ -245,6 +250,12 @@ mod tests {
             BTreeSet::from(["test_shortcuts".to_owned()]),
             "the driver losing the machine says nothing of the subtest it was in"
         );
+        let erred = "vm-test-run-x> ERROR vm-pytest-ab/x-vm-test.py::test_the_vms - \
+                     BrokenPipeError: [Errno 32] Broken pipe\n";
+        assert!(
+            failed_in(erred.lines()).is_empty(),
+            "losing the machine in a fixture says nothing of its subtest either"
+        );
     }
 
     #[test]
@@ -302,6 +313,13 @@ mod tests {
         assert!(finished(erred.lines()), "a run whose every subtest erred");
         let all = "vm-test-run-x> ==== 1 failed, 2 passed, 3 errors in 9.10s ====";
         assert!(finished(all.lines()), "a run that did each");
+        let one = "       > ==== 1 error in 3.20s ====";
+        assert!(
+            finished(one.lines()),
+            "a run with one error, on a line that follows"
+        );
+        let echoed = "vm-test-run-x> machine # ==== 9 passed in 1.00s ====";
+        assert!(!finished(echoed.lines()), "a guest's echoed summary");
         let killed = "vm-test-run-x> [3601.91s] !!! Test \"A\" failed with error: \"[Errno 9]\"\n\
                       error: Cannot build '/nix/store/x.drv'.\n";
         assert!(!finished(killed.lines()), "a run killed at its limit");
