@@ -446,7 +446,12 @@ mod tests {
     #[test]
     fn a_journal_that_couldnt_be_read_says_why_under_its_unit() {
         let failed = [Failed {
-            unread: Some("journalctl didn't answer in time, so it was stopped".to_owned()),
+            // journalctl's own words may hold what would steer the
+            // console, so the reason is cleaned as a unit's lines are.
+            unread: Some(
+                "\u{1b}[2Jjournalctl didn't answer in time,\u{7} so it was stopped\u{1b}]0;x\u{7}"
+                    .to_owned(),
+            ),
             ..unit("home.mount", "Mount /home", &[])
         }];
         assert_eq!(

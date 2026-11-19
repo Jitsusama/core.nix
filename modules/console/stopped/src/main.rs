@@ -31,7 +31,7 @@ mod asking;
 mod summary;
 
 use std::fs;
-use std::process::ExitCode;
+use std::process::{ExitCode, Output};
 
 use terminal_kit::flags::Format;
 use terminal_kit::{Context, Exit, Failure, Help, Ink, Pen, ink};
@@ -83,7 +83,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         .iter()
         .zip(abouts)
         .map(|(name, about)| {
-            let (said, unread) = last(&budget, name);
+            let (said, unread) = last(name, |matching, lines| journal(&budget, matching, lines));
             Failed {
                 about,
                 said,
@@ -181,11 +181,15 @@ const FAILED_WITH_RESULT: &str = "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c";
 /// restarting into its start limit says two results and no exit between.
 /// Any other of its lines only when a unit has neither. Where none of it
 /// could be read, the first reason comes with it, since what followed most
-/// often only says the journal wasn't asked again.
-fn last(budget: &Budget, unit: &str) -> (Vec<String>, Option<String>) {
+/// often only says the journal wasn't asked again. `ask` reads the journal
+/// as `journal` does.
+fn last(
+    unit: &str,
+    mut ask: impl FnMut(&[&str], usize) -> Result<Vec<String>, String>,
+) -> (Vec<String>, Option<String>) {
     let mut unread = None;
     let mut read = |matching: &[&str], lines: usize| {
-        journal(budget, matching, lines).unwrap_or_else(|why| {
+        ask(matching, lines).unwrap_or_else(|why| {
             unread.get_or_insert(why);
             Vec::new()
         })
@@ -208,35 +212,156 @@ fn last(budget: &Budget, unit: &str) -> (Vec<String>, Option<String>) {
 }
 
 /// The last `lines` this boot's journal holds matching every one of
-/// `matching`, as they were said, or why the journal couldn't be read: in
-/// time, or at all, in journalctl's own words where it printed nothing.
-/// Nothing matching is no reason, since journalctl ends well for it.
+/// `matching`, as they were said, or why the journal couldn't be read in
+/// time or at all (`heard`).
 fn journal(budget: &Budget, matching: &[&str], lines: usize) -> Result<Vec<String>, String> {
     let lines = format!("--lines={lines}");
     let mut args = vec!["--boot"];
     args.extend(matching);
     args.extend([lines.as_str(), "--output=cat", "--no-pager", "--quiet"]);
-    let said = budget.ask("journalctl", &args)?;
-    if !said.status.success() && said.stdout.is_empty() {
-        let errors = String::from_utf8_lossy(&said.stderr);
-        return Err(errors
+    heard(&budget.ask("journalctl", &args)?)
+}
+
+/// What a journal read printed, a line each, or, where it printed nothing
+/// that shows, why: the last line it said on stderr that shows, whether it
+/// ended badly or skipped what it couldn't read and ended well, as it does
+/// with a failing disk's files, or else how it ended, where that was
+/// badly. Nothing matching ends well and says nothing, so it's no reason.
+fn heard(said: &Output) -> Result<Vec<String>, String> {
+    let lines = |stream: &[u8]| -> Vec<String> {
+        String::from_utf8_lossy(stream)
             .lines()
-            .rev()
-            .find(|line| !line.trim().is_empty())
-            .map_or_else(
-                || format!("journalctl ended with {}", said.status),
-                |line| line.trim().to_owned(),
-            ));
+            .map(str::to_owned)
+            .collect()
+    };
+    let printed = lines(&said.stdout);
+    if !summary::last_shown(printed.clone(), 1).is_empty() {
+        return Ok(printed);
     }
-    Ok(String::from_utf8_lossy(&said.stdout)
-        .lines()
-        .map(str::to_owned)
-        .collect())
+    match summary::last_shown(lines(&said.stderr), 1).pop() {
+        Some(why) => Err(why.trim().to_owned()),
+        None if !said.status.success() => Err(format!("journalctl ended with {}", said.status)),
+        None => Ok(printed),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_a_console;
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::{ExitStatus, Output};
+
+    use super::{heard, is_a_console, last};
+
+    /// A journal read that ended with `code`, printing `stdout` and saying
+    /// `stderr`.
+    fn read(code: i32, stdout: &str, stderr: &str) -> Output {
+        Output {
+            status: ExitStatus::from_raw(code << 8),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+        }
+    }
+
+    fn lines(said: &[&str]) -> Vec<String> {
+        said.iter().map(|line| (*line).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_read_that_printed_lines_gives_them_however_it_ended() {
+        assert_eq!(
+            heard(&read(
+                1,
+                "disk gone\n",
+                "Failed to read: Input/output error\n"
+            )),
+            Ok(lines(&["disk gone"])),
+            "a read that printed a line that shows lost it"
+        );
+    }
+
+    #[test]
+    fn a_read_that_printed_nothing_that_shows_says_why_in_its_own_words() {
+        assert_eq!(
+            heard(&read(
+                1,
+                "\u{2800}\n",
+                "Failed to open files: Input/output error\n\x1b[0m\n"
+            )),
+            Err("Failed to open files: Input/output error".to_owned()),
+            "a failed read gave other than the last of its words that shows"
+        );
+        assert_eq!(
+            heard(&read(
+                0,
+                "",
+                "Journal file system.journal is truncated, ignoring file.\n"
+            )),
+            Err("Journal file system.journal is truncated, ignoring file.".to_owned()),
+            "a read that skipped what it couldn't read and printed nothing said nothing"
+        );
+        assert_eq!(
+            heard(&read(1, "", "")),
+            Err("journalctl ended with exit status: 1".to_owned()),
+            "a failed read that said nothing didn't say how it ended"
+        );
+    }
+
+    #[test]
+    fn a_read_that_matched_nothing_is_no_reason() {
+        assert_eq!(
+            heard(&read(0, "", "")),
+            Ok(Vec::new()),
+            "nothing matching was taken for a journal that couldn't be read"
+        );
+    }
+
+    #[test]
+    fn a_unit_with_lines_to_show_shows_them_and_no_reason() {
+        let mut replies = vec![
+            Err("journalctl couldn't run".to_owned()),
+            Ok(lines(&[
+                "home.mount: Mount process exited, code=exited, status=32",
+            ])),
+        ]
+        .into_iter();
+        assert_eq!(
+            last("home.mount", |_, _| replies
+                .next()
+                .unwrap_or(Ok(Vec::new()))),
+            (
+                lines(&["home.mount: Mount process exited, code=exited, status=32"]),
+                None
+            ),
+            "a unit with a line from systemd was given a reason too"
+        );
+    }
+
+    #[test]
+    fn a_unit_with_nothing_read_gives_the_first_reason() {
+        let mut replies = vec![
+            Err("journalctl didn't answer in time, so it was stopped".to_owned()),
+            Err(
+                "journalctl didn't answer an earlier ask in time, so it wasn't asked again"
+                    .to_owned(),
+            ),
+        ]
+        .into_iter();
+        assert_eq!(
+            last("home.mount", |_, _| replies.next().unwrap_or_else(|| Err(
+                "no time was left to ask journalctl".to_owned()
+            ))),
+            (
+                Vec::new(),
+                Some("journalctl didn't answer in time, so it was stopped".to_owned())
+            ),
+            "a unit with nothing read gave other than the first reason"
+        );
+        assert_eq!(
+            last("quiet.service", |_, _| Ok(Vec::new())),
+            (Vec::new(), None),
+            "a unit whose journal held nothing was given a reason"
+        );
+    }
 
     #[test]
     fn only_the_console_and_a_virtual_terminal_are_the_console() {

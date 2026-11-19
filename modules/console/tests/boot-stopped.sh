@@ -53,9 +53,9 @@ if [[ -f $WORK/broken ]]; then
   echo "Failed to open files: Input/output error" >&2
   exit 1
 fi
-# A slow journal answers inside a read's five seconds, but too slowly for
-# every read to fit in the summary's ten.
-[[ ! -f $WORK/slow ]] || sleep 3
+# A slow journal answers well inside a read's five seconds, but too
+# slowly for every read to fit in the summary's ten.
+[[ ! -f $WORK/slow ]] || sleep 2
 lines=10 own='' systemd='' unit='' pid='' ids=' ' boot=''
 for arg; do
   case $arg in
@@ -193,15 +193,19 @@ rows=$(grep -c -F "its journal couldn't be read" "$work/said" || true)
 [[ $rows == 4 ]] || fails "it didn't say why under each unit the journal couldn't speak for"
 rm "$work/broken"
 
-# A slow journal spends the time before the last units are read, so each
-# unit is described before any journal is read, and the units it had no
-# time for say why.
+# A slow journal spends the time before the last unit is read, so each
+# unit is described before any journal is read, and the last says it had
+# no time, rather than that the journal stalled.
 touch "$work/slow"
 said
 says "  x  home.mount  Mount /home"
 says "     mount: /home: wrong fs type"
-says "  x  blank.service  A program that drew nothing"
-says "     its journal couldn't be read: journalctl didn't answer before, so it wasn't asked again"
+under=$(grep -A 1 -x -F "  x  blank.service  A program that drew nothing" "$work/said" || true)
+[[ $under == *$'\n'"     its journal couldn't be read: no time was left to ask journalctl" ]] ||
+  fails "blank.service wasn't described, or didn't say it had no time"
+if grep -q -F "wasn't asked again" "$work/said"; then
+  fails "a journal that was only slow was said to stall"
+fi
 rm "$work/slow"
 
 # A journal that stalls is stopped and not asked again, so the summary
@@ -218,7 +222,8 @@ says "  x  home.mount  Mount /home"
 says "  x  blank.service  A program that drew nothing"
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
 says "     its journal couldn't be read: journalctl didn't answer in time, so it was stopped"
-says "     its journal couldn't be read: journalctl didn't answer before, so it wasn't asked again"
+says "     its journal couldn't be read: journalctl didn't answer an earlier ask in time, so it \
+wasn't asked again"
 # Under the units only why each said nothing, the count of the rest and
 # the way out: a journal that didn't answer gives a unit nothing to show.
 rows=$(grep -c '^     ' "$work/said" || true)
