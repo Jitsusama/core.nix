@@ -28,6 +28,8 @@ const DEFAULT_SIX = "00000000000000000000000000000000";
 const MINUTE = 60;
 const HOUR = 3600;
 const DAY = 86_400;
+const HELD_FIRST = 60_000;
+const HELD_LONGEST = 3_600_000;
 // The weakest and strongest signals a card is likely to hear, in dBm, as
 // the ends of a signal's graph.
 const FAINTEST = -90;
@@ -338,6 +340,27 @@ function lasted(seconds) {
         return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
     }
     return minutes > 0 ? `${minutes} min` : "under a minute";
+}
+
+// A hold on a file given up `now`, { at, wait }: when, and how long in
+// milliseconds until it's asked again, a minute, then twice as long each
+// time it's given up again, to an hour, since a read that hangs holds one
+// of the threads every view in the shell loads on for as long as it does.
+function heldAfter(before, now) {
+    return {
+        at: now,
+        wait: Math.min(before === undefined ? HELD_FIRST : before.wait * 2, HELD_LONGEST),
+    };
+}
+
+// Whether a hold still holds `now`; a clock stepped back ends it rather
+// than holding it off longer.
+function holding(given, now) {
+    if (given === undefined) {
+        return false;
+    }
+    const since = now - given.at;
+    return since >= 0 && since < given.wait;
 }
 
 // A signal in dBm as a graph's height, from 0 for the faintest heard to 1

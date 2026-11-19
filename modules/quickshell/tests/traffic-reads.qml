@@ -293,14 +293,25 @@ ShellRoot {
         });
     }
 
-    // The line holding, said so, and the card gone.
+    // The line holding, said so; then in a state Traffic doesn't know,
+    // named as something of an object's own, said as measured; and the
+    // card gone.
     function heldOn() {
         Expect.expect("a line holding is said so",
             lineNote() === "as measured, held to the shaper's limit", lineNote());
-        counted({ lo: [1000, 2000] });
-        lookAgain();
-        waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined && idle(),
-            root.gapping);
+        Written.written(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 1, up: 1,
+            state: "constructor", baselines: [["one", 99]] }]));
+        waits.until("no load under way after holding", () => traffic.loadAsked === 0, () => {
+            aged(traffic.soonest);
+            traffic.look();
+            waits.until("a line in a state not known, whatever it's called, is said as measured",
+                () => idle() && traffic.loadAsked === 0 && lineNote() === "as measured", () => {
+                counted({ lo: [1000, 2000] });
+                lookAgain();
+                waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined
+                    && idle(), root.gapping);
+            });
+        });
     }
 
     // The shaper's line row, or undefined with none.
@@ -459,11 +470,12 @@ ShellRoot {
     property bool hungGone: false
 
     // A file in flight that never lands is given up by the probe's watch,
-    // about two seconds on, its view kept and a new one made, and its
-    // interface isn't asked again until that read lands; landing late, the
-    // view goes and the interface under way isn't credited with it. The
-    // sandbox can't hang a read, so the view asked tells no one it landed,
-    // as one hung never would.
+    // about two seconds on, its view kept and a new one made, its interface
+    // held off a minute, and not asked again until that read lands, its
+    // hold over or not; landing late, the view goes, the interface under
+    // way isn't credited with it, and its hold still holds it off, as a
+    // file slow to land is. The sandbox can't hang a read, so the view
+    // asked tells no one it landed, as one hung never would.
     function hung() {
         const reading = Qt.createQmlObject("import QtQml; import Quickshell.Io; FileView {"
             + " Component.onDestruction: root.hungGone = true }", root);
@@ -479,6 +491,9 @@ ShellRoot {
             Expect.expect("the watch keeps the view in flight and makes another",
                 traffic.probesHung.eth9 === reading && traffic.probe !== reading,
                 JSON.stringify(Object.keys(traffic.probesHung)));
+            Expect.expect("an interface given up is held off a minute",
+                traffic.probesStuck.eth9?.wait === 60000, JSON.stringify(traffic.probesStuck));
+            traffic.probesStuck.eth9.at -= 61000;
             traffic.probeFor(["eth9"]);
             Expect.expect("an interface whose read hangs isn't asked again",
                 traffic.probing?.name !== "eth9"
@@ -491,6 +506,12 @@ ShellRoot {
                 && under.said.uevent === undefined, JSON.stringify(under.said));
             waits.until("a hung read's view, landed, is destroyed", () => root.hungGone, () => {
                 traffic.probing = null;
+                traffic.probesStuck.eth9.at = Date.now();
+                traffic.probeFor(["eth9"]);
+                Expect.expect("an interface whose read landed late is held off, not asked"
+                    + " again at once", traffic.probing?.name !== "eth9"
+                    && !traffic.asking.some(one => one.name === "eth9"), root.asked());
+                traffic.probesStuck.eth9.at -= 61000;
                 traffic.probeFor(["eth9"]);
                 Expect.expect("an interface whose hung read landed is asked again",
                     traffic.probing?.name === "eth9"
@@ -543,6 +564,7 @@ ShellRoot {
 
     // A read given up that ends failing, as a wedged driver's may once it
     // stalls, reaches Traffic's own handlers too: eth7 has no folder.
+    // Given up again, it's held off twice as long.
     function lateFailed() {
         root.lateText = null;
         traffic.asking = [];
@@ -555,24 +577,73 @@ ShellRoot {
         waits.until("a read given up that fails lands late through Traffic's own view",
             () => traffic.probesHung.eth7 === undefined && root.lateText === "", () => {
             waits.until("the view a failed late read landed through is destroyed",
-                () => root.lateView === null, root.notInFlight);
+                () => root.lateView === null, () => {
+                traffic.probing = { name: "eth7", files: ["uevent"], said: {}, inFlight: false };
+                traffic.probeGivenUp();
+                Expect.expect("an interface given up again is held off twice as long",
+                    traffic.probesStuck.eth7?.wait === 120000, JSON.stringify(traffic.probesStuck));
+                root.twoHung();
+            });
         });
     }
 
-    // An interface whose files have all landed has no read in flight, and
-    // given up then, as a turn that threw would be, keeps no view.
+    // Two interfaces hung at once are each kept by their own name, so one
+    // whose read lands lets only its own go.
+    function twoHung() {
+        const views = ["eth5", "eth6"].map(name => {
+            const view = Qt.createQmlObject("import QtQml; import Quickshell.Io; FileView {}",
+                root);
+            traffic.probe = view;
+            traffic.probing = { name: name, files: ["uevent"], said: {}, inFlight: true };
+            traffic.probeGivenUp();
+            return view;
+        });
+        Expect.expect("two interfaces hung are both kept",
+            traffic.probesHung.eth5 === views[0] && traffic.probesHung.eth6 === views[1],
+            JSON.stringify(Object.keys(traffic.probesHung)));
+        traffic.probeLanded(views[0], "");
+        for (const name of ["eth5", "eth6"])
+            traffic.probesStuck[name].at -= 61000;
+        traffic.probeFor(["eth5", "eth6"]);
+        const asks = name => traffic.probing?.name === name
+            || traffic.asking.some(one => one.name === name);
+        Expect.expect("of two hung, the one landed is asked again and the other still kept",
+            traffic.probesHung.eth5 === undefined && traffic.probesHung.eth6 === views[1]
+                && asks("eth5") && !asks("eth6"), root.asked());
+        traffic.probeLanded(views[1], "");
+        waits.until("no probe under way after two hung", () => traffic.probing === null
+            && !traffic.probeWatching, root.notInFlight);
+    }
+
+    // An interface whose files land in time has no read in flight and lets
+    // its hold go, lo's from its late read; a file isn't asked while
+    // another is in flight; and a turn given up with none in flight, as
+    // one that threw after its file landed, keeps no view but is held off.
     function notInFlight() {
+        Expect.expect("lo is held off from its late read", traffic.probesStuck.lo !== undefined,
+            JSON.stringify(traffic.probesStuck));
         const one = { name: "lo", files: ["uevent"], said: {} };
         traffic.probing = one;
         traffic.probeFile();
         waits.until("lo's uevent landed", () => one.done === true, () => {
             Expect.expect("an interface whose files have landed has none in flight",
                 one.inFlight === false, String(one.inFlight));
+            Expect.expect("an interface whose files land in time lets its hold go",
+                traffic.probesStuck.lo === undefined, JSON.stringify(traffic.probesStuck));
             const before = traffic.probe;
-            traffic.probing = one;
+            const path = String(before.path);
+            const count = traffic.probed.lo;
+            traffic.probing = { name: "lo", files: ["uevent"], said: {}, inFlight: true };
+            traffic.probeFile();
+            Expect.expect("a file isn't asked while another is in flight",
+                traffic.probed.lo === count && String(traffic.probe.path) === path,
+                `${traffic.probed.lo} loads, at ${traffic.probe.path}`);
+            traffic.probing = { name: "lo", files: ["type"], said: { uevent: "DEVTYPE=late" },
+                inFlight: false };
             traffic.probeGivenUp();
-            Expect.expect("given up with no read in flight, no view is kept",
-                traffic.probesHung.lo === undefined && traffic.probe === before,
+            Expect.expect("given up with no read in flight, no view is kept, but it's held off",
+                traffic.probesHung.lo === undefined && traffic.probe === before
+                    && traffic.probesStuck.lo?.wait === 60000,
                 JSON.stringify(Object.keys(traffic.probesHung)));
             Qt.exit(0);
         });
