@@ -5250,7 +5250,9 @@ def test_a_step_out_counts_the_rows_made_while_it_held(shell: Shell) -> None:
     assert holding is not None, "- out of Windows counted nothing as it held"
     made = {name: rows for name, rows in holding["rows"].items() if rows > 0}
     assert made, f"- out of Windows counted no rows made as it held: {holding}"
-    assert holding["untilHeld"] >= 0, f"- out of Windows was held before its key: {holding}"
+    # Held within the key's own work, which takes milliseconds, never a second.
+    until = holding["untilHeld"]
+    assert 0 <= until < 1000, f"- out of Windows was held {until} ms from its key: {holding}"
 
 
 def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> None:

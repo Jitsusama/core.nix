@@ -82,7 +82,7 @@ Scope {
         trial = Trials.timed(trial, searched, drawn, parts);
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
-                + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each, parts)},`
+                + " searching" + (parts ? ` (lists ${parts.lists}${Stepped.slowest(parts.each, parts)},`
                     + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
                     + ` answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`
@@ -188,19 +188,6 @@ Scope {
     // A walk stopped short's parts, with what it passed (Stepped.js).
     function passed(parts, passing) {
         return Stepped.passed(parts, passing);
-    }
-
-    // The three collections that took longest, if any took a millisecond,
-    // a step's own making and holding with what each went on
-    // (Stepped.steppedMaking, Stepped.steppedHolding), from the step's parts.
-    function slowest(each, parts) {
-        const named = Object.keys(each ?? {}).filter(name => each[name] > 0)
-            .sort((a, b) => each[b] - each[a]).slice(0, 3);
-        const said = name => `${name} ${each[name]}`
-            + (name === "making" ? Stepped.steppedMaking(each[name], parts?.makingSplit)
-                : name === "holding" ? Stepped.steppedHolding(each[name], parts?.holdingSplit)
-                : "");
-        return named.length === 0 ? "" : `: ${named.map(said).join(", ")}`;
     }
 
     // What an answer is counted as when it's picked (Trials.js).

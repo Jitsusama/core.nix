@@ -71,6 +71,22 @@ function steppedHolding(holding, split) {
     return ` (${named.concat(until > 0 ? [`until held ${until}`] : []).join(", ")})`;
 }
 
+// The three collections that took longest, if any took a millisecond,
+// as a key's line says its lists, a step's own making and holding with
+// what each went on (steppedMaking, steppedHolding), from the step's
+// parts. Here rather than in Trials.qml, so Qt's engine holds the words
+// the line says (tests/trials.qml).
+function slowest(each, parts) {
+    const took = each ?? {};
+    const named = Order.sorted(Object.keys(took).filter((name) => took[name] > 0),
+        Order.larger((name) => took[name])).slice(0, 3);
+    const said = (name) => `${name} ${took[name]}`
+        + (name === "making" ? steppedMaking(took[name], parts?.makingSplit)
+            : name === "holding" ? steppedHolding(took[name], parts?.holdingSplit)
+            : "");
+    return named.length === 0 ? "" : `: ${named.map(said).join(", ")}`;
+}
+
 // What a step's making spent on, in parentheses, most first: making its
 // acts' rows, its parts, putting them in order, and the rest, so a slow
 // step into a program's page says which to cut (Chrome's made 87 ms of a

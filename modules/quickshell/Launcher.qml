@@ -6255,8 +6255,8 @@ Scope {
             steppingOut = outer;
             stepFits = { keys: footFitted.keys - fits.keys,
                 facts: footFitted.facts - fits.facts };
+            stepHolding = stepped?.holding ?? null;
         }
-        stepHolding = stepped?.holding ?? null;
         if (stepped === null)
             return;
         searchParts = trials.stepped(searchParts, { began, made: began, pushed: stepped.pushed,
@@ -6277,19 +6277,19 @@ Scope {
         // each made there: Joel's steps out of Now held 14 to 38 ms with
         // nothing saying where (2026-11-18). A step that can't be timed,
         // being untimed or as a place fills or the launcher opens, walks
-        // none. One putting words back still does, though the field's key
-        // times it, since its words are read only once held is set.
-        const counting = timed && openAsked < 0 && !fillingPlace;
-        const holdingFrom = counting ? tallies() : null;
+        // none; setting held changes neither. One putting words back still
+        // does, though the field's key times it, since its words are read
+        // only once held is set.
+        const stepTimed = timed && openAsked < 0 && !fillingPlace;
+        const holdingFrom = stepTimed ? tallies() : null;
         const holdingBegan = Date.now();
         held = held.slice(0, -steps);
         const pushed = Date.now();
-        const holding = counting
+        const holding = stepTimed
             ? { untilHeld: holdingBegan - key.began, rows: madeAfter(holdingFrom) } : null;
         // A step back onto one whose line holds its words puts them back.
         const onto = held.length > 0 ? held[held.length - 1].row : null;
         const words = onto?.words?.() ?? left.typed;
-        const stepTimed = timed && openAsked < 0 && !fillingPlace;
         const wordsBack = words !== prompt.text;
         if (stepTimed && !wordsBack)
             searchParts = null;
