@@ -138,6 +138,7 @@ pub fn all_keeping(
     found.extend(prices(picture));
     found.extend(health(picture));
     found.extend(unbilled(picture, history, config)?);
+    found.extend(unresolved(picture, history)?);
     found.extend(said(picture));
     let notes_only: HashSet<&str> = config
         .detectors
@@ -1589,6 +1590,82 @@ pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";
 
 /// What's told of `budget`, whose sessions logged `logged` dollars and
 /// whose key was billed `paid` in the window ending at `through`.
+/// Each budget a session asked for in the last day and the harness
+/// couldn't draw on, as the harness wrote it in the session's log: its
+/// turns went on the default, so its team's allowance never saw them.
+/// It's told as the sessions start rather than a day later, when the
+/// warehouse bills the default for them.
+pub fn unresolved(picture: &Picture, history: &History) -> Result<Vec<Finding>, String> {
+    let mut statement = history
+        .db
+        .prepare("SELECT session, at, budget, missing FROM unresolved WHERE at >= ?1 ORDER BY at")
+        .map_err(fail)?;
+    let rows = statement
+        .query_map([picture.now - DAY], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, f64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(fail)?;
+    // Each budget's sessions, and the last it was missed: when, and why.
+    let mut missed: BTreeMap<String, (HashSet<String>, f64, String)> = BTreeMap::new();
+    for row in rows {
+        let (session, at, budget, missing) = row.map_err(fail)?;
+        let (sessions, last, why) = missed.entry(budget).or_default();
+        sessions.insert(session);
+        *last = at;
+        *why = missing;
+    }
+    Ok(missed
+        .into_iter()
+        .map(|(budget, (sessions, last, why))| {
+            unresolved_finding(picture, &budget, sessions.len(), last, &why)
+        })
+        .collect())
+}
+
+/// The key each budget's unresolved finding is told under, behind its
+/// budget's name.
+pub const UNRESOLVED: &str = "unresolved";
+
+fn unresolved_finding(
+    picture: &Picture,
+    budget: &str,
+    sessions: usize,
+    last: f64,
+    why: &str,
+) -> Finding {
+    let named = picture
+        .budgets
+        .declared(budget)
+        .map_or(budget, |declared| declared.label.as_str());
+    let named = if named.is_empty() { budget } else { named };
+    let some = if sessions == 1 {
+        "1 session".to_owned()
+    } else {
+        format!("{sessions} sessions")
+    };
+    let at = picture.zone.clock(last, picture.now);
+    let mut f = finding(
+        format!("{UNRESOLVED}:{budget}"),
+        UNRESOLVED,
+        Severity::Warning,
+        format!("{some} couldn't draw on {named}"),
+        format!(
+            "In the last day, {some} asked for {named} and drew on the default \
+             instead, the last at {at}; the harness said: {why}. Their work goes on \
+             the default's key, so {named}'s allowance never sees it."
+        ),
+    );
+    f.badge = format!("last {at}");
+    f.note = why.to_owned();
+    f.surprise = 2.0;
+    f
+}
+
 fn unbilled_finding(
     budgets: &crate::budgets::Budgets,
     budget: &str,
@@ -2422,6 +2499,51 @@ mod tests {
                 rusqlite::params![parent, at, cost, serde_json::to_string(&[agent]).unwrap()],
             )
             .unwrap();
+    }
+
+    fn missed(history: &History, session: &str, ago: f64, budget: &str, missing: &str) {
+        history
+            .add_event(&crate::logs::Event::Unresolved {
+                session: session.into(),
+                at: NOW - ago,
+                budget: budget.into(),
+                missing: missing.into(),
+            })
+            .unwrap();
+    }
+
+    // A team budget a session couldn't draw on is told the day it starts,
+    // once per budget however many of its sessions missed it, with the
+    // last reason the harness gave; a miss over a day old isn't.
+    #[test]
+    fn a_budget_sessions_could_not_draw_on_is_told() {
+        let history = History::memory();
+        missed(&history, "s1", 3.0 * HOUR, "teal", "no key for it");
+        missed(&history, "s1", 2.0 * HOUR, "teal", "no key for it");
+        missed(&history, "s2", HOUR, "teal", "its key was refused");
+        missed(&history, "s3", DAY + HOUR, "ochre", "no key for it");
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let found = unresolved(&picture, &history).unwrap();
+        let told: Vec<(&str, &str, &str)> = found
+            .iter()
+            .map(|f| (f.key.as_str(), f.title.as_str(), f.note.as_str()))
+            .collect();
+        assert_eq!(
+            told,
+            [(
+                "unresolved:teal",
+                "2 sessions couldn't draw on teal",
+                "its key was refused"
+            )]
+        );
+        assert!(
+            all(&picture, &history, &config)
+                .unwrap()
+                .iter()
+                .any(|f| f.key == "unresolved:teal"),
+            "every pass looks for it"
+        );
     }
 
     fn unbilled_keys(history: &History) -> Vec<String> {

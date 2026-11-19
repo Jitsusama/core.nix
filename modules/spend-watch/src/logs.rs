@@ -294,6 +294,14 @@ pub enum Event {
         model: String,
         said: String,
     },
+    /// A budget the harness was asked for and couldn't draw on, and why,
+    /// so the session's turns after it drew on the default.
+    Unresolved {
+        session: String,
+        at: f64,
+        budget: String,
+        missing: String,
+    },
 }
 
 /// Reads what's whole in `bytes`, the start of a log, and says how many
@@ -346,13 +354,16 @@ pub fn read_after(
         let from = events.len();
         entry_events(&entry, carry, refusals, &mut events);
         // A copy still sets the context its log's own turns read, but
-        // its turns and refusals are its parent's to count.
+        // its turns, refusals and unresolved budgets are its parent's to
+        // count.
         if copied {
             let read = events.split_off(from);
-            events.extend(
-                read.into_iter()
-                    .filter(|event| !matches!(event, Event::Turn(_) | Event::Refusal { .. })),
-            );
+            events.extend(read.into_iter().filter(|event| {
+                !matches!(
+                    event,
+                    Event::Turn(_) | Event::Refusal { .. } | Event::Unresolved { .. }
+                )
+            }));
         }
     }
     (events, used)
@@ -459,6 +470,19 @@ fn budget_named(kind: Option<&str>, custom: Option<&str>, data: Option<&Value>) 
     }
 }
 
+/// The budget a budget entry of a version this reads says the harness was
+/// asked for and couldn't draw on, and why; none where either isn't a
+/// string, so a later shape is passed over rather than misread.
+fn unresolved(custom: &str, data: &Value) -> Option<(String, String)> {
+    if custom != "budget" || data.get("v").and_then(Value::as_u64) != Some(BUDGET_ENTRY) {
+        return None;
+    }
+    let unresolved = data.get("unresolved")?;
+    let budget = unresolved.get("budget")?.as_str()?;
+    let missing = unresolved.get("missing")?.as_str()?;
+    Some((budget.to_owned(), missing.to_owned()))
+}
+
 fn entry_events(entry: &Value, carry: &mut Carry, refusals: &[String], events: &mut Vec<Event>) {
     let kind = entry.get("type").and_then(Value::as_str).unwrap_or("");
     let at = stamp(entry);
@@ -537,13 +561,22 @@ fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut
     });
 }
 
-/// An extension's own entry: a quest taken up, or a side call's turn.
+/// An extension's own entry: a quest taken up, a budget the harness
+/// couldn't draw on, or a side call's turn.
 fn custom_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut Vec<Event>) {
     let custom = entry
         .get("customType")
         .and_then(Value::as_str)
         .unwrap_or("");
     let data = entry.get("data").cloned().unwrap_or(Value::Null);
+    if let (Some((budget, missing)), Some(at)) = (unresolved(custom, &data), at) {
+        events.push(Event::Unresolved {
+            session: carry.session.clone().unwrap_or_default(),
+            at,
+            budget,
+            missing,
+        });
+    }
     if custom == "quest-workflow" && data.get("questId").is_some() {
         carry.quest = data
             .get("questId")
