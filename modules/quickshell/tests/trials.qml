@@ -424,23 +424,37 @@ QtObject {
                 === " (1 listing them)",
             Trials.showingSaid({ kept: bareShowing.kept, listing: 0.5, selecting: 0.4 }));
         // The keeping's laying is whole, 3 of a fine 3.45, so the putting in
-        // past it is 0.45 and unsaid, where the whole one would say 1.
+        // past it is 1.45, said 1, where the whole one would say 2 and both
+        // taken away would leave less than nothing.
         const fineLaying = Object.assign({}, bareShowing, { kept: showingParts.kept,
-            laying: 3.45, weighing: 0, putting: 3.9 });
+            laying: 3.45, weighing: 0, putting: 4.9 });
         expect("a showing's putting in is told less its laying as finely timed",
-            Trials.showingSaid(fineLaying).startsWith(" (3 rows new"),
+            Trials.showingSaid(fineLaying)
+                .startsWith(" (1 putting them in besides laying and weighing; 3 rows new"),
             Trials.showingSaid(fineLaying));
+        // A drawer timed longer than the selecting it fell in leaves less than
+        // nothing, which is said, as a part timed outside its window.
+        const overDrawn = { kept: bareShowing.kept, selecting: 1,
+            drawer: { putting: 0, selecting: 3.2 } };
+        expect("a part left below nothing is said rather than dropped as small",
+            Trials.showingSaid(overDrawn)
+                === " (3 making its drawer, -2 selecting and scrolling to it)",
+            Trials.showingSaid(overDrawn));
         expect("a showing's weighing is said once it rounds to a millisecond",
             Trials.weighingSaid(12.6) === ", 13 weighing their keys"
                 && Trials.weighingSaid(0.4) === "" && Trials.weighingSaid(undefined) === "",
             Trials.weighingSaid(12.6));
         // The trials file keeps every time whole, as it always has, with no
         // fine laying beside the keeping's own.
-        const filed = Trials.timed(Trials.begun(0, "today"), 20, 30, { lists: 1, composing:
-            { asking: 2, listing: 6.41, laying: 3.45, weighing: 4.6, drawer:
-                { putting: 1.26, selecting: 0 } } }).timed.felt[0].parts.composing;
-        expect("the trials file keeps a showing's parts in whole milliseconds",
-            JSON.stringify(filed) === '{"asking":2,"listing":6,"weighing":5,'
+        // The journal's line is said from the same parts after, so they're
+        // left fine.
+        const filing = { lists: 1, composing: { asking: 2, listing: 6.41, laying: 3.45,
+            weighing: 4.6, drawer: { putting: 1.26, selecting: 0 } } };
+        const filed = Trials.timed(Trials.begun(0, "today"), 20, 30, filing)
+            .timed.felt[0].parts.composing;
+        expect("the trials file keeps a showing's parts in whole milliseconds, its own fine",
+            filing.composing.laying === 3.45 && filing.composing.listing === 6.41
+                && JSON.stringify(filed) === '{"asking":2,"listing":6,"weighing":5,'
                 + '"drawer":{"putting":1,"selecting":0}}',
             JSON.stringify(filed));
         expect("a key held past its bound says what it was behind",

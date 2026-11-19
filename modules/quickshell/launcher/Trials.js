@@ -158,12 +158,14 @@ function showingSplit(parts) {
     const drawer = parts.drawer ?? {};
     // The laying as the rows' clock timed it, since the keeping's is whole.
     const laying = parts.laying ?? parts.kept?.laying ?? 0;
-    const putting = (parts.putting ?? 0) - laying - (parts.weighing ?? 0) - (drawer.putting ?? 0);
+    const putting = parts.putting === undefined ? 0
+        : parts.putting - laying - (parts.weighing ?? 0) - (drawer.putting ?? 0);
     const each = [[parts.listing ?? 0, "listing them"],
         [putting, "putting them in besides laying and weighing"],
         [(drawer.putting ?? 0) + (drawer.selecting ?? 0), "making its drawer"],
         [(parts.selecting ?? 0) - (drawer.selecting ?? 0), "selecting and scrolling to it"]]
-        .filter(([ms]) => ms >= 0.5);
+        // A remainder below nothing is said, as a part timed outside its window.
+        .filter(([ms]) => Math.abs(ms) >= 0.5);
     return each.map(([ms, words]) => `${Math.round(ms)} ${words}`).join(", ");
 }
 

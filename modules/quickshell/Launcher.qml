@@ -3794,9 +3794,10 @@ Scope {
     // as it's listed, not only those drawn (Trials.qml's composed), on the
     // rows' finer clock, since a showing's putting in is told less it.
     property real keysWeighing: 0
-    // How long a drawer that joined the key took to make, in ms, from
-    // when a showing began: it's made as the selection moves, inside the
-    // showing's putting in or selecting (Trials.showingSplit).
+    // How long the drawers that joined the key took to make, in ms, summed
+    // since a showing began, each made as the selection moved inside the
+    // showing's putting in or selecting (Trials.showingSplit); one made
+    // outside a showing counts until the next begins.
     property real drawerJoining: 0
 
     onMatchesChanged: {
