@@ -142,11 +142,23 @@ impl Holding {
     /// One left the screen and closed, if it was open: one that went by
     /// itself stays missed, and one its program withdrew was read there. A
     /// transient one, never kept, goes. Answers whether it was open, so
-    /// its sender is told only of one that was.
+    /// its sender is told only of one that was. One its program withdraws
+    /// once it's off the screen, dismissed or gone by, was read there too,
+    /// still saying how it left: dismissed and withdrawn, as away mode's
+    /// ask once Joel answers it, it stayed his to read (42P0R4, 19
+    /// November).
     pub fn close(&mut self, id: u32, why: Closed, now: i64) -> bool {
-        let Some(notice) = self.get_mut(id).filter(|notice| notice.live) else {
+        let Some(notice) = self.get_mut(id) else {
             return false;
         };
+        if !notice.live {
+            if why == Closed::Withdrawn && !notice.read {
+                notice.read = true;
+                notice.read_how = None;
+                notice.missed = false;
+            }
+            return false;
+        }
         notice.live = false;
         notice.resting = false;
         notice.left = Some(why.said().to_owned());
@@ -432,6 +444,35 @@ mod tests {
         assert!(
             !holding.close(1, Closed::Withdrawn, 20),
             "one closed isn't again"
+        );
+    }
+
+    #[test]
+    fn one_dismissed_then_withdrawn_by_its_program_was_read_there() {
+        let mut holding = Holding::default();
+        holding.arrive(notice(1, "away asks"));
+        holding.arrive(notice(2, "gone by"));
+        assert!(holding.close(1, Closed::Dismissed, 10), "it was open");
+        assert!(holding.close(2, Closed::Expired, 10), "it was open");
+        assert!(
+            !holding.close(1, Closed::Withdrawn, 20),
+            "one closed already isn't closed again"
+        );
+        assert!(
+            !holding.close(2, Closed::Withdrawn, 20),
+            "one gone by isn't closed again"
+        );
+        let dismissed = holding.get(1).expect("held");
+        let expired = holding.get(2).expect("held");
+        assert_eq!(
+            (dismissed.read, dismissed.missed, dismissed.left.as_deref()),
+            (true, false, Some("dismissed")),
+            "dismissed, then withdrawn: read, still saying how it left"
+        );
+        assert_eq!(
+            (expired.read, expired.missed, expired.left.as_deref()),
+            (true, false, Some("expired")),
+            "gone by, then withdrawn: read, no longer missed"
         );
     }
 
