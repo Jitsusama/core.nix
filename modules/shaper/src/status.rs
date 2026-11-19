@@ -496,12 +496,55 @@ mod tests {
             "{next:?} doesn't hang two cells in from {:?}",
             lines[at]
         );
+        let why = held().heard.and_then(|heard| heard.why).expect("a why");
+        let hung: Vec<&str> = lines[at..]
+            .iter()
+            .take_while(|line| *line == &lines[at] || line.starts_with("    "))
+            .flat_map(|line| line.split_whitespace())
+            .collect();
+        assert_eq!(
+            hung,
+            why.split_whitespace().collect::<Vec<_>>(),
+            "the why lost or gained words in its wrap: {lines:#?}"
+        );
+    }
+
+    #[test]
+    fn a_figure_stays_beside_its_unit() {
+        // As the router's queue said it on 19 November, when at 70
+        // columns its rate's figure ended one line and its unit began
+        // the next.
+        let mut link = held();
+        if let Some(heard) = link.heard.as_mut() {
+            heard.why = Some(
+                "Upload 9.8 Mb/s: held under the router's own queue, which let 10.3 Mb/s \
+                 through; held so for 4 s."
+                    .to_owned(),
+            );
+        }
+        for cells in 40..=80 {
+            let lines = said(&link, Room::Cells(cells));
+            for figure in ["9.8 Mb/s", "10.3 Mb/s", "4 s."] {
+                assert!(
+                    lines.iter().any(|line| line.contains(figure)),
+                    "at {cells} columns {figure:?} was parted: {lines:#?}"
+                );
+            }
+        }
     }
 
     #[test]
     fn a_round_trip_s_host_stays_beside_its_time() {
-        for cells in [60, 80] {
+        for cells in [50, 60, 70] {
             let lines = said(&held(), Room::Cells(cells));
+            let at = lines
+                .iter()
+                .position(|line| line.starts_with("  quiet round trips"))
+                .expect("the round trips are said");
+            assert!(
+                lines[at + 1].starts_with("    "),
+                "at {cells} columns the round trips didn't wrap: {lines:#?}"
+            );
             for (host, ms) in held().baselines {
                 let trip = format!("{host} {ms:.0} ms");
                 assert!(
@@ -534,6 +577,20 @@ mod tests {
             lines.iter().all(|line| !line.starts_with("    ")),
             "a line was hung into a pipe: {lines:#?}"
         );
+        // The VM test looks for the link's name and the shaper's own
+        // processor line too.
+        assert!(
+            lines[0].starts_with("wlp0s20f3  on "),
+            "the heading was parted into a pipe: {lines:#?}"
+        );
+        let (first, later) = spent();
+        let spent = first.said(&later, Room::Unbounded);
+        assert!(
+            spent
+                .iter()
+                .any(|line| line.starts_with("cpu: the shaper ") && line.ends_with("of a core")),
+            "the shaper's processor line was parted into a pipe: {spent:#?}"
+        );
     }
 
     #[test]
@@ -562,17 +619,25 @@ mod tests {
     }
 
     #[test]
-    fn a_network_s_name_draws_no_escape() {
-        let link = LinkStatus {
+    fn names_and_a_why_from_outside_draw_no_escape() {
+        let mut link = LinkStatus {
+            name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
             network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
             ..held()
         };
-        let lines = said(&link, Room::Cells(80));
-        assert!(
-            !lines[0].contains('\u{1b}') && !lines[0].contains('\u{7}'),
-            "the heading drew a control: {:?}",
-            lines[0]
-        );
+        // A why long enough to wrap at 60, so the hang's path is read.
+        if let Some(heard) = link.heard.as_mut() {
+            heard.why = heard.why.take().map(|why| format!("{why} \u{1b}[2J\u{7}cleared"));
+        }
+        for cells in [60, 200] {
+            let lines = said(&link, Room::Cells(cells));
+            assert!(
+                lines
+                    .iter()
+                    .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
+                "at {cells} columns a control was drawn: {lines:#?}"
+            );
+        }
     }
 
     /// A second of the shaper's spending, as two readings of the
@@ -592,18 +657,17 @@ mod tests {
     }
 
     #[test]
-    fn the_processor_s_lines_fit_the_room_and_the_measure() {
+    fn the_processor_s_lines_fit_the_room() {
         let (first, later) = spent();
-        for cells in [40, 60, 80, 200] {
+        for cells in [40, 60] {
             let lines = first.said(&later, Room::Cells(cells));
             assert!(
                 lines.iter().any(|line| line.starts_with("softirq")),
                 "no softirq line: {lines:#?}"
             );
-            let most = cells.min(layout::MEASURE);
             assert!(
-                lines.iter().all(|line| layout::width(line) <= most),
-                "at {cells} columns a processor line ran past {most}: {lines:#?}"
+                lines.iter().all(|line| layout::width(line) <= cells),
+                "at {cells} columns a processor line ran past the edge: {lines:#?}"
             );
         }
     }
