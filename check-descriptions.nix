@@ -2734,7 +2734,7 @@
     back, is on the path of every account with pi, run by the store's node
   '';
   pi-compiles-where-the-fence-cant-write = ''
-    every pi, on Linux and on a Mac, keeps node's compile cache in the harness's state, which the
+    every pi, on Linux and on a Mac, keeps node's compiled-code cache in the harness's state, which the
     agents' fence holds read-only, so no fenced command plants code a later unfenced pi runs
   '';
   pi-keeps-its-folder-private = ''

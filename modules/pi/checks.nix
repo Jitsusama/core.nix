@@ -59,7 +59,7 @@ import ./host-checks.nix args
         account: folder: folder == "${account.xdg.stateHome}/pi/agentic-harness.pi/node-compile-cache";
     in
     holds "pi-compiles-where-the-fence-cant-write"
-      "A pi keeps node's compile cache where a fenced command could write it."
+      "A pi keeps node's compiled-code cache where a fenced command could write it."
       (
         inState home home.home.sessionVariables.NODE_COMPILE_CACHE
         && inState home home.systemd.user.sessionVariables.NODE_COMPILE_CACHE

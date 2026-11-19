@@ -32,9 +32,6 @@ let
     ;
   mix = import ../theme/mix.nix { inherit lib; };
 
-  # Where every pi keeps node's compile cache: the harness's own state.
-  compileCache = "${config.xdg.stateHome}/pi/agentic-harness.pi/node-compile-cache";
-
   # A tool's result is a faint tint of how it went, under text that stays
   # the text's own colour.
   tint = weight: colour: mix weight colour colours.background;
@@ -191,6 +188,7 @@ in
 {
   imports = [
     ./agents.nix
+    ./compile-cache.nix
     ./fence.nix
     ./harness-settings.nix
     ./host.nix
@@ -546,20 +544,8 @@ in
     home.file.".pi/agent/extensions/claude-code" = lib.mkIf onClaude {
       source = "${import ./claude-provider.nix { inherit pkgs; }}/src";
     };
-    # node reads its compile cache back as compiled code when pi next
-    # starts, outside the agents' fence. Left to itself it keeps it in the
-    # temporary folder, which a fenced command can write, so every pi
-    # compiles into pi's state, which the fence holds read-only. The
-    # harness names the same folder for every pi it starts itself.
-    home.sessionVariables = {
-      NODE_COMPILE_CACHE = compileCache;
-    }
-    // lib.optionalAttrs onClaude {
+    home.sessionVariables = lib.mkIf onClaude {
       PI_CLAUDE_CODE_COMMAND = lib.getExe claude;
-    };
-    # What the launcher and the user manager start reads this one.
-    systemd.user.sessionVariables = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      NODE_COMPILE_CACHE = compileCache;
     };
     #
     # Off the plan every pi starts on Opus 5.5 at high thinking, the one
