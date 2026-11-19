@@ -160,6 +160,17 @@ ShellRoot {
             if (networks.cables.enp0s1 !== undefined)
                 root.kept.push(networks.cableStates.enp0s1);
         }
+
+        // Watched as it changes, not polled, since a fact landing before
+        // the rest lasts a turn: a terminal asking on stops once it ends.
+        function onStillReadingChanged() {
+            const loading = { facts: networks.factsAsked.length,
+                cable: networks.cableLoading?.name ?? null, asked: networks.cablesAsked };
+            if (!networks.stillReading && (loading.facts > 0 || loading.cable !== null
+                    || loading.asked.length > 0))
+                Expect.fail(
+                    `still reading ended with a load under way: ${JSON.stringify(loading)}`);
+        }
     }
 
     // The daemon's word each time the first card's cable was kept, as it
@@ -226,7 +237,7 @@ ShellRoot {
         return networks.cableLoading === null && networks.cablesAsked.length === 0;
     }
 
-    // `step`, once every load under way has landed, with a look counted
+    // `step`, once every fact and cable load under way has landed, with a look counted
     // from then. An ask five seconds past the last look loads everything
     // again, and a load skips what's already under way, so a step that
     // writes a file and asks begins quiet: no load asked before its write
@@ -296,12 +307,13 @@ ShellRoot {
         waits.until("the cable's drawer made whole once its files land", within(4000, () => {
             const facts = (networks.glances.enp0s1 ?? []).map(f => `${f.label}=${f.value}`);
             return facts.includes("Speed=1 Gb/s") && facts.includes("Duplex=full");
-        }), () => {
+        }), root.quiet("the uptime's count", () => {
+            // Quiet first, so no uptime load asked before lands on the hour.
             networks.upAt -= 3600 * 1000;
             Expect.expect("the uptime is counted on from its last load",
                 said().endsWith(" | ends in 1 h"), said());
-            root.quiet("changed", root.changed)();
-        });
+            root.changed();
+        }));
     }
 
     // The card renegotiated to 100 Mb/s with two frames more in broken,
@@ -345,8 +357,12 @@ ShellRoot {
     function steady() {
         told = [];
         Written.written(up, `${Math.round(networks.uptime())}.00 4000.00\n`);
+        const before = networks.upAt;
         networks.reloadFacts();
-        waits.until("the facts loaded again", within(4000, () => networks.factsAsked.length === 0),
+        // The uptime's stamp moves only as its load lands, never as it's
+        // given up.
+        waits.until("the facts loaded again", within(4000, () =>
+            networks.factsAsked.length === 0 && networks.upAt > before),
             () => {
             Expect.expect("an uptime load that agrees with the count tells nothing",
                 told.length === 0, JSON.stringify(told));
@@ -393,9 +409,10 @@ ShellRoot {
     }
 
     // A cable shown, held as a step into it: its link loads again each
-    // second, unasked, and the launcher is told when it changes. Begun
-    // quiet, so the load it waits on is the tick's alone, a second and a
-    // sweep on.
+    // second, unasked, so the launcher hears a change a second and a sweep
+    // on. Begun quiet, so the load it waits on is the tick's alone. The tick
+    // tells the launcher each second whatever it loads, so that a load
+    // tells it is recabled's to show.
     function opened() {
         shown.held = [{ row: { key: "networks:enp0s1" } }];
         told = [];
