@@ -10,9 +10,9 @@
 //! of them sharing one opened for them, and is a 502 when reset again or
 //! with nowhere to go, one a fallen connection lost is a 502 and no reset,
 //! the origin hearing a lost one once, a body too large or left unfinished
-//! goes nowhere, a relay failing past its share stands down, sending pi
-//! direct, and takes requests again after, the counts are said as the
-//! relay leaves, an origin out of
+//! goes nowhere, the latter as pi's cancel, never a 421, a relay failing
+//! past its share stands down, sending pi direct, and takes requests
+//! again after, the counts are said as the relay leaves, an origin out of
 //! reach is said as a 502 or a 504 without queueing, a
 //! connection that won't open isn't asked for again on every request, nor
 //! does a failure outlast the origin coming back, the relay leaves once
@@ -1178,7 +1178,7 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--idle-exit", "1", "--stand-down-for", "10"],
+        &["--idle-exit", "4", "--stand-down-for", "10"],
     );
 
     let answer = asked_too_much(&relay.socket, &host).await;
@@ -1196,18 +1196,7 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         String::from_utf8_lossy(&answer)
     );
     // A body pi leaves is its cancel, though, not a 421 nobody hears.
-    let stream = UnixStream::connect(&relay.socket)
-        .await
-        .expect("the socket answers");
-    let (mut reading, mut writing) = stream.into_split();
-    writing
-        .write_all(b"POST /echo HTTP/1.1\r\nhost: example.com\r\ncontent-length: 10\r\n\r\nhi")
-        .await
-        .expect("half a body written");
-    writing.shutdown().await.expect("pi leaves");
-    let mut left = Vec::new();
-    // Whatever the relay says to a pi that left, if it says anything.
-    let _ = tokio::time::timeout(LISTENS_WITHIN, reading.read_to_end(&mut left)).await;
+    left_halfway(&relay.socket, "example.com").await;
     // And standing down, the 421 too, as the origin asked directly may
     // take what the relay won't.
     fail_past_its_share(&relay.socket, &host).await;
@@ -1217,6 +1206,8 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         "a body too large while it stood down was answered {:?}",
         String::from_utf8_lossy(&answer)
     );
+    // And one pi leaves while it stands down is its cancel all the same.
+    left_halfway(&relay.socket, &host).await;
 
     assert!(
         relay.left_within(LISTENS_WITHIN * 2).is_some(),
@@ -1230,11 +1221,30 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         "a body too large went unsaid, or another origin's was said as one: {said}"
     );
     assert!(
-        said.contains("24 asked, 3 refused, 17 failed")
-            && said.contains("; pi cancelled 1;")
+        said.contains("25 asked, 3 refused, 17 failed")
+            && said.contains("; pi cancelled 2;")
             && said.contains("; 1 refused as it stood down"),
         "a body too large wasn't counted as refused, or one pi left as its cancel: {said}"
     );
+}
+
+/// Asks for `/echo` at `host` as a pi that leaves halfway through its
+/// body, as on Escape, letting be whatever the relay says after.
+async fn left_halfway(socket: &Path, host: &str) {
+    let stream = UnixStream::connect(socket)
+        .await
+        .expect("the socket answers");
+    let (mut reading, mut writing) = stream.into_split();
+    let head = format!("POST /echo HTTP/1.1\r\nhost: {host}\r\ncontent-length: 10\r\n\r\nhi");
+    writing
+        .write_all(head.as_bytes())
+        .await
+        .expect("half a body written");
+    writing.shutdown().await.expect("pi leaves");
+    let mut left = Vec::new();
+    // Whatever the relay says to a pi that left, if it says anything,
+    // since only its counts tell what it made of it.
+    let _ = tokio::time::timeout(LISTENS_WITHIN, reading.read_to_end(&mut left)).await;
 }
 
 /// What the relay answers, its head alone, to a request for `/echo` at
@@ -1393,10 +1403,10 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     // Past its stand-down, and within its idle time after, it carries one,
     // on a connection opened afresh. It may not ask sooner than the
     // stand-down's end, which came before the last reset was answered.
-    // Asked 28 s in, a relay that didn't hold on past its stand-down has
-    // left, being idle from 17 s and seeing it by 21.5, and one that did
-    // is still there until 32.5 at the soonest.
-    tokio::time::sleep_until((stood_down + Duration::from_secs(28)).into()).await;
+    // Asked 30 s in, a relay that didn't hold on past its stand-down has
+    // left, being idle from 17 s and seeing it once its 26 s are over, by
+    // 27.5, and one that did is still there until 32 at the soonest.
+    tokio::time::sleep_until((stood_down + Duration::from_secs(30)).into()).await;
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
     assert_eq!(
         got.status,
