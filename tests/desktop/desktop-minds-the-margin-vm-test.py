@@ -129,13 +129,14 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
 ) -> None:
     """Kept awake, a lid shut on battery locks the screen and runs on; let go, it sleeps."""
     machine = desktop.machine
-    locked = desktop.in_session("qs ipc call lock isLocked | grep -q true")
+    locked = desktop.in_session("qs ipc call lock isLocked | grep -qx true")
     # Said outright, since the lock failing to answer isn't it being unlocked.
-    unlocked = desktop.in_session("qs ipc call lock isLocked | grep -q false")
+    unlocked = desktop.in_session("qs ipc call lock isLocked | grep -qx false")
     desktop.as_account("systemctl --user start keep-awake.service keep-awake-lid.service")
     machine.wait_until_succeeds(LID_HELD, timeout=timedelta(seconds=10))
     # Joel keeps it awake to run with no power and the lid shut (2026-11-10).
     desktop.power("off")
+    passed = False
     try:
         machine.succeed(LID_HELD)
         desktop.lid(shut=True)
@@ -156,6 +157,7 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
         slept = int(machine.succeed("wc -l < /run/suspended"))
         assert slept == 1, f"one shut lid slept {slept} times"
+        passed = True
     finally:
         desktop.lid(shut=False)
         # The stand-in sleep ends once logind sees the lid open, so it settles first.
@@ -164,9 +166,11 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         desktop.power("on")
         # The sleep locked the screen first, as it does before every one.
         desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
-        machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
-    # Unlocked, it stays so; relocked, every subtest after failed on it (2026-11-19). It's
-    # looked for once the test has passed, so a failure above isn't told as this one.
+        # Only a test that passed is held to it, so a failure above is the one told; after
+        # one, a lock still queued may land on the subtests that follow.
+        if passed:
+            machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
+    # Unlocked, it stays so; relocked, every subtest after failed on it (2026-11-19).
     machine.sleep(LOOKING)
     machine.succeed(unlocked)
 
