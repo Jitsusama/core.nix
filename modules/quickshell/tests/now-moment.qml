@@ -1523,8 +1523,9 @@ ShellRoot {
             JSON.stringify([talksActing, talksAsking, talksYes, talksParked])
                 === "[[1,1],[0,0,0],[0,0,0],[1,1,1]]",
             JSON.stringify([talksActing, talksAsking, talksYes, talksParked]));
-        // With Agents not there to talk through, no row offers Talk, rather
-        // than one that goes nowhere, and each keeps its own acts.
+        // With Agents not there to talk through, its to-do offers no Talk,
+        // rather than one that goes nowhere, and keeps its own acts; its
+        // want has no row, the row being Agents' (forYouItems).
         const blocked = Object.assign({}, acted, { presence: Object.assign({},
             acted.presence, { wants: { kind: "blocked", said: "Stuck" } }) });
         Sessions.running = [blocked];
@@ -1537,10 +1538,9 @@ ShellRoot {
             .map(act => act.name) ?? null;
         const without = [namesOf("on:waiting:Sign The Form"), namesOf("on:waiting:want:ACTED")];
         theLauncher.sources = sources;
-        expect("with Agents gone, no row offers Talk, and each keeps Deal With It and Go To",
-            JSON.stringify(withAgents) === "[1,1,1]"
-                && without.every(names => names !== null && !names.includes("talk")
-                    && names[0] === "Deal With It" && names.includes("Go To")),
+        expect("with Agents gone, its to-do offers no Talk, keeping its own acts, and no want row",
+            JSON.stringify([withAgents, without]) === JSON.stringify([[1, 1, 1],
+                [["Deal With It", "Go To", "Mark It Done", "Put It Off"], null]]),
             JSON.stringify([withAgents, without]));
         // Its look offers Talk and then Go To where it has a window, and only
         // Go To while it asks, among the look's own Open and Clear.
