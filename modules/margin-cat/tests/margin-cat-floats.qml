@@ -490,8 +490,7 @@ QtObject {
             }
             if (t > 600 && t % 16 === 0) {
                 chased = Paths.walk({ x: chasedDrawn.x, y: chasedDrawn.y }, { x: 700, y: 7 },
-                    world({ hurried: true, facing: chasedDrawn.facing, drawnIn: chasedDrawn.pose,
-                        drawnInto: chasedDrawn.into, drawnAtPace: chasedDrawn.atPace }));
+                    world(Object.assign({ hurried: true }, Paths.setOffFrom(chasedDrawn))));
                 chasedFrom = t;
             }
             const now = Paths.frame(chased, t - chasedFrom);
@@ -523,9 +522,9 @@ QtObject {
         const rampOut = 2 * eases.ramps[1] / (1 + eases.ramps[0] + eases.ramps[1]);
         const easingOut = Paths.frame(unchased,
             eases.ends - (eases.ends - eases.begins) * rampOut * 0.9);
-        const easesFrom = one => Paths.walk({ x: one.x, y: one.y }, { x: 700, y: 7 }, world({
-            hurried: true, facing: one.facing, drawnIn: one.pose, drawnInto: one.into,
-            drawnAtPace: one.atPace })).beats.find(beat => beat.kind === "goes").ramps[0];
+        const easesFrom = one => Paths.walk({ x: one.x, y: one.y }, { x: 700, y: 7 },
+            world(Object.assign({ hurried: true }, Paths.setOffFrom(one))))
+            .beats.find(beat => beat.kind === "goes").ramps[0];
         expect("set off again easing in, it eases in; at its pace, it keeps it",
             [easingAt.atPace, easesFrom(easingAt) > 0, pacedAt.atPace, easesFrom(pacedAt),
                 easingOut.atPace, easesFrom(easingOut) > 0], [false, true, true, 0, false, true]);
@@ -567,8 +566,7 @@ QtObject {
         // first, so neither flashed nor glided.
         const turning = Paths.frame(turnsMid, 32);
         const replanned = Paths.walk({ x: turning.x, y: turning.y }, { x: 700, y: 398 },
-            world({ hurried: true, facing: turning.facing, drawnIn: turning.pose,
-                drawnInto: turning.into, drawnAtPace: turning.atPace }));
+            world(Object.assign({ hurried: true }, Paths.setOffFrom(turning))));
         const replanRuns = runsOf(replanned, 300).slice(0, 2);
         expect("re-planned as it turns in a stride before it's seen, it holds it a stride more",
             [turning.beat, turning.pose, turning.into, names(replanned)[0],
@@ -578,8 +576,7 @@ QtObject {
         // from its first frame.
         const turnSeen = Paths.frame(turnsMid, 33);
         const replannedSeen = Paths.walk({ x: turnSeen.x, y: turnSeen.y }, { x: 700, y: 398 },
-            world({ hurried: true, facing: turnSeen.facing, drawnIn: turnSeen.pose,
-                drawnInto: turnSeen.into, drawnAtPace: turnSeen.atPace }));
+            world(Object.assign({ hurried: true }, Paths.setOffFrom(turnSeen))));
         const seenRuns = runsOf(replannedSeen, 300).slice(0, 2);
         expect("re-planned once the stride it turns in is seen, it steps a pair on at once",
             [turnSeen.beat, turnSeen.pose, turnSeen.into, seenRuns.map(run => run.pose)],

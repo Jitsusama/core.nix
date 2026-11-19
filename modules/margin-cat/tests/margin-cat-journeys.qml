@@ -232,9 +232,7 @@ QtObject {
             const then = seatOn(changed);
             const again = then === null ? null : Paths.walk({ x: here.x, y: here.y }, then,
                 Object.assign({ cols: Paths.columns(changed, 0), hurried: true,
-                    before: Paths.columns(now, 0), drawnIn: here.pose ?? null,
-                    drawnInto: here.into ?? null, drawnAtPace: here.atPace ?? false }, at,
-                { facing: here.facing }));
+                    before: Paths.columns(now, 0) }, at, Paths.setOffFrom(here)));
             const starts = again === null ? here : Paths.frame(again, 0);
             if (Math.hypot(starts.x - here.x, starts.y - here.y) > 0.01)
                 wrong.push(`${said} changed jumps from ${here.x},${here.y}`);
