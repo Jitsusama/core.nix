@@ -741,6 +741,10 @@ fn relay_for(socket: &Path) -> (Child, u16) {
 /// whole, once the relay closes.
 fn ask_relay(port: u16, asked: &str) -> String {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
+    // A relay that never answers fails the test rather than hanging it.
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .expect("a timeout");
     stream.write_all(asked.as_bytes()).expect("asked");
     let mut said = String::new();
     stream.read_to_string(&mut said).expect("answered");
@@ -748,7 +752,7 @@ fn ask_relay(port: u16, asked: &str) -> String {
 }
 
 #[test]
-fn the_relay_carries_plain_http_straight_out_one_request_at_a_time_but_never_githubs() {
+fn the_relay_carries_plain_http_straight_out_one_request_a_connection_but_never_githubs() {
     let running = door("good");
     let (socket, _) = running.open("s1");
     let (mut watched, port) = relay_for(&socket);
@@ -756,34 +760,55 @@ fn the_relay_carries_plain_http_straight_out_one_request_at_a_time_but_never_git
     let address = far.local_addr().expect("bound").to_string();
     let seen = thread::spawn(move || {
         let (mut stream, _) = far.accept().expect("accepted");
+        stream
+            .set_read_timeout(Some(Duration::from_millis(500)))
+            .expect("a timeout");
         let mut buffer = Vec::new();
         let head = http::read_head(&mut stream, &mut buffer).expect("a head");
+        let body = http::read_body(&mut stream, &mut buffer, &head, 1024).expect("a body");
+        // Whatever comes after the one request, until the relay goes quiet.
+        let _ = stream.read_to_end(&mut buffer);
         stream
             .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nplain")
             .expect("said");
-        head
+        (head, body, buffer)
     });
     // As Ruby's Net::HTTP asks a proxy, which dev drives, with a hop's
-    // own header named in Connection beside it.
+    // own header and the length named in Connection beside it, chunks
+    // for its body, another host in Host, and a second request behind it.
     let said = ask_relay(
         port,
         &format!(
-            "GET http://{address}/gems?x=1 HTTP/1.1\r\nHost: {address}\r\n\
-             Proxy-Connection: keep-alive\r\nConnection: keep-alive, X-Hop\r\nX-Hop: 1\r\n\
-             Keep-Alive: 300\r\nProxy-Authorization: Basic eDp5\r\nAccept: */*\r\n\r\n"
+            "POST http://{address}/gems?x=1#top HTTP/1.1\r\nHost: elsewhere.example\r\n\
+             Proxy-Connection: keep-alive\r\nConnection: keep-alive, X-Hop, Content-Length\r\n\
+             X-Hop: 1\r\nKeep-Alive: 300\r\nProxy-Authorization: Basic eDp5\r\n\
+             Accept: */*\r\nTransfer-Encoding: chunked\r\n\r\n2\r\na=\r\n1\r\n1\r\n0\r\n\r\n\
+             GET http://{address}/again HTTP/1.1\r\nHost: {address}\r\n\r\n"
         ),
     );
     assert!(
         said.starts_with("HTTP/1.1 200") && said.ends_with("plain"),
         "{said}"
     );
-    let head = seen.join().expect("the far end");
+    let (head, body, after) = seen.join().expect("the far end");
     assert_eq!(
         (head.method.as_str(), head.target.as_str()),
-        ("GET", "/gems?x=1"),
-        "the far end wasn't asked in origin form"
+        ("POST", "/gems?x=1"),
+        "the far end wasn't asked in origin form, without the fragment"
     );
-    assert_eq!(head.header("Host"), Some(address.as_str()));
+    assert_eq!(body, b"a=1", "the body didn't arrive whole");
+    assert_eq!(head.header("Content-Length"), Some("3"));
+    assert_eq!(head.count("Transfer-Encoding"), 0);
+    assert!(
+        after.is_empty(),
+        "more than the one request reached the host: {}",
+        String::from_utf8_lossy(&after)
+    );
+    assert_eq!(
+        head.header("Host"),
+        Some(address.as_str()),
+        "the host asked isn't the one the address named"
+    );
     assert_eq!(head.header("Accept"), Some("*/*"));
     assert_eq!(
         head.header("Connection"),
@@ -798,7 +823,13 @@ fn the_relay_carries_plain_http_straight_out_one_request_at_a_time_but_never_git
     ] {
         assert_eq!(head.count(hop), 0, "{hop} went past the relay");
     }
-    for host in ["api.github.com", "GitHub.com", "codeload.github.com:80"] {
+    for host in [
+        "api.github.com",
+        "GitHub.com",
+        "codeload.github.com:80",
+        "uploads.github.com.",
+        "[github.com]:8080",
+    ] {
         let said = ask_relay(
             port,
             &format!("GET http://{host}/ HTTP/1.1\r\nHost: {host}\r\n\r\n"),
@@ -812,10 +843,12 @@ fn the_relay_carries_plain_http_straight_out_one_request_at_a_time_but_never_git
         "GET /gems HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
         "GET http://user@rubygems.org/ HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
         "GET https://rubygems.org/ HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
+        "GET http://api.github.com:80:80/ HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
+        "GET http://rubygems.org/ HTTP/1.0\r\nHost: rubygems.org\r\n\r\n",
     ] {
         let said = ask_relay(port, asked);
         assert!(
-            said.starts_with("HTTP/1.1 405"),
+            said.starts_with("HTTP/1.1 400"),
             "{asked:?} wasn't refused: {said}"
         );
     }

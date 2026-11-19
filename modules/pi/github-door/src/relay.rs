@@ -12,9 +12,10 @@
 //! Plain HTTP comes too, as a proxy is asked for it, with the whole
 //! address in the request line: Ruby's `Net::HTTP`, which dev drives, reads
 //! only `http_proxy`, so a fence pointing it here must carry it. Each
-//! request goes straight out on a connection of its own, in the form a
-//! server is asked, without the hop's own headers and closed after its
-//! answer. GitHub's hosts are refused over plain HTTP, since the door
+//! request is read whole and goes straight out on a connection of its
+//! own, in the form a server is asked, without the hop's own headers,
+//! and only its answer comes back, so a client gets one request a
+//! connection. GitHub's hosts are refused over plain HTTP, since the door
 //! answers them only through a tunnel, and anything else, a request
 //! with no host or one for HTTPS, is refused rather than guessed at.
 //!
@@ -113,12 +114,17 @@ const CARRIES: &str = "this proxy carries CONNECT, and plain HTTP with its whole
 fn relay(mut client: TcpStream, socket: &Path) {
     let _ = client.set_read_timeout(Some(REACH));
     let mut buffer = Vec::new();
-    let Ok(head) = http::read_head(&mut client, &mut buffer) else {
-        let _ = http::write_answer(&mut client, 400, CARRIES);
-        return;
+    let head = match http::read_head(&mut client, &mut buffer) {
+        Ok(head) => head,
+        Err(http::Unread::Gone) => return,
+        Err(unread) => {
+            let said = format!("{}; {CARRIES}", unread_said(&unread));
+            let _ = http::write_answer(&mut client, 400, &said);
+            return;
+        }
     };
     if head.method != "CONNECT" {
-        plain(client, &head, &buffer);
+        plain(client, &head, buffer);
         return;
     }
     let target = head.target.clone();
@@ -166,13 +172,20 @@ fn relay(mut client: TcpStream, socket: &Path) {
     }
 }
 
+/// The most of a plain request's body the relay reads before sending it on.
+const MOST_PLAIN_BODY: usize = 64 * 1024 * 1024;
+/// How long a plain request's host may say nothing before the relay gives up.
+const QUIET: Duration = Duration::from_secs(300);
+
 /// Carry one plain HTTP request, `head` with `read` read past it,
-/// straight out: in origin form, without the hop's own headers, and on a
-/// connection closed after its answer, so nothing more the client sends
-/// reaches the host as a request of its own.
-fn plain(mut client: TcpStream, head: &http::Head, read: &[u8]) {
+/// straight out, and its answer back. The request is read whole, body
+/// and all, and sent in origin form with the relay's own Host, length and
+/// `Connection: close`, and without the hop's own headers; only the
+/// answer is copied back, so nothing more the client sends ever reaches
+/// the host, whether or not the host honours the close.
+fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
     let Some((host, port, path)) = absolute(&head.target) else {
-        let _ = http::write_answer(&mut client, 405, CARRIES);
+        let _ = http::write_answer(&mut client, 400, CARRIES);
         return;
     };
     if Host::named(unbracketed(host)).is_some() {
@@ -183,18 +196,47 @@ fn plain(mut client: TcpStream, head: &http::Head, read: &[u8]) {
         );
         return;
     }
+    let body = match http::read_body(&mut client, &mut read, head, MOST_PLAIN_BODY) {
+        Ok(body) => body,
+        Err(unread) => {
+            let status = if matches!(unread, http::Unread::TooLarge) {
+                413
+            } else {
+                400
+            };
+            let _ = http::write_answer(&mut client, status, &unread_said(&unread));
+            return;
+        }
+    };
+    let authority = if port == 80 {
+        host.to_owned()
+    } else {
+        format!("{host}:{port}")
+    };
     let Some(mut far) = reach(&format!("{host}:{port}")) else {
-        let _ = http::write_answer(&mut client, 502, "the host couldn't be reached");
+        let said = format!("{authority} couldn't be reached");
+        let _ = http::write_answer(&mut client, 502, &said);
         return;
     };
-    let _ = client.set_read_timeout(None);
-    if far.write_all(&origin_form(head, &path)).is_err() || far.write_all(read).is_err() {
+    let _ = far.set_read_timeout(Some(QUIET));
+    let headers = passed_on(head, &authority);
+    if http::write_request(&mut far, &head.method, &path, &headers, &body).is_err() {
+        let said = format!("{authority} closed before it was asked");
+        let _ = http::write_answer(&mut client, 502, &said);
         return;
     }
-    let (Ok(back), Ok(far_back)) = (client.try_clone(), far.try_clone()) else {
-        return;
-    };
-    splice(client, far, far_back, back);
+    let _ = io::copy(&mut far, &mut client);
+    let _ = client.shutdown(Shutdown::Both);
+}
+
+/// What a request that couldn't be read is told.
+fn unread_said(unread: &http::Unread) -> String {
+    match unread {
+        http::Unread::Gone => "nothing was asked".to_owned(),
+        http::Unread::Malformed(why) => why.clone(),
+        http::Unread::TooLarge => "a body past 64 MiB".to_owned(),
+        http::Unread::Io(error) => format!("the request couldn't be read: {error}"),
+    }
 }
 
 /// The host, port and path of an absolute `http://` address, when it
@@ -214,9 +256,15 @@ fn absolute(target: &str) -> Option<(&str, u16, String)> {
         Some((host, port)) if !port.contains(']') => (host, port.parse().ok()?),
         _ => (authority, 80),
     };
-    if unbracketed(host).is_empty() {
+    // A host is a name, or an IPv6 address in its brackets, and nothing
+    // that reads two ways, such as a second port.
+    let bracketed = host.starts_with('[') && host.ends_with(']');
+    let stray = host.contains(['[', ']']) && !bracketed;
+    if unbracketed(host).is_empty() || stray || (host.contains(':') && !bracketed) {
         return None;
     }
+    // A fragment is the client's alone, never sent.
+    let path = path.split('#').next().unwrap_or_default();
     let path = match path.chars().next() {
         Some('/') => path.to_owned(),
         Some('?') => format!("/{path}"),
@@ -230,9 +278,10 @@ fn unbracketed(host: &str) -> &str {
     host.trim_start_matches('[').trim_end_matches(']')
 }
 
-/// `head` as its server is asked it: its line in origin form, `path`, and
-/// its headers but the hop's own, closing the connection after.
-fn origin_form(head: &http::Head, path: &str) -> Vec<u8> {
+/// The headers `head` is sent on with: the relay's own Host,
+/// `authority`, first, then the client's but the hop's own, those the
+/// relay writes itself and any Connection names, and `Connection: close`.
+fn passed_on(head: &http::Head, authority: &str) -> Vec<(String, Vec<u8>)> {
     let named: Vec<String> = head
         .headers
         .iter()
@@ -244,27 +293,31 @@ fn origin_form(head: &http::Head, path: &str) -> Vec<u8> {
                 .collect::<Vec<_>>()
         })
         .collect();
-    let hop = |name: &str| {
+    let kept = |name: &str| {
         let name = name.to_ascii_lowercase();
-        HOP.contains(&name.as_str()) || named.contains(&name)
+        !NOT_PASSED.contains(&name.as_str()) && !named.contains(&name)
     };
-    let mut out = format!("{} {path} HTTP/1.1\r\n", head.method).into_bytes();
-    for (name, value) in head.headers.iter().filter(|(name, _)| !hop(name)) {
-        out.extend_from_slice(name.as_bytes());
-        out.extend_from_slice(b": ");
-        out.extend_from_slice(value);
-        out.extend_from_slice(b"\r\n");
-    }
-    out.extend_from_slice(b"Connection: close\r\n\r\n");
-    out
+    let mut headers = vec![("Host".to_owned(), authority.as_bytes().to_vec())];
+    headers.extend(head.headers.iter().filter(|(name, _)| kept(name)).cloned());
+    headers.push(("Connection".to_owned(), b"close".to_vec()));
+    headers
 }
 
-/// Headers for the hop to the proxy alone, never passed on.
-const HOP: [&str; 4] = [
+/// Headers never passed on: the hop's own to the proxy, and those the
+/// relay writes itself, since it reads the body whole and sends it with
+/// its length.
+const NOT_PASSED: [&str; 11] = [
     "connection",
     "proxy-connection",
     "keep-alive",
     "proxy-authorization",
+    "te",
+    "trailer",
+    "upgrade",
+    "expect",
+    "host",
+    "content-length",
+    "transfer-encoding",
 ];
 
 /// A TCP connection to `target`, a host and port.
@@ -389,12 +442,20 @@ mod tests {
             absolute("http://[::1]"),
             Some(("[::1]", 80, "/".to_owned()))
         );
+        assert_eq!(
+            absolute("http://rubygems.org/gems#top"),
+            Some(("rubygems.org", 80, "/gems".to_owned())),
+            "a fragment is never sent"
+        );
         for refused in [
             "/gems",
             "https://rubygems.org/",
             "http://user@rubygems.org/",
             "http:///gems",
             "http://rubygems.org:port/",
+            "http://api.github.com:80:80/",
+            "http://[::1/",
+            "http://::1/",
         ] {
             assert_eq!(absolute(refused), None, "{refused}");
         }
