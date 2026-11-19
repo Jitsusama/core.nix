@@ -392,7 +392,8 @@ mod tests {
         "  INFO qml: launcher: 2 changes in wifi presented a median 12 ms from the line, the \
          slowest 13 ms, the p99 13 ms, 2 within 50 ms, from rows 2: a median 0 ms before",
         "  INFO qml: launcher: 10 drawers in home presented a median 42 ms from the key, the \
-         slowest 134 ms, the p99 134 ms, 6 within 50 ms: a median 20 ms before it followed",
+         slowest 134 ms, the p99 134 ms, 6 within 50 ms: a median 20 ms before it followed; \
+         on DP-4 at 60 Hz",
         "  INFO qml: launcher: home and 7 places kept as the shell started, 7054 rows made",
     ];
 

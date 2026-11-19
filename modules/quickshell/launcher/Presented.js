@@ -65,8 +65,8 @@ function keysSaid(verb, times, apart) {
 // Which screen a set of keys was shown on, each `screen` its name and
 // `refresh` niri's frame in ms there (frame-presentation.patch's timesOf),
 // said after the rest as "; on DP-4 at 60 Hz", each screen once, in turn,
-// at the rate of any key niri timed there, as a key whose frame niri
-// dropped has none, or "" where none was named. A key on a 60 Hz
+// at the rate of any key niri timed there, bare where niri timed none,
+// as on a nested niri's winit screen, or "" where none was named. A key on a 60 Hz
 // screen waits twice as long for niri's frame as on a 120 Hz one, so a
 // day docked read as a day the launcher slowed: its keys past 50 ms went
 // from 11% to 60% when Joel docked to a 60 Hz screen (16 Nov, 10:22).
@@ -147,23 +147,27 @@ function partsSaid(times, parts) {
 const drawerParts = [["from", "followed", "before it followed"],
     ["followed", "begun", "until its frame began"], ["begun", "at", "from its frame's start"]];
 
-// A drawer presented, `{ key, place, from, followed, begun, swapped, at }`, said as
-// it's presented, as an opening is, so each one's time from Joel's key can
-// be read as he goes.
+// A drawer presented, `{ key, place, from, followed, begun, swapped, at,
+// screen, refresh }`, said as it's presented, as an opening is, so each
+// one's time from Joel's key can be read as he goes. The screen comes
+// last, as a key's does, so what reads the words before it still does: a
+// drawer on the 60 Hz screen took 54 ms, on the 120 Hz panel 33, and the
+// day's median followed which he worked on (2026-11-17).
 function drawerSaid(one) {
     return `launcher: drawer for "${one.key}" presented ${Math.round(one.at - one.from)} ms `
-        + `from the key${partsSwapped([one], drawerParts)}, ${one.came ?? "the frame after"}`;
+        + `from the key${partsSwapped([one], drawerParts)}, ${one.came ?? "the frame after"}`
+        + screensSaid([one]);
 }
 
 // The drawers presented since the launcher opened, a line a place, as a
-// place's changes are.
+// place's changes are, each ending with the screens they were shown on.
 function drawersSaid(drawers) {
     const places = [...new Set(drawers.map(one => one.place))].sort();
     return places.map(place => {
         const its = drawers.filter(each => each.place === place);
         const one = took(its);
         return `launcher: ${one.count} ${one.count === 1 ? "drawer" : "drawers"} in ${place} `
-            + `${tookSaid(one, "the key")}${partsSwapped(its, drawerParts)}`;
+            + `${tookSaid(one, "the key")}${partsSwapped(its, drawerParts)}${screensSaid(its)}`;
     });
 }
 

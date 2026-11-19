@@ -622,6 +622,30 @@ QtObject {
             + "slowest 40 ms, the p99 40 ms, 1 within 50 ms: a median 5 ms before it "
             + "followed, 10 until its frame began and 25 from its frame's start");
         check(failures, "none presented says nothing", Presented.drawersSaid([]).length, 0);
+        // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
+        // the 120 Hz panel (2026-11-17), and his day's median followed
+        // which he worked on. Each says its screen last, as keys do, so
+        // what reads the words before it still reads them.
+        const dockedScreen = { screen: "DP-4", refresh: 1000 / 59.997 };
+        check(failures, "a drawer says the screen it was shown on, last",
+            Presented.drawerSaid(Object.assign({}, drawer, dockedScreen)),
+            'launcher: drawer for "agent:Y2YBTS" presented 90 ms from the key: a median '
+            + "50 ms before it followed, 10 until its frame began and 30 from its "
+            + "frame's start, the frame after; on DP-4 at 60 Hz");
+        check(failures, "and after when it came in its key's own frame",
+            Presented.drawerSaid(Object.assign({ came: Pacing.drawerCame(true) }, drawer,
+                dockedScreen)).endsWith("in the key's frame; on DP-4 at 60 Hz"), true);
+        check(failures, "and the close says each place's own",
+            Presented.drawersSaid([Object.assign({}, drawer, dockedScreen),
+                { key: "agent:KP0L6A", place: "agents", from: 2000, at: 2040 },
+                { key: "program:kitty", place: "programs", from: 0, at: 30, screen: "eDP-1",
+                    refresh: 1000 / 120 }]).join("\n"),
+            "launcher: 2 drawers in agents presented a median 40 ms from the key, the "
+            + "slowest 90 ms, the p99 90 ms, 1 within 50 ms: a median 50 ms before it "
+            + "followed, 10 until its frame began and 30 from its frame's start; "
+            + "on DP-4 at 60 Hz\n"
+            + "launcher: 1 drawer in programs presented a median 30 ms from the key, the "
+            + "slowest 30 ms, the p99 30 ms, 1 within 50 ms; on eDP-1 at 120 Hz");
 
         // Joel's drawers spent 45 to 48 ms from their frame's start to the
         // screen whatever they held, keys 12 to 34 and changes 6 to 12, and

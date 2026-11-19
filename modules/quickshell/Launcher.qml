@@ -6812,7 +6812,8 @@ Scope {
             key.frame = frame;
             key.onRow = onRow;
             keysAwaited += 1;
-            presentedAwait(key.pressed, at => keyPresented(key.pressed, at, key));
+            presentedAwait(key.pressed, (at, answered) =>
+                keyPresented(key.pressed, at, key, answered));
         }
         keysDrawing = Pacing.frameBegun(keysDrawing);
     }
@@ -9075,9 +9076,13 @@ Scope {
             came } : null;
         drawerKeyAt = 0;
         if (presenting !== null) {
-            presentedAwait(presenting.from, at => {
+            presentedAwait(presenting.from, (at, answered) => {
+                // The screen it was shown on and niri's frame there, as a
+                // key's, so a drawer docked to a 60 Hz screen reads as that.
                 const one = Object.assign(presenting, { at,
-                    swapped: root.swappedOf(presenting.frame) });
+                    swapped: root.swappedOf(presenting.frame),
+                    screen: root.screenHere?.name ?? "",
+                    refresh: root.refreshOf(answered) });
                 root.drawersPresented = root.drawersPresented.concat([one]).slice(-keysKept);
                 console.info(Presented.drawerSaid(one));
             });
@@ -11827,6 +11832,8 @@ Scope {
     // begin, numbered as the window counts them, and is told by the first
     // presented at or after it, a frame niri dropped being shown by the
     // next. Asked for only while a key's frame waits, never while shut.
+    // Each is told the frame niri answered too, the one whose refresh it
+    // timed, which needn't be the frame it waited on.
     property var presentedWaiting: []
     function presentedAwait(from, said) {
         if (!presentedAvailable())
@@ -11844,13 +11851,18 @@ Scope {
             return null;
         return surface.FramePresentation.timesOf(frame).swapped || null;
     }
+    // Niri's frame in ms on the screen a frame it answered was shown on, or 0
+    // where it gave none, as on a nested niri's winit screen.
+    function refreshOf(frame) {
+        return surface.FramePresentation.timesOf(frame).refresh ?? 0;
+    }
     function presentedDue(frame, at) {
         if (presentedWaiting.length === 0)
             return;
         const due = presentedWaiting.filter(one => frame >= one.frame);
         presentedWaiting = presentedWaiting.filter(one => frame < one.frame);
         for (const one of due)
-            one.said(at);
+            one.said(at, frame);
         if (presentedWaiting.length > 0)
             surface.FramePresentation.ask();
     }
@@ -11864,16 +11876,20 @@ Scope {
     // niri presented, so the trial says how many never reached the screen.
     property int keysAwaited: 0
     property int keysReached: 0
-    function keyPresented(from, at, key) {
+    function keyPresented(from, at, key, answered) {
         keysReached += 1;
         const times = surface.FramePresentation.timesOf(key.frame ?? 0);
         // The screen it was shown on and niri's frame there, so a day
         // docked to a 60 Hz screen reads as that (Presented.screensSaid).
+        // The frame is read from the one niri answered, as a drawer's is,
+        // since niri times only that one and the key's may have been
+        // dropped for it.
         // A step in or out says which, by its arrow and place, so a check
         // finds it however fast it was; typed words are never said here.
         const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
-            screen: root.screenHere?.name ?? "", refresh: times.refresh ?? 0,
+            screen: root.screenHere?.name ?? "",
+            refresh: root.refreshOf(answered),
             step: key.step ?? "" };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
     }
