@@ -45,10 +45,11 @@ pub fn on(runtime: &Path, now: u64) -> Meeting {
     }
     let before = signed_in(runtime);
     let listed = meetings(&runtime.join("daemons/google.sock"));
-    let after = signed_in(runtime);
+    // Asked again only when it can matter, so a daemon that doesn't answer
+    // holds a call's start for two asks rather than three.
     meeting(&listed, now)
         .map(|on| Meeting {
-            account: before.filter(|before| after.as_ref() == Some(before)),
+            account: before.filter(|before| signed_in(runtime).as_ref() == Some(before)),
             ..on
         })
         .unwrap_or_default()

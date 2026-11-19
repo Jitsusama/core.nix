@@ -65,23 +65,24 @@ const NAMED_FOR: u64 = 29 * 24 * HOUR;
 /// The most events named at once: as many items as mycelium keeps.
 const MOST_EVENTS: usize = 200;
 
-/// The longest event id named. Google's run to about sixty characters;
-/// at this bound the most events still fit the file mycelium reads,
-/// where its own bound of 1024 would not, and one longer is left out
-/// rather than refusing the whole say.
+/// The longest event id named: at this bound the most events still fit
+/// the file mycelium reads, where its own bound of 1024 would not, and
+/// one longer is left out rather than refusing the whole say.
 const LONGEST_EVENT: usize = 200;
 
 /// The fewest characters Google gives an event's own id.
 const SHORTEST_EVENT: usize = 5;
 
-/// Whether mycelium takes `event` as an event's id: its own id in
-/// base32hex, lowercase `a` to `v` and digits, after a `_` when an
-/// outside invitation made it, then any `_` parts of digits and `R`, `T`
-/// or `Z` a recurring event's splits and instances add, as mycelium's
-/// feed rule says. One it wouldn't take is left out, since one refused
-/// refuses the counts beside it.
+/// Whether `event` is an id of Google's own that mycelium takes: its own
+/// id in base32hex, lowercase `a` to `v` and digits, then any `_` parts
+/// of digits and `R`, `T` or `Z` a recurring event's splits and instances
+/// add, as mycelium's feed rule says. One it wouldn't take is left out,
+/// since one refused refuses the counts beside it. So is one led by a
+/// `_`, though mycelium takes it: Google makes that of an outside
+/// invitation's iCalUID, in base32hex anyone can read back, and a UID can
+/// carry an organizer's address or host.
 fn is_event(event: &str) -> bool {
-    let mut parts = event.strip_prefix('_').unwrap_or(event).split('_');
+    let mut parts = event.split('_');
     let own = parts.next().unwrap_or_default();
     event.len() <= LONGEST_EVENT
         && own.len() >= SHORTEST_EVENT
@@ -323,7 +324,9 @@ fn counted(held: &book::Book, missed: &[u64], now: u64, midnight: u64) -> Counts
 /// The events of the calls `summarized` to name at `now`, the book
 /// standing as `state`: none unless the calls read whole. A book that
 /// couldn't be read whole can't say which calls stand, so it names none,
-/// and mycelium keeps those it had.
+/// and mycelium, which writes a calls receptor's events only on a reading
+/// or quiet say, keeps those it had; on a reading or quiet say naming
+/// none, it lets them all go.
 fn chosen<'a>(
     state: State,
     summarized: impl IntoIterator<Item = (&'a str, u64, &'a Path)>,
@@ -381,6 +384,14 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
         eprintln!(
             "call-transcripts: no Google account is declared as an address, so no call's event \
              is named"
+        );
+    }
+    // The book reads failing for the daemon's life once it has, so this is
+    // said once, here, rather than left for a reader to work out.
+    if book.lock().failing() {
+        eprintln!(
+            "call-transcripts: a call's record couldn't be read when this started, so no \
+             call's event is named until it starts again"
         );
     }
     let tuple = rings::file();
@@ -931,8 +942,6 @@ mod tests {
             longest.as_str(),
             "abcde",
             "abc123def_R20261101T150000_20261118T150000Z",
-            "_6tlnaqrle5p6cpb4dhmj4phpehk62qbd5l9mqr39dpq7arbg",
-            "_6tlnaqrle5p6cpb4dhmj4phpe_20261118T150000Z",
         ] {
             assert_eq!(
                 named([(taken, NOW - 5, folder.path())], NOW),
@@ -947,6 +956,8 @@ mod tests {
             "abcd",
             "_abcd",
             "__abcdef",
+            "_6tlnaqrle5p6cpb4dhmj4phpehk62qbd5l9mqr39dpq7arbg",
+            "_6tlnaqrle5p6cpb4dhmj4phpe_20261118T150000Z",
             "abcdefw",
             "Abcdef",
             "abcdef_",
