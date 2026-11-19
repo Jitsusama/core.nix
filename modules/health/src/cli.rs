@@ -442,9 +442,17 @@ mod tests {
              today written nine minutes ago wasn't"
         );
         assert_eq!(
-            stale(kept.path(), "2026-11-13", "2026-11-13", after(540)),
-            None,
-            "a day never kept was said to stand still"
+            [
+                stale(kept.path(), "2026-11-13", "2026-11-13", after(540)),
+                stale(
+                    kept.path(),
+                    "2026-11-12",
+                    "2026-11-12",
+                    written - STALE_AFTER * 2
+                ),
+            ],
+            [None, None],
+            "a day never kept, or one timed past now, was said to stand still"
         );
     }
 }

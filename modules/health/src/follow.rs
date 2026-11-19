@@ -39,12 +39,11 @@ use spell::Spell;
 const EVERY: Duration = Duration::from_secs(30);
 
 /// How long health runs before a follower's end ends it, for systemd or
-/// launchd to start it again
-/// with every follower and the day read again, which hears what went
-/// unheard meanwhile that day, short of a start that falls past midnight,
-/// which reads only the new day. Followers that end at every start then
-/// cost a replay of the day every ten minutes, rather than one every few
-/// seconds. The faults health saw itself, such
+/// launchd to start it again with every follower and the day read again,
+/// which hears what went unheard meanwhile that day, short of a start
+/// that falls past midnight, which reads only the new day. Followers that
+/// end at every start then cost a replay of the day every ten minutes,
+/// rather than one every few seconds. The faults health saw itself, such
 /// as a lid reading wrong, are kept through each start (`Day::resume`).
 pub const SETTLED: Duration = Duration::from_mins(10);
 
@@ -429,13 +428,11 @@ impl Follower {
         Self { ends, ..self }
     }
 
-    /// Take one line of the source's. A line of a new day writes
-    /// the old one and starts the new, which sees nothing gone wrong yet,
-    /// so a fault still seen counts once in it too. An old day that can't
-    /// be written is held for `write` to try again, and the new day starts
-    /// all the same. Of one of a day already done, only its stops, starts
-    /// and reloads are taken, for the new day's restarts
-    /// (`Launches::before`).
+    /// Take one line of the source's. A new day's line writes the old day,
+    /// held for `write` to try again where it can't be, and starts the new,
+    /// which sees nothing gone wrong yet, so a fault still seen counts once
+    /// in it too. Of a day already done, only stops, starts and reloads are
+    /// taken, for the new day's restarts (`Launches::before`).
     ///
     /// # Errors
     ///
@@ -533,13 +530,18 @@ pub fn ends_of(boots: &str) -> BTreeMap<String, i64> {
 }
 
 /// Write a day whole, through a file beside it, so a reader never sees half
-/// of one.
+/// of one, and taken away on a failure, where it would hold a full disk's
+/// room. The error names the day, since one held from before fails alone.
 fn write_day(day: &Day, into: &Path) -> io::Result<()> {
-    fs::create_dir_all(into)?;
-    let file = file_of(into, &day.date);
     let part = into.join(format!(".{}.json.part", day.date));
-    fs::write(&part, figures::written(day).map_err(io::Error::other)?)?;
-    fs::rename(part, file)
+    let written = fs::create_dir_all(into)
+        .and_then(|()| figures::written(day).map_err(io::Error::other))
+        .and_then(|json| fs::write(&part, json))
+        .and_then(|()| fs::rename(&part, file_of(into, &day.date)));
+    if written.is_err() {
+        let _ = fs::remove_file(&part);
+    }
+    written.map_err(|error| io::Error::new(error.kind(), format!("{}'s file: {error}", day.date)))
 }
 
 /// The date, `YYYY-MM-DD`, of a moment in microseconds since the epoch, in
@@ -691,17 +693,14 @@ fn ended_by(
 /// replay once health starts again.
 ///
 /// A day that can't be written, as on a full disk, is said through `say`,
-/// and once written again through `notice`, as `Spell` decides; health
-/// tries every half minute and runs on until it can, keeping the day,
-/// for as long as `GIVES_UP`: starting again frees no room, and a start
-/// past midnight would lose the old day's end. A new day meanwhile starts
-/// as ever, holding the old for the next try, so its lines and what the
-/// ticks see, such as the disk guard's and memory's readings, go into it.
+/// and once written again through `notice`, as `Spell` decides. Health
+/// tries every half minute for as long as `GIVES_UP`, as a start frees no
+/// room and, past midnight, would lose the old day; a new day starts as
+/// ever meanwhile, holding the old, so what's heard and seen goes into it.
 ///
 /// # Errors
 ///
-/// When the day can't be written as health ends, or it gave up writing
-/// it.
+/// When the day can't be written as health ends, or it gave up.
 fn run(
     follower: &mut Follower,
     read: &Receiver<Option<String>>,
@@ -774,14 +773,15 @@ fn run(
         }
     }
     let written = follower.write();
+    let lost = spell::losing(&follower.held);
     // A start that gave up says so, whatever its last try came to.
     if gave_up {
-        return Err(spell.given_up(&follower.into));
+        return Err(spell.given_up(&follower.into, &lost));
     }
     written.map_err(|error| {
         io::Error::new(
             error.kind(),
-            format!("the day couldn't be written as health ended: {error}"),
+            format!("the day couldn't be written as health ended{lost}: {error}"),
         )
     })
 }

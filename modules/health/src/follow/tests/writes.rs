@@ -67,16 +67,19 @@ fn days_held_across_two_midnights_are_all_written_at_the_next_try() {
     fs::remove_file(&days).expect("room made for the days");
     follower.write().expect("the next try");
     assert_eq!(
-        ["2026-11-12", "2026-11-13", "2026-11-14"].map(|date| written(&days, date).is_some()),
-        [true; 3],
-        "a day held across a second midnight wasn't written"
+        ["2026-11-12", "2026-11-13", "2026-11-14"]
+            .map(|date| written(&days, date).map(|day| day.things["people"].lines)),
+        [Some(1); 3],
+        "a day held across a second midnight wasn't written with its own line"
     );
 }
 
 #[test]
 fn a_held_day_that_cant_be_written_keeps_neither_today_nor_itself_from_the_disk() {
-    // A folder in the held day's place fails its write alone; today is
-    // written all the same, and the held day once there's room for it.
+    // A folder in the oldest held day's place fails its write alone; the
+    // day held after it and today are written all the same, the failure
+    // is said as that day's, its part taken away, and the day is written
+    // once there's room for it.
     let into = tempfile::tempdir().expect("a folder");
     let days = into.path().join("days");
     fs::create_dir_all(file_of(&days, "2026-11-12")).expect("a folder in the day's place");
@@ -86,9 +89,16 @@ fn a_held_day_that_cant_be_written_keeps_neither_today_nor_itself_from_the_disk(
         follower.take(&warning(NOON + DAY)).is_err(),
         "the roll wrote"
     );
+    follower
+        .take(&warning(NOON + DAY * 2))
+        .expect("a roll after a failed write tries none");
+    let failed = follower.write().expect_err("the oldest day was written");
     assert!(
-        follower.write().is_err() && written(&days, "2026-11-13").is_some(),
-        "the held day's failure went unsaid, or kept today from the disk"
+        failed.to_string().starts_with("2026-11-12's file: ")
+            && ["2026-11-13", "2026-11-14"].map(|date| written(&days, date).is_some()) == [true; 2]
+            && !days.join(".2026-11-12.json.part").exists(),
+        "the held day's failure wasn't said as its own, kept the rest from the disk, or left \
+         its part: {failed}"
     );
     fs::remove_dir(file_of(&days, "2026-11-12")).expect("room made for the held day");
     follower.write().expect("the next try");
@@ -99,19 +109,22 @@ fn a_held_day_that_cant_be_written_keeps_neither_today_nor_itself_from_the_disk(
 }
 
 #[test]
-fn a_tick_with_nothing_new_still_writes_today() {
+fn a_look_with_nothing_new_still_writes_today() {
     // `health` calls today's day stood still when its file goes three
-    // minutes unwritten, which holds only while every look rewrites it.
+    // minutes unwritten, which holds only while every look rewrites it:
+    // a day taken away after its last write is written again.
     let into = tempfile::tempdir().expect("a folder");
     let proc = tempfile::tempdir().expect("no processes");
     let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC).minding(proc.path());
     follower.mind(NOON);
     follower.write().expect("the day is written");
     assert!(!follower.changed, "a written day was left changed");
+    fs::remove_file(file_of(into.path(), "2026-11-12")).expect("the day taken away");
     follower.mind(NOON + 30_000_000);
+    follower.write().expect("the day is written again");
     assert!(
-        follower.changed,
-        "a look that saw nothing new left the day to go unwritten"
+        written(into.path(), "2026-11-12").is_some(),
+        "a look that saw nothing new left the day unwritten"
     );
 }
 
@@ -203,6 +216,22 @@ fn a_day_that_can_never_be_written_ends_health_after_an_hour_of_trying_without_s
         said.len() == 1 && said[0].contains("/days") && said[0].contains("60 minutes"),
         "an hour of failed writes wasn't said once, naming the folder and how long: {said:?}"
     );
+    // Past midnight, the day before is held, and a start after giving up
+    // replays only the new one, so health says it loses the day before.
+    let Outcome { result, .. } = Ran {
+        before: 1,
+        tomorrow: 1,
+        step: Duration::from_secs(1),
+        unwritable_for: usize::MAX,
+        ..Ran::default()
+    }
+    .outcome();
+    assert!(
+        result.as_ref().is_err_and(|error| error
+            .to_string()
+            .contains("trying, losing 2026-11-12, held from before: ")),
+        "giving up past midnight didn't name the day held from before: {result:?}"
+    );
 }
 
 #[test]
@@ -235,9 +264,8 @@ fn health_gives_up_an_hour_after_its_first_failed_write_not_its_start() {
 #[test]
 fn a_new_days_line_whose_roll_cant_write_starts_the_spell_itself() {
     // Every line comes before any tick, so the roll's write is the
-    // spell's first failure, the next line tries none, and room comes at
-    // the first tick: only the roll can have said it, once, and both days
-    // are written whole.
+    // spell's first failure, and room comes at the first tick: only the
+    // roll can have said it, once, and both days are written whole.
     let Outcome {
         result,
         said,
@@ -470,5 +498,39 @@ fn how_long_a_spell_lasted_reads_to_the_minute() {
         [read(59), read(60), read(119), read(120)],
         ["less than a minute", "a minute", "a minute", "2 minutes"],
         "how long a spell lasted read wrong"
+    );
+}
+
+#[test]
+fn health_ending_unable_to_write_names_the_days_held_it_loses() {
+    let held = |dates: &[&str]| dates.iter().map(|date| Day::new(date)).collect::<Vec<_>>();
+    let mut spell = Spell::default();
+    let full = io::Error::other("no space left on device");
+    spell.tried(
+        Some(&full),
+        Instant::now(),
+        Path::new("days"),
+        &|_| {},
+        &|_| {},
+    );
+    assert_eq!(
+        [
+            spell::losing(&held(&[])),
+            spell::losing(&held(&["2026-11-12"])),
+            spell
+                .given_up(
+                    Path::new("days"),
+                    &spell::losing(&held(&["2026-11-11", "2026-11-12", "2026-11-13"]))
+                )
+                .to_string(),
+        ],
+        [
+            String::new(),
+            ", losing 2026-11-12, held from before".to_owned(),
+            "health gave up writing the day into days after 60 minutes of trying, losing \
+             2026-11-11, 2026-11-12 and 2026-11-13, held from before: no space left on device"
+                .to_owned(),
+        ],
+        "the days held that health lost as it ended went unnamed"
     );
 }

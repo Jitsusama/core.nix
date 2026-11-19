@@ -10,6 +10,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::{GIVES_UP, SETTLED};
+use crate::day::Day;
 
 /// How long after a spell's end was told that a new one goes unsaid, as a
 /// disk at the edge of full flaps between the two: such a spell is said
@@ -45,10 +46,11 @@ impl Spell {
     }
 
     /// What health ends on once it has given up writing the day into
-    /// `into`, with the spell's cause, since its start was said long ago.
-    pub(super) fn given_up(&self, into: &Path) -> io::Error {
+    /// `into`, with the spell's cause, since its start was said long ago,
+    /// and the days held from before it `lost` (`losing`).
+    pub(super) fn given_up(&self, into: &Path, lost: &str) -> io::Error {
         io::Error::other(format!(
-            "health gave up writing the day into {} after {} minutes of trying: {}",
+            "health gave up writing the day into {} after {} minutes of trying{lost}: {}",
             into.display(),
             GIVES_UP.as_secs() / 60,
             self.cause
@@ -127,6 +129,18 @@ fn unwritten(cause: &str, into: &Path, lasted: Duration) -> String {
         into.display(),
         GIVES_UP.saturating_sub(lasted).as_secs() / 60
     )
+}
+
+/// What health says it loses of the days `held` from before as it ends
+/// unable to write them, which a start's replay of only today won't hear
+/// again: nothing when none are held.
+pub(super) fn losing(held: &[Day]) -> String {
+    let dates: Vec<&str> = held.iter().map(|day| day.date.as_str()).collect();
+    match dates.split_last() {
+        None => String::new(),
+        Some((last, [])) => format!(", losing {last}, held from before"),
+        Some((last, rest)) => format!(", losing {} and {last}, held from before", rest.join(", ")),
+    }
 }
 
 /// How long `lasted` was, to the minute: time health was awake to try,
