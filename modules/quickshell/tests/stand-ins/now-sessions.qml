@@ -17,6 +17,9 @@ Singleton {
     property var steered: []
     property bool puts: true
     property var putOffAsked: []
+    // The addresses whose wants are put off, in capitals, as Sessions.qml's
+    // putOff says them; the case sets it.
+    property var putOff: ({})
     property var knowns: ({})
 
     function putOffWant(address, known) {

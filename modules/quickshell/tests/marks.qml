@@ -183,7 +183,7 @@ QtObject {
         // How many of each kind For You holds.
         const sized = holds => Object.keys(holds).map(kind => `${kind} ${holds[kind].length}`)
             .join(", ");
-        const none = "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 0";
+        const none = "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 0, joined 0";
         const session = { title: "pi", presence: { wants: { kind: "question" } } };
         const acting = { title: "pi", presence: { wants: { kind: "action" } } };
         const critical = { id: 7, urgency: "critical", read: false };
@@ -191,29 +191,49 @@ QtObject {
             ["nothing held, nothing lit", {}, none],
             ["a session's want, a to-do, a look and a source's to-do each count",
                 { wanting: [session], toDo: [{}], looks: [{}], given: [{}] },
-                "wanting 1, toDo 1, looks 1, given 1, reopen 0, notices 0"],
+                "wanting 1, toDo 1, looks 1, given 1, reopen 0, notices 0, joined 0"],
             // However many there are, Reopen Them All is the one thing to do.
             ["sessions to reopen are one to-do", { toReopen: [{ id: "a" }, { id: "b" }] },
-                "wanting 0, toDo 0, looks 0, given 0, reopen 1, notices 0"],
+                "wanting 0, toDo 0, looks 0, given 0, reopen 1, notices 0, joined 0"],
             // As For You lists it (2026-10-31: four items read as eight).
             ["a want that's an action is its own to-do, counted there",
                 { wanting: [acting], toDo: [{}] },
-                "wanting 0, toDo 1, looks 0, given 0, reopen 0, notices 0"],
+                "wanting 0, toDo 1, looks 0, given 0, reopen 0, notices 0, joined 0"],
             ["only a critical notice unread counts, the rest came lately",
                 { notices: [critical, { id: 8, urgency: "normal" }, { id: 9, urgency: "low" }] },
-                "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 1"],
+                "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 1, joined 0"],
             ["a critical notice read counts no more",
                 { notices: [Object.assign({}, critical, { read: true })] }, none],
             ["nor while its card is up, which says it, by its id as a key",
                 { notices: [critical], onScreen: ["7"] }, none],
             ["nor one saying a to-do, which is that to-do",
                 { notices: [Object.assign({}, critical, { waits: "QUEST1:ask" })] }, none],
-            ["a source that isn't a list holds nothing", { wanting: null, notices: "x" }, none]
+            // What Needs Me lists a session's own notice under its cell,
+            // critical or not, so it counts there, as itself, once.
+            ["a notice joining its cell counts as itself, critical or not",
+                { notices: [Object.assign({ app: "pi" }, critical), { id: 8, app: "pi" }],
+                    joined: [{ id: 8, app: "pi" }, Object.assign({ app: "pi" }, critical)] },
+                "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 0, joined 2"],
+            // Its card up, it still counts: its row stands under its cell
+            // while the card says it, and one rule counts that row.
+            ["a notice joining its cell counts with its card up",
+                { notices: [Object.assign({ app: "pi" }, critical)],
+                    joined: [Object.assign({ app: "pi" }, critical)], onScreen: ["7"] },
+                "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 0, joined 1"],
+            // Desktop lists none of pi's (Lately.js's LISTED), so one counted
+            // as critical would have no row: a session's own counts joined,
+            // one of a session asking is its want's, and one of a session
+            // gone is its card, which a critical one keeps up till Joel acts.
+            ["a critical notice of pi's counts only as joined",
+                { notices: [Object.assign({ app: "pi" }, critical)] }, none],
+            ["a source that isn't a list holds nothing",
+                { wanting: null, notices: "x", joined: "x" }, none]
         ];
         for (const [what, sources, held] of holds)
             expect(`For You holds: ${what}`, sized(Holding.held(sources)), held);
         expect("its count is every kind's", Holding.count(Holding.held({ wanting: [session],
-            toDo: [{}], looks: [{}], given: [{}], toReopen: [{}], notices: [critical] })), 6);
+            toDo: [{}], looks: [{}], given: [{}], toReopen: [{}], notices: [critical],
+            joined: [{ id: 8 }] })), 7);
 
         // The to-do daemon's records, as its stream holds them: a look's file
         // whole, beside a to-do and the summary, which are no looks.

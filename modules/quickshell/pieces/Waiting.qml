@@ -3,7 +3,9 @@
 // wants him, unless notices are being held on purpose, when the margin says
 // so instead (DoNotDisturb.qml). One still on screen isn't waiting yet. It
 // wears no mark: a critical one is For You's, whose tray says it
-// (ForYou.qml), and the rest are what came lately.
+// (ForYou.qml), but for pi's of a session gone, which has no row and so
+// no count, and whose card says it once it's up (Holding.js); the rest are
+// what came lately.
 import qs
 import QtQuick
 import "Drawers.js" as Drawers

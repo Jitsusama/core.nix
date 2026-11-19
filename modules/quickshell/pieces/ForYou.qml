@@ -1,7 +1,8 @@
 // For You's in-tray in the margin, the one mark for what waits on Joel:
 // true while For You holds anything that waits on him now, a session's
-// want, a to-do, a look, what a source gives him to do or a critical
-// notice unread, and nothing while it holds none, so a calm margin has no
+// want, a to-do, a look, what a source gives him to do, a critical
+// notice unread or a session's own notice standing under it in What Needs
+// Me, and nothing while it holds none, so a calm margin has no
 // empty tray (Joel's pick, VKCF3Z, 2026-11-09). The bell and pi's want
 // left the margin for it, since both are among what For You holds. It
 // reads the count For You's own row reads (ForYouHolds.qml), so the two
@@ -17,9 +18,10 @@ Piece {
 
     // Set together as what it holds changes, so the margin never reads it
     // wanting and not lit, or lit and not wanting: two bindings would come
-    // true in whichever order Qt notifies them. No card says what it holds,
-    // since a session's want posts none (Sessions.qml), so it waits for
-    // none. Counted here, not read from the count, which Qt may not have
+    // true in whichever order Qt notifies them. It waits for no card: a
+    // session's want posts none (Sessions.qml), and a session's own notice
+    // counts while its card is up, its row standing under its cell all the
+    // while (Holding.js's joined). Counted here, not read from the count, which Qt may not have
     // made again yet.
     function hold() {
         const any = Holding.count(holds) > 0;

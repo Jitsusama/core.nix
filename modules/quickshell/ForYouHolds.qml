@@ -20,6 +20,8 @@ Singleton {
     // launcher's other sources give him to do, as Now last took them.
     property var looks: []
     property var given: []
+    // A session's own notices Now lists under its cell (Holding.js's joined).
+    property var joined: []
     // The looks' stream, which Now takes them from and asks to settle one.
     readonly property var lookStream: toDo
 
@@ -42,6 +44,7 @@ Singleton {
         given: given,
         toReopen: Sessions.toReopen,
         notices: Notices.history,
+        joined: joined,
         // The notices with a card up, those still open and not resting.
         onScreen: Object.keys(Notices.live).filter(id => !(id in Notices.resting))
     })

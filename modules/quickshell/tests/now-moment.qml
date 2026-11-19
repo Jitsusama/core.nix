@@ -747,13 +747,96 @@ ShellRoot {
                 const history = root.stepIn().history;
                 if (history.some(one => one.name === "Parcel delivered")) {
                     root.waiting = "";
-                    Qt.exit(0);
+                    root.cellNoticeServed();
                 } else if (Date.now() - root.reopenedAt > 15000) {
                     root.waiting = "";
                     root.expect("opened again, History lists past its page",
                         false, JSON.stringify(history.map(one => one.name)));
                 }
             });
+        }
+    }
+    // A session's own notice stands under it among what needs Joel now as
+    // the row Desktop's place serves for it (row.rs's placed), so it's
+    // shown as well as counted: counted alone, the tray and For You said
+    // "1 to do" over a row that wasn't there.
+    function cellNoticeServed() {
+        Sessions.running = [{ address: "KELP01", title: "Session K",
+            presence: { session: "s-k", addresses: ["KELP01", "9F3A2B1C"] } }];
+        const notice = { id: 40, at: Date.now(), app: "pi", summary: "Session K is done",
+            body: "said", read: false, urgency: "critical",
+            cell: "mycelium:cell/9F3A2B1C@heron#notice:40" };
+        // What the tray counted before, as the looks still waiting.
+        trayBefore = ForYouHolds.count;
+        Notices.history = Notices.history.concat([notice]);
+        noticesDaemon.notices = noticesDaemon.notices.concat([notice]);
+        waiting = "cell notice served";
+    }
+    property int trayBefore: 0
+    function cellNoticeRow() {
+        waiting = "";
+        const noticed = () => now.forYouBands.now.filter(one => one.kind === "notice");
+        const tray = () => ForYouHolds.count - trayBefore;
+        const counts = () => JSON.stringify([noticed().length, tray()]);
+        if (tried(() => {
+            const keys = now.waitingRows().map(one => one.key);
+            const row = now.waitingRows().find(one => one.key === "notice:40") ?? null;
+            expect("a session's notice served stands under it among what needs Joel as its row",
+                row !== null && tray() === 1 && keys.includes("on:heading:cell:KELP01")
+                    && keys.indexOf("on:heading:cell:KELP01") === keys.indexOf("notice:40") - 1,
+                `${counts()} ${JSON.stringify(keys)}`);
+            expect("which :filter holds as a thing to do from the desktop",
+                row.forYou?.kind === "do" && row.forYou?.source === "desktop",
+                JSON.stringify(row.forYou ?? null));
+            expect("and home's row names it", now.homeSays() === "Session K is done",
+                now.homeSays());
+            // Its session's want put off, as Sessions says it, the notice is
+            // its want's to say, so it stands nowhere and counts nothing.
+            Sessions.putOff = { KELP01: true };
+            expect("its session's want put off, it stands nowhere and counts nothing",
+                noticed().length === 0 && tray() === 0, counts());
+            Sessions.putOff = {};
+            // Acted on from its row, the daemon reads it and puts it away
+            // (daemon.rs's invoke), and it stays where it stood while For
+            // You is open, as one read does.
+            const done = Date.now();
+            const acted = one => one.id !== 40 ? one
+                : Object.assign({}, one, { read: true, readAt: done, left: "dismissed",
+                    leftAt: done });
+            Notices.history = Notices.history.map(acted);
+            noticesDaemon.notices = noticesDaemon.notices.map(acted);
+            expect("acted on from its row, it stays where it stood, its row with it",
+                noticed().length === 1 && tray() === 1
+                    && now.waitingRows().some(one => one.key === "notice:40"), counts());
+            // Put away unread, then withdrawn by its session while For You
+            // is open, which reads it and leaves it dismissed (held.rs's
+            // close), it goes at once, since Joel never read it (Lately.js's
+            // readHow).
+            Notices.history = Notices.history.map(one => one.id !== 40 ? one
+                : Object.assign({}, one, { read: false, readAt: null }));
+            Notices.history = Notices.history.map(one => one.id !== 40 ? one
+                : Object.assign({}, one, { read: true, readAt: Date.now(), withdrawn: true }));
+            expect("withdrawn by its session while For You is open, it goes at once",
+                noticed().length === 0 && tray() === 0, counts());
+            // Shut, it's gone, and the tray counts it no more.
+            theLauncher.open = false;
+            expect("the launcher shut, it's gone, and the tray counts it no more",
+                noticed().length === 0 && tray() === 0, counts());
+            // Raised again with the launcher shut, the tray counts it.
+            Notices.history = Notices.history.map(one => one.id !== 40 ? one
+                : Object.assign({}, one, { read: false, readAt: null, left: undefined,
+                    leftAt: undefined, withdrawn: undefined }));
+            expect("raised with the launcher shut, the tray counts it", tray() === 1, counts());
+        }))
+            Qt.exit(0);
+    }
+    Timer {
+        running: root.waiting === "cell notice served"
+        interval: 50
+        repeat: true
+        onTriggered: {
+            if (pastNotices.desktopHolds(40))
+                root.cellNoticeRow();
         }
     }
     Timer {
@@ -1040,6 +1123,74 @@ ShellRoot {
             now.waitsNow === 0 && ForYouHolds.count === 0 && now.homeSays() === "",
             JSON.stringify([now.waitsNow, ForYouHolds.count, now.homeSays()]));
         Notices.live = {};
+        // One a session raised, naming its cell, stands among what needs
+        // Joel now under that session (What Needs Me, 42P0R4, 2026-11-19),
+        // and is still counted once. It's pi's, as away mode signs it, which
+        // Desktop leaves to the session's want; this one wants nothing.
+        const raising = { address: "KELP01", title: "Session K",
+            presence: { session: "s-k", addresses: ["KELP01", "9F3A2B1C"] } };
+        Sessions.running = [raising];
+        Notices.history = [{ id: 8, at: Date.now(), app: "pi", summary: "Session K is done",
+            urgency: "critical", read: false, cell: "mycelium:cell/9F3A2B1C@heron#notice:8" }];
+        const noticed = () => now.forYouBands.now.filter(one => one.kind === "notice");
+        const joined = noticed();
+        expect("a session's notice stands under it among what needs Joel, counted once",
+            now.waiting.side === "1 to do" && ForYouHolds.count === 1 && joined.length === 1
+                && joined[0].cell() === raising,
+            JSON.stringify([now.waiting.side, ForYouHolds.count, joined.length,
+                joined[0]?.cell()?.address ?? null]));
+        // Said anew as it was, as each notice is when another comes or one
+        // is read, For You bands nothing again.
+        const bandsJoined = now.forYouBands;
+        Notices.history = [Object.assign({}, Notices.history[0]), { id: 9, at: Date.now(),
+            app: "Slack", summary: "A message", urgency: "normal", read: false }];
+        expect("its notice said anew, another beside it, bands nothing again",
+            now.forYouBands === bandsJoined, String(noticed().length));
+        // One not critical, as away mode's are, stands there too, and is
+        // counted there and in the tray alike, once, as every row among
+        // what needs Joel now is (Holding.js's joined).
+        const raised = Object.assign({}, Notices.history[0], { urgency: "normal" });
+        Notices.history = [raised];
+        expect("a notice not critical stands under its session, counted once by both",
+            noticed().length === 1 && ForYouHolds.count === 1 && now.waiting.side === "1 to do",
+            JSON.stringify([noticed().length, ForYouHolds.count, now.waiting.side]));
+        // Beside another program's critical notice, each counts once, and
+        // home's row says the one it doesn't name as one more.
+        Notices.history = [raised, { id: 7, at: Date.now(), app: "power",
+            summary: "Battery at 5%", urgency: "critical", read: false }];
+        expect("beside another's critical notice, each counts once",
+            ForYouHolds.count === 2 && now.waiting.side === "2 to do"
+                && now.homeSays().endsWith("1 more"),
+            JSON.stringify([ForYouHolds.count, now.waiting.side, now.homeSays()]));
+        // Read while For You is open, it stays where it stood, so no row
+        // moves under the cursor, and the list is the one it was.
+        Notices.history = [raised];
+        const bandsRaised = now.forYouBands;
+        Notices.history = [Object.assign({}, raised, { read: true, readHow: "read",
+            readAt: Date.now() })];
+        expect("read while For You is open, it stays where it stood",
+            noticed().length === 1 && now.forYouBands === bandsRaised, String(noticed().length));
+        // A low one, as away mode's saying a session rests, asks nothing.
+        Notices.history = [Object.assign({}, raised, { urgency: "low" })];
+        expect("a low notice stands nowhere and counts nothing",
+            noticed().length === 0 && ForYouHolds.count === 0,
+            JSON.stringify([noticed().length, ForYouHolds.count]));
+        Notices.history = [raised];
+        // Once it asks Joel something, its want's row says it, so it leaves,
+        // and the want is what's counted, once.
+        Sessions.wanting = [Object.assign({}, raising, { presence: Object.assign({},
+            raising.presence, { wants: { kind: "question", said: "Which?" } }) })];
+        expect("a notice of a session wanting Joel is its want's to say",
+            noticed().length === 0 && ForYouHolds.count === 1 && now.waiting.side === "1 to do",
+            JSON.stringify([noticed().length, ForYouHolds.count, now.waiting.side]));
+        // A critical one too: Desktop lists none of pi's, so it counts as
+        // nothing apart from the want.
+        Notices.history = [Object.assign({}, raised, { urgency: "critical" })];
+        expect("a critical notice of a session wanting Joel is its want's to say too",
+            noticed().length === 0 && ForYouHolds.count === 1 && now.waiting.side === "1 to do",
+            JSON.stringify([noticed().length, ForYouHolds.count, now.waiting.side]));
+        Sessions.wanting = [];
+        Sessions.running = [];
         Notices.history = [];
 
         // For You is asked what it holds as it's stepped into and again as

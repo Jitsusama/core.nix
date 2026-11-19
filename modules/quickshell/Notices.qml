@@ -151,7 +151,10 @@ Singleton {
             withdrawn: notice.withdrawn, waits: notice.waits, transient: notice.transient,
             chimes: notice.chimes ?? false, alarms: notice.alarms ?? false,
             left: notice.left ?? undefined, leftAt: notice.leftAt ?? undefined,
-            raisedAt: notice.raisedAt
+            raisedAt: notice.raisedAt,
+            // The session that raised it, so it stands under that session in
+            // What Needs Me (ForYouCells.js's noticeCell).
+            cell: notice.cell ?? null
         };
     }
 
