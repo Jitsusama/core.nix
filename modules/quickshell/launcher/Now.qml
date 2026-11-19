@@ -2034,7 +2034,7 @@ Provider {
     readonly property var cellNotices: {
         const joined = provider.source("notices") ? Cells.joining(latelyNotices,
             [].concat(Sessions.running ?? [], Sessions.parked ?? []), wantingHeard,
-            { putOff: Sessions.putOff, since: openedAt }) : [];
+            { putOff: Sessions.putOff }) : [];
         cellNoticesKept.held = Cells.alike(cellNoticesKept.held, joined);
         return cellNoticesKept.held;
     }

@@ -131,25 +131,24 @@ QtObject {
         // can't take back once it has (held.rs's close).
         const raised = (id, more) => Object.assign({ id, app: "pi", read: false,
             cell: "mycelium:cell/9F3A2B1C" }, more);
-        expect("pi's, unread, open and from a session held not wanting Joel, each joins it",
+        expect("pi's, unread, not gone by and from a session held not wanting Joel, each joins it",
             Cells.joining([raised(1), raised(2, { read: true }), raised(3, { cell: null }),
                 raised(4, { transient: true }), raised(5, { cell: "mycelium:cell/BBBBBB" }),
                 raised(6, { app: "Slack" }), raised(7, { cell: "mycelium:cell/GONE0001" }),
                 raised(8, { urgency: "low" }), raised(9, { left: "dismissed" }),
                 raised(10, { left: "expired" }), raised(11, { left: "withdrawn" })],
-            held, [cellB], { putOff: {} }).map(one => one.id), [1]);
+            held, [cellB], { putOff: {} }).map(one => one.id), [1, 9]);
         expect("one whose want Joel put off joins nothing",
             Cells.joining([raised(1)], held, [], { putOff: { KELP01: true } }).length, 0);
         expect("another session's want put off, it still joins",
             Cells.joining([raised(1)], held, [], { putOff: { BBBBBB: true } }).length, 1);
-        // Put away since For You opened, as acting on its row does, it
-        // stays where it stood, as one read then does (Lately.js's
-        // holdingStill); one put away before, or gone any other way, not.
-        expect("put away since For You opened, it stays; before, or gone otherwise, not",
+        // Put away unread, it's still his to read, as Desktop holds it,
+        // until its session withdraws it, which reads it (held.rs's close);
+        // gone by itself, it stays missed, which nothing takes back.
+        expect("put away unread, it stays; gone by itself, not",
             Cells.joining([raised(1, { left: "dismissed", leftAt: 10 }),
-                raised(2, { left: "dismissed", leftAt: 3 }),
-                raised(3, { left: "expired", leftAt: 10 }),
-                raised(4, { left: "withdrawn", leftAt: 10 })], held, [], { since: 5 })
+                raised(2, { left: "dismissed", leftAt: 3, read: true }),
+                raised(3, { left: "expired", leftAt: 10 })], held, [], {})
                 .map(one => one.id), [1]);
         expect("nothing told, none", Cells.joining(undefined, undefined, undefined, undefined),
             []);
