@@ -9,7 +9,66 @@
 }:
 let
   walkIn = file: (walkRead file).walk;
-  theirs = import ./glyphs.nix { inherit lib; };
+  # The cat's sitting and strides as they're drawn today, copied, so a
+  # redrawn cat fails its own pose check rather than these plants, which
+  # are made from them.
+  theirs =
+    let
+      glyphs = import ./glyphs.nix { inherit lib; };
+    in
+    glyphs
+    // lib.mapAttrs (name: pixels: glyphs.${name} // { inherit pixels; }) {
+      nothingHere = [
+        "#...#..."
+        "#####..."
+        "#.#.#..."
+        "#####..."
+        ".###...."
+        "#####..#"
+        "#####..#"
+        "#######."
+      ];
+      walkingA = [
+        ".......#"
+        "#.#...#."
+        "###...#."
+        "#.#####."
+        "#######."
+        ".######."
+        ".#...#.."
+        "#.#.#.#."
+      ];
+      walkingB = [
+        "......#."
+        "#.#...#."
+        "###...#."
+        "#.#####."
+        "#######."
+        ".######."
+        ".#...#.."
+        "##..##.."
+      ];
+      walkingC = [
+        "......#."
+        "#.#...#."
+        "###...#."
+        "#.#####."
+        "#######."
+        ".######."
+        ".#...#.."
+        "##..#.#."
+      ];
+      walkingD = [
+        ".......#"
+        "#.#...#."
+        "###...#."
+        "#.#####."
+        "#######."
+        ".######."
+        ".#...#.."
+        "#.#.##.."
+      ];
+    };
   # The cat's walk as it's drawn, so the planted poses are held to it
   # whether or not its code is read.
   drawnWalk = [
@@ -38,6 +97,8 @@ let
     in
     lib.imap0 moved theirs.${pose}.pixels;
   small = lib.take 4 filled;
+  # Stride A with its feet's row drawn as `row`.
+  feet = row: lib.init theirs.walkingA.pixels ++ [ row ];
   # Stride A cut to an odd width, seven columns.
   odd = map (row: builtins.substring 0 7 row) theirs.walkingA.pixels;
   planted = theirs // {
@@ -56,6 +117,12 @@ let
     # half's.
     foreFoot.pixels = flipped "walkingA" 7 3;
     hindFoot.pixels = flipped "walkingA" 7 4;
+    # Stride A's feet stepping fore, hind, fore, hind and fore again,
+    # back to A, so the walk shuffles only across its end.
+    wrapB.pixels = feet "#.###.#.";
+    wrapC.pixels = feet "#.##..#.";
+    wrapD.pixels = feet "####..#.";
+    wrapE.pixels = feet "#####.#.";
     oddA.pixels = odd;
     oddB.pixels = lib.init odd ++ [ (flip 3 (lib.last odd)) ];
     # The sitting with a pixel joined to the rest by a corner alone.
@@ -155,6 +222,7 @@ let
     sitting = "nothingHer";
     poses = [ "walkingA" ];
     strides = drawnWalk;
+    glyphs = planted;
   };
   unlisted = poseFaults {
     sitting = "nothingHere";
@@ -168,7 +236,7 @@ let
       reason = "atLine and underAt, 15% off, held, and pastLine and underPast refused";
       holds =
         let
-          refusing = lib.hasInfix ''unlike ["pastLine","underPast",'' sized.said;
+          refusing = builtins.match ''.*unlike \["pastLine","underPast"[],].*'' sized.said != null;
           holding = !lib.hasInfix ''"atLine"'' sized.said && !lib.hasInfix "underAt" sized.said;
         in
         refusing && holding;
@@ -176,7 +244,7 @@ let
     {
       faults = sizedTight;
       reason = "justPast and justShort, 2 more and fewer than a sitting of 13, refused";
-      holds = lib.hasInfix ''unlike ["justPast","justShort",'' sizedTight.said;
+      holds = builtins.match ''.*unlike \["justPast","justShort"[],].*'' sizedTight.said != null;
     }
     {
       faults = misnamed;
@@ -338,6 +406,20 @@ let
         "walkingD"
       ];
       reason = "walkingC to walkingA, the fore pair again";
+    }
+    {
+      strides = [
+        "walkingA"
+        "wrapB"
+        "wrapC"
+        "wrapD"
+        "wrapE"
+      ];
+      reason = "walkingA to wrapB, the fore pair again";
+    }
+    {
+      strides = [ ];
+      reason = "no strides";
     }
     {
       strides = [

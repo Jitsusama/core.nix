@@ -29,8 +29,8 @@ let
   # however the other one walks; with feet apart or gathered, that takes
   # four strides or more. Strides are drawn facing left: the fore half is
   # the left one, and the tail's tip is at the top right. What's found, as
-  # whether it holds and what it says, for readsAsOne and for the check that
-  # each skid is refused; `walkedFrom` is where the strides were read from,
+  # whether it holds and what it says, for readsAsOne and for the checks
+  # showing each fault refused; `walkedFrom` is where the strides were read from,
   # and `glyphs` the drawings, the theme's unless that check plants its own.
   poseFaults =
     {
@@ -394,8 +394,9 @@ in
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
   # held to its own sitting, as the cat's are to the cat's. Its poses are
-  # every mark drawn as its sitting's glyph, so a pose added for it can't
-  # skip these rules. Its strides are drawn for the cat's walk, so they're
+  # every mark named for it or drawn as its sitting's glyph, so a pose
+  # added for it can't skip these rules, nor every pose but the sitting
+  # when the sitting's glyph alone changes. Its strides are drawn for the cat's walk, so they're
   # the cat's, read from the cat's code and each named for the puppy, as
   # runningA would be puppyRunningA, rather than a copy that could drift.
   every-puppy-pose-reads-as-one-puppy =
@@ -414,23 +415,26 @@ in
       sitting = "puppySitting";
       walkedFrom = catWalkedFrom;
       strides = map named catWalk;
-      poses = lib.optionals (dog != null) (
-        lib.attrNames (lib.filterAttrs (_: mark: (mark.glyph or null) == dog) glyphs)
+      poses = lib.attrNames (
+        lib.filterAttrs (
+          name: mark: lib.hasPrefix "puppy" name || dog != null && (mark.glyph or null) == dog
+        ) glyphs
       );
     };
 
   # The pose rules refuse what they're for: the cat's own strides out of
   # order, alone, with a pair never stepping, a pair stepping twice
-  # running, after a pose that isn't a stride, undrawn, and none at all,
-  # each by its reason; a stride planted with its body moved on its top
-  # row, the row below, its middle or the row above its feet, and held
-  # with only its tail's tip moved; a foot moved either side of the feet's
-  # middle, on an odd width too; a pose planted with a pixel two cells
-  # from the rest refused, and one joined by a corner held; on the cat's
-  # sitting of 37, just under 15% fewer or more held and just over
-  # refused, on one of 20, 15% held and past it refused, and on one of 13,
-  # 2 more or fewer refused; a sitting misnamed said undrawn; and a stride
-  # no pose lists held to the stray rule (refusals).
+  # running, across the walk's end too, after a pose that isn't a stride,
+  # undrawn, and none at all, each by its reason; a stride planted with
+  # its body moved on its top row, the row below, its middle or the row
+  # above its feet, and held with only its tail's tip moved; a foot moved
+  # either side of the feet's middle, on an odd width too; a pose planted
+  # with a pixel two cells from the rest refused, and one joined by a
+  # corner held; on the cat's sitting of 37, just under 15% fewer or more
+  # held and just over refused, on one of 20, 15% held and past it
+  # refused, and on one of 13, 2 more or fewer refused; a sitting misnamed
+  # said undrawn; and a stride no pose lists held to the stray rule; all
+  # planted on copies of the cat's drawings (refusals).
   every-pose-fault-is-refused =
     let
       unrefused = builtins.toJSON refusals.poses;

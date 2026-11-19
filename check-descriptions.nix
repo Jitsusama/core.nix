@@ -1099,20 +1099,21 @@
   '';
   every-pose-fault-is-refused = ''
     the margin's animals' pose rules refuse the cat's own strides out of order, alone, with a
-    pair never stepping or stepping twice running, after a pose that isn't a stride, undrawn,
-    and none at all, each by its reason; a stride planted with its body moved on each row,
-    though not one with only its tail's tip moved; a foot moved either side of the feet's
-    middle, and on an odd width; a pose with a pixel two cells off, though not one joined by a
-    corner alone; and just over 15% fewer or more pixels, on sittings of 37, 20 and 13, though
-    not just under or on the line; and they say a misnamed sitting undrawn, and hold a stride
-    no pose lists to the stray rule
+    pair never stepping or stepping twice running, across the walk's end too, after a pose
+    that isn't a stride, undrawn, and none at all, each by its reason; a stride planted with
+    its body moved on its top row, the row below, its middle or above its feet, though not one
+    with only its tail's tip moved; a foot moved either side of the feet's middle, and on an
+    odd width; a pose with a pixel two cells off, though not one joined by a corner alone; and
+    just over 15% fewer or more pixels, on sittings of 37, 20 and 13, though not just under or
+    on the line; and they say a misnamed sitting undrawn, and hold a stride no pose lists to
+    the stray rule; all planted on copies of the cat's drawings
   '';
   every-puppy-pose-reads-as-one-puppy = ''
-    every pose of the margin's puppy, each mark drawn as its sitting's glyph, has no lit pixel
-    standing alone, a diagonal touching, and lit pixels within 15% of its own sitting's, each of
-    its strides steps one pair of feet with its body still, each pair in its turn over the walk,
-    and its sitting and strides are drawn; its strides are the walk the cat's code takes, each
-    named for the puppy
+    every pose of the margin's puppy, each mark named for it or drawn as its sitting's glyph,
+    has no lit pixel standing alone, a diagonal touching, and lit pixels within 15% of its own
+    sitting's, each of its strides steps one pair of feet with its body still, each pair in its
+    turn over the walk, and its sitting and strides are drawn; its strides are the walk the
+    cat's code takes, each named for the puppy
   '';
   every-script-finds-what-it-imports = ''
     every folder's Python that nix fmt hands mypy passes it when handed to it alone, as a script
