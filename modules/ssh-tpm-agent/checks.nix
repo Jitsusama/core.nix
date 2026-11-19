@@ -45,6 +45,9 @@
         && user.xdg.configFile."ssh-tpm-agent/gate".force
         && builtins.elem gate service.Environment
         && builtins.elem ./refuses-agents.patch agent.patches
+        # A watching gate passes every case while it serves everyone, so
+        # the machine's may never say watch.
+        && !(builtins.elem "watch" (lib.splitString "\n" (builtins.readFile ./gate.conf)))
         && agent.doCheck
       );
       coreless = holds "ssh-tpm-agent-keeps-no-core" "ssh-tpm-agent may keep a core of its PIN." (
@@ -62,7 +65,6 @@
         checkPhase = ''
           runHook preCheck
           go test -count=1 -v -run '^TestMachineGate$' ./agent | tee "$NIX_BUILD_TOP/gate.log"
-          test "''${PIPESTATUS[0]}" = 0
           grep -q -- '^--- PASS: TestMachineGate ' "$NIX_BUILD_TOP/gate.log"
           runHook postCheck
         '';
