@@ -26,10 +26,9 @@
 
   # A node's core holds what its process held: a pi's holds its session's
   # keys and tokens. A pi host keeps none (modules/pi/host.nix says why),
-  # but a pi in a terminal does. Six
-  # hours is long enough to read one for where it faulted, and the stack
-  # trace systemd-coredump wrote to the journal outlives it, so the core goes
-  # then, rather than staying the two weeks or 4 GB the rest may. Checked each
+  # but a pi in a terminal does. Six hours is long enough to read one for
+  # where it faulted, and the stack trace systemd-coredump wrote to the
+  # journal outlives it, so the core goes then, rather than staying the two weeks or 4 GB the rest may. Checked each
   # quarter hour, so none stays much past it, and each one removed is named in
   # the service's journal. Root's job, since the cores are.
   systemd.services.coredump-forget-node = {

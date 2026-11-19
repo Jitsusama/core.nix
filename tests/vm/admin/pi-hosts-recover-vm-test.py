@@ -136,15 +136,14 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
     # The signal would dump a core, which the host's limit of 0 refuses:
     # systemd-coredump says so rather than writing one, and still names the
     # signal, which is what a crash leaves.
-    host.machine.wait_until_succeeds(
-        "journalctl --no-pager -t systemd-coredump"
-        f" | grep -qF 'Resource limits disable core dumping for process {first} (sleep).'",
-        timeout=COMING_BACK,
-    )
-    coredump = host.machine.succeed("journalctl --no-pager -t systemd-coredump")
-    assert (
-        f"Process {first} (sleep) of user 1000 terminated abnormally with signal 6/ABRT" in coredump
-    ), coredump
+    for line in (
+        f"Resource limits disable core dumping for process {first} (sleep).",
+        f"Process {first} (sleep) of user 1000 terminated abnormally with signal 6/ABRT",
+    ):
+        host.machine.wait_until_succeeds(
+            f"journalctl --no-pager -t systemd-coredump | grep -qF '{line}'",
+            timeout=COMING_BACK,
+        )
     assert host.starts()[0] == first
     assert first not in host.starts()[1:]
     # It came back by itself, so nobody is told it's down.
