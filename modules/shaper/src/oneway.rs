@@ -685,13 +685,13 @@ impl Way {
     /// looks a little higher now and then, and keeps what the link carries
     /// while CAKE still holds a queue, and cut for a queue the probes saw,
     /// climbs back to where it held. Answers whether it set the rate.
-    fn own(&mut self, at: f64, dt: f64, ours: Ours, carried: f64, tunnel: Tunnel) -> bool {
-        // What got through the router once: a router dropping what it
-        // can't carry has our link carry more than its line. What TCP sent
-        // again of what our CAKE dropped crossed the link once, and got
-        // through.
+    fn own(&mut self, at: f64, dt: f64, ours: Ours, crossed: f64, tunnel: Tunnel) -> bool {
+        // What got through the router once, of what crossed the line as
+        // CAKE counted it: a router dropping what it can't carry has more
+        // cross than its line. What TCP sent again of what our CAKE
+        // dropped crossed once, and got through.
         let lost = ours.resent.saturating_sub(ours.dropped);
-        let through = (carried - crate::rate::float(lost)).max(0.0);
+        let through = (crossed - crate::rate::float(lost)).max(0.0);
         // A VPN riding the link sends at most its share of the link's rate,
         // so what it holds is judged by that, and a probe lifts the VPN past
         // the line held rather than only the link.
@@ -775,13 +775,18 @@ impl Way {
                 // Room is judged by what CAKE offered, as `held_back` is,
                 // so a starved CAKE sending under the probe's rate still
                 // climbs on what got through. Only what got through past
-                // the plateau is room: a link that takes less than CAKE's
-                // rate, as weak air does, would otherwise probe again at
-                // once for good, once it had climbed to what it takes.
+                // the plateau, by as much as `UNDER` allows for, is room:
+                // a link that takes less than CAKE's rate, as weak air
+                // does, would otherwise probe again at once for good, once
+                // it had climbed to what it takes, on its seconds' noise.
+                // So a CAKE climbs only while it sends more than 1 / (`UNDER`
+                // * `probe_up`) of a probe's rate, about 0.93 by default: one
+                // starved deeper keeps its plateau, which it can't fill
+                // anyway, and climbs once it sends its rate again.
                 if ours.queued
                     && !self.at_the_ceiling()
                     && through >= offered * UNDER
-                    && through > plateau
+                    && through * UNDER > plateau
                 {
                     // The link carried what CAKE offered over the plateau,
                     // with CAKE still holding a queue, so there is room
@@ -967,11 +972,13 @@ impl Way {
         let dt = self.last_at.map_or(0.0, |last| (at - last).clamp(0.0, 1.0));
         self.last_at = Some(at);
         self.starting_until.get_or_insert(at + STARTING_S);
-        // What crossed the line is what CAKE sent, where the shaper
-        // counted it: the link sends the home network's traffic too.
+        // What crossed the line is what CAKE sent, a follower's CAKE's
+        // with it, where the shaper counted it: the link sends the home
+        // network's traffic too, and none of a follower's. Judging the
+        // router by it, as `own` does, sets like against like.
         let line = ours
             .and_then(|o| o.sent)
-            .map_or(carried, |sent| carried.min(crate::rate::float(sent)));
+            .map_or(carried, crate::rate::float);
         self.prove(at, delay_ms, line);
         self.reach(at, line);
         let late = self.tuning.late_ms;
@@ -1056,7 +1063,7 @@ impl Way {
             }
         } else if let Some(ours) = ours
             && !standing
-            && self.own(at, dt, ours, carried, tunnel)
+            && self.own(at, dt, ours, line, tunnel)
         {
         } else if carried >= self.rate * FULL && delay_ms <= late {
             // As TCP's slow start does: far from any queue it has met, a
@@ -3741,7 +3748,8 @@ mod tests {
             limits = c.step(&Seen {
                 at_s: at,
                 up_kbit: rate,
-                // CAKE sent the rate, as live always counts it.
+                // CAKE counted what the link carried, as live does where
+                // nothing else at home sends.
                 up_ours: Some(Ours {
                     queued: queued(at),
                     waiting: true,
@@ -4080,7 +4088,7 @@ mod tests {
     #[test]
     fn a_cake_sending_under_its_rate_keeps_the_plateau() {
         let mut c = learned_at(8_000.0);
-        sending(&mut c, 50.0, 8_000.0, |rate| rate * 0.94, 0.0);
+        sending(&mut c, 50.0, 8_000.0, |rate, _| rate * 0.94, (0.0, 0.0));
         let plateau = c.up.plateau.expect("a plateau");
         assert!(
             plateau >= 7_900.0,
@@ -4089,11 +4097,13 @@ mod tests {
     }
 
     // Judged by what it sent, a starved CAKE is still held back by a
-    // router dropping what it can't carry, as live judges every second.
+    // router dropping what it can't carry: the judgement by the rate
+    // caught this too, so this guards the router's drops still being
+    // heard, not the 18 November fall.
     #[test]
     fn a_starved_cake_over_the_line_is_brought_under_it() {
         let mut c = learned_at(8_000.0);
-        let held = sending(&mut c, 30.0, 6_500.0, |rate| rate * 0.94, 0.0);
+        let held = sending(&mut c, 30.0, 6_500.0, |rate, _| rate * 0.94, (0.0, 0.0));
         assert!(near(held, 6_175.0), "held over the line: {held:?}");
     }
 
@@ -4102,9 +4112,35 @@ mod tests {
     #[test]
     fn a_count_over_the_rate_is_no_router_holding_it_back() {
         let mut c = learned_at(8_000.0);
-        sending(&mut c, 50.0, 20_000.0, |rate| rate, 7_000.0);
+        sending(&mut c, 50.0, 20_000.0, |rate, _| rate, (7_000.0, 0.0));
         let plateau = c.up.plateau.expect("a plateau");
         assert!(plateau >= 8_000.0, "taken for held back: {plateau}");
+    }
+
+    // A follower's sending crosses the line beside its leader's, so a
+    // starved leader with a follower sending is judged by both, not taken
+    // for held back by what the follower's CAKE sent.
+    #[test]
+    fn a_starved_leader_beside_a_sending_follower_keeps_the_plateau() {
+        let mut c = learned_at(8_000.0);
+        sending(&mut c, 50.0, 20_000.0, |rate, _| rate * 0.94, (700.0, 0.0));
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(plateau >= 7_900.0, "taken for held back: {plateau}");
+    }
+
+    // What the link sends to this network's machines never crosses the
+    // connection: a copy at home beside a probe is no room past the line,
+    // nor does it hide what the router drops.
+    #[test]
+    fn a_copy_at_home_is_no_room_past_the_line() {
+        let mut c = learned_at(6_000.0);
+        let held = sending(&mut c, 100.0, 6_500.0, |rate, _| rate, (0.0, 300_000.0));
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(plateau < 6_800.0, "the copy was taken for room: {plateau}");
+        assert!(
+            held.is_some_and(|held| held < 6_500),
+            "held over the line: {held:?}"
+        );
     }
 
     // A plateau a starved machine's CAKE left low, or one remembered from
@@ -4113,7 +4149,7 @@ mod tests {
     #[test]
     fn a_starved_cake_s_low_plateau_climbs_to_the_line() {
         let mut c = learned_at(5_000.0);
-        sending(&mut c, 70.0, 8_000.0, |rate| rate * 0.94, 0.0);
+        sending(&mut c, 70.0, 8_000.0, |rate, _| rate * 0.94, (0.0, 0.0));
         let plateau = c.up.plateau.expect("a plateau");
         assert!(plateau >= 7_800.0, "it never climbed: {plateau}");
     }
@@ -4124,9 +4160,46 @@ mod tests {
     #[test]
     fn a_link_taking_less_than_cake_s_rate_stops_probing_at_it() {
         let mut c = learned_at(5_000.0);
-        let held = sending(&mut c, 100.0, 20_000.0, |rate| rate.min(6_000.0), 0.0);
+        let held = sending(
+            &mut c,
+            100.0,
+            20_000.0,
+            |rate, _| rate.min(6_000.0),
+            (0.0, 0.0),
+        );
         assert_eq!(c.up.probing_until, None, "it probes for good");
         assert!(near(held, 5_700.0), "not held under the link: {held:?}");
+    }
+
+    // Nor is a probe read a little over the line, as a router's buffer
+    // lets one through for a moment: its probes wait their minute, rather
+    // than a reading within `UNDER` of the plateau setting a new one and
+    // the next probe going at once.
+    #[test]
+    fn a_probe_read_a_little_over_the_line_waits_its_minute() {
+        let mut c = learned_at(6_000.0);
+        let noisy = |rate: f64, _| {
+            if rate > 6_300.0 {
+                6_090.0
+            } else {
+                rate.min(6_000.0)
+            }
+        };
+        let mut ends = Vec::new();
+        let mut at = 0.0;
+        while at < 300.0 {
+            sending(&mut c, at + 0.1, 20_000.0, noisy, (0.0, 0.0));
+            if let Some(until) = c.up.probing_until
+                && ends.last() != Some(&until)
+            {
+                ends.push(until);
+            }
+            at += 0.1;
+        }
+        assert!(ends.len() >= 4, "it stopped probing: {ends:?}");
+        for pair in ends.windows(2) {
+            assert!(pair[1] - pair[0] > 30.0, "a probe went at once: {ends:?}");
+        }
     }
 
     fn learned_at(plateau: f64) -> Controller {
@@ -4138,16 +4211,18 @@ mod tests {
     }
 
     /// Steps a controller whose CAKE always holds a queue and sends what
-    /// `sends(rate)` says of its rate, until `to`, behind a router carrying
-    /// `line` and dropping the rest, which TCP sends again at once; CAKE's
-    /// count takes in `beside` too, as a leader's takes in its followers'.
-    /// Answers the rate held at the end.
+    /// `sends(rate, at)` says of its rate, until `to`, behind a router
+    /// carrying `line` and dropping the rest, which TCP sends again at
+    /// once; CAKE's count takes in `beside` too, as a leader's takes in
+    /// its followers', and the link carries `home` more, as it does what
+    /// it sends to this network's machines. Answers the rate held at the
+    /// end.
     fn sending(
         c: &mut Controller,
         to: f64,
         line: f64,
-        sends: impl Fn(f64) -> f64,
-        beside: f64,
+        sends: impl Fn(f64, f64) -> f64,
+        (beside, home): (f64, f64),
     ) -> Option<u64> {
         let mut at = c.last_at.map_or(0.0, |last| last + 0.1);
         let mut limits = Limits {
@@ -4156,7 +4231,7 @@ mod tests {
         };
         while at < to {
             let rate = c.up.limit().map_or(16_000.0, crate::rate::float);
-            let carried = sends(rate);
+            let carried = sends(rate, at);
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
@@ -4165,7 +4240,7 @@ mod tests {
             let kbit = |k: f64| k as u64;
             limits = c.step(&Seen {
                 at_s: at,
-                up_kbit: carried,
+                up_kbit: carried + home,
                 up_ours: Some(Ours {
                     queued: true,
                     waiting: true,
@@ -4408,13 +4483,22 @@ mod tests {
             let (down_kbit, down_ms) = down(c.down.limit(), at);
             let (up_kbit, queued) = up(rate, down_ms.is_some_and(|ms| ms > ACKS_LATE_MS));
             let read = quiet(0.0, 300.0)(at);
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a positive rate far under u64's range"
+            )]
+            let sent = up_kbit as u64;
             limits = c
                 .step(&Seen {
                     at_s: at,
                     up_kbit,
+                    // CAKE counts what the link carried, as live does with
+                    // nothing else at home sending.
                     up_ours: Some(Ours {
                         queued,
                         waiting: true,
+                        sent: Some(sent),
                         ..Ours::default()
                     }),
                     down_kbit,
@@ -4657,6 +4741,31 @@ mod tests {
         assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
     }
 
+    // So do late acks beside a starved CAKE holding a queue and sending
+    // under its rate, with the router passing all of it: judged by what
+    // it sent, nothing was held back.
+    #[test]
+    fn late_acks_beside_a_starved_cake_end_the_count() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(14_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let up = |rate: f64, late| {
+            if late {
+                (rate * 0.94, true)
+            } else {
+                (rate.min(12_000.0), rate < 12_000.0)
+            }
+        };
+        beside(&mut c, 0.0, 1.0, quick, up);
+        beside(&mut c, 1.0, 2.0, wandering, up);
+        beside(&mut c, 2.0, 3.5, quick, up);
+        assert_eq!(c.up.plateau, Some(14_000.0), "the count went on past them");
+        let (limits, _) = beside(&mut c, 3.5, 5.0, quick, up);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
     // Its acks late, the upload carries 2000 and then its line once
     // they come quick, the download still flowing, as the cable drains.
     #[test]
@@ -4726,13 +4835,21 @@ mod tests {
         while at < to {
             let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
             let (down_kbit, down_ms) = down(at);
+            let carried = rate.min(12_000.0);
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a positive rate far under u64's range"
+            )]
+            let sent = carried as u64;
             limits = c
                 .step(&Seen {
                     at_s: at,
-                    up_kbit: rate.min(12_000.0),
+                    up_kbit: carried,
                     up_ours: Some(Ours {
                         queued: rate < 12_000.0,
                         waiting,
+                        sent: Some(sent),
                         ..Ours::default()
                     }),
                     down_kbit,
