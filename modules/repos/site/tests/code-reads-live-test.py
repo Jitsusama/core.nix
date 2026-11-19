@@ -900,14 +900,18 @@ def test_the_map_draws_a_thread_for_each_cell_joining_two_repositories(
     expect(here.locator("a", has_text="notes"), "notes wasn't linked home").to_have_attribute(
         "href", "#repo=notes"
     )
-    # The keys on the map when its last tie goes are handed to the list, not dropped.
+    # The keys on the map when its last tie goes are handed to the list, not dropped, and said
+    # to be, so the next j isn't heard moving something else.
     code_page.locator("#ties-map").focus()
     mycelium_node.tell("cell", gone=["cell:W9TIES"])
     expect(code_page.locator("#ties"), "the map stayed once nothing joined").to_be_hidden()
     expect(code_page.locator("#list"), "the keys fell out of the page").to_be_focused()
+    expect(code_page.locator("#ties-said"), "the keys left the map unsaid").to_have_text(
+        "No cell at work joins two repositories now, so the keys are on the list."
+    )
 
 
-def test_the_maps_keys_walk_its_rows_and_open_one(code_page: Page, mycelium_node: StandIn) -> None:
+def test_the_maps_keys_walk_its_rows(code_page: Page, mycelium_node: StandIn) -> None:
     says_it_stands(code_page, "live")
     spanning(mycelium_node)
     rows = code_page.locator(TIE_ROWS)
@@ -1004,3 +1008,6 @@ def test_return_on_the_map_opens_a_repository_as_the_list_does(
     )
     rows.first.click()
     expect(code_page, "a click didn't open core").to_have_url(re.compile(r"#repo=owl%2Fcore$"))
+    expect(rows.first, "a click left the map's keys elsewhere").to_have_attribute(
+        "aria-selected", "true"
+    )

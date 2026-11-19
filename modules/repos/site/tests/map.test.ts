@@ -52,6 +52,26 @@ it("ties two repositories once, with every cell whose work spans both", () => {
   ]);
 });
 
+it("keeps two ties apart whatever their keys hold, a local folder's line breaks too", () => {
+  // A local repository is keyed by its folder, which may hold a line break, so these two ties'
+  // ends read alike when joined by one.
+  const keyed = (key: string, name: string, working: readonly Cell[] = []): Repository => ({
+    ...repository(name, working),
+    key,
+  });
+  const folders = [
+    keyed("local:x", "xa", [cell("C1", ["repo.ya"])]),
+    keyed("local:y\nz", "ya"),
+    keyed("local:x\nlocal:y", "ra", [cell("C2", ["repo.sa"])]),
+    keyed("z", "sa"),
+  ];
+  const tying = ties(folders).map((tie) => tie.cells.join());
+  assert.deepEqual(
+    tying.sort((one, other) => one.localeCompare(other)),
+    ["C1", "C2"],
+  );
+});
+
 it("ties nothing by a spelling two repositories share, though the other side may", () => {
   // Core's cells name a world two repositories are spelled as, so only world's own cells,
   // which name core, tie the two.
