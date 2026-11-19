@@ -574,11 +574,16 @@ in
         ];
         # A reading takes well under a second, but starved on a machine short
         # of memory it can stall for minutes. The writer ends one at 40 s
-        # itself, killing it five seconds on, keeping the last homes and
-        # saying so in a line, so a stall isn't a failure; this is the
-        # backstop for the writer itself stuck, fifteen seconds past its
-        # worst, since the same starved machine slows its own ending.
+        # itself, its CODE_SITE_WAITS default, killing it five seconds on,
+        # keeping the last homes and saying so in a line, so a stall isn't a
+        # failure; this is the backstop for the writer itself stuck, fifteen
+        # seconds past its worst, since the same starved machine slows its
+        # own ending.
         TimeoutStartSec = "60s";
+        # A read the out-of-memory killer ends is one more failure the writer
+        # keeps the last homes through and says in its line, so the unit ends
+        # well rather than systemd marking it failed for the kill.
+        OOMPolicy = "continue";
         Slice = "background.slice";
       };
     };

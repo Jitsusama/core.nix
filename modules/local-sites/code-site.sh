@@ -25,8 +25,10 @@ work=$(mktemp -d "$site/.repos.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
 waits=${CODE_SITE_WAITS:-40}
-# A wait of nothing would turn the bound off, and one past bash's arithmetic would wrap, so
-# only a whole number of seconds up to four digits stands.
+# A wait of nothing would turn the bound off, so only a whole number of seconds stands, and
+# four digits at most keeps it far from where bash's arithmetic wraps. The unit's own
+# TimeoutStartSec in home.nix, 60 s, is set to outlast the default and its five seconds'
+# grace, so a wait said past it would be cut short by systemd instead.
 if [[ ! $waits =~ ^[1-9][0-9]{0,3}$ ]]; then
   waits=40
 fi
@@ -42,16 +44,16 @@ fi
 if ((ended == 0)); then
   :
 elif ((ended == 124 || (ended == 137 && SECONDS - started > waits))); then
-  echo "repos read for over $waits s, as a machine short of memory or disk makes it;" \
-    "the last homes stay"
+  echo "repos read for over $waits s, as a starved machine makes it; the last homes stay"
   exit 0
 else
   said=$(< "$work/said")
   said=${said//$'\n'/ }
   said=${said:0:200}
-  # A read killed outright says nothing itself, so the signal says it.
+  # A read killed outright says nothing itself, so the signal says it, by the name a
+  # journal's reader knows it by.
   if ((ended > 128)); then
-    said="killed by signal $((ended - 128))${said:+: $said}"
+    said="killed by SIG$(kill -l $((ended - 128)))${said:+: $said}"
   fi
   echo "repos failed ($said); the last homes stay"
   exit 0
