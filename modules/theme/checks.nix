@@ -175,32 +175,46 @@ let
   # The walk the cat's code takes, read from the code that walks it, so its
   # check proves the walk that's drawn rather than a copy: the words WALKS
   # lists, when it's every list STRIDING strides by. Each is read whole, to
-  # its semicolon, spaces aside, and must be only what's meant, so anything
-  # else, another list, a stride written inline, an entry not a quoted
-  # word, something after its bracket or either not found, reads as no
-  # walk, which fails saying where it looked.
+  # its semicolon, and must be only what's meant, spaces allowed only
+  # between its parts; past it, WALKS is named only in STRIDING and
+  # STRIDING only read, so neither is declared twice. So anything else, another list, a
+  # stride written inline, an entry not a quoted word, something after its
+  # bracket, a copy commented out, a write to either or either not found,
+  # reads as no walk, which fails saying where it looked. A write from
+  # another file isn't seen; none of the cat's files writes either.
   walkIn =
     ways:
     let
-      # The constant's whole declaration, up to the semicolon that ends it,
-      # without its spaces.
+      # The constant's declaration, up to the semicolon that ends it.
       declared =
         name:
         let
           after = lib.splitString "const ${name} = " ways ++ [ "" ];
         in
-        lib.replaceStrings [ " " "\t" "\n" ] [ "" "" "" ] (
-          lib.head (lib.splitString ";" (lib.elemAt after 1))
-        );
+        lib.head (lib.splitString ";" (lib.elemAt after 1));
       walks = declared "WALKS";
       striding = declared "STRIDING";
-      word = "[\"'][A-Za-z]+[\"']";
-      stride = "[A-Za-z_]+:WALKS";
+      named = name: text: lib.length (lib.splitString name text) - 1;
+      # Every line STRIDING is named on past its declaration reads it, by
+      # a key, and writes nothing there.
+      onlyRead =
+        let
+          past = lib.drop 2 (lib.splitString "STRIDING" ways);
+          lines = map (piece: lib.head (lib.splitString "\n" piece)) past;
+          writes = line: builtins.match ".*][[:space:]]*=([^=].*)?" line != null;
+        in
+        lib.all (line: lib.hasPrefix "[" line && !writes line) lines;
+      s = "[[:space:]]*";
+      word = "(\"[A-Za-z]+\"|'[A-Za-z]+')";
+      stride = "[A-Za-z_]+${s}:${s}WALKS";
+      listed = one: "${s}(${one}${s},${s})*${one}${s},?${s}";
       words = map lib.head (lib.filter lib.isList (builtins.split "[\"']([A-Za-z]+)[\"']" walks));
     in
     lib.optionals (
-      builtins.match "\\[(${word},)*${word},?]" walks != null
-      && builtins.match "\\{(${stride},)*${stride},?}" striding != null
+      builtins.match "\\[${listed word}]${s}" walks != null
+      && builtins.match "\\{${listed stride}}${s}" striding != null
+      && named "WALKS" ways == 1 + named "WALKS" striding
+      && onlyRead
     ) words;
   catWalk = walkIn (builtins.readFile ../margin-cat/MarginCatWays.js);
   catWalkedFrom = "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js";
@@ -471,6 +485,12 @@ in
         (walkedOf "const WALKS = [\"walkingA\", ...RUNS];\n${striding}")
         (walkedOf "const WALKS = [\"walkingA\", \"walkingC\"].concat(RUNS);\n${striding}")
         (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: WALKS } || RUNS;")
+        (walkedOf "const WALKS = [\"walking A\", \"walkingC\"];\n${striding}")
+        (walkedOf "const WALKS = [\"walkingA', \"walkingC\"];\n${striding}")
+        (walkedOf "// ${strides}\nconst WALKS = [\"walkingA\", \"walkingB\"];\n${striding}")
+        (walkedOf "${strides}\n${striding}\nSTRIDING.runs = RUNS;")
+        (walkedOf "${strides}\n${striding}\nSTRIDING[\"runs\"] = RUNS;")
+        (walkedOf "${strides}\n${striding}\nWALKS.reverse();")
       ];
       # The same walk, spaced and quoted otherwise, still reads whole.
       reread = walkIn ''
@@ -481,6 +501,8 @@ in
           'walkingD',
         ];
         ${striding}
+        const strides = STRIDING[beat.kind];
+        const joined = STRIDING[was.kind] === STRIDING[beat.kind];
       '';
       passed = map (walk: "${walk.reason}, said ${(said walk.strides).said}") (
         lib.filter (walk: !refused walk) walks
