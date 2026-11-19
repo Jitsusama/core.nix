@@ -9,7 +9,8 @@
 //! runs as an account of its own and is the only writer of what root
 //! reads. The lender goes on choosing which builders to list, its proofs,
 //! stand-ins and floors included; this only refuses a line whose URI, key
-//! or host key it can't vouch for.
+//! or host key it can't vouch for, or that asks a standing builder for a
+//! system or more builds at once than the machine trusts it with.
 //!
 //! A line passes when its URI, compared whole since an `ssh-ng` query
 //! parameter overrides the line's own fields, its key and its host key
@@ -35,6 +36,7 @@
 use crate::vet::{self, Pinned};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -86,12 +88,19 @@ const REREAD: Duration = Duration::from_secs(600);
 const PATIENCE: Duration = Duration::from_secs(60);
 
 /// A builder root may trust, by the three fields of its line that say
-/// who root reaches and believes.
+/// who root reaches and believes, and what its line may ask of it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trusted {
     pub uri: String,
     pub key: String,
     pub host_key: String,
+    /// The systems its line may name, a standing builder's from the
+    /// machine's settings, since its owner lent it for those alone; a lent
+    /// builder is the lender's own, made for whatever it names.
+    pub systems: Option<Vec<String>>,
+    /// The most jobs its line may ask of it at once, where the machine
+    /// says.
+    pub max_jobs: Option<u64>,
 }
 
 /// A lent builder: its URI, and the files its lender names its instance
@@ -177,10 +186,27 @@ pub fn settings(text: &str) -> Result<Settings, String> {
         .ok_or("standing is missing")?
         .iter()
         .map(|item| {
+            let systems = item["systems"]
+                .as_array()
+                .ok_or("a standing entry lacks systems")?
+                .iter()
+                .map(|system| system.as_str().map(str::to_owned))
+                .collect::<Option<_>>()
+                .ok_or("a standing entry's systems hold more than text")?;
+            let max_jobs = match &item["maxJobs"] {
+                Value::Null => None,
+                jobs => Some(
+                    jobs.as_u64()
+                        .filter(|&jobs| jobs > 0)
+                        .ok_or("a standing entry's maxJobs isn't a count")?,
+                ),
+            };
             Ok(Trusted {
                 uri: field(item, "uri")?,
                 key: field(item, "key")?,
                 host_key: field(item, "hostKey")?,
+                systems: Some(systems),
+                max_jobs,
             })
         })
         .collect::<Result<_, String>>()?;
@@ -223,20 +249,93 @@ fn plain(field: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "-_.,=:/+".contains(c))
 }
 
+impl Trusted {
+    /// Whether this names the builder `uri`, reached with `key`, whose host
+    /// key is `host_key`.
+    fn names(&self, uri: &str, key: &str, host_key: &str) -> bool {
+        self.uri == uri && self.key == key && self.host_key == host_key
+    }
+
+    /// Whether a line may ask this builder for `systems`, comma-separated,
+    /// and `jobs` at once, read as Nix reads them: `-` for the systems is
+    /// this machine's own, and for the jobs is one.
+    fn allows(&self, systems: &str, jobs: &str) -> bool {
+        let own = own_system();
+        let systems = if systems == "-" {
+            own.as_str()
+        } else {
+            systems
+        };
+        let jobs = if jobs == "-" { "1" } else { jobs };
+        let systems_held = self.systems.as_ref().is_none_or(|held| {
+            systems
+                .split(',')
+                .all(|system| held.iter().any(|trusted| trusted == system))
+        });
+        let jobs_held = self
+            .max_jobs
+            .is_none_or(|most| jobs.parse::<u64>().is_ok_and(|asked| asked <= most));
+        systems_held && jobs_held
+    }
+}
+
+/// This machine's system as Nix names it, which a line's `-` stands for.
+fn own_system() -> String {
+    let os = match env::consts::OS {
+        "macos" => "darwin",
+        os => os,
+    };
+    format!("{}-{os}", env::consts::ARCH)
+}
+
+/// The eight fields Nix reads of a machines line, or none when it has
+/// another number of them.
+fn fields(line: &str) -> Option<[&str; 8]> {
+    line.split_whitespace().collect::<Vec<_>>().try_into().ok()
+}
+
+/// Whether `line` names a builder `trusted` holds but asks it for a system
+/// or more builds at once than it's trusted with, which says the machine's
+/// settings and the lender's disagree rather than that the line is forged.
+fn asks_more(line: &str, trusted: &[Trusted]) -> bool {
+    fields(line).is_some_and(|[uri, systems, key, jobs, .., host_key]| {
+        trusted
+            .iter()
+            .any(|one| one.names(uri, key, host_key) && !one.allows(systems, jobs))
+    })
+}
+
+/// What's said of `file` when lines of it are left out: `untrusted` naming
+/// a builder root can't trust and `asking` asking one for more than it's
+/// trusted with, which a person mends in different places.
+fn left_out(file: &str, untrusted: usize, asking: usize) -> Option<String> {
+    let untrusted = (untrusted > 0)
+        .then(|| format!("{untrusted} of {file}'s lines name a builder root can't trust"));
+    let asking = (asking > 0).then(|| {
+        format!(
+            "{asking} of {file}'s lines ask a standing builder for a system or more builds \
+             at once than the machine trusts it with"
+        )
+    });
+    let said: Vec<String> = [untrusted, asking].into_iter().flatten().collect();
+    (!said.is_empty()).then(|| format!("{}, so they're left out", said.join(", and ")))
+}
+
 /// Whether `line` names a builder `trusted` holds, in Nix's eight fields,
-/// each of the rest plain.
+/// asking it only for what it's trusted with, each of the rest plain.
 pub fn passes(line: &str, trusted: &[Trusted]) -> bool {
-    let fields: Vec<&str> = line.split_whitespace().collect();
-    let [
-        uri,
-        systems,
-        key,
-        jobs,
-        speed,
-        features,
-        mandatory,
-        host_key,
-    ] = fields[..]
+    let Some(
+        [
+            uri,
+            systems,
+            key,
+            jobs,
+            speed,
+            features,
+            mandatory,
+            host_key,
+        ],
+    ) = fields(line)
     else {
         return false;
     };
@@ -245,7 +344,7 @@ pub fn passes(line: &str, trusted: &[Trusted]) -> bool {
         .all(|field| plain(field))
         && trusted
             .iter()
-            .any(|one| one.uri == uri && one.key == key && one.host_key == host_key)
+            .any(|one| one.names(uri, key, host_key) && one.allows(systems, jobs))
 }
 
 /// The lines of `text` that pass, one a line, each ending in a newline.
@@ -873,6 +972,8 @@ fn trusted(
             uri: lent.uri.clone(),
             key: settings.key.clone(),
             host_key,
+            systems: None,
+            max_jobs: None,
         });
     }
     (trusted, lent_text)
@@ -962,10 +1063,11 @@ pub fn copy_once(settings: &Settings, keys: &mut HostKeys) {
         let passed = passing(text, &trusted);
         let dropped =
             text.lines().filter(|line| !line.trim().is_empty()).count() - passed.lines().count();
-        let left_out = format!(
-            "{dropped} of {file}'s lines name a builder root can't trust, so they're left out"
-        );
-        keys.say(file, (dropped > 0).then_some(left_out));
+        let asking = text
+            .lines()
+            .filter(|line| asks_more(line, &trusted))
+            .count();
+        keys.say(file, left_out(file, dropped - asking, asking));
         if let Err(error) = put(&settings.into.join(file), &passed) {
             eprintln!("nix-offload: couldn't write {file}: {error}");
         }
@@ -1003,7 +1105,111 @@ mod tests {
             uri: URI.to_owned(),
             key: KEY.to_owned(),
             host_key: HOST.to_owned(),
+            systems: None,
+            max_jobs: None,
         }]
+    }
+
+    /// A standing builder the machine lets build `systems`, `max_jobs` at once.
+    fn standing(systems: &[&str], max_jobs: Option<u64>) -> Vec<Trusted> {
+        vec![Trusted {
+            systems: Some(systems.iter().map(|&system| system.to_owned()).collect()),
+            max_jobs,
+            ..lent().remove(0)
+        }]
+    }
+
+    #[test]
+    fn a_standing_line_passes_for_the_systems_and_jobs_it_is_trusted_with() {
+        let both = standing(&["x86_64-linux", "aarch64-linux"], Some(8));
+        assert!(
+            passes(&line(URI, KEY, HOST), &both),
+            "a trusted line was refused"
+        );
+        let two = format!("{URI} aarch64-linux,x86_64-linux {KEY} 4 1 - - {HOST}");
+        assert!(
+            passes(&two, &both),
+            "a line naming both its systems was refused"
+        );
+        let unpinned = standing(&["x86_64-linux"], None);
+        let many = format!("{URI} x86_64-linux {KEY} 64 1 - - {HOST}");
+        assert!(
+            passes(&many, &unpinned),
+            "jobs were held to a count no one set"
+        );
+    }
+
+    #[test]
+    fn a_standing_line_naming_a_system_it_isnt_trusted_with_is_refused() {
+        let linux = standing(&["x86_64-linux"], None);
+        for systems in [
+            "aarch64-darwin",
+            "x86_64-linux,aarch64-darwin",
+            "x86_64-linux,",
+        ] {
+            let text = format!("{URI} {systems} {KEY} 4 1 - - {HOST}");
+            assert!(
+                !passes(&text, &linux),
+                "{systems} passed for a Linux builder"
+            );
+        }
+    }
+
+    #[test]
+    fn a_standing_line_asking_more_jobs_than_it_is_trusted_with_is_refused() {
+        let four = standing(&["x86_64-linux"], Some(4));
+        for jobs in ["5", "4x", "0x4"] {
+            let text = format!("{URI} x86_64-linux {KEY} {jobs} 1 - - {HOST}");
+            assert!(
+                !passes(&text, &four),
+                "{jobs} jobs passed where 4 are allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn a_dash_is_read_as_nix_reads_it_this_machines_system_and_one_job() {
+        let own = standing(&[&own_system()], Some(1));
+        let dashed = format!("{URI} - {KEY} - 1 - - {HOST}");
+        assert!(
+            passes(&dashed, &own),
+            "a dash asking what's trusted was refused"
+        );
+        let other = standing(&["riscv64-none"], Some(1));
+        assert!(
+            !passes(&dashed, &other),
+            "a dash passed for a builder not trusted with this machine's system"
+        );
+    }
+
+    #[test]
+    fn a_lent_builder_is_held_to_no_systems_or_jobs() {
+        let text = format!("{URI} aarch64-darwin,x86_64-linux {KEY} 64 1 - - {HOST}");
+        assert!(
+            passes(&text, &lent()),
+            "a lent builder's line was held to a pin"
+        );
+    }
+
+    #[test]
+    fn a_line_asking_more_is_told_apart_from_one_naming_an_untrusted_builder() {
+        let four = standing(&["x86_64-linux"], Some(4));
+        let more = format!("{URI} x86_64-linux {KEY} 8 1 - - {HOST}");
+        let forged = line(URI, KEY, OTHER);
+        assert!(asks_more(&more, &four), "a line asking 8 of 4 wasn't told");
+        assert!(
+            !asks_more(&forged, &four),
+            "a line naming another host key was told as asking more"
+        );
+        assert_eq!(left_out("machines", 0, 0), None);
+        assert_eq!(
+            left_out("machines", 1, 1).as_deref(),
+            Some(
+                "1 of machines's lines name a builder root can't trust, and 1 of machines's \
+                 lines ask a standing builder for a system or more builds at once than the \
+                 machine trusts it with, so they're left out"
+            )
+        );
     }
 
     #[test]
@@ -1124,6 +1330,8 @@ mod tests {
                 uri: "ssh-ng://builder@home".to_owned(),
                 key: "/etc/nix/home_ed25519".to_owned(),
                 host_key: OTHER.to_owned(),
+                systems: Some(vec!["x86_64-linux".to_owned()]),
+                max_jobs: Some(4),
             }],
             lent: vec![Lent {
                 uri: URI.to_owned(),
@@ -1899,7 +2107,9 @@ mod tests {
     #[test]
     fn settings_are_read_from_json() {
         let text = r#"{"from":"/run/nix-offload","into":"/run/nix-offload-lines","files":["machines"],
-            "key":"/etc/nix/offload_ed25519","standing":[{"uri":"u","key":"k","hostKey":"h"}],
+            "key":"/etc/nix/offload_ed25519","standing":[
+                {"uri":"u","key":"k","hostKey":"h","systems":["x86_64-linux"],"maxJobs":4},
+                {"uri":"v","key":"k","hostKey":"h","systems":["aarch64-linux"],"maxJobs":null}],
             "lent":[{"uri":"l","instance":"/run/nix-offload/instance","token":"/run/nix-offload/token"}],
             "project":"p","prefix":"offload-","zones":["z"],"gcloud":"/bin/gcloud",
             "startupScript":"/etc/startup","hookKey":"/etc/nix/offload_ed25519.pub",
@@ -1913,6 +2123,25 @@ mod tests {
         assert_eq!(
             read.standing[0].host_key, "h",
             "the standing host key was misread"
+        );
+        assert_eq!(
+            (&read.standing[0].systems, read.standing[0].max_jobs),
+            (&Some(vec!["x86_64-linux".to_owned()]), Some(4)),
+            "what a standing builder may build was misread"
+        );
+        assert_eq!(
+            read.standing[1].max_jobs, None,
+            "a standing builder with no count was held to one"
+        );
+        let unpinned = text.replacen(r#""systems":["x86_64-linux"],"#, "", 1);
+        assert!(
+            settings(&unpinned).is_err(),
+            "a standing builder with no systems was taken"
+        );
+        let negative = text.replacen(r#""maxJobs":4"#, r#""maxJobs":-1"#, 1);
+        assert!(
+            settings(&negative).is_err(),
+            "a standing builder of -1 jobs was taken"
         );
         assert_eq!(
             (read.startup_script, read.hook_key, read.images),
