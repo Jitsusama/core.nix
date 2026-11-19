@@ -11,6 +11,7 @@ use owner::first_owner;
 
 use crate::tracking::{self, Tracking};
 
+pub mod apps;
 mod balanced;
 mod broken;
 mod card;
@@ -38,12 +39,14 @@ pub use reports::{REPORTS_SINCE, Report, report, unasked};
 
 const DAY: i64 = 86_400;
 
-/// What a measure is about, in the order the drag is chosen from: a miss
-/// Joel found himself always comes first, then a date missed, then what
+/// What a measure is about, in the order the drag is chosen from: how
+/// his apps answer under load comes first, as Joel ranked it on 19
+/// November, then a miss he found himself, then a date missed, then what
 /// broke, then how fast things shipped, then how the cells doing it
 /// stand, then how clean the code is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Class {
+    Apps,
     Miss,
     Slip,
     Functional,
@@ -59,6 +62,7 @@ impl Class {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Apps => "his apps under load",
             Self::Miss => "his misses",
             Self::Slip => "slips",
             Self::Functional => "functional quality",
