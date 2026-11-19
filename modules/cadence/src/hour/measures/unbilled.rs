@@ -18,28 +18,47 @@ pub const KEY: &str = "budgets-billed-under-logged";
 /// behind the collection's `finding:`.
 const FINDING: &str = "finding:unbilled:";
 
-/// The key of the one finding a spend-watch on hold writes, which says
-/// nothing of any budget.
-const HELD: &str = "held";
+/// The keys of the findings that say no budget was judged: the one a
+/// spend-watch on hold writes, and the one saying the warehouse stopped
+/// settling its bill.
+const UNJUDGED: [&str; 2] = ["held", "finding:unbilled-unsettled"];
+
+/// How old spend-watch's heartbeat may be for its collection to be its
+/// word now, in seconds. It beats every thirty seconds, and stops beating
+/// eleven minutes after its last pass that worked, so a collection it
+/// rewrites only when its text changes is current while the beat is.
+const BEAT_WITHIN: f64 = 15.0 * 60.0;
 
 /// What the measure says.
 const SAYS: &str = "budgets billed under half what their sessions logged (by spend-watch)";
 
 /// What the measure says when there is no collection to read.
-const UNREAD: &str = " (spend-watch unread, on hold, or not written today)";
+const UNREAD: &str = " (spend-watch unread, stopped, on hold, or its bill unsettled)";
 
 /// Each budget spend-watch found billed under half what it logged, by the
 /// line its collection names it with, such as `Teal billed $27 of $250
 /// logged`, leaving out those Joel marked as expected. `collection` is
-/// spend-watch's `collection.json`, or `None` where none is fresh; that,
-/// or a spend-watch on hold, leaves the measure unjudged rather than in.
+/// spend-watch's `collection.json` and `status` its `status.json`, read
+/// at `now`, in seconds. A collection unread, a heartbeat stale or
+/// missing, a spend-watch on hold or a warehouse no longer settling
+/// leaves the measure unjudged rather than in.
 #[must_use]
-pub fn unbilled(collection: Option<&str>, owner: &str) -> Measure {
-    let read = collection.and_then(|text| serde_json::from_str::<Value>(text).ok());
+pub fn unbilled(collection: Option<&str>, status: Option<&str>, now: i64, owner: &str) -> Measure {
+    let beating = status
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .and_then(|status| status.get("heartbeat")?.as_f64())
+        .is_some_and(|beat| beat >= seconds(now) - BEAT_WITHIN);
+    let read = collection
+        .filter(|_| beating)
+        .and_then(|text| serde_json::from_str::<Value>(text).ok());
     let findings = read
         .as_ref()
         .and_then(|r| r.get("findings")?.as_array())
-        .filter(|findings| !findings.iter().any(|f| key(f) == Some(HELD)));
+        .filter(|findings| {
+            !findings
+                .iter()
+                .any(|f| key(f).is_some_and(|key| UNJUDGED.contains(&key)))
+        });
     let Some(findings) = findings else {
         return Measure {
             key: KEY.to_owned(),
@@ -72,6 +91,14 @@ fn key(finding: &Value) -> Option<&str> {
     finding.get("key")?.as_str()
 }
 
+/// `now` as the heartbeat counts it; seconds since 1970 are exact in an
+/// f64 for millennia.
+fn seconds(now: i64) -> f64 {
+    #[expect(clippy::cast_precision_loss, reason = "exact for any time now")]
+    let seconds = now as f64;
+    seconds
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,9 +117,17 @@ mod tests {
         {"key": "finding:burn:2026-11-18", "name": "A burn in s1"}
     ]}"#;
 
+    /// The moment the tests read at, 07:00 on 19 November.
+    const NOW: i64 = 1_795_089_600;
+
+    /// A status whose heartbeat is `ago` seconds before `NOW`.
+    fn beat(ago: i64) -> String {
+        format!(r#"{{"v": 1, "heartbeat": {}.5}}"#, NOW - ago)
+    }
+
     #[test]
     fn a_budget_billed_under_what_it_logged_is_past_its_target() {
-        let m = unbilled(Some(UNDER), "WCJQSG");
+        let m = unbilled(Some(UNDER), Some(&beat(30)), NOW, "WCJQSG");
         assert_eq!(m.now, 2.0);
         assert_eq!(m.target, Some(0.0));
         assert!(m.past().is_some(), "two budgets unbilled is past none");
@@ -108,7 +143,7 @@ mod tests {
     #[test]
     fn every_budget_billed_is_in() {
         let burn = r#"{"findings": [{"key": "finding:burn:x", "name": "A burn"}]}"#;
-        let m = unbilled(Some(burn), "WCJQSG");
+        let m = unbilled(Some(burn), Some(&beat(30)), NOW, "WCJQSG");
         assert_eq!(m.now, 0.0);
         assert_eq!(m.past(), None);
         assert_eq!(m.behind, [] as [String; 0]);
@@ -117,10 +152,32 @@ mod tests {
     #[test]
     fn no_collection_leaves_it_unjudged() {
         let held = r#"{"findings": [{"key": "held", "name": "Watch on hold"}]}"#;
-        for collection in [None, Some("not json"), Some("{}"), Some(held)] {
-            let m = unbilled(collection, "WCJQSG");
+        let unsettled = r#"{"findings": [{"key": "finding:unbilled-unsettled",
+            "name": "the warehouse's bill stopped settling"}]}"#;
+        for collection in [
+            None,
+            Some("not json"),
+            Some("{}"),
+            Some(held),
+            Some(unsettled),
+        ] {
+            let m = unbilled(collection, Some(&beat(30)), NOW, "WCJQSG");
             assert_eq!(m.target, None, "{collection:?}");
             assert!(m.says.ends_with(UNREAD), "{collection:?}");
         }
+    }
+
+    // A spend-watch that stopped, or whose passes stopped working, stops
+    // beating, and its last collection isn't its word now.
+    #[test]
+    fn a_stopped_spend_watch_leaves_it_unjudged() {
+        let stale = beat(16 * 60);
+        for status in [None, Some("{}"), Some("not json"), Some(stale.as_str())] {
+            let m = unbilled(Some(UNDER), status, NOW, "WCJQSG");
+            assert_eq!(m.target, None, "{status:?}");
+            assert!(m.says.ends_with(UNREAD), "{status:?}");
+        }
+        let m = unbilled(Some(UNDER), Some(&beat(14 * 60)), NOW, "WCJQSG");
+        assert_eq!(m.now, 2.0, "a beat within the quarter hour is current");
     }
 }

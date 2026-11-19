@@ -1404,6 +1404,12 @@ const UNBILLED_HOURS: i64 = 24;
 /// it on 17 and 18 November, so under half is spend gone to another key.
 const BILLED_AT_LEAST: f64 = 0.5;
 
+/// How far behind the hour a warehouse's settled bill may fall before the
+/// day it settled is too old to judge by: past it, the feed has stopped
+/// settling, and that is what's told. The picture keeps the logs' spend
+/// by hour back this far and a day more.
+const UNBILLED_STALE_HOURS: i64 = crate::picture::LISTED_HOURS - UNBILLED_HOURS;
+
 /// A budget whose logs priced more than its key was billed: its sessions'
 /// requests went on another key, the default's most likely, so its own
 /// allowance never saw them. From 23:00 on 17 November to 19:00 on the
@@ -1411,41 +1417,38 @@ const BILLED_AT_LEAST: f64 = 0.5;
 /// keys were billed nothing and $2.67, because the pi host wrote its own
 /// key over each conversation's.
 ///
-/// It's held over the hours every warehouse feed has settled, since a
-/// settled hour's bill no longer grows and a feed that lags holds the
-/// window back rather than reading as a key billing nothing. Both sides
-/// are pi's alone: the bill's `pi` tool, and the logs' list prices as the
-/// series attributes them, a run's agents to the budget of the session
-/// that started them. Only budgets a feed has billed pi for are judged,
-/// since one no feed bills is estimated from the logs and can't disagree
-/// with them.
+/// It's held over the hours every warehouse feed the config runs has
+/// settled, since a settled hour's bill no longer grows and a feed that
+/// lags holds the window back rather than reading as a key billing
+/// nothing. A feed settled more than two days behind has stopped, and
+/// that is told in place of any budget. Both sides are pi's alone: the
+/// bill's `pi` tool, and the logs' list prices as the picture's series
+/// attributed them, a run's agents to the budget of the session that
+/// started them. Only budgets a feed billed pi for before the window are
+/// judged, since one no feed bills is estimated from the logs and can't
+/// disagree with them, and a feed new within the day hasn't billed all of
+/// it.
 pub fn unbilled(
     picture: &Picture,
     history: &History,
     config: &Config,
 ) -> Result<Vec<Finding>, String> {
-    // The settled hours are [first, through), so the last is through's
-    // hour less one.
-    let through: Option<i64> = history
-        .db
-        .query_row(
-            "SELECT MIN(through) FROM settled WHERE source = 'warehouse'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(fail)?;
-    let Some(through) = through else {
+    let Some(through) = warehouse_settled(history, config)? else {
         return Ok(Vec::new());
     };
+    if through < crate::time::hour_of(picture.now) - UNBILLED_STALE_HOURS {
+        return Ok(vec![unsettled_finding(picture, through)]);
+    }
     let first = through - UNBILLED_HOURS;
     let budgets = &picture.budgets;
-    let mut ever_billed = HashSet::new();
+    let mut judged = HashSet::new();
     let mut billed: HashMap<String, f64> = HashMap::new();
     let mut statement = history
         .db
         .prepare(
-            "SELECT feed, budget, SUM(CASE WHEN hour >= ?1 AND hour < ?2 THEN dollars ELSE 0 END)
-             FROM billed WHERE source = 'warehouse' AND tool = 'pi' GROUP BY feed, budget",
+            "SELECT feed, budget, SUM(CASE WHEN hour >= ?1 AND hour < ?2 THEN dollars ELSE 0 END),
+             MIN(hour) FROM billed WHERE source = 'warehouse' AND tool = 'pi'
+             GROUP BY feed, budget",
         )
         .map_err(fail)?;
     let rows = statement
@@ -1454,31 +1457,92 @@ pub fn unbilled(
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, f64>(2)?,
+                row.get::<_, i64>(3)?,
             ))
         })
         .map_err(fail)?;
     for row in rows {
-        let (feed, budget, dollars) = row.map_err(fail)?;
+        let (feed, budget, dollars, since) = row.map_err(fail)?;
         let budget = budgets.of_record(&feed, &budget);
         *billed.entry(budget.clone()).or_default() += dollars;
-        ever_billed.insert(budget);
+        if since < first {
+            judged.insert(budget);
+        }
     }
-    let logged = crate::series::Inputs::read(history, budgets, first, through)?.listed();
+    let mut logged: HashMap<&str, f64> = HashMap::new();
+    for (hour, budget, list) in &picture.listed {
+        if (first..through).contains(hour) {
+            *logged.entry(budget.as_str()).or_default() += list;
+        }
+    }
     let through = picture
         .zone
         .clock(crate::time::hour_start(through), picture.now);
     let mut out: Vec<Finding> = logged
         .into_iter()
-        .filter(|(budget, _)| ever_billed.contains(budget) && !budgets.is_plan(budget))
+        .filter(|(budget, _)| judged.contains(*budget) && !budgets.is_plan(budget))
         .filter_map(|(budget, logged)| {
-            let paid = billed.get(&budget).copied().unwrap_or_default();
+            let paid = billed.get(budget).copied().unwrap_or_default();
             (logged - paid >= config.detectors.floor && paid < logged * BILLED_AT_LEAST)
-                .then(|| unbilled_finding(budgets, &budget, logged, paid, &through))
+                .then(|| unbilled_finding(budgets, budget, logged, paid, &through))
         })
         .collect();
     out.sort_by(|one, other| other.dollars.total_cmp(&one.dollars));
     Ok(out)
 }
+
+/// The hour through which every warehouse feed the config runs has
+/// settled, exclusive: none until one has. A feed removed or renamed in
+/// the config keeps its row, and doesn't hold the window back.
+fn warehouse_settled(history: &History, config: &Config) -> Result<Option<i64>, String> {
+    let runs: HashSet<&str> = config.feeds.iter().map(|feed| feed.name.as_str()).collect();
+    let mut statement = history
+        .db
+        .prepare("SELECT feed, through FROM settled WHERE source = 'warehouse'")
+        .map_err(fail)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(fail)?;
+    let mut through: Option<i64> = None;
+    for row in rows {
+        let (feed, settled) = row.map_err(fail)?;
+        if runs.contains(feed.as_str()) {
+            through = Some(through.map_or(settled, |through| through.min(settled)));
+        }
+    }
+    Ok(through)
+}
+
+/// What's told when the warehouse last settled `through` (exclusive), too
+/// long ago to judge any budget's bill by: none is judged until it
+/// settles again.
+fn unsettled_finding(picture: &Picture, through: i64) -> Finding {
+    let since = picture
+        .zone
+        .clock(crate::time::hour_start(through), picture.now);
+    let mut f = finding(
+        UNBILLED_UNSETTLED.into(),
+        "unbilled",
+        Severity::Warning,
+        "the warehouse's bill stopped settling".into(),
+        format!(
+            "The warehouse has settled pi's bill only to {since}, more than \
+             {UNBILLED_STALE_HOURS} hours ago, so no budget's bill is held against its \
+             logs until it settles again."
+        ),
+    );
+    f.badge = format!("to {since}");
+    f.note = format!("settled to {since}");
+    f.surprise = 2.0;
+    f
+}
+
+/// The key of the finding that says the warehouse stopped settling: not
+/// `unbilled:` and a budget's name, since it isn't one, and cadence reads
+/// it as the count unjudged.
+pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";
 
 /// What's told of `budget`, whose sessions logged `logged` dollars and
 /// whose key was billed `paid` in the window ending at `through`.
@@ -2262,11 +2326,26 @@ mod tests {
         for budget in ["", "teal", "ochre", "slate"] {
             billed_to(history, "2026-10-07T12:00:00Z", budget, 10.0);
         }
+        settled_to(history, "proxy", UNSETTLED);
+    }
+
+    /// The warehouse `feed` settled up to `through`, exclusive.
+    fn settled_to(history: &History, feed: &str, through: &str) {
         let settled = serde_json::json!({
-            "v": 1, "kind": "settled", "source": "warehouse", "through": UNSETTLED,
+            "v": 1, "kind": "settled", "source": "warehouse", "through": through,
         });
         let record = crate::feed::parse(&settled.to_string()).unwrap();
-        crate::feed::store(history, "proxy", &record, NOW).unwrap();
+        crate::feed::store(history, feed, &record, NOW).unwrap();
+    }
+
+    /// The config with the warehouse's one feed, as the machine runs it.
+    fn fed_config() -> Config {
+        serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+            "feeds": [{"name": "proxy", "label": "Proxy", "command": ["true"]}],
+        }))
+        .unwrap()
     }
 
     /// A council started from `parent` at `at`, its one agent `agent`, whose
@@ -2283,7 +2362,7 @@ mod tests {
     }
 
     fn unbilled_keys(history: &History) -> Vec<String> {
-        let config = config();
+        let config = fed_config();
         let picture = Picture::read(history, &config, NOW).unwrap();
         unbilled(&picture, history, &config)
             .unwrap()
@@ -2305,7 +2384,7 @@ mod tests {
         billed_to(&history, SETTLED, "ochre", 2.67);
         billed_for(&history, SETTLED, "river", "teal", 500.0);
         billed_to(&history, SETTLED, "", 6619.50);
-        let config = config();
+        let config = fed_config();
         let picture = Picture::read(&history, &config, NOW).unwrap();
         let found = unbilled(&picture, &history, &config).unwrap();
         let said: Vec<(&str, Severity, &str, &str)> = found
@@ -2399,5 +2478,60 @@ mod tests {
         billed_to(&history, SETTLED, "teal", 5.0);
         billed_to(&history, SETTLED, "", 300.0);
         assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+    }
+
+    // A session that last spoke before the day still lends its budget to
+    // the agents of a run it starts within it, as the picture's pieces do.
+    #[test]
+    fn a_runs_agent_keeps_its_sessions_budget_from_before_the_day() {
+        let history = History::memory();
+        billed_before(&history);
+        turn_as(
+            &history,
+            "s-teal",
+            IN_SETTLED - 30.0 * HOUR,
+            1.0,
+            Some("teal"),
+        );
+        turn_as(&history, "r1", IN_SETTLED + 60.0, 200.0, None);
+        council(&history, "s-teal", IN_SETTLED, "r1", 200.0);
+        billed_to(&history, SETTLED, "teal", 5.0);
+        billed_to(&history, SETTLED, "", 300.0);
+        assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+    }
+
+    // A warehouse that stopped settling two days ago is told, in place of
+    // any budget, rather than holding a day long past against its logs.
+    #[test]
+    fn a_warehouse_that_stopped_settling_is_told() {
+        let history = History::memory();
+        // A feed's settled hour only moves on, so this one is all it said.
+        billed_to(&history, "2026-10-07T12:00:00Z", "teal", 10.0);
+        settled_to(&history, "proxy", "2026-10-12T12:00:00Z");
+        // 11:30 on 12 October, in the last hour it settled.
+        turn_on(&history, NOW - 51.0 * HOUR, 100.0, Some("teal"));
+        assert_eq!(unbilled_keys(&history), [UNBILLED_UNSETTLED]);
+    }
+
+    // A feed the config no longer runs keeps its settled row, and doesn't
+    // hold the day back.
+    #[test]
+    fn a_feed_no_longer_run_holds_nothing_back() {
+        let history = History::memory();
+        billed_before(&history);
+        settled_to(&history, "gone", "2026-10-01T00:00:00Z");
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+    }
+
+    // A budget a feed first billed within the day hasn't been billed all
+    // of it, so it isn't judged until a whole day has.
+    #[test]
+    fn a_budget_first_billed_within_the_day_is_left_out() {
+        let history = History::memory();
+        billed_before(&history);
+        turn_on(&history, IN_SETTLED, 100.0, Some("umber"));
+        billed_to(&history, SETTLED, "umber", 1.0);
+        assert_eq!(unbilled_keys(&history), [] as [String; 0]);
     }
 }

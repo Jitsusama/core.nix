@@ -145,10 +145,11 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         ));
         measures.push(spent_beside_landed(&state_home, now));
         // spend-watch rewrites its collection only when its text changes,
-        // and this finding is judged over a day, so a day's collection is
-        // still its word.
+        // so its heartbeat, not the file's time, says whether it's current.
         measures.push(measures::unbilled::unbilled(
-            collection_since((now - DAY) * 1000).as_deref(),
+            spend_watch_file("collection.json").as_deref(),
+            spend_watch_file("status.json").as_deref(),
+            now,
             measures::ASKS,
         ));
     }
@@ -266,7 +267,17 @@ fn gather(
 /// stuck, and isn't read as today's.
 fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
     let midnight = midnight_ms(now, &TimeZone::system());
-    let collection = collection_since(midnight.max((now - 3600) * 1000));
+    let at = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(|r| PathBuf::from(r).join("spend-watch/collection.json"));
+    let written = at
+        .as_ref()
+        .and_then(|at| fs::metadata(at).and_then(|m| m.modified()).ok())
+        .and_then(|when| when.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|since| i64::try_from(since.as_millis()).ok());
+    let fresh = written.is_some_and(|ms| ms >= midnight && ms >= (now - 3600) * 1000);
+    let collection = at
+        .filter(|_| fresh)
+        .and_then(|at| fs::read_to_string(at).ok());
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
@@ -279,17 +290,10 @@ fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
     measures::spent::beside(collection.as_deref(), &landed, measures::ASKS)
 }
 
-/// spend-watch's collection, if its daemon wrote it at or after `since`,
-/// in milliseconds; it dates nothing inside it, so its file's time says.
-fn collection_since(since: i64) -> Option<String> {
-    let at = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(|r| PathBuf::from(r).join("spend-watch/collection.json"))?;
-    let written = fs::metadata(&at)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|when| when.duration_since(std::time::UNIX_EPOCH).ok())
-        .and_then(|age| i64::try_from(age.as_millis()).ok())?;
-    (written >= since).then(|| fs::read_to_string(at).ok())?
+/// One of the files spend-watch's daemon keeps in its runtime folder.
+fn spend_watch_file(name: &str) -> Option<String> {
+    let runtime = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?);
+    fs::read_to_string(runtime.join("spend-watch").join(name)).ok()
 }
 
 /// The last midnight in `zone` at or before `now`, in milliseconds; `now`
