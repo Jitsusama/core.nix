@@ -376,8 +376,8 @@ OPTIONS
   -h, --help                  this
 
 EXIT
-  0 done · 64 asked wrongly · 66 no such row · 69 the shell isn't answering
-  77 answered no, no one to ask, or the shell refused it
+  0 done · 64 asked wrongly · 66 no such row · 69 the desktop isn't answering
+  77 answered no, no one to ask, or the desktop refused it
 ```
 
 - **The first line** is the command's name, then what it's for in its own
@@ -474,7 +474,7 @@ command passes through from a program it runs:
 | 64   | `usage`       | asked wrongly: an unknown word or flag, a value it can't take            |
 | 65   | `bad-input`   | what it was given to read isn't what it reads                            |
 | 66   | `not-found`   | the thing named isn't there                                              |
-| 69   | `unavailable` | what it needs isn't answering: a daemon, the shell, a builder            |
+| 69   | `unavailable` | what it needs isn't answering: a daemon, the desktop, a builder          |
 | 70   | `bug`         | it broke in a way it shouldn't, and says where to report it              |
 | 75   | `try-again`   | not now: a lock is held, a builder is busy, the network is down          |
 | 77   | `refused`     | not done on purpose: a guard, a permission, a question answered no or with no one to answer it |

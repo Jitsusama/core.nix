@@ -74,7 +74,7 @@ while read -r line <&3 && [ "$line" != "Watches established." ]; do :; done
 
 ask() { qs ipc call askpass ask "$kind" "$asker" "$1" "$reply" > /dev/null; }
 if ! ask "$1"; then
-  echo "ssh-askpass: the shell isn't there to ask" >&2
+  echo "ssh-askpass: the desktop isn't there to ask" >&2
   exit 1
 fi
 every=3 unanswered=0
