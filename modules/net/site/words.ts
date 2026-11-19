@@ -262,13 +262,15 @@ function folded(word: string): string {
 }
 
 /**
- * A word as it reads to a person: without what shapes it, in net's case,
- * then composed as Unicode composes it. Shaping goes first so a joiner
- * between a letter and its mark can't keep them apart, and case before
- * composing so two words net folds to one always read as one.
+ * A word as it reads to a person: without what shapes it, composed as
+ * Unicode composes it, in any case, then composed again, since a small
+ * letter can take a mark its capital can't. Shaping goes first so a joiner
+ * between a letter and its mark can't keep them apart; every case folds so
+ * a capital reads as its small letter however it's written, as É, E and its
+ * mark, or the Kelvin sign.
  */
 function reads(word: string): string {
-  return folded(word.replace(UNSHAPED, "")).normalize("NFC");
+  return word.replace(UNSHAPED, "").normalize("NFC").toLowerCase().normalize("NFC");
 }
 
 /**
@@ -291,11 +293,13 @@ function findingWords(device: Device, devices: readonly Device[]): string[] {
     ...SHARED_IDS,
     ...others.flatMap((other) => [other.id, ...other.addresses, other.name]),
   ];
-  const nameFinds = taken.every((word) => reads(word) !== read);
+  // net's own rule, held exactly, beside how the words read.
+  const nameFinds = taken.every((word) => folded(word) !== folded(name) && reads(word) !== read);
   const address = device.addresses[0];
   const addressFinds =
     address !== undefined &&
     address !== device.id &&
+    !SHARED_IDS.has(address) &&
     others.every((other) => other.id !== address && !other.addresses.includes(address));
   return [
     ...(nameFinds ? [name] : []),

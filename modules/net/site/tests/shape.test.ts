@@ -163,6 +163,7 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     named("ÉCOLE", "mac:02:00:00:00:00:03"),
     named("Caf\u00e9", "mac:02:00:00:00:00:04"),
     named("Lo\u00adft", "mac:02:00:00:00:00:05"),
+    named("kitchen", "mac:02:00:00:00:00:06"),
   ];
   for (const [name, command] of [
     ["Hall", "net devices Hall"],
@@ -171,7 +172,6 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["Salle de séjour 📺", "net devices 'Salle de séjour 📺'"],
     ["Joel's \u2764\ufe0f phone", "net devices 'Joel'\\''s \u2764\ufe0f phone'"],
     ["\u{1f469}\u200d\u{1f4bb} desk", "net devices '\u{1f469}\u200d\u{1f4bb} desk'"],
-    ["école", "net devices 'école'"],
     // What the kit keeps to shape a word, mid-word: a soft hyphen, a
     // non-joiner, a flag's tags, Hangul's vowel filler, a Mongolian
     // selector and an ideograph's supplementary selector.
@@ -196,9 +196,10 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["\u845b\ufe00 \u845b\u{e01ef}", "net devices '\u845b\ufe00 \u845b\u{e01ef}'"],
     ["\u{1f3f4}\u{e0020}\u{e007f} den", "net devices '\u{1f3f4}\u{e0020}\u{e007f} den'"],
     // Beside Hangul's ranges that take no cell: the letter just past the
-    // first, and the last syllable, below the second.
+    // first, the last syllable, and the code point just below the second.
     ["a \u1200x", "net devices 'a \u1200x'"],
     ["a \ud7a3x", "net devices 'a \ud7a3x'"],
+    ["a \ud7afx", "net devices 'a \ud7afx'"],
     ["study", byId],
     ["10.0.0.2", byId],
     ["lamp-id", byId],
@@ -241,11 +242,17 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["lamp\u200d-id", byId],
     ["10.0.0\u00ad.2", byId],
     ["Cafe\u0301", byId],
-    // A joiner between a letter and its mark, and a capital net folds
-    // before its mark composes.
+    // A joiner between a letter and its mark, and a capital however it's
+    // written: with its mark, composed, or as the Kelvin sign.
     ["Cafe\u200d\u0301", byId],
     ["CAFE\u0301", byId],
-    // An id net gives several, which it reads as the first holding it.
+    ["CAF\u00c9", byId],
+    // A small letter net tells from its capital, though a person doesn't.
+    ["école", byId],
+    ["\u212acafe", "net devices '\u212acafe'"],
+    ["\u212aitchen", byId],
+    // An id net gives several, which it reads as the first holding it, and
+    // one that reads as it to a person, though net takes it as a name.
     ["mac:?", byId],
     ["EERO:unknown", byId],
   ] as const) {
@@ -274,7 +281,12 @@ it("a device is named by its name, else its address, else its id, or by none", (
       "net devices mac:02:00:00:00:00:0a",
       "with another's id as its address",
     ],
-    [named("Phone", "mac:?", ["mac:?"]), undefined, "with a shared id as its address"],
+    [named("Phone", "mac:?", ["mac:?"]), undefined, "with its own shared id as its address"],
+    [
+      named("Phone", "mac:02:00:00:00:00:0b", ["mac:?"]),
+      "net devices mac:02:00:00:00:00:0b",
+      "with a shared id as its address",
+    ],
     [named("Phone", "mac:?", ["10.0.0.9"]), undefined, "with another's address"],
     [named("Phone", "mac:?"), undefined, "with the id net gives every client without one"],
     [named("Phone", "eero:unknown"), undefined, "with the id net gives every eero without one"],
