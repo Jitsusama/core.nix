@@ -81,12 +81,13 @@ fn speaks(round: &Value) -> bool {
     let answered = round["outcomes"].as_array().is_some_and(|outcomes| {
         outcomes
             .iter()
-            .any(|outcome| outcome.get("failure").is_none_or(Value::is_null))
+            .any(|outcome| outcome.get("failure").is_none())
     });
     matches!(round["round"].as_str(), Some("council" | "stack"))
         && !flag("open")
         && !flag("closed")
-        && round.get("unpinned").is_none_or(Value::is_null)
+        && round.get("unpinned").is_none()
+        && round["startedAt"].is_string()
         && answered
 }
 
@@ -108,6 +109,7 @@ mod tests {
         let mut round = json!({
             "id": "council-1",
             "round": "council",
+            "startedAt": "2026-11-19T17:00:00.000Z",
             "witness": "aaa",
             "outcomes": [{"participantId": "a", "findingIds": [1], "answerPath": "/x"}],
         });
@@ -153,6 +155,7 @@ mod tests {
             json!({"unpinned": {"read": "checkout"}}),
             json!({"outcomes": [{"participantId": "a", "failure": "timed out"}]}),
             json!({"outcomes": []}),
+            json!({"startedAt": null}),
         ] {
             assert!(read(&[round(&extra)]).is_empty(), "{extra}");
         }
