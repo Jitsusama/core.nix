@@ -2,8 +2,8 @@
 # check holds it to: every linter core shares (treefmtModules.treefmt, from
 # modules/treefmt/treefmt.nix), at its strictest, test code's included, and
 # what only core has besides. ruff.toml and mypy.ini say how for Python,
-# .luacheckrc for Lua, biome.jsonc for JavaScript, TypeScript and JSON, and
-# .rumdl.toml for Markdown.
+# .shellcheckrc for shell, .luacheckrc for Lua, biome.jsonc for JavaScript,
+# TypeScript and JSON, and .rumdl.toml for Markdown.
 { pkgs, ... }:
 let
   # TOML and JSON laid out by hand before taplo and biome read them, each in
@@ -91,6 +91,7 @@ in
     "*.xml"
     "*.yml"
     ".luacheckrc"
+    ".shellcheckrc"
     "modules/ghostty/config"
     "modules/gimp/gimprc"
     "modules/gimp/shortcutsrc"
