@@ -236,6 +236,38 @@
       "Quickshell's unit doesn't hold jemalloc to one arena, so its threads keep freed memory apart."
       (lib.elem "MALLOC_CONF=narenas:1" (lib.toList environment));
 
+  # Qt gives each window's GL context a second one for drawing decorations,
+  # which the shell's windows never have (the unit's Environment says what
+  # each costs). The unit has to set the variable, and the Qt the shell runs
+  # on has to still hold its name whole, so a bump that renamed it fails
+  # here rather than bringing the second contexts back unseen. Whether Qt
+  # still decides the second context by it is beyond what any check here
+  # sees, since the lab draws in software.
+  quickshell-draws-each-window-on-one-context =
+    let
+      home = account graphical;
+      service = home.systemd.user.services.quickshell.Service;
+      environment = service.Environment or [ ];
+      setting = "QT_WAYLAND_DISABLE_WINDOWDECORATION";
+      # The binary the unit starts, beside the wrapper it names, so the Qt
+      # read is the patched one the shell is built on rather than the
+      # machine's.
+      start = lib.head (lib.toList service.ExecStart);
+      shell = "${dirOf (lib.head (lib.splitString " " start))}/.quickshell-wrapped";
+      script = ../tests/qt-holds-its-setting.sh;
+    in
+    if lib.elem "${setting}=1" (lib.toList environment) then
+      pkgs.runCommandLocal "quickshell-draws-each-window-on-one-context"
+        { nativeBuildInputs = [ pkgs.patchelf ]; }
+        ''
+          ${lib.getExe pkgs.bash} ${script} ${shell} libQt6WaylandClient.so.6 ${setting}
+          touch $out
+        ''
+    else
+      holds "quickshell-draws-each-window-on-one-context"
+        "Quickshell's unit leaves Qt making a decorations context beside each window's own."
+        false;
+
   # Qt's own compiler takes every file of the shell as the account gets it,
   # the greeter's included, on the Qt the shell runs on
   # (modules/quickshell/tests/qml-compiles.sh).

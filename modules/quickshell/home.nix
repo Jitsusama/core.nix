@@ -865,6 +865,7 @@ let
   # takes it (Environment, below).
   shellEnvironment = [
     "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0"
+    "QT_WAYLAND_DISABLE_WINDOWDECORATION=1"
     "MALLOC_CONF=narenas:1"
     "QS_DISABLE_FILE_WATCHER=1"
     "QV4_PROFILE_WRITE_PERF_MAP=1"
@@ -2770,6 +2771,21 @@ in
         # locked (2026-10-31). With no timeout a late callback changes nothing;
         # a frame drawn while one is owed still waits for it, a tenth of a
         # second at most.
+        #
+        # Qt makes each window's GL context a second one, to draw the
+        # window's decorations in, whenever the display could have them
+        # (Qt 6.12's qwaylandglcontext.cpp). The shell's windows are layer
+        # surfaces and the lock's session-lock surface, which never have any,
+        # so half its contexts drew nothing: twelve for six windows on Joel's
+        # shell, with two driver threads each (2026-11-19), and more with each
+        # screen the wallpaper and margin cover. A headless program making
+        # contexts on his GPU's render node the same day found each holds
+        # 3.8 MB of GPU memory and 0.4 MB of malloc, and takes 7 to 41 ms to
+        # make, paid as its window is first shown. Programs Joel opens start
+        # through niri, so they don't take this. The helpers the shell runs
+        # itself do, but none draws a window, and niri asks every client to
+        # leave out its own decorations anyway. shell-preview and the nested
+        # niri checks run outside this unit, and keep the second contexts.
         #
         # Quickshell allocates through jemalloc, which gives each of its 20 to
         # 30 threads an arena of its own (four for each CPU), and each arena

@@ -3001,6 +3001,10 @@
     Qt's own compiler compiles every file of the account's shell and the greeter without refusing or
     crashing
   '';
+  quickshell-draws-each-window-on-one-context = ''
+    the account's Quickshell unit tells Qt to make no decorations context beside each window's own,
+    by a name the Qt it runs on still holds whole
+  '';
   quickshell-opens-programs-through-niri = ''
     programs the shell opens survive the shell restarting
   '';
