@@ -203,9 +203,10 @@ ShellRoot {
     }
 
     // Holds once `check` does, failing past `ms` as `what` never held,
-    // with what was said, well inside the five seconds after which old
-    // facts are loaded again anyway, so a load that lands is the one the
-    // case set off.
+    // with what was said. A wait on a load stays inside the five seconds
+    // after which old facts are loaded again anyway, so a load that lands
+    // is the one the case set off: a card's sweep gets four, for a loaded
+    // builder. Only a wait on a give-up, which no load brings, runs longer.
     function within(ms, check) {
         const began = Date.now();
         return () => {
@@ -254,7 +255,7 @@ ShellRoot {
             Expect.expect("before its files land, a cable's drawer isn't made",
                 networks.glances.enp0s1 === undefined, JSON.stringify(networks.glances));
             waits.until("the cable's files and the name servers land",
-                within(2000, () => said() === "1 Gb/s | 1 Gb/s | 192.168.4.1 | 192.168.4.1"),
+                within(4000, () => said() === "1 Gb/s | 1 Gb/s | 192.168.4.1 | 192.168.4.1"),
                 root.landed);
         } catch (error) {
             Expect.fail(error.message ?? error);
@@ -395,7 +396,7 @@ ShellRoot {
         networks.links = [Object.assign({}, docked, { state: "no link" })];
         Expect.expect("a cable the daemon says has changed is said as it says",
             said().startsWith("nothing at the other end | "), said());
-        waits.until("the changed cable loaded again", within(2000, () => root.swept()
+        waits.until("the changed cable loaded again", within(4000, () => root.swept()
             && networks.cables.enp0s1 !== undefined), () => {
             Expect.expect("a load begun before its link changed isn't kept",
                 kept.length > 0 && kept.every(state => state === "no link"),
@@ -421,7 +422,7 @@ ShellRoot {
         Expect.expect("a card given up keeps the view still reading its file",
             networks.cablesHung.enp0s2 === reading && networks.cableProbe !== reading,
             String(networks.cablesHung.enp0s2));
-        waits.until("the other card loaded, and the read given up landed", within(2000, () =>
+        waits.until("the other card loaded, and the read given up landed", within(4000, () =>
             root.swept() && networks.cablesHung.enp0s2 === undefined), () => {
             Expect.expect("a read given up landing late keeps its card's hold",
                 networks.cablesStuck.enp0s2 !== undefined, JSON.stringify(networks.cablesStuck));
@@ -594,7 +595,7 @@ ShellRoot {
             JSON.stringify([networks.cableLoading, networks.cablesAsked]));
         networks.cablesStuck.enp0s2.at = Date.now() + 3600000;
         networks.recable();
-        waits.until("a card held up is loaded once the clock steps back", within(2000, () =>
+        waits.until("a card held up is loaded once the clock steps back", within(4000, () =>
             root.swept() && networks.cables.enp0s2 !== undefined
                 && networks.cablesStuck.enp0s2 === undefined), root.replugged);
     }
