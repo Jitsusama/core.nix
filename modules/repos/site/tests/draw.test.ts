@@ -137,6 +137,37 @@ it("names each cell's link to one home apart, so a redraw finds the cell's own a
   }
 });
 
+it("leads a tree's cell on to the other repositories it works across, each where Code shows it", () => {
+  const notes = "github:owl/notes";
+  const both = [
+    ...records,
+    { key: `repository:${notes}`, kind: "repository", name: "notes", owner: "owl" },
+    {
+      key: "checkout:/home/ada/src/notes",
+      kind: "checkout",
+      repository: notes,
+      path: "/home/ada/src/notes",
+      bare: false,
+      head: { branch: "main", commit: "c3" },
+    },
+  ];
+  // One cell at work across notes, and one resting there, which gets nothing done between them.
+  const across = cellsOf({
+    cells: [
+      { name: "W9TIES", title: "Join the notes", standing: "moving", networks: ["repo.notes"] },
+      { name: "R0REST", title: "Resting", standing: "dormant", networks: ["repo.notes"] },
+    ].map((cell) => ({ ...cell, cwd: `${tree}/src` })),
+  });
+  const whole = groveOf(told(both), across, NOW);
+  const opened = whole?.repositories.find((each) => each.key === repository);
+  assert.ok(whole !== undefined && opened !== undefined, "the records drew no repository");
+  const context = { now: NOW, home: "/home/ada", homes: () => undefined };
+  const markup = drawer(opened, whole, context, new Set(["today"]));
+  const lead = `<span class="cell-across">also in <a href="#repo=owl%2Fnotes" data-key="across:W9TIES:${notes}">notes</a></span>`;
+  assert.ok(markup.includes(lead), `W9TIES didn't lead on to notes: ${markup}`);
+  assert.equal(markup.split("cell-across").length, 2, `a cell not at work led on: ${markup}`);
+});
+
 it("puts what was searched for as words when nothing is named like it", () => {
   const markup = rows([], NOW, HOSTILE);
   assert.ok(asWords(markup), `the list put what was searched for in as markup: ${markup}`);
