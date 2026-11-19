@@ -114,6 +114,9 @@ in
     # Word lists, one per line: a dictionary, glyphs, paths and check names.
     "*.txt"
     "*.add"
+    # What was said in a meeting, a line each with its times and speaker,
+    # that call-transcripts' score holds what it hears to.
+    "*.ref"
     # The licences that came with code taken from another project, kept
     # beside it word for word.
     "*/LICENSE.*"

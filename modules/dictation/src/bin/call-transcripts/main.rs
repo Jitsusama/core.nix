@@ -32,6 +32,10 @@
 //! call-transcripts hear MODEL_DIR CLIP.wav...
 //!     print what's said in each 16 kHz mono WAV, heard whole as one take,
 //!     a line each, which is how a model's mishearings are counted
+//! call-transcripts score MODEL_DIR SET [CEILING]
+//!     write down each meeting in SET as a call and print the share of
+//!     its words each side got wrong, written down and heard alone
+//!     (score.rs); fail when the set's, written down, is above CEILING
 //! call-transcripts summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md [NAME]
 //!     print the summary of the call titled TITLE that a transcript
 //!     writes down (summary.rs), the others on it called NAME if given,
@@ -67,6 +71,7 @@ mod private;
 mod receptor;
 mod rings;
 mod said;
+mod score;
 mod summarizer;
 mod summary;
 
@@ -126,6 +131,17 @@ fn help() -> Help {
                 .exit(Exit::Failed, "the model failed or a file can't be read"),
         )
         .subcommand(
+            Help::new("score", "how many words of meetings it gets wrong")
+                .argument("<model-dir>", "the speech model's folder")
+                .argument("<set>", "the meetings' folder, as meetings.nix lays it out")
+                .argument("[ceiling]", "the most percent wrong that passes")
+                .example("call-transcripts score ~/m ~/set 19", "fails above 19%")
+                .exit(
+                    Exit::Failed,
+                    "a file can't be read, or it's above the ceiling",
+                ),
+        )
+        .subcommand(
             Help::new("summarize", "the summary a transcript makes")
                 .argument("<summarizer-dir>", "the language model's folder")
                 .argument("<title>", "the call's title")
@@ -175,6 +191,14 @@ fn act(args: &[String]) -> Result<(), Failure> {
             transcribe(Path::new(model), Path::new(mine), Path::new(theirs))
         }
         ["hear", model, ref clips @ ..] if !clips.is_empty() => hear_clips(Path::new(model), clips),
+        ["score", model, set] => score::score(Path::new(model), Path::new(set), None),
+        ["score", model, set, ceiling] => match ceiling.parse::<f64>() {
+            Ok(most) => score::score(Path::new(model), Path::new(set), Some(most)),
+            Err(_) => {
+                return Err(Failure::new(Exit::Usage, "the ceiling is a percentage")
+                    .try_this(format!("call-transcripts score {model} {set} 19")));
+            }
+        },
         // The kit has refused a word no subcommand answers to, so only a
         // subcommand given too few or too many words is left.
         [first, ..] => {
