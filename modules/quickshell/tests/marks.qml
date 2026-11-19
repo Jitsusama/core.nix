@@ -214,6 +214,11 @@ QtObject {
                 { notices: [critical, { id: 8, urgency: "normal" }],
                     joined: [{ id: 8, urgency: "normal" }, critical] },
                 "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 0, joined 2"],
+            // Its card up, it still counts: its row stands under its cell
+            // while the card says it, and one rule counts that row.
+            ["a notice joining its cell counts with its card up",
+                { notices: [critical], joined: [critical], onScreen: ["7"] },
+                "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 0, joined 1"],
             ["a source that isn't a list holds nothing",
                 { wanting: null, notices: "x", joined: "x" }, none]
         ];

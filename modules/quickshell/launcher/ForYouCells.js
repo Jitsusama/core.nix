@@ -137,7 +137,7 @@ function joining(notices, held, wanting, putOff) {
 // For You is open is (Lately.js's holdingStill), whose `read` alone moves.
 function alike(kept, joined) {
     const before = Array.isArray(kept) ? kept : [];
-    const same = (one, other) => ["id", "summary", "body", "urgency", "at"]
+    const same = (one, other) => ["id", "summary", "body", "urgency", "at", "cell"]
         .every(field => one[field] === other[field]);
     return before.length === joined.length
         && joined.every((notice, at) => same(notice, before[at])) ? before : joined;

@@ -1092,12 +1092,14 @@ ShellRoot {
         expect("a low notice stands nowhere and counts nothing",
             noticed().length === 0 && ForYouHolds.count === 0,
             JSON.stringify([noticed().length, ForYouHolds.count]));
-        Notices.history = [Object.assign({}, raised, { urgency: "critical" })];
-        // Once it asks Joel something, its want's row says it, so it leaves.
+        Notices.history = [raised];
+        // Once it asks Joel something, its want's row says it, so it leaves,
+        // and the want is what's counted, once.
         Sessions.wanting = [Object.assign({}, raising, { presence: Object.assign({},
             raising.presence, { wants: { kind: "question", said: "Which?" } }) })];
         expect("a notice of a session wanting Joel is its want's to say",
-            noticed().length === 0, String(noticed().length));
+            noticed().length === 0 && ForYouHolds.count === 1 && now.waiting.side === "1 to do",
+            JSON.stringify([noticed().length, ForYouHolds.count, now.waiting.side]));
         Sessions.wanting = [];
         Sessions.running = [];
         Notices.history = [];

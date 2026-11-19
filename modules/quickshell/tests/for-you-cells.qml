@@ -156,6 +156,13 @@ QtObject {
         const reworded = [raised(1, { summary: "Run ended" }), raised(2)];
         expect("one replaced with new words makes it anew",
             Cells.alike(keptOnes, reworded) === reworded, true);
+        // Replaced in place, it weighs from when it came again, and stands
+        // under whichever session it names now.
+        const later = [raised(1, { at: 5 }), raised(2)];
+        expect("one replaced later makes it anew", Cells.alike(keptOnes, later) === later, true);
+        const moved = [raised(1, { cell: "mycelium:cell/BBBBBB" }), raised(2)];
+        expect("one naming another session makes it anew",
+            Cells.alike(keptOnes, moved) === moved, true);
         expect("nothing kept yet, what joined", Cells.alike(undefined, another) === another,
             true);
         // It stands among what needs Joel now, waiting since it came, so
