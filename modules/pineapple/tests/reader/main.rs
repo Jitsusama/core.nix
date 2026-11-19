@@ -437,6 +437,12 @@ fn decisions(home: &Path) -> Vec<Value> {
         .collect()
 }
 
+/// When the reader last marked what it judged, if it has.
+fn marked(home: &Path) -> Option<u64> {
+    let kept = std::fs::read_to_string(home.join("state/pineapple/judged.json")).ok()?;
+    serde_json::from_str::<Value>(&kept).ok()?["read_at"].as_u64()
+}
+
 /// Waits until the reader has written `count` decisions, or says it's stuck.
 fn until_decided(home: &Path, count: usize) {
     let began = Instant::now();
@@ -458,6 +464,19 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     let home = home();
     let mut first = reader(&home, &origin);
     until_decided(&home, 4);
+    // A round marks what it judged only once it ends, so the reader stops
+    // once a mark from after the last decision is there, not at it.
+    let decided = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("after 1970");
+    let began = Instant::now();
+    while marked(&home).is_none_or(|at| u128::from(at) < decided.as_millis()) {
+        assert!(
+            began.elapsed() < PATIENCE,
+            "the reader never marked what it judged"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
     first.kill().expect("the reader stops");
     first.wait().expect("the reader is gone");
 
