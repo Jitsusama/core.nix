@@ -62,6 +62,7 @@ use std::io::{BufRead, BufReader};
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -319,11 +320,18 @@ impl Keeper {
 }
 
 /// A nonce no proof before has used.
+///
+/// The time alone isn't one: a Mac's clock moves in microseconds, so two
+/// asked within one read the same, and a Mac's build of this failed its
+/// test on it on 19 November. A count of those this process made tells
+/// them apart.
 fn nonce() -> String {
+    static MADE: AtomicU64 = AtomicU64::new(0);
     let since = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_nanos());
-    format!("{since}-{}", std::process::id())
+    let made = MADE.fetch_add(1, Ordering::Relaxed);
+    format!("{since}-{}-{made}", std::process::id())
 }
 
 /// What starts the line a proof says its builder's free bytes on, after
@@ -1256,7 +1264,11 @@ mod tests {
                  requiredSystemFeatures = [ \"own\" \"big-parallel\" ]; }"
             )
         );
-        assert_ne!(nonce(), nonce(), "each proof's own");
+        let nonces: Vec<String> = (0..10_000).map(|_| nonce()).collect();
+        let mut each = nonces.clone();
+        each.sort();
+        each.dedup();
+        assert_eq!(each.len(), nonces.len(), "each proof's own, asked at once");
         let measuring = expression("17-3", None, &[], Some("/nix/store/abc-coreutils"));
         assert!(
             measuring.contains(
