@@ -100,6 +100,17 @@ QtObject {
         const walking = ["goes", "climbs", "turns", "thinks", "settles", "lands",
             "shakes"];
         const striding = ["goes", "climbs"];
+        // And each change between two strides moves one pair of feet, never
+        // both, nor a pair back but onto its stand as it holds there, drawn
+        // as stride B, as margin-cat-floats.qml holds a walk alone to.
+        const strideOrder = ["walkingA", "walkingC", "walkingB", "walkingD"];
+        const standsIn = ["turns", "thinks", "settles", "grabs"];
+        const stepsBadly = (before, one) => {
+            const on = (strideOrder.indexOf(one.pose) - strideOrder.indexOf(before) + 4) % 4;
+            return strideOrder.includes(before) && strideOrder.includes(one.pose)
+                && (on % 2 === 0 || on === 3
+                    && !(one.pose === "walkingB" && standsIn.includes(one.beat)));
+        };
         const flashes = (journey, said) => {
             let run = null;
             const skids = () => {
@@ -128,6 +139,9 @@ QtObject {
                         + `${run.first.beat} to ${run.last.beat}`);
                 if (run !== null && run.pose)
                     skids();
+                if (run !== null && stepsBadly(run.pose, { pose, beat: one.beat }))
+                    wrong.push(`${said} skids from ${run.pose} into ${pose} at ${t} ms, `
+                        + `${run.last.beat} to ${one.beat}`);
                 run = { pose, begins: t, ends: t, first: one, last: one,
                     walks: walking.includes(one.beat), goes: striding.includes(one.beat) };
             }

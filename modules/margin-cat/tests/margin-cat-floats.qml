@@ -406,9 +406,12 @@ QtObject {
             [1, 1, 0, 1]);
         // And each stride it steps into is drawn for 25 ms at least, all
         // but the one it was set off in, drawn before.
-        const flashesIn = drawn => drawn.filter((one, i, all) => i > 0
+        const flashesIn = drawn => drawn.filter((one, i, all) => one.t >= 0
             && i < all.length - 1 && strideOrder.includes(one.pose) && all[i + 1].t - one.t < 25)
             .map(one => `${one.pose} at ${one.t}`);
+        expect("a stride drawn under 25 ms flashes, set off in nothing too, but the one before",
+            [-1, 0].map(t => flashesIn([{ pose: "walkingD", t }, { pose: "walkingA", t: 10 },
+                { pose: "walkingC", t: 60 }])), [[], ["walkingD at 0"]]);
         // Hurried back the way it faced, it turns, standing, then walks.
         const turnsBack = Paths.walk({ x: 300, y: 7 }, { x: 100, y: 7 },
             world({ hurried: true }));
@@ -556,7 +559,7 @@ QtObject {
         const replanRuns = runsOf(replanned, 300).slice(0, 2);
         expect("re-planned as it turns in a stride, it holds that stride till it's seen",
             [turning.beat, turning.pose, turning.into, names(replanned)[0],
-                replanRuns.map(run => run.pose), 32 + replanRuns[0].ms >= 33],
+                replanRuns.map(run => run.pose), replanRuns[0].ms >= 33],
             ["turns", "walkingA", 0, "goes", ["walkingA", "walkingC"], true]);
         // Re-planned 33 ms in, once that stride is seen, it steps a pair on
         // from its first frame.

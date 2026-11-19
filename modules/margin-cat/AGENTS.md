@@ -287,6 +287,8 @@ want to see its paws moving when it is walking or running."
   it"
 - Held by `margin-cat-floats.qml`: "a step back reads as a skid, but onto its stand as it holds
   there"
+- Held by `margin-cat-floats.qml`: "a stride drawn under 25 ms flashes, set off in nothing too,
+  but the one before"
 - Held by `margin-cat-floats.qml`: "it walks out of its stand and back onto it a pair of feet
   at a time"
 - Held by `margin-cat-floats.qml`: "nor fails to go, or skids or flashes a stride, any way,
