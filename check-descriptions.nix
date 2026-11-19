@@ -1655,10 +1655,12 @@
     page's stylesheet, face, type, colours, masthead, mark, drawings, images and scripts as drawn,
     names each one lost when a deploy leaves its words in a plain shell, names a stylesheet, a face
     or an image that answers 404 broken, keeps what was broken before as still rather than failing,
-    lists art a stylesheet paints, keeps a rebuilt asset's name past a new hash, says a loss named
-    as meant with why, loses nothing to a change of words, measures drawings in shut folds, an
-    exclusive group's too, and leaves them shut, fails a page that draws nothing, and refuses a
-    before answer set wrong
+    lists art a stylesheet paints on the body too, an unused face, a canvas and a lazy image, keeps
+    a rebuilt asset's name past a hex, base64 or base32 hash and a page's assets past its move to a
+    folder, names a dropped page's 404, takes no button's icon for the mark, says a loss named as
+    meant with why, loses nothing to a change of words or labels, measures drawings in shut folds,
+    an exclusive group's too, and leaves them shut, fails a page that draws nothing, and refuses a
+    before answer or meant losses set wrong
   '';
   m4-pro-kernel-describes-both-external-screens = ''
     the 14-inch M4 Pro's device tree describes both external screens' coprocessors, their firmware

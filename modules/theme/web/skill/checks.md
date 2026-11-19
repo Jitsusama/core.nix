@@ -297,7 +297,9 @@ linked that answers 404 is in the markup and on nobody's screen.
    work's scratch rather than the site: the host's own copy or the last
    deployed folder where there is one, not only the files the publish
    replaces, since putting it back must take away what the publish added
-   and return what it removed. Name each look the change means to take
+   and return what it removed. What a running app writes for itself,
+   its readers' data and its secrets, stays out of the copy and out of
+   the putting back. Name each look the change means to take
    away, and why, from what it was asked to do, before seeing what it
    loses. Then, on each live page, run `looks.js`, beside this file, as
    `gate.js` is run, and keep its whole answer. Each run is in a browser
@@ -309,13 +311,16 @@ linked that answers 404 is in the markup and on nobody's screen.
    the same width and look, set the answer kept as
    `globalThis.looksBefore` with one eval, and the losses named in step 1
    as `globalThis.looksMeant`, an object from the look to why it went;
-   then run `looks.js`. A page the change renamed or moved is measured at
+   then run `looks.js`. First make sure the page is the new copy, past
+   any cache the host keeps: load it with a query no reader has asked
+   for, as `?looks=` and the time, and find a word or version the change
+   wrote. A page the change renamed or moved is measured at
    its new address against its old one's answer, and the old address
    should lead to the new. The probe answers each look the page had and
    has no more in `lost`, each meant one with its reason in `meant`, each
    asset newly answering an error in `broken`, each that answered one
-   before too in `still`, and the whole answer now in `now`, kept as the
-   next publish's before. An answer with no `lost` is a before run, never
+   before too in `still`, and the whole answer now in `now`, for the
+   report. An answer with no `lost` is a before run, never
    a pass. Shoot the same shots.
 3. **Hold the shots side by side**, before and after, width by width and
    look by look, with every side sheet and dialog the page opens, and
@@ -332,8 +337,9 @@ linked that answers 404 is in the markup and on nobody's screen.
 If the probe or the shots can't be run, the deploy waits: a publish over
 a live page that wasn't measured isn't done. Something `still` broken is
 worth a fix of its own, never this publish's fault. A page published for
-the first time has no before, and passes the gate above alone; its first
-after answer is the next publish's before. A site that keeps its own
+the first time has no before, and passes the gate above alone. Each
+publish measures its own before, on the page as it's live then, rather
+than trusting an answer kept from the last one. A site that keeps its own
 guard beside its deploy, as a tracker reads its markup for lost looks,
 runs it too: the two see different things.
 

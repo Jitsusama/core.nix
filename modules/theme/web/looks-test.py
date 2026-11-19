@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator
 
     from playwright.sync_api import Browser
 
@@ -98,25 +98,29 @@ class Site:
 
     def probe(
         self,
-        html: str,
-        before: Answer | None = None,
-        meant: Mapping[str, str] | None = None,
+        html: str | None,
+        before: object = None,
+        meant: object = None,
         then: str = "null",
+        at: str = "guide.html",
     ) -> Answer:
-        """Serve `html` as the page and run the probe on it, told `before` and `meant`.
+        """Serve `html` as the page at `at` and run the probe on it, told `before` and `meant`.
 
-        `then` is asked of the page once the probe has answered, and its
-        answer is kept as the answer's `then`.
+        No `html` serves nothing there, as a deploy that dropped the page
+        does. `then` is asked of the page once the probe has answered, and
+        its answer is kept as the answer's `then`.
         """
-        (self.root / "guide.html").write_text(html, encoding="utf-8")
+        if html is not None:
+            (self.root / at).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / at).write_text(html, encoding="utf-8")
         with self.browser.new_context() as context:
             tab = context.new_page()
-            tab.goto(f"http://127.0.0.1:{self.server.server_address[1]}/guide.html")
+            tab.goto(f"http://127.0.0.1:{self.server.server_address[1]}/{at}")
             if before is not None:
                 tab.evaluate(
                     "([before, meant]) => { globalThis.looksBefore = before; "
                     "globalThis.looksMeant = meant; }",
-                    [before, meant or {}],
+                    [before, {} if meant is None else meant],
                 )
             found: Answer = tab.evaluate(PROBE.read_text())
             found["then"] = tab.evaluate(then)
@@ -143,9 +147,23 @@ def passed(after: Answer) -> tuple[list[str], list[str], list[str]]:
 
 def test_the_page_says_what_it_draws(site: Site) -> None:
     """A whole page lists its stylesheet, face, type, colours, masthead, mark, art and script."""
-    found = site.probe(page(HEAD, f'{GUIDE}<img src="picture.svg" alt="A square">'))
+    # A bold face nothing is set in yet, a canvas, and a lazy image far below.
+    bold = (
+        '<style>@font-face { font-family: "Kit Face"; src: url("face.ttf"); font-weight: 700; }'
+        "</style>"
+    )
+    below = (
+        '<div style="height: 9000px"></div><img loading="lazy" src="picture.svg" alt="A square">'
+    )
+    canvas = '<canvas id="chart" width="40" height="40"></canvas>'
+    found = site.probe(page(f"{HEAD}{bold}", f"{GUIDE}{canvas}{below}"))
     assert found["broken"] == []
-    assert {*THE_LOOKS, "image picture.svg"} <= set(found["looks"])
+    assert {
+        *THE_LOOKS,
+        "face Kit Face normal 700",
+        "drawing chart",
+        "image picture.svg",
+    } <= set(found["looks"])
 
 
 def test_a_plain_shell_loses_the_looks_its_words_kept(site: Site) -> None:
@@ -198,22 +216,63 @@ def test_what_was_broken_before_stays_still_rather_than_failing(site: Site) -> N
 
 
 def test_art_a_stylesheet_paints_is_a_look(site: Site) -> None:
-    """A picture drawn by a stylesheet, and the sheet in the page, are lost with it."""
-    painted = "<style>.masthead::before { content: ''; background: url(picture.svg); }</style>"
+    """Pictures a stylesheet paints, on the body too, and the sheet in the page are lost with it."""
+    shutil.copy(site.root / "picture.svg", site.root / "paper.svg")
+    painted = (
+        "<style>body { background-image: url(paper.svg); }"
+        ".masthead::before { content: ''; background: url(picture.svg); }</style>"
+    )
     before = site.probe(page(f"{HEAD}{painted}", GUIDE))
-    assert {"stylesheet inline", "art picture.svg"} <= set(before["looks"])
+    assert {"stylesheet inline", "art picture.svg", "art paper.svg"} <= set(before["looks"])
     after = site.probe(page(HEAD, GUIDE), before)
-    assert sorted(after["lost"]) == ["art picture.svg", "stylesheet inline"]
+    assert sorted(after["lost"]) == ["art paper.svg", "art picture.svg", "stylesheet inline"]
 
 
-def test_a_rebuilt_asset_with_a_new_hash_keeps_its_name(site: Site) -> None:
+@pytest.mark.parametrize(
+    ("first", "next_build", "look"),
+    [
+        ("app.3f9a2c1b.js", "app.77d0e4a9.js", "script app.*.js"),
+        ("index-BdXk3a9Q.js", "index-Zq81LmP0.js", "script index-*.js"),
+        ("chunk-7QWZ2KJM.js", "chunk-K4N2PX8B.js", "script chunk-*.js"),
+    ],
+)
+def test_a_rebuilt_asset_with_a_new_hash_keeps_its_name(
+    site: Site,
+    first: str,
+    next_build: str,
+    look: str,
+) -> None:
     """A script whose content hash changed is the same look, not one lost and one new."""
-    (site.root / "app.3f9a2c1b.js").write_text("// The first build.\n")
-    (site.root / "app.77d0e4a9.js").write_text("// The next build.\n")
-    before = site.probe(page(f'{HEAD}<script src="app.3f9a2c1b.js"></script>', GUIDE))
-    assert "script app.*.js" in before["looks"]
-    after = site.probe(page(f'{HEAD}<script src="app.77d0e4a9.js"></script>', GUIDE), before)
+    for name in (first, next_build):
+        (site.root / name).write_text("// A build.\n")
+    before = site.probe(page(f'{HEAD}<script src="{first}"></script>', GUIDE))
+    assert look in before["looks"]
+    after = site.probe(page(f'{HEAD}<script src="{next_build}"></script>', GUIDE), before)
     assert passed(after) == ([], [], [])
+
+
+def test_a_page_moved_to_a_folder_keeps_its_assets(site: Site) -> None:
+    """A renamed page, measured at its new address against its old one's answer, loses nothing."""
+    before = site.probe(page(HEAD, GUIDE))
+    moved = page(HEAD.replace('"site', '"../site'), GUIDE)
+    after = site.probe(moved, before, at="guide/index.html")
+    assert passed(after) == ([], [], [])
+
+
+def test_a_page_the_deploy_dropped_is_broken(site: Site) -> None:
+    """The host's own 404 page has none of the page's looks, and says it answered 404."""
+    before = site.probe(page(HEAD, GUIDE))
+    after = site.probe(None, before, at="gone.html")
+    assert set(after["lost"]) >= {"stylesheet site.css", "masthead"}
+    assert "the page answered 404" in after["broken"]
+
+
+def test_an_icon_in_a_button_is_not_the_mark(site: Site) -> None:
+    """A masthead whose only picture is a control's icon has lost its mark."""
+    before = site.probe(page(HEAD, GUIDE))
+    switch = f'<header class="masthead"><button>{MARK}</button><h1>The Guide</h1></header>'
+    after = site.probe(page(HEAD, f"{switch}{ART}{WORDS}"), before)
+    assert after["lost"] == ["mark"]
 
 
 def test_a_loss_named_as_meant_is_said_and_passes(site: Site) -> None:
@@ -227,7 +286,13 @@ def test_the_same_page_again_loses_nothing(site: Site) -> None:
     """A deploy that changes only the words keeps every look."""
     before = site.probe(page(HEAD, GUIDE))
     for _ in range(10):
-        after = site.probe(page(HEAD, GUIDE.replace("each word", "every word")), before)
+        # The mark's label, the art's heading and the prose all change.
+        words = (
+            GUIDE.replace("each word", "every word")
+            .replace("The mark", "Our mark")
+            .replace("How It Flows", "How Work Flows")
+        )
+        after = site.probe(page(HEAD, words), before)
         assert passed(after) == ([], [], [])
         assert after["now"] == {"looks": before["looks"], "broken": []}
 
@@ -257,7 +322,21 @@ def test_a_page_that_draws_nothing_is_a_fault(site: Site) -> None:
     assert found["broken"] == [NOTHING]
 
 
-def test_a_before_that_is_not_a_before_run_is_refused(site: Site) -> None:
-    """A before list set the wrong way fails loudly rather than answering as a before run."""
-    with pytest.raises(Exception, match="looksBefore is set"):
-        site.probe(page(HEAD, GUIDE), {"looks": "stylesheet site.css"})
+@pytest.mark.parametrize(
+    ("before", "meant", "refused"),
+    [
+        ({"looks": ["stylesheet site.css"]}, None, "looksBefore is set"),
+        ({"broken": []}, None, "looksBefore is set"),
+        (["stylesheet site.css"], None, "looksBefore is set"),
+        ({"looks": [], "broken": []}, ["drawing flow"], "looksMeant is set"),
+    ],
+)
+def test_a_before_or_meant_set_wrong_is_refused(
+    site: Site,
+    before: object,
+    meant: object,
+    refused: str,
+) -> None:
+    """A before answer or meant losses set the wrong way fail loudly rather than read as none."""
+    with pytest.raises(Exception, match=refused):
+        site.probe(page(HEAD, GUIDE), before, meant)

@@ -16,19 +16,21 @@
 // still, now }: each look the page had and has no more, each it was told
 // was meant to go, by `globalThis.looksMeant`, an object from a look to why
 // it went, each asset that answered an error and didn't before, each that
-// answered one before too, and the answer the page gives now, the next
-// deploy's before. An empty `lost` and `broken` passes; an answer with no
-// `lost` in it is a before run, never a pass, and a `looksBefore` set to
-// anything but a before run's answer is refused rather than read as none.
+// answered one before too, and the answer the page gives now, for the
+// report. An empty `lost` and `broken` passes; an answer with no `lost` in
+// it is a before run, never a pass, and a `looksBefore` or `looksMeant` set
+// to anything but what it should be is refused rather than read as none.
 // On 18 November 2026 a deploy of a tracker lost its guide's masthead,
 // heading art and stylesheets while every word check passed, and Joel found
 // it himself: this is the check that would have stopped it.
 //
 // A look is a "kind value" string, so two runs compare as sets. An asset is
-// named by its path from the page's folder, or from the site's root when
-// it's above it, or by its address without a query when it's on another
-// origin, and a part of its name that's a build's content hash reads as *,
-// so a rebuilt asset keeps its name. A drawing is named by its data-drawing
+// named by its path from the site's root, so a page moved to another folder
+// keeps its assets' names, or by its address without a query when it's on
+// another origin, and a part of its path that's a build's content hash
+// reads as *, so a rebuilt asset keeps its name. Two chunks alike but for
+// their hashes are then one look, so losing one of them alone is the
+// shots' to see. A drawing is named by its data-drawing
 // or id, else by its place under the nearest element with an id, never by
 // its words, since a change of words isn't a lost look. Every face the page
 // declares is loaded, since one is fetched only once something is drawn in
@@ -36,8 +38,11 @@
 // what's in them, and closed again, so run it on a page nobody is reading.
 // What a browser keeps from another origin's answers, it keeps from the
 // page too: an asset from another origin that failed may read as loaded,
-// so the shots beside this are what see it. A page with no stylesheet,
-// face, masthead or picture of its own is a fault, never a quiet pass.
+// so the shots beside this are what see it. An error is read from the
+// browser's list of what the page fetched, which holds its first 250, and
+// the page's own answer is read too, since a host's 404 page has looks of
+// its own. A page with no stylesheet, face, masthead or picture of its own
+// is a fault, never a quiet pass.
 (async () => {
   // Past fifteen seconds, whatever hasn't loaded is taken as it stands.
   const patience = 15_000;
@@ -47,42 +52,45 @@
   if (before !== undefined && !(Array.isArray(before?.looks) && Array.isArray(before?.broken))) {
     throw new Error("looksBefore is set, but not to the answer of a run before the deploy");
   }
+  const reasons = globalThis.looksMeant ?? {};
+  if (typeof reasons !== "object" || reasons === null || Array.isArray(reasons)) {
+    throw new Error("looksMeant is set, but not to an object from a look to why it went");
+  }
   if (document.readyState !== "complete") {
     await wait(new Promise((loaded) => addEventListener("load", loaded, { once: true })));
   }
 
-  const folder = new URL("./", location.href).href;
   const digits = "0123456789";
   const hashLength = 8;
-  // A run of letters and digits long enough, all hexadecimal and holding a
-  // digit, is a build's content hash, as app.3f9a2c1b.js and site-8c1e04d2.css
-  // are named, and reads as *.
+  const lettered = (letter) => letter.toLowerCase() !== letter.toUpperCase();
+  // A run of letters and digits long enough, holding both, that's either
+  // all hexadecimal or has a capital in it, is a build's content hash, as
+  // app.3f9a2c1b.js, index-BdXk3a9Q.js and chunk-7QWZ2KJM.js are named, and
+  // reads as *. A run of digits alone, as a date is written, stays.
   const hashed = (run) =>
     run.length >= hashLength &&
-    [...run].every((letter) => !Number.isNaN(Number.parseInt(letter, 16))) &&
-    [...run].some((letter) => digits.includes(letter));
+    [...run].some((letter) => digits.includes(letter)) &&
+    [...run].some(lettered) &&
+    ([...run].every((letter) => !Number.isNaN(Number.parseInt(letter, 16))) ||
+      [...run].some((letter) => lettered(letter) && letter === letter.toUpperCase()));
   const steady = (path) => {
-    const cut = path.lastIndexOf("/") + 1;
-    let file = "";
+    let kept = "";
     let run = "";
-    for (const letter of `${path.slice(cut)}/`) {
-      const word = letter.toLowerCase() !== letter.toUpperCase() || digits.includes(letter);
-      if (word) {
+    for (const letter of `${path}/`) {
+      if (lettered(letter) || digits.includes(letter)) {
         run += letter;
       } else {
-        file += (hashed(run) ? "*" : run) + letter;
+        kept += (hashed(run) ? "*" : run) + letter;
         run = "";
       }
     }
-    return path.slice(0, cut) + file.slice(0, -1);
+    return kept.slice(0, -1);
   };
   const named = (address) => {
     const url = new URL(address, location.href);
-    const path = `${url.origin}${url.pathname}`;
-    if (url.origin !== location.origin) {
-      return steady(path);
-    }
-    return steady(path.startsWith(folder) ? path.slice(folder.length) : url.pathname);
+    return steady(
+      url.origin === location.origin ? url.pathname.slice(1) : `${url.origin}${url.pathname}`,
+    );
   };
   const unquoted = (name) => name.replaceAll('"', "").replaceAll("'", "").trim();
   const drawn = (element) => {
@@ -122,8 +130,14 @@
   const looks = new Set();
   const broken = [];
   const failing = 400;
+  const [arrival] = performance.getEntriesByType("navigation");
+  if (arrival !== undefined && arrival.responseStatus >= failing) {
+    broken.push(`the page answered ${arrival.responseStatus}`);
+  }
+  // What a script asks for as it runs is its business, not the page's looks.
+  const asked = ["fetch", "xmlhttprequest", "beacon"];
   for (const entry of performance.getEntriesByType("resource")) {
-    if (entry.responseStatus >= failing) {
+    if (entry.responseStatus >= failing && !asked.includes(entry.initiatorType)) {
       broken.push(`${named(entry.name)} answered ${entry.responseStatus}`);
     }
   }
@@ -151,7 +165,11 @@
     if (face.status === "loaded") {
       looks.add(name);
     } else {
-      broken.push(`${name} is ${face.status === "error" ? "declared and won't load" : face.status}`);
+      const why = {
+        error: "declared and won't load",
+        loading: `still loading after ${patience / 1000} s, which is as long as the probe waits`,
+      };
+      broken.push(`${name} is ${why[face.status] ?? face.status}`);
     }
   }
   const family = (element) => unquoted(getComputedStyle(element).fontFamily.split(",")[0]);
@@ -170,7 +188,11 @@
   ].find(drawn);
   if (masthead !== undefined) {
     looks.add("masthead");
-    if ([...masthead.querySelectorAll("svg, img, canvas")].some(drawn)) {
+    // A control's icon, as the switch between the looks draws, isn't a mark.
+    const marks = [...masthead.querySelectorAll("svg, img, canvas")].filter(
+      (mark) => mark.closest("button") === null,
+    );
+    if (marks.some(drawn)) {
       looks.add("mark");
     }
   }
@@ -196,7 +218,9 @@
     }
   }
   const painted = ["backgroundImage", "borderImageSource", "listStyleImage", "maskImage"];
-  for (const element of [...document.body.querySelectorAll("*")].filter(drawn)) {
+  // The page's paper or grain is most often painted on its html or body.
+  const everything = [document.documentElement, document.body, ...document.body.querySelectorAll("*")];
+  for (const element of everything.filter(drawn)) {
     for (const part of [null, "::before", "::after"]) {
       const style = getComputedStyle(element, part);
       for (const property of painted) {
@@ -223,7 +247,6 @@
   if (before === undefined) {
     return now;
   }
-  const reasons = globalThis.looksMeant ?? {};
   const gone = before.looks.filter((look) => !looks.has(look));
   return {
     lost: gone.filter((look) => !(look in reasons)),
