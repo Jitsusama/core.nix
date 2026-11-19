@@ -194,9 +194,9 @@ def test_two_orchestrations_come_back_each_where_it_sat(desktop: Desktop) -> Non
         # over its own two, as an orchestrator restores its sessions before Reopen Them All
         # reaches them: at 21:24, 40 came back that way.
         # Which a hand-over joins, and where one handed over goes, are held in Qt's engine
-        # (tests/places.qml: Places.queuedOnce, Places.keptFor): a VM can't time a hand-over into
-        # Reopen Them All's queue. Here each says its record once it's begun, as pi does, and
-        # LEADBB, once every window is back, hands its two over again, as an orchestrator
+        # (modules/quickshell/tests/places.qml: Places.queuedOnce, Places.keptFor): a VM can't time
+        # a hand-over into Reopen Them All's queue. Here each says its record once it's begun, as pi
+        # does, and LEADBB, once every window is back, hands its two over again, as an orchestrator
         # restoring its own does: neither is begun twice, since each runs here.
         # Each is said before the places are judged, so one whose window first shows on the
         # poll that finds every place right still says its record before the hand-over.

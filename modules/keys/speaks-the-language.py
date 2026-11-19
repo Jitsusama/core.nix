@@ -175,7 +175,7 @@ def arrowed(keys: str) -> bool:
 
     One is held to it alone, held with a modifier or in another sequence,
     as g and the left arrow; the launcher's own table is held the same way
-    (tests/query-keys.qml).
+    (modules/quickshell/tests/query-keys.qml).
     """
     pressed = keys.split(" ")
     return pressed[0] != LEADER and any(key.split("+")[-1] in ARROWS for key in pressed)

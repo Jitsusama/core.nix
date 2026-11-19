@@ -521,7 +521,7 @@ def test_a_talk_left_in_normal_opens_typing_after_its_last_letter(shell: Shell) 
     kept, so the next letter landed one short (RCTRF8, 2026-11-17: "hi" then x gave "hxi").
     Stepped back a letter while typing first, so a caret kept nowhere ("hix", the line's end)
     or kept where normal rests ("xhi") each types somewhere else. Where each caret is kept is
-    tests/query-keys.qml's.
+    modules/quickshell/tests/query-keys.qml's.
     """
     found(shell, "listening quest", "Listening Quest")
     shell.send_key("ret")
@@ -1931,8 +1931,8 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
     page can't act. Only the first word names one; a name no node lists opens Machines, its
     foot saying Machines doesn't list it, and why. Here one node lists only this machine,
     which Machines lists first, so the case proves the call reaches Machines, not which row it
-    lands on: tests/machines.qml holds which row a link names, over several realms' machines,
-    by the one key Machines gives its rows.
+    lands on: modules/quickshell/tests/machines.qml holds which row a link names, over several
+    realms' machines, by the one key Machines gives its rows.
     """
     name = here()
 

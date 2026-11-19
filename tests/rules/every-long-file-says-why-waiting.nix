@@ -83,7 +83,7 @@
   "modules/quickshell/tests/file-chooser.qml"
   "tests/launcher-on-niri-test.py"
   "modules/quickshell/tests/program-controls.qml"
-  "tests/query-keys.qml"
+  "modules/quickshell/tests/query-keys.qml"
   "modules/quickshell/tests/rows.qml"
   "tools/merge-net/src/watch.rs"
   "tools/merge-net/src/world.rs"

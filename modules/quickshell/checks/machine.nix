@@ -18,13 +18,14 @@
   # Machines says every machine of the realms this one links, this one
   # first, each in words with how it stands, and its drawer from what
   # moves most to the model's identifier, leaving out what no node said, as
-  # tests/machines.qml holds launcher/RealmMachines.js to it in Qt's own engine.
+  # modules/quickshell/tests/machines.qml holds launcher/RealmMachines.js to it
+  # in Qt's own engine.
   the-launcher-says-every-machine-of-the-realm =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-says-every-machine-of-the-realm" { } ''
-      cp ${../../../tests/machines.qml} machines.qml
+      cp ${../tests/machines.qml} machines.qml
       cp ${../launcher/RealmMachines.js} RealmMachines.js
       cp ${../launcher/Order.js} Order.js
       cp ${../launcher/Machine.js} Machine.js

@@ -85,7 +85,8 @@ def test_machines_is_shot_at_each_scale(desktop: Desktop, at_each_scale: list[st
 
     The node here links no other machine, so this one is the realm's only row. Its side
     leads with "this machine", then what it is, and its drawer is every machine's, though
-    Return takes it to the Machine place; one out of reach dimmed is tests/machines.qml's.
+    Return takes it to the Machine place; one out of reach dimmed is
+    modules/quickshell/tests/machines.qml's.
     """
     for scale in at_each_scale:
         named = scale.replace(".", "-")

@@ -272,14 +272,14 @@ in
     '';
 
   # A step the launcher holds says its row as it is now, and one whose row
-  # now offers nothing is left, as tests/held.qml holds launcher/Held.js to
-  # it in Qt's own engine.
+  # now offers nothing is left, as modules/quickshell/tests/held.qml holds
+  # launcher/Held.js to it in Qt's own engine.
   the-launcher-remakes-what-it-holds =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-remakes-what-it-holds" { } ''
-      cp ${../../../tests/held.qml} held.qml
+      cp ${../tests/held.qml} held.qml
       cp ${../launcher/Held.js} Held.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -371,16 +371,16 @@ in
 
   # A place's row reads alike at home and inside its parent (VKCF3Z's
   # 2a429f67, on Joel's 2026-11-08 "i don't like how the title and values on
-  # the home screen differ from every other sub-menu"): tests/place-row.qml
-  # holds launcher/PlaceRow.js, which makes it in both, in Qt's own engine,
-  # and home still unfilled a second after an opening, each reading as being
-  # read.
+  # the home screen differ from every other sub-menu"):
+  # modules/quickshell/tests/place-row.qml holds launcher/PlaceRow.js, which
+  # makes it in both, in Qt's own engine, and home still unfilled a second after
+  # an opening, each reading as being read.
   a-place-reads-alike-everywhere =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-place-reads-alike-everywhere" { } ''
-      cp ${../../../tests/place-row.qml} place-row.qml
+      cp ${../tests/place-row.qml} place-row.qml
       cp ${../launcher/PlaceRow.js} PlaceRow.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -522,9 +522,9 @@ in
   # and a daemon's changes are said presented by place, and they and keys
   # with where their time went, and a closing makes again only the spots of
   # things whose stamp moved, and only the newest yank's frame starts its
-  # flash, as tests/pacing.qml holds launcher/Flash.js, launcher/Pacing.js,
-  # launcher/Presented.js, launcher/Spots.js, launcher/Thread.js and
-  # launcher/Wanted.js to it in Qt's own engine.
+  # flash, as modules/quickshell/tests/pacing.qml holds launcher/Flash.js,
+  # launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js,
+  # launcher/Thread.js and launcher/Wanted.js to it in Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -532,7 +532,7 @@ in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
-      cp ${../../../tests/pacing.qml} pacing.qml
+      cp ${../tests/pacing.qml} pacing.qml
       cp ${../launcher/Flash.js} Flash.js
       cp ${../launcher/Makings.js} Makings.js
       cp ${../launcher/Order.js} Order.js
@@ -799,16 +799,16 @@ in
   # provider with the shell's one watcher of the clipboard, through
   # Quickshell itself, over repositories made here and served once for both
   # programs by the real programs daemon (launcher/Repositories.qml),
-  # with niri and the clipboard's history stood in (tests/program-acts.qml).
-  # Chrome's downloads are read from Chrome's ChromeDownloads.js in Qt's
-  # engine and through its provider from the real programs daemon, running
-  # a stand-in for chrome-recent-sites, once Chrome is stepped into: file
-  # rows in its Recent, each drawer saying where it is then its kind and
-  # previewing a picture, and Open
-  # the Latest Download only while there's one, waiting in its place until
-  # the first reading answers. Neovim's files open now come through the same
-  # daemon from a stand-in open-now, whose reading of a real Neovim is open-with's own tests', each
-  # file's drawer saying where it is and its buffer.
+  # with niri and the clipboard's history stood in
+  # (modules/quickshell/tests/program-acts.qml). Chrome's downloads are read
+  # from Chrome's ChromeDownloads.js in Qt's engine and through its provider
+  # from the real programs daemon, running a stand-in for chrome-recent-sites,
+  # once Chrome is stepped into: file rows in its Recent, each drawer saying
+  # where it is then its kind and previewing a picture, and Open the Latest
+  # Download only while there's one, waiting in its place until the first
+  # reading answers. Neovim's files open now come through the same daemon from a
+  # stand-in open-now, whose reading of a real Neovim is open-with's own tests',
+  # each file's drawer saying where it is and its buffer.
   the-launcher-acts-only-on-what-it-can =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -929,7 +929,7 @@ in
       cp ${../../zathura/Zathura.js} launcher/Zathura.js
       cp ${../../reader/Reader.js} launcher/Reader.js
       cp ${../../gimp/CopiedPicture.qml} launcher/CopiedPicture.qml
-      cp ${../../../tests/program-acts.qml} shell.qml
+      cp ${../tests/program-acts.qml} shell.qml
       cp ${../../../tests/lib/Frames.js} Frames.js
       export XDG_RUNTIME_DIR=$TMPDIR/runtime
       export PATH=${

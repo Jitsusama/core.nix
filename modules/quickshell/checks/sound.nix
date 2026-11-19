@@ -78,14 +78,14 @@
   # Record, its count, the clips heard blind with Return playing one and
   # Pick a step in, every cleaner and its cost once one's picked, a refusal
   # said plainly, the daemon not answering said, and leaving discarding
-  # anything but idle, as tests/by-ear.qml holds launcher/ByEar.js to
-  # records shaped as the trial protocol sends them.
+  # anything but idle, as modules/quickshell/tests/by-ear.qml holds
+  # launcher/ByEar.js to records shaped as the trial protocol sends them.
   choose-by-ear-walks-its-steps =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "choose-by-ear-walks-its-steps" { } ''
-      cp ${../../../tests/by-ear.qml} by-ear.qml
+      cp ${../tests/by-ear.qml} by-ear.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "launcher/ByEar.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
