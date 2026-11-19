@@ -11,7 +11,7 @@
 }:
 onLinux {
   # The watch opens the camera it records, to read its format and controls,
-  # which the unit's sandbox allows, and only to read: ProtectClock alone
+  # which the unit's sandbox allows, opened read-only: ProtectClock alone
   # allows the clock's device and no other, and PrivateDevices would hide
   # the camera, every line then saying it can't ask it. Every policy lets
   # through what DeviceAllow names, so none is refused. An entry's access

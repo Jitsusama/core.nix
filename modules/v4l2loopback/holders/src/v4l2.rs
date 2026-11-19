@@ -180,11 +180,13 @@ pub struct Controls {
 }
 
 /// Every control a number says the value of, in the driver's order. A
-/// control that won't say is said so rather than failing the rest. One
+/// control refused is said so rather than failing the rest. One
 /// that timed out joins those unanswered, which aren't asked again:
 /// uvcvideo asks the camera itself for a control that changes on its own,
 /// such as exposure while it's automatic, and waits five seconds on one
-/// that doesn't answer. Any other failure is asked again next time, since
+/// that doesn't answer, so the list ends at the first to time out, each
+/// line waiting on at most one while the watch can't see who streams, and
+/// the next line goes on past it. Any other failure is asked again, since
 /// a camera may refuse a control only while its stream starts. Asking
 /// what the next control is asks the camera its range the first time, so
 /// one that times out there is kept too, by the id it was asked after,
@@ -238,14 +240,16 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
         // SAFETY: GET_CONTROL names a v4l2_control, as Control is.
         if let Err(error) = unsafe { ask(file, GET_CONTROL, &mut control) } {
             let timed_out = unanswering(&error);
-            if timed_out {
-                unanswered.insert(queried.id);
-            }
             values.push(Value {
                 name,
                 reads: Err(if timed_out { "unanswered" } else { "unread" }),
                 item: None,
             });
+            if timed_out {
+                unanswered.insert(queried.id);
+                let cut_short = Some("a control was unanswered".to_owned());
+                return Controls { values, cut_short };
+            }
             continue;
         }
         let item = (queried.kind == MENU).then(|| {

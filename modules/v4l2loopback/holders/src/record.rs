@@ -193,24 +193,14 @@ impl Stream {
         }
     }
 
-    /// What each interface gave since the last line. Of several, one that
-    /// gave nothing is left out while another gave frames, since a camera's
-    /// other stream, unused, would read as a stall on every line.
+    /// What each interface gave since the last line, each of several named
+    /// in the line, so one left unused reads as that interface idle rather
+    /// than the camera stalled.
     fn take(&mut self, at: Instant) -> BTreeMap<u32, Result<Gave, String>> {
-        let mut gave: BTreeMap<_, _> = self
-            .tallies
+        self.tallies
             .iter_mut()
             .map(|(interface, tally)| (*interface, tally.take(at)))
-            .collect();
-        let idle = |stream: &Result<Gave, String>| {
-            stream
-                .as_ref()
-                .is_ok_and(|gave| gave.rate == 0.0 && gave.in_error == 0)
-        };
-        if gave.len() > 1 && !gave.values().all(idle) {
-            gave.retain(|_, stream| !idle(stream));
-        }
-        gave
+            .collect()
     }
 }
 
@@ -312,7 +302,6 @@ impl Record {
 mod tests {
     use super::*;
     use crate::camera::tests::Camera;
-    use crate::count::tests::at;
 
     #[test]
     fn a_rate_whose_format_is_unknown_stands_alone() {
@@ -547,7 +536,8 @@ mod tests {
         let start = Instant::now();
         assert_eq!(record.at(start, &camera.node, &holders), None);
         assert_eq!(record.unanswered.len(), 0);
-        // Within the stream, one found unanswered stays so at each wake.
+        // Within the stream, the set of those found unanswered is kept at
+        // each wake and line; v4l2's controls() skips each it holds.
         record.unanswered.insert(0x0098_0900);
         count(&stats, 40, 0);
         let wake = start + Duration::from_secs(1);
@@ -557,23 +547,6 @@ mod tests {
             "no line"
         );
         assert_eq!(record.unanswered.len(), 1);
-    }
-
-    #[test]
-    fn a_second_stream_left_unused_isnt_said_to_stall() {
-        let start = Instant::now();
-        let later = start + EVERY;
-        let mut stream = Stream::default();
-        for (interface, frames) in [(1, 300), (3, 0)] {
-            let tally = stream.tallies.entry(interface).or_default();
-            tally.add(at(0, 0, 0), start);
-            tally.add(at(frames, 0, 0), later);
-        }
-        let gave = stream.take(later);
-        assert_eq!(gave.keys().collect::<Vec<_>>(), [&1]);
-        // Both giving nothing is said of both.
-        let gave = stream.take(later + EVERY);
-        assert_eq!(gave.keys().collect::<Vec<_>>(), [&1, &3]);
     }
 
     #[test]
