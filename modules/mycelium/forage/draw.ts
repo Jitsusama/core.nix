@@ -15,8 +15,8 @@ import { type Join, joined } from "./joins.ts";
 import {
   type Document,
   type Forage,
+  grewClaimed,
   grewFrom,
-  grewOnItsWord,
   keeps,
   steps,
   type Wait,
@@ -247,7 +247,7 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
       if (from === undefined || forage.depth === 0) {
         return "";
       }
-      const claimed = grewOnItsWord(forage, here) ? " claimed" : "";
+      const claimed = grewClaimed(forage, here) ? " claimed" : "";
       return `<path class="hypha${claimed}" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
     })
     .join("");
@@ -325,10 +325,20 @@ ${forage.documents.map((document) => documentRow(document, forage.quest)).join("
 }
 
 /**
- * Said after a cell the open cell names only by its own word, as every
- * split and a start the node's book doesn't hold are.
+ * Said after a tie the node can't vouch for: every split, and a start its
+ * book doesn't hold. It names nobody as the claimer, since either end of a
+ * split may be the one telling it.
  */
-const ITS_WORD = ", as this cell says";
+const CLAIMED = ", as claimed";
+
+/** Said after the cells a cell started: nothing when the node's book holds every start. */
+function startsClaimed(started: readonly Pick<Forage, "booked">[]): string {
+  const claimed = started.filter((each) => !each.booked).length;
+  if (claimed === 0) {
+    return "";
+  }
+  return claimed === started.length ? CLAIMED : ", some as claimed";
+}
 
 /** The cell that started `forage`, linked to that cell's row when it is drawn here. */
 function startedBy(forage: Forage, here: ReadonlySet<string>): string {
@@ -336,7 +346,7 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
   if (by === undefined) {
     return "Nothing; it started on its own";
   }
-  return `${cellOrAway(by, here)}${forage.booked ? "" : ITS_WORD}`;
+  return `${cellOrAway(by, here)}${forage.booked ? "" : CLAIMED}`;
 }
 
 /**
@@ -428,11 +438,11 @@ function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): st
   const facts: string[] = [];
   if (forage.splitFrom !== undefined) {
     const from = cellOrAway(forage.splitFrom, here);
-    facts.push(`<div><dt>Split from</dt><dd>${from}${ITS_WORD}</dd></div>`);
+    facts.push(`<div><dt>Split from</dt><dd>${from}${CLAIMED}</dd></div>`);
   }
   if (forage.splitInto.length > 0) {
     const into = cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here));
-    facts.push(`<div><dt>Split into</dt><dd><span>${into}</span></dd></div>`);
+    facts.push(`<div><dt>Split into</dt><dd><span>${into}${CLAIMED}</span></dd></div>`);
   }
   if (forage.serves.length > 0) {
     const said = needsOf(forage.serves, here, now, (join) => join.cell);
@@ -458,7 +468,7 @@ function cellLink(cell: string): string {
 function panelOf(
   forage: Forage,
   here: ReadonlySet<string>,
-  started: readonly string[],
+  started: readonly Pick<Forage, "cell" | "booked">[],
   now: number = Date.now(),
 ): string {
   const said = escaped(command(forage));
@@ -473,7 +483,7 @@ ${waitsOf(forage)}${documentsOf(forage)}
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
     <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
-    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
+    <div><dt>Started</dt><dd><span>${cellsStarted(started.map((each) => each.cell))}${startsClaimed(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>

@@ -187,12 +187,26 @@ function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | und
     documents: documentsOf(record, cell, unread),
     waits: waitsOf(record, cell, unread),
     startedBy: text(lineage, "started_by"),
-    booked: text(lineage, "started_by_from") === "book",
+    booked: bookedOf(lineage, cell, unread),
     parent: text(lineage, "parent"),
     ...splitOf(lineage, cell, unread),
     serves: joinsOf(record["serves"], "serves", cell, unread),
     relies: joinsOf(record["relies"], "relies", cell, unread),
   };
+}
+
+/**
+ * Whether the node's start book holds `cell`'s start, by its lineage's
+ * `started_by_from`. Anything else is taken as only the cell's word, and a
+ * word neither "book" nor "presence" is said too, so a node sending one
+ * shows rather than leaving every branch dashed for no reason given.
+ */
+function bookedOf(lineage: Fields, cell: string, unread: string[]): boolean {
+  const from = lineage["started_by_from"];
+  if (from !== undefined && from !== null && from !== "book" && from !== "presence") {
+    unread.push(`${cell}'s started_by_from said neither book nor presence`);
+  }
+  return from === "book";
 }
 
 /**
@@ -210,10 +224,11 @@ function grewFrom(
 }
 
 /**
- * Whether the cell `forage` grew from, among `here`, is only its own word:
- * every split is, and a start is unless the node's book holds it.
+ * Whether how `forage` grew from a cell among `here` is only claimed, so the
+ * node can't vouch for it: every split is, and a start is unless the node's
+ * book holds it.
  */
-function grewOnItsWord(
+function grewClaimed(
   forage: Pick<Forage, "cell" | "startedBy" | "splitFrom" | "booked">,
   here: ReadonlySet<string>,
 ): boolean {
@@ -273,11 +288,10 @@ function foragesOf(held: Held): Forages {
  * The cells `cell` started among `forages`, by address: the other end of each
  * one's "Started by". A cell that names itself as its starter isn't counted.
  */
-function startedFrom(forages: readonly Forage[], cell: string): readonly string[] {
+function startedFrom(forages: readonly Forage[], cell: string): readonly Forage[] {
   return forages
     .filter((each) => each.startedBy === cell && each.cell !== cell)
-    .map((each) => each.cell)
-    .sort((one, other) => one.localeCompare(other));
+    .sort((one, other) => one.cell.localeCompare(other.cell));
 }
 
 /** How many of `forage`'s steps are done, and how many there are. */
@@ -448,7 +462,7 @@ export {
   counted,
   foragesOf,
   grewFrom,
-  grewOnItsWord,
+  grewClaimed,
   headline,
   holds,
   keeps,

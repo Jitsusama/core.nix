@@ -183,8 +183,8 @@ code {
   stroke-linecap: round;
 }
 
-/* A branch only its cell's own word says, as a split or a start the
-   node's book doesn't hold, is dashed: long enough to be told from a
+/* A branch that's only claimed, as a split or a start the node's book
+   doesn't hold, is dashed: long enough to be told from a
    need's dots, broken so it's told from a start the node vouches for. */
 .hypha.claimed {
   stroke-dasharray: 4 4;

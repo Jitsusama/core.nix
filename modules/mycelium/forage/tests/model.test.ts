@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import {
   foragesOf,
+  grewClaimed,
   grewFrom,
-  grewOnItsWord,
   headline,
   holds,
   keeps,
@@ -44,24 +44,35 @@ it("a cell started from another machine stands at the top", () => {
 });
 
 it("a start is booked only when the node says its book holds it", () => {
-  const booked = (lineage: object) =>
-    foragesOf(told([forage("KESTRL", { lineage })])).forages[0]?.booked;
-  assert.equal(booked({ started_by: "OSPREY", started_by_from: "book" }), true);
-  assert.equal(booked({ started_by: "OSPREY", started_by_from: "presence" }), false);
+  const read = (from?: unknown) =>
+    foragesOf(
+      told([forage("KESTRL", { lineage: { started_by: "OSPREY", started_by_from: from } })]),
+    );
+  const booked = (from?: unknown) => read(from).forages[0]?.booked;
+  assert.equal(booked("book"), true);
+  assert.equal(booked("presence"), false);
   // A node from before the field, or one sending something else, is taken at the cell's word.
-  assert.equal(booked({ started_by: "OSPREY" }), false);
-  assert.equal(booked({ started_by: "OSPREY", started_by_from: true }), false);
+  assert.equal(booked(), false);
+  assert.equal(booked(null), false);
+  assert.equal(booked(true), false);
+  // Only a word it doesn't know is said, so a misspelt node shows.
+  assert.deepEqual(read("presence").unread, []);
+  assert.deepEqual(read(null).unread, []);
+  assert.deepEqual(read("Book").unread, [
+    "KESTRL's started_by_from said neither book nor presence",
+  ]);
 });
 
-it("a cell grew on its own word unless it grew from a start the book holds", () => {
+it("how a cell grew is only claimed unless it grew from a start the book holds", () => {
   const here = new Set(["KESTRL", "OSPREY"]);
-  const onItsWord = (startedBy: string | undefined, booked: boolean) =>
-    grewOnItsWord({ cell: "TERNAA", startedBy, splitFrom: "KESTRL", booked }, here);
-  assert.equal(onItsWord("OSPREY", true), false);
-  assert.equal(onItsWord("OSPREY", false), true);
-  // Its booked starter isn't here, so it grows from the cell it split from, on its word.
-  assert.equal(onItsWord("FARAWAY", true), true);
-  assert.equal(onItsWord(undefined, false), true);
+  const claimed = (startedBy: string | undefined, booked: boolean) =>
+    grewClaimed({ cell: "TERNAA", startedBy, splitFrom: "KESTRL", booked }, here);
+  assert.equal(claimed("OSPREY", true), false);
+  assert.equal(claimed("OSPREY", false), true);
+  // Its booked starter isn't here, so it grows from the cell it split from, only claimed.
+  assert.equal(claimed("FARAWAY", true), true);
+  // With no starter it grows from the cell it split from, booked or not.
+  assert.equal(claimed(undefined, true), true);
 });
 
 it("cells that started each other in a ring each still show once", () => {
@@ -84,9 +95,11 @@ it("the cells a cell started are those naming it their starter, by address, neve
     ]),
   );
   // Given in any order, they still come by address.
-  assert.deepEqual(startedFrom([...forages].reverse(), "KESTRL"), ["SKIFFS", "TERNAA"]);
-  assert.deepEqual(startedFrom(forages, "SKIFFS"), ["OSPREY"]);
-  assert.deepEqual(startedFrom(forages, "TERNAA"), []);
+  const started = (from: typeof forages, cell: string) =>
+    startedFrom(from, cell).map((each) => each.cell);
+  assert.deepEqual(started([...forages].reverse(), "KESTRL"), ["SKIFFS", "TERNAA"]);
+  assert.deepEqual(started(forages, "SKIFFS"), ["OSPREY"]);
+  assert.deepEqual(started(forages, "TERNAA"), []);
 });
 
 it("documents come plans first, and their steps add up", () => {

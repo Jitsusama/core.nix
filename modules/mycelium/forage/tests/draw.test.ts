@@ -82,9 +82,17 @@ const SPACES = /\s+/gu;
 /** What a row says of its quest's waits. */
 const ROW_WAITS = /<span class="waits">([^<]*)<\/span>/u;
 
-/** What the panel says of `forage` beside "Started", given the cells it started. */
-function startedLine(open: Forage, started: readonly string[]): string {
-  const panel = panelOf(open, new Set([open.cell, ...started]), started);
+/**
+ * What the panel says of `forage` beside "Started", given the cells it
+ * started, each of whose starts the node's book holds unless `booked` says not.
+ */
+function startedLine(
+  open: Forage,
+  started: readonly string[],
+  booked: (cell: string) => boolean = () => true,
+): string {
+  const starts = started.map((cell) => ({ cell, booked: booked(cell) }));
+  const panel = panelOf(open, new Set([open.cell, ...started]), starts);
   return STARTED.exec(panel)?.[1] ?? "no Started line";
 }
 
@@ -135,6 +143,18 @@ it("names up to seven cells a cell started, then names six and counts the rest",
     says: "8 cells: AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF and 2 more",
     links: cells(6),
   });
+});
+
+it("says the cells a cell started are only claimed unless the node's book holds each", () => {
+  const three = ["OSPREY", "SKIFFS", "TERNAA"];
+  assert.equal(
+    read(startedLine(forage(), three, () => false)).says,
+    "3 cells: OSPREY, SKIFFS and TERNAA, as claimed",
+  );
+  assert.equal(
+    read(startedLine(forage(), three, (cell) => cell !== "SKIFFS")).says,
+    "3 cells: OSPREY, SKIFFS and TERNAA, some as claimed",
+  );
 });
 
 it("escapes an address the node gives before linking it", () => {
@@ -260,11 +280,11 @@ it("draws no joins on the floor and says none in the panel when the node sends n
 
 /** The panel's line for the cell TERNAA split from, linked to its row. */
 const SPLIT_FROM =
-  /<dt>Split from<\/dt><dd><a href="#cell=TERNAA" data-cell="TERNAA">.*?<\/a>, as this cell says<\/dd>/u;
+  /<dt>Split from<\/dt><dd><a href="#cell=TERNAA" data-cell="TERNAA">.*?<\/a>, as claimed<\/dd>/u;
 
 /** The panel's line for the two cells a cell split into, one here and one away. */
 const SPLIT_INTO =
-  /<dt>Split into<\/dt><dd><span>2 cells: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><code>FARAWAY<\/code>, not standing here<\/span><\/span>/u;
+  /<dt>Split into<\/dt><dd><span>2 cells: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><code>FARAWAY<\/code>, not standing here<\/span>, as claimed<\/span>/u;
 
 /** The panel's first need a cell serves, linked to the row of OSPREY, which asked it. */
 const SERVES = /<dt>Serves<\/dt><dd class="needs"><span class="need"><a href="#cell=OSPREY"/u;
@@ -346,36 +366,44 @@ it("draws one dotted arc for each pair a need joins on the floor, and a branch f
   assert.equal(floor.match(/class="join"/gu)?.length, 1);
   // It runs from the cell relied on, first on the floor, to the one relying, next.
   assert.match(floor, JOIN_FROM_FIRST_TO_SECOND);
-  // The main line, then the split's branch, dashed since a split is only its cell's word.
+  // The main line, then the split's branch, dashed since a split is only claimed.
   assert.equal(floor.match(/class="hypha"/gu)?.length, 1);
   assert.equal(floor.match(/class="hypha claimed"/gu)?.length, 1);
 });
 
-it("draws a start the node's book holds solid, and one only the cell says dashed", () => {
-  const floor = (booked: boolean) =>
+it("draws a start the node's book holds solid, and one only claimed dashed", () => {
+  const floor = (startedBy: string, booked: boolean) =>
     floorOf(
       [
         forage({ cell: "KESTRL" }),
-        forage({ cell: "TERNAA", startedBy: "KESTRL", booked, splitFrom: "OSPREY", depth: 1 }),
+        forage({ cell: "TERNAA", startedBy, booked, splitFrom: "KESTRL", depth: 1 }),
       ],
       null,
       "kestrel",
     );
-  assert.equal(floor(true).match(/class="hypha"/gu)?.length, 2);
-  assert.ok(!floor(true).includes("claimed"));
-  assert.equal(floor(false).match(/class="hypha claimed"/gu)?.length, 1);
+  assert.equal(floor("KESTRL", true).match(/class="hypha"/gu)?.length, 2);
+  assert.ok(!floor("KESTRL", true).includes("claimed"));
+  assert.equal(floor("KESTRL", false).match(/class="hypha claimed"/gu)?.length, 1);
+  // Its booked starter isn't drawn, so its branch is the split, which is only claimed.
+  assert.equal(floor("FARAWAY", true).match(/class="hypha claimed"/gu)?.length, 1);
 });
 
-/** The panel's Started by, told as only the cell's word. */
-const STARTED_ON_ITS_WORD = /<dt>Started by<\/dt><dd>.*?<\/a>, as this cell says<\/dd>/u;
+/** The panel's Started by, told as only claimed. */
+const STARTED_CLAIMED = /<dt>Started by<\/dt><dd>.*?<\/a>, as claimed<\/dd>/u;
+
+/** The panel's Started by, told as only claimed, of a starter not drawn here. */
+const STARTED_AWAY_CLAIMED =
+  /<dt>Started by<\/dt><dd><span><code>FARAWAY<\/code>, not standing here<\/span>, as claimed<\/dd>/u;
 
 /** The panel's Started by, told plainly since the node's book holds it. */
 const STARTED_BOOKED = /<dt>Started by<\/dt><dd><a [^>]*><code>KESTRL<\/code><\/a><\/dd>/u;
 
-it("says who started a cell as the cell's own word unless the node's book holds it", () => {
+it("says who started a cell as only claimed unless the node's book holds it", () => {
   const here = new Set(["KESTRL"]);
   const said = (booked: boolean) =>
     panelOf(forage({ cell: "TERNAA", startedBy: "KESTRL", booked }), here, []);
-  assert.match(said(false), STARTED_ON_ITS_WORD);
+  assert.match(said(false), STARTED_CLAIMED);
+  const away = panelOf(forage({ cell: "TERNAA", startedBy: "FARAWAY" }), here, []);
+  assert.match(away, STARTED_AWAY_CLAIMED);
   assert.match(said(true), STARTED_BOOKED);
 });

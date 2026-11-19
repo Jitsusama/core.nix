@@ -132,9 +132,17 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
         expect(cell(forage_page, name), f"{name} wasn't drawn {depth} deep").to_have_attribute(
             "style", f"--depth:{depth}"
         )
+    # SKIFFS's start is in the node's book, so only OSPREY's split is drawn as claimed.
+    expect(forage_page.locator("path.hypha.claimed"), "a branch wasn't dashed right").to_have_count(
+        1
+    )
+    panel = opened_on(forage_page, "SKIFFS")
+    expect(fact(panel, "Started by"), "SKIFFS's booked start read as claimed").not_to_contain_text(
+        "as claimed"
+    )
     panel = opened_on(forage_page, "OSPREY")
     expect(fact(panel, "Split from"), "OSPREY didn't say it split from TERNAA").to_contain_text(
-        "TERNAA"
+        "TERNAA, as claimed"
     )
     panel = opened_on(forage_page, "TERNAA")
     expect(fact(panel, "Split into"), "TERNAA didn't say it split into OSPREY").to_contain_text(
