@@ -333,12 +333,10 @@ pub fn clock(
         .map(|end| ((end - now) / HOUR).ceil().max(0.0) as usize)
         .filter(|end| end.max(&1) <= &horizon);
     let (mut warned, mut capped, mut before_end, mut over_after) = (0, 0, 0, 0);
-    // The first hour each path reaches the allowance in, of those that do
-    // while it stands: past a known end the allowance is another figure.
+    // The first hour each path reaches the allowance in, of those that do.
+    // It runs past any end, since only the reader knows whether that end
+    // is one: a guessed or passed end doesn't stop the override.
     let mut reached = Vec::new();
-    let reach_until = ends_at.map_or(horizon, |end| {
-        (((end - now) / HOUR).ceil().max(0.0) as usize).min(horizon)
-    });
     for path in paths {
         let coming = hourly(path, shape, zone, now, horizon);
         // What's simulated from now, by the k-th hour.
@@ -350,7 +348,7 @@ pub fn clock(
         let mut first = None;
         for k in 1..=horizon {
             let window = window.counted(spent, &since, k, now);
-            if first.is_none() && k <= reach_until && window >= allowance {
+            if first.is_none() && window >= allowance {
                 first = Some(k);
             }
             if k <= 24 {
@@ -663,16 +661,13 @@ mod tests {
         assert_eq!(reaching(&paths, now).reaches_at, Some(now + 10.0 * HOUR));
     }
 
-    // Past a known end the allowance is the fallback's, so a reach after
-    // it is no reach of this one.
+    // An end doesn't cut the reach: whether it's one is the reader's call.
     #[test]
-    fn a_reach_past_the_end_is_not_given_a_time() {
+    fn a_reach_runs_past_an_end() {
         let now = 1_791_936_000.0;
         let paths = vec![vec![2400.0; 7]; 10];
-        let before = reaching_until(&paths, Some(now + 10.0 * HOUR), now);
-        assert_eq!(before.reaches_at, Some(now + 10.0 * HOUR));
-        let after = reaching_until(&paths, Some(now + 9.0 * HOUR), now);
-        assert_eq!(after.reaches_at, None);
+        let clock = reaching_until(&paths, Some(now + 9.0 * HOUR), now);
+        assert_eq!(clock.reaches_at, Some(now + 10.0 * HOUR));
     }
 
     // Fewer than half the paths reaching the cap says nothing of when.
@@ -681,6 +676,9 @@ mod tests {
         let now = 1_791_936_000.0;
         let mut paths = vec![vec![2400.0; 7]; 4];
         paths.extend(vec![vec![0.0; 7]; 6]);
+        assert_eq!(reaching(&paths, now).reaches_at, None);
+        // Four of nine is under half too, though nine halved is four.
+        paths.pop();
         assert_eq!(reaching(&paths, now).reaches_at, None);
     }
 
