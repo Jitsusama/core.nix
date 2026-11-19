@@ -325,9 +325,11 @@ Floating {
     // search and copy every line; at rest it's laid as far as the drawer
     // could show and a line past it, so it's still cut and says there's
     // more. Every name laid cost Emoji's 1,914 about 200 ms a drawer, and
-    // as much again to take down (the launcher lab, 2026-11-18).
+    // as much again to take down (the launcher lab, 2026-11-18). As far as
+    // it's scrolled too, since the keys leaving keep the view where they
+    // left it; at rest nothing else scrolls it, so a walk lays it once.
     property bool runWhole: false
-    readonly property int runMost: Math.ceil(tall / pitch) + 1
+    readonly property int runMost: Math.ceil((scrolled + tall) / pitch) + 1
     // Whether its title and prose are shown whole (`whole: true`), as a
     // landing asking Joel something is: the title on as many lines as it
     // takes and the prose never cut, since it's one line by contract

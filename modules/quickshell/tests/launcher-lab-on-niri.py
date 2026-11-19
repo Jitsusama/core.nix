@@ -322,15 +322,22 @@ DRAWER_PRESENTED = re.compile(
 )
 
 
-def walked_in(shell: Shell, place: str, within: str) -> list[Json]:
-    """Open the launcher on the place the drawers are walked in, and say its rows that have one.
+def walked_in(shell: Shell, place: str, within: str) -> tuple[list[Json], list[Json]]:
+    """Open the launcher on the place the drawers are walked in, with the windows it opened.
 
-    Windows open first, none unless the run says (LAB_WINDOWS), each titled at the length
-    LAB_TITLED gives it, so Desktop's Windows names as many, as long, as Joel's Runs do.
+    Windows open first, none unless the run says (LAB_DRAWN_WINDOWS), each titled at the
+    length LAB_TITLED gives it, so Desktop's Windows names as many, as long, as Joel's Runs
+    do. It gives them, to close once walked, and the rows that have a drawer.
     """
     titled = os.environ.get("LAB_TITLED", "")
-    for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):
+    # The window's title goes to niri's spawn in single quotes (Shell.opened).
+    if "'" in titled:
+        refused = f"LAB_TITLED can't hold an apostrophe: {titled!r}"
+        raise ValueError(refused)
+    windows = [
         shell.opened(f"Lab {nth} {titled}".strip(), app="foot")
+        for nth in range(int(os.environ.get("LAB_DRAWN_WINDOWS", "0")))
+    ]
     opened(shell, "home")
     shell.close_launcher()
     stepped(shell, place)
@@ -346,8 +353,8 @@ def walked_in(shell: Shell, place: str, within: str) -> list[Json]:
     if drawn and str(drawn[0]["is"]).startswith("windows:this"):
         shell.send_chars("j")
         shell.launcher_until(lambda shown: bool((shown["drawer"] or {}).get("shown")))
-        return drawn[1:]
-    return drawn
+        return windows, drawn[1:]
+    return windows, drawn
 
 
 def drawer_said(shell: Shell, mark: int) -> re.Match[str] | None:
@@ -376,7 +383,7 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
     place = os.environ.get("LAB_DRAWN_IN", DRAWN_IN)
     within = os.environ.get("LAB_DRAWN", DRAWN) or place
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    drawn = walked_in(shell, place, within)
+    windows, drawn = walked_in(shell, place, within)
     walk = "j" * (len(drawn) - 1) + "k" * (len(drawn) - 1)
     timed: list[int] = []
     others = unsaid = 0
@@ -427,6 +434,8 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
                 )
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"])
+    for window in windows:
+        shell.close(window)
     with capsys.disabled():
         print(
             f"lab-drawer {within}: {len(timed)} presented a median "
