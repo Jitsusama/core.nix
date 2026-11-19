@@ -1,21 +1,23 @@
-// Emoji, a collection: what's typed finds them by name or meaning (Emoji.js
-// says how), the best shows as one row with a count of the rest, and Return
-// pastes it into the window the launcher opened over, or copies it with no
-// window there; a step in are Paste and Copy. The list is Unicode's, with
-// CLDR's English keywords, built at build time in the skin tone `tone`
-// names, and its rows are made ready by clipboard-history, which pastes
-// them (clipboard/src/emoji.rs), and held over one connection to its
-// socket in the ready-row form (ReadyRows.qml), so nothing here reads a
-// file or names an emoji. Each act is asked as the history serves it,
-// shutting the launcher as it asks, as Copies' are. Once the history has
-// been silent a second, its row and its head say so, as Copies' do
-// (Pasting.qml's pressing).
+// Emoji, a collection: Unicode's groups with nothing typed, each stepped
+// into for its emoji, and what's typed finds them by name or meaning, ranked
+// by the history that serves them (clipboard/src/search.rs says how). Return
+// pastes one into the window the launcher opened over, or copies it with no
+// window there. The list is Unicode's, with CLDR's English keywords, built at
+// build time in the skin tone `tone` names, and its rows are made ready by
+// clipboard-history, which pastes them (clipboard/src/emoji.rs), and held
+// over one connection to its socket in the ready-row form (ReadyRows.qml),
+// so nothing here reads a file, names an emoji or matches one. An emoji's
+// row is made only once it's shown, in its group or found: every one of
+// 1,914 made at the shell's start held about 30 MB (2026-11-19). Each act is
+// asked as the history serves it, shutting the launcher as it asks, as
+// Copies' are. Once the history has been silent a second, its row and its
+// head say so, as Copies' do (Pasting.qml's pressing).
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "Emoji.js" as Emoji
+import "ReadyRows.js" as Ready
 
 Provider {
     id: provider
@@ -29,25 +31,22 @@ Provider {
     examples: ["emoji"]
 
     // The history's rows of Emoji, watched whether or not the launcher's
-    // open, so Super+E opens on rows already made.
+    // open, so Super+E opens on rows already made. Its answer to what's
+    // typed takes its order once it comes, the selection staying on its
+    // row (Launcher.qml's reshow).
     ReadyRows {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
         place: "emoji"
         make: (row, key) => provider.made(row, key)
         maker: provider
+        onSearched: words => {
+            const launcher = provider.launcher;
+            const step = launcher?.held[launcher.held.length - 1];
+            if (launcher?.open && launcher.typed === words && step?.row.from === provider)
+                launcher.reshow(launcher.held.length, true);
+        }
     }
-
-    // Every emoji's row, in Unicode's order, as the history serves them.
-    readonly property var all: ready.rows()
-    // What Emoji.js searches, each emoji made ready to be matched once, in
-    // the order of `all`.
-    readonly property var found: all.map(row => row.emoji)
-    // The last search, so a longer query looks only among what it found,
-    // started again whenever the rows change.
-    property string lastTyped: ""
-    property var lastFound: []
-    onFoundChanged: lastTyped = ""
 
     // What its row and its head say of the history that pastes emoji.
     readonly property string pressing: Pasting.pressing
@@ -56,10 +55,12 @@ Provider {
         return pressing !== "" ? pressing : null;
     }
 
-    // An emoji's row, from the one the history serves: named and marked
-    // there, its acts done as it serves them, and the emoji itself, made
-    // ready to be searched, kept on it.
+    // A group's row, stepped into for its emoji and searched within by the
+    // history; or an emoji's, from the one the history serves: named and
+    // marked there, its acts done as it serves them.
     function made(served, key) {
+        if (served.kind === "emoji-group")
+            return ready.thing(served, key, { hue: "text", finds: provider.findsIn(key) });
         const held = served.held ?? {};
         const readied = ready.thing(served, key, {
             thing: true,
@@ -73,51 +74,73 @@ Provider {
         if (readied === null)
             return null;
         const row = provider.gotten(readied, { verb: pastingVerb });
-        row.emoji = Emoji.prepare([held.emoji ?? "", served.name ?? "", row.keywords?.text ?? "",
-            held.group ?? ""], served.order ?? 0);
-        row.emoji.row = row;
         const copying = (served.acts ?? []).find(one => one.key === "verb:emoji:copy");
         return Pasting.served(row, "verb:emoji:paste", copying, held.emoji ?? "",
             actor(key));
     }
 
-    // An emoji's verb and its act, made apart from made(), as Qt's engine
-    // keeps every argument and local a closure's function has alive with
-    // it (ReadyRows.qml's thing() says what it cost): one verb for every
-    // row, and an act holding only its key.
+    // An emoji's verb and its act, and what's typed in a group, made apart
+    // from made(), as Qt's engine keeps every argument and local a
+    // closure's function has alive with it (ReadyRows.qml's thing() says
+    // what it cost): one verb for every row, and an act holding only its
+    // key.
     function pastingVerb() {
         return Pasting.verb();
     }
     function actor(key) {
         return one => ready.act(key, one);
     }
+    function findsIn(key) {
+        return letters => ready.typedIn(key, letters) ?? [];
+    }
 
+    // The emoji the history finds for what's typed, best first. While its
+    // answer is asked, those of the last answer that hold every letter
+    // typed stand, when what's typed goes on from it, so a key takes rows
+    // away and puts none in a place of its own; else none, for the moment
+    // the answer takes.
     function search(typed) {
+        const answer = ready.search(typed);
+        if (answer !== null)
+            return {
+                rows: ready.foundRows(answer),
+                grade: answer.keys.length > 0 ? answer.grade : 3
+            };
         const words = Fuzzy.words(typed);
-        const joined = words.join(" ");
-        const among = lastTyped !== "" && joined.startsWith(lastTyped) ? lastFound : found;
-        const hits = Emoji.search(among, words);
-        lastTyped = joined;
-        lastFound = hits;
-        return { rows: hits.map(one => one.row), grade: Emoji.grade(hits, words) };
+        const need = Fuzzy.letters(words);
+        const holds = item => !!item && (item.mask & need) === need;
+        const last = ready.found.words !== null
+            && words.join(" ").startsWith(Fuzzy.words(ready.found.words).join(" "))
+            ? ready.foundRows(ready.found) : [];
+        const rows = last.filter(row => holds(row.prepared) || holds(row.keywords));
+        return { rows: rows, grade: rows.length > 0 ? 0 : 3 };
     }
 
-    // Every row, and their names, as Desktop's row for Emoji reads them for
-    // its count and its drawer on every step; the names are kept while the
-    // rows stand, since naming 1,914 again each step was a fifth of a step
-    // into Desktop under load (2026-11-10). A plain object, so keeping them
-    // notifies nothing.
-    readonly property var named: ({ rows: null, names: null })
+    // Its groups, as the history serves them.
     function everything() {
-        return all;
+        return ready.rows();
     }
-    function memberNames(held = everything()) {
-        if (held !== all)
-            return held.map(one => one.name);
-        if (named.rows !== all) {
-            named.rows = all;
-            named.names = all.map(one => one.name);
+
+    // Every emoji's name, and how many there are, as Desktop's row for
+    // Emoji reads them for its drawer and its count on every step, read
+    // from the history's records rather than made rows, so none is made for
+    // them. Kept while the records stand, since naming 1,914 again each step
+    // was a fifth of a step into Desktop under load (2026-11-10). A plain
+    // object, so keeping them notifies nothing.
+    readonly property var named: ({ placings: -1, names: [] })
+    function names() {
+        if (named.placings !== ready.placings) {
+            const held = ready.held;
+            named.names = ready.keys.map(key => Ready.rowOf(held[key]))
+                .filter(row => row?.kind === "emoji").map(row => row.name ?? "");
+            named.placings = ready.placings;
         }
         return named.names;
+    }
+    function memberNames(held) {
+        return names();
+    }
+    function counted(held) {
+        return countedAs(names().length);
     }
 }

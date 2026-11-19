@@ -1,30 +1,16 @@
 # The checks of the launcher's emoji, which the folder's checks.nix gathers with
 # every other place's; its opening comment says why each place keeps its own.
 {
-  copied,
   lib,
-  noFonts,
   pkgs,
-  timedQml,
   ...
 }:
 {
-  # The launcher finds emoji by what they're called and what they mean, best
-  # first, as modules/quickshell/tests/emoji.qml lists them, over the list it's
-  # built with, and in about three times the least a search could take.
-  the-launcher-finds-emoji =
-    let
-      emoji = import ../launcher/emoji.nix { inherit lib pkgs; } "none";
-    in
-    pkgs.runCommandLocal "the-launcher-finds-emoji" { } ''
-      mkdir launcher
-      cp ${../tests/emoji.qml} emoji.qml
-      ${copied [ "launcher/Emoji.js" ]}
-      cp ${emoji} emoji.jsonl
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export QML_XHR_ALLOW_FILE_READ=1
-      export FONTCONFIG_FILE=${noFonts}
-      ${timedQml "emoji.qml"}
-      touch $out
-    '';
+  # The clipboard's history finds emoji by what they're called and what they
+  # mean, best first, over the list the launcher is built with: its tests run
+  # as it builds, with EMOJI_LIST naming the list, which its search test reads
+  # (clipboard/src/search.rs).
+  the-launcher-finds-emoji = (pkgs.callPackage ../clipboard/package.nix { }).overrideAttrs {
+    EMOJI_LIST = import ../launcher/emoji.nix { inherit lib pkgs; } "none";
+  };
 }
