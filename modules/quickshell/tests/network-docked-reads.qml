@@ -220,22 +220,26 @@ ShellRoot {
     // Holds once `check` does, failing past `ms` as `what` never held,
     // with what was said and any load given up since it began, since one
     // given up inside a step's own wait fails that wait rather than the
-    // step before; the holds held puts on purpose, from before, are left
-    // out. `check` is tried first, so a poll that comes late can't fail a wait
+    // step before. A give-up makes a hold anew, so a hold still the one
+    // there as the wait began, put by the case on purpose or stamped by
+    // it, is left out. `check` is tried first, so a poll that comes late can't fail a wait
     // that holds. A wait on a load gets four seconds a card, for a loaded
     // builder. Only a wait on a give-up, which no load brings, runs past
     // four.
     function within(ms, check) {
         const began = Date.now();
-        const since = stuck => Object.keys(stuck).filter(name => stuck[name].at >= began);
+        const facts = Object.assign(Object.create(null), networks.factsStuck);
+        const cables = Object.assign(Object.create(null), networks.cablesStuck);
+        const since = (stuck, before) => Object.keys(stuck)
+            .filter(name => stuck[name] !== before[name]);
         return () => {
             if (check())
                 return true;
             if (Date.now() - began > ms)
                 throw new Error(`${waits.what} never held in ${ms} ms: ${said()}; `
                     + `told ${JSON.stringify(told)}; given up `
-                    + JSON.stringify(since(networks.factsStuck)
-                        .concat(since(networks.cablesStuck))));
+                    + JSON.stringify(since(networks.factsStuck, facts)
+                        .concat(since(networks.cablesStuck, cables))));
             return false;
         };
     }
