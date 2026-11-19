@@ -103,6 +103,12 @@ impl Starts {
             );
             Value::Null
         });
+        if !said.is_null() && !said["starts"].is_array() {
+            eprintln!(
+                "agents: {} holds no list of starts, so none kept there is told",
+                path.display()
+            );
+        }
         let kept = said["starts"].as_array().map(|starts| {
             starts
                 .iter()
@@ -144,9 +150,12 @@ impl Starts {
         fs::rename(&writing, path)
     }
 
-    /// The start `token` asked at `at_ms`, kept as the node is asked.
+    /// The start `token` asked at `at_ms`, kept as the node is asked. One
+    /// older than a day goes then too, so a daemon running for days
+    /// doesn't serve it for good.
     pub fn begun(&mut self, token: &str, at_ms: u128) {
-        self.0.retain(|one| one.token != token);
+        self.0
+            .retain(|one| one.token != token && one.at + KEPT_FOR_MS > at_ms);
         self.0.push(Start {
             token: token.to_owned(),
             at: at_ms,
@@ -157,10 +166,13 @@ impl Starts {
     }
 
     /// The start `token` ended with `answer`, the daemon's answer to the
-    /// shell; one not kept, let go since, is kept no more.
+    /// shell, of which only what the shell tells is kept (Sprouting.js's
+    /// `ended`): the node's whole answer holds the folder and the words
+    /// that attach the session, which a record any watch hears needn't.
+    /// One not kept, let go since, is kept no more.
     pub fn ended(&mut self, token: &str, answer: &Value) {
         if let Some(one) = self.0.iter_mut().find(|one| one.token == token) {
-            one.ended = Some(answer.clone());
+            one.ended = Some(told_of_an_end(answer));
         }
     }
 
@@ -183,6 +195,20 @@ impl Starts {
             })
             .collect()
     }
+}
+
+/// Of `answer`, the daemon's to a sprout, only what the shell tells: the
+/// machine and holder's id of one started, or the code and words of one
+/// that wasn't.
+fn told_of_an_end(answer: &Value) -> Value {
+    let mut kept = json!({});
+    if let Some(begun) = answer.get("sprouted") {
+        kept["sprouted"] = json!({"machine": begun["machine"], "held": begun["held"]});
+    }
+    if let Some(error) = answer.get("error") {
+        kept["error"] = json!({"code": error["code"], "message": error["message"]});
+    }
+    kept
 }
 
 /// A cut-off start's end, in the shape of the daemon's answer to a sprout.
@@ -237,7 +263,10 @@ mod tests {
             "a start still asked was served"
         );
         let answer = json!({"sprouted": {"machine": "heron", "held": "h1"}});
-        starts.ended("a-1", &answer);
+        // The folder and attach words aren't the shell's to tell, so go.
+        let whole = json!({"sprouted": {"machine": "heron", "held": "h1",
+            "folder": "/home/j/src/r", "attach": ["mycelium", "join", "h1"]}});
+        starts.ended("a-1", &whole);
         starts.write(&path).unwrap();
         let mut found = Starts::read(&path, NOW);
         assert_eq!(found.records()[0]["start"]["ended"], answer);
@@ -256,10 +285,24 @@ mod tests {
         assert_eq!(starts.0[0].token, "a-1", "the oldest wasn't let go first");
         let path = kept_at("old");
         starts.write(&path).unwrap();
+        let day_less_a_moment = Starts::read(&path, NOW + KEPT_FOR_MS - 1).records();
+        assert_eq!(day_less_a_moment.len(), KEPT_AT_MOST, "let go before a day");
         assert_eq!(
             Starts::read(&path, NOW + KEPT_FOR_MS).records(),
             Vec::<Value>::new()
         );
+        // A daemon running all day lets go of them as the next is asked.
+        starts.begun("b-1", NOW + KEPT_FOR_MS);
+        assert_eq!(starts.0.len(), 1, "a running daemon kept day-old starts");
+    }
+
+    #[test]
+    fn a_refusal_keeps_its_code_and_words() {
+        let mut starts = Starts::default();
+        starts.begun("a-1", NOW);
+        let refused = json!({"error": {"code": "refused", "message": "no folder there"}});
+        starts.ended("a-1", &refused);
+        assert_eq!(starts.records()[0]["start"]["ended"], refused);
     }
 
     #[test]

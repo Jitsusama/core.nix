@@ -53,15 +53,34 @@ function token(now, chance) {
         .toString(TOKEN_BASE)}`;
 }
 
+// How long a start this shell never asked stands kept before it's told.
+// While a switch hands the shell over, the one that asked is still up
+// beside the new one, and says told as it hears the end, a round trip;
+// this is room for a busy shell to, so Joel isn't told it twice.
+const SETTLE_MS = 5000;
+
+// How long a told the daemon didn't take waits to be said again: a shell
+// held while a switch hands over is taken for the shell only once it's
+// the unit's main process, up to 70 s on (shell-hands-over.sh), and one
+// dropped with the daemon is said again as its watch answers anyway.
+const TOLD_AGAIN_MS = 30000;
+
 // Of the starts the agents daemon keeps ended and untold (`kept`, each
 // `{ token, ended }`), by how this shell stands on each (`known`, a
-// token's "asking", "ended" or "told"): those to tell, whose end it never
-// heard, as a shell started since or a start a restart cut off has it,
-// and every token to say told, all but those it's still asking.
-function untold(kept, known) {
-    const tell = kept.filter(one => !(one.token in known));
-    const heard = kept.filter(one => known[one.token] !== "asking").map(one => one.token);
-    return { tell, told: heard };
+// token's "asking", "ended" or "told") and when it first saw each it
+// never heard the end of (`seen`, by token): those to tell, as a shell
+// started since or a start a restart cut off has it, once seen
+// SETTLE_MS before `now`; those still `waiting` that out; and every
+// token to say told, all but those still asked or waited on.
+function untold(kept, known, seen, now) {
+    const own = (of, token) => Object.prototype.hasOwnProperty.call(of, token);
+    const settled = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS;
+    const unheard = kept.filter(one => !own(known, one.token));
+    const tell = unheard.filter(settled);
+    const waiting = unheard.filter(one => !settled(one)).map(one => one.token);
+    const told = kept.filter(one => (own(known, one.token) ? known[one.token] !== "asking"
+        : settled(one))).map(one => one.token);
+    return { tell, told, waiting };
 }
 
 // Why `ask` would ask nothing, in `said`'s words (`empty` or

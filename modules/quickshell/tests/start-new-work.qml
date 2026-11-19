@@ -188,18 +188,39 @@ QtObject {
             "&lt;a href=\"x\"&gt;look&lt;/a&gt; &amp; see\nbusy");
 
         // The starts the agents daemon keeps ended and untold: one this shell never heard
-        // the end of is told, and each but one it's still asking is said told.
+        // the end of is told once it has stood kept a moment, first seen at `seen`, and each
+        // but one it's still asking or waiting out is said told.
+        const now = 1763500000000;
         const kept = [
             { token: "a-1", ended: { error: { code: "unanswered", message: "cut off" } } },
             { token: "a-2", ended: { sprouted: { machine: "kestrel", held: "h2" } } },
             { token: "a-3", ended: { error: { code: "unsprouted", message: "no" } } },
             { token: "a-4", ended: { error: { code: "unsprouted", message: "no" } } }
         ];
-        const untold = Sprouting.untold(kept, { "a-2": "ended", "a-3": "asking", "a-4": "told" });
+        const known = { "a-2": "ended", "a-3": "asking", "a-4": "told" };
+        const settled = { "a-1": now - Sprouting.SETTLE_MS };
+        const untold = Sprouting.untold(kept, known, settled, now);
         Expect.same("one never heard is told", untold.tell.map(one => one.token), ["a-1"]);
         Expect.same("each heard or told is said told, and one still asked isn't",
             untold.told, ["a-1", "a-2", "a-4"]);
-        Expect.same("none kept, none told", Sprouting.untold([], {}), { tell: [], told: [] });
+        Expect.same("none waits once each never heard has settled", untold.waiting, []);
+        // Its asker, still up beside this shell while a switch hands over, says it told
+        // first, so one first seen just now waits rather than being told twice.
+        const fresh = Sprouting.untold(kept, known, {}, now);
+        Expect.same("one just seen isn't told yet", fresh.tell, []);
+        Expect.same("nor said told, as it isn't", fresh.told, ["a-2", "a-4"]);
+        Expect.same("it waits", fresh.waiting, ["a-1"]);
+        const early = Sprouting.untold(kept, known, { "a-1": now - Sprouting.SETTLE_MS + 1 },
+            now);
+        Expect.same("one seen less than the moment ago still waits", early.waiting, ["a-1"]);
+        // A token the daemon took is letters, digits and dashes, as an object's own
+        // inherited names are too, so only a token this shell holds counts as known.
+        const named = Sprouting.untold([{ token: "constructor", ended: {} }], {},
+            { constructor: now - Sprouting.SETTLE_MS }, now);
+        Expect.same("an inherited name isn't known", named.tell.map(one => one.token),
+            ["constructor"]);
+        Expect.same("none kept, none told", Sprouting.untold([], {}, {}, now),
+            { tell: [], told: [], waiting: [] });
         const token = Sprouting.token(1763500000000, 0.5);
         Expect.same("a start's token is letters, digits and a dash, as the daemon keeps",
             /^[a-z0-9]+-[a-z0-9]+$/u.test(token), true);

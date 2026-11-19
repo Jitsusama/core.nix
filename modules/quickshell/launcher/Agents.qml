@@ -404,7 +404,15 @@ Provider {
             // Told as it answers, and again as sharing changes, whether the
             // screen is shared, which only the shell knows from niri's
             // casts, so the daemon says no amount while it is.
-            onStateChanged: provider.tellSharing()
+            onStateChanged: {
+                provider.tellSharing();
+                // A told the daemon took but went before keeping is said
+                // again to the one saying hello now, since the records it
+                // serves come alike to those held through the gap, so tell
+                // no change that would.
+                if (state === "answering")
+                    provider.sproutsKept(held);
+            }
         }
     }
     readonly property string summaryKey: "summary:agents"
@@ -1598,15 +1606,25 @@ Provider {
     // stands on each it named, by token: "asking", "ended" or "told". One
     // kept that it never heard the end of, asked by a shell before it or
     // cut off by a restart, is told as a start's end is, and opens no
-    // window, since nobody waits on it; every one but those still asked is
-    // then said told (Sprouting.untold).
+    // window, since nobody waits on it, once it has stood kept a moment
+    // (`sproutSeen`, when first seen); every one but those still asked or
+    // waited on is then said told (Sprouting.untold). A told the daemon
+    // didn't take is said again (sproutAgain).
     property var sproutTokens: ({})
+    property var sproutSeen: ({})
     // The token of the start running, "" while none runs.
     property string sproutToken: ""
     function sproutsKept(held) {
         const kept = Object.values(held).filter(one => one?.kind === "start")
             .map(one => one.start ?? {});
-        const stood = Sprouting.untold(kept, sproutTokens);
+        const now = Date.now();
+        const stood = Sprouting.untold(kept, sproutTokens, sproutSeen, now);
+        stood.waiting.forEach(token => {
+            if (!Object.prototype.hasOwnProperty.call(sproutSeen, token))
+                sproutSeen[token] = now;
+        });
+        if (stood.waiting.length > 0)
+            sproutAgainIn(Sprouting.SETTLE_MS);
         stood.tell.forEach(one => {
             const how = Sprouting.ended(one.ended, sproutWords());
             sproutReaches(how);
@@ -1628,7 +1646,28 @@ Provider {
         tokens.forEach(token => {
             sproutTokens[token] = "told";
         });
-        rowsKind.ask({ ask: "sprout-told", starts: tokens });
+        rowsKind.ask({ ask: "sprout-told", starts: tokens }, answer => {
+            if (answer !== null && answer.error === undefined)
+                return;
+            const why = answer?.error?.message ?? "no daemon answered";
+            console.info(`launcher: a start's told wasn't taken: ${why}`);
+            tokens.filter(token => sproutTokens[token] === "told").forEach(token => {
+                sproutTokens[token] = "ended";
+            });
+            sproutAgainIn(Sprouting.TOLD_AGAIN_MS);
+        });
+    }
+    // Looks at the kept starts again in `ms`, or sooner if already due.
+    function sproutAgainIn(ms) {
+        if (sproutAgain.running && sproutAgain.interval <= ms)
+            return;
+        sproutAgain.interval = ms;
+        sproutAgain.restart();
+    }
+    Timer {
+        id: sproutAgain
+
+        onTriggered: provider.sproutsKept(provider.rowsKind?.held ?? {})
     }
     // How the running act ended, said on it and in the journal; another
     // may start from here. One started opens once its session is up.
