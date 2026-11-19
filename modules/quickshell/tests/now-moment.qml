@@ -1516,9 +1516,10 @@ ShellRoot {
                 === "[[1,1],[0,0],[0,0],[1,1]]",
             JSON.stringify([talksActing, talksAsking, talksYes, talksParked]));
         // Its look offers Talk and then Go To where it has a window, and only
-        // Go To while it asks.
+        // Go To while it asks, among the look's own Open and Clear.
         const lookActs = () => forYou().find(row => row.key === "on:look:e").verbs()
-            .map(act => act.key);
+            .map(act => act.key)
+            .filter(key => key === "verb:agent:talk" || key.startsWith("verb:on:waiting:go:"));
         const windowed = session => Object.assign({}, session, { window: 3 });
         Sessions.running = [windowed(acted)];
         Sessions.wanting = [windowed(acted)];
