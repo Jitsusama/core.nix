@@ -73,6 +73,7 @@
         "Daemon.qml"
         "SpendWatch.qml"
         "Words.qml"
+        "launcher/Catalogue.js"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"
         "launcher/Spend.qml"

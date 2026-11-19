@@ -79,6 +79,12 @@ pub enum Ask {
         act: String,
         line: String,
     },
+    /// A report's whole words, by its id, which its row asks for at
+    /// Return rather than carrying them (`ready.rs`).
+    Copy {
+        id: Value,
+        report: String,
+    },
     /// An ask this doesn't know, or a line that isn't one.
     Unknown {
         id: Value,
@@ -132,6 +138,10 @@ pub fn ask(line: &str) -> Ask {
             id,
             act: said["act"].as_str().unwrap_or_default().to_owned(),
             line: said["line"].as_str().unwrap_or_default().to_owned(),
+        },
+        "copy" => Ask::Copy {
+            id,
+            report: said["report"].as_str().unwrap_or_default().to_owned(),
         },
         _ => Ask::Unknown { id, ask: asked },
     }
@@ -517,6 +527,18 @@ impl Hub {
                 error(&id, "unknown-kind", &format!("no kind {kind} here"))
             }
             Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
+            // Answered from what's held, so a hub serving only what was
+            // written answers it too.
+            Ask::Copy { id, report } => {
+                let words = held
+                    .records
+                    .get(&format!("report:{report}"))
+                    .and_then(|record| record["report"]["markdown"].as_str());
+                match words {
+                    Some(words) => json!({"id": id, "copy": words}),
+                    None => self.refused(&id, "no-line", &format!("no report {report} here")),
+                }
+            }
             // Answered above, off the lock.
             Ask::Act { .. } => return None,
         })
@@ -891,6 +913,43 @@ mod tests {
             json!({"code": "not-answering", "message": "spend-watch can't act yet",
                 "said": "the watch can't act yet"}),
             "a refusal should say the vocabulary's words, its message kept for the journal"
+        );
+    }
+
+    // A report's copy is asked for as Return is pressed, never carried
+    // in its row, and answered from what's held, so even a hub serving
+    // only what was written, with nothing to act, answers it.
+    #[test]
+    fn a_report_s_copy_is_answered_when_asked() {
+        let vocabulary = r#"{"things": [{"id": "spend", "said": {
+            "refused:no-line": "no longer there"}}]}"#;
+        let hub = Arc::new(Hub::new(1).refusing(refusals(vocabulary)));
+        let mut made = collection();
+        made.reports.insert(
+            "today/model".to_owned(),
+            crate::collection::Shown {
+                id: "today/model".into(),
+                title: "Spend today by model".into(),
+                headline: String::new(),
+                rows: Vec::new(),
+                markdown: "## Spend today by model".into(),
+                words: "model".into(),
+            },
+        );
+        hub.seed(&serde_json::to_string(&made).expect("the collection, written"));
+        hub.answering();
+        let mut client = Client::to(&hub, r#"{"id":1,"ask":"copy","report":"today/model"}"#);
+        assert_eq!(
+            client.next(),
+            json!({"id": 1, "copy": "## Spend today by model"}),
+            "a report held should be answered with its whole words"
+        );
+        client.say(r#"{"id":2,"ask":"copy","report":"gone"}"#);
+        assert_eq!(
+            client.next()["error"],
+            json!({"code": "no-line", "message": "no report gone here",
+                "said": "no longer there"}),
+            "a report not held should be refused in the launcher's words"
         );
     }
 

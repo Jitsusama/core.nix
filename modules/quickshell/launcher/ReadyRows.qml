@@ -641,12 +641,15 @@ Scope {
         if (acts.length > 0 && row.sure !== true && (row.kind !== "act" || steps))
             Object.assign(acting, { verbs: verbs, targets: verbs });
         // A row whose Return copies is a value, drawn as Provider.qml's
-        // copyRow draws one, and what it copies is what y joins.
+        // copyRow draws one, and what it copies is what y joins, unless its
+        // words are asked for, which y says it can't join (`alone`), and
+        // which keeps the launcher until they're copied (ReadyRows.js's leaving).
         const copying = Ready.actForm(first) !== "copy" ? {} : {
             figure: true,
             plain: true,
-            now: true,
-            copies: ofActs.copies
+            now: !Forms.copyAsked(first),
+            copies: ofActs.copies,
+            alone: Forms.copyAsked(first)
         };
         const items = itemsOf(row);
         return maker.member(Object.assign({
@@ -906,6 +909,7 @@ Scope {
             later: Ready.leaving(one).later,
             copies: Ready.actForm(one) === "copy"
                 ? () => Ready.copyOf(one, Date.now(), timeWords) : undefined,
+            alone: Forms.copyAsked(one),
             undo: Ready.actForm(one.undo) === "ask" ? () => act(key, one.undo) : undefined,
             run: () => act(key, one)
         }, Confirm.asking(one), Words.ending(one.key), worded, asks));
@@ -917,6 +921,10 @@ Scope {
         const launcher = maker?.launcher;
         switch (Ready.actForm(one)) {
         case "copy": {
+            if (Forms.copyAsked(one)) {
+                copyAsked(key, one);
+                return;
+            }
             const words = Ready.copyOf(one, Date.now(), timeWords);
             if (words !== "")
                 Quickshell.clipboardText = words;
@@ -968,6 +976,108 @@ Scope {
         console.info(`launcher: ${one.key} opened nothing, its ${Ready.openedIn(one)} gone`);
         maker?.becomes(shown, rowAt(key), row?.name ?? "", verbOf(one), { done: () => false });
         maker?.refused(shown, why);
+    }
+
+    // Copies a copy whose words its daemon gives only at Return, asked on the rows' own
+    // connection, then put on the clipboard as every copy is, so a shared screen hides it as it
+    // hides any (Shared.js). A Wayland program sets the clipboard only while it holds the keys,
+    // so Return keeps the launcher until the words are on it, then shuts it saying it copied;
+    // y keeps it, flashing the row once copied (Launcher.qml's yanked). A refusal, or no answer
+    // within ActForms.js's COPY_WAIT, is said at once while it's open. Closing it ends the wait,
+    // said on its next opening, and its words then copy nothing, since the keys and the
+    // clipboard may be another's by then; so a walk from outside (Launcher.qml's walkTold), told
+    // done once its act has run, is told it copies only from the launcher, with Return. A newer
+    // one ends the wait of one before it quietly, as nothing went wrong. Moved on since (standing),
+    // it copies nothing and says so, rather than copy over his or shut the launcher under his keys.
+    property var copyWaiting: null
+    // How many times the clipboard changed, counted rather than read, since reading it may wait
+    // on the program that holds it.
+    property int clipped: 0
+    Connections {
+        target: Quickshell
+        ignoreUnknownSignals: true
+
+        function onClipboardTextChanged() {
+            ready.clipped += 1;
+        }
+    }
+    function copyAsked(key, one) {
+        const launcher = maker?.launcher;
+        const words = Words.field.becoming ?? {};
+        const name = toldName(key);
+        const yanked = launcher?.yankedAlone;
+        if (launcher && (launcher.open !== true || Array.isArray(launcher.walkTold))) {
+            console.info(`launcher: ${one.key} asked nothing: walked, or the launcher's shut`);
+            launcher.toldNot(name, "copy", words.onlyOpen ?? "");
+            return;
+        }
+        copyWaiting?.(true);
+        copyWait.stop();
+        copyWaiting = null;
+        const stood = Forms.standing(launcher, clipped);
+        copyWait.restart();
+        const ender = Forms.askCopy(one, link, copy => {
+            copyWait.stop();
+            copyWaiting = null;
+            if (launcher && launcher.open !== true) {
+                console.info(`launcher: ${one.key} copied nothing: the launcher closed first`);
+                launcher.toldNot(name, "copy", words.closedFirst ?? "");
+                return;
+            }
+            if (launcher && Forms.movedOn(stood, Forms.standing(launcher, clipped))) {
+                console.info(`launcher: ${one.key} copied nothing: moved on first`);
+                launcher.toldNot(name, "copy", words.movedOn ?? "");
+                return;
+            }
+            console.info(`launcher: ${one.key} copied`);
+            Quickshell.clipboardText = copy;
+            alsoAsked(one);
+            if (typeof yanked === "function")
+                yanked();
+            else
+                launcher?.shutCopied();
+        }, answer => {
+            copyWait.stop();
+            copyWaiting = null;
+            const why = Ready.refusal(answer, words);
+            const code = answer?.error?.code ?? "no answer";
+            console.info(`launcher: ${one.key} refused: ${code}`);
+            launcher?.toldNot(name, "copy", why);
+        });
+        // Ended at once, as with no connection, it has no wait left to end.
+        copyWaiting = copyWait.running ? ender : null;
+    }
+    Timer {
+        id: copyWait
+        interval: Forms.COPY_WAIT
+        onTriggered: {
+            const waited = ready.copyWaiting;
+            ready.copyWaiting = null;
+            console.info(`launcher: a copy's wait ran out ${waited ? "waiting" : "with none"}`);
+            waited?.();
+        }
+    }
+    // The launcher closing ends a copy's wait, told as closed first, so a late answer neither
+    // copies into what Joel did since nor shuts an opening he began after.
+    Connections {
+        target: ready.maker?.launcher ?? null
+        ignoreUnknownSignals: true
+
+        function onOpenChanged() {
+            const launcher = ready.maker?.launcher;
+            const waited = ready.copyWaiting;
+            if (launcher?.open === true || !waited)
+                return;
+            copyWait.stop();
+            ready.copyWaiting = null;
+            // Shut by another copy he chose instead, it ends quietly, as a newer asked one does.
+            if (launcher?.parting === "copied") {
+                waited(true);
+                return;
+            }
+            console.info("launcher: a copy's wait ended: the launcher closed first");
+            waited({ error: { code: "closed", said: Words.field.becoming?.closedFirst ?? "" } });
+        }
     }
 
     // Sends what an act the shell did asks besides, once it's done, as a

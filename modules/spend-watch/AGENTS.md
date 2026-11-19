@@ -26,11 +26,14 @@ the shell's acts too (`src/acts.rs`): `run` does what a row offers, going
 to a session or starting its sign-in through niri, and `expect` marks its
 finding expected, each named by the row's key so the socket runs only what
 a pass put in a row. The bar's piece acts the same way, naming an action
-of `status.json` by its `key`. The files stay for pi, the command line and
+of `status.json` by its `key`. A report's row carries no copy of its own:
+its words change with each of its figures, so carrying them re-sent the
+row each pass, and the launcher asks `copy` with the report's id at
+Return instead, answered from what's held. The files stay for pi, the command line and
 the checks, and for the shell while the socket isn't there. A check or a
 VM test standing in for the daemon writes those files and runs
-`spend-watch serve`, which tells them on the socket as a pass would and
-refuses every act as not answering.
+`spend-watch serve`, which tells them on the socket as a pass would,
+answers a report's copy, and refuses every act as not answering.
 [`home.nix`][1] renders its config and runs it; the [contract][2] says what a
 feed speaks.
 

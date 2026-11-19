@@ -6,18 +6,25 @@
 // the watch isn't answering and starts it by asking the machine daemon,
 // spawning nothing. Served, it answers "spend", "cap" and a report by its
 // words, leaves alone what isn't one, steps from a period into its cuts
-// and from a cut into its rows, each with its footer, shows no amount
+// and from a cut into its rows, each with its footer, copies a cut's
+// report whole at Return, asked of the socket then, holding the launcher
+// till it's copied, and saying so when serve doesn't answer, the launcher
+// closes first or it's walked shut, flashing y's copy once copied, shows no amount
 // while the screen is shared, opens the drawer each row brings as it's
 // served, lists the rows in the order served, and puts a finding that
 // wants a look first, whose going to its session and marking it expected
 // are asked of the socket and say why serve refuses them. Shut, the rows
 // written again make none of its rows. It exits 0 once every case holds,
-// and otherwise 1, saying which didn't.
+// and otherwise 1, saying which didn't. Long because its cases run as one
+// chain over one real serve, each from where the one before left the
+// rows, the launcher and the clipboard, which a split would start again.
 import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
+import "launcher/ActForms.js" as ActForms
+import "launcher/Catalogue.js" as Catalogue
 import "launcher/SpendDrawer.js" as SpendDrawer
 import "Expect.js" as Expect
 
@@ -43,6 +50,27 @@ ShellRoot {
         property bool open: true
         // Each act refused, as its row's key and why.
         property var refusals: []
+        // Each act told not done, as its row's name, what and why.
+        property var told: []
+        // How many times a copy shut it, and what the clipboard held as
+        // it did, so a copy is seen landing before the keys go.
+        property int shuts: 0
+        property string atShut: ""
+        // What y has done once a copy it ran has copied (Launcher.qml's).
+        property var yankedAlone: null
+        // What a walk from outside was told, while one runs (Launcher.qml's).
+        property var walkTold: null
+        // What's typed, the steps it's in and the word it parted with (Launcher.qml's).
+        property string typed: ""
+        property var held: []
+        property string parting: ""
+        // The rows listed, the one he's on, the act that kept it, and whether
+        // it's letting go or visual holds the rows (Launcher.qml's).
+        property var matches: []
+        property int current: 0
+        property var acted: null
+        property bool lettingGo: false
+        property bool holdingRows: false
 
         function wants(source) {
             return wanting;
@@ -54,6 +82,20 @@ ShellRoot {
 
         function becameNot(key, why) {
             refusals.push(`${key} ${why}`);
+        }
+
+        function toldNot(name, act, why) {
+            told.push(`${name} ${act} ${why}`);
+        }
+
+        function shut() {
+            open = false;
+        }
+
+        function shutCopied() {
+            shuts += 1;
+            atShut = Quickshell.clipboardText ?? "";
+            open = false;
         }
 
         function afterFrame(then) {
@@ -364,7 +406,14 @@ ShellRoot {
         expect("its rows, each copied", models.length === 2
             && models.every(row => typeof row.copies === "function"),
             models.map(row => row.name).join(", "));
+        // Its verb, which its footer says, names what Return copies before
+        // anything is asked.
         expect("copying its report", byModel.verb === "copy", byModel.verb);
+        // y over the cut itself takes this row, so it copies alone and
+        // doesn't shut the launcher at once, as its listed Copy does.
+        expect("copying only on its own, the launcher not shut at once",
+            byModel.alone === true && byModel.now === false,
+            JSON.stringify([byModel.alone, byModel.now]));
         // Typing finds a period.
         const found = spend.search("this week").rows;
         expect("a search", found.length > 0 && found[0].name === "This week",
@@ -389,11 +438,307 @@ ShellRoot {
                 .startsWith(SpendWatch.budgets[drewOn]?.label ?? "-"),
             SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s1"));
 
-        // While sharing, no row and no answer holds an amount. The quiet
-        // place is a place of its own, served apart, so its rows may come
-        // after the ones the collection was waited for by.
-        Quiet.sharing = true;
-        waits.until("the quiet rows served", () => spend.everything().length > 0, quietServed);
+        copiedWhole(byModel);
+    }
+
+    // When the clipboard last changed, so Return's copy is timed to the
+    // moment its words land rather than to the wait's next look.
+    property real copiedAt: 0
+    Connections {
+        target: Quickshell
+        function onClipboardTextChanged() {
+            root.copiedAt = Date.now();
+        }
+    }
+
+    // Return on a cut copies its report whole, its words asked of the
+    // socket only then, never carried in its row. How long it took goes
+    // on the log, to read against the 50 ms Return has to show what it
+    // did; the case holds it only to the 2 s the launcher waits, since a
+    // busy builder's timing isn't Joel's.
+    function copiedWhole(byModel) {
+        const held = spend.served.held;
+        const rows = Object.keys(held).filter(key => key.startsWith("row:"));
+        expect("no row carries a report's words", rows.length > 0
+            && !rows.some(key => JSON.stringify(held[key]).includes("## ")),
+            rows.filter(key => JSON.stringify(held[key]).includes("## ")).join(", "));
+        Quickshell.clipboardText = "";
+        const began = Date.now();
+        byModel.run();
+        const whole = text => text.startsWith("## ") && text.includes("by model");
+        waits.until("the report copied", () => whole(Quickshell.clipboardText ?? ""),
+            () => step(() => {
+                const took = root.copiedAt - began;
+                expect("Return copies the report whole", took >= 0 && took < 2000,
+                    `${took} ms: ${(Quickshell.clipboardText ?? "").split("\n")[0]}`);
+                console.info(`spend: a report copied in ${took} ms`);
+                launcherCopies();
+            }));
+    }
+
+    // The clipboard's words, their first line, as a case says them.
+    function clipped() {
+        return (Quickshell.clipboardText ?? "").split("\n")[0];
+    }
+
+    // The copy a step into a cut lists, as Return reaches it: the cut only
+    // copies, so Return steps in, and its copy is listed inside
+    // (Catalogue.js's leading), its run the cut's own.
+    function cutsCopy() {
+        const cut = shutSpend.everything().find(row => row.name === "This week")
+            .verbs().find(row => row.name === "By model");
+        return Catalogue.leading(cut, cut.verbs(), "").find(row => row.key === "return:copy");
+    }
+
+    // SIGCONT in a while whatever a case does, so serve is never left
+    // stopped by a case failing while it is.
+    Timer {
+        id: resume
+        interval: 5000
+        onTriggered: serving.signal(18)
+    }
+
+    // In the launcher, Return on a cut keeps it, holding the keys a Wayland
+    // program needs to set the clipboard, until its report is copied, then
+    // shuts it saying so.
+    function launcherCopies() {
+        const copy = cutsCopy();
+        expect("a step into a cut lists its copy, which keeps the launcher till it's copied",
+            copy?.stays === true && copy?.now === false,
+            JSON.stringify([copy?.stays, copy?.now]));
+        Quickshell.clipboardText = "";
+        copy.run();
+        expect("and it's open while the report is asked for", shutLauncher.open, "shut at once");
+        waits.until("the report copied, then the launcher shut", () => !shutLauncher.open,
+            () => step(() => {
+                expect("copied whole before it shut, and shut saying so",
+                    shutLauncher.atShut.startsWith("## ") && shutLauncher.shuts === 1,
+                    `${shutLauncher.shuts}: ${shutLauncher.atShut.split("\n")[0]}`);
+                closedFirst();
+            }));
+    }
+
+    // Closed before the answer, the wait ends, said as closed first, and
+    // its answer copies nothing, though the launcher's opened again by
+    // the time it lands.
+    function closedFirst() {
+        shutLauncher.open = true;
+        Quickshell.clipboardText = "";
+        cutsCopy().run();
+        shutLauncher.open = false;
+        expect("closed before it's answered, it says so",
+            shutLauncher.told.join(", ") === "By model copy the launcher closed first",
+            shutLauncher.told.join(", "));
+        shutLauncher.told = [];
+        shutLauncher.open = true;
+        unanswered();
+    }
+
+    // With serve not answering, the launcher's own wait ends it, said where
+    // Joel is looking, the launcher left open, copying nothing.
+    function unanswered() {
+        // SIGSTOP: serve holds the ask unanswered, as a stuck daemon would.
+        serving.signal(19);
+        resume.restart();
+        const began = Date.now();
+        cutsCopy().run();
+        // Ended by a shut too, so a copy that landed says how it ended.
+        waits.until("the wait for a report ended",
+            () => shutLauncher.told.length > 0 || !shutLauncher.open, () => step(() => {
+                serving.signal(18);
+                resume.stop();
+                const waited = Date.now() - began;
+                expect("not answered, it's said at once, the launcher left open",
+                    shutLauncher.told.join(", ") === "By model copy no answer"
+                    && shutLauncher.open && waited >= 1900 && waited < 4000,
+                    `${waited} ms, open ${shutLauncher.open}, shut ${shutLauncher.shuts}`
+                    + ` times, told ${shutLauncher.told.join(", ")}, copied ${clipped()}`);
+                expect("and copies nothing as it gives up", clipped() === "", clipped());
+                shutLauncher.told = [];
+                overtaken();
+            }));
+    }
+
+    // Two Returns in a row: the first's wait ends quietly, and only the
+    // second copies. Serve answers in order, so by the second's answer the
+    // late answers before it have landed, and they copied and shut nothing.
+    function overtaken() {
+        shutLauncher.shuts = 0;
+        cutsCopy().run();
+        cutsCopy().run();
+        waits.until("the newer copy copied", () => !shutLauncher.open, () => step(() => {
+            expect("a late or overtaken answer copies nothing, and only the newest shuts it",
+                shutLauncher.shuts === 1 && shutLauncher.told.length === 0
+                && shutLauncher.atShut.startsWith("## "),
+                `${shutLauncher.shuts}: ${shutLauncher.told.join(", ")}`);
+            movedOn();
+        }));
+    }
+
+    // A Return still waiting, a walk from outside refused beside it leaves it
+    // waiting; typed on before its answer, it copies nothing and says so, the
+    // launcher left open under his keys.
+    function movedOn() {
+        shutLauncher.open = true;
+        shutLauncher.shuts = 0;
+        Quickshell.clipboardText = "";
+        serving.signal(19);
+        resume.restart();
+        cutsCopy().run();
+        shutLauncher.walkTold = [];
+        cutsCopy().run();
+        shutLauncher.walkTold = null;
+        shutLauncher.typed = "x";
+        serving.signal(18);
+        resume.stop();
+        waits.until("the moved-on copy said", () => shutLauncher.told.length > 1,
+            () => step(() => {
+                expect("typed on first, it says so, copying nothing and leaving it open",
+                    shutLauncher.told[1] === "By model copy you moved on before it came"
+                    && clipped() === "" && shutLauncher.open && shutLauncher.shuts === 0,
+                    `${shutLauncher.told.join(", ")}: ${clipped()}`);
+                shutLauncher.told = [];
+                shutLauncher.typed = "";
+                copiedSince();
+            }));
+    }
+
+    // Something else copied before its answer, as a y or a copy that keeps
+    // the launcher, it leaves that copy be and says so, the launcher open.
+    function copiedSince() {
+        serving.signal(19);
+        resume.restart();
+        cutsCopy().run();
+        Quickshell.clipboardText = "his own";
+        serving.signal(18);
+        resume.stop();
+        waits.until("the copy after his own said", () => shutLauncher.told.length > 0,
+            () => step(() => {
+                expect("copied over first, it leaves his copy and says so, the launcher open",
+                    shutLauncher.told[0] === "By model copy you moved on before it came"
+                    && clipped() === "his own" && shutLauncher.open,
+                    `${shutLauncher.told.join(", ")}: ${clipped()}`);
+                shutLauncher.told = [];
+                stillThere();
+            }));
+    }
+
+    // Still on the row, though rows came above it, its act kept as Return
+    // keeps one before running it, and visual ending as its y copies, the
+    // answer copies and shuts it.
+    function stillThere() {
+        shutLauncher.matches = [{ key: "model" }, { key: "return:copy" }];
+        shutLauncher.current = 1;
+        shutLauncher.acted = { key: "return:copy" };
+        shutLauncher.holdingRows = true;
+        shutLauncher.shuts = 0;
+        serving.signal(19);
+        resume.restart();
+        cutsCopy().run();
+        shutLauncher.holdingRows = false;
+        shutLauncher.matches = [{ key: "day" }].concat(shutLauncher.matches);
+        shutLauncher.current = 2;
+        serving.signal(18);
+        resume.stop();
+        waits.until("the copy still there shut it", () => !shutLauncher.open,
+            () => step(() => {
+                expect("still on its row, it copies and shuts, saying nothing else",
+                    shutLauncher.told.length === 0 && shutLauncher.shuts === 1
+                    && shutLauncher.atShut.startsWith("## "),
+                    `${shutLauncher.shuts}: ${shutLauncher.told.join(", ")}`);
+                shutLauncher.matches = [];
+                shutLauncher.current = 0;
+                shutLauncher.acted = null;
+                shutLauncher.shuts = 0;
+                shutLauncher.open = true;
+                chosenInstead();
+            }));
+    }
+
+    // Shut by another copy Joel chose instead, a waiting one ends quietly, as
+    // an overtaken one does: shut past its late answer and its wait, nothing
+    // is said, and the next opening's copy copies alone.
+    function chosenInstead() {
+        serving.signal(19);
+        resume.restart();
+        cutsCopy().run();
+        shutLauncher.parting = "copied";
+        shutLauncher.open = false;
+        serving.signal(18);
+        resume.stop();
+        const shut = Date.now();
+        waits.until("past the wait it ended", () => Date.now() - shut > ActForms.COPY_WAIT + 500,
+            () => step(() => {
+                expect("ended by another copy, its late answer and its wait say nothing",
+                    shutLauncher.told.length === 0 && shutLauncher.shuts === 0,
+                    `${shutLauncher.shuts}: ${shutLauncher.told.join(", ")}`);
+                copiesAfter();
+            }));
+    }
+
+    // Opened again after a copy chosen instead, Return's copy copies and
+    // shuts it, nothing said of the one before.
+    function copiesAfter() {
+        shutLauncher.parting = "";
+        shutLauncher.open = true;
+        cutsCopy().run();
+        waits.until("the copy after another copied", () => !shutLauncher.open,
+            () => step(() => {
+                expect("shut by another copy, nothing's said of the one it ended",
+                    shutLauncher.told.length === 0 && shutLauncher.shuts === 1,
+                    `${shutLauncher.shuts}: ${shutLauncher.told.join(", ")}`);
+                yanked();
+            }));
+    }
+
+    // y over the copy listed inside a cut runs it itself, as Launcher.qml's
+    // yanked does, the launcher kept, its row flashed only once the words
+    // are on the clipboard; and walked from outside, shut or open, it's told
+    // it copies only from the launcher.
+    function yanked() {
+        shutLauncher.open = true;
+        shutLauncher.shuts = 0;
+        Quickshell.clipboardText = "";
+        const listed = cutsCopy();
+        const done = ActForms.yanking([{ at: 3, action: listed }], "", {});
+        expect("y over a cut's listed copy runs it, flashing it only once it's copied",
+            done.run === listed && done.flashed.length === 0 && done.later.join() === "3",
+            JSON.stringify([done.run === listed, done.flashed, done.later]));
+        let flashed = null;
+        shutLauncher.yankedAlone = () => {
+            flashed = clipped();
+        };
+        done.run.run();
+        shutLauncher.yankedAlone = null;
+        expect("y's flash waits for the answer", flashed === null, flashed);
+        waits.until("y's copy flashed", () => flashed !== null, () => step(() => {
+            expect("y flashes once it's copied, the launcher kept",
+                flashed.startsWith("## ") && shutLauncher.open && shutLauncher.shuts === 0,
+                `${shutLauncher.open} ${shutLauncher.shuts}: ${flashed}`);
+            shutLauncher.open = false;
+            Quickshell.clipboardText = "";
+            cutsCopy().run();
+            expect("walked with the launcher shut, it's told at once it copies only from it",
+                shutLauncher.told.join(", ")
+                === "By model copy it copies only from the launcher, with Return"
+                && clipped() === "", shutLauncher.told.join(", "));
+            shutLauncher.told = [];
+            shutLauncher.open = true;
+            shutLauncher.walkTold = [];
+            cutsCopy().run();
+            shutLauncher.walkTold = null;
+            expect("walked with it open, it's told so too, and the launcher's left open",
+                shutLauncher.told.join(", ")
+                === "By model copy it copies only from the launcher, with Return"
+                && shutLauncher.open, shutLauncher.told.join(", "));
+            shutLauncher.told = [];
+            // While sharing, no row and no answer holds an amount. The quiet
+            // place is a place of its own, served apart, so its rows may
+            // come after the ones the collection was waited for by.
+            Quiet.sharing = true;
+            waits.until("the quiet rows served", () => spend.everything().length > 0,
+                quietServed);
+        }));
     }
 
     function quietServed() {

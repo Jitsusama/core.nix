@@ -294,7 +294,7 @@ function actForm(act) {
     if (act.ask !== null && typeof act.ask === "object") {
         return "ask";
     }
-    if (typeof act.copy === "string" || timed(act.copy)) {
+    if (typeof act.copy === "string" || timed(act.copy) || Forms.copyAsked(act)) {
         return "copy";
     }
     if (typeof act.open === "string" && act.open !== "") {
@@ -362,7 +362,8 @@ function closes(act) {
 }
 
 // How the launcher leaves once an act is done. A step into rows or an ask
-// keeps it open, so Joel sees what it became; a copy or an open closes it.
+// keeps it open, so Joel sees what it became; a copy or an open closes it, save
+// a copy whose words are asked for, kept until they're on the clipboard.
 // An ask that shuts it (a paste) or brings its sender forward with a token,
 // which niri gives only while the launcher holds the keys, is done at once in
 // Return's own turn, the keys given back the next frame (Launcher.qml's
@@ -371,7 +372,7 @@ function closes(act) {
 function leaving(act) {
     const now = closes(act) || (actForm(act) === "ask" && act.token === true);
     return {
-        stays: act?.step === "rows" || (actForm(act) === "ask" && !now),
+        stays: act?.step === "rows" || (actForm(act) === "ask" && !now) || Forms.copyAsked(act),
         now,
         later: actForm(act) === "go" || actForm(act) === "open"
     };
