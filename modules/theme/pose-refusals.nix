@@ -148,6 +148,7 @@ let
       sitting = "nothingHere";
       poses = [ pose ];
       strides = drawnWalk;
+      walkedFrom = null;
       meant = null;
       glyphs = planted;
     };
@@ -203,6 +204,7 @@ let
   # refused, and an undrawn one said undrawn rather than meant otherwise.
   sized = poseFaults {
     sitting = "small";
+    walkedFrom = null;
     poses = [
       "atLine"
       "pastLine"
@@ -215,6 +217,7 @@ let
   };
   sizedTight = poseFaults {
     sitting = "tight";
+    walkedFrom = null;
     poses = [
       "justPast"
       "justShort"
@@ -225,12 +228,14 @@ let
   };
   misnamed = poseFaults {
     sitting = "nothingHer";
+    walkedFrom = null;
     poses = [ "walkingA" ];
     strides = drawnWalk;
     meant = null;
     glyphs = planted;
   };
   untucked = poseFaults {
+    walkedFrom = null;
     sitting = "nothingHere";
     poses = [
       "nothingHere"
@@ -241,6 +246,7 @@ let
     glyphs = planted;
   };
   unlisted = poseFaults {
+    walkedFrom = null;
     sitting = "nothingHere";
     poses = [ "nothingHere" ];
     strides = drawnWalk ++ [
@@ -250,18 +256,21 @@ let
     meant = null;
     glyphs = planted;
   };
+  # The words the planted strides mean unless a plant says otherwise.
+  ownPose = "its own pose";
   meantAs =
     {
       otherwise,
       strides,
-      meant ? "its own pose",
+      meant ? ownPose,
     }:
     poseFaults {
       sitting = "nothingHere";
       poses = [ "nothingHere" ];
+      walkedFrom = null;
       inherit strides meant;
       glyphs = lib.mapAttrs (
-        name: mark: mark // { means = if name == otherwise then "another's" else "its own pose"; }
+        name: mark: mark // { means = if name == otherwise then "another's" else ownPose; }
       ) planted;
     };
   meaning = meantAs {
@@ -284,17 +293,19 @@ let
     strides = drawnWalk;
     meant = "another's";
   };
-  meantOtherwise = strides: ''meant otherwise than "its own pose" ${builtins.toJSON strides}'';
+  # What poseFaults says of the strides meant otherwise than `meant`.
+  meantOtherwise =
+    meant: strides: "meant otherwise than ${builtins.toJSON meant} ${builtins.toJSON strides}";
   edges = [
     {
       faults = meaning;
       reason = "walkingC, a stride meant otherwise, refused for it alone";
-      holds = !meaning.ok && lib.hasInfix (meantOtherwise [ "walkingC" ]) meaning.said;
+      holds = !meaning.ok && lib.hasInfix (meantOtherwise ownPose [ "walkingC" ]) meaning.said;
     }
     {
       faults = allMeant;
       reason = "the same strides, every one meant as its poses are, held";
-      holds = allMeant.ok && lib.hasInfix (meantOtherwise [ ]) allMeant.said;
+      holds = allMeant.ok && lib.hasInfix (meantOtherwise ownPose [ ]) allMeant.said;
     }
     {
       faults = meantUndrawn;
@@ -302,16 +313,12 @@ let
       holds =
         !meantUndrawn.ok
         && lib.hasInfix ''undrawn ["unseen"]'' meantUndrawn.said
-        && lib.hasInfix (meantOtherwise [ ]) meantUndrawn.said;
+        && lib.hasInfix (meantOtherwise ownPose [ ]) meantUndrawn.said;
     }
     {
       faults = meantElse;
       reason = "the same strides, all meant alike but not as asked, each refused";
-      holds =
-        let
-          said = ''meant otherwise than "another's" ${builtins.toJSON drawnWalk}'';
-        in
-        !meantElse.ok && lib.hasInfix said meantElse.said;
+      holds = !meantElse.ok && lib.hasInfix (meantOtherwise "another's" drawnWalk) meantElse.said;
     }
     {
       faults = sized;

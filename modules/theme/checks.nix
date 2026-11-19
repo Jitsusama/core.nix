@@ -31,7 +31,7 @@ let
   # the left one, and the tail's tip is at the top right. What's found, as
   # whether it holds and what it says, for readsAsOne and for the checks
   # showing each fault refused; `walkedFrom` is where the strides were
-  # read from, and `glyphs` the drawings, the theme's unless that check
+  # read from, or null where nowhere says, and `glyphs` the drawings, the theme's unless that check
   # plants its own. Given `meant`, the words the animal's poses are picked
   # by (posesOf), each stride drawn must mean them, so rewording what the
   # strides mean fails rather than quietly picking none by meaning.
@@ -40,7 +40,7 @@ let
       sitting,
       poses,
       strides,
-      walkedFrom ? null,
+      walkedFrom,
       meant,
       glyphs ? import ./glyphs.nix { inherit lib; },
     }:
