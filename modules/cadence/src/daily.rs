@@ -6,10 +6,11 @@
 //! A program does it, not a session, so the loop costs no model turns.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -17,7 +18,7 @@ use jiff::tz::TimeZone;
 use crate::builders;
 use crate::day::{self, Day};
 use crate::findings;
-use crate::findings::gone;
+use crate::findings::{gone, hubs};
 use crate::gate;
 use crate::health;
 use crate::holders;
@@ -65,6 +66,7 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         })
     };
     let gone = gone::owners(&told.owners, &ledger, &mesh.all(), running, now);
+    let flagged = gone::to_flag(&told.owners, &ledger, &gone);
     gone::update_without(
         &mut ledger,
         &today,
@@ -75,10 +77,10 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     );
     // A typed run tells nobody, so it marks nobody told or late.
     let sending = told.orchestrator.is_some();
-    let late = if sending {
-        findings::late(&mut ledger, now)
+    let (late, put) = if sending {
+        put_late(&mesh, &mut ledger, state_home, running, now)
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
     let asks = if sending {
         findings::tell(&mut ledger, &today.date, told.watcher.as_deref())
@@ -86,12 +88,29 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         Vec::new()
     };
     findings::keep(&kept_at, &ledger)?;
+    // Kept after the ledger, so a need is never kept for a put the ledger
+    // lost; one that can't be kept is said, and the day goes on, since
+    // its holder is told it with the day's findings all the same.
+    let needs = hubs::needs(&put, crate::FROM, now * 1000, mesh.known().len());
+    if let Err(error) = hubs::keep(&mesh.root, &needs) {
+        eprintln!("cadence day: the needs for late findings put to hubs weren't kept: {error}");
+    }
     // Its own line past the note's room, so it crowds out no finding.
     let mut note = judge::note(&today, &judged, before.len(), &late);
-    if let Some(line) = gone::flags(&told.owners, &gone, told.watcher.as_deref()) {
+    if let Some(line) = gone::flags(&told.owners, &flagged, told.watcher.as_deref()) {
         note.push_str("- ");
         note.push_str(&line);
         note.push_str(".\n");
+    }
+    match put.len() {
+        0 => {}
+        1 => note.push_str("- 1 late finding went back to its subject's hub as a need.\n"),
+        n => {
+            let _ = writeln!(
+                note,
+                "- {n} late findings went back to their subjects' hubs as needs."
+            );
+        }
     }
     let mut record = serde_json::to_value(&today)?;
     record["worse"] = serde_json::to_value(&judged.worse)?;
@@ -111,6 +130,40 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         mesh.send(&message(orchestrator, "fyi", note))?;
     }
     Ok(())
+}
+
+/// Puts each late finding in `ledger` to its subject's hub, as the node
+/// names hubs, and gives back the lines for the orchestrator of those no
+/// hub took, and those put. With no node to ask, every late finding is a
+/// line, and the journal says why.
+fn put_late(
+    mesh: &Mesh,
+    ledger: &mut [findings::Entry],
+    state_home: &Path,
+    running: impl Fn(&mesh::Presence) -> bool,
+    now: i64,
+) -> (Vec<String>, Vec<hubs::Put>) {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let realm = std::env::var("MYCELIUM_REALM").ok();
+    let hubs = match runtime.and_then(|r| hubs::socket(&r, state_home, realm)) {
+        Some(socket) => hubs::listed(&socket).unwrap_or_else(|error| {
+            eprintln!(
+                "cadence day: no hubs read from {}: {error}",
+                socket.display()
+            );
+            Vec::new()
+        }),
+        None => Vec::new(),
+    };
+    // Each address the hubs name, read once, as live or not.
+    let live: std::collections::BTreeSet<&str> = hubs
+        .iter()
+        .flat_map(|h| std::iter::once(&h.cell).chain(&h.fits))
+        .map(String::as_str)
+        .filter(|a| mesh.presence(a).is_some_and(|p| running(&p)))
+        .collect();
+    let (put, late) = hubs::put_late(ledger, &hubs, |a| live.contains(a), now);
+    (late, put)
 }
 
 /// The days kept before the one ending at `now`: the newest `BEFORE` that

@@ -109,6 +109,8 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         late: false,
         kind: Some(owed.kind),
         reopened: 0,
+        hub: None,
+        put_to: Vec::new(),
     });
 }
 
@@ -165,7 +167,7 @@ mod tests {
 
     use super::*;
     use crate::DAY;
-    use crate::findings::tests::day;
+    use crate::findings::tests::{day, late};
 
     /// 2026-11-14 18:00 UTC.
     const DUE: i64 = 1_794_679_200;
@@ -283,16 +285,16 @@ mod tests {
             "a must was told to the owner who filed it"
         );
         assert!(
-            findings::late(&mut ledger, DUE).is_empty(),
+            late(&mut ledger, DUE).is_empty(),
             "a must at its date was late"
         );
         assert_eq!(
-            findings::late(&mut ledger, DUE + 1),
+            late(&mut ledger, DUE + 1),
             vec!["Late: security:s2 is still open, open since d1, with S"],
             "a must past its date wasn't said late with its owner"
         );
         assert!(
-            findings::late(&mut ledger, DUE + 2).is_empty(),
+            late(&mut ledger, DUE + 2).is_empty(),
             "a late must was said twice"
         );
     }
@@ -301,7 +303,7 @@ mod tests {
     fn filing_a_must_again_moves_its_date_rather_than_adding_one() {
         let mut ledger = Vec::new();
         owe(&mut ledger, owed("security:s2", DUE), "d1", DAY);
-        let _ = findings::late(&mut ledger, DUE + 1);
+        let _ = late(&mut ledger, DUE + 1);
         owe(&mut ledger, owed("security:s2", DUE + DAY), "d2", DUE + 1);
         assert_eq!(
             ledger.len(),
@@ -314,7 +316,7 @@ mod tests {
             "a must filed again didn't take its new date and keep its first day"
         );
         assert_eq!(
-            findings::late(&mut ledger, DUE + DAY + 1).len(),
+            late(&mut ledger, DUE + DAY + 1).len(),
             1,
             "a must moved to a new date wasn't said late again past it"
         );

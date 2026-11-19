@@ -61,7 +61,10 @@ pub fn owners(
 /// `gone` weren't named: their open findings go back to nobody, keeping
 /// their dates, so the watcher is told them once and one already late
 /// isn't given a fresh day, and stay with it until a flag names a session
-/// that answers. A must keeps the quest that filed it.
+/// that answers. A must keeps the quest that filed it. One put to a hub
+/// whose holder went goes back to its owner line first, the holders it
+/// was put to kept, so the next time it's late it goes to one not yet
+/// given it.
 pub fn update_without(
     ledger: &mut Vec<Entry>,
     day: &Day,
@@ -77,6 +80,13 @@ pub fn update_without(
         .map(|(key, address)| (key.clone(), address.clone()))
         .collect();
     let known: BTreeSet<String> = known.iter().filter(|k| !is_gone(k)).cloned().collect();
+    for entry in ledger.iter_mut().filter(|e| e.open && e.hub.is_some()) {
+        if entry.owner.as_deref().is_some_and(is_gone) {
+            entry.hub = None;
+            entry.owner = None;
+            entry.told = None;
+        }
+    }
     update(ledger, day, worse, &there, &known);
     for entry in ledger.iter_mut().filter(|e| e.open && e.kind.is_none()) {
         if entry.owner.as_deref().is_some_and(is_gone) {
@@ -84,6 +94,32 @@ pub fn update_without(
             entry.told = None;
         }
     }
+}
+
+/// The owners in `gone` a flag names, or that hold an open finding by a
+/// unit's name: a hub's holder that went holds none once `update_without`
+/// gives its findings back, and no flag names it, so there's none to
+/// change. Read from the ledger as it stood before.
+#[must_use]
+pub fn to_flag(
+    owners: &BTreeMap<String, String>,
+    ledger: &[Entry],
+    gone: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    gone.iter()
+        .filter(|address| {
+            owners.values().any(|a| a.eq_ignore_ascii_case(address))
+                || ledger.iter().any(|e| {
+                    e.open
+                        && e.kind.is_none()
+                        && e.hub.is_none()
+                        && e.owner
+                            .as_deref()
+                            .is_some_and(|o| o.eq_ignore_ascii_case(address))
+                })
+        })
+        .cloned()
+        .collect()
 }
 
 /// What the orchestrator is told of the owners in `gone`, in one line
