@@ -359,7 +359,9 @@ QtObject {
         // between two frames drawn differently, so a sweep of some hundreds
         // of walks reads a fraction of the frames: a stride steps on, never
         // back, and shows for 25 ms at least, so none comes and goes unseen
-        // between two alike, which the sweep holds it to too.
+        // between two alike, which the sweep holds it to too; all but one
+        // drawn between two holds, both drawn as stride B, which only
+        // timed()'s hold of a short stride keeps from showing.
         const drawings = (way, was) => {
             const drawnIn = was ? [{ pose: was, t: -1 }] : [];
             const drawnAt = t => Paths.frame(way, Math.min(t, way.ends));
@@ -405,13 +407,16 @@ QtObject {
                 .map(([before, pose, beat]) => skidsIn([{ pose: before }, { pose, beat }]).length),
             [1, 1, 0, 1]);
         // And each stride it steps into is drawn for 25 ms at least, all
-        // but the one it was set off in, drawn before.
+        // but the one it was set off in, drawn before: 25 rather than SHOWN,
+        // since strides at joins mid-walk are drawn 28 to 31 ms, as on main.
         const flashesIn = drawn => drawn.filter((one, i, all) => one.t >= 0
             && i < all.length - 1 && strideOrder.includes(one.pose) && all[i + 1].t - one.t < 25)
             .map(one => `${one.pose} at ${one.t}`);
         expect("a stride drawn under 25 ms flashes, set off in nothing too, but the one before",
-            [-1, 0].map(t => flashesIn([{ pose: "walkingD", t }, { pose: "walkingA", t: 10 },
-                { pose: "walkingC", t: 60 }])), [[], ["walkingD at 0"]]);
+            [[-1, 10], [0, 10], [0, 24], [0, 25]].map(([t, next]) => flashesIn([
+                { pose: "walkingD", t }, { pose: "walkingA", t: next },
+                { pose: "walkingC", t: next + 50 }])),
+            [[], ["walkingD at 0"], ["walkingD at 0"], []]);
         // Hurried back the way it faced, it turns, standing, then walks.
         const turnsBack = Paths.walk({ x: 300, y: 7 }, { x: 100, y: 7 },
             world({ hurried: true }));
@@ -471,12 +476,17 @@ QtObject {
         let chasedDrawn = null;
         let chasedSteps = 0;
         let chasedAt = 0;
-        // Each stride it steps into, and when, to read skids and flashes by.
+        // Each pose it's drawn in, and when, to read skids and flashes by.
         const chasedInto = [];
         for (let t = 0; t < 1600; t += 1) {
+            // Its record starts from the stride drawn as it's first chased,
+            // from when that was stepped into, so its showing is judged too.
             if (t === 600) {
                 chasedAt = chasedDrawn.x;
-                chasedInto.push({ pose: chasedDrawn.pose, t: -1, beat: chasedDrawn.beat });
+                let began = 599;
+                while (began > 0 && Paths.frame(unchased, began - 1).pose === chasedDrawn.pose)
+                    began -= 1;
+                chasedInto.push({ pose: chasedDrawn.pose, t: began, beat: chasedDrawn.beat });
             }
             if (t > 600 && t % 16 === 0) {
                 chased = Paths.walk({ x: chasedDrawn.x, y: chasedDrawn.y }, { x: 700, y: 7 },
@@ -485,8 +495,8 @@ QtObject {
                 chasedFrom = t;
             }
             const now = Paths.frame(chased, t - chasedFrom);
-            if (t > 600 && now.pose !== chasedDrawn.pose && strideOrder.includes(now.pose)) {
-                chasedSteps += 1;
+            if (t >= 600 && now.pose !== chasedDrawn.pose) {
+                chasedSteps += Number(strideOrder.includes(now.pose));
                 chasedInto.push({ pose: now.pose, t, beat: now.beat });
             }
             chasedDrawn = now;
@@ -560,7 +570,7 @@ QtObject {
             world({ hurried: true, facing: turning.facing, drawnIn: turning.pose,
                 drawnInto: turning.into, drawnAtPace: turning.atPace }));
         const replanRuns = runsOf(replanned, 300).slice(0, 2);
-        expect("re-planned as it turns in a stride, it holds that stride till it's seen",
+        expect("re-planned as it turns in a stride before it's seen, it holds it a stride more",
             [turning.beat, turning.pose, turning.into, names(replanned)[0],
                 replanRuns.map(run => run.pose), replanRuns[0].ms - runsOf(turnsMid, 300)[1].ms],
             ["turns", "walkingA", 0, "goes", ["walkingA", "walkingC"], 0]);

@@ -279,8 +279,8 @@ want to see its paws moving when it is walking or running."
   pair off it"
 - Held by `margin-cat-floats.qml`: "set off mid-stride into a turn and a think, it steps to its
   stand a pair at a time"
-- Held by `margin-cat-floats.qml`: "re-planned as it turns in a stride, it holds that stride
-  till it's seen"
+- Held by `margin-cat-floats.qml`: "re-planned as it turns in a stride before it's seen, it
+  holds it a stride more"
 - Held by `margin-cat-floats.qml`: "re-planned once the stride it turns in is seen, it steps a
   pair on at once"
 - Held by `margin-cat-floats.qml`: "set off again easing in, it eases in; at its pace, it keeps
