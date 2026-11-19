@@ -25,11 +25,22 @@ work=$(mktemp -d "$site/.repos.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
 waits=${CODE_SITE_WAITS:-40}
+# A wait of nothing would turn the bound off, so only a whole number of seconds stands.
+if [[ ! $waits =~ ^[1-9][0-9]*$ ]]; then
+  waits=40
+fi
 # A read that won't end on the first signal is killed five seconds on, which
-# timeout answers 137 for rather than 124.
+# timeout answers 137 for rather than 124. A read the kernel killed answers 137
+# too, sooner, and is a failure rather than a stall, so the time tells them apart.
+started=$SECONDS
 if timeout -k 5 "$waits" repos --json > "$work/repos.json" 2> "$work/said"; then
+  ended=0
+else
+  ended=$?
+fi
+if ((ended == 0)); then
   :
-elif (($? == 124 || $? == 137)); then
+elif ((ended == 124 || (ended == 137 && SECONDS - started > waits))); then
   echo "repos read for over $waits s, as a machine short of memory makes it; the last homes stay"
   exit 0
 else
