@@ -11891,7 +11891,7 @@ Scope {
         const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "",
-            refresh: root.refreshOf(answered) || (times.refresh ?? 0),
+            refresh: root.refreshOf(answered),
             step: key.step ?? "" };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
     }
