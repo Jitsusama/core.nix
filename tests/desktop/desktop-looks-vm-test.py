@@ -46,6 +46,9 @@ INTERNET_PAGES = 20
 # More rows than the Home Network lists, so stepping down to one that isn't there fails rather
 # than going on.
 MOST_ROWS_STEPPED = 40
+# Past the launcher's card closing, 250 ms after it's gone from view (Launcher.qml's
+# leavingLater), so a closing card's last report can't pass for one still open.
+PAST_THE_CLOSING = 0.5
 # What warp asks warp-cli, each answered by the contract's file of the same name.
 WARP_QUESTIONS = ("status", "tunnel-stats", "settings", "dns-stats")
 
@@ -999,21 +1002,28 @@ def closed_stand_last(desktop: Desktop, shot: str) -> None:
     desktop.step_out()
 
 
-def a_landing_opens_from_its_step(desktop: Desktop) -> None:
-    """Follow the landing to its parts, its own Open, then its cell's acts, and Open it there.
+def a_landing_opens(desktop: Desktop, from_its_step: bool) -> None:
+    """Open the landing, by Return on its row or from its parts, and land where it lives.
 
-    The cell that landed it, TESTQC, has its window, so its acts are Go To, then Talk. Open does
-    what Return on the row does: it keeps the launcher and steps into the landing where it lives,
-    Agents \u203a Landed, and reads it.
+    Its parts are its own Open, then its cell's acts: TESTQC, which landed it, has its window, so
+    Go To, then Talk. Either way it keeps the launcher and steps into the landing in Agents \u203a
+    Landed, and reads it, so each landing is opened one way; the row's way at the first scale.
     """
-    desktop.follow()
-    desktop.launcher_until(
-        lambda shown: (
-            shown["rows"] == ["Open", "Go To", "Talk"] and shown["selected"]["name"] == "Open"
+    if from_its_step:
+        desktop.follow()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"] == ["Open", "Go To", "Talk"]
+                and shown["selected"]["name"] == "Open"
+            )
         )
-    )
     desktop.machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRYING])
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["agents", "Landed", TRYING] and shown["open"]
+    )
+    # A closing card still reports the trail it held until it's gone, so it's asked again.
+    time.sleep(PAST_THE_CLOSING)
+    assert desktop.showing()["open"], f"the launcher closed on Open: {desktop.showing()}"
 
 
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
@@ -1049,7 +1059,7 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
         )
     )
     desktop.shoot(f"launcher-for-you-landing-at-{shot}")
-    a_landing_opens_from_its_step(desktop)
+    a_landing_opens(desktop, from_its_step=shot != "1-5")
     desktop.step_out()
     desktop.step_out()
     desktop.down_to("Landed")

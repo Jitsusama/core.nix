@@ -2214,9 +2214,8 @@ Provider {
         const session = provider.landerOf(one);
         if (session === null)
             return [];
-        const kind = session.presence?.wants?.kind;
         return SessionRow.behindActs(stateOf(session), windowedOf(session),
-            kind === "question" || kind === "approval").map(id => sessionAct(session, id));
+            SessionRow.asks(session.presence)).map(id => sessionAct(session, id));
     }
     // Joel reads a landing, which the daemon keeps, and tells as its record
     // moves; one read already is asked nothing.

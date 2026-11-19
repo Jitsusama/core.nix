@@ -36,6 +36,7 @@ import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
 import "PlaceRow.js" as PlaceRow
+import "SessionRow.js" as SessionRow
 import "../pieces/Holding.js" as Holding
 
 Provider {
@@ -761,9 +762,7 @@ Provider {
     // ended blocked: the kinds the agents daemon rings for (wants.rs's
     // rings), which keep its session on Joel's keys; parked, none runs.
     function asking(session) {
-        const kind = session.presence?.wants?.kind;
-        return (kind === "question" || kind === "approval")
-            && !Sessions.parkedAs(session.address);
+        return SessionRow.asks(session.presence) && !Sessions.parkedAs(session.address);
     }
 
     // An act on an item, named in the vocabulary.

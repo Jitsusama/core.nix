@@ -68,13 +68,29 @@ QtObject {
             ["parked", true, false, "talk"],
             ["needs", true, true, "switch"],
             ["needs", false, false, "talk"],
-            ["parked", false, true, "talk"]
+            ["parked", false, true, "talk"],
+            // Asking its orchestrator, not Joel, it isn't his to answer,
+            // yet words said to it still come after the answer.
+            ["listening", true, true, "switch"]
         ];
         for (const [state, windowed, asking, want] of behind) {
             const got = SessionRow.behindActs(state, windowed, asking).join(" ");
             if (got !== want)
                 failures.push(`the acts behind one ${state}${asking ? " asking" : ""}: `
                     + `"${got}", not "${want}"`);
+        }
+        // A question or a yes holds an ask open; a want of another kind,
+        // or none, doesn't.
+        const asking = [
+            [{ wants: { kind: "question" } }, true],
+            [{ wants: { kind: "approval" } }, true],
+            [{ wants: { kind: "action" } }, false],
+            [{ wants: null }, false],
+            [undefined, false]
+        ];
+        for (const [presence, want] of asking) {
+            if (SessionRow.asks(presence) !== want)
+                failures.push(`asks of ${JSON.stringify(presence)}: not ${want}`);
         }
 
 

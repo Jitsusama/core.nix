@@ -58,6 +58,14 @@ function behindActs(standing, windowed, asking) {
         .filter(id => id === "switch" || (id === "talk" && talks));
 }
 
+// Whether a session's presence holds an ask open, a question or a yes,
+// the one reading behind both a landing's acts and What Needs Me's Talk,
+// so a kind of want added later is weighed in one place.
+function asks(presence) {
+    const kind = presence?.wants?.kind;
+    return kind === "question" || kind === "approval";
+}
+
 // The theme's role its glyph is drawn in: a program's, as a live one
 // is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name
