@@ -148,10 +148,13 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         desktop.lid(shut=True)
         machine.wait_until_succeeds(ASLEEP, timeout=timedelta(minutes=1))
         # A sleep lasts until the lid opens, so one shut lid is one sleep, and one lock: the
-        # sleeps a shut lid repeated each locked the screen again after it was unlocked.
+        # sleeps a shut lid repeated each locked the screen again after it was unlocked. The
+        # lid stays shut a while first, long enough for logind to start a second.
+        machine.sleep(LOOKING)
         desktop.lid(shut=False)
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
-        machine.succeed('test "$(wc -l < /run/suspended)" -eq 1')
+        slept = int(machine.succeed("wc -l < /run/suspended"))
+        assert slept == 1, f"one shut lid slept {slept} times"
     finally:
         desktop.lid(shut=False)
         # The stand-in sleep ends once logind sees the lid open, so it settles first.

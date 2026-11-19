@@ -148,7 +148,7 @@ let
   # long as the lid stayed shut, and swayidle, which runs its before-sleep
   # lock once for each and one at a time, locked the screen again after the
   # test had unlocked it, failing every subtest after it (2026-11-19).
-  lidOpen = lib.concatStringsSep " " [
+  lidOpen = pkgs.lib.concatStringsSep " " [
     "${pkgs.systemd}/bin/busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
     "org.freedesktop.login1.Manager LidClosed | ${pkgs.gnugrep}/bin/grep -qx 'b false'"
   ];
