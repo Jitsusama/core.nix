@@ -11,7 +11,8 @@
 // once the words or the face have changed, and each row's keys once for
 // what's typed, the steps and the mode; an opening's stall is said by the
 // work it ran into, each frame's rows laid out and its sync apart, and its
-// sources' waking counts home found after its fill as a slice. What
+// sources' waking counts home found after its fill as a slice, which only
+// home's fill leaves to one, searching home again but for a chord. What
 // was presented is said by
 // place, each change timed from the earliest line not yet drawn
 // (launcher/Presented.js). A closing makes again only the spots of the
@@ -434,6 +435,34 @@ QtObject {
         const byKey = Wanted.wakeTimes({ from: 0, took: 4 }, [{ from: 37, took: 8 }]);
         check(failures, "found by a key, the fallback's wait is after it", byKey.waited, 33);
         check(failures, "a finding shorter than a slice isn't the longest", byKey.longest, 8);
+
+        // Only home's fill, run by filled() with home kept, finds home
+        // after its frame; a place's, or any other opening, in the open.
+        const home = { filling: true, byFill: true, intoPlace: false, kept: 8 };
+        check(failures, "home's fill finds home after its frame",
+            Wanted.findsLater(home), true);
+        check(failures, "a place's fill finds it in the open",
+            Wanted.findsLater(Object.assign({}, home, { intoPlace: true })), false);
+        check(failures, "an open filled() didn't run finds it there",
+            Wanted.findsLater(Object.assign({}, home, { byFill: false })), false);
+        check(failures, "an opening with no home kept finds it there",
+            Wanted.findsLater(Object.assign({}, home, { kept: 0 })), false);
+        check(failures, "an opening drawn whole finds it there",
+            Wanted.findsLater(Object.assign({}, home, { filling: false })), false);
+        // Found after it, home is searched again by a slice, a key or a
+        // click, but a chord only joins, and a step or a word finds its own.
+        const stands = { home: true, held: 0, typed: "" };
+        for (const by of ["slice", "key", "click"])
+            check(failures, `found by a ${by}, home is searched again`,
+                Wanted.findsAgain(by, stands), true);
+        check(failures, "found by a chord, home is only joined",
+            Wanted.findsAgain("chord", stands), false);
+        check(failures, "found after a step, home is only joined",
+            Wanted.findsAgain("key", Object.assign({}, stands, { held: 1 })), false);
+        check(failures, "found after a word, home is only joined",
+            Wanted.findsAgain("key", Object.assign({}, stands, { typed: "g" })), false);
+        check(failures, "where the open wouldn't find home, it's only joined",
+            Wanted.findsAgain("slice", Object.assign({}, stands, { home: false })), false);
     }
 
     // The source an id names is found asking the vocabulary once for the

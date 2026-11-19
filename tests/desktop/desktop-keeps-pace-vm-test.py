@@ -702,13 +702,23 @@ def opened_timed(desktop: Desktop) -> Json:
         each[:] = openings(desktop)
         if latest(each) <= timed:
             return False
-        last = each[-1]
-        # A kept home's fill says its rows once home is found again after its frame, which can
-        # come after it's usable, so the storm's check holds home as found to the frame's.
-        filled = "filled" in last or not last.get("kept")
-        return "usable" in last and "presented" in last and filled
+        return "usable" in each[-1] and "presented" in each[-1]
 
     retry(drawn, timeout=REACHING)
+    nth = each[-1]["nth"]
+
+    def filled(_: bool) -> bool:
+        each[:] = [one for one in openings(desktop) if one["nth"] == nth]
+        return bool(each) and ("filled" in each[-1] or not each[-1].get("kept"))
+
+    # A kept home's fill says its rows once home is found again after its frame, which can
+    # come after it's usable, so the storm's check holds home as found to the frame's. One
+    # never said fails here, saying so, rather than as the frame's wait running out.
+    try:
+        retry(filled, timeout=REACHING)
+    except Exception as error:
+        message = f"a kept opening's fill was never said: {each}: {error}"
+        raise AssertionError(message) from error
     desktop.close_launcher()
     opening = each[-1]
     # Software painting under a deliberate load makes the machine's own figure no measure of
@@ -805,7 +815,6 @@ def opened_from_kept(desktop: Desktop) -> Json:
     retry(lambda _: bool(desktop.showing()["kept"]), timeout=REACHING)
     opening = opened_timed(desktop)
     assert opening["kept"], f"an opening wasn't drawn from what was kept: {opening}"
-    assert "filled" in opening, f"an opening drawn from what was kept wasn't filled: {opening}"
     return opening
 
 

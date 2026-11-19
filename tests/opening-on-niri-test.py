@@ -83,6 +83,9 @@ WAKE_BUDGET_MS = 7
 WAKE_HELD = timedelta(milliseconds=600)
 WAKES_HELD = 3
 WAKE_WAITS_MS = 300
+# How far a wait worked out again from a record's times may stand from the one it says, as each
+# time is rounded apart from the others it's worked from.
+WAKE_ROUNDED_MS = 2
 # What the shell says once a kept opening is filled in, before its sources wake.
 FILLED_SAID = b"launcher: filled the opening in "
 
@@ -1704,6 +1707,8 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     shell.launcher_until(slept)
     assert woke[0].get("fillJoined") == 0, f"the fill joined the choices inside `open`: {woke}"
     assert woke[0].get("foundBy") == "slice", f"home wasn't found in a slice of its own: {woke}"
+    # A slice runs once a frame is drawn, or the fallback's 33 ms, so never at the fill's end.
+    assert cast("int", woke[0]["foundFrom"]) >= 1, f"home was found inside the fill: {woke}"
     # Searched again, not only joined, as the kept rows it shows till then list keys either way:
     # the fill says its rows once the slice has found home, and says what found them, which the
     # storm's check holds to the first frame's; found with nothing changed, they stand there.
@@ -1713,12 +1718,23 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
         f"found again, home's rows or cursor moved: {woke}"
     )
     # Its time is a slice's, and the sources' first slice comes after it, so the finding is never
-    # read as their first wait. Each is rounded apart, so a millisecond either way.
+    # read as their first wait: the longest wait is the finding's own from the fill, or one
+    # after it.
     found = cast("int", woke[0]["foundTook"])
     assert cast("int", woke[0]["longestSlice"]) >= found, f"the finding went uncounted: {woke}"
-    first = cast("list[Json]", woke[0]["slices"])[0]
+    slices = cast("list[Json]", woke[0]["slices"])
     ended = cast("int", woke[0]["foundFrom"]) + found
-    assert cast("int", first["from"]) >= ended - 1, f"a source woke before home was found: {woke}"
+    assert cast("int", slices[0]["from"]) >= ended - 1, (
+        f"a source woke before home was found: {woke}"
+    )
+    befores = [{"from": woke[0]["foundFrom"], "took": found}, *slices]
+    waits = [cast("int", woke[0]["foundFrom"])] + [
+        cast("int", one["from"]) - cast("int", before["from"]) - cast("int", before["took"])
+        for before, one in zip(befores, slices, strict=False)
+    ]
+    assert abs(cast("int", woke[0]["longestWake"]) - max(waits)) <= WAKE_ROUNDED_MS, (
+        f"the sources' waits weren't counted from the finding's end: {woke}"
+    )
 
 
 def test_a_kept_openings_sources_wake_though_no_frame_comes(shell: Shell) -> None:
