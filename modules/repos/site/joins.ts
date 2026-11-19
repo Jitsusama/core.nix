@@ -80,6 +80,19 @@ function joined(repositories: readonly Repository[]): Repository[] {
   });
 }
 
+/** Each cell at work in `repository` by name, with the other repositories it works across. */
+function leads(
+  repository: Repository,
+  repositories: readonly Repository[],
+): Map<string, readonly string[]> {
+  const found = new Map<string, readonly string[]>();
+  for (const [key, cell] of across(repository, bySpelling(repositories))) {
+    const known = found.get(cell) ?? [];
+    found.set(cell, known.includes(key) ? known : [...known, key].sort(inOrder));
+  }
+  return found;
+}
+
 /**
  * Every pair of repositories a cell's work ties, once whichever side said it, with the cells
  * that tie them: a tie stands when either side's cells name the other by a spelling only it has.
@@ -106,4 +119,4 @@ function ties(repositories: readonly Repository[]): Tie[] {
   );
 }
 
-export { atWork, joined, type Tie, ties };
+export { atWork, joined, leads, type Tie, ties };

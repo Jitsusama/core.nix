@@ -31,7 +31,9 @@ is cut or a change's checks move. Nothing on it changes anything.
   checks and reviews stand, and its trees by season: Written Today, This
   Week, Resting and Gone, the last two folded until asked for. Within a
   season they go by branch, so a tree keeps its place while it's written
-  in.
+  in. Under each tree or checkout are the cells at work in it, each
+  linked home and followed by the other repositories it works across,
+  each linked to where it's shown here, so its work can be followed on.
 - **How they join,** under the work: a row for each repository a cell's
   work ties to another, in the grove's order, and beside the rows an arc
   for each tie with a thread for each cell (at most six drawn, every one
