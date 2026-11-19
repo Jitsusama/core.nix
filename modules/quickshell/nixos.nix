@@ -165,6 +165,12 @@ let
   # large run carved sent the next large request to a new chunk; the same
   # lab then held 25 growing to 29, flat from its first tenth
   # (qtdeclarative-small-runs-split-first.patch).
+  # The room the shell's heap module leaves the collector is left again
+  # after every collection, since the heap holds over twice what's live
+  # straight after any sweep, so once one ended the next miss started
+  # another: one opening ran two whole collections 16 s apart, each inside
+  # a key (qtdeclarative-room-after-every-sweep.patch). The heap module
+  # leaves the room through it, so dropping it means changing the module.
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -199,6 +205,7 @@ let
             ./qtdeclarative-heap-held-once.patch
             ./qtdeclarative-large-runs-by-size.patch
             ./qtdeclarative-small-runs-split-first.patch
+            ./qtdeclarative-room-after-every-sweep.patch
           ];
         });
       }

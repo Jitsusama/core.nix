@@ -7,7 +7,9 @@
 // has spent grows with each collection; and a heap holding far more than is
 // live, as one does after the launcher's closing, starts the collector as
 // it makes more unless it's left room, and doesn't once it is, nor as it
-// makes strings whose text is held outside the heap. Giving the free pages
+// makes strings whose text is held outside the heap, nor after the
+// collections that run once it is, as the shell's Qt leaves the room after
+// each (qtdeclarative-room-after-every-sweep.patch). Giving the free pages
 // back leaves next to none resident, says about as much as was counted, and
 // what's kept, and what's made after in their place, reads as it was made.
 // And a heap whose free lists lead with runs too small for what's made next,
@@ -21,15 +23,20 @@
 // data. And what it says of jemalloc, which the test is linked with as Quickshell is: what's in use
 // grows by a block kept, and what's freed and kept by one let go, and
 // neither is more than what's resident. It exits 0 once all of it holds,
-// and otherwise 1, saying what didn't.
+// and otherwise 1, saying what didn't. Long because each case reads one
+// engine's heap through the same helpers, in the one program linked with
+// Qt's private engine and jemalloc as the shell is: split, each part would
+// build and link that again.
 #include "heap.h"
 
 #include <QCoreApplication>
 #include <QJSEngine>
 #include <QRegularExpression>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace {
 
@@ -71,18 +78,52 @@ struct Making {
 constexpr Making NUMBERS{"{ n: i, m: i }", 2 * KEPT};
 constexpr Making STRINGS{"String(i).padEnd(200, ' of the clipboard history')", 20000};
 
-// Whether making them starts the collector on a heap left holding a
-// scattered few, given that much room first.
-bool collectsWhileMaking(double room, const Making &made) {
-    QJSEngine engine;
-    Heap heap(&engine);
+// A room well short of the strings' 8 MB outside the heap, so making them
+// must start the collector however long the room lasts.
+constexpr double SMALLEST_ROOM_MB = 2;
+
+// A room short of what a scattered heap holds, so its chunks hold more
+// than twice what's live and the room besides, as Joel's shell did at 69
+// MB live of 207 held (2026-11-15): there, a room counted from what's
+// live rather than from what's held leaves none.
+constexpr double SMALL_ROOM_MB = 4;
+
+// How many collections run after the room is left in the cases that ask
+// whether it lasts: Qt halves its limit outside the heap at each one that
+// ends with little held there, so after four the 64 MB of ROOM_MB is down
+// to 4, under the strings' 8 MB.
+constexpr int COLLECTIONS_SINCE = 4;
+
+// Objects made, in batches, while a few of each batch are kept, so every
+// chunk the heap grows into keeps some and none goes back: ten times the
+// objects the scattered heap was made from, so a heap that grew by the
+// room at each collection would grow by it several times.
+constexpr int GROWN = 2000000;
+constexpr int GROWN_BATCH = 10000;
+constexpr int GROWN_KEPT_ONE_IN = 50;
+
+// Leaves a scattered few in the engine's heap: nearly every page that held
+// what was made holds nothing once it's collected.
+QJSValue keepScattered(QJSEngine &engine) {
     QJSValue few = engine.evaluate(
         QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
                        "m: i }); return made.filter((_, i) => i % %2 === 0); })()")
             .arg(KEPT)
             .arg(SCATTERED));
     engine.collectGarbage();
+    return few;
+}
+
+// Whether making them starts the collector on a heap left holding a
+// scattered few, given that much room first and then `collectedSince`
+// collections, as the shell runs others between its closings.
+bool collectsWhileMaking(double room, const Making &made, int collectedSince = 0) {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = keepScattered(engine);
     heap.leaveRoom(room);
+    for (int each = 0; each < collectedSince; each++)
+        engine.collectGarbage();
     const double before = heap.collected();
     QJSValue making = engine.evaluate(
         QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push(%2); "
@@ -90,6 +131,205 @@ bool collectsWhileMaking(double room, const Making &made) {
             .arg(made.count)
             .arg(QLatin1StringView(made.each)));
     return heap.collected() > before;
+}
+
+// What the heap holds, live and in its chunks, what its chunks, and what's
+// held outside it, may come to before the collector starts, and what's held
+// outside it, in megabytes.
+struct Room {
+    double live;
+    double chunks;
+    double collectsAt;
+    double collectsOutsideAt;
+    double outside;
+};
+
+Room roomOf(const Heap &heap) {
+    const QVariantMap said = heap.weigh();
+    return {said.value(QStringLiteral("live")).toDouble(),
+            said.value(QStringLiteral("chunks")).toDouble(),
+            said.value(QStringLiteral("collectsAt")).toDouble(),
+            said.value(QStringLiteral("collectsOutsideAt")).toDouble(),
+            said.value(QStringLiteral("outside")).toDouble()};
+}
+
+// Close enough for two readings of the same slots, in megabytes.
+constexpr double SAME_MB = 0.01;
+
+// The most room a heap is left, in megabytes, as heap.cpp holds it.
+constexpr double MOST_ROOM_MB = 1024;
+
+bool expectRoom(const char *what, bool holds, const Room &before, const Room &after) {
+    if (!holds)
+        std::fprintf(stderr,
+                     "FAIL %s: live %.2f then %.2f MB, chunks %.2f then %.2f MB, collecting at "
+                     "%.2f then %.2f MB, outside %.2f then %.2f MB collecting at %.2f then "
+                     "%.2f MB\n",
+                     what, before.live, after.live, before.chunks, after.chunks,
+                     before.collectsAt, after.collectsAt, before.outside, after.outside,
+                     before.collectsOutsideAt, after.collectsOutsideAt);
+    return holds;
+}
+
+// Makes objects in batches through `grow`, which keeps a few of each in
+// `kept`, until the heap's chunks hold `upTo` megabytes or GROWN are
+// made, and says whether every batch ran.
+bool growKeeping(const Heap &heap, const QJSValue &grow, const QJSValue &kept, double upTo) {
+    for (int made = 0; made < GROWN && roomOf(heap).chunks < upTo; made += GROWN_BATCH) {
+        const QJSValue batch = grow.call({kept});
+        if (batch.isError()) {
+            std::fprintf(stderr, "FAIL the kept objects weren't made: %s\n",
+                         qPrintable(batch.toString()));
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether the room is reckoned from what the chunks hold, as the shell
+// asks for it: a heap holding more than twice what's live and the room
+// besides is still left the whole room after a collection; asking twice
+// leaves it once; a heap grown by half the room since it asked collects
+// nothing as it grows and keeps the whole room after a collection, and
+// asking again as it grew, as an opening asks after the closing, doesn't
+// move the ceiling; a heap whose sweeps keep what it grew into collects
+// at twice the room past what it held at that first ask, its sweeps on
+// misses leaving the room as a forced one does; an ask after a collection
+// leaves the whole room again; asking for another room before a
+// collection counts it from the same place; and the room is held to the
+// most, and none for what's under nothing or isn't a number, from the
+// next collection on.
+bool roomFollowsWhatsHeld() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = keepScattered(engine);
+    heap.leaveRoom(SMALL_ROOM_MB);
+    const Room asked = roomOf(heap);
+    engine.collectGarbage();
+    const Room swept = roomOf(heap);
+    const bool whole = expectRoom(
+        "a heap holding more than twice what's live and the room besides keeps the whole room "
+        "after a collection",
+        swept.chunks > 2 * swept.live + SMALL_ROOM_MB &&
+            swept.collectsAt >= swept.chunks + SMALL_ROOM_MB - SAME_MB,
+        asked, swept);
+    heap.leaveRoom(SMALL_ROOM_MB);
+    const Room once = roomOf(heap);
+    heap.leaveRoom(SMALL_ROOM_MB);
+    const Room twice = roomOf(heap);
+    const bool asOne =
+        expectRoom("asking for the same room twice leaves it once, in the heap and outside it",
+                   std::abs(twice.collectsAt - once.collectsAt) < SAME_MB &&
+                       std::abs(twice.collectsOutsideAt - once.collectsOutsideAt) < SAME_MB,
+                   once, twice);
+    const QJSValue kept = engine.newArray();
+    const QJSValue grow = engine.evaluate(
+        QStringLiteral("(kept) => { for (let i = 0; i < %1; i++) { const made = { n: i, m: i }; "
+                       "if (i % %2 === 0) kept.push(made); } }")
+            .arg(GROWN_BATCH)
+            .arg(GROWN_KEPT_ONE_IN));
+    const double quiet = heap.collected();
+    const bool grewHalf = growKeeping(heap, grow, kept, twice.chunks + SMALL_ROOM_MB / 2);
+    const bool unprompted = heap.collected() == quiet;
+    heap.leaveRoom(SMALL_ROOM_MB);
+    engine.collectGarbage();
+    const Room regrown = roomOf(heap);
+    const bool grownHalf = expectRoom(
+        "a heap grown by half the room since it asked collects nothing as it grows and keeps the "
+        "whole room after a collection",
+        grewHalf && unprompted && regrown.chunks > twice.chunks + SMALL_ROOM_MB / 4 &&
+            regrown.collectsAt >= regrown.chunks + SMALL_ROOM_MB - SAME_MB,
+        twice, regrown);
+    const double before = heap.collected();
+    const bool grewFar = growKeeping(heap, grow, kept, std::numeric_limits<double>::infinity());
+    const bool collectedFar = heap.collected() > before;
+    engine.collectGarbage();
+    const Room grown = roomOf(heap);
+    const double ceiling = twice.chunks + 2 * SMALL_ROOM_MB;
+    const bool held = expectRoom("a heap whose sweeps keep what it grew into collects at twice "
+                                 "the room past what it held at the first ask",
+                                 grewFar && collectedFar &&
+                                     grown.chunks > ceiling - SMALL_ROOM_MB / 4 &&
+                                     grown.chunks < ceiling + SMALL_ROOM_MB &&
+                                     2 * grown.live < ceiling &&
+                                     std::abs(grown.collectsAt - ceiling) < SAME_MB,
+                                 twice, grown);
+    heap.leaveRoom(SMALL_ROOM_MB);
+    const Room rearmed = roomOf(heap);
+    const bool again = expectRoom(
+        "an ask after a collection leaves the whole room again, past the ceiling before it",
+        rearmed.collectsAt >= rearmed.chunks + SMALL_ROOM_MB - SAME_MB, grown, rearmed);
+    const double calm = heap.collected();
+    const bool grewLittle = growKeeping(heap, grow, kept, rearmed.chunks + SMALLEST_ROOM_MB);
+    const Room little = roomOf(heap);
+    const bool uncollected = heap.collected() == calm;
+    heap.leaveRoom(SMALLEST_ROOM_MB);
+    const double asking = heap.collected();
+    const bool grewOn = growKeeping(heap, grow, kept, std::numeric_limits<double>::infinity());
+    const bool collectedOn = heap.collected() > asking;
+    engine.collectGarbage();
+    const Room other = roomOf(heap);
+    const double otherCeiling = rearmed.chunks + 2 * SMALLEST_ROOM_MB;
+    const bool another = expectRoom(
+        "asking for another room before a collection counts it from the same place",
+        grewLittle && uncollected && little.chunks >= rearmed.chunks + SMALLEST_ROOM_MB &&
+            grewOn && collectedOn && other.chunks > otherCeiling - SMALLEST_ROOM_MB / 4 &&
+            other.chunks < otherCeiling + SMALLEST_ROOM_MB &&
+            2 * other.live < otherCeiling && std::abs(other.collectsAt - otherCeiling) < SAME_MB,
+        rearmed, other);
+    heap.leaveRoom(std::numeric_limits<double>::infinity());
+    const Room endless = roomOf(heap);
+    heap.leaveRoom(2 * MOST_ROOM_MB);
+    const Room past = roomOf(heap);
+    const bool most = expectRoom(
+        "an endless room, and one past the most, are the most",
+        std::abs(endless.collectsAt - endless.chunks - MOST_ROOM_MB) < SAME_MB &&
+            std::abs(past.collectsAt - endless.collectsAt) < SAME_MB,
+        endless, past);
+    heap.leaveRoom(-SMALL_ROOM_MB);
+    engine.collectGarbage();
+    const Room negative = roomOf(heap);
+    heap.leaveRoom(SMALL_ROOM_MB);
+    heap.leaveRoom(std::numeric_limits<double>::quiet_NaN());
+    engine.collectGarbage();
+    const Room notNumber = roomOf(heap);
+    const bool none = expectRoom(
+        "a room under nothing, and one that isn't a number, are none after a collection",
+        negative.collectsAt < negative.chunks && notNumber.collectsAt < notNumber.chunks,
+        negative, notNumber);
+    return whole && asOne && grownHalf && held && again && another && most && none;
+}
+
+// Whether the room never starts the collector sooner than Qt itself would:
+// in a heap whose chunks are nearly all live, Qt's own limit, twice what's
+// live, is past anything the room gives, and so is the limit it raised for
+// the strings held outside it, and both stay where Qt put them.
+bool roomKeepsQtsOwnLimits() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue dense = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
+                       "m: i }); return made; })()")
+            .arg(KEPT));
+    const QJSValue strings = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push(%2); "
+                       "return made; })()")
+            .arg(STRINGS.count)
+            .arg(QLatin1StringView(STRINGS.each)));
+    for (int each = 0; each < COLLECTIONS_SINCE; each++)
+        engine.collectGarbage();
+    const Room own = roomOf(heap);
+    heap.leaveRoom(SMALLEST_ROOM_MB);
+    engine.collectGarbage();
+    const Room left = roomOf(heap);
+    return expectRoom(
+        "a room never starts the collector sooner than Qt's own limits, in the heap and outside it",
+        !dense.isError() && !strings.isError() &&
+            own.collectsAt > own.chunks + 2 * SMALLEST_ROOM_MB &&
+            own.collectsOutsideAt > own.outside + SMALLEST_ROOM_MB &&
+            left.collectsAt >= own.collectsAt - SAME_MB &&
+            left.collectsOutsideAt >= own.collectsOutsideAt - SAME_MB,
+        own, left);
 }
 
 // Blocks as large as the shell's answers' pieces, 32 MB in all, and how
@@ -543,6 +783,25 @@ int main(int argc, char **argv) {
     if (!roomyOutside)
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
                      "it makes strings held outside it\n", ROOM_MB);
+    const bool lasting = !collectsWhileMaking(ROOM_MB, NUMBERS, COLLECTIONS_SINCE);
+    if (!lasting)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room keeps it through %d "
+                     "collections as it makes more\n", ROOM_MB, COLLECTIONS_SINCE);
+    const bool lastingOutside = !collectsWhileMaking(ROOM_MB, STRINGS, COLLECTIONS_SINCE);
+    if (!lastingOutside)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room keeps it through %d "
+                     "collections as it makes strings held outside it\n", ROOM_MB,
+                     COLLECTIONS_SINCE);
+    // The room outside the heap lasts but stays a room: well past it, the
+    // collector still starts.
+    const bool stillCollectsOutside =
+        collectsWhileMaking(SMALLEST_ROOM_MB, STRINGS, COLLECTIONS_SINCE);
+    if (!stillCollectsOutside)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room, %d collections ago, starts "
+                     "the collector as it makes far more in strings held outside it\n",
+                     SMALLEST_ROOM_MB, COLLECTIONS_SINCE);
+    const bool reckoned = roomFollowsWhatsHeld();
+    const bool ownLimits = roomKeepsQtsOwnLimits();
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool fits = takesRunsThatFit();
@@ -550,7 +809,8 @@ int main(int argc, char **argv) {
     const bool census = namesWhatsKept();
     const bool placed = placesWhatMadeIt();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside && follows && given && fits && whole && census && placed
+                   roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
+                   reckoned && ownLimits && follows && given && fits && whole && census && placed
                ? 0
                : 1;
 }

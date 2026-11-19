@@ -26,8 +26,11 @@ public:
     // `held`, the chunks and large items it keeps for them; and `outside`,
     // what its strings and objects hold beyond the heap; and `free`, of what
     // it holds, the resident pages with nothing in them, which could go
-    // back to the kernel without moving anything. Read after a collection,
-    // live is what survived it.
+    // back to the kernel without moving anything; `chunks`, what its
+    // chunks hold, large items aside; `collectsAt`, what they may hold
+    // before a miss in the free lists starts the collector; and
+    // `collectsOutsideAt`, what may be held outside before the collector
+    // starts. Read after a collection, live is what survived it.
     Q_INVOKABLE QVariantMap weigh() const;
 
     // How many milliseconds Qt's collector has spent collecting since the
@@ -45,10 +48,16 @@ public:
 
     // Lets the heap take this many megabytes of new chunks before a miss
     // in its free lists starts the collector, and its strings as many
-    // more outside it, until the next collection ends. Asked after the
+    // more outside it, and as much again after every collection that ends
+    // later, though a miss starts it no later than twice the room beyond
+    // what its chunks held at the first ask since a collection ended,
+    // whatever room it asked for, and never sooner than Qt would: up to
+    // 1024, and none for 0 or what isn't a number, in the heap from the
+    // next collection on and outside it as Qt lowers its limit. Asked after the
     // closing's collection and again as an opening is asked, so the
-    // opening's allocations don't start one, whatever was made while it
-    // was shut, and the closing's collects what they left (heap.cpp).
+    // opening's allocations don't start one, whatever was made while it was
+    // shut or collected since, and the closing's collects what they left
+    // (heap.cpp).
     Q_INVOKABLE void leaveRoom(double megabytes);
 
     // Gives the heap's free pages, the ones weigh() counts as `free`, back

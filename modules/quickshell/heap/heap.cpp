@@ -31,17 +31,35 @@
 // after the closing's collection it always is: three times, in Joel's shell
 // and the launcher's lab. So Emoji's openings ran one to six passes each,
 // 47 to 204 ms of the collector (the lab, 2026-11-14). Qt reads only the
-// count of what the last sweep left in use to decide it, and the next sweep
-// sets it again, so raising it to half of what's held and the room asked
-// for lets the heap grow by that room first, and lasts until a collection.
+// count of what the last sweep left in use to decide it, so raising it to
+// half of what's held and the room asked for lets the heap grow by that room
+// first.
 //
 // Qt also starts one once the text strings hold outside the heap passes a
 // limit it sets at each collection's end, and that limit was what met the
 // openings once the heap had room: the lab's openings began 4 MB under it,
 // at 17 to 18 MB of 22, and passed it within the opening, 106 to 214 ms of
 // the collector each (the lab's cycle-u1, 2026-11-14). So the same room is
-// left outside the heap too, until the next collection sets the limit
-// again.
+// left outside the heap too.
+//
+// Each collection's end sets both again, so the shell's Qt keeps the room
+// and leaves it after every one (qtdeclarative-room-after-every-sweep.patch),
+// and leaveRoom only asks it to there: the heap holds over twice what's live
+// straight after any sweep, not only the closing's, so a room that lasted
+// until the next collection let one opening of Joel's shell run two whole
+// collections 16 s apart, each inside a key, 115 ms of its 175 and 193
+// (2026-11-19). A miss never starts the collector later than twice the room
+// past what the chunks held at the first ask since a collection ended, nor
+// sooner than Qt itself would, so a heap whose sweeps keep a few items in
+// each chunk it grew into doesn't grow by the room at every one; an ask
+// with no collection since the last, the opening's after the closing's or
+// one for another room, shares its ceiling; and it reckons from what each
+// sweep left, not from where leaveRoom set it, so asking twice leaves the
+// room once. weigh() says where the next starts. Every ask after a
+// collection moves the ceiling, so such a heap may climb by twice the room
+// at each: four rooms between closings when one ran while the launcher was
+// shut, six with the census, where main let it climb by the room at each
+// ask. The closing's line says what it holds.
 //
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,
@@ -77,6 +95,7 @@
 #include <QStringList>
 #include <QVariantList>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <dlfcn.h>
 #include <private/qv4context_p.h>
@@ -93,10 +112,10 @@ namespace {
 
 constexpr double BYTES_PER_MB = 1024.0 * 1024.0;
 
-// What's held may be this many times what the last sweep left in use before
-// a miss starts the collector: Qt's GCOverallocation, 200%, private to
-// qv4mm.cpp.
-constexpr std::size_t OVERALLOCATION = 2;
+// The most room a heap is left, in megabytes, since it's left after every
+// collection for the rest of the run: far past the shell's 32, and far
+// short of where the slots it counts as could overflow.
+constexpr double MOST_ROOM_MB = 1024;
 
 double megabytes(std::size_t bytes) { return static_cast<double>(bytes) / BYTES_PER_MB; }
 
@@ -179,9 +198,15 @@ QVariantMap Heap::weigh() const {
     // Large items have chunks of their own, as big as each, so they're
     // live and held alike.
     const std::size_t large = manager->getLargeItemsMem();
+    // Not `slots`, which is Qt's keyword macro.
+    const std::size_t chunkSlots =
+        manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
+        {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
+        {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
+        {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
         {QStringLiteral("free"),
          megabytes(freePages(manager->blockAllocator) + freePages(manager->icAllocator))},
@@ -189,15 +214,9 @@ QVariantMap Heap::weigh() const {
 }
 
 void Heap::leaveRoom(double megabytes) {
-    QV4::MemoryManager *manager = engine->handle()->memoryManager;
-    const std::size_t held =
-        manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
-    const auto bytes = static_cast<std::size_t>(std::max(megabytes, 0.0) * BYTES_PER_MB);
-    const auto room = bytes / QV4::Chunk::SlotSize;
-    manager->usedSlotsAfterLastFullSweep =
-        std::max(manager->usedSlotsAfterLastFullSweep, (held + room) / OVERALLOCATION);
-    manager->unmanagedHeapSizeGCLimit =
-        std::max(manager->unmanagedHeapSizeGCLimit, manager->unmanagedHeapSize + bytes);
+    // A room that isn't a number is none, and any other is held to the most.
+    const double asked = std::isnan(megabytes) ? 0.0 : std::clamp(megabytes, 0.0, MOST_ROOM_MB);
+    engine->handle()->memoryManager->leaveRoom(static_cast<std::size_t>(asked * BYTES_PER_MB));
 }
 
 QVariantMap Heap::allocator() const {
