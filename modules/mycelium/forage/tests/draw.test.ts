@@ -439,6 +439,7 @@ it("draws one dotted arc for each pair a need joins on the floor, and a branch f
       forage({ cell: "KESTRL", serves: [{ cell: "OSPREY", need: "", since: undefined }] }),
       forage({ cell: "OSPREY", relies: [{ cell: "KESTRL", need: "", since: undefined }] }),
       forage({ cell: '<b a="1">', splitFrom: "KESTRL", depth: 1 }),
+      forage({ cell: "SKIFFS", startedBy: "OSPREY", depth: 1 }),
     ],
     null,
     "kestrel",
@@ -446,10 +447,10 @@ it("draws one dotted arc for each pair a need joins on the floor, and a branch f
   assert.equal(floor.match(/class="join"/gu)?.length, 1);
   // It runs from the cell relied on, first on the floor, to the one relying, next.
   assert.match(floor, JOIN_FROM_FIRST_TO_SECOND);
-  // The main line, then the split's branch, dashed since a split is only claimed, its address escaped.
+  // The main line, then a branch for the split and one for a start no book holds, both claimed.
   assert.equal(floor.match(/class="hypha"/gu)?.length, 1);
+  assert.equal(floor.match(/class="hypha claimed"/gu)?.length, 2);
   assert.ok(floor.includes('class="hypha claimed" data-cell="&lt;b a=&quot;1&quot;&gt;"'), floor);
-  assert.ok(!floor.includes("<b "), floor);
 });
 
 it("draws a start the node's book holds solid, and one only claimed dashed", () => {

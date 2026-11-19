@@ -7,7 +7,7 @@
 > reports it keeps have come.
 
 - [The page](index.html): the cells drawn as the forest floor cut
-  through, then listed, each under the cell that started it, walked by
+  through, then listed, each under the cell it says it grew from, walked by
   keyboard or pointer, with the cell the cursor is on beside them.
 - [The page as text](index.md): how to read it, the keys, and what the
   data holds.

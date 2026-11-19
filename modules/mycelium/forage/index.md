@@ -31,9 +31,11 @@ a terminal, `mycelium forage` gathers the realm's.
   and from which cells, then names the cells without purpose and the
   plan furthest from done. A cell with no purpose is the one worth a
   look, since a cell without one serves no use.
-- **One row per cell,** each set in under the cell that started it: its
-  mark, its address, how many of its steps are done, its purpose, and
-  what it keeps, such as "2 plans and one report", and how many things
+- **One row per cell,** each set in under the cell its record says it
+  was started by or split from. The set-in says only where a row
+  stands; the floor and the panel say which starts the node's book
+  holds. Each row shows its mark, its address, how many of its steps
+  are done, its purpose, and what it keeps, such as "2 plans and one report", and how many things
   its quest waits on you for, when any. A cell started by, or split
   from, one not standing here stands at the top, since that cell isn't
   drawn here.
