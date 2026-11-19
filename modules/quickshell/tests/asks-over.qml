@@ -82,11 +82,15 @@ ShellRoot {
             const next = Object.assign({}, held);
             const was = held[root.key] ?? root.record("");
             next[root.key] = Object.assign({}, was, {
-                // Its row as row.rs serves an ask no longer waiting; its
-                // side and drawer stay the waiting one's, since the hidden
-                // row keeps neither.
-                row: Object.assign({}, was.row, { state: undefined, hue: "machine",
-                    attention: undefined, acts: [] })
+                // Its row as row.rs serves an ask no longer waiting: no
+                // state, how it stands before when it came, and a fact of
+                // what came of it, so the hidden row is shown to keep none.
+                row: Object.assign({}, was.row, { state: null, hue: "machine",
+                    attention: undefined, acts: [],
+                    side: [{ said: "ended", keep: 2 }, { said: "from S1", keep: 1 }],
+                    drawer: Object.assign({}, was.row.drawer, {
+                        facts: was.row.drawer.facts.concat([{ name: "Came to", said: "ended" }])
+                    }) })
             });
             held = next;
             heard([root.key], []);
@@ -658,6 +662,17 @@ ShellRoot {
         stage.press("j", true);
     }
 
+    // What a field holding a function reads as, called with nothing, so a
+    // row's field drawn later can't hide behind JSON, which says any
+    // function as null.
+    function called(read) {
+        try {
+            return read();
+        } catch (error) {
+            return `threw ${error?.name}`;
+        }
+    }
+
     function sharing() {
         stage.present(800);
         same("the line is timed before the screen is shared", Object.keys(asks.seen),
@@ -674,13 +689,15 @@ ShellRoot {
         same("its drawer says neither what it asks for, where from, nor why",
             [drawer.title, drawer.eyebrow, drawer.body, drawer.facts?.length],
             [hidden, "", "", 0]);
-        // Nor in any field the row carries, its drawer, verbs and state as
-        // each reads, so a field the launcher draws later fails here if
-        // it's let through, not only the fields named below.
-        const reads = ["drawer", "verbs", "state"];
+        // Nor in any field the row carries, each that's a function as it
+        // reads, so a field the launcher draws later fails here if it's
+        // let through, not only the fields named below.
         const told = one => JSON.stringify(Object.keys(one ?? {}).map(field => [field,
-            reads.includes(field) && typeof one[field] === "function" ? one[field]()
-                : one[field]]));
+            typeof one[field] === "function" ? called(one[field]) : one[field]]));
+        // Kept apart from every other hidden ask, by its thing and the
+        // record's key, since all read alike.
+        same("and it's still its own ask, by the keys its row is kept by",
+            [row()?.key, row()?.shownKey], [`ask:${root.id}`, root.key]);
         same("nor anything of what it asks for or where from, in any field",
             ["Kiln", "kiln", "S1"].filter(word => told(row()).includes(word)), []);
         same("nor anything else the daemon serves, only what it may show",
@@ -868,15 +885,13 @@ ShellRoot {
         // A ready row's state is read as it's drawn, since JSON says any
         // function, and so any state, as null.
         const stands = one => typeof one?.state === "function" ? one.state() : one?.state;
-        // Every field it carries, its state, drawer and verbs as each
-        // reads, but whether it waits and since when, which For You counts
-        // (a named limit).
-        const reads = ["drawer", "verbs"];
+        // Every field it carries, each that's a function as it reads, but
+        // whether it waits and since when, which For You counts (a named
+        // limit).
         const drawn = one => JSON.stringify(Object.keys(one ?? {}).sort()
             .filter(field => field !== "waiting" && field !== "asked")
             .map(field => [field, field === "state" ? stands(one) ?? null
-                : reads.includes(field) && typeof one[field] === "function" ? one[field]()
-                : one[field]]));
+                : typeof one[field] === "function" ? called(one[field]) : one[field]]));
         same("it waits before it ends", row()?.waiting, true);
         const waiting = drawn(row());
         link.tellEnded();
