@@ -510,9 +510,10 @@ in by Ctrl+W l and out by Ctrl+W h, round after round. It prints each going
 in's presented time from the key, the shell's share to its swap and how many
 lines its frame laid, then the median and p90. `LAB_DRAWN_WINDOWS` opens
 windows first, as for the drawer walk. With 80 open, going into Emoji's
-1,833 names took a median 45 ms and a p90 67, the shell's share a median 21.
-Laying only what shows first, the rest after the frame, took a median 82
-and a p90 377 (2026-11-19).
+1,833 names laid whole first took a median 558 ms and a p90 624, 536 of it
+the shell's to its swap. Laying only its 37 lines that show, the rest after
+the frame, took a median 81 and a p90 99, 11 of it the shell's (2026-11-19).
+A key typed while the rest is laid waits on it.
 
 A key is timed by `modules/quickshell/tests/launcher-keys-lab-on-niri.py`, the
 `keys-lab` beside it. It opens home round after round and types each of

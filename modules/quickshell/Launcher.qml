@@ -15387,6 +15387,13 @@ Scope {
             keys: QueryKeys.paged(prompt.mode)
             onEntering: root.intoComing()
             onEntered: laid => root.intoTimed(laid)
+            // Its whole run is laid once the frame the keys came in is
+            // drawn, not merely at the next turn, which comes before it;
+            // and once that frame's swap is heard, at the turn after, since
+            // laid in the swap's own handler it held the others and the
+            // swap's stamp behind it: the drawer lab read its swap some
+            // 390 ms after niri presented it (2026-11-19).
+            afterFrame: then => root.afterFrame(() => Qt.callLater(then))
             // The search being typed on the line, washed as it's typed.
             seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
             seekingForward: !prompt.standing.seek || prompt.standing.seek.forward

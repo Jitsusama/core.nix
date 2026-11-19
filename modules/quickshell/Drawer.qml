@@ -850,15 +850,23 @@ Floating {
         return Math.max(0, line.length - 1);
     }
 
+    // What waits for the frame the keys came in to be drawn, which the
+    // launcher gives as its own afterFrame; at the next turn, alone.
+    property var afterFrame: then => Qt.callLater(then)
+    // Each time the keys come in, so a whole lay waiting on a frame the
+    // keys have since left, or come in anew after, does nothing.
+    property int entries: 0
     // Into it: the cursor on the title's first letter where it's in view,
     // else the first line in view, so nothing moves as the keys come in.
-    // Its whole run is laid in the frame the keys came in: laid after it,
-    // going into Emoji's took a median 82 ms from the key in the drawer
-    // lab against 45 laid first, its shell's share 21 (2026-11-19;
-    // docs/testing.md's Timing the Launcher, the lab's going_into case).
+    // Its frame lays only what shows, a run as it's laid at rest, and its
+    // whole run once that frame is drawn: laid first, going into Emoji's
+    // 1,833 names took a median 558 ms from the key in the drawer lab, and
+    // 81 laid after, where its view shows some 35 lines (2026-11-19;
+    // docs/testing.md's Timing the Launcher). Its lines down to the short run's cut are the
+    // whole run's too, so the cursor's line still stands once it's laid
+    // whole.
     function enter() {
-        // The whole run, first, for the lines read below to hold it.
-        runWhole = true;
+        runWhole = false;
         lastChosen = null;
         began = choosing !== "" ? began : null;
         laid = lines();
@@ -868,6 +876,26 @@ Floating {
             && laid[at].top + laid[at].height <= top + drawer.viewRoom);
         const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
         cursor = { line, letter: 0, want: laid.length > 0 ? xOf(laid[line], 0) : 0 };
+        const entry = ++entries;
+        afterFrame(() => {
+            if (keys && entry === entries)
+                layWhole();
+        });
+    }
+    // The whole run laid, its lines read again and the cursor kept where
+    // it is, as relay keeps it. A key that reads past what shows, as G, a
+    // search, o, gv or y does, lays it first, should it come before the
+    // frame the keys came in is drawn.
+    function layWhole() {
+        if (runWhole || !keys)
+            return;
+        runWhole = true;
+        laid = lines();
+        if (laid.length === 0)
+            return;
+        const line = Math.max(0, Math.min(cursor.line, laid.length - 1));
+        const most = Math.max(0, laid[line].length - 1);
+        cursor = { line, letter: Math.min(cursor.letter, most), want: cursor.want };
     }
     // Another page shown while it holds the keys, as its list of keys is:
     // read from its top once Qt has laid it out, as a window opened on it.
@@ -918,6 +946,7 @@ Floating {
             fold();
             return;
         }
+        layWhole();
         const page = laid;
         const moved = Page.moved(act, count, {
             lines: page,
@@ -948,6 +977,7 @@ Floating {
     // E486 where it's found nowhere, else "", and `wrapped` the end it went
     // round, with what was sought.
     function seek(pattern, forward, count) {
+        layWhole();
         const sought = pattern !== "" ? { pattern, forward }
             : lastSought ? { pattern: lastSought.pattern, forward } : null;
         if (!sought)
@@ -956,6 +986,7 @@ Floating {
         return land(sought.pattern, forward, count);
     }
     function seekOn(act, count) {
+        layWhole();
         if (!lastSought)
             return { none: "E35", wrapped: "", pattern: "" };
         return land(lastSought.pattern, act === "seekNext" ? lastSought.forward
@@ -1031,6 +1062,7 @@ Floating {
     // o: the cursor to where visual began, which becomes where it is, as
     // Vim's o goes to the selection's other end.
     function otherEnd() {
+        layWhole();
         if (began === null || laid.length === 0)
             return;
         const was = { line: cursor.line, letter: cursor.letter };
@@ -1040,6 +1072,7 @@ Floating {
     // gv: the last chosen again, from where it began to where it ended,
     // the launcher choosing by its kind once this has stood the cursor.
     function reselect() {
+        layWhole();
         if (lastChosen === null || laid.length === 0)
             return;
         began = lastChosen.began;
@@ -1051,6 +1084,7 @@ Floating {
     // given back for the launcher to put on the clipboard. The cursor goes
     // to its start, as Vim's y leaves it, once gv has what it chose.
     function copy(lines = false) {
+        layWhole();
         const took = lines && began !== null ? Page.chosen(began, cursor, "lines", laid) : taken;
         const spans = spansOf(took);
         copied = spans.map((span, at) => (at === 0 ? ""
