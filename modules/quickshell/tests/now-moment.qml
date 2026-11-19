@@ -766,21 +766,25 @@ ShellRoot {
         const notice = { id: 40, at: Date.now(), app: "pi", summary: "Session K is done",
             body: "said", read: false, urgency: "critical",
             cell: "mycelium:cell/9F3A2B1C@heron#notice:40" };
+        // What the tray counted before, as the looks still waiting.
+        trayBefore = ForYouHolds.count;
         Notices.history = Notices.history.concat([notice]);
         noticesDaemon.notices = noticesDaemon.notices.concat([notice]);
         waiting = "cell notice served";
     }
+    property int trayBefore: 0
     function cellNoticeRow() {
         waiting = "";
         const noticed = () => now.forYouBands.now.filter(one => one.kind === "notice");
-        const counts = () => JSON.stringify([noticed().length, ForYouHolds.count]);
+        const tray = () => ForYouHolds.count - trayBefore;
+        const counts = () => JSON.stringify([noticed().length, tray()]);
         if (tried(() => {
             const keys = now.waitingRows().map(one => one.key);
             const row = now.waitingRows().find(one => one.key === "notice:40") ?? null;
             expect("a session's notice served stands under it among what needs Joel as its row",
-                row !== null && ForYouHolds.count === 1
+                row !== null && tray() === 1
                     && keys.indexOf("on:heading:cell:KELP01") === keys.indexOf("notice:40") - 1,
-                JSON.stringify(now.waitingRows().map(one => one.key)));
+                `${counts()} ${JSON.stringify(keys)}`);
             expect("which :filter holds as a thing to do from the desktop",
                 row.forYou?.kind === "do" && row.forYou?.source === "desktop",
                 JSON.stringify(row.forYou ?? null));
@@ -794,17 +798,16 @@ ShellRoot {
                 : Object.assign({}, one, { read: true, readAt: done, left: "dismissed",
                     leftAt: done }));
             expect("acted on from its row, it stays where it stood",
-                noticed().length === 1 && ForYouHolds.count === 1, counts());
+                noticed().length === 1 && tray() === 1, counts());
             // Shut, it's gone, and the tray counts it no more.
             theLauncher.open = false;
-            expect("the launcher shut, it's gone, and the tray counts nothing",
-                noticed().length === 0 && ForYouHolds.count === 0, counts());
+            expect("the launcher shut, it's gone, and the tray counts it no more",
+                noticed().length === 0 && tray() === 0, counts());
             // Raised again with the launcher shut, the tray counts it.
             Notices.history = Notices.history.map(one => one.id !== 40 ? one
                 : Object.assign({}, one, { read: false, readAt: null, left: undefined,
                     leftAt: undefined }));
-            expect("raised with the launcher shut, the tray counts it",
-                ForYouHolds.count === 1, counts());
+            expect("raised with the launcher shut, the tray counts it", tray() === 1, counts());
         }))
             Qt.exit(0);
     }
