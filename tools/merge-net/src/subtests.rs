@@ -76,7 +76,7 @@ pub fn failed_in(log: impl IntoIterator<Item = impl AsRef<str>>) -> BTreeSet<Str
 /// as surely: on 18 November both runs of vm-the-connection-stays-quick
 /// at 7030d16c46ae erred so in two subtests each, named none, and could
 /// be neither excused by its list nor searched by its subtests.
-/// changed-checks' quarantine.rs, nix-offload's changed.rs and
+/// changed-checks' quarantine.rs, nix-offload's changed/pytest.rs and
 /// run-subtests.py read a line alike, so the four change together.
 fn failed_on(line: &str) -> Option<&str> {
     if line.contains(LOST) {

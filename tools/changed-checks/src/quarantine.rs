@@ -110,8 +110,8 @@ impl Held {
 /// that erred in a fixture, a parametrized case by its function's name.
 /// Only pytest's own line counts, past what Nix puts before it, so a
 /// guest's echoed `FAILED` names none. It is merge-net's `failed_on` in
-/// subtests.rs, and nix-offload's in changed.rs, copied, so the three
-/// change together.
+/// subtests.rs, nix-offload's in changed/pytest.rs and run-subtests.py's,
+/// copied, so the four change together.
 pub fn failed_on(line: &str) -> Option<&str> {
     let said = pytests_own(line);
     let rest = said
