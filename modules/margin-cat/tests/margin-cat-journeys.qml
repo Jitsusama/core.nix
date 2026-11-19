@@ -112,7 +112,8 @@ QtObject {
                     && !(one.pose === "walkingB" && standsIn.includes(one.beat))));
         };
         // A journey set off from `from`, a frame of another, is judged
-        // from it, so the step across the change is held too.
+        // from it, so the step across the change is held too, and the
+        // first pose it changes to is held to the 33 ms the others are.
         const posed = one => (one.y + at.tall > 0 && one.y < at.height && one.beat !== "rides"
             ? one.pose : undefined);
         const flashes = (journey, said, from) => {
@@ -138,7 +139,8 @@ QtObject {
                     continue;
                 }
                 const ms = run === null ? 0 : run.ends - run.begins + 1;
-                if (run !== null && run.begins > 0 && run.pose && ms < 33)
+                if (run !== null && (run.begins > 0 || (from && run.first !== from)) && run.pose
+                    && ms < 33)
                     wrong.push(`${said} shows ${run.pose} ${ms} ms at ${run.begins} ms, `
                         + `${run.first.beat} to ${run.last.beat}`);
                 if (run !== null && run.pose)
