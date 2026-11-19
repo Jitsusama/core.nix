@@ -1047,13 +1047,15 @@
   '';
   every-cat-pose-reads-as-one-cat = ''
     every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
-    pixels within 15% of sitting's, each of its four strides steps one pair of feet with its body
-    still, and a leap's rise, tuck and fall are all drawn
+    pixels within 15% of sitting's, each stride of the walk the cat's code takes steps one pair
+    of feet with its body still, and each pair over the walk, and a leap's rise, tuck and fall
+    are all drawn
   '';
   every-puppy-pose-reads-as-one-puppy = ''
     every pose of the margin's puppy has no lit pixel standing alone, a diagonal touching, and lit
     pixels within 15% of its own sitting's, each of its four strides steps one pair of feet with
-    its body still, and its sitting, bow and four strides are all drawn
+    its body still, and each pair over the walk, and its sitting, bow and four strides are all
+    drawn
   '';
   every-script-finds-what-it-imports = ''
     every folder's Python that nix fmt hands mypy passes it when handed to it alone, as a script
