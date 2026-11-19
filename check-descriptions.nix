@@ -2818,11 +2818,11 @@
     realm and how to prove it
   '';
   pi-hosts-refuse-code-loading-variables = ''
-    a realm that gives its pi hosts any one of NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE,
-    LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, or two at once beside
-    one that loads nothing, which their unit clears so none opens the host's inspector or runs
-    code as the host, fails evaluation naming the realm and just the variables of those it gave,
-    rather than having them dropped unseen
+    a realm that gives its pi hosts any of NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE,
+    LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which their unit
+    clears so none opens the host's inspector or runs code as the host, fails evaluation naming
+    the realm and only the ones it gave, rather than having them dropped unseen, while a variable
+    that loads nothing passes beside them unnamed
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the
