@@ -559,9 +559,11 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"] == ["Pick a bucket", "Try the new home"])
     desktop.next_row()
     picked(desktop, "Try the new home")
-    # Done in a window of its own, going there leads.
+    # Done in a window of its own, going there leads, then its session's acts.
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Go To", "Deal With It"])
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:3] == ["Go To", "Deal With It", "Talk"]
+    )
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
@@ -575,9 +577,11 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     picked(desktop, "Later")
     desktop.follow()
     picked(desktop, "Pick a bucket")
-    # Done in its session, dealing with it there leads.
+    # Done in its session, dealing with it there leads, then talking to it.
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Deal With It", "Go To"])
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:3] == ["Deal With It", "Talk", "Go To"]
+    )
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
@@ -1058,7 +1062,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.launcher_until(
             lambda shown: (
                 shown["held"] == ["now", "For You", "A quest of its own & whole"]
-                and shown["rows"] == ["Deal With It", "Go To", "Put It Off"]
+                and shown["rows"] == ["Deal With It", "Talk", "Go To", "Put It Off"]
             )
         )
         machine.send_key("ret")
@@ -1102,7 +1106,8 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"] == ["Push it", "Hold it", "Deal With It", "Put It Off"]
+            shown["rows"]
+            == ["Push it", "Hold it", "Deal With It", "Talk", "Go To", "Put It Off"]
             and (shown["selected"] or {}).get("name") == "Push it"
         )
     )

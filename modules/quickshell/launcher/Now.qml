@@ -765,9 +765,10 @@ Provider {
     // and by when; and in its drawer its steps and why only he can. One he
     // can do now is strong, one for later muted. Return goes where it's
     // done, its window or its session's, and with nowhere to go steps in, as
-    // the right arrow does: Go To, Deal With It and Talk where it has a
-    // session, then Done and Not Now, which stay open as the item leaves its
-    // place, then its quest.
+    // the right arrow does: Deal With It and Talk where it has a session,
+    // Go To first where it's done in a window of its own and after them
+    // where not, then Done and Not Now, which stay open as the item leaves
+    // its place, then its quest.
     // In For You's weighed list (`weighed`, the time it's weighed at), its
     // side says the strongest reason it's there instead (ForYou.js's reason),
     // and its row is kept while what it says reads the same (itemsKept).
@@ -1703,10 +1704,10 @@ Provider {
     // session that is so far past what i'm being asked that i don't know if
     // it is still relevant"). Inside, Deal With It brings its window forward
     // with the prompt filled in, naming what it asked, then Talk to it,
-    // Agents' own, then Go To. One parked
-    // is woken by either, its window showing it come back, as a key typed
-    // there would; Deal With It wakes it once the filled prompt is in its
-    // inbox, which it reads as it starts, as Talk does (Sessions.talk).
+    // Agents' own, then Go To. One parked is woken by any of the three, its
+    // window showing it come back, as a key typed there would; Deal With It
+    // and Talk wake it once what they say is in its inbox, which it reads
+    // as it starts (Sessions.talk).
     // Each is kept while Agents' row for it, what it asked, its title and
     // whether it's parked are the same, as Agents keeps its own row while
     // its window and how it stands are (wantsKept).

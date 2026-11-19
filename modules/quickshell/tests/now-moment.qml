@@ -1454,12 +1454,14 @@ ShellRoot {
                 ["on:waiting:Sign The Form", ""], ["on:look:e", ""]]),
             JSON.stringify(read));
         // Inside, Talk to its session follows dealing with it there, so
-        // what's working on it is reached from it (42P0R4, 2026-11-19).
+        // what's working on it is reached from it (42P0R4, 2026-11-19); one
+        // done in a window of its own leads with going there, as the
+        // waits-on-joel walk holds it, a window being there to go to.
         const formActs = forYou().find(row => row.key === "on:waiting:Sign The Form").verbs()
-            .map(act => [act.key.split(":").slice(0, 3).join(":"), act.to ?? ""]);
+            .map(act => [act.name, act.to ?? ""]);
         expect("a session's to-do offers Talk to it after Deal With It",
             JSON.stringify(formActs.slice(0, 2)) === JSON.stringify(
-                [["verb:on:waiting", ""], ["verb:agent:talk", "ACTED"]]),
+                [["Deal With It", ""], ["talk", "ACTED"]]),
             JSON.stringify(formActs));
         const heardBefore = root.forYouHeardTimes;
         agents.rows.ACTED.doing = "working";
@@ -1730,10 +1732,17 @@ ShellRoot {
         expect("his own words go as words",
             JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({ other: "after lunch" }),
             JSON.stringify(agents.answered[2]));
-        inside[6].run();
+        const named = name => inside.find(one => one.name === name);
+        Sessions.wentTo = null;
+        named("Go To").run();
+        expect("Go To goes to the session that asked, answering nothing",
+            Sessions.wentTo?.address === "WANTE" && agents.answered.length === 3,
+            JSON.stringify([Sessions.wentTo?.address ?? null, agents.answered.length]));
+        Sessions.wentTo = null;
+        named("Put It Off").run();
         expect("Put It Off asks the daemon to put off its session's want, staying open",
             JSON.stringify(Sessions.putOffAsked) === '["WANTE WANTE question@1"]'
-                && inside[6].stays === true,
+                && named("Put It Off").stays === true,
             JSON.stringify(Sessions.putOffAsked));
         Sessions.putOffAsked = [];
         Sessions.knowns = {};
