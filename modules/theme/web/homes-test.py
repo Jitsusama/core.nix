@@ -101,13 +101,14 @@ def probed(
     handler = partial(Quiet, directory=str(root), failing=failing)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    tab = browser.new_page()
     try:
-        tab = browser.new_page()
         tab.goto(f"http://127.0.0.1:{server.server_address[1]}/page.html")
         found = tab.evaluate(PROBE.read_text())
-        tab.close()
     finally:
+        tab.close()
         server.shutdown()
+        server.server_close()
     return found
 
 

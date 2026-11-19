@@ -1653,9 +1653,12 @@
   looks-probe-finds-what-a-deploy-lost = ''
     the web-design skill's looks probe, in headless Chromium over small sites of its own, lists a
     page's stylesheet, face, type, colours, masthead, mark, drawings, images and scripts as drawn,
-    names each one lost when a deploy leaves its words in a plain shell, names a stylesheet that
-    answers 404 broken, says a loss named as meant with why, loses nothing to a change of words,
-    measures a drawing in a shut fold and leaves it shut, and fails a page that draws nothing
+    names each one lost when a deploy leaves its words in a plain shell, names a stylesheet, a face
+    or an image that answers 404 broken, keeps what was broken before as still rather than failing,
+    lists art a stylesheet paints, keeps a rebuilt asset's name past a new hash, says a loss named
+    as meant with why, loses nothing to a change of words, measures drawings in shut folds, an
+    exclusive group's too, and leaves them shut, fails a page that draws nothing, and refuses a
+    before answer set wrong
   '';
   m4-pro-kernel-describes-both-external-screens = ''
     the 14-inch M4 Pro's device tree describes both external screens' coprocessors, their firmware

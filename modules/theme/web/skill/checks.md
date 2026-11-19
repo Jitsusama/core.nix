@@ -119,8 +119,9 @@ through axe-core and its own console.
 9. **A deploy keeps its looks.** Every publish over a page already live,
    whoever built it and wherever it's served, is measured on the live page
    before and after ([Before and After](#before-and-after)). A look lost
-   that nobody named as meant, or an asset answering an error, fails the
-   publish, and the copy kept from before goes back at once.
+   that wasn't named as meant before it went out, or an asset newly
+   answering an error, fails the publish, and the site kept from before
+   goes back at once.
 
 ## The Widths
 
@@ -292,31 +293,49 @@ can't see what the old one had, so every publish over a live page holds
 the two side by side, in the render, not the markup: a stylesheet still
 linked that answers 404 is in the markup and on nobody's screen.
 
-1. **Before it goes out**, fetch the live copy of every file the publish
-   replaces and keep it, in the work's scratch rather than the site, so
-   it can go back whole. Then, on each live page, run `looks.js`, beside
-   this file, as `gate.js` is run, and keep its `looks`. Shoot each page
-   at 1440 and 390 px, in both looks, with every fold open.
-2. **After it goes out**, on each live page again, set the list kept as
-   `globalThis.looksBefore` with one eval, and each loss the change means
+1. **Before it goes out**, keep the whole site as it's deployed, in the
+   work's scratch rather than the site: the host's own copy or the last
+   deployed folder where there is one, not only the files the publish
+   replaces, since putting it back must take away what the publish added
+   and return what it removed. Name each look the change means to take
+   away, and why, from what it was asked to do, before seeing what it
+   loses. Then, on each live page, run `looks.js`, beside this file, as
+   `gate.js` is run, and keep its whole answer. Each run is in a browser
+   context of its own with nothing cached, at 1440 px in the light look,
+   before any shot, since a cached stylesheet reads as loaded after it's
+   gone, and the width and look change what's drawn. Then shoot each
+   page at 1440 and 390 px, in both looks, with every fold open.
+2. **After it goes out**, on each live page again, in a fresh context at
+   the same width and look, set the answer kept as
+   `globalThis.looksBefore` with one eval, and the losses named in step 1
    as `globalThis.looksMeant`, an object from the look to why it went;
-   then run `looks.js`. It answers each look the page had and has no
-   more in `lost`, each meant one with its reason in `meant`, each asset
-   that answered an error in `broken`, and its `looks` now, kept as the
-   next publish's before. Shoot the same shots.
+   then run `looks.js`. A page the change renamed or moved is measured at
+   its new address against its old one's answer, and the old address
+   should lead to the new. The probe answers each look the page had and
+   has no more in `lost`, each meant one with its reason in `meant`, each
+   asset newly answering an error in `broken`, each that answered one
+   before too in `still`, and the whole answer now in `now`, kept as the
+   next publish's before. An answer with no `lost` is a before run, never
+   a pass. Shoot the same shots.
 3. **Hold the shots side by side**, before and after, width by width and
-   look by look, and name every difference the change didn't mean: a
-   masthead gone, a face fallen back, a figure blank, a tint lost. The
-   list sees what loads; only the shots see a part drawn wrong.
+   look by look, with every side sheet and dialog the page opens, and
+   name every difference the change didn't mean: a masthead gone, a face
+   fallen back, a figure blank, a tint lost. The list sees what loads;
+   only the shots see a part drawn wrong, or one another origin failed.
 4. **It passes** on an empty `lost` and `broken` at each page, and a
    difference in the shots that's each one meant. Otherwise put the kept
-   copy back at once, before anything else, measure it back to its
-   before list, and report the publish as failed, naming each loss.
+   site back at once, before anything else, measure it back to its
+   before answer, and report the publish as failed, naming each loss.
+   Each meant loss is said in the report too, so someone else sees it.
+   If the kept site doesn't measure back, say so to Joel at once.
 
-A page published for the first time has no before, and passes the gate
-above alone; its first after list is the next publish's before. A site
-that keeps its own guard beside its deploy, as a tracker reads its
-markup for lost looks, runs it too: the two see different things.
+If the probe or the shots can't be run, the deploy waits: a publish over
+a live page that wasn't measured isn't done. Something `still` broken is
+worth a fix of its own, never this publish's fault. A page published for
+the first time has no before, and passes the gate above alone; its first
+after answer is the next publish's before. A site that keeps its own
+guard beside its deploy, as a tracker reads its markup for lost looks,
+runs it too: the two see different things.
 
 ## Looking
 
