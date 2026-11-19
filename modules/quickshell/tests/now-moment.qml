@@ -1297,11 +1297,12 @@ ShellRoot {
                 ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"], ["on:look:c", ""],
                 ["on:heading:cell:yours", "yours alone"], ["on:waiting:Sign In", ""]]),
             JSON.stringify(gathered));
-        // A cell behind a look and wanting nothing, its standing moving
-        // alone: For You hears it, so a heading held never goes on saying
-        // how its cell stood before.
+        // A cell's standing moving alone, what it asks and left as they
+        // were: For You hears it, so a heading held never goes on saying
+        // how its cell stood before. It still asks, since a look whose
+        // session wants nothing stands with the looks, under no heading.
         Sessions.running = [left];
-        Sessions.wanting = [];
+        Sessions.wanting = [left];
         agents.rows.LEFTC.doing = "listening";
         agents.remade += 1;
         const listening = shown();
@@ -1313,8 +1314,9 @@ ShellRoot {
             root.forYouHeardTimes > heardBefore
                 && listening[0][0] === "on:heading:cell:LEFTC"
                 && listening[0][1] === "Session C \u00b7 listening"
-                && JSON.stringify(working.slice(0, 2)) === JSON.stringify([
-                    ["on:heading:cell:LEFTC", "Session C \u00b7 working"], ["on:look:c", ""]]),
+                && JSON.stringify(working.slice(0, 3)) === JSON.stringify([
+                    ["on:heading:cell:LEFTC", "Session C \u00b7 working"],
+                    ["on:waiting:want:LEFTC", ""], ["on:look:c", ""]]),
             JSON.stringify([root.forYouHeardTimes - heardBefore, listening, working]));
         Sessions.running = [];
         Sessions.wanting = [];
