@@ -1,8 +1,7 @@
-// Code, live: every repository on the machine as the repos daemon holds it, drawn as a grove
-// above the list of them, with the cursor's open beside the list. It watches the daemon's records
-// over the sites' server, so the page moves the moment git writes, and the cells at work from the
-// machine's mycelium node. Nothing under the reader moves unless they moved it: each repository
-// keeps its place, and the cursor stays where it was.
+// Code, live: every repository the repos daemon holds, as a grove above their list, the cursor's
+// open beside it, and a map of the cells joining them below. It watches the daemon's records and
+// the mycelium node's cells over the sites' server, so the page moves the moment git writes.
+// Nothing under the reader moves unless they moved it: each repository and the cursor stay put.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
@@ -11,7 +10,7 @@ import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { addressed, forgotten, landing, outward, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
 import { footOf, headOf, worst } from "./head.ts";
-import { NOWHERE } from "./homes.ts";
+import { drawMap } from "./mapview.ts";
 import {
   type Feed,
   type Grove,
@@ -22,7 +21,7 @@ import {
   type Season,
   stepped,
 } from "./model.ts";
-import { type Mycelium, watchMycelium } from "./mycelium.ts";
+import { UNHEARD, watchMycelium } from "./mycelium.ts";
 import {
   copyFolder,
   element,
@@ -65,7 +64,7 @@ const repos = (): boolean => arrived.size === KINDS.length;
 const roomDrawn = keepRoom(() =>
   forgotten(location.hash, grove, { query, place, cursor, unfolded }),
 );
-let mycelium: Mycelium = { cells: [], home: undefined, homes: NOWHERE };
+let mycelium = UNHEARD;
 
 let place: Place = "every";
 let query = "";
@@ -149,6 +148,7 @@ function draw(): void {
   // A link in the drawer that a move redraws is gone, so focus stays in the drawer.
   const wasIn = opened.contains(document.activeElement);
   write(stand, groveOfTrees(grove));
+  drawMap(grove.repositories, (key) => choose(key, null));
   drawList();
   drawOpen();
   if (wasIn) {

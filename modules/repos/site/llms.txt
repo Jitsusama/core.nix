@@ -5,7 +5,8 @@
 > cells at work in each, and what's worth a look.
 
 - [The page](index.html): the grove, the repositories as a list walked by
-  keyboard or pointer, and the one the cursor is on beside them.
+  keyboard or pointer, the one the cursor is on beside them, and under
+  them the map of which repositories cells' work joins.
 - [The page as text](index.md): how to read it, the keys, and what the
   data holds.
 - The data: the repos daemon's records, which the page watches live over

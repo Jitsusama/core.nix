@@ -175,3 +175,116 @@
   font-size: var(--step-small);
   color: var(--muted);
 }
+
+/* ---- How they join: the mycelium between the repositories. ---- */
+
+/* Under the work, set on its gutter as the foot is, so the names start on the list's edge. */
+.ties {
+  inline-size: var(--page);
+  margin: var(--groups) auto 0;
+  padding-inline: var(--inset);
+  box-sizing: border-box;
+}
+
+.ties-title {
+  margin: 0 0 var(--tie);
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 420;
+  font-size: var(--step-section);
+  color: var(--strong);
+}
+
+.ties-lede,
+.ties-here {
+  max-inline-size: 46rem;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+.ties-figure {
+  margin: var(--items) 0 0;
+}
+
+/* The threads take the gutter, the names the rest, each row as high as a row of the list, so
+   a thread meets its row's middle whatever the width. */
+.ties-map {
+  --tie-row: 44px;
+  display: grid;
+  grid-template-columns: var(--gutter) minmax(0, 1fr);
+  grid-template-rows: repeat(var(--tie-rows, 1), var(--tie-row));
+  max-inline-size: 46rem;
+  border-radius: var(--radius);
+}
+
+.ties-map:focus-visible {
+  outline: none;
+}
+
+.tie-threads {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: visible;
+}
+
+/* Hairlines at any stretch, and the threads of the row the keys rest on in their own colour. */
+.tie-thread {
+  fill: none;
+  stroke: color-mix(in oklab, var(--hyphae) 35%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.tie-thread.lit {
+  stroke: var(--hyphae);
+}
+
+.tie-row {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  padding-inline: var(--mark);
+  border-block-end: 1px solid color-mix(in oklab, var(--rule) 60%, transparent);
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* A long name ends in an ellipsis rather than running out of its row, since the rows stand at
+   one height for the threads beside them; the caption and the reader's label say it whole. */
+.tie-name {
+  overflow: hidden;
+  min-inline-size: 0;
+  font-family: var(--serif);
+  font-size: var(--step-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The row the keys rest on is marked as the list's cursor is: a step of the ground and the
+   name's weight, and the one ring while the map holds focus. */
+.tie-row[aria-selected="true"] {
+  background: var(--selection);
+}
+
+.tie-row[aria-selected="true"] .tie-name {
+  font-weight: 600;
+  color: var(--strong);
+}
+
+.ties-map:focus-visible .tie-row[aria-selected="true"] {
+  box-shadow: inset var(--ring) 0 0 var(--accent);
+}
+
+.ties-here {
+  margin-block-start: var(--tie);
+  padding-inline-start: calc(var(--gutter) + var(--mark));
+}
+
+.tie-link {
+  font-style: italic;
+  color: var(--text);
+}

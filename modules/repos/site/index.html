@@ -117,6 +117,17 @@
   </aside>
 </main>
 
+<section class="ties" id="ties" aria-labelledby="ties-title" hidden>
+  <h2 id="ties-title" class="ties-title">How They Join</h2>
+  <p class="ties-lede">Each thread is a cell whose work spans two repositories. Those of the repository the keys rest on are drawn brighter; <kbd>j</kbd> and <kbd>k</kbd> step through the repositories, and <kbd>Return</kbd> opens the one the keys rest on.</p>
+  <figure class="ties-figure">
+    <div id="ties-map" class="ties-map" role="listbox" aria-labelledby="ties-title" aria-describedby="ties-here" tabindex="0" data-map data-level="repository"></div>
+    <figcaption id="ties-here" class="ties-here"></figcaption>
+  </figure>
+</section>
+<!-- Outside the map's section, so what the map says as it hides is still heard. -->
+<p id="ties-said" class="sr" role="status"></p>
+
 <footer class="foot">
   <p id="asof" class="asof" data-state="connecting">Reaching the repos daemon.</p>
 </footer>
@@ -139,6 +150,11 @@
     <div><dt><kbd>z</kbd></dt><dd>Open or fold the trees resting and gone</dd></div>
     <div><dt><kbd>y</kbd></dt><dd>Copy the tree's folder, or the repository's checkout</dd></div>
     <div><dt><kbd>?</kbd> <kbd>F1</kbd></dt><dd>This list, and again to close it; <kbd>Esc</kbd> closes it too</dd></div>
+  </dl>
+  <h3>On the Map</h3>
+  <dl>
+    <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Step through the repositories the cells join, at the page's foot</dd></div>
+    <div><dt><kbd>Return</kbd></dt><dd>Open the one the keys rest on, taking the keys to it in the list</dd></div>
   </dl>
   <form method="dialog"><button type="submit" class="close">Close</button></form>
 </dialog>

@@ -16,6 +16,7 @@ import {
   treeAddress,
 } from "./model.ts";
 import type { Homes } from "./homes.ts";
+import { atWork } from "./joins.ts";
 import { weighedBriefly, weighedFully, weightOfAll } from "./weight.ts";
 
 /** What every part of the drawer reads besides its own: the time it's drawn at, the home
@@ -157,11 +158,6 @@ function worstChange(changes: readonly Change[]): Change | undefined {
   return [...changes].sort(
     (one, other) => order.indexOf(one.checks) - order.indexOf(other.checks),
   )[0];
-}
-
-/** The cells at work, rather than quiet or resting, of `cells`. */
-function atWork(cells: readonly Cell[]): readonly Cell[] {
-  return cells.filter((cell) => cell.standing !== "quiet" && cell.standing !== "dormant");
 }
 
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));

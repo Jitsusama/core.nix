@@ -212,6 +212,14 @@ it("joins repositories one cell works across, by the networks it's in", () => {
   assert.deepEqual(grove?.repositories[1]?.joined, [], "world has no cell of its own at work");
 });
 
+it("joins nothing by a cell that's quiet or resting, as the page counts only cells at work", () => {
+  for (const standing of ["quiet", "dormant"]) {
+    const resting = { ...map.cells[0], standing };
+    const grove = groveOf(told(records), cellsOf({ cells: [resting] }), NOW);
+    assert.deepEqual(grove?.repositories[0]?.joined, [], `a ${standing} cell joined core`);
+  }
+});
+
 /**
  * What core is joined to, with world named `name`, core's cell in `networks`, and `more` read
  * before every other record, or after them when `last`.

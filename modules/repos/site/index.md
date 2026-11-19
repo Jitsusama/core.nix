@@ -32,6 +32,15 @@ is cut or a change's checks move. Nothing on it changes anything.
   Week, Resting and Gone, the last two folded until asked for. Within a
   season they go by branch, so a tree keeps its place while it's written
   in.
+- **How they join,** under the work: a row for each repository a cell's
+  work ties to another, in the grove's order, and beside the rows an arc
+  for each tie with a thread for each cell (at most six drawn, every one
+  counted in words). A tie stands when a cell at work in one repository
+  names the other's network. The threads of the row the keys rest on are
+  drawn brighter, and the row says what it's joined to and by how many.
+  j and k, or up and down, step through the rows, and Home and End go to
+  the first and last; Return opens the one the keys rest on. Shown only
+  while some cell's work spans two repositories.
 - **Under it all,** whether what it shows is live, and since when it isn't.
 
 ## Keys
