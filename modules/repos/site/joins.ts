@@ -4,7 +4,7 @@
 // hyphen, none at either end, as part() in the harness's lib/mesh/scope.ts spells it. So
 // core.nix is repo.core-nix. A network names a repository by its name alone, so where two
 // repositories are spelled alike it names neither. Nothing here touches the page, so each is
-// tried in Node: the joins in tests/model.test.ts, and the ties in tests/map.test.ts.
+// tried in Node: the joins in tests/model.test.ts, and the ties and leads in tests/map.test.ts.
 
 import type { Cell, Repository } from "./model.ts";
 

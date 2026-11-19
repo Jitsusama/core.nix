@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { ties } from "../joins.ts";
+import { leads, ties } from "../joins.ts";
 import { bowed, kept, mapOf, saidOf, THREADS_A_TIE, walked } from "../map.ts";
 import type { Cell, Repository } from "../model.ts";
 
@@ -183,6 +183,16 @@ it("ties nothing by a cell that's quiet or resting, as the page counts only cell
   }));
   const map = mapOf([repository("core", resting), repository("world")]);
   assert.deepEqual(map.ties, [], "a cell not at work tied two repositories");
+});
+
+it("leads each cell at work on to the others it works across, once each and in order", () => {
+  const resting = { ...cell("R", ["repo.world"]), standing: "dormant" };
+  const core = repository("core", [
+    cell("A", ["repo.world", "repo.harness", "repo.world"]),
+    resting,
+  ]);
+  const led = leads(core, [core, repository("world"), repository("harness")]);
+  assert.deepEqual([...led], [["A", ["github:owl/harness", "github:owl/world"]]]);
 });
 
 it("keeps the keys on their repository as rows come and go around it", () => {
