@@ -14,8 +14,31 @@
 let
   sites = import ./site.nix { inherit lib pkgs; };
 
-  # The theme's own web kit, as a machine writes it.
+  # The theme's own web kit, as a machine writes it, which the checks that
+  # read pages live build on; the -holds checks build on an empty one.
   webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+
+  # An account on a machine in a realm. Its node and net feeds are what the
+  # mycelium, murmurs, forage and network live checks hand their servers,
+  # and what forage's feed passes is what
+  # forage-feed-passes-what-its-page-reads holds to the page, on every
+  # system. Each call of bareNixos evaluates a whole system, so the five
+  # share this one.
+  inRealm = account (bareNixos [
+    self.nixosModules.workstation
+    {
+      home-manager.users.someone = {
+        imports = [ self.homeModules.local-sites ];
+        jitsusama.mycelium.realm = "harbour";
+      };
+    }
+  ]);
+
+  # The Python the checks that drive a page in headless Chromium run in.
+  python = pkgs.python3.withPackages (python: [
+    python.playwright
+    python.pytest
+  ]);
 
   # What every live site shares, as a machine mounts it at /local-sites/:
   # the kit and the theme's own web kit, which each page reads.
@@ -98,15 +121,6 @@ in
   # drops. A record's key is always passed.
   forage-feed-passes-what-its-page-reads =
     let
-      inRealm = account (bareNixos [
-        self.nixosModules.workstation
-        {
-          home-manager.users.someone = {
-            imports = [ self.homeModules.local-sites ];
-            jitsusama.mycelium.realm = "harbour";
-          };
-        }
-      ]);
       passed = [ "key" ] ++ inRealm.jitsusama.local-sites.feeds.node.kinds.forage.fields;
       read = lib.unique (
         lib.concatMap (lib.filter builtins.isString) (
@@ -264,14 +278,10 @@ in
   # widths in both looks, and nothing logged. Chromium builds only on Linux.
   system-site-reads-live =
     let
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
       page = sites.localSite {
         name = "system";
         src = ../system/site;
-        webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+        inherit webKit;
         tint = "action";
       };
     in
@@ -304,12 +314,6 @@ in
   # skill's page checks pass at two widths in both looks with nothing logged.
   # Chromium builds only on Linux.
   home-answers-its-keys =
-    let
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
-    in
     pkgs.runCommandLocal "home-answers-its-keys"
       {
         env = {
@@ -317,7 +321,7 @@ in
           LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
-          WEB_KIT = "${(account workstation).xdg.dataFile."jitsusama/web".source}";
+          WEB_KIT = "${webKit}";
           HOME_SOURCES = "${./home}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
           PYTHONPATH = "${./tests}";
@@ -343,20 +347,6 @@ in
   # the server under test passes the page exactly what a machine's does.
   mycelium-site-reads-live =
     let
-      inRealm = account (bareNixos [
-        self.nixosModules.workstation
-        {
-          home-manager.users.someone = {
-            imports = [ self.homeModules.local-sites ];
-            jitsusama.mycelium.realm = "harbour";
-          };
-        }
-      ]);
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
-      webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
       map = sites.localSite {
         name = "mycelium";
         src = ../mycelium/site;
@@ -399,23 +389,10 @@ in
   # in a realm, so the server under test passes the page what a machine's does.
   murmurs-site-reads-live =
     let
-      inRealm = account (bareNixos [
-        self.nixosModules.workstation
-        {
-          home-manager.users.someone = {
-            imports = [ self.homeModules.local-sites ];
-            jitsusama.mycelium.realm = "harbour";
-          };
-        }
-      ]);
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
       murmurs = sites.localSite {
         name = "web";
         src = ../mycelium/murmurs;
-        webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+        inherit webKit;
         tint = "program";
       };
     in
@@ -455,23 +432,10 @@ in
   # only on Linux.
   forage-site-reads-live =
     let
-      inRealm = account (bareNixos [
-        self.nixosModules.workstation
-        {
-          home-manager.users.someone = {
-            imports = [ self.homeModules.local-sites ];
-            jitsusama.mycelium.realm = "harbour";
-          };
-        }
-      ]);
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
       forage = sites.localSite {
         name = "forage";
         src = ../mycelium/forage;
-        webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+        inherit webKit;
         tint = "program";
       };
     in
@@ -505,14 +469,10 @@ in
   # looks, and nothing logged. Chromium builds only on Linux.
   code-site-reads-live =
     let
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
       page = sites.localSite {
         name = "code";
         src = ../repos/site;
-        webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+        inherit webKit;
         tint = "success";
       };
     in
@@ -547,19 +507,6 @@ in
   # passes the page what a machine's does. Chromium builds only on Linux.
   network-site-reads-live =
     let
-      inRealm = account (bareNixos [
-        self.nixosModules.workstation
-        {
-          home-manager.users.someone = {
-            imports = [ self.homeModules.local-sites ];
-            jitsusama.mycelium.realm = "harbour";
-          };
-        }
-      ]);
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
       page = sites.localSite {
         name = "network";
         src = ../net/site;
