@@ -38,8 +38,9 @@ is cut or a change's checks move. Nothing on it changes anything.
   counted in words). A tie stands when a cell at work in one repository
   names the other's network. The threads of the row the keys rest on are
   drawn brighter, and the row says what it's joined to and by how many.
-  j and k, or the arrows, step through the rows; Return opens the one the
-  keys rest on. Shown only while some cell's work spans two repositories.
+  j and k, or up and down, step through the rows, and Home and End go to
+  the first and last; Return opens the one the keys rest on. Shown only
+  while some cell's work spans two repositories.
 - **Under it all,** whether what it shows is live, and since when it isn't.
 
 ## Keys

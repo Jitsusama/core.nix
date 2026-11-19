@@ -1,7 +1,7 @@
 // The map of the mycelium between repositories, drawn and walked: a row for each repository a
 // cell's work ties to another, and an arc of threads beside the rows for each tie, a thread to a
 // cell, as map.ts lays them out. The rows are a listbox, so a screen reader hears each with what
-// it's tied to; the arrows, j and k walk them, Return opens the repository as a link to it
+// it's tied to; up and down, j and k walk them, Return opens the repository as a link to it
 // would, and the threads of the row the keys rest on are drawn brighter. The map keeps its own
 // keys from the page's, which walk the list; the list's other keys act on the list's cursor,
 // not the map's, so on the map they say where they act; and it lets the rest through.
@@ -61,6 +61,16 @@ let at = 0;
 let saying = "";
 // How the page opens a repository by its key, as the list does, which the page gives the map.
 let opening: (key: string) => void = () => undefined;
+// Each repository's row keeps one id however the rows around it move, so a screen reader hears
+// a new repository come under the keys, which the same id in its place would keep unsaid.
+const ids = new Map<string, string>();
+
+/** The id of the row for the repository `key`. */
+function idOf(key: string): string {
+  const id = ids.get(key) ?? `tie-${ids.size}`;
+  ids.set(key, id);
+  return id;
+}
 
 /** One thread as an arc from its tie's upper row to its lower, deeper the farther apart. */
 function arc(thread: Thread, rows: number): string {
@@ -80,7 +90,7 @@ function markup(): string {
   const lines = threads.map((each) => arc(each, rows.length)).join("");
   const options = rows
     .map(
-      (row, index) => `<div class="tie-row" role="option" id="tie-${index}"
+      (row, index) => `<div class="tie-row" role="option" id="${idOf(row.key)}"
       data-key="${escaped(row.key)}" data-level="repository"${index === at ? " data-here" : ""}
       aria-selected="${index === at}"
       aria-label="${escaped(row.name)}: ${escaped(saidOf(drawn, index))}">
@@ -103,9 +113,12 @@ function drawMap(repositories: readonly Repository[], opens: (key: string) => vo
   drawn = mapOf(repositories);
   at = kept(was, at, drawn);
   const hiding = drawn.rows.length === 0;
-  // The keys on the map as its last tie goes are handed to the list, not dropped from the page.
+  // The keys on the map as its last tie goes are handed to the list, not dropped from the page,
+  // and said to be, so the next j isn't heard moving something else.
   if (hiding && place.contains(document.activeElement)) {
     list.focus({ preventScroll: true });
+    const words = "No cell at work joins two repositories now, so the keys are on the list.";
+    say(words, "Again no cell at work joins two repositories, so the keys are on the list.");
   }
   place.hidden = hiding;
   // The threads span every row, which the grid is told the count of, the rows being drawn.
@@ -126,7 +139,7 @@ function rest(): void {
     map.removeAttribute("aria-activedescendant");
     return;
   }
-  map.setAttribute("aria-activedescendant", `tie-${at}`);
+  map.setAttribute("aria-activedescendant", idOf(row.key));
   // The caption names each repository as the page does elsewhere, as a link to its home, so a
   // pointer opens any of them and the homes probe reads each named where it lives. A link the
   // redraw takes away leaves the keys on the map rather than at the top of the page.
@@ -157,6 +170,8 @@ function go(way: Way): void {
   said.textContent = "";
   write(map, markup());
   rest();
+  // The keys rest on a row that's not focused itself, so nothing else brings it into view.
+  map.querySelector("[data-here]")?.scrollIntoView({ block: "nearest" });
 }
 
 /**

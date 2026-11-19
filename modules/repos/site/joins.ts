@@ -11,6 +11,9 @@ import type { Cell, Repository } from "./model.ts";
 const REPOSITORY_NETWORK = "repo.";
 const NOT_SPELLED = /[^a-z0-9]+/gu;
 const EDGES = /^-|-$/gu;
+// What keeps a tie's two keys apart in its name: a local repository's key is its folder, which
+// may hold a line break but never a null.
+const APART = "\u0000";
 
 /** The cells at work, rather than quiet or resting, of `cells`. */
 function atWork(cells: readonly Cell[]): readonly Cell[] {
@@ -84,7 +87,7 @@ function ties(repositories: readonly Repository[]): Tie[] {
   for (const repository of repositories) {
     for (const [other, cell] of across(repository, spellings)) {
       const [one = "", two = ""] = [repository.key, other].sort(inOrder);
-      const id = `${one}\n${two}`;
+      const id = `${one}${APART}${two}`;
       const tie = tied.get(id) ?? { ends: [one, two], cells: new Set<string>() };
       tie.cells.add(cell);
       tied.set(id, tie);
@@ -92,7 +95,7 @@ function ties(repositories: readonly Repository[]): Tie[] {
   }
   return [...tied.values()]
     .map(({ ends, cells }) => ({ ends, cells: [...cells].sort(inOrder) }))
-    .sort((one, other) => inOrder(one.ends.join("\n"), other.ends.join("\n")));
+    .sort((one, other) => inOrder(one.ends.join(APART), other.ends.join(APART)));
 }
 
 export { atWork, joined, type Tie, ties };
