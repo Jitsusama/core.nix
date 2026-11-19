@@ -70,4 +70,7 @@ expect 'tuple call ' join leave mute unmute start
 expect 'tuple call l' leave list
 expect 'tuple cont' contacts
 expect 'tuple st' start state stop
+# Only v2026_11_19.0 on has webcam, so an older build installed fails here.
+expect 'tuple w' webcam whoami
+expect 'tuple webcam ' list start stop
 exit $failed

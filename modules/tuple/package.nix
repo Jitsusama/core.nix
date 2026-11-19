@@ -1,11 +1,15 @@
-# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_16.0,
+# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_19.0,
 # whose command is the one Tuple's docs describe (tuple call, contacts,
-# state). Every command v2026_10_23.0 had answers its help the same, but
-# for call react, which takes emoji and animations beside its sounds. New
-# commands raise a hand, share cards and download the transcription
-# model. The log lines and stream keys tuple-call reads are in both
-# builds. Screen sharing through the portal was last seen working here on
-# v2026_10_21.0.
+# state), and the first to share a webcam from Linux. Every command
+# v2026_11_16.0 had answers its help the same; tuple webcam is new, and
+# lists the cameras, opens the app's camera picker on the call and stops
+# sharing it. The log lines and stream keys tuple-call reads, and the
+# contacts' keys and status words tuple-people reads, are in both builds.
+# Screen sharing through the portal was last seen working here on
+# v2026_10_21.0. Webcam sharing is yet to be seen here: the build reads
+# cameras through PipeWire, where the IR camera is hidden, and until the
+# Brio is shared through a relay every app reads, whichever app opens it
+# first keeps it from the rest, a call in Meet included.
 # The address and checksum of each build are what Tuple's latest_version
 # endpoint gives, the one nixpkgs' own update script reads.
 #
@@ -19,15 +23,15 @@
   tuple,
 }:
 let
-  release = "v2026_11_16.0";
+  release = "v2026_11_19.0";
   builds = {
     x86_64-linux = {
       arch = "x86_64";
-      hash = "sha256-YL9OgRIe7m0XwWrs8BZvxW7VVY564dPHL73Alz7xLEw=";
+      hash = "sha256-OGZl/cbpEsYa7wm1nDuZN8WAKJ1lGsvKXCVtkuXqS2o=";
     };
     aarch64-linux = {
       arch = "arm64";
-      hash = "sha256-2bOOKHgUmSqA9eAwAYKB/EQY4b1HB0MW6yvC1EAJQd8=";
+      hash = "sha256-iS6Fv0S/hPnhS0PmFH2lFEoOenKHS7CzmpZhgl92Gt4=";
     };
   };
   build = builds.${stdenv.hostPlatform.system} or null;
@@ -36,7 +40,7 @@ if build == null then
   tuple
 else
   tuple.overrideAttrs {
-    version = "0-unstable-2026-11-16";
+    version = "0-unstable-2026-11-19";
     src = fetchurl {
       url = "https://tuple-client-releases.s3.amazonaws.com/linux/${release}/${build.arch}/tuple";
       inherit (build) hash;
