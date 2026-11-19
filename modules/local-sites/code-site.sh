@@ -54,15 +54,11 @@ else
   said=${said:0:200}
   # A read killed outright says nothing itself, so the signal says it, by the name a
   # journal's reader knows it by.
-  if ((ended > 128)); then
-    signal=$((ended - 128))
-    # A number no signal has is said as it is, rather than ending the writer with no line.
-    if name=$(kill -l "$signal" 2> /dev/null); then
-      signal=SIG$name
-    else
-      signal="signal $signal"
-    fi
-    said="killed by $signal${said:+: $said}"
+  # A status past any signal's is no kill, and is said as it is.
+  if ((ended > 128)) && name=$(kill -l "$((ended - 128))" 2> /dev/null); then
+    said="killed by SIG$name${said:+: $said}"
+  elif ((ended > 128)); then
+    said="ended $ended${said:+: $said}"
   fi
   echo "repos failed ($said); the last homes stay"
   exit 0

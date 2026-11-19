@@ -580,6 +580,11 @@ in
         # seconds past its worst, since the same starved machine slows its
         # own ending.
         TimeoutStartSec = "60s";
+        # The kernel's killer taking repos alone is one more failure the writer
+        # keeps the last homes through and says, so the unit ends well rather
+        # than systemd failing it for the kill. systemd-oomd ends the whole
+        # unit, the writer with it, which nothing here can answer.
+        OOMPolicy = "continue";
         Slice = "background.slice";
       };
     };
