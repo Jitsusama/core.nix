@@ -201,7 +201,8 @@ let
   # still held to the stray and size rules; and a stride meant otherwise
   # than the words its animal's poses are picked by refused for it alone,
   # the same strides all meant so held, all meant alike but not as asked
-  # refused, and an undrawn one said undrawn rather than meant otherwise.
+  # refused, a sitting meant otherwise held, and an undrawn one said
+  # undrawn rather than meant otherwise.
   sized = poseFaults {
     sitting = "small";
     walkedFrom = null;
@@ -293,6 +294,12 @@ let
     strides = drawnWalk;
     meant = "another's";
   };
+  # The sitting meant otherwise, as a pose other than a stride may be, so a
+  # rule holding every pose to `meant` rather than the strides alone fails.
+  sittingElse = meantAs {
+    otherwise = "nothingHere";
+    strides = drawnWalk;
+  };
   # What poseFaults says of the strides meant otherwise than `meant`.
   meantOtherwise =
     meant: strides: "meant otherwise than ${builtins.toJSON meant} ${builtins.toJSON strides}";
@@ -319,6 +326,11 @@ let
       faults = meantElse;
       reason = "the same strides, all meant alike but not as asked, each refused";
       holds = !meantElse.ok && lib.hasInfix (meantOtherwise "another's" drawnWalk) meantElse.said;
+    }
+    {
+      faults = sittingElse;
+      reason = "the sitting meant otherwise than its strides, held";
+      holds = sittingElse.ok && lib.hasInfix (meantOtherwise ownPose [ ]) sittingElse.said;
     }
     {
       faults = sized;

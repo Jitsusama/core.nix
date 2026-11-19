@@ -31,10 +31,11 @@ let
   # the left one, and the tail's tip is at the top right. What's found, as
   # whether it holds and what it says, for readsAsOne and for the checks
   # showing each fault refused; `walkedFrom` is where the strides were
-  # read from, or null where nowhere says, and `glyphs` the drawings, the theme's unless that check
-  # plants its own. Given `meant`, the words the animal's poses are picked
-  # by (posesOf), each stride drawn must mean them, so rewording what the
-  # strides mean fails rather than quietly picking none by meaning.
+  # read from, or null where nowhere says, and `glyphs` the drawings,
+  # the theme's unless that check plants its own. Given `meant`, the
+  # words the animal's poses are picked by (posesOf), each stride drawn
+  # must mean them, so rewording what the strides mean fails rather than
+  # quietly picking none by meaning.
   poseFaults =
     {
       sitting,
@@ -513,7 +514,8 @@ in
   # undrawn; a stride no pose lists held to the stray and size rules, and
   # one meant otherwise than its animal's poses are picked by refused,
   # the same strides all meant so held, all meant alike but not as asked
-  # refused, and an undrawn one said undrawn rather than meant otherwise;
+  # refused, a sitting meant otherwise held, and an undrawn one said
+  # undrawn rather than meant otherwise;
   # all planted on copies of the cat's own drawings; and an animal's poses
   # found by its glyphs, the start of its name and what a mark means,
   # though a sitting or stride is undrawn, and no mark meant otherwise nor
