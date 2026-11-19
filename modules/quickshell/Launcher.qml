@@ -5854,7 +5854,10 @@ Scope {
     }
 
     // A hold no source agreed to in time is put back, saying so, unless its
-    // row agrees now, or can't be read to tell.
+    // row agrees now, or can't be read to tell. The timer comes again for
+    // those still held: it keeps its own clock, not Date.now's, so it can
+    // come a little before a hold is due, and Lighthouse's 30 s reopening
+    // was then never put back nor said (goes-places, 2026-11-19).
     function becameLate() {
         for (const key of Becoming.late(becoming, Date.now(), becomingWithin)) {
             const one = becoming[key];
@@ -5864,6 +5867,7 @@ Scope {
             else
                 takenBack(one, "");
         }
+        timeBecoming();
     }
 
     function timeBecoming() {

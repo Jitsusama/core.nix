@@ -10,6 +10,7 @@ opening comment says what the test proves. Every test asks for the desktop, star
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
 import re
@@ -26,7 +27,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
 
@@ -216,12 +217,15 @@ def foot(desktop: Desktop, moved_from: str) -> tuple[int, int]:
     return read[0]["keysAt"], len(read[0]["glance"])
 
 
-def settled(desktop: Desktop, key: str, since: str, within: dt.timedelta) -> None:
-    """Wait for the launcher to say how its act on a row came out, become or not, since a mark.
+@contextlib.contextmanager
+def settled(desktop: Desktop, key: str, within: dt.timedelta) -> Iterator[None]:
+    """Run an act on a row, then wait for the launcher to say how it came out, become or not.
 
     What didn't become is told at the next opening until a key, so a subtest that runs an act
     waits here while its own openings can spend the word. Within is the act's own bound and more.
     """
+    since = desktop.mark()
+    yield
     became, not_become = f"became {key}", f"not become {key}"
 
     def came_out(said: str) -> bool:
@@ -817,15 +821,14 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # again where it's closed (#1069), so the launcher doesn't open on it.
     lighthouse = one(listed(), "Lighthouse", closed_in)
     assert lighthouse["kind"] == "action", lighthouse
-    since = desktop.mark()
-    assert ran(lighthouse)["done"]
-    machine.fail(closed)
     # How the reopening came out is told at the next opening until a key, so it settles here,
     # where this subtest's own openings and their keys spend it. Left to land late, it was told
     # as Home opened and stood over the foot it reads before any key (twice on 2026-11-18).
     # Either way will do: the reopening itself is the sessions test's. It's held 30 s for the
     # session to start (Sessions.startsWithin), so the wait is longer.
-    settled(desktop, "orchestrator:TESTQA", since, dt.timedelta(seconds=60))
+    with settled(desktop, "orchestrator:TESTQA", dt.timedelta(seconds=60)):
+        assert ran(lighthouse)["done"]
+        machine.fail(closed)
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,
@@ -855,11 +858,10 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     assert ran(sleep)["offered"]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake")
     desktop.land()
-    since = desktop.mark()
-    machine.send_key("ret")
-    machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
     # The last act here, so it settles before the close, where a word it's told is spent.
-    settled(desktop, "session:awake", since, dt.timedelta(seconds=30))
+    with settled(desktop, "session:awake", dt.timedelta(seconds=30)):
+        machine.send_key("ret")
+        machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
     desktop.close_launcher()
     # One not there says so.
     assert "error" in ran({"id": "nothing:here"})
