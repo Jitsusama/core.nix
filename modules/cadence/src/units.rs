@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::holders::a_run;
+use crate::holders::{a_run, started_by_systemd_run};
 
 /// How far back restarts are counted.
 pub const WITHIN: i64 = 15 * 60;
@@ -48,11 +48,13 @@ pub struct Restart {
     pub at: i64,
 }
 
-/// A unit in the failed state, and since when, when systemd says.
+/// A unit in the failed state, since when, when systemd says, and whether
+/// systemd-run started it, a run whose starter reads its end.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Failed {
     pub unit: String,
     pub since: Option<i64>,
+    pub run: bool,
 }
 
 /// One of a daemon's sources, as its socket's health says it.
@@ -201,9 +203,13 @@ pub fn read(at: i64, now: bool, runtime: Option<&Path>) -> Read {
         .unwrap_or_default()
         .lines()
         .filter_map(|line| line.split_whitespace().next())
-        .map(|unit| Failed {
-            unit: unit.to_owned(),
-            since: changed(unit),
+        .map(|unit| {
+            let (since, description) = shown(unit);
+            Failed {
+                unit: unit.to_owned(),
+                since,
+                run: description.as_deref().is_some_and(started_by_systemd_run),
+            }
         })
         .collect();
     let sockets = runtime.and_then(|r| r.join("daemons").read_dir().ok());
@@ -243,18 +249,27 @@ pub fn last_error(unit: &str) -> Option<String> {
 }
 
 /// When systemd says `unit` last changed state, which for one failed is
-/// when it failed.
-fn changed(unit: &str) -> Option<i64> {
+/// when it failed, and how it describes the unit.
+fn shown(unit: &str) -> (Option<i64>, Option<String>) {
     let args = [
         "--user",
         "show",
         "--timestamp=unix",
         "-p",
         "StateChangeTimestamp",
-        "--value",
+        "-p",
+        "Description",
     ];
-    let said = run("systemctl", &[&args[..], &[unit]].concat()).ok()?;
-    said.trim().strip_prefix('@')?.parse().ok()
+    let Ok(said) = run("systemctl", &[&args[..], &[unit]].concat()) else {
+        return (None, None);
+    };
+    let value = |key: &str| {
+        said.lines()
+            .find_map(|line| line.strip_prefix(key)?.strip_prefix('='))
+    };
+    let since =
+        value("StateChangeTimestamp").and_then(|at| at.trim().strip_prefix('@')?.parse().ok());
+    (since, value("Description").map(str::to_owned))
 }
 
 /// Asks a daemon's socket how it stands, as daemon-serve answers any
@@ -385,7 +400,7 @@ fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) ->
             reason: None,
         });
     }
-    for f in read.failed.iter().filter(|f| !a_run(&f.unit)) {
+    for f in read.failed.iter().filter(|f| !a_run(&f.unit) && !f.run) {
         broken.push(Broken {
             key: format!("failed:{}", f.unit),
             unit: f.unit.clone(),
@@ -568,6 +583,7 @@ mod tests {
             failed: vec![Failed {
                 unit: "notices.service".into(),
                 since: Some(50),
+                run: false,
             }],
             ..Read::default()
         };
@@ -591,15 +607,21 @@ mod tests {
         let failed = |unit: &str| Failed {
             unit: unit.into(),
             since: Some(50),
+            run: false,
         };
         // Two kinds of unit failed on 17 November that no one held, each
-        // a run its starter already reads the end of, beside a service.
+        // a run its starter already reads the end of, beside a service;
+        // on 18 November, a third: a run systemd-run started by name.
         let read = Read {
             failed: vec![
                 failed(
                     "merge-net-rerun-worktree-github-Jitsusama-core-nix-jitsusama-repos-serve.service",
                 ),
                 failed("run-p178036-i50400995.service"),
+                Failed {
+                    run: true,
+                    ..failed("q16-rc47-build.service")
+                },
                 failed("camera.service"),
             ],
             restarts: of("run-p958215-i38676451.service", &[100, 200, 300]),

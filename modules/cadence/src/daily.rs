@@ -5,7 +5,7 @@
 //! told of its new ones.
 //! A program does it, not a session, so the loop costs no model turns.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -157,6 +157,43 @@ fn gates(day: &mut Day, state_home: &Path) {
     phases::read(day, state_home);
 }
 
+/// The units systemd-run started from a day before `from`, so a run begun
+/// the day before that failed in this one is known too. Unread, none are,
+/// and every failure is told as before.
+fn systemd_runs(from: i64, until: &str) -> BTreeSet<String> {
+    let started = command(
+        "journalctl",
+        &[
+            "-o",
+            "json",
+            "--output-fields=MESSAGE,UNIT,USER_UNIT",
+            "--no-pager",
+            &format!("--since=@{}", from - DAY),
+            until,
+            &format!("MESSAGE_ID={}", day::STARTED),
+            "--grep=^Started \\[systemd-run\\] ",
+        ],
+    );
+    day::systemd_runs(&started.unwrap_or_default())
+}
+
+/// Each unit that failed between `since` and `until`, from systemd's
+/// message for a unit that failed, the account's units too, but for runs.
+fn failed(since: &str, until: &str, runs: &BTreeSet<String>) -> BTreeMap<String, u32> {
+    let failed = command(
+        "journalctl",
+        &[
+            "-o",
+            "json",
+            "--no-pager",
+            since,
+            until,
+            "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c",
+        ],
+    );
+    day::failed_units(&failed.unwrap_or_default(), runs)
+}
+
 fn read(state_home: &Path, from: i64, to: i64) -> Day {
     let since = format!("--since=@{from}");
     let until = format!("--until=@{to}");
@@ -176,22 +213,9 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
         "crashes".to_owned(),
         day::crashes(&dumps.unwrap_or_default()),
     );
-    // systemd's message for a unit that failed, the account's units too.
-    let failed = command(
-        "journalctl",
-        &[
-            "-o",
-            "json",
-            "--no-pager",
-            &since,
-            &until,
-            "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c",
-        ],
-    );
-    day.named.insert(
-        "failed".to_owned(),
-        day::failed_units(&failed.unwrap_or_default()),
-    );
+    let runs = systemd_runs(from, &until);
+    day.named
+        .insert("failed".to_owned(), failed(&since, &until, &runs));
 
     let kernel = command(
         "journalctl",
@@ -268,7 +292,7 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
     if let Ok(json) = fs::read_to_string(machine) {
         day.figures.extend(machine::figures(&json));
         day.named
-            .insert("unstamped".to_owned(), machine::unstamped(&json));
+            .insert("unstamped".to_owned(), machine::unstamped(&json, &runs));
     }
     day
 }

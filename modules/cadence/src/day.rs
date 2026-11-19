@@ -2,7 +2,7 @@
 //! parsed from the text its source writes, so the parsing is tested
 //! without the machine. judge.rs holds a day against the ones before it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -404,12 +404,47 @@ pub fn crashes(json: &str) -> BTreeMap<String, u32> {
     named
 }
 
-/// Each unit that failed, from `journalctl -o json` of systemd's message
-/// for a unit that failed, a system's and the account's alike. A part of
-/// its name that's only digits, a scope's pid, is put as `*`, so the
-/// agents' many work scopes are one name.
+/// systemd's message that a unit started, `Started <description>.`,
+/// which is where a run's description is kept once the run is gone.
+pub const STARTED: &str = "39f53479d3a045ac8e11786248231fbf";
+
+/// Each unit systemd-run started, by its description in systemd's message
+/// that it started, from `journalctl -o json` of that message. A run
+/// started with `--collect` is gone once it fails, so its description is
+/// read from when it began.
 #[must_use]
-pub fn failed_units(json_lines: &str) -> BTreeMap<String, u32> {
+pub fn systemd_runs(json_lines: &str) -> BTreeSet<String> {
+    #[derive(Deserialize)]
+    struct Entry {
+        #[serde(rename = "MESSAGE")]
+        message: Option<String>,
+        #[serde(rename = "UNIT")]
+        unit: Option<String>,
+        #[serde(rename = "USER_UNIT")]
+        user_unit: Option<String>,
+    }
+    json_lines
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Entry>(line).ok())
+        .filter(|entry| {
+            entry
+                .message
+                .as_deref()
+                .and_then(|m| m.strip_prefix("Started "))
+                .is_some_and(holders::started_by_systemd_run)
+        })
+        .filter_map(|entry| entry.user_unit.or(entry.unit))
+        .collect()
+}
+
+/// Each unit that failed, from `journalctl -o json` of systemd's message
+/// for a unit that failed, a system's and the account's alike, but for
+/// runs: a unit in `runs`, as `systemd_runs` reads them, and those
+/// `holders::a_run` names. A part of its name that's only digits, a
+/// scope's pid, is put as `*`, so the agents' many work scopes are one
+/// name.
+#[must_use]
+pub fn failed_units(json_lines: &str, runs: &BTreeSet<String>) -> BTreeMap<String, u32> {
     #[derive(Deserialize)]
     struct Entry {
         #[serde(rename = "UNIT")]
@@ -425,7 +460,7 @@ pub fn failed_units(json_lines: &str) -> BTreeMap<String, u32> {
         let Some(unit) = entry.user_unit.or(entry.unit) else {
             continue;
         };
-        if holders::a_run(&unit) {
+        if holders::a_run(&unit) || runs.contains(&unit) {
             continue;
         }
         *named.entry(without_pids(&unit)).or_insert(0) += 1;
@@ -614,7 +649,7 @@ mod tests {
             r#"{"USER_UNIT":"zone-check-2af2dh.service"}"#,
             "\nnot json\n"
         );
-        let named = failed_units(lines);
+        let named = failed_units(lines, &BTreeSet::new());
         assert_eq!(
             named.get("work-*-*.scope"),
             Some(&2),
@@ -640,11 +675,46 @@ mod tests {
             "\n",
             r#"{"USER_UNIT":"camera.service"}"#,
         );
-        let named = failed_units(lines);
+        let named = failed_units(lines, &BTreeSet::new());
         assert_eq!(
             named.keys().collect::<Vec<_>>(),
             ["camera.service"],
             "a run of the net's or pi's was named as a failed unit"
+        );
+    }
+
+    #[test]
+    fn a_run_systemd_run_started_under_a_name_isnt_a_failed_unit() {
+        // Its start says systemd-run's own description; a service started
+        // through systemd-run's same message with one of its own is told.
+        let started = concat!(
+            r#"{"MESSAGE":"Started [systemd-run] /bin/bash -c \"x\".","#,
+            r#""USER_UNIT":"spent-check1.service"}"#,
+            "\n",
+            r#"{"MESSAGE":"Started [systemd-run] /bin/true.","UNIT":"relay-guard-2.service"}"#,
+            "\n",
+            r#"{"MESSAGE":"Started Camera.","USER_UNIT":"camera.service"}"#,
+            "\nnot json\n",
+        );
+        let runs = systemd_runs(started);
+        assert_eq!(
+            runs.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["relay-guard-2.service", "spent-check1.service"],
+            "systemd-run's runs, a system's and the account's, weren't read from their starts"
+        );
+        let failed = concat!(
+            r#"{"USER_UNIT":"spent-check1.service"}"#,
+            "\n",
+            r#"{"UNIT":"relay-guard-2.service"}"#,
+            "\n",
+            r#"{"USER_UNIT":"spent-check2.service"}"#,
+            "\n",
+            r#"{"USER_UNIT":"camera.service"}"#,
+        );
+        assert_eq!(
+            failed_units(failed, &runs).keys().collect::<Vec<_>>(),
+            ["camera.service", "spent-check2.service"],
+            "a run was named as a failed unit, or a unit with no start read was lost"
         );
     }
 

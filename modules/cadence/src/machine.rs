@@ -5,7 +5,7 @@
 //! the day, and the services whose restarts said no ready line, named.
 //! Health judges nothing; the day does, here.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
@@ -232,9 +232,10 @@ pub fn figures(json: &str) -> BTreeMap<String, f64> {
 /// Each service whose restarts said no ready line, with how often it
 /// restarted, from health's day file: a kind of the day's by name, so
 /// each is said once to its owner as it's new, who adds the line that
-/// times its restarts to what it serves.
+/// times its restarts to what it serves. A run is left out: one of `runs`,
+/// those systemd-run started, and those `holders::a_run` names.
 #[must_use]
-pub fn unstamped(json: &str) -> BTreeMap<String, u32> {
+pub fn unstamped(json: &str, runs: &BTreeSet<String>) -> BTreeMap<String, u32> {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     struct Written {
@@ -244,7 +245,7 @@ pub fn unstamped(json: &str) -> BTreeMap<String, u32> {
         .unwrap_or_default()
         .unstamped;
     // A run started once has no restarts to time, so no ready line to add.
-    named.retain(|unit, _| !holders::a_run(unit));
+    named.retain(|unit, _| !holders::a_run(unit) && !runs.contains(unit));
     named
 }
 
@@ -289,7 +290,7 @@ mod tests {
     #[test]
     fn a_service_with_no_ready_line_is_named_to_its_owner_once_new() {
         let day = |named: &str| Day {
-            named: BTreeMap::from([("unstamped".to_owned(), unstamped(named))]),
+            named: BTreeMap::from([("unstamped".to_owned(), unstamped(named, &BTreeSet::new()))]),
             ..Day::default()
         };
         let today = day(r#"{"unstamped": {"google.service": 2, "sound.service": 1}}"#);
@@ -314,14 +315,16 @@ mod tests {
     }
 
     #[test]
-    fn a_rerun_of_the_nets_isnt_named_for_its_ready_line() {
+    fn a_run_isnt_named_for_its_ready_line() {
+        let runs = BTreeSet::from(["0fx-kcopy-when-signed.service".to_owned()]);
         let named = unstamped(
-            r#"{"unstamped": {"merge-net-rerun-worktree-github-Jitsusama-core-nix-jitsusama-cadence-says-one-stall-once.service": 1, "tuple.service": 2}}"#,
+            r#"{"unstamped": {"merge-net-rerun-worktree-github-Jitsusama-core-nix-jitsusama-cadence-says-one-stall-once.service": 1, "0fx-kcopy-when-signed.service": 1, "tuple.service": 2}}"#,
+            &runs,
         );
         assert_eq!(
             named,
             BTreeMap::from([("tuple.service".to_owned(), 2)]),
-            "a one-time rerun was asked for a ready line"
+            "a rerun of the net's or a run systemd-run started was asked for a ready line"
         );
     }
 

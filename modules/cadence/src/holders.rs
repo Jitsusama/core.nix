@@ -64,6 +64,19 @@ pub fn a_run(unit: &str) -> bool {
         })
 }
 
+/// What systemd-run starts a unit's description with when it's given
+/// none of its own: `[systemd-run] ` and the command.
+const SYSTEMD_RUN: &str = "[systemd-run] ";
+
+/// Whether a unit described as `description` is one run that systemd-run
+/// started, named or not, which whoever started it reads the end of, as
+/// the sessions' `systemd-run --unit=NAME` runs are. On 18 November 9 of
+/// the 13 failed units nobody held were such runs, all told to the watcher.
+/// A run given a description of its own says what it's for, so it's told.
+pub fn started_by_systemd_run(description: &str) -> bool {
+    description.starts_with(SYSTEMD_RUN)
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -91,6 +104,20 @@ pub(crate) mod tests {
             "run-p-i12.service",
         ] {
             assert!(!a_run(unit), "{unit}: not a run, so it's told");
+        }
+    }
+
+    #[test]
+    fn a_unit_systemd_run_described_is_a_run() {
+        assert!(
+            started_by_systemd_run("[systemd-run] /run/current-system/sw/bin/bash -c \"x\""),
+            "systemd-run's own description wasn't a run"
+        );
+        for description in ["Measures the hour's shipping", "systemd-run", ""] {
+            assert!(
+                !started_by_systemd_run(description),
+                "{description:?}: a unit that says what it's for was taken for a run"
+            );
         }
     }
 
