@@ -504,9 +504,12 @@ ShellRoot {
     // Traffic's own view, given up in the turn its read began, so the read
     // is still under way: the interface after is asked through a new view,
     // and the read landing late reaches Traffic's own handlers, which let
-    // its interface go and don't credit the one asked next with it.
+    // its interface go and don't credit the one asked next with it. lo's
+    // uevent, gone since the gaps, is written again with text no file of
+    // eth8's, which has no folder, can say, so the late read lands with it.
     property var lateView: null
     function lateRead() {
+        Written.written(uevent, "DEVTYPE=late\n");
         traffic.asking = [{ name: "eth8", files: ["uevent"], said: {} }];
         traffic.probing = { name: "lo", files: ["uevent"], said: {} };
         traffic.probeFile();
@@ -519,7 +522,7 @@ ShellRoot {
         waits.until("a read given up lands late through Traffic's own view",
             () => traffic.probesHung.lo === undefined && next.done === true, () => {
             Expect.expect("a read landing late isn't taken for the interface asked next",
-                next.said.uevent === "", JSON.stringify(next.said));
+                Object.values(next.said).every(text => text === ""), JSON.stringify(next.said));
             waits.until("the view a late read landed through is destroyed",
                 () => root.lateView === null, root.notInFlight);
         });
