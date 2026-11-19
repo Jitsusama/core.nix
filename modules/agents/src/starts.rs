@@ -115,9 +115,11 @@ impl Starts {
                 .filter_map(|one| {
                     let token = token_of(one)?;
                     let at = u128::from(one["at"].as_u64()?);
+                    // Only what the live path keeps, so a file written by hand
+                    // or by an older daemon serves no more than one asked now.
                     let ended = match &one["ended"] {
                         Value::Null => cut_off(),
-                        ended => ended.clone(),
+                        ended => told_of_an_end(ended),
                     };
                     Some(Start {
                         token,
@@ -190,8 +192,11 @@ impl Starts {
                 let ended = one.ended.as_ref()?;
                 // In Agents' place, which a watch reads from a key's second part.
                 let key = format!("{KIND}:{}:{}", served::PLACE, one.token);
+                // When it was asked, so a shell that never asked it waits out
+                // the patience of the one that did (Sprouting.untold).
+                let at = u64::try_from(one.at).unwrap_or(0);
                 Some(json!({"key": key, "kind": KIND,
-                    "start": {"token": one.token, "ended": ended}}))
+                    "start": {"token": one.token, "at": at, "ended": ended}}))
             })
             .collect()
     }
@@ -203,12 +208,25 @@ impl Starts {
 fn told_of_an_end(answer: &Value) -> Value {
     let mut kept = json!({});
     if let Some(begun) = answer.get("sprouted") {
-        kept["sprouted"] = json!({"machine": begun["machine"], "held": begun["held"]});
+        kept["sprouted"] =
+            json!({"machine": words(&begun["machine"]), "held": words(&begun["held"])});
     }
     if let Some(error) = answer.get("error") {
-        kept["error"] = json!({"code": error["code"], "message": error["message"]});
+        kept["error"] = json!({"code": words(&error["code"]), "message": words(&error["message"])});
     }
     kept
+}
+
+/// The most of any one string of an end kept, in characters: a node's
+/// words for a refusal run to a line or two.
+const WORDS_AT_MOST: usize = 500;
+
+/// `said` as a string of at most WORDS_AT_MOST characters, or none where
+/// it isn't one, so no end grows the file or a record past a few lines.
+fn words(said: &Value) -> Value {
+    said.as_str().map_or(Value::Null, |text| {
+        Value::String(text.chars().take(WORDS_AT_MOST).collect())
+    })
 }
 
 /// A cut-off start's end, in the shape of the daemon's answer to a sprout.
@@ -251,6 +269,30 @@ mod tests {
         );
         assert_eq!(records[0]["start"]["ended"]["error"]["code"], "unanswered");
         assert_eq!(records[0]["start"]["ended"]["error"]["message"], CUT_OFF);
+        assert_eq!(
+            records[0]["start"]["at"],
+            json!(u64::try_from(NOW).unwrap()),
+            "a kept start doesn't say when it was asked"
+        );
+    }
+
+    #[test]
+    fn a_file_serves_no_more_of_an_end_than_one_asked_now() {
+        let path = kept_at("by-hand");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let long = "a".repeat(WORDS_AT_MOST + 1);
+        let at = u64::try_from(NOW).unwrap();
+        let file = json!({"starts": [{"start": "a-1", "at": at, "ended": {
+            "sprouted": {"machine": long, "held": 7, "folder": "/home/j/src/r"},
+            "extra": "x"}}]});
+        fs::write(&path, file.to_string()).unwrap();
+        let records = Starts::read(&path, NOW).records();
+        let ended = &records[0]["start"]["ended"];
+        assert_eq!(
+            ended,
+            &json!({"sprouted": {"machine": "a".repeat(WORDS_AT_MOST), "held": null}}),
+            "a file served more than the live path keeps"
+        );
     }
 
     #[test]

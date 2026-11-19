@@ -971,7 +971,8 @@ def test_a_start_the_shell_restarted_under_is_told_by_the_shell_started_again(
     The agents daemon keeps each start from his Return until the shell says it told him, so a
     shell started again mid-start, as a switch or a crash does, still says how it ended (Joel,
     2026-11-18: "things I send in must be seen through"). Here the node falls silent, so the
-    start ends after the old shell has gone, as the daemon's patience runs out.
+    start ends after the old shell has gone, as the daemon's patience runs out, and the new
+    shell tells it once its asker would surely have.
     """
     machine = desktop.machine
     link = "https://github.com/harbour/nowhere/issues/9"
@@ -984,9 +985,13 @@ def test_a_start_the_shell_restarted_under_is_told_by_the_shell_started_again(
             desktop.in_session("qs ipc call launcher list > /dev/null"),
             timeout=dt.timedelta(seconds=120),
         )
-        noticed(desktop, UNANSWERED, before, dt.timedelta(seconds=90))
+        noticed(desktop, UNANSWERED, before, dt.timedelta(seconds=ASKER_ANSWERS + 60))
         # The new shell said it told, so the daemon keeps it no more.
         starts_kept(desktop, 0)
+        # There's no event for a notice never sent, so a second is waited for.
+        machine.sleep(NOTICE_LANDS)
+        told = starts_noticed(desktop, UNANSWERED)
+        assert told == before + 1, f"a start was noticed {told - before} times"
     finally:
         desktop.as_account("systemctl --user kill --signal=CONT mycelium")
         desktop.launcher_left_closed()
@@ -995,32 +1000,40 @@ def test_a_start_the_shell_restarted_under_is_told_by_the_shell_started_again(
 def test_a_start_a_switch_cut_off_is_told_once(desktop: Desktop) -> None:
     """A start cut off by a switch's restarts is told once, as one that may still start.
 
-    A switch restarts the agents daemon under the shell as it is, which hears no answer and
-    tells Joel so, and then hands the shell over to a new one held beside it (shell-hands-
-    over.sh). The daemon come back finds the start it kept with no end and ends it as cut off,
-    since the node may have started it and asking again blind could start it twice; the shell
-    that told it says so, and no shell after, the held one among them, tells it again.
+    A switch stops the agents daemon under the shell as it asks, and hands the shell over to a
+    new one held beside it (shell-hands-over.sh) while the start is still kept. The daemon come
+    back finds the start with no end and ends it as cut off, since the node may have started it
+    and asking again blind could start it twice. The shell that asked, its answer gone with the
+    daemon, takes that record as its answer and tells it; the held one, which never asked, waits
+    out the asker's patience and finds it told.
     """
     machine = desktop.machine
     link = "https://github.com/harbour/nowhere/issues/10"
     before = starts_noticed(desktop)
+    cut = starts_noticed(desktop, CUT_OFF)
     desktop.as_account("systemctl --user kill --signal=STOP mycelium")
     try:
         asked_from_a_link(desktop, link)
+        asked = time.monotonic()
         # Kept before the daemon goes, so it's this walk's start the daemon come back finds.
         starts_kept(desktop, 1)
-        desktop.as_account("systemctl --user restart agents")
-        noticed(desktop, None, before, dt.timedelta(seconds=120))
-        # Said told, the daemon keeps it no more, so no shell after is served it to tell again.
+        old = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+        desktop.as_account("systemctl --user stop agents")
+        desktop.as_account("systemctl --user reload --no-block quickshell")
+        desktop.as_account("systemctl --user start agents")
+        # The daemon's words for it, not the shell's for an answer that never came.
+        noticed(desktop, CUT_OFF, cut, dt.timedelta(seconds=120))
         starts_kept(desktop, 0)
-        desktop.as_account("systemctl --user reload quickshell")
         machine.wait_until_succeeds(
-            desktop.in_session("qs ipc call launcher list > /dev/null"),
+            desktop.in_session(
+                f'test "$(systemctl --user show quickshell -p MainPID --value)" != {old}'
+            ),
             timeout=dt.timedelta(seconds=120),
         )
-        # A start the new shell is served it waits out Sprouting.js's SETTLE_MS before telling,
-        # and there's no event for a notice never sent, so both are waited.
-        machine.sleep(START_SETTLES + NOTICE_LANDS)
+        # The held shell, served it as it came up, would tell it once its asker had surely
+        # told it, a moment after; there's no event for a notice never sent, so that's waited.
+        waited = time.monotonic() - asked
+        machine.sleep(max(NOTICE_LANDS, int(ASKER_ANSWERS + START_SETTLES - waited) + 1))
         told = starts_noticed(desktop)
         assert told == before + 1, f"a cut-off start was noticed {told - before} times"
     finally:
@@ -1076,11 +1089,18 @@ STARTS_KEPT = "~/.local/state/agents/starts.json"
 # Seconds for a notice spawned as a walk's end is journalled to reach the notices daemon's
 # kept list, waited before saying none came: there's no event for a notice never sent.
 NOTICE_LANDS = 3
-# Seconds a shell waits before telling a kept start it never asked (Sprouting.js's SETTLE_MS).
+# Seconds a shell waits before telling a kept start it never asked (Sprouting.js's SETTLE_MS),
+# and from the start's asking (its ASKER_ANSWERS_MS).
 START_SETTLES = 5
+ASKER_ANSWERS = 75
 STARTS_NOTICED = '.notices[]? | select(.app == "Agents" and .summary == "Start New Work")'
 UNANSWERED = (
     "the node didn't answer in time; it may still start it, so look in Agents before asking again"
+)
+# What the agents daemon ends a start a restart cut off with (starts.rs's CUT_OFF).
+CUT_OFF = (
+    "a restart cut it off before the node answered; it may still start it, so look in Agents"
+    " before asking again"
 )
 
 

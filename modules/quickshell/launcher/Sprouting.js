@@ -59,6 +59,19 @@ function token(now, chance) {
 // this is room for a busy shell to, so Joel isn't told it twice.
 const SETTLE_MS = 5000;
 
+// How long a shell waits on the daemon's answer to a start before taking
+// it as none: the daemon says the node's silence within 50 s (sprout.rs's
+// PATIENCE), so a minute with no answer at all, as from a daemon that
+// went as it asked, is no answer.
+const PATIENCE_MS = 60000;
+
+// How long from its asking a start's own shell, if it's still up, has
+// surely told it: its patience, a shut launcher's watch's pace (10 s,
+// Agents' shutPace) and the moment. Each shell comes back to a daemon
+// started again in its own time, so another may hear the record well
+// before the asker does, and waits this out before telling it.
+const ASKER_ANSWERS_MS = PATIENCE_MS + 10000 + SETTLE_MS;
+
 // How long a told the daemon didn't take waits to be said again: a shell
 // held while a switch hands over is taken for the shell only once it's
 // the unit's main process, up to 70 s on (shell-hands-over.sh), and one
@@ -70,18 +83,41 @@ const TOLD_AGAIN_MS = 30000;
 // token's "asking", "ended" or "told") and when it first saw each it
 // never heard the end of (`seen`, by token): those to tell, as a shell
 // started since or a start a restart cut off has it, once seen
-// SETTLE_MS before `now`; those still `waiting` that out; and every
-// token to say told, all but those still asked or waited on.
+// SETTLE_MS before `now` and asked (`at`) ASKER_ANSWERS_MS before it;
+// those still `waiting` that out; those
+// `answered`, still asked here, whose answer the daemon dropped as it
+// went, so its record is the answer; and every token to say told, all
+// but those still asked or waited on.
 function untold(kept, known, seen, now) {
     // Own keys alone, so a prototype's name is never known; Qt's engine has no Object.hasOwn.
     const own = (of, named) => Object.keys(of).includes(named);
-    const waitedOut = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS;
+    const askerHad = one => !Number.isFinite(one.at) || now - one.at >= ASKER_ANSWERS_MS;
+    const waitedOut = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS
+        && askerHad(one);
     const unheard = kept.filter(one => !own(known, one.token));
     const tell = unheard.filter(waitedOut);
     const waiting = unheard.filter(one => !waitedOut(one)).map(one => one.token);
     const said = kept.filter(one => (own(known, one.token) ? known[one.token] !== "asking"
         : waitedOut(one))).map(one => one.token);
-    return { tell, told: said, waiting };
+    const answered = kept.filter(one => own(known, one.token) && known[one.token] === "asking");
+    return { tell, told: said, waiting, answered };
+}
+
+// Of the starts to `tell`, those the daemon still keeps by its answer to
+// a get of their keys (`records`, or null when it didn't answer): its
+// asker, up beside this shell while a switch hands over, may have told
+// one since this shell's copy was served, and a get names only what's
+// still held, so none is told twice. With no answer, none is told yet.
+function stillKept(tell, records) {
+    if (!Array.isArray(records))
+        return [];
+    const keys = records.map(record => record?.key);
+    return tell.filter(one => keys.includes(keptKey(one.token)));
+}
+
+// The key the agents daemon serves a kept start under (starts.rs).
+function keptKey(token) {
+    return `start:agents:${token}`;
 }
 
 // Why `ask` would ask nothing, in `said`'s words (`empty` or

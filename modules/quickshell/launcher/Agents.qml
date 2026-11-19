@@ -1572,6 +1572,15 @@ Provider {
         sproutTokens[token] = "asking";
         sproutToken = token;
         const heard = answer => {
+            // Dropped with the daemon as it asked: the daemon kept the start before it
+            // asked the node, so the record it serves again is the answer (sproutsKept),
+            // or the patience's, never one of each. Told here at once, this shell's
+            // "unanswered" and the record's end would both reach Joel.
+            if (answer === null && sproutTokens[token] === "asking") {
+                console.info("launcher: the agents daemon went as a start asked; "
+                    + "awaiting its record");
+                return;
+            }
             const how = Sprouting.ended(answer, sproutWords());
             sproutTokens[token] = "ended";
             if (sprout === sprouts && sprouting !== "")
@@ -1580,17 +1589,16 @@ Provider {
                 console.info(`launcher: late, ${Sprouting.reach(how, sproutWords()).journal}`);
             sproutTold([token]);
         };
-        if (rowsKind)
+        // With no daemon to send it to, nothing is kept, so none is to come.
+        if (rowsKind && rowsKind.wire !== null)
             rowsKind.ask(Object.assign({ start: token }, ask), heard);
         else
-            heard(null);
+            sprouted(Sprouting.ended(null, sproutWords()));
     }
-    // The daemon says the node's silence within 50 s (sprout.rs's
-    // PATIENCE); a minute with no answer at all, as from a daemon that
-    // started again while it asked, is no answer.
+    // No answer at all is none (Sprouting.PATIENCE_MS).
     Timer {
         id: sproutPatience
-        interval: 60000
+        interval: Sprouting.PATIENCE_MS
         onTriggered: {
             if (provider.sprouting !== "")
                 provider.sprouted(Sprouting.ended(null, provider.sproutWords()));
@@ -1607,11 +1615,16 @@ Provider {
     // kept that it never heard the end of, asked by a shell before it or
     // cut off by a restart, is told as a start's end is, and opens no
     // window, since nobody waits on it, once it has stood kept a moment
-    // (`sproutSeen`, when first seen); every one but those still asked or
-    // waited on is then said told (Sprouting.untold). A told the daemon
-    // didn't take is said again (sproutAgain).
+    // (`sproutSeen`, when first seen), its asker has surely told it, and
+    // the daemon, asked again, still keeps it (sproutsChecked); every one
+    // but those still asked or waited on is then said told
+    // (Sprouting.untold). One still asked whose answer went with the
+    // daemon is answered by its record. A told the daemon didn't take is
+    // said again (sproutAgain).
     property var sproutTokens: ({})
     property var sproutSeen: ({})
+    // The tokens of those to tell being asked for again (sproutsChecked).
+    property var sproutChecking: ({})
     // The token of the start running, "" while none runs.
     property string sproutToken: ""
     function sproutsKept(held) {
@@ -1620,12 +1633,42 @@ Provider {
         const now = Date.now();
         const stood = Sprouting.untold(kept, sproutTokens, sproutSeen, now);
         stood.waiting.forEach(token => {
-            if (!Object.prototype.hasOwnProperty.call(sproutSeen, token))
+            if (!Object.keys(sproutSeen).includes(token))
                 sproutSeen[token] = now;
         });
         if (stood.waiting.length > 0)
             sproutAgainIn(Sprouting.SETTLE_MS);
-        stood.tell.forEach(one => {
+        const checking = token => Object.keys(sproutChecking).includes(token);
+        const tell = stood.tell.filter(one => !checking(one.token));
+        const telling = tell.map(one => one.token);
+        sproutTold(stood.told.filter(token => !checking(token) && !telling.includes(token)));
+        // The start still asked, whose answer went with the daemon, ends as it kept it.
+        const answered = stood.answered.find(one => one.token === sproutToken);
+        if (answered !== undefined && sprouting !== "")
+            sprouted(Sprouting.ended(answered.ended, sproutWords()));
+        if (tell.length === 0 || !rowsKind)
+            return;
+        telling.forEach(token => {
+            sproutChecking[token] = true;
+        });
+        rowsKind.get(telling.map(Sprouting.keptKey), 0, answer => sproutsChecked(tell, answer));
+    }
+    // Tells those of `tell` the daemon still keeps by its `answer` to a
+    // get of them (Sprouting.stillKept): one its asker told since is kept
+    // no more. With no answer, they're asked for again in a moment.
+    function sproutsChecked(tell, answer) {
+        tell.forEach(one => {
+            delete sproutChecking[one.token];
+        });
+        if (answer === null) {
+            sproutAgainIn(Sprouting.SETTLE_MS);
+            return;
+        }
+        const still = Sprouting.stillKept(tell, answer.records);
+        tell.forEach(one => {
+            sproutTokens[one.token] = "ended";
+        });
+        still.forEach(one => {
             const how = Sprouting.ended(one.ended, sproutWords());
             sproutReaches(how);
             if (how.started && how.held !== "") {
@@ -1636,9 +1679,9 @@ Provider {
                     letters: -1 }]);
             }
         });
-        if (stood.tell.length > 0)
+        if (still.length > 0)
             openSprouted();
-        sproutTold(stood.told);
+        sproutTold(still.map(one => one.token));
     }
     function sproutTold(tokens) {
         if (tokens.length === 0 || !rowsKind)
