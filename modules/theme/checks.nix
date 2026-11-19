@@ -198,8 +198,10 @@ let
 
   # An animal's poses: its sitting and every mark drawn as its sitting's or
   # a stride's glyph, or named for it when it has a name of its own, so a
-  # pose added for it can't skip its rules, nor every pose but its sitting
-  # when the sitting's glyph alone changes.
+  # pose added for it in one of those glyphs, or by its name, can't skip
+  # its rules, nor every pose but its sitting when the sitting's glyph
+  # alone changes. The cat has no name of its own, so a pose of its drawn
+  # in a glyph of its own is found by neither.
   posesOf =
     {
       sitting,
@@ -365,6 +367,7 @@ in
         "blinking"
         "curled"
         "earFlick"
+        "falling"
         "forYouEmpty"
         "grooming"
         "leaning"
@@ -382,6 +385,7 @@ in
         "scruffed"
         "stretching"
         "tailSwish"
+        "tucked"
         "walkingA"
         "walkingB"
         "walkingC"
@@ -422,7 +426,8 @@ in
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
   # held to its own sitting, as the cat's are to the cat's, its poses every
-  # mark named for it as well (posesOf). Its strides are drawn for the
+  # mark named for it as well (posesOf), its bow named as the cat's leap
+  # is, so it's said undrawn if taken out. Its strides are drawn for the
   # cat's walk, so they're the cat's, read from the cat's code and each
   # named for the puppy, as runningA would be puppyRunningA, rather than a
   # copy that could drift.
@@ -440,11 +445,14 @@ in
       sitting = "puppySitting";
       walkedFrom = catWalkedFrom;
       strides = map named catWalk;
-      poses = posesOf {
-        sitting = "puppySitting";
-        strides = map named catWalk;
-        named = "puppy";
-      };
+      poses = lib.unique (
+        posesOf {
+          sitting = "puppySitting";
+          strides = map named catWalk;
+          named = "puppy";
+        }
+        ++ [ "puppyBowing" ]
+      );
     };
 
   # The pose rules refuse what they're for: the cat's own strides out of
@@ -458,7 +466,8 @@ in
   # refused, and one joined by a corner held; on the cat's sitting of 37,
   # just under 15% fewer or more held and just over refused, on one of 20,
   # 15% held and past it refused, and on one of 13, 2 more or fewer
-  # refused; a sitting misnamed said undrawn; and a stride no pose lists
+  # refused; a sitting misnamed, or a pose listed but undrawn, said
+  # undrawn; and a stride no pose lists
   # held to the stray and size rules; the cat's own planted on copies of
   # its drawings; and an animal's poses found by its glyphs and the start
   # of its name, though a sitting or stride is undrawn, and no mark drawn

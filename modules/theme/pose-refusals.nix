@@ -193,8 +193,9 @@ let
   # or a name it reads dropped, fails: on a sitting of 20, a pose 15%
   # more held and one past it refused, and on one of 13, a pose 15.4%
   # more refused, as no 16% would; a misnamed sitting said undrawn,
-  # rather than every pose unlike it; and a stride no pose lists still
-  # held to the stray and size rules.
+  # rather than every pose unlike it, and a pose listed but undrawn, as a
+  # leap's tuck taken out would be, said so; and a stride no pose lists
+  # still held to the stray and size rules.
   sized = poseFaults {
     sitting = "small";
     poses = [
@@ -218,6 +219,15 @@ let
   misnamed = poseFaults {
     sitting = "nothingHer";
     poses = [ "walkingA" ];
+    strides = drawnWalk;
+    glyphs = planted;
+  };
+  untucked = poseFaults {
+    sitting = "nothingHere";
+    poses = [
+      "nothingHere"
+      "tucked"
+    ];
     strides = drawnWalk;
     glyphs = planted;
   };
@@ -254,6 +264,11 @@ let
           saying = text: lib.hasInfix text misnamed.said;
         in
         saying ''undrawn ["nothingHer"]'' && saying "unlike []";
+    }
+    {
+      faults = untucked;
+      reason = "tucked, listed but undrawn, said undrawn";
+      holds = lib.hasInfix ''undrawn ["tucked"]'' untucked.said;
     }
     {
       faults = unlisted;

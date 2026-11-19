@@ -1106,17 +1106,18 @@
     odd width in its middle and last column; a pose with a pixel two cells off, though not one
     joined by a corner alone; and just over 15% fewer or more pixels, on sittings of 37 and 20,
     though not just under or on the line, and on one of 13; and they say a misnamed sitting
-    undrawn, and hold a stride no pose lists to the stray and size rules, the cat's own planted
-    on copies of its drawings; and they find an animal's poses by its sitting's and strides'
-    glyphs and the start of its name, though one of them is undrawn, and no other mark, not
-    one holding the name inside its own nor one drawn as no glyph beside a sitting drawn so
+    undrawn, and a pose listed but missing, and hold a stride no pose lists to the stray and
+    size rules, the cat's own planted on copies of its drawings; and they find an animal's
+    poses by its sitting's and strides' glyphs and the start of its name, though one of them
+    is undrawn, and no other mark, not one holding the name inside its own nor one drawn as no
+    glyph beside a sitting drawn so
   '';
   every-puppy-pose-reads-as-one-puppy = ''
     every pose of the margin's puppy, each mark named for it or drawn as its sitting's glyph or
     a stride's, has no lit pixel standing alone, a diagonal touching, and lit pixels within 15%
     of its own sitting's, each of its strides steps one pair of feet with its body still, each
-    pair in its turn over the walk, and its sitting and strides are drawn; its strides are the
-    walk the cat's code takes, each named for the puppy
+    pair in its turn over the walk, and its sitting, bow and strides are drawn; its strides are
+    the walk the cat's code takes, each named for the puppy
   '';
   every-script-finds-what-it-imports = ''
     every folder's Python that nix fmt hands mypy passes it when handed to it alone, as a script
