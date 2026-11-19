@@ -22,7 +22,9 @@ for the pages that read what each site is home to, so they read a live
 site's row as its declaration says it rather than the record's. A kind a
 declared row is home to stays its home: a recorded row's claim on it, by name
 or by pattern, is left out of rows.json and said, since the readers would
-otherwise give the kind to whichever row came first, or fault both.
+otherwise give the kind to whichever row came first, or fault both. rows.json
+says each claim taken, beside its rows, for the web-design skill's reader to
+name in sites.json.
 
 usage: home.py <sources> <root> <theme> [<declared>], where sources holds the
 home's page and its files, root is the sites' folder, theme is the web kit's
@@ -441,27 +443,38 @@ def kind_of(home: object) -> str | None:
     return kind if isinstance(kind, str) else None
 
 
-def leaving(sites: list[Site], declared: list[Site]) -> tuple[list[Site], list[str]]:
+def leaving(sites: list[Site], declared: list[Site]) -> tuple[list[Site], list[dict[str, str]]]:
     """Leave each kind a declared row is home to with it, taking it from the recorded rows.
 
-    It says each claim it took, its kind and its row's path quoted, since a
-    session writes both.
+    It gives each claim it took as its kind, the recorded row's path as
+    written and the path of the declared row home to the kind, the first
+    when two are, for rows.json to say and the log to quote, since only the
+    home knows which rows are declared.
     """
-    kinds = {kind_of(home) for site in declared for home in site.row.get("homes") or []}
-    kinds.discard(None)
+    owners: dict[str, str] = {}
+    for site in declared:
+        for home in site.row.get("homes") or []:
+            kind = kind_of(home)
+            if kind is not None:
+                owners.setdefault(kind, site.row["path"])
     # The declared rows themselves, the very ones declaring placed.
     theirs = {id(site) for site in declared}
     left: list[Site] = []
-    taken: list[str] = []
+    taken: list[dict[str, str]] = []
     for site in sites:
         homes = site.row.get("homes")
         if id(site) in theirs or not isinstance(homes, list):
             left.append(site)
             continue
-        kept = [home for home in homes if kind_of(home) not in kinds]
-        taken += [
-            f"{kind_of(home)!r} from {site.row['path']!r}" for home in homes if home not in kept
-        ]
+        kept = [home for home in homes if kind_of(home) not in owners]
+        for home in homes:
+            kind = kind_of(home)
+            if home in kept or kind is None:
+                continue
+            claim = {"kind": kind, "from": site.row["path"], "to": owners[kind]}
+            # A row claiming a kind twice, by name and by pattern, is said once.
+            if claim not in taken:
+                taken.append(claim)
         left.append(site if kept == homes else replace(site, row={**site.row, "homes": kept}))
     return left, taken
 
@@ -512,7 +525,10 @@ def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) 
         (root / name).unlink(missing_ok=True)
     write(root / "llms.txt", llms(root, sites))
     write(root / "index.md", twin(sites))
-    listed = {"sites": [site.row for site in sites]}
+    # What the home took is said beside the rows, since they don't say which
+    # are declared; the system's and Code's readers read only "sites", and
+    # the web-design skill's reader names each claim in "taken".
+    listed = {"sites": [site.row for site in sites], "taken": taken}
     write(root / "rows.json", json.dumps(listed, indent=2) + "\n")
 
     pages: dict[str, tuple[Site, str]] = {}
@@ -528,7 +544,8 @@ def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) 
     owning = own_scripts(root, sites)
     said += f"; scripts of their own in {', '.join(owning)}" if owning else ""
     said += f"; left out {', '.join(map(repr, strays))}, no path of ours" if strays else ""
-    return said + (f"; homes left to the declared sites: {', '.join(taken)}" if taken else "")
+    left = ", ".join(f"{each['kind']!r} from {each['from']!r}" for each in taken)
+    return said + (f"; homes left to the declared sites: {left}" if taken else "")
 
 
 if __name__ == "__main__":

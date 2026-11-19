@@ -25,7 +25,9 @@
 // 404) is read through sites.json. One that is there but won't read as rows
 // is a fault rather than a reason to read the other, which may be older.
 // The home rewrites rows.json at each build, so a fault in a row is fixed
-// where the row is written: sites.json, or home.nix for a live site.
+// where the row is written: sites.json, or home.nix for a live site. A
+// claim in sites.json on a kind a row home.nix declares is home to is one
+// the home takes out of rows.json, saying so in its taken, which is named.
 //
 // A check that finds nothing to test fails rather than passing, so rows no
 // home site answers, or a homes.json that lists nothing, is a fault, never
@@ -91,7 +93,8 @@
     try {
       const body = await answer.json();
       if (body !== null && Array.isArray(body.sites)) {
-        return { rows: body.sites };
+        // A home from before it said what it took writes no taken at all.
+        return "taken" in body ? { rows: body.sites, taken: body.taken } : { rows: body.sites };
       }
     } catch {
       // Not JSON at all, which is the same fault as JSON of another shape.
@@ -173,9 +176,13 @@
   };
   // rows.json is what the home last built, so sites.json, which it builds
   // from, is read beside it. A sites.json that won't read leaves the last
-  // build serving; a row whose path the home won't link it leaves out; and
-  // a row missing from rows.json for no such reason is one the home hasn't
-  // built yet. Each is named, since rows.json alone would pass it quietly.
+  // build serving; a row whose path the home won't link it leaves out; a
+  // row missing from rows.json for no such reason is one the home hasn't
+  // built yet; and a claim on a kind a declared row is home to the home
+  // takes from its row, leaving the kind with the declared row, and says so
+  // in rows.json's taken (modules/local-sites/home), since its rows don't
+  // say which are declared. Each is named, since rows.json alone would pass
+  // it quietly.
   if (fromRows && recorded.fault !== undefined) {
     missing.push(
       `sites.json at the sites' root ${recorded.fault}, so the home kept its last rows.json: `
@@ -204,6 +211,45 @@
           + "since it was written: read `journalctl --user -u local-sites-home`",
       );
     }
+  }
+  // The kinds the home took from each recorded row, by its folder, so a
+  // homes.json listing one isn't blamed on rows.json as well. A home from
+  // before it said what it took says nothing. A claim sites.json no longer
+  // makes was taken by a build since overtaken, so it isn't named.
+  const taken = new Map();
+  const took = fromRows && "taken" in listed ? listed.taken : [];
+  const isText = (said) => typeof said === "string";
+  const claimsNow = (from, kind) =>
+    !Array.isArray(recorded.rows)
+    || recorded.rows.some(
+      (site) =>
+        typeof site?.path === "string"
+        && folderOf(site.path) === from
+        && Array.isArray(site.homes)
+        && site.homes.some((said) => said === kind || said?.kind === kind),
+    );
+  const wontRead = (said) =>
+    `rows.json's taken holds ${JSON.stringify(said)}: a list of claims, `
+    + `{"kind", "from", "to"}, as the home writes them: read `
+    + "`journalctl --user -u local-sites-home`";
+  if (!Array.isArray(took)) {
+    missing.push(wontRead(took));
+  }
+  for (const each of Array.isArray(took) ? took : []) {
+    if (!(isText(each?.kind) && isText(each?.from) && isText(each?.to))) {
+      missing.push(wontRead(each));
+      continue;
+    }
+    const from = folderOf(each.from);
+    if (!claimsNow(from, each.kind)) {
+      continue;
+    }
+    taken.set(from, (taken.get(from) ?? new Set()).add(each.kind));
+    missing.push(
+      `${JSON.stringify(each.from)} in sites.json claims ${JSON.stringify(each.kind)}, which `
+        + `home.nix declares ${JSON.stringify(each.to)} home to, so the home took the claim: `
+        + "drop it from sites.json, since a declared home is moved only in home.nix",
+    );
   }
   for (const site of sites.sites) {
     // A row written ./code/ is home at code/, as Code's homes and the system's both read it;
@@ -268,6 +314,11 @@
       continue;
     }
     for (const thing of homes.things) {
+      // A thing of a kind the home took is named above, with where its home
+      // is, unless the built row still gives the kind.
+      if (taken.get(folder)?.has(thing.kind) && !kinds.includes(thing.kind)) {
+        continue;
+      }
       if (!kinds.includes(thing.kind)) {
         missing.push(
           `${folder}homes.json lists a ${thing.kind}, which ${record} doesn't give it by name`,

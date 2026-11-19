@@ -244,7 +244,9 @@ after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 
 # A kind a declared row is home to stays its home: a recorded row claiming it
 # by name or by pattern, even one listed above the declared row, loses that
-# claim in rows.json, and it's said, while its other fields and homes, and a
+# claim in rows.json, and it's said, in the log and in rows.json's taken with
+# the declared row home to the kind, once for a kind claimed both ways, while
+# its other fields and homes, and a
 # declared row's own, stand. Homes of a shape no reader takes, and a row left
 # out as a stray, are neither taken nor said, and fail nothing.
 mkdir -p "$work/claimed"
@@ -253,7 +255,8 @@ cat > "$work/claimed/sites.json" << 'EOF'
   {"path": "notes/", "name": "Notes", "what": "Notes.", "kind": "record", "when": "today",
    "homes": ["tree", {"kind": "heron", "address": "#heron={name}"}, "otter"]},
   {"path": "old/", "name": "The old one", "kind": "record", "homes": ["tree"]},
-  {"path": "./shed/", "name": "The shed", "kind": "mock", "homes": ["heron"]},
+  {"path": "./shed/", "name": "The shed", "kind": "mock",
+   "homes": ["heron", {"kind": "heron", "address": "#heron={name}"}]},
   {"path": "pond/", "name": "The pond", "kind": "mock", "homes": ["otter"]},
   {"path": "../up/", "name": "Stray", "kind": "mock", "homes": ["tree"]},
   {"path": "odd/", "name": "Odd", "kind": "mock", "homes": "tree"},
@@ -278,12 +281,16 @@ same = all(
     if row["path"] in bare else row == written[row["path"]]
     for row in listed
 )
-print(json.dumps({row["path"]: row.get("homes") for row in listed}), same)' \
+taken = json.load(open(sys.argv[1]))["taken"]
+print(json.dumps({row["path"]: row.get("homes") for row in listed}), same, json.dumps(taken))' \
   "$work/claimed/rows.json" "$work/claimed/sites.json" "$work/declared.json")
 want='{"grove/": null, "notes/": ["otter"],'
 want+=' "old/": ["tree", {"kind": "heron", "address": "#heron={name}"}], "./shed/": [],'
 want+=' "pond/": ["otter"], "odd/": "tree",'
 want+=' "odder/": [{"address": "#x={name}"}, {"kind": ["tree"]}, ["tree"], 5, {"kind": {}}]} True'
+want+=' [{"kind": "tree", "from": "notes/", "to": "old/"},'
+want+=' {"kind": "heron", "from": "notes/", "to": "old/"},'
+want+=' {"kind": "heron", "from": "./shed/", "to": "old/"}]'
 [ "$rows" = "$want" ] || fail "rows.json didn't leave declared kinds to their sites: $rows"
 
 # A path the record holds twice, however spelled, is listed once when
