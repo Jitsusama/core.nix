@@ -2290,8 +2290,8 @@ pub fn source(
         .filter(|dir| !dir.is_empty());
     let commit = match (pinned, sends) {
         (Some(commit), _) => commit.to_owned(),
-        (None, Sends::Changes) => committed(&top, scratch).map_err(not)?,
-        (None, Sends::Committed) => head_alone(&top).map_err(not)?,
+        (None, Sends::Changes) => committed(&top, scratch).map_err(|why| not(&why))?,
+        (None, Sends::Committed) => head_alone(&top, scratch).map_err(|why| not(&why))?,
     };
     let base = ["@{upstream}", "origin/main"]
         .iter()
@@ -2330,7 +2330,7 @@ pub enum Sends {
 
 /// The empty tree's hash, which git takes its attributes from, rather than
 /// the tree's own, when `GIT_ATTR_SOURCE` names it.
-const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+pub(crate) const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// The HEAD of the git tree `top`, refused while it has changes or borrows
 /// objects from another repository.
@@ -2342,9 +2342,11 @@ const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /// a hidden repository had that repository's HEAD read through, and its
 /// attributes picked filters git ran outside the fence. So only HEAD's
 /// objects go: a gitlink in them is a hash the builder never fetches, the
-/// diff that finds changes reads no attribute and no submodule, and a tree
-/// with alternates, whose objects could be any repository's, is refused.
-fn head_alone(top: &Path) -> Result<String, &'static str> {
+/// diff that finds changes reads no attribute, no submodule and none of
+/// the repository's config, in a repository of the run's own in `scratch`,
+/// and a tree with alternates, whose objects could be any repository's, is
+/// refused.
+fn head_alone(top: &Path, scratch: &Path) -> Result<String, String> {
     let borrows = ["objects/info/alternates", "objects/info/http-alternates"]
         .iter()
         .any(|one| {
@@ -2352,36 +2354,20 @@ fn head_alone(top: &Path) -> Result<String, &'static str> {
                 .is_none_or(|path| top.join(path).exists())
         });
     if borrows {
-        return Err("borrows objects from another repository, so --run sends nothing of it");
+        return Err(
+            "borrows objects from another repository, so --run sends nothing of it".to_owned(),
+        );
     }
-    let head =
-        git(top, &["rev-parse", "--verify", "HEAD^{commit}"], None).ok_or("has no commit")?;
-    git_with(
-        top,
-        // No attributes file or system config, which could each start a
-        // program, as git_with turns fsmonitor off; a filter the repository's own config and
-        // info/attributes name still runs, as it does for any git command in
-        // the tree, the person's own prompt among them.
-        &[
-            "-c",
-            "diff.ignoreSubmodules=all",
-            "-c",
-            "core.attributesFile=/dev/null",
-            "diff",
-            "--quiet",
-            "--no-ext-diff",
-            "--no-textconv",
-            "HEAD",
-        ],
-        None,
-        &[
-            ("GIT_ATTR_SOURCE", EMPTY_TREE),
-            ("GIT_CONFIG_NOSYSTEM", "1"),
-            ("GIT_ATTR_NOSYSTEM", "1"),
-        ],
-    )
-    .map(|_| head)
-    .ok_or("has changes not committed, and --run sends only what is, so commit them first")
+    let head = git(top, &["rev-parse", "--verify", "HEAD^{commit}"], None)
+        .ok_or_else(|| "has no commit".to_owned())?;
+    if archived::unchanged(top, &head, scratch)? {
+        Ok(head)
+    } else {
+        Err(
+            "has changes not committed, and --run sends only what is, so commit them first"
+                .to_owned(),
+        )
+    }
 }
 
 /// How `--run` sends the tree at `folder`: by [`source`] while its origin
@@ -2428,7 +2414,7 @@ pub fn for_run(folder: &Path, scratch: &Path) -> Result<ForRun, String> {
     if on_github {
         return source(folder, scratch, None, Sends::Committed).map(ForRun::Git);
     }
-    let commit = head_alone(&top).map_err(not)?;
+    let commit = head_alone(&top, scratch).map_err(|why| not(&why))?;
     let dir = canonical
         .strip_prefix(&top)
         .ok()
@@ -2439,7 +2425,7 @@ pub fn for_run(folder: &Path, scratch: &Path) -> Result<ForRun, String> {
     let size = fs::metadata(&archived.archive).map_or(0, |file| file.len());
     eprintln!(
         "nix-offload: sending HEAD of {}, whose origin isn't on GitHub, as a tarball of {}; \
-         no pass is kept for it, as only its cones go",
+         no pass is kept from a run sent as files",
         canonical.display(),
         sized(size)
     );
@@ -2450,15 +2436,16 @@ pub fn for_run(folder: &Path, scratch: &Path) -> Result<ForRun, String> {
 /// the files its index holds, staged new ones included, a commit of them
 /// made without touching the branch or the index, as `nix build` of the
 /// tree here would read them.
-fn committed(top: &Path, scratch: &Path) -> Result<String, &'static str> {
+fn committed(top: &Path, scratch: &Path) -> Result<String, String> {
     if lent_only() {
-        return head_alone(top);
+        return head_alone(top, scratch);
     }
     let head = git(top, &["rev-parse", "HEAD"], None).ok_or("has no commit")?;
     if git(top, &["diff", "--quiet", "HEAD"], None).is_some() {
         Ok(head)
     } else {
-        fs::create_dir_all(scratch).map_err(|_| "has no scratch to commit its changes in")?;
+        fs::create_dir_all(scratch)
+            .map_err(|_| "has no scratch to commit its changes in".to_owned())?;
         let index = mine(scratch, "index");
         // Seeded from the tree's own index, as Nix reads a tree, so a file
         // staged, or added with -N, goes too; `add -u` then takes every
@@ -2483,7 +2470,7 @@ fn committed(top: &Path, scratch: &Path) -> Result<String, &'static str> {
                 )
             });
         let _ = fs::remove_file(&index);
-        made.ok_or("has changes git couldn't commit")
+        made.ok_or_else(|| "has changes git couldn't commit".to_owned())
     }
 }
 

@@ -13,18 +13,27 @@
 //! nothing the repository says may start a program or change what goes:
 //! `git archive` in it would gzip through its `tar.tar.gz.command`, and
 //! run the smudge filters, `export-ignore` and `export-subst` its
-//! attributes pick. So the archive is made in an empty repository of the
-//! run's own that borrows the tree's objects, read with no config but its
-//! own and no attributes at all, which writes nothing into the tree's.
-//! Its objects alone are read, so whatever alternates they follow, the
-//! commit's hash fixes what goes.
+//! attributes pick, and a diff in it would run the clean filters they
+//! pick. So both are made in an empty repository of the run's own that
+//! borrows the tree's objects, read with no config but its own and no
+//! attributes at all, which writes nothing into the tree's. Its objects
+//! alone are read, so whatever alternates they follow, the commit's hash
+//! fixes what goes. The sparse file is read once, never through a link,
+//! and a line refused is named by its number, never quoted, so a session
+//! can't have a file it can't read shown back to it.
+//!
+//! Each run packs in a folder of its own in the scratch, made afresh and
+//! locked for as long as its process lives, so a run in another fence,
+//! whose pids are counted apart, neither takes it nor sweeps it.
 
 use std::env;
 use std::fs;
-use std::io;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+use std::io::{self, Read};
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::there;
 
@@ -33,6 +42,15 @@ use crate::there;
 /// November), and a large repository's whole HEAD can be far past it,
 /// where the part a run reads was about 50 MB.
 pub const LARGEST: u64 = 1_000_000_000;
+
+/// The largest sparse file read, far past any cone mode writes, so a
+/// session can't have a run read a large file in its place.
+const SPARSE_LARGEST: u64 = 16_000_000;
+
+/// How long a run's folder is let be before its lock is asked whether its
+/// run still goes, which covers the moment between making it and locking
+/// it.
+const NEWBORN: Duration = Duration::from_secs(60);
 
 /// HEAD's files of a tree, packed to send.
 #[derive(Debug)]
@@ -52,12 +70,32 @@ pub fn packed(
     largest: u64,
 ) -> Result<Archived, String> {
     let cones = cones(top)?;
-    owned(scratch)?;
-    swept(scratch);
-    let borrowed = Borrowed::new(top, scratch).ok_or("couldn't borrow its objects to pack them")?;
+    let run = Run::new(scratch)?;
+    match pack(top, commit, cones.as_deref(), &run, largest) {
+        Ok(archive) => {
+            run.kept();
+            Ok(Archived { dir, archive })
+        }
+        Err(why) => {
+            run.gone();
+            Err(why)
+        }
+    }
+}
+
+/// The files at `commit` of `top` within `cones`, all of them with none,
+/// packed in `run`'s folder while they're at most `largest` bytes.
+fn pack(
+    top: &Path,
+    commit: &str,
+    cones: Option<&[String]>,
+    run: &Run,
+    largest: u64,
+) -> Result<PathBuf, String> {
+    let borrowed = Borrowed::new(top, run).ok_or("couldn't borrow its objects to pack them")?;
     let paths = match cones {
         Some(cones) => {
-            let paths = within(&borrowed, commit, "", &cones)
+            let paths = within(&borrowed, commit, "", cones)
                 .ok_or("couldn't read HEAD's folders to find its cones")?;
             if paths.is_empty() {
                 return Err("holds no file of HEAD's in its cones".to_owned());
@@ -77,12 +115,14 @@ pub fn packed(
             there::sized(largest),
         ));
     }
-    let archive = there::mine(scratch, "tree.tgz");
+    let archive = run.dir.join("tree.tgz");
     // Without the worktree's, which this repository has none of, git
     // reads the attributes of the tree it packs, whatever GIT_ATTR_SOURCE
-    // says, and its export-ignore dropped a file.
+    // says, and its export-ignore dropped a file. git's own gzip is named
+    // here, over anything a config says.
     let packed = borrowed
         .git()
+        .args(["-c", "tar.tar.gz.command=git archive gzip"])
         .args(["archive", "--worktree-attributes", "--format=tar.gz", "-o"])
         .arg(&archive)
         .args([commit, "--"])
@@ -90,17 +130,106 @@ pub fn packed(
         .stderr(Stdio::piped())
         .output();
     match packed {
-        Ok(packed) if packed.status.success() => {}
+        Ok(packed) if packed.status.success() => Ok(archive),
         packed => {
-            let _ = fs::remove_file(&archive);
             let why = packed.map_or_else(
                 |error| error.to_string(),
                 |packed| String::from_utf8_lossy(&packed.stderr).trim().to_owned(),
             );
-            return Err(format!("couldn't be packed: {why}"));
+            Err(format!("couldn't be packed: {why}"))
         }
     }
-    Ok(Archived { dir, archive })
+}
+
+/// Whether the files of the git tree `top` are its commit `head`'s, read
+/// in `scratch` by a git of the run's own that borrows the tree's objects
+/// and a copy of its index. In the tree's own repository, the diff would
+/// read a file whose time moved through the clean filter its config and
+/// info/attributes name, as the person, outside the fence of the session
+/// that wrote them.
+pub fn unchanged(top: &Path, head: &str, scratch: &Path) -> Result<bool, String> {
+    let run = Run::new(scratch)?;
+    let unchanged = diffed(top, head, &run);
+    run.gone();
+    unchanged
+}
+
+/// [`unchanged`], in `run`'s folder.
+fn diffed(top: &Path, head: &str, run: &Run) -> Result<bool, String> {
+    let borrowed =
+        Borrowed::new(top, run).ok_or("couldn't borrow its objects to read its changes")?;
+    let own = in_git_dir(top, None, "index")
+        .map_err(|error| format!("has no index to read its changes by: {error}"))?;
+    let index = run.dir.join("index");
+    copied(own, &index).map_err(|error| format!("couldn't copy its index: {error}"))?;
+    let diffed = borrowed
+        .git()
+        .current_dir(top)
+        .env("GIT_WORK_TREE", top)
+        .env("GIT_INDEX_FILE", &index)
+        .env("GIT_ATTR_SOURCE", there::EMPTY_TREE)
+        .args([
+            "-c",
+            "diff.ignoreSubmodules=all",
+            "diff",
+            "--quiet",
+            "--no-ext-diff",
+            "--no-textconv",
+            head,
+            "--",
+        ])
+        .status();
+    match diffed.map(|status| status.code()) {
+        Ok(Some(0)) => Ok(true),
+        Ok(Some(1)) => Ok(false),
+        _ => Err("couldn't tell whether it has changes".to_owned()),
+    }
+}
+
+/// The file `name` in the git tree `top`'s own git folder, or in its
+/// folder `within` there, opened without following a link to either, as a
+/// session could plant one to a file it can't read. git's own answer of
+/// where it is, `rev-parse --path-format=absolute --git-path`, follows
+/// every link in it.
+fn in_git_dir(top: &Path, within: Option<&str>, name: &str) -> io::Result<fs::File> {
+    let dir = there::git_with(top, &["rev-parse", "--absolute-git-dir"], None, &[])
+        .ok_or_else(|| io::Error::other("its git folder can't be found"))?;
+    let dir = within.map_or_else(
+        || PathBuf::from(&dir),
+        |within| Path::new(&dir).join(within),
+    );
+    let dir = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+        .open(dir)?;
+    let name = std::ffi::CString::new(name).map_err(io::Error::other)?;
+    // SAFETY: openat reads a name ending in NUL, relative to a folder this
+    // run holds open, and the file it opens is owned by what it gives back.
+    let fd = unsafe {
+        libc::openat(
+            dir.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fd was just opened, and nothing else owns it.
+    Ok(unsafe { fs::File::from_raw_fd(fd) })
+}
+
+/// `from` copied to `to`, a file new to it, with its time, so git's
+/// check of a file changed in the second its index was written holds.
+fn copied(mut source: fs::File, to: &Path) -> io::Result<()> {
+    let modified = source.metadata()?.modified()?;
+    let mut target = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(to)?;
+    io::copy(&mut source, &mut target)?;
+    target.set_modified(modified)
 }
 
 /// Make `scratch` the person's alone. Without a runtime folder it falls
@@ -135,6 +264,21 @@ fn owned(scratch: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Remove what a run sent once it's gone: `sent`, and the run's own folder
+/// when it's a tarball packed in one, which leaves the scratch's other
+/// files, a bundle among them, where they are.
+pub fn gone(sent: &Path) {
+    let _ = fs::remove_file(sent);
+    let a_run = sent
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("run-"));
+    if a_run && let Some(run) = sent.parent() {
+        let _ = fs::remove_dir_all(run);
+    }
+}
+
 /// What the far side's shell runs to unpack the files `archived` sends,
 /// read from its standard input, in a folder of its own named in `leaves`
 /// and gone when the shell ends, as `changed::checked_out`'s is, and to go
@@ -157,7 +301,7 @@ fn unpacked_under(archived: Archived, root: &str) -> (String, PathBuf) {
 }
 
 /// The cones the git tree `top` is checked out to, or none when it isn't
-/// sparse; refused when it's sparse by patterns other than cones.
+/// sparse or is a full cone; refused when it's sparse by patterns.
 fn cones(top: &Path) -> Result<Option<Vec<String>>, String> {
     // Unset reads false; a value git can't read is refused, never taken
     // as not sparse, which would send all of HEAD.
@@ -183,84 +327,131 @@ fn cones(top: &Path) -> Result<Option<Vec<String>>, String> {
                 .to_owned(),
         );
     }
-    // git reads a line of any other shape as a pattern, gives up on cones
-    // for the whole file, and lists its lines as written, which read as
-    // cones would send other files than the checkout holds.
-    let file = there::git_with(
-        top,
-        &["rev-parse", "--git-path", "info/sparse-checkout"],
-        None,
-        &[],
-    )
-    .map(|file| top.join(file))
-    .and_then(|file| fs::read_to_string(file).ok())
-    .ok_or("is sparse, but its sparse file can't be read")?;
-    let lines: Vec<&str> = file
-        .lines()
-        .map(str::trim_end)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .collect();
-    if let Some(line) = lines.iter().find(|line| !cone_shaped(line)) {
-        return Err(format!(
-            "is sparse by a pattern, {line}, that git can't read as a cone, so which \
-             of its files to send can't be told; git sparse-checkout set --cone says"
-        ));
-    }
-    // Without it, git checks out every folder whole: a full cone.
-    if !lines.contains(&"!/*/") {
-        return Ok(None);
-    }
-    let listed = there::git_with(
-        top,
-        &["-c", "core.quotePath=false", "sparse-checkout", "list"],
-        None,
-        &[],
-    )
-    .ok_or("is sparse, but its cones can't be read")?;
-    let mut cones = Vec::new();
-    for cone in listed.lines() {
-        // Told not to quote a name past ASCII, git still quotes one
-        // holding a quote, a backslash or a control character, which
-        // would match no path of HEAD's and so leave the cone out without
-        // a word.
-        if cone.starts_with('"') {
-            return Err(format!(
-                "has a cone, {cone}, whose name git quotes, so it can't be told"
-            ));
-        }
-        let cone = cone.trim_matches('/');
-        if !cone.is_empty() {
-            cones.push(cone.to_owned());
-        }
-    }
-    Ok(Some(cones))
+    let text = sparse_file(top).map_err(|why| format!("is sparse, but its sparse file {why}"))?;
+    cones_of(&text)
 }
 
-/// Whether `line` of a sparse file has a shape cone mode writes: every
-/// file at the top, no folder there, a folder, or none within one.
-fn cone_shaped(line: &str) -> bool {
-    // Cone mode escapes a glob character in a folder's name, so a bare
-    // one makes the line a pattern.
-    let folder = |inner: &str| {
-        let mut escaped = false;
-        let globs = inner.chars().any(|char| {
-            let bare = !escaped && matches!(char, '*' | '?' | '[');
-            escaped = !escaped && char == '\\';
-            bare
-        });
-        !inner.is_empty() && !inner.starts_with('/') && !globs
+/// The sparse file of the git tree `top`, read once, and only as a plain
+/// file no larger than [`SPARSE_LARGEST`], never through a link, so a
+/// session can't point it at a file it can't read or one that never ends.
+fn sparse_file(top: &Path) -> Result<String, String> {
+    let file = in_git_dir(top, Some("info"), "sparse-checkout")
+        .map_err(|error| format!("can't be read: {error}"))?;
+    let meta = file
+        .metadata()
+        .map_err(|error| format!("can't be read: {error}"))?;
+    if !meta.is_file() {
+        return Err("isn't a plain file".to_owned());
+    }
+    if meta.len() > SPARSE_LARGEST {
+        return Err("is larger than cone mode writes one".to_owned());
+    }
+    let mut text = String::new();
+    file.take(SPARSE_LARGEST)
+        .read_to_string(&mut text)
+        .map_err(|_| "isn't text".to_owned())?;
+    Ok(text)
+}
+
+/// The cones the sparse file `text` names, written as cone mode writes
+/// it: every file at the top, no folder there, then each folder above a
+/// cone held with its own folders taken out, and each cone, once; none
+/// for a full cone, of the top alone. git reads any other file as
+/// patterns, giving up on cones for all of it, so another is refused,
+/// naming the line by its number, never what it holds.
+fn cones_of(text: &str) -> Result<Option<Vec<String>>, String> {
+    let lines: Vec<(usize, &str)> = text
+        .lines()
+        .enumerate()
+        .map(|(at, line)| (at + 1, line.trim_end()))
+        .filter(|(_, line)| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+    let refused = |at: usize| {
+        Err(format!(
+            "is sparse by a pattern, on line {at} of its sparse file, that git can't read as \
+             a cone, so which of its files to send can't be told; git sparse-checkout set \
+             --cone says"
+        ))
     };
-    match line {
-        "/*" | "!/*/" => true,
-        _ => line
+    let mut rest = lines.iter();
+    match (rest.next(), rest.next()) {
+        (None, _) => return Err("is sparse, but its sparse file names nothing".to_owned()),
+        (Some((_, "/*")), None) => return Ok(None),
+        (Some((_, "/*")), Some((_, "!/*/"))) => {}
+        (Some((_, "/*")), Some((at, _))) | (Some((at, _)), _) => return refused(*at),
+    }
+    let mut held: Vec<String> = Vec::new();
+    let mut above: Vec<(usize, String)> = Vec::new();
+    for (at, line) in rest {
+        if let Some(inner) = line
             .strip_prefix("!/")
             .and_then(|line| line.strip_suffix("/*/"))
-            .or_else(|| {
-                line.strip_prefix('/')
-                    .and_then(|line| line.strip_suffix('/'))
-            })
-            .is_some_and(folder),
+        {
+            // A folder's own folders are taken out once it's held, once.
+            let Some(name) = unescaped(inner) else {
+                return refused(*at);
+            };
+            if !held.contains(&name) || above.iter().any(|(_, over)| *over == name) {
+                return refused(*at);
+            }
+            above.push((*at, name));
+        } else if let Some(inner) = line
+            .strip_prefix('/')
+            .and_then(|line| line.strip_suffix('/'))
+        {
+            // A folder is held once, within folders above it each held
+            // with its own folders taken out.
+            let Some(name) = unescaped(inner) else {
+                return refused(*at);
+            };
+            let within = name
+                .match_indices('/')
+                .all(|(end, _)| above.iter().any(|(_, over)| *over == name[..end]));
+            if held.contains(&name) || !within {
+                return refused(*at);
+            }
+            held.push(name);
+        } else {
+            return refused(*at);
+        }
     }
+    // A folder above a cone holds one, or git would check out its files
+    // where no cone sends them.
+    for (at, over) in &above {
+        if !held
+            .iter()
+            .any(|name| name.starts_with(&format!("{over}/")))
+        {
+            return refused(*at);
+        }
+    }
+    Ok(Some(
+        held.into_iter()
+            .filter(|name| !above.iter().any(|(_, over)| over == name))
+            .collect(),
+    ))
+}
+
+/// The folder a cone line's `inner` names, its glob characters escaped
+/// as cone mode escapes them; none when one is bare, a backslash escapes
+/// anything else, or it isn't a folder's path.
+fn unescaped(inner: &str) -> Option<String> {
+    let mut name = String::new();
+    let mut chars = inner.chars();
+    while let Some(char) = chars.next() {
+        match char {
+            '\\' => match chars.next()? {
+                escaped @ ('*' | '?' | '[' | '\\') => name.push(escaped),
+                _ => return None,
+            },
+            '*' | '?' | '[' => return None,
+            _ => name.push(char),
+        }
+    }
+    let parts_named = name
+        .split('/')
+        .all(|part| !part.is_empty() && part != "." && part != "..");
+    parts_named.then_some(name)
 }
 
 /// The paths, under `at` in the tree `tree` names, a sparse checkout of
@@ -290,55 +481,116 @@ fn within(borrowed: &Borrowed, tree: &str, at: &str, cones: &[String]) -> Option
     Some(paths)
 }
 
-/// Each tarball and borrowing repository in `scratch` that a run which
-/// ended before it could remove them left, as one killed does. Each may
-/// hold up to [`LARGEST`] bytes of the runtime folder, which is memory.
+/// A folder of one run's own in the scratch, made afresh and locked by a
+/// file in it, which `swept` asks of.
+struct Run {
+    dir: PathBuf,
+    lock: fs::File,
+}
+
+impl Run {
+    /// A folder of its own in `scratch`, made the person's alone, once
+    /// what runs that ended left there is swept.
+    fn new(scratch: &Path) -> Result<Self, String> {
+        owned(scratch)?;
+        swept(scratch);
+        let refused =
+            |error: io::Error| format!("has no folder of its own in its scratch: {error}");
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos());
+        let dir = scratch.join(format!("run-{}-{nanos}", std::process::id()));
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&dir)
+            .map_err(refused)?;
+        let locked = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(dir.join("lock"))
+            .and_then(|lock| {
+                // SAFETY: flock only asks of the file this run opened.
+                let taken = unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+                if taken == 0 {
+                    Ok(lock)
+                } else {
+                    Err(io::Error::last_os_error())
+                }
+            });
+        match locked {
+            Ok(lock) => Ok(Self { dir, lock }),
+            Err(error) => {
+                let _ = fs::remove_dir_all(&dir);
+                Err(refused(error))
+            }
+        }
+    }
+
+    /// Keep its folder, its tarball in it, locked until the process ends,
+    /// when a later run sweeps what the send left.
+    fn kept(self) {
+        let _ = self.lock.into_raw_fd();
+    }
+
+    /// Remove its folder and let its lock go.
+    fn gone(self) {
+        let _ = fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// Each run's folder in `scratch` whose run ended, as one killed does,
+/// which may hold up to [`LARGEST`] bytes of the runtime folder, which is
+/// memory; nothing else kept there, such as the uplink's turns.
 fn swept(scratch: &Path) {
     let Ok(entries) = fs::read_dir(scratch) else {
         return;
     };
     for entry in entries.flatten() {
-        let left = entry.file_name().to_str().and_then(left_by);
-        if left.is_some_and(|pid| !runs(pid)) {
-            let path = entry.path();
-            let _ = fs::remove_dir_all(&path).or_else(|_| fs::remove_file(&path));
+        let a_run = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with("run-"));
+        if a_run && ended(&entry.path()) {
+            let _ = fs::remove_dir_all(entry.path());
         }
     }
 }
 
-/// The process whose run packed `name`, when it's a tarball or a
-/// borrowing repository; none for what other parts of a run keep there,
-/// such as the uplink's turns, whose numbers aren't processes.
-fn left_by(name: &str) -> Option<u32> {
-    ["tree.tgz-", "borrowed.git-"]
-        .iter()
-        .find_map(|prefix| name.strip_prefix(prefix)?.parse().ok())
+/// Whether the run whose folder is `dir` ended: past [`NEWBORN`], its lock
+/// can be taken, or it never made one.
+fn ended(dir: &Path) -> bool {
+    let newborn = fs::symlink_metadata(dir)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|made| made.elapsed().ok())
+        .is_none_or(|age| age < NEWBORN);
+    if newborn {
+        return false;
+    }
+    let lock = fs::OpenOptions::new()
+        .write(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(dir.join("lock"));
+    match lock {
+        // SAFETY: flock only asks of the file this run opened.
+        Ok(lock) => unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 },
+        Err(error) => error.kind() == io::ErrorKind::NotFound,
+    }
 }
 
-/// Whether the process `pid` may still run: one of another user's, or
-/// one past what a pid holds, counts.
-fn runs(pid: u32) -> bool {
-    let Ok(pid) = libc::pid_t::try_from(pid) else {
-        return true;
-    };
-    // SAFETY: signal 0 only asks whether the process exists.
-    let asked = unsafe { libc::kill(pid, 0) };
-    asked == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
-}
-
-/// An empty repository of this run's own, in its scratch, that borrows a
-/// tree's objects and reads nothing else of it; gone when dropped.
+/// An empty repository in a run's folder that borrows a tree's objects
+/// and reads nothing else of it; gone when dropped.
 struct Borrowed {
     dir: PathBuf,
 }
 
 impl Borrowed {
-    fn new(top: &Path, scratch: &Path) -> Option<Self> {
+    fn new(top: &Path, run: &Run) -> Option<Self> {
         let asked = |arguments: &[&str]| there::git_with(top, arguments, None, &[]);
         let common = asked(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
         let format = asked(&["rev-parse", "--show-object-format"])?;
-        let dir = there::mine(scratch, "borrowed.git");
-        let _ = fs::remove_dir_all(&dir);
+        let dir = run.dir.join("borrowed.git");
         let made = clean()
             .args(["init", "-q", "--bare", "--template="])
             .arg(format!("--object-format={format}"))
@@ -425,391 +677,4 @@ fn clean() -> Command {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A repository in `folder` whose HEAD holds `files`, each a path and
-    /// its text.
-    fn repository(folder: &Path, files: &[(&str, &str)]) -> PathBuf {
-        let top = folder.join("tree");
-        for (path, text) in files {
-            let path = top.join(path);
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(path, text).unwrap();
-        }
-        git(&top, &["init", "-q"]);
-        git(&top, &["add", "."]);
-        git(&top, &["commit", "-q", "-m", "files"]);
-        top
-    }
-
-    fn git(top: &Path, arguments: &[&str]) -> String {
-        let output = Command::new("git")
-            .args(["-c", "user.name=Test", "-c", "user.email=test@example.org"])
-            .arg("-C")
-            .arg(top)
-            .args(arguments)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "git {arguments:?}: {output:?}");
-        String::from_utf8_lossy(&output.stdout).trim().to_owned()
-    }
-
-    /// The files `archive` holds, each by its path and text.
-    fn held(archive: &Path, into: &Path) -> Vec<(String, String)> {
-        fs::create_dir_all(into).unwrap();
-        let unpacked = Command::new("tar")
-            .arg("-xzf")
-            .arg(archive)
-            .arg("-C")
-            .arg(into)
-            .status()
-            .unwrap();
-        assert!(unpacked.success(), "what's packed is a tarball");
-        let mut files = Vec::new();
-        let mut folders = vec![into.to_path_buf()];
-        while let Some(folder) = folders.pop() {
-            for entry in fs::read_dir(folder).unwrap() {
-                let path = entry.unwrap().path();
-                if path.is_dir() {
-                    folders.push(path);
-                } else {
-                    let name = path
-                        .strip_prefix(into)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-                    files.push((name, fs::read_to_string(&path).unwrap()));
-                }
-            }
-        }
-        files.sort();
-        files
-    }
-
-    // A fenced session can write the repository's config and attributes,
-    // and each of these would have run a program as the person or changed
-    // what went: a gzip command, a smudge filter, and attributes that drop
-    // or rewrite a file, from HEAD, info/attributes and the config's own
-    // attributes file.
-    #[test]
-    fn nothing_the_repository_says_runs_or_changes_what_goes() {
-        let folder = tempfile::tempdir().unwrap();
-        let ran = folder.path().join("ran");
-        let top = repository(
-            folder.path(),
-            &[
-                (
-                    ".gitattributes",
-                    "dropped export-ignore\nstamped export-subst\nfiltered filter=planted\n",
-                ),
-                ("dropped", "kept"),
-                ("stamped", "$Format:%H$"),
-                ("filtered", "as committed"),
-                ("noted", "kept too"),
-            ],
-        );
-        let attributes = folder.path().join("attributes");
-        fs::write(&attributes, "noted export-ignore\n").unwrap();
-        fs::write(top.join(".git/info/attributes"), "* filter=planted\n").unwrap();
-        let planted = format!("touch {}; cat", ran.display());
-        git(&top, &["config", "filter.planted.smudge", &planted]);
-        git(&top, &["config", "filter.planted.required", "true"]);
-        git(&top, &["config", "tar.tar.gz.command", &planted]);
-        git(
-            &top,
-            &[
-                "config",
-                "core.attributesFile",
-                &attributes.to_string_lossy(),
-            ],
-        );
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-
-        let packed = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
-        assert!(!ran.exists(), "no command of the repository's ran");
-        let held = held(&packed.archive, &folder.path().join("unpacked"));
-        let names: Vec<&str> = held.iter().map(|(name, _)| name.as_str()).collect();
-        assert_eq!(
-            names,
-            [".gitattributes", "dropped", "filtered", "noted", "stamped"],
-            "every file of HEAD's went"
-        );
-        assert!(
-            held.contains(&("stamped".to_owned(), "$Format:%H$".to_owned())),
-            "no file was rewritten: {held:?}"
-        );
-        assert!(
-            !folder
-                .path()
-                .join("scratch")
-                .join(format!("borrowed.git-{}", std::process::id()))
-                .exists(),
-            "the borrowing repository is gone"
-        );
-    }
-
-    // The tarball waits in memory, so a tree past the size one run packs is
-    // told to narrow, never packed.
-    #[test]
-    fn a_tree_past_the_largest_is_refused_before_its_packed() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("big", "twelve bytes")]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-        let scratch = folder.path().join("scratch");
-
-        let refused = packed(&top, &commit, None, &scratch, 11).unwrap_err();
-        assert!(refused.contains("make it sparse"), "{refused}");
-        assert!(
-            fs::read_dir(&scratch).unwrap().next().is_none(),
-            "nothing is left in the scratch"
-        );
-        assert!(
-            packed(&top, &commit, None, &scratch, 12).is_ok(),
-            "twelve bytes fit"
-        );
-    }
-
-    // A cone git quotes matches no path, so it would go missing unsaid.
-    #[test]
-    fn a_cone_git_quotes_is_refused() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("odd\"name/file", "x"), ("top", "y")]);
-        git(&top, &["sparse-checkout", "set", "--cone", "odd\"name"]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-
-        let refused = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST);
-        assert!(
-            refused
-                .as_ref()
-                .unwrap_err()
-                .contains("whose name git quotes"),
-            "{refused:?}"
-        );
-    }
-
-    // Cones that hold none of HEAD's files would send an empty tree, whose
-    // run would fail far from the reason.
-    #[test]
-    fn cones_holding_no_file_are_refused() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("held/file", "x")]);
-        git(&top, &["sparse-checkout", "set", "--cone", "elsewhere"]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-
-        let refused = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST);
-        assert!(
-            refused.as_ref().unwrap_err().contains("holds no file"),
-            "{refused:?}"
-        );
-    }
-
-    // In cone mode, git checks out by patterns when its sparse file holds
-    // one that isn't a cone, and lists the file's lines, which read as
-    // cones would have sent what the checkout doesn't hold.
-    #[test]
-    fn patterns_git_cant_read_as_cones_are_refused() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("a/x", "1"), ("b/y", "2")]);
-        git(&top, &["sparse-checkout", "set", "--cone", "a"]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-        // git lists the last three as written, with no '/' or '!' to tell
-        // them from cones.
-        for patterns in [
-            "/*\n!/*/\n/a/\nb/*.y\n",
-            "b/*.y\n",
-            "tool/\n",
-            "/*\n!/*/\n/b*/\n",
-        ] {
-            fs::write(top.join(".git/info/sparse-checkout"), patterns).unwrap();
-
-            let refused = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST);
-            assert!(
-                refused
-                    .as_ref()
-                    .is_err_and(|why| why.contains("can't read as a cone")),
-                "{patterns:?}: {refused:?}"
-            );
-        }
-    }
-
-    // A sparse file of every file at the top and no folder held back is a
-    // full cone to git, which lists no cone for it; all of HEAD goes.
-    #[test]
-    fn a_full_cone_sends_every_file() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("a/x", "1"), ("top", "2")]);
-        git(&top, &["sparse-checkout", "set", "--cone", "a"]);
-        fs::write(top.join(".git/info/sparse-checkout"), "/*\n").unwrap();
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-
-        let sent = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
-        let names: Vec<String> = held(&sent.archive, &folder.path().join("out"))
-            .into_iter()
-            .map(|(name, _)| name)
-            .collect();
-        assert_eq!(names, ["a/x", "top"]);
-    }
-
-    // The limit is on what a run sends, so a large file outside the cone
-    // counts for nothing, and the same file inside it is refused.
-    #[test]
-    fn only_the_cones_files_count_toward_the_largest() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(
-            folder.path(),
-            &[("small/file", "x"), ("large/file", "well past ten bytes")],
-        );
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-        let scratch = folder.path().join("scratch");
-
-        git(&top, &["sparse-checkout", "set", "--cone", "small"]);
-        assert!(
-            packed(&top, &commit, None, &scratch, 10).is_ok(),
-            "a file outside the cone counted"
-        );
-        git(&top, &["sparse-checkout", "set", "--cone", "large"]);
-        assert!(
-            packed(&top, &commit, None, &scratch, 10).is_err_and(|why| why.contains("make it")),
-            "a file inside the cone didn't count"
-        );
-    }
-
-    // A run killed while packing leaves its tarball, up to a gigabyte of
-    // memory, and its borrowing repository; the next run sweeps them, and
-    // nothing of a run still going or anything else kept there.
-    #[test]
-    fn what_a_run_that_ended_left_is_swept() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("file", "x")]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-        let scratch = folder.path().join("scratch");
-        fs::create_dir_all(&scratch).unwrap();
-        let mut ended = Command::new("true").spawn().unwrap();
-        ended.wait().unwrap();
-        let mut going = Command::new("sleep").arg("60").spawn().unwrap();
-        let (gone, going_pid) = (ended.id(), going.id());
-        fs::write(scratch.join(format!("tree.tgz-{gone}")), "left").unwrap();
-        fs::create_dir_all(scratch.join(format!("borrowed.git-{gone}/objects"))).unwrap();
-        fs::write(scratch.join(format!("tree.tgz-{going_pid}")), "its").unwrap();
-        fs::write(scratch.join(format!("uplink-{gone}")), "").unwrap();
-
-        let packed = packed(&top, &commit, None, &scratch, LARGEST);
-        going.kill().unwrap();
-        going.wait().unwrap();
-        assert!(packed.is_ok(), "{packed:?}");
-        let mut left: Vec<String> = fs::read_dir(&scratch)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        left.sort();
-        let mut kept = vec![
-            format!("tree.tgz-{going_pid}"),
-            format!("tree.tgz-{}", std::process::id()),
-            format!("uplink-{gone}"),
-        ];
-        kept.sort();
-        assert_eq!(left, kept, "only what the ended run packed was swept");
-    }
-
-    // A name past ASCII is a cone like any other, and a repository whose
-    // path holds a colon is still borrowed whole.
-    // Others reach a scratch in a shared /tmp, so one others can read is
-    // closed, and one that's a link, as another account could plant, is
-    // refused before anything goes in it.
-    #[test]
-    fn the_scratch_is_the_persons_alone() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("file", "x")]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-        let scratch = folder.path().join("scratch");
-        fs::create_dir(&scratch).unwrap();
-        fs::set_permissions(&scratch, fs::Permissions::from_mode(0o777)).unwrap();
-
-        packed(&top, &commit, None, &scratch, LARGEST).unwrap();
-        let mode = fs::metadata(&scratch).unwrap().mode() & 0o777;
-        assert_eq!(mode, 0o700, "others can still reach it: {mode:o}");
-
-        let linked = folder.path().join("linked");
-        std::os::unix::fs::symlink(&scratch, &linked).unwrap();
-        let refused = packed(&top, &commit, None, &linked, LARGEST);
-        assert!(
-            refused.as_ref().is_err_and(|why| why.contains("a link")),
-            "{refused:?}"
-        );
-    }
-
-    #[test]
-    fn a_cone_past_ascii_goes_from_a_path_with_a_colon() {
-        let folder = tempfile::tempdir().unwrap();
-        let at = folder.path().join("a:b");
-        let top = repository(
-            &at,
-            &[("café/file", "x"), ("other/file", "y"), ("top", "z")],
-        );
-        git(&top, &["sparse-checkout", "set", "--cone", "café"]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-
-        let packed = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
-        let held = held(&packed.archive, &folder.path().join("unpacked"));
-        let names: Vec<&str> = held.iter().map(|(name, _)| name.as_str()).collect();
-        assert_eq!(names, ["café/file", "top"], "the cone and the top went");
-    }
-
-    // A gate taking a pass kept from a run of the files the session's own
-    // cones cut would take it for the whole commit.
-    #[test]
-    fn a_run_of_packed_files_keeps_no_pass() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("file", "x")]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-        let packed = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
-
-        let (at, command, read) = there::ForRun::Archived(packed).sent();
-        assert!(at.is_none(), "a pass would be kept at {at:?}");
-        assert!(
-            command.contains("tar -xzf -"),
-            "it's unpacked there: {command}"
-        );
-        assert!(read.is_some(), "the tarball is what the far side reads");
-    }
-
-    // The far side's shell reads the tarball from its input, runs in the
-    // run's folder within it, and leaves nothing once it ends.
-    #[test]
-    fn the_far_side_runs_in_its_folder_and_leaves_nothing() {
-        let folder = tempfile::tempdir().unwrap();
-        let top = repository(folder.path(), &[("zone/my tool/file", "x")]);
-        let commit = git(&top, &["rev-parse", "HEAD"]);
-        let packed = packed(
-            &top,
-            &commit,
-            Some("zone/my tool".to_owned()),
-            &folder.path().join("scratch"),
-            LARGEST,
-        )
-        .unwrap();
-        let far = folder.path().join("far");
-        fs::create_dir(&far).unwrap();
-
-        let (command, archive) = unpacked_under(packed, &far.to_string_lossy());
-        let ran = Command::new("sh")
-            .arg("-c")
-            .arg(format!("{command}pwd; cat file"))
-            .stdin(fs::File::open(archive).unwrap())
-            .output()
-            .unwrap();
-        assert!(ran.status.success(), "{ran:?}");
-        let said = String::from_utf8_lossy(&ran.stdout);
-        assert!(
-            said.ends_with("/tree/zone/my tool\nx"),
-            "it ran in its folder: {said}"
-        );
-        assert!(
-            fs::read_dir(&far).unwrap().next().is_none(),
-            "its folder is gone once it ends"
-        );
-    }
-}
+mod tests;

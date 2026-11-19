@@ -6453,6 +6453,39 @@ fn a_run_from_a_tree_off_github_sparse_without_cones_is_refused() {
     run.refused(&run.run(&[]), "sparse without cone mode");
 }
 
+// Packing gzips a whole cone here, which is thrown away when no builder
+// is lent to take it, so with none nothing is packed.
+#[test]
+fn a_run_from_a_tree_off_github_with_no_builder_lent_packs_nothing() {
+    let mut run = RunTree::new();
+    run.off_github(&[("zone/tool/Cargo.toml", "[package]")]);
+    fs::remove_file(run.offload.join("store")).unwrap();
+
+    run.refused(&run.run(&[]), "no builder is lent");
+    let scratch = run.folder.path().join("nix-offload-there");
+    let left = fs::read_dir(scratch).map_or(0, Iterator::count);
+    assert_eq!(left, 0, "something was packed");
+}
+
+// A diff in the tree's own repository read a changed file through the
+// clean filter its config and info/attributes named, as the person,
+// outside the fence of the session that could write them.
+#[test]
+fn a_run_reads_the_trees_changes_running_nothing_its_repository_says() {
+    let run = RunTree::new();
+    let ran_filter = run.folder.path().join("filtered");
+    let git_dir = run.tree.join(".git");
+    fs::create_dir_all(git_dir.join("info")).unwrap();
+    fs::write(git_dir.join("info/attributes"), "* filter=planted\n").unwrap();
+    let planted = format!("touch {}; cat", ran_filter.display());
+    run.git(&["config", "filter.planted.clean", &planted]);
+    run.git(&["config", "filter.planted.required", "true"]);
+    fs::write(run.tree.join("package.json"), "{ \"name\": \"changed\" }").unwrap();
+
+    run.refused(&run.run(&[]), "commit them first");
+    assert!(!ran_filter.exists(), "the repository's filter ran");
+}
+
 // A fenced session's changed-checks goes out as the person, and an
 // evaluator, a machine nearby or this one would evaluate as them, so with
 // `--lent-only` it goes to a lent builder, from HEAD alone, or nowhere.

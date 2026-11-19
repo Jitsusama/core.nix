@@ -1507,7 +1507,7 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         }
     }
     if let Some(bundle) = &sending.bundle {
-        let _ = fs::remove_file(bundle);
+        archived::gone(bundle);
     }
     // What ran at the commit sent, kept by nix-offload alone, so a gate
     // (the harness's host tests) can take a pass from a fenced session,
