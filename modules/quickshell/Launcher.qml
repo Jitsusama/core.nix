@@ -5672,6 +5672,9 @@ Scope {
             refreshHeld = true;
             return;
         }
+        // Any refresh made takes those held with it, so the slice after the
+        // find makes one only while one held still waits.
+        refreshHeld = false;
         keepPace(Pacing.took(Date.now(), pace));
         const refreshedAt = pace.at;
         const begun = KeyTimes.now();
@@ -11613,7 +11616,9 @@ Scope {
                 : fillFoundHome ? "home found again" : "joined again"} in`
                 + ` ${Math.round(fillFoundTook)} ms`
                 + (fillFoundBy === "slice" ? " in a slice of its own" : ` for a ${fillFoundBy}`);
-        console.info(`launcher: woke the opening's sources in ${slices.length} slices over`
+        // The find and a held refresh are slices of their own, as wakeTimes counts them.
+        console.info(`launcher: woke the opening's sources in`
+            + ` ${slices.length + (found ? 1 : 0)} slices over`
             + ` ${Math.round(span)} ms, the longest ${longest} ms, the longest wait between`
             + ` them ${waited} ms (${said})${foundSaid}`);
     }
