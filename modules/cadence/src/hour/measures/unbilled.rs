@@ -98,7 +98,7 @@ mod tests {
         );
         assert_eq!(m.now, 0.0);
         assert_eq!(m.past(), None);
-        assert!(m.behind.is_empty());
+        assert_eq!(m.behind, [] as [String; 0]);
     }
 
     #[test]
