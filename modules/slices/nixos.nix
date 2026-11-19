@@ -145,6 +145,7 @@ let
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
+  efficientCores = pkgs.callPackage ./efficient-cores.nix { };
   diskOrder = pkgs.writeShellApplication {
     name = "disk-order";
     runtimeInputs = [
@@ -575,6 +576,42 @@ in
           ];
         };
       };
+      # The processor shares one power budget among its cores, so with
+      # agents' work keeping every core busy, each runs near the same
+      # clock: on the laptop, 25 W held every core near 2.3 GHz on 19
+      # November, and one thread of Joel's ran no faster on a performance
+      # core than on an efficient one. CPU weights give his threads the
+      # time but not the clock. Holding the efficient cores' ceiling while
+      # he works leaves the performance cores, which reach 4.7 GHz, the
+      # budget; whether that buys his threads their clock is what this unit
+      # is for measuring. Starting efficient-cores-held@1600 holds each
+      # efficient core at most 1600 MHz, and stopping it frees each to its
+      # full clock, so one instance runs at a time. Nothing starts it at
+      # boot. Administrators may start and stop it (efficient-cores.rules).
+      "efficient-cores-held@" = {
+        description = "Holds the efficient cores' clock at most %i MHz";
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${lib.getExe efficientCores} hold %i";
+          ExecStop = "${lib.getExe efficientCores} free";
+          CapabilityBoundingSet = "";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          PrivateNetwork = true;
+          RestrictAddressFamilies = "none";
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          SystemCallFilter = "@system-service";
+        };
+      };
     }
     // lib.mapAttrs (_: floor: { serviceConfig.MemoryLow = "${toString floor.mib}M"; }) systemFloors
     // lib.mapAttrs' (
@@ -892,6 +929,7 @@ in
       (lib.concatMapStringsSep "\n" builtins.readFile [
         ./work-slices.rules
         ./swap-in.rules
+        ./efficient-cores.rules
       ])
       (lib.mkAfter asks.last)
     ];

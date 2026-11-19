@@ -941,6 +941,11 @@
     colouring only on a terminal, each view's JSON is the record's own slice, and a watch draws
     its view again from each model the socket tells it
   '';
+  efficient-cores-hold-only-theirs = ''
+    efficient-cores, on a stand-in sysfs, holds only the efficient cores' clock ceiling, each
+    within its own lowest and highest clock, frees each to its full clock, refuses words it doesn't
+    take, and holds nothing on a processor with no efficient cores
+  '';
   elsewhere-passes-clippy = ''
     clippy finds nothing in elsewhere or its tests
   '';

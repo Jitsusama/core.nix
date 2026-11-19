@@ -356,6 +356,17 @@
       touch $out
     '';
 
+  # efficient-cores, on a stand-in sysfs, holds only the efficient cores'
+  # ceiling, within each one's own range, frees it to each one's full clock,
+  # refuses words it doesn't take, and holds nothing where there are none.
+  efficient-cores-hold-only-theirs = pkgs.runCommandLocal "efficient-cores-hold-only-theirs" { } ''
+    mkdir work && cd work
+    ${pkgs.bash}/bin/bash ${./efficient-cores-test.sh} ${
+      lib.getExe (pkgs.callPackage ./efficient-cores.nix { })
+    }
+    touch $out
+  '';
+
   # A workstation's polkit rules, as polkitd assembles them, run in duktape,
   # polkit's own engine, after polkit's init.js: what would ask Joel is
   # refused for a process where agents' work runs, or one gone, but an

@@ -98,6 +98,23 @@ expect("a work slice's weight", weight, "command", "yes");
 expect("a work slice's weight", weight, "timed", "yes");
 expect("a work slice's weight", weight, "terminal", "yes");
 
+// So is holding the efficient cores' clock, and freeing it, but nothing
+// else of that unit's, and no unit named like it.
+function held(verb, unit) {
+  return asking("org.freedesktop.systemd1.manage-units", { verb: verb, unit: unit });
+}
+expect("holding the efficient cores", held("start", "efficient-cores-held@1600.service"),
+  "command", "yes");
+expect("freeing the efficient cores", held("stop", "efficient-cores-held@1600.service"),
+  "session", "yes");
+expect("holding the efficient cores", held("start", "efficient-cores-held@1600.service"),
+  "terminal", "yes");
+expect("masking the efficient cores' hold", held("mask", "efficient-cores-held@1600.service"),
+  "command", "no");
+expect("a hold at no speed", held("start", "efficient-cores-held@0.service"), "command", "no");
+expect("a unit named like the hold", held("start", "efficient-cores-held@1600.service.d"),
+  "command", "no");
+
 // mycelium's node holds off sleep and shutdown while it keeps work, as
 // Joel's session may; nothing else of agents' does, and it's granted
 // nothing more.

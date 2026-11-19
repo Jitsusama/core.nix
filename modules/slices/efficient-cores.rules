@@ -1,0 +1,17 @@
+// The machine's administrators, agents and the account's jobs-sorter among
+// them, may start and stop efficient-cores-held@MHZ.service without a
+// password, and do nothing else with it: modules/slices/nixos.nix says why.
+// The unit only lowers the efficient cores' clock ceiling, or frees it, so
+// the most it can do is slow the machine's slower cores. polkit's own
+// engine reads this, in the JavaScript it knows.
+polkit.addRule(function (action, subject) {
+  if (
+    action.id === "org.freedesktop.systemd1.manage-units" &&
+    /^(start|stop)$/.test(action.lookup("verb")) &&
+    /^efficient-cores-held@[1-9][0-9]*\.service$/.test(action.lookup("unit")) &&
+    subject.isInGroup("wheel")
+  ) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NOT_HANDLED;
+});
