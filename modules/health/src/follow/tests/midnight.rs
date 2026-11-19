@@ -56,6 +56,11 @@ fn a_restart_across_midnight_is_the_new_days() {
         // turned: its stop taken back before the turn, still carried.
         job("f", stopping, "turned.service", m - 3 * SECOND),
         reload("f", "systemctl", m - 8 * SECOND),
+        // lost: restarted before midnight and taken back by a tool's
+        // reload before the turn, which writes the old day without it.
+        job("j", stopping, "lost.service", m - 3 * SECOND),
+        job("j", started, "lost.service", m - 2_900_000),
+        reload("j", "systemctl", m - 8 * SECOND),
     ];
     let heard_after_the_turn = [
         job("b", stopping, "tooled.service", m + SECOND),
@@ -96,6 +101,9 @@ fn a_restart_across_midnight_is_the_new_days() {
         job("i", started, "regiven.service", m - 5 * SECOND),
         reload("i", "sd-switch", m - 7 * SECOND),
         job("i", started, "regiven.service", m + SECOND),
+        // lost: a switch's reload heard after the turn has nothing left to
+        // give back, so it is in neither day.
+        reload("j", "sd-switch", m - 7 * SECOND),
     ];
     let turn = [warning(m + 1)];
     for line in heard_before_the_turn

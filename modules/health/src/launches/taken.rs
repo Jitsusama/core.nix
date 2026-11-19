@@ -5,7 +5,7 @@
 
 use super::{
     Launches, MOST_RELOADS, RELOADED_WITHIN, RESTART_WITHIN, Ready, Reload, Restarting, millis,
-    ready,
+    ready, written_before,
 };
 use crate::journal::Entry;
 
@@ -114,8 +114,9 @@ impl Launches {
 
     /// The stops taken back still waiting for their start, within
     /// [`RESTART_WITHIN`] before `midnight`, for the new day to carry as it
-    /// does those in `stopping`. A restart taken back is the old day's,
-    /// and stays behind with it.
+    /// does those in `stopping`. A restart taken back stays behind with
+    /// the old day, which is written without it, so a switch's reload heard
+    /// after midnight gives it back to neither day.
     pub(super) fn taken_across(&self, midnight: i64) -> Vec<Taken> {
         self.taken
             .iter()
@@ -145,6 +146,9 @@ impl Launches {
             return;
         };
         let taken = &mut self.taken[at];
+        if written_before(&taken.boot, taken.stopped, entry) {
+            return;
+        }
         match super::timed(&taken.boot, taken.stopped, taken.stopped_at, entry) {
             Some(gone) => {
                 taken.timed = Some(Timed {
@@ -171,7 +175,7 @@ impl Launches {
     pub(super) fn start_taken(&mut self, entry: &Entry) {
         if let Some(at) = self
             .untimed(entry)
-            .filter(|&at| self.taken[at].stopped <= entry.since_boot)
+            .filter(|&at| !written_before(&self.taken[at].boot, self.taken[at].stopped, entry))
         {
             self.taken.remove(at);
         }

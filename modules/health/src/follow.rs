@@ -426,8 +426,9 @@ impl Follower {
 
     /// Take one line of the source's. A line of a new day writes
     /// the old one and starts the new, which sees nothing gone wrong yet,
-    /// so a fault still seen counts once in it too; one of a day already
-    /// written is left out, since that day is done.
+    /// so a fault still seen counts once in it too. Of one of a day already
+    /// written, only its stops, starts and reloads are taken, for the new
+    /// day's restarts (`Launches::before`), since that day is done.
     ///
     /// # Errors
     ///

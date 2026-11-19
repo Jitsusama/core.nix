@@ -129,8 +129,9 @@ pub struct Launches {
     /// The stops and restarts a tool's reload took back, or made its own as
     /// they were heard, until a switch's reload heard later says they were
     /// its own, at most [`MOST_RELOADS`]. A new day carries the stops, as
-    /// it does those in `stopping`; a restart taken back stays the old
-    /// day's, as one timed does.
+    /// it does those in `stopping`. A restart taken back stays behind with
+    /// the old day, which is written without it, so one that a switch's
+    /// reload heard only after midnight would give back is in neither day.
     #[serde(skip)]
     taken: Vec<Taken>,
 }
@@ -245,9 +246,7 @@ impl Launches {
                 if self
                     .stopping
                     .get(&entry.thing)
-                    .is_some_and(|(boot, stopped, _)| {
-                        *boot == entry.boot && *stopped <= entry.since_boot
-                    })
+                    .is_some_and(|(boot, stopped, _)| !written_before(boot, *stopped, entry))
                 {
                     self.stopping.remove(&entry.thing);
                 }
@@ -298,6 +297,13 @@ impl Launches {
                 }
             }
             Some(Job::Started) => {
+                if self
+                    .stopping
+                    .get(unit)
+                    .is_some_and(|(boot, stopped, _)| written_before(boot, *stopped, entry))
+                {
+                    return true;
+                }
                 let Some((boot, stopped, stopped_at)) = self.stopping.remove(unit) else {
                     self.time_taken(entry);
                     return true;
@@ -352,7 +358,11 @@ impl Launches {
     /// then taken back as the tool's own, until a switch's reload heard
     /// after it says the stop was the switch's after all (`taken.rs`). One
     /// heard after the restart's ready line, or after the day it was timed
-    /// in, comes too late, and the restart stays counted as a switch's.
+    /// in, comes too late, and the restart stays counted as a switch's. A
+    /// switch's reload heard only after the day a restart taken back was
+    /// timed in comes too late as well: that day was written without it,
+    /// so it is in neither day, as one wholly before midnight heard after
+    /// it is (`before`).
     fn keep_reload(&mut self, switch: bool, entry: &Entry) {
         let kept = self.reloaded.entry(switch).or_default();
         kept.retain(|reload| {
@@ -629,9 +639,10 @@ fn ready_in(message: &str) -> Option<u64> {
 /// `stopped_at` on the wall's was gone until the start `entry`, in
 /// microseconds, or none when that start ends no restart. A restart is
 /// timed on the boot's clock, which no step of the wall clock moves; a
-/// start before its stop on it was heard out of order, or read without the
-/// boot's stamp. That clock stands still while the machine sleeps, though,
-/// so the wall clock bounds it too, as `restarts_itself` does: a service
+/// start before its stop on it was read without the boot's stamp, as one
+/// written before and heard after ends nothing (`written_before`). That
+/// clock stands still while the machine sleeps, though, so the wall clock
+/// bounds it too, as `restarts_itself` does: a service
 /// stopped before a sleep and started after it wasn't restarted. One
 /// stepped forward past the window reads as a sleep, which the two clocks
 /// can't tell apart. A stop read without the boot's stamp, at 0, can't
@@ -645,6 +656,16 @@ fn timed(boot: &str, stopped: i64, stopped_at: i64, entry: &Entry) -> Option<i64
         && (0..=RESTART_WITHIN).contains(&gone)
         && entry.at.saturating_sub(stopped_at) <= RESTART_WITHIN)
         .then_some(gone)
+}
+
+/// Whether the start `entry` was written before the stop in `boot` at
+/// `stopped` on the boot's clock and heard after it, as a replay ordered by
+/// the wall clock or a follower that lags can give it: it was the run
+/// before the stop, so it ends nothing, on either side of midnight. One
+/// without the boot's stamp, at 0, says nothing of when, and ends the stop
+/// it can't time.
+fn written_before(boot: &str, stopped: i64, entry: &Entry) -> bool {
+    boot == entry.boot && entry.since_boot > 0 && entry.since_boot < stopped
 }
 
 /// What a ready line says of a restart waiting for one.
