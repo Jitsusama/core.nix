@@ -308,6 +308,8 @@ QtObject {
         check("the outermost step is kept, the steps below it left", said(top), "1");
         check("its rows each gone", keptWith.join(" "), "agents:0");
         check("as it hands them back", read(top.steps.slice(0, 1)), "agents=Agents[]");
+        check("the steps below it as they were", read(top.steps.slice(1)),
+            "s1=working[stop look]");
         check("and what it was given is as it was", read(steps),
             "agents=Agents[s1] s1=working[stop look]");
         keptWith = [];
@@ -334,16 +336,29 @@ QtObject {
         check("a step left is left", answer(nothing), "left");
         check("the outermost alone, kept with its rows gone, is made",
             Held.answer({ steps: [steps[0]], leave: 0, all: false }, alone), "made");
+        check("the outermost kept, with steps below it left, is left",
+            Held.answer(spentTop, top), "left");
 
         // A step left by itself goes on no way back, and the way back's
-        // last place, where Joel stepped in from, is now where he is, so
-        // it goes too: Ctrl+O would go nowhere, and show it as it was.
-        const at = places => places.join("/");
-        const jumps = [{ held: ["home"] }, { held: ["agents"] }, { held: ["agents"] }];
-        check("a way back to where a leave landed goes",
-            Held.unjumped(jumps, "agents", one => at(one.held)).map(one => at(one.held))
-                .join(" "), "home");
+        // last places, where Joel stepped in from, are now where he is, so
+        // they go too, as the place used last does: Ctrl+O or Tab would go
+        // nowhere, and show it as it was. Where he is reads as it did
+        // before the leave and as it does now, since a row is remade as
+        // offered now, and may be renamed so.
+        const at = one => one.held.join("/");
+        const jumped = places => places.map(held => ({ held: [held] }));
+        const after = (jumps, last, landed) => {
+            const now = Held.afterLeave({ jumps: jumped(jumps), last: jumped([last])[0] },
+                landed, at);
+            return `${now.jumps.map(at).join(" ")}; ${now.last === null ? "none" : at(now.last)}`;
+        };
+        check("a way back and a place used last where a leave landed go",
+            after(["home", "agents", "agents"], "agents", ["agents"]), "home; none");
+        check("only the last of the way back",
+            after(["agents", "home", "agents"], "agents", ["agents"]), "agents home; none");
+        check("where it landed as it read before it was remade",
+            after(["home", "Agents"], "Agents", ["Agents", "Agents Now"]), "home; none");
         check("one to elsewhere stays",
-            Held.unjumped(jumps, "quests", one => at(one.held)).length, 3);
+            after(["home", "agents"], "agents", ["quests"]), "home agents; agents");
     }
 }
