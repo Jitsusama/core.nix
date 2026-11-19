@@ -130,35 +130,45 @@ QtObject {
         if (forgot !== forgetting)
             failures.push(`a share's start forgets the ways back: ${forgot}, not ${forgetting}`);
 
-        // While a source hides, a place holding one of its steps can't be
-        // gone back to, from any way back: one recorded after the share
-        // began but before the source's rows were remade holds the name
-        // from before it, and a source that never says a share began
-        // (Copies alone) forgets nothing (Launcher.qml's jump, toLastPlace
-        // and tagBack). Those of a source showing, and a step from none,
-        // stay in order.
+        // While a source hides, no way back goes to a place holding a row
+        // it made showing, as a step or among a step's rows, which the
+        // place draws as they were: one recorded after the share began but
+        // before the source's rows were remade holds the name from before
+        // it, and a source that never says a share began (Copies alone)
+        // forgets nothing (Launcher.qml's jump, toLastPlace and tagBack).
+        // Each place is held as the launcher holds it: a collection step is
+        // `from` its source, and a source's own row says it was made showing
+        // (`shownBy`) wherever it's held, as For You holds an ask under Now.
+        // A place whose rows were made hidden, a showing source's, and one
+        // of no source stay, in order.
         const hiding = { hiding: true };
         const showing = { hiding: false };
-        const place = (name, from) => ({ held: [{ row: { key: name, name, from } }],
-            here: { typed: "" } });
-        // The ask's step under its collection's, as stepping into Asks holds it.
-        const asked = { held: [{ row: { key: "collection:Asks", name: "Asks" } },
-            { row: { key: "ask", name: "the bank's password", from: hiding } }],
-            here: { typed: "" } };
-        const music = place("music", showing);
-        const home = place("home", undefined);
-        const gone = Steady.hiddenGone({ back: [music, asked, home], ahead: [asked, music],
-            tags: [home, asked], last: asked });
-        const keys = list => list.map(one => one.held[0].row.key).join(" ");
-        const hidden = JSON.stringify([keys(gone.back), keys(gone.ahead), keys(gone.tags),
+        const asks = { row: { key: "collection:Asks", name: "Asks", from: hiding }, rows: [] };
+        const copies = { row: { key: "collection:Copies", name: "Copies", from: hiding } };
+        const asked = { row: { key: "ask", name: "the bank's password", shownBy: hiding },
+            rows: [] };
+        const place = (name, held) => ({ name, held, here: { typed: "" } });
+        const inAsks = place("inAsks", [asks, asked]);
+        const forYou = place("forYou", [{ row: { key: "collection:Now", from: {} }, rows: [] },
+            asked]);
+        const listed = place("listed", [Object.assign({ rows: [{ key: "copy", name: "hunter2",
+            shownBy: hiding }] }, copies)]);
+        const remade = place("remade", [Object.assign({ rows: [{ key: "copy",
+            name: "A copied text" }] }, copies)]);
+        const music = place("music", [{ row: { key: "song", shownBy: showing }, rows: [] }]);
+        const home = place("home", [{ row: { key: "home" } }]);
+        const gone = Steady.hiddenGone({ back: [music, inAsks, forYou, remade, home],
+            ahead: [listed, music], tags: [home, forYou, remade], last: inAsks });
+        const names = list => list.map(one => one.name).join(" ");
+        const hidden = JSON.stringify([names(gone.back), names(gone.ahead), names(gone.tags),
             gone.last]);
-        const hiddenWant = JSON.stringify(["music home", "music", "home", null]);
+        const hiddenWant = JSON.stringify(["music remade home", "music", "home remade", null]);
         if (hidden !== hiddenWant)
-            failures.push(`a hiding source's places can't be gone back to: ${hidden}, `
+            failures.push(`a place showing what hides now can't be gone back to: ${hidden}, `
                 + `not ${hiddenWant}`);
-        const kept = Steady.hiddenGone({ back: [music], ahead: [], tags: [], last: home });
-        if (kept.last !== home || kept.back[0] !== music)
-            failures.push("a place of a showing source or none is gone back to as it was");
+        const kept = Steady.hiddenGone({ back: [music], ahead: [], tags: [], last: remade });
+        if (kept.last !== remade || kept.back[0] !== music)
+            failures.push("a place showing nothing that hides now is gone back to as it was");
 
         // A row that arrives while the list is shown comes at the end, out
         // of the place a tree would give it, so it reads as it would ranked
