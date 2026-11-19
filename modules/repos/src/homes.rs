@@ -81,8 +81,12 @@ impl Homes {
                     return None;
                 }
                 let file = self.file.display();
-                let said =
-                    format!("repos: couldn't write Code's homes to {file} ({why}); the last stay");
+                // Begun with <4>, as the other daemons begin a warning, so the
+                // journal keeps it as one.
+                let said = format!(
+                    "<4>repos: couldn't write Code's homes to {file} ({why}); \
+                     the last stay"
+                );
                 self.failing = Some(why);
                 Some(said)
             }

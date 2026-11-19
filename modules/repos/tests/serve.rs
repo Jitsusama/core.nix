@@ -158,9 +158,8 @@ fn homes_under(folder: &Path) -> Vec<PathBuf> {
         if kind.is_dir() {
             found.extend(homes_under(&path));
         } else if kind.is_file()
-            && fs::read(&path).is_ok_and(|bytes| {
-                String::from_utf8_lossy(&bytes).contains("code/#repo=")
-            })
+            && fs::read(&path)
+                .is_ok_and(|bytes| String::from_utf8_lossy(&bytes).contains("code/#repo="))
         {
             found.push(path);
         }
