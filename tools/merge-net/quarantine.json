@@ -160,10 +160,11 @@
   {
     "at": 1795100710,
     "commit": "05baacbc79b3320f215a1154a1be303b0646cef2",
-    "due": "2026-11-21",
-    "owner_pr": 5650,
-    "owner_session": "orchestrator",
-    "reason": "has been broken since #5650, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
+    "due": "2026-11-19",
+    "due_why": "Its owner, the agent gate's, fixes it by 2026-11-19 23:00 UTC: at #5650's merge the Mac failed only on the network (no rustc fetched, then no DNS), and since then only ssh-tpm-agent-refuses-agents fails, two of its gate tests getting 'function not implemented' on the Mac's Linux builder",
+    "owner_pr": 5551,
+    "owner_session": "ISXEG8",
+    "reason": "ssh-tpm-agent-refuses-agents fails on the Mac's Linux builder since #5551's gate tests; #5650 was named first, but its runs failed on the network",
     "test": "a-macs-checks-since-f3ab90b8f6a06b477efacbc2e5ef3ca78fc98e8a"
   }
 ]
