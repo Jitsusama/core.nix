@@ -34,14 +34,14 @@
 //! ...)`, and point `http_proxy` at the same port, and carry on.
 
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::http;
 use crate::judge::Host;
@@ -181,8 +181,11 @@ const MOST_PLAIN_BODY: usize = 64 * 1024 * 1024;
 /// How long a plain request's host, or its client, may take no bytes or
 /// give none before the relay gives up on them.
 const QUIET: Duration = Duration::from_secs(300);
-/// How long a refused client may go on sending before it's closed.
+/// How long, in all, a refused client may go on sending before it's closed.
 const LINGER: Duration = Duration::from_secs(2);
+/// The most interim answers, such as 103, a host may give before its
+/// answer, so a host can't hold the relay with them for ever.
+const MOST_INTERIM: usize = 8;
 
 /// Carry one plain HTTP request, `head` with `read` read past it,
 /// straight out, and its answer back. The request is read whole, body
@@ -191,6 +194,7 @@ const LINGER: Duration = Duration::from_secs(2);
 /// answer is copied back, so nothing more the client sends ever reaches
 /// the host, whether or not the host honours the close.
 fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
+    let _ = client.set_read_timeout(Some(QUIET));
     let _ = client.set_write_timeout(Some(QUIET));
     let (host, port, path) = match absolute(&head.target) {
         Ok(found) => found,
@@ -203,27 +207,16 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
             "GitHub is reached only over HTTPS, through the door",
         );
     }
-    // The body is read before anything goes on, so a client waiting to be
-    // told to go on is told here, as the host would have.
-    match head.header("expect") {
-        None if head.count("expect") == 0 => {}
-        Some(expected) if expected.eq_ignore_ascii_case("100-continue") => {
-            if client.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").is_err() {
-                return;
-            }
-        }
+    let expects = match head.header("expect") {
+        None if head.count("expect") == 0 => false,
+        Some(expected) if expected.eq_ignore_ascii_case("100-continue") => true,
         _ => return refuse(client, 417, "the relay expects only 100-continue"),
-    }
-    let body = match http::read_body(&mut client, &mut read, head, MOST_PLAIN_BODY) {
-        Ok(body) => body,
-        Err(unread) => {
-            let status = if matches!(unread, http::Unread::TooLarge) {
-                413
-            } else {
-                400
-            };
-            return refuse(client, status, &unread_said(&unread));
-        }
+    };
+    // A body that will be refused is refused before the client is told
+    // to send it.
+    let framed = match http::framing(head, MOST_PLAIN_BODY) {
+        Ok(framed) => framed,
+        Err(unread) => return refuse_unread(client, &unread),
     };
     let authority = if port == 80 {
         host.to_owned()
@@ -234,6 +227,16 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
         let said = format!("{authority} couldn't be reached");
         return refuse(client, 502, &said);
     };
+    // The body is read before anything goes on, so a client waiting to be
+    // told to go on is told here, once the host is reached, as the host
+    // would have told it.
+    if expects && client.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").is_err() {
+        return;
+    }
+    let body = match http::read_framed(&mut client, &mut read, framed, MOST_PLAIN_BODY) {
+        Ok(body) => body,
+        Err(unread) => return refuse_unread(client, &unread),
+    };
     let _ = far.set_read_timeout(Some(QUIET));
     let _ = far.set_write_timeout(Some(QUIET));
     let headers = passed_on(&head.headers, &authority);
@@ -241,37 +244,108 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
     // answer still comes back.
     let asked = http::write_request(&mut far, &head.method, &path, &headers, &body).is_ok();
     let mut back = Vec::new();
+    let mut interim = 0;
     let answer = loop {
         match http::read_answer(&mut far, &mut back) {
             // The relay told the client to go on itself, if it asked.
-            Ok(answer) if (100..200).contains(&answer.status) => {}
+            Ok(answer) if (100..200).contains(&answer.status) => {
+                interim += 1;
+                if interim > MOST_INTERIM {
+                    let said = format!("{authority} gave more than {MOST_INTERIM} interim answers");
+                    return refuse(client, 502, &said);
+                }
+            }
             Ok(answer) => break answer,
             Err(_) if !asked => {
                 let said = format!("{authority} closed before it was asked");
                 return refuse(client, 502, &said);
             }
             Err(unread) => {
-                let said = format!("{authority} gave no answer: {}", unread_said(&unread));
+                let said = format!("{authority} {}", far_said(&unread));
                 return refuse(client, 502, &said);
             }
         }
     };
-    pass_back(&mut client, &mut far, &answer, &back, &head.method);
+    let framed = match answer_body(&answer, &head.method) {
+        Ok(framed) => framed,
+        Err(why) => return refuse(client, 502, &format!("{authority} gave {why}")),
+    };
+    pass_back(&mut client, &mut far, &answer, back, framed);
+    drop(far);
     close(client);
 }
 
+/// How an answer's body is framed, as the relay passes it back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Back {
+    /// No body, whatever the head says.
+    Empty,
+    /// This many bytes.
+    Length(u64),
+    /// Chunks, to their last.
+    Chunked,
+    /// Whatever comes until the host closes.
+    ToClose,
+}
+
+/// How the body of `answer` to a `method` request is framed, as HTTP/1.1
+/// says, or why it can't be told.
+fn answer_body(answer: &http::Answer, method: &str) -> Result<Back, &'static str> {
+    if method == "HEAD" || matches!(answer.status, 204 | 304) {
+        return Ok(Back::Empty);
+    }
+    let codings: Vec<String> = answer
+        .headers
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case("transfer-encoding"))
+        .flat_map(|(_, value)| {
+            String::from_utf8_lossy(value)
+                .split(',')
+                .map(|coding| coding.trim().to_ascii_lowercase())
+                .filter(|coding| !coding.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    if let Some(last) = codings.last() {
+        // Chunks last frame the body; any other ends it where the host closes.
+        return Ok(if last == "chunked" {
+            Back::Chunked
+        } else {
+            Back::ToClose
+        });
+    }
+    let lengths = answer
+        .headers
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+        .count();
+    if lengths == 0 {
+        return Ok(Back::ToClose);
+    }
+    answer
+        .header("content-length")
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Back::Length)
+        .ok_or("an answer whose length isn't one number")
+}
+
 /// Pass `answer` back to `client`, told the connection closes, then its
-/// body: `back`, read past its head, and the rest of `far`, cut at the
-/// length it names, so nothing past the one answer comes back and the
-/// client needn't wait on a host that holds the connection open.
+/// body, framed as `framed`: `back`, read past its head, and the rest of
+/// `far`, cut where its framing ends, so nothing past the one answer
+/// comes back and the client needn't wait on a host that holds the
+/// connection open.
 fn pass_back(
     client: &mut TcpStream,
     far: &mut TcpStream,
     answer: &http::Answer,
-    back: &[u8],
-    method: &str,
+    mut back: Vec<u8>,
+    framed: Back,
 ) {
     let named = connection_names(&answer.headers);
+    let encoded = answer
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("transfer-encoding"));
     let mut head = format!("HTTP/1.1 {} {}\r\n", answer.status, answer.reason).into_bytes();
     for (name, value) in &answer.headers {
         let lower = name.to_ascii_lowercase();
@@ -281,7 +355,9 @@ fn pass_back(
             lower.as_str(),
             "connection" | "proxy-connection" | "keep-alive"
         ) || named.contains(&lower);
-        if hop && !framing {
+        // Encoded, the body's length isn't the one a length header says.
+        let overruled = encoded && lower == "content-length";
+        if (hop && !framing) || overruled {
             continue;
         }
         head.extend_from_slice(name.as_bytes());
@@ -293,32 +369,26 @@ fn pass_back(
     if client.write_all(&head).is_err() {
         return;
     }
-    let bodiless = method == "HEAD" || matches!(answer.status, 204 | 304);
-    let length = if bodiless {
-        Some(0)
-    } else if answer
-        .headers
-        .iter()
-        .any(|(name, _)| name.eq_ignore_ascii_case("transfer-encoding"))
-    {
-        // Chunks end where the host closes, which it was asked to.
-        None
-    } else {
-        answer
-            .header("content-length")
-            .and_then(|value| value.parse::<u64>().ok())
-    };
-    let Some(length) = length else {
-        if client.write_all(back).is_ok() {
-            let _ = io::copy(far, client);
+    match framed {
+        Back::Empty => {}
+        Back::Length(length) => {
+            let held = usize::try_from(length)
+                .unwrap_or(usize::MAX)
+                .min(back.len());
+            if client.write_all(&back[..held]).is_ok() {
+                let _ = io::copy(&mut far.take(length - held as u64), client);
+            }
         }
-        return;
-    };
-    let held = usize::try_from(length)
-        .unwrap_or(usize::MAX)
-        .min(back.len());
-    if client.write_all(&back[..held]).is_ok() {
-        let _ = io::copy(&mut io::Read::take(far, length - held as u64), client);
+        // Copied a chunk at a time to the last, which a client cut short
+        // by a host failing midway sees as a body cut short.
+        Back::Chunked => {
+            let _ = http::copy_chunks(far, &mut back, client);
+        }
+        Back::ToClose => {
+            if client.write_all(&back).is_ok() {
+                let _ = io::copy(far, client);
+            }
+        }
     }
 }
 
@@ -328,17 +398,54 @@ fn refuse(mut client: TcpStream, status: u16, said: &str) {
     close(client);
 }
 
-/// Close `client`, taking what it still sends for a moment first, so a
-/// client still sending its body hears the answer rather than a reset.
+/// Tell `client` why its request couldn't be read, and close it.
+fn refuse_unread(client: TcpStream, unread: &http::Unread) {
+    let status = if matches!(unread, http::Unread::TooLarge) {
+        413
+    } else {
+        400
+    };
+    refuse(client, status, &unread_said(unread));
+}
+
+/// Close `client`, taking what it still sends for [`LINGER`] in all
+/// first, so a client still sending its body hears the answer rather
+/// than a reset, however slowly it sends.
 fn close(mut client: TcpStream) {
     let _ = client.shutdown(Shutdown::Write);
-    let _ = client.set_read_timeout(Some(LINGER));
-    let mut sink = io::sink();
-    let _ = io::copy(
-        &mut io::Read::take(&mut client, MOST_PLAIN_BODY as u64),
-        &mut sink,
-    );
+    let until = Instant::now() + LINGER;
+    let mut sink = [0u8; 16 * 1024];
+    let mut taken = 0;
+    while taken < MOST_PLAIN_BODY {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() || client.set_read_timeout(Some(left)).is_err() {
+            break;
+        }
+        match client.read(&mut sink) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => taken += read,
+        }
+    }
     let _ = client.shutdown(Shutdown::Both);
+}
+
+/// What a host that failed its answer is said to have done, after its
+/// name.
+fn far_said(unread: &http::Unread) -> String {
+    match unread {
+        http::Unread::Gone => "closed without answering".to_owned(),
+        http::Unread::Malformed(why) => format!("gave {why}"),
+        http::Unread::TooLarge => "gave an answer too large to read".to_owned(),
+        http::Unread::Io(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            ) =>
+        {
+            format!("said nothing for {} s", QUIET.as_secs())
+        }
+        http::Unread::Io(error) => format!("couldn't be read: {error}"),
+    }
 }
 
 /// What a request that couldn't be read is told.

@@ -131,14 +131,20 @@ fn take(stream: &mut impl Read, buffer: &mut Vec<u8>, wanted: usize) -> Result<V
     Ok(buffer.drain(..wanted).collect())
 }
 
-/// The body `head` says follows, read whole from `buffer` and `stream`,
-/// at most `most` bytes, chunks joined.
-pub fn read_body(
-    stream: &mut impl Read,
-    buffer: &mut Vec<u8>,
-    head: &Head,
-    most: usize,
-) -> Result<Vec<u8>, Unread> {
+/// How a request's body is framed, as its head says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Framing {
+    /// No body.
+    Empty,
+    /// A body of this many bytes.
+    Length(usize),
+    /// A chunked body.
+    Chunked,
+}
+
+/// How the body `head` says follows is framed, refusing one read two ways
+/// or one past `most` bytes before any of it is read.
+pub fn framing(head: &Head, most: usize) -> Result<Framing, Unread> {
     let lengths = head.count("content-length");
     let encodings = head.count("transfer-encoding");
     if lengths > 0 && encodings > 0 {
@@ -155,10 +161,10 @@ pub fn read_body(
                 "a transfer encoding other than chunked".to_owned(),
             ));
         }
-        return chunks(stream, buffer, most);
+        return Ok(Framing::Chunked);
     }
     if lengths == 0 {
-        return Ok(Vec::new());
+        return Ok(Framing::Empty);
     }
     let length: usize = head
         .header("content-length")
@@ -167,7 +173,75 @@ pub fn read_body(
     if length > most {
         return Err(Unread::TooLarge);
     }
-    take(stream, buffer, length)
+    Ok(Framing::Length(length))
+}
+
+/// The body `head` says follows, read whole from `buffer` and `stream`,
+/// at most `most` bytes, chunks joined.
+pub fn read_body(
+    stream: &mut impl Read,
+    buffer: &mut Vec<u8>,
+    head: &Head,
+    most: usize,
+) -> Result<Vec<u8>, Unread> {
+    let framed = framing(head, most)?;
+    read_framed(stream, buffer, framed, most)
+}
+
+/// A body framed as `framed`, read whole from `buffer` and `stream`, at
+/// most `most` bytes, chunks joined.
+pub fn read_framed(
+    stream: &mut impl Read,
+    buffer: &mut Vec<u8>,
+    framed: Framing,
+    most: usize,
+) -> Result<Vec<u8>, Unread> {
+    match framed {
+        Framing::Empty => Ok(Vec::new()),
+        Framing::Length(length) => take(stream, buffer, length),
+        Framing::Chunked => chunks(stream, buffer, most),
+    }
+}
+
+/// Copy one chunked body from `buffer` and `stream` to `out` as it was
+/// sent, sizes, chunks and trailers, and stop at its end, so whatever the
+/// sender says after it is never copied.
+pub fn copy_chunks(
+    stream: &mut impl Read,
+    buffer: &mut Vec<u8>,
+    out: &mut impl Write,
+) -> Result<(), Unread> {
+    loop {
+        let sized = line(stream, buffer)?;
+        write!(out, "{sized}\r\n")?;
+        let size = sized.split(';').next().unwrap_or_default().trim();
+        let size = u64::from_str_radix(size, 16)
+            .map_err(|_| Unread::Malformed("a chunk whose size isn't one".to_owned()))?;
+        if size == 0 {
+            loop {
+                let trailer = line(stream, buffer)?;
+                write!(out, "{trailer}\r\n")?;
+                if trailer.is_empty() {
+                    return out.flush().map_err(Unread::Io);
+                }
+            }
+        }
+        let held = usize::try_from(size)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        out.write_all(&buffer[..held])?;
+        buffer.drain(..held);
+        let left = size - held as u64;
+        if io::copy(&mut (&mut *stream).take(left), out)? < left {
+            return Err(Unread::Malformed("a body cut short".to_owned()));
+        }
+        if !take(stream, buffer, 2)?.eq(b"\r\n") {
+            return Err(Unread::Malformed(
+                "a chunk not ended by its line".to_owned(),
+            ));
+        }
+        out.write_all(b"\r\n")?;
+    }
 }
 
 /// A chunked body, joined.
@@ -417,6 +491,40 @@ mod tests {
         assert!(
             matches!(read(b"GET / HTTP/1.0\r\n\r\n"), Err(Unread::Malformed(_))),
             "HTTP/1.0 is refused"
+        );
+    }
+
+    #[test]
+    fn a_chunk_sized_near_the_largest_number_is_too_large_not_wrapped() {
+        // 1024 is the most; a size that would wrap a sum past it reads as
+        // too large, never as a small body.
+        assert!(
+            matches!(
+                read(
+                    b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n\
+                      2\r\nab\r\nffffffffffffffff\r\n"
+                ),
+                Err(Unread::TooLarge)
+            ),
+            "a wrapping chunk size wasn't refused"
+        );
+    }
+
+    #[test]
+    fn a_chunked_body_is_copied_as_sent_and_nothing_after_it() {
+        let mut stream = &b"de\r\n0\r\nX-T: 1\r\n\r\nHTTP/1.1 200 OK\r\n"[..];
+        let mut buffer = b"3\r\nabc\r\n2;x=y\r\n".to_vec();
+        let mut out = Vec::new();
+        copy_chunks(&mut stream, &mut buffer, &mut out).expect("copied");
+        assert_eq!(out, b"3\r\nabc\r\n2;x=y\r\nde\r\n0\r\nX-T: 1\r\n\r\n");
+        let mut cut = &b""[..];
+        let mut short = b"5\r\nab".to_vec();
+        assert!(
+            matches!(
+                copy_chunks(&mut cut, &mut short, &mut Vec::new()),
+                Err(Unread::Malformed(_))
+            ),
+            "a chunk cut short isn't said"
         );
     }
 
