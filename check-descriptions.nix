@@ -1071,11 +1071,13 @@
   every-skidding-walk-is-refused = ''
     the margin's animals' stride rule refuses the cat's own strides out of order, alone, with a
     pair never stepping, after a pose that isn't a stride, undrawn, and none at all, each by
-    its reason; refuses a pose planted with a stray pixel or too few; and reads the cat's code
-    as no walk when it strides by anything but WALKS's quoted words, a word holds a space or
-    mismatched quotes, or either list is assigned to or named otherwise, though as its walk
-    when they're only spaced, quoted or commented otherwise, a longer name holds theirs, and
-    STRIDING is only read, above its declaration or below; and reads past a copy commented out
+    its reason; refuses a pose planted with a stray pixel or just over 15% fewer, though not
+    one just under; and reads the cat's code as no walk when it strides by anything but
+    WALKS's quoted words, a word holds a space or mismatched quotes, either list is assigned
+    to, by a bracketed or wrapped key too, or named otherwise, or STRIDING is declared twice,
+    though as its walk when they're only spaced, quoted or commented otherwise, a longer name
+    or another's property holds theirs, and STRIDING is only read, above its declaration or
+    below; and reads past a copy commented out
   '';
   every-suppression-says-why = ''
     every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or
