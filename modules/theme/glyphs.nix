@@ -1439,7 +1439,7 @@ in
   # peeks in (WCJQSG, d62dc771). Sitting faces him: a flat crown, its ears
   # flaring off it and hanging down to the muzzle either side where the
   # cat's stand in points, and its tail up beside it. It's stockier than the cat,
-  # so its poses are held to its own sitting. Its glyph is the dog's, its
+  # so its poses are held to its own sitting. Its glyph is the dog glyph, its
   # poses sharing it as the cat's share the paw.
   puppySitting = {
     glyph = nerd "f0a43";
@@ -1477,7 +1477,7 @@ in
   # cat's are: both pairs apart (A), the forelegs gathered (C), both
   # gathered (B), then the forelegs apart again (D), the hind pair stepping
   # a stride behind the fore, and its tail's tip swaying a cell every two.
-  # Its round head and hanging ear, on stubbier legs, keep it from reading
+  # Its round head and hanging ear, on thicker legs, keep it from reading
   # as the cat.
   puppyWalkingA = {
     glyph = nerd "f0a43";

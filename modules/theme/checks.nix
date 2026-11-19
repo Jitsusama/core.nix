@@ -174,17 +174,24 @@ let
 
   # The walk the cat's code takes, read from the code that walks it, so its
   # check proves the walk that's drawn rather than a copy: the words WALKS
-  # lists, when it's every list STRIDING strides by. Each is read whole, to
-  # its semicolon, and must be only what's meant, spaces allowed only
-  # between its parts; past it, WALKS is named only in STRIDING and
-  # STRIDING only read, so neither is declared twice. So anything else, another list, a
-  # stride written inline, an entry not a quoted word, something after its
-  # bracket, a copy commented out, a write to either or either not found,
-  # reads as no walk, which fails saying where it looked. A write from
-  # another file isn't seen; none of the cat's files writes either.
+  # lists, when it's every list STRIDING strides by. Only the code is read,
+  # lines that are comments aside. Each is read whole, to its semicolon,
+  # and must be only what's meant, spaces allowed only between its parts;
+  # past it, WALKS is named only in STRIDING, and STRIDING only read by a
+  # key with nothing assigned there, so neither is declared twice. So
+  # anything else, another list, a stride written inline, an entry not a
+  # quoted word, something after its bracket, an assignment to either or
+  # either not found, reads as no walk, which fails saying where it looked
+  # and what it needs. A delete, a write through what a read hands back or
+  # one from another file isn't seen; none of the cat's files does any.
   walkIn =
-    ways:
+    file:
     let
+      ways = lib.concatStringsSep "\n" (
+        lib.filter (line: builtins.match "[[:space:]]*(//|/?\\*).*" line == null) (
+          lib.splitString "\n" file
+        )
+      );
       # The constant's declaration, up to the semicolon that ends it.
       declared =
         name:
@@ -196,12 +203,13 @@ let
       striding = declared "STRIDING";
       named = name: text: lib.length (lib.splitString name text) - 1;
       # Every line STRIDING is named on past its declaration reads it, by
-      # a key, and writes nothing there.
+      # a key, and assigns nothing there, by itself or with an operator.
       onlyRead =
         let
           past = lib.drop 2 (lib.splitString "STRIDING" ways);
           lines = map (piece: lib.head (lib.splitString "\n" piece)) past;
-          writes = line: builtins.match ".*][[:space:]]*=([^=].*)?" line != null;
+          by = "(\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?";
+          writes = line: builtins.match ".*][[:space:]]*${by}=([^=].*)?" line != null;
         in
         lib.all (line: lib.hasPrefix "[" line && !writes line) lines;
       s = "[[:space:]]*";
@@ -217,7 +225,9 @@ let
       && onlyRead
     ) words;
   catWalk = walkIn (builtins.readFile ../margin-cat/MarginCatWays.js);
-  catWalkedFrom = "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js";
+  catWalkedFrom =
+    "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js, which needs each declared "
+    + "once, WALKS as quoted words, and STRIDING only read by a key past it";
 in
 {
   # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
@@ -236,7 +246,7 @@ in
   # and temperature both say how hot, so they share the thermometer, and the
   # margin's cat's own poses are all the margin's cat, so they share the paw,
   # as its yarn's drawings, lying and rolling, are all its yarn, and the
-  # margin's puppy's poses are all the puppy, sharing the dog.
+  # margin's puppy's poses are all the puppy, sharing the dog glyph.
   each-mark-means-one-thing =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -435,8 +445,9 @@ in
           inherit strides;
         };
       refused = { strides, reason }: !(said strides).ok && lib.hasInfix reason (said strides).said;
-      strides = ''const WALKS = ["walkingA", "walkingC", "walkingB", "walkingD"];'';
-      striding = "const STRIDING = { goes: WALKS, climbs: WALKS };";
+      # The cat's two declarations, as its code has them.
+      walksSaid = ''const WALKS = ["walkingA", "walkingC", "walkingB", "walkingD"];'';
+      stridingSaid = "const STRIDING = { goes: WALKS, climbs: WALKS };";
       walkedOf = ways: {
         strides = walkIn ways;
         reason = "no strides read from here";
@@ -476,31 +487,43 @@ in
           ];
           reason = "undrawn [\"walkingZ\"]";
         }
+        # A copy commented out above is no walk of the cat's: the one
+        # below it is read, and refused for its skid.
+        {
+          strides = walkIn (
+            "// ${walksSaid}\n" + "const WALKS = [\"walkingA\", \"walkingB\"];\n${stridingSaid}"
+          );
+          reason = "walkingA to walkingB, both pairs moved";
+        }
         (walkedOf "")
-        (walkedOf strides)
-        (walkedOf striding)
-        (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: [\"walkingA\"] };")
-        (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: WALKS.slice(1) };")
-        (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: RUNS };")
-        (walkedOf "const WALKS = [\"walkingA\", ...RUNS];\n${striding}")
-        (walkedOf "const WALKS = [\"walkingA\", \"walkingC\"].concat(RUNS);\n${striding}")
-        (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: WALKS } || RUNS;")
-        (walkedOf "const WALKS = [\"walking A\", \"walkingC\"];\n${striding}")
-        (walkedOf "const WALKS = [\"walkingA', \"walkingC\"];\n${striding}")
-        (walkedOf "// ${strides}\nconst WALKS = [\"walkingA\", \"walkingB\"];\n${striding}")
-        (walkedOf "${strides}\n${striding}\nSTRIDING.runs = RUNS;")
-        (walkedOf "${strides}\n${striding}\nSTRIDING[\"runs\"] = RUNS;")
-        (walkedOf "${strides}\n${striding}\nWALKS.reverse();")
+        (walkedOf walksSaid)
+        (walkedOf stridingSaid)
+        (walkedOf "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: [\"walkingA\"] };")
+        (walkedOf "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: WALKS.slice(1) };")
+        (walkedOf "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: RUNS };")
+        (walkedOf "const WALKS = [\"walkingA\", ...RUNS];\n${stridingSaid}")
+        (walkedOf "const WALKS = [\"walkingA\", \"walkingC\"].concat(RUNS);\n${stridingSaid}")
+        (walkedOf "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: WALKS } || RUNS;")
+        (walkedOf "const WALKS = [\"walking A\", \"walkingC\"];\n${stridingSaid}")
+        (walkedOf "const WALKS = [\"walkingA', \"walkingC\"];\n${stridingSaid}")
+        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING.runs = RUNS;")
+        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[\"runs\"] = RUNS;")
+        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[\"runs\"] ??= RUNS;")
+        (walkedOf "${walksSaid}\n${stridingSaid}\nconst ways = STRIDING;")
+        (walkedOf "${walksSaid}\n${stridingSaid}\nWALKS.reverse();")
       ];
       # The same walk, spaced and quoted otherwise, still reads whole.
       reread = walkIn ''
+        // WALKS is the cat's walk, which STRIDING strides by.
+        /* STRIDING[kind] = WALKS reads alike, as a comment.
+         * So does WALKS.reverse(); here. */
         const WALKS = [
           'walkingA',
           'walkingC',
           'walkingB',
           'walkingD',
         ];
-        ${striding}
+        ${stridingSaid}
         const strides = STRIDING[beat.kind];
         const joined = STRIDING[was.kind] === STRIDING[beat.kind];
       '';
