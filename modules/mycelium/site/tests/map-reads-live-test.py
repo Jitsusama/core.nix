@@ -76,9 +76,10 @@ FED_RECEPTOR = "calls@kestrel"
 FED_CELL = "SKIFF1"
 FED_KEY = f"fed:{FED_RECEPTOR}~{FED_CELL}"
 FED_SAID = "a call's summary"
-# The two ends' titles in node.json, which their drawers are named by.
+# The names the two ends' drawers head them with: the receptor's title, and
+# the cell's short name, from its window in node.json.
 FED_RECEPTOR_TITLE = "Calls"
-FED_CELL_TITLE = "Rig the Skiff"
+FED_CELL_TITLE = "Rig The Skiff"
 # How long before its ten minutes end a second feeding is told, to see the
 # map let it go on its own clock with the node saying nothing more: past the
 # map's 2 s pace, so it is drawn before it goes.
