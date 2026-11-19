@@ -80,8 +80,13 @@ const SHORTEST_EVENT: usize = 5;
 /// since one refused refuses the counts beside it. So is one led by a
 /// `_`, though mycelium takes it: Google makes that of an outside
 /// invitation's iCalUID, in base32hex anyone can read back, and a UID can
-/// carry an organizer's address or host.
+/// carry an organizer's address or host. That closes the import path
+/// alone: an id whoever made the event chose through Google's API can be
+/// any base32hex, text included, and nothing here tells it apart.
 fn is_event(event: &str) -> bool {
+    if event.starts_with('_') {
+        return false;
+    }
     let mut parts = event.split('_');
     let own = parts.next().unwrap_or_default();
     event.len() <= LONGEST_EVENT
@@ -390,8 +395,8 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
     // said once, here, rather than left for a reader to work out.
     if book.lock().failing() {
         eprintln!(
-            "call-transcripts: a call's record couldn't be read when this started, so no \
-             call's event is named until it starts again"
+            "call-transcripts: the calls' folder, or a call's record in it, couldn't be read \
+             when this started, so no call's event is named until a start reads them all"
         );
     }
     let tuple = rings::file();
