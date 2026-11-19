@@ -278,12 +278,10 @@ fn joels_words_where_a_unit_is_named_the_same_leave_its_lines_to_the_replay() {
     let mut day = Day::new("2026-11-12");
     day.resume(kept);
     day.take(&entry("disk-guard", 3, "can't read the status"));
+    let errors = |name: &str| day.things.get(name).map(|thing| thing.errors);
     assert_eq!(
-        (
-            day.things["disk-guard"].errors,
-            day.things["pi in disk-guard"].errors
-        ),
-        (1, 1),
+        (errors("disk-guard"), errors("pi in disk-guard")),
+        (Some(1), Some(1)),
         "the unit's line was counted twice, or his words lost: {:?}",
         day.things
     );
