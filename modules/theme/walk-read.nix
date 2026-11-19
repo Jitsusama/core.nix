@@ -114,8 +114,8 @@ let
   # says why.
   faults = map (rule: rule.wanted) (
     lib.filter (rule: !rule.met) [
-      # Found first, so a declaration a string's `//` or `/*` hides
-      # fails as that, not as every rule at once.
+      # Said first, so when a string's `//` or `/*` hides a declaration,
+      # the first fault names the cause, before the rules it breaks too.
       {
         wanted = "WALKS and STRIDING each found outside a comment";
         met = walks != "" && striding != "";

@@ -382,15 +382,15 @@ in
   # The pose rules refuse what they're for, so they're shown refusing as
   # well as passing: the cat's own strides out of order, alone, with a pair
   # never stepping, after a pose that isn't a stride, undrawn, and none at
-  # all, each by its reason, and a stride planted with its body moved; a
-  # pose planted with a stray pixel, and on each side of the 15% line, too
-  # few or many refused and under it held, or on it, on a sitting of 20; a
+  # all, each by its reason, a stride planted with its body moved on each
+  # row, and a foot moved either side of the feet's middle; a pose planted
+  # with a stray pixel, and on each side of the 15% line, too few or many
+  # refused and under it held, or on it, on sittings of 20 and 13; a
   # sitting misnamed said undrawn, and a stride no pose lists held to the
-  # stray rule; and
-  # the cat's code read as no walk, by the rule it breaks, when it strides
-  # by anything but WALKS's frozen quoted words or declares either again,
-  # though as its walk when they're only spaced, quoted or commented
-  # otherwise, a long comment too, or read where it's used.
+  # stray rule; and the cat's code read as no walk, by the rule it breaks,
+  # when it strides by anything but WALKS's frozen quoted words or declares
+  # either again, though as its walk when they're only spaced, quoted or
+  # commented otherwise, a long comment too, or read where it's used.
   every-skidding-walk-is-refused =
     let
       theirs = import ./glyphs.nix { inherit lib; };
@@ -414,22 +414,31 @@ in
         builtins.substring 0 x row
         + (if builtins.substring x 1 row == "#" then "." else "#")
         + builtins.substring (x + 1) 8 row;
-      # Stride C with a pixel of its body moved, high in it or just above
-      # its feet.
-      bodied =
-        y: x:
+      # A stride with the pixel at row `y`, column `x` flipped.
+      flipped =
+        pose: y: x:
         let
           moved = at: row: if at == y then flip x row else row;
         in
-        lib.imap0 moved theirs.walkingC.pixels;
+        lib.imap0 moved theirs.${pose}.pixels;
       small = lib.take 4 filled;
       planted = theirs // {
-        shifted.pixels = bodied 3 1;
-        raised.pixels = bodied 6 2;
-        # A sitting of 20, and 3 more, 15% on the line, or 4.
+        # Stride C with a pixel of its body moved: on its top row by the
+        # tail's tip, on the row below, high in it, or just above its feet.
+        topped.pixels = flipped "walkingC" 0 5;
+        necked.pixels = flipped "walkingC" 1 3;
+        shifted.pixels = flipped "walkingC" 3 1;
+        raised.pixels = flipped "walkingC" 6 2;
+        # Stride A with one foot moved, either side of the feet's middle.
+        foreFoot.pixels = flipped "walkingA" 7 3;
+        hindFoot.pixels = flipped "walkingA" 7 4;
+        # A sitting of 20, and 3 more, 15% on the line, or 4; and one of
+        # 13, and 2 more, just past it.
         small.pixels = small;
         atLine.pixels = small ++ [ "###....." ];
         pastLine.pixels = small ++ [ "####...." ];
+        tight.pixels = lib.take 2 filled ++ [ "###....." ];
+        justPast.pixels = lib.take 3 filled;
         strayed.pixels = [ "${builtins.substring 0 7 (lib.head rows)}#" ] ++ lib.tail rows;
         shrunk.pixels = lib.init rows ++ [ "#......." ];
         trimmed.pixels = lib.init rows ++ [ "##......" ];
@@ -481,7 +490,8 @@ in
         };
       # Each rule at its edge, so a rule loosened or tightened by a pixel,
       # or a name it reads dropped, fails: on a sitting of 20, a pose 15%
-      # more held and one past it refused; a misnamed sitting said undrawn,
+      # more held and one past it refused, and on one of 13, a pose 15.4%
+      # more refused, as no 16% would; a misnamed sitting said undrawn,
       # rather than every pose unlike it; and a stride no pose lists still
       # held to the stray rule.
       sized = poseFaults {
@@ -490,6 +500,12 @@ in
           "atLine"
           "pastLine"
         ];
+        strides = drawnWalk;
+        glyphs = planted;
+      };
+      sizedTight = poseFaults {
+        sitting = "tight";
+        poses = [ "justPast" ];
         strides = drawnWalk;
         glyphs = planted;
       };
@@ -508,7 +524,16 @@ in
         {
           faults = sized;
           reason = "atLine, 15% more, held, and pastLine refused";
-          holds = lib.hasInfix ''"pastLine"'' sized.said && !lib.hasInfix ''"atLine"'' sized.said;
+          holds =
+            let
+              refusing = lib.hasInfix ''unlike ["pastLine",'' sized.said;
+            in
+            refusing && !lib.hasInfix ''"atLine"'' sized.said;
+        }
+        {
+          faults = sizedTight;
+          reason = "justPast, 2 more than a sitting of 13, refused";
+          holds = lib.hasInfix ''unlike ["justPast",'' sizedTight.said;
         }
         {
           faults = misnamed;
@@ -582,9 +607,39 @@ in
         {
           strides = [
             "walkingA"
+            "topped"
+          ];
+          reason = "walkingA to topped, the body moved";
+        }
+        {
+          strides = [
+            "walkingA"
+            "necked"
+          ];
+          reason = "walkingA to necked, the body moved";
+        }
+        {
+          strides = [
+            "walkingA"
             "shifted"
           ];
           reason = "walkingA to shifted, the body moved";
+        }
+        # One foot moved each way, so the fore half is the first four
+        # columns, and the hind the rest.
+        {
+          strides = [
+            "walkingA"
+            "foreFoot"
+          ];
+          reason = "never stepping [\"hind\"]";
+        }
+        {
+          strides = [
+            "walkingA"
+            "hindFoot"
+          ];
+          reason = "never stepping [\"fore\"]";
         }
         {
           strides = [
@@ -609,6 +664,7 @@ in
         (quoted "")
         (found "")
         (found "/* ${walksSaid}\n${stridingSaid} */")
+        (found "/* ${walksSaid} */\n${stridingSaid}")
         (found "${walksSaid}\nconst glob = \"src/*\";\n${stridingSaid}")
         (byWalks walksSaid)
         (quoted stridingSaid)
