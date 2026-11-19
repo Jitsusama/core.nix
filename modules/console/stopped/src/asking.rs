@@ -16,9 +16,12 @@ use std::time::{Duration, Instant};
 /// comes first, so the summary takes a small share. Each command has a
 /// share of its own, so one that stalls leaves the rest their time, and a
 /// program that stalled once isn't asked again: a journal that stalls on
-/// one unit stalls on the next. A share is half the whole, since a
-/// journal's first read from a cold cache takes seconds on a healthy
-/// disk, and one stall still leaves the other half.
+/// one unit stalls on the next. One the whole budget cuts off isn't
+/// marked, and is said only not to have answered in the time left, since
+/// a slow journal ends there as well as a stalled one. A share is half
+/// the whole, since a journal's first read from a cold
+/// cache takes seconds on a healthy disk, and one stall still leaves the
+/// other half.
 pub struct Budget {
     by: Instant,
     each: Duration,
@@ -59,17 +62,26 @@ impl Budget {
             .any(|stalled| stalled == program)
         {
             return Err(format!(
-                "{program} didn't answer before, so it wasn't asked again"
+                "{program} didn't answer an earlier ask in time, so it wasn't asked again"
             ));
         }
         if Instant::now() >= self.by {
             return Err(format!("no time was left to ask {program}"));
         }
+        // A command cut off by the whole budget rather than its own share
+        // may only be slow, or may have stalled with every second to
+        // itself, so it's said only to have missed the time left, and
+        // isn't marked as a program that stalls.
+        let cut_by_the_budget = self.by <= own;
         answered(program, args, self.by.min(own)).map_err(|unanswered| {
-            if unanswered.late {
+            if !unanswered.late {
+                unanswered.why
+            } else if cut_by_the_budget {
+                format!("{program} didn't answer in the time that was left, so it was stopped")
+            } else {
                 self.stalled.borrow_mut().push(program.to_owned());
+                unanswered.why
             }
-            unanswered.why
         })
     }
 }
@@ -303,7 +315,20 @@ mod tests {
     }
 
     #[test]
-    fn the_whole_budget_ends_every_ask() {
+    fn what_stalls_with_all_the_time_left_is_said_not_to_answer() {
+        let budget = Budget::lasting(Duration::from_millis(300), Duration::from_secs(10));
+        let said = budget.ask_with_all_left("sleep", &["30"]);
+        assert!(
+            said.as_ref().is_err_and(
+                |why| why == "sleep didn't answer in the time that was left, so it was stopped"
+            ),
+            "a command that stalled with every second to itself was said to run out of time: \
+             {said:?}"
+        );
+    }
+
+    #[test]
+    fn the_whole_budget_ends_every_ask_and_marks_no_one_stalled() {
         let started = Instant::now();
         let budget = Budget::lasting(Duration::from_millis(300), Duration::from_secs(10));
         let first = budget.ask("sleep", &["30"]);
@@ -316,12 +341,25 @@ mod tests {
             "a command past the budget held it {:?}",
             started.elapsed()
         );
+        assert!(
+            first
+                .as_ref()
+                .is_err_and(|why| why.contains("in the time that was left")),
+            "a command the budget cut off wasn't said to miss the time left: {first:?}"
+        );
         let after = budget.ask("echo", &["late"]);
         assert!(
             after
                 .as_ref()
                 .is_err_and(|why| why.contains("no time was left")),
             "a command was asked past the budget: {after:?}"
+        );
+        let again = budget.ask("sleep", &["0"]);
+        assert!(
+            again
+                .as_ref()
+                .is_err_and(|why| why.contains("no time was left")),
+            "a program the budget cut off was marked as stalling: {again:?}"
         );
     }
 }

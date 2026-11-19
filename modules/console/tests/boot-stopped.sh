@@ -6,9 +6,10 @@
 # programs said that show something, past lines that show nothing; what
 # systemd said of a unit whose programs said nothing, or nothing that
 # shows; at most four units; the account's theme and the console's marks;
-# the way out; and each unit and the way out in time when the journal
-# stalls. How it lays itself out at the console's width is the
-# crate's own tests'.
+# the way out; why a journal that couldn't be read gave a unit nothing;
+# each unit described when the journal is slow; and each unit and the
+# way out in time when the journal stalls. How it lays itself out at the
+# console's width is the crate's own tests'.
 # usage: boot-stopped.sh <boot-stopped>
 set -euo pipefail
 
@@ -41,12 +42,20 @@ EOF
 # of those ids. --unit= gives both, as journalctl's does, with the unit's
 # own last, so a summary that takes its last line there can be given a
 # blank. With $WORK/stall there, it stalls, as a journal on a failing
-# disk can.
+# disk can; with $WORK/slow, it answers each read late; with
+# $WORK/broken, it can't open the journal at all.
 {
   printf '#!%s\n' "$BASH"
   cat <<'EOF'
 # A stalled journal answers later than the summary waits for any read.
 [[ ! -f $WORK/stall ]] || exec sleep 60
+if [[ -f $WORK/broken ]]; then
+  echo "Failed to open files: Input/output error" >&2
+  exit 1
+fi
+# A slow journal answers well inside a read's five seconds, but too
+# slowly for every read to fit in the summary's ten.
+[[ ! -f $WORK/slow ]] || sleep 2
 lines=10 own='' systemd='' unit='' pid='' ids=' ' boot=''
 for arg; do
   case $arg in
@@ -174,6 +183,31 @@ said
 [[ $(grep -c '^  x  ' "$work/said") == 4 ]] || fails "it listed other than four units"
 says "     and 5 more"
 
+# A journal that can't be opened says why, in its own words, under each
+# unit it couldn't speak for.
+touch "$work/broken"
+said
+says "  x  home.mount  Mount /home"
+says "     its journal couldn't be read: Failed to open files: Input/output error"
+rows=$(grep -c -F "its journal couldn't be read" "$work/said" || true)
+[[ $rows == 4 ]] || fails "it didn't say why under each unit the journal couldn't speak for"
+rm "$work/broken"
+
+# A slow journal spends the time before the last unit is read, so each
+# unit is described before any journal is read, and the last says it had
+# no time, rather than that the journal stalled.
+touch "$work/slow"
+said
+says "  x  home.mount  Mount /home"
+says "     mount: /home: wrong fs type"
+under=$(grep -A 1 -x -F "  x  blank.service  A program that drew nothing" "$work/said" || true)
+[[ $under == *$'\n'"     its journal couldn't be read: no time was left to ask journalctl" ]] ||
+  fails "blank.service wasn't described, or didn't say it had no time"
+if grep -q -F "wasn't asked again" "$work/said"; then
+  fails "a journal that was only slow was said to stall"
+fi
+rm "$work/slow"
+
 # A journal that stalls is stopped and not asked again, so the summary
 # still names each unit by what systemd calls it, and the way out, well
 # before systemd gives up on the shell.
@@ -187,10 +221,13 @@ said
 says "  x  home.mount  Mount /home"
 says "  x  blank.service  A program that drew nothing"
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
-# Under the units only the count of the rest and the way out: a journal
-# that didn't answer gives a unit nothing to show.
+says "     its journal couldn't be read: journalctl didn't answer in time, so it was stopped"
+says "     its journal couldn't be read: journalctl didn't answer an earlier ask in time, so it \
+wasn't asked again"
+# Under the units only why each said nothing, the count of the rest and
+# the way out: a journal that didn't answer gives a unit nothing to show.
 rows=$(grep -c '^     ' "$work/said" || true)
-[[ $rows == 2 ]] || fails "it showed lines a stalled journal can't give"
+[[ $rows == 6 ]] || fails "it showed lines a stalled journal can't give"
 if grep -q -F "wrong fs type" "$work/said"; then
   fails "the journal didn't stall, so this shows nothing"
 fi
