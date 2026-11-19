@@ -176,10 +176,16 @@ impl Tally {
         let Some((_, from)) = taken.last else {
             return Err("not counted yet".to_owned());
         };
-        let seconds = at.duration_since(from).as_secs_f64();
-        if seconds <= 0.0 {
+        let stretch = at.duration_since(from);
+        if stretch.is_zero() {
             return Err("not counted yet".to_owned());
         }
+        // A few frames over a moment would read as a stall, as a stretch
+        // begun by a read just before the line, after one that failed.
+        if stretch < SHORTEST {
+            return Err("counted for under half a second".to_owned());
+        }
+        let seconds = stretch.as_secs_f64();
         #[expect(clippy::cast_precision_loss, reason = "a stretch's frames are few")]
         let rate = taken.frames as f64 / seconds;
         Ok(Gave {
@@ -345,12 +351,24 @@ impl Stream {
         }
     }
 
-    /// What each interface gave since the last line.
+    /// What each interface gave since the last line. Of several, one that
+    /// gave nothing is left out while another gave frames, since a camera's
+    /// other stream, unused, would read as a stall on every line.
     fn take(&mut self, at: Instant) -> BTreeMap<u32, Result<Gave, String>> {
-        self.tallies
+        let mut gave: BTreeMap<_, _> = self
+            .tallies
             .iter_mut()
             .map(|(interface, tally)| (*interface, tally.take(at)))
-            .collect()
+            .collect();
+        let idle = |stream: &Result<Gave, String>| {
+            stream
+                .as_ref()
+                .is_ok_and(|gave| gave.rate == 0.0 && gave.in_error == 0)
+        };
+        if gave.len() > 1 && !gave.values().all(idle) {
+            gave.retain(|_, stream| !idle(stream));
+        }
+        gave
     }
 }
 
@@ -777,8 +795,36 @@ mod tests {
         record.unanswered.insert(0x0098_0900);
         count(&stats, 10, 0);
         let holders = ["chrome".to_owned()];
-        assert_eq!(record.at(Instant::now(), &camera.node, &holders), None);
+        let start = Instant::now();
+        assert_eq!(record.at(start, &camera.node, &holders), None);
         assert_eq!(record.unanswered.len(), 0);
+        // Within the stream, one found unanswered stays so at each wake.
+        record.unanswered.insert(0x0098_0900);
+        count(&stats, 40, 0);
+        let wake = start + Duration::from_secs(1);
+        assert_eq!(record.at(wake, &camera.node, &holders), None);
+        assert!(
+            record.at(start + EVERY, &camera.node, &holders).is_some(),
+            "no line"
+        );
+        assert_eq!(record.unanswered.len(), 1);
+    }
+
+    #[test]
+    fn a_second_stream_left_unused_isnt_said_to_stall() {
+        let start = Instant::now();
+        let later = start + EVERY;
+        let mut stream = Stream::default();
+        for (interface, frames) in [(1, 300), (3, 0)] {
+            let tally = stream.tallies.entry(interface).or_default();
+            tally.add(at(0, 0, 0), start);
+            tally.add(at(frames, 0, 0), later);
+        }
+        let gave = stream.take(later);
+        assert_eq!(gave.keys().collect::<Vec<_>>(), [&1]);
+        // Both giving nothing is said of both.
+        let gave = stream.take(later + EVERY);
+        assert_eq!(gave.keys().collect::<Vec<_>>(), [&1, &3]);
     }
 
     #[test]
