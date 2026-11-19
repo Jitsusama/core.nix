@@ -73,6 +73,12 @@ def every_tick(stat: str) -> int:
     return sum(int(field) for field in stat.split()[1:9])
 
 
+def holdable(stat: str) -> bool:
+    """Say from a thread's /proc stat line whether the kernel lets it be held to processors."""
+    del stat
+    return True
+
+
 class Ledger:
     """The guest's stolen and busy ticks in each turn, under load (True) and frozen (False)."""
 

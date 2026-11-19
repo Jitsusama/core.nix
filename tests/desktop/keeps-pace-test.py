@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from keeps_pace import PROCESSORS, Ledger, builders_share, every_tick, ticks
+from keeps_pace import PROCESSORS, Ledger, builders_share, every_tick, holdable, ticks
 
 # A turn's busy ticks, and a builder that ran the guest half of them under load.
 BUSY = 1000
@@ -27,6 +27,10 @@ STOLEN = 800
 BUSIED = 100 + 200 + 300 + 600 + 700 + 800
 # Every tick it counts, idle and iowait with the busy, but not a guest's, already in user and nice.
 EVERY = 100 + 200 + 300 + 400 + 500 + 600 + 700 + 800
+# A thread's stat line, its name holding a space and a parenthesis, with PF_NO_SETAFFINITY set
+# among its flags, the seventh field after the name, and with the flag next to it set instead.
+REFUSED = "812 (qemu (io) 1) S 1 812 812 0 -1 69238848 0 0"
+ALLOWED = "812 (qemu (io) 1) S 1 812 812 0 -1 35684416 0 0"
 # Every tick the ledger's lines below count under load, and frozen, idle and iowait with the busy.
 TICKED_UNDER = 60 + 30 + 10
 TICKED_FROZEN = 5 + 40
@@ -123,6 +127,14 @@ def test_a_turn_that_never_finished_keeps_what_follows_in_neither() -> None:
     ledger.count(stat(40, 400), turn=True)
     assert ledger.between, "a turn begun and never finished left the ledger out of it"
     assert ledger.turns[True] == (10, 100), f"under load the ledger kept {ledger.turns[True]}"
+    every = every_tick(stat(10, 100)) - every_tick(stat(0, 0))
+    assert ledger.ticked[True] == every, f"under load the ledger kept {ledger.ticked[True]} ticks"
+
+
+def test_a_thread_the_kernel_refuses_to_hold_is_told_by_its_flags() -> None:
+    """PF_NO_SETAFFINITY in its flags, read past a name holding parentheses, marks it unholdable."""
+    assert not holdable(REFUSED), f"{REFUSED!r} read as a thread the kernel lets be held"
+    assert holdable(ALLOWED), f"{ALLOWED!r} read as a thread the kernel refuses to hold"
     ledger.turned()
     ledger.count(stat(45, 450), turn=False)
     assert not ledger.between, "a finished turn left the ledger between turns"
