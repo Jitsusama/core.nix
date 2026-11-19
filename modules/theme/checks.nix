@@ -26,14 +26,17 @@ let
   # and the tail's tip, the top row's last two columns, holds still, and of
   # the feet only the fore half or the hind half changes. Over the whole
   # walk each half changes, since a pair that never steps is being dragged
-  # however the other one walks.
-  readsAsOne =
+  # however the other one walks; with feet apart or gathered, that takes
+  # four strides or more. Strides are drawn facing left: the fore half is
+  # the left one, and the tail's tip is at the top right. What's found, as
+  # whether it holds and what it says, for readsAsOne and for the check that
+  # each skid is refused; `walkedFrom` is where the strides were read from.
+  poseFaults =
     {
-      check,
-      animal,
       sitting,
       poses,
       strides,
+      walkedFrom ? null,
     }:
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -125,43 +128,71 @@ let
         lib.filter (step: why step != null) steps
       );
       stepping = pair: lib.any (step: lib.elem pair (moved (px step.from) (px step.to))) steps;
-      frozen = lib.optionals (lib.all (name: px name != [ ]) strides) (
+      frozen = lib.optionals (strides != [ ] && lib.all (name: px name != [ ]) strides) (
         lib.filter (pair: !stepping pair) [
           "fore"
           "hind"
         ]
       );
-      walked = lib.length strides;
-      said = lib.concatStringsSep ", " [
-        "stray ${builtins.toJSON stray}"
-        "unlike ${builtins.toJSON unlike}"
-        "skidding ${builtins.toJSON skidding}"
-        "never stepping ${builtins.toJSON frozen}"
-        "undrawn ${builtins.toJSON missing}"
-        "walked in ${toString walked} strides of the 2 or more a walk needs"
-      ];
+      unread = lib.optionalString (walkedFrom != null) " read from ${walkedFrom}";
     in
-    holds check "The ${animal}'s poses must read as one ${animal}: ${said}." (
-      lib.all (found: found == [ ]) [
-        stray
-        unlike
-        skidding
-        frozen
-        missing
-      ]
-      && walked >= 2
-    );
+    {
+      ok =
+        lib.all (found: found == [ ]) [
+          stray
+          unlike
+          skidding
+          frozen
+          missing
+        ]
+        && strides != [ ];
+      said = lib.concatStringsSep ", " (
+        [
+          "stray ${builtins.toJSON stray}"
+          "unlike ${builtins.toJSON unlike}"
+          "skidding ${builtins.toJSON skidding}"
+          "never stepping ${builtins.toJSON frozen}"
+          "undrawn ${builtins.toJSON missing}"
+        ]
+        ++ lib.optional (strides == [ ]) "no strides${unread}"
+      );
+    };
 
-  # The order the cat walks its strides in, read from the code that walks
-  # them, so its check proves the walk that's drawn rather than a copy of
-  # it. Were the line to move, the walk reads as no strides, which fails.
+  # Whether every pose of one of the margin's animals reads as that one
+  # animal, by poseFaults.
+  readsAsOne =
+    { check, animal, ... }@walk:
+    let
+      found = poseFaults (
+        removeAttrs walk [
+          "check"
+          "animal"
+        ]
+      );
+    in
+    holds check "The ${animal}'s poses must read as one ${animal}: ${found.said}." found.ok;
+
+  # The cat's walk, read from the code that walks it, so its check proves
+  # the walk that's drawn rather than a copy: the words WALKS lists, which
+  # is every list STRIDING strides by. Should STRIDING stride by another,
+  # or either not be found, the walk reads as none, which fails saying
+  # where it was read from.
   catWalk =
     let
-      prefix = "const WALKS = ";
-      lines = lib.splitString "\n" (builtins.readFile ../margin-cat/MarginCatWays.js);
-      line = lib.findFirst (lib.hasPrefix prefix) "${prefix}[];" lines;
+      ways = builtins.readFile ../margin-cat/MarginCatWays.js;
+      # What follows the constant's declaration, up to the first `close`.
+      declared =
+        name: close:
+        let
+          after = lib.splitString "const ${name} = " ways ++ [ "" ];
+        in
+        lib.head (lib.splitString close (lib.elemAt after 1));
+      captured = pattern: text: map lib.head (lib.filter lib.isList (builtins.split pattern text));
+      walks = captured "[\"']([A-Za-z]+)[\"']" (declared "WALKS" "]");
+      striding = captured ":[[:space:]]*([A-Za-z_]+)" (declared "STRIDING" "}");
     in
-    builtins.fromJSON (lib.removeSuffix ";" (lib.removePrefix prefix line));
+    lib.optionals (striding != [ ] && lib.all (list: list == "WALKS") striding) walks;
+  catWalkedFrom = "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js";
 in
 {
   # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
@@ -314,6 +345,7 @@ in
     animal = "cat";
     sitting = "nothingHere";
     strides = catWalk;
+    walkedFrom = catWalkedFrom;
     poses = [
       "batting"
       "blinking"
@@ -339,7 +371,8 @@ in
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
   # held to its own sitting, as the cat's are to the cat's. Nothing walks it
-  # yet, so its strides are listed here in the cat's order, A, C, B, D.
+  # yet, so its strides are listed here in the cat's order, A, C, B, D; once
+  # its code walks it, they're read from there, as the cat's are.
   every-puppy-pose-reads-as-one-puppy = readsAsOne {
     check = "every-puppy-pose-reads-as-one-puppy";
     animal = "puppy";
@@ -359,6 +392,68 @@ in
       "puppyWalkingD"
     ];
   };
+
+  # The stride rule refuses each way a walk skids, by its reason, so it's
+  # shown refusing as well as passing: the cat's own strides out of order,
+  # alone, with a pair never stepping, after a pose that isn't a stride,
+  # undrawn, and none at all.
+  every-skidding-walk-is-refused =
+    let
+      refused =
+        { strides, reason }:
+        let
+          found = poseFaults {
+            sitting = "nothingHere";
+            poses = [ "nothingHere" ];
+            inherit strides;
+          };
+        in
+        !found.ok && lib.hasInfix reason found.said;
+      walks = [
+        {
+          strides = [
+            "walkingA"
+            "walkingB"
+            "walkingC"
+            "walkingD"
+          ];
+          reason = "walkingA to walkingB, both pairs moved";
+        }
+        {
+          strides = [ "walkingA" ];
+          reason = "walkingA to walkingA, no pair moved";
+        }
+        {
+          strides = [
+            "walkingA"
+            "walkingC"
+          ];
+          reason = "never stepping [\"hind\"]";
+        }
+        {
+          strides = [
+            "nothingHere"
+            "walkingA"
+          ];
+          reason = "nothingHere to walkingA, the body moved";
+        }
+        {
+          strides = [
+            "walkingA"
+            "walkingZ"
+          ];
+          reason = "undrawn [\"walkingZ\"]";
+        }
+        {
+          strides = [ ];
+          reason = "no strides";
+        }
+      ];
+      passed = map (walk: walk.reason) (lib.filter (walk: !refused walk) walks);
+    in
+    holds "every-skidding-walk-is-refused"
+      "Every skidding walk must be refused, by its reason: ${builtins.toJSON passed} weren't."
+      (passed == [ ]);
 
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
   # or by APCA's lightness contrast. WCAG's black on white is 21:1, and

@@ -1066,6 +1066,11 @@
     every shell script meets shellcheck's optional checks for a hidden failure, a set -e turned
     off, an unset uppercase variable and a case with no default, but those still waiting
   '';
+  every-skidding-walk-is-refused = ''
+    the margin's animals' stride rule refuses the cat's own strides out of order, alone, with a
+    pair never stepping, after a pose that isn't a stride, undrawn, and none at all, each by
+    its reason
+  '';
   every-suppression-says-why = ''
     every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or
     in a comment just above, but those still waiting for their reason
