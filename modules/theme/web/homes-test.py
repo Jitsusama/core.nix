@@ -277,26 +277,31 @@ def test_a_row_the_home_has_not_built_is_named(browser: Browser, tmp_path: Path)
 SYSTEM = {"path": "system/", "homes": [{"kind": "machine", "address": "#machine={name}"}]}
 
 
+TOOK_MACHINE = {"kind": "machine", "from": "./notes", "to": "system/"}
+
+
 def taken(path: str, kind: str) -> str:
     """Say what the probe says of `path`'s claim on `kind`, which the home took for system/."""
     return (
-        f'"{path}" in sites.json claims {kind}, which system/ is home to as home.nix declares '
-        "it, so the home took the claim: drop it from sites.json, or move the kind's home in "
+        f'"{path}" in sites.json claims "{kind}", which home.nix declares "system/" home to, '
+        "so the home took the claim: drop it from sites.json, or move the kind's home in "
         "home.nix"
     )
 
 
 def test_a_claim_the_home_took_is_named(browser: Browser, tmp_path: Path) -> None:
-    """A pattern the home took, leaving its row home to nothing, is named in sites.json."""
-    notes = {"path": "notes/", "homes": SYSTEM["homes"]}
-    rows = json.dumps({"sites": [SYSTEM, {"path": "notes/", "homes": []}]})
-    assert probed(browser, tmp_path, [notes], NOTHING, rows) == [taken("notes/", "machine")]
+    """A pattern the home took, leaving its row home to nothing, is named as the home says it."""
+    notes = {"path": "./notes", "homes": SYSTEM["homes"]}
+    built = [SYSTEM, {"path": "./notes", "homes": []}]
+    rows = json.dumps({"sites": built, "taken": [TOOK_MACHINE]})
+    assert probed(browser, tmp_path, [notes], NOTHING, rows) == [taken("./notes", "machine")]
 
 
 def test_a_taken_kinds_things_are_not_blamed_twice(browser: Browser, tmp_path: Path) -> None:
     """A kind taken from a row's names is named once, not again as its homes.json's slip."""
     notes = {"path": "notes/", "homes": ["note", "machine"]}
-    rows = json.dumps({"sites": [SYSTEM, CODE, {"path": "notes/", "homes": ["note"]}]})
+    built = [SYSTEM, CODE, {"path": "notes/", "homes": ["note"]}]
+    rows = json.dumps({"sites": built, "taken": [{**TOOK_MACHINE, "from": "notes/"}]})
     things = [
         {"kind": "note", "name": "diary", "address": "notes/#note=diary"},
         {"kind": "machine", "name": "studio", "address": "notes/#machine=studio"},
@@ -305,11 +310,31 @@ def test_a_taken_kinds_things_are_not_blamed_twice(browser: Browser, tmp_path: P
     assert found == [taken("notes/", "machine")]
 
 
-def test_a_declared_rows_own_claims_take_nothing(browser: Browser, tmp_path: Path) -> None:
-    """A declared row in its record's place claims its own; the record's others weren't taken."""
-    stale = [{"path": "./code", "homes": ["repository", "note"]}]
-    rows = json.dumps({"sites": [CODE]})
+def test_only_what_the_home_says_it_took_is_named(browser: Browser, tmp_path: Path) -> None:
+    """A record's claim its built row lacks, which the home didn't say it took, isn't named.
+
+    A declared row in the record's place has claims of its own, so the
+    record's are never read there, though another row holds the kind.
+    """
+    stale = [{"path": "./code", "homes": ["repository", "machine"]}]
+    rows = json.dumps({"sites": [SYSTEM, CODE], "taken": []})
     assert probed(browser, tmp_path, stale, NOTHING, rows, code=[NOTEBOOK]) == []
+
+
+@pytest.mark.parametrize("took", ['"machine"', '[{"kind": "machine", "from": "notes/"}]'])
+def test_what_the_home_took_that_wont_read_is_named(
+    browser: Browser, tmp_path: Path, took: str
+) -> None:
+    """A taken that isn't a list of claims is named, never passed over."""
+    rows = f'{{"sites": [{json.dumps(CODE)}], "taken": {took}}}'
+    said = json.loads(took)
+    said = said[0] if isinstance(said, list) else said
+    assert probed(browser, tmp_path, [CODE], NOTHING, rows, code=[NOTEBOOK]) == [
+        (
+            f"rows.json's taken holds {json.dumps(said, separators=(',', ':'))}: a list of "
+            'claims, {"kind", "from", "to"}, as the home writes them'
+        ),
+    ]
 
 
 def test_no_record_at_all_is_a_fault(browser: Browser, tmp_path: Path) -> None:

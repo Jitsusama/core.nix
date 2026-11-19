@@ -27,7 +27,7 @@
 // The home rewrites rows.json at each build, so a fault in a row is fixed
 // where the row is written: sites.json, or home.nix for a live site. A
 // claim in sites.json on a kind a row home.nix declares is home to is one
-// the home takes out of rows.json, so it's read from sites.json and named.
+// the home takes out of rows.json, saying so in its taken, which is named.
 //
 // A check that finds nothing to test fails rather than passing, so rows no
 // home site answers, or a homes.json that lists nothing, is a fault, never
@@ -93,7 +93,7 @@
     try {
       const body = await answer.json();
       if (body !== null && Array.isArray(body.sites)) {
-        return { rows: body.sites };
+        return { rows: body.sites, taken: body.taken };
       }
     } catch {
       // Not JSON at all, which is the same fault as JSON of another shape.
@@ -178,9 +178,10 @@
   // build serving; a row whose path the home won't link it leaves out; a
   // row missing from rows.json for no such reason is one the home hasn't
   // built yet; and a claim on a kind a declared row is home to the home
-  // takes from its row, leaving the kind with the declared row
-  // (modules/local-sites/home). Each is named, since rows.json alone would
-  // pass it quietly.
+  // takes from its row, leaving the kind with the declared row, and says so
+  // in rows.json's taken (modules/local-sites/home), since its rows don't
+  // say which are declared. Each is named, since rows.json alone would pass
+  // it quietly.
   if (fromRows && recorded.fault !== undefined) {
     missing.push(
       `sites.json at the sites' root ${recorded.fault}, so the home kept its last rows.json: `
@@ -189,35 +190,9 @@
   }
   const folderOf = (path) =>
     `${path.split("/").filter((step) => step !== "" && step !== ".").join("/")}/`;
-  // The kind a home claims, a kind's name or a pattern's kind, or null for
-  // a home of another shape, which claims nothing, as the home reads it.
-  const kindOf = (home) => {
-    const kind = typeof home === "object" && home !== null ? home.kind : home;
-    return typeof kind === "string" ? kind : null;
-  };
-  const kindsOf = (site) =>
-    new Set(Array.isArray(site.homes) ? site.homes.map(kindOf).filter((kind) => kind !== null) : []);
-  // Each built row by its folder, the first where two share one, as the home keeps it.
-  const built = new Map();
-  for (const site of sites.sites) {
-    if (typeof site.path === "string" && !built.has(folderOf(site.path))) {
-      built.set(folderOf(site.path), site);
-    }
-  }
-  // The kinds the home took from each recorded row, by its folder, so a
-  // homes.json listing one isn't blamed on rows.json as well.
-  const taken = new Map();
-  // A claim the built row lacks is the home's taking only where rows.json
-  // gives its kind to a row at another path: a declared row put in a
-  // recorded row's own place has claims of its own, and the record's are
-  // simply not read there.
-  const takenBy = (kind, from) =>
-    sites.sites.find(
-      (other) =>
-        typeof other.path === "string"
-        && folderOf(other.path) !== from
-        && kindsOf(other).has(kind),
-    );
+  const built = new Set(
+    sites.sites.map((site) => site.path).filter((path) => typeof path === "string").map(folderOf),
+  );
   for (const site of fromRows ? (recorded.rows ?? []) : []) {
     const path = site.path;
     if (!Array.isArray(site.homes) || site.homes.length === 0) {
@@ -234,20 +209,29 @@
         `${JSON.stringify(path)} in sites.json isn't in rows.json, so the home hasn't built `
           + "since it was written: read `journalctl --user -u local-sites-home`",
       );
-    } else {
-      const kept = kindsOf(built.get(folderOf(path)));
-      for (const kind of kindsOf(site)) {
-        const owner = kept.has(kind) ? undefined : takenBy(kind, folderOf(path));
-        if (owner !== undefined) {
-          taken.set(folderOf(path), (taken.get(folderOf(path)) ?? new Set()).add(kind));
-          missing.push(
-            `${JSON.stringify(path)} in sites.json claims ${kind}, which ${owner.path} is home `
-              + "to as home.nix declares it, so the home took the claim: drop it from "
-              + "sites.json, or move the kind's home in home.nix",
-          );
-        }
-      }
     }
+  }
+  // The kinds the home took from each recorded row, by its folder, so a
+  // homes.json listing one isn't blamed on rows.json as well. A home from
+  // before it said what it took says nothing.
+  const taken = new Map();
+  const took = fromRows ? (listed.taken ?? []) : [];
+  const isText = (said) => typeof said === "string";
+  for (const each of Array.isArray(took) ? took : [took]) {
+    if (!(isText(each?.kind) && isText(each?.from) && isText(each?.to))) {
+      missing.push(
+        `rows.json's taken holds ${JSON.stringify(each)}: a list of claims, `
+          + `{"kind", "from", "to"}, as the home writes them`,
+      );
+      continue;
+    }
+    const from = folderOf(each.from);
+    taken.set(from, (taken.get(from) ?? new Set()).add(each.kind));
+    missing.push(
+      `${JSON.stringify(each.from)} in sites.json claims ${JSON.stringify(each.kind)}, which `
+        + `home.nix declares ${JSON.stringify(each.to)} home to, so the home took the claim: `
+        + "drop it from sites.json, or move the kind's home in home.nix",
+    );
   }
   for (const site of sites.sites) {
     // A row written ./code/ is home at code/, as Code's homes and the system's both read it;

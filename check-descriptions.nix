@@ -1375,7 +1375,8 @@
     the local sites' home lists each site from its row in sites.json, the settled apart and every
     name escaped, with a row Nix declares for a live site standing in for the record's at its path
     or going first, says every row it lists in rows.json as written, but for a recorded row's claim
-    on a kind a declared row is home to, which it leaves out and says, strips each page that asks
+    on a kind a declared row is home to, which it leaves out and says, in its log and in rows.json
+    with the declared row that has the kind, strips each page that asks
     after its skip link, names each document loading a script file of its own rather than the kit's,
     loads the kit's keys and switch and the theme and its fonts from the sites' shared copy, takes
     away the scripts it used to copy, draws its mark in each look's tint or the other look's where
