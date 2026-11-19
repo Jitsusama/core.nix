@@ -183,10 +183,123 @@ function rank(name: string): number {
   return FLOORS.mid;
 }
 
+/** The characters a shell reads as themselves, wherever they sit. */
+const PLAIN = /^[A-Za-z0-9_@%+=:,./-]+$/u;
+
+/**
+ * A word as a shell reads it back whole and runs nothing of, as the
+ * terminal kit's `shell_word` writes it: as it is where it's plain and
+ * doesn't open with `=`, which zsh turns into a command's path, and
+ * otherwise in single quotes, each quote of its own closed, escaped and
+ * opened again. A device's name is anyone's to set, so a hint naming it
+ * as a command would otherwise run what the name holds when pasted.
+ */
+function shellWord(word: string): string {
+  if (PLAIN.test(word) && !word.startsWith("=")) {
+    return word;
+  }
+  return `'${word.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * What the terminal kit keeps to shape a word, though alone it draws
+ * nothing: the soft hyphen, the joiners, the variation selectors and the
+ * tags that spell a flag. An emoji as a phone types it, a heart with its
+ * selector or a family joined, is drawn wrong without them.
+ */
+const SHAPING = String.raw`\u00ad\u200c\u200d\ufe00-\ufe0f\u{e0020}-\u{e007f}`;
+
+/**
+ * What a terminal could be handed besides the words it shows: a control
+ * character, such as an escape that ends a terminal's bracketed paste and
+ * has the rest run as typed; a mark of format or direction, or one that
+ * draws nothing, which read one way and paste another; a line or
+ * paragraph break; and any blank but a plain space, braille's and
+ * Hangul's blanks among them, which a page shows as one space wherever it
+ * stands. What shapes a word stays, as it does at a terminal. Hangul's
+ * blank is default-ignorable; braille's is a letter to Unicode, so it's
+ * named.
+ */
+const UNSEEN = new RegExp(
+  String.raw`[[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]` +
+    String.raw`--[${SHAPING}]]|[^\S ]`,
+  "v",
+);
+
+/**
+ * A character that draws nothing standing where a word starts, as the
+ * kit's `typed` refuses it: alone it shows nothing, and after a space it
+ * draws as a second one.
+ */
+const OPENS_BARE = new RegExp(String.raw`(?:^| )[\p{Mn}\p{Me}${SHAPING}]`, "v");
+
+/**
+ * Whether a word pastes into a terminal just as the page shows it:
+ * something to read, with nothing unseen, no run of spaces, since a page
+ * shows a run as one, and nothing that draws nothing where a word starts.
+ */
+function pastesAsRead(word: string): boolean {
+  return word !== "" && !UNSEEN.test(word) && !word.includes("  ") && !OPENS_BARE.test(word);
+}
+
+/** ASCII letters in lower case, as net matches a name in any case. */
+function folded(word: string): string {
+  return word.replace(/[A-Z]/gu, (letter) => letter.toLowerCase());
+}
+
+/**
+ * The words that show a device at a terminal, each typed as it reads and
+ * finding it alone, best first. net takes a word as an id, then as an
+ * address, then as a name in any case, refuses a name two devices share,
+ * and reads a word opening with `-` as a flag. So a name is offered when
+ * nothing else answers to it; then the first address, as net's own try
+ * lines choose it, when no other device answers there; then net's id,
+ * unless it's one net gives to several. Others are told apart by their
+ * id, as the page keys them.
+ */
+function findingWords(device: Device, devices: readonly Device[]): string[] {
+  const others = devices.filter((other) => other.id !== device.id);
+  const { name } = device;
+  const nameFinds = others.every(
+    (other) =>
+      other.id !== name && !other.addresses.includes(name) && folded(other.name) !== folded(name),
+  );
+  const address = device.addresses[0];
+  const addressFinds =
+    address !== undefined &&
+    address !== device.id &&
+    others.every((other) => other.id !== address && !other.addresses.includes(address));
+  return [
+    ...(nameFinds ? [name] : []),
+    ...(addressFinds ? [address] : []),
+    ...(SHARED_IDS.has(device.id) ? [] : [device.id]),
+  ].filter((word) => !word.startsWith("-") && pastesAsRead(word));
+}
+
+/**
+ * The ids net gives every device of a kind it reads without one of its
+ * own: an eero client with no hardware address, and an eero with no id
+ * (modules/net/src/sources/eero.rs). The page keeps one device to an id,
+ * so it can't see the others that share it, and net finds the first.
+ */
+const SHARED_IDS: ReadonlySet<string> = new Set(["mac:?", "eero:unknown"]);
+
+/**
+ * The command that shows a device at a terminal, as net's own try lines
+ * write it: by the first word that finds it alone and pastes as it reads,
+ * quoted as a shell word, or none when no word does. Changing a name to
+ * show it would have the command name a device it didn't.
+ */
+function deviceCommand(device: Device, devices: readonly Device[]): string | undefined {
+  const [word] = findingWords(device, devices);
+  return word === undefined ? undefined : `net devices ${shellWord(word)}`;
+}
+
 export {
   ago,
   clock,
   dbm,
+  deviceCommand,
   gigabytes,
   lasted,
   listed,
@@ -197,6 +310,7 @@ export {
   rank,
   rate,
   roleWords,
+  shellWord,
   slug,
   v4,
 };

@@ -3,9 +3,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
-import { networkOf } from "../model.ts";
+import { type Device, networkOf } from "../model.ts";
 import { study } from "../shape.ts";
-import { lasted, linkSpeed, possessive, rank, rate, slug } from "../words.ts";
+import {
+  deviceCommand,
+  lasted,
+  linkSpeed,
+  possessive,
+  rank,
+  rate,
+  shellWord,
+  slug,
+} from "../words.ts";
 import { told } from "./house.ts";
 
 function shaped() {
@@ -91,4 +100,130 @@ it("a name becomes an address's fragment, and owns things as English writes it",
   assert.equal(slug("Joel's Café TV"), "joel-s-cafe-tv");
   assert.equal(possessive("Upstairs"), "Upstairs'");
   assert.equal(possessive("Basement"), "Basement's");
+});
+
+it("a name in a command is quoted so pasting it runs nothing else", () => {
+  for (const [name, typed] of [
+    ["Study", "Study"],
+    ["tv_2@home%5+=a:b,c./d-e", "tv_2@home%5+=a:b,c./d-e"],
+    ["Main Floor", "'Main Floor'"],
+    ["lamp;reboot", "'lamp;reboot'"],
+    ["$(reboot)", "'$(reboot)'"],
+    ["`reboot`", "'`reboot`'"],
+    ["Joel's | sh", "'Joel'\\''s | sh'"],
+    ["=ls", "'=ls'"],
+    ["a&b", "'a&b'"],
+    ["*?", "'*?'"],
+    ["~", "'~'"],
+    ["hi!", "'hi!'"],
+    ["<in >out", "'<in >out'"],
+    ["back\\slash", "'back\\slash'"],
+    ["", "''"],
+  ]) {
+    assert.equal(
+      shellWord(name),
+      typed,
+      `${JSON.stringify(name)} wasn't one word that runs nothing`,
+    );
+  }
+});
+
+/** A device net read, with only what naming it at a terminal reads. */
+function named(name: string, id: string, addresses: readonly string[] = []): Device {
+  return {
+    id,
+    name,
+    roles: [],
+    addresses,
+    macs: [],
+    source: undefined,
+    vendor: undefined,
+    model: undefined,
+    hardware: undefined,
+    firmware: undefined,
+    serial: undefined,
+    upS: undefined,
+    readAt: undefined,
+    path: undefined,
+    radios: [],
+    ports: [],
+    speed: undefined,
+    modem: undefined,
+  };
+}
+
+it("a device's command names it by a name that pastes as it reads and finds it alone", () => {
+  const id = "mac:02:00:00:00:00:01";
+  const byId = `net devices ${id}`;
+  // net takes a word as an id, then an address, then a name in ASCII
+  // case, so each of these finds another device or more than one.
+  const others = [
+    named("Study", "mac:02:00:00:00:00:02", ["10.0.0.2"]),
+    named("Den", "lamp-id"),
+    named("ÉCOLE", "mac:02:00:00:00:00:03"),
+  ];
+  for (const [name, command] of [
+    ["Hall", "net devices Hall"],
+    ["lamp;reboot", "net devices 'lamp;reboot'"],
+    ["Main Floor", "net devices 'Main Floor'"],
+    ["Salle de séjour 📺", "net devices 'Salle de séjour 📺'"],
+    ["Joel's \u2764\ufe0f phone", "net devices 'Joel'\\''s \u2764\ufe0f phone'"],
+    ["\u{1f469}\u200d\u{1f4bb} desk", "net devices '\u{1f469}\u200d\u{1f4bb} desk'"],
+    ["école", "net devices 'école'"],
+    ["study", byId],
+    ["10.0.0.2", byId],
+    ["lamp-id", byId],
+    ["--json", byId],
+    ["", byId],
+    ["Main  Floor", byId],
+    ["lamp\u001b[201~reboot", byId],
+    ["tab\there", byId],
+    ["two\nlines", byId],
+    ["next\u2028line", byId],
+    ["para\u2029graph", byId],
+    ["\u202eevil", byId],
+    ["zero\u200bwidth", byId],
+    ["no\u00a0break", byId],
+    ["braille\u2800blank", byId],
+    ["hangul\u115ffiller", byId],
+    ["private\ue000use", byId],
+    ["lone\ud800half", byId],
+    ["\u200dalone", byId],
+    ["joined \ufe0fbare", byId],
+  ] as const) {
+    // A copy, as a device read again is, so the device is known by its id.
+    const device = named(name, id);
+    assert.equal(
+      deviceCommand({ ...device }, [device, ...others]),
+      command,
+      `${JSON.stringify(name)} was named wrongly`,
+    );
+  }
+});
+
+it("a device no name finds is named by its address, its id, or by none", () => {
+  const shared = named("Phone", "mac:02:00:00:00:00:02", ["10.0.0.2"]);
+  const network = (device: Device): Device[] => [device, shared, named("Hub", "hub", ["10.0.0.9"])];
+  for (const [device, command, why] of [
+    [named("Phone", "mac:?", ["10.0.0.4"]), "net devices 10.0.0.4", "with its own address"],
+    [named("Phone", "mac:?", ["10.0.0.9"]), undefined, "with another's address"],
+    [named("Phone", "mac:?"), undefined, "with the id net gives every client without one"],
+    [named("Phone", "eero:unknown"), undefined, "with the id net gives every eero without one"],
+    [
+      named("Phone", "mac:02:00:00:00:00:08", ["10.0.0.5"]),
+      "net devices 10.0.0.5",
+      "with an address and an id",
+    ],
+    [
+      named("Phone", "mac:02:00:00:00:00:07"),
+      "net devices mac:02:00:00:00:00:07",
+      "with only its id",
+    ],
+  ] as const) {
+    assert.equal(
+      deviceCommand(device, network(device)),
+      command,
+      `a device ${why} was named wrongly`,
+    );
+  }
 });

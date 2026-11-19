@@ -9,13 +9,23 @@ import { type Device, type Link, type Narrowest, type Radio, worthALook } from "
 import { type Context, concernRows } from "./panel.ts";
 import { busier, endAt, linkBetween, medium } from "./shape.ts";
 import { el } from "./svg.ts";
-import { ago, clock, dbm, lasted, linkSpeed, plural, rate, roleWords, v4 } from "./words.ts";
+import {
+  ago,
+  clock,
+  dbm,
+  deviceCommand,
+  lasted,
+  linkSpeed,
+  plural,
+  rate,
+  roleWords,
+  v4,
+} from "./words.ts";
 
 /** From this signal down, net names a link weak and its rate falls. */
 const WEAK_DBM = -70;
 /** An eero's two 5 GHz radios, named for the channels each takes. */
 const FIVE_GHZ_PAIR = / (low|high)$/u;
-const SPACE = /\s/u;
 
 const has = (device: Device, role: string): boolean => device.roles.includes(role);
 
@@ -285,7 +295,7 @@ function factsOf(context: Context, device: Device): Child[] {
     device.readAt === undefined
       ? null
       : `${ago(device.readAt, context.now)}, from ${device.source ?? "net"}`;
-  const name = SPACE.test(device.name) ? `"${device.name}"` : device.name;
+  const command = deviceCommand(device, context.network.devices);
   return [
     h("h3", {}, "Facts"),
     facts([
@@ -298,13 +308,23 @@ function factsOf(context: Context, device: Device): Child[] {
       ["up for", device.upS ? lasted(device.upS) : null],
       ["read", read],
     ]),
-    h(
-      "p",
-      { class: "hint" },
-      "At a terminal, ",
-      h("code", {}, `net devices ${name}`),
-      " shows everything net read of it.",
-    ),
+    // With no word that finds it alone, the hint still says where net
+    // shows it, so it isn't lost without a word.
+    command === undefined
+      ? h(
+          "p",
+          { class: "hint" },
+          "At a terminal, ",
+          h("code", {}, "net devices"),
+          " lists it with every device net read.",
+        )
+      : h(
+          "p",
+          { class: "hint" },
+          "At a terminal, ",
+          h("code", {}, command),
+          " shows everything net read of it.",
+        ),
   ];
 }
 
