@@ -1938,8 +1938,10 @@
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
     reading's order at the top, their cells worst first, the rows only open branches show and
-    where each tree key goes from a row, edges included, and what each cell, network and
-    machine is in words, counts, sums and labels included
+    where each tree key goes from a row, edges included, what each cell, network and machine is
+    in words, counts, sums and labels included, each time said against the reading's own with
+    its day only off the reading's and a lease's time left, and how each set of cells and each
+    machine stands and why, worst first, its form, its share and the balance's flags
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
