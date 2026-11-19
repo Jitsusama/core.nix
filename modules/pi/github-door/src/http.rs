@@ -271,6 +271,7 @@ pub fn write_answer(out: &mut impl Write, status: u16, message: &str) -> io::Res
     let reason = match status {
         400 => "Bad Request",
         403 => "Forbidden",
+        405 => "Method Not Allowed",
         413 => "Payload Too Large",
         429 => "Too Many Requests",
         502 => "Bad Gateway",

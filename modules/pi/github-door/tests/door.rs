@@ -712,17 +712,16 @@ fn a_session_opens_once_closes_and_is_lifted_by_name() {
     );
 }
 
-#[test]
-fn the_relay_sends_githubs_hosts_to_the_door_and_the_rest_straight_out() {
-    let running = door("good");
-    let (socket, bundle) = running.open("s1");
-    let mut watched = Command::new("sleep")
+/// A relay for the session socket `socket`, started as a fence's shell
+/// starts it, and the process it watches, which ends it once killed.
+fn relay_for(socket: &Path) -> (Child, u16) {
+    let watched = Command::new("sleep")
         .arg("60")
         .spawn()
         .expect("a process to watch");
     let output = Command::new(env!("CARGO_BIN_EXE_pi-github-door"))
         .args(["relay", "--socket"])
-        .arg(&socket)
+        .arg(socket)
         .args(["--while", &watched.id().to_string()])
         .output()
         .expect("the relay");
@@ -731,10 +730,104 @@ fn the_relay_sends_githubs_hosts_to_the_door_and_the_rest_straight_out() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let port: u16 = String::from_utf8_lossy(&output.stdout)
+    let port = String::from_utf8_lossy(&output.stdout)
         .trim()
         .parse()
         .expect("a port");
+    (watched, port)
+}
+
+/// What a client of the relay at `port` hears back for `asked`, sent
+/// whole, once the relay closes.
+fn ask_relay(port: u16, asked: &str) -> String {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
+    stream.write_all(asked.as_bytes()).expect("asked");
+    let mut said = String::new();
+    stream.read_to_string(&mut said).expect("answered");
+    said
+}
+
+#[test]
+fn the_relay_carries_plain_http_straight_out_one_request_at_a_time_but_never_githubs() {
+    let running = door("good");
+    let (socket, _) = running.open("s1");
+    let (mut watched, port) = relay_for(&socket);
+    let far = TcpListener::bind(("127.0.0.1", 0)).expect("a port");
+    let address = far.local_addr().expect("bound").to_string();
+    let seen = thread::spawn(move || {
+        let (mut stream, _) = far.accept().expect("accepted");
+        let mut buffer = Vec::new();
+        let head = http::read_head(&mut stream, &mut buffer).expect("a head");
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nplain")
+            .expect("said");
+        head
+    });
+    // As Ruby's Net::HTTP asks a proxy, which dev drives, with a hop's
+    // own header named in Connection beside it.
+    let said = ask_relay(
+        port,
+        &format!(
+            "GET http://{address}/gems?x=1 HTTP/1.1\r\nHost: {address}\r\n\
+             Proxy-Connection: keep-alive\r\nConnection: keep-alive, X-Hop\r\nX-Hop: 1\r\n\
+             Keep-Alive: 300\r\nProxy-Authorization: Basic eDp5\r\nAccept: */*\r\n\r\n"
+        ),
+    );
+    assert!(
+        said.starts_with("HTTP/1.1 200") && said.ends_with("plain"),
+        "{said}"
+    );
+    let head = seen.join().expect("the far end");
+    assert_eq!(
+        (head.method.as_str(), head.target.as_str()),
+        ("GET", "/gems?x=1"),
+        "the far end wasn't asked in origin form"
+    );
+    assert_eq!(head.header("Host"), Some(address.as_str()));
+    assert_eq!(head.header("Accept"), Some("*/*"));
+    assert_eq!(
+        head.header("Connection"),
+        Some("close"),
+        "one request per connection, so a second can't reach this host meant for another"
+    );
+    for hop in [
+        "Proxy-Connection",
+        "Keep-Alive",
+        "X-Hop",
+        "Proxy-Authorization",
+    ] {
+        assert_eq!(head.count(hop), 0, "{hop} went past the relay");
+    }
+    for host in ["api.github.com", "GitHub.com", "codeload.github.com:80"] {
+        let said = ask_relay(
+            port,
+            &format!("GET http://{host}/ HTTP/1.1\r\nHost: {host}\r\n\r\n"),
+        );
+        assert!(
+            said.starts_with("HTTP/1.1 403"),
+            "plain HTTP to {host} wasn't refused: {said}"
+        );
+    }
+    for asked in [
+        "GET /gems HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
+        "GET http://user@rubygems.org/ HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
+        "GET https://rubygems.org/ HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
+    ] {
+        let said = ask_relay(port, asked);
+        assert!(
+            said.starts_with("HTTP/1.1 405"),
+            "{asked:?} wasn't refused: {said}"
+        );
+    }
+    let _ = watched.kill();
+    let _ = watched.wait();
+}
+
+#[test]
+fn the_relay_sends_githubs_hosts_to_the_door_and_the_rest_straight_out() {
+    let running = door("good");
+    let (socket, bundle) = running.open("s1");
+    let (mut watched, port) = relay_for(&socket);
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
     assert!(
         connect(&mut stream, "api.github.com:443").starts_with("HTTP/1.1 200"),

@@ -9,6 +9,15 @@
 //! never a fenced command's other downloads, and the door sees nothing
 //! of them.
 //!
+//! Plain HTTP comes too, as a proxy is asked for it, with the whole
+//! address in the request line: Ruby's `Net::HTTP`, which dev drives, reads
+//! only `http_proxy`, so a fence pointing it here must carry it. Each
+//! request goes straight out on a connection of its own, in the form a
+//! server is asked, without the hop's own headers and closed after its
+//! answer. GitHub's hosts are refused over plain HTTP, since the door
+//! answers them only through a tunnel, and anything else, a request
+//! with no host or one for HTTPS, is refused rather than guessed at.
+//!
 //! Localhost is shared by every process on the machine, other sessions'
 //! fences among them, so the relay answers only a connection a process
 //! in its own fence holds: it finds the client's socket in the kernel's
@@ -96,22 +105,28 @@ fn ready(listener: &TcpListener) -> bool {
     ready > 0 && asked.revents & libc::POLLIN != 0
 }
 
-/// Pass one client's tunnel on: GitHub's to the door, the rest straight out.
+/// What the relay carries, said when it's asked anything else.
+const CARRIES: &str = "this proxy carries CONNECT, and plain HTTP with its whole address";
+
+/// Pass one client's tunnel or plain request on: GitHub's tunnels to the
+/// door, the rest straight out.
 fn relay(mut client: TcpStream, socket: &Path) {
     let _ = client.set_read_timeout(Some(REACH));
     let mut buffer = Vec::new();
     let Ok(head) = http::read_head(&mut client, &mut buffer) else {
-        let _ = http::write_answer(&mut client, 400, "this proxy carries only CONNECT");
+        let _ = http::write_answer(&mut client, 400, CARRIES);
         return;
     };
+    if head.method != "CONNECT" {
+        plain(client, &head, &buffer);
+        return;
+    }
     let target = head.target.clone();
-    let host = target.rsplit_once(':').map(|(host, _)| {
-        host.trim_start_matches('[')
-            .trim_end_matches(']')
-            .to_owned()
-    });
-    let (Some(host), "CONNECT") = (host, head.method.as_str()) else {
-        let _ = http::write_answer(&mut client, 405, "this proxy carries only CONNECT");
+    let Some(host) = target
+        .rsplit_once(':')
+        .map(|(host, _)| unbracketed(host).to_owned())
+    else {
+        let _ = http::write_answer(&mut client, 405, CARRIES);
         return;
     };
     let _ = client.set_read_timeout(None);
@@ -150,6 +165,107 @@ fn relay(mut client: TcpStream, socket: &Path) {
         splice(client, far, far_back, back);
     }
 }
+
+/// Carry one plain HTTP request, `head` with `read` read past it,
+/// straight out: in origin form, without the hop's own headers, and on a
+/// connection closed after its answer, so nothing more the client sends
+/// reaches the host as a request of its own.
+fn plain(mut client: TcpStream, head: &http::Head, read: &[u8]) {
+    let Some((host, port, path)) = absolute(&head.target) else {
+        let _ = http::write_answer(&mut client, 405, CARRIES);
+        return;
+    };
+    if Host::named(unbracketed(host)).is_some() {
+        let _ = http::write_answer(
+            &mut client,
+            403,
+            "GitHub is reached only over HTTPS, through the door",
+        );
+        return;
+    }
+    let Some(mut far) = reach(&format!("{host}:{port}")) else {
+        let _ = http::write_answer(&mut client, 502, "the host couldn't be reached");
+        return;
+    };
+    let _ = client.set_read_timeout(None);
+    if far.write_all(&origin_form(head, &path)).is_err() || far.write_all(read).is_err() {
+        return;
+    }
+    let (Ok(back), Ok(far_back)) = (client.try_clone(), far.try_clone()) else {
+        return;
+    };
+    splice(client, far, far_back, back);
+}
+
+/// The host, port and path of an absolute `http://` address, when it
+/// names a host and no user.
+fn absolute(target: &str) -> Option<(&str, u16, String)> {
+    let scheme = target.get(..7)?;
+    if !scheme.eq_ignore_ascii_case("http://") {
+        return None;
+    }
+    let rest = &target[7..];
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, path) = rest.split_at(end);
+    if authority.contains('@') {
+        return None;
+    }
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) if !port.contains(']') => (host, port.parse().ok()?),
+        _ => (authority, 80),
+    };
+    if unbracketed(host).is_empty() {
+        return None;
+    }
+    let path = match path.chars().next() {
+        Some('/') => path.to_owned(),
+        Some('?') => format!("/{path}"),
+        _ => "/".to_owned(),
+    };
+    Some((host, port, path))
+}
+
+/// A host without the brackets an IPv6 address is written in.
+fn unbracketed(host: &str) -> &str {
+    host.trim_start_matches('[').trim_end_matches(']')
+}
+
+/// `head` as its server is asked it: its line in origin form, `path`, and
+/// its headers but the hop's own, closing the connection after.
+fn origin_form(head: &http::Head, path: &str) -> Vec<u8> {
+    let named: Vec<String> = head
+        .headers
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case("Connection"))
+        .flat_map(|(_, value)| {
+            String::from_utf8_lossy(value)
+                .split(',')
+                .map(|name| name.trim().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let hop = |name: &str| {
+        let name = name.to_ascii_lowercase();
+        HOP.contains(&name.as_str()) || named.contains(&name)
+    };
+    let mut out = format!("{} {path} HTTP/1.1\r\n", head.method).into_bytes();
+    for (name, value) in head.headers.iter().filter(|(name, _)| !hop(name)) {
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(b": ");
+        out.extend_from_slice(value);
+        out.extend_from_slice(b"\r\n");
+    }
+    out.extend_from_slice(b"Connection: close\r\n\r\n");
+    out
+}
+
+/// Headers for the hop to the proxy alone, never passed on.
+const HOP: [&str; 4] = [
+    "connection",
+    "proxy-connection",
+    "keep-alive",
+    "proxy-authorization",
+];
 
 /// A TCP connection to `target`, a host and port.
 fn reach(target: &str) -> Option<TcpStream> {
@@ -258,6 +374,31 @@ fn hex(address: SocketAddr) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_absolute_address_gives_its_host_port_and_path() {
+        assert_eq!(
+            absolute("http://rubygems.org/gems?x=1"),
+            Some(("rubygems.org", 80, "/gems?x=1".to_owned()))
+        );
+        assert_eq!(
+            absolute("HTTP://[::1]:8080?x"),
+            Some(("[::1]", 8080, "/?x".to_owned()))
+        );
+        assert_eq!(
+            absolute("http://[::1]"),
+            Some(("[::1]", 80, "/".to_owned()))
+        );
+        for refused in [
+            "/gems",
+            "https://rubygems.org/",
+            "http://user@rubygems.org/",
+            "http:///gems",
+            "http://rubygems.org:port/",
+        ] {
+            assert_eq!(absolute(refused), None, "{refused}");
+        }
+    }
 
     #[test]
     fn a_connection_is_found_in_the_table() {
