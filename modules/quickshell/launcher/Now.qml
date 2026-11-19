@@ -2195,16 +2195,21 @@ Provider {
         }
     }
 
-    // The notices moved, as `why` says. While a step in Now is held, it asks
-    // whether what's held reads otherwise (changedTo), as forYouMoved does:
-    // said outright there, a session's notice updated as its work turned
-    // just after Return into For You was drawn as Return's act, though no
-    // row For You showed had moved (the niri case, 2026-11-18: "the
-    // notices' history, then the notices' rows"). With nothing held it's
-    // said outright, so the places a notice is listed in are made again.
+    // The notices moved, as `why` says. While one of Now's rows is held, and
+    // nothing below it, it's asked with For You's own, after the change
+    // (forYouMoved): said outright there, a session's notice updated as its
+    // work turned just after Return into For You was drawn as Return's act,
+    // though no row For You showed had moved (the niri case, 2026-11-18:
+    // "the notices' history, then the notices' rows"). What such a step
+    // shows is rows of places, whose every drawn line changedTo compares.
+    // Deeper, the notices themselves are shown, in Desktop, History or
+    // what's on screen (leadsTo), whose rows changedTo doesn't reach or
+    // whose hue and drawer it doesn't compare, so there, as with nothing
+    // held, it's said outright and the places a notice is listed in are
+    // made again.
     function noticesMoved(why) {
-        if (heldKeys().length > 0) {
-            changedTo(all);
+        if (heldKeys().length === 1) {
+            Qt.callLater(Hearing.putOff(forYouTold));
             return;
         }
         changedWhy = why;

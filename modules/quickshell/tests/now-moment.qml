@@ -1747,10 +1747,33 @@ ShellRoot {
             now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
     }
 
+    // The notices moving, with For You held, are asked with For You's own
+    // after the change rather than said outright: a session's notice updated
+    // as its work turned just after Return into For You was drawn as
+    // Return's act (the niri case, 2026-11-18). Deeper, where the notices
+    // themselves are shown, and with nothing held, they're said outright.
+    function noticesWeighed(into) {
+        const outright = (name, held, said) => {
+            theLauncher.held = held;
+            root.nowChanged = 0;
+            root.nowMoved = "";
+            now.noticesMoved("the notices' rows");
+            expect(name, root.nowChanged === said
+                && root.nowMoved === (said === 1 ? "the notices' rows" : ""),
+                JSON.stringify([root.nowChanged, root.nowMoved]));
+        };
+        outright("For You held, the notices moving aren't said outright",
+            into(now.waiting.verbs()), 0);
+        outright("held below For You, they are", into(now.waiting.verbs()).concat([
+            { row: { key: "on:waiting:screen" }, rows: [] }]), 1);
+        outright("as they are with nothing held", [], 1);
+    }
+
     function heldHears() {
         // Told once by what Now compares, which says what moved. Now says
-        // the notices' rows changed outright, naming nothing, so their
-        // daemon answering late is no second telling of For You: counting
+        // the notices' rows changed outright with nothing held, naming
+        // nothing, and held asks them with For You's own, so their daemon
+        // answering late is no second telling of For You: counting
         // every change read 2 on loaded builders (train run 23a23e5d and
         // three more, 16 and 17 November), as it does with the notices'
         // rows changed just after the case. A minute turning while the
@@ -1880,6 +1903,7 @@ ShellRoot {
         asks = 0;
         now.changedTo(counted);
         expect("and stepped into, once too", asks === 1, asks);
+        noticesWeighed(into);
         theLauncher.held = [];
         Facts.all = [];
         Notices.history = [];

@@ -3411,9 +3411,13 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
 # anywhere from 14 to 345 ms after Return's work from one turn to the next (2026-11-19), so a
 # fixed walk of leads could miss Pacing.keyed's 50 ms. Each turn heard after Return moves the
 # next one's laying earlier by as much as it was late, and each heard before moves it later by
-# LEAD_BACK, so the turns close in on the race on a builder fast or slow.
+# LEAD_BACK, so the turns close in on the race on a builder fast or slow. A turn heard a second
+# or more after Return's work is said no more than one heard before it, so the lead never drops
+# below LEAST_LEAD, from which a turn would have to take 1.3 s or more to reach the shell to read
+# as early.
 FIRST_LEAD = 0.8
 LEAD_BACK = 0.04
+LEAST_LEAD = 0.3
 # How many turns the case lays at most, and how many heard beside Return are enough.
 TURNS = 36
 ENOUGH_BESIDE = 3
@@ -3422,7 +3426,9 @@ TOLD_QUIET = 1.0
 # Within how long of a key's work the launcher owns a change as the key's, Launcher.qml's
 # keyedWithin, and how it says one it heard after a key but didn't draw as the key's act: Now's,
 # or the notices' a turn updates a session's notice in, which Now no longer says when it moves
-# nothing For You shows (2026-11-19), so the notices' own is what shows the race was met.
+# nothing For You shows (2026-11-19). Since the fix, the notices' path says nothing as it moves
+# nothing, so Now's own, heard from the same turn, is what shows the turn landed beside Return;
+# that the case reaches the notices' path there is shown by its failing with Now's fix taken out.
 KEYED_WITHIN = 50
 HEARD_AFTER = re.compile(r"heard (?:on|notices) (\d+) ms after a key's work")
 
@@ -3501,9 +3507,12 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
                     if late is not None
                     else lead - LEAD_BACK
                 )
-                lead = min(max(lead, 0.05), 2.0)
+                lead = min(max(lead, LEAST_LEAD), 2.0)
         print(f"turns heard within {KEYED_WITHIN} ms of Return, by their leads: {beside}")
-        assert beside, f"no turn was heard within {KEYED_WITHIN} ms of Return: {told}"
+        assert beside, (
+            f"no turn was heard within {KEYED_WITHIN} ms of Return (one heard before it, or a "
+            f"second or more after, says nothing): {told}"
+        )
     finally:
         shell.close_launcher()
         lay("TICKER", "Ticking Quest", {"state": "idle"}, closed=True)
