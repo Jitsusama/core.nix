@@ -554,7 +554,7 @@ fn the_nodes_mend_once_every_one_answers_and_those_past_the_most_never() {
     );
 
     // A machine named for them is a machine, and mends only its own.
-    let named_so = heard_well(look(&[], 1, &[]), &["machines past the most named"]);
+    let named_so = heard_well(look(&[], 1, &[]), &[peers::UNNAMED]);
     follower.see_heard(&named_so, NOON + 1150 * second);
     follower.see_heard(&crowded, NOON + 1180 * second);
     follower.see_heard(&crowded, NOON + 1360 * second);
@@ -594,6 +594,32 @@ fn two_looks_a_suspend_keeps_apart_make_no_three_minutes() {
         follower.day.seeing.unseen_calls,
         ["calls on skiff"],
         "the day kept other than the one machine counted"
+    );
+}
+
+#[test]
+fn the_day_keeps_what_it_counted_in_order_and_once_each() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), NOON);
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), NOON + 180 * second);
+    assert_eq!(
+        follower.day.seeing.unseen_calls,
+        ["calls on dinghy", "calls on skiff"],
+        "the day didn't keep both machines counted, in order"
+    );
+    follower.changed = false;
+    follower.see_heard(&look(&["dinghy"], 1, &[]), NOON + 210 * second);
+    assert!(
+        !follower.changed,
+        "a look that only moved what the day counted changed the day"
+    );
+    follower.see_heard(&look(&["skiff", "skiff"], 1, &[]), NOON + 240 * second);
+    assert_eq!(
+        follower.day.seeing.unseen_calls,
+        ["calls on dinghy", "calls on skiff"],
+        "a machine said twice in a look was kept twice"
     );
 }
 
