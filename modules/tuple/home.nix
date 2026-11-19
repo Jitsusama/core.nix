@@ -118,6 +118,14 @@ let
     mv -f log.txt log.1.txt
   '';
 
+  # Says the daemon is ready once it runs, under Tuple's own name
+  # (says-ready.sh).
+  saysReady = pkgs.writeShellScript "tuple-says-ready" ''
+    PATH=${
+      lib.makeBinPath [ pkgs.coreutils ]
+    } exec ${lib.getExe pkgs.bash} ${./says-ready.sh} ${lib.getExe' pkgs.systemd "systemctl"} "$@"
+  '';
+
   # Puts our entry back when it no longer reads as ours (puts-back.sh).
   putsBack = pkgs.writeShellScript "tuple-puts-its-entry-back" ''
     PATH=${
@@ -197,6 +205,9 @@ in
       Type = "forking";
       ExecStartPre = "${keepsLogs}";
       ExecStart = "${tuple} start";
+      # Tuple says only that it started, with no time, so a switch's
+      # restart of it went untimed; this says it, under Tuple's name.
+      ExecStartPost = "@${saysReady} tuple %n";
       ExecStop = "${tuple} stop";
       Restart = "on-failure";
       # A call is real time: its sound, camera and screen are encoded and
