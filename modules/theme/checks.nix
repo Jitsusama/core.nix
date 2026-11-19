@@ -21,8 +21,8 @@ let
   # stockier than the cat. Its strides, in the order it walks them, each
   # step one pair of feet, so its paws are seen walking rather than the
   # animal skidding (Joel, 2026-11-14 17:19: "i always want to see its paws
-  # moving when it is walking or running"): from one stride to the next,
-  # and from the last back to the first, all but the feet on the bottom row
+  # moving when it is walking or running"): around the walk's cycle, from
+  # one stride to the next and from the last back to the first, all but the feet on the bottom row
   # and the tail's tip, the top row's last two columns, holds still, and of
   # the feet only the fore half or the hind half changes. Over the whole
   # walk each half changes, since a pair that never steps is being dragged
@@ -172,26 +172,36 @@ let
     in
     holds check "The ${animal}'s poses must read as one ${animal}: ${found.said}." found.ok;
 
-  # The cat's walk, read from the code that walks it, so its check proves
-  # the walk that's drawn rather than a copy: the words WALKS lists, which
-  # is every list STRIDING strides by. Should STRIDING stride by another,
-  # or either not be found, the walk reads as none, which fails saying
-  # where it was read from.
-  catWalk =
+  # The walk the cat's code takes, read from the code that walks it, so its
+  # check proves the walk that's drawn rather than a copy: the words WALKS
+  # lists, when it's every list STRIDING strides by. Each is read whole,
+  # spaces aside, and must be only what's meant, so anything else, another
+  # list, a stride written inline, an entry not a quoted word or either
+  # not found, reads as no walk, which fails saying where it looked.
+  walkIn =
+    ways:
     let
-      ways = builtins.readFile ../margin-cat/MarginCatWays.js;
-      # What follows the constant's declaration, up to the first `close`.
+      # What follows the constant's declaration, up to the first `close`,
+      # without its spaces.
       declared =
         name: close:
         let
           after = lib.splitString "const ${name} = " ways ++ [ "" ];
         in
-        lib.head (lib.splitString close (lib.elemAt after 1));
-      captured = pattern: text: map lib.head (lib.filter lib.isList (builtins.split pattern text));
-      walks = captured "[\"']([A-Za-z]+)[\"']" (declared "WALKS" "]");
-      striding = captured ":[[:space:]]*([A-Za-z_]+)" (declared "STRIDING" "}");
+        lib.replaceStrings [ " " "\t" "\n" ] [ "" "" "" ] (
+          lib.head (lib.splitString close (lib.elemAt after 1))
+        );
+      walks = declared "WALKS" "]";
+      striding = declared "STRIDING" "}";
+      word = "[\"'][A-Za-z]+[\"']";
+      stride = "[A-Za-z_]+:WALKS";
+      words = map lib.head (lib.filter lib.isList (builtins.split "[\"']([A-Za-z]+)[\"']" walks));
     in
-    lib.optionals (striding != [ ] && lib.all (list: list == "WALKS") striding) walks;
+    lib.optionals (
+      builtins.match "\\[(${word},)*${word},?" walks != null
+      && builtins.match "\\{(${stride},)*${stride},?" striding != null
+    ) words;
+  catWalk = walkIn (builtins.readFile ../margin-cat/MarginCatWays.js);
   catWalkedFrom = "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js";
 in
 {
@@ -396,19 +406,26 @@ in
   # The stride rule refuses each way a walk skids, by its reason, so it's
   # shown refusing as well as passing: the cat's own strides out of order,
   # alone, with a pair never stepping, after a pose that isn't a stride,
-  # undrawn, and none at all.
+  # undrawn, and none at all; and the cat's code read as no walk when it
+  # strides by anything but WALKS's quoted words, though as its walk when
+  # they're only spaced or quoted otherwise.
   every-skidding-walk-is-refused =
     let
-      refused =
-        { strides, reason }:
-        let
-          found = poseFaults {
-            sitting = "nothingHere";
-            poses = [ "nothingHere" ];
-            inherit strides;
-          };
-        in
-        !found.ok && lib.hasInfix reason found.said;
+      said =
+        strides:
+        poseFaults {
+          sitting = "nothingHere";
+          poses = [ "nothingHere" ];
+          walkedFrom = "here";
+          inherit strides;
+        };
+      refused = { strides, reason }: !(said strides).ok && lib.hasInfix reason (said strides).said;
+      strides = ''const WALKS = ["walkingA", "walkingC", "walkingB", "walkingD"];'';
+      striding = "const STRIDING = { goes: WALKS, climbs: WALKS };";
+      walkedOf = ways: {
+        strides = walkIn ways;
+        reason = "no strides read from here";
+      };
       walks = [
         {
           strides = [
@@ -444,16 +461,43 @@ in
           ];
           reason = "undrawn [\"walkingZ\"]";
         }
-        {
-          strides = [ ];
-          reason = "no strides";
-        }
+        (walkedOf "")
+        (walkedOf strides)
+        (walkedOf striding)
+        (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: [\"walkingA\"] };")
+        (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: WALKS.slice(1) };")
+        (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: RUNS };")
+        (walkedOf "const WALKS = [\"walkingA\", ...RUNS];\n${striding}")
       ];
-      passed = map (walk: walk.reason) (lib.filter (walk: !refused walk) walks);
+      # The same walk, spaced and quoted otherwise, still reads whole.
+      reread = walkIn ''
+        const WALKS = [
+          'walkingA',
+          'walkingC',
+          'walkingB',
+          'walkingD',
+        ];
+        ${striding}
+      '';
+      passed = map (walk: "${walk.reason}, said ${(said walk.strides).said}") (
+        lib.filter (walk: !refused walk) walks
+      );
     in
     holds "every-skidding-walk-is-refused"
-      "Every skidding walk must be refused, by its reason: ${builtins.toJSON passed} weren't."
-      (passed == [ ]);
+      (
+        "Every skidding walk must be refused, by its reason, and a walk spaced otherwise "
+        + "read whole: ${builtins.toJSON passed} weren't, and it read ${builtins.toJSON reread}."
+      )
+      (
+        passed == [ ]
+        &&
+          reread == [
+            "walkingA"
+            "walkingC"
+            "walkingB"
+            "walkingD"
+          ]
+      );
 
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
   # or by APCA's lightness contrast. WCAG's black on white is 21:1, and
