@@ -41,7 +41,7 @@ pub fn starts(step: &str, now: i64, tz: &TimeZone) -> Option<i64> {
             return None;
         }
         let weekday = weekday(w[1])?;
-        let day: i8 = w[2].parse().ok()?;
+        let day = day(w[2])?;
         let (hour, minute) = time(w[3])?;
         let date = nearest(today, weekday, day)?;
         let start = date.at(hour, minute, 0, 0).to_zoned(tz.clone()).ok()?;
@@ -65,6 +65,15 @@ fn weekday(word: &str) -> Option<Weekday> {
     .into_iter()
     .find(|(name, _)| word.len() >= 3 && name.starts_with(word))
     .map(|(_, day)| day)
+}
+
+/// A day of the month from "19", with anything after its digits: "19's",
+/// "19th" and "19," are each the 19th, as a cell writes them. A word
+/// that doesn't start with its digits is no day.
+fn day(word: &str) -> Option<i8> {
+    word.trim_end_matches(|c: char| !c.is_ascii_digit())
+        .parse()
+        .ok()
 }
 
 /// An hour and minute from "09:00", with any punctuation after it.
@@ -117,6 +126,24 @@ mod tests {
             Some(THU_19_0530 - 20 * 3600 - 30 * 60),
             "a start already passed is still said, as passed"
         );
+        // 1JQPPC's step on 19 November, woken at 10:40 as idle since its
+        // day was read as "19's", no number.
+        assert_eq!(
+            starts(
+                "After Thu 19's 18:00 cadence-day run, the first with #5591",
+                THU_19_0530,
+                &toronto(),
+            ),
+            Some(THU_19_0530 + 12 * 3600 + 30 * 60),
+            "a day written 19's gives that evening"
+        );
+        for step in ["after Thu 19th 18:00", "after Thu 19\u{2019}s 18:00"] {
+            assert_eq!(
+                starts(step, THU_19_0530, &toronto()),
+                Some(THU_19_0530 + 12 * 3600 + 30 * 60),
+                "{step:?} gave no start that evening"
+            );
+        }
     }
 
     #[test]
@@ -129,6 +156,8 @@ mod tests {
             "Judge it at Thu 19 25:00",
             "Judge it at Thu 19 evening",
             "Judge it at Thump 19 09:00",
+            "Judge it at Thu x19 09:00",
+            "Judge it at Thu th 18:00",
             "Judge it at Mon 23 09:00",
             "Judge it at Sun 22 09:00",
         ] {
