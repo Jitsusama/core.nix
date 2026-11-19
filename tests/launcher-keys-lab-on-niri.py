@@ -15,7 +15,7 @@ ids and names as `google-chrome=Google Chrome`, comma between, it installs those
 two actions, so a program's own page, whose provider keys it by its id, is there to step into,
 by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts a program).
 Given LAB_BACK too, it steps back out of that place with - each round and prints that step's
-line, and given LAB_WINDOWS, it opens that many windows first, so Windows holds some. Given
+line, and it refuses LAB_BACK without LAB_STEP. Given LAB_WINDOWS, it opens that many windows first, so Windows holds some. Given
 LAB_CHORD, a place's name as its chord asks for it, it opens that place from shut each round
 and steps out of it to home with nothing typed, as Joel's Super+Tab then - does.
 Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
@@ -205,7 +205,8 @@ def chorded_out(shell: Shell, place: str) -> str | None:
     """Open the place from shut as its chord does, step out to home, and give the step's line.
 
     Nothing is typed, so no words are put back and the step searches nothing, as Joel's out of
-    Windows spent 13 to 20 ms of its 53 and 58 ms before it searched (2026-11-17 and 18).
+    Windows spent 20 and 19 ms of its 58 and 53 ms holding, before it searched (2026-11-17 and
+    18).
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     shell.as_account(shell.ipc("collection", place))
