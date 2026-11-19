@@ -47,7 +47,9 @@ pub fn unbilled(collection: Option<&str>, status: Option<&str>, now: i64, owner:
     let beating = status
         .and_then(|text| serde_json::from_str::<Value>(text).ok())
         .and_then(|status| status.get("heartbeat")?.as_f64())
-        .is_some_and(|beat| beat >= seconds(now) - BEAT_WITHIN);
+        // A beat ahead of the clock by more than the quarter hour is no
+        // more a sign of life than one behind it.
+        .is_some_and(|beat| (beat - seconds(now)).abs() <= BEAT_WITHIN);
     let read = collection
         .filter(|_| beating)
         .and_then(|text| serde_json::from_str::<Value>(text).ok());
@@ -172,7 +174,14 @@ mod tests {
     #[test]
     fn a_stopped_spend_watch_leaves_it_unjudged() {
         let stale = beat(16 * 60);
-        for status in [None, Some("{}"), Some("not json"), Some(stale.as_str())] {
+        let ahead = beat(-16 * 60);
+        for status in [
+            None,
+            Some("{}"),
+            Some("not json"),
+            Some(stale.as_str()),
+            Some(ahead.as_str()),
+        ] {
             let m = unbilled(Some(UNDER), status, NOW, "WCJQSG");
             assert_eq!(m.target, None, "{status:?}");
             assert!(m.says.ends_with(UNREAD), "{status:?}");

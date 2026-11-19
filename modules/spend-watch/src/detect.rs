@@ -1421,7 +1421,7 @@ const UNBILLED_STALE_HOURS: i64 = crate::picture::LISTED_HOURS - UNBILLED_HOURS;
 /// settled, since a settled hour's bill no longer grows and a feed that
 /// lags holds the window back rather than reading as a key billing
 /// nothing. A feed settled more than two days behind has stopped, and
-/// that is told in place of any budget. Both sides are pi's alone: the
+/// one settled past now is wrong; either is told in place of any budget. Both sides are pi's alone: the
 /// bill's `pi` tool, and the logs' list prices as the picture's series
 /// attributed them, a run's agents to the budget of the session that
 /// started them. Only budgets a feed billed pi for before the window are
@@ -1437,11 +1437,12 @@ pub fn unbilled(
     let Some(through) = warehouse_settled(history, &runs)? else {
         return Ok(Vec::new());
     };
-    // A feed's settled hour only moves on, so one it gave past now would
-    // hold the day in the future for good; no hour after now is billed.
+    // A feed's settled hour only moves on, so one it gave past now stands
+    // for good, and no day under it can be judged: the hours before it
+    // weren't all billed, whatever it says. It's told in place of any
+    // budget, as a warehouse that stopped settling is.
     let now = crate::time::hour_of(picture.now);
-    let through = through.min(now);
-    if through < now - UNBILLED_STALE_HOURS {
+    if through > now || through < now - UNBILLED_STALE_HOURS {
         return Ok(vec![unsettled_finding(picture, through)]);
     }
     let first = through - UNBILLED_HOURS;
@@ -1531,16 +1532,31 @@ fn unsettled_finding(picture: &Picture, through: i64) -> Finding {
     let since = picture
         .zone
         .clock(crate::time::hour_start(through), picture.now);
+    let (title, detail) = if through > crate::time::hour_of(picture.now) {
+        (
+            "the warehouse's bill is settled past now",
+            format!(
+                "The warehouse says it has settled pi's bill to {since}, which hasn't \
+                 come yet, so no budget's bill is held against its logs until the row \
+                 is put right."
+            ),
+        )
+    } else {
+        (
+            "the warehouse's bill stopped settling",
+            format!(
+                "The warehouse has settled pi's bill only to {since}, more than \
+                 {UNBILLED_STALE_HOURS} hours ago, so no budget's bill is held against \
+                 its logs until it settles again."
+            ),
+        )
+    };
     let mut f = finding(
         UNBILLED_UNSETTLED.into(),
         "unbilled",
         Severity::Warning,
-        "the warehouse's bill stopped settling".into(),
-        format!(
-            "The warehouse has settled pi's bill only to {since}, more than \
-             {UNBILLED_STALE_HOURS} hours ago, so no budget's bill is held against its \
-             logs until it settles again."
-        ),
+        title.into(),
+        detail,
     );
     f.badge = format!("to {since}");
     f.note = format!("settled to {since}");
@@ -2600,15 +2616,23 @@ mod tests {
         assert_eq!(unbilled_keys_running(&history, &both), ["unbilled:ochre"]);
     }
 
-    // A settled hour a feed gave past now would hold the day in the
-    // future for good, so the day ends at the hour under way instead.
+    // A settled hour a feed gave past now stands for good and can't be
+    // true, so no budget is judged under it, and that is told instead.
     #[test]
-    fn a_settled_hour_past_now_is_held_to_now() {
+    fn a_settled_hour_past_now_is_told_in_place_of_any_budget() {
         let history = History::memory();
         billed_before(&history);
         settled_to(&history, "proxy", "2026-10-16T00:00:00Z");
         turn_on(&history, NOW - 2.0 * HOUR, 100.0, Some("teal"));
-        assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        assert_eq!(unbilled_keys(&history), [UNBILLED_UNSETTLED]);
+        let config = fed_config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let findings = unbilled(&picture, &history, &config).unwrap();
+        assert_eq!(
+            findings[0].title,
+            "the warehouse's bill is settled past now"
+        );
     }
 
     // The floor is on what went unbilled, not on what was logged: $30
