@@ -49,16 +49,24 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
         // The case gave up waiting on this one and has said so itself.
         let _ = done.send(());
     });
-    // A guard that waits without killing waits for ever, and one that
-    // does neither leaves its reader running; either way, the case stops
-    // the reader itself before it says so, rather than leave it.
+    // A guard that waits without killing waits for ever, one that does
+    // neither leaves its reader running, and one that kills without
+    // reaping leaves it lingering; the case stops or reaps the reader
+    // itself before it says so, rather than leave it.
     let stopped = dropped.recv_timeout(PATIENCE).is_ok();
-    let gone = ended(&reader_itself);
-    if !gone || !stopped {
+    let left = left_as(&reader_itself);
+    if left == Left::Running || !stopped {
         stop(&reader_itself);
     }
+    if left == Left::Unreaped {
+        reap(&reader_itself);
+    }
     assert!(stopped, "the guard never stopped its reader");
-    assert!(gone, "the failed case's reader still runs");
+    assert!(left != Left::Running, "the failed case's reader still runs");
+    assert!(
+        left != Left::Unreaped,
+        "the guard stopped its reader but never reaped it"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
@@ -118,7 +126,10 @@ fn failing_while_held() {
     asked_once(&asked);
     let began = Instant::now();
     while !journal(&home).contains(SAID) {
-        assert!(began.elapsed() < PATIENCE, "the reader never kept a stop");
+        assert!(
+            began.elapsed() < PATIENCE,
+            "the reader never said what it kept in shadow"
+        );
         thread::sleep(Duration::from_millis(50));
     }
     // Stopped here, so only the stop case pins the guard's own stop.
@@ -150,23 +161,53 @@ fn pidfd(pid: u32) -> OwnedFd {
     unsafe { OwnedFd::from_raw_fd(fd) }
 }
 
-/// Whether the reader has ended, asked of the reader itself: its pidfd
-/// reads ready once it has exited, whether or not it has been reaped.
-fn ended(reader: &OwnedFd) -> bool {
-    let mut asked = libc::pollfd {
-        fd: reader.as_raw_fd(),
-        events: libc::POLLIN,
-        revents: 0,
-    };
-    // SAFETY: poll reads and writes only the one pollfd lent it here, and
-    // a timeout of 0 answers at once.
-    let ready = unsafe { libc::poll(&raw mut asked, 1, 0) };
-    let why = std::io::Error::last_os_error();
+/// How a guard left its reader.
+#[derive(Debug, PartialEq, Eq)]
+enum Left {
+    /// Still running.
+    Running,
+    /// Ended, but nobody reaped it, so it lingers as a zombie.
+    Unreaped,
+    /// Ended and reaped.
+    Reaped,
+}
+
+/// How the reader was left, asked of the reader itself, and changing
+/// nothing: this test binary is its parent, so the kernel answers with
+/// its status while it lingers, and with ECHILD once it has been reaped.
+fn left_as(reader: &OwnedFd) -> Left {
+    match waited(reader, libc::WNOHANG | libc::WNOWAIT) {
+        Ok(0) => Left::Running,
+        Ok(_) => Left::Unreaped,
+        Err(why) if why.raw_os_error() == Some(libc::ECHILD) => Left::Reaped,
+        Err(why) => panic!("the reader couldn't be asked how it was left: {why}"),
+    }
+}
+
+/// Reaps the reader its guard stopped but left lingering.
+fn reap(reader: &OwnedFd) {
+    let reaped = waited(reader, 0);
     assert!(
-        ready >= 0,
-        "the reader couldn't be asked whether it ended: {why}"
+        reaped.is_ok(),
+        "the reader the guard left couldn't be reaped: {reaped:?}"
     );
-    asked.revents & libc::POLLIN != 0
+}
+
+/// Waits on the reader for its end with `options` besides WEXITED,
+/// answering the pid it reported, 0 when it reported none.
+fn waited(reader: &OwnedFd, options: libc::c_int) -> std::io::Result<libc::pid_t> {
+    let fd = libc::id_t::try_from(reader.as_raw_fd()).expect("an fd is never negative");
+    // SAFETY: an all-zero siginfo_t is a valid one, and the kernel leaves
+    // its pid at 0 when it has nothing to report.
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    // SAFETY: waitid writes only the siginfo lent it here, and the fd is
+    // the reader's own, open for as long as `reader`.
+    let waited = unsafe { libc::waitid(libc::P_PIDFD, fd, &raw mut info, libc::WEXITED | options) };
+    if waited < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: waitid filled the siginfo as a child's, or left it zeroed.
+    Ok(unsafe { info.si_pid() })
 }
 
 /// Stops the reader its guard didn't; one already gone needs nothing.
