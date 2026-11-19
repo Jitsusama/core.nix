@@ -48,7 +48,11 @@
         "purpose": "SKIFFS rigs the skiff for the season.",
         "status": "active",
         "documents": [],
-        "lineage": { "started_by": "KESTRL", "parent": "QEST-20261116-KESTRL" },
+        "lineage": {
+          "started_by": "KESTRL",
+          "started_by_from": "book",
+          "parent": "QEST-20261116-KESTRL"
+        },
         "serves": [
           { "cell": "KESTRL", "need": "a <b>calm</b> field", "since": "2026-11-16T09:00:00Z" }
         ]

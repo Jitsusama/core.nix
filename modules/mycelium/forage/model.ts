@@ -10,7 +10,15 @@
 
 import type { Fields, Held } from "../../local-sites/kit/records.ts";
 import { isObject, number, object, text } from "../../local-sites/kit/records.ts";
-import { bothEnds, type Join, joinsOf, splitOf } from "./joins.ts";
+import {
+  bookedOf,
+  bothEnds,
+  type Join,
+  joinsOf,
+  type StartsTold,
+  splitOf,
+  startsUnread,
+} from "./joins.ts";
 
 /** One document a cell keeps for its purpose: a plan, research, a brief or a report. */
 interface Document {
@@ -51,6 +59,11 @@ interface Forage {
   readonly waits: readonly Wait[];
   /** The cell that started it, by address, when one did. */
   readonly startedBy: string | undefined;
+  /**
+   * Whether the node's own start book holds who started it. Otherwise it's
+   * the cell's own word, which a cell may claim of any other.
+   */
+  readonly booked: boolean;
   /** The quest its own sits under, when it sits under one. */
   readonly parent: string | undefined;
   /** The cell whose purpose it took a part of, when it was split from one. */
@@ -166,7 +179,11 @@ function waitsOf(record: Fields, cell: string, unread: string[]): readonly Wait[
 }
 
 /** The forage in `record`, without its depth, or none when it names no cell. */
-function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | undefined {
+function forageOf(
+  record: Fields,
+  unread: string[],
+  told: StartsTold,
+): Omit<Forage, "depth"> | undefined {
   const cell = text(record, "cell");
   if (cell === undefined) {
     unread.push(`${text(record, "key") ?? "a forage"} named no cell`);
@@ -182,6 +199,7 @@ function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | und
     documents: documentsOf(record, cell, unread),
     waits: waitsOf(record, cell, unread),
     startedBy: text(lineage, "started_by"),
+    booked: bookedOf(lineage, cell, told),
     parent: text(lineage, "parent"),
     ...splitOf(lineage, cell, unread),
     serves: joinsOf(record["serves"], "serves", cell, unread),
@@ -204,6 +222,21 @@ function grewFrom(
 }
 
 /**
+ * Whether how `forage` grew from a cell among `here` is only claimed, so the
+ * node can't vouch for it: every split is, a start is unless the node's book
+ * holds it, and so is a cell that grew from none here, failing closed. One
+ * that both started and split from the same cell grew from it by the book,
+ * though the panel still says the split as claimed.
+ */
+function grewClaimed(
+  forage: Pick<Forage, "cell" | "startedBy" | "splitFrom" | "booked">,
+  here: ReadonlySet<string>,
+): boolean {
+  const from = grewFrom(forage, here);
+  return !(forage.booked && from !== undefined && from === forage.startedBy);
+}
+
+/**
  * Every forage `held` holds, each cell after the one it grew from (its
  * starter, else the cell it split from), as a tree is read: those that
  * grew from nothing here first, by address, and under each the cells that
@@ -212,13 +245,15 @@ function grewFrom(
  */
 function foragesOf(held: Held): Forages {
   const unread: string[] = [];
+  const told: StartsTold = { said: false, odd: [], unsourced: [] };
   const read = bothEnds(
     held
       .all()
-      .map((record) => forageOf(record, unread))
+      .map((record) => forageOf(record, unread, told))
       .filter((each) => each !== undefined)
       .sort((one, other) => one.cell.localeCompare(other.cell)),
   );
+  unread.push(...startsUnread(told));
   const here = new Set(read.map((each) => each.cell));
   const started = new Map<string, (typeof read)[number][]>();
   const tops: (typeof read)[number][] = [];
@@ -256,11 +291,10 @@ function foragesOf(held: Held): Forages {
  * The cells `cell` started among `forages`, by address: the other end of each
  * one's "Started by". A cell that names itself as its starter isn't counted.
  */
-function startedFrom(forages: readonly Forage[], cell: string): readonly string[] {
+function startedFrom(forages: readonly Forage[], cell: string): readonly Forage[] {
   return forages
     .filter((each) => each.startedBy === cell && each.cell !== cell)
-    .map((each) => each.cell)
-    .sort((one, other) => one.localeCompare(other));
+    .sort((one, other) => one.cell.localeCompare(other.cell));
 }
 
 /** How many of `forage`'s steps are done, and how many there are. */
@@ -427,4 +461,15 @@ function holds(forage: Forage, query: string): boolean {
 }
 
 export type { Document, Forage, Forages, Headline, Join, Wait };
-export { counted, foragesOf, grewFrom, headline, holds, keeps, lede, startedFrom, steps };
+export {
+  counted,
+  foragesOf,
+  grewFrom,
+  grewClaimed,
+  headline,
+  holds,
+  keeps,
+  lede,
+  startedFrom,
+  steps,
+};

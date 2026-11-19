@@ -12,17 +12,29 @@
 
 import { clockTime } from "../../local-sites/kit/status.ts";
 import { type Join, joined } from "./joins.ts";
-import { type Document, type Forage, grewFrom, keeps, steps, type Wait } from "./model.ts";
+import {
+  cellOrAway,
+  claimedCell,
+  escaped,
+  namedOf,
+  splitSaid,
+  startedBy,
+  startsSaid,
+} from "./lineage.ts";
+import {
+  type Document,
+  type Forage,
+  grewClaimed,
+  grewFrom,
+  keeps,
+  steps,
+  type Wait,
+} from "./model.ts";
 
-const ESCAPES: { readonly [character: string]: string } = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-/** Each month as a need's since says it, when the need wasn't taken today. */
+/**
+ * Each month as a need's since says it, when the need wasn't taken today; fixed, as a
+ * runtime's locale data may say a month otherwise.
+ */
 const MONTHS = [
   "Jan",
   "Feb",
@@ -61,11 +73,6 @@ const FLOOR = {
   scale: 1.5,
 } as const;
 
-/** `text` safe to put in markup, as text or an attribute's value. */
-function escaped(text: string): string {
-  return text.replace(/[&<>"']/gu, (character) => ESCAPES[character] ?? character);
-}
-
 /** How `stage` is said. */
 function staged(stage: string): string {
   return STAGES[stage] ?? stage;
@@ -78,9 +85,6 @@ function command(forage: Forage): string {
 
 /** Where the `mycelium` program's repository is at home, on the Code site. */
 const MYCELIUM_HOME = "../code/#repo=Jitsusama%2Fmycelium";
-
-/** How many of the cells a cell started its panel names before counting the rest. */
-const MOST_STARTED = 6;
 
 /** Where the map opens on `forage`'s cell. */
 function onMap(forage: Forage): string {
@@ -221,7 +225,8 @@ function cap(x: number, y: number, ticked: number, all: number): string {
  * The floor cut through: the ground, the hyphae under it and each cell a
  * compartment along them, `cursor`'s ringed. Each top cell starts a hypha
  * of its own on the main line; a cell started by another branches down
- * from it. `substrate` names the machine the cells stand on.
+ * from it, dashed where that's only claimed, each named for the cell it
+ * leads to. `substrate` names the machine the cells stand on.
  */
 function floorOf(forages: readonly Forage[], cursor: string | null, substrate: string): string {
   const cells = placed(forages);
@@ -238,7 +243,8 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
       if (from === undefined || forage.depth === 0) {
         return "";
       }
-      return `<path class="hypha" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
+      const claimed = grewClaimed(forage, here) ? " claimed" : "";
+      return `<path class="hypha${claimed}" data-cell="${escaped(forage.cell)}" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
     })
     .join("");
   const joins = joined(cells.map((each) => each.forage))
@@ -314,52 +320,6 @@ ${forage.documents.map((document) => documentRow(document, forage.quest)).join("
 </section>`;
 }
 
-/** The cell that started `forage`, linked to that cell's row when it is drawn here. */
-function startedBy(forage: Forage, here: ReadonlySet<string>): string {
-  const by = forage.startedBy;
-  if (by === undefined) {
-    return "Nothing; it started on its own";
-  }
-  return cellOrAway(by, here);
-}
-
-/**
- * The cells drawn here that `forage` started, each linked to its row, as
- * "Started by" links back. Past `MOST_STARTED` the rest are counted rather
- * than named, since a wall of links would bury the facts below; one more than
- * that is named, since "and 1 more" says less than its name. The panel sets it
- * in one span, so it reads as a sentence rather than a row of the fact's
- * flexed items, and ties each comma to the address before it, so no line
- * starts with one.
- */
-function cellsStarted(
-  started: readonly string[],
-  name: (cell: string) => string = cellLink,
-): string {
-  if (started.length === 0) {
-    return "None here yet";
-  }
-  const count = started.length === 1 ? "One cell" : `${started.length} cells`;
-  const named = started.length > MOST_STARTED + 1 ? MOST_STARTED : started.length;
-  const links = started.slice(0, named).map(name);
-  const rest = started.length - links.length;
-  const last = rest === 0 ? links.pop() : `${rest} more`;
-  const before = links
-    .map((link, at) => (at < links.length - 1 ? `<span class="tie">${link},</span>` : link))
-    .join(" ");
-  return before === "" ? `${count}: ${last}` : `${count}: ${before} and ${last}`;
-}
-
-/**
- * `cell` linked to its row when it is drawn here, else said not to stand
- * here, since it may have ended or stand on another machine.
- */
-function cellOrAway(cell: string, here: ReadonlySet<string>): string {
-  return here.has(cell)
-    ? cellLink(cell)
-    : `<span><code>${escaped(cell)}</code>, not standing here</span>`;
-}
-
 /**
  * When `since` was, by the clock when it was today and by the day and
  * clock before, so a need held for days never reads as this morning's;
@@ -372,7 +332,8 @@ function sinceOf(since: string | undefined, now: number): string {
   }
   const when = new Date(at);
   const today = new Date(now).toDateString() === when.toDateString();
-  const day = today ? "" : `${when.getDate()} ${MONTHS[when.getMonth()]}, `;
+  const month = MONTHS[when.getMonth()];
+  const day = today ? "" : `${when.getDate()} ${month}, `;
   return `, since <time datetime="${when.toISOString()}">${day}${clockTime(at)}</time>`;
 }
 
@@ -390,7 +351,7 @@ function needsOf(
   asker: (join: Join) => string,
 ): string {
   // As with the cells a cell started, a long list names six and counts the rest.
-  const named = joins.length > MOST_STARTED + 1 ? MOST_STARTED : joins.length;
+  const named = namedOf(joins.length);
   const lines = joins.slice(0, named).map((join) => {
     const need =
       join.need === "" ? "" : `, for <span${saidBy(asker(join))}>${escaped(join.need)}</span>`;
@@ -411,11 +372,11 @@ function needsOf(
 function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): string {
   const facts: string[] = [];
   if (forage.splitFrom !== undefined) {
-    facts.push(`<div><dt>Split from</dt><dd>${cellOrAway(forage.splitFrom, here)}</dd></div>`);
+    const from = claimedCell(forage.splitFrom, here);
+    facts.push(`<div><dt>Split from</dt><dd><span>${from}</span></dd></div>`);
   }
   if (forage.splitInto.length > 0) {
-    const into = cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here));
-    facts.push(`<div><dt>Split into</dt><dd><span>${into}</span></dd></div>`);
+    facts.push(`<div><dt>Split into</dt><dd><span>${splitSaid(forage, here)}</span></dd></div>`);
   }
   if (forage.serves.length > 0) {
     const said = needsOf(forage.serves, here, now, (join) => join.cell);
@@ -428,12 +389,6 @@ function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): st
   return facts.map((fact) => `\n    ${fact}`).join("");
 }
 
-/** `cell`'s address, linked to its row, where a press moves the cursor to it. */
-function cellLink(cell: string): string {
-  const address = escaped(cell);
-  return `<a href="#cell=${encodeURIComponent(cell)}" data-cell="${address}"><code>${address}</code></a>`;
-}
-
 /**
  * The panel of `forage`, the cell the cursor is on; `here` holds every cell
  * drawn, and `started` the cells it started among them.
@@ -441,7 +396,7 @@ function cellLink(cell: string): string {
 function panelOf(
   forage: Forage,
   here: ReadonlySet<string>,
-  started: readonly string[],
+  started: readonly Pick<Forage, "cell" | "booked">[],
   now: number = Date.now(),
 ): string {
   const said = escaped(command(forage));
@@ -455,8 +410,8 @@ ${waitsOf(forage)}${documentsOf(forage)}
   <h4 id="ties-title">Where It Grows</h4>
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
-    <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
-    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
+    <div><dt>Started by</dt><dd><span>${startedBy(forage, here)}</span></dd></div>
+    <div><dt>Started</dt><dd><span>${startsSaid(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>
@@ -465,4 +420,4 @@ ${waitsOf(forage)}${documentsOf(forage)}
 <p class="act">Press <kbd>Return</kbd> to open <code>${escaped(forage.cell)}</code> on the map.</p>`;
 }
 
-export { command, escaped, floorOf, forageRow, onMap, panelOf, purposeOf };
+export { command, floorOf, forageRow, onMap, panelOf, purposeOf };

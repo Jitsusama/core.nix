@@ -15,8 +15,13 @@ a terminal, `mycelium forage` gathers the realm's.
 - **The floor, cut through:** the ground line, the hyphae under it and
   each cell a compartment along them. A cell with its purpose written is
   whole; one without is hollow, told by its shape. A cell started by
-  another, or split from it, branches down from it. A dotted arc, bowing
-  below both, joins a cell to one serving a need of its. A cap rises over a cell whose plans
+  another, or split from it, branches down from it: solid when the node's
+  own start book holds the start, dashed when it's only claimed. No book
+  holds a split, so the panel calls every split claimed, even one whose
+  branch is solid as a booked start. The panel says "as claimed" of each
+  tie the book doesn't hold, at either end, and before a list when all of
+  it is. A dotted arc, bowing below both, joins a cell to one serving a
+  need of its. A cap rises over a cell whose plans
   have landed steps, its gills lit as they land. The machine the cells
   stand on is named under the ground. The first 48 cells are drawn; the
   list holds every one.
@@ -26,9 +31,11 @@ a terminal, `mycelium forage` gathers the realm's.
   and from which cells, then names the cells without purpose and the
   plan furthest from done. A cell with no purpose is the one worth a
   look, since a cell without one serves no use.
-- **One row per cell,** each set in under the cell that started it: its
-  mark, its address, how many of its steps are done, its purpose, and
-  what it keeps, such as "2 plans and one report", and how many things
+- **One row per cell,** each set in under the cell the records say it
+  was started by or split from. The set-in says only where a row
+  stands; the floor and the panel say which starts the node's book
+  holds. Each row shows its mark, its address, how many of its steps
+  are done, its purpose, and what it keeps, such as "2 plans and one report", and how many things
   its quest waits on you for, when any. A cell started by, or split
   from, one not standing here stands at the top, since that cell isn't
   drawn here.
@@ -71,7 +78,11 @@ has `id` and `title`, and may have `why`, `minutes`, `when`, `ready`
 and `raised`. Each document has `id`, `kind` (plan, research, brief or
 report), `title`, `stage` (think, draft, build, concluded or retired),
 `ticked` and `open`, its steps done and still to do. The `lineage`
-has `started_by`, the cell that started this one, `parent`, the
+has `started_by`, the cell that started this one, `started_by_from`,
+`book` when the serving node's start book holds that start or
+`presence` when it's the cell's own word, which the node works out from
+its own book and never takes from a presence (any other word, or none
+sent beside a starter, is said among what couldn't be read), `parent`, the
 quest above its own, and, when its purpose was split, `split_from`, the
 cell it split from, or `split_into`, the cells it split into as it
 ended. Each of `serves` (needs it took from other cells) and `relies`

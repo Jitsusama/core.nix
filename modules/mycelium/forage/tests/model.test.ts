@@ -4,51 +4,18 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { Held } from "../../../local-sites/kit/records.ts";
-import { joined } from "../joins.ts";
-import { foragesOf, grewFrom, headline, holds, keeps, lede, startedFrom, steps } from "../model.ts";
-
-const plan = {
-  id: "PLAN-20261116-HOVERS",
-  kind: "plan",
-  title: "Hover Over the Field",
-  stage: "build",
-  ticked: 2,
-  open: 3,
-};
-const report = {
-  id: "REPT-20261116-LANDED",
-  kind: "report",
-  title: "Where It Landed",
-  stage: "concluded",
-  ticked: 1,
-  open: 0,
-};
-
-/** A forage record for `cell`, on kestrel, with `more` over its fields. */
-function forage(cell: string, more: { readonly [field: string]: unknown } = {}) {
-  return {
-    key: `forage:${cell}`,
-    kind: "forage",
-    heard: 0,
-    cell,
-    session: `0000-${cell.toLowerCase()}`,
-    machine: "kestrel",
-    quest: `QEST-20261116-${cell}`,
-    purpose: `${cell} learns to hover over one field.`,
-    status: "active",
-    documents: [report, plan],
-    lineage: { started_by: null, parent: null },
-    ...more,
-  };
-}
-
-/** A watch told `records` whole. */
-function told(records: readonly { readonly key: string }[]): Held {
-  const held = new Held();
-  held.took({ records });
-  return held;
-}
+import {
+  foragesOf,
+  grewClaimed,
+  grewFrom,
+  headline,
+  holds,
+  keeps,
+  lede,
+  startedFrom,
+  steps,
+} from "../model.ts";
+import { forage, plan, told } from "./records.ts";
 
 it("each cell comes after the one that started it, by address", () => {
   const { forages } = foragesOf(
@@ -76,6 +43,88 @@ it("a cell started from another machine stands at the top", () => {
   assert.equal(forages[0]?.startedBy, "OSPREY");
 });
 
+it("a start is booked only when the node says its book holds it", () => {
+  const read = (from?: unknown) =>
+    foragesOf(
+      told([forage("KESTRL", { lineage: { started_by: "OSPREY", started_by_from: from } })]),
+    );
+  const booked = (from?: unknown) => read(from).forages[0]?.booked;
+  assert.equal(booked("book"), true);
+  assert.equal(booked("presence"), false);
+  // A node from before the field, or one sending something else, is taken at the cell's word.
+  assert.equal(booked(), false);
+  assert.equal(booked(null), false);
+  assert.equal(booked(true), false);
+  // A source neither word is said, so a misspelt node shows, and so is none sent at all.
+  assert.deepEqual(read("presence").unread, []);
+  const odd = ["KESTRL's started_by_from said neither book nor presence"];
+  assert.deepEqual(read("Book").unread, odd);
+  assert.deepEqual(read(true).unread, odd);
+  const none = ["where any start came from, as the node sends none yet, so each reads as claimed"];
+  assert.deepEqual(read(null).unread, none);
+  assert.deepEqual(read().unread, none);
+});
+
+it("says a node-wide fault in where starts came from once", () => {
+  const lineage = (from?: unknown) => ({
+    lineage: { started_by: "OSPREY", started_by_from: from },
+  });
+  const unread = (...records: ReturnType<typeof forage>[]) => foragesOf(told(records)).unread;
+  assert.deepEqual(unread(forage("KESTRL", lineage("Book")), forage("TERNAA", lineage("Book"))), [
+    "2 cells' started_by_from said neither book nor presence (KESTRL and TERNAA)",
+  ]);
+  // Once the node sends sources, a starter with none is said by its cell.
+  assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA", lineage())), [
+    "where TERNAA's start came from",
+  ]);
+  assert.deepEqual(
+    unread(
+      forage("KESTRL", lineage("book")),
+      forage("TERNAA", lineage()),
+      forage("SKIFFS", lineage()),
+    ),
+    ["where 2 cells' starts came from (SKIFFS and TERNAA)"],
+  );
+  // By address, seven named whole, and past seven six named and the rest counted.
+  const unsourced = (letters: string) =>
+    unread(
+      forage("KESTRL", lineage("book")),
+      ...[...letters].map((letter) => forage(letter.repeat(6), lineage())),
+    );
+  const six = "AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF";
+  assert.deepEqual(unsourced("GFEDCBA"), [`where 7 cells' starts came from (${six} and GGGGGG)`]);
+  assert.deepEqual(unsourced("IHGFEDCBA"), [`where 9 cells' starts came from (${six} and 3 more)`]);
+  // A misspelt source is still a source sent, so a starter with none beside it is said by cell.
+  assert.deepEqual(unread(forage("KESTRL", lineage("Book")), forage("TERNAA", lineage())), [
+    "KESTRL's started_by_from said neither book nor presence",
+    "where TERNAA's start came from",
+  ]);
+  // A node sending no source at all is said once, however many cells it starts.
+  assert.deepEqual(unread(forage("KESTRL", lineage()), forage("TERNAA", lineage())), [
+    "where any start came from, as the node sends none yet, so each reads as claimed",
+  ]);
+  // One that names no starter needs no source.
+  assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA")), []);
+  assert.deepEqual(unread(forage("KESTRL")), []);
+});
+
+it("how a cell grew is only claimed unless it grew from a start the book holds", () => {
+  const here = new Set(["KESTRL", "OSPREY"]);
+  const claimed = (startedBy: string | undefined, booked: boolean) =>
+    grewClaimed({ cell: "TERNAA", startedBy, splitFrom: "KESTRL", booked }, here);
+  assert.equal(claimed("OSPREY", true), false);
+  assert.equal(claimed("OSPREY", false), true);
+  // Its booked starter isn't here, so it grows from the cell it split from, only claimed.
+  assert.equal(claimed("FARAWAY", true), true);
+  // With no starter it grows from the cell it split from, booked or not.
+  assert.equal(claimed(undefined, true), true);
+  // No caller asks this of a cell that grew from none here, but should one, it fails closed.
+  assert.equal(
+    grewClaimed({ cell: "TERNAA", startedBy: undefined, splitFrom: undefined, booked: true }, here),
+    true,
+  );
+});
+
 it("cells that started each other in a ring each still show once", () => {
   const { forages } = foragesOf(
     told([
@@ -96,9 +145,11 @@ it("the cells a cell started are those naming it their starter, by address, neve
     ]),
   );
   // Given in any order, they still come by address.
-  assert.deepEqual(startedFrom([...forages].reverse(), "KESTRL"), ["SKIFFS", "TERNAA"]);
-  assert.deepEqual(startedFrom(forages, "SKIFFS"), ["OSPREY"]);
-  assert.deepEqual(startedFrom(forages, "TERNAA"), []);
+  const started = (from: typeof forages, cell: string) =>
+    startedFrom(from, cell).map((each) => each.cell);
+  assert.deepEqual(started([...forages].reverse(), "KESTRL"), ["SKIFFS", "TERNAA"]);
+  assert.deepEqual(started(forages, "SKIFFS"), ["OSPREY"]);
+  assert.deepEqual(started(forages, "TERNAA"), []);
 });
 
 it("documents come plans first, and their steps add up", () => {
@@ -411,72 +462,4 @@ it("the cell a cell grew from is its starter, else its ancestor, only when it's 
     grewFrom({ cell: "KESTRL", startedBy: "KESTRL", splitFrom: undefined }, here),
     undefined,
   );
-});
-
-it("reads the needs a cell serves and relies on, passing over one naming no other cell", () => {
-  const { forages, unread } = foragesOf(
-    told([
-      forage("KESTRL", {
-        serves: [
-          { cell: "OSPREY", need: "a hover review", since: "2026-11-18T13:05:00Z" },
-          { need: "lost" },
-          { cell: "", need: "nobody" },
-          { cell: "KESTRL", need: "itself" },
-        ],
-        relies: [{ cell: "TERNAA" }],
-      }),
-      forage("OSPREY", { serves: { cell: "KESTRL" }, relies: null }),
-    ]),
-  );
-  const [kestrel] = forages;
-  assert.deepEqual(kestrel?.serves, [
-    { cell: "OSPREY", need: "a hover review", since: "2026-11-18T13:05:00Z" },
-  ]);
-  assert.deepEqual(kestrel?.relies, [{ cell: "TERNAA", need: "", since: undefined }]);
-  assert.deepEqual(forages[1]?.serves, []);
-  assert.deepEqual(unread, [
-    "3 of KESTRL's serves named no other cell",
-    "OSPREY's serves listed no needs",
-  ]);
-});
-
-it("a forage the node sends no joins for has none, and splits from nothing", () => {
-  const [kestrel] = foragesOf(told([forage("KESTRL")])).forages;
-  assert.equal(kestrel?.splitFrom, undefined);
-  assert.deepEqual(kestrel?.splitInto, []);
-  assert.deepEqual(kestrel?.serves, []);
-  assert.deepEqual(kestrel?.relies, []);
-});
-
-it("joins each pair a need ties once, however both ends keep it, and only cells here", () => {
-  const { forages } = foragesOf(
-    told([
-      forage("KESTRL", { serves: [{ cell: "OSPREY", need: "a review" }, { cell: "FARAWAY" }] }),
-      forage("OSPREY", { relies: [{ cell: "KESTRL", need: "a review" }, { cell: "OSPREY" }] }),
-      forage("TERNAA", { relies: [{ cell: "KESTRL", need: "a plan" }] }),
-    ]),
-  );
-  assert.deepEqual(joined(forages), [
-    { from: "KESTRL", to: "OSPREY" },
-    { from: "TERNAA", to: "KESTRL" },
-  ]);
-});
-
-it("joins a pair once even when its two ends word the need differently, or keep two", () => {
-  const { forages } = foragesOf(
-    told([
-      forage("KESTRL", {
-        serves: [
-          { cell: "OSPREY", need: "a review" },
-          { cell: "OSPREY", need: "a second look" },
-        ],
-      }),
-      forage("OSPREY", {
-        relies: [{ cell: "KESTRL", need: "review my hover" }],
-        // A need the other way round is still the same pair on the floor.
-        serves: [{ cell: "KESTRL" }],
-      }),
-    ]),
-  );
-  assert.deepEqual(joined(forages), [{ from: "KESTRL", to: "OSPREY" }]);
 });

@@ -3,11 +3,13 @@
 The page is the one Nix builds, served by the real local-sites server beside a
 stand-in node (modules/local-sites/tests/stand_in_daemon.py) holding four cells'
 forage on kestrel (node.json): one with a purpose, a plan and a thing it waits
-on its person for, relying on a need the one it started serves, one with no
-purpose written, split from one whose lineage names nothing but that split.
+on its person for, relying on a need the one it started serves, a start the
+node's book holds, one with no purpose written, split from one whose lineage
+names nothing but that split, which is only claimed.
 Its feed is trimmed to the fields home.nix declares for a machine in a realm
 (NODE_KINDS). It must say it's live with every cell drawn, each started or
-split cell under the one it grew from, say what waits on its person and the
+split cell under the one it grew from, the booked start drawn whole and the
+claimed split dashed and said as claimed at both ends, say what waits on its person and the
 plan furthest from done in its lede, draw each cell's plans, quest, needs and
 split in its panel and the need as a dotted arc, step its cursor by keys,
 follow a purpose written, drawn as words though it holds markup, a wait
@@ -22,6 +24,7 @@ modules/local-sites/tests/live_page.py's.
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -48,7 +51,9 @@ NEED = "a <b>calm</b> field"
 # Every cell node.json holds, in the order the page lists them: those that grew from none here
 # by address, each followed by the cells started by it or split from it.
 CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
-# What a first visit to the forage page may cost, drawn from the stand-in's cells.
+# What a first visit to the forage page may cost, drawn from the stand-in's cells. Its files sit
+# at what the page asks for now, on purpose: each module is one more file a first visit waits
+# on, so splitting one out raises this as a choice rather than slipping past it.
 BUDGET = Budget(files=22, kilobytes=545, elements=255)
 
 
@@ -105,8 +110,8 @@ def opened_on(page: Page, name: str) -> Locator:
 
 
 def fact(panel: Locator, said: str) -> Locator:
-    """Give what the panel says beside the term `said`."""
-    term = panel.page.locator("dt", has_text=said)
+    """Give what the panel says beside the term `said`, whole, so Started isn't Started by."""
+    term = panel.page.locator("dt", has_text=re.compile(f"^{re.escape(said)}$"))
     return panel.locator(".facts > div").filter(has=term).locator("dd")
 
 
@@ -132,13 +137,36 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
         expect(cell(forage_page, name), f"{name} wasn't drawn {depth} deep").to_have_attribute(
             "style", f"--depth:{depth}"
         )
+    # SKIFFS's start is in the node's book, so only OSPREY's split is drawn as claimed.
+    branch = forage_page.locator('path.hypha[data-cell="SKIFFS"]')
+    expect(branch, "SKIFFS's booked branch was dashed").to_have_css("stroke-dasharray", "none")
+    branch = forage_page.locator('path.hypha[data-cell="OSPREY"]')
+    expect(branch, "OSPREY's split wasn't drawn").to_have_count(1)
+    expect(branch, "OSPREY's claimed split wasn't dashed").not_to_have_css(
+        "stroke-dasharray", "none"
+    )
+    # Each booked end says its cell whole, so a fact gone missing can't pass for one unhedged.
+    # These read text, which is the same however a line wraps; the markup in draw.test.ts
+    # pins which comma each tie holds, and here a tie is checked to hold, as its style says.
+    panel = opened_on(forage_page, "SKIFFS")
+    expect(fact(panel, "Started by"), "SKIFFS's booked start didn't read whole").to_have_text(
+        "KESTRL"
+    )
+    panel = opened_on(forage_page, "KESTRL")
+    expect(fact(panel, "Started"), "KESTRL's booked start didn't read whole").to_have_text(
+        "One cell: SKIFFS"
+    )
     panel = opened_on(forage_page, "OSPREY")
     expect(fact(panel, "Split from"), "OSPREY didn't say it split from TERNAA").to_contain_text(
-        "TERNAA"
+        "TERNAA, as claimed"
+    )
+    tie = fact(panel, "Split from").locator(".tie")
+    expect(tie, "OSPREY's hedged ancestor could break from its comma").to_have_css(
+        "white-space", "nowrap"
     )
     panel = opened_on(forage_page, "TERNAA")
     expect(fact(panel, "Split into"), "TERNAA didn't say it split into OSPREY").to_contain_text(
-        "OSPREY"
+        "One cell, as claimed: OSPREY"
     )
 
 
