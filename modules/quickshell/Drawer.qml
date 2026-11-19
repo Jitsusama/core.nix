@@ -611,6 +611,9 @@ Floating {
     // the cursor: its line, its letter along it, and how far along the
     // line it wants to be, which j and k go back to.
     property var laid: []
+    // How many of them were laid as the keys came in, which the frame they
+    // came in draws, for the launcher to say and report.
+    property int laidFirst: 0
     // The tops its view may scroll to, none cutting a line, worked out once
     // its lines are laid or its end moves rather than for each key, which
     // on a long page would spend half a key's budget (DrawerPage.js).
@@ -850,6 +853,7 @@ Floating {
         lastChosen = null;
         began = choosing !== "" ? began : null;
         laid = lines();
+        laidFirst = laid.length;
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
         const top = drawer.shownFrom;
         const held = laid.map((line, at) => at).filter(at => laid[at].top >= top

@@ -576,6 +576,72 @@ def test_each_drawer_is_timed(
         )
 
 
+# The row of LAB_DRAWN_IN whose drawer the keys go into, unless the run says otherwise (LAB_INTO):
+# Emoji's, whose 1,914 names Ctrl+W l laid before its frame (2026-11-19).
+INTO = "Emoji"
+
+# The keys going into a drawer as the shell says them once niri presented their frame
+# (launcher/Presented.js's intoSaid).
+INTO_PRESENTED = re.compile(
+    r'launcher: into the drawer for "[^"]+" presented (\d+) ms from the key, (\d+) lines? laid'
+)
+
+
+def test_going_into_a_drawer_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
+    """Go into a row's drawer by Ctrl+W l and out by Ctrl+W h, and print each going in's time.
+
+    The row is Desktop's Emoji unless the run names another place and row (LAB_DRAWN_IN,
+    LAB_INTO), with LAB_DRAWN_WINDOWS windows open first, and each line says how many of the
+    drawer's lines its frame laid.
+    """
+    place = os.environ.get("LAB_DRAWN_IN", "Desktop")
+    into = os.environ.get("LAB_INTO", INTO)
+    rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
+    walked_in(shell, place, place, request)
+    shell.down_to(into)
+    shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("title") == into)
+    timed: list[int] = []
+    for round_ in range(rounds):
+        mark = shell.mark()
+        # Ctrl+W then l in one batch, as he types it, so the chord never waits on its second.
+        shell.as_account("wtype -M ctrl -k w -m ctrl -k l")
+        found = None
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        # The line is written once niri presents the frame, so it's read again a poll apart.
+        while found is None and time.monotonic() < deadline:
+            found = next(
+                (
+                    match
+                    for line in said_after(shell, mark, "into the drawer for ")
+                    if (match := INTO_PRESENTED.search(line))
+                ),
+                None,
+            )
+            time.sleep(launcher_on_niri.POLL)
+        if found is None:
+            failed = f"going into {into}'s drawer was never said presented, round {round_}"
+            raise AssertionError(failed)
+        timed.append(int(found.group(1)))
+        with capsys.disabled():
+            print(
+                f"lab-into {into} round {round_}: {found.group(1)} ms, "
+                f"{found.group(2)} lines laid first",
+                flush=True,
+            )
+        shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
+        shell.launcher_until(lambda shown: not (shown["drawer"] or {}).get("keys"))
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    with capsys.disabled():
+        print(
+            f"lab-into {into}: {len(timed)} presented a median "
+            f"{round(statistics.median(timed))} ms, p90 {p90(timed)}",
+            flush=True,
+        )
+
+
 def test_a_chord_through_a_restart(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
     """Restart the shell as a switch does, say a toggle a while after its stop, and print it.
 

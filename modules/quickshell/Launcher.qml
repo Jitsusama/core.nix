@@ -9957,6 +9957,9 @@ Scope {
                 // drawer's top, and where its rule is drawn, in from the
                 // drawer's left.
                 keys: drawerCard.keys,
+                // How many lines it laid as the keys came in, for the frame
+                // they came in, the rest laid after it.
+                laidFirst: drawerCard.laidFirst,
                 frame: String(drawerCard.keys ? Theme.accent : Theme.edge),
                 cursor: drawerCard.block === null ? null : {
                     line: drawerCard.cursor.line,
@@ -12326,6 +12329,22 @@ Scope {
     // Each drawer a key brought since the launcher opened, from that key to
     // when niri presented it, said by place as it closes (drawerMade).
     property var drawersPresented: []
+    // The keys gone into the drawer, timed from their key to the frame niri
+    // presented with them, as a drawer a key brought is, and said then with
+    // how many lines that frame laid (Presented.intoSaid): Ctrl+W l into
+    // Emoji's laid every name before its frame, and nothing timed it.
+    function intoTimed() {
+        if (!open)
+            return;
+        const pressed = KeyTimes.pressed();
+        const one = { key: drawerRow?.key || drawerRow?.name || "",
+            from: pressed > 0 ? pressed : KeyTimes.now() };
+        presentedAwait(one.from, (at, answered) => {
+            Object.assign(one, { at, laid: drawerCard.laidFirst,
+                screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
+            console.info(Presented.intoSaid(one));
+        });
+    }
     // Its frame's start is when the frame presentedAwait waits on began,
     // the next to begin, as a key's is, so its line says where it went.
     // Its refresh began at `refreshed`, so its line says how long it
@@ -15357,6 +15376,10 @@ Scope {
             // Its frame says the keys are here while they're in it, gone in
             // with Space and the right arrow.
             keys: QueryKeys.paged(prompt.mode)
+            onKeysChanged: {
+                if (keys)
+                    root.intoTimed();
+            }
             // The search being typed on the line, washed as it's typed.
             seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
             seekingForward: !prompt.standing.seek || prompt.standing.seek.forward

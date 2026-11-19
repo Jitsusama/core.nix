@@ -159,6 +159,16 @@ function drawerSaid(one) {
         + screensSaid([one]);
 }
 
+// The keys gone into a drawer, `{ key, from, at, laid, screen, refresh }`,
+// said as the frame they came in is presented, with how many of its lines
+// that frame laid: Ctrl+W l into Emoji's laid all 1,914 names first, about
+// 150 ms, where its view shows some 35 lines (2026-11-19).
+function intoSaid(one) {
+    return `launcher: into the drawer for "${one.key}" presented `
+        + `${Math.round(one.at - one.from)} ms from the key, ${one.laid} `
+        + `${one.laid === 1 ? "line" : "lines"} laid first${screensSaid([one])}`;
+}
+
 // The drawers presented since the launcher opened, a line a place, as a
 // place's changes are, each ending with the screens they were shown on.
 function drawersSaid(drawers) {
