@@ -397,7 +397,7 @@ fn a_failure_is_said_once_until_the_homes_are_written_again() {
     assert_eq!(
         homes.keep(&record()),
         Some(format!(
-            "repos: Code's homes are written to {} again",
+            "repos: Code's homes at {} are right again",
             file.display()
         )),
         "a writing that worked again said so wrongly"

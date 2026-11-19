@@ -52,10 +52,9 @@ impl Drop for Serving {
     }
 }
 
-/// The daemon, looking under `at` and writing Code's homes to
-/// `at/homes.json` as the local sites tell its unit to, serving in a
-/// runtime folder of its own, named for `at` as `place` names it, so no
-/// two tests share one.
+/// The daemon, looking under `at` and writing Code's homes to `homes(at)`
+/// as the local sites tell its unit to, serving in a runtime folder of its
+/// own, named for `at` as `place` names it, so no two tests share one.
 /// That folder is named short, and not past its link, since a socket's
 /// path stops at 108 bytes. It's made afresh, readable by this account
 /// alone, so nothing else sharing the temporary folder reaches the socket
@@ -78,11 +77,17 @@ fn serve(at: &Path) -> (Serving, PathBuf) {
         .env("HOME", at)
         .env("XDG_RUNTIME_DIR", &run)
         .env("REPOS_ROOTS", at.join("src"))
-        .env("REPOS_HOMES", at.join("homes.json"))
+        .env("REPOS_HOMES", homes(at))
         .spawn()
         .expect("repos serve started");
     let socket = run.join("daemons/repos.sock");
     (Serving { child, run }, socket)
+}
+
+/// Where the daemon under `at` writes Code's homes: two folders down, in
+/// none it was given, as the local sites' documents may be when it starts.
+fn homes(at: &Path) -> PathBuf {
+    at.join("documents/code/homes.json")
 }
 
 /// A connection to the socket, once the daemon listens on it.
@@ -155,8 +160,8 @@ fn the_homes_are_written_at_the_first_reading_and_again_as_a_tree_is_cut() {
     );
     written(&git.join("HEAD"), "ref: refs/heads/main\n");
     written(&git.join("refs/heads/main"), &format!("{FIRST}\n"));
-    let (_serving, _socket) = serve(&at);
-    let homes = at.join("homes.json");
+    let (serving, _socket) = serve(&at);
+    let homes = homes(&at);
     homes_until(&homes, |things| {
         holding(things, "github:Jitsusama/core.nix")
     });
@@ -177,6 +182,8 @@ fn the_homes_are_written_at_the_first_reading_and_again_as_a_tree_is_cut() {
         holding(&things, "github:Jitsusama/core.nix"),
         "the repository left the homes as the tree came"
     );
+    // Stopped first, or a writing of its homes could land as the place goes.
+    drop(serving);
     fs::remove_dir_all(&at).expect("cleaned");
 }
 
@@ -190,7 +197,7 @@ fn a_watch_is_told_as_a_branch_moves_and_a_tree_is_cut() {
     );
     written(&git.join("HEAD"), "ref: refs/heads/main\n");
     written(&git.join("refs/heads/main"), &format!("{FIRST}\n"));
-    let (_serving, socket) = serve(&at);
+    let (serving, socket) = serve(&at);
 
     let stream = connect(&socket);
     let mut lines = BufReader::new(stream.try_clone().expect("a reader"));
@@ -237,5 +244,7 @@ fn a_watch_is_told_as_a_branch_moves_and_a_tree_is_cut() {
         at.join("src/core.nix").display().to_string()
     );
     assert_eq!(cut["present"], true);
+    // Stopped first, or a writing of its homes could land as the place goes.
+    drop(serving);
     fs::remove_dir_all(&at).expect("cleaned");
 }
