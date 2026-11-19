@@ -174,118 +174,9 @@ let
     holds check "The ${animal}'s poses must read as one ${animal}: ${found.said}." found.ok;
 
   # The walk the cat's code takes, read from the code that walks it, so its
-  # check proves the walk that's drawn rather than a copy: the words WALKS
-  # lists, when it's every list STRIDING strides by. Only the code is read,
-  # comments aside, and each name only as a word of its own, not another's
-  # property. Each is read whole, to its semicolon, and must be only what's
-  # meant, spaces allowed only between its parts; elsewhere, WALKS is named
-  # only in STRIDING, and STRIDING is declared once and otherwise only read
-  # by a key with nothing assigned there. So anything else, another list, a
-  # stride written inline, an entry not a quoted word, something after its
-  # bracket, an assignment to either or either not found, reads as no walk,
-  # which fails saying where it looked and what it wanted. Comments are
-  # found by their text, so a comment's marks inside a string, a delete, a
-  # write through what a read hands back, or one from another file isn't
-  # seen; none of the cat's files has any.
-  walkRead =
-    file:
-    let
-      # Each line short of a comment that ends it, and none a comment
-      # fills; a line with code after a block comment's close is read whole.
-      commentOnly =
-        line:
-        builtins.match "[[:space:]]*(//|/?\\*).*" line != null
-        && builtins.match ".*\\*/[[:space:]]*[^[:space:]].*" line == null;
-      ways = lib.concatStringsSep "\n" (
-        map (line: lib.head (lib.splitString "//" line)) (
-          lib.filter (line: !commentOnly line) (lib.splitString "\n" file)
-        )
-      );
-      # The constant's declaration, up to the semicolon that ends it.
-      declared =
-        name:
-        let
-          after = lib.splitString "const ${name} = " ways ++ [ "" ];
-        in
-        lib.head (lib.splitString ";" (lib.elemAt after 1));
-      walks = declared "WALKS";
-      striding = declared "STRIDING";
-      # Where `name` stands in `text` as a word of its own, not a part of a
-      # longer one or another's property, by the character before it, the
-      # text since the name before, and the statement after it, to its
-      # semicolon, as one line.
-      wordy = c: builtins.match "[A-Za-z0-9_$]" c != null;
-      uses =
-        name: text:
-        let
-          pieces = lib.splitString name text;
-          ending = s: builtins.substring (lib.stringLength s - 1) 1 s;
-          use = i: {
-            before = lib.elemAt pieces i;
-            # Right after the name before it, the character is that name's last.
-            last =
-              if lib.elemAt pieces i != "" then
-                ending (lib.elemAt pieces i)
-              else if i > 0 then
-                ending name
-              else
-                "";
-            after = builtins.replaceStrings [ "\n" ] [ " " ] (
-              lib.head (lib.splitString ";" (lib.elemAt pieces (i + 1)))
-            );
-          };
-          next = one: builtins.substring 0 1 one.after;
-          alone = one: !wordy one.last && one.last != "." && !wordy (next one);
-        in
-        lib.filter alone (lib.genList use (lib.length pieces - 1));
-      named = name: text: lib.length (uses name text);
-      # STRIDING is declared once, and everywhere else read by a key, one
-      # holding brackets of its own too, assigning nothing there, by itself
-      # or with an operator, on its line or the next.
-      onlyRead =
-        let
-          by = "(\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?";
-          key = "\\[([^][]|\\[[^][]*])*]";
-          writes = after: builtins.match "${key}[[:space:]]*${by}=([^=].*)?" after != null;
-          declaring = one: lib.hasSuffix "const " one.before;
-          all = uses "STRIDING" ways;
-        in
-        lib.length (lib.filter declaring all) == 1
-        && lib.all (one: lib.hasPrefix "[" one.after && !writes one.after) (
-          lib.filter (one: !declaring one) all
-        );
-      s = "[[:space:]]*";
-      word = "(\"[A-Za-z]+\"|'[A-Za-z]+')";
-      stride = "[A-Za-z_]+${s}:${s}WALKS";
-      listed = one: "${s}(${one}${s},${s})*${one}${s},?${s}";
-      words = map lib.head (lib.filter lib.isList (builtins.split "[\"']([A-Za-z]+)[\"']" walks));
-      # What the code isn't, of what it must be, so a walk read as none
-      # says why.
-      faults = map (rule: rule.wanted) (
-        lib.filter (rule: !rule.met) [
-          {
-            wanted = "WALKS as quoted words";
-            met = builtins.match "\\[${listed word}]${s}" walks != null;
-          }
-          {
-            wanted = "STRIDING as strides by WALKS";
-            met = builtins.match "\\{${listed stride}}${s}" striding != null;
-          }
-          {
-            wanted = "WALKS named nowhere else";
-            met = named "WALKS" ways == 1 + named "WALKS" striding;
-          }
-          {
-            wanted = "STRIDING declared once and only read by a key";
-            met = onlyRead;
-          }
-        ]
-      );
-    in
-    {
-      inherit faults;
-      walk = lib.optionals (faults == [ ]) words;
-    };
+  # check proves the walk that's drawn rather than a copy (walk-read.nix
+  # says how, and what it can't see).
+  walkRead = import ./walk-read.nix { inherit lib; };
   walkIn = file: (walkRead file).walk;
   catWays = walkRead (builtins.readFile ../margin-cat/MarginCatWays.js);
   catWalk = catWays.walk;
@@ -498,12 +389,21 @@ in
   # shown refusing as well as passing: the cat's own strides out of order,
   # alone, with a pair never stepping, after a pose that isn't a stride,
   # undrawn, and none at all; a pose planted with a stray pixel or too few;
-  # and the cat's code read as no walk when it strides by anything but
-  # WALKS's quoted words, though as its walk when they're only spaced,
-  # quoted or commented otherwise, or read where it's used.
+  # and the cat's code read as no walk, by the rule it breaks, when it
+  # strides by anything but WALKS's quoted words, though as its walk when
+  # they're only spaced, quoted or commented otherwise, or read where it's
+  # used.
   every-skidding-walk-is-refused =
     let
       theirs = import ./glyphs.nix { inherit lib; };
+      # The cat's walk as it's drawn, so the planted poses are held to it
+      # whether or not its code is read.
+      drawnWalk = [
+        "walkingA"
+        "walkingC"
+        "walkingB"
+        "walkingD"
+      ];
       rows = theirs.nothingHere.pixels;
       # The sitting cat, 37 pixels, with a pixel lit alone at its top right,
       # and with six of its bottom row's seven gone, over 15% fewer, or five,
@@ -518,7 +418,7 @@ in
         poseFaults {
           sitting = "nothingHere";
           poses = [ pose ];
-          strides = catWalk;
+          strides = drawnWalk;
           glyphs = planted;
         };
       shown = [
@@ -547,14 +447,25 @@ in
           walkedFrom = "here";
           inherit strides;
         };
-      refused = { strides, reason }: !(said strides).ok && lib.hasInfix reason (said strides).said;
+      refused =
+        walk:
+        !(said walk.strides).ok
+        && lib.hasInfix walk.reason (said walk.strides).said
+        && (!(walk ? wanted) || lib.elem walk.wanted walk.faults);
       # The cat's two declarations, as its code has them.
       walksSaid = ''const WALKS = ["walkingA", "walkingC", "walkingB", "walkingD"];'';
       stridingSaid = "const STRIDING = { goes: WALKS, climbs: WALKS };";
-      walkedOf = ways: {
+      # Code read as no walk, and the rule it's refused by.
+      walkedOf = wanted: ways: {
         strides = walkIn ways;
         reason = "no strides read from here";
+        inherit wanted;
+        inherit (walkRead ways) faults;
       };
+      quoted = walkedOf "WALKS as quoted words";
+      byWalks = walkedOf "STRIDING as strides by WALKS";
+      elsewhere = walkedOf "WALKS named nowhere else";
+      readOnly = walkedOf "STRIDING declared once and only read by a key";
       walks = [
         {
           strides = [
@@ -598,70 +509,77 @@ in
           );
           reason = "walkingA to walkingB, both pairs moved";
         }
-        (walkedOf "")
-        (walkedOf walksSaid)
-        (walkedOf stridingSaid)
-        (walkedOf "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: [\"walkingA\"] };")
-        (walkedOf "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: WALKS.slice(1) };")
-        (walkedOf "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: RUNS };")
-        (walkedOf "const WALKS = [\"walkingA\", ...RUNS];\n${stridingSaid}")
-        (walkedOf "const WALKS = [\"walkingA\", \"walkingC\"].concat(RUNS);\n${stridingSaid}")
-        (walkedOf "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: WALKS } || RUNS;")
-        (walkedOf "const WALKS = [\"walking A\", \"walkingC\"];\n${stridingSaid}")
-        (walkedOf "const WALKS = [\"walkingA', \"walkingC\"];\n${stridingSaid}")
-        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING.runs = RUNS;")
-        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[\"runs\"] = RUNS;")
-        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[\"runs\"] ??= RUNS;")
-        (walkedOf "${walksSaid}\n${stridingSaid}\nconst ways = STRIDING;")
-        (walkedOf "${walksSaid}\n${stridingSaid}\nWALKS.reverse();")
-        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[KINDS[i]] = RUNS;")
-        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[kind]\n  = RUNS;")
-        (walkedOf "${walksSaid}\n${stridingSaid}\n{ const STRIDING = { goes: RUNS }; }")
-        (walkedOf "STRIDING[kind] = RUNS;\n${walksSaid}\n${stridingSaid}")
-        (walkedOf "${walksSaid}\n/* aside */ STRIDING.goes = RUNS;\n${stridingSaid}")
+        (quoted "")
+        (byWalks walksSaid)
+        (quoted stridingSaid)
+        (byWalks "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: [\"walkingA\"] };")
+        (byWalks "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: WALKS.slice(1) };")
+        (byWalks "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: RUNS };")
+        (quoted "const WALKS = [\"walkingA\", ...RUNS];\n${stridingSaid}")
+        (quoted "const WALKS = [\"walkingA\", \"walkingC\"].concat(RUNS);\n${stridingSaid}")
+        (byWalks "${walksSaid}\nconst STRIDING = { goes: WALKS, climbs: WALKS } || RUNS;")
+        (quoted "const WALKS = [\"walking A\", \"walkingC\"];\n${stridingSaid}")
+        (quoted "const WALKS = [\"walkingA', \"walkingC\"];\n${stridingSaid}")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING.runs = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[\"runs\"] = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[\"runs\"] ??= RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nconst ways = STRIDING;")
+        (elsewhere "${walksSaid}\n${stridingSaid}\nWALKS.reverse();")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[KINDS[i]] = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind]\n  = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\n{ const STRIDING = { goes: RUNS }; }")
+        (readOnly "STRIDING[kind] = RUNS;\n${walksSaid}\n${stridingSaid}")
+        (readOnly "${walksSaid}\n/* aside */ STRIDING.goes = RUNS;\n${stridingSaid}")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind][0] = \"walkingB\";")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind]++;")
+        (readOnly "${walksSaid}\n${stridingSaid}\n--STRIDING[kind];")
+        (readOnly "${walksSaid}\n${stridingSaid}\n[...STRIDING.goes] = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[STRIDING[\"goes\"]] = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nconst pace = speed\n  * 2; STRIDING.goes = RUNS;")
       ];
       # The same walk, spaced and quoted otherwise, still reads whole.
       reread = walkIn ''
         // WALKS is the cat's walk, which STRIDING strides by.
         /* STRIDING[kind] = WALKS reads alike, as a comment.
-         * So does WALKS.reverse(); here. */
+         * So does WALKS.reverse(); here,
+           and STRIDING.goes = RUNS; on a line with no star. */
         const WALKSPEED = 3, OVERSTRIDING = 2;
         const early = kind => STRIDING[kind];
-        const WALKS = [
+        const WALKS =
+          [
           'walkingA',
           'walkingC',
           'walkingB',
           'walkingD',
         ];
-        ${stridingSaid}
+        const STRIDING={ goes: WALKS, climbs: WALKS };
         const strides = STRIDING[beat.kind];
         const joined = STRIDING[was.kind] === STRIDING[beat.kind];
         const pose = STRIDING[beat.kind][0]; // not WALKS.reverse()
         const kept = STRIDING[beat.kind] && (last[i] = pose);
         const before = STRIDING[beats[i - 1].kind] /* the last */ ?? none;
         const pace = Ledges.WALKS * Other.STRIDING;
+        const gait = /* not WALKS.reverse() */ STRIDING[beat.kind];
+        const length = pace
+          * STRIDING[beat.kind].length;
+        const all = [...STRIDING[beat.kind]];
       '';
       passed =
-        map (walk: "${walk.reason}, said ${(said walk.strides).said}") (
-          lib.filter (walk: !refused walk) walks
-        )
+        map (
+          walk:
+          "${walk.reason}${
+            lib.optionalString (walk ? wanted) (
+              " for want of ${walk.wanted}, though it wanted "
+              + (if walk.faults == [ ] then "nothing" else lib.concatStringsSep ", " walk.faults)
+            )
+          }, said ${(said walk.strides).said}"
+        ) (lib.filter (walk: !refused walk) walks)
         ++ map (one: "${one.reason}, said ${(plantedFaults one.pose).said}") unshown;
     in
-    holds "every-skidding-walk-is-refused"
-      (
-        "Every skidding walk must be refused, by its reason, and a walk spaced otherwise "
-        + "read whole: ${builtins.toJSON passed} weren't, and it read ${builtins.toJSON reread}."
-      )
-      (
-        passed == [ ]
-        &&
-          reread == [
-            "walkingA"
-            "walkingC"
-            "walkingB"
-            "walkingD"
-          ]
-      );
+    holds "every-skidding-walk-is-refused" (
+      "Every skidding walk must be refused, by its reason, and a walk spaced otherwise "
+      + "read whole: ${builtins.toJSON passed} weren't, and it read ${builtins.toJSON reread}."
+    ) (passed == [ ] && reread == drawnWalk);
 
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
   # or by APCA's lightness contrast. WCAG's black on white is 21:1, and
