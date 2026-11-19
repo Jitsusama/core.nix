@@ -101,11 +101,13 @@ PHASE = 20
 # busy time the guest counted stolen under load than frozen (keeps_pace.py), and every bar here
 # held to a time frozen is too.
 WAITED = 45
-# The builder's processors the held subtest runs the VM's four on, so under load each runs a
-# quarter of the time at most, the least share the guest's count must give for it, and how long
-# it counts in each turn, in seconds. Held to two, a run gave 1.28, too near any bar to tell.
-HELD_TO = 1
-HELD_SHARE = 1.5
+# The builder's processors the held subtest runs the VM's four on, so under load each runs about
+# half the time, the least part of the guest's busy time it must count stolen for that, and how
+# long it counts, in seconds. Held so on 19 November the guest counted 45% stolen, where unheld
+# it counted 2 to 8%. Held to one, the frozen guest starved as much as the loaded one, its idle
+# processors' halts and QEMU's own threads taking the builder's one, so that's no busy builder.
+HELD_TO = 2
+HELD_STOLEN = 0.25
 GAUGING = 10
 TAIL = 0.95
 # Cage, which holds the compositor here, and the shell, by the units they run in.
@@ -1016,13 +1018,13 @@ def hold_vm(started: int, processors: Sequence[int]) -> None:
 
 
 @pytest.mark.usefixtures("loaded")
-def test_the_share_grows_as_the_builder_holds_the_machine_back(desktop: Desktop) -> None:
-    """The builder's share grows as the builder runs the VM's processors on fewer of its own.
+def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop) -> None:
+    """The guest counts as stolen the time the builder runs its processors on fewer of its own.
 
-    Held to HELD_TO of the builder's processors, the VM's four run a quarter of the time at most
-    under load, when every one is busy, and frozen the one that is runs mostly on its own, as a
-    busy builder holds them. A share near 1 here is a count blind to the builder, which no other
-    subtest's bars could tell from a quiet builder.
+    Held to HELD_TO of the builder's processors, the VM's four run about half the time each under
+    load, when every one is busy, as a busy builder holds them. A guest counting little stolen
+    here is a count blind to the builder, which no other subtest's bars could tell from a quiet
+    builder, and every share would read 1.
     """
     started = desktop.machine.pid
     assert started, "the VM has no process to hold to the builder's processors"
@@ -1040,14 +1042,13 @@ def test_the_share_grows_as_the_builder_holds_the_machine_back(desktop: Desktop)
                 held[on] = held.get(on, 0) + 1
         print(f"the VM's threads, by the builder's processors each may run on: {held}")
         time.sleep(GAUGING)
-        timing.load(on=False)
-        time.sleep(GAUGING)
-        share = timing.share()
+        timing.count(kept=True)
     finally:
         hold_vm(started, builders)
-        if not timing.loading:
-            timing.load(on=True)
-    assert share >= HELD_SHARE, (
-        f"held to {HELD_TO} of the builder's processors, the guest's count gave a share of"
-        f" {share:.2f}"
+    stolen, busy = timing.counted[True]
+    print(f"held, the guest counted {stolen} of {busy} busy ticks stolen")
+    assert busy, "held, the guest counted no busy ticks"
+    assert stolen / busy >= HELD_STOLEN, (
+        f"held to {HELD_TO} of the builder's processors, the guest counted {stolen} of {busy}"
+        " busy ticks stolen"
     )

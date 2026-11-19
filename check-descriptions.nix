@@ -5250,8 +5250,8 @@
     frame within 50 ms of the ask, its own work, the settling after it and the wait for the
     frame, drawn from what the closed launcher kept and filled in without moving a row or the
     cursor, and its drawing takes within twice its time with the load frozen and 50 ms more;
-    and with the VM held to one of the builder's processors, the guest's count gives a share of
-    at least 1.5
+    and with the VM held to two of the builder's processors under load, the guest counts at least
+    a quarter of its busy time stolen
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and
