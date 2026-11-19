@@ -135,27 +135,47 @@ fn described(unit: &str) -> Option<String> {
     (shown.status.success() && !about.is_empty()).then_some(about)
 }
 
-/// The last three lines a unit's own programs said, or, when they said
-/// nothing, as when one was killed, the last line systemd said of it. A
-/// line that shows nothing once cleaned says nothing, so lines that are
-/// all blanks, escapes, controls, marks or what draws no cell count as
-/// none.
+/// systemd's message for a unit's process exiting, with its code or
+/// signal, as sd-messages.h names it.
+const PROCESS_EXITED: &str = "MESSAGE_ID=98e322203f7a4ed290d09fe03c09fe15";
+
+/// systemd's message for the result a unit failed with.
+const FAILED_WITH_RESULT: &str = "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c";
+
+/// The last three lines a unit's own programs said that show something,
+/// or, when none of them does, as when one was killed, why systemd said
+/// it failed. A line that shows nothing once cleaned, all blanks, escapes,
+/// controls, marks or what draws no cell, says nothing, so the last twenty
+/// are read for three that do. systemd's lines are asked for by its own
+/// fields, since `--unit=` also gives the unit's own lines, and its last
+/// may be one that draws nothing. Its last line of a unit is most often
+/// what the unit cost or that it failed to start, which the heading says,
+/// so the two that say why come first: the last time its process exited,
+/// then the last result it failed with, each asked apart, since a unit
+/// restarting into its start limit says two results and no exit between.
+/// Any other of its lines only when a unit has neither.
 fn last(unit: &str) -> Vec<String> {
-    let own = journal(&format!("_SYSTEMD_UNIT={unit}"), 3);
-    if summary::says_nothing(&own) {
-        journal(&format!("--unit={unit}"), 1)
+    let own = summary::last_shown(journal(&[&format!("_SYSTEMD_UNIT={unit}")], 20), 3);
+    if !own.is_empty() {
+        return own;
+    }
+    let systemd = format!("UNIT={unit}");
+    let mut why = journal(&[&systemd, "_PID=1", PROCESS_EXITED], 1);
+    why.extend(journal(&[&systemd, "_PID=1", FAILED_WITH_RESULT], 1));
+    if why.is_empty() {
+        journal(&[&systemd, "_PID=1"], 1)
     } else {
-        own
+        why
     }
 }
 
-/// The last `lines` this boot's journal holds matching `matching`, as
-/// they were said; nothing where the journal can't be read.
-fn journal(matching: &str, lines: usize) -> Vec<String> {
+/// The last `lines` this boot's journal holds matching every one of
+/// `matching`, as they were said; nothing where the journal can't be read.
+fn journal(matching: &[&str], lines: usize) -> Vec<String> {
     Command::new("journalctl")
+        .arg("--boot")
+        .args(matching)
         .args([
-            "--boot",
-            matching,
             &format!("--lines={lines}"),
             "--output=cat",
             "--no-pager",

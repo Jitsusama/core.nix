@@ -23,8 +23,8 @@ pub struct Failed {
     pub name: String,
     /// Its description, which is its name where it has none.
     pub about: String,
-    /// The last its own programs said, or, when they said nothing, the
-    /// last systemd said of it, a line each.
+    /// The last its own programs said that draws, or, when none does, why
+    /// systemd said it failed, a line each.
     pub said: Vec<String>,
 }
 
@@ -80,7 +80,7 @@ fn heading(unit: &Failed, pen: &Pen, room: Room) -> String {
         }
         Room::Unbounded => true,
     };
-    if about != name && !about.is_empty() && fits {
+    if about != name && !blank(&about) && fits {
         line.push_str("  ");
         line.push_str(&pen.role("text", &about));
     }
@@ -95,8 +95,11 @@ fn heading(unit: &Failed, pen: &Pen, room: Room) -> String {
 /// device's path among them, may be what says why the unit failed. The
 /// pieces are laid greedily, each already fitting, rather than through
 /// the kit's `wrapped`, which would join a piece that starts with a
-/// figure to the next as its unit, and shorten them. Into a pipe it
-/// stays one line. A blank line says nothing, so it's left out.
+/// figure to the next as its unit, and shorten them. A line that wraps
+/// breaks at the blanks the kit's `spaced` reads, braille's and the
+/// Hangul filler's among them, and loses the words that draw nothing,
+/// so no row it wraps to shows nothing. Into a pipe it stays one line.
+/// A blank line says nothing, so it's left out.
 fn under(said: &str, room: Room) -> Vec<String> {
     let said = clean(said);
     let said = said.trim_end();
@@ -112,10 +115,8 @@ fn under(said: &str, room: Room) -> Vec<String> {
     }
     let mut lines = Vec::new();
     let mut line = String::new();
-    for piece in said
-        .split_whitespace()
-        .flat_map(|word| broken(word, measure))
-    {
+    let words = layout::spaced(said);
+    for piece in words.split(' ').flat_map(|word| broken(word, measure)) {
         if !line.is_empty() && layout::width(&line) + 1 + layout::width(piece) > measure {
             lines.push(std::mem::take(&mut line));
         }
@@ -223,11 +224,17 @@ fn blank(line: &str) -> bool {
     layout::spaced(line).is_empty()
 }
 
-/// Whether `lines` say nothing a person could read once cleaned, as
-/// they'd be shown: each only blanks, escapes, controls, marks or
-/// characters that draw nothing.
-pub fn says_nothing(lines: &[String]) -> bool {
-    lines.iter().all(|line| blank(&clean(line)))
+/// The last `count` of `lines` a person could read once cleaned, as
+/// they'd be shown, in the order they were said: a line of only blanks,
+/// escapes, controls, marks or characters that draw nothing goes, so it
+/// takes no place of one that says something.
+pub fn last_shown(lines: Vec<String>, count: usize) -> Vec<String> {
+    let mut shown: Vec<String> = lines
+        .into_iter()
+        .filter(|line| !blank(&clean(line)))
+        .collect();
+    shown.drain(..shown.len().saturating_sub(count));
+    shown
 }
 
 #[cfg(test)]
@@ -242,25 +249,111 @@ mod tests {
                 .map(|line| (*line).to_owned())
                 .collect::<Vec<_>>()
         };
-        assert!(says_nothing(&[]), "no lines said something");
         assert!(
-            says_nothing(&lines(&[
-                "",
-                "  \t",
-                "\u{1b}[0m\u{7}",
-                "\u{1b}]0;title\u{7}",
-                "\u{200e}",
-                "\u{200b}\u{2060}",
-                "\u{2800}\u{2800}",
-                "\u{200d}\u{fe0f}",
-                "\u{115f}"
-            ])),
+            last_shown(Vec::new(), 3).is_empty(),
+            "no lines said something"
+        );
+        assert!(
+            last_shown(
+                lines(&[
+                    "",
+                    "  \t",
+                    "\u{1b}[0m\u{7}",
+                    "\u{1b}]0;title\u{7}",
+                    "\u{200e}",
+                    "\u{200b}\u{2060}",
+                    "\u{2800}\u{2800}",
+                    "\u{200d}\u{fe0f}",
+                    "\u{115f}"
+                ]),
+                3
+            )
+            .is_empty(),
             "lines that show nothing were taken as said"
         );
-        assert!(
-            !says_nothing(&lines(&["", "\u{1b}[31mdisk gone"])),
+        assert_eq!(
+            last_shown(lines(&["", "\u{1b}[31mdisk gone"]), 3),
+            lines(&["\u{1b}[31mdisk gone"]),
             "a line with words was taken as nothing"
         );
+    }
+
+    #[test]
+    fn the_last_lines_shown_are_the_last_that_draw_in_the_order_said() {
+        let lines = |said: &[&str]| {
+            said.iter()
+                .map(|line| (*line).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            last_shown(
+                lines(&[
+                    "mounting",
+                    "reading /dev/sda",
+                    "\u{2800}",
+                    "disk gone",
+                    "",
+                    "\u{200e}"
+                ]),
+                3
+            ),
+            lines(&["mounting", "reading /dev/sda", "disk gone"]),
+            "lines that draw nothing took the place of lines that said something"
+        );
+        assert_eq!(
+            last_shown(lines(&["one", "two", "three", "four"]), 3),
+            lines(&["two", "three", "four"]),
+            "more than three lines weren't cut to the last three"
+        );
+        assert_eq!(
+            last_shown(lines(&["\u{1f469}\u{200d}\u{1f4bb}", "\u{200d}"]), 3),
+            lines(&["\u{1f469}\u{200d}\u{1f4bb}"]),
+            "an emoji joined through a joiner was taken as drawing nothing"
+        );
+    }
+
+    #[test]
+    fn a_description_that_draws_nothing_leaves_the_name_alone() {
+        for about in ["\u{2800}", "\u{200d}", "\u{fe0f}", "\u{115f}", "\u{200e}"] {
+            let summary = text(
+                &[unit("a.service", about, &[])],
+                1,
+                &console(),
+                Room::Cells(80),
+            );
+            says(&summary, "  x  a.service");
+        }
+    }
+
+    #[test]
+    fn a_wrapped_line_gives_no_row_that_draws_nothing() {
+        let said = format!("{} disk gone", "\u{2800}".repeat(80));
+        let summary = text(
+            &[unit("disk.service", "", &[&said])],
+            1,
+            &console(),
+            Room::Cells(80),
+        );
+        let shown = lines(&summary);
+        let at = shown
+            .iter()
+            .position(|line| *line == "  x  disk.service")
+            .unwrap_or_else(|| panic!("no heading in {summary:?}"));
+        assert_eq!(
+            shown.get(at + 1..at + 3),
+            Some(&["     disk gone", ""][..]),
+            "a wrapped line gave a row of blanks: {summary:?}"
+        );
+        let (first, second) = ("a".repeat(40), "b".repeat(40));
+        let said = format!("{first} \u{200d} {second}");
+        let summary = text(
+            &[unit("disk.service", "", &[&said])],
+            1,
+            &console(),
+            Room::Cells(80),
+        );
+        says(&summary, &format!("     {first}"));
+        says(&summary, &format!("     {second}"));
     }
 
     #[test]
