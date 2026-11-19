@@ -27,8 +27,11 @@ interface Watch {
   readonly state: string | undefined;
 }
 
-/** What a note adds when the records it was waiting for haven't come. */
-const BEHIND = "some machines' records haven't come.";
+/**
+ * What a note adds when the page waited its patience for the records, which
+ * may be behind, or whose watch may not be live.
+ */
+const BEHIND = "the machines may not all be read.";
 
 /**
  * How the records that may name a machine stand in `read`: coming while

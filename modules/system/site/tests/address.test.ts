@@ -113,12 +113,12 @@ it("a machine not found while records may yet come waits, saying nothing", () =>
   );
 });
 
-it("a machine not found once the wait is over says the records are behind", () => {
+it("a machine not found once the wait is over says the machines may not all be read", () => {
   assert.deepEqual(landingOf(["kestrel"], "heron", "overdue"), {
-    note: "No machine read here yet is called heron; some machines' records haven't come.",
+    note: "No machine read here yet is called heron; the machines may not all be read.",
   });
   assert.deepEqual(landingOf(["kestrel"], "a b", "overdue"), {
-    note: "No machine read here yet has the name this address gives; some machines' records haven't come.",
+    note: "No machine read here yet has the name this address gives; the machines may not all be read.",
   });
 });
 

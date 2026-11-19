@@ -14,7 +14,7 @@ import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { askedOf, landingOf, recordsOf } from "./address.ts";
+import { askedOf, landingOf, recordsOf, type Watch } from "./address.ts";
 import { bridgeOf } from "./bridge.ts";
 import { headlineOf, legend, MACHINES_DRAWN, machinesOf, partsOf, placesOf } from "./draw.ts";
 import { machineHeadline, machineLede, whenSaid } from "./machine.ts";
@@ -214,6 +214,19 @@ function markPlace(): void {
 }
 
 /**
+ * The watches that bring the records naming machines, the part and the
+ * machines' own, as one: told once both have, live only while both are.
+ */
+function machineWatch(): Watch {
+  const kinds = ["part", "machine"];
+  const notLive = kinds.map((kind) => standings.get(kind)).find((now) => now?.state !== "live");
+  return {
+    told: kinds.every((kind) => told.has(kind)),
+    state: notLive === undefined ? "live" : notLive?.state,
+  };
+}
+
+/**
  * Takes the machine the address asks for, if it does, and answers it on the
  * next draw that can, or once the page has waited its patience for it.
  */
@@ -221,6 +234,11 @@ function ask(): void {
   asked = askedOf(location.hash);
   if (asked === undefined) {
     return;
+  }
+  // What the last landing said answers another address, not this one.
+  if (landingNote !== "") {
+    landingNote = "";
+    sayWhen();
   }
   const since = Date.now();
   askedSince = since;
@@ -234,7 +252,12 @@ function ask(): void {
 
 /** Ends the wait for the machine asked for, clearing its address. */
 function answered(): void {
+  const was = asked;
   asked = undefined;
+  // A newer address, followed and not yet heard, is left for its own turn.
+  if (askedOf(location.hash) !== was) {
+    return;
+  }
   // Cleared, so following the same address again is a change the page
   // hears; the URL is mended whole, so no path can make it another site's.
   const here = new URL(location.href);
@@ -245,25 +268,34 @@ function answered(): void {
 /**
  * Puts the cursor where the machine the address asks for lands, saying why
  * when that isn't its own row. One not found while its record may yet come
- * waits for a later draw.
+ * waits for a later draw, and past the page's patience says so and still
+ * lands if it comes before Joel moves.
  */
 function landAsked(read: System, overdue = Date.now() - askedSince >= PATIENCE): void {
   if (asked === undefined) {
     return;
   }
-  const watch = { told: told.has("machine"), state: standings.get("machine")?.state };
+  const records = recordsOf(read, machineWatch(), overdue);
   const landing = landingOf(
     machinesOf(read).map((thing) => thing.name),
     asked,
-    recordsOf(read, watch, overdue),
+    records,
   );
   if (landing.waits) {
     return;
   }
-  answered();
-  landingNote = landing.note ?? "";
-  noteSaid = undefined;
-  sayWhen();
+  const late = landing.row === undefined && records === "overdue";
+  if (!late) {
+    answered();
+  }
+  const words = landing.note ?? "";
+  // A landing is news, said even when it reads as the last; a late one
+  // said again on each draw is not.
+  if (!late || words !== landingNote) {
+    landingNote = words;
+    noteSaid = undefined;
+    sayWhen();
+  }
   if (landing.row === undefined) {
     return;
   }
@@ -408,9 +440,20 @@ listen({
  * Joel's own move, by key, pointer, wheel or touch, ends a landing still
  * waiting, so a record arriving late never takes the page from under him,
  * and puts away what the last landing said. Read from his input, not from
- * focus, which the page moves itself when it redraws.
+ * focus, which the page moves itself when it redraws. A modifier held
+ * alone, or a chord meant for the browser or the desktop, isn't a move,
+ * and nor is an event a script made.
  */
-function joelMoved(): void {
+function joelMoved(event: Event): void {
+  if (!event.isTrusted) {
+    return;
+  }
+  if (
+    event instanceof KeyboardEvent &&
+    (MODIFIERS.has(event.key) || event.ctrlKey || event.altKey || event.metaKey)
+  ) {
+    return;
+  }
   if (asked !== undefined) {
     answered();
   }
@@ -419,6 +462,18 @@ function joelMoved(): void {
     sayWhen();
   }
 }
+/** The keys that only change what another key means. */
+const MODIFIERS = new Set([
+  "Shift",
+  "Control",
+  "Alt",
+  "AltGraph",
+  "Meta",
+  "Super",
+  "Hyper",
+  "CapsLock",
+  "Fn",
+]);
 for (const input of ["keydown", "pointerdown", "wheel", "touchstart"]) {
   // Caught first, so what a key itself says in the note comes after.
   document.addEventListener(input, joelMoved, { capture: true, passive: true });

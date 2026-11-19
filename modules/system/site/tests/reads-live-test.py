@@ -73,6 +73,31 @@ def counted(page: Page, said: str = COUNTED) -> None:
     )
 
 
+def heard(page: Page, address: str) -> None:
+    """Follow `address` on the open page, once the page has heard it."""
+    # The page's own listener was added first, so it has run when this one does.
+    page.evaluate(
+        """(address) => new Promise((done) => {
+            addEventListener("hashchange", () => done(), { once: true });
+            location.hash = address;
+        })""",
+        address,
+    )
+
+
+def machine_called(name: str) -> dict[str, object]:
+    """Make a fine machine's record, as the daemon would send one for `name`."""
+    return {
+        "key": f"machine:{name}",
+        "kind": "machine",
+        "part": "machines",
+        "name": name,
+        "health": "good",
+        "says": "is fine",
+        "side": [],
+    }
+
+
 def test_the_system_page_draws_every_machine_live(system_page: Page) -> None:
     says_it_stands(system_page, "live")
     counted(system_page)
@@ -215,27 +240,64 @@ def test_an_address_for_a_machine_still_coming_lands_when_it_comes(
     )
     system_page.keyboard.press("1")
     expect(first, "1 didn't put the cursor on the first machine").to_be_focused()
-    system_page.evaluate("location.hash = '#machine=wren'")
+    heard(system_page, "#machine=wren")
+    assert system_page.url.endswith("#machine=wren"), "a machine still coming wasn't waited for"
     expect(
         system_page.locator("#note"), "a machine still coming was said not to be here"
     ).to_have_text("")
     expect(first, "a machine still coming moved the cursor").to_be_focused()
-    wren: dict[str, object] = {
-        "key": "machine:wren",
-        "kind": "machine",
-        "part": "machines",
-        "name": "wren",
-        "health": "good",
-        "says": "is fine",
-        "side": [],
-    }
     # The redraw wren's record brings puts the cursor back where it was
     # first, which mustn't count as Joel's own move.
-    system_daemon.tell("machine", changed=[wren])
+    system_daemon.tell("machine", changed=[machine_called("wren")])
     expect(
         system_page.locator("#parts a[data-row='machine:wren']"),
         "the machine the address waited for didn't land when it came",
     ).to_be_focused(timeout=PACE_MS)
+
+
+def test_a_wait_ends_on_joels_move_or_its_patience(
+    system_page: Page, system_daemon: StandIn
+) -> None:
+    says_it_stands(system_page, "live")
+    counted(system_page)
+    first = system_page.locator("#parts a[data-row^='machine:']").first
+    named: dict[str, object] = {
+        "key": "part:machines",
+        "things": ["machine:osprey", "machine:kestrel", "machine:wren"],
+    }
+    system_daemon.tell("part", changed=[named])
+    expect(first, "the part naming wren never came").to_have_attribute(
+        "data-row", "machine:osprey", timeout=PACE_MS
+    )
+    heard(system_page, "#machine=wren")
+    system_page.keyboard.press("Shift")
+    assert system_page.url.endswith("#machine=wren"), "a modifier held alone ended the wait"
+    system_page.keyboard.press("j")
+    expect(system_page, "Joel's move left the address waiting").to_have_url(
+        re.compile(r"/system/$")
+    )
+    system_daemon.tell("machine", changed=[machine_called("wren")])
+    wren = system_page.locator("#parts a[data-row='machine:wren']")
+    expect(wren, "wren's record never came").to_be_visible(timeout=PACE_MS)
+    expect(wren, "a wait Joel ended still landed").not_to_be_focused()
+    # finch is named and never sent, so the page waits its patience, says
+    # so, and still lands when finch comes, Joel not having moved.
+    named["things"] = ["machine:kestrel", "machine:osprey", "machine:wren", "machine:finch"]
+    system_daemon.tell("part", changed=[named])
+    expect(first, "the part naming finch never came").to_have_attribute(
+        "data-row", "machine:kestrel", timeout=PACE_MS
+    )
+    heard(system_page, "#machine=finch")
+    expect(system_page.locator("#note"), "a wait past its patience said nothing").to_have_text(
+        "No machine read here yet is called finch; the machines may not all be read.",
+        timeout=2 * PACE_MS,
+    )
+    system_daemon.tell("machine", changed=[machine_called("finch")])
+    expect(
+        system_page.locator("#parts a[data-row='machine:finch']"),
+        "a machine that came past the patience didn't land",
+    ).to_be_focused(timeout=PACE_MS)
+    expect(system_page.locator("#note"), "the late note outlived its machine").to_have_text("")
 
 
 def test_a_machine_that_turns_is_counted(system_page: Page, system_daemon: StandIn) -> None:
