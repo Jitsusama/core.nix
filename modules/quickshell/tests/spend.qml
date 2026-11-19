@@ -215,13 +215,14 @@ ShellRoot {
             removing.running = true;
         else
             file.setText(step.status);
-        left = 100;
+        left = 200;
         acted = false;
         waiting.start();
     }
 
     // Quickshell reads the files in the background, so each case waits for
-    // the piece to hold, for five seconds at most.
+    // the piece to hold, for ten seconds at most, as the test library waits,
+    // since a builder running many checks at once can hold this one back.
     Timer {
         id: waiting
         interval: 50
