@@ -100,7 +100,7 @@
   "modules/quickshell/tests/file-chooser.qml" = 2;
   "modules/quickshell/tests/file-facts.qml" = 1;
   "modules/quickshell/tests/focus-on-niri-test.py" = 2;
-  "tests/for-you-filter.qml" = 1;
+  "modules/quickshell/tests/for-you-filter.qml" = 1;
   "tests/vm/keys/gnome-keyring-vm-test.py" = 1;
   "modules/quickshell/tests/graphs.qml" = 1;
   "modules/quickshell/tests/keyboard.qml" = 1;

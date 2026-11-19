@@ -15,14 +15,14 @@
 }:
 {
   # For You's :filter narrows to a kind and a source, by their words, as
-  # VKCF3Z ruled it; tests/for-you-filter.qml holds launcher/ForYouFilter.js
-  # to it in Qt's own engine.
+  # VKCF3Z ruled it; modules/quickshell/tests/for-you-filter.qml holds
+  # launcher/ForYouFilter.js to it in Qt's own engine.
   for-you-narrows-by-kind-and-source =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "for-you-narrows-by-kind-and-source" { } ''
-      cp ${../../../tests/for-you-filter.qml} for-you-filter.qml
+      cp ${../tests/for-you-filter.qml} for-you-filter.qml
       cp ${../launcher/ForYouFilter.js} ForYouFilter.js
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -42,14 +42,14 @@
   # sources give it, as Passwords' one to-do, weighed beside the rest or
   # done, and finds the cell a look leads to, its own session or one on its
   # quest, and groups what needs him now by the cell behind each, as
-  # tests/for-you.qml holds ForYou.js, ForYouCells.js and Looks.js to it in
-  # Qt's own engine.
+  # modules/quickshell/tests/for-you.qml holds ForYou.js, ForYouCells.js and
+  # Looks.js to it in Qt's own engine.
   for-you-weighs-what-needs-joel =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
-      cp ${../../../tests/for-you.qml} for-you.qml
+      cp ${../tests/for-you.qml} for-you.qml
       cp ${../launcher/ForYou.js} ForYou.js
       cp ${../launcher/ForYouCells.js} ForYouCells.js
       cp ${../launcher/Looks.js} Looks.js
