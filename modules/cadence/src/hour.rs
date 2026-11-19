@@ -28,6 +28,7 @@ use terminal_kit::Failure;
 
 use crate::findings;
 use crate::mesh::Mesh;
+use crate::tracking::Tracking;
 use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
 use card::{Kept, compose};
 use measures::{Class, Measure};
@@ -173,13 +174,29 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     for (owner, text) in told.into_iter().filter(|(owner, _)| !owner.is_empty()) {
         mesh.send(&message(&owner, "finding", text))?;
     }
-    mesh.send(&message(to, "fyi", card))?;
+    let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
+    let keeper = measures::keeper(routes.as_deref());
+    for (whom, intent) in card_to(to, keeper.as_deref()) {
+        mesh.send(&message(whom, intent, card.clone()))?;
+    }
     // Kept once the card has gone, so a send that fails tells its findings
     // and "fixed" lines again next hour rather than never: an owner told
     // twice is cheaper than one never told.
     findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
+}
+
+/// Whom the card goes to, and as what: the orchestrator for context, and
+/// the keeper of Joel's wish list, which re-ranks it each hour by what
+/// the card says (WCJQSG, 19 November), as a question, so its turn starts
+/// on it. A keeper who is the orchestrator is sent it once.
+fn card_to<'a>(to: &'a str, keeper: Option<&'a str>) -> Vec<(&'a str, &'static str)> {
+    let mut whom = vec![(to, "fyi")];
+    if let Some(keeper) = keeper.filter(|keeper| !keeper.is_empty() && *keeper != to) {
+        whom.push((keeper, "question"));
+    }
+    whom
 }
 
 /// Reads every measure from the machine: the orchestrator's misses and
@@ -208,10 +225,13 @@ fn gather(
     .unwrap_or_default();
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
+    let asks = text(&mission.join("asks.jsonl"));
     let mut all = vec![
         measures::checked(misses, folder, checkouts)?,
-        measures::slips(&text(&mission.join("asks.jsonl")), now),
-        measures::to_first_slice(&text(&mission.join("asks.jsonl")), now),
+        measures::slips(&asks, now, Tracking::His),
+        measures::to_first_slice(&asks, now, Tracking::His),
+        measures::slips(&asks, now, Tracking::Derived),
+        measures::to_first_slice(&asks, now, Tracking::Derived),
         measures::undated(&quarantine, &today(now), NET_RULES),
         measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
         measures::broken(
@@ -485,6 +505,17 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_card_asks_the_wish_lists_keeper_besides_telling_the_orchestrator() {
+        assert_eq!(
+            card_to("ORCH", Some("KEEPER")),
+            [("ORCH", "fyi"), ("KEEPER", "question")]
+        );
+        assert_eq!(card_to("ORCH", Some("ORCH")), [("ORCH", "fyi")], "once");
+        assert_eq!(card_to("ORCH", None), [("ORCH", "fyi")]);
+        assert_eq!(card_to("ORCH", Some("")), [("ORCH", "fyi")]);
+    }
 
     #[test]
     fn today_starts_at_midnight_where_the_machine_is() {

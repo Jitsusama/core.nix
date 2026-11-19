@@ -9,6 +9,8 @@ use serde_json::Value;
 
 use owner::first_owner;
 
+use crate::tracking::{self, Tracking};
+
 mod balanced;
 mod broken;
 mod card;
@@ -20,6 +22,8 @@ mod pains;
 mod reports;
 pub mod rounds;
 pub mod spent;
+#[cfg(test)]
+mod tracked;
 pub mod unbilled;
 pub mod unresolved;
 
@@ -124,11 +128,13 @@ const fn count(n: usize) -> f64 {
 }
 
 /// The dates promised in the orchestrator's `asks.jsonl` that passed in
-/// the day before `now` without their ask landing by then. A date moved
-/// is a new line beside the old, so each move counts as a slip.
+/// the day before `now` without their ask landing by then, of asks of
+/// the kind `which`. A date moved is a new line beside the old, so each
+/// move counts as a slip.
 #[must_use]
-pub fn slips(text: &str, now: i64) -> Measure {
+pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     let mut slipped: Vec<(i64, String, String)> = lines(text)
+        .filter(|ask| tracking::of(ask) == Some(which))
         .filter_map(|ask| {
             let expected = seconds(&ask["expected"])?;
             let landed = seconds(&ask["landed"]);
@@ -146,9 +152,14 @@ pub fn slips(text: &str, now: i64) -> Measure {
         .collect();
     slipped.sort_by_key(|(expected, _, _)| *expected);
     Measure {
-        key: "slips".to_owned(),
+        key: which.key("slips"),
         class: Class::Slip,
-        says: "dates promised that passed in the last day without landing".to_owned(),
+        says: if which == Tracking::His {
+            "dates promised that passed in the last day without landing"
+        } else {
+            "dates the list set itself (derived, mends) that passed in the last day"
+        }
+        .to_owned(),
         now: count(slipped.len()),
         target: Some(0.0),
         owner: slipped
@@ -168,12 +179,13 @@ pub fn slips(text: &str, now: i64) -> Measure {
 /// open ask counts the hours it has waited so far, so one can't hide by
 /// staying open. A date moved is a new line for the same ask, known by
 /// when it was asked and its words, so each ask counts once. Its first
-/// slice is `first` where the orchestrator wrote one, else `landed`.
+/// slice is `first` where the orchestrator wrote one, else `landed`. Only
+/// asks of the kind `which` count, and only his own are held to a target.
 #[must_use]
-pub fn to_first_slice(text: &str, now: i64) -> Measure {
+pub fn to_first_slice(text: &str, now: i64, which: Tracking) -> Measure {
     // Each ask, by when and what was asked: its owner and first reaching.
     let mut asks: BTreeMap<(i64, String), (String, Option<i64>)> = BTreeMap::new();
-    for ask in lines(text) {
+    for ask in lines(text).filter(|ask| tracking::of(ask) == Some(which)) {
         let Some(asked) = seconds(&ask["at"]) else {
             continue;
         };
@@ -209,12 +221,18 @@ pub fn to_first_slice(text: &str, now: i64) -> Measure {
     let mut open: Vec<&(i64, &str, &str, bool)> =
         counted.iter().filter(|(.., open)| *open).collect();
     open.sort_by_key(|(waited, ..)| std::cmp::Reverse(*waited));
+    let his = which == Tracking::His;
     Measure {
-        key: "ask-to-first-slice".to_owned(),
+        key: which.key("ask-to-first-slice"),
         class: Class::Ship,
-        says: "median hours from his ask to a first piece he can use".to_owned(),
+        says: if his {
+            "median hours from his ask to a first piece he can use"
+        } else {
+            "median hours from an ask the list set itself to its first piece"
+        }
+        .to_owned(),
         now: median(&hours),
-        target: Some(4.0),
+        target: his.then_some(4.0),
         owner: ASKS.to_owned(),
         behind: open
             .iter()
@@ -529,7 +547,7 @@ mod tests {
             ask(NOW - 2 * DAY, None),         // passed before the day
         ]
         .join("\n");
-        let m = slips(&text, NOW);
+        let m = slips(&text, NOW, Tracking::His);
         assert!(
             (m.now - 3.0).abs() < 0.5,
             "two moves and a late landing, got {}",
@@ -561,7 +579,7 @@ mod tests {
             ask("long done", NOW - 3 * DAY, None, Some(NOW - 2 * DAY)),
         ]
         .join("\n");
-        let m = to_first_slice(&text, NOW);
+        let m = to_first_slice(&text, NOW, Tracking::His);
         assert!(
             (m.now - 3.0).abs() < 0.01,
             "the median of 1, 3 and 30 hours, got {}",
