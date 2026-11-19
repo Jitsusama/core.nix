@@ -38,6 +38,7 @@ if [ -e "$work/silent" ]; then
   exit 0
 fi
 if [ -e "$work/killed" ]; then
+  echo "repos: reading /home/ada/src" >&2
   kill -KILL \$\$
 fi
 if [ -e "$work/stalled" ]; then
@@ -98,14 +99,25 @@ fi
 
 rm "$work/silent"
 touch "$work/stalled"
+kept="the last homes stay"
+# The writer says what happened in its one line alone, so the journal holds no
+# other, such as bash's own word on a program a signal ended.
+quiet() {
+  if [ -s "$work/err" ]; then
+    echo "With $1, the writer also said '$(< "$work/err")'." >&2
+    exit 1
+  fi
+}
+
 # The writer waits a second here rather than its minute's share, so the check
 # stays quick.
 stalls() {
   local how=$1 started=$SECONDS said homes
-  if ! said=$(CODE_SITE_WAITS=1 "$BASH" "$writer" "$work/site"); then
+  if ! said=$(CODE_SITE_WAITS=1 "$BASH" "$writer" "$work/site" 2> "$work/err"); then
     echo "With repos $how, the writer failed, so its unit would fail." >&2
     exit 1
   fi
+  quiet "repos $how"
   # Its second's wait, and the five it gives a read deaf to the first signal.
   if ((SECONDS - started > 10)); then
     echo "With repos $how, the writer waited $((SECONDS - started)) s, not its second." >&2
@@ -116,7 +128,7 @@ stalls() {
     echo "With repos $how, the writer changed the last homes to '$homes'." >&2
     exit 1
   fi
-  if [[ $said != "repos read for over 1 s"*"; the last homes stay" ]]; then
+  if [ "$said" != "repos read for over 1 s, as a starved machine makes it; $kept" ]; then
     echo "With repos $how, the writer said '$said' rather than that it read too long." >&2
     exit 1
   fi
@@ -134,17 +146,24 @@ rm "$work/stalled" "$work/stubborn"
 # A read killed by something else is a failure, not a stall, however it ended, and
 # says what killed it. Its wait is long, so a slow builder can't make the kill a stall.
 touch "$work/killed"
-if ! said=$(CODE_SITE_WAITS=30 "$BASH" "$writer" "$work/site"); then
+if ! said=$(CODE_SITE_WAITS=30 "$BASH" "$writer" "$work/site" 2> "$work/err"); then
   echo "With repos killed outright, the writer failed, so its unit would fail." >&2
   exit 1
 fi
+quiet "repos killed outright"
 homes=$(< "$work/site/homes.json")
 if [ "$homes" != '{"kept":true}' ]; then
   echo "With repos killed outright, the writer changed the last homes to '$homes'." >&2
   exit 1
 fi
-if [[ $said != "repos failed (killed by SIGKILL"*"); the last homes stay" ]]; then
+killed="repos failed (killed by SIGKILL: repos: reading /home/ada/src); the last homes stay"
+if [ "$said" != "$killed" ]; then
   echo "With repos killed outright, the writer said '$said' rather than what killed it." >&2
+  exit 1
+fi
+left=("$work/site"/*)
+if [ "${left[*]}" != "$work/site/homes.json" ]; then
+  echo "With repos killed outright, the writer left ${left[*]} in the site's folder." >&2
   exit 1
 fi
 rm "$work/killed"
