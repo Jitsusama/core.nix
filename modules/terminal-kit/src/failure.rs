@@ -111,9 +111,12 @@ impl Exit {
     }
 
     /// Ends the process at once with this exit, saying nothing. It's for
-    /// the one place a body can't return from: a thread that has heard a
-    /// signal and cleaned up after it, as `Interrupted`. Everywhere else a
-    /// body returns its failure, so the kit says it.
+    /// where a body can't return: a thread that has heard a signal and
+    /// cleaned up after it, as `Interrupted`; a thread that hears the end
+    /// of an input the main thread can't wait on; and a daemon leaving
+    /// work under way to the build that replaced it, which returning
+    /// would wait on. Everywhere else a body returns its failure, so the
+    /// kit says it.
     pub fn end_now(self) -> ! {
         std::process::exit(i32::from(self.code()))
     }

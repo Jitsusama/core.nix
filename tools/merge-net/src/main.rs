@@ -221,9 +221,10 @@ fn rounds(
                 "another merge-net is installed, so this one ends with its round, leaving \
                  what it settles to that one",
             );
-            // An exit, since the scope would wait for the searches under way,
-            // which the new build takes up from disk.
-            return Ok(settler.leave(|| std::process::exit(0)));
+            // An end at once, since the scope would wait for the searches
+            // under way, which the new build takes up from disk. It's the
+            // kit's, so the code is the table's 0 as any other end is.
+            return Ok(settler.leave(|| terminal_kit::Exit::Done.end_now()));
         }
         let rest = match &round {
             Ok(Round::Passed(_) | Round::Failed(_)) => 0,
