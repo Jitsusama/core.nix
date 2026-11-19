@@ -122,5 +122,18 @@
       "test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window"
     ],
     "test": "vm-screens-keep-places"
+  },
+  {
+    "at": 1795117614,
+    "commit": "544161276fa537ea9abc58041ed56d2d72eb917f",
+    "due": "2026-11-21",
+    "due_why": "Its owner, the cat's, by 2026-11-21 17:00 UTC makes the frames niri was asked of hold on a loaded builder, then takes it off once ten net runs in a row log it PASSED: its net logs from 14 to 19 Nov held 126 PASSED and none FAILED, and the one miss, a gate at 544161276fa5, asked of 131 of 135 frames against a bound of 132 with frames a median 62 ms apart",
+    "owner_pr": 3945,
+    "owner_session": "XY9H5C",
+    "reason": "failed at a gate at 544161276fa5, which touches no margin-cat file",
+    "subtests": [
+      "test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
   }
 ]
