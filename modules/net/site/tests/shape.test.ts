@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
-import { networkOf } from "../model.ts";
+import { type Device, networkOf } from "../model.ts";
 import { study } from "../shape.ts";
 import {
   deviceCommand,
@@ -128,20 +128,64 @@ it("a name in a command is quoted so pasting it runs nothing else", () => {
   }
 });
 
-it("a device's command is offered only when it pastes just as it reads", () => {
+/** A device net read, with only what naming it at a terminal reads. */
+function named(name: string, id: string, addresses: readonly string[] = []): Device {
+  return {
+    id,
+    name,
+    roles: [],
+    addresses,
+    macs: [],
+    source: undefined,
+    vendor: undefined,
+    model: undefined,
+    hardware: undefined,
+    firmware: undefined,
+    serial: undefined,
+    upS: undefined,
+    readAt: undefined,
+    path: undefined,
+    radios: [],
+    ports: [],
+    speed: undefined,
+    modem: undefined,
+  };
+}
+
+it("a device's command names it by a name that finds it alone, and by its id otherwise", () => {
+  const id = "mac:02:00:00:00:00:01";
+  const byId = `net devices ${id}`;
+  const others = [
+    named("Study", "mac:02:00:00:00:00:02", ["10.0.0.2"]),
+    named("10.0.0.9", "mac:02:00:00:00:00:03"),
+  ];
   for (const [name, command] of [
-    ["Study", "net devices Study"],
+    ["Hall", "net devices Hall"],
     ["lamp;reboot", "net devices 'lamp;reboot'"],
     ["Main Floor", "net devices 'Main Floor'"],
-    ["Main  Floor", null],
-    ["lamp\u001b[201~reboot", null],
-    ["tab\there", null],
-    ["two\nlines", null],
-    ["next\u2028line", null],
-    ["\u202eevil", null],
-    ["zero\u200bwidth", null],
-    ["no\u00a0break", null],
+    ["Salle de séjour 📺", "net devices 'Salle de séjour 📺'"],
+    ["study", byId],
+    ["10.0.0.2", byId],
+    ["mac:02:00:00:00:00:02", byId],
+    ["--json", byId],
+    ["", byId],
+    ["Main  Floor", byId],
+    ["lamp\u001b[201~reboot", byId],
+    ["tab\there", byId],
+    ["two\nlines", byId],
+    ["next\u2028line", byId],
+    ["\u202eevil", byId],
+    ["zero\u200bwidth", byId],
+    ["no\u00a0break", byId],
+    ["braille\u2800blank", byId],
+    ["private\ue000use", byId],
+    ["lone\ud800half", byId],
   ] as const) {
-    assert.equal(deviceCommand(name), command, `${JSON.stringify(name)} was offered wrongly`);
+    const device = named(name, id);
+    assert.equal(
+      deviceCommand(device, [device, ...others]),
+      command,
+      `${JSON.stringify(name)} was named wrongly`,
+    );
   }
 });

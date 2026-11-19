@@ -206,26 +206,49 @@ function shellWord(word: string): string {
  * character, such as an escape that ends a terminal's bracketed paste and
  * has the rest run as typed; a mark of format or direction, or one that
  * draws nothing, which read one way and paste another; a line or
- * paragraph break; and any blank but a plain space, which a page shows as
- * one space wherever it stands.
+ * paragraph break; and any blank but a plain space, braille's and
+ * Hangul's blanks among them, which a page shows as one space wherever it
+ * stands. A character the browser's tables don't know yet, such as a new
+ * emoji, draws as itself and passes.
  */
 const UNSEEN =
-  /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]|[^\S ]/u;
+  /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u115f\u2800]|[^\S ]/u;
+
+/** ASCII letters in lower case, as net matches a name in any case. */
+function folded(word: string): string {
+  return word.replace(/[A-Z]/gu, (letter) => letter.toLowerCase());
+}
 
 /**
- * The command that shows a device at a terminal, as the terminal kit's
- * try lines are drawn: only when it reads just as it would be typed, its
- * name quoted as a shell word, holding nothing unseen and no blanks but
- * single spaces between words. Nothing otherwise, since a page shows a
- * run of spaces as one, and changing a name to show it would have the
- * command name a device it didn't.
+ * Whether a name, typed as it reads, finds this device and no other: net
+ * takes a word as an id or an address before a name, refuses a name two
+ * devices share, and reads one opening with `-` as a flag. It must also
+ * paste just as it reads, holding nothing unseen and no run of spaces,
+ * since a page shows a run as one.
  */
-function deviceCommand(name: string): string | null {
-  const command = `net devices ${shellWord(name)}`;
-  if (UNSEEN.test(command) || command.includes("  ")) {
-    return null;
+function findsOnly(device: Device, devices: readonly Device[]): boolean {
+  const { name } = device;
+  if (name === "" || name.startsWith("-") || UNSEEN.test(name) || name.includes("  ")) {
+    return false;
   }
-  return command;
+  return devices.every(
+    (other) =>
+      other.id !== name &&
+      !other.addresses.includes(name) &&
+      (other === device || folded(other.name) !== folded(name)),
+  );
+}
+
+/**
+ * The command that shows a device at a terminal, as net's own try lines
+ * write it: by its name, quoted as a shell word, when that finds it alone
+ * and pastes as it reads, and otherwise by net's id for it, which always
+ * does. Changing a name to show it would have the command name a device
+ * it didn't.
+ */
+function deviceCommand(device: Device, devices: readonly Device[]): string {
+  const word = findsOnly(device, devices) ? device.name : device.id;
+  return `net devices ${shellWord(word)}`;
 }
 
 export {
