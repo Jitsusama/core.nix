@@ -610,10 +610,11 @@ Provider {
     // gives up its card's load, its cable said as last loaded, or as the
     // daemon says its link before any has landed, rather than as a file
     // that said nothing, and warned of, and its drawer made as the daemon
-    // says it. The view still reading is kept by its card (cablesHung)
-    // and another made for the next, so one landing late is never taken
-    // for another file's. The card is held off (holdAfter), not asked
-    // again each second.
+    // says it. A view pointed elsewhere drops its late read, but the read
+    // still holds its thread, so the view still reading is kept by its card
+    // (cablesHung), another made for the next, and the card isn't asked
+    // again until that view lands. It's held off (holdAfter) as well, not
+    // asked again each second.
     Timer {
         id: cableWatch
 

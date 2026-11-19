@@ -642,23 +642,48 @@ ShellRoot {
         networks.factsAsked = [];
         networks.stillReading = false;
         networks.recable();
+        // The loads factsAlone and the links' change began land as orphans,
+        // which cableFile's inFlight and factLanded's late landing absorb.
         Expect.expect("a card asked alone is still reading", networks.stillReading
-            && networks.factsAsked.length === 0, JSON.stringify(networks.cablesAsked));
+            && networks.factsAsked.length === 0,
+            JSON.stringify([networks.stillReading, networks.factsAsked.length,
+                networks.cableLoading?.name]));
     }
 
-    // A card forgotten between a file landing and the next ask, then
-    // plugged back in, is asked at the path the probe already holds,
-    // and that file is read again rather than left to its watch.
+    // A card with no cable kept, its hold over, is asked for by the answer
+    // itself, though nothing else changed and the last look is fresh.
+    function askedByAnswer() {
+        const kept = Object.assign(Object.create(null), networks.cables);
+        delete kept.enp0s1;
+        networks.cables = kept;
+        const stuck = Object.assign(Object.create(null), networks.cablesStuck);
+        stuck.enp0s1 = { at: Date.now() - 120000, wait: 60000 };
+        networks.cablesStuck = stuck;
+        networks.lookedAt = Date.now();
+        networks.answer("ethernet");
+        Expect.expect("a card whose hold is over is asked for by the answer",
+            networks.stillReading && (networks.cableLoading?.name === "enp0s1"
+                || networks.cablesAsked.includes("enp0s1")),
+            JSON.stringify([networks.cableLoading, networks.cablesAsked]));
+        waits.until("the card asked for loaded", within(2000, root.swept), root.askedAtItsPath);
+    }
+
+    // A card forgotten once its first file lands, before the next is asked,
+    // then plugged back in, is asked first for the file the probe already
+    // holds, and that file is read again rather than left to its watch.
     function askedAtItsPath() {
-        const asked = String(networks.cableProbe.path).slice(networks.sysfs.length + 1);
-        const name = asked.slice(0, asked.indexOf("/"));
-        networks.cableLoading = { name, at: networks.cableFiles.indexOf(asked.slice(name.length
-            + 1)), texts: {}, state: "", stale: true, inFlight: false };
-        Expect.expect("the probe last read a card's cable file", name === "enp0s1"
-            && networks.cableLoading.at >= 0, asked);
-        networks.cableFile();
-        waits.until("a file asked at the probe's own path is read again", within(1000, () =>
-            networks.cableLoading === null && !networks.cableWatching), () => Qt.exit(0));
+        const ask = () => {
+            networks.cableLoading = { name: "enp0s1", at: networks.cableFiles.length - 1,
+                texts: {}, state: "", stale: true, inFlight: false };
+            networks.cableFile();
+        };
+        const landed = () => networks.cableLoading === null && !networks.cableWatching;
+        ask();
+        waits.until("a card's last file landed", within(1000, landed), () => {
+            ask();
+            waits.until("a file asked at the probe's own path is read again",
+                within(1000, landed), () => Qt.exit(0));
+        });
     }
 
     // A card named as one of an object's own members has a lease and
@@ -703,6 +728,17 @@ ShellRoot {
         networks.cableLoading = { name: "enp0s8", at: 0, texts: {}, state: "", stale: true,
             inFlight: false };
         networks.cableWatching = true;
+        const began = Date.now();
+        waits.until("a second and a half on", within(3000, () => Date.now() - began >= 1500),
+            () => {
+            Expect.expect("the watch keeps a cable file a second and a half",
+                networks.cableWatching && networks.cablesStuck.enp0s8 === undefined,
+                JSON.stringify(networks.cablesStuck.enp0s8));
+            root.cableGivenUpByWatch();
+        });
+    }
+
+    function cableGivenUpByWatch() {
         waits.until("the watch gives up a cable file that never lands",
             within(4000, () => networks.cablesStuck.enp0s8 !== undefined), () => {
             root.hungReads();
@@ -711,7 +747,7 @@ ShellRoot {
             root.recabledAlone();
             waits.until("a hung read's view, landed, is destroyed", within(1000, () =>
                 root.hungGone), () => waits.until("the card asked alone loaded",
-                within(2000, root.swept), root.askedAtItsPath));
+                within(2000, root.swept), root.askedByAnswer));
         });
     }
 
@@ -730,7 +766,7 @@ ShellRoot {
         networks.cablesStuck = stuck;
         Expect.expect("a card whose read hangs isn't asked again, though its wait is over",
             networks.stuck("enp0s9"), JSON.stringify(networks.cablesStuck.enp0s9));
-        networks.cableLoading = { name: "enp0s9", at: 0, texts: {}, state: "", stale: true,
+        networks.cableLoading = { name: "enp0s1", at: 0, texts: {}, state: "", stale: true,
             inFlight: true };
         networks.probeLanded(reading, "1");
         Expect.expect("a hung read landing lets its view go, keeps its hold, and isn't taken"
