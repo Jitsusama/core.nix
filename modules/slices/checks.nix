@@ -91,6 +91,51 @@
       "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over, or the sorter doesn't watch it."
       (weight slices.app >= 10 * weight slices.agents && watches "app.slice" && watches "agents.slice");
 
+  # Under every core's load, the processor's one power budget holds each
+  # near the same clock, so one of Joel's threads ran no faster on a
+  # performance core than on an efficient one. A machine that names its
+  # efficient cores keeps the work nobody waits on to them, jobs and
+  # background in the account and the builds beside it, which leaves the
+  # performance cores and their budget to what he uses. The account's
+  # manager is handed the cpuset controller, without which its slices
+  # can't be held to any cores. A machine naming none holds nothing.
+  agents-work-keeps-off-the-performance-cores =
+    let
+      machine =
+        named:
+        (bareNixos [
+          self.nixosModules.graphical
+          { jitsusama.slices.efficientCores = named; }
+        ]).config.systemd;
+      held = machine "4-15";
+      free = machine null;
+      cores = systemd: [
+        systemd.user.slices.jobs.sliceConfig.AllowedCPUs or null
+        systemd.user.slices.background.sliceConfig.AllowedCPUs or null
+        systemd.slices.build.sliceConfig.AllowedCPUs or null
+      ];
+      delegated =
+        systemd:
+        lib.elem "cpuset" (lib.splitString " " (systemd.services."user@".serviceConfig.Delegate or ""));
+    in
+    holds "agents-work-keeps-off-the-performance-cores"
+      "Naming the efficient cores didn't hold jobs, background and builds to them, or naming none held them anyway."
+      (
+        cores held == [
+          "4-15"
+          "4-15"
+          "4-15"
+        ]
+        && delegated held
+        &&
+          cores free == [
+            null
+            null
+            null
+          ]
+        && !delegated free
+      );
+
   # A probe waits beside Joel's programs at their weight, so a watcher
   # reading its slice's pressure reads what the rest of the machine makes
   # one wait, and not his programs making each other wait.
