@@ -41,6 +41,8 @@ const LOOSE_SCALE: f64 = 1000.0;
 /// The most emoji an answer holds where the ask doesn't say, more than a
 /// launcher shows at once.
 const FOUND: usize = 100;
+/// The most of what's typed a search reads, far past any emoji's name.
+const LONGEST: usize = 200;
 
 /// One emoji as a search reads it, worked out once as the history starts.
 struct Emoji {
@@ -111,8 +113,11 @@ impl Index {
             .as_u64()
             .and_then(|most| usize::try_from(most).ok())
             .unwrap_or(FOUND);
-        let typed = Typed::of(words);
-        let found = self.found(words, &typed, said["within"].as_str());
+        // Only so much of what's typed is read, so no peer on the socket
+        // holds the history matching a long text against every emoji.
+        let read: String = words.chars().take(LONGEST).collect();
+        let typed = Typed::of(&read);
+        let found = self.found(&read, &typed, said["within"].as_str());
         let grade = u8::from(found.first().is_some_and(|(score, _)| *score < WORTH_SCALE));
         let mut keys = Vec::new();
         let mut marks = Map::new();
@@ -242,10 +247,41 @@ mod tests {
 
     #[test]
     fn alike_they_keep_unicodes_order() {
-        assert_eq!(
-            names(&index(LIST), "grin"),
-            ["grinning face", "grinning cat with smiling eyes"]
+        // Both names of two words, one of them started by what's typed, so
+        // they score alike, and the list's order, not A to Z, puts the
+        // face first.
+        let tied = concat!(
+            "[\"😀\", \"grinning face\", \"grin\", \"Smileys & Emotion\"]\n",
+            "[\"😺\", \"grinning cat\", \"grin\", \"Smileys & Emotion\"]\n",
         );
+        assert_eq!(
+            names(&index(tied), "grin"),
+            ["grinning face", "grinning cat"]
+        );
+    }
+
+    #[test]
+    fn one_found_only_loosely_is_graded_so() {
+        // "trex" starts no word of "t rex", and is found only as the
+        // name's letters close up across its hyphen.
+        let list = "[\"🦖\", \"T-Rex\", \"dinosaur\", \"Animals & Nature\"]\n";
+        let index = index(list);
+        let answer = asked(&index, "trex");
+        assert_eq!(names(&index, "trex"), ["t rex"], "{answer}");
+        assert_eq!(answer["grade"], 1, "found only loosely: {answer}");
+    }
+
+    #[test]
+    fn words_past_the_longest_are_cut_there() {
+        let index = index(LIST);
+        let long = format!("party {}", "x".repeat(LONGEST));
+        let answer = asked(&index, &long);
+        assert_eq!(
+            answer["words"].as_str().map(str::len),
+            Some(long.len()),
+            "its words come back as asked, so the shell takes the answer"
+        );
+        assert_eq!(answer["keys"], json!([]), "{answer}");
     }
 
     #[test]
@@ -302,6 +338,10 @@ mod tests {
     #[test]
     fn the_built_list_puts_first_what_each_query_means() {
         let Some(list) = std::env::var_os("EMOJI_LIST") else {
+            assert!(
+                std::env::var_os("EMOJI_LIST_WANTED").is_none(),
+                "the-launcher-finds-emoji gives EMOJI_LIST, and it never came"
+            );
             return;
         };
         let list = std::fs::read_to_string(&list).expect("EMOJI_LIST names a readable list");

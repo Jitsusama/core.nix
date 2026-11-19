@@ -2506,8 +2506,10 @@ def test_a_drawer_shown_again_measures_little_anew(shell: Shell) -> None:
 FIRST_GROUP = "Smileys & Emotion"
 # How many of Emoji's rows its start makes and Super+E lists at most: its groups, not 1,914.
 EMOJI_MADE_MOST = 20
-# The start line's count of Emoji's rows, where it's among the sources it names.
-EMOJI_MADE = re.compile(r"places kept as the shell started, \d+ rows made \([^)]*\bemoji (\d+)")
+# The start line's count of rows by source, the most first, and Emoji's among them, where it's
+# one of the sources the line names; one it leaves out made fewer than the last it names.
+START_MADE = re.compile(r"places kept as the shell started, \d+ rows made \(([^)]*)\)")
+EMOJI_MADE = re.compile(r"\bemoji (\d+)")
 
 DRAWER_SAID = re.compile(
     r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: a median (\d+) ms '
@@ -2597,13 +2599,16 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     """
     launcher_on_niri.warmed(shell)
     said = shell.log.read_bytes()[shell.launched :].decode(errors="replace")
-    made = EMOJI_MADE.search(said)
+    start = START_MADE.search(said)
+    assert start, f"the shell never said what its start made\n{shell.tail()}"
+    made = EMOJI_MADE.search(start.group(1))
     counted = int(made.group(1)) if made else 0
     assert counted < EMOJI_MADE_MOST, f"the start made {counted} of Emoji's rows"
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
     rows = shell.showing()["rows"]
+    # showing() lists at most 20 rows, so 20 or more shows as 20, which this refuses.
     assert len(rows) < EMOJI_MADE_MOST, f"Super+E listed {rows[:12]}, not Unicode's groups"
     shell.type_in("tada", selecting="Party popper")
     shell.close_launcher()

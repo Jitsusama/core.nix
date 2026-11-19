@@ -9,8 +9,10 @@
   # The clipboard's history finds emoji by what they're called and what they
   # mean, best first, over the list the launcher is built with: its tests run
   # as it builds, with EMOJI_LIST naming the list, which its search test reads
-  # (clipboard/src/search.rs).
+  # (clipboard/src/search.rs), and EMOJI_LIST_WANTED failing that test if the
+  # list never reaches it, rather than it passing having read nothing.
   the-launcher-finds-emoji = (pkgs.callPackage ../clipboard/package.nix { }).overrideAttrs {
     EMOJI_LIST = import ../launcher/emoji.nix { inherit lib pkgs; } "none";
+    EMOJI_LIST_WANTED = "1";
   };
 }

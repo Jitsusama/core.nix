@@ -32,21 +32,20 @@ Provider {
 
     // The history's rows of Emoji, watched whether or not the launcher's
     // open, so Super+E opens on rows already made. Its answer to what's
-    // typed takes its order once it comes, the selection staying on its
-    // row (Launcher.qml's reshow).
+    // typed, in Emoji, in a group or in Desktop's list, is searched again
+    // once it comes (Launcher.qml's foundMore), ranked as the key's own
+    // search where it came within a frame of the key, as Code's are.
     ReadyRows {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
         place: "emoji"
         make: (row, key) => provider.made(row, key)
         maker: provider
-        onSearched: words => {
-            const launcher = provider.launcher;
-            const step = launcher?.held[launcher.held.length - 1];
-            if (launcher?.open && launcher.typed === words && step?.row.from === provider)
-                launcher.reshow(launcher.held.length, true);
-        }
+        onSearched: words => provider.foundMore(
+            Date.now() - Math.max(provider.askedAt, ready.typedAt) < provider.freshFor)
     }
+    property real askedAt: 0
+    readonly property int freshFor: 50
 
     // What its row and its head say of the history that pastes emoji.
     readonly property string pressing: Pasting.pressing
@@ -95,14 +94,30 @@ Provider {
         return one => ready.act(key, one);
     }
     function findsIn(key) {
-        return letters => ready.typedIn(key, letters) ?? [];
+        return letters => provider.typedInGroup(key, letters);
+    }
+
+    // What's typed in a group, as the history answers it. While the answer
+    // to these letters is asked, the last answer's emoji stand only where
+    // they hold every letter typed, as Emoji's own search keeps them.
+    function typedInGroup(key, letters) {
+        const rows = ready.typedIn(key, letters) ?? [];
+        return ready.typing.words === letters ? rows : holding(rows, letters);
+    }
+
+    // Those of `rows` whose name or meaning holds every letter typed.
+    function holding(rows, typed) {
+        const need = Fuzzy.letters(Fuzzy.words(typed));
+        const holds = item => !!item && (item.mask & need) === need;
+        return rows.filter(row => holds(row.prepared) || holds(row.keywords));
     }
 
     // The emoji the history finds for what's typed, best first. While its
     // answer is asked, those of the last answer that hold every letter
     // typed stand, when what's typed goes on from it, so a key takes rows
     // away and puts none in a place of its own; else none, for the moment
-    // the answer takes.
+    // the answer takes, which the launcher holds a key's list for a moment
+    // (`awaits`).
     function search(typed) {
         const answer = ready.search(typed);
         if (answer !== null)
@@ -110,14 +125,24 @@ Provider {
                 rows: ready.foundRows(answer),
                 grade: answer.keys.length > 0 ? answer.grade : 3
             };
-        const words = Fuzzy.words(typed);
-        const need = Fuzzy.letters(words);
-        const holds = item => !!item && (item.mask & need) === need;
+        if (ready.asking === typed)
+            provider.askedAt = Date.now();
+        const said = Fuzzy.words(typed).join(" ");
         const last = ready.found.words !== null
-            && words.join(" ").startsWith(Fuzzy.words(ready.found.words).join(" "))
+            && said.startsWith(Fuzzy.words(ready.found.words).join(" "))
             ? ready.foundRows(ready.found) : [];
-        const rows = last.filter(row => holds(row.prepared) || holds(row.keywords));
+        const rows = holding(last, typed);
         return { rows: rows, grade: rows.length > 0 ? 0 : 3 };
+    }
+
+    // Whether a search of these letters waits on the history's answer,
+    // asked now if it isn't yet, so the launcher holds the key's list for
+    // it a moment (Launcher.qml's answersWaitedFor) rather than drawing
+    // none first.
+    function awaits(letters) {
+        if (letters.trim() === "" || ready.searchless || !ready.link)
+            return false;
+        return ready.search(letters) === null && ready.asking === letters;
     }
 
     // Its groups, as the history serves them.
