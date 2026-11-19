@@ -424,12 +424,10 @@ Provider {
         });
     }
 
-    // How the shaper's search for the connection's most is going, in
-    // Joel's words.
-    readonly property var finding: ({
-        climbing: "as measured, still finding its most",
-        holding: "as measured, held while the connection's busy",
-        cut: "as measured, cut while the connection queued"
+    // What the shaper is doing with the line, in Joel's words: it writes
+    // only resting or holding, and resting is said as measured alone.
+    readonly property var stateNotes: ({
+        holding: "as measured, held to the shaper's limit"
     })
 
     function told() {
@@ -487,7 +485,7 @@ Provider {
                 name: named("line"),
                 side: `${bits(shaped.in)} in \u00b7 ${bits(shaped.out)} out`,
                 graph: bar(full),
-                note: finding[shaped.state] ?? "as measured",
+                note: stateNotes[shaped.state] ?? "as measured",
                 thing: true,
                 drawer: () => plate(named("line"), [{
                     label: named("full"),
