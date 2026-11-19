@@ -269,6 +269,40 @@ fn each_receptor_is_said_by_running_mycelium_with_its_arguments_alone() {
 }
 
 #[test]
+fn a_receptor_said_with_more_words_is_given_them_after_its_own() {
+    let folder = folder("with");
+    let (program, given) = stand_in(&folder);
+    let speaker = Speaker::named(Some(program.into()), Some("work".into())).expect("sound");
+    let told = Told::off(Source::GitHub);
+    let more = || vec![OsString::from("--owner"), OsString::from("kestrel-co")];
+    let mut said = speaker.say_with(told, Duration::from_secs(60), 4242, more());
+    for _ in 0..BUSY_TRIES {
+        match &said {
+            Err(why) if why.contains("os error 26") => {
+                std::thread::yield_now();
+                said = speaker.say_with(told, Duration::from_secs(60), 4242, more());
+            }
+            _ => break,
+        }
+    }
+    said.expect("the stand-in takes it");
+    let built = speaker.arguments_with(told, Duration::from_secs(60), 4242, more());
+    assert_eq!(
+        words(&built)[built.len() - 2..],
+        ["--owner", "kestrel-co"],
+        "the more words weren't put after the receptor's own"
+    );
+    let mut expected: Vec<&str> = words(&built);
+    expected.push("");
+    assert_eq!(
+        std::fs::read_to_string(&given).expect("the stand-in wrote what it was given"),
+        expected.join("\n") + "\n",
+        "mycelium wasn't given what arguments_with builds"
+    );
+    let _ = std::fs::remove_dir_all(folder);
+}
+
+#[test]
 fn saying_off_says_each_source_off_with_no_counts() {
     let folder = folder("off");
     let (program, given) = stand_in(&folder);

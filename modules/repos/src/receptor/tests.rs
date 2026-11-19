@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::github::SCHEMA;
-use crate::model::{Change, Checks, ChecksState, Review};
+use crate::model::{Change, Checks, ChecksState, GitHubChange, Review};
 
 const NOW: u64 = 1_800_000_000;
 
@@ -37,6 +37,18 @@ fn change(title: &str, updated_at: u64, asked_of: &[&str]) -> Change {
         review: Review::Waiting,
         github: None,
         review_asked_of: asked_of.iter().copied().map(str::to_owned).collect(),
+    }
+}
+
+/// `change`, numbered `number` as GitHub numbers it, in the repository
+/// GitHub spells `repo`.
+fn numbered(repo: &str, number: u64, change: Change) -> Change {
+    Change {
+        github: Some(GitHubChange {
+            number,
+            url: format!("https://github.com/{repo}/pull/{number}"),
+        }),
+        ..change
     }
 }
 
@@ -240,8 +252,10 @@ fn mycelium_is_given_fixed_words_and_counts_never_what_a_change_says() {
             "300",
             "--pid",
             "4242",
+            "--owner",
+            "Kestrel-Co",
         ],
-        "mycelium was given more than fixed words and counts"
+        "mycelium was given more than fixed words, counts and the realm's owners"
     );
     for word in [
         planted,
@@ -255,4 +269,222 @@ fn mycelium_is_given_fixed_words_and_counts_never_what_a_change_says() {
             "{word} reached mycelium: {said:?}"
         );
     }
+}
+
+#[test]
+fn only_the_realms_changes_asking_the_login_are_named_by_number_alone() {
+    let planted = "Fix the sign-in";
+    let seen = seen(
+        &[
+            (
+                "github:KESTREL-CO/tool",
+                vec![
+                    numbered("Kestrel-Co/tool", 12, change(planted, NOW - 60, &["JSAMA"])),
+                    numbered("Kestrel-Co/tool", 13, change("else", NOW - 60, &["osprey"])),
+                    numbered(
+                        "Kestrel-Co/tool",
+                        0,
+                        change("no number", NOW - 60, &["jsama"]),
+                    ),
+                    change("never numbered", NOW - 60, &["jsama"]),
+                    numbered(
+                        "Kestrel-Co/tool",
+                        9,
+                        change("older", NOW - 7 * 24 * HOUR, &["jsama"]),
+                    ),
+                ],
+            ),
+            (
+                // A second clone of the same repository, its remote typed in
+                // another case, its copy last updated before #9, so the two
+                // copies never sit side by side when sorted by time.
+                "github:kestrel-co/tool",
+                vec![numbered(
+                    "Kestrel-Co/tool",
+                    12,
+                    change(planted, NOW - 8 * 24 * HOUR, &["jsama"]),
+                )],
+            ),
+            (
+                "github:osprey/elsewhere",
+                vec![numbered(
+                    "osprey/elsewhere",
+                    4,
+                    change("realm's?", NOW - 60, &["jsama"]),
+                )],
+            ),
+            (
+                "github:shared/tool",
+                vec![numbered(
+                    "shared/tool",
+                    5,
+                    change("both realms'", NOW - 60, &["jsama"]),
+                )],
+            ),
+        ],
+        &[],
+    );
+    assert_eq!(
+        asked(&seen, &Owners::of(DECLARED, "work"), &login()),
+        ["Kestrel-Co/tool#12", "Kestrel-Co/tool#9"],
+        "a change was named twice, not as GitHub spells it, or not the realm's, asking the \
+         login or numbered"
+    );
+    let said: Vec<String> = receptor("/nix/store/x-mycelium/bin/mycelium")
+        .arguments(&seen, NOW, 4242)
+        .into_iter()
+        .map(|word| word.into_string().expect("words"))
+        .collect();
+    let after = said
+        .iter()
+        .position(|word| word == "4242")
+        .expect("the counts are said first");
+    assert_eq!(
+        said[after + 1..],
+        [
+            "--owner",
+            "Kestrel-Co",
+            "--item",
+            "Kestrel-Co/tool#12",
+            "--item",
+            "Kestrel-Co/tool#9",
+        ],
+        "the changes weren't named after the realm's owners, as GitHub spells them"
+    );
+    for word in [planted, "osprey", "else", "jsama"] {
+        assert!(
+            !said.iter().any(|said| said.contains(word)),
+            "{word} reached mycelium: {said:?}"
+        );
+    }
+}
+
+#[test]
+fn a_read_that_failed_names_no_changes_so_mycelium_keeps_those_it_had() {
+    let asking = numbered(
+        "kestrel-co/tool",
+        12,
+        change("asking", NOW - 60, &["jsama"]),
+    );
+    let said = |unread: &str| -> Vec<String> {
+        let seen = seen(
+            &[("github:kestrel-co/tool", vec![asking.clone()])],
+            &[unread],
+        );
+        receptor("/nix/store/x-mycelium/bin/mycelium")
+            .arguments(&seen, NOW, 4242)
+            .into_iter()
+            .map(|word| word.into_string().expect("words"))
+            .collect()
+    };
+    let failed = said("github:kestrel-co/other: not readable here");
+    assert!(
+        failed.contains(&"failing".to_owned()),
+        "it was told failing: {failed:?}"
+    );
+    assert!(
+        !failed
+            .iter()
+            .any(|word| word == "--owner" || word == "--item"),
+        "a failed read named changes, clearing those mycelium kept: {failed:?}"
+    );
+    let elsewhere = said("github:osprey/other: not readable here");
+    assert!(
+        elsewhere.contains(&"kestrel-co/tool#12".to_owned()),
+        "another realm's unread repository stopped this realm's naming: {elsewhere:?}"
+    );
+    // The owner is declared Kestrel-Co, but GitHub spells it kestrel-co,
+    // and mycelium takes an item only of an owner it was told as spelled.
+    assert!(
+        elsewhere
+            .windows(2)
+            .any(|pair| pair == ["--owner", "kestrel-co"]),
+        "the owner the item spells wasn't said, so mycelium would refuse it: {elsewhere:?}"
+    );
+}
+
+#[test]
+fn a_declared_owner_mycelium_wouldnt_take_is_never_said() {
+    let receptor = Receptor::named(
+        Some("/nix/store/x-mycelium/bin/mycelium".into()),
+        Some("work".into()),
+        Some("jsama".into()),
+        Some("work=Kestrel-Co,b@d".into()),
+    )
+    .expect("the declared receptor");
+    let said: Vec<String> = receptor
+        .arguments(&seen(&[], &[]), NOW, 4242)
+        .into_iter()
+        .map(|word| word.into_string().expect("words"))
+        .collect();
+    assert!(said.contains(&"Kestrel-Co".to_owned()), "{said:?}");
+    assert!(
+        !said.contains(&"b@d".to_owned()),
+        "an owner mycelium refuses was said, costing the counts: {said:?}"
+    );
+}
+
+#[test]
+fn a_change_mycelium_would_refuse_is_left_out_and_no_more_are_named_than_it_keeps() {
+    // The refused ones are the newest, so only their refusal keeps them out.
+    let refused = [
+        ("github:kestrel-co/a tool", "kestrel-co/a tool", 3),
+        ("github:kestrel-co/moved", "osprey/moved", 7),
+        ("github:kestrel-co/other", "kestrel-co/other", 0),
+        ("github:kestrel-co/-tool", "kestrel-co/-tool", 4),
+        ("github:kestrel-co/..", "kestrel-co/..", 5),
+    ];
+    let mut changes: Vec<(&str, Vec<Change>)> = refused
+        .iter()
+        .map(|&(key, repo, number)| {
+            (
+                key,
+                vec![numbered(repo, number, change("refused", NOW, &["jsama"]))],
+            )
+        })
+        .collect();
+    let mut issue = numbered("kestrel-co/other", 8, change("an issue", NOW, &["jsama"]));
+    if let Some(github) = issue.github.as_mut() {
+        github.url = "https://github.com/kestrel-co/other/issues/8".to_owned();
+    }
+    changes[2].1.push(issue);
+    // Links that aren't this pull request's own: another number, and a
+    // page beneath it.
+    for (number, url) in [
+        (6, "https://github.com/kestrel-co/other/pull/60"),
+        (2, "https://github.com/kestrel-co/other/pull/2/files"),
+    ] {
+        let mut elsewhere = numbered("kestrel-co/other", number, change("else", NOW, &["jsama"]));
+        if let Some(github) = elsewhere.github.as_mut() {
+            github.url = url.to_owned();
+        }
+        changes[2].1.push(elsewhere);
+    }
+    changes.push((
+        "github:kestrel-co/tool",
+        (1..=250)
+            .map(|number| {
+                numbered(
+                    "kestrel-co/tool",
+                    number,
+                    change("many", NOW - number, &["jsama"]),
+                )
+            })
+            .collect(),
+    ));
+    let seen = seen(&changes, &[]);
+    let asked = asked(&seen, &Owners::of(DECLARED, "work"), &login());
+    assert_eq!(
+        asked.len(),
+        MOST_ITEMS,
+        "more were named than mycelium keeps"
+    );
+    assert_eq!(
+        (
+            asked.first().map(String::as_str),
+            asked.last().map(String::as_str)
+        ),
+        (Some("kestrel-co/tool#1"), Some("kestrel-co/tool#200")),
+        "the newest weren't the ones named"
+    );
 }

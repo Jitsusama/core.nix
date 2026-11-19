@@ -10,7 +10,9 @@
 //! - Only fixed words and integers are arguments: the source and the
 //!   state are words of this crate's own, never text a source gave, and
 //!   each count is held to the most mycelium takes, so a count past it is
-//!   said as that rather than refused.
+//!   said as that rather than refused. A source mycelium keeps more of,
+//!   as GitHub keeps the changes asking review, adds its own words after
+//!   these (`say_with`), and its caller answers for what they hold.
 //! - mycelium is run by the absolute path the service names, its
 //!   arguments given one by one and never through a shell.
 //! - The realm is the service's, in `MYCELIUM_REALM`, of mycelium's own
@@ -168,17 +170,56 @@ impl Speaker {
     /// of them; those after it aren't said.
     pub fn say(&self, told: &[Told], every: Duration, pid: u32) -> Result<(), String> {
         for &one in told {
-            let status = Command::new(&self.program)
-                .args(self.arguments(one, every, pid))
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .status()
-                .map_err(|why| format!("running {}: {why}", self.program.display()))?;
-            if !status.success() {
-                return Err(format!("{} {status}", self.program.display()));
-            }
+            self.run(self.arguments(one, every, pid))?;
         }
         Ok(())
+    }
+
+    /// What mycelium is given for one receptor, as `arguments`, with `more`
+    /// words after its own: those its source alone takes, which its caller
+    /// builds.
+    pub fn arguments_with(
+        &self,
+        told: Told,
+        every: Duration,
+        pid: u32,
+        more: Vec<OsString>,
+    ) -> Vec<OsString> {
+        let mut arguments = self.arguments(told, every, pid);
+        arguments.extend(more);
+        arguments
+    }
+
+    /// Says how one receptor stands, as `say` does, given what
+    /// `arguments_with` builds, so what a caller tests is what is said.
+    ///
+    /// # Errors
+    ///
+    /// As `say`.
+    pub fn say_with(
+        &self,
+        told: Told,
+        every: Duration,
+        pid: u32,
+        more: Vec<OsString>,
+    ) -> Result<(), String> {
+        self.run(self.arguments_with(told, every, pid, more))
+    }
+
+    /// Runs mycelium with `arguments`, given one by one, never through a
+    /// shell.
+    fn run(&self, arguments: Vec<OsString>) -> Result<(), String> {
+        let status = Command::new(&self.program)
+            .args(arguments)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .status()
+            .map_err(|why| format!("running {}: {why}", self.program.display()))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{} {status}", self.program.display()))
+        }
     }
 
     /// Says each of `sources` off, its counts none.
