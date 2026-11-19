@@ -42,9 +42,7 @@ efficient() {
   done
 }
 
-freq() {
-  echo "$sys/devices/system/cpu/cpu$1/cpufreq"
-}
+cpu=$sys/devices/system/cpu
 
 hold() {
   local mhz=$1 cores n low high kHz said=""
@@ -64,20 +62,20 @@ hold() {
   else
     mkdir -p "${run}"
     while read -r n; do
-      cp "$(freq "${n}")/scaling_max_freq" "${run}/cpu${n}"
+      cp "${cpu}/cpu${n}/cpufreq/scaling_max_freq" "${run}/cpu${n}"
     done <<<"${cores}"
     echo "${mhz}" >"${run}/held"
   fi
   while read -r n; do
-    low=$(<"$(freq "${n}")/cpuinfo_min_freq")
-    high=$(<"$(freq "${n}")/cpuinfo_max_freq")
+    low=$(<"${cpu}/cpu${n}/cpufreq/cpuinfo_min_freq")
+    high=$(<"${cpu}/cpu${n}/cpufreq/cpuinfo_max_freq")
     kHz=$((mhz * 1000))
     if ((kHz < low)); then
       kHz=${low}
     elif ((kHz > high)); then
       kHz=${high}
     fi
-    echo "${kHz}" >"$(freq "${n}")/scaling_max_freq"
+    echo "${kHz}" >"${cpu}/cpu${n}/cpufreq/scaling_max_freq"
     said+=" cpu${n} $((kHz / 1000))"
   done <<<"${cores}"
   echo "efficient-cores: held at most, in MHz:${said}"
@@ -101,9 +99,9 @@ free() {
     while read -r n; do
       saved=${run}/cpu${n}
       if [[ ! -r "${saved}" ]]; then
-        saved=$(freq "${n}")/cpuinfo_max_freq
+        saved=${cpu}/cpu${n}/cpufreq/cpuinfo_max_freq
       fi
-      cp "${saved}" "$(freq "${n}")/scaling_max_freq"
+      cp "${saved}" "${cpu}/cpu${n}/cpufreq/scaling_max_freq"
       rm -f "${run}/cpu${n}"
     done <<<"${cores}"
   fi
