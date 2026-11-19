@@ -45,7 +45,7 @@ fn a_restarts_lines_after_its_stop_are_its_own_managers() {
             ],
             vec![200],
         ),
-        // A restart of his his tool's reload took, given back by his
+        // A restart of his that his tool's reload took, given back by his
         // switch's reload heard after: his own manager's pairing holds
         // through the taking, its start and its next job.
         (
@@ -132,6 +132,58 @@ fn a_reload_counts_only_for_its_own_managers_services() {
                 of_his(reload_in("b", 10_000_000, "systemctl")),
                 of_his(backend("b", 10_500_000, Job::Stopping)),
                 of_his(backend("b", 10_600_000, Job::Started)),
+            ],
+            vec![],
+        ),
+        // His switch's reload gives back only his manager's stops, not
+        // one the machine's tool's reload took, heard before it or after.
+        (
+            "his switch's reload heard after a stop the machine's tool's made",
+            vec![
+                reload_in("b", 10_000_000, "systemctl"),
+                backend("b", 12_000_000, Job::Stopping),
+                of_his(reload_in("b", 11_000_000, "sd-switch")),
+                backend("b", 12_100_000, Job::Started),
+            ],
+            vec![],
+        ),
+        (
+            "his switch's reload heard after the machine's tool's took its restart",
+            vec![
+                backend("b", 12_000_000, Job::Stopping),
+                backend("b", 12_100_000, Job::Started),
+                reload_in("b", 10_000_000, "systemctl"),
+                of_his(reload_in("b", 11_000_000, "sd-switch")),
+            ],
+            vec![],
+        ),
+    ];
+    each_restarted(cases);
+}
+
+#[test]
+fn a_service_of_one_name_in_both_managers_times_no_restart_across_them() {
+    // Its stops and restarts are kept by name alone (`Launches::stopping`),
+    // so one manager's start ends the other's stop rather than timing it,
+    // and overlapping restarts lose both: no restart pairs one manager's
+    // stop with the other's start.
+    let cases = vec![
+        (
+            "the machine's stop, then his start, then the machine's",
+            vec![
+                backend("b", 10_800_000, Job::Stopping),
+                of_his(backend("b", 10_850_000, Job::Started)),
+                backend("b", 10_900_000, Job::Started),
+            ],
+            vec![],
+        ),
+        (
+            "the machine's restart and his, overlapping",
+            vec![
+                backend("b", 10_800_000, Job::Stopping),
+                of_his(backend("b", 10_850_000, Job::Stopping)),
+                backend("b", 10_900_000, Job::Started),
+                of_his(backend("b", 10_950_000, Job::Started)),
             ],
             vec![],
         ),

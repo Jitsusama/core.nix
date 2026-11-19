@@ -244,9 +244,11 @@ fn a_line_says_whose_manager_its_unit_runs_under() {
             account("/system.slice/disk-guard.service"),
             account("/user.slice/user-1000.slice/session-2.scope"),
             account("/user.slice/user-1000.slice/user@1001.service/init.scope"),
+            account("/user.slice/user-1000.slice/user@10000.service/init.scope"),
+            account("/user.slice/user-1000.slice/user@1000.services/init.scope"),
             account(""),
         ],
-        [None, None, None, None, None],
+        [None, None, None, None, None, None, None],
         "the machine's manager, its services, or a cgroup no account's manager holds"
     );
 }

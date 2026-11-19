@@ -18,6 +18,7 @@
 //! for it, and an end from the window gone, since niri never says the key
 //! that asked a window to close.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
@@ -85,8 +86,9 @@ const RELOADED_WITHIN: i64 = 10_000_000;
 /// a reload's restart, for a follower that lags.
 const RELOADS_KEPT_FOR: i64 = 5 * RESTART_WITHIN;
 
-/// The most reloads of a kind kept at once, so a program reloading
-/// systemd over and over costs health no more than this.
+/// The most reloads of a kind kept at once of each boot and manager
+/// (`boot_of`), so a program reloading systemd over and over costs health
+/// no more than this, and pushes out only its own manager's reloads.
 const MOST_RELOADS: usize = 100;
 
 /// How long after its start a ready line is still its restart's.
@@ -113,9 +115,12 @@ pub struct Launches {
     /// (`boot_of`) and in microseconds on the boot's clock and the wall
     /// clock, until it starts: a stop at shutdown and a start in the next
     /// boot are a reboot, not a restart. It's kept by the unit's name
-    /// alone, so a service of one name in two managers, as `disk-guard`
-    /// is, keeps one stop: the other manager's start then times none,
-    /// losing a restart rather than misfiling it.
+    /// alone, as `restarting` and `taken` are, so a service of one name in
+    /// two managers, as `disk-guard` is, keeps one stop: when their
+    /// restarts overlap, the later stop replaces the earlier, whose start
+    /// then times none, and the later's start, heard after, finds no stop,
+    /// losing both restarts rather than pairing one manager's stop with
+    /// the other's start.
     #[serde(skip)]
     stopping: BTreeMap<String, (String, i64, i64)>,
     /// Each service started again, until it says it's ready in that boot
@@ -295,8 +300,10 @@ impl Launches {
                     self.stopping.remove(unit);
                     self.take_stop(entry);
                 } else {
-                    self.stopping
-                        .insert(unit.clone(), (in_boot, entry.since_boot, entry.at));
+                    self.stopping.insert(
+                        unit.clone(),
+                        (in_boot.into_owned(), entry.since_boot, entry.at),
+                    );
                 }
             }
             Some(Job::Started) => {
@@ -352,7 +359,7 @@ impl Launches {
     /// only the newest, for the stop to find the one before it. Another
     /// boot's are kept as they are, since a replay ordered by the wall
     /// clock can mix two boots' lines. A flood of more than [`MOST_RELOADS`]
-    /// heard before a stop that lags behind them can cost the stop its
+    /// of its manager's heard before a stop that lags behind them can cost the stop its
     /// reload, and its tool's restart then counts as a switch's: one
     /// misfiled restart, rather than a list a loop could grow for ever.
     ///
@@ -374,11 +381,13 @@ impl Launches {
             reload.boot != in_boot
                 || entry.since_boot.saturating_sub(reload.since_boot) <= RELOADS_KEPT_FOR
         });
-        if kept.len() >= MOST_RELOADS {
-            kept.remove(0);
+        if kept.iter().filter(|reload| reload.boot == in_boot).count() >= MOST_RELOADS
+            && let Some(oldest) = kept.iter().position(|reload| reload.boot == in_boot)
+        {
+            kept.remove(oldest);
         }
         let reload = Reload {
-            boot: in_boot,
+            boot: in_boot.into_owned(),
             since_boot: entry.since_boot,
             at: entry.at,
         };
@@ -680,10 +689,10 @@ fn written_before(boot: &str, stopped: i64, entry: &Entry) -> bool {
 /// nor the machine's of the account's. A switch reloads each manager it
 /// restarts services of: on 19 November, the machine's as
 /// `.switch-to-conf`, the account's as `switch-to-confi` and `sd-switch`.
-fn boot_of(entry: &Entry) -> String {
+fn boot_of(entry: &Entry) -> Cow<'_, str> {
     match &entry.account {
-        Some(uid) => format!("{} user@{uid}", entry.boot),
-        None => entry.boot.clone(),
+        Some(uid) => Cow::Owned(format!("{} user@{uid}", entry.boot)),
+        None => Cow::Borrowed(&entry.boot),
     }
 }
 

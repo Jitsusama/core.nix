@@ -98,7 +98,7 @@ impl Launches {
     pub(super) fn take_stop(&mut self, entry: &Entry) {
         self.take(Taken {
             unit: entry.thing.clone(),
-            boot: boot_of(entry),
+            boot: boot_of(entry).into_owned(),
             stopped: entry.since_boot,
             stopped_at: entry.at,
             timed: None,
