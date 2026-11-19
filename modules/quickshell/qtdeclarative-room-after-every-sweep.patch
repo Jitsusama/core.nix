@@ -7,47 +7,43 @@ straight after its sweep. Joel's shell held 157 to 174 MB around 71 to
 76 live after each collection, so once any cycle ended the next miss
 started another: two in one opening, 16 s apart, each finished inside a
 key at 115 ms of its 175 and 193. A room set on the memory manager is
-now left after every sweep, in the heap and outside it, so the heap
-grows by it before the next cycle starts. It is none by default, as
-Qt has it.
+now left at the end of every cycle, in the heap and outside it, so the
+heap grows by it before the next cycle starts, though never past twice
+the room beyond where Qt would start one. It is none by default, as Qt
+has it.
 
 ---
 diff --git a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
-index 65b729e..820d5c3 100644
+index 65b729e..c42bcf1 100644
 --- a/src/qml/memory/qv4mm.cpp
 +++ b/src/qml/memory/qv4mm.cpp
 @@ -970,6 +970,7 @@ GCState doSweep(GCStateMachine *that, ExtraData &)
      mm->engine->isGCOngoing = false;
  
      mm->updateUnmanagedHeapSizeGCLimit();
-+    mm->leaveRoomAfterSweep();
++    mm->leaveRoom();
  
      return GCState::Invalid;
  }
-@@ -1241,6 +1242,7 @@ void MemoryManager::sweep(bool lastSweep)
- 
-     usedSlotsAfterLastFullSweep = blockAllocator.usedSlotsAfterLastSweep + icAllocator.usedSlotsAfterLastSweep;
-     updateUnmanagedHeapSizeGCLimit();
-+    leaveRoomAfterSweep();
-     gcBlocked = MemoryManager::Unblocked;
- }
- 
-@@ -1454,6 +1456,22 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
+@@ -1454,6 +1455,25 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
      }
  }
  
-+void MemoryManager::leaveRoomAfterSweep()
++void MemoryManager::leaveRoom()
 +{
 +    // A miss starts a cycle once what's held passes twice what the sweep left in use, and a
 +    // fragmented heap holds that much straight after its sweep, so a cycle that ended let the
 +    // next miss start another. Counting what's used as half of what's held and the room lets
-+    // the heap grow by the room first.
++    // the heap grow by the room first. It's counted as no more than the room past what's used,
++    // so a heap whose sweeps keep what it grew into starts a cycle no later than twice the room
++    // past where Qt would, rather than growing by the room at every cycle for good.
 +    if (roomAfterSweep == 0)
 +        return;
 +    const std::size_t held = blockAllocator.totalSlots() + icAllocator.totalSlots();
 +    const std::size_t room = roomAfterSweep / Chunk::SlotSize;
-+    usedSlotsAfterLastFullSweep = std::max(usedSlotsAfterLastFullSweep,
-+                                           (held + room) * 100 / GCOverallocation);
++    const std::size_t used = usedSlotsAfterLastFullSweep;
++    usedSlotsAfterLastFullSweep = std::max(used, std::min((held + room) * 100 / GCOverallocation,
++                                                          used + room));
 +    unmanagedHeapSizeGCLimit = std::max(unmanagedHeapSizeGCLimit,
 +                                        unmanagedHeapSize + roomAfterSweep);
 +}
@@ -56,20 +52,21 @@ index 65b729e..820d5c3 100644
  {
      map->nextWeakMap = weakMaps;
 diff --git a/src/qml/memory/qv4mm_p.h b/src/qml/memory/qv4mm_p.h
-index 8dfce5f..ed96efc 100644
+index 8dfce5f..dace2cf 100644
 --- a/src/qml/memory/qv4mm_p.h
 +++ b/src/qml/memory/qv4mm_p.h
-@@ -433,6 +433,9 @@ public:
+@@ -433,6 +433,10 @@ public:
  
      // called at the end of a gc cycle
      void updateUnmanagedHeapSizeGCLimit();
-+    // Called at the end of a gc cycle, after the limits are set, so the heap grows by at least
-+    // roomAfterSweep, and its unmanaged part as much, before a miss or a string starts the next.
-+    void leaveRoomAfterSweep();
++    // Lets the heap grow by roomAfterSweep, and its unmanaged part as much, before a miss or a
++    // string starts a cycle. Called at the end of each gc cycle, after the limits are set, and
++    // by whoever sets the room.
++    void leaveRoom();
  
      template<typename ManagedType>
      typename ManagedType::Data *allocIC()
-@@ -536,6 +539,10 @@ public:
+@@ -536,6 +540,10 @@ public:
      std::size_t unmanagedHeapSize = 0; // the amount of bytes of heap that is not managed by the memory manager, but which is held onto by managed items.
      std::size_t unmanagedHeapSizeGCLimit;
      std::size_t usedSlotsAfterLastFullSweep = 0;

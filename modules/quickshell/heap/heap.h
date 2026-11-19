@@ -46,10 +46,11 @@ public:
     // Lets the heap take this many megabytes of new chunks before a miss
     // in its free lists starts the collector, and its strings as many
     // more outside it, and as much again after every collection that ends
-    // later. Asked after the closing's collection and again as an opening
-    // is asked, so the opening's allocations don't start one, whatever was
-    // made while it was shut or collected since, and the closing's collects
-    // what they left (heap.cpp).
+    // later: up to 1024, and none for 0. Asked after the closing's
+    // collection and again as an opening is asked, so the opening's
+    // allocations don't start one, whatever was made while it was shut or
+    // collected since, and the closing's collects what they left
+    // (heap.cpp).
     Q_INVOKABLE void leaveRoom(double megabytes);
 
     // Gives the heap's free pages, the ones weigh() counts as `free`, back

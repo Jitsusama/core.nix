@@ -73,6 +73,12 @@ struct Making {
 constexpr Making NUMBERS{"{ n: i, m: i }", 2 * KEPT};
 constexpr Making STRINGS{"String(i).padEnd(200, ' of the clipboard history')", 20000};
 
+// Rooms well short of what's made, so making it must start the collector
+// however long the room lasts: the numbers are twice as many objects as
+// the 20 MB kept, and the strings hold about 8 MB outside the heap.
+constexpr double SMALL_ROOM_MB = 8;
+constexpr double SMALLEST_ROOM_MB = 2;
+
 // How many collections run after the room is left in the cases that ask
 // whether it lasts: Qt halves its limit outside the heap at each one that
 // ends with little held there, so after four it's under the strings' 8 MB.
@@ -553,12 +559,26 @@ int main(int argc, char **argv) {
     if (!roomyOutside)
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
                      "it makes strings held outside it\n", ROOM_MB);
-    const bool lasting = !collectsWhileMaking(ROOM_MB, NUMBERS, COLLECTIONS_SINCE) &&
-                         !collectsWhileMaking(ROOM_MB, STRINGS, COLLECTIONS_SINCE);
+    const bool lasting = !collectsWhileMaking(ROOM_MB, NUMBERS, COLLECTIONS_SINCE);
     if (!lasting)
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room keeps it through %d "
-                     "collections, making more and making strings held outside it\n",
-                     ROOM_MB, COLLECTIONS_SINCE);
+                     "collections as it makes more\n", ROOM_MB, COLLECTIONS_SINCE);
+    const bool lastingOutside = !collectsWhileMaking(ROOM_MB, STRINGS, COLLECTIONS_SINCE);
+    if (!lastingOutside)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room keeps it through %d "
+                     "collections as it makes strings held outside it\n", ROOM_MB,
+                     COLLECTIONS_SINCE);
+    // The room lasts but stays a room: past it, the collector still starts.
+    const bool stillCollects = collectsWhileMaking(SMALL_ROOM_MB, NUMBERS, COLLECTIONS_SINCE);
+    if (!stillCollects)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room, %d collections ago, starts "
+                     "the collector as it makes far more\n", SMALL_ROOM_MB, COLLECTIONS_SINCE);
+    const bool stillCollectsOutside =
+        collectsWhileMaking(SMALLEST_ROOM_MB, STRINGS, COLLECTIONS_SINCE);
+    if (!stillCollectsOutside)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room, %d collections ago, starts "
+                     "the collector as it makes far more in strings held outside it\n",
+                     SMALLEST_ROOM_MB, COLLECTIONS_SINCE);
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool fits = takesRunsThatFit();
@@ -566,7 +586,8 @@ int main(int argc, char **argv) {
     const bool census = namesWhatsKept();
     const bool placed = placesWhatMadeIt();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside && lasting && follows && given && fits && whole && census && placed
+                   roomyOutside && lasting && lastingOutside && stillCollects &&
+                   stillCollectsOutside && follows && given && fits && whole && census && placed
                ? 0
                : 1;
 }
