@@ -117,9 +117,12 @@ in
 // onLinux {
   # A node given the flag a host's unit gives it outlives SIGUSR1 with its
   # inspector shut, where one without opens it; on node 22, which pi is
-  # built with and a host runs.
+  # built with, and on this tree's own node. A realm names its host's node,
+  # which this can't reach, so the flag's version floor is said on the option.
   pi-hosts-ignore-sigusr1 = pkgs.runCommandLocal "pi-hosts-ignore-sigusr1" { } ''
-    ${lib.getExe pkgs.nodejs_22} ${./tests/pi-hosts-ignore-sigusr1.mjs} ${lib.getExe pkgs.nodejs_22}
+    for node in ${lib.getExe pkgs.nodejs_22} ${lib.getExe pkgs.nodejs}; do
+      ${lib.getExe pkgs.nodejs_22} ${./tests/pi-hosts-ignore-sigusr1.mjs} "$node"
+    done
     touch $out
   '';
 
@@ -205,7 +208,7 @@ in
         in
         lib.hasPrefix "${start}${node} --disable-sigusr1 " execStart
         && !(opensInspector execStart)
-        && lib.elem ''"NODE_OPTIONS="'' (lib.toList unit.Service.Environment);
+        && lib.elem "NODE_OPTIONS" (lib.toList (unit.Service.UnsetEnvironment or [ ]));
       starts =
         kind:
         let

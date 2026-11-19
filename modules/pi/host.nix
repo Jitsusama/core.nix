@@ -181,13 +181,6 @@ let
             PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
           }
           // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
-          // {
-            # Cleared last, so neither the user manager's environment nor a
-            # machine's hands node an option: --inspect would open the
-            # inspector the flag above shuts, and --require or --import
-            # would run code as the host before pi does.
-            NODE_OPTIONS = "";
-          }
         );
         # The user manager names the TPM's agent, Joel's own keys, to
         # everything it starts, and a hosted conversation's commands inherit
@@ -199,7 +192,18 @@ let
         # everyone knows, open to anything running as Joel, until a host's
         # commands are refused it (core#5551). Joel's own signing still
         # finds his agent without the variable.
-        UnsetEnvironment = [ "SSH_TPM_AUTH_SOCK" ];
+        #
+        # NODE_OPTIONS goes too, as systemd's last step, after every
+        # Environment= and EnvironmentFile= a machine adds, so neither those
+        # nor the user manager's environment hand node an option: --inspect
+        # would open the inspector the flag above shuts, and --require or
+        # --import would run code as the host before pi does. A hosted
+        # conversation's commands, which inherit the host's environment,
+        # start without it too.
+        UnsetEnvironment = [
+          "SSH_TPM_AUTH_SOCK"
+          "NODE_OPTIONS"
+        ];
         # The host parks its conversations and keeps their records when told
         # to stop, so only its own failure restarts it; a crash's next start
         # takes back what it held.
@@ -382,7 +386,7 @@ in
     # unseen; it is refused instead, saying why.
     ++ lib.mapAttrsToList (realm: host: {
       assertion = !(host.environment ? NODE_OPTIONS);
-      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; give node's options another way.";
+      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; drop it, and set the host's heap with heapMb, the one node option a realm may set.";
     }) cfg;
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
