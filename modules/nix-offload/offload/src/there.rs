@@ -2358,9 +2358,17 @@ fn head_alone(top: &Path) -> Result<String, &'static str> {
         git(top, &["rev-parse", "--verify", "HEAD^{commit}"], None).ok_or("has no commit")?;
     git_with(
         top,
+        // No fsmonitor, attributes file or system config, which could each
+        // start a program; a filter the repository's own config and
+        // info/attributes name still runs, as it does for any git command in
+        // the tree, the person's own prompt among them.
         &[
             "-c",
             "diff.ignoreSubmodules=all",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.attributesFile=/dev/null",
             "diff",
             "--quiet",
             "--no-ext-diff",
@@ -2368,7 +2376,11 @@ fn head_alone(top: &Path) -> Result<String, &'static str> {
             "HEAD",
         ],
         None,
-        &[("GIT_ATTR_SOURCE", EMPTY_TREE)],
+        &[
+            ("GIT_ATTR_SOURCE", EMPTY_TREE),
+            ("GIT_CONFIG_NOSYSTEM", "1"),
+            ("GIT_ATTR_NOSYSTEM", "1"),
+        ],
     )
     .map(|_| head)
     .ok_or("has changes not committed, and --run sends only what is, so commit them first")

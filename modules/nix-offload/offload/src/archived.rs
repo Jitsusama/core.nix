@@ -16,6 +16,8 @@
 //! attributes pick. So the archive is made in an empty repository of the
 //! run's own that borrows the tree's objects, read with no config but its
 //! own and no attributes at all, which writes nothing into the tree's.
+//! Its objects alone are read, so whatever alternates they follow, the
+//! commit's hash fixes what goes.
 
 use std::env;
 use std::fs;
@@ -77,11 +79,18 @@ pub fn packed(
         .arg(&archive)
         .args([commit, "--"])
         .args(&paths)
-        .status()
-        .is_ok_and(|status| status.success());
-    if !packed {
-        let _ = fs::remove_file(&archive);
-        return Err("couldn't be packed".to_owned());
+        .stderr(Stdio::piped())
+        .output();
+    match packed {
+        Ok(packed) if packed.status.success() => {}
+        packed => {
+            let _ = fs::remove_file(&archive);
+            let why = packed.map_or_else(
+                |error| error.to_string(),
+                |packed| String::from_utf8_lossy(&packed.stderr).trim().to_owned(),
+            );
+            return Err(format!("couldn't be packed: {why}"));
+        }
     }
     Ok(Archived { dir, archive })
 }
@@ -123,13 +132,19 @@ fn cones(top: &Path) -> Result<Option<Vec<String>>, String> {
                 .to_owned(),
         );
     }
-    let listed = there::git_with(top, &["sparse-checkout", "list"], None, &[])
-        .ok_or("is sparse, but its cones can't be read")?;
+    let listed = there::git_with(
+        top,
+        &["-c", "core.quotePath=false", "sparse-checkout", "list"],
+        None,
+        &[],
+    )
+    .ok_or("is sparse, but its cones can't be read")?;
     let mut cones = Vec::new();
     for cone in listed.lines() {
-        // git quotes a name holding a quote, a backslash or a control
-        // character, which would match no path of HEAD's and so leave
-        // the cone out without a word.
+        // Told not to quote a name past ASCII, git still quotes one
+        // holding a quote, a backslash or a control character, which
+        // would match no path of HEAD's and so leave the cone out without
+        // a word.
         if cone.starts_with('"') {
             return Err(format!(
                 "has a cone, {cone}, whose name git quotes, so it can't be told"
@@ -174,7 +189,6 @@ fn within(borrowed: &Borrowed, tree: &str, at: &str, cones: &[String]) -> Option
 /// tree's objects and reads nothing else of it; gone when dropped.
 struct Borrowed {
     dir: PathBuf,
-    objects: PathBuf,
 }
 
 impl Borrowed {
@@ -190,19 +204,23 @@ impl Borrowed {
             .arg(&dir)
             .status()
             .is_ok_and(|status| status.success());
-        made.then(|| Self {
-            dir,
-            objects: Path::new(&common).join("objects"),
-        })
+        if !made {
+            return None;
+        }
+        // In its alternates file, rather than GIT_ALTERNATE_OBJECT_DIRECTORIES,
+        // since that splits a path holding a colon in two.
+        let info = dir.join("objects").join("info");
+        let objects = Path::new(&common).join("objects");
+        let borrows = fs::create_dir_all(&info)
+            .and_then(|()| fs::write(info.join("alternates"), format!("{}\n", objects.display())));
+        let borrowed = Self { dir };
+        borrows.is_ok().then_some(borrowed)
     }
 
     /// git in this repository alone.
     fn git(&self) -> Command {
         let mut command = clean();
-        command
-            .env("GIT_DIR", &self.dir)
-            .env("GIT_ALTERNATE_OBJECT_DIRECTORIES", &self.objects)
-            .current_dir(&self.dir);
+        command.env("GIT_DIR", &self.dir).current_dir(&self.dir);
         command
     }
 
@@ -258,7 +276,6 @@ fn clean() -> Command {
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_ATTR_NOSYSTEM", "1")
-        .env("GIT_ATTR_SOURCE", there::EMPTY_TREE)
         .env("GIT_LITERAL_PATHSPECS", "1")
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .stdin(Stdio::null())
@@ -430,6 +447,25 @@ mod tests {
                 .contains("whose name git quotes"),
             "{refused:?}"
         );
+    }
+
+    // A name past ASCII is a cone like any other, and a repository whose
+    // path holds a colon is still borrowed whole.
+    #[test]
+    fn a_cone_past_ascii_goes_from_a_path_with_a_colon() {
+        let folder = tempfile::tempdir().unwrap();
+        let at = folder.path().join("a:b");
+        let top = repository(
+            &at,
+            &[("café/file", "x"), ("other/file", "y"), ("top", "z")],
+        );
+        git(&top, &["sparse-checkout", "set", "--cone", "café"]);
+        let commit = git(&top, &["rev-parse", "HEAD"]);
+
+        let packed = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
+        let held = held(&packed.archive, &folder.path().join("unpacked"));
+        let names: Vec<&str> = held.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["café/file", "top"], "the cone and the top went");
     }
 
     // The far side's shell reads the tarball from its input, runs in the
