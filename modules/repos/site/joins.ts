@@ -93,9 +93,14 @@ function ties(repositories: readonly Repository[]): Tie[] {
       tied.set(id, tie);
     }
   }
-  return [...tied.values()]
-    .map(({ ends, cells }) => ({ ends, cells: [...cells].sort(inOrder) }))
-    .sort((one, other) => inOrder(one.ends.join(APART), other.ends.join(APART)));
+  return (
+    [...tied.values()]
+      .map(({ ends, cells }) => ({ ends, cells: [...cells].sort(inOrder) }))
+      // By each end in turn, since a comparison of the two joined skips the null between them.
+      .sort(
+        (one, other) => inOrder(one.ends[0], other.ends[0]) || inOrder(one.ends[1], other.ends[1]),
+      )
+  );
 }
 
 export { atWork, joined, type Tie, ties };
