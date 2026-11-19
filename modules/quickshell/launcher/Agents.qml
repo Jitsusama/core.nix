@@ -2613,14 +2613,16 @@ Provider {
         const row = (one, fields) => thing(Object.assign({
             thing: true,
             name: one.name ?? one.what,
-            verb: "go to",
+            // Its own Open's word, so that act leads its step (Catalogue.js's
+            // leading) rather than the Go To of the session that landed it.
+            verb: Words.verb("verb:on:look:open"),
             glyph: Theme.glyph.toTry,
             readsLanding: one.key,
             trail: provider.landingTrail(one),
             spot: "",
             stays: true,
             changes: false,
-            // Every one says go to, so the foot weighs one of a run.
+            // Every one says open, so the foot weighs one of a run.
             keysAlike: "landing:for-you",
             // Asked as it's stepped into, since its session may have gone;
             // a read one's in History too, since who landed it is still
