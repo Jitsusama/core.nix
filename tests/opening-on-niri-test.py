@@ -566,10 +566,14 @@ def test_chords_said_as_the_shell_restarts_open_it_once_it_listens(shell: Shell)
 
 
 def running(pid: int) -> bool:
-    """Say whether a process is running, one ended but not yet waited on counted as gone."""
+    """Say whether a process is running, one ended but not yet waited on counted as gone.
+
+    A process reaped between the file's opening and its read raises ProcessLookupError, which
+    failed a handover's cleanup after every assert had passed (2026-11-19).
+    """
     try:
         state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-    except FileNotFoundError, IndexError:
+    except FileNotFoundError, ProcessLookupError, IndexError:
         return False
     return state != "Z"
 
