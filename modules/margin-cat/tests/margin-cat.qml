@@ -314,19 +314,24 @@ QtObject {
         expect("each stride a stretch of ground, never a frame's time",
             frames.every(frame => frame.pose === walk[
                 (Math.floor((frame.x - 99) / going.stride) + first) % walk.length]), true);
-        // A stride each 40 ms, A's from 200: stopping on A, it steps on to
-        // C when A's been seen a SHOWN, and stops on D when it hasn't.
+        // A stride each 40 ms, A's from 40 and again from 200: stopping on
+        // A, it steps on to C when A's been seen a SHOWN, to the ms, and
+        // stops on D when it hasn't, though not on the lap before; it
+        // reads none from before its strides began.
         const strideAt = (t, more) => MarginCat.striding(walk, Object.assign({
-            stand: "walkingB", shown: 33, begins: 0, joins: false,
+            stand: "walkingB", shown: 33, since: 0, joins: false,
             count: time => Math.floor(time / 40) }, more), t);
         expect("a walk starts a pair on from its stand, and stops a pair off it",
             [strideAt(0, { last: 235 }), strideAt(40, { last: 235 }),
                 strideAt(220, { last: 235 }), strideAt(235, { last: 235 }),
                 strideAt(300, { last: 235 }), strideAt(205, { last: 210 }),
                 strideAt(210, { last: 210 }), strideAt(235, { last: 235, joins: true }),
-                strideAt(275, { last: 275 })],
+                strideAt(275, { last: 275 }), strideAt(233, { last: 233 }),
+                strideAt(232, { last: 232 }), strideAt(50, { last: 210 }),
+                strideAt(232, { last: 232, since: 205 })],
             ["walkingD", "walkingA", "walkingA", "walkingC", "walkingC", "walkingD",
-                "walkingD", "walkingA", "walkingC"]);
+                "walkingD", "walkingA", "walkingC", "walkingC", "walkingD", "walkingA",
+                "walkingC"]);
         const changes = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose);
         expect("as many strides as its way holds, the last ending as it stops",
             changes.length, Math.ceil((200 - 99) / going.stride) - 1);

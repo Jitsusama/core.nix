@@ -327,7 +327,7 @@ function timed(way) {
     }
     const from = way.legs[0]?.from ?? { x: way.x, y: way.y };
     const route = { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends,
-        cell: at.cell };
+        cell: at.cell, drawnIn: at.drawnIn ?? null };
     // Striding beats joined, a walk onto a climb or a climb onto a walk,
     // stride on as one round the corner, rather than each starting its
     // strides over or holding a drawing across a short one (joined()).
@@ -335,35 +335,23 @@ function timed(way) {
         const was = beats[i - 1];
         beat.walked = joined(was, beat) ? was.walked + Math.abs(was.to.x - was.from.x)
             + Math.abs(was.to.y - was.from.y) : 0;
+        beat.since = joined(was, beat) ? was.since : beat.begins;
         beat.joins = joined(beat, beats[i + 1]);
     }
     // A striding beat too short to be seen, joined to none before it, goes
-    // on in the pose before it.
+    // on in the pose before it, and those it joins stride from that pose.
     for (const [i, beat] of beats.entries()) {
         if (i > 0 && STRIDING[beat.kind] && !STRIDING[beats[i - 1].kind]
             && beat.ends - beat.begins < SHOWN) {
             beat.held = frame(route, beat.begins - 1e-6).pose;
+            const on = beats.filter((one, j) => j > i && one.since === beat.since);
+            const [held, since] = [on[0]?.walked, on[0]?.begins];
+            for (const one of on) {
+                Object.assign(one, { walked: one.walked - held, since });
+            }
         }
     }
     return route;
-}
-
-// How far along a walk it is at `p` of its time, from 0 to 1: speeding up
-// evenly over its first `ramps[0]` of the ground, steady, then slowing
-// evenly over its last `ramps[1]`, its time stretched to keep its pace
-// between them (timed()).
-function paced(p, ramps) {
-    const [rises, eases] = ramps;
-    const steady = 1 + rises + eases;
-    const risen = (2 * rises) / steady;
-    const easing = 1 - (2 * eases) / steady;
-    if (p < risen) {
-        return (steady * steady * p * p) / (4 * rises);
-    }
-    if (p > easing) {
-        return 1 - (steady * steady * (1 - p) * (1 - p)) / (4 * eases);
-    }
-    return rises + steady * (p - risen);
 }
 
 // A leap's pose `ms` into it, `whole` ms long, `peak` its share of the way
@@ -421,15 +409,19 @@ function frame(route, t) {
             beat: "sits", done: true };
     }
     const spot = placed(route, beat, t);
-    // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): none starts in a beat's
-    // last SHOWN, and one too short for a stride goes on in the pose it came in; joined to
-    // another, its last strides are that one's first.
+    // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): none but the one stopped
+    // on starts in a beat's last SHOWN, and one too short for a stride goes on in the pose
+    // it came in; joined to another, its last strides are that one's first. It strides
+    // from the stride it was drawn in before, or the one it turns in.
     const strides = STRIDING[beat.kind];
     const last = beat.joins ? beat.ends : Math.max(beat.begins, beat.ends - SHOWN);
+    const i = route.beats.indexOf(beat);
+    const before = i > 0 ? route.beats[i - 1].held ?? HOLDS[route.beats[i - 1].kind]
+        : route.drawnIn;
     const pose = strides
-        ? beat.held ?? MarginCat.striding(strides, { stand: HOLDS.turns, shown: SHOWN, last,
-            begins: beat.begins, joins: beat.joins,
-            count: time => strode(beat, placed(route, beat, time)) }, t)
+        ? beat.held ?? MarginCat.striding(strides, { shown: SHOWN, last, since: beat.since,
+            stand: strides.includes(before) ? before : HOLDS.turns, joins: beat.joins,
+            count: time => strodeBy(route, beat, time) }, t)
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
         beat: beat.name, aboard: beat.aboard === true, done: false };
@@ -444,6 +436,13 @@ function frame(route, t) {
 function strode(beat, spot) {
     const ground = Math.abs(spot.x - beat.from.x) + Math.abs(spot.y - beat.from.y);
     return Math.floor(((beat.walked ?? 0) + ground) / beat.stride + 1e-6);
+}
+
+// How many strides `beat` has taken by `time`, read on whichever beat
+// it strides on through was drawn then, none before they began.
+function strodeBy(route, beat, time) {
+    const on = route.beats.find(one => one.since === beat.since && time < one.ends) ?? beat;
+    return strode(on, placed(route, on, Math.max(time, beat.since)));
 }
 
 // Where `beat` of `route` has it `t` ms in, drawn, its share `p` of the beat
@@ -462,14 +461,14 @@ function placed(route, beat, t) {
     } else if (beat.kind === "climbs") {
         // Each bound a surge and a grip, its pace about its mean.
         const turns = 2 * Math.PI * beat.bounds;
-        s = paced(p - (SURGES * Math.sin(turns * p)) / turns, beat.ramps);
+        s = MarginCat.paced(p - (SURGES * Math.sin(turns * p)) / turns, beat.ramps);
     } else if (beat.kind === "falls") {
         // As far as it falls by now, of all it falls, its slowdown aside.
         const drop = Math.abs(to.y - from.y);
         const seconds = (p * beat.ms) / MarginCat.MS;
         s = drop === 0 ? 1 : Math.min(fallen(beat.speed, seconds) / drop, 1);
     } else if (beat.kind === "goes") {
-        s = paced(p, beat.ramps);
+        s = MarginCat.paced(p, beat.ramps);
     } else if (beat.kind !== "leaps") {
         s = MarginCat.easeInOut(p);
     }

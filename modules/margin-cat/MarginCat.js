@@ -339,12 +339,14 @@ function walked(shown, drawing, unseen, counted) {
 // Which of `strides` a walk is drawn in `t` ms in, each step from the
 // last moving one pair of feet (Joel, 2026-11-14 17:19: "i never want the
 // kitty to skid into place"). `walk.count` says how many strides it's
-// taken by a time, held from `walk.last` on, and `walk.stand` is the
-// stride it stands in, so it starts in the one a pair on from that. One
-// about to stop in the stride both pairs away from its stand steps on to
-// the one between for its last `walk.shown` ms, or, when that stride
-// itself would be seen for less, stops in the one before it instead
-// (WCJQSG b1034f36). One that `joins` another strides on in, unstopped.
+// taken by a time, from `walk.since`, when its strides began, and held
+// from `walk.last` on; `walk.stand` is the one of `strides` it stood in
+// then, so it starts in the one a pair on from that. One about to stop
+// in the stride both pairs away from its stand steps on to the one
+// between for its last `walk.shown` ms, or, when that stride itself
+// would be seen for less, stops in the one before it instead (WCJQSG
+// b1034f36); an odd number of strides has none both pairs away. One that
+// `joins` another strides on in, unstopped.
 function striding(strides, walk, t) {
     const many = strides.length;
     const stand = strides.indexOf(walk.stand);
@@ -353,11 +355,29 @@ function striding(strides, walk, t) {
     if (walk.joins || (end - stand + many) % many !== many / 2) {
         return strides[at(t)];
     }
-    if (at(Math.max(walk.begins, walk.last - walk.shown)) === end) {
+    if (at(Math.max(walk.since, walk.last - walk.shown)) === end) {
         return strides[t < walk.last ? at(t) : (end + 1) % many];
     }
     const stopping = t >= walk.last - walk.shown && at(t) === end;
     return strides[stopping ? (end - 1 + many) % many : at(t)];
+}
+
+// How far along a walk it is at `p` of its time, from 0 to 1: speeding up
+// evenly over its first `ramps[0]` of the ground, steady, then slowing
+// evenly over its last `ramps[1]`, its time stretched to keep its pace
+// between them (MarginCatWays.js's timed()).
+function paced(p, ramps) {
+    const [rises, eases] = ramps;
+    const steady = 1 + rises + eases;
+    const risen = (2 * rises) / steady;
+    const easing = 1 - (2 * eases) / steady;
+    if (p < risen) {
+        return (steady * steady * p * p) / (4 * rises);
+    }
+    if (p > easing) {
+        return 1 - (steady * steady * (1 - p) * (1 - p)) / (4 * eases);
+    }
+    return rises + steady * (p - risen);
 }
 
 // A drawing turned the way the cat faces: the theme draws its profiles
