@@ -696,23 +696,28 @@ impl Way {
         tunnel: Tunnel,
     ) -> bool {
         // TCP's resends are the whole machine's, a copy's to this
-        // network's machines with them, which the link carries but never
-        // crosses the connection. With more of that than crossed, a
-        // share of the resends as small as a home network's Wi-Fi loses
-        // reads as the router's, so they tell nothing of it: the router
-        // is neither taken to hold us back nor found room past, and the
-        // plateau stands until the copy is done.
-        let heard = carried - crossed <= crossed;
+        // network's machines with them, which the links to the router
+        // carry but never cross the connection. As many as such a copy
+        // carried may be its own, so only those past it are the router's,
+        // as when the link's count judged it. With more of that than
+        // crossed, a share of the resends as small as a home network's
+        // Wi-Fi loses reads as the router's, so they tell nothing of it:
+        // the router is neither taken to hold us back nor found room past,
+        // and the plateau stands until the copy is done, even one
+        // remembered over the line. A copy over a link to another network
+        // is in neither count, so its resends still read as the router's.
+        let home = (carried - crossed).max(0.0);
+        let heard = home <= crossed;
         // What got through the router once, of what crossed the line as
         // CAKE counted it: a router dropping what it can't carry has more
         // cross than its line. What TCP sent again of what our CAKE
         // dropped crossed once, and got through.
         let lost = if heard {
-            ours.resent.saturating_sub(ours.dropped)
+            (crate::rate::float(ours.resent.saturating_sub(ours.dropped)) - home).max(0.0)
         } else {
-            0
+            0.0
         };
-        let through = (crossed - crate::rate::float(lost)).max(0.0);
+        let through = (crossed - lost).max(0.0);
         // A VPN riding the link sends at most its share of the link's rate,
         // so what it holds is judged by that, and a probe lifts the VPN past
         // the line held rather than only the link.
@@ -731,11 +736,12 @@ impl Way {
         // isn't taken for the router's, and a follower's sending counts
         // on both sides alike.
         let offered = ours.sent.map_or(self.rate * share, crate::rate::float);
-        let held_back = if ours.queued {
-            heard && through < offered * (1.0 - DROPPED_PAST)
-        } else {
-            through < self.rate * UNDER
-        };
+        let held_back = heard
+            && if ours.queued {
+                through < offered * (1.0 - DROPPED_PAST)
+            } else {
+                through < self.rate * UNDER
+            };
         // With only the VPN's CAKE holding a queue, the VPN's round trip
         // waits in any queue the router keeps for its flow. Heard clear,
         // the link carrying under the VPN's share is the tunnel's flows
@@ -819,7 +825,8 @@ impl Way {
                     // probe it held that carried it with our queue standing
                     // found the line at least there, as a stay's start has
                     // it. A trial's ceiling says nothing of the line.
-                    let plateau = if ours.queued
+                    let plateau = if heard
+                        && ours.queued
                         && self.network_most.is_some_and(|most| self.rate >= most)
                         && through >= self.rate * share * UNDER
                     {
@@ -994,9 +1001,9 @@ impl Way {
         self.last_at = Some(at);
         self.starting_until.get_or_insert(at + STARTING_S);
         // What crossed the line is what CAKE sent, a follower's CAKE's
-        // with it, where the shaper counted it: the link sends the home
-        // network's traffic too, and none of a follower's. Judging the
-        // router by it, as `own` does, sets like against like.
+        // with it, where the shaper counted it: the links to the router
+        // send the home network's traffic too. Judging the router by it,
+        // as `own` does, sets like against like.
         let line = ours
             .and_then(|o| o.sent)
             .map_or(carried, crate::rate::float);
@@ -3046,6 +3053,11 @@ mod tests {
         };
         assert!(
             (timid.bounded().probe_up - 1.05).abs() < 1e-9,
+            "bounded at {}",
+            timid.bounded().probe_up
+        );
+        assert!(
+            timid.bounded().probe_up * UNDER > 1.0,
             "a probe that can never find room past `UNDER`"
         );
         for most in [f64::NAN, f64::INFINITY, -8_500.0, MOST_KBIT_LEAST - 1.0] {
@@ -4136,30 +4148,93 @@ mod tests {
         assert!(near(held, 6_175.0), "held over the line: {held:?}");
     }
 
-    // A follower's sending crosses the line beside its leader's, so a
-    // starved leader with a follower sending is judged by both, not taken
-    // for held back by what the follower's CAKE sent.
-    #[test]
-    fn a_starved_leader_beside_a_sending_follower_keeps_the_plateau() {
-        let mut c = learned_at(8_000.0);
-        sending(&mut c, 50.0, 20_000.0, |rate, _| rate * 0.94, (700.0, 0.0));
-        let plateau = c.up.plateau.expect("a plateau");
-        assert!(plateau >= 7_900.0, "taken for held back: {plateau}");
-    }
-
     // What the link sends to this network's machines never crosses the
-    // connection: a copy at home beside a probe is no room past the line,
-    // nor does it hide what the router drops.
+    // connection: a copy at home beside a probe is no room past the line.
+    // While it outweighs what crossed, the router's drops go unheard too,
+    // so the plateau neither climbs nor falls.
     #[test]
     fn a_copy_at_home_is_no_room_past_the_line() {
         let mut c = learned_at(6_000.0);
-        let held = sending(&mut c, 100.0, 6_500.0, |rate, _| rate, (0.0, 300_000.0));
+        sending(&mut c, 100.0, 6_500.0, |rate, _| rate, (0.0, 300_000.0));
         let plateau = c.up.plateau.expect("a plateau");
         assert!(plateau < 6_800.0, "the copy was taken for room: {plateau}");
+    }
+
+    // A leader and its follower sending together past the router's line
+    // are held back, though what got through is within a twentieth of the
+    // leader's own rate: it is judged against what both CAKEs offered.
+    #[test]
+    fn a_pair_sending_past_the_line_is_held_back() {
+        let mut c = learned_at(8_000.0);
+        c.up.next_probe = f64::INFINITY;
+        sending(&mut c, 10.0, 7_500.0, |rate, _| rate, (2_000.0, 0.0));
+        let plateau = c.up.plateau.expect("a plateau");
         assert!(
-            held.is_some_and(|held| held < 6_500),
-            "held over the line: {held:?}"
+            plateau < 7_800.0,
+            "the pair's drops went unheard: {plateau}"
         );
+    }
+
+    // A copy at home that loses more than the router may, over bad Wi-Fi,
+    // resends no more than it carried, so with less of it than crossed
+    // its resends are still no router holding us back.
+    #[test]
+    fn a_lossy_copy_at_home_is_no_router_holding_us_back() {
+        let mut c = learned_at(8_000.0);
+        sending_losing(&mut c, 50.0, 20_000.0, |rate, _| rate, (0.0, 6_000.0), 0.1);
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(plateau > 9_000.0, "the router went unheard: {plateau}");
+    }
+
+    // Beside a copy at home that outweighs what crossed, a probe at a
+    // network's ceiling proves no line there: the router past it may be
+    // dropping a share of what crossed, unheard.
+    #[test]
+    fn a_copy_at_home_proves_no_line_at_a_network_s_ceiling() {
+        let mut c = ceiled(learned_at(9_100.0), 9_500.0);
+        sending(&mut c, 10.0, 8_000.0, |rate, _| rate, (0.0, 300_000.0));
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(plateau <= 9_100.0, "proved past a lossy router: {plateau}");
+    }
+
+    // A trial's least `probe_up` still looks far enough past the plateau
+    // for room, so a plateau under the line climbs to it.
+    #[test]
+    fn a_trial_s_least_probe_finds_room() {
+        let mut c = learned_at(5_000.0);
+        c.up.tune(Tuning {
+            probe_up: 1.05,
+            ..Tuning::default()
+        });
+        sending(&mut c, 30.0, 8_000.0, |rate, _| rate, (0.0, 0.0));
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(plateau > 6_000.0, "never found room: {plateau}");
+    }
+
+    // With CAKE holding nothing beside a copy at home that outweighs what
+    // crossed, the upload squeezed in the air beside it says nothing of
+    // the router either.
+    #[test]
+    fn a_copy_at_home_is_no_queue_past_cake() {
+        let mut c = learned_at(8_000.0);
+        c.up.next_probe = f64::INFINITY;
+        let mut at = 0.0;
+        while at < 20.0 {
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: 306_000.0,
+                up_ours: Some(Ours {
+                    waiting: true,
+                    resent: 1_500,
+                    sent: Some(6_000),
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(plateau >= 7_900.0, "taken for a queue past CAKE: {plateau}");
     }
 
     // A plateau a starved machine's CAKE left low, or one remembered from
@@ -4233,31 +4308,31 @@ mod tests {
     /// sends, as TCP's resends count it.
     const HOME_RESENT: f64 = 0.005;
 
-    // A copy at home, a NAS's over Wi-Fi, resends far more than an
-    // upload crossing the connection does, all in the machine's one
-    // count: taken for the router's, it would hold the upload under the
-    // line for as long as the copy ran.
-    #[test]
-    fn a_copy_at_home_s_resends_are_no_router_holding_us_back() {
-        let mut c = learned_at(8_000.0);
-        sending(&mut c, 50.0, 20_000.0, |rate, _| rate, (0.0, 300_000.0));
-        let plateau = c.up.plateau.expect("a plateau");
-        assert!(plateau >= 7_900.0, "taken for held back: {plateau}");
-    }
-
     /// Steps a controller whose CAKE always holds a queue and sends what
     /// `sends(rate, at)` says of its rate, until `to`, behind a router
     /// carrying `line` and dropping the rest, which TCP sends again at
-    /// once; CAKE's count takes in `beside` too, as a leader's takes in
-    /// its followers', and the link carries `home` more, as it does what
-    /// it sends to this network's machines, `HOME_RESENT` of it sent
-    /// again. Answers the rate held at the end.
+    /// once; CAKE's count and the links' take in `beside` too, as a
+    /// leader's take in its followers', and the links carry `home` more,
+    /// as they do what they send to this network's machines,
+    /// `HOME_RESENT` of it sent again. Answers the rate held at the end.
     fn sending(
         c: &mut Controller,
         to: f64,
         line: f64,
         sends: impl Fn(f64, f64) -> f64,
+        beside_and_home: (f64, f64),
+    ) -> Option<u64> {
+        sending_losing(c, to, line, sends, beside_and_home, HOME_RESENT)
+    }
+
+    /// As `sending`, with `home_resent` of what goes home sent again.
+    fn sending_losing(
+        c: &mut Controller,
+        to: f64,
+        line: f64,
+        sends: impl Fn(f64, f64) -> f64,
         (beside, home): (f64, f64),
+        home_resent: f64,
     ) -> Option<u64> {
         let mut at = c.last_at.map_or(0.0, |last| last + 0.1);
         let mut limits = Limits {
@@ -4275,11 +4350,11 @@ mod tests {
             let kbit = |k: f64| k as u64;
             limits = c.step(&Seen {
                 at_s: at,
-                up_kbit: carried + home,
+                up_kbit: carried + beside + home,
                 up_ours: Some(Ours {
                     queued: true,
                     waiting: true,
-                    resent: kbit((carried + beside - line).max(0.0) + home * HOME_RESENT),
+                    resent: kbit((carried + beside - line).max(0.0) + home * home_resent),
                     sent: Some(kbit(carried + beside)),
                     ..Ours::default()
                 }),
