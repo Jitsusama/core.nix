@@ -6,6 +6,7 @@
 // and whether it closed with letters typed and nothing picked, which is a
 // miss. Trials.qml keeps them; this only counts.
 .pragma library
+.import "RowsKept.js" as RowsKept
 
 // The kinds of key counted: letters typed and erased (the left arrow
 // clearing what's typed erases it too), arrows up and down and the page
@@ -137,12 +138,13 @@ function steppedMaking(making, split) {
     return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
 }
 
-// The rows a laying drew, where it drew any, what else the showing took
-// (others), then where a step back out came to (Launcher.qml's keep), so a
-// slow step back says whether its split or the layout after spent the time.
+// The rows a laying drew, where it drew any, and whose, what else the showing
+// took (others), then where a step back out came to (Launcher.qml's keep), so
+// a slow step back says whether its split or the layout after spent the time.
 function keptSaid(kept, others = "") {
     const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
-        ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
+        ? `: ${kept.built} rows built, ${kept.reused} taken back${RowsKept.saidByKind(kept.laidBy)}`
+        : "";
     return rows + others + landedSaid(kept.split ?? {});
 }
 

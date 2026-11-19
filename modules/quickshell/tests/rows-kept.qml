@@ -57,6 +57,61 @@ QtObject {
         }
         Expect.same("the same rows take no step at all", RowsKept.steps(["a", "b"], ["a", "b"]),
             []);
+        // A laying's rows are tallied by kind as each is laid, in place, so
+        // a dear laying says whose rows it spent on.
+        const tally = RowsKept.begunLaying(0).kinds;
+        RowsKept.tallied(tally, "agent", 30.5);
+        RowsKept.tallied(tally, "run", 2);
+        RowsKept.tallied(tally, "agent", 59.5);
+        Expect.same("a tally counts each kind's rows and their time", tally,
+            { agent: { rows: 2, ms: 90 }, run: { rows: 1, ms: 2 } });
+        Expect.same("a row begun in the laying took from its beginning",
+            RowsKept.ownTime(5, 8, 3), 3);
+        Expect.same("a row begun before the laying's last row took only since it",
+            RowsKept.ownTime(1, 8, 6), 2);
+        const ownNamed = RowsKept.begunLaying(0).kinds;
+        RowsKept.tallied(ownNamed, "constructor", 4);
+        Expect.same("a kind named as one of Object's own is tallied as any other",
+            ownNamed.constructor, { rows: 1, ms: 4 });
+        // A laying begun at 10 gives a row made ahead, from 4, only what it
+        // took since; the next, begun at 11, only what it took since the
+        // first was done at 13; and one finished in a part begun at 20,
+        // none of the placing between, which the laying leaves out.
+        const replayed = RowsKept.begunLaying(10);
+        RowsKept.rowLaid(replayed, "run", 4, 13);
+        RowsKept.rowLaid(replayed, "agent", 11, 15);
+        RowsKept.restarted(replayed, 20);
+        RowsKept.rowLaid(replayed, "run", 12, 22);
+        Expect.same("a laying gives each row only its own time, part by part", replayed,
+            { kinds: { run: { rows: 2, ms: 5 }, agent: { rows: 1, ms: 2 } }, since: 22 });
+        // A tally says whose rows it spent on, rounded, most first then by
+        // name, and how many of each it laid. Kinds that round alike go by
+        // name, whatever their unrounded time or the order they were tallied
+        // in: "on", tallied first, took longer than "AI spend" before
+        // rounding. The kinds are the providers' own, a word or two each, as
+        // Joel's journal will say them.
+        const dearKinds = { on: { rows: 5, ms: 20.4 }, program: { rows: 3, ms: 89.6 },
+            "AI spend": { rows: 2, ms: 20.2 }, act: { rows: 4, ms: 0.4 } };
+        Expect.same("a laying says whose rows it spent on, most first",
+            RowsKept.saidByKind(dearKinds), ', by kind "program" 3 rows in 90 and'
+                + ' "AI spend" 2 rows in 20 and "on" 5 rows in 20');
+        Expect.same("a laying no kind spent a millisecond on says none",
+            [RowsKept.saidByKind({ act: { rows: 9, ms: 0.49 } }), RowsKept.saidByKind(null)],
+            ["", ""]);
+        Expect.same("a kind's half a millisecond rounds to one, and is said",
+            RowsKept.saidByKind({ act: { rows: 1, ms: 0.5 } }), ', by kind "act" 1 row in 1');
+        // The trials file keeps a keeping's kinds in whole milliseconds, as
+        // it keeps every time, and the rest of the keeping as it was; the
+        // keeping itself, which the check reads finer, is left as it is.
+        const keptFine = { laying: 41, built: 0, laidBy: dearKinds };
+        Expect.same("the trials file keeps a keeping's kinds whole",
+            [RowsKept.keptWhole(keptFine), keptFine.laidBy.on.ms],
+            [{ laying: 41, built: 0, laidBy: { on: { rows: 5, ms: 20 },
+                program: { rows: 3, ms: 90 }, "AI spend": { rows: 2, ms: 20 },
+                act: { rows: 4, ms: 0 } } }, 20.4]);
+        Expect.same("a keeping that laid nothing is kept as it was",
+            [RowsKept.keptWhole({ fresh: 0, laying: 0 }), RowsKept.keptWhole(null)],
+            [{ fresh: 0, laying: 0 }, null]);
         // Each row held keeps its mark wherever the steps move it, and a
         // row put in is given the next, so a row reads what it shows by its
         // mark, which no other row's coming or going changes: read by its

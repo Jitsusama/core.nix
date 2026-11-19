@@ -321,3 +321,83 @@ function steps(was, now, most) {
     }
     return done;
 }
+
+// A laying begun at `at`, to tally its rows as each is built or taken back
+// (rowLaid): what each kind's rows took (`kinds`, as tallied keeps it), and
+// when its last row was done or its part began (`since`), so a row begun
+// before counts only what it took since (ownTime).
+function begunLaying(at) {
+    return { kinds: bare(), since: at };
+}
+
+// Begins a part of `laying` at `at`, as its split or its layout, so its
+// rows are given none of what came before, which the laying leaves out.
+function restarted(laying, at) {
+    laying.since = at;
+}
+
+// Adds one more row of `kind` to `laying`, begun at `from` and done at
+// `to`, given only what it took since the laying's last row or part, then
+// the row after it only what it took since this one.
+function rowLaid(laying, kind, from, to) {
+    tallied(laying.kinds, kind, ownTime(from, to, laying.since));
+    laying.since = to;
+}
+
+// What of a laying a row done at `to` took: from `from`, when it began, or
+// from `since`, where the laying's previous row was done or it began,
+// whichever is later. A row made ahead and only finished in the laying
+// began before it, and the laying's earlier rows were laid since, so
+// from its own beginning it would be given theirs again.
+function ownTime(from, to, since) {
+    return to - Math.max(from, since);
+}
+
+// Adds one more row of `kind` that took `ms` to `tally`, in place, as
+// `{ kind: { rows, ms } }`, so a laying long for the rows it drew says
+// whose rows it spent on. Added in place, since a row adds to it as it's
+// laid and a new tally a row would be made for every row of a key.
+function tallied(tally, kind, ms) {
+    const was = tally[kind];
+    if (was === undefined) {
+        tally[kind] = { rows: 1, ms };
+    } else {
+        was.rows += 1;
+        was.ms += ms;
+    }
+}
+
+// A keeping (`kept`) as the trials file keeps it: whose rows its laying
+// spent on in whole milliseconds, as the file has always kept times,
+// though the rows' clock reads finer; the rest as it is. Null stays null.
+function keptWhole(kept) {
+    if (kept?.laidBy === undefined) {
+        return kept;
+    }
+    // Built by hand, as Qt's engine has no Object.fromEntries, on nothing,
+    // as the tally was, so no kind's name is taken for one of Object's.
+    const laidBy = bare();
+    for (const [kind, spent] of Object.entries(kept.laidBy)) {
+        laidBy[kind] = { rows: spent.rows, ms: Math.round(spent.ms) };
+    }
+    return Object.assign({}, kept, { laidBy });
+}
+
+// Whose rows a laying spent on (`tally`), built or taken back alike: each
+// kind whose rows took a millisecond once rounded, so half of one or more,
+// most first then by name, with how many rows it laid in how long: ', by
+// kind "program" 3 rows in 90 and "on" 1 row in 20', after the rows built
+// and taken back, which it breaks down together. Each is quoted, as some
+// kinds are words a line reads on through, "on" or "holds". Joel's "aq"
+// took 8 rows back in 112 ms, where the keys lab's rows take 0.9 ms each
+// (2026-11-18), so his own rows are dear and this says which. Nothing
+// where none took one.
+function saidByKind(tally) {
+    const each = Object.entries(tally ?? {})
+        .map(([kind, spent]) => [kind, spent.rows, Math.round(spent.ms)])
+        .filter(([, , ms]) => ms >= 1)
+        .sort((one, other) => other[2] - one[2] || (one[0] < other[0] ? -1 : 1));
+    const kinds = each.map(([kind, rows, ms]) =>
+        `"${kind}" ${rows} row${rows === 1 ? "" : "s"} in ${ms}`);
+    return kinds.length > 0 ? `, by kind ${kinds.join(" and ")}` : "";
+}
