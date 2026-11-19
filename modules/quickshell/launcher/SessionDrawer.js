@@ -71,6 +71,10 @@ function shown(drawer, words) {
     };
 }
 
+// A session's row's key, as the tree's and the top's are keyed, its
+// address unnamed: Qt's engine gives a match no `groups`.
+const SESSION_ROW = /^agent:(.+)$/u;
+
 // The addresses of the sessions whose rows stand either side of the row
 // keyed `agent:<address>` in `rows`, the list the launcher shows, past any
 // heading between, as an arrow steps past one (Headings.js): the sessions
@@ -88,7 +92,7 @@ function beside(rows, current, address) {
         while (rows[near]?.heading === true) {
             near += step;
         }
-        return /^agent:(.+)$/u.exec(String(rows[near]?.key ?? ""))?.[1] ?? "";
+        return SESSION_ROW.exec(String(rows[near]?.key ?? ""))?.[1] ?? "";
     };
     return [next(-1), next(1)].filter(one => one !== "" && one !== address);
 }
