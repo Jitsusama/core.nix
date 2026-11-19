@@ -3570,7 +3570,7 @@
     every design Joel stated for the margin cat, dated, is held by a phrase one of its cases says
     outside a comment, or owed since a date, and the owed ones are listed
   '';
-  the-cats-walk-is-read-from-its-frozen-lists = ''
+  the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when it strides by anything but
     WALKS's frozen quoted words, either isn't found outside a comment, a word holds a space or
     mismatched quotes, either is left unfrozen or frozen only in part, WALKS is named
