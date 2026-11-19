@@ -494,7 +494,9 @@ impl Follower {
         let mut first = Ok(());
         let mut keep = |written: io::Result<()>| {
             let failed = written.is_err();
-            first = std::mem::replace(&mut first, Ok(())).and(written);
+            if first.is_ok() {
+                first = written;
+            }
             failed
         };
         let into = &self.into;
@@ -773,28 +775,26 @@ fn run(
         }
     }
     let written = follower.write();
-    // A start that gave up says so, whatever its last try came to; only it
-    // leaves days held, as the loop leaves otherwise once a write works.
+    let lost = spell::losing(&follower.held);
+    // A start that gave up says so, naming this last try's failure over
+    // the spell's, which may name a day this try has just written.
     if gave_up {
-        return Err(spell.given_up(&follower.into, &spell::losing(&follower.held)));
+        return Err(spell.given_up(&follower.into, &lost, written.err().as_ref()));
     }
     written.map_err(|error| {
         io::Error::new(
             error.kind(),
-            format!("the day couldn't be written as health ended: {error}"),
+            format!("the day couldn't be written as health ended{lost}: {error}"),
         )
     })
 }
 
-// A spell of failed writes, and what health says of it, in a file of
-// its own so the follower reads whole.
+// A spell of failed writes and what health says of it, follow/spell.rs.
 mod spell;
 
-// How the follower hears the person's other machines' calls, in a file of
-// its own, follow/peers.rs.
+// How the follower hears the person's other machines' calls, follow/peers.rs.
 mod peers;
 
-// The tests keep a file of their own, follow/tests.rs, so the follower
-// reads whole.
+// The tests keep a file of their own, follow/tests.rs, so this reads whole.
 #[cfg(test)]
 mod tests;
