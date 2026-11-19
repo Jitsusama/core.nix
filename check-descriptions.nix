@@ -1978,7 +1978,9 @@
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
     machine's drawer and a network's, what waits on a cell and what holds stand said as the node
-    judges them, a receptor's feeding of a cell drawn with both drawers saying it and leaving once
+    judges them, every cell drawn a step out from the whole map and folded only once too small to
+    read, the talk between two networks drawn as one line until a cell it touches opens, a
+    receptor's feeding of a cell drawn with both drawers saying it and leaving once
     its ten minutes end or the node drops it, a network grown out of another as its branch once a
     forage says a cell of the other started one of its own, its hub laid out again as a branch,
     both drawers saying so and the branch going with the forage, a key of each

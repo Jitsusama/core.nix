@@ -73,7 +73,9 @@ Nothing on it acts on the network.
 - **Talk stays drawn for ten minutes.** The arc between two that
   messaged stays solid in the voice ink, thickening in three steps the
   more they said, so who has been talking to whom reads without
-  anything moving.
+  anything moving. Talk between two networks is one arc between their
+  hubs, as thick as their warmest pair, until a cell it touches is
+  open, so the cells read before the talk.
 - **Live networks lead.** A network none of whose cells is at work has
   its hub, cord and ground drawn in the lighter ink.
 - **A dashed magenta ring is a question waiting.** A cell asked a

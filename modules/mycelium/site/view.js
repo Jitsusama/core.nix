@@ -2209,7 +2209,9 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   const BUNDLE_WAYS = 12; // trunks out of a bundling machine, one each way
   const BUNDLE_REACH = 0.8; // how far out a trunk forks, as a share of the ring
   const MACHINE_ORBIT = 0.3; // how far out a bundling machine sits, as a share of the ring
-  const FOLD_PX = 4; // a cell's radius on screen under which its network folds: 8 px across
+  // A cell's radius on screen under which its network folds: 5 px across, the least a disc
+  // still reads as one, since folding at 8 hid every cell of a hundred on a laptop's whole map.
+  const FOLD_PX = 2.5;
   let folded = new Set();
   let refolding = 0;
   const homeOf = (s) => (s ? (s.hub || s.loose).key : null);
@@ -3156,7 +3158,7 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><g class="hub quiet" transform="scale(0.82)"><path class="m-spokes" d="${spokesPath(10)}"/><circle class="m-hub" r="10"/><path class="m-hub-shape" d="${SHAPES.square(5)}"/></g></svg></dt><dd>A quiet network: none of its cells at work, so drawn lighter</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-13,0H13" style="--w:4px"/></svg></dt><dd>A cord: machine to hub, or hub to branch, a network started inside it or grown out of it; thicker carries more</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-hypha" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Hyphae: a hub's cells, branching out from it</dd></div>` +
-      (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said"}</dd></div>` : "") +
+      (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet; talk between two networks is one arc between their hubs until you open one of its cells" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said; talk between two networks is one arc between their hubs until you open one of its cells"}</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cross m-repository" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Dotted cross-hyphae: cells sharing a repository, group or quest</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-changed" r="13"/><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>A faint outer ring: changed since you last looked</dd></div>` +
       (PULSES
@@ -4029,9 +4031,9 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     talkShapes = [];
     talkLayer = [];
     // All talk is drawn, as thick as it is warm, but faint until the choice
-    // touches it, so the cells read first. A cell open lifts its own talk;
-    // a network lifts the talk within it, since talk with one of its cells
-    // reaches most of the map.
+    // touches it, and gathered between networks, so the cells read first. A
+    // cell open lifts its own talk; a network lifts the talk within it, since
+    // talk with one of its cells reaches most of the map.
     const own = chosen?.kind === "cell" ? `c:${chosen.id}` : null;
     const touches = (end) => (end[0] === "h" ? near.hubs.has(end.slice(2)) : near.ids.has(current.byAddress.get(end.slice(2))?.id));
     // A cell folded into its network talks through the network's hub, so
@@ -4043,10 +4045,25 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       const s = end[0] === "c" && current.byAddress.get(end.slice(2));
       return s && isFolded(s) ? `h:${homeOf(s)}` : null;
     };
+    // Talk the choice doesn't touch gathers as a fold's does: two cells of
+    // different networks talk through their hubs, one line as warm as the
+    // warmest pair, so the whole map reads its cells before its talk and
+    // keeps every line it had, quieter. Talk within one network, and what
+    // the choice touches, runs cell to cell.
+    const hubOf = (end) => {
+      const s = end[0] === "c" && current.byAddress.get(end.slice(2));
+      const home = s && homeOf(s);
+      return home && spots.has(`h:${home}`) ? `h:${home}` : end;
+    };
+    const lifted = (e) => {
+      if (chosen?.kind === "talk") return chosen.id === e;
+      return !!near && (own ? e.split("|").includes(own) : e.split("|").every(touches));
+    };
     const drawn = new Map();
     for (const [e, n] of talk) {
-      const [a, b] = e.split("|").map(endOf);
+      let [a, b] = e.split("|").map(endOf);
       if (!a || !b || a === b) continue;
+      if (!lifted(e) && hubOf(a) !== hubOf(b)) [a, b] = [hubOf(a), hubOf(b)];
       const key = a === e.split("|")[0] && b === e.split("|")[1] ? e : pairKey(a, b);
       const was = drawn.get(key);
       if (!was || was.n < n) drawn.set(key, { e, n, a, b });
