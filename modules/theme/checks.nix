@@ -1,5 +1,7 @@
 # The checks of theme, which checks.nix gathers with every other folder's;
-# its opening comment says what each kind of check proves.
+# its opening comment says what each kind of check proves. Long because a
+# check is shown refusing as well as passing, and the cases each refuses,
+# planted poses and the code a walk is misread from, are a quarter of it.
 {
   account,
   bareNixos,
@@ -135,7 +137,7 @@ let
           "hind"
         ]
       );
-      unread = lib.optionalString (walkedFrom != null) " read from ${walkedFrom}";
+      readFrom = lib.optionalString (walkedFrom != null) " read from ${walkedFrom}";
     in
     {
       ok =
@@ -155,7 +157,7 @@ let
           "never stepping ${builtins.toJSON frozen}"
           "undrawn ${builtins.toJSON missing}"
         ]
-        ++ lib.optional (strides == [ ]) "no strides${unread}"
+        ++ lib.optional (strides == [ ]) "no strides${readFrom}"
       );
     };
 
@@ -178,13 +180,15 @@ let
   # says how, and what it can't see).
   walkRead = import ./walk-read.nix { inherit lib; };
   walkIn = file: (walkRead file).walk;
-  catWays = walkRead (builtins.readFile ../margin-cat/MarginCatWays.js);
+  catCode = builtins.readFile ../margin-cat/MarginCatWays.js;
+  catWays = walkRead catCode;
   catWalk = catWays.walk;
   catWalkedFrom =
     "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js"
     + lib.optionalString (catWays.faults != [ ]) (
       ", which wanted " + lib.concatStringsSep ", " catWays.faults
-    );
+    )
+    + lib.optionalString (catWays.refused != null) ", but read ${catWays.refused}";
 in
 {
   # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
@@ -363,13 +367,15 @@ in
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
   # held to its own sitting, as the cat's are to the cat's. Nothing walks it
-  # yet, so its strides are listed here in the cat's order, A, C, B, D; once
-  # its code walks it, they're read from there, as the cat's are.
+  # yet, so its strides are listed here in the cat's order, A, C, B, D, only
+  # while the cat's walking code doesn't name them: once it walks the puppy,
+  # this fails until they're read from there, as the cat's are.
   every-puppy-pose-reads-as-one-puppy = readsAsOne {
     check = "every-puppy-pose-reads-as-one-puppy";
     animal = "puppy";
     sitting = "puppySitting";
-    strides = [
+    walkedFrom = "here, as modules/margin-cat/MarginCatWays.js now walks the puppy";
+    strides = lib.optionals (!lib.hasInfix "puppyWalking" catCode) [
       "puppyWalkingA"
       "puppyWalkingC"
       "puppyWalkingB"
@@ -385,14 +391,15 @@ in
     ];
   };
 
-  # The stride rule refuses each way a walk skids, by its reason, so it's
-  # shown refusing as well as passing: the cat's own strides out of order,
-  # alone, with a pair never stepping, after a pose that isn't a stride,
-  # undrawn, and none at all; a pose planted with a stray pixel or too few;
-  # and the cat's code read as no walk, by the rule it breaks, when it
-  # strides by anything but WALKS's quoted words, though as its walk when
-  # they're only spaced, quoted or commented otherwise, or read where it's
-  # used.
+  # The pose rules refuse what they're for, so they're shown refusing as
+  # well as passing: the cat's own strides out of order, alone, with a pair
+  # never stepping, after a pose that isn't a stride, undrawn, and none at
+  # all, each by its reason; a pose planted with a stray pixel, and on each
+  # side of the 15% line, too few or many refused and under it held; and
+  # the cat's code read as no walk, by the rule it breaks, when it strides
+  # by anything but WALKS's quoted words or changes them, though as its
+  # walk when they're only spaced, quoted or commented otherwise, a long
+  # comment too, or read where it's used.
   every-skidding-walk-is-refused =
     let
       theirs = import ./glyphs.nix { inherit lib; };
@@ -407,14 +414,14 @@ in
       rows = theirs.nothingHere.pixels;
       # The sitting cat, 37 pixels, with a pixel lit alone at its top right;
       # with six of its bottom row's seven gone, over 15% fewer, or five,
-      # under it; and with its top five rows filled, seven more, over 15%
-      # more, or its top three, five more, under it.
+      # under it; and with its top four rows filled and a pixel by them, six
+      # more, over 15% more, or its top three, five more, under it.
       filled = lib.genList (_: "#####...") 5;
       planted = theirs // {
         strayed.pixels = [ "${builtins.substring 0 7 (lib.head rows)}#" ] ++ lib.tail rows;
         shrunk.pixels = lib.init rows ++ [ "#......." ];
         trimmed.pixels = lib.init rows ++ [ "##......" ];
-        grown.pixels = filled ++ lib.drop 5 rows;
+        grown.pixels = lib.take 4 filled ++ [ "####...." ] ++ lib.drop 5 rows;
         fuller.pixels = lib.take 3 filled ++ lib.drop 3 rows;
       };
       plantedFaults =
@@ -556,10 +563,17 @@ in
         (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind].reverse();")
         (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind]?.sort();")
         (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind].length = 0;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind].stops = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\n(STRIDING[kind]).reverse();")
+        (readOnly "${walksSaid}\n${stridingSaid}\n(STRIDING[kind] ?? []).sort();")
+        (readOnly "${walksSaid}\n${stridingSaid}\n(STRIDING[kind]) = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind].map(f).push(RUNS);")
         (readOnly "${walksSaid}\nconst  STRIDING = { goes: WALKS };\nconst\nSTRIDING = {};")
       ];
       # The same walk, spaced and quoted otherwise, still reads whole.
+      long = "/* ${lib.concatStrings (lib.genList (_: "WALKS ") 20000)}*/";
       reread = walkIn ''
+        ${long}
         // WALKS is the cat's walk, which STRIDING strides by.
         /* STRIDING[kind] = WALKS reads alike, as a comment.
          * So does WALKS.reverse(); here,
@@ -587,8 +601,10 @@ in
         const deep = STRIDING[beats[order[i]].kind];
         const carried = STRIDING[beats[0]?.kind]?.includes(at.drawnIn) ? at.drawnInto : 0;
         const last = STRIDING[beat.kind].at(-1) === pose;
+        const first = STRIDING[kind]?.[0] ?? STRIDING[kind].find(isOn);
+        const right = (STRIDING[kind]) >= 3 ? STRIDING[kind].toSorted() : [];
       '';
-      passed =
+      unrefused =
         map (
           walk:
           "${walk.reason}${
@@ -602,8 +618,8 @@ in
     in
     holds "every-skidding-walk-is-refused" (
       "Every skidding walk must be refused, by its reason, and a walk spaced otherwise "
-      + "read whole: ${builtins.toJSON passed} weren't, and it read ${builtins.toJSON reread}."
-    ) (passed == [ ] && reread == drawnWalk);
+      + "read whole: ${builtins.toJSON unrefused} weren't, and it read ${builtins.toJSON reread}."
+    ) (unrefused == [ ] && reread == drawnWalk);
 
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
   # or by APCA's lightness contrast. WCAG's black on white is 21:1, and

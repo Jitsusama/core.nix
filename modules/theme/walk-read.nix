@@ -8,26 +8,36 @@
 # spaces allowed only between its parts; elsewhere, WALKS is named only in
 # STRIDING, and STRIDING is declared once and otherwise only read by a key,
 # then perhaps by a method that changes nothing, with nothing assigned
-# there. So anything else, another list, a stride written inline, an entry
-# not a quoted word, something after its bracket, a key nested past three
-# deep, an assignment to either or either not found, reads as no walk,
-# which fails saying where it looked and what it wanted. It guards the walk
-# from an honest change, not a hostile one: a comment's marks are found
-# wherever they stand, so `//` or `/*` inside a string opens a comment
-# there; nor is a delete seen, a write through what a read hands back or a
-# destructuring pattern, or one from another file. None of the cat's files
-# has any, and honest reads written otherwise, `kind in STRIDING` say, are
-# refused, failing loudly rather than reading a walk it doesn't take.
+# there and no method that changes a list in place called after it. So
+# anything else, another list, a stride written inline, an entry not a
+# quoted word, something after its bracket, a key nested past three deep,
+# an assignment to either or either not found, reads as no walk, which
+# fails saying where it looked, what it wanted and the read it refused. It
+# guards the walk from an honest change, not a hostile one: a comment's
+# marks are found wherever they stand, so `//` or `/*` inside a string
+# opens a comment there; nor is a delete seen, a write through what a read
+# hands back or a destructuring pattern, a name spelt with a Unicode
+# escape, or one from another file. None of the cat's files has any, and
+# honest reads written otherwise, `kind in STRIDING` or a property wrapped
+# onto its own line say, are refused, failing loudly rather than reading a
+# walk it doesn't take.
 { lib }:
 file:
 let
   # The code with each comment, a line's or a block's, made a space, read
   # mark by mark, so a long comment costs no deeper a regex than a short
   # one: a pattern repeated per character overflows Nix's stack on one of
-  # some thousands.
+  # some thousands. Each step's code is made at once, so a long file
+  # leaves no chain of joins as deep as its marks are many.
   ways =
     let
       step =
+        was: piece:
+        let
+          next = stepped was piece;
+        in
+        builtins.seq next.code next;
+      stepped =
         was: piece:
         let
           mark = lib.head piece;
@@ -100,15 +110,21 @@ let
   # STRIDING is declared once, and everywhere else read by a key, or keys
   # in a row, each holding keys of its own up to three deep, then perhaps
   # by a method that changes nothing, assigning nothing there, by itself
-  # or with an operator, anywhere up to its semicolon, and neither counted
-  # up nor down. A key that can't be read whole, or any other method,
-  # fails it.
-  onlyRead =
+  # or with an operator, past a closing bracket or not, anywhere up to its
+  # semicolon, and neither counted up nor down, nor changed in place by a
+  # method later in it. A key that can't be read whole, or any other
+  # method, fails it.
+  reading =
     let
       by = "(\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?";
       inner = "\\[([^][]|\\[[^][]*])*]";
-      key = "\\[([^][]|${inner})*]";
-      unchanging = "length|includes|indexOf|lastIndexOf|at|slice|concat|join|map|filter|some|every";
+      key = "(\\?\\.)?\\[([^][]|${inner})*]";
+      unchanging = lib.concatStringsSep "|" [
+        "length|includes|indexOf|lastIndexOf|at|slice|concat|join|map|filter|some|every"
+        "find|findIndex|findLast|findLastIndex|forEach|entries|keys|values"
+        "reduce|reduceRight|flat|flatMap|toSorted|toReversed"
+      ];
+      inPlace = "copyWithin|fill|pop|push|reverse|shift|sort|splice|unshift";
       method = "[[:space:]]*\\??\\.[[:space:]]*(${unchanging})([^A-Za-z0-9_$].*)?";
       # What follows its keys, past a method that changes nothing.
       rest =
@@ -126,7 +142,10 @@ let
           null
         else
           after;
-      writes = after: builtins.match "[[:space:]]*(${by}=([^=].*)?|(\\+\\+|--).*)" after != null;
+      writes =
+        after:
+        builtins.match "[[:space:])]*(${by}=([^=].*)?|(\\+\\+|--).*)" after != null
+        || builtins.match ".*\\.[[:space:]]*(${inPlace})[[:space:]]*\\(.*" after != null;
       read = one: rest one != null && !writes (rest one) && !bumped one.before;
       ending = n: s: builtins.substring (lib.max 0 (lib.stringLength s - n)) n s;
       bumped = before: builtins.match ".*(\\+\\+|--)[[:space:]]*" (ending 8 before) != null;
@@ -136,9 +155,15 @@ let
           builtins.replaceStrings [ "\n" ] [ " " ] (ending 16 one.before)
         ) != null;
       all = uses "STRIDING" ways;
-      reads = lib.filter (one: !declaring one) all;
+      unread = lib.filter (one: !declaring one && !read one) all;
     in
-    lib.length (lib.filter declaring all) == 1 && lib.all read reads;
+    {
+      ok = lib.length (lib.filter declaring all) == 1 && unread == [ ];
+      # The first read refused, as its code has it, cut short.
+      refused = lib.mapNullable (one: "STRIDING${builtins.substring 0 40 one.after}") (
+        lib.findFirst (_: true) null unread
+      );
+    };
   s = "[[:space:]]*";
   word = "(\"[A-Za-z]+\"|'[A-Za-z]+')";
   stride = "[A-Za-z_]+${s}:${s}WALKS";
@@ -162,12 +187,13 @@ let
       }
       {
         wanted = "STRIDING declared once and only read by a key";
-        met = onlyRead;
+        met = reading.ok;
       }
     ]
   );
 in
 {
   inherit faults;
+  inherit (reading) refused;
   walk = lib.optionals (faults == [ ]) words;
 }
