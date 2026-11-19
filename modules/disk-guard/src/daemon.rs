@@ -1100,6 +1100,9 @@ impl Guard {
         struct Deafens(Arc<AtomicBool>, std::sync::Weak<Mutex<Uses>>);
         impl Drop for Deafens {
             fn drop(&mut self) {
+                if std::thread::panicking() {
+                    eprintln!("disk-guard: hearing opens panicked, so builds keep the hour");
+                }
                 self.0.store(false, Ordering::SeqCst);
                 if let Some(uses) = self.1.upgrade() {
                     uses.lock().unwrap_or_else(PoisonError::into_inner).deaf();
@@ -1227,6 +1230,18 @@ impl Guard {
                  so their builds keep the hour"
             );
         }
+        // A mark goes with its folder. Which have gone is read before the
+        // lock, since a stat on a loaded disk can take seconds, in which
+        // the listener would wait and the kernel's queue could overflow.
+        let held: Vec<PathBuf> = self
+            .uses
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .heard
+            .keys()
+            .cloned()
+            .collect();
+        let gone: Vec<PathBuf> = held.into_iter().filter(|dir| !dir.is_dir()).collect();
         let mut uses = self.uses.lock().unwrap_or_else(PoisonError::into_inner);
         // A listener that ended while the walk ran forgets what was heard,
         // and these marks must not bring it back. It says it stopped before
@@ -1235,8 +1250,9 @@ impl Guard {
         if !self.listening.load(Ordering::SeqCst) {
             return;
         }
-        // A mark goes with its folder.
-        uses.heard.retain(|dir, _| dir.is_dir());
+        for dir in &gone {
+            uses.heard.remove(dir);
+        }
         for (dir, at, handle) in marked {
             uses.watching(&dir, at);
             uses.marked(&dir, at, handle);

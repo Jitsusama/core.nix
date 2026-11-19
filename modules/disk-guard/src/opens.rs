@@ -147,6 +147,8 @@ impl Watch {
             if event.vers != libc::FANOTIFY_METADATA_VERSION
                 || length < header
                 || length > events.len()
+                || (event.metadata_len as usize) < header
+                || event.metadata_len as usize > length
             {
                 // The rest of the read can't be told apart, and could hold
                 // opens of anything marked.
@@ -311,6 +313,19 @@ mod tests {
     /// What a watch reads of an open by another process carrying
     /// `records`, in an event of version `vers`.
     fn read(vers: u8, records: &[u8]) -> Vec<Seen> {
+        parsed(&read_bytes(vers, records))
+    }
+
+    /// What a watch reads of `events`.
+    fn parsed(events: &[u8]) -> Vec<Seen> {
+        let mut seen = Vec::new();
+        watch().parse(events, &mut seen);
+        seen
+    }
+
+    /// The bytes of an open by another process carrying `records`, in an
+    /// event of version `vers`.
+    fn read_bytes(vers: u8, records: &[u8]) -> Vec<u8> {
         let header = size_of::<libc::fanotify_event_metadata>();
         let metadata = libc::fanotify_event_metadata {
             event_len: u32::try_from(header + records.len()).unwrap(),
@@ -326,9 +341,7 @@ mod tests {
         let bytes = unsafe { std::slice::from_raw_parts((&raw const metadata).cast(), header) };
         let mut events = bytes.to_vec();
         events.extend_from_slice(records);
-        let mut seen = Vec::new();
-        watch().parse(&events, &mut seen);
-        seen
+        events
     }
 
     #[test]
@@ -343,6 +356,14 @@ mod tests {
             read(version + 1, &record(|_| {})),
             [Seen::Lost],
             "an event of another version was read as if it were this one"
+        );
+        let header = u16::try_from(size_of::<libc::fanotify_event_metadata>()).unwrap();
+        let mut events = read_bytes(version, &record(|_| {}));
+        events[6..8].copy_from_slice(&(header + 200).to_ne_bytes());
+        assert_eq!(
+            parsed(&events),
+            [Seen::Lost],
+            "an event whose header runs past it was passed over"
         );
         let mut short = record(|_| {});
         short[2..4].copy_from_slice(&2_u16.to_ne_bytes());

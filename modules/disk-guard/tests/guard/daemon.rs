@@ -2073,12 +2073,8 @@ impl Home {
 
 #[test]
 fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
-    // Only a guard still hearing opens trusts what was watched before it,
-    // as the daemon is.
-    let Ok(watch) = disk_guard::opens::Watch::new() else {
-        eprintln!("no fanotify here, so nothing to check");
-        return;
-    };
+    // A guard that never listened, as `plan` and `explain` don't, reads
+    // what the daemon watched, so they say what it would take.
     let home = Home::new();
     let (config, deps) = home.replaced_build("100%");
     // Watched for three days, and nothing opened it.
@@ -2086,7 +2082,6 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
     uses.watching(&deps, wall() - 3.0 * 86_400.0);
     disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
     let mut guard = home.guard(config);
-    guard.listen(std::sync::Arc::new(watch));
     guard.step(&tick(), &CALM).unwrap();
     assert!(!deps.join(format!("libapp-{OLD}.rlib")).exists());
     assert!(deps.join(format!("libapp-{NEW}.rlib")).exists());
@@ -2097,6 +2092,31 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
             .any(|line| line["path"] == taken.to_string_lossy().as_ref()),
         "{:?}",
         home.journal()
+    );
+}
+
+#[test]
+fn a_daemon_that_cant_hear_keeps_replaced_builds_and_forgets_what_was_watched() {
+    // Earlier guards' dates stop where a daemon with no watch starts, so
+    // trusting them would date a build by opens nobody heard.
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("100%");
+    let mut uses = Uses::default();
+    uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
+    let mut guard = home.guard(config);
+    guard.hears_nothing();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        deps.join(format!("libapp-{OLD}.rlib")).exists(),
+        "a daemon that can't hear took a replaced build by an earlier guard's dates"
+    );
+    let kept: Uses = disk_guard::state::load(&home.root.join("state/uses.json"))
+        .unwrap()
+        .unwrap_or_default();
+    assert!(
+        kept.watched.is_empty(),
+        "a daemon that can't hear saved earlier guards' dates for the next: {kept:?}"
     );
 }
 
@@ -2258,11 +2278,10 @@ fn a_guard_hears_through_failed_reads_that_pass_before_five() {
 }
 
 /// Checks a guard whose listener ended hears nothing, saves no watched
-/// dates for the next guard, and marks nothing an hour on.
-fn ends_deaf(reads: &'static [Read]) {
-    let Some(mut listening) = listening(reads) else {
-        return;
-    };
+/// dates for the next guard, and marks nothing an hour on; answers how
+/// many reads it made once they turned.
+fn ends_deaf(reads: &'static [Read]) -> Option<usize> {
+    let mut listening = listening(reads)?;
     let tries = u64::from(disk_guard::daemon::LISTEN_TRIES);
     within(tries + 3, || listening.guard.hears().is_empty());
     let hears = listening.guard.hears();
@@ -2288,11 +2307,17 @@ fn ends_deaf(reads: &'static [Read]) {
         hears.is_empty(),
         "a deaf guard marked its builds again an hour on: {hears:?}"
     );
+    Some(listening.read.load(std::sync::atomic::Ordering::SeqCst))
 }
 
 #[test]
 fn a_guard_whose_reads_keep_failing_hears_nothing() {
-    ends_deaf(&[Read::Fails]);
+    if let Some(reads) = ends_deaf(&[Read::Fails]) {
+        assert_eq!(
+            reads, 5,
+            "the listener didn't stop at its fifth failed read"
+        );
+    }
 }
 
 #[test]
