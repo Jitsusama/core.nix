@@ -315,9 +315,11 @@ QtObject {
             frames.every(frame => frame.pose === walk[
                 (Math.floor((frame.x - 99) / going.stride) + first) % walk.length]), true);
         // A stride each 40 ms, A's from 40 and again from 200: stopping on
-        // A, it steps on to C when A's been seen a SHOWN, to the ms, and
-        // stops on D when it hasn't, though not on the lap before; it
-        // counts none of A's time from before its strides began.
+        // A, it steps on to C when A's been seen a SHOWN, to the ms; when it
+        // hasn't, it steps into A early enough, at 199 for a walk to 232,
+        // if D's been seen as long by then, or else stops on D, though not
+        // on the lap before; it counts none of A's time from before its
+        // strides began.
         const strideAt = (t, more) => MarginCat.striding(walk, Object.assign({
             stand: "walkingB", shown: 33, since: 0, joins: false,
             count: time => Math.floor(time / 40) }, more), t);
@@ -328,10 +330,11 @@ QtObject {
                 strideAt(210, { last: 210 }), strideAt(235, { last: 235, joins: true }),
                 strideAt(275, { last: 275 }), strideAt(233, { last: 233 }),
                 strideAt(232, { last: 232 }), strideAt(50, { last: 210 }),
-                strideAt(232, { last: 232, since: 205 })],
+                strideAt(232, { last: 232, since: 205 }), strideAt(199, { last: 232 }),
+                strideAt(198, { last: 232 })],
             ["walkingD", "walkingA", "walkingA", "walkingC", "walkingC", "walkingD",
-                "walkingD", "walkingA", "walkingC", "walkingC", "walkingD", "walkingA",
-                "walkingD"]);
+                "walkingD", "walkingA", "walkingC", "walkingC", "walkingC", "walkingA",
+                "walkingD", "walkingA", "walkingD"]);
         // Set off from A, as from a walk begun again, it still stops into B:
         // ending on A it steps on to C, and ending on B it stays there.
         // Set off from D into A, too briefly to step on, it holds D, as it

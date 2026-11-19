@@ -385,13 +385,13 @@ QtObject {
             }
             return drawnIn;
         };
-        const skids = (way, was) => drawings(way, was).map((one, i, all) => [all[i - 1]?.pose,
-            one.pose]).filter(([before, pose]) => strideOrder.includes(before)
-                && strideOrder.includes(pose)
+        const skidsIn = drawn => drawn.map((one, i, all) => [all[i - 1]?.pose, one.pose])
+            .filter(([before, pose]) => strideOrder.includes(before) && strideOrder.includes(pose)
                 && (strideOrder.indexOf(pose) - strideOrder.indexOf(before)) % 2 === 0);
+        const skids = (way, was) => skidsIn(drawings(way, was));
         // And each stride it steps into is drawn for 25 ms at least, all
         // but the one it was set off in, drawn before.
-        const flashes = (way, was) => drawings(way, was).filter((one, i, all) => i > 0
+        const flashesIn = drawn => drawn.filter((one, i, all) => i > 0
             && i < all.length - 1 && strideOrder.includes(one.pose) && all[i + 1].t - one.t < 25)
             .map(one => `${one.pose} at ${one.t}`);
         // Hurried back the way it faced, it turns, standing, then walks.
@@ -406,8 +406,9 @@ QtObject {
         // onto a float to settle there, and up a column's side.
         const skidding = [];
         const shares = [0.5, 0.99, 1.6, 0];
-        const sets = (way, was) => way !== null
-            && skids(way, was).length + flashes(way, was).length > 0;
+        // A way it won't plan fails, so the sweep can't pass judging none.
+        const sets = (way, was) => way === null
+            || (drawn => skidsIn(drawn).length + flashesIn(drawn).length > 0)(drawings(way, was));
         for (let x = 120; x < 1200; x += 37) {
             const [share, atPace] = [shares[((x - 120) / 37) % 4], x % 2 === 1];
             const ways = [[`back to ${x}`, Paths.walk({ x: 1100, y: 7 }, { x, y: 7 },
@@ -436,7 +437,7 @@ QtObject {
                     skidding.push(`down to ${y} from ${drawn}`);
             }
         }
-        expect("nor skids or flashes a stride on any way it goes, set off or climbing",
+        expect("nor fails to go, or skids or flashes a stride, any way, set off or climbing",
             skidding, []);
         // Walked to a place that moves on every frame, so set off again
         // from where it's drawn each 16 ms, it goes on at its pace, near a

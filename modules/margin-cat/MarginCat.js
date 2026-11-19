@@ -336,10 +336,9 @@ function walked(shown, drawing, unseen, counted) {
     return { said, line };
 }
 
-// How far `beat` has walked at `spot`, by the ground drawn, from the start
-// of the beats it strides on through, up a side as along a top (Joel,
-// 2026-11-14 22:40: "the kitten when crawling up or across window edges
-// still often does not look like its paws are moving").
+// How far `beat` has walked at `spot`, by the ground drawn, from the start of the beats it
+// strides on through, up a side as along a top (Joel, 2026-11-14 22:40: "the kitten when
+// crawling up or across window edges still often does not look like its paws are moving").
 function went(beat, spot) {
     return (beat.walked ?? 0) + Math.abs(spot.x - beat.from.x) + Math.abs(spot.y - beat.from.y);
 }
@@ -350,32 +349,35 @@ function strode(beat, spot) {
     return Math.floor(went(beat, spot) / beat.stride + 1e-6);
 }
 
-// Which of `strides` a walk is drawn in `t` ms in, each step from the
-// last moving one pair of feet (Joel, 2026-11-14 17:19: "i never want the
-// kitty to skid into place"). `walk.count` says how many strides it's
-// taken by a time, from `walk.since`, when its strides began, and held
-// from `walk.last` on; `walk.stand` is the one of `strides` it stood in
-// then, so it starts in the one a pair on from that, and `walk.stops`
-// the one it stops into, its stand unless said. One about to stop in the
-// stride both pairs away from that steps on to the one between for its
-// last `walk.shown` ms, or, when this walk shows that stride for less and
-// wasn't set off in it, stops in the one before it (WCJQSG b1034f36); an odd
-// number of strides has none both pairs away. One that `joins` another
-// strides on in, unstopped.
+// Which of `strides` a walk is drawn in `t` ms in, each step from the last moving one pair of
+// feet (Joel, 2026-11-14 17:19: "i never want the kitty to skid into place"). `walk.count`
+// says how many strides it's taken by a time from `walk.since`, held from `walk.last` on;
+// `walk.stand` is the one it stood in then, so it starts a pair on from that, and `walk.stops`
+// the one it stops into, its stand unless said. One about to stop in the stride both pairs
+// away from that steps on to the one between for its last `walk.shown` ms, or, when it shows
+// that stride for less and wasn't set off in it, steps into it that much early, when the one
+// before has been seen as long by then, or else, too short to show all three, stops in the one
+// before (WCJQSG b1034f36); an odd number has none both pairs away. One that `joins` strides on.
 function striding(strides, walk, t) {
     const many = strides.length;
-    const [stand, rest] = [walk.stand, walk.stops ?? walk.stand].map(one => strides.indexOf(one));
+    const stand = strides.indexOf(walk.stand);
+    const rest = strides.indexOf(walk.stops ?? walk.stand);
     const at = time => (walk.count(Math.min(time, walk.last)) + stand + 1) % many;
-    const end = at(walk.last);
-    if (walk.joins || (end - rest + many) % many !== many / 2) {
+    // Every way of stopping draws its count until its last `walk.shown` ms, so none is read.
+    const end = t < walk.last - walk.shown || walk.joins ? null : at(walk.last);
+    if (end === null || (end - rest + many) % many !== many / 2) {
         return strides[at(t)];
     }
     const seen = Math.max(walk.since, walk.last - walk.shown);
     if (at(seen) === end && (walk.last - walk.shown >= walk.since || end === stand)) {
         return strides[t < walk.last ? at(t) : (end + 1) % many];
     }
+    const [before, early] = [(end - 1 + many) % many, walk.last - 2 * walk.shown];
+    if (early >= walk.since && at(early) === before && t >= early + walk.shown) {
+        return strides[t < walk.last ? end : (end + 1) % many];
+    }
     const stopping = t >= walk.last - walk.shown && at(t) === end;
-    return strides[stopping ? (end - 1 + many) % many : at(t)];
+    return strides[stopping ? before : at(t)];
 }
 
 // How far along a walk it is at `p` of its time, from 0 to 1: speeding up

@@ -127,9 +127,8 @@ function falls(way, to, name) {
     leg(way, "falls", to, { name: name ?? "falls", pose: "falling", speed, ms });
 }
 
-// A fall's speed: its gravity and the fastest it falls, in pixels a
-// second, and how long it takes to reach it and how far it falls till
-// then.
+// A fall's speed: its gravity and the fastest it falls, in pixels a second,
+// and how long it takes to reach it and how far it falls till then.
 function falling(at) {
     const gravity = GRAVITY * at.cell;
     const most = FALLS_AT_MOST * at.tall;
@@ -408,35 +407,37 @@ function frame(route, t) {
     const spot = placed(route, beat, t);
     // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): none but the one stopped
     // on starts in a beat's last SHOWN, and one too short for a stride goes on in the pose
-    // it came in; joined to another, its last strides are that one's first. It strides
-    // from the one drawn before, or the one it turns in, and always stops into the latter.
+    // it came in; joined to another, its last strides are that one's first. It strides on from
+    // the stride drawn before, from A out of a leap, which drew none, else its stand, into it.
     const strides = STRIDING[beat.kind];
+    const counted = strides && t >= beat.since ? MarginCat.strode(beat, spot) : null;
     const last = beat.joins ? beat.ends : Math.max(beat.begins, beat.ends - SHOWN);
-    const was = route.beats[route.beats.findIndex(one => one.since === beat.since) - 1];
-    const before = was ? was.held ?? was.pose : route.drawnIn;
+    const was = strides && route.beats[route.beats.findIndex(one => one.since === beat.since) - 1];
+    const before = was ? was.held ?? was.pose ?? WALKS.slice(-1)[0] : route.drawnIn;
     const walk = strides && { shown: SHOWN, last, since: beat.since, joins: beat.joins,
-        stand: strides.includes(before) ? before : HOLDS.turns, stops: HOLDS.turns,
-        count: time => strodeBy(route, beat, time) };
+        stops: HOLDS.turns, stand: strides.includes(before) ? before : HOLDS.turns,
+        count: time => (time === t && counted !== null ? counted : strodeBy(route, beat, time)) };
     const pose = strides
         ? beat.held ?? MarginCat.striding(strides, walk, t)
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
-    const [rises, eases] = beat.ramps ?? [0, 0];
-    const steady = 1 + rises + eases;
+    const ramps = beat.ramps ?? [0, 0];
+    const half = (1 + ramps[0] + ramps[1]) / 2;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
         beat: beat.name, aboard: beat.aboard === true, done: false,
-        into: strides && !beat.held ? drawnFor(route, beat, t, { walk, pose }) : null,
-        atPace: !!strides && spot.p >= (2 * rises) / steady && spot.p <= 1 - (2 * eases) / steady };
+        into: strides && !beat.held ? drawnFor(route, beat, t, { walk, pose, spot }) : null,
+        atPace: !!strides && spot.p >= ramps[0] / half && spot.p <= 1 - ramps[1] / half };
 }
 
-// How far into `pose`, drawn `t` ms in `walk`, it is, in strides: since it
-// began, since `walk.last` stepped on to stop, or the stride before held to stop.
-function drawnFor(route, beat, t, { walk, pose }) {
+// How far into `pose`, drawn `t` ms in `walk` at `spot`, it is, in strides: since
+// it began, since `walk.last` stepped on to stop, or the stride before held to stop.
+function drawnFor(route, beat, t, { walk, pose, spot }) {
     const strides = STRIDING[beat.kind];
-    const plain = MarginCat.striding(strides, Object.assign({}, walk, { joins: true }), t);
+    const counted = walk.count(Math.min(t, walk.last));
+    const plain = strides[(counted + strides.indexOf(walk.stand) + 1) % strides.length];
     const ahead = pose === strides[(strides.indexOf(plain) + 1) % strides.length];
     const from = ahead ? MarginCat.went(beat, placed(route, beat, walk.last))
-        : (walk.count(Math.min(t, walk.last)) - (pose === plain ? 0 : 1)) * beat.stride;
-    return Math.max(0, MarginCat.went(beat, placed(route, beat, t)) - from) / beat.stride;
+        : (counted - (pose === plain ? 0 : 1)) * beat.stride;
+    return Math.max(0, MarginCat.went(beat, spot) - from) / beat.stride;
 }
 
 // How many strides `beat` has taken by `time`, read on whichever beat
@@ -449,8 +450,7 @@ function strodeBy(route, beat, time) {
 // Where `beat` of `route` has it `t` ms in, drawn, its share `p` of the beat
 // and, in a leap, the pose its arc gives.
 function placed(route, beat, t) {
-    // A beat cut short out of sight (MarginCatStacked.js) keeps the
-    // pace of all of it.
+    // A beat cut short out of sight (MarginCatStacked.js) keeps the pace of all of it.
     const whole = beat.lasts ?? beat.ends - beat.begins;
     const p = (t - beat.begins) / whole;
     const { from, to } = beat;
