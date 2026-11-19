@@ -186,7 +186,7 @@ the p99 20 ms, 1 within 50 ms
 slowest 40 ms, the p99 40 ms, 4 within 50 ms: a median 1 ms before it followed, 3 until its \
 frame began and 20 from its frame's start; on DP-4 at 60 Hz
   INFO qml: launcher: drawer for \"↓\" presented 24 ms from the key: a median 1 ms before it \
-followed; on DP-4 at 60 Hz
+followed, in the key's frame; on DP-4 at 60 Hz
   INFO qml: launcher: \"↓\" took 4 ms to its frame, 2 ms searching
 ";
         let figures = launcher(journal);

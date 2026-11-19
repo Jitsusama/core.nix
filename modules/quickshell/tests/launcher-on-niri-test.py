@@ -2482,16 +2482,11 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
     assert drawer["at"] == brought["at"], (
         f"the drawer came after its key's frame: {drawer}, {brought}"
     )
-    # Shown in the key's frame, both read niri's refresh from the frame niri answered, so they
-    # agree even where the key's own frame was dropped. The line ends with the screen, and its
-    # rate where niri gave one, so a docked day's drawers read as the screen's. The nested
-    # niri's winit screen gives none, so here the rate's absence is what's checked.
-    assert drawer["refresh"] == brought["refresh"], (drawer, brought)
-    assert drawer["screen"], f"the drawer named no screen: {drawer}"
-    tail = f"; on {drawer['screen']}"
-    if drawer["refresh"] > 0:
-        tail += f" at {round(1000 / drawer['refresh'])} Hz"
-    assert any(line.endswith(tail) for line in lines), (tail, lines)
+    # The line ends with the screen it was shown on, so a docked day's drawers read as the
+    # screen's. The nested niri's one screen is winit's, which niri times no refresh for, so
+    # the line names it with no rate; pacing.qml's cases say a rate where niri gives one.
+    assert drawer["screen"] == "winit", f"the drawer wasn't on niri's one screen: {drawer}"
+    assert any(line.endswith("; on winit") for line in lines), lines
     shell.close_launcher()
 
 

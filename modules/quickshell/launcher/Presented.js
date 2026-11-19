@@ -65,8 +65,8 @@ function keysSaid(verb, times, apart) {
 // Which screen a set of keys was shown on, each `screen` its name and
 // `refresh` niri's frame in ms there (frame-presentation.patch's timesOf),
 // said after the rest as "; on DP-4 at 60 Hz", each screen once, in turn,
-// at the rate of any key niri timed there, as a key whose frame niri
-// dropped has none, or "" where none was named. A key on a 60 Hz
+// at the rate of any key niri timed there, bare where niri timed none,
+// as on a nested niri's winit screen, or "" where none was named. A key on a 60 Hz
 // screen waits twice as long for niri's frame as on a 120 Hz one, so a
 // day docked read as a day the launcher slowed: its keys past 50 ms went
 // from 11% to 60% when Joel docked to a 60 Hz screen (16 Nov, 10:22).

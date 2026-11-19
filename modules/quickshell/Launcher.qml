@@ -11851,11 +11851,9 @@ Scope {
             return null;
         return surface.FramePresentation.timesOf(frame).swapped || null;
     }
-    // Niri's frame in ms on the screen a frame was shown on, or 0 where
-    // niri never timed it, as it times only the frame it answered.
+    // Niri's frame in ms on the screen a frame it answered was shown on, or 0
+    // where it gave none, as on a nested niri's winit screen.
     function refreshOf(frame) {
-        if (frame === undefined)
-            return 0;
         return surface.FramePresentation.timesOf(frame).refresh ?? 0;
     }
     function presentedDue(frame, at) {
