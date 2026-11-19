@@ -1516,10 +1516,28 @@ fn warehouse_settled(history: &History, runs: &HashSet<&str>) -> Result<Option<i
         })
         .map_err(fail)?;
     let mut through: Option<i64> = None;
+    let mut settling = HashSet::new();
     for row in rows {
         let (feed, settled) = row.map_err(fail)?;
         if runs.contains(feed.as_str()) {
             through = Some(through.map_or(settled, |through| through.min(settled)));
+            settling.insert(feed);
+        }
+    }
+    // A feed the config runs that bills pi from the warehouse but hasn't
+    // said how far it has settled may not have billed any hour in full,
+    // so no day can be judged on its bills until it does.
+    let mut billing = history
+        .db
+        .prepare("SELECT DISTINCT feed FROM billed WHERE source = 'warehouse' AND tool = 'pi'")
+        .map_err(fail)?;
+    let feeds = billing
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(fail)?;
+    for feed in feeds {
+        let feed = feed.map_err(fail)?;
+        if runs.contains(feed.as_str()) && !settling.contains(&feed) {
+            return Ok(None);
         }
     }
     Ok(through)
@@ -2616,13 +2634,60 @@ mod tests {
         assert_eq!(unbilled_keys_running(&history, &both), ["unbilled:ochre"]);
     }
 
-    // A settled hour a feed gave past now stands for good and can't be
-    // true, so no budget is judged under it, and that is told instead.
+    // The warehouse may have settled every hour before the one under way.
+    #[test]
+    fn the_hour_under_way_may_be_settled_to() {
+        let history = History::memory();
+        billed_before(&history);
+        settled_to(&history, "proxy", "2026-10-14T14:00:00Z");
+        turn_on(&history, NOW - 2.0 * HOUR, 100.0, Some("teal"));
+        assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+    }
+
+    // The hour the warehouse has settled to is still being billed, so a
+    // turn in it isn't held against the bill.
+    #[test]
+    fn a_turn_in_the_unsettled_hour_is_not_judged() {
+        let history = History::memory();
+        billed_before(&history);
+        turn_on(&history, NOW - HOUR, 100.0, Some("teal"));
+        assert_eq!(unbilled_keys(&history), [] as [String; 0]);
+    }
+
+    // A feed the config runs that bills pi but hasn't said how far it has
+    // settled may not have billed a day in full, so none is judged.
+    #[test]
+    fn a_running_feed_never_settled_holds_the_day() {
+        let history = History::memory();
+        billed_before(&history);
+        billed_on(
+            &history,
+            "second",
+            "2026-10-07T12:00:00Z",
+            "pi",
+            "teal",
+            1.0,
+        );
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        let both = config_running(&["proxy", "second"]);
+        assert_eq!(unbilled_keys_running(&history, &both), [] as [String; 0]);
+        assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+    }
+
+    // A settled hour a feed gave past now can't be true, so no budget is
+    // judged under it, and that is told instead.
     #[test]
     fn a_settled_hour_past_now_is_told_in_place_of_any_budget() {
         let history = History::memory();
         billed_before(&history);
-        settled_to(&history, "proxy", "2026-10-16T00:00:00Z");
+        let future = crate::time::hour_of(NOW) + 34;
+        history
+            .db
+            .execute(
+                "UPDATE settled SET through = ?1 WHERE feed = 'proxy'",
+                [future],
+            )
+            .unwrap();
         turn_on(&history, NOW - 2.0 * HOUR, 100.0, Some("teal"));
         turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
         assert_eq!(unbilled_keys(&history), [UNBILLED_UNSETTLED]);
