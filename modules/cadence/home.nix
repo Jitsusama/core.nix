@@ -224,6 +224,17 @@ in
   config = {
     home.packages = [ package ];
 
+    # The same owners the tick takes as `--owner`, one `prefix=ADDRESS` a
+    # line, for whoever else routes by them: each pi session reads the
+    # prefixes naming its address into the subjects its mesh presence says,
+    # so a need about one finds the session that owns it. Written only where
+    # the tick takes them, so the two never disagree.
+    xdg.configFile."cadence/owners.txt" = lib.mkIf (owning != [ ]) {
+      text = lib.concatStrings (
+        lib.mapAttrsToList (prefix: address: "${prefix}=${address}\n") cfg.owners
+      );
+    };
+
     systemd.user.services.cadence = {
       Unit.Description = "Watches the delivery cycle and writes its card";
       Service = {
