@@ -191,9 +191,13 @@ PRESENTED_SAID = re.compile(r"launcher: opening presented (\d+) ms from the chor
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
-    """Give the shell once it has kept home by itself, started once a run and never opened."""
+    """Give the shell once it has kept home by itself, started once a run and never opened.
+
+    It waits for niri to have said its casts too, since until then a chord opens a place with
+    copies or asks whole (Wanted.js's keptPlaceListed), and home with it.
+    """
     started = launcher_on_niri.started()
-    started.launcher_until(lambda shown: shown.get("kept"))
+    started.launcher_until(lambda shown: shown.get("kept") and shown.get("shared") is False)
     yield started
     started.stop()
 

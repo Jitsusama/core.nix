@@ -169,7 +169,7 @@ function keptPlaceListed(place) {
     if (place.named === true || place.led === true) {
         return "led";
     }
-    return place.shared === false ? "kept" : "";
+    return opensKept(place.shared) ? "kept" : "";
 }
 
 // Whether that slice, or a key, a click or a chord run before it, searches

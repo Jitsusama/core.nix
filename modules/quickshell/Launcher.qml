@@ -9711,11 +9711,13 @@ Scope {
             // How many the find found, said after what's typed in normal.
             found: prompt.narrowSaid ? prompt.narrowed : "",
             held: root.held.map(step => step.row.chip ?? step.row.name),
-            // Whether, closed, the next chord draws from what it kept: home
-            // held, and nothing that may see the screen, which it can't
-            // know until niri has said its casts (Wanted.opensKept), so a
-            // case waiting on it never times a chord made whole by that.
-            kept: root.homeHeld && Wanted.opensKept(root.screenShared()),
+            // Whether, closed, it holds home kept for the next opening.
+            kept: root.homeHeld,
+            // Whether the screen may be shared, as it may until niri has
+            // said its casts, so a chord opens a place with copies or asks
+            // whole (Wanted.keptPlaceListed), and a case timing one kept
+            // waits for this to be false.
+            shared: root.screenShared(),
             path: root.path,
             // Whether each of the path's steps is said whole in the field.
             pathWhole: prompt.chipsWhole,
@@ -10229,12 +10231,13 @@ Scope {
         const how = Wanted.keptPlaceListed({ listed: source?.keptListed === true, asNow: asNow,
             named: listedNow === true, led: kept.led === true, shared: screenShared() });
         if (how === "") {
-            console.info(`launcher: ${name} opened whole, as the screen may be shared`);
+            const why = Shared.why(Niri.castsHeard, Niri.casts, Recorder.windowSession);
+            console.info(`launcher: ${name} opened whole, as ${why}`);
             return false;
         }
         const listed = how === "source" ? keptListing(source)
             : how === "asItStands" ? source.asItStands(() => keptListing(source))
-            : how === "led" ? ledListing(name) : kept.matches;
+            : how === "led" ? ledListing(name) : how === "kept" ? kept.matches : null;
         if (listed === null)
             return false;
         const steps = asNow ? [placeStep(source)] : kept.held;
