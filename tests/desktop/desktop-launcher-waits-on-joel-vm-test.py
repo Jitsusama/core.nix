@@ -1331,10 +1331,10 @@ def draws_nothing_held_still(desktop: Desktop, who: str, on: str) -> None:
 def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desktop) -> None:
     """In For You, To Look At holds a look and :filter look steps into it, shot at 1.5 and 2.
 
-    What a filter keeps and the words it takes are tests/for-you-filter.qml's, which band a
-    look stands in tests/for-you.qml's, and the filter's one path through the launcher the
-    nested niri's; here To Look At, the menu and the head are shot at Joel's scales, for
-    VKCF3Z to judge (2026-11-08, 2026-11-09).
+    What a filter keeps and the words it takes are modules/quickshell/tests/for-you-filter.qml's,
+    which band a look stands in modules/quickshell/tests/for-you.qml's, and the filter's one path
+    through the launcher the nested niri's; here To Look At, the menu and the head are shot at
+    Joel's scales, for VKCF3Z to judge (2026-11-08, 2026-11-09).
     """
     asked = {
         "quest": "QUEST2",
