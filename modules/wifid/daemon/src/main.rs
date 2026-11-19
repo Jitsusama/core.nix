@@ -7,7 +7,9 @@
 //! that already holds a network as wanted keeps it, so wifid starting
 //! again never takes a card off the network it's on. A card that's been
 //! looking for networks too long with a saved one in range is told to join
-//! it (stall.rs).
+//! it (stall.rs). A card moved between a network's access points is
+//! followed until it's there, somewhere else or lost, and how long that took
+//! said (arrive.rs).
 //!
 //! Once a card's network reaches beyond itself, as networkd sees it, wifid
 //! checks whether it really does or wants a sign-in first. It checks again
@@ -24,6 +26,7 @@
 mod acts;
 mod address;
 mod air;
+mod arrive;
 mod calling;
 mod card;
 mod check;
@@ -79,6 +82,7 @@ use zlink::Server;
 
 use address::AddressKey;
 use air::AccessPoint;
+use arrive::Arrivals;
 use card::Card;
 use check::{Checker, Settings, Verdict};
 use detail::Polled;
@@ -222,6 +226,7 @@ async fn serve(
     // Whether Joel's on a call, as his session tells the rows socket.
     let calling = watch::Sender::<calling::Calling>::default();
     let avoided = avoided();
+    let arrivals = RefCell::default();
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
@@ -230,6 +235,7 @@ async fn serve(
         secrets,
         avoided: &avoided,
         seen,
+        arrivals: &arrivals,
         state: &state,
         picked: RefCell::default(),
         held: RefCell::default(),
@@ -249,6 +255,7 @@ async fn serve(
         state: state.clone(),
         cards: HashMap::new(),
         seen,
+        arrivals: &arrivals,
         stalls: Stalls::default(),
         left: Vec::new(),
         settled: Vec::new(),
@@ -665,6 +672,8 @@ struct Air<'a> {
     /// joining a network, by its path.
     cards: HashMap<String, (String, String)>,
     seen: &'a RefCell<Seen>,
+    /// The moves on their way, followed to where they end.
+    arrivals: &'a RefCell<Arrivals>,
     /// Which cards have been looking for networks too long.
     stalls: Stalls,
     /// The cards that have just come off a network, by name, for their
@@ -802,6 +811,9 @@ impl Air<'_> {
         path: &ObjectPath<'_>,
         changed: &HashMap<String, OwnedValue>,
     ) {
+        // Taken as the signal comes, so the time a move took isn't the
+        // time wifid took to ask the bus what it reached.
+        let now = Instant::now();
         // An attempt at a network begins as the card starts authenticating
         // with it, or associating where it skips that.
         let step = changed.get("State").map(|step| &**step);
@@ -817,8 +829,17 @@ impl Air<'_> {
                     change(&self.state, |state| state.attempting(&card));
                 }
                 if step == "completed" && before != "completed" {
-                    self.joined(bus, path).await;
+                    let on = self.joined(bus, path).await;
+                    let arrived =
+                        on.and_then(|on| self.arrivals.borrow_mut().joined(&card, &on, now));
+                    if let Some(arrived) = arrived {
+                        println!("{}", arrived.said(&card));
+                    }
                     self.settled.push(card.clone());
+                } else if step != before
+                    && let Some(lost) = self.arrivals.borrow_mut().step(&card, &step, now)
+                {
+                    println!("{}", lost.said(&card));
                 }
                 // Each step said, so a join that dawdles shows where.
                 if step != before {
@@ -867,21 +888,23 @@ impl Air<'_> {
     }
 
     /// Notes the channel the card joined its network on, so a card looks
-    /// there first when it next has no network.
-    async fn joined(&self, bus: &Connection, card: &ObjectPath<'_>) {
+    /// there first when it next has no network, and says the access point
+    /// it joined, where it's heard.
+    async fn joined(&self, bus: &Connection, card: &ObjectPath<'_>) -> Option<String> {
         let point = match interface(bus, card.to_owned().into()).await {
             Ok(interface) => interface.current_access_point().await,
             Err(error) => Err(error),
         };
-        let Some(point) = point.ok().and_then(|point| self.points.get(point.as_str())) else {
-            return;
-        };
-        let (Some(heard), Some(frequency)) = (point.heard(), point.frequency()) else {
-            return;
-        };
-        if let Err(error) = self.seen.borrow_mut().joined(&heard.name, frequency) {
+        let point = point
+            .ok()
+            .and_then(|point| self.points.get(point.as_str()))?;
+        let heard = point.heard()?;
+        if let Some(frequency) = point.frequency()
+            && let Err(error) = self.seen.borrow_mut().joined(&heard.name, frequency)
+        {
             eprintln!("<4>can't keep where {} was joined: {error}", heard.name);
         }
+        Some(heard.bssid)
     }
 
     /// The name of the card wpa_supplicant has at this path.
@@ -1256,6 +1279,8 @@ struct Wifid<'a> {
     secrets: &'a Secrets,
     avoided: &'a Avoided,
     seen: &'a RefCell<Seen>,
+    /// The moves on their way, followed to where they end.
+    arrivals: &'a RefCell<Arrivals>,
     state: &'a watch::Sender<State>,
     /// The cards on a network Joel picked in the launcher, which keep
     /// their others off until they come off it.
@@ -2072,10 +2097,14 @@ impl Wifid<'_> {
                 println!("<7>{card} is {step} on its own, held to {bssid}");
                 Ok(())
             } else {
+                self.arrivals
+                    .borrow_mut()
+                    .asked(&card, bssid, Instant::now());
                 interface.roam(bssid).await
             }
         };
         if let Err(error) = roamed.await {
+            self.arrivals.borrow_mut().forget(&card);
             self.let_go(&card, false).await;
             return Err(Refused::Failed {
                 reason: format!("{card} didn't move to {bssid}: {error}"),
