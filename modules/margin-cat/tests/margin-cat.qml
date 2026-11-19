@@ -425,17 +425,23 @@ QtObject {
                 begun: 0, stepped: 0
             });
         // A walk done is told only once niri has answered for every
-        // frame on its way as it sat, the last begun then being 40
-        // (2026-11-19: told at once, a walk on a busy builder said 131
-        // of its 135 frames).
+        // frame on its way as it sat, it having set off after frame 5
+        // and the last begun as it sat being 40 (2026-11-19: told at
+        // once, a walk on a busy builder said 131 of its 135 frames).
         expect("while it walks, every answer counts and none ends the wait",
-            Shown.heard(12, null), { counts: true, ends: false });
+            Shown.heard(12, 5, null), { counts: true, ends: false });
         expect("done, an answer before its last frame counts and waits for the rest",
-            Shown.heard(38, 40), { counts: true, ends: false });
+            Shown.heard(38, 5, 40), { counts: true, ends: false });
         expect("the answer for its last frame counts and ends the wait",
-            Shown.heard(40, 40), { counts: true, ends: true });
+            Shown.heard(40, 5, 40), { counts: true, ends: true });
         expect("an answer after its last frame isn't the walk's, but ends the wait",
-            Shown.heard(41, 40), { counts: false, ends: true });
+            Shown.heard(41, 5, 40), { counts: false, ends: true });
+        // A walk told early so the next could set off leaves its last
+        // frames' answers to come after it, which aren't the next's.
+        expect("while it walks, the walk before's late answer doesn't count",
+            Shown.heard(5, 5, null), { counts: false, ends: false });
+        expect("done, the walk before's late answer neither counts nor ends the wait",
+            Shown.heard(4, 5, 40), { counts: false, ends: false });
 
         // niri's own spring, as Joel's niri rides it between workspaces.
         const spring = { damping: 1, stiffness: 1600, epsilon: 0.001 };

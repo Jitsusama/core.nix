@@ -665,7 +665,7 @@ PanelWindow {
     FramePresentation.onPresented: (frame, at) => {
         if (going === null && moving === null && telling === "")
             return;
-        const heard = Shown.heard(frame, telling === "" ? null : tellsAt);
+        const heard = Shown.heard(frame, begunAt, telling === "" ? null : tellsAt);
         if (heard.counts) {
             shown.push(at);
             const times = window.FramePresentation.timesOf(frame);
@@ -677,7 +677,7 @@ PanelWindow {
     FramePresentation.onDiscarded: frame => {
         if (going === null && moving === null && telling === "")
             return;
-        const heard = Shown.heard(frame, telling === "" ? null : tellsAt);
+        const heard = Shown.heard(frame, begunAt, telling === "" ? null : tellsAt);
         if (heard.counts)
             unseen += 1;
         answered(heard);

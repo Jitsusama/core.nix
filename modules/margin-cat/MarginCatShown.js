@@ -11,12 +11,17 @@
 const ANSWERS = 2000;
 
 // Whether niri's answer for `frame` counts toward a walk's frames, and whether it ends the wait
-// to tell of it. While it walks, `last` is null and every answer counts. Once it's done, `last`
+// to tell of it. A frame begun before it set off, its `from`, is the walk before's, still on
+// its way when that one was told so this one could set off; it neither counts nor ends the
+// wait. While it walks, `last` is null and every later answer counts. Once it's done, `last`
 // is the last frame begun as it sat: niri answers the frames in the order it showed them, so its
 // answer for `last`, or for any frame after, says every one before is in, and one after isn't
 // the walk's. Told at once instead, a walk on a busy screen said too few: four of its 135
 // frames were still on their way on a builder, 62 ms apart (2026-11-19).
-function heard(frame, last) {
+function heard(frame, from, last) {
+    if (frame <= from) {
+        return { counts: false, ends: false };
+    }
     if (last === null) {
         return { counts: true, ends: false };
     }
