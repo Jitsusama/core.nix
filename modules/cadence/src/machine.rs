@@ -5,7 +5,7 @@
 //! the day, and the services whose restarts said no ready line, named.
 //! Health judges nothing; the day does, here.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
@@ -232,10 +232,16 @@ pub fn figures(json: &str) -> BTreeMap<String, f64> {
 /// Each service whose restarts said no ready line, with how often it
 /// restarted, from health's day file: a kind of the day's by name, so
 /// each is said once to its owner as it's new, who adds the line that
-/// times its restarts to what it serves. A run is left out: one of `runs`,
-/// those systemd-run started, and those `holders::a_run` names.
+/// times its restarts to what it serves. A run is left out: those
+/// `holders::a_run` names, and a unit systemd-run started among `runs`
+/// that nobody `held`. Health names a unit only, never its start, so a
+/// run is known here by its unit's name.
 #[must_use]
-pub fn unstamped(json: &str, runs: &BTreeSet<String>) -> BTreeMap<String, u32> {
+pub fn unstamped(
+    json: &str,
+    runs: &holders::Runs,
+    held: &dyn Fn(&str) -> bool,
+) -> BTreeMap<String, u32> {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     struct Written {
@@ -245,7 +251,8 @@ pub fn unstamped(json: &str, runs: &BTreeSet<String>) -> BTreeMap<String, u32> {
         .unwrap_or_default()
         .unstamped;
     // A run started once has no restarts to time, so no ready line to add.
-    named.retain(|unit, _| !holders::a_run(unit) && !runs.contains(unit));
+    let a_run = |unit: &str| runs.values().any(|run| run == unit) && !held(unit);
+    named.retain(|unit, _| !holders::a_run(unit) && !a_run(unit));
     named
 }
 
@@ -290,7 +297,10 @@ mod tests {
     #[test]
     fn a_service_with_no_ready_line_is_named_to_its_owner_once_new() {
         let day = |named: &str| Day {
-            named: BTreeMap::from([("unstamped".to_owned(), unstamped(named, &BTreeSet::new()))]),
+            named: BTreeMap::from([(
+                "unstamped".to_owned(),
+                unstamped(named, &holders::Runs::new(), &|_| false),
+            )]),
             ..Day::default()
         };
         let today = day(r#"{"unstamped": {"google.service": 2, "sound.service": 1}}"#);
@@ -316,10 +326,12 @@ mod tests {
 
     #[test]
     fn a_run_isnt_named_for_its_ready_line() {
-        let runs = BTreeSet::from(["0fx-kcopy-when-signed.service".to_owned()]);
+        let runs =
+            holders::Runs::from([("a1".to_owned(), "0fx-kcopy-when-signed.service".to_owned())]);
         let named = unstamped(
             r#"{"unstamped": {"merge-net-rerun-worktree-github-Jitsusama-core-nix-jitsusama-cadence-says-one-stall-once.service": 1, "0fx-kcopy-when-signed.service": 1, "tuple.service": 2}}"#,
             &runs,
+            &|_| false,
         );
         assert_eq!(
             named,

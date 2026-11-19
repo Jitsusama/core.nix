@@ -27,7 +27,9 @@
 # for `unit:<unit>`, else for `unstamped:<unit>`, else the session whose mesh
 # address its name carries, else the watcher. One-off runs, merge-net's
 # reruns and systemd-run's unnamed units, are never told: whoever ran each
-# reads its end.
+# reads its end. Nor is a service systemd-run started that still has its
+# default description, "[systemd-run] <command>", unless someone holds it
+# by an owner line or its name; a run given --description is told.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
 # failed units, out-of-memory kills, pressure, switches, each

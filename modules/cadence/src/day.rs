@@ -2,7 +2,7 @@
 //! parsed from the text its source writes, so the parsing is tested
 //! without the machine. judge.rs holds a day against the ones before it.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -404,53 +404,29 @@ pub fn crashes(json: &str) -> BTreeMap<String, u32> {
     named
 }
 
-/// systemd's message that a unit started, `Started <description>.`,
-/// which is where a run's description is kept once the run is gone.
-pub const STARTED: &str = "39f53479d3a045ac8e11786248231fbf";
-
-/// Each unit systemd-run started, by its description in systemd's message
-/// that it started, from `journalctl -o json` of that message. A run
-/// started with `--collect` is gone once it fails, so its description is
-/// read from when it began.
-#[must_use]
-pub fn systemd_runs(json_lines: &str) -> BTreeSet<String> {
-    #[derive(Deserialize)]
-    struct Entry {
-        #[serde(rename = "MESSAGE")]
-        message: Option<String>,
-        #[serde(rename = "UNIT")]
-        unit: Option<String>,
-        #[serde(rename = "USER_UNIT")]
-        user_unit: Option<String>,
-    }
-    json_lines
-        .lines()
-        .filter_map(|line| serde_json::from_str::<Entry>(line).ok())
-        .filter(|entry| {
-            entry
-                .message
-                .as_deref()
-                .and_then(|m| m.strip_prefix("Started "))
-                .is_some_and(holders::started_by_systemd_run)
-        })
-        .filter_map(|entry| entry.user_unit.or(entry.unit))
-        .collect()
-}
-
 /// Each unit that failed, from `journalctl -o json` of systemd's message
 /// for a unit that failed, a system's and the account's alike, but for
-/// runs: a unit in `runs`, as `systemd_runs` reads them, and those
-/// `holders::a_run` names. A part of its name that's only digits, a
-/// scope's pid, is put as `*`, so the agents' many work scopes are one
-/// name.
+/// runs: those `holders::a_run` names, and a start of systemd-run's in
+/// `runs` that nobody `held`, since a session that names a run for itself
+/// or holds it by an owner line is told. A part of its name that's only
+/// digits, a scope's pid, is put as `*`, so the agents' many work scopes
+/// are one name.
 #[must_use]
-pub fn failed_units(json_lines: &str, runs: &BTreeSet<String>) -> BTreeMap<String, u32> {
+pub fn failed_units(
+    json_lines: &str,
+    runs: &holders::Runs,
+    held: &dyn Fn(&str) -> bool,
+) -> BTreeMap<String, u32> {
     #[derive(Deserialize)]
     struct Entry {
         #[serde(rename = "UNIT")]
         unit: Option<String>,
         #[serde(rename = "USER_UNIT")]
         user_unit: Option<String>,
+        #[serde(rename = "INVOCATION_ID")]
+        invocation: Option<String>,
+        #[serde(rename = "USER_INVOCATION_ID")]
+        user_invocation: Option<String>,
     }
     let mut named = BTreeMap::new();
     for line in json_lines.lines() {
@@ -460,7 +436,9 @@ pub fn failed_units(json_lines: &str, runs: &BTreeSet<String>) -> BTreeMap<Strin
         let Some(unit) = entry.user_unit.or(entry.unit) else {
             continue;
         };
-        if holders::a_run(&unit) || runs.contains(&unit) {
+        let invocation = entry.user_invocation.or(entry.invocation);
+        let a_run = invocation.is_some_and(|id| runs.contains_key(&id)) && !held(&unit);
+        if holders::a_run(&unit) || a_run {
             continue;
         }
         *named.entry(without_pids(&unit)).or_insert(0) += 1;
@@ -649,7 +627,7 @@ mod tests {
             r#"{"USER_UNIT":"zone-check-2af2dh.service"}"#,
             "\nnot json\n"
         );
-        let named = failed_units(lines, &BTreeSet::new());
+        let named = failed_units(lines, &holders::Runs::new(), &|_| false);
         assert_eq!(
             named.get("work-*-*.scope"),
             Some(&2),
@@ -675,7 +653,7 @@ mod tests {
             "\n",
             r#"{"USER_UNIT":"camera.service"}"#,
         );
-        let named = failed_units(lines, &BTreeSet::new());
+        let named = failed_units(lines, &holders::Runs::new(), &|_| false);
         assert_eq!(
             named.keys().collect::<Vec<_>>(),
             ["camera.service"],
@@ -684,37 +662,41 @@ mod tests {
     }
 
     #[test]
-    fn a_run_systemd_run_started_under_a_name_isnt_a_failed_unit() {
-        // Its start says systemd-run's own description; a service started
-        // through systemd-run's same message with one of its own is told.
-        let started = concat!(
-            r#"{"MESSAGE":"Started [systemd-run] /bin/bash -c \"x\".","#,
-            r#""USER_UNIT":"spent-check1.service"}"#,
-            "\n",
-            r#"{"MESSAGE":"Started [systemd-run] /bin/true.","UNIT":"relay-guard-2.service"}"#,
-            "\n",
-            r#"{"MESSAGE":"Started Camera.","USER_UNIT":"camera.service"}"#,
-            "\nnot json\n",
-        );
-        let runs = systemd_runs(started);
-        assert_eq!(
-            runs.iter().map(String::as_str).collect::<Vec<_>>(),
-            ["relay-guard-2.service", "spent-check1.service"],
-            "systemd-run's runs, a system's and the account's, weren't read from their starts"
-        );
+    fn a_run_systemd_run_started_that_nobody_holds_isnt_a_failed_unit() {
+        // Each failure is matched to its run by the invocation id of that
+        // one start, so a unit sharing a run's name, in the other manager
+        // or started again with a description of its own, is still told.
+        let runs = holders::Runs::from([
+            ("a1".to_owned(), "spent-check1.service".to_owned()),
+            ("b2".to_owned(), "relay-guard-2.service".to_owned()),
+            (
+                "c3".to_owned(),
+                "y2ybts-race-timers-2044.service".to_owned(),
+            ),
+        ]);
         let failed = concat!(
-            r#"{"USER_UNIT":"spent-check1.service"}"#,
+            r#"{"USER_UNIT":"spent-check1.service","USER_INVOCATION_ID":"a1"}"#,
             "\n",
-            r#"{"UNIT":"relay-guard-2.service"}"#,
+            r#"{"UNIT":"relay-guard-2.service","INVOCATION_ID":"b2"}"#,
             "\n",
-            r#"{"USER_UNIT":"spent-check2.service"}"#,
+            r#"{"UNIT":"spent-check1.service","INVOCATION_ID":"d4"}"#,
+            "\n",
+            r#"{"USER_UNIT":"y2ybts-race-timers-2044.service","USER_INVOCATION_ID":"c3"}"#,
             "\n",
             r#"{"USER_UNIT":"camera.service"}"#,
         );
+        let held = |unit: &str| unit.starts_with("y2ybts-");
         assert_eq!(
-            failed_units(failed, &runs).keys().collect::<Vec<_>>(),
-            ["camera.service", "spent-check2.service"],
-            "a run was named as a failed unit, or a unit with no start read was lost"
+            failed_units(failed, &runs, &held)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            [
+                ("camera.service".to_owned(), 1),
+                ("spent-check1.service".to_owned(), 1),
+                ("y2ybts-race-timers-*.service".to_owned(), 1),
+            ],
+            "a run nobody holds was named, or a unit that isn't that run, or a run its \
+             session holds, was lost"
         );
     }
 
