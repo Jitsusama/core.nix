@@ -1003,7 +1003,8 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   };
 
   // The line under a point of the map, in CSS px from its corner: the
-  // nearest within reach, talk first since it is drawn over the rest. On a
+  // nearest within reach, feedings first and then talk, since each is drawn
+  // over what comes after it. On a
   // network's ground only the lines that cross grounds count, so the
   // ground itself still opens its network.
   const TOUCH_PX = 6;

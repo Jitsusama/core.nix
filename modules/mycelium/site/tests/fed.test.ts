@@ -88,6 +88,11 @@ it("the map draws again when the first feeding's ten minutes are up", () => {
   assert.equal(expiryOf(nowOf(told(these), AT)), AT + 6 * MINUTE_MS);
 });
 
+it("a feeding said ahead of this clock goes ten minutes after its own time", () => {
+  const ahead = [fed("github@kestrel", "AHEAD1", -30_000)];
+  assert.equal(expiryOf(nowOf(told(ahead), AT)), AT + 30_000 + FED_SHOWN_MS);
+});
+
 it("a map with no feeding and no balance has nothing to go out of date", () => {
   assert.equal(expiryOf(nowOf(told(undefined), AT)), undefined);
   assert.equal(expiryOf(nowOf(told([]), AT)), undefined);

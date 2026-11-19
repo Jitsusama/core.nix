@@ -81,9 +81,10 @@ FED_SAID = "a call's summary"
 FED_RECEPTOR_TITLE = "Calls"
 FED_CELL_TITLE = "Rig The Skiff"
 # How long before its ten minutes end a second feeding is told, to see the
-# map let it go on its own clock with the node saying nothing more: past the
-# map's 2 s pace, so it is drawn before it goes.
-FED_ENDING_S = 8
+# map let it go on its own clock with the node saying nothing more: the six
+# seconds a change may take to be drawn, and as many again for a busy builder,
+# so it is drawn before it goes.
+FED_ENDING_S = 14
 
 
 @pytest.fixture
@@ -515,7 +516,9 @@ def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
         page = opened.page
         the_map_stands(page, "live")
         the_map_counts(page, COUNTED, "a feeding changed the count")
-        page.wait_for_function("document.getElementById('map-ground').painted().fed === 1")
+        page.wait_for_function(
+            "document.getElementById('map-ground').painted().fed === 1", timeout=PACE_MS
+        )
         # Each end's drawer says what was fed, the cell's by whom.
         title = page.locator("#panel-title")
         body = page.locator("#panel-body")
