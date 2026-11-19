@@ -139,23 +139,25 @@ fn described(unit: &str) -> Option<String> {
 /// or, when none of them does, as when one was killed, the last line
 /// systemd said of it. A line that shows nothing once cleaned, all
 /// blanks, escapes, controls, marks or what draws no cell, says nothing,
-/// so the last twenty are read for three that do.
+/// so the last twenty are read for three that do. systemd's line is asked
+/// for by its own fields, since `--unit=` also gives the unit's own lines,
+/// and its last may be one that draws nothing.
 fn last(unit: &str) -> Vec<String> {
-    let own = summary::last_shown(journal(&format!("_SYSTEMD_UNIT={unit}"), 20), 3);
+    let own = summary::last_shown(journal(&[&format!("_SYSTEMD_UNIT={unit}")], 20), 3);
     if own.is_empty() {
-        journal(&format!("--unit={unit}"), 1)
+        journal(&[&format!("UNIT={unit}"), "_PID=1"], 1)
     } else {
         own
     }
 }
 
-/// The last `lines` this boot's journal holds matching `matching`, as
-/// they were said; nothing where the journal can't be read.
-fn journal(matching: &str, lines: usize) -> Vec<String> {
+/// The last `lines` this boot's journal holds matching every one of
+/// `matching`, as they were said; nothing where the journal can't be read.
+fn journal(matching: &[&str], lines: usize) -> Vec<String> {
     Command::new("journalctl")
+        .arg("--boot")
+        .args(matching)
         .args([
-            "--boot",
-            matching,
             &format!("--lines={lines}"),
             "--output=cat",
             "--no-pager",

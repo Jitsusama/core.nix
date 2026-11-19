@@ -5,9 +5,9 @@
 # failed unit with its description and the last three lines its own
 # programs said that show something, past lines that show nothing; what
 # systemd said of a unit whose programs said nothing, or nothing that
-# shows; at most four
-# units; the account's theme and the console's marks; and the way out. How
-# it lays itself out at the console's width is the crate's own tests'.
+# shows; at most four units; the account's theme and the console's marks;
+# and the way out. How it lays itself out at the console's width is the
+# crate's own tests'.
 # usage: boot-stopped.sh <boot-stopped>
 set -euo pipefail
 
@@ -34,20 +34,25 @@ esac
 EOF
 } > "$work/bin/systemctl"
 
-# journalctl gives a unit's own lines from $WORK/own and systemd's of it from
-# $WORK/systemd, the last as many as asked for.
+# journalctl gives a unit's own lines from $WORK/own and systemd's of it
+# (UNIT= from PID 1) from $WORK/systemd, the last as many as asked for.
+# --unit= gives both, as journalctl's does, with the unit's own last, so a
+# summary that takes its last line there can be given a blank.
 {
   printf '#!%s\n' "$BASH"
   cat <<'EOF'
-lines=10
+lines=10 from=() unit='' pid=''
 for arg; do
   case $arg in
   --lines=*) lines=${arg#*=} ;;
-  _SYSTEMD_UNIT=*) from=$WORK/own/${arg#*=} ;;
-  --unit=*) from=$WORK/systemd/${arg#*=} ;;
+  _SYSTEMD_UNIT=*) from=("$WORK/own/${arg#*=}") ;;
+  --unit=*) from=("$WORK/systemd/${arg#*=}" "$WORK/own/${arg#*=}") ;;
+  UNIT=*) unit=${arg#*=} ;;
+  _PID=1) pid=1 ;;
   esac
 done
-[[ -f $from ]] && tail -n "$lines" "$from"
+[[ -z $unit || -z $pid ]] || from=("$WORK/systemd/$unit")
+((${#from[@]})) && cat "${from[@]}" 2> /dev/null | tail -n "$lines"
 exit 0
 EOF
 } > "$work/bin/journalctl"
