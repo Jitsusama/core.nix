@@ -985,15 +985,17 @@ fn tell_live(
 /// Adds what each follower's CAKE sent, dropped and held to its leader's:
 /// the two send over one connection, so what crossed it is what both sent,
 /// and TCP's resends, the machine's, are of what both dropped. A leader
-/// whose follower's count can't be told can't tell what crossed either,
-/// so is judged by its rate, rather than by a sum leaving the follower
-/// out.
+/// whose follower's count can't be told, or none of whose reads worked
+/// that second, can't tell what crossed either, so is judged by its rate,
+/// rather than by a sum leaving the follower out.
 fn crossing(seen: &mut BTreeMap<String, oneway::Ours>, follows: &BTreeMap<String, String>) {
     for (follower, leader) in follows {
-        let Some(theirs) = seen.get(follower).copied() else {
+        let theirs = seen.get(follower).copied();
+        let Some(ours) = seen.get_mut(leader) else {
             continue;
         };
-        let Some(ours) = seen.get_mut(leader) else {
+        let Some(theirs) = theirs else {
+            ours.sent = None;
             continue;
         };
         ours.sent = ours.sent.zip(theirs.sent).map(|(own, sent)| own + sent);
@@ -1740,9 +1742,16 @@ mod tests {
             Some(50),
             "a link nobody follows keeps its own"
         );
-        seen.get_mut("eth2").expect("eth2").sent = None;
-        crossing(&mut seen, &follows);
-        assert_eq!(seen["eth1"].sent, None, "a sum left the follower out");
+        let mut unread = seen.clone();
+        unread.get_mut("eth1").expect("eth1").sent = Some(300);
+        unread.get_mut("eth2").expect("eth2").sent = None;
+        crossing(&mut unread, &follows);
+        assert_eq!(unread["eth1"].sent, None, "a sum left the follower out");
+        let mut unseen = seen;
+        unseen.get_mut("eth1").expect("eth1").sent = Some(300);
+        unseen.remove("eth2");
+        crossing(&mut unseen, &follows);
+        assert_eq!(unseen["eth1"].sent, None, "a sum left the follower out");
     }
 
     #[test]
@@ -1760,6 +1769,8 @@ mod tests {
             (read(0, 0), read(100_000, 800), Some(1_000)),
             // Every read since failed: nothing new to tell.
             (read(125_000, 1_000), read(125_000, 1_000), None),
+            // A read that worked with nothing sent: an idle second.
+            (read(125_000, 1_000), read(125_000, 2_000), Some(0)),
             // CAKE was put in again and counts from nothing.
             (read(125_000, 1_000), read(5_000, 2_000), None),
         ];
