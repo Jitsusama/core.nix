@@ -351,30 +351,36 @@ mod tests {
                 &format!("Reload requested from client PID 1 ('{program}') (unit x.service)..."),
             )
         };
-        let job = |unit, job| Entry {
+        let job = |unit: &str, job| Entry {
             job: Some(job),
             ..entry(unit, 6, "")
         };
         // The machine's tool restarts its service once, then a tool of his
-        // restarts his own past the most kept: his push out only his.
+        // restarts his own, each of another name, past the most kept: his
+        // push out only his, and the cap counts his manager's, not a
+        // name's.
         let mut launches = Launches::default();
         let mut at = 1_000_000;
-        for account in std::iter::once(None).chain([Some("1000"); MOST_RELOADS + 1]) {
-            let unit = account.map_or("backend.service", |_| "janitor.service");
+        let accounts = std::iter::once(None).chain([Some("1000"); MOST_RELOADS + 1]);
+        for (n, account) in accounts.enumerate() {
+            let unit = account.map_or_else(
+                || "backend.service".to_owned(),
+                |_| format!("janitor-{n}.service"),
+            );
             launches.heard(&clocked(at, account, reload("systemctl")));
-            launches.heard(&clocked(at + 500_000, account, job(unit, Job::Stopping)));
-            launches.heard(&clocked(at + 600_000, account, job(unit, Job::Started)));
+            launches.heard(&clocked(at + 500_000, account, job(&unit, Job::Stopping)));
+            launches.heard(&clocked(at + 600_000, account, job(&unit, Job::Started)));
             at += 200_000_000;
         }
         let kept = |unit| {
             launches
                 .taken
                 .iter()
-                .filter(|taken| taken.unit == unit)
+                .filter(|taken| taken.unit.starts_with(unit))
                 .count()
         };
         assert_eq!(
-            (kept("backend.service"), kept("janitor.service")),
+            (kept("backend."), kept("janitor-")),
             (1, MOST_RELOADS),
             "his tool's restarts pushed out the machine's taken back"
         );

@@ -116,11 +116,11 @@ pub struct Launches {
     /// clock, until it starts: a stop at shutdown and a start in the next
     /// boot are a reboot, not a restart. It's kept by the unit's name
     /// alone, as `restarting` and `taken` are, so a service of one name in
-    /// two managers, as `disk-guard` is, keeps one stop: when their
-    /// restarts overlap, the later stop replaces the earlier, whose start
-    /// then times none, and the later's start, heard after, finds no stop,
-    /// losing both restarts rather than pairing one manager's stop with
-    /// the other's start.
+    /// two managers, as `disk-guard` is, keeps one stop: when one's stop
+    /// comes while the other's waits, it replaces the other's, whose start
+    /// then times none. When the two interleave, the earlier's start ends
+    /// the later's stop too, losing both restarts rather than pairing one
+    /// manager's stop with the other's start.
     #[serde(skip)]
     stopping: BTreeMap<String, (String, i64, i64)>,
     /// Each service started again, until it says it's ready in that boot
@@ -136,7 +136,8 @@ pub struct Launches {
     reloaded: BTreeMap<bool, Vec<Reload>>,
     /// The stops and restarts a tool's reload took back, or made its own as
     /// they were heard, until a switch's reload heard later says they were
-    /// its own, at most [`MOST_RELOADS`]. A new day carries the stops, as
+    /// its own, at most [`MOST_RELOADS`] of each boot and manager. A new
+    /// day carries the stops, as
     /// it does those in `stopping`. A restart taken back stays behind with
     /// the old day, which is written without it, so one that a switch's
     /// reload heard only after midnight would give back is in neither day.

@@ -17,11 +17,11 @@ const REQUESTED: &str = "Reload requested from client PID ";
 /// for a tool, heard late, can take back a restart already timed, or crowd
 /// a stop taken back out past the most kept. Each reaches only the
 /// restarts of the manager it had reload, his own, since a reload is kept
-/// with the manager that made it (`launches.rs`), save one of a service
-/// named as one of the machine's is, whose stop ends the machine's wait
-/// too (`Launches::stopping`), and skews no more than
-/// health's figures, only at the moment of the stop, since journald
-/// stamps both clocks.
+/// with the manager that made it (`launches.rs`). The one exception is
+/// a service of his named as one of the machine's is: its stop or start
+/// also ends the machine's service's wait, as stops are kept by name
+/// (`Launches::stopping`). Each skews no more than health's figures, and
+/// only at the moment of the stop, since journald stamps both clocks.
 const SWITCHES: [&str; 3] = ["switch-to-confi", ".switch-to-conf", "sd-switch"];
 
 /// Who asked for a reload.

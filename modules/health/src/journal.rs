@@ -92,8 +92,11 @@ pub struct Entry {
     /// The boot it was said in.
     pub boot: String,
     /// The account whose systemd manager the unit that wrote it runs
-    /// under, by its uid, or none for the machine's: one manager's reload
-    /// says nothing of another's services (`launches::boot_of`).
+    /// under, by its uid, or none when it runs under no account's, as the
+    /// machine's own services and an account's login sessions do. Job and
+    /// reload lines are a manager's own, so none on one is the machine's:
+    /// one manager's reload says nothing of another's services
+    /// (`launches::boot_of`).
     pub account: Option<String>,
     /// When, in microseconds since the kernel started.
     pub since_boot: i64,

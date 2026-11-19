@@ -165,8 +165,9 @@ fn a_reload_counts_only_for_its_own_managers_services() {
 fn a_service_of_one_name_in_both_managers_times_no_restart_across_them() {
     // Its stops and restarts are kept by name alone (`Launches::stopping`),
     // so one manager's start ends the other's stop rather than timing it,
-    // and overlapping restarts lose both: no restart pairs one manager's
-    // stop with the other's start.
+    // interleaving restarts lose both, and one inside the other loses only
+    // the outer: no restart pairs one manager's stop with the other's
+    // start.
     let cases = vec![
         (
             "the machine's stop, then his start, then the machine's",
@@ -178,7 +179,17 @@ fn a_service_of_one_name_in_both_managers_times_no_restart_across_them() {
             vec![],
         ),
         (
-            "the machine's restart and his, overlapping",
+            "his restart inside the machine's",
+            vec![
+                backend("b", 10_800_000, Job::Stopping),
+                of_his(backend("b", 10_850_000, Job::Stopping)),
+                of_his(backend("b", 10_900_000, Job::Started)),
+                backend("b", 10_950_000, Job::Started),
+            ],
+            vec![50],
+        ),
+        (
+            "the machine's restart and his, interleaving",
             vec![
                 backend("b", 10_800_000, Job::Stopping),
                 of_his(backend("b", 10_850_000, Job::Stopping)),
