@@ -53,8 +53,9 @@ LOOKS = ["dark", "light"]
 KILOBYTE = 1024
 # The browser's own lines once the sites' server is gone: the feed's next try to
 # connect, and a file or fetch the server was answering at the kill or is asked
-# for after. Only the errors a server going away gives, so a page that starts
-# reaching anywhere else once it's stale still fails.
+# for after. Only the errors a server going away gives, so a stale page that
+# fails some other way, such as a name that won't resolve, still fails. The
+# browser's line names no address, so one refused at another port passes too.
 SERVER_GONE = [
     "WebSocket connection to",
     *(
@@ -62,6 +63,7 @@ SERVER_GONE = [
         for error in [
             "CONNECTION_REFUSED",
             "CONNECTION_RESET",
+            "CONNECTION_ABORTED",
             "CONNECTION_CLOSED",
             "EMPTY_RESPONSE",
             "CONTENT_LENGTH_MISMATCH",
