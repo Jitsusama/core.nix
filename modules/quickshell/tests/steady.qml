@@ -112,6 +112,24 @@ QtObject {
                 failures.push(`${what}: ${got}, not ${wanted}`);
         }
 
+        // A share's start forgets every way back to what was shown before
+        // it, since a step there may be an ask's, whose name the crumb
+        // draws: Ctrl+O's and Ctrl+I's places, Ctrl+T's, and Tab's last,
+        // as well as the rows that left (Launcher.qml's untold). An
+        // ordinary place goes with an ask's, so a filter keeping the
+        // places it thinks safe fails here: none is told apart.
+        const step = { held: [{ row: { key: "ask", name: "the bank's password" } }],
+            here: { typed: "bank" } };
+        const plain = { held: [{ row: { key: "music", name: "Music" } }], here: { typed: "" } };
+        const began = Steady.shareStarts({ rows: Steady.kept(rows("a b c"), rows("a c"), id),
+            at: 2, back: [plain, step], ahead: [step, plain], tags: [plain, step], last: plain },
+            id);
+        const forgot = JSON.stringify([read(began.rows), began.at, began.back, began.ahead,
+            began.tags, began.last]);
+        const forgetting = JSON.stringify(["a c", 1, [], [], [], null]);
+        if (forgot !== forgetting)
+            failures.push(`a share's start forgets the ways back: ${forgot}, not ${forgetting}`);
+
         // A row that arrives while the list is shown comes at the end, out
         // of the place a tree would give it, so it reads as it would ranked
         // flat, as a session a step in under its orchestrator does once

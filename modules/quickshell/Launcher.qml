@@ -3367,18 +3367,25 @@ Scope {
     // shown, before the share, so it goes too, from the steps and the
     // rows on screen alike, since a refresh keeps on screen what it shows
     // (Steady.forgottenAt), rather than naming what the share hides until
-    // the next key; and an arm made before goes, so no Return after the
-    // share releases on a line read before it.
+    // the next key; an arm made before goes, so no Return after the share
+    // releases on a line read before it; and every way back goes, since a
+    // place held before may be an ask's step, whose name the crumb draws
+    // (Steady.shareStarts says what's left).
     function untold() {
         const forgotten = toldOnOpen.length + saying.length;
         toldOnOpen = [];
         say([]);
         forgetGone();
-        const shown = Steady.forgottenAt(matches, current, pairedId);
-        if (shown.rows.length !== matches.length) {
-            matches = shown.rows;
-            current = shown.at;
+        const left = Steady.shareStarts({ rows: matches, at: current, back: jumpsBack,
+            ahead: jumpsAhead, tags: tagsBack, last: lastPlace }, pairedId);
+        if (left.rows.length !== matches.length) {
+            matches = left.rows;
+            current = left.at;
         }
+        jumpsBack = left.back;
+        jumpsAhead = left.ahead;
+        tagsBack = left.tags;
+        lastPlace = left.last;
         armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `

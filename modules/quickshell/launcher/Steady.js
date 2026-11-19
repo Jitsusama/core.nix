@@ -89,6 +89,18 @@ function forgottenAt(rows, at, id) {
     return { rows: left, at: selection(left, { row: on, at, lowest: 0, nth }, id) };
 }
 
+// What a share's start leaves of what the launcher holds, from `was`:
+// { rows, at, back, ahead, tags, last }, the rows shown and where the
+// selection is, Ctrl+O's and Ctrl+I's places, Ctrl+T's, and Tab's last.
+// The rows that left go (forgottenAt), and every way back goes with them,
+// since a place held before the share may be an ask's step, whose name
+// the crumb draws; none is kept by telling which, so one never told
+// apart can't come back (Launcher.qml's untold).
+function shareStarts(was, id) {
+    const shown = forgottenAt(was.rows, was.at, id);
+    return { rows: shown.rows, at: shown.at, back: [], ahead: [], tags: [], last: null };
+}
+
 // Where the selection goes in them, from where it `was`: { row, at,
 // lowest, nth }, the id of the row it was on ("" for none), its place, and
 // how many rows alike in that id stood above it. It goes onto that row, the
