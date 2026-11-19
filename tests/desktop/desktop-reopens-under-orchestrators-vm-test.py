@@ -1006,13 +1006,18 @@ def test_a_start_a_switch_cut_off_is_told_once(desktop: Desktop) -> None:
         asked_from_a_link(desktop, link)
         desktop.as_account("systemctl --user restart agents quickshell")
         noticed(desktop, CUT_OFF, before, dt.timedelta(seconds=120))
+        # Said told, the daemon keeps it no more, so no shell after is served it to tell again.
+        machine.wait_until_succeeds(
+            desktop.in_session(f"jq -e {shlex.quote('.starts == []')} {STARTS_KEPT}"),
+            timeout=dt.timedelta(seconds=30),
+        )
         desktop.as_account("systemctl --user restart quickshell")
         machine.wait_until_succeeds(
             desktop.in_session("qs ipc call launcher list > /dev/null"),
             timeout=dt.timedelta(seconds=120),
         )
-        # The shell is told what's kept as it connects, so a told start would be noticed again
-        # within moments of its list answering.
+        # Nothing is kept to serve it, so this only backs that up: a told start would be noticed
+        # again within moments of its list answering.
         machine.sleep(NOTICE_LANDS)
         told = starts_noticed(desktop, CUT_OFF)
         assert told == before + 1, f"a cut-off start was noticed {told - before} times"
@@ -1051,6 +1056,9 @@ def noticed(desktop: Desktop, body: str, before: int, within: dt.timedelta) -> N
 # Start New Work's notices, and what the agents daemon says of a start its node took and fell
 # silent on (modules/agents/src/sprout.rs's SILENT).
 WALK_ENDED = shlex.quote("launcher: new work wasn't started")
+# The starts the agents daemon keeps until the shell says it told Joel (modules/agents/home.nix's
+# --kept folder, starts.rs's FILE).
+STARTS_KEPT = "~/.local/state/agents/starts.json"
 # Seconds for a notice spawned as a walk's end is journalled to reach the notices daemon's
 # kept list, waited before saying none came: there's no event for a notice never sent.
 NOTICE_LANDS = 3

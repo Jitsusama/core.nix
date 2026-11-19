@@ -337,7 +337,8 @@ fn sprouts_for_the_shell(shared: &Shared, node: Option<PathBuf>, told: mpsc::Sen
             Some(answer)
         }),
     );
-    shared.slow(&["feedback", sprout::ASK]);
+    // Told asks the shell's systemd who the shell is, as a sprout does.
+    shared.slow(&["feedback", sprout::ASK, starts::TOLD]);
 }
 
 /// Follows the node: every kind of record it holds that Agents reads.
@@ -564,8 +565,9 @@ mod sprouts {
     use super::*;
 
     /// The daemon's own socket, served as `serve` serves it, refuses a
-    /// sprout from a process that isn't the shell's, this test's, and asks
-    /// the node nothing.
+    /// sprout from a process that isn't the shell's, this test's, asks
+    /// the node nothing, and keeps nothing of a start it names, nor takes
+    /// its word that one was told.
     #[test]
     fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
         let folder = std::env::temp_dir().join(format!("agents-sprouts-{}", std::process::id()));
@@ -576,18 +578,30 @@ mod sprouts {
         let node = UnixListener::bind(&at_node).expect("a node's socket");
         node.set_nonblocking(true).expect("the node never waits");
         let shared = Shared::new(DOMAIN, Box::new(|_| None));
-        sprouts_for_the_shell(&shared, Some(at_node), mpsc::channel().0);
+        let (told, heard) = mpsc::channel();
+        sprouts_for_the_shell(&shared, Some(at_node), told);
         let socket = folder.join("agents.sock");
         let listener = serve::listen(&socket).expect("the daemon's socket");
         serve::accept(shared, listener);
         let mut asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
-        let ask = json!({"id": 1, "ask": sprout::ASK, "text": "https://github.com/o/r/issues/7"});
+        let ask = json!({"id": 1, "ask": sprout::ASK, "text": "https://github.com/o/r/issues/7",
+            "start": "a-1"});
         writeln!(asking, "{ask}").expect("the sprout is asked");
-        let mut line = String::new();
-        BufReader::new(&asking)
-            .read_line(&mut line)
-            .expect("an answer");
-        let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
+        let ask = json!({"id": 2, "ask": starts::TOLD, "starts": ["a-0"]});
+        writeln!(asking, "{ask}").expect("the told is asked");
+        let mut reading = BufReader::new(&asking);
+        let mut answer_to = |what: &str| {
+            let mut line = String::new();
+            reading.read_line(&mut line).expect(what);
+            serde_json::from_str::<Value>(&line).expect("one line of JSON")
+        };
+        let mut answers = [answer_to("an answer"), answer_to("a second answer")];
+        // Each is answered on a thread of its own, so in either order.
+        answers.sort_by_key(|one| one["id"].as_u64());
+        let [answer, told_answer] = answers;
+        assert_eq!(told_answer["error"]["code"], "untold", "took a told: {told_answer}");
+        // Both are answered after all they tell the loop.
+        assert!(heard.try_recv().is_err(), "the loop was told of another's start");
         let why = answer["error"]["message"].as_str().unwrap_or_default();
         // The lent builders run Linux 6.1, where who asked can't be told;
         // there that refusal is what's held to.

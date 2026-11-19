@@ -86,12 +86,21 @@ impl Starts {
     /// What `path` keeps at `now_ms`, as a daemon starting finds it: a
     /// start with no end was cut off by whatever stopped the daemon that
     /// asked, so it ends so, and one older than a day goes. None are kept
-    /// when the file isn't there or can't be read whole.
+    /// when the file isn't there or can't be read whole, the latter said,
+    /// as each start it held then goes untold.
     pub fn read(path: &Path, now_ms: u128) -> Self {
-        let said: Value = fs::read(path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or(Value::Null);
+        let said = match fs::read(path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|why| why.to_string()),
+            Err(why) if why.kind() == io::ErrorKind::NotFound => Ok(Value::Null),
+            Err(why) => Err(why.to_string()),
+        }
+        .unwrap_or_else(|why| {
+            eprintln!(
+                "agents: can't read {}, so no start kept there is told: {why}",
+                path.display()
+            );
+            Value::Null
+        });
         let kept = said["starts"].as_array().map(|starts| {
             starts
                 .iter()

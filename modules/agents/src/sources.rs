@@ -78,7 +78,8 @@ pub enum Heard {
     /// moment in milliseconds, for an hour.
     PutOffWant(String, u128),
     /// The shell asked the start it names by this token at this moment
-    /// in milliseconds, kept before the node is asked (starts.rs).
+    /// in milliseconds, told the loop as the node is asked, and kept by
+    /// it at once (starts.rs); a daemon killed in that moment keeps none.
     Begun(String, u128),
     /// The start this token names ended with this answer to the shell.
     Ended(String, Value),
