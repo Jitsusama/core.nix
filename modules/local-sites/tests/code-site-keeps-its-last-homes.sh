@@ -20,7 +20,9 @@ mkdir -p "$work/bin" "$work/site"
 # it does when its answer can't be written whole, half a record out first,
 # or, while $work/silent exists, ends well having said nothing at all, or,
 # while $work/stalled exists, half a record out, stalls as a reading starved
-# on a machine under pressure does.
+# on a machine under pressure does, deaf to the first signal while
+# $work/stubborn exists too, or, while $work/killed exists, is killed
+# outright, as the kernel kills a program when memory runs out.
 cat > "$work/bin/repos" << EOF
 #!$BASH
 if [ "\$*" != "--json" ]; then
@@ -35,8 +37,14 @@ fi
 if [ -e "$work/silent" ]; then
   exit 0
 fi
+if [ -e "$work/killed" ]; then
+  kill -KILL \$\$
+fi
 if [ -e "$work/stalled" ]; then
   printf '{"schema":"repos.repositories/1",'
+  if [ -e "$work/stubborn" ]; then
+    trap '' TERM
+  fi
   # A minute is far past the writer's wait here, so only the writer's own bound ends it.
   exec sleep 60
 fi
@@ -91,31 +99,45 @@ rm "$work/silent"
 touch "$work/stalled"
 # The writer waits a second here rather than its minute's share, so the check
 # stays quick.
-started=$SECONDS
-if ! said=$(CODE_SITE_WAITS=1 "$BASH" "$writer" "$work/site"); then
-  echo "With repos stalled, the writer failed, so its unit would fail." >&2
-  exit 1
-fi
-if ((SECONDS - started > 10)); then
-  echo "With repos stalled, the writer waited $((SECONDS - started)) s, not its second." >&2
-  exit 1
-fi
-homes=$(< "$work/site/homes.json")
-if [ "$homes" != '{"kept":true}' ]; then
-  echo "With repos stalled, the writer changed the last homes to '$homes'." >&2
-  exit 1
-fi
-if [[ $said != *"the last homes stay"* ]] || [[ $said == *$'\n'* ]]; then
-  echo "With repos stalled, the writer said '$said' rather than one line." >&2
-  exit 1
-fi
-left=("$work/site"/*)
-if [ "${left[*]}" != "$work/site/homes.json" ]; then
-  echo "With repos stalled, the writer left ${left[*]} in the site's folder." >&2
-  exit 1
-fi
+stalls() {
+  local how=$1 started=$SECONDS said homes
+  if ! said=$(CODE_SITE_WAITS=1 "$BASH" "$writer" "$work/site"); then
+    echo "With repos $how, the writer failed, so its unit would fail." >&2
+    exit 1
+  fi
+  # Its second's wait, and the five it gives a read deaf to the first signal.
+  if ((SECONDS - started > 10)); then
+    echo "With repos $how, the writer waited $((SECONDS - started)) s, not its second." >&2
+    exit 1
+  fi
+  homes=$(< "$work/site/homes.json")
+  if [ "$homes" != '{"kept":true}' ]; then
+    echo "With repos $how, the writer changed the last homes to '$homes'." >&2
+    exit 1
+  fi
+  if [[ $said != "repos read for over 1 s"*"; the last homes stay" ]]; then
+    echo "With repos $how, the writer said '$said' rather than that it read too long." >&2
+    exit 1
+  fi
+  left=("$work/site"/*)
+  if [ "${left[*]}" != "$work/site/homes.json" ]; then
+    echo "With repos $how, the writer left ${left[*]} in the site's folder." >&2
+    exit 1
+  fi
+}
+stalls stalled
+touch "$work/stubborn"
+stalls "stalled, deaf to the first signal"
+rm "$work/stalled" "$work/stubborn"
 
-rm "$work/stalled"
+# A read killed by something else is a failure, not a stall, however it ended.
+touch "$work/killed"
+said=$(CODE_SITE_WAITS=1 "$BASH" "$writer" "$work/site")
+if [[ $said != "repos failed"* ]]; then
+  echo "With repos killed outright, the writer said '$said' rather than that it failed." >&2
+  exit 1
+fi
+rm "$work/killed"
 "$BASH" "$writer" "$work/site"
 homes=$(jq -c '[.things[] | [.kind, .key, .names[0], .address]]' "$work/site/homes.json")
 want='[["repository","github:owl/core","core","code/#repo=owl%2Fcore"],'

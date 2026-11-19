@@ -677,8 +677,9 @@
   '';
   code-site-keeps-its-last-homes = ''
     the code site's writer, while repos fails or stalls, ends well in one line and leaves the last
-    homes as they were, a stalled read ended in its time, and once repos answers replaces them whole with every repository and present tree at
-    its Code address, readable by the server
+    homes as they were, a stalled read ended in its time even when deaf to the first signal and a
+    killed one called a failure, and once repos answers replaces them whole with every repository
+    and present tree at its Code address, readable by the server
   '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
