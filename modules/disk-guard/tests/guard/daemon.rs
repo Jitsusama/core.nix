@@ -2139,6 +2139,13 @@ fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_byte
     );
     let target = deps.parent().unwrap().parent().unwrap();
     let journal = home.journal();
+    let tried = held.join(format!("held-{OLD}"));
+    assert!(
+        journal.iter().any(|line| line["event"] == "action"
+            && line["path"] == tried.to_string_lossy().as_ref()
+            && line["outcome"] == "kept"),
+        "the held build was never tried, so this case tests nothing: {journal:?}"
+    );
     let swept: Vec<_> = journal
         .iter()
         .filter(|line| line["event"] == "replaced")

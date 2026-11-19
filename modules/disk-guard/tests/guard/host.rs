@@ -53,6 +53,44 @@ fn a_scan_is_reused_until_something_is_moved() {
 }
 
 #[test]
+fn a_scan_judges_each_target_and_checkout_for_itself_within_one_reading() {
+    // A take judges once for each build it takes, from one reading of the
+    // processes, so what it remembers must answer only for what it judged.
+    let proc = tempfile::tempdir().unwrap();
+    sitting(proc.path(), 100, "/home/u/src/app/target/debug");
+    sitting(proc.path(), 101, "/home/u/src/tool/src");
+    let mut scan = Scan::new(
+        proc.path(),
+        &proc.path().join("locks"),
+        42,
+        Duration::from_secs(3600),
+    );
+    assert_eq!(
+        scan.judge(Path::new("/home/u/src/other/target"), None)
+            .unwrap(),
+        Use::Free,
+        "a target nothing works in read as used"
+    );
+    assert_eq!(
+        scan.judge(Path::new(TARGET), None).unwrap(),
+        Use::Busy(100),
+        "another target's judgement answered for one a process works in"
+    );
+    let tool = Path::new("/home/u/src/tool/target");
+    assert_eq!(
+        scan.judge(tool, None).unwrap(),
+        Use::Free,
+        "a target judged without its checkout read as used"
+    );
+    assert_eq!(
+        scan.judge(tool, Some(Path::new("/home/u/src/tool")))
+            .unwrap(),
+        Use::Occupied(101),
+        "a judgement without its checkout answered for one with it"
+    );
+}
+
+#[test]
 fn a_scan_older_than_its_freshness_is_taken_again() {
     let proc = tempfile::tempdir().unwrap();
     let mut scan = Scan::new(proc.path(), &proc.path().join("locks"), 42, Duration::ZERO);

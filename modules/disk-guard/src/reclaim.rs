@@ -177,7 +177,7 @@ pub fn build(
         let file = String::from_utf8_lossy(file);
         file == format!("{name}-{digest}.d")
             || file == format!("{name}-{digest}")
-            || ["rlib", "rmeta", "so", "a", "dylib"]
+            || crate::replaced::LIBRARY_SUFFIXES
                 .iter()
                 .any(|suffix| file == format!("lib{name}-{digest}.{suffix}"))
     };

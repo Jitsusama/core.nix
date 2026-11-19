@@ -203,6 +203,9 @@ impl Uses {
     }
 }
 
+/// The suffixes a library's files take, as [`LIBRARY`] reads them.
+pub const LIBRARY_SUFFIXES: [&str; 5] = ["rlib", "rmeta", "so", "a", "dylib"];
+
 /// A library cargo built, which later builds read: `lib<crate>-<digest>`
 /// with the library's own suffix.
 static LIBRARY: LazyLock<Regex> = LazyLock::new(|| {
@@ -262,6 +265,24 @@ pub fn replaced(target: &Path) -> Vec<Build> {
         .iter()
         .flat_map(|deps| older(builds(deps)))
         .collect()
+}
+
+/// Whether any file of the build `path` names still stands. An offer
+/// names a build by its `deps/<name>-<digest>`, a file only an executable
+/// has: a library is its `lib<name>-<digest>` files and its dep-info.
+pub fn stands(path: &Path) -> bool {
+    let (Some(deps), Some(stem)) = (path.parent(), path.file_name().and_then(|s| s.to_str()))
+    else {
+        return false;
+    };
+    [stem.to_owned(), format!("{stem}.d")]
+        .into_iter()
+        .chain(
+            LIBRARY_SUFFIXES
+                .iter()
+                .map(|suffix| format!("lib{stem}.{suffix}")),
+        )
+        .any(|file| deps.join(file).symlink_metadata().is_ok())
 }
 
 /// What a build in `deps` holds besides its dep-info.

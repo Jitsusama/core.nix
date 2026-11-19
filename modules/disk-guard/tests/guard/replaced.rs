@@ -4,7 +4,7 @@ use disk_guard::anchor::Dir;
 use disk_guard::pass::Outcome;
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::reclaim;
-use disk_guard::replaced::{Build, Unit, Uses, replaced, watched_dirs};
+use disk_guard::replaced::{Build, Unit, Uses, replaced, stands, watched_dirs};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -754,6 +754,35 @@ fn a_build_whose_target_cargo_holds_is_kept() {
     );
     assert!(matches!(outcome, Outcome::Kept(_)), "{outcome:?}");
     assert_eq!(names(&target.join("debug/deps")).len(), 8);
+}
+
+#[test]
+fn a_build_stands_while_any_file_of_it_does_though_a_library_has_none_of_its_name() {
+    // A pass on a build disk drops an offer that no longer stands, as
+    // taken already by the disk beneath it.
+    let root = tempfile::tempdir().unwrap();
+    let deps = root.path().join("target/debug/deps");
+    fs::create_dir_all(&deps).unwrap();
+    let library = deps.join("serde-1111111111111111");
+    fs::write(deps.join("libserde-1111111111111111.rmeta"), "").unwrap();
+    assert!(
+        stands(&library),
+        "a library whose files stand read as taken already"
+    );
+    fs::remove_file(deps.join("libserde-1111111111111111.rmeta")).unwrap();
+    fs::write(deps.join("serde-1111111111111111.d"), "").unwrap();
+    assert!(
+        stands(&library),
+        "a build whose dep-info stands read as taken"
+    );
+    fs::remove_file(deps.join("serde-1111111111111111.d")).unwrap();
+    assert!(
+        !stands(&library),
+        "a build none of whose files are left read as standing"
+    );
+    let test = deps.join("app-2222222222222222");
+    fs::write(&test, "").unwrap();
+    assert!(stands(&test), "an executable that stands read as taken");
 }
 
 #[test]

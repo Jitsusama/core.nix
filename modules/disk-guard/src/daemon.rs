@@ -2286,12 +2286,16 @@ impl Guard {
 
     /// Whether an offer on an image is gone already: its builds are offered
     /// both to its own disk's pass and to the one beneath it, and the first
-    /// of the two in a round may have taken it.
+    /// of the two in a round may have taken it. A build's offer names a
+    /// file a library hasn't, so its own files say whether it went.
     fn taken(&self, offer: &Offer) -> bool {
         self.watched
             .get(&offer.device)
             .is_some_and(|watched| watched.backing.is_some())
-            && fs::symlink_metadata(&offer.candidate.path).is_err()
+            && match offer.candidate.class {
+                Class::Replaced => !crate::replaced::stands(&offer.candidate.path),
+                _ => fs::symlink_metadata(&offer.candidate.path).is_err(),
+            }
     }
 
     /// Surveys once and runs each filesystem's pass over what lies on it.
