@@ -44,8 +44,8 @@ WHILE_WATCHED = ["second", "third", "fourth"]
 # Where what the commits made during a watch said goes, since the feed's own text is read.
 MEANWHILE = "/root/meanwhile.log"
 # How long the daemon has to write its homes: its first reading writes them, and its pace reads
-# again a minute on.
-HOMES = timedelta(minutes=1)
+# again a minute on, so twice that leaves a reading the pace makes room to land.
+HOMES = timedelta(minutes=2)
 # The repository made on the disk, under the root code-page.nix gives repos instead of its own.
 REPOSITORY = "/home/alice/code/kestrel"
 # A tree cut from it once the daemon runs, and where Code is home to it, its path escaped whole.

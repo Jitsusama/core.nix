@@ -3,6 +3,9 @@ use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use repos::model::{Checkout, Head, Record, Repository, SCHEMA, Tree, TreeKind};
 use serde_json::{Value, json};
@@ -219,11 +222,17 @@ fn a_pipe_at_the_homes_never_holds_the_writing_and_is_put_right() {
         0,
         "a pipe at the homes"
     );
-    let mut homes = Homes::at(file.clone());
-    assert!(
-        homes.write(&record()).expect("written"),
-        "the pipe was read as the homes"
-    );
+    // Written on a thread of its own, so a pipe that holds it fails the case rather than
+    // hanging the build.
+    let writing = file.clone();
+    let (wrote, written) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = wrote.send(Homes::at(writing).write(&record()));
+    });
+    let answer = written
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the pipe held the writing");
+    assert!(answer.expect("written"), "the pipe was read as the homes");
     let kind = fs::symlink_metadata(&file).expect("the homes").file_type();
     assert!(kind.is_file(), "the pipe stayed where the homes go");
     assert_eq!(read(&file), of(&record()));
@@ -305,14 +314,14 @@ fn a_writing_that_fails_leaves_nothing_and_is_tried_again_at_the_next() {
     let file = folder.join("homes.json");
     let mut homes = Homes::at(file.clone());
     homes.write(&record()).expect("written");
-    // A folder full where the file goes takes no rename, even by root.
+    // A folder holding something where the file goes takes no rename, even by root.
     fs::remove_file(&file).expect("the homes gone");
     fs::create_dir_all(file.join("in the way")).expect("a folder in the way");
     let mut fewer = record();
     fewer.repositories.pop();
     assert!(
         homes.write(&fewer).is_err(),
-        "a rename onto a full folder succeeded"
+        "a rename onto a folder in the way succeeded"
     );
     assert_eq!(
         names_in(&folder),
@@ -326,6 +335,41 @@ fn a_writing_that_fails_leaves_nothing_and_is_tried_again_at_the_next() {
         "the homes weren't tried again"
     );
     assert_eq!(read(&file), of(&record()));
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn a_writing_that_fails_in_its_hidden_file_names_it() {
+    // A reader of the folder won't see the hidden file, so the failure has to name it.
+    let folder = folder("hidden fails");
+    let file = folder.join("homes.json");
+    let temp = folder.join(".homes.json.writing");
+    fs::create_dir_all(temp.join("in the way")).expect("a folder in the hidden file's way");
+    let why = Homes::at(file.clone())
+        .write(&record())
+        .expect_err("written through a folder");
+    assert!(
+        why.to_string().contains(&temp.display().to_string()),
+        "the failure said {why}"
+    );
+    assert!(!file.exists(), "homes came of a failed writing");
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn a_failure_for_another_reason_is_said_again() {
+    let folder = folder("said again");
+    let file = folder.join("homes.json");
+    fs::create_dir_all(file.join("in the way")).expect("a folder in the way");
+    let mut homes = Homes::at(file.clone());
+    let first = homes.keep(&record()).expect("the failure said");
+    let temp = folder.join(".homes.json.writing");
+    fs::create_dir_all(temp.join("in the way")).expect("a folder in the hidden file's way");
+    let then = homes.keep(&record()).expect("another failure said");
+    assert_ne!(
+        then, first,
+        "the second failure gave the first one's reason"
+    );
     let _ = fs::remove_dir_all(&folder);
 }
 
