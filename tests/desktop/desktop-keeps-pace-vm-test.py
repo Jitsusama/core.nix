@@ -273,8 +273,6 @@ class Timing:
         self.said = self.timed = self.pressing = self.presses = 0
         self.turns: list[tuple[int, bool]] = []
         self.loading = True
-        # Whether the load is turning, so a turn that fails partway keeps its ticks in neither.
-        self.turning = False
         # How long, in ms, the compositor and the shell waited for a processor in each turn, and
         # the turn being pressed with what they'd waited when it began.
         self.waited: dict[int, float] = {}
@@ -301,31 +299,31 @@ class Timing:
         # waits for its answer by default, though the unit froze. FREEZING is longer than that.
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
         self.count(kept=True)
-        self.turning = True
+        self.ledger.turning()
         self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs", timeout=2 * FREEZING)
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
-        self.turning = False
+        self.ledger.turned()
         # The ticks while the load turned are neither turn's, so they're passed over.
         self.count(kept=False)
 
     def count(self, *, kept: bool) -> None:
         """Count the ticks since the last count, kept with the load as it stands."""
         stat = self.desktop.machine.succeed("head -1 /proc/stat")
-        self.ledger.count(stat, turn=self.loading if kept and not self.turning else None)
+        self.ledger.count(stat, turn=self.loading if kept else None)
 
     def end(self) -> None:
         """Say what the guest counted stolen, then let the load run again if it's frozen.
 
         Said before any of a test's bars is judged, so a run that fails says it too, and before
-        the thaw, which a stalled builder can fail. A VM past answering still says the turns
-        already counted, without the last.
+        the thaw, which a stalled builder can fail. A last count that fails still says the turns
+        already counted, without the last, and a load left between turns is let run too.
         """
         try:
             self.count(kept=True)
         finally:
             print(self.ledger.said())
-        if not self.loading:
+        if not self.loading or self.ledger.between:
             self.load(on=True)
 
     def waiting(self) -> float:
@@ -1029,6 +1027,9 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
             f"the VM's threads, by the builder's processors each may run on: {held},"
             f" of the builder's {builders}"
         )
+        # A hold that didn't take fails as that, so the bar on what was stolen judges the count.
+        holding = ",".join(map(str, builders[:HELD_TO]))
+        assert list(held) == [holding], f"the VM's threads weren't held to {holding}: {held}"
         time.sleep(GAUGING)
         timing.count(kept=True)
     finally:

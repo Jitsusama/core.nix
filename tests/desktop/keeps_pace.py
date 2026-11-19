@@ -67,11 +67,21 @@ class Ledger:
         """Start counting from the kernel's line as it stands."""
         self.last = ticks(stat)
         self.turns: dict[bool, tuple[int, int]] = {True: (0, 0), False: (0, 0)}
+        # Whether the load is between turns, from asking it to turn until it has.
+        self.between = False
+
+    def turning(self) -> None:
+        """Keep what's counted in neither turn until it's turned, so a failed turn keeps none."""
+        self.between = True
+
+    def turned(self) -> None:
+        """Keep what's counted with its turn again, the load having turned."""
+        self.between = False
 
     def count(self, stat: str, *, turn: bool | None) -> None:
         """Count the ticks since the last line into this turn, or into none while it turned."""
         now = ticks(stat)
-        if turn is not None:
+        if turn is not None and not self.between:
             stolen, busy = self.turns[turn]
             self.turns[turn] = (stolen + now[0] - self.last[0], busy + now[1] - self.last[1])
         self.last = now

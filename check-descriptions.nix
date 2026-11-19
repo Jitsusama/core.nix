@@ -81,8 +81,9 @@
     under load alone gives 2, what was stolen frozen weighs against what was under load, every
     tick stolen in both turns gives 1, every tick stolen under load alone the processors, a turn
     with no busy ticks 1, idle, iowait and guests' time are never counted busy, ticks land in the
-    turn they were counted in and those while the load turned in neither, and what a subtest says
-    names each turn's ticks and the share, or no share when a turn had no busy ticks
+    turn they were counted in and those while the load turned, or after a turn that never
+    finished, in neither, and what a subtest says names each turn's ticks and the share, or no
+    share when a turn had no busy ticks
   '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
@@ -5253,8 +5254,8 @@
     cursor, and its drawing takes within twice its time with the load frozen and 50 ms more;
     each printing, passed or failed, what the guest counted its builder stole in each turn,
     which no bar reads; and
-    with the VM held to two of the builder's processors under load, the guest counts at least a
-    quarter of its busy time stolen
+    with every thread of the VM held to two of the builder's processors under load, the guest
+    counts at least a quarter of its busy time stolen
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and
