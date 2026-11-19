@@ -1656,13 +1656,14 @@ fn unresolved_finding(
         Severity::Note,
         format!("{some} couldn't draw on {named}"),
         format!(
-            "In the last day, {some} asked for {named} and drew on the default \
-             instead, the last at {at}; the harness said: {why}. Their work goes on \
-             the default's key, so {named}'s allowance never sees it."
+            "In the last day, {some} asked for {named} and couldn't draw on it, \
+             the last at {at}; the harness said: {why}. Their work goes on the \
+             budget they had before, or the default's key, so {named}'s allowance \
+             never sees it."
         ),
     );
     f.badge = format!("last {at}");
-    f.note = "drew on the default".into();
+    f.note = "drew on another key".into();
     f.surprise = 2.0;
     f
 }
@@ -2538,7 +2539,7 @@ mod tests {
             [(
                 "unresolved:teal",
                 "2 sessions couldn't draw on teal",
-                "drew on the default"
+                "drew on another key"
             )]
         );
         let last = picture.zone.clock(NOW - HOUR, picture.now);
