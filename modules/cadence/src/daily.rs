@@ -6,10 +6,11 @@
 //! A program does it, not a session, so the loop costs no model turns.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -17,7 +18,7 @@ use jiff::tz::TimeZone;
 use crate::builders;
 use crate::day::{self, Day};
 use crate::findings;
-use crate::findings::gone;
+use crate::findings::{gone, hubs};
 use crate::gate;
 use crate::health;
 use crate::holders;
@@ -75,10 +76,10 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     );
     // A typed run tells nobody, so it marks nobody told or late.
     let sending = told.orchestrator.is_some();
-    let late = if sending {
-        findings::late(&mut ledger, now)
+    let (late, put) = if sending {
+        put_late(&mesh, &mut ledger, state_home, running, now)?
     } else {
-        Vec::new()
+        (Vec::new(), 0)
     };
     let asks = if sending {
         findings::tell(&mut ledger, &today.date, told.watcher.as_deref())
@@ -92,6 +93,16 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         note.push_str("- ");
         note.push_str(&line);
         note.push_str(".\n");
+    }
+    match put {
+        0 => {}
+        1 => note.push_str("- 1 late finding went back to its subject's hub as a need.\n"),
+        n => {
+            let _ = writeln!(
+                note,
+                "- {n} late findings went back to their subjects' hubs as needs."
+            );
+        }
     }
     let mut record = serde_json::to_value(&today)?;
     record["worse"] = serde_json::to_value(&judged.worse)?;
@@ -111,6 +122,33 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         mesh.send(&message(orchestrator, "fyi", note))?;
     }
     Ok(())
+}
+
+/// Puts each late finding in `ledger` to its subject's hub, as the node
+/// names hubs, keeping a need for each in the mesh's day file, and gives
+/// back the lines for the orchestrator of those no hub took, and how many
+/// went to hubs. With no node to ask, every late finding is a line.
+fn put_late(
+    mesh: &Mesh,
+    ledger: &mut [findings::Entry],
+    state_home: &Path,
+    running: impl Fn(&mesh::Presence) -> bool,
+    now: i64,
+) -> io::Result<(Vec<String>, usize)> {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let realm = std::env::var("MYCELIUM_REALM").ok();
+    let hubs = runtime
+        .and_then(|r| hubs::socket(&r, state_home, realm))
+        .map(|socket| hubs::listed(&socket))
+        .unwrap_or_default();
+    let live = |address: &str| mesh.presence(address).is_some_and(|p| running(&p));
+    let (put, late) = hubs::put_late(ledger, &hubs, live, now);
+    let cells = mesh.known().len();
+    hubs::keep(
+        &mesh.root,
+        &hubs::needs(&put, crate::FROM, now * 1000, cells),
+    )?;
+    Ok((late, put.len()))
 }
 
 /// The days kept before the one ending at `now`: the newest `BEFORE` that

@@ -3,8 +3,9 @@
 //! in, so one reader reads them all: each finding a day names stays open, with its owner and the
 //! date its answer is due, until its figure has been back for two days.
 //! Each owner is told once a day of what's new for it, in one message,
-//! and a finding still open past its date goes to the orchestrator once,
-//! so nothing a day found is lost and nobody is asked twice. A must a
+//! and a finding still open past its date goes back to its subject's hub
+//! (hubs.rs), or to the orchestrator once where no hub takes it, so
+//! nothing a day found is lost and nobody is asked twice. A must a
 //! quest owes, filed with `cadence owe` (owe.rs), is kept here too, and
 //! stays open until its owner says it's done.
 
@@ -20,6 +21,7 @@ use crate::judge::Finding;
 use crate::{DAY, holders, write_whole};
 
 pub mod gone;
+pub mod hubs;
 
 /// One finding as the ledger keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -56,6 +58,10 @@ pub struct Entry {
     /// didn't hold counts against it rather than opening a second line.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub reopened: u32,
+    /// The subject whose hub it was put to once it went late, so its
+    /// holder keeps it over the owner lines until it closes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hub: Option<String>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -141,6 +147,7 @@ pub fn update(
                 entry.due = day.to + DAY;
                 entry.told = None;
                 entry.late = false;
+                entry.hub = None;
             }
             entry.last.clone_from(&day.date);
             entry.last_to = day.to;
@@ -163,14 +170,18 @@ pub fn update(
                 late: false,
                 kind: None,
                 reopened: 0,
+                hub: None,
             });
         }
     }
     // The owners are Joel's config as it reads today, so an owner named
     // after a finding opened takes it, with a day of its own to answer,
     // rather than the watcher keeping it for as long as it stays open. A
-    // must keeps the quest that filed it.
-    for entry in ledger.iter_mut().filter(|e| e.open && e.kind.is_none()) {
+    // must keeps the quest that filed it, and one put to a hub its holder.
+    for entry in ledger
+        .iter_mut()
+        .filter(|e| e.open && e.kind.is_none() && e.hub.is_none())
+    {
         let owner = holder(&entry.key, owners, known);
         if owner.is_some() && owner != entry.owner {
             entry.owner = owner;
@@ -201,7 +212,14 @@ pub fn tell(ledger: &mut [Entry], date: &str, watcher: Option<&str>) -> Vec<(Str
             continue;
         };
         entry.told = Some(date.to_owned());
-        by_owner.entry(to).or_default().push(entry.words.clone());
+        let words = match &entry.hub {
+            Some(subject) => format!(
+                "{}, open since {} and past its date, put to you as a holder of {subject}",
+                entry.words, entry.first
+            ),
+            None => entry.words.clone(),
+        };
+        by_owner.entry(to).or_default().push(words);
     }
     by_owner
         .into_iter()
@@ -227,27 +245,15 @@ pub fn tell(ledger: &mut [Entry], date: &str, watcher: Option<&str>) -> Vec<(Str
         .collect()
 }
 
-/// The open findings past their date at `now` that the orchestrator
-/// hasn't heard of, each marked heard, as the note's lines.
-pub fn late(ledger: &mut [Entry], now: i64) -> Vec<String> {
-    ledger
-        .iter_mut()
-        .filter(|e| e.open && !e.late && e.due < now)
-        .map(|entry| {
-            entry.late = true;
-            format!(
-                "Late: {}, open since {}, with {}",
-                entry.words,
-                entry.first,
-                entry.owner.as_deref().unwrap_or("no owner")
-            )
-        })
-        .collect()
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// The lines late findings give with no hub standing, as every late
+    /// finding was told before hubs.
+    pub(crate) fn late(ledger: &mut [Entry], now: i64) -> Vec<String> {
+        hubs::put_late(ledger, &[], |_| true, now).1
+    }
 
     pub(crate) fn found(key: &str) -> Finding {
         Finding {
