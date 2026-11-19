@@ -226,7 +226,10 @@ fn sign_in(context: &Context, login: &str) -> Result<(), Failure> {
         return Err(
             Failure::new(Exit::Refused, "sign-in asks for the code eero sends")
                 .because("stdin isn't a terminal to type it in, so run it in one")
-                .try_this(format!("eero sign-in {login}")),
+                .try_this(format!(
+                    "eero sign-in {}",
+                    terminal_kit::failure::shell_word(login)
+                )),
         );
     }
     let refused = |why: String| Failure::new(Exit::Failed, "eero didn't sign you in").because(why);
@@ -278,17 +281,25 @@ fn conferencing(context: &Context, on: bool) -> Result<(), Failure> {
             .collect();
         return said(context.answer(&json!({"schema": "eero.sqm/1", "networks": networks})));
     }
+    said(context.say(&each_said(&networks)))
+}
+
+/// Each network's status a line, for a person. A network's name is
+/// anyone's to set, so each line is drawn without what the terminal kit
+/// keeps from the terminal, as a page is.
+fn each_said(networks: &[api::Network]) -> String {
     let mut lines: Vec<String> = networks
         .iter()
-        .map(|network| status::line(network, None))
+        .map(|network| terminal_kit::layout::one_line(&status::line(network, None)).into_owned())
         .collect();
     lines.push(String::new());
-    said(context.say(&lines.join("\n")))
+    lines.join("\n")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{commands, view_words};
+    use super::{api, commands, each_said, view_words};
+    use serde_json::json;
     use terminal_kit::tree;
 
     /// The words a body is given for a command line, as the kit walks it.
@@ -390,5 +401,17 @@ mod tests {
                 "eero {line} should be refused with 64"
             );
         }
+    }
+
+    #[test]
+    fn a_networks_name_says_one_status_line_and_no_control() {
+        let named =
+            json!({"name": "Home\n\u{1b}[2Jeero  online", "status": "connected", "sqm": true});
+        let networks = [api::network("/2.2/networks/1", &named)];
+        assert_eq!(
+            each_said(&networks),
+            "Home [2Jeero  online  online  conferencing on\n",
+            "a network's name drew a line of its own, or a control reached the terminal"
+        );
     }
 }

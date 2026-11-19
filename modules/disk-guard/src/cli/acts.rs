@@ -106,7 +106,10 @@ pub(super) fn clear(
         return Err(
             Failure::new(Exit::Failed, format!("{} stays", path.display()))
                 .because(format!("you keep it: {}", keep.reason))
-                .try_this(format!("disk-guard keeps {} remove", kept.display())),
+                .try_this(format!(
+                    "disk-guard keeps {} remove",
+                    terminal_kit::failure::shell_word(&kept.display().to_string())
+                )),
         );
     }
     crate::clears::ask(&env.state, &path, now()).map_err(|error| {

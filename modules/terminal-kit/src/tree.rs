@@ -183,7 +183,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         let old = (filled == 0).then_some(first).flatten();
         if old.is_none() && takes_name(here, filled) {
             filled += 1;
-            typed.push(quoted(word));
+            typed.push(crate::failure::shell_word(word).into_owned());
             continue;
         }
         if let Some(sub) = old.or_else(|| here.subs.iter().find(answers)) {
@@ -226,16 +226,6 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         return Err(failure.try_this(typed.join(" ")));
     }
     Ok(walked)
-}
-
-/// A word as a shell reads it back whole: in double quotes where it holds
-/// a space or is empty, as `"Main Floor"`.
-fn quoted(word: &str) -> String {
-    if word.is_empty() || word.contains(char::is_whitespace) {
-        format!("\"{}\"", word.replace('"', "\\\""))
-    } else {
-        word.to_owned()
-    }
 }
 
 #[cfg(test)]
@@ -376,7 +366,7 @@ mod tests {
         let failure = walk(&help, &typed).expect_err("extra is one too many");
         assert_eq!(
             failure.then.as_deref(),
-            Some("eero nodes \"Main Floor\" devices --help"),
+            Some("eero nodes 'Main Floor' devices --help"),
             "the try-line lost the node's name, or didn't quote it"
         );
     }

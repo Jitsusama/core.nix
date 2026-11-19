@@ -166,7 +166,34 @@ without a rebuild:
   cells, blank where it has none.
 - **Links.** A URL or a path shown into a terminal with ink is a kitty
   hyperlink (OSC 8) on the words that name it, so it opens on a click
-  without being printed twice.
+  without being printed twice. Its words keep only the colours a pen
+  inks with, reset, bold, faint, italic and a foreground colour, and a
+  colour they leave open is closed inside the link.
+- **Only the command's escapes.** Words a command shows are anyone's to
+  set: a device's name, a network's, a path, a message from a server.
+  Words drawn through the kit's pen lose every control character but
+  the line break, with or without ink, a tab or a Unicode separator
+  drawn as a space, the marks that set or reorder the direction of
+  text, and the default-ignorable characters that draw nothing and
+  shape nothing, so none can retitle the window, clear the screen, draw
+  over a line or draw a name backwards. What shapes a word or an emoji
+  stays (the soft hyphen, the joiners, variation selectors and a flag's
+  tags), so a command that finds things by name folds those away before
+  comparing, as eero does; look-alike letters from other scripts, and
+  one letter spelled two ways, aren't folded. The kit's layout, its wait
+  and a title hold the words they're given to one line besides, a line
+  break drawn as a space: a table's cell, a list's row, a fact and its label, a
+  paragraph, words hung after a mark, a failure's every part, a link and
+  a wait's words, so no field draws a record of its own, and none a
+  line that passes for a failure's try. The kit can't tell a break a
+  command wrote from one in a name it was given, so a command with
+  several things to say sets each apart, or parts them with a
+  semicolon. `say` writes what it's given as it is, so a
+  command saying words from outside through it draws them through the
+  pen or `layout::one_line` first. The JSON forms keep the words as they
+  are, escaped as JSON escapes them, which leaves C1 controls, DEL and
+  direction marks as written: they're for programs, not for reading in a
+  terminal.
 
 ## How It Reads
 
@@ -420,7 +447,14 @@ the order they're read, the most useful last, where the eye ends:
   be, under the words, two cells in.
 - **What to do**, where there's something: a command to type after "try",
   or the one thing to check. A command that can't say what to do leaves
-  the line out rather than guess.
+  the line out rather than guess. It's never wrapped, so it copies whole,
+  and it's drawn only as it was written: one holding a name the kit
+  can't draw safely that way, with a line break, a run of blanks, one two
+  cells wide or a character the pen drops, is left out. Changing it
+  could name another thing than the one meant, and keeping it could pad
+  it to where a terminal's own wrap starts a row reading as a try. A
+  word in it from outside goes through the kit's `shell_word`, in single
+  quotes unless it's plain, so pasting the line runs only what it says.
 
 No stack, no `anyhow` chain and no source path by default; `--verbose`
 adds the chain. Errors of one kind are grouped under one line saying how
@@ -503,6 +537,9 @@ It gives:
 - help set in the levels from what the command declares, and the same
   declaration as JSON for the check;
 - tables and lists set to How It Reads, fitting the width and giving way;
+- words drawn without their control characters, as Only the command's
+  escapes says, `layout::drawn` and `layout::one_line` for a command
+  laying out its own;
 - the error's three parts, as text and as JSON, and the exit codes as a
   type;
 - the wait line and its meter, drawn only into a terminal;

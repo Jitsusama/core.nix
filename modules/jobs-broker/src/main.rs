@@ -241,7 +241,9 @@ fn status(units: &[String]) -> Result<(), Failure> {
             Exit::Failed,
             format!("jobs-broker couldn't read {} of the units", unread.len()),
         )
-        .because(unread.join("\n")))
+        // The kit holds a reason to one line, so each unit is parted from
+        // the next by a semicolon rather than a break.
+        .because(unread.join("; ")))
     }
 }
 

@@ -29,6 +29,35 @@ const FORMS: [&str; 11] = [
     "ltd",
 ];
 
+/// A name as it's compared: as it's drawn on one line, without the
+/// characters the kit keeps because they shape a word or an emoji but
+/// which draw nothing beside a plain letter, and with every blank, a
+/// braille or Hangul one as much as a space, read as one space and none
+/// at its ends. So `Lamp` and `Lamp` with a soft hyphen, a variation
+/// selector or a trailing blank are one name, refused as two rather than
+/// one taken for the other. Look-alike letters from other scripts, and
+/// one letter spelled two ways, still differ.
+pub fn spelled(name: &str) -> String {
+    let folded: String = name
+        .chars()
+        .filter(|c| {
+            !matches!(
+                c,
+                '\u{ad}'
+                    | '\u{1160}'
+                    | '\u{180b}'..='\u{180f}'
+                    | '\u{200c}'
+                    | '\u{200d}'
+                    | '\u{fe00}'..='\u{fe0f}'
+                    | '\u{e0020}'..='\u{e007f}'
+                    | '\u{e0100}'..='\u{e01ef}'
+            )
+        })
+        .collect();
+    // Blanks read as the kit's failure words read them, as spaces.
+    terminal_kit::layout::spaced(&folded)
+}
+
 /// What a device on now is called, a maker said as `made` says one.
 pub fn device<'a>(device: &'a Device, made: &str) -> Cow<'a, str> {
     called(
@@ -55,10 +84,13 @@ fn called<'a>(
     mac: &'a str,
     made: &str,
 ) -> Cow<'a, str> {
+    // A name counts only where it spells something, so one of controls
+    // or joiners alone gives way as a blank one does, rather than showing
+    // nothing.
     let given = names
         .into_iter()
         .flatten()
-        .find(|name| !name.trim().is_empty());
+        .find(|name| !spelled(name).is_empty());
     if let Some(name) = given {
         return Cow::Borrowed(name);
     }

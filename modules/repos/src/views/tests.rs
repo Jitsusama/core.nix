@@ -682,6 +682,18 @@ fn an_unknown_name_is_refused_with_the_nearest() {
 }
 
 #[test]
+fn a_nearest_name_is_suggested_so_pasting_it_runs_nothing_else() {
+    let mut record = record();
+    record.repositories[0].name = "core;reboot".to_owned();
+    let refused = find(&record, "core;rebot").expect_err("nothing is core;rebot");
+    assert_eq!(
+        refused.then.as_deref(),
+        Some("repos 'core;reboot'"),
+        "{refused:?}"
+    );
+}
+
+#[test]
 fn every_time_an_answer_gives_is_rfc_3339() {
     let record = refreshed();
     let core = &record.repositories[0];

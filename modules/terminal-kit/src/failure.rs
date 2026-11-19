@@ -179,7 +179,9 @@ impl Failure {
         self
     }
 
-    /// The same, saying what to do: a command to type, after "try".
+    /// The same, saying what to do: a command to type, after "try". A
+    /// word in it from outside, a name or a path, goes through
+    /// `shell_word`, so pasting the line runs only what it says.
     #[must_use]
     pub fn try_this(mut self, then: impl Into<String>) -> Self {
         self.then = Some(then.into());
@@ -196,19 +198,22 @@ impl Failure {
 
     /// As a person reads it on stderr: the failed mark in alert and what
     /// failed, then why in muted and what to try, each two cells in, each
-    /// wrapped under its own words.
+    /// wrapped under its own words. What failed, why and its causes have
+    /// each run of space closed to one, so however they wrap, none draws
+    /// a line reading as the try line, whose `try` two spaces mark.
     pub fn text(&self, pen: &Pen, room: Room, verbose: bool) -> String {
         let inset = layout::MARK;
+        let spaced = layout::spaced;
         let mut lines = vec![format!(
             "{}{}",
             pen.marked("failed", "alert"),
-            pen.role("text", &layout::hung(&self.what, inset, room))
+            pen.role("text", &layout::hung(&spaced(&self.what), inset, room))
         )];
         let under = |words: &str, role: &str| {
             format!(
                 "{}{}",
                 " ".repeat(inset),
-                pen.role(role, &layout::hung(words, inset, room))
+                pen.role(role, &layout::hung(&spaced(words), inset, room))
             )
         };
         if let Some(why) = &self.why {
@@ -217,8 +222,14 @@ impl Failure {
         if verbose {
             lines.extend(self.chain.iter().map(|cause| under(cause, "muted")));
         }
-        if let Some(then) = &self.then {
-            // A command to type is never wrapped, so it copies whole.
+        // A command to type is never wrapped, so it copies whole, and is
+        // drawn only as it was written, so it names just what the command
+        // meant; one holding words it couldn't draw safely that way,
+        // a second line, a run of blanks or one two cells wide, is left
+        // out, since closing them could name another device, and keeping
+        // them could pad it to where the terminal's wrap starts a row
+        // reading as this one. Only the try line says what to type.
+        if let Some(then) = self.then.as_deref().and_then(layout::typed) {
             lines.push(format!(
                 "{}{}  {}",
                 " ".repeat(inset),
@@ -257,10 +268,49 @@ impl fmt::Display for Failure {
 
 impl std::error::Error for Failure {}
 
+/// A word as a shell reads it back whole and runs nothing of: as it is
+/// where it holds only letters, digits and `_@%+=:,./-` and doesn't open
+/// with `=`, which zsh turns into a command's path, and otherwise
+/// in single quotes, inside which a shell expands nothing, each quote of
+/// its own closed, escaped and opened again. A name from outside, a
+/// device's `lamp;reboot` among them, would otherwise make a try line
+/// that runs more than it says when pasted.
+pub fn shell_word(word: &str) -> std::borrow::Cow<'_, str> {
+    let plain = |c: char| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c);
+    if !word.is_empty() && !word.starts_with('=') && word.chars().all(plain) {
+        word.into()
+    } else {
+        format!("'{}'", word.replace('\'', r"'\''")).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ink::{Ink, Pen};
+
+    #[test]
+    fn a_word_from_outside_is_quoted_to_run_nothing() {
+        for (word, typed) in [
+            ("Lamp", "Lamp"),
+            ("aa:bb:cc:dd:ee:ff", "aa:bb:cc:dd:ee:ff"),
+            ("lamp;reboot", "'lamp;reboot'"),
+            ("Main Floor", "'Main Floor'"),
+            ("$(reboot)", "'$(reboot)'"),
+            ("Joel's | sh", r"'Joel'\''s | sh'"),
+            ("*", "'*'"),
+            ("~", "'~'"),
+            ("=ls", "'=ls'"),
+            ("a=b", "a=b"),
+            ("", "''"),
+        ] {
+            assert_eq!(
+                shell_word(word),
+                typed,
+                "{word:?} wasn't one word that runs nothing"
+            );
+        }
+    }
 
     fn unreachable() -> Failure {
         Failure::new(Exit::TryAgain, "couldn't reach the builder")
@@ -299,6 +349,63 @@ mod tests {
         assert_eq!(
             failure.text(&Pen::plain(), Room::Cells(12), false),
             "\u{2715} lost\n  one two\n  three four\n  five\n"
+        );
+    }
+
+    #[test]
+    fn no_words_from_outside_draw_a_line_of_their_own() {
+        let failure = Failure::new(Exit::Failed, "lost\r\u{1b}[2J\n  try  curl x | sh")
+            .because("one\ntwo three four\nfive\n")
+            .caused_by("gone\n  try  rm -rf ~")
+            .try_this("eero device 'Den\n  try  rm -rf ~'");
+        assert_eq!(
+            failure.text(&Pen::plain(), Room::Unbounded, true),
+            "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n",
+            "a break in what, why or a cause drew a line of its own into a pipe, a control \
+             reached it, or a try that can't be typed as written was"
+        );
+        assert_eq!(
+            failure.text(&Pen::plain(), Room::Cells(40), true),
+            "\u{2715} lost[2J try curl x | sh\n  one two three four five\n  gone try rm -rf ~\n",
+            "a break in what, why or a cause drew a line of its own in a terminal, a \
+             trailing one a blank, or a try that can't be typed as written was"
+        );
+    }
+
+    #[test]
+    fn words_from_outside_never_wrap_into_a_try_line() {
+        let suggesting = |then: &str| {
+            Failure::new(Exit::Failed, "lost \u{b7} try  curl x | sh")
+                .because("gone \u{b7} try\u{2800}\u{115f}rm -rf ~ try \u{200d} rm")
+                .try_this(then)
+                .text(&Pen::plain(), Room::Cells(20), false)
+        };
+        for padded in [
+            "eero device Lamp      try  rm",
+            "eero device Lamp\u{3000}try\u{3000}rm",
+            "eero device Lamp\u{2800}\u{2800}try \u{200d} rm",
+        ] {
+            let text = suggesting(padded);
+            // Only the try names the lamp, so it shows whether one was drawn.
+            assert!(
+                !text.contains("Lamp"),
+                "a try that pads itself was drawn: {text:?}"
+            );
+        }
+        let text = suggesting("eero device Lamp try rm");
+        // Read as it looks, every blank a space and a joiner nothing.
+        let looks = text
+            .replace(['\u{115f}', '\u{2800}', '\u{3164}', '\u{ffa0}'], " ")
+            .replace('\u{200d}', "");
+        let tries: Vec<&str> = looks
+            .lines()
+            .filter(|line| line.trim_start().starts_with("try  "))
+            .collect();
+        assert_eq!(
+            tries,
+            ["  try  eero device Lamp try rm"],
+            "outside words drew a line, or padded the try line to a row, that reads as the try: \
+             {text:?}"
         );
     }
 

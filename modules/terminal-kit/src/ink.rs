@@ -8,6 +8,7 @@
 //! pigment or near it, found by its colour as modules/theme/nearest.nix
 //! finds it, since a theme may put any pigment in any slot.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -16,6 +17,7 @@ use serde_json::Value;
 
 use crate::environment::Environment;
 use crate::flags::Colour;
+use crate::layout::{drawn, one_line};
 
 /// How a stream is inked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -338,13 +340,14 @@ impl Pen {
     }
 
     fn escaped(&self, codes: &[&str], words: &str) -> String {
+        let words = drawn(words);
         let codes: Vec<&str> = codes
             .iter()
             .copied()
             .filter(|code| !code.is_empty())
             .collect();
         if words.is_empty() || !self.inks() || codes.is_empty() {
-            return words.to_owned();
+            return words.into_owned();
         }
         format!("\u{1b}[{}m{words}\u{1b}[0m", codes.join(";"))
     }
@@ -364,9 +367,11 @@ impl Pen {
         self.escaped(&[self.colour(role)], words)
     }
 
-    /// A title: bold, in strong, the only words a command sets bold.
+    /// A title: bold, in strong, the only words a command sets bold, and
+    /// held to one line, since a title is often a name from outside and a
+    /// break in it could draw a line that passes for the page's own.
     pub fn title(&self, words: &str) -> String {
-        self.escaped(&["1", self.colour("strong")], words)
+        self.escaped(&["1", self.colour("strong")], &one_line(words))
     }
 
     /// A label over a group or a column: muted capitals, but for a unit
@@ -409,13 +414,82 @@ impl Pen {
     }
 
     /// Words that open a URL or a path on a click: a kitty hyperlink
-    /// where there's ink, and the words alone where there's none.
+    /// where there's ink, and the words alone where there's none. The
+    /// words may be inked by this pen already, and keep its colour, but
+    /// nothing else of the terminal's, and are held to one line with the
+    /// target, so neither can end the link early. A colour its words
+    /// leave open is closed with the link, so none runs on past it, and
+    /// a pen without ink draws no colour at all. Its words are to come
+    /// from this pen, as `role` draws them: a colour spelled in words
+    /// from outside would pass as one of the pen's own.
     pub fn link(&self, target: &str, words: &str) -> String {
         if !self.inks() {
-            return words.to_owned();
+            return one_line(words).into_owned();
         }
-        format!("\u{1b}]8;;{target}\u{1b}\\{words}\u{1b}]8;;\u{1b}\\")
+        let words = inked_on_one_line(words);
+        let close = if words.contains('\u{1b}') && !words.ends_with("\u{1b}[0m") {
+            "\u{1b}[0m"
+        } else {
+            ""
+        };
+        let target = one_line(target);
+        format!("\u{1b}]8;;{target}\u{1b}\\{words}{close}\u{1b}]8;;\u{1b}\\")
     }
+}
+
+/// Words held to one line, as `layout::one_line` holds them, but keeping
+/// each colour a pen inks them in, `ESC [`, the codes `inked` allows and
+/// `m`, which moves nothing and can't end a link.
+fn inked_on_one_line(words: &str) -> Cow<'_, str> {
+    if !words.chars().any(crate::layout::unseen) {
+        return Cow::Borrowed(words);
+    }
+    let mut held = String::with_capacity(words.len());
+    let mut rest = words;
+    while let Some(c) = rest.chars().next() {
+        let colour = rest.strip_prefix("\u{1b}[").and_then(|after| {
+            let codes = after.len()
+                - after
+                    .trim_start_matches(|c: char| c.is_ascii_digit() || c == ';')
+                    .len();
+            (after[codes..].starts_with('m') && inked(&after[..codes])).then_some(2 + codes + 1)
+        });
+        if let Some(colour) = colour {
+            held.push_str(&rest[..colour]);
+            rest = &rest[colour..];
+            continue;
+        }
+        if !crate::layout::unseen(c) {
+            held.push(c);
+        } else if matches!(c, '\n' | '\t' | '\u{2028}' | '\u{2029}') {
+            held.push(' ');
+        }
+        rest = &rest[c.len_utf8()..];
+    }
+    Cow::Owned(held)
+}
+
+/// Whether a colour's codes are only those a pen inks with: the reset,
+/// bold, faint and italic and their ends, and a foreground colour, of
+/// the sixteen, the 256 or as red, green and blue. Anything else, as a
+/// blink, a reverse or a conceal that hides what a link says, isn't.
+fn inked(codes: &str) -> bool {
+    let mut codes = codes.split(';');
+    while let Some(code) = codes.next() {
+        let kept = match code.parse::<u8>() {
+            Ok(0..=3 | 22 | 23 | 30..=37 | 39 | 90..=97) => true,
+            Ok(38) => match codes.next() {
+                Some("5") => codes.next().is_some_and(|n| n.parse::<u8>().is_ok()),
+                Some("2") => (0..3).all(|_| codes.next().is_some_and(|n| n.parse::<u8>().is_ok())),
+                _ => false,
+            },
+            _ => code.is_empty(),
+        };
+        if !kept {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -483,6 +557,108 @@ mod tests {
         assert_eq!(pen.faint("rule", "r"), "\u{1b}[2;33mr\u{1b}[0m");
         // Its text is the terminal's own foreground, so it's left as it is.
         assert_eq!(pen.role("text", "t"), "t");
+    }
+
+    #[test]
+    fn words_from_outside_reach_the_terminal_without_its_controls() {
+        // A device's or a network's name is anyone's to set, and one
+        // holding the terminal's escapes would retitle the window, clear
+        // the screen or ring the bell as it's drawn.
+        let named = "eero\u{1b}]0;owned\u{7}\u{1b}[2J \u{9b}31mhall\u{8}\u{7f}";
+        let plain = Pen::plain();
+        assert_eq!(plain.role("text", named), "eero]0;owned[2J 31mhall");
+        let inked = Pen::new(Ink::sixteen(), Some(&osaka_jade()));
+        assert_eq!(
+            inked.role("alert", named),
+            "\u{1b}[31meero]0;owned[2J 31mhall\u{1b}[0m",
+            "an inked word kept a control of its own"
+        );
+        assert_eq!(
+            plain.title("a\rb"),
+            "ab",
+            "a return would draw over the line"
+        );
+    }
+
+    #[test]
+    fn words_keep_their_lines_and_a_tab_is_a_space() {
+        let pen = Pen::plain();
+        assert_eq!(pen.role("text", "one\ntwo\tthree"), "one\ntwo three");
+    }
+
+    #[test]
+    fn a_link_cant_be_ended_early_by_its_target_or_its_words() {
+        let pen = Pen::new(Ink::sixteen(), None);
+        assert_eq!(
+            pen.link("https://a\u{1b}\\b", "see\u{1b}]8;;x\u{7}"),
+            "\u{1b}]8;;https://a\\b\u{1b}\\see]8;;x\u{1b}]8;;\u{1b}\\"
+        );
+        assert_eq!(Pen::plain().link("t", "see\u{7}"), "see");
+        assert_eq!(
+            pen.link("https://a\nb", "see\nthis"),
+            "\u{1b}]8;;https://a b\u{1b}\\see this\u{1b}]8;;\u{1b}\\",
+            "a link's line break would draw a record of its own"
+        );
+    }
+
+    #[test]
+    fn a_link_keeps_the_ink_its_words_were_drawn_in_and_nothing_else() {
+        let pen = Pen::new(Ink::sixteen(), None);
+        assert_eq!(
+            pen.link("t", &pen.role("alert", "hall")),
+            "\u{1b}]8;;t\u{1b}\\\u{1b}[31mhall\u{1b}[0m\u{1b}]8;;\u{1b}\\",
+            "a link stripped the colour its words were drawn in"
+        );
+        assert_eq!(
+            pen.link("t", "\u{1b}[31mhall\u{1b}[2J\u{1b}[0m"),
+            "\u{1b}]8;;t\u{1b}\\\u{1b}[31mhall[2J\u{1b}[0m\u{1b}]8;;\u{1b}\\",
+            "a link kept an escape that isn't a colour"
+        );
+        assert_eq!(
+            pen.link("t", "\u{1b}[31mhall"),
+            "\u{1b}]8;;t\u{1b}\\\u{1b}[31mhall\u{1b}[0m\u{1b}]8;;\u{1b}\\",
+            "a colour its words left open ran on past the link"
+        );
+        for hiding in ["8", "5", "7", "31;8", "38;5", "38;9;1"] {
+            assert_eq!(
+                pen.link("t", &format!("\u{1b}[{hiding}mhall")),
+                format!("\u{1b}]8;;t\u{1b}\\[{hiding}mhall\u{1b}]8;;\u{1b}\\"),
+                "a link kept {hiding:?}, which no pen inks with"
+            );
+        }
+        for inked in ["1;97", "2;33", "3;90", "38;5;8", "38;2;247;232;178", ""] {
+            let words = format!("\u{1b}[{inked}mhall\u{1b}[0m");
+            assert_eq!(
+                pen.link("t", &words),
+                format!("\u{1b}]8;;t\u{1b}\\{words}\u{1b}]8;;\u{1b}\\"),
+                "a link dropped {inked:?}, which a pen inks with"
+            );
+        }
+        assert_eq!(
+            Pen::plain().link("t", "\u{1b}[31mhall"),
+            "[31mhall",
+            "a pen without ink drew a colour in a link's words"
+        );
+    }
+
+    #[test]
+    fn words_lose_the_marks_that_reorder_them_and_draw_unicode_lines_as_spaces() {
+        let plain = Pen::plain();
+        assert_eq!(
+            plain.role("text", "hall\u{202e}gnp.exe\u{2066}x\u{2069}"),
+            "hallgnp.exex",
+            "a mark that reorders text reached the terminal"
+        );
+        assert_eq!(
+            plain.role("text", "one\u{2028}two"),
+            "one two",
+            "a Unicode separator made a break no filter upstream saw"
+        );
+        assert_eq!(
+            plain.title("one\ntwo"),
+            "one two",
+            "a title drew a second line"
+        );
     }
 
     #[test]

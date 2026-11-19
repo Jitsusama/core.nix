@@ -10,8 +10,11 @@
 //! tables under it on a page are each read by the others, and its tests
 //! sit beside them.
 
+use std::borrow::Cow;
+
 use terminal_kit::Room;
 use terminal_kit::ink::Pen;
+use terminal_kit::layout;
 
 use super::fit;
 
@@ -39,11 +42,17 @@ pub struct Run {
     pub role: Role,
 }
 
+/// A run of words in a role, held to one line as the kit holds a cell:
+/// a node's, a device's or a profile's name is anyone's to set, so a line
+/// break in one would draw a row of its own, and a control would reach
+/// the terminal, as a lone return in a run of spaces does uninked.
 pub fn run(text: impl Into<String>, role: Role) -> Run {
-    Run {
-        text: text.into(),
-        role,
-    }
+    let text = text.into();
+    let text = match layout::one_line(&text) {
+        Cow::Borrowed(_) => text,
+        Cow::Owned(held) => held,
+    };
+    Run { text, role }
 }
 
 pub fn plain(text: impl Into<String>) -> Run {
@@ -894,6 +903,24 @@ mod tests {
              17:42  tablet 1 connected to\n\
              \x20      Den on 5.2 GHz\n\
              \x20      channel 52.\n"
+        );
+    }
+
+    #[test]
+    fn a_name_from_the_network_draws_on_its_line_and_without_its_controls() {
+        // A device names itself, so its name may hold a line break that
+        // would draw a row of its own, or the terminal's escapes.
+        let pen = Pen::new(terminal_kit::ink::Ink::sixteen(), None);
+        let mut page = Page::default();
+        page.line(vec![
+            plain("tablet\nHall  offline\u{1b}]0;owned\u{7}"),
+            muted(" \r "),
+            plain("online"),
+        ]);
+        let drawn = Ink::new(pen).page(page, Room::Unbounded);
+        assert_eq!(
+            drawn, "tablet Hall  offline]0;owned  online\n",
+            "a name drew a line of its own, or a control reached the terminal"
         );
     }
 

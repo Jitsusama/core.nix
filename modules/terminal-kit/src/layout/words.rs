@@ -2,7 +2,16 @@
 //! Gives Way): prose wrapped at whole words keeping its inset, a run giving
 //! way at its items, a figure held to its unit, no last word left alone,
 //! and a word too long for its line shortened in its middle, never broken.
-//! Lists, facts and tables set their cells with these.
+//! Lists, facts and tables set their cells with these, once each is
+//! drawn as the terminal may be given it. Each holds its words to one
+//! line first, as `one_line` says, since a break of their own would
+//! draw past the inset or the measure they keep. A paragraph and hung
+//! words do too: the kit can't tell a break a command wrote from one in
+//! a name it was given, and one in a name would draw a line of its own
+//! at the inset, where it could pass for a failure's try line. A command
+//! with several lines to say sets each apart.
+
+use std::borrow::Cow;
 
 use unicode_width::UnicodeWidthChar;
 
@@ -15,11 +24,152 @@ const SMALL: [&str; 12] = [
     "a", "an", "the", "of", "for", "with", "to", "in", "on", "and", "so", "from",
 ];
 
+/// Words as the kit draws them: every control character dropped but the
+/// line break, a tab and a Unicode line or paragraph separator drawn as a
+/// space, so no break is made that a filter for line breaks upstream
+/// never saw, and the marks that reorder text right to
+/// left dropped too, since one can draw a name backwards over what's
+/// beside it. A name, a path or a message
+/// comes from anyone, an eero device's name or a Wi-Fi network's among
+/// them, and one holding the terminal's own escapes would retitle the
+/// window, clear the screen or draw over a line as it's shown; only the
+/// kit spells escapes (docs/commands.md, Colour and Marks). The words are
+/// borrowed as they are where they hold none, as nearly all do. The
+/// vertical tab, form feed and next line part words as a tab does, so
+/// they're drawn as a space too; a return is dropped, since nearly every
+/// one ends a line before its break.
+pub fn drawn(words: &str) -> Cow<'_, str> {
+    kept(words, |c| match c {
+        '\n' => Some('\n'),
+        c if parts(c) => Some(' '),
+        _ => None,
+    })
+}
+
+/// Words from outside on one line, each run of space closed to one, so
+/// none can wrap into a line reading as a failure's try line, whose `try`
+/// two spaces mark. Drawn first, so a control dropped joins what stood
+/// either side of it rather than parting them. A blank that isn't a space
+/// to Unicode, braille's or the Hangul filler the pen keeps to shape a
+/// syllable, still draws as one, so it closes with the rest. A word that
+/// draws nothing, a joiner the pen keeps standing alone, goes, or the
+/// blanks either side of it would draw as two.
+pub fn spaced(words: &str) -> String {
+    one_line(words)
+        .split(|c: char| c.is_whitespace() || matches!(c, '\u{115f}' | '\u{2800}'))
+        .filter(|word| super::width(word) > 0)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A command to type, when it draws safely just as it was written: on one
+/// line, with nothing the pen drops, and each blank between its words a
+/// single one a cell wide. Nothing otherwise, since changing a command
+/// to draw it safely would have it name something it didn't, a device
+/// whose name holds two spaces as another without them, and drawing it
+/// as written could pad it to where the terminal's own wrap starts a row
+/// reading as a try. A character that draws nothing just after a blank
+/// counts as a blank of its own, since the two would draw as two.
+pub fn typed(words: &str) -> Option<&str> {
+    if one_line(words) != words {
+        return None;
+    }
+    let blank = |c: char| c.is_whitespace() || matches!(c, '\u{115f}' | '\u{2800}');
+    // At the start, as after a blank, so a blank leading it is refused.
+    let mut after_blank = true;
+    for c in words.chars() {
+        let cells = c.width();
+        if blank(c) {
+            if after_blank || cells != Some(1) {
+                return None;
+            }
+            after_blank = true;
+        } else if after_blank && cells.unwrap_or(0) == 0 {
+            return None;
+        } else {
+            after_blank = false;
+        }
+    }
+    (!after_blank).then_some(words)
+}
+
+/// Whether a character parts words without a line break of its own.
+fn parts(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+    )
+}
+
+/// The same, held to one line, as a table's cell, a list's row or a fact
+/// is: a line break is a space too, so no field draws a record of its
+/// own, and every line read through `grep` still names its record.
+pub fn one_line(words: &str) -> Cow<'_, str> {
+    kept(words, |c| (c == '\n' || parts(c)).then_some(' '))
+}
+
+/// Whether the kit keeps `c` from the terminal: a control character, a
+/// Unicode line or paragraph separator, or a mark that sets, embeds,
+/// overrides or isolates a run of text's direction, the implicit ones
+/// (left-to-right, right-to-left and Arabic letter marks) among them, or
+/// one of Unicode's default-ignorable characters that draws nothing and
+/// shapes nothing: the zero-width space, the combining grapheme joiner,
+/// Khmer's unwritten vowels, the word joiner and the format controls
+/// after it, the byte-order mark, the blank Hangul fillers that stand
+/// alone, the interlinear marks, shorthand and music formatting, and the
+/// language tag with the unassigned rest of its block. Those would hide
+/// a difference between two names drawn alike. The soft hyphen, the
+/// joiners and fillers that shape a script, variation selectors and the
+/// tags that spell a flag stay, since an emoji or a word is drawn wrong
+/// without them; a command that compares names folds those away itself.
+pub(crate) fn unseen(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{034f}'
+                | '\u{061c}'
+                | '\u{17b4}'
+                | '\u{17b5}'
+                | '\u{200b}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2060}'..='\u{206f}'
+                | '\u{3164}'
+                | '\u{feff}'
+                | '\u{ffa0}'
+                | '\u{fff0}'..='\u{fffb}'
+                | '\u{1bca0}'..='\u{1bca3}'
+                | '\u{1d173}'..='\u{1d17a}'
+                | '\u{e0000}'..='\u{e001f}'
+                | '\u{e0080}'..='\u{e00ff}'
+                | '\u{e01f0}'..='\u{e0fff}'
+        )
+}
+
+/// Words with each character `unseen` keeps given to `instead`, which
+/// draws it as another character or drops it.
+fn kept(words: &str, instead: impl Fn(char) -> Option<char>) -> Cow<'_, str> {
+    if !words.chars().any(unseen) {
+        return Cow::Borrowed(words);
+    }
+    Cow::Owned(
+        words
+            .chars()
+            .filter_map(|c| if unseen(c) { instead(c) } else { Some(c) })
+            .collect(),
+    )
+}
+
 /// A name cut to `room` cells at a whole word, ending in an ellipsis, and
 /// never after a small word, though its first word is kept whatever. A
 /// first word too long for the room alone is shortened in its middle, as
 /// a path is, since a name is never cut at its end inside a word.
 pub fn cut(name: &str, room: usize) -> String {
+    let flat = one_line(name);
+    let name = &*flat;
     if width(name) <= room {
         return name.to_owned();
     }
@@ -54,6 +204,8 @@ pub fn cut(name: &str, room: usize) -> String {
 /// a path whose last part alone is too long, keeps its first and last
 /// letters either side of the cut.
 pub fn shortened(word: &str, room: usize) -> String {
+    let flat = one_line(word);
+    let word = &*flat;
     if width(word) <= room {
         return word.to_owned();
     }
@@ -110,26 +262,31 @@ pub fn shortened(word: &str, room: usize) -> String {
 
 /// Words set as a paragraph `inset` cells in: wrapped at whole words to
 /// the room, every line at the same inset, so a nested level keeps its
-/// indent wherever it wraps. Into a pipe it's one line.
+/// indent wherever it wraps. The words are held to one line first, as
+/// the module says; into a pipe that one line is the paragraph.
 pub fn paragraph(words: &str, inset: usize, room: Room) -> Vec<String> {
     let pad = " ".repeat(inset);
-    match room.cells() {
-        None => vec![format!("{pad}{words}")],
-        Some(cells) => wrapped(words, cells.saturating_sub(inset).max(1))
-            .into_iter()
-            .map(|line| format!("{pad}{line}"))
-            .collect(),
-    }
+    set(words, inset, room)
+        .into_iter()
+        .map(|line| format!("{pad}{line}"))
+        .collect()
 }
 
 /// Words set after something `lead` cells wide: wrapped at whole words
-/// to the room, each further line under the first's words. Into a pipe
-/// they stay one line.
+/// to the room, each further line under the first's words. The words are
+/// held to one line first, as the module says; into a pipe they stay on
+/// it.
 pub fn hung(words: &str, lead: usize, room: Room) -> String {
+    set(words, lead, room).join(&format!("\n{}", " ".repeat(lead)))
+}
+
+/// The words held to one line, wrapped to the room left after `inset`
+/// cells, ready to set at the inset; into a pipe, where nothing wraps,
+/// the one line without the space a trailing break left.
+fn set(words: &str, inset: usize, room: Room) -> Vec<String> {
     match room.cells() {
-        None => words.to_owned(),
-        Some(cells) => wrapped(words, cells.saturating_sub(lead).max(1))
-            .join(&format!("\n{}", " ".repeat(lead))),
+        None => vec![one_line(words).trim().to_owned()],
+        Some(cells) => wrapped(words, cells.saturating_sub(inset).max(1)),
     }
 }
 
@@ -142,6 +299,8 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
 /// doesn't leave the word before it alone, and otherwise on a line of
 /// its own.
 pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
+    let flat = one_line(words);
+    let words = &*flat;
     let mut lines = Vec::new();
     let mut line = String::new();
     for item in words.split(ITEMS).map(str::trim) {
@@ -393,6 +552,93 @@ mod tests {
         assert_eq!(
             wrapped("a screen 1272 \u{d7} 768 wide", 12),
             ["a screen", "1272 \u{d7} 768", "wide"]
+        );
+    }
+
+    #[test]
+    fn words_cut_wrapped_or_shortened_stay_on_one_line() {
+        let name = "Den\neero\tPro\u{2029}6";
+        assert_eq!(
+            wrapped(name, 80),
+            ["Den eero Pro 6"],
+            "wrapped words kept a break"
+        );
+        assert_eq!(cut(name, 80), "Den eero Pro 6", "a cut name kept a break");
+        assert_eq!(cut(name, 10), "Den eero\u{2026}", "a cut name kept a break");
+        assert_eq!(
+            shortened("~/a\nb/c", 80),
+            "~/a b/c",
+            "a shortened word kept a break"
+        );
+    }
+
+    #[test]
+    fn every_mark_that_reorders_text_is_kept_from_the_terminal() {
+        // Unicode's own lists, not `unseen`'s: Bidi_Control, and the
+        // Default_Ignorable_Code_Point characters that shape nothing, each
+        // range by its ends.
+        let marks = [
+            '\u{061c}',
+            '\u{200e}',
+            '\u{200f}',
+            '\u{202a}',
+            '\u{202b}',
+            '\u{202c}',
+            '\u{202d}',
+            '\u{202e}',
+            '\u{2066}',
+            '\u{2067}',
+            '\u{2068}',
+            '\u{2069}',
+            '\u{200b}',
+            '\u{2060}',
+            '\u{2061}',
+            '\u{2062}',
+            '\u{2063}',
+            '\u{2064}',
+            '\u{feff}',
+            '\u{034f}',
+            '\u{17b4}',
+            '\u{17b5}',
+            '\u{206a}',
+            '\u{206f}',
+            '\u{3164}',
+            '\u{ffa0}',
+            '\u{fff0}',
+            '\u{fffb}',
+            '\u{1bca0}',
+            '\u{1bca3}',
+            '\u{1d173}',
+            '\u{1d17a}',
+            '\u{e0000}',
+            '\u{e0001}',
+            '\u{e0002}',
+            '\u{e001f}',
+            '\u{e0080}',
+            '\u{e00ff}',
+            '\u{e01f0}',
+            '\u{e0fff}',
+        ];
+        for mark in marks {
+            let words = format!("abc{mark}def");
+            assert_eq!(drawn(&words), "abcdef", "{mark:?} reached the terminal");
+            assert_eq!(one_line(&words), "abcdef", "{mark:?} reached the terminal");
+        }
+        assert_eq!(
+            drawn("a\u{2028}b\u{2029}c"),
+            "a b c",
+            "a Unicode separator made a line break"
+        );
+        assert_eq!(
+            drawn("a\u{b}b\u{c}c\u{85}d"),
+            "a b c d",
+            "a character that parts words ran them together"
+        );
+        let shaping = "\u{ad}\u{200c}\u{200d}\u{fe0f}\u{e0067}\u{e007f}\u{1160}\u{180b}";
+        assert_eq!(
+            drawn(shaping),
+            shaping,
+            "a character that shapes was dropped"
         );
     }
 }

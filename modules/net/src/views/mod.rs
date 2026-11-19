@@ -354,7 +354,10 @@ pub fn find<'a>(network: &'a Network, word: &str) -> Result<&'a Device, Failure>
                 format!("{} devices are called {word}", count(sharing.len() as u64)),
             )
             .because(each.join(ITEMS))
-            .try_this(format!("net devices {}", picking(network, first))));
+            .try_this(format!(
+                "net devices {}",
+                terminal_kit::failure::shell_word(&picking(network, first))
+            )));
         }
         [] => {}
     }
@@ -372,18 +375,12 @@ pub fn find<'a>(network: &'a Network, word: &str) -> Result<&'a Device, Failure>
             .find(|device| device.name.to_lowercase() == near)
     });
     Err(match near {
-        Some(device) => failure.try_this(format!("net devices {}", quoted(&device.name))),
+        Some(device) => failure.try_this(format!(
+            "net devices {}",
+            terminal_kit::failure::shell_word(&device.name)
+        )),
         None => failure.try_this("net devices"),
     })
-}
-
-/// A name as a shell takes it as one word.
-fn quoted(name: &str) -> String {
-    if name.contains(|c: char| c.is_whitespace() || "'\"$`\\".contains(c)) {
-        format!("'{}'", name.replace('\'', r"'\''"))
-    } else {
-        name.to_owned()
-    }
 }
 
 /// The names of net's own times, which an answer says in RFC 3339
@@ -708,6 +705,33 @@ mod tests {
         );
         let failure = find(&network, "garage").expect_err("garage isn't a device");
         assert_eq!(failure.then.as_deref(), Some("net devices"), "{failure:?}");
+    }
+
+    #[test]
+    fn a_shared_name_is_told_apart_so_pasting_it_runs_nothing_else() {
+        let mut network = network();
+        network.devices[0].addresses.clear();
+        network.devices[0].id = "dev;reboot".to_owned();
+        let name = network.devices[0].name.clone();
+        network.devices[1].name.clone_from(&name);
+        let failure = find(&network, &name).expect_err("two share the name");
+        assert_eq!(
+            failure.then.as_deref(),
+            Some("net devices 'dev;reboot'"),
+            "{failure:?}"
+        );
+    }
+
+    #[test]
+    fn a_nearest_name_is_suggested_so_pasting_it_runs_nothing_else() {
+        let mut network = network();
+        network.devices[0].name = "Study;reboot".to_owned();
+        let failure = find(&network, "Study;rebot").expect_err("it isn't a device");
+        assert_eq!(
+            failure.then.as_deref(),
+            Some("net devices 'Study;reboot'"),
+            "{failure:?}"
+        );
     }
 
     #[test]

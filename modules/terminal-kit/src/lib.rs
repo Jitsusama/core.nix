@@ -153,10 +153,8 @@ impl Context {
     pub fn tell(&self, mark: &str, role: &str, words: &str) -> io::Result<()> {
         writeln!(
             io::stderr().lock(),
-            "{}{}",
-            self.err.marked(mark, role),
-            self.err
-                .role("text", &layout::hung(words, layout::MARK, self.err_room))
+            "{}",
+            told(&self.err, self.err_room, mark, role, words)
         )
     }
 
@@ -164,6 +162,19 @@ impl Context {
     pub fn wait(&self, words: &str) -> io::Result<Wait<'_, io::Stderr>> {
         Wait::begin(io::stderr(), &self.err, self.err_room, words)
     }
+}
+
+/// A note as `tell` draws it: its mark, then the words hung under it,
+/// spaced as a failure's words are, so none reads as a try line.
+fn told(pen: &Pen, room: Room, mark: &str, role: &str, words: &str) -> String {
+    format!(
+        "{}{}",
+        pen.marked(mark, role),
+        pen.role(
+            "text",
+            &layout::hung(&layout::spaced(words), layout::MARK, room)
+        )
+    )
 }
 
 /// How a command's run ended, and what the kit itself wrote: help, the
@@ -477,6 +488,26 @@ mod tests {
             args,
             body,
         )
+    }
+
+    #[test]
+    fn a_note_never_reads_as_a_try_line() {
+        // Unbounded, as into a pipe or a terminal's own wrap: nothing
+        // parts the words but what they hold.
+        for room in [Room::Cells(20), Room::Unbounded] {
+            let note = told(
+                &Pen::plain(),
+                room,
+                "!",
+                "alert",
+                "gone \u{b7} try  rm -rf ~ try \u{200d} rm",
+            );
+            let looks = note.replace('\u{200d}', "");
+            assert!(
+                !looks.contains("try  "),
+                "a note's words held a run that reads as a try line: {note:?}"
+            );
+        }
     }
 
     #[test]
