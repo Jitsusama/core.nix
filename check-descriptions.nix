@@ -3349,8 +3349,9 @@
   '';
   ssh-tpm-agent-refuses-agents = ''
     the TPM's SSH agent refuses a process where agents' work runs, keeps no core of its PIN, and
-    its build passes each case the gate must decide; each slice the gate names, and the awaited
-    service it spares, is one a machine with a screen makes, and bash's and zsh's own text points
+    its source, beside the gate, passes each case the gate must decide; each slice the gate names
+    is one a machine with a screen makes, awaited is the one service its awaited slice holds, and
+    bash's and zsh's own text points
     them at the agent's socket
   '';
   sshd-lets-a-gone-caller-go = ''

@@ -163,7 +163,9 @@
     # one and his way into his work Mac among them. The fourth patch refuses
     # each connection from where agents' work runs, which ./gate.conf names
     # and ./gate-cases.txt proves, by the cgroups of the process asking and its
-    # parents; its build runs those cases. It catches an agent's mistake,
+    # parents; a check runs those cases, not the package's own build, so an
+    # edit to the gate changes only the file the agent re-reads, never the
+    # agent, and no switch restarts it to lose its PIN. It catches an agent's mistake,
     # never one set on getting round it: a process of the account's can
     # start itself somewhere unnamed, and keeping it in is the fence's work.
     services.ssh-tpm-agent.package = pkgs.ssh-tpm-agent.overrideAttrs (old: {
@@ -173,13 +175,11 @@
         ./locked-key-blocks-nothing.patch
         ./refuses-agents.patch
       ];
-      preCheck = (old.preCheck or "") + ''
-        mkdir -p agent/testdata
-        cp ${./gate.conf} agent/testdata/gate
-        cp ${./gate-cases.txt} agent/testdata/gate-cases
-      '';
       checkFlags = (old.checkFlags or [ ]) ++ [
-        "-skip=^TestNoKey$|^TestRemoveKey$|^TestNoKeyThreaded$|^TestRemoveKeyThreaded$"
+        (
+          "-skip=^TestNoKey$|^TestRemoveKey$|^TestNoKeyThreaded$|^TestRemoveKeyThreaded$"
+          + "|^TestMachineGate$"
+        )
       ];
     });
   };

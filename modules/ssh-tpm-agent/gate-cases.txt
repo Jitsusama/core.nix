@@ -43,13 +43,15 @@ refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.s
 # take, judged by its caller.
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/run-p800969-i5013960.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/queue-2af2dh-1028.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/run-u9.scope /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/run-p900100-i6000100.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/background.slice/run-p900200-i6000200.service /user.slice/user-1000.slice/user@1000.service/init.scope
 serve /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/run-u7.scope /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope /user.slice/user-1000.slice/user@1000.service/app.slice/kitty-2210-1.scope
 # A unit an agent names itself, as the harness tells it to, started from
 # work placed in the awaited slice; and names as long as awaited or near it,
 # each by its own line and alternative, while awaited.service above is
-# served. The run-*.service there above is refused by the first of these.
+# served. The run-*.service in the awaited slice above is refused by
+# gate.conf's first awaited line, as its length isn't awaited's.
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/queue-isxeg8-1.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaite.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/build-1.service /user.slice/user-1000.slice/user@1000.service/init.scope

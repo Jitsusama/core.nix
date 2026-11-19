@@ -27,9 +27,11 @@
 
   # The agent holding Joel's keys reads its gate from where its unit says,
   # keeps no core, and leaves a zsh the agent it was given while the login's
-  # services are pointed at it whatever they held; and it's built with its
-  # tests, which judge ./gate-cases.txt by ./gate.conf, so this check builds
-  # only once the agent refuses what each case says.
+  # services are pointed at it whatever they held; and its source, with the
+  # gate beside it, passes the test that judges ./gate-cases.txt by
+  # ./gate.conf, so this check builds only once the agent refuses what each
+  # case says. That test runs here rather than in the package's build, which
+  # the gate would otherwise change, restarting the agent at each switch.
   ssh-tpm-agent-refuses-agents =
     let
       user = account workstation;
@@ -50,14 +52,25 @@
       # would leave its cases passing and its work served: each slice the
       # gate names must still be one a machine with a screen makes, as the
       # graphical role brings the slices.
-      awaited = graphical.config.systemd.user.services.awaited.serviceConfig;
+      judged = agent.overrideAttrs (old: {
+        preCheck = (old.preCheck or "") + ''
+          mkdir -p agent/testdata
+          cp ${./gate.conf} agent/testdata/gate
+          cp ${./gate-cases.txt} agent/testdata/gate-cases
+        '';
+        checkFlags = [ "-run=^TestMachineGate$" ];
+      });
+      services = graphical.config.systemd.user.services;
+      awaitedOnes = builtins.filter (
+        name: (services.${name}.serviceConfig.Slice or null) == "jobs-awaited.slice"
+      ) (builtins.attrNames services);
       named =
         holds "ssh-tpm-agent-gate-names-real-slices"
           "ssh-tpm-agent's gate names a slice, or spares a service, the graphical role lacks."
           (
             # gate.conf spells out every name in the awaited slice but
-            # awaited, so that must be the service the slices put there.
-            (awaited.Slice or null) == "jobs-awaited.slice"
+            # awaited, so that must be the one service the slices put there.
+            awaitedOnes == [ "awaited" ]
             && builtins.all (slice: graphical.config.systemd.user.slices ? ${slice}) [
               "agents"
               "background"
@@ -74,6 +87,7 @@
       {
         inherit
           agent
+          judged
           told
           coreless
           named
