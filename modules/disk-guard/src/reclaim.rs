@@ -116,13 +116,6 @@ pub fn target(
     }
 }
 
-/// Reclaims one crate's incremental directory. Renaming it aside, as a
-/// target is, would break a rustc starting in it, since rustc works by
-/// path. So every session's lock is held first, and any session rustc
-/// holds, is still `-working` or is too young to collect keeps the lot.
-/// Then each session goes and then its lock, the order rustc's own
-/// collection uses, and the directory goes only if nothing is left in it,
-/// so a session rustc started meanwhile survives.
 /// Reclaims an older build inside `target`: a crate's libraries, or an
 /// executable, and its dep-info in `deps`, and the fingerprint beside
 /// them, so cargo builds it afresh if it's ever wanted again. A process
@@ -134,6 +127,12 @@ pub fn target(
 /// older build is one nothing builds from.
 /// Cargo's locks on the target are held throughout, so no build reads or
 /// writes it meanwhile; one holding them keeps it.
+///
+/// It's judged once, unlike a whole target: an older build has gone an
+/// awake hour unopened at the least, so only a run starting it in the
+/// second it's taken finds it gone, and that run links it again.
+/// Reading every process afresh for each build would take up to two
+/// seconds a build and still leave that second open.
 pub fn build(
     root: &Dir,
     root_path: &Path,

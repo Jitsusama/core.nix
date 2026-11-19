@@ -29,7 +29,9 @@ pub struct Build {
     pub unit: Option<Unit>,
     /// Whether a newer build of its own unit and variant replaced it,
     /// which only an executable's can, as `replaced` answers: only then
-    /// is it known to be done with, and [`Unit`] says why.
+    /// is it taken as done with, and [`Unit`] says why. A live build that
+    /// differs from a newer one only in how a dependency was built reads
+    /// the same, and costs the link its next run makes again.
     pub in_variant: bool,
     /// When its newest file was written, in wall seconds.
     pub written: f64,
@@ -53,9 +55,10 @@ pub struct Unit {
     /// `server/test-integration-test-integration`. A binary and its unit
     /// tests share a crate name, as two packages' tests can.
     pub name: String,
-    /// Its features, target, profile and mode, kind, flags and config, as
-    /// cargo hashes them: a test built with two sets of features, or
-    /// under two profiles, holds a build of each, both in use.
+    /// Its features, target, profile and mode, kind, flags, config and
+    /// compiler, as cargo hashes them: a test built with two sets of
+    /// features, under two profiles or by two toolchains, holds a build of
+    /// each, both in use.
     pub variant: String,
 }
 
@@ -65,10 +68,12 @@ const FINGERPRINT_BYTES: u64 = 256 << 10;
 
 /// What of a fingerprint's JSON says which variant of a unit a build is,
 /// leaving what changes when a build replaces another: the dependencies,
-/// the features its manifest declares, the compiler and its source path.
-/// The target's hash leaves out where its source lies, so a checkout
-/// moved, or a snapshot of a later commit, builds the same variant.
-const VARIANT: [&str; 6] = [
+/// the features its manifest declares and its source path. The target's
+/// hash leaves out where its source lies, so a checkout moved, or a
+/// snapshot of a later commit, builds the same variant: on 19 November
+/// this account's builds of syn from five source paths shared one.
+const VARIANT: [&str; 7] = [
+    "rustc",
     "features",
     "target",
     "profile",
@@ -386,7 +391,8 @@ fn unit(fingerprint: &Path, digest: &str) -> Option<Unit> {
 fn small_file(path: &Path) -> Option<Vec<u8>> {
     use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
-    let flags = rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK;
+    let flags =
+        rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::NOCTTY;
     let file = fs::OpenOptions::new()
         .read(true)
         .custom_flags(i32::try_from(flags.bits()).ok()?)

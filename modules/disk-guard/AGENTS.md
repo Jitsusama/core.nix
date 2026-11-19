@@ -237,17 +237,21 @@ or launchd, and [`home.nix`][2] the account's.
   this guard has heard its `deps` for an awake hour and nothing opened it
   in that hour: on 18 November a gate's build held 28 GiB of test binaries
   a newer build had replaced, nearly all one to six hours old, and filled
-  its disk hours later. The variant is the features, target, profile and
-  mode, kind, flags and config its fingerprint names, so a test built two
-  ways keeps each way's newest. A library never goes by the hour: on 19
-  November 12 of the 35 units built three or more times here held live
-  builds differing only in how a dependency was built, which nothing tells
-  from a replacement, and every crate above a library builds from it,
-  where nothing builds from an executable. A file cargo shares
-  with its profile, as the binary a person runs is, never goes. Each goes
+  its disk hours later. The variant is the compiler, features, target,
+  profile and mode, kind, flags and config its fingerprint names, so there a
+  test built two ways keeps each way's newest. In a budget a library never
+  goes by the hour: on 19 November 12 of the 35 units built three or more
+  times here held live builds differing only in how a dependency was
+  built, which nothing tells from a replacement, and every crate above a
+  library builds from it, where a live executable so taken costs only the
+  link its next run makes. A pinned snapshot's older builds, of either
+  kind, go an hour unused. A build with a file cargo shares with its
+  profile, as the binary a person runs is, never goes, since taking it
+  frees nothing. Each goes
   with cargo's locks held, and only while no process works in its target
   by its cwd, files, executable or maps, and no builder sits in its
-  checkout or names it, since a cargo starting up holds no lock yet. A
+  checkout or names it, since a cargo starting up holds no lock yet; a
+  build running there keeps them all until it ends. A
   shell or editor that only sits there keeps nothing, since nothing builds
   from an older build. A `deps` never watched dates nothing. Each pass that
   took any journals a `replaced` line per target, saying how many went and

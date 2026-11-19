@@ -17,7 +17,7 @@ use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::opens::Seen;
 use crate::pace::{Monotonic, Pacer, Probe};
-use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
+use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, Report, pass};
 use crate::plan::{Candidate, Class};
 use crate::pool::pool;
 use crate::replaced::Uses;
@@ -2649,7 +2649,6 @@ impl Guard {
             });
         }
         self.note_actions(here, &report.actions, tick.wall);
-        self.journal_replaced(here, &report.actions, tick.wall)?;
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();
         let failing = say_pass(&report, scan, seconds, &crate::clock::stamp(tick.wall));
@@ -2676,20 +2675,19 @@ impl Guard {
             self.failed = None;
         }
         self.last = Some(last);
+        // After the pass's own line, so a journal refusing them, as a full
+        // disk's does, never costs the pass its record.
+        self.journal_replaced(here, &report, tick.wall)?;
         Ok(report.end)
     }
 
     /// Journals how many replaced builds a pass took from each target among
     /// `here`'s offers, and their bytes.
-    fn journal_replaced(
-        &mut self,
-        here: &[Offer],
-        actions: &[(PathBuf, Outcome)],
-        at: f64,
-    ) -> io::Result<()> {
-        for (target, (count, bytes)) in replaced_taken(here, actions) {
+    fn journal_replaced(&mut self, here: &[Offer], report: &Report, at: f64) -> io::Result<()> {
+        for (target, (count, bytes)) in replaced_taken(here, &report.actions) {
             self.journal.write(&Line::Replaced {
                 at,
+                band: report.band,
                 target,
                 count,
                 bytes,

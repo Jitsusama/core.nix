@@ -980,9 +980,10 @@ fn replaced_in(
             .since(last_used.min(world.now), world.now)
             .max(0.0);
         // Only an executable a newer build of its own unit and variant
-        // replaced is known to be done with: a library another variant
-        // differs from only by how a dependency was built may be one a
-        // live build uses, and every crate above it with it.
+        // replaced is taken as done with: a library another build differs
+        // from only by how a dependency was built may be one a live build
+        // uses, and every crate above it with it, while a live executable
+        // so taken costs only the link its next run makes again.
         let heard_unused = held.budgeted
             && build.in_variant
             && idle >= REPLACED_UNUSED
@@ -1001,7 +1002,8 @@ fn replaced_in(
             // A gate snapshot builds one commit after another, and on 17
             // November one kept 89 builds of a single test crate, 55 GiB in
             // all: an older build an hour unused there is an earlier
-            // gate's, even while the next runs.
+            // gate's. One running in the target keeps them all till it
+            // ends, since a target a process works in offers nothing.
             spent: (held.pinned && idle >= trees::SNAPSHOT_UNUSED) || heard_unused,
             checkout: held.checkout.map(Path::to_owned),
         };

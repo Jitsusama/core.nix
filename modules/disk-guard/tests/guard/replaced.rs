@@ -22,7 +22,7 @@ fn written(path: &Path, seconds: i64) {
 }
 
 /// An artifact in `deps`, written at `seconds`.
-fn artifact(deps: &Path, name: &str, seconds: i64) -> PathBuf {
+pub(crate) fn artifact(deps: &Path, name: &str, seconds: i64) -> PathBuf {
     let path = deps.join(name);
     file(&path, "built");
     written(&path, seconds);
@@ -46,7 +46,8 @@ fn target(root: &Path) -> PathBuf {
         artifact(&deps, &format!("libalpha-{NEW}.rlib"), 5_000);
         artifact(&deps, &format!("libalpha-{NEW}.rmeta"), 5_000);
         artifact(&deps, "libbeta-3333333333333333.rlib", 500);
-        // A test binary, which no build reads, is no library to replace.
+        // Named as a test binary is, but it doesn't run and has no
+        // fingerprint to name its unit, so it's no build.
         artifact(&deps, "alpha-4444444444444444", 100);
         artifact(&deps, "alpha-4444444444444444.d", 100);
         fs::create_dir_all(
@@ -126,10 +127,11 @@ fn build(deps: &Path, written: f64) -> Build {
 
 /// The fingerprint cargo writes beside `deps` for `package`'s `unit`
 /// built at `digest`, of the variant `PLAIN` names but for `variant`'s
-/// fields. What a newer build changes, its dependencies, compiler,
-/// declared features and source path, differs for every digest, as it
-/// does when one build replaces another.
-fn fingerprinted(
+/// fields. What a newer build changes, its dependencies, declared
+/// features and source path, differs for every digest, as it does when
+/// one build replaces another. It holds the warnings cargo keeps for a
+/// unit whose build gave some, as a test's often does.
+pub(crate) fn fingerprinted(
     deps: &Path,
     package: &str,
     digest: &str,
@@ -142,7 +144,7 @@ fn fingerprinted(
         .join(format!(".fingerprint/{package}-{digest}"));
     let built = u64::from_str_radix(&digest[..8], 16).unwrap();
     let mut json = serde_json::json!({
-        "rustc": built, "features": "[]", "declared_features": format!("[\"{digest}\"]"),
+        "rustc": 4, "features": "[]", "declared_features": format!("[\"{digest}\"]"),
         "target": 1, "profile": 2, "path": built, "deps": [[built, "dep", false, built]],
         "local": [built], "rustflags": [], "config": 3, "compile_kind": 0,
     });
@@ -153,6 +155,7 @@ fn fingerprinted(
     for file in [
         unit.to_owned(),
         format!("dep-{unit}"),
+        format!("output-{unit}"),
         "invoked.timestamp".to_owned(),
     ] {
         crate::discover::file(&fingerprint.join(file), "fingerprint");
@@ -161,10 +164,10 @@ fn fingerprinted(
 }
 
 /// The variant `fingerprinted` names unless told otherwise.
-const PLAIN: &str = r#""[]" 1 2 0 [] 3"#;
+const PLAIN: &str = r#"4 "[]" 1 2 0 [] 3"#;
 
 /// A file in `deps` that runs, written at `seconds`.
-fn runnable(deps: &Path, name: &str, seconds: i64) -> PathBuf {
+pub(crate) fn runnable(deps: &Path, name: &str, seconds: i64) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let path = artifact(deps, name, seconds);
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
@@ -207,6 +210,7 @@ fn only_a_newer_build_of_its_own_variant_says_an_executable_is_done_with() {
     // build only in what replacing it changes is done with.
     use serde_json::json;
     let variants = [
+        ("rustc", json!(7)),
         ("features", json!(r#"["a"]"#)),
         ("target", json!(7)),
         ("profile", json!(7)),
@@ -235,8 +239,8 @@ fn only_a_newer_build_of_its_own_variant_says_an_executable_is_done_with() {
 
 #[test]
 fn a_fingerprint_reached_through_a_link_names_no_unit() {
-    // A folder anyone can clone can hold a link where cargo writes its
-    // fingerprint, to a file that never ends, so none is followed.
+    // A folder anyone can clone can plant a link where cargo writes its
+    // fingerprint, which could lead anywhere, so none is followed.
     let root = tempfile::tempdir().unwrap();
     let deps = root.path().join("target/debug/deps");
     test_build(&deps, OLD, &[], 1_000);
@@ -251,6 +255,56 @@ fn a_fingerprint_reached_through_a_link_names_no_unit() {
         judged(&root.path().join("target")),
         [],
         "a fingerprint was read through a link"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_fingerprint_that_is_a_pipe_names_no_unit_and_never_waits() {
+    // Opening a pipe nobody writes to waits for a writer, so a planted
+    // one would hang every survey.
+    use std::os::unix::ffi::OsStrExt;
+    let root = tempfile::tempdir().unwrap();
+    let deps = root.path().join("target/debug/deps");
+    test_build(&deps, OLD, &[], 1_000);
+    test_build(&deps, NEW, &[], 5_000);
+    let json = root.path().join(format!(
+        "target/debug/.fingerprint/server-{OLD}/test-integration-test-integration.json"
+    ));
+    fs::remove_file(&json).unwrap();
+    let name = std::ffi::CString::new(json.as_os_str().as_bytes()).unwrap();
+    // SAFETY: name is a valid C string naming a path in a temp directory.
+    let made = unsafe { libc::mkfifo(name.as_ptr(), 0o600) };
+    assert_eq!(made, 0, "the pipe couldn't be made");
+    let target = root.path().join("target");
+    let (said, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || said.send(judged(&target)));
+    let found = heard.recv_timeout(std::time::Duration::from_secs(10));
+    assert_eq!(
+        found,
+        Ok(vec![]),
+        "a fingerprint that is a pipe was waited on or read"
+    );
+}
+
+#[test]
+fn a_fingerprint_past_its_size_names_no_unit() {
+    // Cargo writes a few hundred bytes, and a planted file could be as
+    // big as the disk; what's past the cap is never read, so the JSON
+    // after a long run of blanks never parses.
+    let root = tempfile::tempdir().unwrap();
+    let deps = root.path().join("target/debug/deps");
+    test_build(&deps, OLD, &[], 1_000);
+    test_build(&deps, NEW, &[], 5_000);
+    let json = root.path().join(format!(
+        "target/debug/.fingerprint/server-{OLD}/test-integration-test-integration.json"
+    ));
+    let read = fs::read_to_string(&json).unwrap();
+    fs::write(&json, format!("{}{read}", " ".repeat(256 << 10))).unwrap();
+    assert_eq!(
+        judged(&root.path().join("target")),
+        [],
+        "a fingerprint past its size was read whole"
     );
 }
 
@@ -303,8 +357,8 @@ fn an_older_executable_of_a_unit_is_replaced_and_the_newest_stays() {
     // other.
     executable(&deps, "tool", "bin-dt", "dt", "bbbbbbbbbbbbbbbb", 500);
     executable(&deps, "tool", "test-bin-dt", "dt", "cccccccccccccccc", 900);
-    // The profile's own copy of an older binary is the one a person runs,
-    // so it's never taken from under them.
+    // The profile's own copy of an older binary shares its file, so taking
+    // it would free nothing and only make cargo link it again.
     executable(&deps, "tool", "bin-dt", "dt", "dddddddddddddddd", 100);
     fs::hard_link(
         deps.join("dt-dddddddddddddddd"),
@@ -395,7 +449,7 @@ fn a_build_a_process_works_in_is_kept_whatever_its_locks_say() {
     let mut looker = Judge {
         target: target.clone(),
         checkout: checkout.clone(),
-        finds: Use::Busy(4242),
+        finds: Some(Use::Busy(4242)),
     };
     let outcome = reclaim::build(&anchor, root.path(), &target, &candidate, &mut looker);
     assert!(
@@ -407,16 +461,28 @@ fn a_build_a_process_works_in_is_kept_whatever_its_locks_say() {
         8,
         "a build a process works in lost files"
     );
-    // One that only sits there, as a shell naming the target or an
-    // editor's macro server does, builds from no older build.
-    // One that can't be read might be working there.
-    looker.finds = Use::Unknown(4244);
+    // One that can't be read might be working there, as might any when
+    // the processes can't be read at all.
+    looker.finds = Some(Use::Unknown(4244));
     let outcome = reclaim::build(&anchor, root.path(), &target, &candidate, &mut looker);
     assert!(
         matches!(&outcome, Outcome::Kept(why) if why.contains("4244")),
         "a build an unreadable process may work in wasn't kept: {outcome:?}"
     );
-    looker.finds = Use::Occupied(4243);
+    looker.finds = None;
+    let outcome = reclaim::build(&anchor, root.path(), &target, &candidate, &mut looker);
+    assert!(
+        matches!(&outcome, Outcome::Kept(why) if why.contains("can't be judged")),
+        "a build was taken though nothing could say who works in it: {outcome:?}"
+    );
+    assert_eq!(
+        names(&target.join("debug/deps")).len(),
+        8,
+        "a build no judgement cleared lost files"
+    );
+    // One that only sits there, as a shell naming the target or an
+    // editor's macro server does, builds from no older build.
+    looker.finds = Some(Use::Occupied(4243));
     let outcome = reclaim::build(&anchor, root.path(), &target, &candidate, &mut looker);
     assert_eq!(
         outcome,
@@ -425,18 +491,23 @@ fn a_build_a_process_works_in_is_kept_whatever_its_locks_say() {
     );
 }
 
-/// Says `finds` of the target and checkout it was made for, and that
-/// anything else is free, so a take judging the wrong path is seen.
+/// Says `finds` of the target and checkout it was made for, or that it
+/// can't read them when it finds nothing, and that anything else is free,
+/// so a take judging the wrong path is seen.
 struct Judge {
     target: PathBuf,
     checkout: PathBuf,
-    finds: Use,
+    finds: Option<Use>,
 }
 
 impl reclaim::Looker for Judge {
     fn judge(&mut self, target: &Path, checkout: Option<&Path>) -> std::io::Result<Use> {
         let asked = target == self.target && checkout == Some(self.checkout.as_path());
-        Ok(if asked { self.finds } else { Use::Free })
+        if !asked {
+            return Ok(Use::Free);
+        }
+        self.finds
+            .ok_or_else(|| std::io::Error::other("the processes can't be read"))
     }
 
     fn moved(&mut self) {}
@@ -690,119 +761,4 @@ fn a_target_with_no_builds_replaces_nothing() {
     assert_eq!(replaced(&root.path().join("target")), Vec::<Build>::new());
     fs::create_dir_all(root.path().join("target/debug/deps")).unwrap();
     assert_eq!(replaced(&root.path().join("target")), Vec::<Build>::new());
-}
-
-/// Dates everything in `fingerprint` `hours` ago.
-#[cfg(target_os = "linux")]
-fn aged_fingerprint(fingerprint: &Path, hours: f64) {
-    for entry in fs::read_dir(fingerprint).unwrap() {
-        crate::survey::written_ago(&entry.unwrap().path(), hours * 3600.0);
-    }
-}
-
-/// A build of `package`'s integration test in `deps`, written `hours` ago,
-/// with its dep-info and the fingerprint naming its unit.
-#[cfg(target_os = "linux")]
-fn test_binary(deps: &Path, package: &str, digest: &str, hours: f64) -> PathBuf {
-    use crate::survey::written_ago;
-    let unit = "test-integration-test-integration";
-    let binary = runnable(deps, &format!("integration-{digest}"), 0);
-    file(&binary, &"x".repeat(4096));
-    let info = artifact(deps, &format!("integration-{digest}.d"), 0);
-    for path in [&binary, &info] {
-        written_ago(path, hours * 3600.0);
-    }
-    aged_fingerprint(&fingerprinted(deps, package, digest, unit, &[]), hours);
-    binary
-}
-
-// A Mac hears nothing, so there every replaced build waits its day.
-#[cfg(target_os = "linux")]
-#[test]
-fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_it_stays() {
-    // On 18 November a gate's build held 28 GiB of test binaries a newer
-    // build of the same test had replaced, nearly all one to six hours
-    // old, so the day a replaced build waited took none of them.
-    use crate::survey::{find, now, offers_using, written_ago};
-    use crate::survey_trees::{budgeted, heard};
-    use disk_guard::plan::{self, Group};
-    use disk_guard::survey::Offer;
-    use std::collections::BTreeMap;
-    let (_home, made, config) = budgeted(&[("app", 2.0)], 100);
-    let target = made[0].join("target");
-    let deps = target.join("debug/deps");
-    // budgeted() builds the newer library, and an older one of the same
-    // variant sits beside it.
-    aged_fingerprint(
-        &fingerprinted(&deps, "app", "0123456789abcdef", "lib-app", &[]),
-        2.0,
-    );
-    let library = deps.join("libapp-5555555555555555.rlib");
-    file(&library, "old");
-    written_ago(&library, 3.0 * 3600.0);
-    aged_fingerprint(
-        &fingerprinted(&deps, "app", "5555555555555555", "lib-app", &[]),
-        3.0,
-    );
-    let unused = test_binary(&deps, "server", "1111111111111111", 3.0);
-    let newest = test_binary(&deps, "server", "2222222222222222", 2.0);
-    // Another package's test of the same name, the older opened since.
-    let opened = test_binary(&deps, "client", "3333333333333333", 3.0);
-    test_binary(&deps, "client", "4444444444444444", 2.0);
-    let mut uses = heard(&made, 3.0);
-    // One opened a minute inside the hour stays; one a minute past it goes.
-    // Written out rather than read from the rule, so a changed hour fails.
-    uses.opened(&opened, now() - 3540.0);
-    uses.opened(&unused, now() - 3660.0);
-    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
-    let spent = |found: &[Offer], path: &Path| {
-        let offer = find(found, path);
-        offer.candidate.spent && plan::windows(&offer.candidate).0 == Group::Waste
-    };
-    // A library's live builds can differ only in how a dependency was
-    // built, so it waits its day.
-    assert!(
-        !spent(&found, &deps.join("app-5555555555555555")),
-        "a replaced library went within its day"
-    );
-    assert!(
-        spent(&found, &unused),
-        "a replaced test binary last opened a minute past the hour stayed"
-    );
-    assert!(
-        !spent(&found, &opened),
-        "a replaced test binary opened a minute inside the hour went"
-    );
-    assert!(
-        found.iter().all(|offer| offer.candidate.path != newest),
-        "the newest build of a test was offered"
-    );
-    // Watched three hours but heard only half an hour, as after the guard
-    // restarts, or watched only by an earlier guard, an open in the hour
-    // may have gone unheard.
-    let mut earlier = Uses::default();
-    let mut restarted = Uses::default();
-    for dir in watched_dirs(&target) {
-        earlier.watching(&dir, now() - 3.0 * 3600.0);
-        restarted.watching(&dir, now() - 3.0 * 3600.0);
-        let handle = disk_guard::opens::handle(&dir).unwrap();
-        restarted.marked(&dir, now() - 1800.0, handle);
-    }
-    for (why, uses) in [("heard half an hour", restarted), ("unheard", earlier)] {
-        let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
-        assert!(
-            !spent(&found, &unused),
-            "a replaced test binary went within its day, {why}"
-        );
-    }
-    // Outside a budget, nobody asked for builds to be held small.
-    let unbudgeted = crate::survey::config(&format!(
-        r#""cargo": {{ "kind": "cargo", "roots": ["{}"] }}"#,
-        made[0].parent().unwrap().display()
-    ));
-    let found = offers_using(&unbudgeted, &[], &|_| false, &BTreeMap::new(), &uses);
-    assert!(
-        !spent(&found, &unused),
-        "a replaced test binary went within its day outside a budget"
-    );
 }

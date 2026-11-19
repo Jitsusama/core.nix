@@ -60,6 +60,7 @@ pub enum Line {
     /// sweep took from it.
     Replaced {
         at: f64,
+        band: Band,
         target: PathBuf,
         count: u64,
         bytes: u64,
@@ -102,12 +103,13 @@ impl Line {
             }
             Line::Replaced {
                 at,
+                band,
                 target,
                 count,
                 bytes,
             } => json!({
-                "event": "replaced", "at": at, "target": target, "count": count,
-                "bytes": bytes,
+                "event": "replaced", "at": at, "band": band, "target": target,
+                "count": count, "bytes": bytes,
             }),
         }
     }

@@ -2107,11 +2107,22 @@ fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_byte
     let mut guard = home.guard(config);
     guard.step(&tick(), &CALM).unwrap();
     let target = deps.parent().unwrap().parent().unwrap();
-    let swept: Vec<_> = home
-        .journal()
-        .into_iter()
+    let journal = home.journal();
+    let swept: Vec<_> = journal
+        .iter()
         .filter(|line| line["event"] == "replaced")
         .collect();
+    let passed = journal.iter().position(|line| line["event"] == "pass");
+    let replaced = journal.iter().position(|line| line["event"] == "replaced");
+    assert!(
+        passed.is_some() && passed < replaced,
+        "the replaced lines came before the pass's own: {journal:?}"
+    );
+    assert!(
+        swept.first().is_some_and(|line| line["band"].is_string()
+            && passed.is_some_and(|at| line["band"] == journal[at]["band"])),
+        "a replaced line didn't name its pass's band: {journal:?}"
+    );
     assert_eq!(
         swept.len(),
         1,
