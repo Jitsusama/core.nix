@@ -2892,8 +2892,9 @@
   '';
   receptor-say-gives-mycelium-words-and-numbers-alone = ''
     a receptor is said by running mycelium's absolute path with fixed words, a realm of
-    mycelium's letters and counts held to the most it takes; said off, each count is none;
-    and only the account or login declared, ASCII case aside, is taken as the source's own
+    mycelium's letters and counts held to the most it takes, then only the words its caller
+    gives after them; said off, each count is none; and only the account or login declared,
+    ASCII case aside, is taken as the source's own
   '';
   receptor-say-passes-clippy = ''
     clippy finds nothing in receptor-say, how the daemons say mycelium's receptors

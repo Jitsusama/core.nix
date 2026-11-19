@@ -27,8 +27,8 @@
 //! (upstreams.rs). Both keep their files where kept.rs says.
 //!
 //! What a refresh reads is also said to the realm's mycelium node, as the
-//! GitHub receptor: how many open changes ask Joel's review, in counts
-//! alone (receptor.rs).
+//! GitHub receptor: how many open changes ask Joel's review, and which,
+//! each named only as `owner/name#N` (receptor.rs).
 
 pub mod broker;
 pub mod gh;
