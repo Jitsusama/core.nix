@@ -17,12 +17,12 @@ use serde_json::{Map, Value, json};
 
 use crate::figures::Item;
 use crate::row::{Row, Shown};
+use crate::spacing::spaced;
+// The places that space their own rows read it here, beside `PLACE`.
+pub use crate::spacing::SPACING;
 
 /// The launcher's place the rows are in.
 pub const PLACE: &str = "agents";
-/// How far apart each row's `order` is set, so one row moving between
-/// two takes a number between theirs and the rest keep their own.
-pub const SPACING: i64 = 1024;
 /// The key of the record saying how the sessions stand together, its
 /// kind's own, since it's no row and is read where Agents' row is, home
 /// included.
@@ -242,71 +242,6 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         wants: Vec::new(),
         talks: Vec::new(),
     }
-}
-
-/// The `order` each row takes, in the order shown, from the order each
-/// had before (`was`): the most rows that can keep theirs do (the longest
-/// run still rising), and the rest take numbers spaced between their
-/// neighbours, so one row moving changes one row. Where no room is left
-/// between two, every row is spaced again.
-pub fn spaced(was: &[Option<i64>]) -> Vec<i64> {
-    let kept = rising(was);
-    let mut order = vec![0; was.len()];
-    let mut at = 0;
-    let mut below: Option<i64> = None;
-    for upto in kept.iter().copied().chain(std::iter::once(was.len())) {
-        let above = was.get(upto).copied().flatten();
-        let between = upto - at;
-        let count = i64::try_from(between).unwrap_or(i64::MAX);
-        let room = match (below, above) {
-            (Some(low), Some(high)) => {
-                (high - low > count).then(|| (low, (high - low) / (count + 1)))
-            }
-            (None, Some(high)) => Some((high - SPACING * (count + 1), SPACING)),
-            (Some(low), None) => Some((low, SPACING)),
-            (None, None) => Some((0, SPACING)),
-        };
-        let Some((from, step)) = room else {
-            return (1..=i64::try_from(was.len()).unwrap_or(i64::MAX))
-                .map(|n| n * SPACING)
-                .collect();
-        };
-        for (step_at, one) in (1..).zip(at..upto) {
-            order[one] = from + step * step_at;
-        }
-        if let Some(high) = above {
-            order[upto] = high;
-            below = Some(high);
-        }
-        at = upto + 1;
-    }
-    order
-}
-
-/// The places of the longest run of orders still rising, among those
-/// that had one.
-fn rising(was: &[Option<i64>]) -> Vec<usize> {
-    // Patience: `tails[n]` is the place ending the best run of n + 1.
-    let mut tails: Vec<usize> = Vec::new();
-    let mut before = vec![None; was.len()];
-    for (place, order) in was.iter().enumerate() {
-        let Some(order) = order else { continue };
-        let at = tails.partition_point(|tail| was[*tail].is_some_and(|tail| tail < *order));
-        before[place] = at.checked_sub(1).map(|one| tails[one]);
-        if at == tails.len() {
-            tails.push(place);
-        } else {
-            tails[at] = place;
-        }
-    }
-    let mut run = Vec::new();
-    let mut place = tails.last().copied();
-    while let Some(one) = place {
-        run.push(one);
-        place = before[one];
-    }
-    run.reverse();
-    run
 }
 
 impl Served {
@@ -586,20 +521,6 @@ mod tests {
             orders(&served, &["C", "D", "A", "B"]),
             [0, 512, 1024, 2048],
             "D between"
-        );
-    }
-
-    #[test]
-    fn spacing_keeps_the_longest_rising_run_and_spaces_again_when_full() {
-        assert_eq!(spaced(&[None, None]), [1024, 2048]);
-        assert_eq!(
-            spaced(&[Some(5), Some(3), Some(4), None]),
-            [-1021, 3, 4, 1028]
-        );
-        assert_eq!(
-            spaced(&[Some(1), None, Some(2)]),
-            [1024, 2048, 3072],
-            "no room between"
         );
     }
 }
