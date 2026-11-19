@@ -148,6 +148,26 @@ fn homes_until(file: &Path, wanted: impl Fn(&[Value]) -> bool) -> Vec<Value> {
     }
 }
 
+/// Every file under `folder`, followed past no link, that holds homes as
+/// the daemon writes them, whatever it's named.
+fn homes_under(folder: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in fs::read_dir(folder).expect("the folder read") {
+        let path = entry.expect("an entry").path();
+        let kind = fs::symlink_metadata(&path).expect("its kind").file_type();
+        if kind.is_dir() {
+            found.extend(homes_under(&path));
+        } else if kind.is_file()
+            && fs::read(&path).is_ok_and(|bytes| {
+                String::from_utf8_lossy(&bytes).contains("code/#repo=")
+            })
+        {
+            found.push(path);
+        }
+    }
+    found
+}
+
 /// Whether `things` hold one keyed `key`.
 fn holding(things: &[Value], key: &str) -> bool {
     things.iter().any(|thing| thing["key"] == key)
@@ -247,10 +267,12 @@ fn a_watch_is_told_as_a_branch_moves_and_a_tree_is_cut() {
         at.join("src/core.nix").display().to_string()
     );
     assert_eq!(cut["present"], true);
-    // Told none, as a machine without the local sites runs it, it writes none.
+    // Told none, as a machine without the local sites runs it, it writes none
+    // anywhere in the home it's given, where any default of its own would go.
+    let written = homes_under(&at);
     assert!(
-        !homes(&at).parent().expect("a folder").exists(),
-        "homes were written with none named"
+        written.is_empty(),
+        "homes were written with none named, to {written:?}"
     );
     drop(serving);
     fs::remove_dir_all(&at).expect("cleaned");

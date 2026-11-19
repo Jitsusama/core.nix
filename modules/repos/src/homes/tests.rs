@@ -203,6 +203,12 @@ fn homes_the_server_can_not_read_are_written_again() {
     let mut homes = Homes::at(file.clone());
     homes.write(&record()).expect("written");
     fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).expect("closed to all");
+    if fs::read(&file).is_ok() {
+        // Run as root, which opens what's closed to all, the daemon's account
+        // can't be stood in for, so there's nothing here to show.
+        let _ = fs::remove_dir_all(&folder);
+        return;
+    }
     assert!(
         homes.write(&record()).expect("written"),
         "homes closed to their readers were taken as the same"
@@ -386,7 +392,7 @@ fn a_failure_for_another_reason_is_said_again() {
     let then = homes.keep(&record()).expect("another failure said");
     assert!(
         then.starts_with(&format!(
-            "repos: couldn't write Code's homes to {}",
+            "<4>repos: couldn't write Code's homes to {}",
             file.display()
         )),
         "the second failure said {then:?}"
@@ -407,7 +413,7 @@ fn a_failure_is_said_once_until_the_homes_are_written_again() {
     let said = homes.keep(&record()).expect("the failure said");
     assert!(
         said.starts_with(&format!(
-            "repos: couldn't write Code's homes to {}",
+            "<4>repos: couldn't write Code's homes to {}",
             file.display()
         )) && said.ends_with("; the last stay"),
         "the failure said {said:?}"
