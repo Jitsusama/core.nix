@@ -173,12 +173,14 @@ ShellRoot {
         if (Sessions.screens["Virtual-3"] !== "Gull Wide 2")
             return;
         // The second monitor goes, and niri puts its workspace on the
-        // laptop's screen.
+        // laptop's screen. A connector comes in the same moment, which
+        // could be the one going on another, so it's no other screen.
         root.workspacesAre([
             { id: 6, idx: 1, output: "Virtual-1", is_focused: true, active_window_id: 90 },
             { id: 30, idx: 2, output: "Virtual-1" },
             { id: 10, idx: 1, output: "Virtual-2" },
-            { id: 14, idx: 2, output: "Virtual-2", active_window_id: 91 }
+            { id: 14, idx: 2, output: "Virtual-2", active_window_id: 91 },
+            { id: 40, idx: 1, output: "Virtual-5" }
         ]);
         stage = "twinGone";
     }

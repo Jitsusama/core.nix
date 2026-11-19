@@ -1,7 +1,7 @@
 .pragma library
-// How fast Reopen Them All may go (Sessions.qml): when it may begin the next
-// session, and which of those begun to tell to carry on, from the machine
-// queue's own verdict. Where each goes back is Places.js's; tests/places.qml
+// In what order and how fast Reopen Them All may go (Sessions.qml): leaders
+// first, each once, when it may begin the next session, and which of those
+// begun to tell to carry on, from the machine queue's own verdict. Where each goes back is Places.js's; tests/places.qml
 // holds both to their cases.
 
 // How much of the disk's time may be stalled, as the share of the last ten
@@ -81,4 +81,24 @@ function mayBegin(text, now) {
         return true;
     }
     return (machine.over ?? []).length === 0 && (machine.pressure?.io ?? 0) < ioStalls;
+}
+
+// Reopen Them All's queue, `{ one, kept }` each, with those whose kept
+// place says it `leads` (it orchestrated others as it was kept) first,
+// each part in the order it came, so the sessions an orchestrator leads
+// have it back to answer to as they return. Where each goes doesn't hang on
+// the order begun, since each is placed by the kept places of those back.
+function leadersFirst(queue) {
+    const leads = entry => entry.kept?.leads === true;
+    return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
+}
+
+// Reopen Them All's queue with `more` joined at its end, but for each one
+// it holds already or has `begun`, by id: an orchestrator handing over its
+// own sessions as it comes back, while the queue still holds them, would
+// otherwise begin each twice, two pis on one log, before either has said
+// it runs here.
+function queuedOnce(queue, more, begun) {
+    const asked = new Set(queue.map(entry => entry.one.id).concat(begun));
+    return queue.concat(more.filter(entry => !asked.has(entry.one.id)));
 }

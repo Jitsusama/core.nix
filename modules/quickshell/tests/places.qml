@@ -110,29 +110,42 @@ QtObject {
                 { screen: panel, workspace: 2, output: "eDP-1", others: { "DP-4": monitor } },
                 { screen: panel, workspace: 1, output: "eDP-1", others: { "DP-4": monitor } }
             ]);
+        // Two alike screens are two only when one moment, the other
+        // windows a boot kept at once, shows windows on both.
+        const twins = [{ screen: twin, output: "Virtual-1", workspace: 1, column: 1, tile: 1 },
+            { screen: twin, output: "Virtual-2", workspace: 1, column: 1, tile: 1 }];
         expect("two alike screens gone at a boot are other screens to each other",
-            Places.placed([{ screen: twin, output: "Virtual-1", workspace: 1, column: 1, tile: 1 },
-                { screen: twin, output: "Virtual-2", workspace: 1, column: 1, tile: 1 }],
-                { "eDP-1": panel }, "eDP-1").map(at => at.away.others), [
+            Places.placed(twins, { "eDP-1": panel }, "eDP-1", [twins, twins]).map(at => at.away.others), [
                 { "eDP-1": panel, "Virtual-2": twin },
                 { "eDP-1": panel, "Virtual-1": twin }
             ]);
         // One alike twin of the two kept back: the place kept on it stays,
         // and the other's screen is gone, rather than both taken for it.
         expect("a twin kept beside another isn't taken for it",
-            Places.placed([{ screen: twin, output: "Virtual-1", workspace: 1, column: 1, tile: 1 },
-                { screen: twin, output: "Virtual-2", workspace: 1, column: 1, tile: 1 }],
-                { "Virtual-1": twin }, "Virtual-1").map(at => [at.output, at.workspace, at.away?.others ?? null]),
+            Places.placed(twins, { "Virtual-1": twin }, "Virtual-1", [twins, twins])
+                .map(at => [at.output, at.workspace, at.away?.others ?? null]),
             [["Virtual-1", 1, null], ["Virtual-1", 2, { "Virtual-1": twin }]]);
-        // One monitor kept on two connectors, a boot apart: not two
-        // screens, so neither is the other's, gone or found.
-        const twoBoots = [{ screen: monitor, output: "DP-4", workspace: 1, column: 1, tile: 1 },
+        // Both renumbered, as a dock does: each takes a connector of its
+        // own, and with only one back the other's is gone.
+        expect("twins back renumbered share their connectors out",
+            Places.placed(twins, { "Virtual-3": twin, "Virtual-4": twin }, "Virtual-3", [twins, twins])
+                .map(at => at.output), ["Virtual-3", "Virtual-4"]);
+        expect("one twin back renumbered is the first's, and the other's is gone",
+            Places.placed(twins, { "Virtual-3": twin }, "Virtual-3", [twins, twins])
+                .map(at => [at.output, at.away?.others ?? null]),
+            [["Virtual-3", null], ["Virtual-3", { "Virtual-3": twin, "Virtual-1": twin }]]);
+        // One monitor kept on two connectors in one boot, as a session
+        // ended before a redock keeps its old place, with no moment showing
+        // it on both: one screen, so neither is the other's, gone or found.
+        const renumbered = [{ screen: monitor, output: "DP-4", workspace: 1, column: 1, tile: 1 },
             { screen: monitor, output: "DP-5", workspace: 2, column: 1, tile: 1 }];
-        expect("one monitor kept over two boots isn't another screen to itself",
-            Places.placed(twoBoots, { "eDP-1": panel }, "eDP-1", ["restored", "now"])
+        const moment = [renumbered[1]];
+        const afterRedock = [moment, moment];
+        expect("one monitor kept on two connectors isn't another screen to itself",
+            Places.placed(renumbered, { "eDP-1": panel }, "eDP-1", afterRedock)
                 .map(at => at.away.others), [{ "eDP-1": panel }, { "eDP-1": panel }]);
-        expect("one monitor kept over two boots is found on its one connector",
-            Places.placed(twoBoots, { "DP-5": monitor }, "DP-5", ["restored", "now"])
+        expect("one monitor kept on two connectors is found on its one",
+            Places.placed(renumbered, { "DP-5": monitor, "eDP-1": panel }, "eDP-1", afterRedock)
                 .map(at => at.output), ["DP-5", "DP-5"]);
 
         // The monitor comes after the reopen began: the workspaces given
@@ -275,7 +288,25 @@ QtObject {
         expect("a sibling noted one way still doesn't take the other's",
             Places.homeward(oneWay, { "DP-6": qemu }, offThePanel), {
                 moves: [{ output: "DP-6", id: 1 }],
-                waiting: { [qemu]: [Object.assign({}, oneWay[qemu][1], { others: { "DP-6": qemu } })] }
+                waiting: { [qemu]: [Object.assign({}, oneWay[qemu][1],
+                    { others: { "DP-6": qemu, "Virtual-1": qemu } })] }
+            });
+        const otherWay = { [qemu]: [{ id: 1, workspace: 1, output: "Virtual-1", others: {} },
+            { id: 2, workspace: 2, output: "Virtual-2", others: { "Virtual-1": qemu } }] };
+        expect("a sibling noted the other way still doesn't take the other's",
+            Places.homeward(otherWay, { "DP-6": qemu }, offThePanel), {
+                moves: [{ output: "DP-6", id: 1 }],
+                waiting: { [qemu]: [Object.assign({}, otherWay[qemu][1],
+                    { others: { "Virtual-1": qemu, "DP-6": qemu } })] }
+            });
+        // The one that wasn't noted knowing its twin goes first, and its
+        // twin's own screen comes back: it isn't taken for its own.
+        const unnotedFirst = { [qemu]: [{ id: 1, workspace: 2, output: "Virtual-1", others: { "Virtual-2": qemu } },
+            { id: 2, workspace: 1, output: "Virtual-2", others: {} }] };
+        expect("a twin ranked first doesn't take its twin's own screen",
+            Places.homeward(unnotedFirst, { "Virtual-1": qemu }, offThePanel), {
+                moves: [{ output: "Virtual-1", id: 1 }],
+                waiting: { [qemu]: [Object.assign({}, unnotedFirst[qemu][1], { others: { "Virtual-1": qemu } })] }
             });
         // The connectors other screens' as a workspace leaves one, by their
         // descriptions as last heard ("" for one not heard yet): those
@@ -438,7 +469,7 @@ QtObject {
         // begun it, joins nothing, or two pis would write one log.
         const asked = id => ({ one: { id } });
         expect("handed over again while queued or begun, it isn't asked twice",
-            Places.queuedOnce([asked("q1"), asked("q2")], [asked("q2"), asked("q3"), asked("q4")],
+            Reopening.queuedOnce([asked("q1"), asked("q2")], [asked("q2"), asked("q3"), asked("q4")],
                 ["q4"]).map(entry => entry.one.id), ["q1", "q2", "q3"]);
         // Those whose kept place says they led others are begun first, so
         // the sessions they lead have them back to answer to; the rest,
@@ -446,7 +477,7 @@ QtObject {
         const queued = (id, leads) => ({ one: { id },
             kept: leads === undefined ? null : Object.assign({ leads }, here) });
         expect("orchestrators first, each part in its order",
-            Places.leadersFirst([queued("a", false), queued("b", true), queued("c"),
+            Reopening.leadersFirst([queued("a", false), queued("b", true), queued("c"),
                 queued("d", true), queued("e", false)]).map(entry => entry.one.id),
             ["b", "d", "a", "c", "e"]);
 

@@ -1441,10 +1441,13 @@ Singleton {
     function reopenAll(lost, gone, keptAt, told) {
         const boots = { now: arrangement[bootId], restored: arrangement[restoring.boot] };
         const kept = keptAt ?? (id => Places.keptFor(id, boots));
-        const from = keptAt ? (() => "") : (id => Places.keptFrom(id, boots));
+        // The other windows its place's boot kept at once, which say which
+        // alike screens were two (Places.js's twinsOf).
+        const moments = { now: arrangedOthers[bootId], restored: arrangedOthers[restoring.boot] };
+        const momentOf = id => keptAt ? [] : moments[Places.keptFrom(id, boots)];
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one, true));
         const here = lost.filter(one => one.machine === undefined);
-        lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", from));
+        lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", momentOf));
     }
     // What Reopen Them All tells each session it reopens, so a boot never
     // leaves them waiting to be poked one by one (P9R1KI, 2026-11-02
@@ -1456,16 +1459,16 @@ Singleton {
         + "left off: your plan's next open item."
     // Each kept place found on its own screen as it's connected now, or a
     // gone screen's after the one in use's (Places.js), then in order.
-    function reopenHere(here, gone, kept, told, from) {
+    function reopenHere(here, gone, kept, told, momentOf) {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
         const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null,
-            here.map(one => (from ?? (() => ""))(one.id)));
-        const queue = Places.leadersFirst(here.map((one, at) => ({ one, at: places[at],
+            here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
+        const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: keptPlaces[at], gone, told })).sort(order));
         if (reopening !== null) {
-            reopening.queue = Places.queuedOnce(reopening.queue, queue, reopening.begun);
+            reopening.queue = Reopening.queuedOnce(reopening.queue, queue, reopening.begun);
             // Settled again once these are placed too, beside the rest.
             reopening.settling = false;
             reopenSettling.stop();
@@ -2138,11 +2141,8 @@ Singleton {
         going.used.push(index);
         const at = going.kept[index];
         const beside = root.besideOf(going.back);
-        // Every place kept that boot, sessions' and other windows', so two
-        // alike screens gone at once are each other's other screen.
-        const keptWith = Object.values(arrangement[going.boot] ?? {}).concat(going.kept);
         const found = Places.whereBack(at, beside);
-        const output = found.output ?? Places.whereKept(at, keptWith, screens)
+        const output = found.output ?? Places.whereKept(at, going.kept, screens)
             ?? Niri.workspace()?.output ?? null;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
@@ -2156,9 +2156,9 @@ Singleton {
             .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
-        if (into !== null && Places.whereKept(at, keptWith, screens) === undefined)
+        if (into !== null && Places.whereKept(at, going.kept, screens) === undefined)
             root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
-                output: at.output, others: Places.othersGone(at, keptWith, screens) }, into);
+                output: at.output, others: Places.othersGone(at, going.kept, screens) }, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;
