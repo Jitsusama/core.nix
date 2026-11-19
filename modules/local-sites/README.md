@@ -24,7 +24,9 @@ row in `jitsusama.local-sites.rows`, which the home lists in place of any
 row `sites.json` has at its path, so what the home says of a live site is
 built with it. The home writes every row it lists, the declared ones as
 declared, into `rows.json` beside it, for the readers of a row's `homes`
-(the system daemon's, the web-design skill's and Code's). Each reads it
+(the system daemon's, the web-design skill's and Code's). A switch refuses
+declared rows that give one kind two homes, which those readers would settle
+quietly for the first, or a pattern with no `{name}`. Each reads `rows.json`
 first and `sites.json` only where it's missing, so `sites.json` keeps
 only the rows nothing declares; a session's edit to a live row there no longer
 reaches the home. A home rolled back

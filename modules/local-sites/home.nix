@@ -167,6 +167,40 @@ let
   astray = lib.filter (path: builtins.match "${step}(/${step})*" path == null) (
     lib.attrNames cfg.rows
   );
+  # Each kind a declared row is home to, by the row's path, and the address
+  # pattern it gives the kind, if it gives one.
+  claims = lib.concatLists (
+    lib.mapAttrsToList (
+      path: row:
+      map (
+        home:
+        if lib.isString home then
+          {
+            inherit path;
+            kind = home;
+            address = null;
+          }
+        else
+          {
+            inherit path;
+            kind = home.kind or "";
+            address = home.address or null;
+          }
+      ) row.homes
+    ) cfg.rows
+  );
+  # Kinds more than one declared row is home to. The homes' readers let the
+  # first row keep a kind, which suits the rows sessions write, newest
+  # first, but between two declared rows it would take one's links away
+  # without a word (modules/system/src/homes.rs).
+  homedTwice = lib.mapAttrsToList (kind: rows: "${kind} (${toString (map (row: row.path) rows)})") (
+    lib.filterAttrs (_: rows: lib.length rows > 1) (lib.groupBy (claim: claim.kind) claims)
+  );
+  # Patterns with nowhere for a thing's name, which would send every thing
+  # of the kind to one address.
+  nameless = map (claim: "${claim.kind} at ${claim.path}/${claim.address}") (
+    lib.filter (claim: claim.address != null && !lib.hasInfix "{name}" claim.address) claims
+  );
   roots = config.jitsusama.repos.roots or null;
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
   # map-check.sh): the map's live-page test, pointed at the page this
@@ -517,6 +551,20 @@ in
         "jitsusama.local-sites.rows names sites by paths that lead off the sites: "
         "${toString astray}; name each by plain steps of letters, digits and -._~, "
         "none starting with a dot"
+      ];
+    }
+    {
+      assertion = homedTwice == [ ];
+      message = lib.concatStrings [
+        "jitsusama.local-sites.rows names more than one site as home to a kind: "
+        "${lib.concatStringsSep ", " homedTwice}; let one site be each kind's home"
+      ];
+    }
+    {
+      assertion = nameless == [ ];
+      message = lib.concatStrings [
+        "jitsusama.local-sites.rows gives kinds an address with no {name} in it: "
+        "${lib.concatStringsSep ", " nameless}; put {name} where each thing's name goes"
       ];
     }
   ];
