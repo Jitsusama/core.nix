@@ -204,15 +204,46 @@ impl Stream {
     }
 }
 
+/// How often one control that didn't answer is asked again. A camera may
+/// time out only while a stream is set up, as when a call changes size
+/// without letting go, so a timeout costs minutes of lines rather than the
+/// rest of the call. Only one is asked again each time, in turn, so the
+/// watch waits on one at most once a minute however many are kept.
+const AGAIN: Duration = Duration::from_secs(60);
+
+/// A minute after the last, lets the next kept control after the one last
+/// asked again, round the set, be asked; one that times out again is kept
+/// again by `controls`. Of the record's fields alone, since the stream's
+/// node is held open while it's called.
+fn ask_one_again(
+    unanswered: &mut BTreeSet<u32>,
+    asked_again: &mut Option<(Instant, Option<u32>)>,
+    at: Instant,
+) {
+    let Some((then, last)) = *asked_again else {
+        return;
+    };
+    if at.duration_since(then) < AGAIN {
+        return;
+    }
+    let next = unanswered.iter().find(|id| Some(**id) > last);
+    let next = next.or(unanswered.first()).copied();
+    if let Some(id) = next {
+        unanswered.remove(&id);
+    }
+    *asked_again = Some((at, next.or(last)));
+}
+
 /// What the record follows of a camera's stream.
 pub struct Record {
     sysfs: PathBuf,
     debugfs: PathBuf,
     stream: Stream,
-    /// The controls that didn't answer, kept for the stream, so each line
-    /// doesn't wait on them again; the next stream asks them afresh, since
-    /// a camera may time out only as a stream is set up.
+    /// The controls that didn't answer, so each line doesn't wait on them
+    /// again; one is asked again each minute, and all at the next stream.
     unanswered: BTreeSet<u32>,
+    /// When one was last asked again, or the stream began, and which.
+    asked_again: Option<(Instant, Option<u32>)>,
 }
 
 impl Record {
@@ -222,6 +253,7 @@ impl Record {
             debugfs: debugfs.to_owned(),
             stream: Stream::default(),
             unanswered: BTreeSet::new(),
+            asked_again: None,
         }
     }
 
@@ -248,6 +280,7 @@ impl Record {
         let since = *stream.since.get_or_insert_with(|| {
             stream.counted = counted(&self.sysfs, &self.debugfs, node);
             self.unanswered.clear();
+            self.asked_again = Some((at, None));
             at
         });
         stream.count(at);
@@ -264,6 +297,7 @@ impl Record {
                 Err(error) => return Some(line(holders, Err(&error.to_string()), &gave)),
             },
         };
+        ask_one_again(&mut self.unanswered, &mut self.asked_again, at);
         let asked = Asked {
             format: Some(v4l2::format(file).map_err(|error| error.to_string())),
             rate: Some(v4l2::asked_rate(file).map_err(|error| error.to_string())),
@@ -528,7 +562,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_stream_asks_again_what_the_last_found_unanswered() {
+    fn one_control_found_unanswered_is_asked_again_each_minute_and_all_at_the_next_stream() {
         let (camera, stats, mut record) = streaming("record-asks-again");
         record.unanswered.insert(0x0098_0900);
         count(&stats, 10, 0);
@@ -547,6 +581,40 @@ mod tests {
             "no line"
         );
         assert_eq!(record.unanswered.len(), 1);
+        // A line just short of a minute on still passes it over.
+        count(&stats, 300, 0);
+        let short = start + Duration::from_secs(59);
+        assert!(
+            record.at(short, &camera.node, &holders).is_some(),
+            "no line"
+        );
+        assert_eq!(record.unanswered.len(), 1);
+        // Each minute on, one is asked again, in turn, so several that time
+        // out cost the watch one wait a minute, and the minute counts from
+        // the last asked again.
+        let (exposure, gain) = (0x009a_0902, 0x0098_0913);
+        record.unanswered.extend([exposure, gain]);
+        let mut frames = 300;
+        let mut line_at = |at: Instant, record: &mut Record| {
+            frames += 100;
+            count(&stats, frames, 0);
+            assert!(record.at(at, &camera.node, &holders).is_some(), "no line");
+            record.unanswered.iter().copied().collect::<Vec<_>>()
+        };
+        let again = short + EVERY;
+        assert_eq!(line_at(again, &mut record), [gain, exposure]);
+        // As it would be had it timed out again.
+        record.unanswered.insert(0x0098_0900);
+        let kept = [0x0098_0900, gain, exposure];
+        assert_eq!(line_at(again + EVERY, &mut record), kept);
+        let short_of_two = again + Duration::from_secs(59);
+        assert_eq!(line_at(short_of_two, &mut record), kept);
+        let two = short_of_two + EVERY;
+        assert_eq!(line_at(two, &mut record), [0x0098_0900, exposure]);
+        let three = two + AGAIN;
+        assert_eq!(line_at(three, &mut record), [0x0098_0900]);
+        // Round the set, the first is asked again.
+        assert_eq!(line_at(three + AGAIN, &mut record), Vec::<u32>::new());
     }
 
     #[test]
