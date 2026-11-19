@@ -275,6 +275,31 @@ want to see its paws moving when it is walking or running."
 
 - Held by `margin-cat.qml`: "it walks onto its seat, never past it"
 - Held by `margin-cat.qml`: "at a run, at most three cells a drawing"
+- Held by `margin-cat.qml`: "a walk starts a pair on from its stand, and stops at most a
+  pair off it"
+- Held by `margin-cat-floats.qml`: "set off mid-stride into a turn and a think, it steps to its
+  stand a pair at a time"
+- Held by `margin-cat-floats.qml`: "re-planned as it turns in a stride before it's seen, it
+  holds it a stride more"
+- Held by `margin-cat-floats.qml`: "re-planned once the stride it turns in is seen, it steps a
+  pair on at once"
+- Held by `margin-cat-floats.qml`: "set off again easing in, it eases in; at its pace, it keeps
+  it"
+- Held by `margin-cat-floats.qml`: "a step back reads as a skid, but onto its stand as it holds
+  there"
+- Held by `margin-cat-floats.qml`: "a stride drawn under 25 ms flashes, set off in nothing too,
+  but the one before"
+- Held by `margin-cat-floats.qml`: "it walks out of its stand and back onto it a pair of feet
+  at a time"
+- Held by `margin-cat-floats.qml`: "nor fails to go, or skids or flashes a stride, any way,
+  set off or climbing"
+- Held by `margin-cat.qml`: "set off from another stride, it's never both pairs off the one
+  it stops into"
+- Held by `margin-cat-floats.qml`: "set off again every frame, a stride steps once a stride's
+  ground"
+- Held by `margin-cat-floats.qml`: "set off mid-stride into a turn, it turns in the stride drawn"
+- Held by `margin-cat-floats.qml`: "stepped into early to stop, a stride counts from where it was
+  first drawn"
 - Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"
 - Held by `margin-cat-floats.qml`: "onto and off one 2 above the tops, it steps within its
   walk, never leaping"

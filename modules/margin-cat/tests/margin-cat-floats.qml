@@ -350,6 +350,240 @@ QtObject {
                 ends(stepsOff.beats[stepsOff.beats.length - 1]).slice(2)], [[800, 5], [100, 7]]);
         expect("stepping on and off one 2 above, never over its face",
             [overFace(stepsOn, flush), overFace(stepsOff, flush)], [[], []]);
+        // Each stride steps one pair of feet on from the last, and so does
+        // a walk's first from its stand and its last back onto it, the
+        // stand drawn as stride B (WCJQSG b1034f36): every change between
+        // two of the walk's drawings moves one pair, never both, or it skids.
+        const strideOrder = ["walkingA", "walkingC", "walkingB", "walkingD"];
+        // Each change is found to the millisecond by halving the 16 ms
+        // between two frames drawn differently, so a sweep of some hundreds
+        // of walks reads a fraction of the frames: a stride steps on, never
+        // back, and shows for 25 ms at least, so none comes and goes unseen
+        // between two alike, which the sweep holds it to too; all but one
+        // drawn between two holds, both drawn as stride B, which only
+        // timed()'s hold of a short stride keeps from showing.
+        const drawings = (way, was) => {
+            const drawnIn = was ? [{ pose: was, t: -1 }] : [];
+            const drawnAt = t => Paths.frame(way, Math.min(t, way.ends));
+            const seen = t => drawnAt(t).pose;
+            const changes = (from, to, opens, closes) => {
+                if (opens === closes)
+                    return;
+                if (to - from <= 1) {
+                    drawnIn.push({ pose: closes, t: to, beat: drawnAt(to).beat });
+                    return;
+                }
+                const half = Math.floor((from + to) / 2);
+                const middle = seen(half);
+                changes(from, half, opens, middle);
+                changes(half, to, middle, closes);
+            };
+            let posed = seen(0);
+            if (posed !== drawnIn[drawnIn.length - 1]?.pose)
+                drawnIn.push({ pose: posed, t: 0, beat: drawnAt(0).beat });
+            for (let t = 16; t < way.ends + 16; t += 16) {
+                const drawnNext = seen(t);
+                changes(t - 16, t, posed, drawnNext);
+                posed = drawnNext;
+            }
+            return drawnIn;
+        };
+        // A change skids, or steps back but onto its stand as it holds
+        // there, as a stop may: three strides on is one back. Its stand is
+        // drawn as stride B, so only the beat tells a stop from a step back.
+        const standsIn = ["turns", "thinks", "settles", "grabs"];
+        const stridesOn = (before, pose) =>
+            (strideOrder.indexOf(pose) - strideOrder.indexOf(before) + 4) % 4;
+        const skidsIn = drawn => drawn.map((one, i, all) => [all[i - 1]?.pose, one])
+            .filter(([before, one]) => strideOrder.includes(before)
+                && strideOrder.includes(one.pose)
+                && (stridesOn(before, one.pose) % 2 === 0
+                    || (stridesOn(before, one.pose) === 3
+                        && !(one.pose === "walkingB" && standsIn.includes(one.beat)))));
+        const skids = (way, was) => skidsIn(drawings(way, was));
+        expect("a step back reads as a skid, but onto its stand as it holds there",
+            [["walkingA", "walkingD", "goes"], ["walkingC", "walkingA", "goes"],
+                ["walkingD", "walkingB", "settles"], ["walkingD", "walkingB", "goes"]]
+                .map(([before, pose, beat]) => skidsIn([{ pose: before }, { pose, beat }]).length),
+            [1, 1, 0, 1]);
+        // And each stride it steps into is drawn for 25 ms at least, all
+        // but the one it was set off in, drawn before: 25 rather than SHOWN,
+        // since strides at joins mid-walk are drawn 28 to 31 ms, as on main.
+        const flashesIn = drawn => drawn.filter((one, i, all) => one.t >= 0
+            && i < all.length - 1 && strideOrder.includes(one.pose) && all[i + 1].t - one.t < 25)
+            .map(one => `${one.pose} at ${one.t}`);
+        expect("a stride drawn under 25 ms flashes, set off in nothing too, but the one before",
+            [[-1, 10], [0, 10], [0, 24], [0, 25]].map(([t, next]) => flashesIn([
+                { pose: "walkingD", t }, { pose: "walkingA", t: next },
+                { pose: "walkingC", t: next + 50 }])),
+            [[], ["walkingD at 0"], ["walkingD at 0"], []]);
+        // Hurried back the way it faced, it turns, standing, then walks.
+        const turnsBack = Paths.walk({ x: 300, y: 7 }, { x: 100, y: 7 },
+            world({ hurried: true }));
+        expect("it walks out of its stand and back onto it a pair of feet at a time",
+            [names(turnsBack)[0], names(stepsOn).pop(), skids(turnsBack), skids(stepsOn),
+                skids(stepsOff)], ["turns", "settles", [], [], []]);
+        // However far it goes, so whichever stride it would stop in: hurried
+        // back, set off again mid-stride from each it could be drawn in, a
+        // part through it, or held past it, at its pace or easing, along or
+        // onto a float to settle there, and up a column's side.
+        const skidding = [];
+        const shares = [0.5, 0.99, 1.6, 0];
+        // A way it won't plan fails, so the sweep can't pass judging none.
+        const sets = (way, was) => way === null
+            || (drawn => skidsIn(drawn).length + flashesIn(drawn).length > 0)(drawings(way, was));
+        for (let x = 120; x < 1200; x += 37) {
+            // Each share at its pace and easing, in turn.
+            const [share, atPace] = [shares[((x - 120) / 37) % 4],
+                Math.floor((x - 120) / 148) % 2 === 1];
+            const ways = [[`back to ${x}`, Paths.walk({ x: 1100, y: 7 }, { x, y: 7 },
+                world({ hurried: true }))], [`on to ${x}`, Paths.walk({ x: 100, y: 7 },
+                { x, y: 7 }, world({ floats: [flush] }))]].concat(...strideOrder.map(drawn =>
+                [[], [flush]].map(floats => [`on to ${x} from ${drawn} by ${floats.length}`,
+                    Paths.walk({ x: 100, y: 7 }, { x, y: 7 }, world({ hurried: true, facing: 1,
+                        drawnIn: drawn, drawnInto: share, drawnAtPace: atPace, floats })),
+                    drawn])));
+            for (const [name, way, was] of ways) {
+                if (sets(way, was))
+                    skidding.push(name);
+            }
+        }
+        for (let y = 20; y < 790; y += 37) {
+            const [share, atPace] = [shares[((y - 20) / 37) % 4],
+                Math.floor((y - 20) / 148) % 2 === 1];
+            const way = Paths.walk({ x: 620, y: 776 }, { x: 640, y }, world({}));
+            if (sets(way))
+                skidding.push(`up to ${y}`);
+            // Set off again mid-stride down a side, its stand held back
+            // past the beats before its climb.
+            for (const drawn of strideOrder) {
+                const down = Paths.walk({ x: 1200, y: 7 }, { x: 900, y }, world({ hurried: true,
+                    facing: -1, drawnIn: drawn, drawnInto: share, drawnAtPace: atPace }));
+                if (sets(down, drawn))
+                    skidding.push(`down to ${y} from ${drawn}`);
+            }
+        }
+        expect("nor fails to go, or skids or flashes a stride, any way, set off or climbing",
+            skidding, []);
+        // Walked to a place that moves on every frame, so set off again
+        // from where it's drawn each 16 ms, it goes on at its pace, near a
+        // walk left alone, rather than easing in again each time, and strides
+        // by the ground it covers, neither once a frame nor held.
+        const unchased = Paths.walk({ x: 100, y: 7 }, { x: 700, y: 7 }, world({}));
+        let chased = unchased;
+        const chasedStride = chased.stride;
+        let chasedFrom = 0;
+        let chasedDrawn = null;
+        let chasedSteps = 0;
+        let chasedAt = 0;
+        // Each pose it's drawn in, and when, to read skids and flashes by.
+        const chasedInto = [];
+        for (let t = 0; t < 1600; t += 1) {
+            // Its record starts from the stride drawn as it's first chased,
+            // from when that was stepped into, so its showing is judged too.
+            if (t === 600) {
+                chasedAt = chasedDrawn.x;
+                let began = 599;
+                while (began > 0 && Paths.frame(unchased, began - 1).pose === chasedDrawn.pose)
+                    began -= 1;
+                chasedInto.push({ pose: chasedDrawn.pose, t: began, beat: chasedDrawn.beat });
+            }
+            if (t > 600 && t % 16 === 0) {
+                chased = Paths.walk({ x: chasedDrawn.x, y: chasedDrawn.y }, { x: 700, y: 7 },
+                    world({ hurried: true, facing: chasedDrawn.facing, drawnIn: chasedDrawn.pose,
+                        drawnInto: chasedDrawn.into, drawnAtPace: chasedDrawn.atPace }));
+                chasedFrom = t;
+            }
+            const now = Paths.frame(chased, t - chasedFrom);
+            if (t >= 600 && now.pose !== chasedDrawn.pose) {
+                chasedSteps += Number(strideOrder.includes(now.pose));
+                chasedInto.push({ pose: now.pose, t, beat: now.beat });
+            }
+            chasedDrawn = now;
+        }
+        const chasedStrides = (chasedDrawn.x - chasedAt) / chasedStride;
+        const alone = Paths.frame(unchased, 1600).x - Paths.frame(unchased, 600).x;
+        const chasedSkids = skidsIn(chasedInto).length;
+        const chasedFlashes = flashesIn(chasedInto).length;
+        expect("set off again every frame, a stride steps once a stride's ground",
+            [chasedStride > 0, chasedDrawn.x - chasedAt >= alone * 3 / 4,
+                Math.abs(chasedSteps - chasedStrides) <= 1.5, chasedSkids, chasedFlashes],
+            [true, true, true, 0, 0]);
+        // Set off again as it eases in or out, it eases in on, rather than
+        // lurch to its pace; at its pace, it keeps it.
+        // Most of the way up its ramp in, by time, not by what it says of its
+        // pace, so a pace judged by the ramp's ground, not its time, fails it.
+        const eases = unchased.beats.find(beat => beat.kind === "goes");
+        const rampEnds = 2 * eases.ramps[0] / (1 + eases.ramps[0] + eases.ramps[1]);
+        const easingAt = Paths.frame(unchased,
+            eases.begins + (eases.ends - eases.begins) * rampEnds * 0.9);
+        const pacedAt = Paths.frame(unchased, 600);
+        // Just into its ramp out, by time, as a seat moved as it settles,
+        // so a pace judged by the ramp's ground fails it here too.
+        const rampOut = 2 * eases.ramps[1] / (1 + eases.ramps[0] + eases.ramps[1]);
+        const easingOut = Paths.frame(unchased,
+            eases.ends - (eases.ends - eases.begins) * rampOut * 0.9);
+        const easesFrom = one => Paths.walk({ x: one.x, y: one.y }, { x: 700, y: 7 }, world({
+            hurried: true, facing: one.facing, drawnIn: one.pose, drawnInto: one.into,
+            drawnAtPace: one.atPace })).beats.find(beat => beat.kind === "goes").ramps[0];
+        expect("set off again easing in, it eases in; at its pace, it keeps it",
+            [easingAt.atPace, easesFrom(easingAt) > 0, pacedAt.atPace, easesFrom(pacedAt),
+                easingOut.atPace, easesFrom(easingOut) > 0], [false, true, true, 0, false, true]);
+        // Stepped into a SHOWN early to stop, a stride counts from where it was
+        // first drawn, a whole stride by its last frame, not from the stop.
+        const stopping = Paths.walk({ x: 100, y: 7 }, { x: 636, y: 7 }, world({ hurried: true }));
+        const stopsAt = stopping.beats.filter(beat => beat.kind === "goes").pop().ends;
+        const earlyDrawn = [66, 34].map(before => Paths.frame(stopping, stopsAt - before));
+        expect("stepped into early to stop, a stride counts from where it was first drawn",
+            earlyDrawn.map(one => [one.pose, one.into]), [["walkingA", 0], ["walkingA", 1]]);
+        // Set off mid-stride into a turn, it turns in the stride drawn, then strides on.
+        const turnsMid = Paths.walk({ x: 1200, y: 7 }, { x: 900, y: 398 },
+            world({ hurried: true, facing: -1, drawnIn: "walkingA" }));
+        const turnSteps = Array.from({ length: 300 }, (_, t) => Paths.frame(turnsMid, t).pose)
+            .filter((pose, t, all) => t === 0 || pose !== all[t - 1]).slice(0, 4);
+        expect("set off mid-stride into a turn, it turns in the stride drawn",
+            turnSteps, ["walkingA", "walkingC", "walkingB", "walkingD"]);
+        // Each pose it's drawn in over its first `length` ms, and for how many.
+        const runsOf = (way, length) => Array.from({ length }, (_, t) => Paths.frame(way, t).pose)
+            .reduce((runs, pose) => {
+                const last = runs[runs.length - 1];
+                if (runs.length > 0 && last.pose === pose)
+                    last.ms += 1;
+                else
+                    runs.push({ pose, ms: 1 });
+                return runs;
+            }, []);
+        // Into a turn and a think, it steps to its stand a pair of feet at a
+        // time, the stride between shown 33 ms.
+        const thinksMid = Paths.walk({ x: 1200, y: 7 }, { x: 900, y: 398 },
+            world({ pause: 400, facing: -1, drawnIn: "walkingA" }));
+        const thinkRuns = runsOf(thinksMid, 600).slice(0, 4);
+        expect("set off mid-stride into a turn and a think, it steps to its stand a pair at a time",
+            [thinkRuns.map(run => run.pose), thinkRuns[1].ms >= 33],
+            [["walkingA", "walkingC", "walkingB", "pouncing"], true]);
+        // Re-planned 32 ms into that turn, a ms short of SHOWN, it walks
+        // on, holding the stride it turns in till it's seen, then a pair on:
+        // held a stride, as long as the walk out of the turn takes over its
+        // first, so neither flashed nor glided.
+        const turning = Paths.frame(turnsMid, 32);
+        const replanned = Paths.walk({ x: turning.x, y: turning.y }, { x: 700, y: 398 },
+            world({ hurried: true, facing: turning.facing, drawnIn: turning.pose,
+                drawnInto: turning.into, drawnAtPace: turning.atPace }));
+        const replanRuns = runsOf(replanned, 300).slice(0, 2);
+        expect("re-planned as it turns in a stride before it's seen, it holds it a stride more",
+            [turning.beat, turning.pose, turning.into, names(replanned)[0],
+                replanRuns.map(run => run.pose), replanRuns[0].ms - runsOf(turnsMid, 300)[1].ms],
+            ["turns", "walkingA", 0, "goes", ["walkingA", "walkingC"], 0]);
+        // Re-planned 33 ms in, once that stride is seen, it steps a pair on
+        // from its first frame.
+        const turnSeen = Paths.frame(turnsMid, 33);
+        const replannedSeen = Paths.walk({ x: turnSeen.x, y: turnSeen.y }, { x: 700, y: 398 },
+            world({ hurried: true, facing: turnSeen.facing, drawnIn: turnSeen.pose,
+                drawnInto: turnSeen.into, drawnAtPace: turnSeen.atPace }));
+        const seenRuns = runsOf(replannedSeen, 300).slice(0, 2);
+        expect("re-planned once the stride it turns in is seen, it steps a pair on at once",
+            [turnSeen.beat, turnSeen.pose, turnSeen.into, seenRuns.map(run => run.pose)],
+            ["turns", "walkingA", 1, ["walkingC", "walkingB"]]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));
