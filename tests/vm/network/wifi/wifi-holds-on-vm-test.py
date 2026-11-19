@@ -70,6 +70,11 @@ def test_wifid_starting_again_leaves_the_card_on_its_network(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """Starting wifid again leaves the card on its network."""
+    # wifid says it's back by the Inn's sign-in, so run alone, from Lantern, the card goes
+    # to the Inn first, as the move before this one takes it.
+    machine.systemctl("stop lantern")
+    wifid.joined("Roadside Inn")
+    wifid.holds_address("10.43.0.")
     garbled = "/var/lib/wifid/networks/garbled.network"
     machine.succeed(f"printf '[\\377]' > {garbled}")
     since = wifid.journal_now()
