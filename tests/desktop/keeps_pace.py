@@ -17,8 +17,10 @@ builder short of processors for those, but not one keeping QEMU's main loop or v
 waiting, which draw and serve the shell's frames while the guest counts itself idle. Much
 stolen may be the builder's, or QEMU's own threads taking its processors as the shell works
 harder, so that's read against the builder's own load at the time. No bar is stretched by the share:
-held to two of the builder's processors, the guest's frozen turn lost time too and the share
-read 1.27, too little for the four to six times the failing keys took.
+held to two of the builder's processors on 19 November, in an earlier held subtest whose load
+froze and ran by turns as the timed subtests' does, the guest's frozen turn lost time too and
+the share read 1.27, too little for the four to six times the failing keys took. The held
+subtest that stayed counts with the load running alone, so it can't measure that again.
 """
 
 from __future__ import annotations

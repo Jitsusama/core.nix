@@ -419,9 +419,10 @@ class Timing:
         )
         lines = machine.succeed(f"tail -n +{self.said + 1} {SAID}").splitlines()
         noted = self.caught_up()
-        # The turn ends once its keys are caught up, so its ticks go to it before what follows.
-        self.count(kept=True)
         self.close_turn()
+        # The turn ends once its keys are caught up, so its ticks go to it before what follows.
+        # Counted after its wait is read, so the wait spans what main's did.
+        self.count(kept=True)
         assert noted["clock"] == "monotonic", f"the launcher keeps time by {noted['clock']}"
         kept = len(noted["frames"])
         assert len(noted["pressed"]) == len(noted["heard"]) == kept, (
