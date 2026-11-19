@@ -497,12 +497,28 @@ fn a_ready_line_times_only_the_restart_its_program_started() {
         // A stop read without the boot's stamp, which reads as 0.
         job("unstamped.service", 0, 40_000_000, Job::Stopping),
         job("unstamped.service", 100_000, 40_100_000, Job::Started),
+        // A switch's restart, then the new program crashing and systemd
+        // starting it again with no stop of its own: the third program's
+        // ready line isn't the switch's restart's.
+        job("crashed.service", 800_000_000, 50_000_000, Job::Stopping),
+        job("crashed.service", 800_100_000, 50_100_000, Job::Started),
+        job("crashed.service", 800_300_000, 50_300_000, Job::Started),
+        ready("crashed", 800_400_000, 50_400_000),
+        // A switch's restart, then a stop read without the boot's stamp:
+        // it says nothing of when, so the restart's ready line after it
+        // still times it.
+        job("blind.service", 900_000_000, 60_000_000, Job::Stopping),
+        job("blind.service", 900_100_000, 60_100_000, Job::Started),
+        job("blind.service", 0, 60_200_000, Job::Stopping),
+        ready("blind", 900_300_000, 60_300_000),
     ] {
         day.take(&line);
     }
     assert_eq!(
         day.launches.restarted,
         BTreeMap::from([
+            ("blind.service".to_owned(), vec![300]),
+            ("crashed.service".to_owned(), vec![100]),
             ("lagged.service".to_owned(), vec![250]),
             ("own.service".to_owned(), vec![100]),
             ("slept.service".to_owned(), vec![100]),
@@ -513,7 +529,11 @@ fn a_ready_line_times_only_the_restart_its_program_started() {
     );
     assert_eq!(
         day.launches.unstamped(),
-        BTreeMap::from([("own.service", 1), ("slept.service", 1)]),
+        BTreeMap::from([
+            ("crashed.service", 1),
+            ("own.service", 1),
+            ("slept.service", 1),
+        ]),
         "a ready line stamped the restart before its own program's start"
     );
 }

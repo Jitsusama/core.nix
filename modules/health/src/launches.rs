@@ -122,8 +122,8 @@ pub struct Launches {
 }
 
 /// A restart waiting for its ready line: in which boot, when on the boot's
-/// clock it stopped and started, and when it stopped again, if it has,
-/// since a ready line written after that is the next program's.
+/// clock it stopped and started, and when it stopped or started again, if
+/// it has, since a ready line written after that is the next program's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Restarting {
     boot: String,
@@ -173,19 +173,22 @@ impl Launches {
     /// stopping or started, or a line `took` takes.
     pub fn heard(&mut self, entry: &Entry) -> bool {
         let unit = &entry.thing;
+        // Whoever stops or starts it, a crash's restart included, a ready
+        // line written after is the next program's, so it can't time the
+        // restart before; one written before and heard after, as the
+        // followers lag, still can. A line without the boot's stamp, at
+        // 0, says nothing of when.
+        if entry.job.is_some()
+            && entry.since_boot > 0
+            && let Some(waiting) = self
+                .restarting
+                .get_mut(unit)
+                .filter(|waiting| waiting.boot == entry.boot)
+        {
+            waiting.stopped_again.get_or_insert(entry.since_boot);
+        }
         match entry.job {
             Some(Job::Stopping) => {
-                // Whoever stops it, a ready line written after this stop
-                // is the next program's, so it can't time the restart
-                // before; one written before it and heard after, as the
-                // followers lag, still can.
-                if let Some(waiting) = self
-                    .restarting
-                    .get_mut(unit)
-                    .filter(|waiting| waiting.boot == entry.boot)
-                {
-                    waiting.stopped_again.get_or_insert(entry.since_boot);
-                }
                 if !self.restarts_itself(entry) {
                     self.stopping.insert(
                         unit.clone(),
@@ -197,10 +200,6 @@ impl Launches {
                 let Some((boot, stopped, stopped_at)) = self.stopping.remove(unit) else {
                     return true;
                 };
-                // A start ends the wait for the restart before it, whether
-                // or not it is a restart itself: its ready lines are its
-                // own program's.
-                self.restarting.remove(unit);
                 if boot != entry.boot {
                     return true;
                 }
