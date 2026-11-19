@@ -21,6 +21,10 @@ and a desk's in both looks. Any error the page logs fails it, since that is
 how the map froze on "reading" unseen, and how the drawing says a key
 keys.ts can ask does nothing. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
+
+Long because every case reads the one page against the one stand-in realm and
+its fixtures, and splitting the cases by what they press or watch would give
+each file a copy of that realm's serving.
 """
 
 import copy
