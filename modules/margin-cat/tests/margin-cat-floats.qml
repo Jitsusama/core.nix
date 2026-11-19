@@ -585,6 +585,20 @@ QtObject {
         expect("re-planned once the stride it turns in is seen, it steps a pair on at once",
             [turnSeen.beat, turnSeen.pose, turnSeen.into, seenRuns.map(run => run.pose)],
             ["turns", "walkingA", 1, ["walkingC", "walkingB"]]);
+        // Set off a pixel under its row, its first stride too short to be
+        // seen, it holds the stride it was drawn in, as a stand's B; set off
+        // mid-stride, it strides on from that one instead; and from no
+        // stride, or a pose that isn't one, grooming, it steps into D at once
+        // rather than slide in that pose.
+        const offRow = ([drawnIn, drawnInto]) => Paths.walk({ x: 300, y: 8 }, { x: 500, y: 7 },
+            world({ hurried: true, facing: 1, drawnIn, drawnInto }));
+        const opensOn = way => [way.beats[0].ends - way.beats[0].begins < 33,
+            way.beats[0].held ?? null, runsOf(way, 120).slice(0, 2).map(run => run.pose)];
+        expect("set off into a stride too short to see, it holds the stride it's drawn in",
+            [["walkingB", null], ["walkingB", 0.5], [null, null], ["grooming", null]]
+                .map(set => opensOn(offRow(set))),
+            [[true, "walkingB", ["walkingB", "walkingD"]], [true, null, ["walkingB", "walkingD"]],
+                [true, null, ["walkingD", "walkingA"]], [true, null, ["walkingD", "walkingA"]]]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));
