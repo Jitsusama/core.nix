@@ -128,6 +128,11 @@ let
           ]
           ++ [
             host.node
+            # Any process of the account may send SIGUSR1, which would open
+            # node's inspector and let it run code as the host. mycelium
+            # takes the host's word for which conversation each pi-spawner
+            # serves, and hears no host whose node lacks this.
+            "--disable-sigusr1"
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
             "--max-old-space-size=${toString host.heapMb}"
@@ -187,7 +192,18 @@ let
         # everyone knows, open to anything running as Joel, until a host's
         # commands are refused it (core#5551). Joel's own signing still
         # finds his agent without the variable.
-        UnsetEnvironment = [ "SSH_TPM_AUTH_SOCK" ];
+        #
+        # NODE_OPTIONS goes too, as systemd's last step, after every
+        # Environment= and EnvironmentFile= a machine adds, so neither those
+        # nor the user manager's environment hand node an option: --inspect
+        # would open the inspector the flag above shuts, and --require or
+        # --import would run code as the host before pi does. A hosted
+        # conversation's commands, which inherit the host's environment,
+        # start without it too.
+        UnsetEnvironment = [
+          "SSH_TPM_AUTH_SOCK"
+          "NODE_OPTIONS"
+        ];
         # The host parks its conversations and keeps their records when told
         # to stop, so only its own failure restarts it; a crash's next start
         # takes back what it held.
@@ -303,7 +319,10 @@ in
             type = lib.types.path;
             description = ''
               The node that pi was built with, which its native modules are
-              built for; the host runs on it.
+              built for; the host runs on it, given --disable-sigusr1, so it
+              must be a node that knows that flag: 22.14 or later in 22, or
+              23.7 or later. An older one is refused only as its host starts,
+              which then stops and is said to be down.
             '';
           };
           path = lib.mkOption {
@@ -354,16 +373,23 @@ in
     '';
   };
 
-  config.assertions = lib.mapAttrsToList (
-    realm: host:
-    let
-      refused = proofRefusal realm host;
-    in
-    {
-      assertion = refused == null;
-      message = toString refused;
-    }
-  ) cfg;
+  config.assertions =
+    lib.mapAttrsToList (
+      realm: host:
+      let
+        refused = proofRefusal realm host;
+      in
+      {
+        assertion = refused == null;
+        message = toString refused;
+      }
+    ) cfg
+    # The unit clears NODE_OPTIONS, so a realm's own would be dropped
+    # unseen; it is refused instead, saying why.
+    ++ lib.mapAttrsToList (realm: host: {
+      assertion = !(host.environment ? NODE_OPTIONS);
+      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; drop it. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get no NODE_OPTIONS from it.";
+    }) cfg;
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (
