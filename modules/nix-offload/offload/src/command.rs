@@ -414,6 +414,60 @@ impl Link<'_> {
     }
 }
 
+/// A run sent with `--run`, as `runs.jsonl` keeps it.
+pub struct Noted<'a> {
+    /// When it ended, in seconds since the epoch.
+    pub at: u64,
+    /// How long it took, waits for a builder included.
+    pub seconds: u64,
+    /// The folder it was sent from.
+    pub folder: &'a Path,
+    /// The command it ran.
+    pub asked: &'a Asked,
+    /// The builder that took it, as ssh names it; none took one turned away.
+    pub on: Option<&'a str>,
+    /// Its status there; none where no builder took it.
+    pub status: Option<i32>,
+}
+
+/// Adds a line for a run to `journal`, so what went to the builders rather
+/// than running here can be counted, as `there.jsonl` counts builds. Until
+/// 19 November nothing kept them, so a day's load couldn't say what had
+/// moved. Only the program is kept, never its arguments, which may hold
+/// what isn't ours to keep.
+pub fn note(journal: &Path, noted: &Noted) {
+    let program = noted.asked.words.first().map(|word| {
+        Path::new(word)
+            .file_name()
+            .map_or_else(|| word.clone(), |name| name.to_string_lossy().into_owned())
+    });
+    let line = serde_json::json!({
+        "at": noted.at,
+        "seconds": noted.seconds,
+        "folder": noted.folder,
+        "program": program,
+        "words": noted.asked.words.len(),
+        "on": noted.on,
+        "status": noted.status,
+    });
+    let written = journal
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(journal)
+        })
+        .and_then(|mut file| writeln!(file, "{line}"));
+    if let Err(error) = written {
+        eprintln!(
+            "nix-offload: couldn't journal the run in {}: {error}",
+            journal.display()
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,6 +479,54 @@ mod tests {
 
     fn words(said: &str) -> Vec<String> {
         said.split_whitespace().map(str::to_owned).collect()
+    }
+
+    // Each run gets a line, a run no builder took among them, keeping its
+    // program's name alone and never the words after it.
+    #[test]
+    fn a_run_is_journalled_by_its_program_alone() {
+        let folder = std::env::temp_dir().join(format!("nix-offload-noted-{}", std::process::id()));
+        let journal = folder.join("state/runs.jsonl");
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 60,
+            words: words("/nix/store/x-pnpm/bin/pnpm exec vitest --token=hush"),
+        };
+        let tree = Path::new("/home/one/tree");
+        let ran = Noted {
+            at: 100,
+            seconds: 42,
+            folder: tree,
+            asked: &asked,
+            on: Some("nix-offload@builder"),
+            status: Some(1),
+        };
+        note(&journal, &ran);
+        note(
+            &journal,
+            &Noted {
+                on: None,
+                status: None,
+                ..ran
+            },
+        );
+        let kept = std::fs::read_to_string(&journal).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
+        let lines: Vec<serde_json::Value> = kept
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                serde_json::json!({"at": 100, "seconds": 42, "folder": "/home/one/tree",
+                    "program": "pnpm", "words": 4, "on": "nix-offload@builder", "status": 1}),
+                serde_json::json!({"at": 100, "seconds": 42, "folder": "/home/one/tree",
+                    "program": "pnpm", "words": 4, "on": null, "status": null}),
+            ],
+            "each run is a line, keeping no word past the program"
+        );
+        assert!(!kept.contains("hush"), "an argument was kept: {kept}");
     }
 
     #[test]
