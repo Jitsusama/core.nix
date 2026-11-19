@@ -304,7 +304,8 @@ function run(failures) {
     // to an hour, and a clock stepped back ends it.
     const first = Interfaces.heldAfter(undefined, 1000);
     machine("a file given up is held off a minute", first, { at: 1000, wait: 60000 });
-    machine("given up again, twice as long", Interfaces.heldAfter(first, 5000).wait, 120000);
+    machine("given up again, twice as long from then", Interfaces.heldAfter(first, 5000),
+        { at: 5000, wait: 120000 });
     machine("never past an hour", Interfaces.heldAfter({ at: 0, wait: 2400000 }, 0).wait,
         3600000);
     machine("a hold holds within its wait, not after or before it, nor with none",

@@ -679,14 +679,18 @@ Provider {
             console.warn(`Traffic: ${one.name}'s ${one.files[0]} took two seconds to load,`
                 + ` so it's asked again once that read lands and`
                 + ` ${probesStuck[one.name].wait / 60000} min have passed`);
+        } else if (one !== null) {
+            console.warn(`Traffic: ${one.name}'s turn was given up with no read under way,`
+                + ` so it's asked again once ${probesStuck[one.name].wait / 60000} min`
+                + " have passed");
         }
         probing = null;
         probeNext();
     }
 
     // A file landed through `view`: the probe's own, or one given up
-    // landing late, which lets its view go and its interface be asked
-    // again.
+    // landing late, which lets its view go, its interface asked again
+    // once its hold (probesStuck) is over.
     function probeLanded(view, text) {
         if (view === probe) {
             probeSaid(text);

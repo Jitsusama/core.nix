@@ -305,7 +305,7 @@ ShellRoot {
             aged(traffic.soonest);
             traffic.look();
             waits.until("a line in a state not known, whatever it's called, is said as measured",
-                () => idle() && lineNote() === "as measured", () => {
+                () => idle() && traffic.loadAsked === 0 && lineNote() === "as measured", () => {
                 counted({ lo: [1000, 2000] });
                 lookAgain();
                 waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined

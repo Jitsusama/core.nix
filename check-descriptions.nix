@@ -1078,9 +1078,9 @@
     asked again; an interface given up is held off a minute, then twice as long each time it's
     given up again, even once its late read lands, until its files land in time; given up as
     its read begins, the next interface is asked through a new view, and the read lands late
-    with its text through Traffic's own, freeing its interface, as one that fails does; no
-    file is asked while another is in flight; and given up with no read in flight, no view
-    is kept, but its interface is held off
+    with its text through Traffic's own, letting its view go, as one that fails does; no file
+    of the interface under way is asked while its last is in flight; and given up with no
+    read in flight, no view is kept, but its interface is held off
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a
