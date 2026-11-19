@@ -401,6 +401,7 @@ PanelWindow {
         // A walk set off mid-stride strides on from the one drawn, as
         // far into it as it was, easing in again unless it was at its
         // pace; from a stride held on the spot, once it's seen.
+        const setOff = Paths.setOffFrom(stepped);
         const from = { x: place.x, y: place.y };
         const plan = Paths.walk(from, { x: to.x, y: to.y }, Object.assign({
             cell,
@@ -428,7 +429,7 @@ PanelWindow {
             grows: MarginCat.behindResize(frameMs, Tiles.resizing(Niri.windows, space?.id)),
             frame: frameMs,
             marks: marksLit
-        }, Paths.setOffFrom(stepped)));
+        }, setOff));
         goingTo = wanted;
         under = column;
         if (!fallsYet())
