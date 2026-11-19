@@ -66,8 +66,11 @@ def ticks(stat: str) -> tuple[int, int]:
 
 
 def every_tick(stat: str) -> int:
-    """Give every tick on /proc/stat's first line, idle and iowait with the busy."""
-    return 0
+    """Give every tick on /proc/stat's first line, idle and iowait with the busy.
+
+    It's the guest's own clock, so its busy ticks weigh against it whatever a read of them took.
+    """
+    return sum(int(field) for field in stat.split()[1:9])
 
 
 class Ledger:
@@ -77,6 +80,7 @@ class Ledger:
         """Start counting from the kernel's line as it stands."""
         self.last = ticks(stat)
         self.turns: dict[bool, tuple[int, int]] = {True: (0, 0), False: (0, 0)}
+        self.every = every_tick(stat)
         self.ticked: dict[bool, int] = {True: 0, False: 0}
         # Whether the load is between turns, from asking it to turn until it has.
         self.between = False
@@ -92,10 +96,13 @@ class Ledger:
     def count(self, stat: str, *, turn: bool | None) -> None:
         """Count the ticks since the last line into this turn, or into none while it turned."""
         now = ticks(stat)
+        every = every_tick(stat)
         if turn is not None and not self.between:
             stolen, busy = self.turns[turn]
             self.turns[turn] = (stolen + now[0] - self.last[0], busy + now[1] - self.last[1])
+            self.ticked[turn] += every - self.every
         self.last = now
+        self.every = every
 
     def said(self) -> str:
         """Say each turn's stolen and busy ticks, and the share they give, if any."""

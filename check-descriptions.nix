@@ -84,8 +84,9 @@
     tick stolen in both turns gives 1, every tick stolen under load alone the processors, a turn
     with no busy ticks none, idle, iowait and guests' time are never counted busy, ticks land in the
     turn they were counted in and those while the load turned, or after a turn that never
-    finished, in neither, and what a subtest says names each turn's ticks and the share, or no
-    share when a turn had no busy ticks
+    finished, in neither, each turn keeps every tick it counted, idle with the busy, so its busy
+    ones weigh against the guest's own clock, and what a subtest says names each turn's ticks and
+    the share, or no share when a turn had no busy ticks
   '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
