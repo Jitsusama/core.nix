@@ -196,7 +196,9 @@ let
   # rather than every pose unlike it, and a pose listed but undrawn, as a
   # leap's tuck taken out would be, said so; a stride no pose lists
   # still held to the stray and size rules; and a stride meant otherwise
-  # than the words its animal's poses are picked by refused for it alone.
+  # than the words its animal's poses are picked by refused for it alone,
+  # the same strides all meant so held, and an undrawn one said undrawn
+  # rather than meant otherwise.
   sized = poseFaults {
     sitting = "small";
     poses = [
@@ -241,20 +243,47 @@ let
     ];
     glyphs = planted;
   };
-  meaning = poseFaults {
-    sitting = "nothingHere";
-    poses = [ "nothingHere" ];
+  meantAs =
+    { otherwise, strides }:
+    poseFaults {
+      sitting = "nothingHere";
+      poses = [ "nothingHere" ];
+      inherit strides;
+      meant = "its own pose";
+      glyphs = lib.mapAttrs (
+        name: mark: mark // { means = if name == otherwise then "another's" else "its own pose"; }
+      ) planted;
+    };
+  meaning = meantAs {
+    otherwise = "walkingC";
     strides = drawnWalk;
-    meant = "its own pose";
-    glyphs = lib.mapAttrs (
-      name: mark: mark // { means = if name == "walkingC" then "another's" else "its own pose"; }
-    ) planted;
   };
+  allMeant = meantAs {
+    otherwise = null;
+    strides = drawnWalk;
+  };
+  meantUndrawn = meantAs {
+    otherwise = null;
+    strides = drawnWalk ++ [ "unseen" ];
+  };
+  meantOtherwise = strides: ''meant otherwise than "its own pose" ${builtins.toJSON strides}'';
   edges = [
     {
       faults = meaning;
       reason = "walkingC, a stride meant otherwise, refused for it alone";
-      holds = !meaning.ok && lib.hasInfix ''meant otherwise ["walkingC"]'' meaning.said;
+      holds = !meaning.ok && lib.hasInfix (meantOtherwise [ "walkingC" ]) meaning.said;
+    }
+    {
+      faults = allMeant;
+      reason = "the same strides, every one meant as its poses are, held";
+      holds = allMeant.ok && lib.hasInfix (meantOtherwise [ ]) allMeant.said;
+    }
+    {
+      faults = meantUndrawn;
+      reason = "an undrawn stride said undrawn, not meant otherwise";
+      holds =
+        lib.hasInfix ''undrawn ["unseen"]'' meantUndrawn.said
+        && lib.hasInfix (meantOtherwise [ ]) meantUndrawn.said;
     }
     {
       faults = sized;
