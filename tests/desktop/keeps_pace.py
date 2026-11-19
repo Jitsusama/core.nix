@@ -11,10 +11,12 @@ that gives: how much more of its busy time the guest ran frozen than under load.
 
 The net failed keys from 16 to 19 November only with the frozen key at 24 to 69 ms, a busy
 builder's, where a quiet one's is 15 to 18, while the compositor and the shell waited for a
-processor within what they may. So a run that fails on the net says what was stolen: little
-stolen under load clears the builder, while much stolen may be the builder's or QEMU's own
-threads, which draw the shell's frames and may steal from the guest as the shell works harder,
-so that's read against the builder's own load at the time. No bar is stretched by the share:
+processor within what they may. So a run that fails on the net says what was stolen. Steal is
+what the builder kept from the guest's own processors, so little stolen under load clears a
+builder short of processors for those, but not one keeping QEMU's main loop or virtiofsd
+waiting, which draw and serve the shell's frames while the guest counts itself idle. Much
+stolen may be the builder's, or QEMU's own threads taking its processors as the shell works
+harder, so that's read against the builder's own load at the time. No bar is stretched by the share:
 held to two of the builder's processors, the guest's frozen turn lost time too and the share
 read 1.27, too little for the four to six times the failing keys took.
 """

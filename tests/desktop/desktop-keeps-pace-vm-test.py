@@ -107,8 +107,8 @@ HELD_TO = 2
 HELD_STOLEN = 0.25
 GAUGING = 10
 # A halted processor has nothing stolen, so little stolen held is a count blind to the builder
-# only while the four are busy: at least this part of their ticks, at /proc/stat's 100 a second.
-# Held so on 19 November they counted 4277 and 4318 of the 4000 they could.
+# only while the four are busy: at least this part of the ticks they could in the time counted,
+# at /proc/stat's 100 a second. Held so on 19 November they counted 4204 to 4318 in over 10 s.
 HELD_BUSY = 0.75
 TICKING = 100
 # The passes holding the VM's threads may take, past which a hold still missing one fails as that.
@@ -419,6 +419,8 @@ class Timing:
         )
         lines = machine.succeed(f"tail -n +{self.said + 1} {SAID}").splitlines()
         noted = self.caught_up()
+        # The turn ends once its keys are caught up, so its ticks go to it before what follows.
+        self.count(kept=True)
         self.close_turn()
         assert noted["clock"] == "monotonic", f"the launcher keeps time by {noted['clock']}"
         kept = len(noted["frames"])
@@ -1072,6 +1074,7 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
         hold_vm(started, builders[:HELD_TO])
         # The ticks before the hold took aren't held ones, so they're passed over.
         timing.count(kept=False)
+        began = time.monotonic()
         # Said with the builder's processors, so little stolen tells a hold that never took,
         # or one that changed nothing, from a count blind to one.
         held: dict[str, int] = {}
@@ -1088,13 +1091,14 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
         assert list(held) == [holding], f"the VM's threads weren't held to {holding}: {held}"
         time.sleep(GAUGING)
         timing.count(kept=True)
+        gauged = time.monotonic() - began
         stolen, busy = timing.ledger.turns[True]
         # Said before the VM is let go, which may fail, so the figures it counted are kept.
-        print(f"held, the guest counted {stolen} of {busy} busy ticks stolen")
+        print(f"held, the guest counted {stolen} of {busy} busy ticks stolen in {gauged:.1f} s")
     finally:
         hold_vm(started, builders)
-    least = HELD_BUSY * PROCESSORS * GAUGING * TICKING
-    assert busy >= least, f"held, the guest's processors were busy {busy} ticks, under {least}"
+    least = HELD_BUSY * PROCESSORS * gauged * TICKING
+    assert busy >= least, f"held, the guest's processors were busy {busy} ticks, under {least:.0f}"
     assert stolen / busy >= HELD_STOLEN, (
         f"held to {HELD_TO} of the builder's processors, the guest counted {stolen} of {busy}"
         " busy ticks stolen"
