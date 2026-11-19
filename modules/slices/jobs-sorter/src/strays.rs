@@ -34,10 +34,9 @@ impl Told {
 
     /// A line for each of systemd-run's services under `under` not said of
     /// yet, reading its first process's command from `proc`. One with no
-    /// process yet, or whose process is still systemd's executor setting it
-    /// up under either of its names, waits for a later look, and one gone is
-    /// forgotten, so a name used
-    /// again is said of again.
+    /// process yet, or whose process is still systemd setting it up, waits
+    /// for a later look, and one gone is forgotten, so a name used again is
+    /// said of again.
     pub fn look(&mut self, under: &[PathBuf], proc: &Path) -> Vec<String> {
         let found: Vec<PathBuf> = under.iter().flat_map(|slice| made_by_run(slice)).collect();
         self.units.retain(|unit| found.contains(unit));
@@ -49,8 +48,9 @@ impl Told {
             let Some(pid) = first(&unit) else {
                 continue;
             };
-            let command = fs::read(proc.join(pid.to_string()).join("cmdline")).unwrap_or_default();
-            if starting(&command) {
+            let process = proc.join(pid.to_string());
+            let command = fs::read(process.join("cmdline")).unwrap_or_default();
+            if starting(&process, &command) {
                 continue;
             }
             says.push(line(&unit, &command));
@@ -77,19 +77,28 @@ fn made_by_run(slice: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Whether a command is still systemd's executor, which runs in a new
-/// service's process until it hands over to the service's own command, so
-/// a look between the two would name the executor rather than the command.
-/// It starts as `systemd-executor`, then renames itself to the command's
-/// name in brackets, `(sleep)`, as it sets the process up, the way `ps`
-/// shows `(sd-pam)`; a look then once said a stray ran `(sleep)`.
-fn starting(command: &[u8]) -> bool {
-    let program = command.split(|byte| *byte == 0).next().unwrap_or_default();
-    let renamed = program.len() > 2 && program.starts_with(b"(") && program.ends_with(b")");
-    renamed
-        || Path::new(&*String::from_utf8_lossy(program))
+/// Whether a service's process is still systemd setting it up, so a look
+/// would name systemd rather than the service's own command. The manager
+/// forks the process into the service's cgroup as a copy of itself, which
+/// runs `systemd-executor`, which renames itself to the command's name in
+/// brackets, `(sleep)`, before it hands over. A look in that last step once
+/// said a stray ran `(sleep)`, so the program is read from the process's
+/// `exe`, which no rename changes, and only systemd's two programs wait:
+/// any other program named in brackets is said of. Where `exe` can't be
+/// read, the command's first word is the guide.
+fn starting(process: &Path, command: &[u8]) -> bool {
+    let systemds = |name: &str| name == "systemd" || name == "systemd-executor";
+    if let Ok(exe) = fs::read_link(process.join("exe")) {
+        let exe = exe.to_string_lossy();
+        let exe = exe.strip_suffix(" (deleted)").unwrap_or(&exe);
+        return Path::new(exe)
             .file_name()
-            .is_some_and(|name| name == "systemd-executor")
+            .is_some_and(|name| systemds(&name.to_string_lossy()));
+    }
+    let program = command.split(|byte| *byte == 0).next().unwrap_or_default();
+    Path::new(&*String::from_utf8_lossy(program))
+        .file_name()
+        .is_some_and(|name| systemds(&name.to_string_lossy()))
 }
 
 /// A cgroup's first process, if it has one.
@@ -99,7 +108,9 @@ fn first(cgroup: &Path) -> Option<u32> {
 }
 
 /// What's said of one service, its command's arguments joined by spaces
-/// and cut at `LONGEST` characters.
+/// and cut at `LONGEST` characters. A control character in an argument is
+/// written out, `\n` for a newline, so a command can't start a journal line
+/// of its own.
 fn line(unit: &Path, command: &[u8]) -> String {
     let name = |path: &Path| {
         path.file_name()
@@ -111,7 +122,18 @@ fn line(unit: &Path, command: &[u8]) -> String {
     let words: Vec<String> = command
         .split(|byte| *byte == 0)
         .filter(|word| !word.is_empty())
-        .map(|word| String::from_utf8_lossy(word).into_owned())
+        .map(|word| {
+            String::from_utf8_lossy(word)
+                .chars()
+                .map(|c| {
+                    if c.is_control() {
+                        c.escape_default().to_string()
+                    } else {
+                        c.to_string()
+                    }
+                })
+                .collect()
+        })
         .collect();
     let mut command = words.join(" ");
     if command.chars().count() > LONGEST {
@@ -197,13 +219,40 @@ mod tests {
             Vec::<String>::new(),
             "systemd's executor hasn't started the command yet, so it waits for a later look"
         );
-        fs::write(dir.join("proc/46/cmdline"), b"(sleep)\x00").unwrap();
+        let exe = dir.join("proc/46/exe");
+        let runs = |program: &str, command: &[u8]| {
+            let _ = fs::remove_file(&exe);
+            std::os::unix::fs::symlink(program, &exe).unwrap();
+            fs::write(dir.join("proc/46/cmdline"), command).unwrap();
+        };
+        runs(
+            "/nix/store/a-systemd/lib/systemd/systemd",
+            b"/nix/store/a-systemd/lib/systemd/systemd\x00--user\x00",
+        );
         assert_eq!(
             told.look(&under, &proc),
             Vec::<String>::new(),
-            "the executor names itself after the command in brackets as it sets up, and still waits"
+            "the manager's own copy, forked into the service before it runs the executor, waits"
         );
-        fs::write(dir.join("proc/46/cmdline"), b"sleep\x001008\x00").unwrap();
+        runs(
+            "/nix/store/a-systemd/lib/systemd/systemd-executor",
+            b"(sleep)\x00",
+        );
+        assert_eq!(
+            told.look(&under, &proc),
+            Vec::<String>::new(),
+            "the executor renamed after the command in brackets as it sets up still waits"
+        );
+        runs(
+            "/nix/store/a-systemd/lib/systemd/systemd-executor (deleted)",
+            b"(sleep)\x00",
+        );
+        assert_eq!(
+            told.look(&under, &proc),
+            Vec::<String>::new(),
+            "so does an executor whose file a later switch removed"
+        );
+        runs("/nix/store/a-coreutils/bin/sleep", b"sleep\x001008\x00");
         assert_eq!(
             told.look(&under, &proc),
             [
@@ -213,6 +262,40 @@ mod tests {
             "once the command runs, it's said of by its own words"
         );
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_command_that_names_itself_in_brackets_is_still_said_of() {
+        let dir = std::env::temp_dir().join(format!("strays-brackets-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        unit(&dir, "run-u4.service", "47\n");
+        fs::create_dir_all(dir.join("proc/47")).unwrap();
+        std::os::unix::fs::symlink("/nix/store/a-coreutils/bin/sleep", dir.join("proc/47/exe"))
+            .unwrap();
+        fs::write(dir.join("proc/47/cmdline"), b"(hidden)\x001007\x00").unwrap();
+        let mut told = Told::default();
+
+        assert_eq!(
+            told.look(&[dir.join("app.slice")], &dir.join("proc")),
+            [
+                "Stray service run-u4.service in app.slice runs (hidden) 1007; nothing named its \
+              slice, so systemd-run put it there."
+            ],
+            "a name in brackets alone doesn't make a program systemd's executor"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_commands_control_characters_are_written_out_rather_than_breaking_the_line() {
+        let says = line(
+            Path::new("/u/app.slice/run-u2.service"),
+            b"sh\x00-c\x00x\nStray service run-u9.service\x00",
+        );
+        assert!(
+            says.contains("runs sh -c x\\nStray service run-u9.service;"),
+            "a newline in an argument can't start a line of its own: {says}"
+        );
     }
 
     #[test]
