@@ -15,9 +15,10 @@
 # how).
 #
 # Each refresh also says to the machine's realm, as its GitHub receptor, how
-# many open changes ask the declared login's review, and which, each as
-# owner/name#N, counting and naming only the owners declared for that realm
-# (src/receptor.rs). Both come from here
+# many open changes the owners declared for that realm hold, how many ask
+# the declared login's review and which, each as owner/name#N. A sound read
+# names those owners too, so mycelium can clear what it kept; a failed read
+# names neither (src/receptor.rs). The login and the owners come from here
 # alone, never from a file repos reads, and a machine declaring no realm or
 # no login says nothing.
 { mycelium }:
@@ -105,8 +106,8 @@ in
     default = null;
     example = "someone";
     description = ''
-      The GitHub login whose asked reviews the GitHub receptor counts, as
-      GitHub matches logins, case aside. None by default, and with none the
+      The GitHub login whose asked reviews the GitHub receptor counts and
+      names to mycelium, as GitHub matches logins, case aside. None by default, and with none the
       receptor is never said.
     '';
   };
@@ -119,9 +120,10 @@ in
       personal = [ "someone" ];
     };
     description = ''
-      The GitHub owners whose repositories each realm's receptor counts, by
-      realm. A machine counts only its own realm's, and an owner listed
-      under two realms is counted in neither.
+      The GitHub owners whose repositories each realm's receptor counts and
+      names changes of, by realm; mycelium is told them too, and takes no
+      other owner's change. A machine counts only its own realm's, and an
+      owner listed under two realms is counted in neither.
     '';
   };
 
