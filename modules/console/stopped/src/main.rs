@@ -37,6 +37,7 @@ use std::fs;
 use std::process::{ExitCode, Output};
 
 use terminal_kit::flags::Format;
+use terminal_kit::layout;
 use terminal_kit::{Context, Exit, Failure, Help, Ink, Pen, ink};
 
 use asking::Budget;
@@ -106,7 +107,7 @@ fn run(context: &Context) -> Result<(), Failure> {
             &skipped,
             &pen,
             context.room,
-            None,
+            layout::rows_of_stdout(&context.environment),
         ))
         .map_err(|error| {
             Failure::new(Exit::Failed, "the summary couldn't be said").because(error.to_string())

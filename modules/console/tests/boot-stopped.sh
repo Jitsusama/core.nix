@@ -5,7 +5,8 @@
 # failed unit with its description and the last three lines its own
 # programs said that show something, past lines that show nothing; what
 # systemd said of a unit whose programs said nothing, or nothing that
-# shows; at most four units; the account's theme and the console's marks;
+# shows; at most four units, and fewer where a terminal's rows leave no
+# room; the account's theme and the console's marks;
 # the way out; why a journal that couldn't be read gave a unit nothing;
 # a file the journal skipped said once, above the way out;
 # each unit described when the journal is slow; and each unit and the
@@ -187,6 +188,20 @@ for unit in a b c d e; do echo "$unit.service|$unit" >> "$work/failed"; done
 said
 [[ $(grep -c '^  x  ' "$work/said") == 4 ]] || fails "it listed other than four units"
 says "     and 5 more"
+
+# On a terminal of sixteen rows, which a console's LINES can say, it
+# leaves eight for the emergency shell's own words, so it fits what
+# matters most in the rest: a unit, the count of the others and the way
+# out. util-linux's script gives it the terminal; into a pipe, as above,
+# there's no height to fit.
+LINES=16 SHELL=$BASH TERM=linux FORCE_COLOR=1 script -q -e \
+  -c "$BASH $work/stopped < /dev/null" /dev/null < /dev/null > "$work/raw"
+sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\r$//' "$work/raw" > "$work/said"
+rows=$(wc -l < "$work/said")
+((rows <= 8)) || fails "it drew $rows rows where the console leaves it eight"
+says "  x  home.mount  Mount /home"
+grep -q -E '^     and [0-9]+ more$' "$work/said" || fails "it didn't count the units left out"
+says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
 
 # A file the journal skipped is said once, for every unit, since any
 # unit's lines may have been in it, and is no unit's reason: the units
