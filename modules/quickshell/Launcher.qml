@@ -10553,7 +10553,7 @@ Scope {
             fillFoundFrom = 0;
             fillFoundTook = 0;
             fillFoundJoined = 0;
-            fillFoundTurn = -1;
+            fillFoundAfter = null;
             if (!fillFinding)
                 freshen();
             lap("joining");
@@ -11401,6 +11401,10 @@ Scope {
     // Which wait for the next slice is the live one, so the frame and the
     // fallback after it (wakeFallback) wake it once between them.
     property int wakeTurn: 0
+    // What the live slice waits behind: the number of the frame that woke
+    // it, or its fallback's turn, so two slices with nothing drawn between
+    // them read the same however close in time they run.
+    property var wakeAfter: null
 
     // The next slice waits for the frame that draws this one's rows, or
     // for wakeFallback where that frame doesn't come. Niri sends no frame
@@ -11411,13 +11415,14 @@ Scope {
     function wakeLater() {
         const turn = wakeTurn + 1;
         wakeTurn = turn;
-        afterFrame(() => wakeAgain(turn));
+        afterFrame((begun, frame) => wakeAgain(turn, frame));
         wakeFallback.restart();
     }
-    function wakeAgain(turn) {
+    function wakeAgain(turn, frame) {
         if (turn !== wakeTurn)
             return;
         wakeTurn = turn + 1;
+        wakeAfter = frame ?? `the fallback for ${turn}`;
         wakeFallback.stop();
         wakeNext();
     }
@@ -11446,13 +11451,11 @@ Scope {
     function wakeNext() {
         if (!open || !waking)
             return;
-        // Each frame or fallback that wakes this (wakeAgain) gives it a turn
-        // of its own, so a slice run without one shares the turn before's.
-        const turn = wakeTurn;
+        const after = wakeAfter;
         // The fill's own finding is the first slice, alone, said apart
         // from the sources' (wokeSaid), whose first waits from its end.
         if (fillFinding) {
-            fillFoundTurn = turn;
+            fillFoundAfter = after;
             fillFound("slice");
             wakeLater();
             return;
@@ -11472,7 +11475,7 @@ Scope {
                     refreshDue();
                 } finally {
                     wakeSlices = wakeSlices.concat([{ from: began - wakeBegan,
-                        took: KeyTimes.now() - began, woke: [], refreshed: true, turn }]);
+                        took: KeyTimes.now() - began, woke: [], refreshed: true, after }]);
                     feltSpan("a held refresh", began);
                 }
                 return;
@@ -11490,7 +11493,7 @@ Scope {
             slice.push({ name: source.settings.name, took: KeyTimes.now() - at });
         }
         wakeSlices = wakeSlices.concat([{ from, took: KeyTimes.now() - began, woke: slice,
-            turn }]);
+            after }]);
         feltSpan("waking", began);
         if (wakeQueue.length > 0) {
             wakeLater();
@@ -11524,10 +11527,10 @@ Scope {
     property real fillFoundFrom: 0
     property real fillFoundTook: 0
     property int fillFoundJoined: 0
-    // The waking turn that found home, so the waking record says whether a
-    // slice ran in it without a frame or the fallback between, however close
-    // in time the next frame comes.
-    property int fillFoundTurn: -1
+    // The frame or fallback the slice that found home ran after, so the
+    // waking record says whether a slice ran behind the same one, with
+    // nothing drawn between, however close in time the next frame comes.
+    property var fillFoundAfter: null
     function fillFound(by) {
         if (!fillFinding)
             return;
@@ -11608,8 +11611,11 @@ Scope {
         const { longest, waited } = Wanted.wakeTimes(found, wakeSlices);
         const woke = Object.assign({ slices, longestSlice: longest, longestWake: waited,
             foundBy: fillFoundBy }, found ? { foundFrom: Math.round(found.from),
-            foundTook: Math.round(found.took), foundJoined: fillFoundJoined,
-            foundAlone: !wakeSlices.some(one => one.turn === fillFoundTurn) } : {},
+            foundTook: Math.round(found.took), foundJoined: fillFoundJoined } : {},
+            // Only a slice's find waits behind a frame; a key's, a click's
+            // or a chord's runs in its event, where this says nothing.
+            fillFoundBy === "slice"
+                ? { foundAlone: !wakeSlices.some(one => one.after === fillFoundAfter) } : {},
             fillFoundThrew ? { foundThrew: true } : {});
         // Woken before its frame made its record, the last is the opening
         // before's, so this one's waking waits for the frame's (openDrawn).

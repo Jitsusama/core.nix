@@ -1732,7 +1732,7 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     longest = max([found] + [cast("int", one["took"]) for one in slices])
     assert woke[0]["longestSlice"] == longest, f"the finding went uncounted: {woke}"
     # The sources' first wakes on the frame after, or the fallback's 33 ms, never in the same
-    # slice. The shell says so by the frame or fallback each ran after, not their times, which
+    # slice. The shell says so by the frame or fallback each ran behind, not their times, which
     # are rounded and can stand close when the next frame comes soon after a long find.
     assert woke[0]["foundAlone"] is True, f"a source woke in the finding's slice: {woke}"
     befores = [{"from": woke[0]["foundFrom"], "took": found}, *slices]
