@@ -13,7 +13,10 @@
 // Long because it is the drawing as it was served by hand, brought in whole
 // so the map moves to the feed without changing what it draws; it is split
 // by what changes for one reason as it is rewritten in TypeScript on the
-// kit (modules/mycelium/site/README.md says what remains).
+// kit (modules/mycelium/site/README.md says what remains). What each key
+// asks is decided in keys.ts, which this imports as the module it's built to.
+import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
+
 (() => {
   // The most time between two readings while the node moves: site.ts hands
   // one over at most this often, and a message heard is flown over it.
@@ -2613,21 +2616,18 @@
   );
   // On the map, arrows and h, j, k, l walk the network; with shift they
   // move the map instead; Return opens what the walk has reached.
-  const WAYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], h: [-1, 0], l: [1, 0], k: [0, -1], j: [0, 1] };
   const PAN = 80;
   view.addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || !current) return;
-    const way = WAYS[e.key.length === 1 ? e.key.toLowerCase() : e.key];
-    if (way) {
-      e.preventDefault();
-      if (e.shiftKey) {
-        auto = false;
-        tx -= way[0] * PAN;
-        ty -= way[1] * PAN;
-        frame();
-      } else walk(way[0], way[1]);
-    } else if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
+    const asked = current ? mapKey(e) : null;
+    if (!asked) return;
+    e.preventDefault();
+    if (asked.act === "pan") {
+      auto = false;
+      tx -= asked.way[0] * PAN;
+      ty -= asked.way[1] * PAN;
+      frame();
+    } else if (asked.act === "walk") walk(asked.way[0], asked.way[1]);
+    else {
       if (!pointed) point(firstKey(), { say: true });
       else {
         const key = pointed;
@@ -3718,8 +3718,9 @@
   // Return takes the keys to the first match, opened; n and N to the next
   // and the one before, round and round.
   const stepFound = (by) => {
-    if (!found.length) return;
-    foundAt = foundAt < 0 ? (by > 0 ? 0 : found.length - 1) : (foundAt + by + found.length) % found.length;
+    const to = stepped(foundAt, by, found.length);
+    if (to === null) return;
+    foundAt = to;
     const f = found[foundAt];
     visit(f.go, { replace: findVisited });
     findVisited = true;
@@ -3748,16 +3749,13 @@
   };
   find.addEventListener("input", () => refind());
   find.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
+    const asked = findKey(e.key);
+    if (!asked) return;
+    e.preventDefault();
+    if (asked === "first") {
       foundAt = -1;
       stepFound(1);
-    } else if (e.key === "Escape") {
-      // Escape closes the line find opened, rather than only clearing it
-      // as a search field would.
-      e.preventDefault();
-      closeFind();
-    }
+    } else closeFind();
   });
 
   // ---- The heading line: where the keys are, as a trail back up. ----
@@ -4077,33 +4075,41 @@
     li.focus({ preventScroll: true });
     li.firstElementChild.scrollIntoView({ block: "nearest" });
   };
-  const TREE_KEYS = { ArrowDown: "next", j: "next", ArrowUp: "prev", k: "prev", ArrowRight: "in", l: "in", ArrowLeft: "out", h: "out", Home: "first", g: "first", End: "last", G: "last", Enter: "open", " ": "open" };
-  tree.addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || (e.shiftKey && e.key !== "G")) return;
-    const li = e.target.closest("[role=treeitem]");
-    const act = TREE_KEYS[e.key];
-    if (!li || !act) return;
-    e.preventDefault();
-    const key = li.dataset.key;
-    const list = treeItems();
-    const at = list.indexOf(li);
-    const open = li.getAttribute("aria-expanded") === "true";
-    const shut = li.getAttribute("aria-expanded") === "false";
-    if (act === "next") focusItem(list[at + 1]);
-    else if (act === "prev") focusItem(list[at - 1]);
-    else if (act === "first") focusItem(list[0]);
-    else if (act === "last") focusItem(list[list.length - 1]);
-    else if (act === "in") {
+  // What each of the tree's keys does to the item it's on, once keys.ts
+  // has said which.
+  const TREE_DOES = {
+    next: ({ list, at }) => focusItem(list[at + 1]),
+    prev: ({ list, at }) => focusItem(list[at - 1]),
+    first: ({ list }) => focusItem(list[0]),
+    last: ({ list }) => focusItem(list[list.length - 1]),
+    in: ({ li, key, open, shut }) => {
       if (shut) {
         expanded.add(key);
         renderTree();
       } else if (open) focusItem(li.querySelector("[role=treeitem]"));
-    } else if (act === "out") {
+    },
+    out: ({ li, key, open }) => {
       if (open) {
         expanded.delete(key);
         renderTree();
       } else focusItem(li.parentElement.closest("[role=treeitem]"));
-    } else visit(choiceOf(key));
+    },
+    open: ({ key }) => visit(choiceOf(key)),
+  };
+  tree.addEventListener("keydown", (e) => {
+    const li = e.target.closest("[role=treeitem]");
+    const act = treeKey(e);
+    if (!li || !act) return;
+    e.preventDefault();
+    const list = treeItems();
+    TREE_DOES[act]({
+      li,
+      key: li.dataset.key,
+      list,
+      at: list.indexOf(li),
+      open: li.getAttribute("aria-expanded") === "true",
+      shut: li.getAttribute("aria-expanded") === "false",
+    });
   });
   // Focus in the tree moves the map's pointer to the same thing.
   tree.addEventListener("focusin", (e) => {
@@ -4692,68 +4698,61 @@
     if (!tree.parentElement.hidden) renderTree();
     where.textContent = machinesShown ? "The machines are shown, with each network's cord to the machine it runs on; m hides them." : "The machines are hidden; m shows them.";
   };
+  // Out, as Enter is in: out of what's open, else up from where the walk
+  // has reached to what it hangs from.
+  const goOut = () => {
+    // Out of an open network the keys come back up to it too, so the
+    // level follows the view.
+    const up = chosen && chosen.kind !== "cell" && pointed?.[0] === "c" ? treeUp(pointed) : null;
+    if (up && spots.has(up)) point(up, { say: view.contains(document.activeElement), follow: false });
+    if (chosen) back();
+    else if (pointed && treeUp(pointed)) {
+      const up = treeUp(pointed);
+      const inTree = tree.contains(document.activeElement);
+      point(up, { say: view.contains(document.activeElement) });
+      if (inTree) focusItem(tree.querySelector(`[data-key="${CSS.escape(up)}"]`));
+    }
+  };
+  // What each of the page's letters does, once keys.ts has said which.
+  const PAGE_DOES = {
+    keys: () => toggleKeys(),
+    find: () => openFind(),
+    "close-find": () => closeFind(),
+    "next-found": () => stepFound(1),
+    "found-before": () => stepFound(-1),
+    "let-go": () => letGo(),
+    "close-now": () => closeNow(),
+    now: () => toggleNow(),
+    machines: () => toggleMachines(),
+    fit: () => fit(),
+    "zoom-in": () => zoomBy(1.25),
+    "zoom-out": () => zoomBy(0.8),
+    out: () => goOut(),
+  };
   document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.target.closest("input, textarea, select")) return;
-    if (e.key === "?" || e.key === "F1") {
-      e.preventDefault();
-      toggleKeys();
-      return;
-    }
-    if (keys.open) return;
-    if (e.key === "/") {
-      e.preventDefault();
-      openFind();
-      return;
-    }
-    // The map's own letters answer only while focus is on the map or its
-    // panel, so no stray key acts from elsewhere (WCAG 2.1.4).
-    if (!e.target.closest?.("#main")) return;
-    // Escape closes what a mode opened, the find line first.
-    if (e.key === "Escape" && !findLine.hidden) {
-      e.preventDefault();
-      closeFind();
-    } else if ((e.key === "n" || e.key === "N") && finding()) {
-      e.preventDefault();
-      stepFound(e.key === "n" ? 1 : -1);
-    } else if (e.key === "Escape" && chosen) {
-      e.preventDefault();
-      letGo();
-    } else if (e.key === "Escape" && nowOpen) {
-      e.preventDefault();
-      closeNow();
-    } else if (e.key === ".") {
-      e.preventDefault();
-      toggleNow();
-    } else if (e.key === "m") {
-      e.preventDefault();
-      toggleMachines();
-    } else if (e.key === "0") {
-      e.preventDefault();
-      fit();
-    } else if (e.key === "+" || e.key === "=" || e.key === "i") {
-      e.preventDefault();
-      zoomBy(1.25);
-    } else if (e.key === "o") {
-      e.preventDefault();
-      zoomBy(0.8);
-    } else if (e.key === "-") {
-      // Out, as Enter is in: out of what's open, else up from where the
-      // walk has reached to what it hangs from.
-      e.preventDefault();
-      // Out of an open network the keys come back up to it too, so the
-      // level follows the view.
-      const up = chosen && chosen.kind !== "cell" && pointed?.[0] === "c" ? treeUp(pointed) : null;
-      if (up && spots.has(up)) point(up, { say: view.contains(document.activeElement), follow: false });
-      if (chosen) back();
-      else if (pointed && treeUp(pointed)) {
-        const up = treeUp(pointed);
-        const inTree = tree.contains(document.activeElement);
-        point(up, { say: view.contains(document.activeElement) });
-        if (inTree) focusItem(tree.querySelector(`[data-key="${CSS.escape(up)}"]`));
-      }
-    }
+    const asked = pageKey(e, {
+      typing: !!e.target.closest?.("input, textarea, select"),
+      keysOpen: keys.open,
+      onMap: !!e.target.closest?.("#main"),
+      findOpen: !findLine.hidden,
+      finding: finding(),
+      chosen: !!chosen,
+      nowOpen: !!nowOpen,
+    });
+    if (!asked) return;
+    e.preventDefault();
+    PAGE_DOES[asked]();
   });
+  // keys.ts lists every act a key can ask, and no typechecker reads this
+  // file, so a table here missing one would swallow its key unseen. The
+  // page says so as it loads instead, where every page test hears it.
+  for (const [does, every, what] of [
+    [TREE_DOES, EVERY_TREE_ACT, "tree"],
+    [PAGE_DOES, EVERY_PAGE_ACT, "page"],
+  ]) {
+    const undone = every.filter((act) => typeof does[act] !== "function");
+    if (undone.length) console.error(`The map's ${what} keys do nothing for ${undone.join(", ")}.`);
+  }
   // The skip link moves focus without writing the map's place into the
   // address, which back would then have to walk through.
   document.querySelector(".skip").addEventListener("click", (e) => {
@@ -4817,11 +4816,11 @@
     if (b) chooseTheme(b.dataset.choice);
   });
   themeSwitch.addEventListener("keydown", (e) => {
-    const by = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
-    if (!by) return;
-    e.preventDefault();
     const buttons = [...themeSwitch.querySelectorAll("button")];
-    const next = buttons[(buttons.indexOf(document.activeElement) + by + buttons.length) % buttons.length];
+    const to = switchedTo(e.key, buttons.indexOf(document.activeElement), buttons.length);
+    if (to === null) return;
+    e.preventDefault();
+    const next = buttons[to];
     next.focus();
     chooseTheme(next.dataset.choice);
   });

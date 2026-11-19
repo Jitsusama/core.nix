@@ -1810,18 +1810,21 @@
     title kept apart, each machine's room and reach flattened, only the latest messages' senders
     and groups, a cut title's ellipsis as three full stops, and each machine's share of the work
     from the balance's latest reading, none when it is past three minutes old, has no time or is
-    not served
+    not served, and what each key asks of the map, its tree, its find line, the page and the theme
+    switch, chords, typing and a key named after an object's own asking nothing
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
     as home.nix declares it for a machine in a realm, reads live in headless Chromium: the realm
     drawn and counted, a cell moving and one going, broken while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
-    words drawn as words and never as markup, the web-design skill's page checks and the map's own
-    (each opened thing in view, its drawer saying what it is, no more names than it's engaged with)
-    passing at a phone's width and a desk's in both looks, a first visit within its budget of files,
-    bytes and elements, both visits reaching only the sites' server and the second answered
-    unchanged, and nothing logged
+    words drawn as words and never as markup, a key of each kind keys.ts decides answering (the keys
+    dialog, find and a letter typed into it, n and N, Escape in its order, the walk, the machines,
+    Now, the tree and the theme switch wrapping), the web-design skill's page checks and the
+    map's own (each opened thing in view, its drawer saying what it is, no more names than it's
+    engaged with) passing at a phone's width and a desk's in both looks, a first visit within its
+    budget of files, bytes and elements, both visits reaching only the sites' server and the second
+    answered unchanged, and nothing logged
   '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its open and ended quests, the
