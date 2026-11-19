@@ -1013,8 +1013,7 @@ def a_landing_opens(desktop: Desktop, from_its_step: bool) -> None:
         desktop.follow()
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"] == ["Open", "Go To", "Talk"]
-                and shown["selected"]["name"] == "Open"
+                shown["rows"] == ["Open", "Go To", "Talk"] and shown["selected"]["name"] == "Open"
             )
         )
     desktop.machine.send_key("ret")
