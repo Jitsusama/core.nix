@@ -529,7 +529,8 @@ Return would start it: Chrome's page stepped in at 11 to 20 ms with its
 three rows (2026-11-16). A named program joins home's rows for the words
 typed, so those keys' medians aren't comparable with a run without it.
 Given `LAB_BACK` too, it steps back out of that place with - each round
-and prints that step's line. `LAB_CHORD`, a place's name as its chord asks
+and prints that step's line; without `LAB_STEP` it refuses to run.
+`LAB_CHORD`, a place's name as its chord asks
 for it, such as `windows`, opens that place from shut each round and steps
 out of it to home with nothing typed, as Super+Tab then - does, and
 `LAB_WINDOWS` opens that many windows first, so Windows holds some. Those

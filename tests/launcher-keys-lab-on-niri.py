@@ -24,7 +24,7 @@ leaves the first word typed at home each round while a window holding it in its 
 many new titles, and prints what the shell says of those changes, as Joel's daemons change rows
 under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails when a key is never
 shown, and at once when LAB_WITHIN names no function of the launcher's or comes without
-LAB_PROFILE.
+LAB_PROFILE, or LAB_BACK without LAB_STEP.
 """
 
 from __future__ import annotations
@@ -179,8 +179,9 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | 
 
     The step's line is a key's, typed as an arrow and the place's name, said only for a step
     Joel could feel (launcher/Trials.js's felt); one quicker gives none. Given LAB_BACK, it then
-    steps back out with -, and gives that step's line second, as Joel's out of Windows took 53
-    and 58 ms to their frames (his journal, 2026-11-17 23:05 and 2026-11-18 10:43); else None.
+    steps back out with -, and gives that step's line second; else None. That step puts back
+    the words typed to find the place, so it searches them as a key: Joel's out of Windows put
+    none back, which LAB_CHORD steps as.
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     shell.as_account(shell.ipc("toggle"))
@@ -203,8 +204,9 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | 
 def chorded_out(shell: Shell, place: str) -> str | None:
     """Open the place from shut as its chord does, step out to home, and give the step's line.
 
-    Nothing is typed, so no words are put back and the step searches nothing, as Joel's out of
-    Windows spent 13 to 20 ms of its 53 and 58 ms before it searched (2026-11-17 and 18).
+    Nothing is typed, so no words are put back and the step searches none, as Joel's out of
+    Windows spent 20 and 19 ms of its 58 and 53 ms holding, before it searched (2026-11-17 and
+    18).
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     shell.as_account(shell.ipc("collection", place))
@@ -606,6 +608,9 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     profiler: subprocess.Popen[bytes] | None = None
     parts: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     step = os.environ.get("LAB_STEP", "")
+    if os.environ.get("LAB_BACK") and not step:
+        refused = "LAB_BACK steps out of LAB_STEP's place, and none was given"
+        raise AssertionError(refused)
     step_key = os.environ.get("LAB_STEP_KEY", "ret")
     launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", "0")))
     named(os.environ.get("LAB_NAMED", ""), step, step_key)
