@@ -104,47 +104,63 @@ function placed(places, screens, inUse) {
 // it's connected again. `away` holds, by each screen's description (or its
 // connector, for a place kept before screens were named so), the workspaces
 // given in its place, by niri's id, each with the number it was kept at
-// there and the connector it left (`output`), if known, which wins among
-// screens alike, as niri lists them in no set order. The moves go lowest
-// kept number first; their order there is the windows daemon's to put back.
-// One gone already isn't moved; one on the screen already is marked
-// (`there`) and left. `home` names the screens connected again, done with.
+// there, the connector it left (`output`), if known, and the connectors
+// alike that stayed as it left (`stayed`, of alikeStayed). Each decides on
+// its own, by wayBack. The moves go lowest kept number first; their order
+// there is the windows daemon's to put back. One gone already is dropped;
+// one on its screen already is marked (`there`) and left. `waiting` is
+// `away` with those still waiting, each knowing its siblings' connectors
+// as alike screens that aren't its own.
 function homeward(away, screens, workspaces) {
     const moves = [];
-    const home = [];
+    const waiting = {};
     for (const screen of Object.keys(away ?? {}).sort()) {
-        const ranked = away[screen]
+        const lefts = away[screen].map(one => one.output).filter(Boolean);
+        const going = away[screen]
             .filter(one => workspaces.some(each => each.id === one.id))
-            .sort((a, b) => a.workspace - b.workspace);
-        const free = comeBack(screen, screens, ranked, workspaces);
-        if (free.length > 0) {
-            home.push(screen);
-            for (const one of ranked) {
-                const output = free.includes(one.output) ? one.output : free[0];
-                const now = workspaces.find(each => each.id === one.id);
-                moves.push(now.output === output ? { output, id: one.id, there: true }
-                    : { output, id: one.id });
-            }
+            .sort((a, b) => a.workspace - b.workspace)
+            .map(one => [one, wayBack(one, screen, screens, lefts)]);
+        for (const [one, output] of going.filter(([, to]) => to !== null)) {
+            const now = workspaces.find(each => each.id === one.id);
+            moves.push(now.output === output ? { output, id: one.id, there: true }
+                : { output, id: one.id });
+        }
+        const held = going.filter(([, to]) => to === null).map(([one]) => Object.assign({}, one, {
+            stayed: [...new Set((one.stayed ?? []).concat(lefts.filter(name => name !== one.output)))]
+        }));
+        if (held.length > 0) {
+            waiting[screen] = held;
         }
     }
-    return { moves, home };
+    return { moves, waiting };
 }
 
-// The connectors of the screens alike `screen` that may be it come back, of
-// `screens` by connector. An alike screen holding one of its workspaces that
-// left another connector is the screen it was sent to, not its own come
-// back: two monitors of one model without serials, or a VM's two, describe
-// themselves the same, and taking that one for home dropped the workspace's
-// note before the screen it left came back.
-function comeBack(screen, screens, ranked, workspaces) {
-    const sentTo = ranked
-        .filter(one => one.output)
-        .map(one => [one.output, workspaces.find(each => each.id === one.id).output])
-        .filter(([left, now]) => now !== left)
-        .map(([, now]) => now);
-    return Object.keys(screens ?? {})
+// Where a workspace noted away from `screen` goes now, of `screens` by
+// connector, or null while it waits. The connector it left, once that's the
+// screen again, is home. Else any screen alike is, unless it stayed as the
+// workspace left or a sibling left it: two monitors of one model without
+// serials, or a VM's two, describe themselves the same, and taking the one
+// it was sent to for home dropped its note before the one it left came back
+// (vm-screens-keep-places, 2026-11-18). Where it sits now doesn't count, so
+// one Joel moves while it waits stays where he put it.
+function wayBack(one, screen, screens, lefts) {
+    const alike = Object.keys(screens ?? {})
         .filter(name => screens[name] === screen || name === screen)
-        .filter(name => !sentTo.includes(name));
+        .sort();
+    if (alike.includes(one.output)) {
+        return one.output;
+    }
+    const notIt = (one.stayed ?? []).concat(lefts);
+    return alike.find(name => !notIt.includes(name)) ?? null;
+}
+
+// The connectors alike `screen` (by description, or its connector for a place
+// kept before screens were named so) connected as a workspace leaves
+// `left`, each once: `outputs` are those niri's workspaces sit on. None of
+// them can be the screen it left come back.
+function alikeStayed(screen, left, screens, outputs) {
+    return [...new Set(outputs)]
+        .filter(name => name !== left && (screens?.[name] === screen || name === screen));
 }
 
 // Which window kept, of a boot's windows other than its sessions, a window

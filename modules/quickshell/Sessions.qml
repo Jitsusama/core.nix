@@ -2006,8 +2006,10 @@ Singleton {
         const kept = awayFrom[away.screen] ?? [];
         if (kept.some(one => one.id === id))
             return;
+        const outputs = Object.values(Niri.workspaces).map(one => one.output ?? "");
+        const stayed = Places.alikeStayed(away.screen, away.output, screens, outputs);
         const next = Object.assign({}, awayFrom);
-        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output }]);
+        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output, stayed }]);
         awayFrom = next;
     }
     // Each workspace's screen and number as last seen with that screen
@@ -2019,6 +2021,15 @@ Singleton {
     // back in its place when the screen comes. One noted already keeps its
     // first screen, so a laptop shut on its dock never takes the monitor's.
     property var workspacesWere: ({})
+    // Says each workspace comeHome holds back once, as it starts to wait,
+    // so a screen test that fails shows whether the shell waited.
+    property var heldSaid: []
+    function sayHeld(waiting) {
+        const held = Object.values(waiting).reduce((all, kept) => all.concat(kept), []);
+        held.filter(one => !heldSaid.includes(one.id)).forEach(one => console.info(
+            `workspace ${one.id} waits for ${one.output ?? "its screen"} to come back`));
+        heldSaid = held.map(one => one.id);
+    }
     function noteGone() {
         const now = Object.values(Niri.workspaces);
         const outputs = now.map(one => one.output ?? "");
@@ -2039,14 +2050,12 @@ Singleton {
         if (root.placingNow() || Object.keys(awayFrom).length === 0)
             return;
         const going = Places.homeward(awayFrom, screens, Object.values(Niri.workspaces));
-        if (going.home.length === 0)
-            return;
-        const next = {};
-        for (const screen in awayFrom) {
-            if (!going.home.includes(screen))
-                next[screen] = awayFrom[screen];
-        }
-        awayFrom = next;
+        root.sayHeld(going.waiting);
+        if (JSON.stringify(going.waiting) !== JSON.stringify(awayFrom))
+            awayFrom = going.waiting;
+        going.moves.forEach(move => console.info(move.there === true
+            ? `workspace ${move.id} is back on ${move.output}`
+            : `workspace ${move.id} goes back to ${move.output}`));
         const back = Niri.current;
         const moving = going.moves.filter(move => move.there !== true);
         // Their order is the windows daemon's to put back, as Joel last had
