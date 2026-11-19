@@ -15,6 +15,8 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use crate::served;
+
 /// The file beside the daemon's others the starts are kept in.
 pub const FILE: &str = "starts.json";
 
@@ -155,7 +157,9 @@ impl Starts {
             .iter()
             .filter_map(|one| {
                 let ended = one.ended.as_ref()?;
-                Some(json!({"key": format!("{KIND}:{}", one.token), "kind": KIND,
+                // In Agents' place, which a watch reads from a key's second part.
+                let key = format!("{KIND}:{}:{}", served::PLACE, one.token);
+                Some(json!({"key": key, "kind": KIND,
                     "start": {"token": one.token, "ended": ended}}))
             })
             .collect()
@@ -172,7 +176,6 @@ mod tests {
     use daemon_serve::asks::place_of;
 
     use super::*;
-    use crate::served;
 
     const NOW: u128 = 1_800_000_000_000;
 
