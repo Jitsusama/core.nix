@@ -95,8 +95,8 @@ fn record() -> Record {
                     packed_bytes: 4096,
                     due: false,
                 }),
-                branches: 3,
-                config_bytes: 220,
+                branches: Some(3),
+                config_bytes: Some(220),
             }],
             changes: vec![
                 change("joel/say-trees", Some(42)),

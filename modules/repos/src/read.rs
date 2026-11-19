@@ -14,6 +14,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -258,7 +259,9 @@ pub fn checkout(common: &Path, home: Option<&Path>) -> Found {
         trees,
         weight: weight::weigh(common, &limits(&config)),
         branches: refs.branches(),
-        config_bytes: config.len() as u64,
+        config_bytes: fs::metadata(common.join("config"))
+            .ok()
+            .map(|file| file.len()),
     };
     Found {
         checkout,
@@ -445,26 +448,25 @@ struct Refs {
     common: PathBuf,
     packed: HashMap<String, String>,
     table: Option<HashMap<String, Ref>>,
+    /// Whether a reftable stack was there but couldn't be read, which
+    /// leaves `table` empty rather than saying nothing is in it.
+    table_unread: bool,
     follows: HashMap<String, Follows>,
 }
 
 impl Refs {
     fn of(common: &Path, config: &str) -> Self {
         let tables = common.join("reftable");
-        let table = tables
-            .is_dir()
-            .then(|| reftable::stack(&tables).unwrap_or_default());
-        let packed = fs::read_to_string(common.join("packed-refs"))
-            .unwrap_or_default()
-            .lines()
-            .filter(|line| !line.starts_with(['#', '^']))
-            .filter_map(|line| line.split_once(' '))
-            .map(|(commit, name)| (name.trim().to_owned(), commit.to_owned()))
-            .collect();
+        let stack = tables.is_dir().then(|| reftable::stack(&tables));
+        let table_unread = matches!(stack, Some(None));
+        let table = stack.map(Option::unwrap_or_default);
+        let packed =
+            packed_refs(&fs::read_to_string(common.join("packed-refs")).unwrap_or_default());
         Self {
             common: common.to_path_buf(),
             packed,
             table,
+            table_unread,
             follows: follows(config),
         }
     }
@@ -531,43 +533,79 @@ impl Refs {
 
     /// How many local branches the checkout keeps: its tables' or, kept in
     /// files, its loose refs and packed ones together, each name once, since
-    /// a branch written since the last pack is in both.
-    fn branches(&self) -> u64 {
-        if let Some(table) = &self.table {
-            return table
-                .keys()
-                .filter(|name| name.starts_with("refs/heads/"))
-                .count() as u64;
+    /// a branch written since the last pack is in both. None where they
+    /// couldn't be read.
+    ///
+    /// The loose files are walked first and packed-refs read again after,
+    /// as git reads them: `git pack-refs` writes packed-refs before it
+    /// removes the loose files, so a branch it moves is in one or the other
+    /// whenever this looks, where the packed-refs read with the checkout's
+    /// other refs may be older than the walk.
+    fn branches(&self) -> Option<u64> {
+        if self.table_unread {
+            return None;
         }
-        let mut names: HashSet<String> = self
-            .packed
-            .keys()
-            .filter(|name| name.starts_with("refs/heads/"))
-            .cloned()
-            .collect();
-        loose_refs(&self.common.join("refs/heads"), "refs/heads", &mut names);
-        names.len() as u64
+        if let Some(table) = &self.table {
+            return Some(
+                table
+                    .keys()
+                    .filter(|name| name.starts_with(BRANCHES))
+                    .count() as u64,
+            );
+        }
+        let mut names = HashSet::new();
+        loose_refs(&self.common.join(BRANCHES), BRANCHES, &mut names).ok()?;
+        let packed = match fs::read_to_string(self.common.join("packed-refs")) {
+            Ok(said) => packed_refs(&said),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => HashMap::new(),
+            Err(_) => return None,
+        };
+        names.extend(packed.into_keys().filter(|name| name.starts_with(BRANCHES)));
+        Some(names.len() as u64)
     }
 }
 
+/// Where a checkout's local branches are named.
+const BRANCHES: &str = "refs/heads/";
+
+/// The refs a packed-refs file names, by name, each at its commit. A line
+/// opening with `^` is the commit the tag above it peels to, not a ref.
+fn packed_refs(said: &str) -> HashMap<String, String> {
+    said.lines()
+        .filter(|line| !line.starts_with(['#', '^']))
+        .filter_map(|line| line.split_once(' '))
+        .map(|(commit, name)| (name.trim().to_owned(), commit.to_owned()))
+        .collect()
+}
+
 /// Every loose ref under `folder`, by its full name, `prefix` being the
-/// folder's own. A `.lock` is a write git hasn't finished, not a ref.
-fn loose_refs(folder: &Path, prefix: &str, names: &mut HashSet<String>) {
-    let Ok(entries) = fs::read_dir(folder) else {
-        return;
+/// folder's own, ending in `/`. A `.lock` is a write git hasn't finished,
+/// and git never names a ref part with a leading dot, so neither is a ref;
+/// a link is passed over rather than followed. A folder that isn't there
+/// holds none; one that can't be read is an error.
+fn loose_refs(folder: &Path, prefix: &str, names: &mut HashSet<String>) -> io::Result<()> {
+    let entries = match fs::read_dir(folder) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
     };
-    for entry in entries.flatten() {
-        let name = format!("{prefix}/{}", entry.file_name().to_string_lossy());
-        match entry.file_type() {
-            Ok(kind) if kind.is_dir() => loose_refs(&entry.path(), &name, names),
-            Ok(kind)
-                if kind.is_file() && entry.path().extension().is_none_or(|ext| ext != "lock") =>
-            {
+    for entry in entries {
+        let entry = entry?;
+        let file = entry.file_name();
+        let file = file.to_string_lossy();
+        if file.starts_with('.') {
+            continue;
+        }
+        let name = format!("{prefix}{file}");
+        match entry.file_type()? {
+            kind if kind.is_dir() => loose_refs(&entry.path(), &format!("{name}/"), names)?,
+            kind if kind.is_file() && entry.path().extension().is_none_or(|ext| ext != "lock") => {
                 names.insert(name);
             }
             _ => {}
         }
     }
+    Ok(())
 }
 
 /// One key set in a checkout's config, under the `[kind "name"]` section

@@ -221,6 +221,9 @@ fn a_reftable_checkouts_heads_and_trunk_are_read_from_its_tables() {
         &common.join("worktrees/src1/reftable"),
         &[table(&[("HEAD", Some(Ref::Commit(COMMIT.to_owned())))])],
     );
+    // Loose files a reftable checkout doesn't keep its branches in.
+    write(&common.join("refs/heads/jg/stray"), &format!("{COMMIT}\n"));
+    write(&common.join("refs/heads/jg/other"), &format!("{COMMIT}\n"));
     let record = reading(&[world.join("trees")], None);
     let repository = &record.repositories[0];
     assert_eq!(
@@ -247,9 +250,10 @@ fn a_reftable_checkouts_heads_and_trunk_are_read_from_its_tables() {
         ],
         "{repository:#?}"
     );
-    // Its tables hold its one branch; the loose main the folder was laid
-    // out with is not where a reftable checkout keeps its refs.
-    assert_eq!(repository.checkouts[0].branches, 1, "{repository:#?}");
+    // Its tables hold its one branch. The two loose files beside them are
+    // not where a reftable checkout keeps its refs, so counting them would
+    // say 2 or more.
+    assert_eq!(repository.checkouts[0].branches, Some(1), "{repository:#?}");
 }
 
 #[test]
@@ -262,21 +266,42 @@ fn a_checkout_counts_its_branches_once_each_and_its_configs_bytes() {
     // main packed too, as a branch written since the last pack is.
     write(&git.join("refs/heads/jg/a"), &format!("{COMMIT}\n"));
     write(&git.join("refs/heads/jg/half.lock"), &format!("{OTHER}\n"));
+    // Neither a dot-named file nor a link is a branch git would name.
+    write(&git.join("refs/heads/.stray"), &format!("{OTHER}\n"));
+    std::os::unix::fs::symlink(git.join("refs/heads/jg/a"), git.join("refs/heads/jg/link"))
+        .expect("a link");
+    // The tag's peeled line opens with ^ and names no ref.
     write(
         &git.join("packed-refs"),
         &format!(
             "# pack-refs with: peeled fully-peeled sorted\n{COMMIT} refs/heads/jg/b\n\
-             {COMMIT} refs/heads/main\n{OTHER} refs/remotes/origin/main\n{OTHER} refs/tags/v1\n"
+             {COMMIT} refs/heads/main\n{OTHER} refs/remotes/origin/main\n\
+             {OTHER} refs/tags/v1\n^{COMMIT}\n"
         ),
     );
-    let config = fs::read(git.join("config")).expect("the config").len() as u64;
+    let config = fs::metadata(git.join("config")).expect("the config").len();
     let record = reading(&[src], None);
     let checkout = &record.repositories[0].checkouts[0];
     assert_eq!(
         (checkout.branches, checkout.config_bytes),
-        (3, config),
+        (Some(3), Some(config)),
         "{checkout:#?}"
     );
+}
+
+#[test]
+fn a_checkout_whose_refs_cant_be_read_says_no_count_rather_than_none() {
+    let src = place("unread");
+    let folder = src.join("locked");
+    checkout_at(&folder, Some("https://git.example.org/jg/locked.git"), 100);
+    let git = folder.join(".git");
+    // A packed-refs that is a folder can't be read as a file, as one with
+    // its permissions taken away can't, and a test can't run as anyone but
+    // root may.
+    fs::create_dir_all(git.join("packed-refs")).expect("a folder in its place");
+    let record = reading(&[src], None);
+    let checkout = &record.repositories[0].checkouts[0];
+    assert_eq!(checkout.branches, None, "{checkout:#?}");
 }
 
 #[test]

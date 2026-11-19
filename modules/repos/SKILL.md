@@ -81,8 +81,9 @@ on the disk. Loose objects are counted in every folder when few, and where
 `estimated` reckoned from one of the 256, as git's auto-gc does. `due` says
 git's automatic gc, at the checkout's own config, would gather it now. The
 weight is left out where the store couldn't be read. `branches` counts its local
-branches, loose and packed, each once, and `config_bytes` is its config file's
-length, which every git command there reads. Paths are whole, times
+branches, loose, packed or in its reftable, each once, and `config_bytes` is its
+config file's length, without files it includes, which every git command there
+reads; either is left out where it couldn't be read. Paths are whole, times
 RFC 3339, and an unread one is null.
 `repos NAME --json` holds its one under `repository`, and
 `repos NAME trees --json` its trees, newest first, each naming its

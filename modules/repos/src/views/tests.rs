@@ -82,8 +82,8 @@ fn checkout(path: &str, trees: Vec<Tree>, ago: u64) -> Checkout {
         written_at: Some(NOW - ago),
         trees,
         weight: None,
-        branches: 1,
-        config_bytes: 0,
+        branches: Some(1),
+        config_bytes: None,
     }
 }
 
