@@ -252,6 +252,7 @@ ShellRoot {
     function loaded() {
         Expect.expect("a line resting is said as measured", lineNote() === "as measured",
             lineNote());
+        const resting = lineRow().side;
         const was = said();
         counted({ lo: [1000, 2000], eth0: [9000000000, 9000000000] });
         Written.written(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 1, up: 1,
@@ -276,13 +277,14 @@ ShellRoot {
         // The counters' load lands too, since a look asked while one is
         // under way is passed over, and the status may land first. Aged
         // first, since aging counts as a load. The note is claimed once the
-        // row is back with another than resting's, so a reworded one says
-        // what it was, and a row gone as the status loads again isn't one.
+        // row says holding's rates, whatever its note, so a note lost or
+        // reworded says what it was, and a row gone as the status loads
+        // again isn't taken for one.
         aged(traffic.soonest);
         const landed = loads;
         traffic.look();
-        waits.until("the line leaves resting", () => loads > landed && idle()
-            && lineNote() !== undefined && lineNote() !== "as measured", () => {
+        waits.until("the holding status loaded", () => loads > landed && idle()
+            && lineRow() !== undefined && lineRow().side !== resting, () => {
             Expect.expect("a line holding is said so",
                 lineNote() === "as measured, held to the shaper's limit", lineNote());
             counted({ lo: [1000, 2000] });
@@ -292,11 +294,16 @@ ShellRoot {
         });
     }
 
+    // The shaper's line row, or undefined with none.
+    function lineRow() {
+        return traffic.answer("speed").rows.find(row => row.name
+            === Words.name("traffic:line"));
+    }
+
     // What the shaper's line row notes of what it's doing with the line, or
     // undefined with no row.
     function lineNote() {
-        return traffic.answer("speed").rows.find(row => row.name
-            === Words.name("traffic:line"))?.note;
+        return lineRow()?.note;
     }
 
     // Asked after a gap with the launcher closed, as a terminal's `launcher
