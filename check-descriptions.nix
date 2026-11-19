@@ -2041,8 +2041,9 @@
   network-site-holds = ''
     the network page typechecks on the kit at its strictest and builds, its tests passing: nothing
     drawn until every kind of net's records is told, concerns worst first by net's rank rather
-    than the order a watch hears them, a record it can't read named rather than drawn, and the
-    floors laid out top first with each device on its own eero
+    than the order a watch hears them, a record it can't read named rather than drawn, the
+    floors laid out top first with each device on its own eero, and a device's command naming it
+    by a word that finds it alone and pastes as it reads, quoted as the terminal kit quotes
   '';
   network-site-reads-live = ''
     the network page, served by the local sites' server beside a stand-in net and node, reads live

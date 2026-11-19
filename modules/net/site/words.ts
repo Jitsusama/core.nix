@@ -203,11 +203,17 @@ function shellWord(word: string): string {
 
 /**
  * What the terminal kit keeps to shape a word, though alone it draws
- * nothing: the soft hyphen, the joiners, the variation selectors and the
- * tags that spell a flag. An emoji as a phone types it, a heart with its
- * selector or a family joined, is drawn wrong without them.
+ * nothing, as its `unseen` leaves them: the soft hyphen, Hangul's vowel
+ * filler, Mongolian's selectors and vowel separator, the joiners, the
+ * variation selectors and their supplement, and the tags that spell a
+ * flag. An emoji as a phone types it, a heart with its selector or a
+ * family joined, and a script's letters are drawn wrong without them.
+ * Hangul's leading filler, U+115F, isn't among them: the kit reads it as
+ * a blank, as it reads braille's.
  */
-const SHAPING = String.raw`\u00ad\u200c\u200d\ufe00-\ufe0f\u{e0020}-\u{e007f}`;
+const SHAPING =
+  String.raw`\u00ad\u1160\u180b-\u180f\u200c\u200d\ufe00-\ufe0f` +
+  String.raw`\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}`;
 
 /**
  * What a terminal could be handed besides the words it shows: a control
@@ -227,11 +233,34 @@ const UNSEEN = new RegExp(
 );
 
 /**
+ * What a person reads past in a word: what shapes it, and what draws
+ * nothing, such as a mark of format or a default-ignorable character.
+ * A tab or a line break is a control, and Hangul's fillers are
+ * default-ignorable, but each shows as a blank, so each reads as one.
+ */
+const READ_PAST = new RegExp(
+  String.raw`[[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}${SHAPING}]` +
+    String.raw`--[\t-\r\u115f\u3164\uffa0]]`,
+  "gv",
+);
+
+/**
+ * A run of blanks, which a person reads as one space: braille's and
+ * Hangul's among them, which a page draws as a blank.
+ */
+const BLANKS = /[\s\u115f\u2800\u3164\uffa0]+/gu;
+
+/**
  * A character that draws nothing standing where a word starts, as the
  * kit's `typed` refuses it: alone it shows nothing, and after a space it
- * draws as a second one.
+ * draws as a second one. Hangul's medial vowels and final consonants,
+ * U+1161 to U+11FF and U+D7B0 to U+D7FF, are letters to Unicode but take
+ * no cell of their own, as the kit measures them.
  */
-const OPENS_BARE = new RegExp(String.raw`(?:^| )[\p{Mn}\p{Me}${SHAPING}]`, "v");
+const OPENS_BARE = new RegExp(
+  String.raw`(?:^| )[\p{Mn}\p{Me}${SHAPING}\u1161-\u11ff\ud7b0-\ud7ff]`,
+  "v",
+);
 
 /**
  * Whether a word pastes into a terminal just as the page shows it:
@@ -248,26 +277,49 @@ function folded(word: string): string {
 }
 
 /**
+ * A word as it reads to a person: without what they read past, its blanks
+ * one space, in Unicode's compatibility form, which reads a wide or
+ * mathematical letter as the letter, and in one case, then in that form
+ * again, since a letter's case can leave its mark apart. What is read past
+ * goes first, so a joiner can't keep a letter from its mark, and a mark of
+ * format between two blanks, or one JavaScript takes as a blank, can't
+ * leave two spaces or one. Case goes down, up and down again, so a capital
+ * reads as its small letter however it's written, as É, E and its mark, or
+ * the Kelvin sign, and so do ß, ẞ and SS, and Greek's two small sigmas.
+ */
+function reads(word: string): string {
+  const seen = word.replace(READ_PAST, "").replace(BLANKS, " ").trim();
+  const cased = seen.normalize("NFKC").toLowerCase().toUpperCase().toLowerCase();
+  return cased.normalize("NFKC");
+}
+
+/**
  * The words that show a device at a terminal, each typed as it reads and
  * finding it alone, best first. net takes a word as an id, then as an
  * address, then as a name in any case, refuses a name two devices share,
  * and reads a word opening with `-` as a flag. So a name is offered when
  * nothing else answers to it; then the first address, as net's own try
  * lines choose it, when no other device answers there; then net's id,
- * unless it's one net gives to several. Others are told apart by their
- * id, as the page keys them.
+ * unless it's one net gives to several. A name that reads as another's
+ * name, id or address, or as an id net gives several, which it reads as
+ * the first device holding it, isn't offered, since the command would read
+ * as naming another.
  */
 function findingWords(device: Device, devices: readonly Device[]): string[] {
   const others = devices.filter((other) => other.id !== device.id);
   const { name } = device;
-  const nameFinds = others.every(
-    (other) =>
-      other.id !== name && !other.addresses.includes(name) && folded(other.name) !== folded(name),
-  );
+  const read = reads(name);
+  const taken = [
+    ...SHARED_IDS,
+    ...others.flatMap((other) => [other.id, ...other.addresses, other.name]),
+  ];
+  // net's own rule, held exactly, beside how the words read.
+  const nameFinds = taken.every((word) => folded(word) !== folded(name) && reads(word) !== read);
   const address = device.addresses[0];
   const addressFinds =
     address !== undefined &&
     address !== device.id &&
+    !SHARED_IDS.has(address) &&
     others.every((other) => other.id !== address && !other.addresses.includes(address));
   return [
     ...(nameFinds ? [name] : []),
