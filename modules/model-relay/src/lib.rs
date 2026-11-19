@@ -1139,7 +1139,8 @@ impl Relay {
         let read = read_whole(body).await;
         // A body pi left, or one still coming past its deadline, which pi
         // would have written at once, is a cancel whatever else, as nobody
-        // waits on a 421 for it.
+        // waits on a 421 for it. The tests can't wait out the deadline, so
+        // a late body's place here is held by reading alone.
         if let Err(why @ (Unread::Gone | Unread::Late)) = read {
             return self.unread(why);
         }
@@ -1996,7 +1997,7 @@ fn without_connection_headers(headers: &mut HeaderMap) {
 }
 
 /// Why a request's body wasn't read whole.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Unread {
     /// It passed `BODY_AT_MOST`.
     TooLarge,
@@ -2008,7 +2009,11 @@ enum Unread {
 
 /// Reads a request's body whole, so it can go again. pi's requests carry
 /// no trailers to keep.
-async fn read_whole(body: Incoming) -> Result<Bytes, Unread> {
+async fn read_whole<B>(body: B) -> Result<Bytes, Unread>
+where
+    B: hyper::body::Body<Data = Bytes>,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
     let reading = tokio::time::timeout(BODY_WITHIN, Limited::new(body, BODY_AT_MOST).collect());
     match reading.await {
         Ok(Ok(read)) => Ok(read.to_bytes()),
@@ -2046,9 +2051,29 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot,
-        fails_the_path, goes_again, reach, reach_any, slept, with_causes,
+        BODY_WITHIN, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST,
+        Sender, Slot, Unread, fails_the_path, goes_again, reach, reach_any, read_whole, slept,
+        with_causes,
     };
+
+    #[tokio::test(start_paused = true)]
+    async fn a_body_still_coming_past_its_deadline_is_late_and_one_pi_left_is_gone() {
+        let (_writing, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+        let began = tokio::time::Instant::now();
+        let read = read_whole(body).await;
+        assert!(
+            matches!(read, Err(Unread::Late)) && began.elapsed() >= BODY_WITHIN,
+            "a body still coming past its deadline was read as {read:?}"
+        );
+
+        let (writing, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+        writing.abort(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        let read = read_whole(body).await;
+        assert!(
+            matches!(read, Err(Unread::Gone)),
+            "a body pi left was read as {read:?}"
+        );
+    }
 
     #[test]
     fn only_a_reset_refusing_its_stream_or_saying_a_protocol_error_goes_again() {

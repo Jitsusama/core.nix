@@ -1816,7 +1816,7 @@
     sent again once it takes requests again, though never for requests no connection would take,
     resets saying to calm down, answers pi gives up on or answers sent before it took requests
     again, says another origin's 421 and the stand-down's once the body is read, even a body too
-    large, counts a body left unfinished as pi's cancel, never a 421, passes a TE of trailers as h2 sends it, says its counts as it leaves, answers
+    large, counts a body pi left as its cancel, never a 421, tells a body past its deadline as late, passes a TE of trailers as h2 sends it, says its counts as it leaves, answers
     broken off among them, counts on each connection the requests pi gave up on and no
     answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a

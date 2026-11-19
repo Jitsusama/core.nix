@@ -284,10 +284,13 @@ const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 /// moment first, `/stream` sends its halves a gap apart and `/long` a
 /// longer one, `/sized` names its length and ends in a frame of its own,
 /// `/broken` fails after its first half, `/cut` lets its connection fall
-/// with no word after its first half, `/bye` answers
+/// with no word after its first half, `/cut-late` does so `CUT_LATE`
+/// after it, `/bye` answers
 /// and lets its connection go, `/reset` reads the request and resets
 /// its stream rather than answer, `/reset-once` does so the first time
-/// it's asked and echoes after, `/reset-on-the-first` does so on the
+/// it's asked and echoes after, `/reset-held` holds each request
+/// `HELD_THEN_RESET` and then resets it, `/reset-once-held` does so the
+/// first time it's asked and echoes after, `/reset-on-the-first` does so on the
 /// origin's first connection and echoes on any other,
 /// `/reset-but-on-the-second` does so on every connection but the
 /// origin's second, `/calm-down` resets saying to calm down, and `/drop`
@@ -1225,6 +1228,12 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
             && said.contains("; pi cancelled 2;")
             && said.contains("; 1 refused as it stood down"),
         "a body too large wasn't counted as refused, or one pi left as its cancel: {said}"
+    );
+    // Nothing came once its stand-down was over, so the last were all
+    // asked within it, as the counts need.
+    assert!(
+        !said.contains("so it takes requests again"),
+        "a request came once its stand-down was over, so proves nothing of it: {said}"
     );
 }
 

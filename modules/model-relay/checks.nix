@@ -32,8 +32,8 @@ onLinux {
   # connection would take, the origin's own verdicts, answers pi gives up
   # on or answers sent before it took requests again, another origin's
   # 421 and the stand-down's said once the body is read, even a body too
-  # large, a body left unfinished counted as pi's cancel, never a 421, the
-  # counts said as it leaves, answers broken off among them,
+  # large, a body pi left counted as its cancel, never a 421, one past its
+  # deadline told as late, the counts said as it leaves, answers broken off among them,
   # the requests pi gave up on counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen
   # connection lost, an origin out of reach said as a 502 or a 504 without a
