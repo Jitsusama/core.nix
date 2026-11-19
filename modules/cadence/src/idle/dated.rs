@@ -41,7 +41,10 @@ pub fn starts(step: &str, now: i64, tz: &TimeZone) -> Option<i64> {
             return None;
         }
         let weekday = weekday(w[1])?;
-        let day: i8 = w[2].parse().ok()?;
+        let day: i8 = w[2]
+            .trim_end_matches(|c: char| !c.is_ascii_digit())
+            .parse()
+            .ok()?;
         let (hour, minute) = time(w[3])?;
         let date = nearest(today, weekday, day)?;
         let start = date.at(hour, minute, 0, 0).to_zoned(tz.clone()).ok()?;
@@ -116,6 +119,17 @@ mod tests {
             starts("Judge it at Wed 18 09:00", THU_19_0530, &toronto()),
             Some(THU_19_0530 - 20 * 3600 - 30 * 60),
             "a start already passed is still said, as passed"
+        );
+        // 1JQPPC's step on 19 November, woken at 10:40 as idle since its
+        // day was read as "19's", no number.
+        assert_eq!(
+            starts(
+                "After Thu 19's 18:00 cadence-day run, the first with #5591",
+                THU_19_0530,
+                &toronto(),
+            ),
+            Some(THU_19_0530 + 12 * 3600 + 30 * 60),
+            "a day said as the time's own, 19's, gives that evening"
         );
     }
 
