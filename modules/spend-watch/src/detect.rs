@@ -2924,6 +2924,31 @@ mod tests {
         );
     }
 
+    // A budget the config declares is told by its label, as Joel knows it,
+    // and keyed by its name.
+    #[test]
+    fn a_declared_budget_is_told_by_its_label() {
+        let history = History::memory();
+        missed(&history, "s1", HOUR, "teal", "no key for it");
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+            "budgets": [
+                {"name": "teal", "label": "Teal team token", "kind": "team", "whose": "team"},
+            ],
+        }))
+        .unwrap();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let found = unresolved(&picture, &history).unwrap();
+        assert_eq!(
+            (found[0].key.as_str(), found[0].title.as_str()),
+            (
+                "unresolved:teal",
+                "1 session couldn't draw on Teal team token"
+            )
+        );
+    }
+
     fn unbilled_keys(history: &History) -> Vec<String> {
         unbilled_keys_running(history, &fed_config())
     }

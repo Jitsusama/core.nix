@@ -317,6 +317,30 @@ fn an_unresolved_field_without_its_strings_is_passed_over() {
     assert_eq!(unresolved_of(&events), [] as [(&str, &str, &str); 0]);
 }
 
+// An unresolved budget in an entry of a version this doesn't read is
+// passed over with the rest of it, rather than misread as one it does.
+#[test]
+fn an_unresolved_entry_of_another_version_is_passed_over() {
+    let later = |id: &str, parent: &str| -> String {
+        serde_json::json!({
+            "type": "custom", "customType": "budget", "id": id, "parentId": parent,
+            "timestamp": "2026-11-07T02:20:33Z",
+            "data": {"v": 2, "name": "teal",
+                     "unresolved": {"budget": "teal", "missing": "no key for it"}},
+        })
+        .to_string()
+    };
+    let bytes = lines(&[
+        HEADER,
+        &tree_turn("a", "", "2026-11-07T02:00:00Z"),
+        &later("b", "a"),
+        &tree_turn("c", "b", "2026-11-07T02:21:00Z"),
+    ]);
+    let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
+    assert_eq!(unresolved_of(&events), [] as [(&str, &str, &str); 0]);
+    assert_eq!(budgets(&events), [None, None]);
+}
+
 // Before any entry a turn's log says nothing of its budget; after one,
 // it draws on the budget named, or the default for none.
 #[test]
