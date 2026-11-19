@@ -1676,9 +1676,10 @@
     clippy finds nothing in the local sites' server or its tests
   '';
   local-sites-rows-homes-read-as-readers-do = ''
-    the rules a switch asserts over declared local site rows name each kind two sites are home to
-    and each pattern the homes' readers drop, every byte they refuse included, and let a row give
-    its own kind both by name and by pattern
+    the rules a switch asserts over declared local site rows name each kind two sites are home to,
+    each pattern the homes' readers drop, every byte they refuse included, and each kind a site
+    gives more than one pattern, which the readers pass over, naming each once, and let a row give
+    its own kind both by name and by pattern, or one pattern again however it's written
   '';
   local-sites-serves-its-sites = ''
     the local sites' server serves the documents and a mount, answers a file the browser holds by

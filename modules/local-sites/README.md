@@ -25,11 +25,14 @@ row `sites.json` has at its path, so what the home says of a live site is
 built with it. The home writes every row it lists, the declared ones as
 declared, into `rows.json` beside it, for the readers of a row's `homes`
 (the system daemon's, the web-design skill's and Code's). A switch refuses
-declared rows that give one kind two sites as its home, or a pattern the
-readers would drop: the skill's reader calls either a fault, and the daemon
-can take a site's links away without a word ([`rows-homes.nix`][rows-homes]
-says when). A kind a declared row is home to stays its home: the home leaves
-a recorded row's claim on it out of `rows.json`, and says so, in its log and
+declared rows that give one kind two sites as its home, a pattern the
+readers would drop, or one kind two different patterns on one site: the
+skill's reader calls the first two a fault, the readers take only a kind's
+first pattern without a word, and the daemon can take a site's links away
+silently
+([`rows-homes.nix`][rows-homes] says when). A kind a declared row is home to
+stays its home: the home leaves a recorded row's claim on it out of
+`rows.json`, and says so, in its log and
 in `rows.json`'s `taken`, which the skill's reader names. Each reads
 `rows.json` first and `sites.json` only where it's missing, so `sites.json`
 keeps only the rows nothing declares; a session's edit to a live row there no
