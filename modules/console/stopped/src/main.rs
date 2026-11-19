@@ -120,13 +120,14 @@ fn is_a_console(path: &str) -> bool {
             .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// The units that failed, by name, as systemd lists them.
+/// The units that failed, by name, as systemd lists them. It's asked
+/// with all the time there is, since without it nothing can be said.
 fn failed(budget: &Budget) -> Result<Vec<String>, Failure> {
     let unavailable = |why: String| {
         Failure::new(Exit::Unavailable, "systemd couldn't say which units failed").because(why)
     };
     let listed = budget
-        .ask(
+        .ask_with_all_left(
             "systemctl",
             &["list-units", "--failed", "--plain", "--no-legend", "--full"],
         )

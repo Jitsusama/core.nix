@@ -16,7 +16,9 @@ use std::time::{Duration, Instant};
 /// comes first, so the summary takes a small share. Each command has a
 /// share of its own, so one that stalls leaves the rest their time, and a
 /// program that stalled once isn't asked again: a journal that stalls on
-/// one unit stalls on the next.
+/// one unit stalls on the next. A share is half the whole, since a
+/// journal's first read from a cold cache takes seconds on a healthy
+/// disk, and one stall still leaves the other half.
 pub struct Budget {
     by: Instant,
     each: Duration,
@@ -25,7 +27,7 @@ pub struct Budget {
 
 impl Budget {
     pub fn from_now() -> Self {
-        Self::lasting(Duration::from_secs(10), Duration::from_secs(2))
+        Self::lasting(Duration::from_secs(10), Duration::from_secs(5))
     }
 
     fn lasting(whole: Duration, each: Duration) -> Self {
@@ -38,10 +40,18 @@ impl Budget {
 
     /// What `program` printed given `args`, and how it ended, if it ends
     /// in its share of the time left, or why not. Nothing is asked once
-    /// the whole budget is spent, and a program cut short by the whole
-    /// budget rather than its own share isn't counted as stalled, since
-    /// it was given less than its share.
+    /// the whole budget is spent.
     pub fn ask(&self, program: &str, args: &[&str]) -> Result<Output, String> {
+        self.asking(program, args, Instant::now() + self.each)
+    }
+
+    /// The same as `ask`, with all the time left rather than a share, for
+    /// the one answer without which there is nothing to say.
+    pub fn ask_with_all_left(&self, program: &str, args: &[&str]) -> Result<Output, String> {
+        self.asking(program, args, self.by)
+    }
+
+    fn asking(&self, program: &str, args: &[&str], own: Instant) -> Result<Output, String> {
         if self
             .stalled
             .borrow()
@@ -52,13 +62,11 @@ impl Budget {
                 "{program} didn't answer before, so it wasn't asked again"
             ));
         }
-        let now = Instant::now();
-        if now >= self.by {
+        if Instant::now() >= self.by {
             return Err(format!("no time was left to ask {program}"));
         }
-        let own = now + self.each;
         answered(program, args, self.by.min(own)).map_err(|unanswered| {
-            if unanswered.late && own <= self.by {
+            if unanswered.late {
                 self.stalled.borrow_mut().push(program.to_owned());
             }
             unanswered.why
@@ -206,9 +214,10 @@ mod tests {
     #[test]
     fn a_command_past_its_deadline_is_stopped_killed_and_reaped() {
         let pid_file = std::env::temp_dir().join(format!("stalled-{}", std::process::id()));
-        let script = format!("echo $$ > {}; exec sleep 30", pid_file.display());
+        let script = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
         let started = Instant::now();
-        let said = answered("sh", &["-c", &script], started + Duration::from_millis(500));
+        // Two seconds give a busy builder's sh time to say its pid.
+        let said = answered("sh", &["-c", &script], started + Duration::from_secs(2));
         assert!(
             said.as_ref().is_err_and(|unanswered| unanswered.late),
             "a stalled command wasn't stopped for time: {said:?}"
@@ -284,7 +293,17 @@ mod tests {
     }
 
     #[test]
-    fn the_whole_budget_ends_every_ask_and_counts_no_one_stalled() {
+    fn what_needs_all_the_time_left_is_given_it() {
+        let budget = Budget::lasting(Duration::from_secs(5), Duration::from_millis(200));
+        let said = budget.ask_with_all_left("sleep", &["0.5"]);
+        assert!(
+            said.is_ok(),
+            "a command given all the time left was held to a share: {said:?}"
+        );
+    }
+
+    #[test]
+    fn the_whole_budget_ends_every_ask() {
         let started = Instant::now();
         let budget = Budget::lasting(Duration::from_millis(300), Duration::from_secs(10));
         let first = budget.ask("sleep", &["30"]);
@@ -296,10 +315,6 @@ mod tests {
             started.elapsed() < Duration::from_secs(5),
             "a command past the budget held it {:?}",
             started.elapsed()
-        );
-        assert!(
-            budget.stalled.borrow().is_empty(),
-            "a program cut short by the budget was counted as stalled"
         );
         let after = budget.ask("echo", &["late"]);
         assert!(

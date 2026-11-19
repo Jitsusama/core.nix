@@ -45,6 +45,7 @@ EOF
 {
   printf '#!%s\n' "$BASH"
   cat <<'EOF'
+# A stalled journal answers later than the summary waits for any read.
 [[ ! -f $WORK/stall ]] || exec sleep 60
 lines=10 own='' systemd='' unit='' pid='' ids=' ' boot=''
 for arg; do
@@ -180,12 +181,16 @@ touch "$work/stall"
 started=$SECONDS
 said
 ((SECONDS - started < 8)) || fails "a stalled journal held it $((SECONDS - started)) s"
+# It waits out the journal's five seconds once, so a journal that
+# failed at once rather than stalling would show here.
+((SECONDS - started >= 4)) || fails "the journal answered at once rather than stalling"
 says "  x  home.mount  Mount /home"
 says "  x  blank.service  A program that drew nothing"
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
 # Under the units only the count of the rest and the way out: a journal
 # that didn't answer gives a unit nothing to show.
-[[ $(grep -c '^     ' "$work/said") == 2 ]] || fails "it showed lines a stalled journal can't give"
+rows=$(grep -c '^     ' "$work/said" || true)
+[[ $rows == 2 ]] || fails "it showed lines a stalled journal can't give"
 if grep -q -F "wrong fs type" "$work/said"; then
   fails "the journal didn't stall, so this shows nothing"
 fi
