@@ -301,10 +301,7 @@ def test_reopen_them_all_after_a_reboot_reopens_what_the_boot_left_where_each_sa
 
     def lantern() -> tuple[str, int]:
         """Give the screen and workspace Joel's own window is on."""
-        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
-        spaces = {one["id"]: one for one in listed}
-        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
-        [space] = [spaces[one["workspace_id"]] for one in windows if one["title"] == "Lantern"]
+        [space] = [space for one, space in booted.windows_placed() if one["title"] == "Lantern"]
         return space["output"], space["idx"]
 
     def windows() -> list[dict[str, Any]]:
@@ -381,15 +378,9 @@ def test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window
 
     def where() -> dict[str, tuple[str, int]]:
         """Give each window opened here's screen and workspace, by its title."""
-        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
-        spaces = {one["id"]: one for one in listed}
-        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
         return {
-            window["title"]: (
-                spaces[window["workspace_id"]]["output"],
-                spaces[window["workspace_id"]]["idx"],
-            )
-            for window in windows
+            window["title"]: (space["output"], space["idx"])
+            for window, space in booted.windows_placed()
             if window["title"] in opened
         }
 
@@ -450,15 +441,12 @@ def test_workspaces_moved_from_a_screen_turned_off_stay_where_joel_puts_them(
 
     def order() -> list[str]:
         """Give the windows opened here by their workspaces' order on the first screen."""
-        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
-        spaces = {one["id"]: one for one in listed}
-        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
-        mine = [window for window in windows if window["title"] in opened]
-        on = [window for window in mine if spaces[window["workspace_id"]]["output"] == "Virtual-1"]
-        return [
-            window["title"]
-            for window in sorted(on, key=lambda window: spaces[window["workspace_id"]]["idx"])
+        on = [
+            (window, space)
+            for window, space in booted.windows_placed()
+            if window["title"] in opened and space["output"] == "Virtual-1"
         ]
+        return [window["title"] for window, space in sorted(on, key=lambda one: one[1]["idx"])]
 
     try:
         machine.succeed(booted.in_niri("niri msg action focus-monitor Virtual-2"))
