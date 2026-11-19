@@ -2,7 +2,8 @@
 
 cores-kept-from-their-owner.nix, beside this, runs this through pytest inside the driver
 (tests/lib/vm_pytest.py). An account aborts two of its own processes, a program named node
-standing in for a pi host and sleep itself, as any program running as it could abort a host.
+standing in for a pi in a terminal and sleep itself, as any program running as it could abort
+a pi.
 It can't open or dump either core, though the journal still shows it, in wheel as Joel's
 account is, each one's stack trace. Once six hours have passed, the module's removal takes
 the node's core and leaves the other's.
@@ -60,7 +61,7 @@ def crash(machine: BaseMachine, program: str) -> tuple[str, str]:
 
 @pytest.fixture(scope="module")
 def cores(machine: BaseMachine) -> Cores:
-    """Boot, then crash the stand-in host and sleep as the account, giving their pids and cores."""
+    """Boot, then crash the stand-in pi and sleep as the account, giving their pids and cores."""
     machine.wait_for_unit("multi-user.target")
     booted = mode(machine)
     assert booted == "700 root:root", f"the folder is {booted} before any crash"
