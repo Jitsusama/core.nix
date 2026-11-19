@@ -170,14 +170,14 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
         )
 
     assert keys.joel in joel.run(listing("app"))
-    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -p warning -o cat"
+    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -o cat"
     # The journal is read from here on, so only this listing's refusal can pass it.
     since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
     said = joel.run(listing("agents"), succeed=False)
     assert "refused" in said
     assert keys.joel not in said
     joel.machine.wait_until_succeeds(
-        f"{journal} --after-cursor={shlex.quote(since)}"
+        f"{journal} -p warning --after-cursor={shlex.quote(since)}"
         ' | grep -q "refused a request from agents\' work"',
         timeout=30,
     )
