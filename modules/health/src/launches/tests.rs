@@ -701,6 +701,45 @@ fn a_program_reloading_over_and_over_costs_health_only_the_reloads_it_keeps() {
 }
 
 #[test]
+fn an_accounts_flood_of_reloads_keeps_the_machines() {
+    let mut launches = Launches::default();
+    let reload = |since_boot: i64, account: Option<&str>| Entry {
+        at: since_boot,
+        since_boot,
+        origin: Origin::Systemd,
+        account: account.map(str::to_owned),
+        ..entry(
+            "systemd",
+            5,
+            "Reload requested from client PID 1520947 ('systemctl') (unit x.service)...",
+        )
+    };
+    let job = |at, job| Entry {
+        at,
+        since_boot: at,
+        job: Some(job),
+        ..entry("backend.service", 6, "")
+    };
+    // The machine's tool reloads it, then an account's process floods its
+    // own manager with reloads: they push out only the account's own, so
+    // the machine's tool's restart is still the tool's.
+    launches.heard(&reload(1_000_000, None));
+    for flood in 0..1_000 {
+        launches.heard(&reload(1_100_000 + flood * 5_000, Some("1000")));
+    }
+    launches.heard(&job(7_000_000, Job::Stopping));
+    launches.heard(&job(7_100_000, Job::Started));
+    assert_eq!(
+        (
+            launches.reloaded.get(&false).map_or(0, Vec::len),
+            launches.restarted.get("backend.service"),
+        ),
+        (MOST_RELOADS + 1, None),
+        "an account's flood pushed out the machine's reload"
+    );
+}
+
+#[test]
 fn a_new_day_carries_only_the_stops_and_reloads_a_restart_can_still_need() {
     let mut launches = Launches::default();
     let line = |thing: &str, at, job| Entry {

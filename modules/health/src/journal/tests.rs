@@ -219,6 +219,41 @@ fn a_line_says_where_it_was_written() {
 }
 
 #[test]
+fn a_line_says_whose_manager_its_unit_runs_under() {
+    let account = |cgroup: &str| {
+        let line =
+            format!(r#"{{"__REALTIME_TIMESTAMP":"1","_SYSTEMD_CGROUP":"{cgroup}","MESSAGE":"m"}}"#);
+        parse(&line).expect("a journal line is an entry").account
+    };
+    assert_eq!(
+        [
+            account(&format!("{ACCOUNT}/init.scope")),
+            account(&format!("{ACCOUNT}/app.slice/windows.service")),
+            account("/user.slice/user-1001.slice/user@1001.service/init.scope"),
+        ],
+        [
+            Some("1000".to_owned()),
+            Some("1000".to_owned()),
+            Some("1001".to_owned()),
+        ],
+        "an account's manager, or a service below it, is that account's"
+    );
+    assert_eq!(
+        [
+            account("/init.scope"),
+            account("/system.slice/disk-guard.service"),
+            account("/user.slice/user-1000.slice/session-2.scope"),
+            account("/user.slice/user-1000.slice/user@1001.service/init.scope"),
+            account("/user.slice/user-1000.slice/user@10000.service/init.scope"),
+            account("/user.slice/user-1000.slice/user@1000.services/init.scope"),
+            account(""),
+        ],
+        [None, None, None, None, None, None, None],
+        "the machine's manager, its services, or a cgroup no account's manager holds"
+    );
+}
+
+#[test]
 fn a_crash_in_work_he_waits_on_is_his() {
     let crash = |slice: &str| {
         let line = format!(

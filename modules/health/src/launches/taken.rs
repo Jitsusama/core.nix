@@ -4,14 +4,14 @@
 //! learns whose a stop was only once both reloads before it are heard.
 
 use super::{
-    Launches, MOST_RELOADS, RELOADED_WITHIN, RESTART_WITHIN, Ready, Reload, Restarting, millis,
-    ready, written_before,
+    Launches, MOST_RELOADS, RELOADED_WITHIN, RESTART_WITHIN, Ready, Reload, Restarting, boot_of,
+    millis, ready, written_before,
 };
 use crate::journal::Entry;
 
-/// A stop a tool's reload took back: the service's, in which boot, when on
-/// the boot's clock and the wall's, and the restart it timed, once its
-/// start is heard.
+/// A stop a tool's reload took back: the service's, in which boot and
+/// manager (`boot_of`), when on the boot's clock and the wall's, and the
+/// restart it timed, once its start is heard.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Taken {
     unit: String,
@@ -98,7 +98,7 @@ impl Launches {
     pub(super) fn take_stop(&mut self, entry: &Entry) {
         self.take(Taken {
             unit: entry.thing.clone(),
-            boot: entry.boot.clone(),
+            boot: boot_of(entry).into_owned(),
             stopped: entry.since_boot,
             stopped_at: entry.at,
             timed: None,
@@ -127,13 +127,22 @@ impl Launches {
             .collect()
     }
 
-    /// Keep what a tool's reload took back, at most [`MOST_RELOADS`].
+    /// Keep what a tool's reload took back, at most [`MOST_RELOADS`] of
+    /// each boot and manager, so an account's tool restarting over and over
+    /// pushes out only its own manager's.
     fn take(&mut self, taken: Taken) {
         if taken.timed.is_none() {
             self.untake_stop(&taken.unit);
         }
-        if self.taken.len() >= MOST_RELOADS {
-            self.taken.remove(0);
+        if self
+            .taken
+            .iter()
+            .filter(|kept| kept.boot == taken.boot)
+            .count()
+            >= MOST_RELOADS
+            && let Some(oldest) = self.taken.iter().position(|kept| kept.boot == taken.boot)
+        {
+            self.taken.remove(oldest);
         }
         self.taken.push(taken);
     }
@@ -184,8 +193,9 @@ impl Launches {
     /// Where in `taken` the stop a start `entry` could end is: its
     /// service's, in its boot, still untimed.
     fn untimed(&self, entry: &Entry) -> Option<usize> {
+        let in_boot = boot_of(entry);
         self.taken.iter().position(|taken| {
-            taken.unit == entry.thing && taken.boot == entry.boot && taken.timed.is_none()
+            taken.unit == entry.thing && taken.boot == in_boot && taken.timed.is_none()
         })
     }
 
@@ -193,12 +203,13 @@ impl Launches {
     /// in its boot, as `heard` does the one waiting in `restarting`: a
     /// ready line written after it is the next program's.
     pub(super) fn job_taken(&mut self, entry: &Entry) {
+        let in_boot = boot_of(entry);
         for taken in &mut self.taken {
             if let Some(waiting) = taken
                 .timed
                 .as_mut()
                 .and_then(|timed| timed.waiting.as_mut())
-                .filter(|waiting| taken.unit == entry.thing && waiting.boot == entry.boot)
+                .filter(|waiting| taken.unit == entry.thing && waiting.boot == in_boot)
             {
                 waiting.next_job.get_or_insert(entry.since_boot);
             }
@@ -321,6 +332,65 @@ mod tests {
             ),
             (MOST_RELOADS - 1, Some(&vec![100])),
             "the restarts taken back grew past the most, or the newest was lost"
+        );
+    }
+
+    #[test]
+    fn an_accounts_tool_restarting_over_and_over_keeps_the_machines_taken() {
+        let clocked = |at, account: Option<&str>, line| Entry {
+            at,
+            since_boot: at,
+            account: account.map(str::to_owned),
+            ..line
+        };
+        let reload = |program: &str| Entry {
+            origin: Origin::Systemd,
+            ..entry(
+                "systemd",
+                5,
+                &format!("Reload requested from client PID 1 ('{program}') (unit x.service)..."),
+            )
+        };
+        let job = |unit: &str, job| Entry {
+            job: Some(job),
+            ..entry(unit, 6, "")
+        };
+        // The machine's tool restarts its service once, then a tool of his
+        // restarts his own, each of another name, past the most kept: his
+        // push out only his, and the cap counts his manager's, not a
+        // name's.
+        let mut launches = Launches::default();
+        let mut at = 1_000_000;
+        let accounts = std::iter::once(None).chain([Some("1000"); MOST_RELOADS + 1]);
+        for (n, account) in accounts.enumerate() {
+            let unit = account.map_or_else(
+                || "backend.service".to_owned(),
+                |_| format!("janitor-{n}.service"),
+            );
+            launches.heard(&clocked(at, account, reload("systemctl")));
+            launches.heard(&clocked(at + 500_000, account, job(&unit, Job::Stopping)));
+            launches.heard(&clocked(at + 600_000, account, job(&unit, Job::Started)));
+            at += 200_000_000;
+        }
+        let kept = |unit| {
+            launches
+                .taken
+                .iter()
+                .filter(|taken| taken.unit.starts_with(unit))
+                .count()
+        };
+        assert_eq!(
+            (kept("backend."), kept("janitor-")),
+            (1, MOST_RELOADS),
+            "his tool's restarts pushed out the machine's taken back"
+        );
+        // The machine's switch's reload, written between its tool's and the
+        // stop and heard only now, still gives the machine's restart back.
+        launches.heard(&clocked(1_200_000, None, reload(".switch-to-conf")));
+        assert_eq!(
+            launches.restarted.get("backend.service"),
+            Some(&vec![100]),
+            "a switch's reload heard late gave the machine's restart back no more"
         );
     }
 }

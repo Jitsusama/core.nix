@@ -113,6 +113,7 @@ pub fn parse(report: &str) -> Option<Entry> {
         restart: false,
         kernel: false,
         boot: String::new(),
+        account: None,
         since_boot: 0,
         mark: None,
         ask: None,

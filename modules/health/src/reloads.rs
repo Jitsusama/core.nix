@@ -15,10 +15,13 @@ const REQUESTED: &str = "Reload requested from client PID ";
 /// name is the one a program gives itself, so any program of the user's
 /// can pass for a switch, a reload heard late included, and one passing
 /// for a tool, heard late, can take back a restart already timed, or crowd
-/// a stop taken back out past the most kept: each skews no more than
-/// health's figures, by something that already runs as
-/// the user, and only at the moment of the stop, since journald stamps
-/// both clocks.
+/// a stop taken back out past the most kept. Each reaches only the
+/// restarts of the manager it had reload, his own, since a reload is kept
+/// with the manager that made it (`launches.rs`). The one exception is
+/// a service of his named as one of the machine's is: its stop or start
+/// also ends the machine's service's wait, as stops are kept by name
+/// (`Launches::stopping`). Each skews no more than health's figures, and
+/// only at the moment of the stop, since journald stamps both clocks.
 const SWITCHES: [&str; 3] = ["switch-to-confi", ".switch-to-conf", "sd-switch"];
 
 /// Who asked for a reload.
@@ -51,6 +54,9 @@ mod tests {
     use crate::day::Day;
     use crate::day::tests::entry;
     use crate::journal::{Entry, Job, Origin};
+
+    // The machine's systemd and each account's reloading apart.
+    mod managers;
 
     fn requested(program: &str, unit: &str) -> String {
         format!("Reload requested from client PID 1520947 ('{program}') (unit {unit})...")
@@ -276,7 +282,7 @@ mod tests {
             };
             assert_eq!(
                 day.launches.restarted, expected,
-                "after {what}, a clock decided whose a restart was"
+                "after {what}, the wrong reload decided whose a restart was"
             );
         }
     }
