@@ -180,6 +180,21 @@ fn a_checkout_says_how_many_branches_and_config_bytes_it_keeps() {
 }
 
 #[test]
+fn a_checkout_whose_counts_couldnt_be_read_says_null_rather_than_zero() {
+    let mut unread = record();
+    let checkout = &mut unread.repositories[0].checkouts[0];
+    checkout.branches = None;
+    checkout.config_bytes = None;
+    let said = records(&unread);
+    let checkout = find(&said, "checkout:/home/joel/src/core.nix");
+    assert_eq!(
+        (&checkout["branches"], &checkout["config_bytes"]),
+        (&Value::Null, &Value::Null),
+        "{checkout:#?}"
+    );
+}
+
+#[test]
 fn times_are_said_in_rfc_3339_as_every_answer_says_them() {
     let said = records(&record());
     let repository = find(&said, "repository:github:Jitsusama/core.nix");

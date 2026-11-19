@@ -541,8 +541,16 @@ impl Refs {
     /// removes the loose files, so a branch it moves is in one or the other
     /// whenever this looks, where the packed-refs read with the checkout's
     /// other refs may be older than the walk.
+    ///
+    /// A refs/heads that is itself a link gives no count rather than a walk
+    /// of wherever it points, which may be any folder of any size.
     fn branches(&self) -> Option<u64> {
         if self.table_unread {
+            return None;
+        }
+        if fs::symlink_metadata(self.common.join("refs").join("heads"))
+            .is_ok_and(|heads| heads.file_type().is_symlink())
+        {
             return None;
         }
         if let Some(table) = &self.table {
@@ -582,7 +590,8 @@ fn packed_refs(said: &str) -> HashMap<String, String> {
 /// folder's own, ending in `/`. A `.lock` is a write git hasn't finished,
 /// and git never names a ref part with a leading dot, so neither is a ref;
 /// a link is passed over rather than followed. A folder that isn't there
-/// holds none; one that can't be read is an error.
+/// holds none, and nor does an entry gone before its kind is read, as a
+/// ref git deletes mid-walk is; one that can't be read is an error.
 fn loose_refs(folder: &Path, prefix: &str, names: &mut HashSet<String>) -> io::Result<()> {
     let entries = match fs::read_dir(folder) {
         Ok(entries) => entries,
@@ -597,7 +606,12 @@ fn loose_refs(folder: &Path, prefix: &str, names: &mut HashSet<String>) -> io::R
             continue;
         }
         let name = format!("{prefix}{file}");
-        match entry.file_type()? {
+        let kind = match entry.file_type() {
+            Ok(kind) => kind,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        match kind {
             kind if kind.is_dir() => loose_refs(&entry.path(), &format!("{name}/"), names)?,
             kind if kind.is_file() && entry.path().extension().is_none_or(|ext| ext != "lock") => {
                 names.insert(name);

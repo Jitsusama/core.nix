@@ -56,6 +56,8 @@ fn checkout(path: &str, bare: bool, trees: Vec<Tree>) -> Checkout {
         written_at: Some(20),
         trees,
         weight: None,
+        branches: None,
+        config_bytes: None,
     }
 }
 
