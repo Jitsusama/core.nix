@@ -198,7 +198,10 @@ fn only_a_plain_file_at_the_homes_is_read_so_a_link_there_is_put_right_unfollowe
     fs::write(&target, format!("{}\n", of(&record()))).expect("the same homes elsewhere");
     symlink(&target, &file).expect("a link at the homes");
     let mut homes = Homes::at(file.clone());
-    assert!(homes.write(&record()).expect("written"), "the link was read as the homes");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "the link was read as the homes"
+    );
     let kind = fs::symlink_metadata(&file).expect("the homes").file_type();
     assert!(kind.is_file(), "the link stayed where the homes go");
     assert_eq!(read(&file), of(&record()));

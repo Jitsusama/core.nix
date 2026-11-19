@@ -116,8 +116,8 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     })?;
     serve::accept(Arc::clone(&shared), listener);
     eprintln!("{}", ready(started.elapsed()));
-    // Once views are answered, so a writing's flush to the disk never
-    // holds up the first.
+    // Once views are answered, so writing the homes never holds up the
+    // first.
     keep(homes.as_mut(), &record);
     // The pace keeps its own time, so agents writing more often than it
     // comes never put off the reading that finds new clones.

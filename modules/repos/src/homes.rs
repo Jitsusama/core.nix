@@ -37,7 +37,7 @@ impl Homes {
     /// already, and answers whether it wrote them.
     pub fn write(&mut self, record: &Record) -> io::Result<bool> {
         let said = format!("{}\n", of(record));
-        if fs::read_to_string(&self.file).is_ok_and(|held| held == said) {
+        if holds(&self.file, &said) {
             return Ok(false);
         }
         let folder = match self.file.parent() {
@@ -81,10 +81,22 @@ impl Homes {
     }
 }
 
+/// Whether `file` holds `said` already: only a plain file of its length is
+/// read, so a pipe or a link to a device there never holds the reading
+/// loop, and is put right like any other homes gone wrong.
+fn holds(file: &Path, said: &str) -> bool {
+    let plain = fs::symlink_metadata(file)
+        .is_ok_and(|held| held.is_file() && held.len() == said.len() as u64);
+    plain && fs::read_to_string(file).is_ok_and(|held| held == said)
+}
+
 /// `said` in a file of its own at `temp`: made anew, so whatever was left
 /// there, a link included, is never written through, and private until
 /// it's whole. Then it's open to every reader, as the documents' other
-/// files are, whatever umask the daemon started with.
+/// files are, whatever umask the daemon started with. It isn't flushed to
+/// the disk: a start compares the homes with the file and writes them
+/// again, so a crash costs nothing, and a flush would hold the reading
+/// loop behind everyone else's writes.
 fn write_whole(temp: &Path, said: &str) -> io::Result<()> {
     match fs::remove_file(temp) {
         Err(why) if why.kind() != io::ErrorKind::NotFound => return Err(why),
@@ -96,8 +108,7 @@ fn write_whole(temp: &Path, said: &str) -> io::Result<()> {
         .mode(0o600)
         .open(temp)?;
     file.write_all(said.as_bytes())?;
-    file.set_permissions(Permissions::from_mode(0o644))?;
-    file.sync_all()
+    file.set_permissions(Permissions::from_mode(0o644))
 }
 
 /// The homes `record` gives, as Code's page addresses them.
