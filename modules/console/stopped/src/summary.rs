@@ -100,7 +100,7 @@ fn heading(unit: &Failed, pen: &Pen, room: Room) -> String {
 fn under(said: &str, room: Room) -> Vec<String> {
     let said = clean(said);
     let said = said.trim_end();
-    if said.trim_start().is_empty() {
+    if blank(said) {
         return Vec::new();
     }
     let measure = match room {
@@ -215,10 +215,19 @@ fn clean(words: &str) -> String {
     layout::drawn(&out).into_owned()
 }
 
+/// Whether a cleaned line shows nothing: only blanks, braille's and the
+/// Hangul filler's among them, and what draws no cell, as a joiner or a
+/// variation selector standing alone, which the kit keeps to shape an
+/// emoji or a syllable but which shows nothing by itself.
+fn blank(line: &str) -> bool {
+    layout::spaced(line).is_empty()
+}
+
 /// Whether `lines` say nothing a person could read once cleaned, as
-/// they'd be shown: each blank, or only escapes and controls.
+/// they'd be shown: each only blanks, escapes, controls, marks or
+/// characters that draw nothing.
 pub fn says_nothing(lines: &[String]) -> bool {
-    lines.iter().all(|line| clean(line).trim().is_empty())
+    lines.iter().all(|line| blank(&clean(line)))
 }
 
 #[cfg(test)]
@@ -227,7 +236,7 @@ mod tests {
     use terminal_kit::Ink;
 
     #[test]
-    fn lines_of_blanks_escapes_and_controls_say_nothing() {
+    fn lines_that_draw_nothing_say_nothing() {
         let lines = |said: &[&str]| {
             said.iter()
                 .map(|line| (*line).to_owned())
@@ -241,7 +250,10 @@ mod tests {
                 "\u{1b}[0m\u{7}",
                 "\u{1b}]0;title\u{7}",
                 "\u{200e}",
-                "\u{200b}\u{2060}"
+                "\u{200b}\u{2060}",
+                "\u{2800}\u{2800}",
+                "\u{200d}\u{fe0f}",
+                "\u{115f}"
             ])),
             "lines that show nothing were taken as said"
         );
@@ -299,6 +311,30 @@ mod tests {
         assert!(
             summary.lines().any(|said| said == line),
             "no line {line:?} in {summary:?}"
+        );
+    }
+
+    #[test]
+    fn a_line_that_draws_nothing_is_left_out_among_lines_that_do() {
+        let summary = text(
+            &[unit(
+                "disk.service",
+                "",
+                &["\u{200e}", "disk gone", "\u{2800}\u{200d}"],
+            )],
+            1,
+            &console(),
+            Room::Cells(80),
+        );
+        let shown = lines(&summary);
+        let at = shown
+            .iter()
+            .position(|line| *line == "  x  disk.service")
+            .unwrap_or_else(|| panic!("no heading in {summary:?}"));
+        assert_eq!(
+            shown.get(at + 1..at + 3),
+            Some(&["     disk gone", ""][..]),
+            "a line that draws nothing was given a row of its own: {summary:?}"
         );
     }
 

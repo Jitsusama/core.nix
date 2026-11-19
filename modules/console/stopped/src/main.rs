@@ -138,7 +138,8 @@ fn described(unit: &str) -> Option<String> {
 /// The last three lines a unit's own programs said, or, when they said
 /// nothing, as when one was killed, the last line systemd said of it. A
 /// line that shows nothing once cleaned says nothing, so lines that are
-/// all blank, escapes or controls count as none.
+/// all blanks, escapes, controls, marks or what draws no cell count as
+/// none.
 fn last(unit: &str) -> Vec<String> {
     let own = journal(&format!("_SYSTEMD_UNIT={unit}"), 3);
     if summary::says_nothing(&own) {
