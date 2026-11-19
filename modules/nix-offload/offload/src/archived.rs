@@ -22,6 +22,7 @@
 use std::env;
 use std::fs;
 use std::io;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -51,7 +52,7 @@ pub fn packed(
     largest: u64,
 ) -> Result<Archived, String> {
     let cones = cones(top)?;
-    fs::create_dir_all(scratch).map_err(|_| "has no scratch to pack it in".to_owned())?;
+    owned(scratch)?;
     swept(scratch);
     let borrowed = Borrowed::new(top, scratch).ok_or("couldn't borrow its objects to pack them")?;
     let paths = match cones {
@@ -102,6 +103,38 @@ pub fn packed(
     Ok(Archived { dir, archive })
 }
 
+/// Make `scratch` the person's alone. Without a runtime folder it falls
+/// back to a /tmp any account can write, where one that made it first
+/// could swap the borrowing repository for its own, whose config git
+/// reads, or read the files packed.
+fn owned(scratch: &Path) -> Result<(), String> {
+    let refused = |why: &str| Err(format!("has no scratch to pack it in: {why}"));
+    if let Some(parent) = scratch.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    match fs::DirBuilder::new().mode(0o700).create(scratch) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return refused(&error.to_string()),
+    }
+    let Ok(meta) = fs::symlink_metadata(scratch) else {
+        return refused("it can't be read");
+    };
+    if meta.file_type().is_symlink() || !meta.is_dir() {
+        return refused("it's a link or not a folder");
+    }
+    // SAFETY: geteuid can't fail.
+    if meta.uid() != unsafe { libc::geteuid() } {
+        return refused("another account holds it");
+    }
+    if meta.mode() & 0o077 != 0
+        && fs::set_permissions(scratch, fs::Permissions::from_mode(0o700)).is_err()
+    {
+        return refused("others can reach it");
+    }
+    Ok(())
+}
+
 /// What the far side's shell runs to unpack the files `archived` sends,
 /// read from its standard input, in a folder of its own named in `leaves`
 /// and gone when the shell ends, as `changed::checked_out`'s is, and to go
@@ -126,18 +159,56 @@ fn unpacked_under(archived: Archived, root: &str) -> (String, PathBuf) {
 /// The cones the git tree `top` is checked out to, or none when it isn't
 /// sparse; refused when it's sparse by patterns other than cones.
 fn cones(top: &Path) -> Result<Option<Vec<String>>, String> {
-    let set = |key: &str| there::git_with(top, &["config", "--bool", key], None, &[]);
-    if set("core.sparseCheckout").as_deref() != Some("true") {
+    // Unset reads false; a value git can't read is refused, never taken
+    // as not sparse, which would send all of HEAD.
+    let set = |key: &str| {
+        there::git_with(
+            top,
+            &["config", "--bool", "--default", "false", key],
+            None,
+            &[],
+        )
+        .map(|value| value == "true")
+        .ok_or(format!("has a {key} git can't read"))
+    };
+    if !set("core.sparseCheckout")? {
         return Ok(None);
     }
     // Unset, git reads its sparse file as patterns, though `git
     // sparse-checkout set` writes cones unless told otherwise.
-    if set("core.sparseCheckoutCone").as_deref() != Some("true") {
+    if !set("core.sparseCheckoutCone")? {
         return Err(
             "is sparse without cone mode, so which of its files to send can't be \
                     told; cones (git sparse-checkout set --cone) say"
                 .to_owned(),
         );
+    }
+    // git reads a line of any other shape as a pattern, gives up on cones
+    // for the whole file, and lists its lines as written, which read as
+    // cones would send other files than the checkout holds.
+    let file = there::git_with(
+        top,
+        &["rev-parse", "--git-path", "info/sparse-checkout"],
+        None,
+        &[],
+    )
+    .map(|file| top.join(file))
+    .and_then(|file| fs::read_to_string(file).ok())
+    .ok_or("is sparse, but its sparse file can't be read")?;
+    let lines: Vec<&str> = file
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+    if let Some(line) = lines.iter().find(|line| !cone_shaped(line)) {
+        return Err(format!(
+            "is sparse by a pattern, {line}, that git can't read as a cone, so which \
+             of its files to send can't be told; git sparse-checkout set --cone says"
+        ));
+    }
+    // Without it, git checks out every folder whole: a full cone.
+    if !lines.contains(&"!/*/") {
+        return Ok(None);
     }
     let listed = there::git_with(
         top,
@@ -157,21 +228,39 @@ fn cones(top: &Path) -> Result<Option<Vec<String>>, String> {
                 "has a cone, {cone}, whose name git quotes, so it can't be told"
             ));
         }
-        // git lists a cone bare, and its sparse file's own lines, each
-        // opening so, when it can't read them as cones and checks out by
-        // patterns instead.
-        if cone.starts_with(['/', '!']) {
-            return Err(format!(
-                "is sparse by a pattern, {cone}, that git can't read as a cone, so which \
-                 of its files to send can't be told; git sparse-checkout set --cone says"
-            ));
-        }
         let cone = cone.trim_matches('/');
         if !cone.is_empty() {
             cones.push(cone.to_owned());
         }
     }
     Ok(Some(cones))
+}
+
+/// Whether `line` of a sparse file has a shape cone mode writes: every
+/// file at the top, no folder there, a folder, or none within one.
+fn cone_shaped(line: &str) -> bool {
+    // Cone mode escapes a glob character in a folder's name, so a bare
+    // one makes the line a pattern.
+    let folder = |inner: &str| {
+        let mut escaped = false;
+        let globs = inner.chars().any(|char| {
+            let bare = !escaped && matches!(char, '*' | '?' | '[');
+            escaped = !escaped && char == '\\';
+            bare
+        });
+        !inner.is_empty() && !inner.starts_with('/') && !globs
+    };
+    match line {
+        "/*" | "!/*/" => true,
+        _ => line
+            .strip_prefix("!/")
+            .and_then(|line| line.strip_suffix("/*/"))
+            .or_else(|| {
+                line.strip_prefix('/')
+                    .and_then(|line| line.strip_suffix('/'))
+            })
+            .is_some_and(folder),
+    }
 }
 
 /// The paths, under `at` in the tree `tree` names, a sparse checkout of
@@ -525,20 +614,66 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let top = repository(folder.path(), &[("a/x", "1"), ("b/y", "2")]);
         git(&top, &["sparse-checkout", "set", "--cone", "a"]);
-        fs::write(
-            top.join(".git/info/sparse-checkout"),
+        let commit = git(&top, &["rev-parse", "HEAD"]);
+        // git lists the last three as written, with no '/' or '!' to tell
+        // them from cones.
+        for patterns in [
             "/*\n!/*/\n/a/\nb/*.y\n",
-        )
-        .unwrap();
+            "b/*.y\n",
+            "tool/\n",
+            "/*\n!/*/\n/b*/\n",
+        ] {
+            fs::write(top.join(".git/info/sparse-checkout"), patterns).unwrap();
+
+            let refused = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST);
+            assert!(
+                refused
+                    .as_ref()
+                    .is_err_and(|why| why.contains("can't read as a cone")),
+                "{patterns:?}: {refused:?}"
+            );
+        }
+    }
+
+    // A sparse file of every file at the top and no folder held back is a
+    // full cone to git, which lists no cone for it; all of HEAD goes.
+    #[test]
+    fn a_full_cone_sends_every_file() {
+        let folder = tempfile::tempdir().unwrap();
+        let top = repository(folder.path(), &[("a/x", "1"), ("top", "2")]);
+        git(&top, &["sparse-checkout", "set", "--cone", "a"]);
+        fs::write(top.join(".git/info/sparse-checkout"), "/*\n").unwrap();
         let commit = git(&top, &["rev-parse", "HEAD"]);
 
-        let refused = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST);
+        let sent = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
+        let names: Vec<String> = held(&sent.archive, &folder.path().join("out"))
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        assert_eq!(names, ["a/x", "top"]);
+    }
+
+    // The limit is on what a run sends, so a large file outside the cone
+    // counts for nothing, and the same file inside it is refused.
+    #[test]
+    fn only_the_cones_files_count_toward_the_largest() {
+        let folder = tempfile::tempdir().unwrap();
+        let top = repository(
+            folder.path(),
+            &[("small/file", "x"), ("large/file", "well past ten bytes")],
+        );
+        let commit = git(&top, &["rev-parse", "HEAD"]);
+        let scratch = folder.path().join("scratch");
+
+        git(&top, &["sparse-checkout", "set", "--cone", "small"]);
         assert!(
-            refused
-                .as_ref()
-                .unwrap_err()
-                .contains("can't read as a cone"),
-            "{refused:?}"
+            packed(&top, &commit, None, &scratch, 10).is_ok(),
+            "a file outside the cone counted"
+        );
+        git(&top, &["sparse-checkout", "set", "--cone", "large"]);
+        assert!(
+            packed(&top, &commit, None, &scratch, 10).is_err_and(|why| why.contains("make it")),
+            "a file inside the cone didn't count"
         );
     }
 
@@ -581,6 +716,31 @@ mod tests {
 
     // A name past ASCII is a cone like any other, and a repository whose
     // path holds a colon is still borrowed whole.
+    // Others reach a scratch in a shared /tmp, so one others can read is
+    // closed, and one that's a link, as another account could plant, is
+    // refused before anything goes in it.
+    #[test]
+    fn the_scratch_is_the_persons_alone() {
+        let folder = tempfile::tempdir().unwrap();
+        let top = repository(folder.path(), &[("file", "x")]);
+        let commit = git(&top, &["rev-parse", "HEAD"]);
+        let scratch = folder.path().join("scratch");
+        fs::create_dir(&scratch).unwrap();
+        fs::set_permissions(&scratch, fs::Permissions::from_mode(0o777)).unwrap();
+
+        packed(&top, &commit, None, &scratch, LARGEST).unwrap();
+        let mode = fs::metadata(&scratch).unwrap().mode() & 0o777;
+        assert_eq!(mode, 0o700, "others can still reach it: {mode:o}");
+
+        let linked = folder.path().join("linked");
+        std::os::unix::fs::symlink(&scratch, &linked).unwrap();
+        let refused = packed(&top, &commit, None, &linked, LARGEST);
+        assert!(
+            refused.as_ref().is_err_and(|why| why.contains("a link")),
+            "{refused:?}"
+        );
+    }
+
     #[test]
     fn a_cone_past_ascii_goes_from_a_path_with_a_colon() {
         let folder = tempfile::tempdir().unwrap();

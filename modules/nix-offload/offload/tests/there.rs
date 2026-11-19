@@ -6418,6 +6418,11 @@ fn a_run_from_a_tree_off_github_sends_heads_files_within_its_cone() {
         .map(|entry| entry.unwrap().file_name())
         .collect();
     assert!(left.is_empty(), "nothing it packed is left: {left:?}");
+    // Files cut to a cone aren't the commit, so a gate mustn't read the
+    // run as passed at it.
+    let kept =
+        fs::read_dir(run.folder.path().join("nix-offload/passed")).map_or(0, Iterator::count);
+    assert_eq!(kept, 0, "a run of packed files kept a pass");
 
     // Still HEAD alone: a change not committed stops it, as from GitHub.
     fs::write(inside.join("Cargo.toml"), "[workspace]").unwrap();

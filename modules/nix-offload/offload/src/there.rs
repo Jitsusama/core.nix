@@ -2330,7 +2330,7 @@ pub enum Sends {
 
 /// The empty tree's hash, which git takes its attributes from, rather than
 /// the tree's own, when `GIT_ATTR_SOURCE` names it.
-pub const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// The HEAD of the git tree `top`, refused while it has changes or borrows
 /// objects from another repository.
@@ -2358,15 +2358,13 @@ fn head_alone(top: &Path) -> Result<String, &'static str> {
         git(top, &["rev-parse", "--verify", "HEAD^{commit}"], None).ok_or("has no commit")?;
     git_with(
         top,
-        // No fsmonitor, attributes file or system config, which could each
-        // start a program; a filter the repository's own config and
+        // No attributes file or system config, which could each start a
+        // program, as git_with turns fsmonitor off; a filter the repository's own config and
         // info/attributes name still runs, as it does for any git command in
         // the tree, the person's own prompt among them.
         &[
             "-c",
             "diff.ignoreSubmodules=all",
-            "-c",
-            "core.fsmonitor=false",
             "-c",
             "core.attributesFile=/dev/null",
             "diff",
@@ -2440,7 +2438,8 @@ pub fn for_run(folder: &Path, scratch: &Path) -> Result<ForRun, String> {
         .map_err(|why| not(&why))?;
     let size = fs::metadata(&archived.archive).map_or(0, |file| file.len());
     eprintln!(
-        "nix-offload: sending HEAD of {}, whose origin isn't on GitHub, as a tarball of {}",
+        "nix-offload: sending HEAD of {}, whose origin isn't on GitHub, as a tarball of {}; \
+         no pass is kept for it, as only its cones go",
         canonical.display(),
         sized(size)
     );

@@ -1448,6 +1448,17 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         eprintln!("nix-offload: {why}, so nothing ran");
         ExitCode::from(changed::NOT_TAKEN)
     };
+    let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+    let more = more_dir();
+    let lenders = [dir.as_path(), more.as_path()];
+    // Before packing, which for a tree off GitHub gzips its whole cone
+    // here, only to be thrown away when nothing could take it.
+    if !lenders
+        .iter()
+        .any(|lender| standing(lender).is_some() || there::lends(lender))
+    {
+        return not_run("no builder is lent");
+    }
     let scratch = scratch();
     let Ok(folder) = env::current_dir() else {
         return not_run("this folder can't be read");
@@ -1463,9 +1474,6 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         command: command::command(&checkout, &asked, &run),
         bundle,
     };
-    let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
-    let more = more_dir();
-    let lenders = [dir.as_path(), more.as_path()];
     let cuts = there::Cuts::default();
     let on = |store: &str| {
         command::on(
