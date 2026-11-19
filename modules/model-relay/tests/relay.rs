@@ -7,12 +7,14 @@
 //! as they come, a connection the origin lets go is opened again, a
 //! request the origin resets before its answer retires its connection and
 //! goes once more on another, never one kept after a reset, with a burst
-//! of them sharing one opened for them, and is a 502 when reset again or
-//! with nowhere to go, one a fallen connection lost is a 502 and no reset,
+//! of them sharing one opened for them, and goes direct with the relay's
+//! own 421 when reset again or with nowhere to go, one a fallen connection
+//! lost is a 502 and no reset,
 //! the origin hearing a lost one once, a body too large or left unfinished
 //! goes nowhere, the latter as pi's cancel, never a 421, a relay failing
-//! past its share stands down, sending pi direct, and takes requests
-//! again after, the counts are said as the relay leaves, an origin out of
+//! past its share stands down, sending pi direct, tries its path as it
+//! stands down, and takes requests again once the path answers, or after,
+//! the counts are said as the relay leaves, an origin out of
 //! reach is said as a 502 or a 504 without queueing, a
 //! connection that won't open isn't asked for again on every request, nor
 //! does a failure outlast the origin coming back, the relay leaves once
@@ -35,7 +37,7 @@ use std::net::SocketAddr;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -120,6 +122,8 @@ struct Origin {
     ended: Arc<AtomicUsize>,
     handed: Arc<Mutex<Vec<Handed>>>,
     held: Arc<Held>,
+    /// Whether it resets every request, as a path that has failed would.
+    failing: Arc<AtomicBool>,
     _tls: Tls,
 }
 
@@ -149,6 +153,7 @@ struct Served {
     connection: usize,
     kept: Arc<Mutex<Vec<Handed>>>,
     held: Arc<Held>,
+    failing: Arc<AtomicBool>,
     bye: Arc<Notify>,
     gone: Arc<Notify>,
 }
@@ -210,11 +215,13 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
     let ended = Arc::new(AtomicUsize::new(0));
     let handed = Arc::new(Mutex::new(Vec::new()));
     let held = Arc::new(Held::default());
-    let (counted, finished, kept, holding) = (
+    let failing = Arc::new(AtomicBool::new(false));
+    let (counted, finished, kept, holding, failed) = (
         Arc::clone(&connections),
         Arc::clone(&ended),
         Arc::clone(&handed),
         Arc::clone(&held),
+        Arc::clone(&failing),
     );
     tokio::spawn(async move {
         let mut silent = Vec::new();
@@ -230,6 +237,7 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
                 connection,
                 kept: Arc::clone(&kept),
                 held: Arc::clone(&holding),
+                failing: Arc::clone(&failed),
                 bye: Arc::new(Notify::new()),
                 gone: Arc::new(Notify::new()),
             };
@@ -263,6 +271,7 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
         ended,
         handed,
         held,
+        failing,
         _tls: tls,
     }
 }
@@ -296,12 +305,14 @@ const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 /// origin's second, `/calm-down` resets saying to calm down, and `/drop`
 /// reads it and lets the connection fall with
 /// no word at all. An echo says which of the origin's connections it came
-/// on, counted from 0.
+/// on, counted from 0. While the origin is failing, it resets every
+/// request, on any route, once it has read it.
 async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<Answer>, h2::Error> {
     let Served {
         connection,
         kept,
         held,
+        failing,
         bye,
         gone,
     } = served;
@@ -330,6 +341,9 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             .filter(|handed| handed.uri.ends_with(&path))
             .count()
     };
+    if failing.load(Ordering::SeqCst) {
+        return Err(h2::Error::from(h2::Reason::PROTOCOL_ERROR));
+    }
     if (path == "/reset-once-held" && heard == 1) || path == "/reset-held" {
         tokio::time::sleep(HELD_THEN_RESET).await;
     }
@@ -808,7 +822,7 @@ async fn a_connection_the_origin_lets_go_is_opened_again() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
+async fn a_request_the_origin_resets_twice_goes_direct_and_retires_its_connection() {
     let origin = origin().await;
     let host = origin.address.to_string();
     let mut relay = Relay::start_with(
@@ -824,13 +838,17 @@ async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
 
     let got = ask(&relay.socket, asked).await;
 
-    // A 502 once it's reset again on a fresh connection, never a 421
-    // sending pi direct: this origin read the request before it reset
-    // it, as a real one may have acted on it.
+    // Reset again on a fresh connection, it goes direct with the relay's
+    // own words, as a 502's would go again whole on pi's retry, only later.
     assert_eq!(
         got.status,
-        StatusCode::BAD_GATEWAY,
-        "a request the origin reset twice, maybe acted on, was sent again direct"
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request the origin reset twice didn't go direct"
+    );
+    assert_eq!(
+        got.body,
+        b"this relay can't carry a request to its origin, so go directly\n",
+        "a request reset twice wasn't sent direct in the words pi goes direct on"
     );
     for _ in 0..2 {
         let again = ask(&relay.socket, request(&host, "/echo", b"again")).await;
@@ -855,6 +873,10 @@ async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
     assert!(
         said.contains("connection 0.1, kept, as one was retired lately"),
         "the second reset's connection wasn't said as kept: {said}"
+    );
+    assert!(
+        said.contains("pi goes directly") && !said.contains("pi is answered 502"),
+        "a request reset twice wasn't said as sent direct: {said}"
     );
     // Sent again and reset again, it's a failed reset, not one the resend
     // saved.
@@ -956,13 +978,13 @@ async fn a_reset_on_a_connection_kept_opens_none_over_it() {
 
     assert_eq!(
         twice.status,
-        StatusCode::BAD_GATEWAY,
-        "a request reset twice"
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request reset twice didn't go direct"
     );
     assert_eq!(
         kept.status,
-        StatusCode::BAD_GATEWAY,
-        "a request reset on a connection kept went again"
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request reset on a connection kept went again, or didn't go direct"
     );
     assert_eq!(after.status, StatusCode::CREATED, "a request after them");
     assert_eq!(
@@ -1137,13 +1159,13 @@ async fn a_burst_reset_while_no_connection_opens_waits_on_one_attempt() {
         ask(&relay.socket, request(&host, "/reset", b"")),
     );
 
-    // A 502, as any request reset is, never a 504 or a 421 sending pi
-    // direct, since the origin may have acted on it.
+    // Direct, never a 504 or a 502 for pi to retry later down the same
+    // path, which a request reset with nowhere else to go would be.
     for answered in [&got.0, &got.1, &got.2] {
         assert_eq!(
             answered.status,
-            StatusCode::BAD_GATEWAY,
-            "a request reset with nowhere to go again"
+            StatusCode::MISDIRECTED_REQUEST,
+            "a request reset with nowhere to go again didn't go direct"
         );
     }
     assert_eq!(
@@ -1324,13 +1346,14 @@ async fn fail_past_its_share(socket: &Path, host: &str) {
         let got = ask(socket, request(host, "/echo", b"hi")).await;
         assert_eq!(got.status, StatusCode::CREATED, "a request answered");
     }
-    // Each is reset, and then reset again or kept with nowhere else to go.
+    // Each is reset, and then reset again or kept with nowhere else to go,
+    // so it goes direct.
     for _ in 0..17 {
         let got = ask(socket, request(host, "/reset", b"")).await;
         assert_eq!(
             got.status,
-            StatusCode::BAD_GATEWAY,
-            "a request the origin reset"
+            StatusCode::MISDIRECTED_REQUEST,
+            "a request the origin reset twice"
         );
     }
 }
@@ -1452,6 +1475,95 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     assert!(
         said.contains("; 2 refused as it stood down"),
         "the counts don't say what the stand-down sent direct: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answers() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--stand-down-for", "600", "--try-path-every", "1"],
+    );
+    let trials = || {
+        origin
+            .handed
+            .lock()
+            .expect("the origin's record")
+            .iter()
+            .filter(|handed| handed.method == "HEAD")
+            .count()
+    };
+
+    fail_past_its_share(&relay.socket, &host).await;
+    origin.failing.store(true, Ordering::SeqCst);
+    let stood_down = Instant::now();
+
+    // Tried 2 s in and each second after, a path still failing keeps it
+    // standing down.
+    tokio::time::sleep_until((stood_down + Duration::from_secs(5)).into()).await;
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request while its path still fails wasn't sent direct"
+    );
+    let words = String::from_utf8_lossy(&got.body).into_owned();
+    assert!(
+        words.contains("stands down from it"),
+        "while its path fails, the 421 isn't the stand-down's: {words}"
+    );
+    let tried = trials();
+    assert!(
+        tried >= 2,
+        "its path wasn't tried each second as it stood down: {tried} trials"
+    );
+    assert_eq!(
+        handed_to(&origin, "/echo"),
+        3,
+        "a request went on while it stood down"
+    );
+
+    // Mended, the path answers its next trial, a second or so on, and the
+    // relay takes requests again then, not ten minutes on.
+    origin.failing.store(false, Ordering::SeqCst);
+    let mended = Instant::now();
+    loop {
+        let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+        if got.status == StatusCode::CREATED {
+            break;
+        }
+        assert_eq!(
+            got.status,
+            StatusCode::MISDIRECTED_REQUEST,
+            "a request as its path mended"
+        );
+        assert!(
+            mended.elapsed() < Duration::from_secs(10),
+            "it stood down on, 10 s after its path answered again"
+        );
+        tokio::time::sleep(ASK_EVERY).await;
+    }
+    assert!(
+        trials() >= tried + 3,
+        "it took requests again before a trial asked three times"
+    );
+
+    let said = relay.said();
+    assert!(
+        said.contains("failed request 1 of 3") && said.contains("so it stands down still"),
+        "a trial that failed went unsaid: {said}"
+    );
+    assert!(
+        said.contains("answered 3 requests in a row"),
+        "the trial that answered went unsaid: {said}"
+    );
+    assert!(
+        said.contains("and its path answers again, so it takes requests again"),
+        "taking requests again on its path answering went unsaid: {said}"
     );
 }
 
