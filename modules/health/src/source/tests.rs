@@ -15,6 +15,29 @@ mod real_journal;
 // The followers health ends as it ends.
 mod followers;
 
+/// Every saying of health's own and its mark, from every test at once.
+static HEARD: Mutex<Vec<(u8, String)>> = Mutex::new(Vec::new());
+
+/// Keep what `say_marked` says, at its `mark`.
+pub(super) fn hear(words: &str, mark: u8) {
+    HEARD
+        .lock()
+        .expect("the sayings are kept")
+        .push((mark, words.to_owned()));
+}
+
+/// The mark of each saying heard so far holding every one of `words`,
+/// which name the test's own, since the tests run at once.
+fn marks_of(words: &[&str]) -> Vec<u8> {
+    HEARD
+        .lock()
+        .expect("the sayings are kept")
+        .iter()
+        .filter(|(_, said)| words.iter().all(|word| said.contains(word)))
+        .map(|(mark, _)| *mark)
+        .collect()
+}
+
 /// A shell running `script`: the build's own where it gives one, which
 /// a build's sandbox has where it has no /bin/sh.
 fn sh(script: &str) -> Command {
@@ -269,6 +292,12 @@ fn a_replay_whose_follower_cant_follow_on_sends_every_followers_end() {
         "with {ends} of 2 ends and the follower's, a follower that couldn't follow on would go \
          unheard, with no start again, until another ended"
     );
+    let marks = marks_of(&["couldn't follow on from the day's replay: /nonexistent/journalctl"]);
+    assert!(
+        !marks.is_empty() && marks.iter().all(|mark| *mark == ERROR),
+        "a follower that couldn't follow on wasn't said as a failure, which health ends on: \
+         {marks:?}"
+    );
 }
 
 #[test]
@@ -323,6 +352,11 @@ fn a_history_ending_in_failure_is_whole_only_as_a_grep_that_found_nothing() {
         "a history that wrote nothing gave a line"
     );
     assert!(!failed.ended(), "a history that failed was taken as whole");
+    let marks = marks_of(&["history asking ", " -c exit 1 ended early"]);
+    assert!(
+        !marks.is_empty() && marks.iter().all(|mark| *mark == WARNING),
+        "a history ended early wasn't said as a warning, which health runs on through: {marks:?}"
+    );
     assert_eq!(
         failed.name,
         format!("{} -c exit 1", sh("").get_program().to_string_lossy()),
@@ -473,6 +507,7 @@ fn the_replay_asks_the_journals_last_line_first_off_healths_own_thread() {
 
 #[test]
 fn a_replay_that_cant_start_sends_every_followers_end() {
+    // Said as a failure, which health ends on, each way it can't.
     let nowhere = || Command::new("/nonexistent/journalctl");
     for (newest, reading) in [
         (nowhere(), None),
@@ -496,6 +531,11 @@ fn a_replay_that_cant_start_sends_every_followers_end() {
              on its every sender being gone"
         );
     }
+    let marks = marks_of(&["the day's replay couldn't start: /nonexistent/journalctl"]);
+    assert!(
+        marks.len() >= 2 && marks.iter().all(|mark| *mark == ERROR),
+        "a replay that couldn't start wasn't said as a failure each time: {marks:?}"
+    );
 }
 
 #[test]

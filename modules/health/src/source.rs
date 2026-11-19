@@ -731,6 +731,10 @@ const ERROR: u8 = 3;
 
 fn say_marked(words: &str, mark: u8) {
     static JOURNAL: OnceLock<bool> = OnceLock::new();
+    // Kept for the tests to read which mark each saying went at, since
+    // a warning said as a failure, or one as a warning, passes otherwise.
+    #[cfg(test)]
+    tests::hear(words, mark);
     let journal = *JOURNAL.get_or_init(|| terminal_kit::Environment::here().journal);
     // A Mac's stderr is a log file, which a full disk can't take, and
     // `eprintln!` would panic on it, ending health every few seconds.
