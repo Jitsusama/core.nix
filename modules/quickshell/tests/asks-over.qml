@@ -853,6 +853,8 @@ ShellRoot {
     // An ask ended while the screen is shared is hidden too, and draws and
     // holds as a waiting one does, where unshared its Return closes.
     function sharedEnded() {
+        // Heard here, so the case stands without the ones before it.
+        Niri.castsHeard = true;
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         // A ready row's state is read as it's drawn, since JSON says any
         // function, and so any state, as null.
@@ -875,6 +877,7 @@ ShellRoot {
         // could tell the hidden rows apart, and see one answered elsewhere
         // change as they watched; how many wait is For You's to say.
         same("and draws as a hidden waiting one does", drawn(row()), waiting);
+        same("in the hue every hidden ask draws in", row()?.hue, "machine");
         // Hidden, it looks as a waiting one does, so Return on it holds
         // still too, rather than closing for his next to land behind.
         same("and its row holds Return still too, saying why",

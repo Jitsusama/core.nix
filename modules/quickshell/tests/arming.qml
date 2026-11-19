@@ -102,6 +102,9 @@ QtObject {
             ["one staying with no run that holds rows", { stays: true, category: {} }, false],
             ["one staying with no run that opens a place", { stays: true, opens: {} }, false],
             ["one with no run that closes", { name: "Ended" }, false],
+            // A row gone, as Steady keeps it dimmed until the next key,
+            // does nothing on Return, held or not, and says so nowhere.
+            ["a hidden ask gone, kept dimmed", { still: true, gone: true, went: true }, false],
             ["no row", null, false]
         ];
         for (const [what, row, held] of still)
@@ -153,6 +156,8 @@ QtObject {
             Arming.returnAct(Object.assign({ held: true }, every)), "held");
         expect("but an answer being given is given",
             Arming.returnAct(Object.assign({ asking: true, held: true }, every)), "gave");
+        expect("even just after a landing",
+            Arming.returnAct(Object.assign({ asking: true, landed: true }, every)), "gave");
         expect("and a Return doubling a landing does nothing more",
             Arming.returnAct(Object.assign({ landed: true, held: true }, every)), "");
         expect("one not held arms first", Arming.returnAct(every), "arming");
