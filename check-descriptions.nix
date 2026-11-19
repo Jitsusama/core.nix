@@ -1828,13 +1828,12 @@
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, a receptor's feeding of a cell drawn with both
     drawers saying it and leaving once its ten minutes end or the node drops it, a key of each
-    kind keys.ts decides answering (the keys
-    dialog, find and a letter typed into it, n and N, Escape in its order, the walk, the machines,
-    Now, the tree and the theme switch wrapping), the web-design skill's page checks and the
-    map's own (each opened thing in view, its drawer saying what it is, no more names than it's
-    engaged with) passing at a phone's width and a desk's in both looks, a first visit within its
-    budget of files, bytes and elements, both visits reaching only the sites' server and the second
-    answered unchanged, and nothing logged
+    kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
+    Escape in its order, the walk, the machines, Now, the tree and the theme switch wrapping),
+    the web-design skill's page checks and the map's own (each opened thing in view, its drawer
+    saying what it is, no more names than it's engaged with) passing at a phone's width and a
+    desk's in both looks, a first visit within its budget of files, bytes and elements, both
+    visits reaching only the sites' server and the second answered unchanged, and nothing logged
   '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its open and ended quests, the

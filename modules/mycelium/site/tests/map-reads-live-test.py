@@ -81,10 +81,11 @@ FED_SAID = "a call's summary"
 FED_RECEPTOR_TITLE = "Calls"
 FED_CELL_TITLE = "Rig The Skiff"
 # How long before its ten minutes end a second feeding is told, to see the
-# map let it go on its own clock with the node saying nothing more: the six
-# seconds a change may take to be drawn, and as many again for a busy builder,
-# so it is drawn before it goes.
-FED_ENDING_S = 14
+# map let it go on its own clock with the node saying nothing more. Its line
+# may take FED_DRAWN_MS to be drawn, twice the map's pace for a busy builder,
+# and two seconds more are left so it is drawn before it goes.
+FED_DRAWN_MS = 2 * PACE_MS
+FED_ENDING_S = FED_DRAWN_MS // 1000 + 2
 
 
 @pytest.fixture
@@ -541,7 +542,7 @@ def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
         ending = feeding("TERN03", timedelta(minutes=10) - timedelta(seconds=FED_ENDING_S))
         fed_node.tell("fed", changed=[ending])
         page.wait_for_function(
-            "document.getElementById('map-ground').painted().fed === 2", timeout=PACE_MS
+            "document.getElementById('map-ground').painted().fed === 2", timeout=FED_DRAWN_MS
         )
         page.wait_for_function(
             "document.getElementById('map-ground').painted().fed === 1",
