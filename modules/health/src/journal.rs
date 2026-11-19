@@ -437,20 +437,22 @@ pub fn reading(asked: &[String], since: i64) -> Command {
 }
 
 /// Where the follower `asked` reads from, for a day starting at `since`, in
-/// seconds since 1970: the restarts' followers, the reloads and the jobs,
-/// from as long before as a stop can be a restart, so a restart across
-/// midnight is timed in the day it ended, as health following it live
-/// times it (`Launches::before`); every other from the day's start.
+/// seconds since 1970: the restarts' followers from as long before as the
+/// new day carries (`Launches::carried`), so a restart across midnight is
+/// timed in the day it ended, as health following it live times it. The
+/// jobs from as long before as a stop can be a restart, the reloads from
+/// as long before that as a switch's can be the stop's; every other from
+/// the day's start.
 fn leads_in(asked: &[String], since: i64) -> i64 {
-    let restarts = [
-        "CODE_FUNC=manager_log_caller".to_owned(),
-        format!("MESSAGE_ID={UNIT_STOPPING}"),
-    ];
-    if asked.iter().any(|word| restarts.contains(word)) {
-        since.saturating_sub(launches::RESTART_WITHIN / 1_000_000)
+    let has = |word: &str| asked.iter().any(|asked| asked == word);
+    let lead = if has("CODE_FUNC=manager_log_caller") {
+        launches::RELOADS_LEAD
+    } else if has(&format!("MESSAGE_ID={UNIT_STOPPING}")) {
+        launches::RESTART_WITHIN
     } else {
-        since
-    }
+        0
+    };
+    since.saturating_sub(lead / 1_000_000)
 }
 
 /// One journalctl saying the journal's last line, of every boot, for

@@ -448,7 +448,7 @@ impl Follower {
             // reads the restarts' followers from just before the day
             // (`journal::reading`).
             let read = std::mem::take(&mut self.day.read);
-            let launches = self.day.launches.carried(entry.at);
+            let launches = self.day.launches.carried(start_of(entry.at, &self.zone));
             self.day = Day::new(&date);
             self.day.read = read;
             self.day.launches = launches;
@@ -456,6 +456,7 @@ impl Follower {
             // That day is done, but a stop or reload of it, heard late or
             // read as the day leads in, may still be a restart's in this.
             self.day.launches.before(&entry);
+            self.changed = true;
             return Ok(());
         }
         self.day.take(&entry);
@@ -528,6 +529,15 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
     Timestamp::from_microsecond(at)
         .map(|at| at.to_zoned(zone.clone()).date().to_string())
         .unwrap_or_default()
+}
+
+/// The start of the day a moment in microseconds since the epoch falls in,
+/// in the zone given, in microseconds: the moment itself when it can't be
+/// placed, as for a stamp out of jiff's range.
+fn start_of(at: i64, zone: &TimeZone) -> i64 {
+    Timestamp::from_microsecond(at)
+        .and_then(|moment| moment.to_zoned(zone.clone()).start_of_day())
+        .map_or(at, |start| start.timestamp().as_microsecond())
 }
 
 /// Follow the machine's own source into `into` until a follower ends,

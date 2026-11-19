@@ -519,6 +519,48 @@ mod tests {
     }
 
     #[test]
+    fn a_restart_given_back_keeps_its_place_and_its_ready_line() {
+        let ready = |at| Entry {
+            at,
+            since_boot: at,
+            boot: "b".to_owned(),
+            ..entry("backend", 6, "backend: ready in 5 ms")
+        };
+        let days: Vec<(&str, Vec<Entry>, Vec<u64>)> = vec![
+            // A restart taken back, then a newer one timed before a
+            // switch's reload gives the first back: it goes before the
+            // newer, which still waits for its ready line.
+            (
+                "a restart given back after a newer one",
+                vec![
+                    backend("b", 12_000_000, Job::Stopping),
+                    backend("b", 12_100_000, Job::Started),
+                    reload_in("b", 10_000_000, "systemctl"),
+                    backend("b", 50_000_000, Job::Stopping),
+                    backend("b", 50_200_000, Job::Started),
+                    reload_in("b", 11_000_000, "sd-switch"),
+                    ready(50_500_000),
+                ],
+                vec![100, 500],
+            ),
+            // A restart taken back still hears its ready line, and is
+            // given back timed to it.
+            (
+                "a ready line heard while the restart was taken back",
+                vec![
+                    backend("b", 12_000_000, Job::Stopping),
+                    backend("b", 12_100_000, Job::Started),
+                    reload_in("b", 10_000_000, "systemctl"),
+                    ready(12_300_000),
+                    reload_in("b", 11_000_000, "sd-switch"),
+                ],
+                vec![300],
+            ),
+        ];
+        each_restarted(days);
+    }
+
+    #[test]
     fn a_reload_only_systemd_tells() {
         let mut day = Day::new("2026-11-17");
         let job = |at, job| Entry {

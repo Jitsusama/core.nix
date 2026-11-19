@@ -720,7 +720,8 @@ fn a_new_day_carries_only_the_stops_and_reloads_a_restart_can_still_need() {
         )
     };
     for heard in [
-        reload(100_000_000),
+        reload(70_000_000),
+        reload(90_000_000),
         line("old.service", 200_000_000, Job::Stopping),
         line("timed.service", 300_000_000, Job::Stopping),
         line("timed.service", 300_100_000, Job::Started),
@@ -729,8 +730,8 @@ fn a_new_day_carries_only_the_stops_and_reloads_a_restart_can_still_need() {
     ] {
         launches.heard(&heard);
     }
-    // The new day's first line comes just the restart window after the
-    // old stop, and past it after the first reload.
+    // The new day starts just the restart window after the old stop, just
+    // twice it after the second reload, and past that after the first.
     let carried = launches.carried(320_000_000);
     let reloads: Vec<i64> = carried
         .reloaded
@@ -748,7 +749,7 @@ fn a_new_day_carries_only_the_stops_and_reloads_a_restart_can_still_need() {
         ),
         (
             vec!["old.service".to_owned(), "recent.service".to_owned()],
-            vec![400_000_000],
+            vec![90_000_000, 400_000_000],
             true,
         ),
         "a new day carried a stop or reload past the restart window, or a restart already timed"

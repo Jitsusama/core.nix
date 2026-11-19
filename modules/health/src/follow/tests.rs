@@ -5,6 +5,8 @@ use crate::journal;
 
 // The faults health sees itself, rather than hears.
 mod faults;
+// A restart across midnight, and the old day's lines heard after it.
+mod midnight;
 // A day health can't write, as on a full disk.
 mod writes;
 
@@ -76,112 +78,6 @@ fn a_new_day_writes_the_old_and_starts_empty() {
         read(into.path(), "2026-11-12").things["people"].lines,
         2,
         "the old day stays"
-    );
-}
-
-/// systemd's line of `service` stopping or started, in boot `b`, at `at`
-/// on both clocks.
-fn job(id: &str, service: &str, at: i64) -> String {
-    format!(
-        r#"{{"__REALTIME_TIMESTAMP":"{at}","__MONOTONIC_TIMESTAMP":"{at}","_BOOT_ID":"b",
-        "PRIORITY":"6","SYSLOG_IDENTIFIER":"systemd",
-        "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/init.scope",
-        "MESSAGE_ID":"{id}","USER_UNIT":"{service}","MESSAGE":"{service}"}}"#
-    )
-    .replace('\n', "")
-}
-
-/// systemd's line of a tool's reload, in boot `b`, at `at` on both clocks.
-fn tools_reload(at: i64) -> String {
-    format!(
-        r#"{{"__REALTIME_TIMESTAMP":"{at}","__MONOTONIC_TIMESTAMP":"{at}","_BOOT_ID":"b",
-        "PRIORITY":"5","SYSLOG_IDENTIFIER":"systemd",
-        "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/init.scope",
-        "MESSAGE":"Reload requested from client PID 1 ('systemctl') (unit x.service)..."}}"#
-    )
-    .replace('\n', "")
-}
-
-#[test]
-fn a_restart_across_midnight_is_the_new_days() {
-    let into = tempfile::tempdir().expect("a folder");
-    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
-    let midnight = NOON + DAY / 2;
-    let second = 1_000_000;
-    for line in [
-        // A restart done before midnight is the old day's alone.
-        job(
-            journal::UNIT_STOPPING,
-            "done.service",
-            midnight - 60 * second,
-        ),
-        job(journal::UNIT_STARTED, "done.service", midnight - 59_900_000),
-        job(
-            journal::UNIT_STOPPING,
-            "google.service",
-            midnight - 30 * second,
-        ),
-        // A tool's reload before midnight still makes a stop after it the
-        // tool's.
-        tools_reload(midnight - 5 * second),
-        warning(midnight + 1),
-        job(journal::UNIT_STOPPING, "tooled.service", midnight + second),
-        job(
-            journal::UNIT_STARTED,
-            "tooled.service",
-            midnight + 1_100_000,
-        ),
-        job(journal::UNIT_STARTED, "google.service", midnight + 100_000),
-        // A stop, and a tool's reload, before midnight, heard from
-        // followers that lag behind the day's turn.
-        job(
-            journal::UNIT_STOPPING,
-            "lagged.service",
-            midnight - 20 * second,
-        ),
-        job(journal::UNIT_STARTED, "lagged.service", midnight + 50_000),
-        // A restart before midnight heard after it, then a start after a
-        // crash, which no stop came before.
-        job(
-            journal::UNIT_STOPPING,
-            "early.service",
-            midnight - 40 * second,
-        ),
-        job(
-            journal::UNIT_STARTED,
-            "early.service",
-            midnight - 39_900_000,
-        ),
-        job(
-            journal::UNIT_STARTED,
-            "early.service",
-            midnight + 30 * second,
-        ),
-        tools_reload(midnight - second),
-        job(
-            journal::UNIT_STOPPING,
-            "late.service",
-            midnight + 7 * second,
-        ),
-        job(journal::UNIT_STARTED, "late.service", midnight + 7_100_000),
-    ] {
-        follower.take(&line).expect("a line");
-    }
-    follower.write().expect("the new day is written");
-    assert_eq!(
-        (
-            read(into.path(), "2026-11-12").launches.restarted,
-            read(into.path(), "2026-11-13").launches.restarted,
-        ),
-        (
-            BTreeMap::from([("done.service".to_owned(), vec![100])]),
-            BTreeMap::from([
-                ("google.service".to_owned(), vec![30_100]),
-                ("lagged.service".to_owned(), vec![20_050]),
-            ]),
-        ),
-        "a stop or reload before midnight was lost to the new day, or a restart before it \
-         counted in it"
     );
 }
 
