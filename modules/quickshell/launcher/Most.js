@@ -17,7 +17,7 @@ const mostFirst = Order.then(
 function said(counts, few) {
     const counted = Object.keys(counts)
         .filter(name => counts[name] > 0)
-        .map(name => ({ name: name, count: counts[name] }));
+        .map(name => ({ name, count: counts[name] }));
     return Order.sorted(counted, mostFirst)
         .slice(0, few)
         .map(each => `${each.name} ${each.count}`)
