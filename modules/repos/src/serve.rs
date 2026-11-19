@@ -107,6 +107,7 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
             .because(why.to_string())
     })?;
     serve::accept(Arc::clone(&shared), listener);
+    eprintln!("{}", ready(began.elapsed()));
     // The pace keeps its own time, so agents writing more often than it
     // comes never put off the reading that finds new clones.
     let mut whole = Instant::now();
@@ -206,6 +207,13 @@ fn follow_again(folders: &mut Folders, moved: &BTreeSet<Of>) {
             folders.extend(heard::checkout(common));
         }
     }
+}
+
+/// The one line it says once its first reading is held and it listens,
+/// which health times a restart to (modules/health/src/launches.rs).
+fn ready(took: Duration) -> String {
+    let ms = took.as_millis();
+    format!("repos: ready in {ms} ms, every repository read and the socket listening")
 }
 
 /// What `reading` gives, saying how long it took for health.
