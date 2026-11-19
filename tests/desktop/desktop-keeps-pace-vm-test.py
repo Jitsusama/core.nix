@@ -815,6 +815,9 @@ def opened_from_kept(desktop: Desktop) -> Json:
     retry(lambda _: bool(desktop.showing()["kept"]), timeout=REACHING)
     opening = opened_timed(desktop)
     assert opening["kept"], f"an opening wasn't drawn from what was kept: {opening}"
+    # Home found again by its slice, as no key or click comes, is what the rows filled in hold;
+    # found any other way, or not at all, they'd be the kept rows compared with themselves.
+    assert opening.get("filledFoundBy") == "slice", f"home wasn't found again: {opening}"
     return opening
 
 

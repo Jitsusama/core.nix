@@ -1733,8 +1733,9 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     assert woke[0]["longestSlice"] == longest, f"the finding went uncounted: {woke}"
     ended = cast("int", woke[0]["foundFrom"]) + found
     # The sources' first wakes on the frame after, or the fallback's 33 ms, never in the same
-    # slice: a millisecond past its end at least, though each is rounded.
-    assert cast("int", slices[0]["from"]) >= ended + 1, (
+    # slice. Each figure is rounded on its own, so one woken in it reads at most 1.5 ms past
+    # the end, and a frame's wait is far more.
+    assert cast("int", slices[0]["from"]) >= ended + WAKE_ROUNDED_MS, (
         f"a source woke in the finding's slice: {woke}"
     )
     befores = [{"from": woke[0]["foundFrom"], "took": found}, *slices]
