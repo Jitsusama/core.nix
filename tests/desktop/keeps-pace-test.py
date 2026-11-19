@@ -1,35 +1,24 @@
-"""The keeps-pace area's judging, proven on figures its runs gave, with no machine to load.
+"""How the keeps-pace area counts what the builder took from its VM, with no machine to load.
 
-The area holds a launcher under load to its time with the load frozen (keeps_pace.py). Its keys
-failed on a builder busy with other checks, which these figures are taken from, while the
-desktop's own weights held: the compositor and the shell waited for a processor no longer than
-they may (the net, 16 to 19 November).
+The area times a launcher under load against the load frozen, and each subtest says how much of
+the guest's busy time the kernel counted stolen in each turn (keeps_pace.py), so a run that fails
+on the net shows whether the builder took the time or the shell spent it.
 """
 
 from __future__ import annotations
 
 import math
 
-from keeps_pace import MIDDLE_MORE, PROCESSORS, bound, builders_share, ticks
+from keeps_pace import PROCESSORS, Ledger, builders_share, ticks
 
-# The net's run of aaf54771c2db, whose middle key took 183 ms under load against 29 frozen.
-UNDER = 183
-FROZEN = 29
-# Its bar before the share, in ms: twice 29 and the budget's 50.
-OLD_BAR = 108
-# A quiet builder's keys: 28 to 36 ms under load against 15 to 18 frozen, and the key the old
-# bar refused, at 87 ms, one past its twice the frozen time and the budget.
-QUIET_UNDER = 36
-QUIET_FROZEN = 18
-SLOWED = 87
 # A turn's busy ticks, and a builder that ran the guest half of them under load.
 BUSY = 1000
-HELD_BACK = 2.0
+HALVED = 2.0
 # The VM held to two of the builder's processors on 19 November: stolen and busy ticks under
 # load and frozen, and the share they give, the time it ran frozen over the time under load.
 HELD_UNDER = (2136, 4760)
 HELD_FROZEN = (146, 491)
-HELD_SHARE = (1 - 146 / 491) / (1 - 2136 / 4760)
+HELD_SHARE = 1.27
 # /proc/stat's first line, for 100 ticks of each field in turn, guests' times included.
 STAT = "cpu  100 200 300 400 500 600 700 800 900 1000"
 # Its stolen ticks, and its busy ones: user, nice, system, irq, softirq and steal, where idle and
@@ -38,62 +27,41 @@ STOLEN = 800
 BUSIED = 100 + 200 + 300 + 600 + 700 + 800
 
 
-def test_a_key_the_builder_held_back_is_refused_without_its_share() -> None:
-    """A key the builder held back fails the bar, as it did on the net, with nothing stolen."""
-    share = builders_share((0, 0), (0, 0))
-    assert share == 1.0, f"with no ticks, the builder's share read {share}"
-    assert bound(FROZEN, MIDDLE_MORE, share) < UNDER, (
-        f"{UNDER} ms against {FROZEN} frozen held with no share, at {share}"
-    )
+def stat(stolen: int, busy: int) -> str:
+    """Give a /proc/stat first line counting these stolen ticks and these busy ones."""
+    return f"cpu  {busy - stolen} 0 0 5000 0 0 0 {stolen} 0 0"
 
 
-def test_a_key_the_builder_held_back_holds_by_its_share() -> None:
-    """The same key holds once the guest counts half its time under load stolen."""
-    share = builders_share((BUSY // 2, BUSY), (0, BUSY))
-    assert share == HELD_BACK, f"half the time stolen under load gave a share of {share}"
-    assert bound(FROZEN, MIDDLE_MORE, share) >= UNDER, (
-        f"{UNDER} ms against {FROZEN} frozen failed at a share of {share}"
-    )
-
-
-def test_a_launcher_the_load_slows_is_refused_on_a_quiet_builder() -> None:
-    """A launcher the guest's own load slows fails where the builder stole nothing."""
+def test_nothing_stolen_gives_a_share_of_one() -> None:
+    """A builder stealing nothing in either turn took nothing the guest's weights couldn't."""
     share = builders_share((0, BUSY * 4), (0, BUSY))
     assert share == 1.0, f"nothing stolen gave a share of {share}"
-    assert bound(QUIET_FROZEN, MIDDLE_MORE, share) >= QUIET_UNDER, (
-        f"a quiet builder's {QUIET_UNDER} ms against {QUIET_FROZEN} failed"
-    )
-    assert bound(QUIET_FROZEN, MIDDLE_MORE, share) < SLOWED, (
-        f"a launcher slowed to {SLOWED} ms against {QUIET_FROZEN} frozen held"
-    )
 
 
-def test_the_share_stretches_the_bar_by_itself_and_no_more() -> None:
-    """A share of 1 leaves the old bar as it was, and a share of two makes it twice that."""
-    unstretched = bound(FROZEN, MIDDLE_MORE, 1.0)
-    stretched = bound(FROZEN, MIDDLE_MORE, HELD_BACK)
-    assert unstretched == OLD_BAR, f"a share of 1 made the bar {unstretched} ms, not {OLD_BAR}"
-    assert stretched == HELD_BACK * OLD_BAR, (
-        f"a share of {HELD_BACK} made the bar {stretched} ms, not {HELD_BACK * OLD_BAR}"
-    )
+def test_half_stolen_under_load_alone_gives_a_share_of_two() -> None:
+    """A builder running the loaded guest half the time it ran the frozen one gives two."""
+    share = builders_share((BUSY // 2, BUSY), (0, BUSY))
+    assert share == HALVED, f"half the time stolen under load gave a share of {share}"
 
 
-def test_the_share_weighs_what_was_stolen_frozen_too() -> None:
-    """A builder stealing from both turns stretches the bar by the time it ran frozen over under.
-
-    These are the ticks of a VM held to two of the builder's processors, which stole from the
-    frozen turn too, so the share is less than the half stolen under load alone would give.
-    """
+def test_what_was_stolen_frozen_weighs_against_what_was_under_load() -> None:
+    """The held VM's ticks, stolen from both turns, give much less than half stolen would."""
     share = builders_share(HELD_UNDER, HELD_FROZEN)
-    assert math.isclose(share, HELD_SHARE), f"the held VM's ticks gave a share of {share}"
+    assert math.isclose(share, HELD_SHARE, abs_tol=0.005), f"the held ticks gave {share}"
 
 
 def test_the_share_is_never_under_one_nor_over_the_processors() -> None:
     """The load can't speed the builder up, nor split it past the VM's processors."""
     faster = builders_share((0, BUSY), (BUSY // 2, BUSY))
-    split = builders_share((BUSY, BUSY), (0, BUSY))
+    split = builders_share((BUSY * 9 // 10, BUSY), (0, BUSY))
     assert faster == 1.0, f"less stolen under load than frozen gave a share of {faster}"
-    assert split == PROCESSORS, f"every tick stolen under load gave a share of {split}"
+    assert split == PROCESSORS, f"nine in ten ticks stolen under load gave a share of {split}"
+
+
+def test_a_turn_with_no_busy_ticks_gives_a_share_of_one() -> None:
+    """With no busy ticks in a turn there's nothing to weigh, rather than a division by none."""
+    share = builders_share((0, 0), (0, BUSY))
+    assert share == 1.0, f"a turn with no busy ticks gave a share of {share}"
 
 
 def test_stolen_and_busy_ticks_are_read_from_the_kernels_line() -> None:
@@ -101,3 +69,26 @@ def test_stolen_and_busy_ticks_are_read_from_the_kernels_line() -> None:
     stolen, busy = ticks(STAT)
     assert stolen == STOLEN, f"{STAT!r} read as {stolen} stolen ticks"
     assert busy == BUSIED, f"{STAT!r} read as {busy} busy ticks"
+
+
+def test_each_count_goes_to_its_own_turn_and_a_turning_to_neither() -> None:
+    """Ticks counted under load and frozen land in their turns, and those between, in neither."""
+    ledger = Ledger(stat(0, 0))
+    ledger.count(stat(10, 100), turn=True)
+    ledger.count(stat(40, 400), turn=None)
+    ledger.count(stat(45, 450), turn=False)
+    ledger.count(stat(65, 650), turn=True)
+    assert ledger.turns[True] == (30, 300), f"under load the ledger kept {ledger.turns[True]}"
+    assert ledger.turns[False] == (5, 50), f"frozen the ledger kept {ledger.turns[False]}"
+
+
+def test_the_ledger_says_each_turns_ticks_and_the_share() -> None:
+    """What a subtest says names each turn's stolen and busy ticks, and the share they give."""
+    ledger = Ledger(stat(0, 0))
+    ledger.count(stat(500, 1000), turn=True)
+    ledger.count(stat(500, 2000), turn=False)
+    said = ledger.said()
+    assert said == (
+        "the guest counted 500 of 1000 busy ticks stolen under load, against 0 of 1000 frozen,"
+        " a share of 2.00"
+    ), f"the ledger said {said!r}"
