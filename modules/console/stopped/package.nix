@@ -7,7 +7,8 @@
 # dev shell builds against today's kit and says when a bump would need this
 # crate to change; its clippy check passes today's kit as terminalKit for
 # the same reason. A bump (docs/commands.md) runs the VM tests that read a
-# failed boot's console: vm-boot-plymouth's emergency and initrd subtests.
+# failed boot's console: vm-boot-asks-in-the-theme's emergency and initrd
+# subtests (tests/vm/boot/plymouth.nix).
 {
   lib,
   fetchgit,

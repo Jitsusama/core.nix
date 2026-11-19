@@ -161,7 +161,9 @@ fn way_out(pen: &Pen) -> String {
 /// log or titles a window leaves no `[31m` or `]0;title` behind, and
 /// every other control character, a tab read as a space. A sequence cut
 /// short by another escape ends there, as a terminal ends it, so the next
-/// is dropped whole too.
+/// is dropped whole too. What's left is as the kit draws it, without the
+/// direction marks and invisible characters it drops, so a line holding
+/// only those says nothing, as it shows nothing.
 fn clean(words: &str) -> String {
     let mut out = String::new();
     let mut chars = words.chars().peekable();
@@ -210,7 +212,7 @@ fn clean(words: &str) -> String {
             c => out.push(c),
         }
     }
-    out
+    layout::drawn(&out).into_owned()
 }
 
 /// Whether `lines` say nothing a person could read once cleaned, as
@@ -237,7 +239,9 @@ mod tests {
                 "",
                 "  \t",
                 "\u{1b}[0m\u{7}",
-                "\u{1b}]0;title\u{7}"
+                "\u{1b}]0;title\u{7}",
+                "\u{200e}",
+                "\u{200b}\u{2060}"
             ])),
             "lines that show nothing were taken as said"
         );
@@ -517,6 +521,28 @@ mod tests {
         says(&summary, "  x  bell.service  Rings");
         says(&summary, "     reading its label");
         says(&summary, "     a gap");
+    }
+
+    #[test]
+    fn a_unit_passes_no_direction_mark_or_invisible_character_to_the_console() {
+        let summary = text(
+            &[unit(
+                "mark\u{202e}.service",
+                "Hides\u{200b}",
+                &["reading\u{2066} its label\u{2060}"],
+            )],
+            1,
+            &console(),
+            Room::Cells(80),
+        );
+        assert!(
+            !summary
+                .chars()
+                .any(|c| matches!(c, '\u{202e}' | '\u{200b}' | '\u{2066}' | '\u{2060}')),
+            "a mark or an invisible character reached the console: {summary:?}"
+        );
+        says(&summary, "  x  mark.service  Hides");
+        says(&summary, "     reading its label");
     }
 
     #[test]
