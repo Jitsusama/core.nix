@@ -245,11 +245,18 @@ function reach(place: Place): string | undefined {
   return said;
 }
 
+/** Where one place meets the network, in a few words, as the bridge labels it. */
+function placeWords(place: Place): string {
+  const point = place.point ?? "a point";
+  return place.by === undefined ? point : `${point}, ${place.by}`;
+}
+
 /**
  * Where a machine meets the network, a clause for each place in the order
  * its record lists them, and how well each reaches, in the same order,
- * so no place's figure is said as another's. Its device is the first
- * place's, to go to.
+ * so no place's figure is said as another's. Two places or more each lead
+ * their figures with their name, since two alike read as one said twice.
+ * Its device is the first place's, to go to.
  */
 function networkSaid(ties: Ties): Said & { readonly device: string | undefined } {
   const places = ties.network;
@@ -267,9 +274,13 @@ function networkSaid(ties: Ties): Said & { readonly device: string | undefined }
   // A place not measured keeps its turn among those that are, so each
   // figure stays beside the place it was said after.
   const reaches = places.map(reach);
+  const byPlace = places.map((place, at) => {
+    const reached = reaches[at] ?? "not measured";
+    return places.length === 1 ? reached : `${placeWords(place)}: ${reached}`;
+  });
   const aside = reaches.every((reached) => reached === undefined)
     ? "How much room it has isn't measured."
-    : stopped(capital(reaches.map((reached) => reached ?? "not measured").join("; ")));
+    : stopped(capital(byPlace.join(". ")));
   return { said, aside, device: places[0]?.device };
 }
 
@@ -417,6 +428,7 @@ export {
   machineHeadline,
   machineLede,
   networkSaid,
+  placeWords,
   standing,
   whenSaid,
 };

@@ -57,10 +57,10 @@ Every health is good, watch, bad or not read, each with its own mark.
   part's health after its name instead, as "osprey (watch)".
 - **How each is judged:**
   - A machine out of reach or with a nearly or critically full disk is
-    bad; one with a filling disk, or on battery at 20% or less, is
-    worth a look. Being short of memory, processor or disk time is said
-    but never judged, since agents' builds hold the processor nearly all
-    day.
+    bad; one on battery at 20% or less is worth a look. Being short of
+    memory, processor or disk time is said but never judged, since
+    agents' builds hold the processor nearly all day, and nor is a
+    filling disk, which the disk guard takes room back from by itself.
   - Mycelium: a link that isn't up is bad. Presences left behind by
     sessions that ended are agents' leftovers, said in what it holds.
   - Network: a source that isn't answering is bad; anything else the

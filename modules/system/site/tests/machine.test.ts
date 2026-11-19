@@ -202,10 +202,21 @@ it("its network says where it meets it, by band or by wire, and how well", () =>
     networkSaid(both),
     {
       said: "Wired to the Den point, and Wi-Fi to the Hall point, on 5 GHz",
-      aside: "370 Mb/s of room; a fair signal, with 120 Mb/s of room.",
+      aside: "Den, wired: 370 Mb/s of room. Hall, 5 GHz: a fair signal, with 120 Mb/s of room.",
       device: "mac:d0",
     },
-    "each place's figures stay with it, in the order the places are said",
+    "each place's figures stay with it, named, in the order the places are said",
+  );
+  const alike = tiesOf({
+    network: [
+      { device: "mac:66", by: "5 GHz", point: "Hall", bars: 4, room_mbps: 370 },
+      { device: "mac:d0", by: "wired", point: "Den", bars: null, room_mbps: 370 },
+    ],
+  });
+  assert.equal(
+    networkSaid(alike).aside,
+    "Hall, 5 GHz: a strong signal, with 370 Mb/s of room. Den, wired: 370 Mb/s of room.",
+    "two places with the same room each say whose it is, so it never reads as said twice",
   );
   const unmeasured = tiesOf({
     network: [
@@ -215,7 +226,7 @@ it("its network says where it meets it, by band or by wire, and how well", () =>
   });
   assert.equal(
     networkSaid(unmeasured).aside,
-    "Not measured; 941 Mb/s of room.",
+    "Hall: not measured. Den, wired: 941 Mb/s of room.",
     "a place not measured keeps its turn, so the next one's figure stays its own",
   );
   assert.deepEqual(networkSaid(tiesOf({ network: [] })), {

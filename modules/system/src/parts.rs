@@ -301,8 +301,22 @@ fn count(n: u64, one: &str, many: &str) -> String {
     if n == 1 {
         format!("1 {one}")
     } else {
-        format!("{n} {many}")
+        format!("{} {many}", grouped(n))
     }
+}
+
+/// A count with its thousands set apart by commas, as Canada writes one,
+/// so a part's line and a machine's card say a count alike.
+pub fn grouped(count: u64) -> String {
+    let digits = count.to_string();
+    let mut out = String::new();
+    for (at, digit) in digits.chars().enumerate() {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
 }
 
 /// Words joined as a sentence lists them: a, b and c.
@@ -574,5 +588,13 @@ mod tests {
         ));
         assert_eq!(none.says, "1 repository with 0 trees");
         assert_eq!(none.side, NO_LOOK, "trees it holds are no look");
+        let trees: Vec<Value> = (0..3289).map(|_| tree(true)).collect();
+        let many = code(&Ok(
+            json!({"repositories": [{"checkouts": [{"trees": trees}]}]}),
+        ));
+        assert_eq!(
+            many.says, "1 repository with 3,289 trees",
+            "a count past a thousand is grouped, as a machine's card says it"
+        );
     }
 }
