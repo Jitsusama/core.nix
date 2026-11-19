@@ -11,7 +11,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use inotify::{Inotify, WatchDescriptor, WatchMask};
+use inotify::{EventMask, Inotify, WatchDescriptor, WatchMask};
 use serde_json::Value;
 
 /// The files watched, by the folder each is in.
@@ -46,22 +46,28 @@ impl Files {
 
     /// Adds a watch on each wanted file's folder, or the nearest above it
     /// that's there, where none watches it yet, answering the folders it
-    /// began watching.
+    /// began watching. A folder made below one while its watch was being
+    /// added said nothing to it, so it looks again until a look begins none.
     fn watch_toward(&mut self) -> Vec<PathBuf> {
         let mut began = Vec::new();
-        for file in self.wanted.clone() {
-            let Some(folder) = file.ancestors().skip(1).find(|folder| folder.is_dir()) else {
-                continue;
-            };
-            if self.watching.values().any(|watched| watched == folder) {
-                continue;
+        loop {
+            let before = began.len();
+            for file in self.wanted.clone() {
+                let Some(folder) = file.ancestors().skip(1).find(|folder| folder.is_dir()) else {
+                    continue;
+                };
+                if self.watching.values().any(|watched| watched == folder) {
+                    continue;
+                }
+                if let Ok(watch) = self.inotify.watches().add(folder, mask()) {
+                    self.watching.insert(watch, folder.to_owned());
+                    began.push(folder.to_owned());
+                }
             }
-            if let Ok(watch) = self.inotify.watches().add(folder, mask()) {
-                self.watching.insert(watch, folder.to_owned());
-                began.push(folder.to_owned());
+            if began.len() == before {
+                return began;
             }
         }
-        began
     }
 
     /// Waits until a wanted file lands or goes, answering which; a folder
@@ -71,6 +77,12 @@ impl Files {
         loop {
             let mut named: Vec<(PathBuf, OsString)> = Vec::new();
             for event in self.inotify.read_events_blocking(&mut buffer)? {
+                // A folder removed takes its watch with it, so it's watched
+                // again once it's made again.
+                if event.mask.contains(EventMask::IGNORED) {
+                    self.watching.remove(&event.wd);
+                    continue;
+                }
                 if let (Some(folder), Some(name)) = (self.watching.get(&event.wd), event.name) {
                     named.push((folder.clone(), name.to_owned()));
                 }
@@ -138,6 +150,9 @@ mod tests {
     /// Long past what hearing a file takes, so one never heard fails rather
     /// than hangs.
     const HEARING: Duration = Duration::from_secs(5);
+
+    /// Long enough for a file that will be heard to have been.
+    const QUIET: Duration = Duration::from_secs(1);
 
     fn folder(name: &str) -> PathBuf {
         let folder =
@@ -211,6 +226,55 @@ mod tests {
                 .recv_timeout(HEARING)
                 .expect("heard, not waited on forever"),
             [file]
+        );
+    }
+
+    /// Hears `files` on a thread of its own, saying each landing it hears.
+    fn hearing(mut files: Files) -> mpsc::Receiver<Vec<PathBuf>> {
+        let (said, heard) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(landed) = files.heard() {
+                if said.send(landed).is_err() {
+                    return;
+                }
+            }
+        });
+        heard
+    }
+
+    #[test]
+    fn a_folder_removed_and_made_again_is_heard_again() {
+        let at = folder("again");
+        let file = at.join("agents").join("arrangement.json");
+        fs::create_dir_all(at.join("agents")).expect("the folder made");
+        fs::write(&file, "{}").expect("written");
+        let heard = hearing(Files::open(std::slice::from_ref(&file)).expect("the watch opens"));
+        fs::remove_dir_all(at.join("agents")).expect("the folder removed");
+        assert_eq!(
+            heard.recv_timeout(HEARING).expect("its going heard"),
+            std::slice::from_ref(&file)
+        );
+        fs::create_dir_all(at.join("agents")).expect("the folder made again");
+        fs::write(&file, "{}").expect("written again");
+        assert_eq!(
+            heard
+                .recv_timeout(HEARING)
+                .expect("heard again, not waited on forever"),
+            [file]
+        );
+    }
+
+    #[test]
+    fn a_folder_made_with_other_files_says_nothing_of_one_not_there() {
+        let at = folder("empty");
+        let file = at.join("agents").join("arrangement.json");
+        let heard = hearing(Files::open(std::slice::from_ref(&file)).expect("the watch opens"));
+        fs::create_dir_all(at.join("agents")).expect("the folder made");
+        fs::write(at.join("agents").join("other.json"), "{}").expect("another file");
+        assert_eq!(
+            heard.recv_timeout(QUIET).ok(),
+            None,
+            "a file not there isn't heard"
         );
     }
 
