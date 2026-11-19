@@ -25,8 +25,10 @@ must keep, whatever a ruling says, is Joel's.
 
 The theme's checks read its walk too: `modules/theme/walk-read.nix` reads
 the frozen `WALKS` and `STRIDING` in `MarginCatWays.js`, and the cat's and
-the puppy's pose checks hold their strides to it. A new gait there fails
-both until each animal's strides are drawn for it, a pair of feet a step.
+the puppy's pose checks hold their strides to it. A change to `WALKS`'s
+strides fails both until each animal's are drawn for it, a pair of feet a
+step; a gait beside `WALKS`, or a walk written so the reader can't read it,
+fails them until `walk-read.nix` reads it.
 
 ## Joel's Words
 
