@@ -143,5 +143,17 @@
     "owner_session": "orchestrator",
     "reason": "failed, then passed, at 28d1e29f9bd6",
     "test": "vm-guide-recovers"
+  },
+  {
+    "at": 1795068742,
+    "commit": "1cb8b38b552e666a9b9be34d86461d9e3d779b74",
+    "due": "2026-11-21",
+    "owner_pr": 5626,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 1cb8b38b552e",
+    "subtests": [
+      "test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window"
+    ],
+    "test": "vm-screens-keep-places"
   }
 ]
