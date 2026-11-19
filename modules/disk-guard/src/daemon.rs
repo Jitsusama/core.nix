@@ -395,6 +395,11 @@ pub struct Guard {
     /// Whether garbage is to be listed again at once, generations having
     /// expired since the listing began, or a batch having found it stale.
     relist: bool,
+    /// What this round's passes have tried, so the pass on the disk beneath
+    /// an image doesn't try again what the image's own pass did: a target
+    /// taken stays an empty folder, a trimmed log stays, and a command
+    /// leaves nothing to look at.
+    tried: BTreeSet<PathBuf>,
     /// Whether a batch from the listing held was refused as stale. Builds
     /// root again what a listing called dead, on 28 October 538 roots
     /// reaching into one batch of 2,000 two minutes after it was made, so
@@ -784,6 +789,7 @@ impl Guard {
             running: places.running.clone(),
             system_heard: false,
             relist: false,
+            tried: BTreeSet::new(),
             stale_listing: false,
             refused: BTreeSet::new(),
             holding: None,
@@ -2291,11 +2297,12 @@ impl Guard {
         self.watched
             .get(&offer.device)
             .is_some_and(|watched| watched.backing.is_some())
-            && crate::survey::gone(&offer.candidate)
+            && crate::survey::gone(&offer.candidate, &self.tried)
     }
 
     /// Surveys once and runs each filesystem's pass over what lies on it.
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
+        self.tried.clear();
         // Garbage alone needs no survey, which walks every source.
         let (mut scan, offers) = if due
             .iter()
@@ -2704,6 +2711,9 @@ impl Guard {
     /// failing command waits its window too.
     fn note_actions(&mut self, here: &[Offer], actions: &[(PathBuf, Outcome)], wall: f64) {
         for (taken, outcome) in actions {
+            if !matches!(outcome, Outcome::Kept(_)) {
+                self.tried.insert(taken.clone());
+            }
             if *outcome == Outcome::Reclaimed
                 && let Some(offered) = &mut self.offered
             {

@@ -1143,11 +1143,14 @@ pub(crate) fn named(path: &Path, source: &str) -> PathBuf {
 }
 
 /// Whether a candidate is gone already, as the pass on the disk beneath an
-/// image may take what the image's own pass was offered. A command is no
-/// file, and running it takes nothing from another pass. A build's offer
-/// names a file only an executable has, so its own files say.
-pub fn gone(candidate: &Candidate) -> bool {
-    if candidate.class.command() {
+/// image may be offered what the image's own pass took: one of `tried`,
+/// what this round's passes tried, or else no longer there. A command is
+/// no file, so only `tried` says. A build's offer names a file only an
+/// executable has, so its own files say.
+pub fn gone(candidate: &Candidate, tried: &BTreeSet<PathBuf>) -> bool {
+    if tried.contains(&candidate.path) {
+        true
+    } else if candidate.class.command() {
         false
     } else if candidate.class == Class::Replaced {
         !crate::replaced::stands(&candidate.path)

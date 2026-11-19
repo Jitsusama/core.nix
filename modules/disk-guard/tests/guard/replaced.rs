@@ -7,6 +7,7 @@ use disk_guard::reclaim;
 use disk_guard::replaced::{Build, Unit, Uses, replaced, stands, watched_dirs};
 use disk_guard::survey::gone;
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -787,17 +788,25 @@ fn a_build_stands_while_any_file_of_it_does_though_a_library_has_none_of_its_nam
 }
 
 #[test]
-fn an_offer_is_gone_only_once_what_it_names_is() {
+fn an_offer_is_gone_once_a_pass_this_round_tried_it_or_what_it_names_is() {
     // What a pass on a build disk asks of each offer before planning it.
     let root = tempfile::tempdir().unwrap();
     let target = target(root.path());
     let deps = target.join("debug/deps");
-    fs::write(deps.join("liblib_only-4444444444444444.rlib"), "").unwrap();
+    let none = BTreeSet::new();
+    let gone = |candidate: &Candidate| gone(candidate, &none);
+    let rlib = deps.join("liblib_only-4444444444444444.rlib");
+    fs::write(&rlib, "").unwrap();
     let library = Candidate {
         path: deps.join("lib_only-4444444444444444"),
         ..older(&target)
     };
     assert!(!gone(&library), "a library whose rlib stands read as gone");
+    fs::remove_file(&rlib).unwrap();
+    assert!(
+        gone(&library),
+        "a library none of whose files stand read as left"
+    );
     let command = Candidate {
         path: root.path().join("cache#janitor"),
         class: Class::Producer {
@@ -815,9 +824,19 @@ fn an_offer_is_gone_only_once_what_it_names_is() {
     assert!(!gone(&whole), "a target that stands read as gone");
     let missing = Candidate {
         path: root.path().join("elsewhere/target"),
-        ..whole
+        ..whole.clone()
     };
     assert!(gone(&missing), "a target no longer there read as standing");
+    // A taken target stays an empty folder, and a command leaves nothing.
+    let tried = BTreeSet::from([whole.path.clone(), command.path.clone()]);
+    assert!(
+        disk_guard::survey::gone(&whole, &tried),
+        "a target this round's passes tried read as left to try again"
+    );
+    assert!(
+        disk_guard::survey::gone(&command, &tried),
+        "a command this round ran read as left to run again"
+    );
 }
 
 #[test]
