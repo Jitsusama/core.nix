@@ -7,7 +7,9 @@
 // has spent grows with each collection; and a heap holding far more than is
 // live, as one does after the launcher's closing, starts the collector as
 // it makes more unless it's left room, and doesn't once it is, nor as it
-// makes strings whose text is held outside the heap. Giving the free pages
+// makes strings whose text is held outside the heap, nor after the
+// collections that run once it is, as the shell's Qt leaves the room after
+// each (qtdeclarative-room-after-every-sweep.patch). Giving the free pages
 // back leaves next to none resident, says about as much as was counted, and
 // what's kept, and what's made after in their place, reads as it was made.
 // And a heap whose free lists lead with runs too small for what's made next,
@@ -71,9 +73,15 @@ struct Making {
 constexpr Making NUMBERS{"{ n: i, m: i }", 2 * KEPT};
 constexpr Making STRINGS{"String(i).padEnd(200, ' of the clipboard history')", 20000};
 
+// How many collections run after the room is left in the cases that ask
+// whether it lasts: Qt halves its limit outside the heap at each one that
+// ends with little held there, so after four it's under the strings' 8 MB.
+constexpr int COLLECTIONS_SINCE = 4;
+
 // Whether making them starts the collector on a heap left holding a
-// scattered few, given that much room first.
-bool collectsWhileMaking(double room, const Making &made) {
+// scattered few, given that much room first and then `collectedSince`
+// collections, as the shell runs others between its closings.
+bool collectsWhileMaking(double room, const Making &made, int collectedSince = 0) {
     QJSEngine engine;
     Heap heap(&engine);
     QJSValue few = engine.evaluate(
@@ -83,6 +91,8 @@ bool collectsWhileMaking(double room, const Making &made) {
             .arg(SCATTERED));
     engine.collectGarbage();
     heap.leaveRoom(room);
+    for (int each = 0; each < collectedSince; each++)
+        engine.collectGarbage();
     const double before = heap.collected();
     QJSValue making = engine.evaluate(
         QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push(%2); "
@@ -543,6 +553,12 @@ int main(int argc, char **argv) {
     if (!roomyOutside)
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
                      "it makes strings held outside it\n", ROOM_MB);
+    const bool lasting = !collectsWhileMaking(ROOM_MB, NUMBERS, COLLECTIONS_SINCE) &&
+                         !collectsWhileMaking(ROOM_MB, STRINGS, COLLECTIONS_SINCE);
+    if (!lasting)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room keeps it through %d "
+                     "collections, making more and making strings held outside it\n",
+                     ROOM_MB, COLLECTIONS_SINCE);
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool fits = takesRunsThatFit();
@@ -550,7 +566,7 @@ int main(int argc, char **argv) {
     const bool census = namesWhatsKept();
     const bool placed = placesWhatMadeIt();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside && follows && given && fits && whole && census && placed
+                   roomyOutside && lasting && follows && given && fits && whole && census && placed
                ? 0
                : 1;
 }

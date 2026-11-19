@@ -1,0 +1,82 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Leave room after every collection, not only the first
+
+A miss in the free lists starts a cycle once what's held passes twice
+what the last sweep left in use, and a fragmented heap holds that much
+straight after its sweep. Joel's shell held 157 to 174 MB around 71 to
+76 live after each collection, so once any cycle ended the next miss
+started another: two in one opening, 16 s apart, each finished inside a
+key at 115 ms of its 175 and 193. A room set on the memory manager is
+now left after every sweep, in the heap and outside it, so the heap
+grows by it before the next cycle starts. It is none by default, as
+Qt has it.
+
+---
+diff --git a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
+index 65b729e..820d5c3 100644
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -970,6 +970,7 @@ GCState doSweep(GCStateMachine *that, ExtraData &)
+     mm->engine->isGCOngoing = false;
+ 
+     mm->updateUnmanagedHeapSizeGCLimit();
++    mm->leaveRoomAfterSweep();
+ 
+     return GCState::Invalid;
+ }
+@@ -1241,6 +1242,7 @@ void MemoryManager::sweep(bool lastSweep)
+ 
+     usedSlotsAfterLastFullSweep = blockAllocator.usedSlotsAfterLastSweep + icAllocator.usedSlotsAfterLastSweep;
+     updateUnmanagedHeapSizeGCLimit();
++    leaveRoomAfterSweep();
+     gcBlocked = MemoryManager::Unblocked;
+ }
+ 
+@@ -1454,6 +1456,22 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
+     }
+ }
+ 
++void MemoryManager::leaveRoomAfterSweep()
++{
++    // A miss starts a cycle once what's held passes twice what the sweep left in use, and a
++    // fragmented heap holds that much straight after its sweep, so a cycle that ended let the
++    // next miss start another. Counting what's used as half of what's held and the room lets
++    // the heap grow by the room first.
++    if (roomAfterSweep == 0)
++        return;
++    const std::size_t held = blockAllocator.totalSlots() + icAllocator.totalSlots();
++    const std::size_t room = roomAfterSweep / Chunk::SlotSize;
++    usedSlotsAfterLastFullSweep = std::max(usedSlotsAfterLastFullSweep,
++                                           (held + room) * 100 / GCOverallocation);
++    unmanagedHeapSizeGCLimit = std::max(unmanagedHeapSizeGCLimit,
++                                        unmanagedHeapSize + roomAfterSweep);
++}
++
+ void MemoryManager::registerWeakMap(Heap::MapObject *map)
+ {
+     map->nextWeakMap = weakMaps;
+diff --git a/src/qml/memory/qv4mm_p.h b/src/qml/memory/qv4mm_p.h
+index 8dfce5f..ed96efc 100644
+--- a/src/qml/memory/qv4mm_p.h
++++ b/src/qml/memory/qv4mm_p.h
+@@ -433,6 +433,9 @@ public:
+ 
+     // called at the end of a gc cycle
+     void updateUnmanagedHeapSizeGCLimit();
++    // Called at the end of a gc cycle, after the limits are set, so the heap grows by at least
++    // roomAfterSweep, and its unmanaged part as much, before a miss or a string starts the next.
++    void leaveRoomAfterSweep();
+ 
+     template<typename ManagedType>
+     typename ManagedType::Data *allocIC()
+@@ -536,6 +539,10 @@ public:
+     std::size_t unmanagedHeapSize = 0; // the amount of bytes of heap that is not managed by the memory manager, but which is held onto by managed items.
+     std::size_t unmanagedHeapSizeGCLimit;
+     std::size_t usedSlotsAfterLastFullSweep = 0;
++    // Bytes the heap may grow by, and its unmanaged part as much, after each gc cycle before
++    // another starts. None by default: what's held after a sweep can stay over twice what's
++    // used in a fragmented heap, so every miss after it starts another cycle.
++    std::size_t roomAfterSweep = 0;
+ 
+     enum Blockness : quint8 {Unblocked, NormalBlocked, InCriticalSection };
+     Blockness gcBlocked = Unblocked;

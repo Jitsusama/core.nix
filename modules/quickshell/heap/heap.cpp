@@ -43,6 +43,12 @@
 // left outside the heap too, until the next collection sets the limit
 // again.
 //
+// The room is left after every collection too, by the shell's Qt
+// (qtdeclarative-room-after-every-sweep.patch), since the heap holds over
+// twice what's live straight after any sweep, not only the closing's: one
+// opening of Joel's shell ran two whole collections 16 s apart, each inside
+// a key, 115 ms of its 175 and 193 (2026-11-19).
+//
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,
 // where jemalloc's own counts split it: 80 MB in use, 7 MB of its own
@@ -198,6 +204,7 @@ void Heap::leaveRoom(double megabytes) {
         std::max(manager->usedSlotsAfterLastFullSweep, (held + room) / OVERALLOCATION);
     manager->unmanagedHeapSizeGCLimit =
         std::max(manager->unmanagedHeapSizeGCLimit, manager->unmanagedHeapSize + bytes);
+    manager->roomAfterSweep = bytes;
 }
 
 QVariantMap Heap::allocator() const {
