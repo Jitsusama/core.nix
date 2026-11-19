@@ -1729,7 +1729,7 @@ def test_keys_typed_as_it_opens_land_and_are_found(shell: Shell) -> None:
     assert latest(each) > timed, f"the opening was never timed: {each}"
     opening = each[-1]
     assert opening.get("kept"), f"the opening wasn't drawn from what was kept: {opening}"
-    assert opening.get("filledBy") in FILLERS, f"nothing filled it in: {opening}"
+    assert opening.get("filledBy") in FILLERS, f"none of {sorted(FILLERS)} filled it in: {opening}"
 
 
 def test_a_kept_opening_fills_in_on_its_first_frame(shell: Shell) -> None:

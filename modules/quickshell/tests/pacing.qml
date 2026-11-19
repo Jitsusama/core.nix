@@ -526,8 +526,10 @@ QtObject {
             Wanted.sharedMidOpening(begun(false, { unfilled: true, finding: true })), "");
         check(failures, "one begun with no opening under way does nothing",
             Wanted.sharedMidOpening(begun(true, {})), "");
-        // Found after it, home is searched again by a slice, a key or a
-        // click, but a chord only joins, and a step or a word finds its own.
+        // Found after it, home is searched again by a slice, a key, a click
+        // or a share, but a chord only joins, and a step or a word finds its
+        // own. Only a chord is told apart, so these pin only that none of them
+        // is ever told apart with it.
         const stands = { home: true, held: 0, typed: "" };
         for (const by of ["slice", "key", "click", "share"])
             check(failures, `found by a ${by}, home is searched again`,

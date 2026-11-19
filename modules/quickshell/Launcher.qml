@@ -11055,9 +11055,9 @@ Scope {
     function screenShared() {
         return Shared.hidden(Niri.castsHeard, Niri.casts, Recorder.windowSession);
     }
-    // Only for hearing a share begin (sharedMidOpening).
-    readonly property bool screenMayBeShared: Shared.hidden(Niri.castsHeard, Niri.casts,
-        Recorder.windowSession)
+    // Only for hearing a share begin (sharedMidOpening). It reads the same
+    // function, whose every input the binding hears, so the two can't drift.
+    readonly property bool screenMayBeShared: screenShared()
     onScreenMayBeSharedChanged: Qt.callLater(sharedMidOpening)
     // A share begun while the card shows what it kept, before its fill or
     // before home is found after it, would be shown those rows, made before
@@ -11068,7 +11068,8 @@ Scope {
     // has turned, so the fill reads them whole. A card still waiting on
     // niri's size is filled too, as a click fills it, since what it shows
     // may not be seen. The wait for niri is left armed, so a fill that
-    // throws is still tried again half a second on (presentedFill).
+    // throws before the card opens is still tried again half a second on
+    // (presentedFill); one that throws after is as any fill's throw is.
     function sharedMidOpening() {
         const how = Wanted.sharedMidOpening({ shared: screenShared(),
             unfilled: opening && !open, finding: fillFinding });
@@ -11082,8 +11083,7 @@ Scope {
             return;
         const name = openInto === "" ? "home" : openInto;
         filled("share");
-        if (openFilledBy === "share")
-            console.info(`launcher: ${name} filled in at once, as ${sharedWhy()}`);
+        console.info(`launcher: ${name} filled in at once, as ${sharedWhy()}`);
     }
     // Why it may be, for the journal: a cast seen, or niri yet to say.
     function sharedWhy() {
@@ -11442,7 +11442,8 @@ Scope {
     }
 
     // Whether the opening began from what was kept, and what filled it in:
-    // its first frame, or a key or a click before that frame was drawn,
+    // its first frame, or a key, a click or a share begun before that
+    // frame was drawn,
     // whose fill's record is made once the frame's is, since it's that
     // opening's; home's, once home is found again after it (fillFound),
     // though each fill is said as it ends. Its sources'
@@ -11822,7 +11823,7 @@ Scope {
 
     // Whether a fill has still to join the choices, and find home again
     // where it fills home, which the first slice after its frame does
-    // (wakeNext), or a key, a click or a chord before that, so each acts
+    // (wakeNext), or a key, a click, a chord or a share before that, so each acts
     // on home found now rather than as it was kept; a refresh waits for
     // it. Home is found from what each source made last, as it was inside
     // `open` before, and a row held as it will be that now reads so is let
@@ -11853,7 +11854,7 @@ Scope {
         fillFoundBy = by;
         const began = KeyTimes.now();
         const joinedBefore = choicesJoined;
-        // A key, a click or a chord runs it once filled() has, so it's
+        // A key, a click, a chord or a share runs it once filled() has, so it's
         // timed from the fill's end as a slice is.
         fillFoundFrom = began - wakeBegan;
         // A throw is said and goes no further, so the slice still wakes

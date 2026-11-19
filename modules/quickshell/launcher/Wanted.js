@@ -191,7 +191,7 @@ function sharedMidOpening(opening) {
     return opening.finding === true ? "find" : "";
 }
 
-// Whether that slice, or a key, a click or a chord run before it, searches
+// Whether that slice, or a key, a click, a chord or a share run before it, searches
 // home again rather than only joining: only where the open would have
 // found home, and never for a chord, which steps away from it at once, or
 // once a step taken or a word typed has found its own.
