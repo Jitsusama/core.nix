@@ -2040,10 +2040,16 @@ const NEW: &str = "2222222222222222";
 impl Home {
     /// A cargo source over `src`, whose app's target holds an older
     /// build of it, last written five days ago, beside the newest.
-    fn replaced_build(&self, filling: &str) -> (Config, PathBuf) {
-        let app = self.root.join("src/app");
+    /// A crate `name` under `src`, built twice, its older build five days
+    /// old, answering its `deps` folder.
+    fn replaced_crate(&self, name: &str) -> PathBuf {
+        let app = self.root.join("src").join(name);
         fs::create_dir_all(app.join("src")).unwrap();
-        fs::write(app.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
+        fs::write(
+            app.join("Cargo.toml"),
+            format!("[package]\nname = \"{name}\"\n"),
+        )
+        .unwrap();
         let deps = app.join("target/debug/deps");
         fs::create_dir_all(&deps).unwrap();
         fs::write(
@@ -2052,12 +2058,21 @@ impl Home {
         )
         .unwrap();
         for digest in [OLD, NEW] {
-            fs::write(deps.join(format!("libapp-{digest}.rlib")), "x".repeat(4096)).unwrap();
+            fs::write(
+                deps.join(format!("lib{name}-{digest}.rlib")),
+                "x".repeat(4096),
+            )
+            .unwrap();
         }
         touch(
-            &deps.join(format!("libapp-{OLD}.rlib")),
+            &deps.join(format!("lib{name}-{OLD}.rlib")),
             crate::whole_seconds(wall()) - 5 * 86_400,
         );
+        deps
+    }
+
+    fn replaced_build(&self, filling: &str) -> (Config, PathBuf) {
+        let deps = self.replaced_crate("app");
         let config = Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
                  "bands": {{ "filling": "{filling}", "nearly_full": "0%", "critically_full": "0%",
@@ -2092,6 +2107,73 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
             .any(|line| line["path"] == taken.to_string_lossy().as_ref()),
         "{:?}",
         home.journal()
+    );
+}
+
+#[test]
+fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_bytes() {
+    // So whoever reads how fast a build fills sees what each sweep took
+    // from it, not only a line per artifact.
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("100%");
+    // A second older build of the crate, so the line sums two.
+    let second = deps.join("libapp-3333333333333333.rlib");
+    fs::write(&second, "x".repeat(4096)).unwrap();
+    touch(&second, crate::whole_seconds(wall()) - 5 * 86_400);
+    // Another target, whose cargo holds its lock, so its older build is
+    // kept and must not be counted as gone.
+    let held = home.replaced_crate("held");
+    let lock_path = held.parent().unwrap().join(".cargo-lock");
+    fs::write(&lock_path, "").unwrap();
+    let lock = fs::File::open(&lock_path).unwrap();
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::LockShared).unwrap();
+    let mut uses = Uses::default();
+    uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    uses.watching(&held, wall() - 3.0 * 86_400.0);
+    disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
+    let mut guard = home.guard(config);
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        held.join(format!("libheld-{OLD}.rlib")).exists(),
+        "the build cargo's lock holds was taken, so this case tests nothing"
+    );
+    let target = deps.parent().unwrap().parent().unwrap();
+    let journal = home.journal();
+    let tried = held.join(format!("held-{OLD}"));
+    assert!(
+        journal.iter().any(|line| line["event"] == "action"
+            && line["path"] == tried.to_string_lossy().as_ref()
+            && line["outcome"] == "kept"),
+        "the held build was never tried, so this case tests nothing: {journal:?}"
+    );
+    let swept: Vec<_> = journal
+        .iter()
+        .filter(|line| line["event"] == "replaced")
+        .collect();
+    assert_eq!(
+        swept.len(),
+        1,
+        "a pass left other than one line for the one target it took from: {journal:?}"
+    );
+    assert_eq!(
+        (&swept[0]["target"], &swept[0]["count"], &swept[0]["bytes"]),
+        (
+            &serde_json::json!(target),
+            &serde_json::json!(2),
+            &serde_json::json!(8192)
+        ),
+        "the target's line says the wrong target, count or bytes"
+    );
+    let passed = journal.iter().position(|line| line["event"] == "pass");
+    let replaced = journal.iter().position(|line| line["event"] == "replaced");
+    assert!(
+        passed.is_some() && passed < replaced,
+        "the replaced lines came before the pass's own: {journal:?}"
+    );
+    assert!(
+        swept[0]["band"].is_string()
+            && passed.is_some_and(|at| swept[0]["band"] == journal[at]["band"]),
+        "a replaced line didn't name its pass's band: {journal:?}"
     );
 }
 

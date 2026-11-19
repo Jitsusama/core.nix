@@ -58,6 +58,8 @@ mod procs;
 mod quest_temp;
 mod reclaim;
 mod replaced;
+#[cfg(target_os = "linux")]
+mod replaced_survey;
 mod sandbox;
 mod scratch;
 #[cfg(target_os = "linux")]

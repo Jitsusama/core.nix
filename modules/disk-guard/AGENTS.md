@@ -29,7 +29,7 @@ or launchd, and [`home.nix`][2] the account's.
   garbage, idle build variants and cold scratch, producers' own collection,
   caches cheapest to refill first (from their own band on, and before it
   once nothing has written to one for a week), idle targets and installs, older builds a
-  newer one of their crate replaced, and last what is occupied. Waste,
+  newer one of their crate or unit replaced, and last what is occupied. Waste,
   which costs nothing to lose, goes largest first; the rest of a group
   goes longest idle first. While
   healthy, routine upkeep takes what's due every six hours: on the charger or a
@@ -98,9 +98,9 @@ or launchd, and [`home.nix`][2] the account's.
   one after lost events, and every build where nothing hears, as on
   macOS, in `plan`, or once the watch or its listener fails, keeps the
   hour, and the guard says how many folders it couldn't mark and why.
-  A failed read or a record it can't parse counts as lost events, and
-  the listener tries again a second later; five failures in a row, or
-  a panic, end it. A guard whose listener ended, or a daemon with no
+  A record it can't parse counts as lost events. So does a failed read,
+  after which the listener tries again a second later; five failed
+  reads in a row, or a panic, end it. A guard whose listener ended, or a daemon with no
   watch, forgets what it watched and marks nothing more, in its saved
   record too, so it and the next guard keep replaced builds until they
   have watched them afresh. `plan` and `explain` never listen, and read
@@ -226,9 +226,36 @@ or launchd, and [`home.nix`][2] the account's.
   saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with
   fanotify and keeps when each artifact was last opened in `uses.json`, since
-  under noatime nothing on disk says. Once a disk is filling, a build of a crate with a
-  newer one beside it goes once nothing has opened it for a day and an hour,
-  with cargo's locks held; a `deps` never watched dates nothing.
+  under noatime nothing on disk says. A replaced build is an older build
+  beside a newer one: of its crate, for a library, or of its unit, for an
+  executable, which is its package and target as its fingerprint names
+  them, so a binary and its tests, or two packages' tests of one name,
+  never replace each other. An executable with no fingerprint is never
+  offered. Once a disk is filling, one goes once nothing has opened it for
+  a day and an hour. In a `cargo` source given a budget, an executable a
+  newer build of its own variant replaced goes, whatever the band, once
+  this guard has heard its `deps` for an awake hour and nothing opened it
+  in that hour: on 18 November a gate's build held 28 GiB of test binaries
+  a newer build had replaced, nearly all one to six hours old, and filled
+  its disk hours later. The variant is the compiler, features, target,
+  profile and mode, kind, flags and config its fingerprint names, so there a
+  test built two ways keeps each way's newest. In a budget a library never
+  goes by the hour: on 19 November 12 of the 35 units built three or more
+  times here held live builds differing only in how a dependency was
+  built, which nothing tells from a replacement, and every crate above a
+  library builds from it, where a live executable so taken costs only the
+  link its next run makes. A pinned snapshot's older builds, of either
+  kind, go an hour unused. A build with a file cargo shares with its
+  profile, as the binary a person runs is, never goes, since taking it
+  frees nothing. Each goes
+  with cargo's locks held, and only while no process works in its target
+  by its cwd, files, executable or maps, and no builder sits in its
+  checkout or names it, since a cargo starting up holds no lock yet; a
+  build running there keeps them all until it ends. A
+  shell or editor that only sits there keeps nothing, since nothing builds
+  from an older build. A `deps` never watched dates nothing. Each pass that
+  took any journals a `replaced` line per target, saying how many went and
+  their bytes.
 - **Freezing.** Once critically full with nothing left to take, the account's guard
   freezes the process that wrote more than half of the last minute's writes,
   at a mebibyte a second or more, with a file open on that disk: it and its

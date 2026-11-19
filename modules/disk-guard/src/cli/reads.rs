@@ -381,6 +381,18 @@ fn said(entry: &Value) -> [String; 4] {
                     .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
             ),
         ],
+        Some("replaced") => [
+            "swept".to_owned(),
+            "replaced".to_owned(),
+            size(entry["bytes"].as_u64().unwrap_or(0)),
+            match entry["count"].as_u64().unwrap_or(0) {
+                1 => format!("1 build from {}", entry["target"].as_str().unwrap_or("?")),
+                count => format!(
+                    "{count} builds from {}",
+                    entry["target"].as_str().unwrap_or("?")
+                ),
+            },
+        ],
         other => [
             other.unwrap_or("?").to_owned(),
             String::new(),

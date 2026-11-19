@@ -1,7 +1,10 @@
-//! Replaced builds: the older builds of a crate a target holds beside a
-//! newer one, which cargo keeps until the target goes. A change of
-//! features, flags or a dependency's version gives a crate a new digest,
-//! and a busy checkout gathers them for as long as it's built in.
+//! Replaced builds: the older builds of a crate, or of a test or binary,
+//! a target holds beside a newer one, which cargo keeps until the target
+//! goes. A change of features, flags, profile, toolchain or a dependency
+//! gives a unit a new digest, while a change to its own code rebuilds it
+//! in place, so a busy checkout gathers them for as long as it's built in.
+//! Not every one is done with: a crate checked and built, or built with
+//! two sets of features, holds a live build of each.
 
 use crate::age::mtime;
 use regex_lite::Regex;
@@ -12,8 +15,8 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-/// One build of a crate in a profile's `deps`: its library artifacts and
-/// dep-info, and the fingerprint cargo judges it by.
+/// One build in a profile's `deps`: a crate's library artifacts, or an
+/// executable, with its dep-info, and the fingerprint cargo judges it by.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Build {
     pub deps: PathBuf,
@@ -21,10 +24,63 @@ pub struct Build {
     pub digest: String,
     pub files: Vec<PathBuf>,
     pub fingerprint: Option<PathBuf>,
+    /// The unit an executable was built for, as its fingerprint says: an
+    /// executable without one is never a build. Nothing for a library.
+    pub unit: Option<Unit>,
+    /// Whether a newer build of its own unit and variant replaced it,
+    /// which only an executable's can, as `replaced` answers: only then
+    /// is it taken as done with, and [`Unit`] says why. A live build that
+    /// differs from a newer one only in how a dependency was built reads
+    /// the same, and costs the link its next run makes again.
+    pub in_variant: bool,
     /// When its newest file was written, in wall seconds.
     pub written: f64,
     pub size: u64,
 }
+
+/// What an executable was built as, by its fingerprint.
+///
+/// On 19 November this account's builds held 35 units with three or
+/// more builds, each unit's all made within 20 minutes: 12 held more
+/// builds than variants, differing only in how a dependency was built,
+/// as cargo's resolver builds one twice for a test and a build.
+/// Nothing in a fingerprint tells that from a replacement, so a
+/// library, which every crate above it builds from, is never judged
+/// done with by its variant. An executable is: nothing builds from one,
+/// so taking one still in use costs its own link, and 28 GiB of them
+/// was what filled a builds disk on 18 November.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Unit {
+    /// Its package and the name its fingerprint gives it, such as
+    /// `server/test-integration-test-integration`. A binary and its unit
+    /// tests share a crate name, as two packages' tests can.
+    pub name: String,
+    /// Its features, target, profile and mode, kind, flags, config and
+    /// compiler, as cargo hashes them: a test built with two sets of
+    /// features, under two profiles or by two toolchains, holds a build of
+    /// each, both in use.
+    pub variant: String,
+}
+
+/// The most of a fingerprint's JSON read: cargo writes a few hundred
+/// bytes, and a folder anyone can clone may plant a larger file there.
+const FINGERPRINT_BYTES: u64 = 256 << 10;
+
+/// What of a fingerprint's JSON says which variant of a unit a build is,
+/// leaving what changes when a build replaces another: the dependencies,
+/// the features its manifest declares and its source path. The target's
+/// hash leaves out where its source lies, so a checkout moved, or a
+/// snapshot of a later commit, builds the same variant: on 19 November
+/// this account's builds of syn from five source paths shared one.
+const VARIANT: [&str; 7] = [
+    "rustc",
+    "features",
+    "target",
+    "profile",
+    "compile_kind",
+    "rustflags",
+    "config",
+];
 
 /// When each file the watch marks was last opened, as it saw it, and since
 /// when each folder it marks has been watched. Kept across restarts,
@@ -147,15 +203,27 @@ impl Uses {
     }
 }
 
+/// The suffixes a library's files take, which [`LIBRARY`] reads.
+pub const LIBRARY_SUFFIXES: [&str; 5] = ["rlib", "rmeta", "so", "a", "dylib"];
+
 /// A library cargo built, which later builds read: `lib<crate>-<digest>`
-/// with the library's own suffix. Binaries and tests are nobody's input.
+/// with the library's own suffix.
 static LIBRARY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^lib(?P<name>\w+)-(?P<digest>[0-9a-f]{16})\.(rlib|rmeta|so|a|dylib)$").unwrap()
+    let suffixes = LIBRARY_SUFFIXES.join("|");
+    Regex::new(&format!(
+        r"^lib(?P<name>\w+)-(?P<digest>[0-9a-f]{{16}})\.({suffixes})$"
+    ))
+    .unwrap()
 });
 
 /// The dep-info rustc writes beside it, named without the prefix.
 static DEP_INFO: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(?P<name>\w+)-(?P<digest>[0-9a-f]{16})\.d$").unwrap());
+
+/// An executable cargo built, a test, benchmark or binary: named as its
+/// dep-info is, with no suffix, and executable.
+static EXECUTABLE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?P<name>\w+)-(?P<digest>[0-9a-f]{16})$").unwrap());
 
 /// Each profile's `deps` in a target: `<profile>/deps`, and a cross
 /// target's `<triple>/<profile>/deps`. Never through a symlink, and never
@@ -203,42 +271,96 @@ pub fn replaced(target: &Path) -> Vec<Build> {
         .collect()
 }
 
-/// The builds in one `deps`, by crate and digest, holding a library.
+/// Whether any file of the build `path` names still stands. An offer
+/// names a build by its `deps/<name>-<digest>`, a file only an executable
+/// has: a library is its `lib<name>-<digest>` files and its dep-info.
+pub fn stands(path: &Path) -> bool {
+    let (Some(deps), Some(stem)) = (path.parent(), path.file_name().and_then(|s| s.to_str()))
+    else {
+        return false;
+    };
+    [stem.to_owned(), format!("{stem}.d")]
+        .into_iter()
+        .chain(
+            LIBRARY_SUFFIXES
+                .iter()
+                .map(|suffix| format!("lib{stem}.{suffix}")),
+        )
+        .any(|file| deps.join(file).symlink_metadata().is_ok())
+}
+
+/// What a build in `deps` holds besides its dep-info.
+#[derive(Clone, Copy, Default, PartialEq)]
+enum Made {
+    #[default]
+    Nothing,
+    Library,
+    Executable,
+}
+
+/// Whether `entry` is a file that runs.
+fn runs(entry: &fs::DirEntry) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    entry
+        .metadata()
+        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+}
+
+/// The builds in one `deps`, by name and digest, holding a library or an
+/// executable whose fingerprint names its unit.
 fn builds(deps: &Path) -> Vec<Build> {
     let Ok(entries) = fs::read_dir(deps) else {
         return Vec::new();
     };
-    let mut groups: BTreeMap<(String, String), (Vec<PathBuf>, bool)> = BTreeMap::new();
+    let mut groups: BTreeMap<(String, String), (Vec<PathBuf>, Made)> = BTreeMap::new();
     for entry in entries.filter_map(Result::ok) {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
-        let (parsed, library) = match LIBRARY.captures(name) {
-            Some(parsed) => (parsed, true),
-            None => match DEP_INFO.captures(name) {
-                Some(parsed) => (parsed, false),
-                None => continue,
-            },
+        let (parsed, made) = if let Some(parsed) = LIBRARY.captures(name) {
+            (parsed, Made::Library)
+        } else if let Some(parsed) = DEP_INFO.captures(name) {
+            (parsed, Made::Nothing)
+        } else if let Some(parsed) = EXECUTABLE.captures(name)
+            && runs(&entry)
+        {
+            (parsed, Made::Executable)
+        } else {
+            continue;
         };
         let key = (parsed["name"].to_owned(), parsed["digest"].to_owned());
         let group = groups.entry(key).or_default();
         group.0.push(entry.path());
-        group.1 |= library;
+        if made != Made::Nothing {
+            group.1 = made;
+        }
     }
-    let fingerprints = deps.parent().map(|profile| profile.join(".fingerprint"));
+    let fingerprints = match deps.parent() {
+        Some(profile) => fingerprints(&profile.join(".fingerprint")),
+        None => BTreeMap::new(),
+    };
     groups
         .into_iter()
-        .filter(|(_, (_, library))| *library)
-        .map(|((name, digest), (mut files, _))| {
+        .filter_map(|((name, digest), (mut files, made))| {
+            if made == Made::Nothing {
+                return None;
+            }
+            let fingerprint = fingerprints.get(&digest).cloned();
+            let unit = if made == Made::Executable {
+                // Nothing else says which unit an executable is.
+                Some(unit(fingerprint.as_deref()?, &digest)?)
+            } else {
+                None
+            };
             files.sort();
             let metadata: Vec<_> = files
                 .iter()
                 .filter_map(|f| f.symlink_metadata().ok())
                 .collect();
-            Build {
+            Some(Build {
                 deps: deps.to_owned(),
-                fingerprint: fingerprints
-                    .as_deref()
-                    .and_then(|dir| fingerprint(dir, &digest)),
+                fingerprint,
+                unit,
+                in_variant: false,
                 written: files
                     .iter()
                     .filter_map(|file| mtime(file))
@@ -247,40 +369,132 @@ fn builds(deps: &Path) -> Vec<Build> {
                 name,
                 digest,
                 files,
-            }
+            })
         })
         .collect()
 }
 
-/// All but the newest build of each crate.
-fn older(builds: Vec<Build>) -> Vec<Build> {
-    let mut by_crate: BTreeMap<String, Vec<Build>> = BTreeMap::new();
-    for build in builds {
-        by_crate.entry(build.name.clone()).or_default().push(build);
+/// The unit a build's fingerprint is for: its package and the name it
+/// gives the unit, the one file in it that isn't its dep-info, its JSON,
+/// when it was invoked, or a build script's output; and the variant its
+/// JSON beside that file names. Nothing when any of it can't be read.
+fn unit(fingerprint: &Path, digest: &str) -> Option<Unit> {
+    let package = fingerprint
+        .file_name()?
+        .to_str()?
+        .strip_suffix(&format!("-{digest}"))?;
+    let mut names: Vec<String> = fs::read_dir(fingerprint)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| {
+            !(name.starts_with("dep-")
+                || name.starts_with("output-")
+                || Path::new(name)
+                    .extension()
+                    .is_some_and(|suffix| suffix.eq_ignore_ascii_case("json"))
+                || name == "invoked.timestamp")
+        })
+        .collect();
+    names.sort();
+    let [unit] = &names[..] else { return None };
+    let json = small_file(&fingerprint.join(format!("{unit}.json")))?;
+    let json: serde_json::Value = serde_json::from_slice(&json).ok()?;
+    let variant = VARIANT
+        .iter()
+        .map(|field| json.get(field).map(ToString::to_string))
+        .collect::<Option<Vec<_>>>()?
+        .join(" ");
+    Some(Unit {
+        name: format!("{package}/{unit}"),
+        variant,
+    })
+}
+
+/// A regular file's first [`FINGERPRINT_BYTES`], read without following
+/// a link or waiting on a pipe. Nothing when it can't be read so.
+fn small_file(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    let flags =
+        rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::NOCTTY;
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(i32::try_from(flags.bits()).ok()?)
+        .open(path)
+        .ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
     }
-    by_crate
-        .into_values()
+    let mut read = Vec::new();
+    file.take(FINGERPRINT_BYTES).read_to_end(&mut read).ok()?;
+    Some(read)
+}
+
+/// All but the newest build of each executable's unit and each crate's
+/// library, each marked for whether a newer build of its own unit and
+/// variant is among them, leaving any a profile shares a file with: an
+/// executable cargo copied up as the profile's own binary is the one a
+/// person runs.
+fn older(builds: Vec<Build>) -> Vec<Build> {
+    let mut kin: BTreeMap<String, Vec<Build>> = BTreeMap::new();
+    for build in builds {
+        // A binary and its tests share a crate name, as two packages'
+        // tests can. A library is known by its crate alone, as a build
+        // with no fingerprint can be, since only a day unopened judges it.
+        let key = match &build.unit {
+            Some(unit) => format!("unit {}", unit.name),
+            None => format!("crate {}", build.name),
+        };
+        kin.entry(key).or_default().push(build);
+    }
+    kin.into_values()
         .flat_map(|mut builds| {
             builds.sort_by(|a, b| {
                 (a.written, &a.digest)
                     .partial_cmp(&(b.written, &b.digest))
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
+            let variants: Vec<Option<String>> = builds
+                .iter()
+                .map(|build| build.unit.as_ref().map(|unit| unit.variant.clone()))
+                .collect();
             builds.pop();
             builds
+                .into_iter()
+                .enumerate()
+                .map(|(at, mut build)| {
+                    build.in_variant =
+                        variants[at].is_some() && variants[at + 1..].contains(&variants[at]);
+                    build
+                })
+                .collect::<Vec<_>>()
         })
+        .filter(|build| !shared(build))
         .collect()
 }
 
-/// The fingerprint directory of a build: its package's name, which may
-/// differ from the crate's, and the same digest.
-fn fingerprint(dir: &Path, digest: &str) -> Option<PathBuf> {
-    let suffix = format!("-{digest}");
-    subdirs(dir).into_iter().find(|path| {
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with(&suffix))
+/// Whether another name holds one of a build's files, as cargo's copy of
+/// a binary up into its profile does.
+fn shared(build: &Build) -> bool {
+    build.files.iter().any(|file| {
+        file.symlink_metadata()
+            .is_ok_and(|meta| meta.is_file() && meta.nlink() > 1)
     })
+}
+
+/// Each fingerprint directory in `dir`, by its digest: it is named for
+/// its package, which may differ from the crate, and the build's digest.
+/// Read once a profile, since a busy one holds thousands.
+fn fingerprints(dir: &Path) -> BTreeMap<String, PathBuf> {
+    subdirs(dir)
+        .into_iter()
+        .filter_map(|path| {
+            let name = path.file_name()?.to_str()?;
+            let (_, digest) = name.rsplit_once('-')?;
+            Some((digest.to_owned(), path))
+        })
+        .collect()
 }
 
 fn subdirs(dir: &Path) -> Vec<PathBuf> {

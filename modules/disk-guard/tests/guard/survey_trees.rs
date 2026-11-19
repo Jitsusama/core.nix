@@ -449,7 +449,10 @@ fn aged(path: &Path, hours: f64) {
 /// Checkouts under one root, each with a build last used `hours` ago,
 /// made in the order given, and a cargo source over them with `budget`
 /// bytes: as much as one build holds, times `builds`.
-fn budgeted(checkouts: &[(&str, f64)], builds: u64) -> (tempfile::TempDir, Vec<PathBuf>, Config) {
+pub(crate) fn budgeted(
+    checkouts: &[(&str, f64)],
+    builds: u64,
+) -> (tempfile::TempDir, Vec<PathBuf>, Config) {
     let kept = tempfile::tempdir().unwrap();
     let home = real(kept.path());
     let roots = dir(&home.join("src"));
@@ -708,7 +711,7 @@ fn a_suspend_ages_neither_a_builds_last_open_nor_its_marks() {
 /// profiles and `deps` for `hours` and nothing was opened in them. On a
 /// Mac, which gives no folder a handle, the marks name none, as nothing
 /// there can.
-fn heard(apps: &[PathBuf], hours: f64) -> Uses {
+pub(crate) fn heard(apps: &[PathBuf], hours: f64) -> Uses {
     let mut uses = Uses::default();
     for app in apps {
         for dir in watched_dirs(&app.join("target")) {

@@ -17,7 +17,7 @@ use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::opens::Seen;
 use crate::pace::{Monotonic, Pacer, Probe};
-use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
+use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, Report, pass};
 use crate::plan::{Candidate, Class};
 use crate::pool::pool;
 use crate::replaced::Uses;
@@ -395,6 +395,14 @@ pub struct Guard {
     /// Whether garbage is to be listed again at once, generations having
     /// expired since the listing began, or a batch having found it stale.
     relist: bool,
+    /// What this round's passes have tried, so the pass on the disk beneath
+    /// an image doesn't try again what the image's own pass did: a target
+    /// taken stays an empty folder, a trimmed log stays, and a command
+    /// leaves nothing to look at. A kept one counts too: an install kept
+    /// as written again while it was cleared has been emptied once, and a
+    /// second pass would empty what its owner just wrote. The next round
+    /// tries again.
+    tried: BTreeSet<PathBuf>,
     /// Whether a batch from the listing held was refused as stale. Builds
     /// root again what a listing called dead, on 28 October 538 roots
     /// reaching into one batch of 2,000 two minutes after it was made, so
@@ -784,6 +792,7 @@ impl Guard {
             running: places.running.clone(),
             system_heard: false,
             relist: false,
+            tried: BTreeSet::new(),
             stale_listing: false,
             refused: BTreeSet::new(),
             holding: None,
@@ -2291,11 +2300,12 @@ impl Guard {
         self.watched
             .get(&offer.device)
             .is_some_and(|watched| watched.backing.is_some())
-            && fs::symlink_metadata(&offer.candidate.path).is_err()
+            && crate::survey::gone(&offer.candidate, &self.tried)
     }
 
     /// Surveys once and runs each filesystem's pass over what lies on it.
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
+        self.tried.clear();
         // Garbage alone needs no survey, which walks every source.
         let (mut scan, offers) = if due
             .iter()
@@ -2675,13 +2685,36 @@ impl Guard {
             self.failed = None;
         }
         self.last = Some(last);
+        // After the pass's own line, and told of rather than returned when
+        // refused, as a full disk's journal does: the pass has done its
+        // work, so they cost it neither its record nor the rest of the step.
+        self.journal_replaced(here, &report, tick.wall);
         Ok(report.end)
+    }
+
+    /// Journals how many replaced builds a pass took from each target among
+    /// `here`'s offers, and their bytes.
+    fn journal_replaced(&mut self, here: &[Offer], report: &Report, at: f64) {
+        for (target, (count, bytes)) in replaced_taken(here, &report.actions) {
+            let from = target.display().to_string();
+            let line = Line::Replaced {
+                at,
+                band: report.band,
+                target,
+                count,
+                bytes,
+            };
+            if let Err(error) = self.journal.write(&line) {
+                eprintln!("disk-guard: journalling the builds taken from {from}: {error}");
+            }
+        }
     }
 
     /// Notes what came of each action a pass took, whatever it was, so a
     /// failing command waits its window too.
     fn note_actions(&mut self, here: &[Offer], actions: &[(PathBuf, Outcome)], wall: f64) {
         for (taken, outcome) in actions {
+            self.tried.insert(taken.clone());
             if *outcome == Outcome::Reclaimed
                 && let Some(offered) = &mut self.offered
             {
@@ -3325,6 +3358,29 @@ fn mounted(path: &Path, device: u64) -> PathBuf {
 fn written_since(meta: &fs::Metadata, listed_at: f64) -> bool {
     use std::os::unix::fs::MetadataExt;
     crate::units::wall(meta.ctime(), meta.ctime_nsec()) > listed_at
+}
+
+/// How many replaced builds a pass took from each target among `here`'s
+/// offers, and their bytes.
+fn replaced_taken(here: &[Offer], actions: &[(PathBuf, Outcome)]) -> BTreeMap<PathBuf, (u64, u64)> {
+    let mut taken: BTreeMap<PathBuf, (u64, u64)> = BTreeMap::new();
+    for (path, outcome) in actions {
+        if *outcome != Outcome::Reclaimed {
+            continue;
+        }
+        let offered = here.iter().find(|offer| &offer.candidate.path == path);
+        if let Some(Offer {
+            candidate,
+            action: Action::Build { target, .. },
+            ..
+        }) = offered
+        {
+            let (count, bytes) = taken.entry(target.clone()).or_default();
+            *count += 1;
+            *bytes += candidate.size;
+        }
+    }
+    taken
 }
 
 /// Whether a delete failed for garbage that came alive since the listing.

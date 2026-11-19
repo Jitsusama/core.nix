@@ -40,6 +40,10 @@ pub struct Scan {
     me: u32,
     fresh: Duration,
     seen: Option<(Instant, Vec<Process>)>,
+    /// What each target was judged against the processes in `seen`, so a
+    /// pass taking many builds from one target walks every process's
+    /// files once a reading rather than once a build. Cleared with it.
+    judged: Vec<(PathBuf, Option<PathBuf>, Use)>,
     voucher: Option<Voucher>,
     /// Whether the system daemon couldn't be asked at some point in this
     /// scan's life, so what it judged then may have been kept for want of
@@ -78,6 +82,7 @@ impl Scan {
             me,
             fresh,
             seen: None,
+            judged: Vec::new(),
             voucher: None,
             went_unheard: false,
         }
@@ -183,6 +188,7 @@ impl Scan {
                     || crate::sys::started(&self.proc, process.pid) == Some(process.start_ticks)
             });
             self.seen = Some((Instant::now(), processes));
+            self.judged.clear();
         }
         Ok(self.seen.as_ref().map_or(&[], |(_, processes)| processes))
     }
@@ -192,17 +198,28 @@ impl Looker for Scan {
     fn judge(&mut self, target: &Path, checkout: Option<&Path>) -> io::Result<Use> {
         let me = self.me;
         let within = crate::discover::enclosing(target);
-        Ok(activity::judge_within(
-            self.processes()?,
-            me,
-            target,
-            checkout,
-            within.as_deref(),
-        ))
+        // Read afresh when stale first, which forgets what was judged.
+        self.processes()?;
+        if let Some((_, _, used)) = self
+            .judged
+            .iter()
+            .find(|(path, place, _)| path == target && place.as_deref() == checkout)
+        {
+            return Ok(*used);
+        }
+        let processes = self
+            .seen
+            .as_ref()
+            .map_or(&[][..], |(_, seen)| seen.as_slice());
+        let used = activity::judge_within(processes, me, target, checkout, within.as_deref());
+        self.judged
+            .push((target.to_owned(), checkout.map(Path::to_owned), used));
+        Ok(used)
     }
 
     fn moved(&mut self) {
         self.seen = None;
+        self.judged.clear();
     }
 
     fn waiters(&mut self, inodes: &[u64]) -> io::Result<Vec<i32>> {
@@ -547,7 +564,9 @@ impl Reclaimer for Reclaim<'_> {
             Action::Variant { .. } => {
                 reclaim::variant(&root, root_path, candidate, SystemTime::now())
             }
-            Action::Build { target, .. } => reclaim::build(&root, root_path, target, candidate),
+            Action::Build { target, .. } => {
+                reclaim::build(&root, root_path, target, candidate, self.scan)
+            }
             Action::Entry { .. } | Action::LiveEntry { .. } => {
                 let written = action.surveyed_write();
                 reclaim::live_entry(

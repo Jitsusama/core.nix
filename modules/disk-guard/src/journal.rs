@@ -55,6 +55,16 @@ pub enum Line {
         freed: u64,
         seconds: f64,
     },
+    /// How many replaced builds a pass took from one target, and their
+    /// bytes, so how fast a build fills can be read beside what each
+    /// sweep took from it.
+    Replaced {
+        at: f64,
+        band: Band,
+        target: PathBuf,
+        count: u64,
+        bytes: u64,
+    },
 }
 
 impl Line {
@@ -91,6 +101,16 @@ impl Line {
             Line::Begin { at, path, root } => {
                 json!({ "event": "begin", "at": at, "path": path, "root": root })
             }
+            Line::Replaced {
+                at,
+                band,
+                target,
+                count,
+                bytes,
+            } => json!({
+                "event": "replaced", "at": at, "band": band, "target": target,
+                "count": count, "bytes": bytes,
+            }),
         }
     }
 }
