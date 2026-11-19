@@ -241,7 +241,8 @@ Provider {
     function probeFor(names) {
         const queued = asking.map(one => one.name)
             .concat(probing && !probing.done ? [probing.name] : []);
-        asking = asking.concat(names.filter(name => !queued.includes(name))
+        asking = asking.concat(names.filter(name => !queued.includes(name)
+            && probesHung[name] === undefined)
             .map(name => ({ name: name, files: ["uevent"], said: {} })));
         if (probing === null)
             probeNext();
@@ -258,6 +259,7 @@ Provider {
 
     function probeFile() {
         probeWatch.restart();
+        probing.inFlight = true;
         const name = probing.name;
         probed[name] = (probed[name] ?? 0) + 1;
         const path = `${interfaces}/${name}/${probing.files[0]}`;
@@ -276,6 +278,7 @@ Provider {
         const one = probing;
         if (one === null)
             return;
+        one.inFlight = false;
         one.said[one.files[0]] = text.trim();
         one.files = one.files.slice(1);
         const kept = interfaceKinds[one.name];
@@ -620,18 +623,53 @@ Provider {
 
     // A file that never lands, or a turn that throws, would leave the
     // probe waiting for good and every interface after it left out, so
-    // one that takes this long is given up; the next load asks again.
-    // Pointed at no file, the probe lets go of the read under way, so one
-    // that lands after it's given up is dropped: Quickshell's FileView
-    // disconnects the reader it cancels and ignores one no longer live.
+    // one that takes this long is given up and the next asked. A view
+    // pointed elsewhere drops its late read, but the read still holds its
+    // thread, so the view still reading is kept by its interface
+    // (probesHung), another made for the next, and the interface isn't
+    // asked again until that view lands.
     Timer {
         id: probeWatch
         interval: 2 * provider.second
-        onTriggered: {
-            provider.probing = null;
-            probe.path = "";
-            provider.probeNext();
+        onTriggered: provider.probeGivenUp()
+    }
+    property alias probeWatching: probeWatch.running
+
+    // Each interface given up with its file still reading, by its name,
+    // with the view that reads it: a read that hangs can't be called off,
+    // and asked again through another view it would take another thread,
+    // so the interface isn't asked again until it lands.
+    property var probesHung: Object.create(null)
+    property var probe: probeMade.createObject(provider)
+
+    function probeGivenUp() {
+        const one = probing;
+        if (one?.inFlight) {
+            const hung = Object.assign(Object.create(null), probesHung);
+            hung[one.name] = probe;
+            probesHung = hung;
+            probe = probeMade.createObject(provider);
+            console.warn(`Traffic: ${one.name}'s ${one.files[0]} took two seconds to load,`
+                + " so it's asked again once that read lands");
         }
+        probing = null;
+        probeNext();
+    }
+
+    // A file landed through `view`: the probe's own, or one given up
+    // landing late, which lets its view go and its interface be asked
+    // again.
+    function probeLanded(view, text) {
+        if (view === probe) {
+            probeSaid(text);
+            return;
+        }
+        const hung = Object.assign(Object.create(null), probesHung);
+        for (const name of Object.keys(hung))
+            if (hung[name] === view)
+                delete hung[name];
+        probesHung = hung;
+        view.destroy();
     }
 
     // None blocks, even on its first load, so nothing is ever waited on;
@@ -654,10 +692,16 @@ Provider {
         path: provider.uptimeFile
         printErrors: false
     }
-    FileView {
-        id: probe
-        printErrors: false
-        onLoaded: provider.probeSaid(probe.text())
-        onLoadFailed: provider.probeSaid("")
+    // Each interface's files in turn (probeFor).
+    Component {
+        id: probeMade
+
+        FileView {
+            id: reader
+
+            printErrors: false
+            onLoaded: provider.probeLanded(reader, reader.text())
+            onLoadFailed: provider.probeLanded(reader, "")
+        }
     }
 }
