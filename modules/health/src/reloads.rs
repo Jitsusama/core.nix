@@ -52,6 +52,9 @@ mod tests {
     use crate::day::tests::entry;
     use crate::journal::{Entry, Job, Origin};
 
+    // The machine's systemd and each account's reloading apart.
+    mod managers;
+
     fn requested(program: &str, unit: &str) -> String {
         format!("Reload requested from client PID 1520947 ('{program}') (unit {unit})...")
     }
@@ -276,7 +279,7 @@ mod tests {
             };
             assert_eq!(
                 day.launches.restarted, expected,
-                "after {what}, a clock decided whose a restart was"
+                "after {what}, the wrong reload decided whose a restart was"
             );
         }
     }

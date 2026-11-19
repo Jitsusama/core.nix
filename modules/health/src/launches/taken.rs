@@ -4,14 +4,14 @@
 //! learns whose a stop was only once both reloads before it are heard.
 
 use super::{
-    Launches, MOST_RELOADS, RELOADED_WITHIN, RESTART_WITHIN, Ready, Reload, Restarting, millis,
-    ready, written_before,
+    Launches, MOST_RELOADS, RELOADED_WITHIN, RESTART_WITHIN, Ready, Reload, Restarting, boot_of,
+    millis, ready, written_before,
 };
 use crate::journal::Entry;
 
-/// A stop a tool's reload took back: the service's, in which boot, when on
-/// the boot's clock and the wall's, and the restart it timed, once its
-/// start is heard.
+/// A stop a tool's reload took back: the service's, in which boot and
+/// manager (`boot_of`), when on the boot's clock and the wall's, and the
+/// restart it timed, once its start is heard.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Taken {
     unit: String,
@@ -98,7 +98,7 @@ impl Launches {
     pub(super) fn take_stop(&mut self, entry: &Entry) {
         self.take(Taken {
             unit: entry.thing.clone(),
-            boot: entry.boot.clone(),
+            boot: boot_of(entry),
             stopped: entry.since_boot,
             stopped_at: entry.at,
             timed: None,
@@ -184,8 +184,9 @@ impl Launches {
     /// Where in `taken` the stop a start `entry` could end is: its
     /// service's, in its boot, still untimed.
     fn untimed(&self, entry: &Entry) -> Option<usize> {
+        let in_boot = boot_of(entry);
         self.taken.iter().position(|taken| {
-            taken.unit == entry.thing && taken.boot == entry.boot && taken.timed.is_none()
+            taken.unit == entry.thing && taken.boot == in_boot && taken.timed.is_none()
         })
     }
 
@@ -193,12 +194,13 @@ impl Launches {
     /// in its boot, as `heard` does the one waiting in `restarting`: a
     /// ready line written after it is the next program's.
     pub(super) fn job_taken(&mut self, entry: &Entry) {
+        let in_boot = boot_of(entry);
         for taken in &mut self.taken {
             if let Some(waiting) = taken
                 .timed
                 .as_mut()
                 .and_then(|timed| timed.waiting.as_mut())
-                .filter(|waiting| taken.unit == entry.thing && waiting.boot == entry.boot)
+                .filter(|waiting| taken.unit == entry.thing && waiting.boot == in_boot)
             {
                 waiting.next_job.get_or_insert(entry.since_boot);
             }

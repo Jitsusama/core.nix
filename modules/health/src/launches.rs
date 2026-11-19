@@ -109,10 +109,13 @@ pub struct Launches {
     pub pi: BTreeMap<String, Vec<u64>>,
     /// How long each service was gone in a restart, in milliseconds.
     pub restarted: BTreeMap<String, Vec<u64>>,
-    /// When each service started to stop, in which boot and in
-    /// microseconds on the boot's clock and the wall clock, until it
-    /// starts: a stop at shutdown and a start in the next boot are a
-    /// reboot, not a restart.
+    /// When each service started to stop, in which boot and manager
+    /// (`boot_of`) and in microseconds on the boot's clock and the wall
+    /// clock, until it starts: a stop at shutdown and a start in the next
+    /// boot are a reboot, not a restart. It's kept by the unit's name
+    /// alone, so a service of one name in two managers, as `disk-guard`
+    /// is, keeps one stop: the other manager's start then times none,
+    /// losing a restart rather than misfiling it.
     #[serde(skip)]
     stopping: BTreeMap<String, (String, i64, i64)>,
     /// Each service started again, until it says it's ready in that boot
@@ -136,7 +139,7 @@ pub struct Launches {
     taken: Vec<Taken>,
 }
 
-/// A restart waiting for its ready line: in which boot, when on the boot's
+/// A restart waiting for its ready line: in which boot and manager, when on the boot's
 /// clock it stopped and started, when on the wall clock it stopped, and
 /// its next job line's time, a stop or a start, once one is heard, since a
 /// ready line written after that is the next program's.
@@ -149,8 +152,9 @@ struct Restarting {
     next_job: Option<i64>,
 }
 
-/// A reload systemd made: in which boot, how long into it, and by the wall
-/// clock. A reload's restarts are in its own boot.
+/// A reload systemd made: in which boot and manager (`boot_of`), how long
+/// into it, and by the wall clock. A reload's restarts are in its own boot,
+/// of its own manager's services.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Reload {
     boot: String,
@@ -263,6 +267,7 @@ impl Launches {
     /// stopping or started, or a line `took` takes.
     pub fn heard(&mut self, entry: &Entry) -> bool {
         let unit = &entry.thing;
+        let in_boot = boot_of(entry);
         // Whoever stops or starts it, a crash's restart included, a ready
         // line written after is the next program's, so it can't time the
         // restart before; one written before and heard after, as the
@@ -273,7 +278,7 @@ impl Launches {
             && let Some(waiting) = self
                 .restarting
                 .get_mut(unit)
-                .filter(|waiting| waiting.boot == entry.boot)
+                .filter(|waiting| waiting.boot == in_boot)
         {
             waiting.next_job.get_or_insert(entry.since_boot);
         }
@@ -286,14 +291,12 @@ impl Launches {
                 // reload took back, as a switch's reload written before it
                 // may still be heard after it.
                 self.untake_stop(unit);
-                if self.restarts_itself(&entry.boot, entry.since_boot, entry.at) {
+                if self.restarts_itself(&in_boot, entry.since_boot, entry.at) {
                     self.stopping.remove(unit);
                     self.take_stop(entry);
                 } else {
-                    self.stopping.insert(
-                        unit.clone(),
-                        (entry.boot.clone(), entry.since_boot, entry.at),
-                    );
+                    self.stopping
+                        .insert(unit.clone(), (in_boot, entry.since_boot, entry.at));
                 }
             }
             Some(Job::Started) => {
@@ -365,16 +368,17 @@ impl Launches {
     /// neither day, as one wholly before midnight heard after it is
     /// (`before`).
     fn keep_reload(&mut self, switch: bool, entry: &Entry) {
+        let in_boot = boot_of(entry);
         let kept = self.reloaded.entry(switch).or_default();
         kept.retain(|reload| {
-            reload.boot != entry.boot
+            reload.boot != in_boot
                 || entry.since_boot.saturating_sub(reload.since_boot) <= RELOADS_KEPT_FOR
         });
         if kept.len() >= MOST_RELOADS {
             kept.remove(0);
         }
         let reload = Reload {
-            boot: entry.boot.clone(),
+            boot: in_boot,
             since_boot: entry.since_boot,
             at: entry.at,
         };
@@ -651,7 +655,7 @@ fn ready_in(message: &str) -> Option<u64> {
 /// start's message id: it served nothing, so nothing was gone.
 fn timed(boot: &str, stopped: i64, stopped_at: i64, entry: &Entry) -> Option<i64> {
     let gone = entry.since_boot.saturating_sub(stopped);
-    (boot == entry.boot
+    (boot == boot_of(entry)
         && !entry.message.starts_with("Finished ")
         && stopped > 0
         && (0..=RESTART_WITHIN).contains(&gone)
@@ -666,7 +670,21 @@ fn timed(boot: &str, stopped: i64, stopped_at: i64, entry: &Entry) -> Option<i64
 /// without the boot's stamp, at 0, says nothing of when, and ends the stop
 /// it can't time.
 fn written_before(boot: &str, stopped: i64, entry: &Entry) -> bool {
-    boot == entry.boot && entry.since_boot > 0 && entry.since_boot < stopped
+    boot == boot_of(entry) && entry.since_boot > 0 && entry.since_boot < stopped
+}
+
+/// The boot `entry` was said in, with the systemd manager its service runs
+/// under, which a reload, the stops it says whose they are, their starts
+/// and ready lines share. Any process of an account's can have its manager
+/// reload, so the account's reloads say nothing of the machine's services,
+/// nor the machine's of the account's. A switch reloads each manager it
+/// restarts services of: on 19 November, the machine's as
+/// `.switch-to-conf`, the account's as `switch-to-confi` and `sd-switch`.
+fn boot_of(entry: &Entry) -> String {
+    match &entry.account {
+        Some(uid) => format!("{} user@{uid}", entry.boot),
+        None => entry.boot.clone(),
+    }
 }
 
 /// What a ready line says of a restart waiting for one.
@@ -693,7 +711,7 @@ enum Ready {
 /// ready line after its start, and live is held to the same.
 fn ready(waiting: &Restarting, entry: &Entry) -> Ready {
     let after = entry.since_boot.saturating_sub(waiting.started);
-    if waiting.boot != entry.boot
+    if waiting.boot != boot_of(entry)
         || waiting
             .next_job
             .is_some_and(|next| next <= entry.since_boot)

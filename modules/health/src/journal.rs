@@ -91,6 +91,10 @@ pub struct Entry {
     pub kernel: bool,
     /// The boot it was said in.
     pub boot: String,
+    /// The account whose systemd manager the unit that wrote it runs
+    /// under, by its uid, or none for the machine's: one manager's reload
+    /// says nothing of another's services (`launches::boot_of`).
+    pub account: Option<String>,
     /// When, in microseconds since the kernel started.
     pub since_boot: i64,
     /// The moment in a boot or a shutdown it marks, when it's one.
@@ -254,6 +258,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         restart: told.as_deref() == Some(RESTART_SCHEDULED),
         kernel: text("_TRANSPORT").as_deref() == Some("kernel"),
         boot: text("_BOOT_ID").unwrap_or_default(),
+        account: account(&cgroup).map(|(uid, _)| uid.to_owned()),
         since_boot: micros("__MONOTONIC_TIMESTAMP").unwrap_or_default(),
         mark,
         ask,
@@ -313,11 +318,16 @@ fn told_by_systemd(cgroup: &str) -> bool {
 /// cgroups of any name below itself, so a slice counts only where its
 /// manager puts it.
 fn in_account(cgroup: &str) -> Option<std::str::Split<'_, char>> {
+    account(cgroup).map(|(_, below)| below.split('/'))
+}
+
+/// The uid of the account whose manager `cgroup` sits below, and the path
+/// below that manager, or none when it isn't below one.
+fn account(cgroup: &str) -> Option<(&str, &str)> {
     let (uid, rest) = cgroup
         .strip_prefix("/user.slice/user-")?
         .split_once(".slice/user@")?;
-    let below = rest.strip_prefix(uid)?.strip_prefix(".service/")?;
-    Some(below.split('/'))
+    Some((uid, rest.strip_prefix(uid)?.strip_prefix(".service/")?))
 }
 
 /// Whose a crashed program was, from the slice it ran in: his programs,

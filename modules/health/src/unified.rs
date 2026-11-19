@@ -88,6 +88,8 @@ pub fn parse(line: &str) -> Option<Entry> {
         restart: false,
         kernel,
         boot: text("bootUUID").unwrap_or_default().to_owned(),
+        // A Mac has no systemd, so no account's manager.
+        account: None,
         // The log gives the kernel's clock in its own ticks, not
         // microseconds, and no line here marks a boot's stage to need it.
         since_boot: 0,

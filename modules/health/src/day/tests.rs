@@ -22,6 +22,7 @@ pub(crate) fn entry(thing: &str, priority: u8, message: &str) -> Entry {
         restart: false,
         kernel: false,
         boot: "b".to_owned(),
+        account: None,
         since_boot: 1,
         mark: None,
         ask: None,
