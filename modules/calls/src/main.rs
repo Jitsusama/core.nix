@@ -65,6 +65,14 @@ fn main() -> ExitCode {
         };
         let runtimes = match runtimes {
             [] => None,
+            // A mistyped flag read as a folder would find no account and
+            // answer no call without a word.
+            [flag] if flag.starts_with('-') => {
+                return Err(
+                    Failure::new(Exit::Usage, format!("a-call-is-on knows no {flag}"))
+                        .try_this("a-call-is-on --help"),
+                );
+            }
             [runtimes] => Some(runtimes.as_str()),
             _ => {
                 return Err(

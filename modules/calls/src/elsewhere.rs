@@ -92,6 +92,11 @@ enum Said {
     Call,
 }
 
+/// The most characters of a machine's name kept, a host name's most: a
+/// longer one is cut there, so no record can make a fault or a line as
+/// long as it likes.
+const NAMED_IN: usize = 64;
+
 /// What the nodes' answers to a `Machines` request say of every machine
 /// but `here`, `now` in seconds since the epoch. An answer that isn't a
 /// node's list of machines says nothing; the caller counts a node that
@@ -105,7 +110,12 @@ pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
     for record in records {
         let Some(name) = record["name"]
             .as_str()
-            .map(|name| name.chars().filter(|c| !c.is_control()).collect::<String>())
+            .map(|name| {
+                name.chars()
+                    .filter(|c| !c.is_control())
+                    .take(NAMED_IN)
+                    .collect::<String>()
+            })
             .filter(|name| !name.is_empty() && name != here)
         else {
             continue;
@@ -170,7 +180,8 @@ fn seconds_of(stamp: &str) -> Option<i64> {
     let ([year, month, day], [hour, minute, second]) = (date.as_slice(), time.as_slice()) else {
         return None;
     };
-    let in_range = (1..=12).contains(month)
+    let in_range = (1970..=9999).contains(year)
+        && (1..=12).contains(month)
         && (1..=31).contains(day)
         && (0..24).contains(hour)
         && (0..60).contains(minute)
@@ -369,6 +380,10 @@ mod tests {
         for (measured_at, why) in [
             ("2026-11-17T14:17:01Z", "a record from the future"),
             ("not a time", "a record with no time"),
+            (
+                "999999999999999999-11-17T14:16:00Z",
+                "a record from a year past any calendar",
+            ),
         ] {
             for declares_call in [true, false] {
                 let heard = judge(
@@ -418,6 +433,21 @@ mod tests {
             heard.unseen,
             ["sk]52;c;aGk=iff"],
             "a name kept a control character, or one of nothing but them was named"
+        );
+    }
+
+    #[test]
+    fn a_long_name_is_cut_at_a_host_names_most() {
+        let long = "s".repeat(10_000);
+        let heard = judge(
+            &[answer(&[record(&long, NOW, false, &json!({}))])],
+            HERE,
+            AT,
+        );
+        assert_eq!(
+            heard.unseen,
+            ["s".repeat(64)],
+            "a name wasn't cut at 64 characters"
         );
     }
 

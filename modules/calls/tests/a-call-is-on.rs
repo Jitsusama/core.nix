@@ -191,6 +191,12 @@ fn a_question_asked_wrongly_is_refused_with_its_help() {
         String::from_utf8_lossy(&told.stderr).contains("a-call-is-on --help"),
         "the refusal names no help: {told:?}"
     );
+    let told = world.told(&["--hear"]);
+    assert_eq!(
+        told.status.code(),
+        Some(64),
+        "a mistyped flag was read as a folder: {told:?}"
+    );
 }
 
 #[test]
@@ -333,6 +339,17 @@ fn asked_about_here_alone_a_call_elsewhere_is_none() {
         told.status.code(),
         Some(1),
         "here alone heard a peer: {told:?}"
+    );
+    // Here alone asks no node, so one that won't answer costs nothing.
+    let world = World::new();
+    world.account("1000", "[]");
+    misbehaving(&world, "personal", Vec::new());
+    let told = world
+        .told_within(&["--here", world.runtimes()], Duration::from_secs(4))
+        .expect("here alone waited on a node");
+    assert!(
+        told.status.code() == Some(1) && told.stderr.is_empty(),
+        "here alone asked a node: {told:?}"
     );
     let world = World::new();
     world.account("1000", &recording(40, "zoom"));
@@ -481,13 +498,15 @@ fn a_node_answering_without_end_is_named_past_its_limit() {
 fn the_nodes_are_asked_at_once_so_a_mute_one_starves_none() {
     let world = World::new();
     world.account("1000", "[]");
-    // Asked one after another, personal's silence would spend all the
-    // time work has to answer.
+    // Asked one after another, each with its own time, two mute nodes
+    // would take twice the time one does, past the ten seconds a shaper
+    // proof gives the whole question.
+    misbehaving(&world, "home", Vec::new());
     misbehaving(&world, "personal", Vec::new());
     node(&world, "1000", "work", &peer(10, true, r#"{"call":true}"#));
     let told = world
-        .told_within(&[world.runtimes()], Duration::from_secs(15))
-        .expect("a mute node held it past its time");
+        .told_within(&[world.runtimes()], Duration::from_secs(8))
+        .expect("the mute nodes held it past a shaper proof's time");
     assert_eq!(
         told.status.code(),
         Some(0),
@@ -546,8 +565,36 @@ fn an_account_offering_too_many_nodes_has_its_first_asked() {
         "it didn't say how many went unasked: {told:?}"
     );
     assert!(
-        !said.contains("z19.sock"),
-        "it asked past its limit: {told:?}"
+        said.contains("z14.sock") && !said.contains("z15.sock"),
+        "it didn't ask exactly its first 16: {told:?}"
+    );
+}
+
+#[test]
+fn a_node_slowed_past_a_few_seconds_is_still_heard() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let folder = world.runtimes.join("1000").join("mycelium");
+    fs::create_dir_all(&folder).expect("a node's folder");
+    let listener = UnixListener::bind(folder.join("work.sock")).expect("a socket");
+    let answer = format!(
+        "{{\"Ok\":{{\"Machines\":[{}]}}}}\n",
+        peer(10, true, r#"{"call":true}"#)
+    );
+    // A node slowed by a build, answering after three and a half seconds.
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut asked = String::new();
+            let _ = BufReader::new(&stream).read_line(&mut asked);
+            thread::sleep(Duration::from_millis(3_500));
+            let _ = (&stream).write_all(answer.as_bytes());
+        }
+    });
+    let told = world.told(&[world.runtimes()]);
+    assert_eq!(
+        told.status.code(),
+        Some(0),
+        "a slow node's call went unheard: {told:?}"
     );
 }
 

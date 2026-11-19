@@ -28,11 +28,12 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// How long the nodes have to take the request and answer it, in all:
-/// jobs-sorter's ten seconds for the same request, so a node slowed by a
-/// build still answers, well inside the thirty update-to-main gives the
-/// whole question; a healthy node answers in milliseconds.
-const WITHIN: Duration = Duration::from_secs(10);
+/// How long the nodes have to take the request and answer it, in all: a
+/// healthy node answers in milliseconds, so five seconds lets one slowed
+/// by a build answer, while a node that won't still leaves a-call-is-on
+/// well inside the ten seconds a shaper proof gives it, and that proof
+/// hearing Joel come back within them.
+const WITHIN: Duration = Duration::from_secs(5);
 
 /// The most nodes asked of one account, a realm each: an account offering
 /// more is told so, and its first ones asked.
@@ -72,7 +73,7 @@ pub fn answers(runtimes: &Path) -> Asked {
                 let socket = node.socket.clone();
                 thread::Builder::new()
                     .spawn_scoped(scope, move || ask(&node, deadline))
-                    .map_err(|error| format!("the mycelium node at {}: {error}", socket.display()))
+                    .map_err(|error| format!("the mycelium node at {}: {error}", named(&socket)))
             })
             .collect();
         asking
@@ -135,7 +136,7 @@ fn nodes(runtimes: &Path) -> (Vec<Node>, Vec<String>) {
         if sockets.len() > EACH_ACCOUNT {
             crowded.push(format!(
                 "{} offers {} nodes, more than {EACH_ACCOUNT}, and the last {} aren't asked",
-                held.display(),
+                named(&held),
                 sockets.len(),
                 sockets.len() - EACH_ACCOUNT
             ));
@@ -148,7 +149,7 @@ fn nodes(runtimes: &Path) -> (Vec<Node>, Vec<String>) {
 
 /// The list of machines `node` gives by `deadline`.
 fn ask(node: &Node, deadline: Instant) -> Result<Value, String> {
-    let name = || format!("the mycelium node at {}", node.socket.display());
+    let name = || format!("the mycelium node at {}", named(&node.socket));
     let failed = |error: io::Error| format!("{}: {error}", name());
     let mut stream = connect(&node.socket).map_err(failed)?;
     let answerer = sockopt::socket_peercred(&stream)
@@ -173,6 +174,12 @@ fn ask(node: &Node, deadline: Instant) -> Result<Value, String> {
     } else {
         Err(format!("{} listed no machines: {}", name(), shown(&line)))
     }
+}
+
+/// `path` as it's said, its control characters escaped: any account names
+/// its own sockets, and none of a name may steer a terminal.
+fn named(path: &Path) -> String {
+    path.display().to_string().escape_debug().to_string()
 }
 
 /// The start of what a node said, its control characters escaped, as an
@@ -208,10 +215,15 @@ fn connect(socket: &Path) -> io::Result<UnixStream> {
 /// One line from `stream`, read by `deadline` and at most [`AT_MOST`]
 /// bytes long.
 fn read_line(stream: &mut UnixStream, deadline: Instant) -> io::Result<Vec<u8>> {
-    let late = || {
+    let late = |line: &[u8]| {
+        let said = if line.is_empty() {
+            "nothing"
+        } else {
+            "only part of a line"
+        };
         io::Error::new(
             ErrorKind::TimedOut,
-            format!("answered nothing within {WITHIN:?}"),
+            format!("answered {said} within {WITHIN:?}"),
         )
     };
     let mut line = Vec::new();
@@ -219,12 +231,12 @@ fn read_line(stream: &mut UnixStream, deadline: Instant) -> io::Result<Vec<u8>> 
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
-            return Err(late());
+            return Err(late(&line));
         }
         stream.set_read_timeout(Some(left))?;
         let read = match stream.read(&mut chunk) {
             Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
-                return Err(late());
+                return Err(late(&line));
             }
             read => read?,
         };

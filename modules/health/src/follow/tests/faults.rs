@@ -289,9 +289,11 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
         .collect();
     assert_eq!(said, [peers::CALL_UNSEEN], "said the way Joel reads it");
 
-    // A restart keeps what's still unseen, so it isn't counted again.
+    // A restart keeps what's still unseen, so it isn't counted again,
+    // even once the restarted follower has seen it unseen as long.
     let mut again = Follower::new("2026-11-12", into.path(), TimeZone::UTC).resuming(day);
     again.see_unheard_calls(unheard(&["skiff"]), NOON + 240 * second);
+    again.see_unheard_calls(unheard(&["skiff"]), NOON + 420 * second);
     assert_eq!(
         errors(&again.day, "skiff"),
         Some(1),
@@ -300,13 +302,13 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
 
     // dinghy, seen again since, counts again once it's unseen again for
     // as long.
-    again.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 270 * second);
+    again.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 450 * second);
     assert_eq!(
         errors(&again.day, "dinghy"),
         Some(1),
         "a machine unseen again was counted at once"
     );
-    again.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 450 * second);
+    again.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 630 * second);
     assert_eq!(
         errors(&again.day, "dinghy"),
         Some(2),
