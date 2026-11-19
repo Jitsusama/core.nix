@@ -43,9 +43,10 @@ SETTLING_S = 4
 WHILE_WATCHED = ["second", "third", "fourth"]
 # Where what the commits made during a watch said goes, since the feed's own text is read.
 MEANWHILE = "/root/meanwhile.log"
-# How long the daemon has to write its homes: its first reading writes them, and its pace reads
-# again a minute on. A later reading writing them too is shown by the crate's tests/serve.rs.
-HOMES = timedelta(minutes=1)
+# How long the daemon has to write its homes: its first reading writes them, and should that
+# fail, its pace reads again a minute on, which two minutes leaves room for. A later reading
+# writing them too is shown by the crate's tests/serve.rs.
+HOMES = timedelta(minutes=2)
 # The repository made on the disk, under the root code-page.nix gives repos instead of its own.
 REPOSITORY = "/home/alice/code/kestrel"
 # A commit's author, given each time, since the account has no git config of its own.
