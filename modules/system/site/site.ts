@@ -14,6 +14,7 @@ import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
+import { askedOf, landingOf } from "./address.ts";
 import { bridgeOf } from "./bridge.ts";
 import { headlineOf, legend, MACHINES_DRAWN, machinesOf, partsOf, placesOf } from "./draw.ts";
 import { machineHeadline, machineLede, whenSaid } from "./machine.ts";
@@ -86,6 +87,8 @@ let cursor: string | null = null;
 let drawnParts = "";
 let drawnBridge = "";
 let drawnPlaces = "";
+/** The machine the address asks for, until the cursor has landed for it. */
+let asked = askedOf(location.hash);
 
 /** A minute's milliseconds, how often the ties' times are said again. */
 const MINUTE = 60_000;
@@ -202,6 +205,34 @@ function markPlace(): void {
   }
 }
 
+/**
+ * Puts the cursor where the machine the address asks for lands, saying why
+ * when that isn't its own row. One not found while a watch is still to
+ * answer waits for a later draw, since its record may yet come.
+ */
+function landAsked(read: System): void {
+  if (asked === undefined) {
+    return;
+  }
+  const landing = landingOf(
+    machinesOf(read).map((thing) => thing.name),
+    asked,
+  );
+  if (landing.row === undefined && !allTold(KINDS, told, standings)) {
+    return;
+  }
+  asked = undefined;
+  if (landing.note !== undefined) {
+    note.textContent = landing.note;
+  }
+  if (landing.row !== undefined) {
+    land(
+      list.querySelector<HTMLAnchorElement>(`a[data-row="${CSS.escape(landing.row)}"]`) ??
+        undefined,
+    );
+  }
+}
+
 function draw(): void {
   if (waiting && !allTold(KINDS, told, standings)) {
     sayWhen();
@@ -223,6 +254,7 @@ function draw(): void {
   drawnBridge = redraw(bridge, bridgeOf(machinesOf(system)), drawnBridge, "data-row");
   drawnPlaces = redraw(places, placesOf(system), drawnPlaces, "data-place");
   drawParts(system);
+  landAsked(system);
   markPlace();
 }
 
@@ -351,6 +383,15 @@ list.addEventListener("click", (event) => {
   const button = event.target instanceof Element ? event.target.closest(".copy") : null;
   if (button instanceof HTMLButtonElement && button.dataset["command"] !== undefined) {
     copy(button.dataset["command"]);
+  }
+});
+
+// A link to another machine's address, once the page is open, lands there too.
+globalThis.addEventListener("hashchange", () => {
+  asked = askedOf(location.hash);
+  if (system !== undefined) {
+    landAsked(system);
+    markPlace();
   }
 });
 
