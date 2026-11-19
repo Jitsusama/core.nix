@@ -153,6 +153,12 @@ ShellRoot {
             const row = rows[address];
             return row ? { name: row.name, doing: row.doing ?? "" } : null;
         }
+
+        // An act of Agents' own on a session, as its drawer offers it,
+        // saying whom it goes to.
+        function sessionAct(session, id) {
+            return { key: `verb:agent:${id}`, name: id, to: session.address };
+        }
     }
 
     // The launcher's placing of an answered thing, as Launcher.qml's
@@ -1360,6 +1366,13 @@ ShellRoot {
         expect("a kept session's Go To goes to it as it is now",
             heldFirst.includes(wantKept) && Sessions.wentTo === movedB,
             JSON.stringify(Sessions.wentTo));
+        // Talk to it, Agents' own, comes after Deal With It, before Go To.
+        const wantActs = wantKept.verbs().map(act => act.key.replace(/:on:waiting:want:.*$/u, ""));
+        expect("a session's want offers Talk to it, after Deal With It",
+            JSON.stringify(wantActs.slice(0, 3)) === JSON.stringify(["verb:on:waiting:deal",
+                "verb:agent:talk", "verb:on:waiting:go"])
+                && wantKept.verbs()[1].to === "WANTB",
+            JSON.stringify(wantActs));
         Sessions.wentTo = null;
         // Joel's own report: a plain ask's Put It Off names the ask the
         // row shows, and one asked anew makes the row again with it.
@@ -1440,6 +1453,14 @@ ShellRoot {
                 ["on:heading:cell:ACTED", "Session E \u00b7 listening"],
                 ["on:waiting:Sign The Form", ""], ["on:look:e", ""]]),
             JSON.stringify(read));
+        // Inside, Talk to its session follows dealing with it there, so
+        // what's working on it is reached from it (42P0R4, 2026-11-19).
+        const formActs = forYou().find(row => row.key === "on:waiting:Sign The Form").verbs()
+            .map(act => [act.key.split(":").slice(0, 3).join(":"), act.to ?? ""]);
+        expect("a session's to-do offers Talk to it after Deal With It",
+            JSON.stringify(formActs.slice(0, 2)) === JSON.stringify(
+                [["verb:on:waiting", ""], ["verb:agent:talk", "ACTED"]]),
+            JSON.stringify(formActs));
         const heardBefore = root.forYouHeardTimes;
         agents.rows.ACTED.doing = "working";
         agents.remade += 1;
