@@ -84,6 +84,16 @@ function forgotten(rows) {
 // the first; that one gone, it stays where it was, no lower than `lowest`
 // (-1 when an answer's headline stands above the rows) and no further than
 // the last row.
+// How many rows alike in id to the one at `at` stand above it, the `nth`
+// selection takes: none where nothing is selected.
+function alikeAbove(rows, at, id) {
+    if (at < 0 || at >= rows.length) {
+        return 0;
+    }
+    const was = id(rows[at]);
+    return rows.slice(0, at).filter(row => id(row) === was).length;
+}
+
 function selection(rows, was, id) {
     let first = -1;
     let above = was.nth ?? 0;

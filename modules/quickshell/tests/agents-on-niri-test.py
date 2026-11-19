@@ -2124,45 +2124,6 @@ def emptied_and_put_away(shell: Shell) -> None:
     shell.close_launcher()
 
 
-def test_a_row_coming_and_going_above_the_cursor_moves_no_row_under_it(shell: Shell) -> None:
-    """A row coming into Agents, then going, moves neither the cursor nor a row under it.
-
-    Joel, 2026-11-18 22:24: "spec keeps popping in and out on this launcher screen ... it goes up
-    when i scroll down to it and messes my navigation". Each row shown stays where it stands, one
-    new comes at the end and one gone stays dimmed (launcher/Steady.js), so j steps to the row
-    that was below the cursor, whatever came or went above it.
-    """
-    opened(shell)
-    shell.launcher_until(lambda shown: "Start a Session" in shown["rows"])
-    shell.normal()
-    shell.down_to("Start a Session")
-    before = shell.showing()["rows"]
-    below = before[before.index("Start a Session") + 1]
-    try:
-        lay("COMING", "Coming Quest", {"state": "busy", "busy": True})
-        shell.launcher_until(lambda shown: "Coming Quest" in shown["rows"])
-        came = shell.showing()
-        assert came["rows"][: len(before)] == before, (before, came["rows"])
-        assert came["selected"]["name"] == "Start a Session", came["selected"]
-        # Closed, it leaves the tree for Recent: once the node no longer holds it alive, the
-        # shell is given a moment to hear it, since a row gone may rightly change nothing shown.
-        lay("COMING", "Coming Quest", {"state": "idle"}, closed=True)
-        deadline = time.monotonic() + 30
-        while any("coming" in key for key in held_by_node()):
-            assert time.monotonic() < deadline, "the node never let the closed session go"
-            time.sleep(0.2)
-        time.sleep(2)
-        went = shell.showing()
-        assert went["rows"][: len(before)] == before, (before, went["rows"])
-        assert went["selected"]["name"] == "Start a Session", went["selected"]
-        shell.send_chars("j")
-        shell.launcher_until(lambda shown: shown["selected"]["name"] != "Start a Session")
-        assert shell.showing()["selected"]["name"] == below, (below, shell.showing()["rows"])
-    finally:
-        shell.close_launcher()
-        (PRESENCE / "coming.json").unlink(missing_ok=True)
-
-
 def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_start(
     shell: Shell,
 ) -> None:

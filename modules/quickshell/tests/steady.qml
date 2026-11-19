@@ -156,6 +156,19 @@ QtObject {
             ["a row coming above both, it stays on the second", "n s a s b", 1, 3],
             ["with one alike left, it goes onto that one", "a s b", 1, 1]
         ];
+        // [what, the rows, where the selection is, how many alike stand above it]
+        const above = [
+            ["the second of two alike has one above", "s a s b", 2, 1],
+            ["the first has none", "s a s b", 0, 0],
+            ["a row with no twin has none", "s a s b", 1, 0],
+            ["nothing selected has none", "s a s b", -1, 0],
+            ["nor past the last row", "s a s b", 9, 0]
+        ];
+        for (const [what, now, at, want] of above) {
+            const got = Steady.alikeAbove(rows(now), at, id);
+            if (got !== want)
+                failures.push(`${what}: ${got}, not ${want}`);
+        }
         for (const [what, now, nth, want] of alike) {
             const got = Steady.selection(rows(now), { row: "s", at: 2, lowest: 0, nth: nth }, id);
             if (got !== want)
