@@ -76,6 +76,61 @@
     command = "${lib.getExe pkgs.bash} ${../tests/flat-windows-hold-no-depth-on-niri.sh} quickshell logs ${../../../tests/lib/Memory.js}";
   };
 
+  # The four windows the shell keeps mapped beside the launcher, listed here by
+  # hand, are drawn flat, so none holds a depth and stencil buffer as large as
+  # itself the whole day, which flat-windows-hold-no-depth-on-niri shows a flat
+  # window does without, drawing what these draw the same. A window kept up
+  # later is added to the list. The launcher keeps its own buffers, since its
+  # first openings were slower drawn flat. Each file holds one window, so its
+  # one line is that window's. So it can't pass by reading nothing or a near
+  # miss, a window without the line, one set false, one commented out and a
+  # second window in the file are each shown to fail first. Kept in Nix
+  # because the windows it reads are the files Nix gives it.
+  the-windows-always-up-are-drawn-flat =
+    let
+      # Each by its name, a file of its own in the store, which the build can
+      # read.
+      windows = lib.genAttrs [ "Margin" "NoticeLine" "TalkLine" "Wallpaper" ] (
+        name: ../. + "/${name}.qml"
+      );
+    in
+    pkgs.runCommandLocal "the-windows-always-up-are-drawn-flat" { } ''
+      flat() {
+        [ "$(grep -c 'Window {' "$1")" = 1 ] && grep -q '^ *surfaceFormat\.flat: true$' "$1"
+      }
+      unflat() {
+        printf '%b' "$1" > unflat.qml
+        if flat unflat.qml; then
+          echo "A window was read as flat that isn't: $1"
+          exit 1
+        fi
+      }
+      unflat 'PanelWindow {\n    color: "transparent"\n}\n'
+      unflat 'PanelWindow {\n    surfaceFormat.flat: false\n}\n'
+      unflat 'PanelWindow {\n    // surfaceFormat.flat: true\n}\n'
+      unflat 'PanelWindow {\n    surfaceFormat.flat: true\n}\nPopupWindow {\n}\n'
+      printf 'PanelWindow {\n    surfaceFormat.flat: true\n}\n' > one.qml
+      if ! flat one.qml; then
+        echo "A window drawn flat wasn't read as flat"
+        exit 1
+      fi
+      checked=0
+      ${lib.concatStrings (
+        lib.mapAttrsToList (name: file: ''
+          if ! flat ${file}; then
+            echo "${name}.qml isn't drawn flat, or holds more than one window"
+            exit 1
+          fi
+          checked=$((checked + 1))
+        '') windows
+      )}
+      if [ "$checked" != ${toString (lib.length (lib.attrNames windows))} ]; then
+        echo "Only $checked windows were read"
+        exit 1
+      fi
+      touch $out
+    '';
+
   # A picture read uncached from a file, as the wallpaper's is, lets the file's
   # pixels go once it's a texture, in the shell's own Qt
   # (qtdeclarative-uncached-pictures-let-go.patch), and is read again for a

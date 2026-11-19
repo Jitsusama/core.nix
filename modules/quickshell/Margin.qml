@@ -191,6 +191,13 @@ Scope {
             implicitHeight: root.size.cell + lifted.reach
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
+            // Marks, words and a curve-drawn shape need no depth or stencil
+            // buffer, which would be as large as this window across the
+            // whole screen, all the while it's up (window-drawn-flat.patch).
+            // Lifted's shadows are layers, each drawn into a target of its
+            // own, and nothing here clips a turned item, which only a
+            // stencil could cut (flat-windows-hold-no-depth-on-niri).
+            surfaceFormat.flat: true
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.namespace: "margin"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None

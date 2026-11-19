@@ -235,6 +235,14 @@ Scope {
         implicitHeight: card.height + 2 * card.reach
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
+        // A card of upright clips needs no depth or stencil buffer, which
+        // would be as large as the window and held while it's quiet too,
+        // since it stays mapped (window-drawn-flat.patch). A turned mark
+        // turns inside the card's clip, which stays upright, and a cover's
+        // corners are a layer drawn into a target of its own; only a clip
+        // on a turned item would need a stencil
+        // (flat-windows-hold-no-depth-on-niri).
+        surfaceFormat.flat: true
         // Nothing to click or blur while quiet.
         mask: root.shown ? card.area : nowhere
         BackgroundEffect.blurRegion: root.shown ? card.area : nowhere

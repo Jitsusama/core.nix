@@ -508,6 +508,14 @@ Scope {
         implicitHeight: card.height + 2 * card.reach
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
+        // A card of upright clips needs no depth or stencil buffer, which
+        // would be as large as the window and held while it's down too,
+        // since it stays mapped (window-drawn-flat.patch). A turned mark
+        // turns inside the card's clip, which stays upright. Only a clip on
+        // a turned item would need a stencil, so one given to a piece this
+        // shares with the launcher, as Prompt or Mark, would be cut wrong
+        // here though right there (flat-windows-hold-no-depth-on-niri).
+        surfaceFormat.flat: true
         mask: root.up ? card.area : nowhere
         BackgroundEffect.blurRegion: root.up ? card.area : nowhere
         WlrLayershell.layer: WlrLayer.Overlay

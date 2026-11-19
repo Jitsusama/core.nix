@@ -62,7 +62,7 @@ weighs() {
 }
 
 flat=$(weighs 1 flat "$PWD/flat.png")
-deep=$(weighs 0 deep)
+deep=$(weighs 0 deep "$PWD/deep.png")
 saved=$((deep - flat))
 echo "Drawn flat, the window weighs $saved KB less: $flat KB against $deep."
 if ! awk -v saved="$saved" -v buffers="$buffers" 'BEGIN { exit !(saved * 1024 >= buffers / 4) }'; then
@@ -72,7 +72,7 @@ fi
 
 # niri writes its screenshot as the next frame is drawn, so it's waited for.
 for _ in $(seq 100); do
-  [ -s flat.png ] && break
+  [ -s flat.png ] && [ -s deep.png ] && break
   sleep 0.1
 done
 # The square is lime, and the picture at the left of it red.
@@ -82,3 +82,23 @@ if [ "$square" != 1 ] || [ "$left" != 1 ]; then
   echo "niri doesn't show the flat window's square over its picture (square $square, left $left)." >&2
   exit 1
 fi
+
+# The see-through window, its card blue near its foot at the left, is drawn
+# at all, so the two can't match by showing neither.
+card=$(magick flat.png -format '%[fx:p{w/72,h*0.18}.b > 0.8 && p{w/72,h*0.18}.r < 0.2]' info:)
+if [ "$card" != 1 ]; then
+  echo "niri doesn't show the see-through window's card drawn flat." >&2
+  exit 1
+fi
+# Drawn flat, both windows show what they show with depth and stencil, to
+# within a rounding of colour: a clip or a layer that needed either would
+# cut or order something else. The few pixels allowed are a curve's or a
+# word's edges rounded apart, far fewer than a word or a corner drawn wrong.
+differ=$(magick compare -metric AE -fuzz 2% flat.png deep.png null: 2>&1 || true)
+differ=${differ%% *}
+if ! awk -v differ="$differ" 'BEGIN { exit !(differ + 0 == differ && differ <= 200) }'; then
+  echo "Drawn flat, the windows show $differ pixels other than drawn with depth." >&2
+  magick compare -fuzz 2% flat.png deep.png "$logs/differ.png" || true
+  exit 1
+fi
+echo "Drawn flat, the windows show what they show with depth, $differ pixels apart."

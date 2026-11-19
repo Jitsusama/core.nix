@@ -4717,7 +4717,14 @@
   flat-windows-hold-no-depth-on-niri = ''
     a full-screen window drawn flat weighs at least a quarter of a 2880 by 1800 depth and
     stencil buffer less than one drawn with them, and niri shows it drawn in order, a square over
-    its picture
+    its picture; and a see-through window over it, of a clip, words cut and turned inside it, a
+    shadow and corners drawn through layers and a curve-drawn shape, shows the same drawn flat as
+    drawn with depth and stencil
+  '';
+  the-windows-always-up-are-drawn-flat = ''
+    the margin, the arrival line, the talk line and the wallpaper, the four windows listed as
+    kept mapped beside the launcher, are each one window drawn flat, and a window without the
+    line, set false, commented out or beside a second window fails it
   '';
   uncached-pictures-let-go-on-niri = ''
     a picture the shell reads uncached from a file, as the wallpaper's, lets the file's pixels
