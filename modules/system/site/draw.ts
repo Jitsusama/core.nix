@@ -84,9 +84,26 @@ function spoken(health: Health): string {
   return `<span class="sr"> (${WORDS[health].toLowerCase()})</span>`;
 }
 
-/** Where a thing's link goes: its home's address, or the mycelium site. */
-function home(thing: Thing): string {
-  return `../${thing.address ?? "mycelium/"}`;
+/** This page's path from the sites' root, where a machine's home address starts. */
+const HERE = "system/";
+
+/**
+ * Where a machine is on the mycelium map, its cells hanging from it. This
+ * page is a machine's home, so its name and its cells lead on to the map
+ * rather than back here.
+ */
+function onTheMap(thing: Thing): string {
+  return `../mycelium/#machine=${encodeURIComponent(thing.name)}`;
+}
+
+/**
+ * The section's `data-home`, when the sites say this page is the machine's
+ * home: its address as the daemon read it from the rows, so a mention of
+ * the machine inside its own section needn't link. A machine homed
+ * elsewhere, or nowhere, claims none.
+ */
+function homeHere(thing: Thing): string {
+  return thing.address?.startsWith(HERE) === true ? ` data-home="${escaped(thing.address)}"` : "";
 }
 
 /** The machines drawn whole, worst first as the machines part lists them. */
@@ -141,7 +158,7 @@ function tiesOf(thing: Thing, here: string, when: (at: string) => string): reado
     {
       name: "Cells",
       said: cellsSaid(thing.ties),
-      link: { href: home(thing), words: "See them on the map" },
+      link: { href: onTheMap(thing), words: "See them on the map" },
     },
     {
       name: "Network",
@@ -184,8 +201,8 @@ function machineOf(thing: Thing, at: number, here: string, when: (at: string) =>
   const ties = tiesOf(thing, here, when)
     .map((tie) => tieOf(tie, `${tie.name.toLowerCase()}:${thing.name}`))
     .join("");
-  return `<section class="machine ${thing.health}" id="${id}" data-part="${id}" aria-labelledby="name-${id}">
-  <h2 class="name" id="name-${id}"><a class="row" data-row="${escaped(machineRow(thing.name))}" data-health="${thing.health}" href="${escaped(home(thing))}"><span translate="no">${name}</span>${spoken(thing.health)}</a></h2>
+  return `<section class="machine ${thing.health}" id="${id}" data-part="${id}"${homeHere(thing)} aria-labelledby="name-${id}">
+  <h2 class="name" id="name-${id}"><a class="row" data-row="${escaped(machineRow(thing.name))}" data-health="${thing.health}" href="${escaped(onTheMap(thing))}"><span translate="no">${name}</span>${spoken(thing.health)}</a></h2>
   ${kindLine}
   <p class="standing health ${thing.health}">${mark(thing.health)}${escaped(standing(thing))}</p>
   <div class="ties">${ties}</div>
@@ -278,7 +295,6 @@ function legend(): string {
 export {
   escaped,
   headlineOf,
-  home,
   legend,
   MACHINES_DRAWN,
   MORE_ROW,
