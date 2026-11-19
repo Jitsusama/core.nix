@@ -482,7 +482,7 @@ QtObject {
             Wanted.keptPlaceListed(under(false)), "kept");
         check(failures, "one under a share opens them whole",
             Wanted.keptPlaceListed(under(true)), "");
-        check(failures, "as does one before niri has said its casts",
+        check(failures, "as does a chord that never said whether it's shared",
             Wanted.keptPlaceListed(Object.assign({}, chord)), "");
         check(failures, "Windows under a share lists its source as it stands",
             Wanted.keptPlaceListed(Object.assign(under(true), { listed: true })), "source");

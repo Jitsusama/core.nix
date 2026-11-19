@@ -10231,8 +10231,7 @@ Scope {
         const how = Wanted.keptPlaceListed({ listed: source?.keptListed === true, asNow: asNow,
             named: listedNow === true, led: kept.led === true, shared: screenShared() });
         if (how === "") {
-            const why = Shared.why(Niri.castsHeard, Niri.casts, Recorder.windowSession);
-            console.info(`launcher: ${name} opened whole, as ${why}`);
+            console.info(`launcher: ${name} opened whole, as ${sharedWhy()}`);
             return false;
         }
         const listed = how === "source" ? keptListing(source)
@@ -10946,6 +10945,8 @@ Scope {
         // card kept before the share, which can name a waiting ask or a
         // copy (Wanted.opensKept); that opening isn't one said whole.
         openedShared = !open && !opening && !Wanted.opensKept(screenShared());
+        if (openedShared && homeHeld)
+            console.info(`launcher: home opened whole, as ${sharedWhy()}`);
         if (opening)
             unopened();
         else if (open)
@@ -10960,6 +10961,10 @@ Scope {
     // hide by (launcher/Shared.js), failing closed until niri has said.
     function screenShared() {
         return Shared.hidden(Niri.castsHeard, Niri.casts, Recorder.windowSession);
+    }
+    // Why it may be, for the journal: a cast seen, or niri yet to say.
+    function sharedWhy() {
+        return Shared.why(Niri.castsHeard, Niri.casts, Recorder.windowSession);
     }
 
     // Home is held again once a closed card is clear, so every chord but

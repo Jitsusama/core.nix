@@ -193,11 +193,11 @@ PRESENTED_SAID = re.compile(r"launcher: opening presented (\d+) ms from the chor
 def shell() -> Iterator[Shell]:
     """Give the shell once it has kept home by itself, started once a run and never opened.
 
-    It waits for niri to have said its casts too, since until then a chord opens a place with
-    copies or asks whole (Wanted.js's keptPlaceListed), and home with it.
+    It waits for niri to have said its casts too, as each restart does (Shell.unshared).
     """
     started = launcher_on_niri.started()
-    started.launcher_until(lambda shown: shown.get("kept") and shown.get("shared") is False)
+    started.unshared()
+    started.launcher_until(lambda shown: shown.get("kept"))
     yield started
     started.stop()
 

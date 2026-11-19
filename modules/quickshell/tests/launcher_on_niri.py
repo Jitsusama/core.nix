@@ -146,12 +146,25 @@ class Shell:
         self.process.terminate()
         self.process.wait(timeout=10)
         self.launch("ab")
+        self.unshared()
         # smithay keeps one keymap active for the seat and sends a virtual keyboard's only when
         # it differs from that one, while a keyboard made since is given the seat's own: the
         # restarted shell would read wtype's next word, if it's the last one typed, by the
         # seat's keymap, "agents" as "123456". A key of another keymap first makes the word's
         # keymap new again, as a key Joel presses does on his keyboard. F24 does nothing here.
         subprocess.run(["wtype", "-k", "F24"], check=True)
+
+    def unshared(self) -> None:
+        """Wait until the shell knows nothing sees the screen, which it can't till niri says.
+
+        Until then a chord opens home, and a place with copies or asks, whole (Wanted.js's
+        opensKept and keptPlaceListed), so a case timing a kept opening waits for this first.
+        The log's tail says why copies hide, a cast seen or niri yet to say.
+        """
+        deadline = time.monotonic() + STARTING.total_seconds()
+        while self.showing().get("shared") is not False:
+            assert time.monotonic() < deadline, f"the screen never read unshared:\n{self.tail()}"
+            time.sleep(POLL)
 
     def launch(self, mode: str) -> None:
         """Start the shell alone, its log opened in this mode, and wait until it answers, closed."""

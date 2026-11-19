@@ -154,8 +154,8 @@ function opensKept(shared) {
 // for one whose source lists it so (`listed`, Windows'); "asItStands" for
 // a plain place asked to list now (`asNow`, a margin mark into On);
 // "led" as a source leads to it, for one asked for by name (`named`) or
-// led to (`led`, Super+N's). Each of those makes its rows now, hidden as
-// a share hides them. Otherwise "kept", its rows as they were kept, only
+// led to (`led`, Super+N's). Each of those makes its rows now, each
+// source hiding its own under a share. Otherwise "kept", its rows as they were kept, only
 // while nothing may see the screen (`shared`, Shared.js's hidden), since
 // they were made before any share began and a shut launcher never makes
 // them again: Super+V's would show a copy, Super+O's a waiting ask.
