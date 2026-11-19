@@ -696,10 +696,11 @@ fn ended_by(
 /// tries every half minute for as long as `GIVES_UP`, as a start frees no
 /// room and, past midnight, would lose the old day; a new day starts as
 /// ever meanwhile, holding the old, so what's heard and seen goes into it.
+/// Then it tries once more, and carries on if that writes everything.
 ///
 /// # Errors
 ///
-/// When the day can't be written as health ends, or it gave up.
+/// When the day can't be written as health ends, or on that last try.
 fn run(
     follower: &mut Follower,
     read: &Receiver<Option<String>>,
@@ -714,12 +715,13 @@ fn run(
     let mut ended = false;
     let mut hearing = true;
     let mut spell = Spell::default();
-    let mut gave_up;
     loop {
         let at = now();
         let ran = at.saturating_duration_since(started);
-        gave_up = spell.gave_up(at);
-        if ((ended && !spell.is_on()) || gave_up) && ran >= SETTLED {
+        if spell.gave_up(at) && ran >= SETTLED {
+            spell.last_try(follower, at, say, notice)?;
+        }
+        if ended && !spell.is_on() && ran >= SETTLED {
             break;
         }
         let left = EVERY.saturating_sub(at.saturating_duration_since(ticked));
@@ -773,14 +775,6 @@ fn run(
     }
     let written = follower.write();
     let lost = spell::losing(&follower.held);
-    // A start that gave up gives the spell its final try too: one that
-    // failed is what it ends on, and one that wrote everything lost nothing.
-    if gave_up {
-        spell.tried(written.as_ref().err(), now(), &follower.into, say, notice);
-        written
-            .as_ref()
-            .map_err(|_| spell.given_up(&follower.into, &lost))?;
-    }
     written.map_err(|error| {
         io::Error::new(
             error.kind(),

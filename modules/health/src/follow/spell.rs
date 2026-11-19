@@ -3,13 +3,13 @@
 //! disk flapping at its edge, no more than once every ten minutes. A
 //! spell lasts only as long as health's run, so a start after one says
 //! the next spell at once, and a spell that outlasts a run, as one given
-//! up on does, is never told ended.
+//! up on does when its last try fails, is never told ended.
 
 use std::io;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use super::{GIVES_UP, SETTLED};
+use super::{Follower, GIVES_UP, SETTLED};
 use crate::day::Day;
 
 /// How long after a spell's end was told that a new one goes unsaid, as a
@@ -59,6 +59,23 @@ impl Spell {
             GIVES_UP.as_secs() / 60,
             self.latest
         ))
+    }
+
+    /// Health's last try at `at`, once it `gave_up`: the `follower`'s days
+    /// written once more and `tried`. One that fails is what health ends
+    /// on (`given_up`); one that writes everything ends the spell, and
+    /// health carries on, as it lost nothing.
+    pub(super) fn last_try(
+        &mut self,
+        follower: &mut Follower,
+        at: Instant,
+        say: &dyn Fn(&str),
+        notice: &dyn Fn(&str),
+    ) -> io::Result<()> {
+        let written = follower.write();
+        self.tried(written.as_ref().err(), at, &follower.into, say, notice);
+        let lost = losing(&follower.held);
+        written.map_err(|_| self.given_up(&follower.into, &lost))
     }
 
     /// Take a write's `error` at `at`, if any. A spell's start is said

@@ -32,9 +32,10 @@ in
       Type = "simple";
       ExecStart = "${lib.getExe package} follow";
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
-      # It only ever stops on a fault, and reads the day again from its
-      # start when it's back, so nothing of today is lost; only a day
-      # before, held as it couldn't be written, is.
+      # It only ever stops on a fault, and reads today's journals again
+      # from the day's start when it's back. What it saw itself since its
+      # last write, as the lid and the disk, is lost, as is a day before
+      # held as it couldn't be written.
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";

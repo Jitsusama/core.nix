@@ -509,6 +509,48 @@ fn how_long_a_spell_lasted_reads_to_the_minute() {
 }
 
 #[test]
+fn health_gives_up_only_on_a_last_try_that_fails() {
+    // The run's harness makes room only as it looks at the lid, before a
+    // tick's write, so a last try that writes is reached here instead.
+    let into = tempfile::tempdir().expect("a folder");
+    let days = into.path().join("days");
+    fs::write(&days, "").expect("a file in the folder's place");
+    let mut follower = Follower::new("2026-11-12", &days, TimeZone::UTC);
+    follower.take(&warning(NOON)).expect("a line taken");
+    let noticed = RefCell::new(Vec::new());
+    let notice = |words: &str| noticed.borrow_mut().push(words.to_owned());
+    let mut spell = Spell::default();
+    let started = Instant::now();
+    let failed = follower.write().expect_err("a write into a file");
+    spell.tried(Some(&failed), started, &days, &|_| {}, &notice);
+    let gave_up = started + GIVES_UP;
+    let ended = spell
+        .last_try(&mut follower, gave_up, &|_| {}, &notice)
+        .expect_err("a last try into a file");
+    assert!(
+        ended
+            .to_string()
+            .starts_with("health gave up writing the day into ")
+            && spell.is_on(),
+        "a last try that failed didn't end health: {ended}"
+    );
+    fs::remove_file(&days).expect("room made for the day");
+    spell
+        .last_try(&mut follower, gave_up, &|_| {}, &notice)
+        .expect("a last try that wrote everything carried on");
+    assert!(
+        !spell.is_on()
+            && file_of(&days, "2026-11-12").exists()
+            && noticed
+                .borrow()
+                .iter()
+                .any(|words| words.contains(" again, after trying")),
+        "a last try that wrote everything didn't end the spell, write the day and say so: {:?}",
+        noticed.borrow()
+    );
+}
+
+#[test]
 fn health_giving_up_names_the_days_held_it_loses_and_what_failed_last() {
     // The spell's first failure was a day held from before, written
     // since, so only the latest, as a final try's, names the day still
