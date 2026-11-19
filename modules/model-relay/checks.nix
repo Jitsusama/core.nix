@@ -14,7 +14,8 @@
 }:
 onLinux {
   # model-relay's tests run as it builds, against an HTTP/2 origin over TLS
-  # of their own: a request forwarded whole, another host refused, many
+  # of their own: a request forwarded whole, a TE of trailers passed as h2
+  # sends it, another host refused, many
   # requests at once on a few connections, an answer streamed as it comes, a
   # connection the origin lets go opened again, a request the origin reset
   # before its answer sent once more on another connection, one already
@@ -29,9 +30,10 @@ onLinux {
   # down, for answers broken off as their connection falls or requests
   # sent again once it takes requests again, though never for requests no
   # connection would take, the origin's own verdicts, answers pi gives up
-  # on or answers sent before it took requests again, every 421 said once
-  # the body is read, the counts said as it leaves, answers broken off among them, the requests pi gave up on
-  # counted on each connection and no answer read whole or broken off, a
+  # on or answers sent before it took requests again, another origin's
+  # 421 and the stand-down's said once the body is read, even a body too
+  # large, the counts said as it leaves, answers broken off among them,
+  # the requests pi gave up on counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen
   # connection lost, an origin out of reach said as a 502 or a 504 without a
   # queue, a connection that won't open not

@@ -1815,7 +1815,8 @@
     opened while it stood down, for answers broken off midway as their connection falls or requests
     sent again once it takes requests again, though never for requests no connection would take,
     resets saying to calm down, answers pi gives up on or answers sent before it took requests
-    again, says every 421 of its own once the body is read, says its counts as it leaves, answers
+    again, says another origin's 421 and the stand-down's once the body is read, even a body too
+    large, passes a TE of trailers as h2 sends it, says its counts as it leaves, answers
     broken off among them, counts on each connection the requests pi gave up on and no
     answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a

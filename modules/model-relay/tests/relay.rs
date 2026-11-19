@@ -602,6 +602,8 @@ async fn a_request_passes_whole_and_nothing_of_it_is_logged() {
     // hyper's own stripping reads past, since it reads only the first.
     headers.append("connection", "x-this-hop".parse().expect("a value"));
     headers.insert("x-this-hop", "1".parse().expect("a value"));
+    // Spelt as h2 refuses to send it, which the relay mustn't pass on.
+    headers.insert("te", "Trailers".parse().expect("a value"));
 
     let got = ask(&relay.socket, asked).await;
 
@@ -642,6 +644,11 @@ async fn a_request_passes_whole_and_nothing_of_it_is_logged() {
         "a header Connection named went on"
     );
     assert_eq!(value("host"), None, "HTTP/2 names its host as :authority");
+    assert_eq!(
+        value("te").as_deref(),
+        Some(&b"trailers"[..]),
+        "a TE of trailers wasn't said as h2 sends it"
+    );
 
     let said = relay.said();
     assert!(
@@ -1173,7 +1180,43 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         1,
         &["--idle-exit", "1"],
     );
-    let stream = UnixStream::connect(&relay.socket)
+
+    let answer = asked_too_much(&relay.socket, &host).await;
+    assert!(
+        answer.starts_with(b"HTTP/1.1 413"),
+        "a body too large was answered {:?}",
+        String::from_utf8_lossy(&answer)
+    );
+    assert_eq!(handed_to(&origin, "/echo"), 0, "a body too large went on");
+    // For another origin, it's the 421 that sends pi direct all the same.
+    let answer = asked_too_much(&relay.socket, "example.com").await;
+    assert!(
+        answer.starts_with(b"HTTP/1.1 421"),
+        "another origin's body too large was answered {:?}",
+        String::from_utf8_lossy(&answer)
+    );
+
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle"
+    );
+    let said = relay.said();
+    assert_eq!(
+        said.matches("a request's body passed 64 MiB, so it's refused")
+            .count(),
+        1,
+        "a body too large went unsaid, or another origin's was said as one: {said}"
+    );
+    assert!(
+        said.contains("2 asked, 2 refused, 0 failed"),
+        "a body too large wasn't counted as refused: {said}"
+    );
+}
+
+/// What the relay answers, its head alone, to a request for `/echo` at
+/// `host` with a body one byte over what it carries.
+async fn asked_too_much(socket: &Path, host: &str) -> Vec<u8> {
+    let stream = UnixStream::connect(socket)
         .await
         .expect("the socket answers");
     let (mut reading, mut writing) = stream.into_split();
@@ -1198,31 +1241,11 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
     })
     .await;
     writer.abort();
-
     assert!(
         answered.is_ok(),
         "the relay never answered a body too large"
     );
-    assert!(
-        answer.starts_with(b"HTTP/1.1 413"),
-        "a body too large was answered {:?}",
-        String::from_utf8_lossy(&answer)
-    );
-    assert_eq!(handed_to(&origin, "/echo"), 0, "a body too large went on");
-    drop(reading);
-    assert!(
-        relay.left_within(LISTENS_WITHIN).is_some(),
-        "the relay didn't leave once idle"
-    );
-    let said = relay.said();
-    assert!(
-        said.contains("a request's body passed 64 MiB, so it's refused"),
-        "a body too large went unsaid: {said}"
-    );
-    assert!(
-        said.contains("1 asked, 1 refused, 0 failed"),
-        "a body too large wasn't counted as refused: {said}"
-    );
+    answer
 }
 
 /// What pi gets asking with a body in halves, the second sent a while
@@ -1374,7 +1397,8 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         .find("it stood down 20 s, so it takes requests again, on connections opened afresh")
         .unwrap_or_else(|| panic!("taking requests again went unsaid: {said}"));
     // The connection's own line, as the counts said on leaving say
-    // "opened" too.
+    // "opened" too. This only shows one opened after the return; that the
+    // return retires those before it is the retire test's to pin.
     assert!(
         said[again..]
             .lines()
@@ -1469,12 +1493,13 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
 async fn answers_broken_off_midway_as_their_connection_falls_stand_it_down() {
     let origin = origin().await;
     let host = origin.address.to_string();
-    // Its stand-down and idle time short, so it leaves and says its counts.
+    // Its stand-down and idle time short, so it leaves and says its counts,
+    // yet the stand-down long enough to outlast the request asked after it.
     let mut relay = Relay::start_with(
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--idle-exit", "1", "--stand-down-for", "1"],
+        &["--idle-exit", "1", "--stand-down-for", "3"],
     );
 
     for _ in 0..3 {
@@ -1655,6 +1680,11 @@ async fn requests_sent_again_after_it_took_requests_again_are_judged() {
         got.status,
         StatusCode::CREATED,
         "a request once it stood down"
+    );
+    assert_eq!(
+        handed_to(&origin, "/reset-held"),
+        20,
+        "the held requests went again before it took requests again, so prove nothing"
     );
     assert!(
         held.iter().all(|asked| !asked.is_finished()),

@@ -1132,14 +1132,11 @@ impl Relay {
         // Another origin's request is no work of the relay's, so it's no
         // reason to stay, even while its body is read.
         let in_hand = names_origin.then(|| self.busy.one());
-        let whole = match self.readied(&mut parts, body).await {
-            Ok(whole) => whole,
-            Err(refused) => return *refused,
-        };
         // Its body read whole before any 421, so pi isn't writing one the
         // relay has stopped reading, failing on a broken pipe, when the
-        // 421 would send it direct; and the sleep looked for first, as a
-        // sleep forgets a stand-down.
+        // 421 would send it direct. A body that can't be read whole still
+        // gets the 421, as it was never to go to the origin anyway.
+        let read = read_whole(body).await;
         if !names_origin {
             self.counts.refused.fetch_add(1, Ordering::Relaxed);
             return said(
@@ -1154,6 +1151,14 @@ impl Relay {
                 "this relay is leaving, so go directly\n",
             );
         }
+        let whole = match read {
+            Ok(whole) => whole,
+            Err(unread) => return self.unread(unread),
+        };
+        if let Err(refused) = self.pointed(&mut parts) {
+            return *refused;
+        }
+        // The sleep looked for first, as a sleep forgets a stand-down.
         self.retire_after_a_sleep();
         if let Some(standing_down) = self.standing_down() {
             return standing_down;
@@ -1229,13 +1234,9 @@ impl Relay {
         self.retire_every();
     }
 
-    /// Points a request pi asked of the origin at the origin itself, and
-    /// reads its body whole, or says why pi is refused.
-    async fn readied(
-        &self,
-        parts: &mut hyper::http::request::Parts,
-        body: Incoming,
-    ) -> Result<Bytes, Box<Response<Body>>> {
+    /// Points a request pi asked of the origin at the origin itself, or
+    /// says why pi is refused.
+    fn pointed(&self, parts: &mut hyper::http::request::Parts) -> Result<(), Box<Response<Body>>> {
         let path = parts
             .uri
             .path_and_query()
@@ -1256,41 +1257,43 @@ impl Relay {
         parts.uri = uri;
         parts.version = Version::HTTP_2;
         without_connection_headers(&mut parts.headers);
-        // Read whole so it can go again. pi's requests carry no trailers
-        // to keep.
-        let reading = tokio::time::timeout(BODY_WITHIN, Limited::new(body, BODY_AT_MOST).collect());
-        match reading.await {
-            Ok(Ok(read)) => Ok(read.to_bytes()),
-            Ok(Err(why)) if why.is::<LengthLimitError>() => {
+        Ok(())
+    }
+
+    /// What pi is answered for a body that wasn't read whole, counted and
+    /// said.
+    fn unread(&self, why: Unread) -> Response<Body> {
+        match why {
+            Unread::TooLarge => {
                 self.counts.refused.fetch_add(1, Ordering::Relaxed);
                 eprintln!("model-relay: a request's body passed 64 MiB, so it's refused");
-                Err(Box::new(said(
+                said(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "this relay carries a body of 64 MiB at most\n",
-                )))
+                )
             }
             // Still coming after the deadline, it's said, so a pi writing
             // slowly is told from one that left.
-            Err(_) => {
+            Unread::Late => {
                 self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
                 eprintln!(
                     "model-relay: a request's body was still coming after {} s, so it's \
                      dropped",
                     BODY_WITHIN.as_secs()
                 );
-                Err(Box::new(said(
+                said(
                     StatusCode::REQUEST_TIMEOUT,
                     "this relay waited too long on the request's body\n",
-                )))
+                )
             }
             // pi went before its body ended, as it does when its person
             // presses Escape, so it's a cancel, and nobody hears the answer.
-            Ok(Err(_)) => {
+            Unread::Gone => {
                 self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
-                Err(Box::new(said(
+                said(
                     StatusCode::BAD_REQUEST,
                     "this relay couldn't read the request's body\n",
-                )))
+                )
             }
         }
     }
@@ -1975,8 +1978,35 @@ fn without_connection_headers(headers: &mut HeaderMap) {
         .get_all(header::TE)
         .iter()
         .all(|value| value.as_bytes().eq_ignore_ascii_case(b"trailers"));
-    if !only_trailers {
+    // hyper drops a TE spelt any way but "trailers" exactly before h2
+    // sees it, so one kept is said that way, or it would be lost.
+    if only_trailers && headers.contains_key(header::TE) {
+        headers.insert(header::TE, header::HeaderValue::from_static("trailers"));
+    } else {
         headers.remove(header::TE);
+    }
+}
+
+/// Why a request's body wasn't read whole.
+#[derive(Clone, Copy)]
+enum Unread {
+    /// It passed `BODY_AT_MOST`.
+    TooLarge,
+    /// It was still coming after `BODY_WITHIN`.
+    Late,
+    /// pi went before it ended.
+    Gone,
+}
+
+/// Reads a request's body whole, so it can go again. pi's requests carry
+/// no trailers to keep.
+async fn read_whole(body: Incoming) -> Result<Bytes, Unread> {
+    let reading = tokio::time::timeout(BODY_WITHIN, Limited::new(body, BODY_AT_MOST).collect());
+    match reading.await {
+        Ok(Ok(read)) => Ok(read.to_bytes()),
+        Ok(Err(why)) if why.is::<LengthLimitError>() => Err(Unread::TooLarge),
+        Err(_) => Err(Unread::Late),
+        Ok(Err(_)) => Err(Unread::Gone),
     }
 }
 
@@ -2305,19 +2335,14 @@ mod tests {
         );
     }
 
-    /// The socket lost, a connection's task gone or a reason h2 gives
-    /// itself fails the path, beneath hyper's error or alone. The origin's
-    /// own verdicts come in a frame from it, which only the relay's tests
-    /// can send, and h2's refusals can't be built outside it.
+    /// The socket lost or a reason h2 gives itself fails the path, beneath
+    /// hyper's error or alone. The origin's own verdicts come in a frame
+    /// from it, which only the relay's tests can send, and h2's refusals
+    /// can't be built outside it.
     #[test]
-    fn what_the_socket_hyper_and_h2_raise_fails_the_path() {
+    fn what_the_socket_and_h2_raise_fails_the_path() {
         let lost = std::io::Error::from(std::io::ErrorKind::BrokenPipe);
         assert!(fails_the_path(&lost), "a socket lost wasn't judged");
-        let gone = Beneath("connection closed", std::io::Error::other("dispatch gone"));
-        assert!(
-            fails_the_path(&gone),
-            "a connection's task gone wasn't judged"
-        );
         for reason in [
             h2::Reason::PROTOCOL_ERROR,
             h2::Reason::CANCEL,
@@ -2326,6 +2351,44 @@ mod tests {
             let raised = Beneath("http2 error", h2::Error::from(reason));
             assert!(fails_the_path(&raised), "h2's own {reason:?} wasn't judged");
         }
+    }
+
+    /// A connection's task gone with a request in hand fails the path,
+    /// though hyper calls it the user's error.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_connections_task_gone_fails_the_path() {
+        use tokio::io::AsyncReadExt as _;
+
+        let (near, mut far) = tokio::io::duplex(HELD_AHEAD_AT_MOST);
+        let (mut sender, connection) = hyper::client::conn::http1::handshake::<_, Full<Bytes>>(
+            hyper_util::rt::TokioIo::new(near),
+        )
+        .await
+        .expect("a connection");
+        let task = tokio::spawn(connection);
+        let asked = sender.send_request(
+            hyper::Request::get("/")
+                .header(hyper::header::HOST, "origin")
+                .body(Full::new(Bytes::new()))
+                .expect("a request"),
+        );
+        // Its head written, so the connection's task holds the request.
+        let mut piece = [0; 64];
+        let read = far.read(&mut piece).await.expect("the request's head");
+        assert!(read > 0, "the connection's task wrote nothing");
+        task.abort();
+
+        let why = asked
+            .await
+            .expect_err("a request answered once its connection's task went");
+        assert!(
+            why.is_user(),
+            "hyper no longer calls it the user's error: {why:?}"
+        );
+        assert!(
+            fails_the_path(&why),
+            "a connection's task gone wasn't judged: {why:?}"
+        );
     }
 
     /// An error with one beneath it, as hyper's are.
