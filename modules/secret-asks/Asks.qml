@@ -50,8 +50,7 @@ Provider {
         toldAs: key => provider.hiding ? Words.name("asks:hidden") : ready.served(key)?.name ?? ""
         // Withheld while hidden for the share, or before niri has said
         // whether there is one, which fails closed.
-        whyWithheld: () => !provider.hiding ? undefined
-            : Words.field.becoming?.[Niri.castsHeard ? "shared" : "unheard"]
+        whyWithheld: () => !provider.hiding ? undefined : provider.hiddenWhy()
         place: "asks"
         beside: ["summary"]
         make: (row, key) => provider.made(row, key)
@@ -305,8 +304,16 @@ Provider {
     // What a hidden ask's row keeps of the one the daemon serves (row.rs).
     // A row lent to another place (`lends`) is drawn there, never here,
     // so the daemon must never serve one on an ask: row.rs serves none.
-    readonly property var hiddenKeeps: ["key", "thing", "place", "kind", "state", "glyph",
-        "hue", "attention", "order"]
+    // Its state, hue and attention go too, since row.rs serves each
+    // differently for a waiting ask and an answered one, and one watching
+    // a share would see which still wait.
+    readonly property var hiddenKeeps: ["key", "thing", "place", "kind", "glyph", "order"]
+
+    // Why a hidden ask does nothing: the screen is shared, or it isn't yet
+    // known whether it is.
+    function hiddenWhy() {
+        return Words.field.becoming?.[Niri.castsHeard ? "shared" : "unheard"] ?? "";
+    }
 
     // An ask's row, from the one the daemon serves, with what For You
     // reads of it: whether it waits on Joel, and since when.
@@ -322,6 +329,9 @@ Provider {
         const drawn = !hiding ? served : Object.assign(provider.hiddenKeeps.reduce((kept, name) =>
             name in served ? Object.assign(kept, { [name]: served[name] }) : kept, {}), {
             name: hidden,
+            // One hue for every hidden ask, the one row.rs gives an ask
+            // that waits on nobody.
+            hue: "machine",
             note: waits,
             drawer: { eyebrow: "", title: hidden, body: waits, facts: [] }
         });
@@ -344,11 +354,11 @@ Provider {
             // Hidden, an ask's Return keeps the launcher open and does
             // nothing (Arming.holdsStill), since the launcher closes on a
             // row with no run, and his second Return, meant for a yes,
-            // would then reach the window behind. One ended looks the same
+            // would then reach the window behind. One ended draws the same
             // while hidden, so it holds too. Still, its foot names no
             // Return, and Return or a terminal says why (`stillWhy`).
             still: true,
-            stillWhy: Niri.castsHeard ? Words.field.becoming?.shared ?? "" : waits
+            stillWhy: provider.hiddenWhy()
         }));
     }
 

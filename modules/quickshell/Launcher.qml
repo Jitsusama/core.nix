@@ -1471,9 +1471,10 @@ Scope {
         const path = [];
         for (const step of String(id).split(catalogueStep)) {
             // One held still is found too, so a walk to it is refused with
-            // why, as a terminal's do is, rather than said missing.
-            const row = rows.find(one => (Catalogue.listed(one) || Arming.holdsStill(one))
-                && steadyId(one) === step) ?? null;
+            // why, as a terminal's do is, rather than said missing; never
+            // one gone, as no listed row is.
+            const row = rows.find(one => (Catalogue.listed(one)
+                || Arming.holdsStill(one) && !one.gone) && steadyId(one) === step) ?? null;
             if (row === null)
                 return null;
             path.push(row);
@@ -1649,6 +1650,14 @@ Scope {
         const said = path.map(row => row.name).join(" \u203a ");
         const ids = path.map(row => steadyId(row));
         console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} ${said}`);
+        // One held still, as an ask hidden while Joel shares, is refused,
+        // saying why, rather than run or said done for nothing; asked
+        // first, so a held row is never opened or offered, whatever else
+        // it holds, as Return on it does neither.
+        const refused = why => ({ done: false, said: why === "" ? said : `${said}: ${why}` });
+        const stillHere = heldWhyOf(target);
+        if (stillHere !== null)
+            return refused(stillHere);
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
@@ -1667,16 +1676,19 @@ Scope {
         // Said done only where nothing refused it as it ran (walkedRun).
         const ran = why => why === "" ? { done: true, said: said }
             : { done: false, said: `${said}: ${why}` };
-        // One held still, as an ask hidden while Joel shares, is refused,
-        // saying why, rather than run or said done for nothing.
-        const still = heldWhyOf(target, act);
-        if (still !== "")
-            return ran(still);
+        // Its Return's act held still is refused too.
+        const still = heldWhyOf(act);
+        if (still !== null)
+            return refused(still);
         if (act.given) {
             if ((words ?? "") === "")
                 return { error: `${said} takes words: ${act.ask ?? ""}` };
             return ran(walkedRun(() => act.given(words)));
         }
+        // One with nothing to run, as an answered ask, sends nothing and
+        // says so, as a terminal's do does, rather than throw.
+        if (typeof act.run !== "function")
+            return refused(Words.field.becoming?.dropped ?? "");
         // As Return does it, save that what's typed, Ask's question, picks
         // nothing: one whose outcome takes a while keeps the launcher, and
         // the rest close it first.
@@ -1886,17 +1898,15 @@ Scope {
         }
     }
 
-    // Does what's walked, as doneFromTerminal says; none walked, it's
-    // `nothing`, which the terminal says in its own words.
-    // Why a terminal's way to a row is refused for its being held still,
-    // the row's own or its Return's act's, so neither way in acts where
-    // Return holds still; "" for one not held.
-    function heldWhyOf(target, act) {
-        const dropped = Words.field.becoming?.dropped ?? "";
-        const own = Arming.heldWhy(target, dropped);
-        return own !== "" ? own : Arming.heldWhy(act, dropped);
+    // Why a terminal's way to a row, or to its Return's act, is refused
+    // for its being held still, so no way in acts where Return holds
+    // still; null for one not held.
+    function heldWhyOf(row) {
+        return Arming.heldWhy(row, Words.field.becoming?.dropped ?? "");
     }
 
+    // Does what's walked, as doneFromTerminal says; none walked, it's
+    // `nothing`, which the terminal says in its own words.
     function doneWalked(walked, words, sure) {
         if (walked.missing !== undefined)
             return { missing: walked.missing, near: walked.near, in: walked.in };
@@ -1909,6 +1919,12 @@ Scope {
         const ids = trail.map(one => steadyId(one));
         console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)}`
             + ` ${names.join(" \u203a ")}`);
+        // One held still is refused, saying why, as the walk refuses it:
+        // first, so it's never opened or asked about, and never said done.
+        const refused = why => ({ refused: why, in: names });
+        const stillHere = heldWhyOf(target);
+        if (stillHere !== null)
+            return refused(stillHere);
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
@@ -1943,10 +1959,9 @@ Scope {
         // Said done only where nothing refused it as it ran, else why, kept
         // apart from a daemon with no answer (walkedRun, Reached.answered).
         const ran = why => Reached.answered(why, names, Words.field.becoming?.noAnswer ?? "");
-        // One held still is refused, saying why, as the walk refuses it.
-        const still = heldWhyOf(target, act);
-        if (still !== "")
-            return ran(still);
+        const still = heldWhyOf(act);
+        if (still !== null)
+            return refused(still);
         if (act.given) {
             if (words === "")
                 return { takes: act.ask ?? "", in: names };
@@ -1955,7 +1970,7 @@ Scope {
         // One with nothing to run, as an answered ask, sends nothing and
         // says so, where Return on it would only close the launcher.
         if (typeof act.run !== "function")
-            return ran(Words.field.becoming?.dropped ?? "");
+            return refused(Words.field.becoming?.dropped ?? "");
         // As the catalogue's run does it, as Return would.
         trials.picked(target, "", trail.length - 1);
         if (act.stays)
@@ -2950,8 +2965,8 @@ Scope {
         linedAt = Date.now();
     }
 
-    // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", or ""
-    // for one doubled), and when it was pressed, heard and done, in
+    // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", "held"
+    // on a row held still, or "" for one doubled), and when it was pressed, heard and done, in
     // milliseconds of the monotonic clock, so a test sees that a name and
     // one Return opens with no wait between.
     property var returned: ({})

@@ -27,10 +27,11 @@ function holdsStill(row) {
 }
 
 // Why a row held still does nothing (`stillWhy`), or `fallback` where it
-// says none; "" for any other row.
+// says none; null for any other row, so one held with no words anywhere
+// is still told from one not held.
 function heldWhy(row, fallback) {
     if (!holdsStill(row)) {
-        return "";
+        return null;
     }
     const why = row.stillWhy;
     return typeof why === "string" && why !== "" ? why : fallback;

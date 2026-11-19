@@ -827,8 +827,8 @@ ShellRoot {
         same("still saying when it's done after, as it did", held().done === done, true);
     }
 
-    // An ask ended while the screen is shared is hidden too, and its
-    // Return closes the launcher, as an ended ask's does unshared.
+    // An ask ended while the screen is shared is hidden too, and draws and
+    // holds as a waiting one does, where unshared its Return closes.
     function sharedEnded() {
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         const drawn = one => JSON.stringify([one?.hue, one?.state, one?.glyph]);
