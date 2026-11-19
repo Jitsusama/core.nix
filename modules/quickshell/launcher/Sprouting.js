@@ -73,14 +73,15 @@ const TOLD_AGAIN_MS = 30000;
 // SETTLE_MS before `now`; those still `waiting` that out; and every
 // token to say told, all but those still asked or waited on.
 function untold(kept, known, seen, now) {
-    const own = (of, token) => Object.prototype.hasOwnProperty.call(of, token);
-    const settled = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS;
+    // Own keys alone, so a prototype's name is never known; Qt's engine has no Object.hasOwn.
+    const own = (of, named) => Object.keys(of).includes(named);
+    const waitedOut = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS;
     const unheard = kept.filter(one => !own(known, one.token));
-    const tell = unheard.filter(settled);
-    const waiting = unheard.filter(one => !settled(one)).map(one => one.token);
-    const told = kept.filter(one => (own(known, one.token) ? known[one.token] !== "asking"
-        : settled(one))).map(one => one.token);
-    return { tell, told, waiting };
+    const tell = unheard.filter(waitedOut);
+    const waiting = unheard.filter(one => !waitedOut(one)).map(one => one.token);
+    const said = kept.filter(one => (own(known, one.token) ? known[one.token] !== "asking"
+        : waitedOut(one))).map(one => one.token);
+    return { tell, told: said, waiting };
 }
 
 // Why `ask` would ask nothing, in `said`'s words (`empty` or
