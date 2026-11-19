@@ -2640,8 +2640,8 @@
     commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
-    with it, keeping no core, sixteen codemode workers for its
-    conversations to share, node's heap limit set to its realm's heapMb, and pi's SSH agent
+    with it, a core limit of 0 so it keeps no core when it dies, sixteen codemode workers for
+    its conversations to share, node's heap limit set to its realm's heapMb, and pi's SSH agent
     proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
     restart, and a machine naming none, or a Mac, gets none

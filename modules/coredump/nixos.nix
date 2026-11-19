@@ -10,9 +10,8 @@
   systemd.coredump.settings.Coredump.MaxUse = "4G";
 
   # A core is root's, with an access list that lets the crashed process's
-  # account read it, and it holds whatever that process held: a pi host's
-  # every hosted conversation's keys and tokens, a password manager's
-  # vault. Any program running as the same account can abort another and
+  # account read it, and it holds whatever that process held: a pi
+  # session's keys and tokens, a password manager's vault. Any program running as the same account can abort another and
   # read its core seconds later, so the folder is root's alone and the
   # access lists lead nowhere. coredumpctl's list and each crash's stack
   # trace come from the journal and still reach an account in wheel, though
@@ -24,8 +23,9 @@
   systemd.services."systemd-coredump@".serviceConfig.StateDirectoryMode = "0700";
   systemd.tmpfiles.rules = [ "d /var/lib/systemd/coredump 0700 root root 2w" ];
 
-  # A node's core holds what its process held: a pi host's holds every
-  # hosted conversation's keys and tokens, and a plain pi's its own. Six
+  # A node's core holds what its process held: a pi's holds its session's
+  # keys and tokens. A pi host keeps none (modules/pi/host.nix says why),
+  # but a pi in a terminal does. Six
   # hours is long enough to read one for where it faulted, and the stack
   # trace systemd-coredump wrote to the journal outlives it, so the core goes
   # then, rather than staying the two weeks or 4 GB the rest may. Checked each

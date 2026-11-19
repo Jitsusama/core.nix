@@ -230,9 +230,12 @@ let
         # minutes coredump runs before its limit ended it, kept nothing and
         # logged no stack trace. The dying host held its restart until the
         # watchdog's kill two minutes on. A core costs a crash that much
-        # outage and gives nothing back; the host's own journal lines, and
-        # the reason a failed keyring call gives, say what a crash was. The
-        # commands a host runs inherit the limit, so they keep none either.
+        # outage and gives nothing back. A native fault leaves the host no
+        # time to write anything, so what a crash was comes from around it:
+        # systemd-coredump's line naming the signal, the host's last journal
+        # lines before it, and the reason a failed keyring call gives. The
+        # commands a host runs inherit the limit, so they keep none either;
+        # a person wanting one's core runs it outside the host.
         LimitCORE = "0";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
