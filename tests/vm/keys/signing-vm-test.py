@@ -180,14 +180,16 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
         ' | grep -q "refused a request from agents\' work"',
         timeout=30,
     )
-    head = joel.run('git -C "$HOME/repo" rev-parse HEAD')
-    joel.run(
+    head = joel.head()
+    said = joel.run(
         f"systemd-run --user --slice=agents --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
         ' -E SIGN_AS=joel -E PATH="$PATH" $(command -v git) -C "$HOME/repo"'
-        " commit -q --allow-empty -m as-joel-from-agents < /dev/null",
+        " commit -q --allow-empty -m as-joel-from-agents < /dev/null 2>&1",
         succeed=False,
     )
-    assert joel.run('git -C "$HOME/repo" rev-parse HEAD') == head
+    # git says this only when the signing failed, so no other failure passes.
+    assert "failed to write commit object" in said
+    assert joel.head() == head
 
 
 def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:
