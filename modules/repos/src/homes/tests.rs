@@ -418,3 +418,29 @@ fn a_failure_is_said_once_until_the_homes_are_written_again() {
     );
     let _ = fs::remove_dir_all(&folder);
 }
+
+#[test]
+fn a_failure_another_writer_puts_right_is_said_over_with_nothing_written() {
+    let folder = folder("put right");
+    let file = folder.join("homes.json");
+    fs::create_dir_all(file.join("in the way")).expect("a folder in the way");
+    let mut homes = Homes::at(file.clone());
+    assert!(homes.keep(&record()).is_some(), "the failure wasn't said");
+    fs::remove_dir_all(&file).expect("the folder out of the way");
+    fs::write(&file, format!("{}\n", of(&record()))).expect("the homes put right");
+    let put = fs::metadata(&file).expect("the homes").ino();
+    assert_eq!(
+        homes.keep(&record()),
+        Some(format!(
+            "repos: Code's homes at {} are right again",
+            file.display()
+        )),
+        "homes another writer put right weren't said to be"
+    );
+    assert_eq!(
+        fs::metadata(&file).expect("the homes").ino(),
+        put,
+        "homes already right were written again"
+    );
+    let _ = fs::remove_dir_all(&folder);
+}
