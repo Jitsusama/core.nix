@@ -108,11 +108,10 @@ pub struct Launches {
     /// reboot, not a restart.
     #[serde(skip)]
     stopping: BTreeMap<String, (String, i64, i64)>,
-    /// Each service started again, with its boot and when, on the boot's
-    /// clock, it stopped and started, until it says it's ready in that
-    /// boot.
+    /// Each service started again, until it says it's ready in that boot
+    /// or starts once more.
     #[serde(skip)]
-    restarting: BTreeMap<String, (String, i64, i64)>,
+    restarting: BTreeMap<String, Restarting>,
     /// Each service that said it was ready soon after a restart.
     #[serde(skip)]
     stamped: BTreeSet<String>,
@@ -120,6 +119,17 @@ pub struct Launches {
     /// at most [`MOST_RELOADS`] of each.
     #[serde(skip)]
     reloaded: BTreeMap<bool, Vec<Reload>>,
+}
+
+/// A restart waiting for its ready line: in which boot, when on the boot's
+/// clock it stopped and started, and when it stopped again, if it has,
+/// since a ready line written after that is the next program's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Restarting {
+    boot: String,
+    stopped: i64,
+    started: i64,
+    stopped_again: Option<i64>,
 }
 
 /// A reload systemd made: in which boot, how long into it, and by the wall
@@ -164,21 +174,33 @@ impl Launches {
     pub fn heard(&mut self, entry: &Entry) -> bool {
         let unit = &entry.thing;
         match entry.job {
-            Some(Job::Stopping) if self.restarts_itself(entry) => {
-                // Its own restart records no stop for `served` to bound
-                // its last start's ready line by, so that wait ends here.
-                self.restarting.remove(unit);
-            }
             Some(Job::Stopping) => {
-                self.stopping.insert(
-                    unit.clone(),
-                    (entry.boot.clone(), entry.since_boot, entry.at),
-                );
+                // Whoever stops it, a ready line written after this stop
+                // is the next program's, so it can't time the restart
+                // before; one written before it and heard after, as the
+                // followers lag, still can.
+                if let Some(waiting) = self
+                    .restarting
+                    .get_mut(unit)
+                    .filter(|waiting| waiting.boot == entry.boot)
+                {
+                    waiting.stopped_again.get_or_insert(entry.since_boot);
+                }
+                if !self.restarts_itself(entry) {
+                    self.stopping.insert(
+                        unit.clone(),
+                        (entry.boot.clone(), entry.since_boot, entry.at),
+                    );
+                }
             }
             Some(Job::Started) => {
                 let Some((boot, stopped, stopped_at)) = self.stopping.remove(unit) else {
                     return true;
                 };
+                // A start ends the wait for the restart before it, whether
+                // or not it is a restart itself: its ready lines are its
+                // own program's.
+                self.restarting.remove(unit);
                 if boot != entry.boot {
                     return true;
                 }
@@ -195,16 +217,26 @@ impl Launches {
                 // does: a service stopped before a sleep and started after
                 // it wasn't restarted. One stepped forward past the window
                 // reads as a sleep, which the two clocks can't tell apart.
+                // A stop read without the boot's stamp, at 0, can't time
+                // one either.
                 let gone = entry.since_boot.saturating_sub(stopped);
-                if (0..=RESTART_WITHIN).contains(&gone)
+                if stopped > 0
+                    && (0..=RESTART_WITHIN).contains(&gone)
                     && entry.at.saturating_sub(stopped_at) <= RESTART_WITHIN
                 {
                     self.restarted
                         .entry(unit.clone())
                         .or_default()
                         .push(millis(gone));
-                    self.restarting
-                        .insert(unit.clone(), (boot, stopped, entry.since_boot));
+                    self.restarting.insert(
+                        unit.clone(),
+                        Restarting {
+                            boot,
+                            stopped,
+                            started: entry.since_boot,
+                            stopped_again: None,
+                        },
+                    );
                 }
             }
             None => {
@@ -285,21 +317,19 @@ impl Launches {
         // a ready from the boot before comes before this boot's starts; a
         // ready from another boot still leaves this boot's restart waiting
         // for its own, so the pairing doesn't rest on that order.
-        let Some(&(_, stopped, started)) = self
+        let Some(&Restarting {
+            stopped,
+            started,
+            stopped_again,
+            ..
+        }) = self
             .restarting
             .get(unit)
-            .filter(|(boot, ..)| *boot == entry.boot)
+            .filter(|waiting| waiting.boot == entry.boot)
         else {
             return;
         };
-        // A ready line after the service stopped again is the next
-        // program's, so it can't time the restart before; one heard after
-        // that stop but written before it, as the followers lag, still can.
-        if self
-            .stopping
-            .get(unit)
-            .is_some_and(|(boot, stopped, _)| *boot == entry.boot && *stopped <= entry.since_boot)
-        {
+        if stopped_again.is_some_and(|again| again <= entry.since_boot) {
             return;
         }
         let after = entry.since_boot.saturating_sub(started);

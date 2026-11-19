@@ -444,6 +444,81 @@ fn a_restart_isnt_timed_across_a_sleep_or_out_of_order() {
 }
 
 #[test]
+fn a_ready_line_times_only_the_restart_its_program_started() {
+    const WALL: i64 = 1_794_978_000_000_000;
+    let mut day = Day::new("2026-11-18");
+    let job = |unit: &str, since_boot, at, job| Entry {
+        at: WALL + at,
+        since_boot,
+        job: Some(job),
+        ..entry(unit, 6, "")
+    };
+    let ready = |thing: &str, since_boot, at| Entry {
+        at: WALL + at,
+        since_boot,
+        ..entry(thing, 6, &format!("{thing}: ready in 5 ms"))
+    };
+    let tools_reload = |since_boot, at| Entry {
+        at: WALL + at,
+        since_boot,
+        origin: Origin::Systemd,
+        ..entry(
+            "systemd",
+            5,
+            "Reload requested from client PID 1520947 ('systemctl') (unit x.service)...",
+        )
+    };
+    for line in [
+        // A switch's restart, then a stop before a sleep and a start after
+        // it, which is no restart: the new program's ready line, soon
+        // after its start on the boot's clock, isn't the first restart's.
+        job("slept.service", 500_000_000, 10_000_000, Job::Stopping),
+        job("slept.service", 500_100_000, 10_100_000, Job::Started),
+        job("slept.service", 500_200_000, 10_200_000, Job::Stopping),
+        job("slept.service", 500_300_000, 3_610_300_000, Job::Started),
+        ready("slept", 500_400_000, 3_610_400_000),
+        // A switch's restart, then a tool's own restart of it: the first
+        // program's ready line, written before the tool's stop and heard
+        // after it, still times the switch's restart.
+        job("lagged.service", 600_000_000, 20_000_000, Job::Stopping),
+        job("lagged.service", 600_100_000, 20_100_000, Job::Started),
+        tools_reload(600_200_000, 20_200_000),
+        job("lagged.service", 600_300_000, 20_300_000, Job::Stopping),
+        ready("lagged", 600_250_000, 20_250_000),
+        job("lagged.service", 600_400_000, 20_400_000, Job::Started),
+        // The same, but the ready line is the tool's restarted program's:
+        // it isn't the switch's restart's.
+        job("own.service", 700_000_000, 30_000_000, Job::Stopping),
+        job("own.service", 700_100_000, 30_100_000, Job::Started),
+        tools_reload(700_200_000, 30_200_000),
+        job("own.service", 700_300_000, 30_300_000, Job::Stopping),
+        job("own.service", 700_400_000, 30_400_000, Job::Started),
+        ready("own", 700_500_000, 30_500_000),
+        // A stop read without the boot's stamp, which reads as 0.
+        job("unstamped.service", 0, 40_000_000, Job::Stopping),
+        job("unstamped.service", 100_000, 40_100_000, Job::Started),
+    ] {
+        day.take(&line);
+    }
+    assert_eq!(
+        day.launches.restarted,
+        BTreeMap::from([
+            ("lagged.service".to_owned(), vec![250]),
+            ("own.service".to_owned(), vec![100]),
+            ("slept.service".to_owned(), vec![100]),
+        ]),
+        "a ready line timed a restart another program's start had ended, a tool's own \
+         restart lost the one before its ready line, or a stop without the boot's stamp \
+         was timed"
+    );
+    assert_eq!(
+        day.launches.unstamped(),
+        BTreeMap::from([("own.service", 1), ("slept.service", 1)]),
+        "a ready line stamped the restart before its own program's start"
+    );
+}
+
+#[test]
 fn a_stop_at_shutdown_and_a_start_in_the_next_boot_are_no_restart() {
     // The day is read through every boot, so a shutdown's stops come
     // before the next boot's starts, a reboot's length apart.
