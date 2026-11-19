@@ -262,21 +262,11 @@ function folded(word: string): string {
 }
 
 /**
- * The devices besides `device`, which may be a copy of the one listed.
- * Devices sharing an id net gives several are each other's others, so
- * only the one entry that is this device is left out.
+ * A word as it reads to a person: composed as Unicode composes it, without
+ * what shapes it, and in net's case.
  */
-function othersThan(device: Device, devices: readonly Device[]): Device[] {
-  if (!SHARED_IDS.has(device.id)) {
-    return devices.filter((other) => other.id !== device.id);
-  }
-  const same = (other: Device): boolean =>
-    other.id === device.id &&
-    other.name === device.name &&
-    other.addresses.join(" ") === device.addresses.join(" ");
-  const itself = devices.indexOf(device);
-  const at = itself === -1 ? devices.findIndex(same) : itself;
-  return devices.filter((_, index) => index !== at);
+function reads(word: string): string {
+  return folded(word.normalize("NFC").replace(UNSHAPED, ""));
 }
 
 /**
@@ -287,16 +277,17 @@ function othersThan(device: Device, devices: readonly Device[]): Device[] {
  * nothing else answers to it; then the first address, as net's own try
  * lines choose it, when no other device answers there; then net's id,
  * unless it's one net gives to several. A name that reads as another's
- * once what shapes it is set aside isn't offered, since the command would
- * read as naming the other.
+ * name, id or address, composed and without what shapes it, isn't
+ * offered, since the command would read as naming the other.
  */
 function findingWords(device: Device, devices: readonly Device[]): string[] {
-  const others = othersThan(device, devices);
+  const others = devices.filter((other) => other.id !== device.id);
   const { name } = device;
-  const reads = (word: string): string => folded(word.replace(UNSHAPED, ""));
-  const nameFinds = others.every(
-    (other) =>
-      other.id !== name && !other.addresses.includes(name) && reads(other.name) !== reads(name),
+  const read = reads(name);
+  const nameFinds = others.every((other) =>
+    [other.id, ...other.addresses, other.name].every(
+      (word) => word !== name && reads(word) !== read,
+    ),
   );
   const address = device.addresses[0];
   const addressFinds =

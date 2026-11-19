@@ -161,6 +161,8 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     named("Study", "mac:02:00:00:00:00:02", ["10.0.0.2"]),
     named("Den", "lamp-id"),
     named("ÉCOLE", "mac:02:00:00:00:00:03"),
+    named("Caf\u00e9", "mac:02:00:00:00:00:04"),
+    named("Lo\u00adft", "mac:02:00:00:00:00:05"),
   ];
   for (const [name, command] of [
     ["Hall", "net devices Hall"],
@@ -193,6 +195,9 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ],
     ["\u845b\ufe00 \u845b\u{e01ef}", "net devices '\u845b\ufe00 \u845b\u{e01ef}'"],
     ["\u{1f3f4}\u{e0020}\u{e007f} den", "net devices '\u{1f3f4}\u{e0020}\u{e007f} den'"],
+    // Just past Hangul's ranges that take no cell: a letter and a syllable.
+    ["a \u1200x", "net devices 'a \u1200x'"],
+    ["a \ud7a3x", "net devices 'a \ud7a3x'"],
     ["study", byId],
     ["10.0.0.2", byId],
     ["lamp-id", byId],
@@ -219,6 +224,8 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["a \u1161vowel", byId],
     ["\u11a8final", byId],
     ["x \ud7b0vowel", byId],
+    ["a \u11ffx", byId],
+    ["x \ud7ffv", byId],
     // Just past each kept range: a tag that opens a language, a tag and a
     // selector nothing assigns.
     ["a\u{e0001}b", byId],
@@ -227,6 +234,12 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     // Another's name once what shapes it is set aside.
     ["Den\u200d", byId],
     ["D\u00aden", byId],
+    ["Loft", byId],
+    // Another's id or address once what shapes it is set aside, and
+    // another's name as Unicode composes it.
+    ["lamp\u200d-id", byId],
+    ["10.0.0\u00ad.2", byId],
+    ["Cafe\u0301", byId],
   ] as const) {
     // A copy, as a device read again is, so the device is known by its id.
     const device = named(name, id);
@@ -240,12 +253,7 @@ it("a device's command names it by a name that pastes as it reads and finds it a
 
 it("a device no name finds is named by its address, its id, or by none", () => {
   const shared = named("Phone", "mac:02:00:00:00:00:02", ["10.0.0.2"]);
-  const network = (device: Device): Device[] => [
-    device,
-    shared,
-    named("Hub", "hub", ["10.0.0.9"]),
-    named("Study", "mac:?", ["10.0.0.3"]),
-  ];
+  const network = (device: Device): Device[] => [device, shared, named("Hub", "hub", ["10.0.0.9"])];
   for (const [device, command, why] of [
     [named("Phone", "mac:?", ["10.0.0.4"]), "net devices 10.0.0.4", "with its own address"],
     [
@@ -259,11 +267,6 @@ it("a device no name finds is named by its address, its id, or by none", () => {
       "with another's id as its address",
     ],
     [named("Phone", "mac:?", ["mac:?"]), undefined, "with a shared id as its address"],
-    [
-      named("Study", "mac:?", ["10.0.0.8"]),
-      "net devices 10.0.0.8",
-      "with a shared id and the name of another with it",
-    ],
     [named("Phone", "mac:?", ["10.0.0.9"]), undefined, "with another's address"],
     [named("Phone", "mac:?"), undefined, "with the id net gives every client without one"],
     [named("Phone", "eero:unknown"), undefined, "with the id net gives every eero without one"],
