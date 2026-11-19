@@ -79,9 +79,9 @@ let
   # wins over the host's own and whose compiled code node runs as its
   # modules' (host/service/compile-cache.ts); the loader's LD_PRELOAD, LD_AUDIT
   # and LD_LIBRARY_PATH, which load a library; and OpenSSL's OPENSSL_CONF and
-  # OPENSSL_MODULES, whose configuration loads a module. mycelium takes no
-  # host's word whose environment gives any of them, but for a blank
-  # NODE_OPTIONS.
+  # OPENSSL_MODULES, whose configuration loads a module. mycelium, from the
+  # version that proves a hosted session by its spawner, takes no host's
+  # word whose environment gives any of them, but for a blank NODE_OPTIONS.
   loadsCode = [
     "NODE_OPTIONS"
     "NODE_PATH"
@@ -416,18 +416,18 @@ in
       let
         given = lib.filter (name: host.environment ? ${name}) loadsCode;
         one = lib.length given == 1;
-        # "A", "A and B", "A, B and C".
+        # "A", "A and B", "A, B and C"; nothing where none is given.
         named =
-          if one then
-            lib.head given
+          if lib.length given < 2 then
+            lib.concatStrings given
           else
             "${lib.concatStringsSep ", " (lib.init given)} and ${lib.last given}";
       in
       {
         assertion = given == [ ];
-        message = "jitsusama.pi.hosts.${realm}.environment gives ${named}, which a pi host's unit clears, since ${if one then "it" else "each"} would run code as the host as its node starts. Of those the unit clears, NODE_OPTIONS does through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; NODE_COMPILE_CACHE through compiled code node reads back from its folder; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. ${
+        message = "jitsusama.pi.hosts.${realm}.environment gives ${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make the host's node run code nobody gave it. NODE_OPTIONS does so through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; NODE_COMPILE_CACHE through compiled code node reads back from its folder; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. ${
           if one then "Drop it." else "Drop each one."
-        } A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get none of these from it.";
+        } A host's node takes no option from a realm but its heap, set with heapMb. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
     ) cfg;
 

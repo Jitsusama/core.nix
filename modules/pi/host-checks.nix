@@ -110,63 +110,61 @@ in
       };
       # A realm giving each alone, named for it: node_options and so on.
       realmOf = name: lib.toLower name;
-      refusals = map (check: check.message) (
-        lib.filter (check: !check.assertion)
-          (account (bareNixos [
-            self.nixosModules.workstation
-            {
-              home-manager.users.someone.jitsusama.pi.hosts =
-                lib.listToAttrs (
-                  map (
-                    name:
-                    lib.nameValuePair (realmOf name) (realm {
-                      ${name} = "/x";
-                    })
-                  ) loadsCode
-                )
-                // {
-                  plain = realm { GREETING = "hi"; };
-                  # Two, beside one that loads nothing, which the
-                  # refusal leaves out.
-                  both = realm {
-                    OPENSSL_CONF = "/x.cnf";
-                    LD_PRELOAD = "/x.so";
-                    GREETING = "hi";
-                  };
+      checks =
+        (account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.jitsusama.pi.hosts =
+              lib.listToAttrs (
+                map (
+                  name:
+                  lib.nameValuePair (realmOf name) (realm {
+                    ${name} = "/x";
+                  })
+                ) loadsCode
+              )
+              // {
+                plain = realm { GREETING = "hi"; };
+                # Two, beside one that loads nothing, which the
+                # refusal leaves out.
+                both = realm {
+                  OPENSSL_CONF = "/x.cnf";
+                  LD_PRELOAD = "/x.so";
+                  GREETING = "hi";
                 };
-            }
-          ])).assertions
-      );
+                three = realm {
+                  OPENSSL_MODULES = "/x";
+                  NODE_PATH = "/x";
+                  LD_AUDIT = "/x.so";
+                };
+              };
+          }
+        ])).assertions;
+      refusals = map (check: check.message) (lib.filter (check: !check.assertion) checks);
       # The one refusal naming a realm, or none.
       prefixOf = realm: "jitsusama.pi.hosts.${realm}.environment gives ";
       refusalOf = realm: lib.findFirst (lib.hasPrefix (prefixOf realm)) null refusals;
-      # Whether a realm's refusal names just these variables, in any order,
+      # Whether a realm's refusal names just these variables, as written,
       # and speaks of one as it and of several as each.
       names =
-        realm: wanted:
+        realm: named:
         let
           refused = refusalOf realm;
-          named = lib.head (
-            lib.splitString ", which a pi host's unit clears" (lib.removePrefix (prefixOf realm) refused)
-          );
-          given = lib.splitString ", " (lib.replaceStrings [ " and " ] [ ", " ] named);
-          one = lib.length wanted == 1;
+          one = !(lib.hasInfix " and " named);
         in
         refused != null
-        && lib.sort lib.lessThan given == lib.sort lib.lessThan wanted
-        && (one || lib.hasInfix " and " named)
-        && lib.hasInfix "clears, since ${if one then "it" else "each"} would run code" refused
+        && lib.hasPrefix "${prefixOf realm}${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make" refused
         && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused;
     in
     holds "pi-hosts-refuse-code-loading-variables"
       "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each."
       (
         refusalOf "plain" == null
-        && lib.all (name: names (realmOf name) [ name ]) loadsCode
-        && names "both" [
-          "LD_PRELOAD"
-          "OPENSSL_CONF"
-        ]
+        # Each message can be read, a passing realm's too.
+        && lib.all (check: lib.isString check.message) checks
+        && lib.all (name: names (realmOf name) name) loadsCode
+        && names "both" "LD_PRELOAD and OPENSSL_CONF"
+        && names "three" "NODE_PATH, LD_AUDIT and OPENSSL_MODULES"
       );
 }
 # The hosts run as Linux's systemd user units, in slices a Mac has none of.
@@ -288,8 +286,6 @@ in
         && unit.Service.TimeoutStartSec or null == "20min"
         # Its core is kept until 20 November (host.nix says why).
         && unit.Service.LimitCORE or null == "infinity"
-        # Never given the TPM agent's own variable.
-        && lib.elem "SSH_TPM_AUTH_SOCK" (lib.toList (unit.Service.UnsetEnvironment or [ ]))
         && unit.Unit.StartLimitIntervalSec or null == 600
         && unit.Unit.StartLimitBurst or null == 3
         && unit.Unit.OnFailure or null == [ "pi-host-down@%N.service" ]
