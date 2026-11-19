@@ -83,25 +83,26 @@
     '';
 
   # The launcher's query line takes vi's two modes from one table, as
-  # tests/query-keys.qml holds QueryKeys.js and Editing.js to: insert's
-  # keys, normal's ways back into insert, its moves through the rows with counts and
-  # where each lands, its closing keys and ex line, its place used last,
-  # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
-  # to the keys Space ? lists; the drawer as a window, Space and the arrows
-  # into it and back, with DrawerPage.js to where its keys take its cursor
-  # and view, DrawerFigure.js to where a fact's figure stands, DrawerProse.js to where
-  # its prose is cut and DrawerValue.js to how its value is laid on lines,
-  # with Identifier.js to keeping its cuts bounded and whole; Operators.js
-  # to what d and y do to the rows they take; and
-  # Confirm.js to how the launcher asks once, answered by Return as an armed row is; and
-  # Changes.js to what u and Ctrl+R take back, with Search.js to how a page's search matches;
-  # and launcher/Headings.js to how the rows' moves count past a list's headings.
+  # modules/quickshell/tests/query-keys.qml holds QueryKeys.js and Editing.js
+  # to: insert's keys, normal's ways back into insert, its moves through the
+  # rows with counts and where each lands, its closing keys and ex line, its
+  # place used last, sequences, and where the caret goes, which Typing.js says;
+  # ListedKeys.js to the keys Space ? lists; the drawer as a window, Space and
+  # the arrows into it and back, with DrawerPage.js to where its keys take its
+  # cursor and view, DrawerFigure.js to where a fact's figure stands,
+  # DrawerProse.js to where its prose is cut and DrawerValue.js to how its value
+  # is laid on lines, with Identifier.js to keeping its cuts bounded and whole;
+  # Operators.js to what d and y do to the rows they take; and Confirm.js to how
+  # the launcher asks once, answered by Return as an armed row is; and
+  # Changes.js to what u and Ctrl+R take back, with Search.js to how a page's
+  # search matches; and launcher/Headings.js to how the rows' moves count past a
+  # list's headings.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
-      cp ${../../../tests/query-keys.qml} query-keys.qml
+      cp ${../tests/query-keys.qml} query-keys.qml
       ${copied [
         "Changes.js"
         "Confirm.js"

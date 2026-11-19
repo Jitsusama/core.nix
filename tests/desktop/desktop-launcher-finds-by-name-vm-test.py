@@ -744,9 +744,9 @@ def walk_the_gutter(desktop: Desktop) -> None:
 def walk_the_rows_moves(desktop: Desktop) -> None:
     """Press every move normal takes through a search's rows, as Joel would through niri.
 
-    They're Vim's, with counts, as QueryKeys.js holds them (tests/query-keys.qml): this is
-    that each reaches the rows through niri, lands where the list has its rows in view, and
-    that a count shows in the foot until its move.
+    They're Vim's, with counts, as QueryKeys.js holds them
+    (modules/quickshell/tests/query-keys.qml): this is that each reaches the rows through niri,
+    lands where the list has its rows in view, and that a count shows in the foot until its move.
     """
     machine = desktop.machine
     desktop.answer("s")

@@ -353,7 +353,7 @@ def test_the_launchers_sound_chooses_noise_cancelling_by_ear(desktop: Desktop) -
     The noise-cancelled daemon stands in (stand-in-noise-cancelled.py), its clips in a known
     order, so B is DeepFilterNet gentle. One path through the connection: the record held from
     its socket, each act asked over it, and the record's change drawn; every case of each step
-    is tests/by-ear.qml's.
+    is modules/quickshell/tests/by-ear.qml's.
     """
     desktop.as_account("systemctl --user start noise-cancelled-stand-in.service")
     sound_device(desktop, "microphone", "stand-in microphone")
@@ -394,7 +394,8 @@ def test_for_you_offers_choose_by_ear_after_a_call(desktop: Desktop) -> None:
     The service leaves the offer after a call on a microphone not chosen for where it is; the
     stand-in daemon tells it as the trial does. One path through the connection, Sound's to-do
     reaching For You and its trail reaching Choose by Ear, and its name typed from the top
-    reaching it too; what the offer says, case by case, is tests/by-ear.qml's.
+    reaching it too; what the offer says, case by case, is
+    modules/quickshell/tests/by-ear.qml's.
     """
     offer = json.dumps(
         {

@@ -47,18 +47,18 @@ in
     '';
 
   # Asks over Passwords' connection, as where the passwords daemon answers
-  # secret asks, stood in so each ask it sends is read (tests/asks-over.qml):
-  # a first Return only arms; a yes says how long since a frame presented
-  # its line selected, its line noted again as the launcher opens on it;
-  # a changed line says no time until presented; opened from outside, it
-  # times nothing until a key moves over the rows his Escape reached, never
-  # on the find, from a step into a place, nor over rows a landing Return,
-  # the command line or an ask from outside left, and a withheld yes says
-  # why; entries
-  # told over the connection leave the asks' rows be; a yes walked from
-  # outside is never sent; a no goes as served; and while the screen is
-  # shared, or niri hasn't said its casts, a row is hidden, with no act and
-  # no frame timed, counting nothing once shown until his next move.
+  # secret asks, stood in so each ask it sends is read
+  # (modules/quickshell/tests/asks-over.qml): a first Return only arms; a yes
+  # says how long since a frame presented its line selected, its line noted
+  # again as the launcher opens on it; a changed line says no time until
+  # presented; opened from outside, it times nothing until a key moves over the
+  # rows his Escape reached, never on the find, from a step into a place, nor
+  # over rows a landing Return, the command line or an ask from outside left,
+  # and a withheld yes says why; entries told over the connection leave the
+  # asks' rows be; a yes walked from outside is never sent; a no goes as served;
+  # and while the screen is shared, or niri hasn't said its casts, a row is
+  # hidden, with no act and no frame timed, counting nothing once shown until
+  # his next move.
   the-asks-say-how-long-each-was-shown-over-passwords =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what the shell runs them with.
@@ -79,7 +79,7 @@ in
       cp ${niri} Niri.qml
       cp ${recorder} Recorder.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../../../tests/asks-over.qml} shell.qml
+      cp ${../tests/asks-over.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       export XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

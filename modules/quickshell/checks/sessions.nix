@@ -98,14 +98,15 @@ in
   # the screen is rather than its connector, a gone screen's workspaces
   # after the one in use's and to it once it's back, and each window that
   # reopens itself beside those kept with it, and begins the next session
-  # only while the machine queue says there's room, as tests/places.qml
-  # holds Places.js and Viewers.js to it in Qt's own engine.
+  # only while the machine queue says there's room, as
+  # modules/quickshell/tests/places.qml holds Places.js and Viewers.js to it in
+  # Qt's own engine.
   reopening-finds-each-screen =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "reopening-finds-each-screen" { } ''
-      cp ${../../../tests/places.qml} places.qml
+      cp ${../tests/places.qml} places.qml
       ${copied [
         "Places.js"
         "Viewers.js"

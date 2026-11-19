@@ -1472,10 +1472,10 @@ def neovims_open_files_are_gone_to(desktop: Desktop) -> None:
 
     One Neovim holds two files in two tabs, the first changed and unsaved, and the other one
     file. Neovim's row counts the three open, each page row says whether it's modified and which
-    tab shows it, as the page's offscreen cases do (tests/program-acts.qml), no other row names
-    one again, as Recent did before it left out what's open, and Return on the file in the first
-    Neovim's second tab, in the window not looked at last, brings that window forward with that
-    buffer current in it, opening no other.
+    tab shows it, as the page's offscreen cases do (modules/quickshell/tests/program-acts.qml), no
+    other row names one again, as Recent did before it left out what's open, and Return on the file
+    in the first Neovim's second tab, in the window not looked at last, brings that window forward
+    with that buffer current in it, opening no other.
     """
     machine = desktop.machine
     folder = f"/home/{desktop.account}/soundings"

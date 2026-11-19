@@ -143,7 +143,8 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
     Slack's answers, a tenth of a second apart just after a restart, held the open launcher a
     minute (2026-10-30). A burst is taken a refresh at a time, none sooner after the last than
     a frame, and no more refreshes than changes heard. How long each waits by what the last
-    cost is held in tests/pacing.qml, and that the list keeps to those waits in keeps-up.
+    cost is held in modules/quickshell/tests/pacing.qml, and that the list keeps to those waits in
+    keeps-up.
     """
     machine = desktop.machine
     jobs = "$XDG_RUNTIME_DIR/jobs"
