@@ -315,9 +315,10 @@ DRAWN = "Memory"
 # as Programs' (with LAB_PROGRAMS), whose drawers Joel's downs waited on (2026-11-13).
 DRAWN_IN = "Machine"
 
-# A drawer's line as the shell says it once niri presented it (launcher/Presented.js).
+# A drawer's line as the shell says it once niri presented it (launcher/Presented.js), how it
+# came last but for the screen it was shown on.
 DRAWER_PRESENTED = re.compile(
-    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: (.*), ([^,]+)$'
+    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: (.*), ([^,;]+)(?:; on .*)?$'
 )
 
 

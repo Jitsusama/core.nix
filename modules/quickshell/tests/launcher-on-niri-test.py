@@ -2379,6 +2379,11 @@ DRAWER_SWAPPED = re.compile(r"from its frame's start \((\d+) to its swap and (\d
 DRAWERS_SAID = re.compile(r"launcher: \d+ drawers? in \S+ presented a median \d+ ms from the key")
 
 
+def came_in_its_keys_frame(line: str) -> bool:
+    """Say whether a drawer's line says it came in its key's frame, before the screen it names."""
+    return line.split("; on ", 1)[0].endswith("in the key's frame")
+
+
 def test_a_drawer_is_said_presented_from_the_key_that_brought_it(shell: Shell) -> None:
     """A drawer an arrow brings says how long it took from that key to niri's screen.
 
@@ -2468,7 +2473,7 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
     shell.launcher_until(functools.partial(drawer_moved, title))
     said = said_once(shell, since, DRAWER_SAID)
     lines = [line for line in said.splitlines() if "drawer for" in line]
-    assert any(line.endswith("in the key's frame") for line in lines), lines
+    assert any(came_in_its_keys_frame(line) for line in lines), lines
     keys = json.loads(shell.as_account(shell.ipc("keysPresented")))
     drawers = json.loads(shell.as_account(shell.ipc("drawersPresented")))
     drawer = drawers[-1]
@@ -2671,7 +2676,7 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
     assert drawn, "the drawer the key brought was never said presented"
     order = [one for one in said if one.startswith(("drawer follows ", "key framed "))]
     follows = next((one for one in order if one.startswith("drawer follows ")), "")
-    if drawn[-1].endswith("in the key's frame"):
+    if came_in_its_keys_frame(drawn[-1]):
         assert order[:2] == [follows, "key framed ↓"], (
             f"a drawer in its key's frame wasn't made in the key's handler: {order}"
         )

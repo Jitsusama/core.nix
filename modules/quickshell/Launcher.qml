@@ -9076,8 +9076,12 @@ Scope {
         drawerKeyAt = 0;
         if (presenting !== null) {
             presentedAwait(presenting.from, at => {
+                // The screen it was shown on and niri's frame there, as a
+                // key's, so a drawer docked to a 60 Hz screen reads as that.
                 const one = Object.assign(presenting, { at,
-                    swapped: root.swappedOf(presenting.frame) });
+                    swapped: root.swappedOf(presenting.frame),
+                    screen: root.screenHere?.name ?? "",
+                    refresh: root.refreshOf(presenting.frame) });
                 root.drawersPresented = root.drawersPresented.concat([one]).slice(-keysKept);
                 console.info(Presented.drawerSaid(one));
             });
@@ -11843,6 +11847,13 @@ Scope {
         if (frame === undefined)
             return null;
         return surface.FramePresentation.timesOf(frame).swapped || null;
+    }
+    // Niri's frame in ms on the screen a frame was shown on, or 0 where
+    // niri never timed it, as a dropped frame isn't.
+    function refreshOf(frame) {
+        if (frame === undefined)
+            return 0;
+        return surface.FramePresentation.timesOf(frame).refresh ?? 0;
     }
     function presentedDue(frame, at) {
         if (presentedWaiting.length === 0)
