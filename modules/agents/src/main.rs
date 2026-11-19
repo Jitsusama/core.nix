@@ -717,10 +717,11 @@ mod sprouts {
         node.set_nonblocking(true).expect("the node never waits");
         let shared = Shared::new(DOMAIN, Box::new(|_| None));
         let (told, heard) = mpsc::channel();
-        let told = Arc::new(starts_stopped::Told::new(told));
+        let stood = Arc::new(starts_stopped::Told::new(told.clone()));
+        let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
         let words = Words::from_vocabulary(include_str!("../tests/words.json"))
             .expect("the launcher's words read");
-        sprouts_for_the_shell(&shared, Some(at_node), (told, words.starts));
+        sprouts_for_the_shell(&shared, Some(at_node), keeping, told, (stood, words.starts));
         let socket = folder.join("agents.sock");
         let listener = serve::listen(&socket).expect("the daemon's socket");
         serve::accept(shared, listener);
