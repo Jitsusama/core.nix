@@ -836,19 +836,32 @@ QtObject {
             + "20 in the shell and 20 from its frame's start (2 to its swap and 18 after it); "
             + "on eDP-1 at 120 Hz");
         // As the launcher keeps them (keyPresented): a swap it didn't time
-        // is null, and every key says whether niri timed its press.
-        const clocked = [Object.assign({ swapped: 2020.04, stamped: true, dropped: 0 }, keys[2]),
-            Object.assign({ swapped: null, stamped: true, dropped: 0 }, keys[1]),
-            Object.assign({ swapped: 82.36, stamped: true, dropped: 0 }, keys[0])];
+        // is null, one not reached 0 (frame-presentation.patch), and every
+        // key says whether niri timed its press.
+        const clocked = [Object.assign({ swapped: 2020.04, stamped: true, later: 0 }, keys[2]),
+            Object.assign({ swapped: null, stamped: true, later: 0 }, keys[1]),
+            Object.assign({ swapped: 82.36, stamped: true, later: 0 }, keys[0])];
         check(failures, "each key says its press, swap and screen to a tenth, as pressed",
             Presented.keysClockSaid(clocked),
             "launcher: 3 keys pressed, swapped and shown, in monotonic ms: 0.0 82.4 100.0; "
             + "1000.0 - 1050.0; 2000.0 2020.0 2300.0");
-        check(failures, "a press niri gave no time and a frame it dropped are said",
+        check(failures, "an untimed press, a swap not reached and a later frame are said",
             Presented.keysClockSaid([Object.assign({}, clocked[2], { stamped: false }),
-                Object.assign({}, clocked[0], { dropped: 2 })]),
-            "launcher: 2 keys pressed, swapped and shown, in monotonic ms: - 82.4 100.0; "
-            + "2000.0 2020.0 2300.0 after 2 dropped");
+                Object.assign({}, clocked[1], { swapped: 0, later: 1 }),
+                Object.assign({}, clocked[0], { later: 2 })]),
+            "launcher: 3 keys pressed, swapped and shown, in monotonic ms: - 82.4 100.0; "
+            + "1000.0 - 1050.0, 1 frame after its own; "
+            + "2000.0 2020.0 2300.0, 2 frames after its own");
+        // How the launcher reads a key's record and the frame niri answered.
+        const clockOf = (key, answered) => JSON.stringify(Presented.keyClockOf(key, answered));
+        check(failures, "a key niri answered on its own frame, or a later one, says how many on",
+            [clockOf({ frame: 7, stamped: true }, 7), clockOf({ frame: 7, stamped: true }, 9)]
+                .join(" "),
+            '{"stamped":true,"later":0} {"stamped":true,"later":2}');
+        check(failures, "an untimed press reads so, and an unknown or earlier frame is none later",
+            [clockOf({ frame: 7, stamped: false }, 8), clockOf({}, 9),
+                clockOf({ frame: 9, stamped: true }, 8)].join(" "),
+            '{"stamped":false,"later":1} {"stamped":true,"later":0} {"stamped":true,"later":0}');
         check(failures, "and no keys say nothing of their clock", Presented.keysClockSaid([]), "");
 
         // Joel's openings waited a median 6 frames at 120 Hz for niri after

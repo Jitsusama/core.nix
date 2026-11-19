@@ -149,10 +149,11 @@ function shownSaid(times, at) {
 // burst of keys the first has a line of niri's to match and the rest don't.
 // A press niri gave no time for, as a typed one's, reads "-", as does a
 // swap the render thread didn't time (`stamped`, `swapped`); a held key's
-// repeat is timed from when Qt made it, as keytimes.cpp says. A key whose
-// own frame niri dropped says how many it dropped (`dropped`), since its
-// swap is its own frame's and its showing a later one's. Keys typed into
-// an ask are never timed (Launcher.qml's searchedNow), so none is secret.
+// repeat is timed from when Qt made it, as keytimes.cpp says. A key niri
+// answered for on a later frame than its own says how many later
+// (`later`, keyClockOf), since its swap is its own frame's and its
+// showing the later one's. Keys typed into an ask are never timed
+// (Launcher.qml's searchedNow), so none is secret.
 function keysClockSaid(times) {
     if (times.length === 0) {
         return "";
@@ -160,11 +161,23 @@ function keysClockSaid(times) {
     const each = times.slice().sort((a, b) => a.from - b.from).map(one => {
         const pressed = one.stamped === false ? "-" : tenths(one.from);
         const swapped = one.swapped > 0 ? tenths(one.swapped) : "-";
-        const dropped = one.dropped > 0 ? ` after ${one.dropped} dropped` : "";
-        return `${pressed} ${swapped} ${tenths(one.at)}${dropped}`;
+        const later = one.later > 0
+            ? `, ${one.later} ${one.later === 1 ? "frame" : "frames"} after its own`
+            : "";
+        return `${pressed} ${swapped} ${tenths(one.at)}${later}`;
     });
     return `launcher: ${times.length} keys pressed, swapped and shown, in monotonic ms: `
         + each.join("; ");
+}
+
+// Whether niri gave a key's press a time (keyTimed's `stamped`), and how
+// many frames after the key's own the one niri answered for came
+// (`later`). That is no count of frames niri dropped: when niri drops one
+// the shell asks again only once it hears, and the frame begun before
+// that goes untimed, shown or not (frame-presentation.patch asks once).
+function keyClockOf(key, answered) {
+    const later = key.frame !== undefined && answered > key.frame ? answered - key.frame : 0;
+    return { stamped: key.stamped !== false, later };
 }
 
 // Each part's median, `[from, to, words]`, over those stamped with every

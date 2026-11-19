@@ -12512,16 +12512,14 @@ Scope {
         // dropped for it.
         // A step in or out says which, by its arrow and place, so a check
         // finds it however fast it was; typed words are never said here.
-        // Whether niri gave its press a time, and how many frames niri
-        // dropped from its own to the one it showed, so its clock's line
-        // says each (Presented.keysClockSaid).
-        const dropped = key.frame !== undefined && answered > key.frame ? answered - key.frame : 0;
-        const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
-            stamped: key.stamped !== false, dropped,
+        // Its clock's line says whether niri timed its press and how many
+        // frames after its own niri answered (Presented.keyClockOf).
+        const one = Object.assign({ from, at, heard: key.heard, begun: key.begun,
+            onRow: key.onRow }, Presented.keyClockOf(key, answered), {
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "",
             refresh: root.refreshOf(answered),
-            step: key.step ?? "" };
+            step: key.step ?? "" });
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
     }
 
