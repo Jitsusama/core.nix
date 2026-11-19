@@ -1093,6 +1093,10 @@
   example-nixos = ''
     a NixOS workstation with a screen evaluates
   '';
+  expect-run-fails-each-case-that-throws = ''
+    a QML test's Expect.run exits 0 when its cases hold, and 1 with a FAIL line naming what was
+    thrown when one doesn't, whether an Error, a bare word or null, never hanging
+  '';
   files-are-chosen-in-the-launcher-alone = ''
     open-with chooses a file in the shell when it answers, and chooses none when the shell can't be
     asked, never asking GTK's portal

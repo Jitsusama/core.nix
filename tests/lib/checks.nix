@@ -196,4 +196,20 @@ in
         --quiet ${./qemu-after-its-sockets-test.py}
       touch $out
     '';
+
+  # Expect.run, run once for each way a case can end, since a QML test
+  # that hands its cases to it fails only as run does. It runs in Qt's
+  # own engine, as every QML test's check does, on Linux alone.
+  expect-run-fails-each-case-that-throws =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "expect-run-fails-each-case-that-throws" { } ''
+      cp ${./expect-test.qml} expect-test.qml
+      cp ${./Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${pkgs.bash}/bin/bash ${./expect-test.sh} ${qt} $PWD
+      touch $out
+    '';
 }

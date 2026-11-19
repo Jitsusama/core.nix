@@ -22,7 +22,8 @@ For other checks:
 
 | File                         | Holds                                                             |
 | ---------------------------- | ----------------------------------------------------------------- |
-| `Expect.js`                  | what a QML test says of its cases, as `expect`, `same` and `fail` |
+| `Expect.js`                  | a QML test's cases, by `expect`, `same`, `fail` and `run`         |
+| `expect-test.qml` and `.sh`  | each way Expect.run's cases can end, and what qml exits with      |
 | `Frames.js`                  | a stand-in launcher's afterFrame, run as a test says a frame is   |
 | `HeardWindows.js`            | a stand-in niri's windows, told as the windows daemon tells them  |
 | `Watch.js`                   | a change a stand-in daemon tells the watch the shell holds on it  |
