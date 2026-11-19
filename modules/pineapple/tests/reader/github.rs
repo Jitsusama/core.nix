@@ -27,8 +27,11 @@ use serde_json::{Value, json};
 
 use super::{
     Answered, PACE, PATIENCE, Running, a_stop, answering, answering_whole, decisions, each, home,
-    journal, journal_of, resumed, until_decided,
+    journal, journal_of, resumed, until_decided, until_marked_anew,
 };
+
+/// Where the GitHub reader marks how far it has read github.com.
+const MARK: &str = "judged-github.json";
 
 /// The stand-in's Joel on GitHub.
 const LOGIN: &str = "joel.example";
@@ -169,6 +172,7 @@ fn github_a_stop_on_a_pull_request_reaches_it_in_shadow_and_is_judged_once() {
     let home = home();
     let mut first = github_reader(&home, &origin, &[]);
     until_decided(&home, 3);
+    until_marked_anew(&home, MARK);
     first.kill().expect("the reader stops");
     first.wait().expect("the reader is gone");
 
@@ -208,6 +212,8 @@ fn github_a_stop_on_a_pull_request_reaches_it_in_shadow_and_is_judged_once() {
     let mut again = github_reader(&home, &origin, &[]);
     let rounds = asked.lock().expect("what was asked").len();
     until_asked(&asked, rounds, 12);
+    // A round with nothing new still says when GitHub was read.
+    until_marked_anew(&home, MARK);
     again.kill().expect("the reader stops");
     again.wait().expect("the reader is gone");
     assert_eq!(decisions(&home).len(), 3, "a restart judges nothing twice");

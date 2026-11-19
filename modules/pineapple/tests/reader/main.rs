@@ -437,10 +437,26 @@ fn decisions(home: &Path) -> Vec<Value> {
         .collect()
 }
 
-/// When the reader last marked what it judged, if it has.
-fn marked(home: &Path) -> Option<u64> {
-    let kept = std::fs::read_to_string(home.join("state/pineapple/judged.json")).ok()?;
+/// When the reader last marked what it judged in its `mark`, if it has.
+fn marked(home: &Path, mark: &str) -> Option<u64> {
+    let kept = std::fs::read_to_string(home.join("state/pineapple").join(mark)).ok()?;
     serde_json::from_str::<Value>(&kept).ok()?["read_at"].as_u64()
+}
+
+/// Until the reader marks its `mark` anew, after the mark it had then,
+/// so the mark holds all it had decided by the time it was asked. A
+/// round marks only once it ends, so a reader stopped before then
+/// judges that round again when it restarts.
+fn until_marked_anew(home: &Path, mark: &str) {
+    let was = marked(home, mark);
+    let began = Instant::now();
+    while marked(home, mark).is_none_or(|at| Some(at) == was) {
+        assert!(
+            began.elapsed() < PATIENCE,
+            "it never marked anew past {was:?}"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// Waits until the reader has written `count` decisions, or says it's stuck.
@@ -464,19 +480,7 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     let home = home();
     let mut first = reader(&home, &origin);
     until_decided(&home, 4);
-    // A round marks what it judged only once it ends, so the reader stops
-    // once a mark from after the last decision is there, not at it.
-    let decided = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("after 1970");
-    let began = Instant::now();
-    while marked(&home).is_none_or(|at| u128::from(at) < decided.as_millis()) {
-        assert!(
-            began.elapsed() < PATIENCE,
-            "the reader never marked what it judged"
-        );
-        thread::sleep(Duration::from_millis(50));
-    }
+    until_marked_anew(&home, "judged.json");
     first.kill().expect("the reader stops");
     first.wait().expect("the reader is gone");
 
@@ -543,17 +547,11 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
         // As above, a short wait sees each round without spinning.
         thread::sleep(Duration::from_millis(50));
     }
+    // A round with nothing new still says when Slack was read.
+    until_marked_anew(&home, "judged.json");
     again.kill().expect("the reader stops");
     again.wait().expect("the reader is gone");
     assert_eq!(decisions(&home).len(), 4, "a restart judges nothing twice");
-    let kept: Value = serde_json::from_str(
-        &std::fs::read_to_string(home.join("state/pineapple/judged.json")).expect("the mark"),
-    )
-    .expect("the mark is JSON");
-    assert!(
-        kept["read_at"].as_u64().is_some(),
-        "a round with nothing new still says when Slack was read: {kept}"
-    );
     let heard = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
         .arg("heard")
         .env("XDG_STATE_HOME", home.join("state"))
