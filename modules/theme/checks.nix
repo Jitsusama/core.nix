@@ -176,25 +176,29 @@ let
   # The walk the cat's code takes, read from the code that walks it, so its
   # check proves the walk that's drawn rather than a copy: the words WALKS
   # lists, when it's every list STRIDING strides by. Only the code is read,
-  # comments aside, and each name only as a word of its own. Each is read
-  # whole, to its semicolon, and must be only what's meant, spaces allowed
-  # only between its parts; elsewhere, WALKS is named only in STRIDING,
-  # and STRIDING only read by a key with nothing assigned there, so neither
-  # is declared twice. So anything else, another list, a stride written
-  # inline, an entry not a quoted word, something after its bracket, an
-  # assignment to either or either not found, reads as no walk, which
-  # fails saying where it looked and what it wanted. A delete, a write
-  # through what a read hands back, or one from another file isn't seen;
-  # none of the cat's files does any.
+  # comments aside, and each name only as a word of its own, not another's
+  # property. Each is read whole, to its semicolon, and must be only what's
+  # meant, spaces allowed only between its parts; elsewhere, WALKS is named
+  # only in STRIDING, and STRIDING is declared once and otherwise only read
+  # by a key with nothing assigned there. So anything else, another list, a
+  # stride written inline, an entry not a quoted word, something after its
+  # bracket, an assignment to either or either not found, reads as no walk,
+  # which fails saying where it looked and what it wanted. Comments are
+  # found by their text, so a comment's marks inside a string, a delete, a
+  # write through what a read hands back, or one from another file isn't
+  # seen; none of the cat's files has any.
   walkRead =
     file:
     let
-      # Each line short of a comment that ends it, and none a comment fills.
+      # Each line short of a comment that ends it, and none a comment
+      # fills; a line with code after a block comment's close is read whole.
+      commentOnly =
+        line:
+        builtins.match "[[:space:]]*(//|/?\\*).*" line != null
+        && builtins.match ".*\\*/[[:space:]]*[^[:space:]].*" line == null;
       ways = lib.concatStringsSep "\n" (
         map (line: lib.head (lib.splitString "//" line)) (
-          lib.filter (line: builtins.match "[[:space:]]*(//|/?\\*).*" line == null) (
-            lib.splitString "\n" file
-          )
+          lib.filter (line: !commentOnly line) (lib.splitString "\n" file)
         )
       );
       # The constant's declaration, up to the semicolon that ends it.
@@ -206,33 +210,49 @@ let
         lib.head (lib.splitString ";" (lib.elemAt after 1));
       walks = declared "WALKS";
       striding = declared "STRIDING";
-      # Where `name` stands in `text` as a word of its own, by the text
-      # before it and the line after it.
+      # Where `name` stands in `text` as a word of its own, not a part of a
+      # longer one or another's property, by the character before it, the
+      # text since the name before, and the statement after it, to its
+      # semicolon, as one line.
       wordy = c: builtins.match "[A-Za-z0-9_$]" c != null;
       uses =
         name: text:
         let
           pieces = lib.splitString name text;
+          ending = s: builtins.substring (lib.stringLength s - 1) 1 s;
           use = i: {
             before = lib.elemAt pieces i;
-            after = lib.head (lib.splitString "\n" (lib.elemAt pieces (i + 1)));
+            # Right after the name before it, the character is that name's last.
+            last =
+              if lib.elemAt pieces i != "" then
+                ending (lib.elemAt pieces i)
+              else if i > 0 then
+                ending name
+              else
+                "";
+            after = builtins.replaceStrings [ "\n" ] [ " " ] (
+              lib.head (lib.splitString ";" (lib.elemAt pieces (i + 1)))
+            );
           };
+          next = one: builtins.substring 0 1 one.after;
+          alone = one: !wordy one.last && one.last != "." && !wordy (next one);
         in
-        lib.filter (
-          one:
-          !wordy (builtins.substring (lib.stringLength one.before - 1) 1 one.before)
-          && !wordy (builtins.substring 0 1 one.after)
-        ) (lib.genList use (lib.length pieces - 1));
+        lib.filter alone (lib.genList use (lib.length pieces - 1));
       named = name: text: lib.length (uses name text);
-      # Every STRIDING but its declaration reads it, by a key, and assigns
-      # nothing there, by itself or with an operator.
+      # STRIDING is declared once, and everywhere else read by a key, one
+      # holding brackets of its own too, assigning nothing there, by itself
+      # or with an operator, on its line or the next.
       onlyRead =
         let
           by = "(\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?";
-          writes = after: builtins.match "\\[[^]]*][[:space:]]*${by}=([^=].*)?" after != null;
+          key = "\\[([^][]|\\[[^][]*])*]";
+          writes = after: builtins.match "${key}[[:space:]]*${by}=([^=].*)?" after != null;
+          declaring = one: lib.hasSuffix "const " one.before;
+          all = uses "STRIDING" ways;
         in
-        lib.all (one: lib.hasPrefix "[" one.after && !writes one.after) (
-          lib.filter (one: !lib.hasSuffix "const " one.before) (uses "STRIDING" ways)
+        lib.length (lib.filter declaring all) == 1
+        && lib.all (one: lib.hasPrefix "[" one.after && !writes one.after) (
+          lib.filter (one: !declaring one) all
         );
       s = "[[:space:]]*";
       word = "(\"[A-Za-z]+\"|'[A-Za-z]+')";
@@ -256,7 +276,7 @@ let
             met = named "WALKS" ways == 1 + named "WALKS" striding;
           }
           {
-            wanted = "STRIDING only read by a key";
+            wanted = "STRIDING declared once and only read by a key";
             met = onlyRead;
           }
         ]
@@ -485,11 +505,13 @@ in
     let
       theirs = import ./glyphs.nix { inherit lib; };
       rows = theirs.nothingHere.pixels;
-      # The sitting cat with a pixel lit alone at its top right, and with
-      # only its bottom three rows.
+      # The sitting cat, 37 pixels, with a pixel lit alone at its top right,
+      # and with six of its bottom row's seven gone, over 15% fewer, or five,
+      # under it.
       planted = theirs // {
         strayed.pixels = [ "${builtins.substring 0 7 (lib.head rows)}#" ] ++ lib.tail rows;
-        shrunk.pixels = lib.genList (_: "........") 5 ++ lib.sublist 5 3 rows;
+        shrunk.pixels = lib.init rows ++ [ "#......." ];
+        trimmed.pixels = lib.init rows ++ [ "##......" ];
       };
       plantedFaults =
         pose:
@@ -509,9 +531,14 @@ in
           reason = "unlike [\"shrunk\"]";
         }
       ];
-      unshown = lib.filter (
-        one: (plantedFaults one.pose).ok || !lib.hasInfix one.reason (plantedFaults one.pose).said
-      ) shown;
+      unshown =
+        lib.filter (
+          one: (plantedFaults one.pose).ok || !lib.hasInfix one.reason (plantedFaults one.pose).said
+        ) shown
+        ++ lib.optional (!(plantedFaults "trimmed").ok) {
+          pose = "trimmed";
+          reason = "trimmed, just under 15% fewer, held as one";
+        };
       said =
         strides:
         poseFaults {
@@ -587,6 +614,11 @@ in
         (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[\"runs\"] ??= RUNS;")
         (walkedOf "${walksSaid}\n${stridingSaid}\nconst ways = STRIDING;")
         (walkedOf "${walksSaid}\n${stridingSaid}\nWALKS.reverse();")
+        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[KINDS[i]] = RUNS;")
+        (walkedOf "${walksSaid}\n${stridingSaid}\nSTRIDING[kind]\n  = RUNS;")
+        (walkedOf "${walksSaid}\n${stridingSaid}\n{ const STRIDING = { goes: RUNS }; }")
+        (walkedOf "STRIDING[kind] = RUNS;\n${walksSaid}\n${stridingSaid}")
+        (walkedOf "${walksSaid}\n/* aside */ STRIDING.goes = RUNS;\n${stridingSaid}")
       ];
       # The same walk, spaced and quoted otherwise, still reads whole.
       reread = walkIn ''
@@ -606,6 +638,8 @@ in
         const joined = STRIDING[was.kind] === STRIDING[beat.kind];
         const pose = STRIDING[beat.kind][0]; // not WALKS.reverse()
         const kept = STRIDING[beat.kind] && (last[i] = pose);
+        const before = STRIDING[beats[i - 1].kind] /* the last */ ?? none;
+        const pace = Ledges.WALKS * Other.STRIDING;
       '';
       passed =
         map (walk: "${walk.reason}, said ${(said walk.strides).said}") (
