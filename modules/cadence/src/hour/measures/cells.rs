@@ -318,7 +318,10 @@ fn parked_done(
 /// `now`, read in its zone, each with its owner. A parked cell wakes to a
 /// question, so it is no miss until a start it named has passed: at 11:10
 /// on 19 November nine parked quests were said ended beside eight that
-/// were.
+/// were. A parked step's weekday and day are read near when its cell last
+/// stood, as it wrote them then, so a start stays one however long ago it
+/// passed. A parked cell with no dated step is named on no line, since
+/// its orchestrator ruled only one past its start a miss.
 fn unrun(
     quests: &[Quest],
     all: &[Cell],
@@ -327,8 +330,11 @@ fn unrun(
     owner: &dyn Fn(&str) -> String,
 ) -> [Vec<String>; 3] {
     // A step waiting on Joel is no cell's to start, parked or not.
-    let started = |next: &&str| {
-        !next.contains("Joel") && dated::starts(next, now, zone).is_some_and(|s| s <= now)
+    let started = |c: &Cell| {
+        c.next.is_some_and(|next| {
+            !next.contains("Joel")
+                && dated::starts(next, c.at.unwrap_or(now), zone).is_some_and(|s| s <= now)
+        })
     };
     let (mut never, mut ended, mut parked) = (Vec::new(), Vec::new(), Vec::new());
     for q in quests.iter().filter(|q| {
@@ -353,7 +359,7 @@ fn unrun(
                 q.priority
             ));
         } else if of_quest.iter().all(|c| c.presence == Some("parked")) {
-            if let Some(next) = of_quest.iter().filter_map(|c| c.next).find(started) {
+            if let Some(next) = of_quest.iter().find(|c| started(c)).and_then(|c| c.next) {
                 parked.push(format!(
                     "{named} {}, parked past its start: {} · {to}",
                     q.priority,
@@ -654,6 +660,9 @@ pub(super) mod tests {
             c["orchestrated_by"] = json!("ORCH");
             c
         };
+        // Parked twenty days ago, on a step dated then: Sunday 27 December.
+        let mut long_ago = parked("FFFFFF", "FFFFFF", Some("Judge it at Sun 27 09:00"));
+        long_ago["at"] = json!(at(20 * 24 * 60));
         // NOW is 03:00 on Friday 15 January 2027 in Toronto. At 11:10 on
         // 19 November nine parked quests were said ended, though a
         // question wakes each.
@@ -663,23 +672,41 @@ pub(super) mod tests {
             parked("CCCCCC", "CCCCCC", Some("merge it")),
             parked("DDDDDD", "DDDDDD", None),
             parked("EEEEEE", "EEEEEE", Some("Ask Joel at Fri 15 02:30")),
+            long_ago,
             parked("GGGGG1", "GGGGGG", None),
             cell("GGGGG2", "ended", "GGGGGG"),
+            parked("HHHHHH", "HHHHHH", Some("Judge it at Fri 15 03:00")),
+            parked("JJJJJ1", "JJJJJJ", None),
+            parked("JJJJJ2", "JJJJJJ", Some("Judge it at Fri 15 01:00")),
+            parked("KKKKK1", "KKKKKK", Some("Judge it at Fri 15 01:00")),
+            cell("KKKKK2", "ended", "KKKKKK"),
         ])];
-        let quests: Vec<Quest> = ["AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE", "GGGGGG"]
-            .into_iter()
-            .map(|q| quest_of(q, "active", "driving", None))
-            .collect();
+        let quests: Vec<Quest> = [
+            "AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE", "FFFFFF", "GGGGGG", "HHHHHH",
+            "JJJJJJ", "KKKKKK",
+        ]
+        .into_iter()
+        .map(|q| quest_of(q, "active", "driving", None))
+        .collect();
         let all = cells(&answers, Some(&quests), HERE, &zone(), NOW, "F");
         assert_eq!(
             measure(&all, "quests-parked-past-start").behind,
-            ["AAAAAA driving, parked past its start: Judge it at Fri 15 02:30 · ORCH"],
-            "a parked quest counted before its step started, with no dated step, or on \
-             a step waiting on Joel"
+            [
+                "AAAAAA driving, parked past its start: Judge it at Fri 15 02:30 · ORCH",
+                "FFFFFF driving, parked past its start: Judge it at Sun 27 09:00 · ORCH",
+                "HHHHHH driving, parked past its start: Judge it at Fri 15 03:00 · ORCH",
+                "JJJJJJ driving, parked past its start: Judge it at Fri 15 01:00 · ORCH",
+            ],
+            "a parked quest counted before its step started, with no dated step, on a \
+             step waiting on Joel or beside a cell that ended; or one was missed whose \
+             start passed long ago, this moment, or on another of its parked cells"
         );
         assert_eq!(
             measure(&all, "quests-cells-ended").behind,
-            ["GGGGGG driving, every cell ended · ORCH"],
+            [
+                "GGGGGG driving, every cell ended · ORCH",
+                "KKKKKK driving, every cell ended · ORCH",
+            ],
             "a quest whose cells are all parked was said ended, or one with a cell \
              ended and not parked was missed"
         );
