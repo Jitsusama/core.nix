@@ -137,11 +137,11 @@ QtObject {
                 raised(6, { app: "Slack" }), raised(7, { cell: "mycelium:cell/GONE0001" }),
                 raised(8, { urgency: "low" }), raised(9, { left: "dismissed" }),
                 raised(10, { left: "expired" }), raised(11, { left: "withdrawn" })],
-            held, [cellB], {}).map(one => one.id), [1]);
+            held, [cellB], { putOff: {} }).map(one => one.id), [1]);
         expect("one whose want Joel put off joins nothing",
-            Cells.joining([raised(1)], held, [], { KELP01: true }).length, 0);
+            Cells.joining([raised(1)], held, [], { putOff: { KELP01: true } }).length, 0);
         expect("another session's want put off, it still joins",
-            Cells.joining([raised(1)], held, [], { BBBBBB: true }).length, 1);
+            Cells.joining([raised(1)], held, [], { putOff: { BBBBBB: true } }).length, 1);
         // Put away since For You opened, as acting on its row does, it
         // stays where it stood, as one read then does (Lately.js's
         // holdingStill); one put away before, or gone any other way, not.
@@ -149,7 +149,7 @@ QtObject {
             Cells.joining([raised(1, { left: "dismissed", leftAt: 10 }),
                 raised(2, { left: "dismissed", leftAt: 3 }),
                 raised(3, { left: "expired", leftAt: 10 }),
-                raised(4, { left: "withdrawn", leftAt: 10 })], held, [], {}, 5)
+                raised(4, { left: "withdrawn", leftAt: 10 })], held, [], { since: 5 })
                 .map(one => one.id), [1]);
         expect("nothing told, none", Cells.joining(undefined, undefined, undefined, undefined),
             []);

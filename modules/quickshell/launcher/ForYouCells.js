@@ -108,12 +108,12 @@ function noticeCell(notice, held) {
 // The notices that stand under their cell among what needs Joel now: pi's
 // own, unread and open, from a session among `held`, but for one among
 // `wanting`, whose want's row already says what it asks, or one whose want
-// Joel put off for now (`putOff`, by address in capitals), which he asked
+// Joel put off for now (`among.putOff`, by address in capitals), which he asked
 // to hear nothing of until then, or a low one, as away mode's saying a
 // session rests, which asks nothing of him, or one gone from the screen
 // however it went (`left`), which its session can't take back once it has
 // (held.rs's close), so a question he answered would stand again once its
-// want ended, but for one he put away since `since`, as For You opened, as
+// want ended, but for one he put away since `among.since`, as For You opened, as
 // acting on its row does, which stays where it stood until For You closes,
 // as one read then does (Lately.js's holdingStill). One open as the daemon
 // stops stays open (notices' main.rs), so it joins again, its session still
@@ -123,8 +123,9 @@ function noticeCell(notice, held) {
 // now. Another program's naming a cell stays in Desktop alone, so none is
 // listed twice; one from a session gone is in no list, as all pi's were,
 // but on screen or resting, and one put away or expired is in none.
-function joining(notices, held, wanting, putOff, since) {
-    const off = putOff ?? {};
+function joining(notices, held, wanting, among) {
+    const off = among?.putOff ?? {};
+    const since = among?.since;
     const from = typeof since === "number" ? since : Number.POSITIVE_INFINITY;
     const gone = notice => Boolean(notice.left)
         && !(notice.left === "dismissed" && Number(notice.leftAt) >= from);
