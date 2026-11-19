@@ -346,24 +346,46 @@ Floating {
     // layProse as anything it reads changes, never bound: it's measured
     // by giving proseInk each cut of the words in turn, which a binding
     // reading proseInk would be told of while it read, as a loop.
+    // It's kept with the drawer it was laid for (`of`), so words read
+    // before it's laid anew are never another drawer's cut.
     property var proseLaid: null
-    readonly property var proseAsked: [prose, runs, whole, body, shown?.styled === true,
-        wordsBox.width, bodyText.font]
+    // What it and its words read, each from the drawer shown rather than
+    // from the properties above, which change one at a time as a drawer
+    // follows another: a drawer stepped to from Emoji's read itself as a
+    // run no longer while its words were still Emoji's 1,914 names, and
+    // laid and measured them all as prose, 7,596 widths and 134 to 228 ms
+    // in the drawer lab (2026-11-19), where others took 9 to 16.
+    readonly property var proseAsked: [shown, wordsBox.width, bodyText.font]
     onProseAskedChanged: layProse()
+    function laysProse(given) {
+        return given?.prose === true && given.runs !== true && given.whole !== true
+            && (given.body ?? "") !== "";
+    }
     function layProse() {
-        proseLaid = prose && !runs && !whole && body !== ""
-            ? Prose.lines({ text: body, styled: shown?.styled === true }, wordsBox.width,
-                proseMost, drawnWidthOf(Measures.drawnFace(bodyText.font, "plain")))
+        const given = shown;
+        proseLaid = laysProse(given)
+            ? Object.assign({ of: given },
+                Prose.lines({ text: given.body, styled: given.styled === true }, wordsBox.width,
+                    proseMost, drawnWidthOf(Measures.drawnFace(bodyText.font, "plain"))))
             : null;
     }
     // Whether its prose runs past its lines, so the fold holds the rest.
-    readonly property bool bodyCut: proseLaid?.cut === true
+    readonly property bool bodyCut: proseLaid?.of === shown && proseLaid.cut === true
     // Its words as they're given to be drawn, a run measured in their own
     // face, and prose cut while the fold is shut, for the launcher to
-    // report.
-    readonly property string bodySaid: runs
-        ? itemsKept(body, bodyFace, wordsBox.width, runWhole ? 0 : runMost)
-        : bodyCut && folded ? proseLaid.said : body
+    // report: none while its prose is still to be laid, a moment that's
+    // never drawn, rather than the whole of it laid once for nothing.
+    readonly property string bodySaid: {
+        const given = shown;
+        const words = given?.body ?? "";
+        if (given?.runs === true)
+            return itemsKept(words, bodyFace, wordsBox.width, runWhole ? 0 : runMost);
+        if (!laysProse(given))
+            return words;
+        if (proseLaid?.of !== given)
+            return "";
+        return proseLaid.cut && folded ? proseLaid.said : words;
+    }
     // How many lines Qt draws its words in, for the launcher to report: a
     // run laid as one is as many as bodySaid's, Qt wrapping none further.
     readonly property int bodyLines: bodyText.lineCount
