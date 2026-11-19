@@ -6103,6 +6103,10 @@ Scope {
     function reshow(count, ordered) {
         const was = current >= 0 && selected ? pairedId(selected) : "";
         const at = current;
+        // Rows alike in it above the selection, so it stays on the second of
+        // two alike rather than going up to the first (Steady.selection).
+        const nth = was === "" ? 0
+            : matches.slice(0, at).filter(row => pairedId(row) === was).length;
         // A provider that throws mid-search mustn't leave every later search
         // keeping its rows as a refresh does.
         steadying = true;
@@ -6121,7 +6125,8 @@ Scope {
         const now = at === -1 && (answer || lineHeads) ? -1 : Steady.selection(matches, {
             row: was,
             at: at,
-            lowest: lowest
+            lowest: lowest,
+            nth: nth
         }, pairedId);
         // The list stays where it stands: Qt keeps the rows in view still as
         // rows above them come or go. Put back to where it had been scrolled,

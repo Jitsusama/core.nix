@@ -75,14 +75,30 @@ function forgotten(rows) {
 }
 
 // Where the selection goes in them, from where it `was`: { row, at,
-// lowest }, the id of the row it was on ("" for none) and its place. It
-// goes onto that row, or, that one gone, stays where it was, no lower than
-// `lowest` (-1 when an answer's headline stands above the rows) and no
-// further than the last row.
+// lowest, nth }, the id of the row it was on ("" for none), its place, and
+// how many rows alike in that id stood above it. It goes onto that row, the
+// nth of those alike, as kept pairs them off in their order, so the cursor
+// on the second of two windows titled alike, or of two rows one key lists
+// twice, stays there rather than going up to the first (Joel, 2026-11-18:
+// "it goes up when i scroll down to it"). With fewer alike now it goes onto
+// the first; that one gone, it stays where it was, no lower than `lowest`
+// (-1 when an answer's headline stands above the rows) and no further than
+// the last row.
 function selection(rows, was, id) {
-    const found = was.row === "" ? -1 : rows.findIndex(row => id(row) === was.row);
-    if (found >= 0) {
-        return found;
+    let first = -1;
+    let above = was.nth ?? 0;
+    for (let at = 0; was.row !== "" && at < rows.length; at++) {
+        if (id(rows[at]) !== was.row) {
+            continue;
+        }
+        if (above === 0) {
+            return at;
+        }
+        first = first >= 0 ? first : at;
+        above -= 1;
+    }
+    if (first >= 0) {
+        return first;
     }
     return Math.max(was.lowest, Math.min(was.at, rows.length - 1));
 }

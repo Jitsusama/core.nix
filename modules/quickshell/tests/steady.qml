@@ -148,6 +148,19 @@ QtObject {
         }
         if (Steady.selection([], { row: "a", at: 0, lowest: 0 }, id) !== 0)
             failures.push("an empty list leaves the selection at the top");
+        // Two rows alike in their id, as two windows titled alike or a key
+        // listed twice: [what, the rows, how many alike stood above, where it goes]
+        const alike = [
+            ["on the second of two alike, it stays on the second", "s a s b", 1, 2],
+            ["on the first, it stays on the first", "s a s b", 0, 0],
+            ["a row coming above both, it stays on the second", "n s a s b", 1, 3],
+            ["with one alike left, it goes onto that one", "a s b", 1, 1]
+        ];
+        for (const [what, now, nth, want] of alike) {
+            const got = Steady.selection(rows(now), { row: "s", at: 2, lowest: 0, nth: nth }, id);
+            if (got !== want)
+                failures.push(`${what}: ${got}, not ${want}`);
+        }
 
         // [what, what came in turn, where each landed, whether it waits after]
         const wantsB = row => row.key === "b";
