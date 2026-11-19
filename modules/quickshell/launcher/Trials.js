@@ -77,67 +77,6 @@ function timed(trial, searched, drawn, parts) {
     } });
 }
 
-// What a step spent its time on, said as a key's parts are: `inner` the
-// parts of the search that drew the place stepped into, or null, and
-// `at` when the step began, made its lists, held them, opened the row
-// and ended. Its lists are the step's own and those the place found its
-// rows in; its rows whatever else it did after opening; its answers and
-// their composing the place's own, so a slow step says where its rows
-// went (RTOIMQ, 2026-11-10). The search's time before it began is said
-// apart, as a key's is, since Joel's step into Machine spent 16 ms after
-// opening, where it had spent 10, with nothing saying where (2026-11-11).
-function stepped(inner, at) {
-    const finding = inner ? inner.lists : 0;
-    const answers = inner ? inner.answers : 0;
-    const before = inner ? inner.before : 0;
-    // A walk's last step is timed from where the walk began, so the
-    // places it passed on the way, listed to step through, are said as
-    // passing among its lists, apart from this step's own making.
-    const passing = at.walked === undefined ? 0 : Math.max(0, at.began - at.walked);
-    return {
-        lists: at.made - at.began + finding + passing,
-        rows: Math.max(0, at.ended - at.opened - finding - answers - before),
-        before,
-        beforeParts: inner?.beforeParts ?? null,
-        answers,
-        each: Object.assign({}, inner?.each, { making: at.made - at.began, finding,
-            holding: at.pushed - at.made, opening: at.opened - at.pushed, passing }),
-        makingSplit: at.making ?? null,
-        composing: inner?.composing ?? null
-    };
-}
-
-// A walk's parts where it stopped short, as the search listing where it
-// stopped found them, with what it passed before as passing among its
-// lists, as a walk's last step says it (stepped). Kept as they were where
-// it passed nothing.
-function passed(parts, passing) {
-    if (!parts || !(passing > 0)) {
-        return parts;
-    }
-    return Object.assign({}, parts, { lists: (parts.lists ?? 0) + passing,
-        each: Object.assign({}, parts.each, { passing }) });
-}
-
-// What a step's making spent on, in parentheses, most first: making its
-// acts' rows, its parts, putting them in order, and the rest, so a slow
-// step into a program's page says which to cut (Chrome's made 87 ms of a
-// 253 ms step under load, with nothing saying where, 2026-11-14). `split`
-// holds the acts', the parts' and the ordering's ms; the rest is what's
-// left of the making. Nothing for a step that made nothing, or untold.
-function steppedMaking(making, split) {
-    if (!split || !(making > 0)) {
-        return "";
-    }
-    const each = [["its parts", Math.round(split.parts ?? 0)],
-        ["its acts", Math.round(split.acts ?? 0)],
-        ["ordering", Math.round(split.ordering ?? 0)]];
-    const told = each.reduce((sum, [, ms]) => sum + ms, 0);
-    each.push(["the rest", Math.max(0, Math.round(making) - told)]);
-    each.sort((one, other) => other[1] - one[1]);
-    return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
-}
-
 // The rows a laying drew, where it drew any, and whose, what else the showing
 // took (others), then where a step back out came to (Launcher.qml's keep), so
 // a slow step back says whether its split or the layout after spent the time.

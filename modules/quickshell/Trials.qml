@@ -8,6 +8,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "launcher/Stepped.js" as Stepped
 import "launcher/Thread.js" as Thread
 import "launcher/Trials.js" as Trials
 
@@ -81,7 +82,8 @@ Scope {
         trial = Trials.timed(trial, searched, drawn, parts);
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
-                + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each, parts.makingSplit)},`
+                + " searching" + (parts
+                    ? ` (lists ${parts.lists}${Stepped.slowest(parts.each, parts)},`
                     + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
                     + ` answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`
@@ -179,24 +181,14 @@ Scope {
     }
 
     // What a step spent, its own parts beside those of the search that drew
-    // its rows (Trials.js).
+    // its rows (Stepped.js).
     function stepped(inner, at) {
-        return Trials.stepped(inner, at);
+        return Stepped.stepped(inner, at);
     }
 
-    // A walk stopped short's parts, with what it passed (Trials.js).
+    // A walk stopped short's parts, with what it passed (Stepped.js).
     function passed(parts, passing) {
-        return Trials.passed(parts, passing);
-    }
-
-    // The three collections that took longest, if any took a millisecond,
-    // a step's own making with what it went on (Trials.steppedMaking).
-    function slowest(each, split) {
-        const named = Object.keys(each ?? {}).filter(name => each[name] > 0)
-            .sort((a, b) => each[b] - each[a]).slice(0, 3);
-        const said = name => `${name} ${each[name]}`
-            + (name === "making" ? Trials.steppedMaking(each[name], split) : "");
-        return named.length === 0 ? "" : `: ${named.map(said).join(", ")}`;
+        return Stepped.passed(parts, passing);
     }
 
     // What an answer is counted as when it's picked (Trials.js).

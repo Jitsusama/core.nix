@@ -91,6 +91,7 @@
   "TalkThread.js" = [ "TalkLine.js" ];
   "Taken.qml" = [ "Fuzzy.js" ];
   "Trials.qml" = [
+    "launcher/Stepped.js"
     "launcher/Thread.js"
     "launcher/Trials.js"
   ];
@@ -296,6 +297,7 @@
     "launcher/Targets.js"
   ];
   "launcher/Spend.qml" = [ "Fuzzy.js" ];
+  "launcher/Stepped.js" = [ "launcher/Order.js" ];
   "launcher/Subnets.js" = [
     "launcher/Addresses.js"
     "launcher/Numbers.js"

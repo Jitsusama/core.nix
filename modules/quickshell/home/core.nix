@@ -82,6 +82,7 @@
   "launcher/Recent.js"
   "launcher/Recents.js"
   "launcher/Trials.js"
+  "launcher/Stepped.js"
   "launcher/Traces.js"
   "launcher/ReadyRows.js"
   "launcher/ActForms.js"
