@@ -130,6 +130,8 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
     """Kept awake, a lid shut on battery locks the screen and runs on; let go, it sleeps."""
     machine = desktop.machine
     locked = desktop.in_session("qs ipc call lock isLocked | grep -q true")
+    # Said outright, since the lock failing to answer isn't it being unlocked.
+    unlocked = desktop.in_session("qs ipc call lock isLocked | grep -q false")
     desktop.as_account("systemctl --user start keep-awake.service keep-awake-lid.service")
     machine.wait_until_succeeds(LID_HELD, timeout=timedelta(seconds=10))
     # Joel keeps it awake to run with no power and the lid shut (2026-11-10).
@@ -162,10 +164,11 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         desktop.power("on")
         # The sleep locked the screen first, as it does before every one.
         desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
-        machine.wait_until_fails(locked, timeout=timedelta(seconds=10))
-        # Unlocked, it stays so; relocked, every subtest after failed on it (2026-11-19).
-        machine.sleep(LOOKING)
-        machine.fail(locked)
+        machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
+    # Unlocked, it stays so; relocked, every subtest after failed on it (2026-11-19). It's
+    # looked for once the test has passed, so a failure above isn't told as this one.
+    machine.sleep(LOOKING)
+    machine.succeed(unlocked)
 
 
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(

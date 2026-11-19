@@ -147,14 +147,21 @@ let
   # that returned at once had logind, with no holdoff, sleep again for as
   # long as the lid stayed shut, and swayidle, which runs its before-sleep
   # lock once for each and one at a time, locked the screen again after the
-  # test had unlocked it, failing every subtest after it (2026-11-19).
+  # test had unlocked it, failing every subtest after it (2026-11-19). It
+  # gives up after about five minutes, failing the sleep, so a lid never
+  # opened frees logind rather than holding the test on a sleep with no end.
   lidOpen = pkgs.lib.concatStringsSep " " [
     "${pkgs.systemd}/bin/busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
     "org.freedesktop.login1.Manager LidClosed | ${pkgs.gnugrep}/bin/grep -qx 'b false'"
   ];
   standInSleep = pkgs.writeShellScript "stand-in-sleep" ''
     echo slept >> /run/suspended
-    until ${lidOpen}; do ${pkgs.coreutils}/bin/sleep 0.1; done
+    for _ in $(${pkgs.coreutils}/bin/seq 3000); do
+      if ${lidOpen}; then exit 0; fi
+      ${pkgs.coreutils}/bin/sleep 0.1
+    done
+    echo "the lid stayed shut five minutes" >&2
+    exit 1
   '';
   # The area whose lock's password check stalls once the test leaves a
   # file for it, as Quickshell's check can hang (modules/quickshell/Lock.qml),
