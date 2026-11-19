@@ -101,6 +101,20 @@ function shareStarts(was, id) {
     return { rows: shown.rows, at: shown.at, back: [], ahead: [], tags: [], last: null };
 }
 
+// What's left of the ways back, `ways` as { back, ahead, tags, last },
+// once every place holding a step from a source that hides now goes, so
+// none is gone back to while the screen may be shared: one recorded
+// between a share's start and its source's rows being remade holds the
+// name from before it, and a source that never says a share began
+// forgets nothing at its start (Launcher.qml's jump, toLastPlace and
+// tagBack).
+function hiddenGone(ways) {
+    const shown = place => !place.held.some(step => step.row.from?.hiding === true);
+    return { back: ways.back.filter(shown), ahead: ways.ahead.filter(shown),
+        tags: ways.tags.filter(shown),
+        last: ways.last !== null && shown(ways.last) ? ways.last : null };
+}
+
 // Where the selection goes in them, from where it `was`: { row, at,
 // lowest, nth }, the id of the row it was on ("" for none), its place, and
 // how many rows alike in that id stood above it. It goes onto that row, the

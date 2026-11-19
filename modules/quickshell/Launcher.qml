@@ -4177,7 +4177,25 @@ Scope {
     property var jumpsBack: []
     property var jumpsAhead: []
     property bool jumping: false
+    // Lets go of every place on a way back holding a step from a source
+    // that hides now, before any way back is taken (Steady.hiddenGone):
+    // untold empties them as a share starts, but a key before Asks' rows
+    // are remade records the step as it was named, and Copies never says
+    // a share began.
+    function hiddenForgotten() {
+        const left = Steady.hiddenGone({ back: jumpsBack, ahead: jumpsAhead, tags: tagsBack,
+            last: lastPlace });
+        if (left.back.length !== jumpsBack.length)
+            jumpsBack = left.back;
+        if (left.ahead.length !== jumpsAhead.length)
+            jumpsAhead = left.ahead;
+        if (left.tags.length !== tagsBack.length)
+            tagsBack = left.tags;
+        if (left.last !== lastPlace)
+            lastPlace = left.last;
+    }
     function jump(by) {
+        hiddenForgotten();
         const from = by < 0 ? jumpsBack : jumpsAhead;
         if (from.length === 0)
             return;
@@ -4281,6 +4299,7 @@ Scope {
         return enter(row);
     }
     function toLastPlace() {
+        hiddenForgotten();
         if (lastPlace === null)
             return;
         const to = lastPlace;
@@ -4414,6 +4433,7 @@ Scope {
     // Ctrl+T: back to the place Ctrl+] left last, as it was left, as Vim's
     // pops its tag stack; with none, Vim's E73, the rows staying put.
     function tagBack() {
+        hiddenForgotten();
         if (tagsBack.length === 0) {
             // Where the command line is, as E492 and E21 are.
             commandSay((Words.field.hints ?? {}).E73 ?? "", true);
