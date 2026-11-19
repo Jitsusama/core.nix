@@ -41,7 +41,7 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
         ]);
     }
     for link in all {
-        blocks.push(said(&link, context.room.for_prose()));
+        blocks.push(said(&link, context.room));
         for (way, dev) in [("sent", &link.name), ("received", &link.ifb)] {
             let json = sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).unwrap_or_default();
             blocks.push(tins_table(
@@ -57,13 +57,7 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
     if let Some(left) = Duration::from_secs(1).checked_sub(first.at.elapsed()) {
         std::thread::sleep(left);
     }
-    blocks.push(
-        first
-            .said(&Spent::now(), context.room)
-            .iter()
-            .flat_map(|line| set(line, 0, context.room.for_prose()))
-            .collect(),
-    );
+    blocks.push(first.said(&Spent::now(), context.room));
     // Written whole at the end, so a reader that stops early, as
     // `grep -q` or `head` does, ends the report rather than panicking it.
     let _ = std::io::stdout().write_all(layout::joined(blocks).as_bytes());
@@ -71,9 +65,17 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
 }
 
 /// A link's name, its network, and what the shaper holds it to and why,
-/// set in `room`.
+/// set in `room` at the measure prose keeps to.
 fn said(link: &LinkStatus, room: Room) -> Vec<String> {
-    let mut lines = vec![format!("{}  on {}", link.name, link.network)];
+    let room = room.for_prose();
+    // The names come from the kernel and the router, so they're drawn
+    // through the kit's filter, which keeps a control from reaching the
+    // terminal.
+    let mut lines = vec![format!(
+        "{}  on {}",
+        layout::one_line(&link.name),
+        layout::one_line(&link.network)
+    )];
     let mut say = |line: String| lines.extend(set(&line, INSET.len(), room));
     say(format!("up {}, down {}", mbit(link.up), mbit(link.down)));
     for line in link.lanes.as_ref().map(lanes_said).unwrap_or_default() {
@@ -109,8 +111,15 @@ fn said(link: &LinkStatus, room: Room) -> Vec<String> {
 /// A line of status set `inset` cells in, wrapped at whole words to the
 /// room and hung two cells further under its first words, so where one
 /// line ends and the next begins reads at a glance, as disk-guard's
-/// holders do. Into a pipe it stays whole on its line.
+/// holders do. A line that fits, and any line into a pipe, stays whole.
 fn set(line: &str, inset: usize, room: Room) -> Vec<String> {
+    let whole = layout::one_line(line);
+    if room
+        .cells()
+        .is_none_or(|cells| inset + layout::width(&whole) <= cells)
+    {
+        return vec![format!("{}{whole}", " ".repeat(inset))];
+    }
     layout::hung(line, inset + layout::GAP, room)
         .split('\n')
         .enumerate()
@@ -237,7 +246,7 @@ impl Spent {
 
     /// What was spent between this and `later`, as lines of status set
     /// in `room`.
-    fn said(&self, later: &Self, _room: Room) -> Vec<String> {
+    fn said(&self, later: &Self, room: Room) -> Vec<String> {
         #[expect(
             clippy::cast_possible_truncation,
             reason = "a second or two, far under u64's microseconds"
@@ -266,6 +275,9 @@ impl Spent {
             ));
         }
         lines
+            .iter()
+            .flat_map(|line| set(line, 0, room.for_prose()))
+            .collect()
     }
 }
 
@@ -509,7 +521,10 @@ mod tests {
             "the why was parted into a pipe: {lines:#?}"
         );
         // The VM test greps these two, so each must stay on one line.
-        for start in ["  quiet round trips: 1.0.0.1 17 ms", "  real-time traffic flows"] {
+        for start in [
+            "  quiet round trips: 1.0.0.1 17 ms",
+            "  real-time traffic flows",
+        ] {
             assert!(
                 lines.iter().any(|line| line.starts_with(start)),
                 "no line starts {start:?}: {lines:#?}"
@@ -535,7 +550,9 @@ mod tests {
     fn however_wide_the_terminal_a_link_s_lines_are_set_at_eighty() {
         let lines = said(&held(), Room::Cells(200));
         assert!(
-            lines.iter().all(|line| layout::width(line) <= layout::MEASURE),
+            lines
+                .iter()
+                .all(|line| layout::width(line) <= layout::MEASURE),
             "a line ran past the measure at 200 columns: {lines:#?}"
         );
         assert!(
