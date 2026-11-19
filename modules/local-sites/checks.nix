@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  holds,
   lib,
   onLinux,
   passesClippy,
@@ -258,6 +259,84 @@ in
     }
     touch $out
   '';
+
+  # What a switch refuses in the declared rows' homes (rows-homes.nix), read
+  # in evaluation alone, so the rules cost no machine of their own.
+  local-sites-rows-home-each-kind-once =
+    let
+      homes = import ./rows-homes.nix { inherit lib; };
+      machines = {
+        kind = "machine";
+        address = "#machine={name}";
+      };
+      # The rows core declares, a row giving its kind both ways, and one
+      # writing its pattern from the sites' root, all of which stand.
+      standing = homes {
+        system.homes = [
+          "machine"
+          machines
+        ];
+        code.homes = [
+          "repository"
+          "tree"
+        ];
+        network.homes = [ ];
+        health.homes = [
+          {
+            kind = "part";
+            address = "health/#part={name}";
+          }
+        ];
+      };
+      # A second site home to machines, and a dropped pattern beside them,
+      # which claims nothing and so isn't a second home.
+      twice = homes {
+        system.homes = [ machines ];
+        network.homes = [ "machine" ];
+        health.homes = [
+          {
+            kind = "machine";
+            address = "#m";
+          }
+        ];
+      };
+      # Every way a pattern is dropped: no name, no fragment, another page,
+      # a byte that breaks markup, no kind, no address.
+      dropped = homes {
+        network.homes = [
+          {
+            kind = "device";
+            address = "#device";
+          }
+          {
+            kind = "device";
+            address = "device={name}";
+          }
+          {
+            kind = "device";
+            address = "system/#device={name}";
+          }
+          {
+            kind = "device";
+            address = "#device=<{name}>";
+          }
+          { address = "#device={name}"; }
+          { kind = "device"; }
+        ];
+      };
+    in
+    holds "local-sites-rows-home-each-kind-once"
+      "The declared rows' homes aren't refused as the homes' readers would read them."
+      (
+        standing == {
+          homedTwice = [ ];
+          dropped = [ ];
+        }
+        && twice.homedTwice == [ "machine (network, system)" ]
+        && twice.dropped == [ ''health's machine, "#m"'' ]
+        && lib.length dropped.dropped == 6
+        && dropped.homedTwice == [ ]
+      );
 }
 # The server is a Linux user service, and builds only there.
 // onLinux {
