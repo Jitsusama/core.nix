@@ -271,10 +271,62 @@ QtObject {
         const ownSpent = Held.own(spent, 1, [], ways);
         check("a source's own row gone, offering nothing, keeps its rows, each gone",
             `${ownSpent.leave} ${ownSpent.all} ${keptWith.join(" ")}`, "-1 true s1:0");
+        // A step found by what was typed whose row is still offered, but
+        // offers nothing now, is left as any other is.
+        const typedEnded = Held.remade(typed, 1, [row("s1", "ended")], ways);
+        check("a typed step whose row is offered but offers nothing is left",
+            `${typedEnded.leave} ${typedEnded.all}`, "1 false");
+
+        leaving(check, steps, deeper, nothing, below);
 
         for (const failure of failures) {
             console.warn(`FAIL ${failure}`);
         }
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // Where a step that offers nothing now leaves to, as `nothing` and
+    // `below` made Agents' steps again, `steps` and `deeper`, each told to
+    // `check`.
+    function leaving(check, steps, deeper, nothing, below) {
+        const how = (outermost, holding) => ({ outermost, holding });
+        const said = to => `${to.keep} ${to.waits}`;
+
+        check("nothing to leave keeps every step",
+            said(Held.leaveTo({ steps: steps, leave: -1, all: true }, how(false, false),
+                ways)), "-1 false");
+        check("a step offering nothing is left, back to the step above it",
+            said(Held.leaveTo(nothing, how(false, false), ways)), "1 false");
+        check("and a step below one that does, back to it",
+            said(Held.leaveTo(below, how(false, false), ways)), "2 false");
+        // While Joel acts on the rows, as visual or a pending operator
+        // does, or has typed in the find, the step stays, its rows each
+        // gone, and the leave waits for him to finish, as the rows do.
+        keptWith = [];
+        const held = Held.leaveTo(nothing, how(false, true), ways);
+        check("while he holds the rows the step stays, and the leave waits", said(held),
+            "-1 true");
+        check("its rows each gone", `${keptWith.join(" ")} ${held.steps[1].rows.length}`,
+            "s1:0 0");
+        // A dialog's own collection, the outermost, is never left, for
+        // the home it never showed; it stays, its rows each gone, rather
+        // than showing what it offered before.
+        const spentTop = { steps: steps, leave: 0, all: false };
+        keptWith = [];
+        const top = Held.leaveTo(spentTop, how(true, false), ways);
+        check("the outermost step is kept, the steps below it left", said(top), "1 false");
+        check("its rows each gone", keptWith.join(" "), "agents:0");
+        keptWith = [];
+        const alone = Held.leaveTo({ steps: [steps[0]], leave: 0, all: false },
+            how(true, false), ways);
+        check("the outermost alone is kept with its rows gone, nothing left",
+            `${said(alone)} ${keptWith.join(" ")}`, "-1 false agents:0");
+        check("any other leaves to home", said(Held.leaveTo(spentTop, how(false, false), ways)),
+            "0 false");
+        check("steps it doesn't leave are as made",
+            read(Held.leaveTo(below, how(false, false), ways).steps.slice(0, 2)),
+            read(below.steps.slice(0, 2)));
+        check("and as many as there were", Held.leaveTo(below, how(false, true), ways)
+            .steps.length, deeper.length);
     }
 }
