@@ -49,8 +49,9 @@
 // until the next collection let one opening of Joel's shell run two whole
 // collections 16 s apart, each inside a key, 115 ms of its 175 and 193
 // (2026-11-19). It never lets the chunks grow past twice the room beyond
-// what they held when it was asked, so a heap whose sweeps keep a few items
-// in each chunk it grew into doesn't grow by the room at every one; and it
+// what they held at the first ask since a collection ended, so a heap whose
+// sweeps keep a few items in each chunk it grew into doesn't grow by the
+// room at every one, and the opening's ask shares the closing's; and it
 // reckons from what each sweep left, not from where leaveRoom set it, so
 // asking twice leaves the room once. weigh() says where the next starts.
 //
@@ -198,6 +199,7 @@ QVariantMap Heap::weigh() const {
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
         {QStringLiteral("chunks"), megabytes(slots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
+        {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
         {QStringLiteral("free"),
          megabytes(freePages(manager->blockAllocator) + freePages(manager->icAllocator))},

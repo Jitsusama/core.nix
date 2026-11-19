@@ -10,30 +10,36 @@ key at 115 ms of its 175 and 193. A room left on the memory manager is
 now left again at the end of every cycle, in the heap and outside it,
 so the heap grows by it before the next cycle starts. A heap whose
 sweeps keep what it grew into is never let past twice the room beyond
-what it held when the room was left. It is none by default, as Qt has
-it.
+what it held at the first ask since a cycle ended, so asking again as
+it grows doesn't move that. It is none by default, as Qt has it.
 
 ---
 diff --git a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
-index 65b729e..cfa903c 100644
+index 65b729e..0e4caa1 100644
 --- a/src/qml/memory/qv4mm.cpp
 +++ b/src/qml/memory/qv4mm.cpp
-@@ -970,6 +970,7 @@ GCState doSweep(GCStateMachine *that, ExtraData &)
+@@ -970,6 +970,8 @@ GCState doSweep(GCStateMachine *that, ExtraData &)
      mm->engine->isGCOngoing = false;
  
      mm->updateUnmanagedHeapSizeGCLimit();
++    mm->sweptSinceRoomLeft = true;
 +    mm->keepRoom();
  
      return GCState::Invalid;
  }
-@@ -1454,6 +1455,39 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
+@@ -1454,6 +1456,45 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
      }
  }
  
 +void MemoryManager::leaveRoom(std::size_t bytes)
 +{
++    // Only an ask after a cycle ends, or for another room, moves where the ceiling is counted
++    // from, so asking again while what's held grows, as an opening asks after the closing,
++    // doesn't let it grow by another two rooms.
++    if (sweptSinceRoomLeft || bytes != roomAfterSweep)
++        slotsHeldWhenRoomLeft = blockAllocator.totalSlots() + icAllocator.totalSlots();
++    sweptSinceRoomLeft = false;
 +    roomAfterSweep = bytes;
-+    slotsHeldWhenRoomLeft = blockAllocator.totalSlots() + icAllocator.totalSlots();
 +    keepRoom();
 +}
 +
@@ -60,23 +66,25 @@ index 65b729e..cfa903c 100644
 +
 +std::size_t MemoryManager::heldBeforeCollecting() const
 +{
-+    return usedSlotsAfterLastFullSweep * GCOverallocation / 100 * Chunk::SlotSize;
++    const std::size_t slots = usedSlotsAfterLastFullSweep * GCOverallocation / 100;
++    return std::max<std::size_t>(slots, MinSlotsGCLimit) * Chunk::SlotSize;
 +}
 +
  void MemoryManager::registerWeakMap(Heap::MapObject *map)
  {
      map->nextWeakMap = weakMaps;
 diff --git a/src/qml/memory/qv4mm_p.h b/src/qml/memory/qv4mm_p.h
-index 8dfce5f..ea96829 100644
+index 8dfce5f..a2cd32a 100644
 --- a/src/qml/memory/qv4mm_p.h
 +++ b/src/qml/memory/qv4mm_p.h
-@@ -433,6 +433,14 @@ public:
+@@ -433,6 +433,15 @@ public:
  
      // called at the end of a gc cycle
      void updateUnmanagedHeapSizeGCLimit();
 +    // Lets the heap grow by this many bytes, and its unmanaged part as much, before a miss or a
 +    // string starts a cycle, and again at the end of each gc cycle, though never past twice the
-+    // room beyond what it holds now. None for 0.
++    // room beyond what it held at the first ask since a cycle ended. None for 0, from the end
++    // of the next cycle on.
 +    void leaveRoom(std::size_t bytes);
 +    // Leaves the room again: at the end of each gc cycle, after the limits are set.
 +    void keepRoom();
@@ -85,7 +93,7 @@ index 8dfce5f..ea96829 100644
  
      template<typename ManagedType>
      typename ManagedType::Data *allocIC()
-@@ -536,6 +544,13 @@ public:
+@@ -536,6 +545,14 @@ public:
      std::size_t unmanagedHeapSize = 0; // the amount of bytes of heap that is not managed by the memory manager, but which is held onto by managed items.
      std::size_t unmanagedHeapSizeGCLimit;
      std::size_t usedSlotsAfterLastFullSweep = 0;
@@ -94,8 +102,9 @@ index 8dfce5f..ea96829 100644
 +    // used in a fragmented heap, so every miss after it starts another cycle.
 +    std::size_t roomAfterSweep = 0;
 +    // The slots the heap's chunks held when the room was left, which it's never let grow past
-+    // by more than twice the room before a cycle starts.
++    // by more than twice the room before a cycle starts, and whether a cycle has ended since.
 +    std::size_t slotsHeldWhenRoomLeft = 0;
++    bool sweptSinceRoomLeft = true;
  
      enum Blockness : quint8 {Unblocked, NormalBlocked, InCriticalSection };
      Blockness gcBlocked = Unblocked;
