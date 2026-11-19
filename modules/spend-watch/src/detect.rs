@@ -1661,7 +1661,7 @@ fn unresolved_finding(
         ),
     );
     f.badge = format!("last {at}");
-    f.note = why.to_owned();
+    why.clone_into(&mut f.note);
     f.surprise = 2.0;
     f
 }

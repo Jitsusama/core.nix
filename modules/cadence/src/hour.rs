@@ -144,14 +144,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
         measures.push(spent_beside_landed(&state_home, now));
-        // spend-watch rewrites its collection only when its text changes,
-        // so its heartbeat, not the file's time, says whether it's current.
-        measures.push(measures::unbilled::unbilled(
-            spend_watch_file("collection.json").as_deref(),
-            spend_watch_file("status.json").as_deref(),
-            now,
-            measures::ASKS,
-        ));
+        measures.extend(spend_watch_measures(now));
     }
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
@@ -288,6 +281,29 @@ fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
         |address| measures::spent::quest_of(&presences, address),
     );
     measures::spent::beside(collection.as_deref(), &landed, measures::ASKS)
+}
+
+/// What spend-watch's collection says at `now` of budgets: those billed
+/// under what they logged, and those sessions couldn't draw on. It
+/// rewrites its collection only when its text changes, so its heartbeat,
+/// not the file's time, says whether it's current.
+fn spend_watch_measures(now: i64) -> [Measure; 2] {
+    let collection = spend_watch_file("collection.json");
+    let status = spend_watch_file("status.json");
+    [
+        measures::unbilled::unbilled(
+            collection.as_deref(),
+            status.as_deref(),
+            now,
+            measures::ASKS,
+        ),
+        measures::unresolved::unresolved(
+            collection.as_deref(),
+            status.as_deref(),
+            now,
+            measures::ASKS,
+        ),
+    ]
 }
 
 /// One of the files spend-watch's daemon keeps in its runtime folder.

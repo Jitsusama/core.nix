@@ -44,6 +44,40 @@ const UNREAD: &str = " (spend-watch unread, stopped, on hold, or its bill unsett
 /// leaves the measure unjudged rather than in.
 #[must_use]
 pub fn unbilled(collection: Option<&str>, status: Option<&str>, now: i64, owner: &str) -> Measure {
+    let told = told(collection, status, now, FINDING, &UNJUDGED);
+    let Some(behind) = told else {
+        return Measure {
+            key: KEY.to_owned(),
+            class: Class::Functional,
+            says: format!("{SAYS}{UNREAD}"),
+            now: 0.0,
+            target: None,
+            owner: owner.to_owned(),
+            behind: Vec::new(),
+        };
+    };
+    Measure {
+        key: KEY.to_owned(),
+        class: Class::Functional,
+        says: SAYS.to_owned(),
+        now: count(behind.len()),
+        target: Some(0.0),
+        owner: owner.to_owned(),
+        behind,
+    }
+}
+
+/// The name of each finding spend-watch's collection holds whose key
+/// begins `finding`, leaving out those Joel marked as expected; none
+/// where the collection can't be read as spend-watch's word now: unread,
+/// its heartbeat stale or missing, or holding one of the `unjudged` keys.
+pub(super) fn told(
+    collection: Option<&str>,
+    status: Option<&str>,
+    now: i64,
+    finding: &str,
+    unjudged: &[&str],
+) -> Option<Vec<String>> {
     let beating = status
         .and_then(|text| serde_json::from_str::<Value>(text).ok())
         .and_then(|status| status.get("heartbeat")?.as_f64())
@@ -59,34 +93,16 @@ pub fn unbilled(collection: Option<&str>, status: Option<&str>, now: i64, owner:
         .filter(|findings| {
             !findings
                 .iter()
-                .any(|f| key(f).is_some_and(|key| UNJUDGED.contains(&key)))
-        });
-    let Some(findings) = findings else {
-        return Measure {
-            key: KEY.to_owned(),
-            class: Class::Functional,
-            says: format!("{SAYS}{UNREAD}"),
-            now: 0.0,
-            target: None,
-            owner: owner.to_owned(),
-            behind: Vec::new(),
-        };
-    };
-    let behind: Vec<String> = findings
-        .iter()
-        .filter(|f| key(f).is_some_and(|key| key.starts_with(FINDING)))
-        .filter(|f| f.get("role").and_then(Value::as_str) != Some("expected"))
-        .filter_map(|f| f.get("name")?.as_str().map(str::to_owned))
-        .collect();
-    Measure {
-        key: KEY.to_owned(),
-        class: Class::Functional,
-        says: SAYS.to_owned(),
-        now: count(behind.len()),
-        target: Some(0.0),
-        owner: owner.to_owned(),
-        behind,
-    }
+                .any(|f| key(f).is_some_and(|key| unjudged.contains(&key)))
+        })?;
+    Some(
+        findings
+            .iter()
+            .filter(|f| key(f).is_some_and(|key| key.starts_with(finding)))
+            .filter(|f| f.get("role").and_then(Value::as_str) != Some("expected"))
+            .filter_map(|f| f.get("name")?.as_str().map(str::to_owned))
+            .collect(),
+    )
 }
 
 fn key(finding: &Value) -> Option<&str> {
