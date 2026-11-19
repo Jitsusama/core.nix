@@ -547,7 +547,12 @@ struct Got {
 }
 
 /// Asks the socket as pi does, in HTTP/1.1 with the Host it names.
-async fn ask(socket: &Path, request: Request<Full<Bytes>>) -> Got {
+async fn ask<B>(socket: &Path, request: Request<B>) -> Got
+where
+    B: hyper::body::Body + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
     let stream = UnixStream::connect(socket)
         .await
         .expect("the socket answers");
@@ -1208,6 +1213,32 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
     );
 }
 
+/// What pi gets asking with a body in halves, the second sent a while
+/// after the first, and whether the answer came only once both had gone.
+async fn ask_in_halves(socket: &Path, host: &str, path: &str) -> (Got, bool) {
+    let (mut halves, body) = Channel::<Bytes, Infallible>::new(1);
+    let written = tokio::spawn(async move {
+        let _ = halves
+            .send_data(Bytes::from_static(b"the first half, "))
+            .await;
+        tokio::time::sleep(HELD).await;
+        let _ = halves
+            .send_data(Bytes::from_static(b"then the second"))
+            .await;
+        Instant::now()
+    });
+    let asked = Request::builder()
+        .method("POST")
+        .uri(path)
+        .header("host", host)
+        .body(body)
+        .expect("a request");
+    let got = ask(socket, asked).await;
+    let answered = Instant::now();
+    let written = written.await.expect("the body written");
+    (got, answered >= written)
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes_requests_again() {
     let origin = origin().await;
@@ -1257,15 +1288,19 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
 
     // Quiet past its idle time, and the time it takes to see it and go,
     // it's still there, standing down: leaving would forget it. The body
-    // is too big to have come with the head, and is read whole before the
-    // 421, so pi isn't left writing what the relay stopped reading.
+    // comes in halves, the second a while after the head, and is read
+    // whole before the 421, so pi isn't left writing what the relay
+    // stopped reading: pi's client hands back an answer that came early.
     tokio::time::sleep_until((stood_down + Duration::from_secs(11)).into()).await;
-    let big: &'static [u8] = Box::leak(vec![b'x'; 4 << 20].into_boxed_slice());
-    let got = ask(&relay.socket, request(&host, "/echo", big)).await;
+    let (got, answered_after_the_body) = ask_in_halves(&relay.socket, &host, "/echo").await;
     assert_eq!(
         got.status,
         StatusCode::MISDIRECTED_REQUEST,
         "a request while the relay stands down, past its idle time"
+    );
+    assert!(
+        answered_after_the_body,
+        "the stand-down's 421 came before the body was read whole"
     );
     let words = String::from_utf8_lossy(&got.body).into_owned();
     assert!(

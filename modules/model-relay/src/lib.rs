@@ -1896,6 +1896,11 @@ fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
 }
 
 /// An answer of the relay's own: a status and a line saying why.
+///
+/// A 421 is said only when nothing of the request went to the origin,
+/// as pi sends a request the relay answers with one straight to the
+/// origin itself, knowing it by a line that begins "this relay " and
+/// ends "so go directly". A refusal once something went is a 5xx.
 fn said(status: StatusCode, why: &'static str) -> Response<Body> {
     let mut answer = Response::new(
         Full::new(Bytes::from_static(why.as_bytes()))
