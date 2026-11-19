@@ -2246,8 +2246,9 @@ Provider {
 
     // What came for Joel, Lately, in Now's own rows after the moment's, or
     // For You's (latelyInForYou; Joel: "a notice stays until read or
-    // forgotten"): a row for each source holding something unread. Mail and Slack are their pieces' rows (NewMail.qml,
-    // NewSlack.qml), each piece saying what it holds (Piece.qml's lately
+    // forgotten"): a row for each source holding something unread. Mail
+    // and Slack are their pieces' rows (NewMail.qml, NewSlack.qml), each
+    // piece saying what it holds (Piece.qml's lately
     // and came), and Desktop is the notices unread, the shell's own for
     // what For You lists left out. The rows stand by the heaviest each
     // holds, a thing to look at weighed by how long it's waited, as For
