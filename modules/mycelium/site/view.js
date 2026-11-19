@@ -18,8 +18,8 @@
 // lineage.ts, what each thing is in words in words.ts, the tree beside the
 // map, its rows and their walk, in outline.ts, how a time is said in
 // when.ts, how each thing stands and why in health.ts, what each is doing
-// in doing.ts, and what each spent in spend.ts, which this imports as the
-// modules they're built to.
+// in doing.ts, what each spent in spend.ts, and what waits on each and what
+// holds stand in waits.ts, which this imports as the modules they're built to.
 import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
@@ -49,6 +49,7 @@ import {
   NUMBER,
   offWords,
   plural,
+  SHARED_WORD,
   STANDING_WORD,
   STANDINGS,
   spends,
@@ -56,7 +57,8 @@ import {
   cellsOn as machineCells,
   waitingWords,
 } from "./words.js";
-import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClockAt, minutesWord } from "./when.js";
+import { agoWords as agoWordsAt, atWords as atWordsAt, clock } from "./when.js";
+import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as holdWordsAt, owedWords, sharedWords as sharedWordsOf } from "./waits.js";
 
 (() => {
   // The most time between two readings while the node moves: site.ts hands
@@ -287,7 +289,6 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
   };
 
   // Times, said against the reading's own (when.ts).
-  const dayClock = (t) => dayClockAt(t, current.at);
   const atWords = (t) => atWordsAt(t, current.at);
   const agoWords = (iso) => agoWordsAt(iso, current.at);
   // What a key says depends on the data alone, so it is worked out once
@@ -343,22 +344,8 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
     }
     for (const s of cells) s.owes.sort((a, b) => a.at.localeCompare(b.at));
   };
-  // What the page says of a question waiting, by how it knows: the node's
-  // judgement, or its own guess from the latest messages.
-  const unansweredWords = () => (current?.judged ? "with no answer yet" : "with no word since");
-  // Where a hold went, as the mesh writes it (@PEER, #machine, #quest/x),
-  // said as the page names each: a cell by its short name, a network as
-  // the drawers name it, the machine as every cell on it.
-  const holdTarget = (to) => {
-    const peer = to.match(/^@(.+)$/)?.[1].toUpperCase();
-    if (peer) return current?.byAddress.get(peer)?.short || peer;
-    if (to === "#machine") return "every cell on its machine";
-    const key = to.replace(/^#/, "").replace("/", ".");
-    const hub = current?.hubs.get(key);
-    if (hub) return hub.name;
-    return current?.shared.some((x) => x.key === key) ? sharedWords(key) : key;
-  };
-  const holdWords = (h) => `holding ${h.to.map(holdTarget).join(" and ") || "its peers"} since ${dayClock(h.at)}${h.until ? `, until ${dayClock(h.until)} at most` : ""}`;
+  // What waits and what holds are waits.ts's, said against the reading.
+  const holdWords = (h) => holdWordsAt(h, current, current.at);
   const WAIT_GAP = 3; // between a mark and its waiting ring
   const HOLD_REACH = 7; // how far a hold's wall stands out past any waiting ring
   const WAIT_FULL_MS = 30 * 60_000; // a question this old swells its ring fully
@@ -366,17 +353,13 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
   const SWELL_PER_QUESTION = 2;
   const SWELL_FOR_AGE = 6;
   const SWELL_MAX = 12;
-  const ageOf = (owes) => Math.max(0, Date.parse(current.at) - Date.parse(owes[0].at));
+  const ageOf = (owes) => ageOfAt(owes, current.at);
   const swell = (owes) =>
     owes?.length ? Math.min(SWELL_MAX, SWELL_BASE + SWELL_PER_QUESTION * (owes.length - 1) + SWELL_FOR_AGE * Math.min(1, ageOf(owes) / WAIT_FULL_MS)) : 0;
 
   const STANDING_OF_CELL = { "needs-you": "asks", stuck: "stuck", moving: "moving", quiet: "quiet", dormant: "dormant" };
-  const SHARED_WORD = { project: "quest", repository: "repository", group: "group" };
   // A shared network as the panel names it: "the backwater repository".
-  const sharedWords = (id) => {
-    const n = current?.shared.find((x) => x.key === id);
-    return n ? `the ${n.short} ${SHARED_WORD[n.shape]}` : id;
-  };
+  const sharedWords = (id) => sharedWordsOf(id, current);
 
   // The map before mycelium drew networks itself: sessions with their mesh
   // groups and the swarm's teams, read as the networks view reads them, so
@@ -2974,7 +2957,7 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
   const cellDoing = (s) => cellDoingAt(s, current.at);
   const cellHealth = (s) => {
     const u = s.usage || {};
-    const owed = s.owes.map((o) => `${current.byAddress.get(o.from)?.short || o.from}'s question waiting since ${dayClock(o.at)}`);
+    const owed = s.owes.map((o) => owedWords(o, current, current.at));
     const today = [u.turns_today != null ? plural(u.turns_today, "turn") : "", u.cost_today ? money(u.cost_today) : ""].filter(Boolean).join(" and ");
     const bits = [s.standing === "asks" ? "needs you" : "", s.standing === "stuck" ? "stuck" : "", ...owed, ...s.holds.map(holdWords), contextWords(s), today ? `${today} today` : ""].filter(Boolean);
     return `<p class="health-line">${verdictMark(verdictOf([s]))}: ${esc(bits.join("; ") || "nothing said")}.</p>`;
@@ -3006,14 +2989,9 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
   };
 
   // What holds others up, oldest first, said as plainly as the node knows it.
-  const heldRow = (s) => {
-    const o = s.owes[0];
-    const asker = clipped(current.byAddress.get(o.from)?.short || o.from);
-    return (
-      `<li><button type="button" class="row" data-go="cell=${esc(s.address)}">${stateGlyph(s)}<span class="what"><span class="name">${esc(s.short)}</span>` +
-      `<span class="fact">${esc(`${waitingWords(s.owes)}; ${s.owes.length === 1 ? "it came" : "the oldest came"} from ${asker} ${minutesWord(ageOf(s.owes))} ago, ${unansweredWords()}`)}</span></span></button></li>`
-    );
-  };
+  const heldRow = (s) =>
+    `<li><button type="button" class="row" data-go="cell=${esc(s.address)}">${stateGlyph(s)}<span class="what"><span class="name">${esc(s.short)}</span>` +
+    `<span class="fact">${esc(heldWords(s, current, current.at, { judged: Boolean(current.judged), named: clipped }))}</span></span></button></li>`;
   // A hold puts off what others would do, which is a choice and no fault,
   // so it is said beside what waits, and never counted against health.
   const holdRow = (s) =>
@@ -3041,8 +3019,8 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
     );
   };
   const heldUp = (cells) => {
-    const held = cells.filter((s) => s.owes.length).sort((a, b) => a.owes[0].at.localeCompare(b.owes[0].at));
-    const holding = cells.filter((s) => s.holds.length).sort((a, b) => a.holds[0].at.localeCompare(b.holds[0].at));
+    const held = heldFirst(cells);
+    const holding = holdingFirst(cells);
     return (
       (held.length ? `<h3>Questions Waiting</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "") +
       (holding.length ? `<h3>Holds Standing</h3><ul class="rows">${holding.map(holdRow).join("")}</ul>` : "")

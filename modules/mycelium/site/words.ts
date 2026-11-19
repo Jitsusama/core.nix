@@ -28,14 +28,30 @@ export interface Cell {
   readonly wants?: string | null | undefined;
   /** What its turn is doing, when it moves. */
   readonly doing?: string | null | undefined;
-  /** The questions waiting on it, and the holds it has standing. */
-  readonly owes: readonly unknown[];
-  readonly holds: readonly unknown[];
+  /** The questions waiting on it, oldest first, and the holds it has standing. */
+  readonly owes: readonly Owed[];
+  readonly holds: readonly Hold[];
   readonly usage?: Usage | null | undefined;
   readonly machine?: string | null | undefined;
   /** The network it is drawn in, or the one it works alone in where it is in none. */
   readonly hub?: Network | null | undefined;
   readonly loose?: Network | null | undefined;
+}
+
+/** A question waiting on a cell: who asked it, and when. */
+export interface Owed {
+  readonly from: string;
+  readonly at: string;
+}
+
+/**
+ * A hold a cell has standing: where it went, as the mesh writes it, since
+ * when, and until when at most.
+ */
+export interface Hold {
+  readonly to: readonly string[];
+  readonly at: string;
+  readonly until?: string | null | undefined;
 }
 
 /** What a cell's session says it has used: today's turns and spend, and its context. */
@@ -128,7 +144,7 @@ export const spentWords = (cells: readonly Cell[]): string =>
   spends(cells) ? `, ${money(spentOf(cells))} today` : "";
 
 /** How many questions wait, in words. */
-export const waitingWords = (owes: readonly unknown[]): string =>
+export const waitingWords = (owes: readonly Owed[]): string =>
   `${owes.length === 1 ? "a question" : `${owes.length} questions`} waiting`;
 
 /** How many of the cells stand each way. */
@@ -269,4 +285,15 @@ export const described = (reading: Reading, key: string): string => {
   const x = reading.machines.find((y) => y.name === id);
   const what = x?.members ? `a basin of ${plural(x.members.length, "machine")}` : "a machine";
   return `${id}, ${machineWords(reading, id)}, ${what}`;
+};
+
+/**
+ * What each kind of shared thing a network gathers round is called in words.
+ * The model keeps only the networks whose kind is named here, so the panel
+ * and the map's drawing never meet a kind without its word.
+ */
+export const SHARED_WORD: Readonly<Record<string, string>> = {
+  project: "quest",
+  repository: "repository",
+  group: "group",
 };
