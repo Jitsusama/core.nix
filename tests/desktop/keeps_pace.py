@@ -77,11 +77,19 @@ class Ledger:
         self.last = now
 
     def said(self) -> str:
-        """Say each turn's stolen and busy ticks, and the share they give."""
+        """Say each turn's stolen and busy ticks, and the share they give.
+
+        A turn with no busy ticks, as when a subtest fails before its first freeze, says no
+        share: the share of 1 it gives reads as nothing stolen, on the run it may explain.
+        """
         under, frozen = self.turns[True], self.turns[False]
         (stolen_under, busy_under), (stolen_frozen, busy_frozen) = under, frozen
-        share = builders_share(under, frozen)
+        shared = (
+            f"a share of {builders_share(under, frozen):.2f}"
+            if busy_under and busy_frozen
+            else "so no share"
+        )
         return (
             f"the guest counted {stolen_under} of {busy_under} busy ticks stolen under load,"
-            f" against {stolen_frozen} of {busy_frozen} frozen, a share of {share:.2f}"
+            f" against {stolen_frozen} of {busy_frozen} frozen, {shared}"
         )

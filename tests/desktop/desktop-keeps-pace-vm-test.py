@@ -208,7 +208,7 @@ def loaded(desktop: Desktop) -> Iterator[None]:
     """Load every core in jobs.slice and in build.slice, as agents and builds do, until done."""
     machine = desktop.machine
     # The share the builder splits between the VM's processors is read as at most their count.
-    processors = int(machine.succeed("nproc").strip())
+    processors = int(machine.succeed("nproc --all").strip())
     assert processors == PROCESSORS, f"the VM has {processors} processors, not {PROCESSORS}"
     # Builds weigh what the workstation role gives them (modules/nix-daemon).
     weight = machine.succeed("systemctl show build.slice --property=CPUWeight --value").strip()
@@ -273,6 +273,8 @@ class Timing:
         self.said = self.timed = self.pressing = self.presses = 0
         self.turns: list[tuple[int, bool]] = []
         self.loading = True
+        # Whether the load is turning, so a turn that fails partway keeps its ticks in neither.
+        self.turning = False
         # How long, in ms, the compositor and the shell waited for a processor in each turn, and
         # the turn being pressed with what they'd waited when it began.
         self.waited: dict[int, float] = {}
@@ -299,25 +301,30 @@ class Timing:
         # waits for its answer by default, though the unit froze. FREEZING is longer than that.
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
         self.count(kept=True)
+        self.turning = True
         self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs", timeout=2 * FREEZING)
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
+        self.turning = False
         # The ticks while the load turned are neither turn's, so they're passed over.
         self.count(kept=False)
 
     def count(self, *, kept: bool) -> None:
         """Count the ticks since the last count, kept with the load as it stands."""
         stat = self.desktop.machine.succeed("head -1 /proc/stat")
-        self.ledger.count(stat, turn=self.loading if kept else None)
+        self.ledger.count(stat, turn=self.loading if kept and not self.turning else None)
 
     def end(self) -> None:
         """Say what the guest counted stolen, then let the load run again if it's frozen.
 
         Said before any of a test's bars is judged, so a run that fails says it too, and before
-        the thaw, which a stalled builder can fail.
+        the thaw, which a stalled builder can fail. A VM past answering still says the turns
+        already counted, without the last.
         """
-        self.count(kept=True)
-        print(self.ledger.said())
+        try:
+            self.count(kept=True)
+        finally:
+            print(self.ledger.said())
         if not self.loading:
             self.load(on=True)
 
@@ -924,10 +931,11 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
 @pytest.mark.usefixtures("keyboard", "loaded")
 def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desktop) -> None:
     """The launcher draws each key soon after it's pressed, while every core is busy."""
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
     timing = Timing(desktop)
     try:
+        # Opened inside, so a launcher too slow to open under load says what was stolen too.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
         desktop.down_to("Programs")
         desktop.step_in("ret")
         desktop.launcher_until(lambda shown: shown["held"] == ["programs"])
@@ -1010,13 +1018,17 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
         hold_vm(started, builders[:HELD_TO])
         # The ticks before the hold took aren't held ones, so they're passed over.
         timing.count(kept=False)
-        # Said, so a share near 1 tells a hold that never took from a count blind to one.
+        # Said with the builder's processors, so little stolen tells a hold that never took,
+        # or one that changed nothing, from a count blind to one.
         held: dict[str, int] = {}
         for thread in vm_threads(started):
             with contextlib.suppress(ProcessLookupError):
                 on = ",".join(map(str, sorted(os.sched_getaffinity(thread))))
                 held[on] = held.get(on, 0) + 1
-        print(f"the VM's threads, by the builder's processors each may run on: {held}")
+        print(
+            f"the VM's threads, by the builder's processors each may run on: {held},"
+            f" of the builder's {builders}"
+        )
         time.sleep(GAUGING)
         timing.count(kept=True)
     finally:
