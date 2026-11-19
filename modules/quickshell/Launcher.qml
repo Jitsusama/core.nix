@@ -5855,11 +5855,11 @@ Scope {
 
     // A hold no source agreed to in time is put back, saying so, unless its
     // row agrees now, or can't be read to tell. The timer comes again for
-    // those still held: it keeps its own clock, not Date.now's, so it can
-    // come a little before a hold is due, and Lighthouse's 30 s reopening
-    // was then never put back nor said (goes-places, 2026-11-19).
+    // those still held, as Becoming.fired says, even where it came early
+    // and found none late.
     function becameLate() {
-        for (const key of Becoming.late(becoming, Date.now(), becomingWithin)) {
+        const fired = Becoming.fired(becoming, Date.now(), becomingWithin);
+        for (const key of fired.late) {
             const one = becoming[key];
             const now = nowRow(one);
             if (now === undefined || Becoming.agrees(one, now, reads))
@@ -5867,11 +5867,14 @@ Scope {
             else
                 takenBack(one, "");
         }
-        timeBecoming();
+        becomeAgainIn(fired.again);
     }
 
     function timeBecoming() {
-        const due = Becoming.nextDue(becoming, Date.now(), becomingWithin);
+        becomeAgainIn(Becoming.nextDue(becoming, Date.now(), becomingWithin));
+    }
+
+    function becomeAgainIn(due) {
         if (due < 0) {
             becomingDue.stop();
             return;

@@ -210,9 +210,9 @@ def foot(desktop: Desktop, moved_from: str) -> tuple[int, int]:
     try:
         desktop.launcher_until(keys_alone)
     except AssertionError as failed:
-        # A word told over the keys outlasts any wait, so name it: one an earlier subtest's act
-        # left reads as a slow shell otherwise, as it did on 2026-11-18.
-        told = f"the foot never stood alone, told {read[0]['saying'] if read else []}"
+        # A word told over the keys outlasts any wait, so say what was last read: one an earlier
+        # subtest's act left reads as a slow shell otherwise, as it did on 2026-11-18.
+        told = f"the foot never stood alone; it last read {read[0] if read else 'nothing'}"
         raise AssertionError(told) from failed
     return read[0]["keysAt"], len(read[0]["glance"])
 
@@ -222,7 +222,7 @@ def settled(desktop: Desktop, key: str, within: dt.timedelta) -> Iterator[None]:
     """Run an act on a row, then wait for the launcher to say how it came out, become or not.
 
     What didn't become is told at the next opening until a key, so a subtest that runs an act
-    waits here while its own openings can spend the word. Within is the act's own bound and more.
+    waits here, and its own later openings spend the word. Within is the act's own bound and more.
     """
     since = desktop.mark()
     yield
@@ -850,8 +850,10 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # A harmless one is done at once, and once it ends something, offered.
     awake = one(entries, "Keep Awake", "Machine")
     assert not awake["disruptive"]
-    assert ran(awake) == {"done": True, "said": "Machine \u203a Keep Awake"}
-    machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))
+    # Its outcome settles here, so the release's wait below can't be met by this one's.
+    with settled(desktop, "session:awake", dt.timedelta(seconds=30)):
+        assert ran(awake) == {"done": True, "said": "Machine \u203a Keep Awake"}
+        machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))
     # On, it keeps its name (VKCF3Z, 99c7bc98), and letting it sleep ends something.
     sleep = one(listed(), "Keep Awake", "Machine")
     assert sleep["id"] == awake["id"], "its id changed with its state"

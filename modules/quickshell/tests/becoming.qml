@@ -100,6 +100,17 @@ QtObject {
         check(failures, "the next due is the soonest", Becoming.nextDue(holds, 2000, 5000), 4000);
         check(failures, "one past due is due now", Becoming.nextDue(holds, 9000, 5000), 0);
         check(failures, "none held is none due", Becoming.nextDue({}, 0, 5000), -1);
+        // The timer keeps its own clock, so it can fire just before a hold is
+        // due; it comes again for it rather than stopping (goes-places, 2026-11-18).
+        const early = Becoming.fired(holds, 5999, 5000);
+        check(failures, "a timer fired early puts nothing back and comes again for it",
+            `${early.late.join(" ")}|${early.again}`, "|1");
+        const onTime = Becoming.fired(holds, 6000, 5000);
+        check(failures, "fired on time, it puts that one back and comes again for the rest",
+            `${onTime.late.join(" ")}|${onTime.again}`, "a|2000");
+        const last = Becoming.fired({ a: holds.a }, 6000, 5000);
+        check(failures, "and with none left it comes no more",
+            `${last.late.join(" ")}|${last.again}`, "a|-1");
         check(failures, "a hold let go is gone from them",
             Object.keys(Becoming.without(holds, ["a"])).join(" "), "b");
         check(failures, "and the rest are left as they were", Object.keys(holds).length, 2);

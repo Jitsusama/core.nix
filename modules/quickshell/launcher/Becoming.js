@@ -85,6 +85,16 @@ function nextDue(holds, now, within) {
     return ats.length === 0 ? -1 : Math.max(0, Math.min(...ats));
 }
 
+// What the launcher's timer does as it fires at `now`: the holds `late` to
+// put back, and when it's to come `again` for the rest, in ms, or -1 for
+// none left. The timer keeps its own clock, not Date.now's, so it can fire
+// a little before a hold is due, finding none late; it must still come
+// again, or that hold is never put back nor said (goes-places, 2026-11-18).
+function fired(holds, now, within) {
+    const due = late(holds, now, within);
+    return { late: due, again: nextDue(without(holds, due), now, within) };
+}
+
 // What `act` did, as words.json's `did` says it, else `done`: a daemon's
 // own word for an act is never said to Joel (PN2VZC, 2026-11-12: "Optimize
 // for Conferencing and Gaming not sqm yet", and Power's "not
