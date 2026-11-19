@@ -159,6 +159,25 @@ function drawerSaid(one) {
         + screensSaid([one]);
 }
 
+// The keys gone into a drawer, `{ key, from, at, swapped, laid, screen,
+// refresh }`, said as the frame they came in is presented, with how much
+// of it was the shell's, to that frame's swap where it was kept, and how
+// many of its lines that frame laid: Ctrl+W l into Emoji's laid all 1,833
+// lines first, where its view shows some 37, until only those were
+// (2026-11-19).
+function intoSaid(one) {
+    const swap = one.swapped > 0
+        ? `, ${Math.round(one.swapped - one.from)} to the shell's swap` : "";
+    // The key quoted as JSON, so a quote or a line break in a row's name
+    // can't end the line early or forge another, with the line ends JSON
+    // leaves raw escaped too, since a reader may split on any of them.
+    const key = JSON.stringify(one.key).replace(/[\u2028\u2029\u0085]/g,
+        end => `\\u${end.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    return `launcher: into the drawer for ${key} presented `
+        + `${Math.round(one.at - one.from)} ms from the key${swap}, ${one.laid} `
+        + `${one.laid === 1 ? "line" : "lines"} laid first${screensSaid([one])}`;
+}
+
 // The drawers presented since the launcher opened, a line a place, as a
 // place's changes are, each ending with the screens they were shown on.
 function drawersSaid(drawers) {

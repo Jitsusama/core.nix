@@ -12326,6 +12326,55 @@ Scope {
     // Each drawer a key brought since the launcher opened, from that key to
     // when niri presented it, said by place as it closes (drawerMade).
     property var drawersPresented: []
+    // The keys gone into the drawer, timed from their key to the frame niri
+    // presented with them, as a drawer a key brought is, and said then with
+    // how many lines that frame laid (Presented.intoSaid): Ctrl+W l into
+    // Emoji's laid every name before its frame, and nothing timed it.
+    // The key is the one heard as the drawer said the keys were coming, or
+    // for a key a program typed with no time, when that was, read before the
+    // drawer laid its lines, so the lay is the key's.
+    // Each going-in is its own record, made here before the drawer lays its
+    // lines, so the after-frame its lay asks for takes this one as it's
+    // asked, and a quick second going-in neither silences the first nor
+    // takes a frame that began before it.
+    property var intoGoing: null
+    function intoComing() {
+        const pressed = KeyTimes.pressed();
+        intoGoing = { from: pressed > 0 ? pressed : KeyTimes.now(), laid: -1 };
+    }
+    // The frame awaited is the next to begin, read once the lines are laid
+    // and before any frame can sync them, as a key's is.
+    function intoTimed() {
+        const one = intoGoing;
+        intoGoing = null;
+        if (!open || !one)
+            return;
+        one.key = drawerRow?.key || drawerRow?.name || "";
+        // The frame presentedAwait waits on, whose swap says the shell's part.
+        const frame = surface.FramePresentation.framesBegun + 1;
+        presentedAwait(one.from, (at, answered) => {
+            Object.assign(one, { at, swapped: root.swappedOf(frame),
+                screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
+            intoSay(one);
+        });
+    }
+    // The lines the frame the keys came in laid, counted as its swap is
+    // heard and before the rest is laid after it, so a key typed with the
+    // chord that laid the whole run before the frame is counted with it.
+    // A page shown anew while the keys stay has no going-in, so nothing.
+    function intoDrawn(one, laid) {
+        if (!one)
+            return;
+        one.laid = laid;
+        intoSay(one);
+    }
+    // Said once both its presentation and its count are in, whichever is
+    // heard last.
+    function intoSay(one) {
+        if (one.at === undefined || one.laid < 0)
+            return;
+        console.info(Presented.intoSaid(one));
+    }
     // Its frame's start is when the frame presentedAwait waits on began,
     // the next to begin, as a key's is, so its line says where it went.
     // Its refresh began at `refreshed`, so its line says how long it
@@ -15357,6 +15406,22 @@ Scope {
             // Its frame says the keys are here while they're in it, gone in
             // with Space and the right arrow.
             keys: QueryKeys.paged(prompt.mode)
+            onKeysComing: root.intoComing()
+            onKeysIn: root.intoTimed()
+            // Its whole run is laid once the frame the keys came in is
+            // drawn, not merely at the next turn, which comes before it;
+            // and once that frame's swap is heard, at the turn after, since
+            // laid in the swap's own handler it held the others and the
+            // swap's stamp behind it: the drawer lab read its swap some
+            // 390 ms after niri presented it (2026-11-19).
+            // The going-in it's for, if any, is the one the keys coming made.
+            afterFrame: then => {
+                const going = root.intoGoing;
+                root.afterFrame(() => {
+                    root.intoDrawn(going, drawerCard.laid.length);
+                    Qt.callLater(then);
+                });
+            }
             // The search being typed on the line, washed as it's typed.
             seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
             seekingForward: !prompt.standing.seek || prompt.standing.seek.forward

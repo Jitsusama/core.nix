@@ -15,7 +15,8 @@ never says it was presented, or the windows it opened never close. Beside it, a 
 times each step into a place from home, as Joel takes them, since a step is navigation and held
 to the same 50 ms. A third holds a place open while its daemon's changes come, and prints the
 line the shell says of them as it closes, since an update is held to it too: 6 of Machine's 20
-on Joel's shell took longer (2026-11-11).
+on Joel's shell took longer (2026-11-11). A fourth times going into a long drawer by Ctrl+W l,
+whose frame lays only the lines that show and the rest after it.
 """
 
 from __future__ import annotations
@@ -572,6 +573,82 @@ def test_each_drawer_is_timed(
             f"{round(statistics.median(timed)) if timed else 0} ms, "
             f"p90 {p90(timed) if timed else 0}; {unsaid} never said; {others} showed another "
             f"row's drawer first; came {json.dumps(came)}",
+            flush=True,
+        )
+
+
+# The place and row whose drawer the keys go into, unless the run says otherwise (LAB_INTO_IN,
+# LAB_INTO): Desktop's Emoji, whose 1,833 lines laid first took a median 558 ms (2026-11-19).
+INTO_IN = "Desktop"
+INTO = "Emoji"
+
+# The keys going into a drawer as the shell says them once niri presented their frame
+# (launcher/Presented.js's intoSaid).
+INTO_PRESENTED = re.compile(
+    r'launcher: into the drawer for "(?:[^"\\]|\\.)*" presented (\d+) ms from the key'
+    r"(?:, (\d+) to the shell's swap)?, (\d+) lines? laid"
+)
+
+
+def test_going_into_a_drawer_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
+    """Go into a row's drawer by Ctrl+W l and out by Ctrl+W h, and print each going in's time.
+
+    The row is Desktop's Emoji unless the run names another place and row (LAB_INTO_IN,
+    LAB_INTO), with LAB_DRAWN_WINDOWS windows open first, and each line says how many of the
+    drawer's lines its frame laid.
+    """
+    place = os.environ.get("LAB_INTO_IN", INTO_IN)
+    into = os.environ.get("LAB_INTO", INTO)
+    rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
+    walked_in(shell, place, place, request)
+    shell.down_to(into)
+    shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("title") == into)
+    timed: list[int] = []
+    swapped: list[int] = []
+    for round_ in range(rounds):
+        mark = shell.mark()
+        # Ctrl+W then l in one batch, as he types it, so the chord never waits on its second.
+        shell.as_account("wtype -M ctrl -k w -m ctrl -k l")
+        found = None
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        # The line is written once niri presents the frame, so it's read again a poll apart.
+        while found is None and time.monotonic() < deadline:
+            found = next(
+                (
+                    match
+                    for line in said_after(shell, mark, "into the drawer for ")
+                    if (match := INTO_PRESENTED.search(line))
+                ),
+                None,
+            )
+            time.sleep(launcher_on_niri.POLL)
+        if found is None:
+            failed = f"going into {into}'s drawer was never said presented, round {round_}"
+            raise AssertionError(failed)
+        timed.append(int(found.group(1)))
+        if found.group(2) is not None:
+            swapped.append(int(found.group(2)))
+        swap = f"{found.group(2)} to the shell's swap" if found.group(2) else "no swap kept"
+        with capsys.disabled():
+            print(
+                f"lab-into {into} round {round_}: {found.group(1)} ms, "
+                f"{swap}, {found.group(3)} lines laid first",
+                flush=True,
+            )
+        shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
+        shell.launcher_until(lambda shown: not (shown["drawer"] or {}).get("keys"))
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    with capsys.disabled():
+        print(
+            f"lab-into {into}: {len(timed)} presented a median "
+            f"{round(statistics.median(timed)) if timed else '?'} ms, "
+            f"p90 {p90(timed) if timed else '?'}; the shell's to its swap, "
+            f"of the {len(swapped)} that kept one, a median "
+            f"{round(statistics.median(swapped)) if swapped else '?'} ms, "
+            f"p90 {p90(swapped) if swapped else '?'}",
             flush=True,
         )
 

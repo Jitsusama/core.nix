@@ -34,10 +34,14 @@ def started(ran: Path, *arguments: str) -> subprocess.Popen[str]:
 
 
 def gone(pid: int) -> bool:
-    """Say whether a process has ended, a zombie counting as ended."""
+    """Say whether a process has ended, a zombie counting as ended.
+
+    One reaped between the file's opening and its read raises ProcessLookupError rather than
+    FileNotFoundError.
+    """
     try:
         state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-    except FileNotFoundError:
+    except FileNotFoundError, ProcessLookupError:
         return True
     return state == "Z"
 

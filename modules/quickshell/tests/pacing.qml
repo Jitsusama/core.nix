@@ -688,6 +688,36 @@ QtObject {
             + "slowest 40 ms, the p99 40 ms, 1 within 50 ms: a median 5 ms before it "
             + "followed, 10 until its frame began and 25 from its frame's start");
         check(failures, "none presented says nothing", Presented.drawersSaid([]).length, 0);
+        // Ctrl+W l into Emoji's drawer laid all 1,833 lines before its
+        // frame, and nothing timed it (2026-11-19). Going in says its time
+        // from the key as it's presented, with how many lines that frame
+        // laid, so a long lay is seen in the time it costs.
+        check(failures, "going into a drawer says its time and the lines it laid first",
+            Presented.intoSaid({ key: "place:emoji", from: 1000, at: 1031, laid: 38,
+                screen: "DP-4", refresh: 1000 / 59.997 }),
+            'launcher: into the drawer for "place:emoji" presented 31 ms from the key, '
+            + "38 lines laid first; on DP-4 at 60 Hz");
+        check(failures, "going in says the shell's share to its frame's swap",
+            Presented.intoSaid({ key: "place:emoji", from: 1000, at: 1094, swapped: 1012.4,
+                laid: 37 }),
+            'launcher: into the drawer for "place:emoji" presented 94 ms from the key, '
+            + "12 to the shell's swap, 37 lines laid first");
+        check(failures, "and says one line as one",
+            Presented.intoSaid({ key: "app:kitty", from: 0, at: 20, laid: 1 }),
+            'launcher: into the drawer for "app:kitty" presented 20 ms from the key, '
+            + "1 line laid first");
+        // A row named by a window's title may hold a quote or a line break,
+        // which the journal would read as the line's end or another line.
+        check(failures, "going in quotes its key so a title can't forge a line",
+            Presented.intoSaid({ key: 'win:a "b"\nlauncher: x', from: 0, at: 20, laid: 1 }),
+            'launcher: into the drawer for "win:a \\"b\\"\\nlauncher: x" presented 20 ms '
+            + "from the key, 1 line laid first");
+        // JSON leaves the line and paragraph separators and the next-line
+        // mark raw, and a reader splitting on any line end would split there.
+        check(failures, "going in escapes every line end JSON leaves raw",
+            Presented.intoSaid({ key: "win:a\u2028b\u2029c\u0085d", from: 0, at: 20, laid: 1 }),
+            'launcher: into the drawer for "win:a\\u2028b\\u2029c\\u0085d" presented 20 ms '
+            + "from the key, 1 line laid first");
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so
