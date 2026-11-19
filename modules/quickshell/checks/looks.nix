@@ -361,7 +361,9 @@
         cp ${../tests/turned-mark.qml} shell.qml
         ${shellFolderLint}
         QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
-        ${measure} ${../tests/turned-mark.py} . said
+        # What the case said it drew is read as every picture check reads it.
+        cp ${../tests/shell_said.py} shell_said.py
+        PYTHONPATH=. ${measure} ${../tests/turned-mark.py} . said
         cd ..
       done
       touch $out
@@ -391,7 +393,8 @@
         cp ${../tests/emoji-marks.qml} shell.qml
         ${shellFolderLint}
         QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
-        ${measure} ${../tests/emoji-marks.py} . said
+        cp ${../tests/shell_said.py} shell_said.py
+        PYTHONPATH=. ${measure} ${../tests/emoji-marks.py} . said
         cd ..
       done
       touch $out

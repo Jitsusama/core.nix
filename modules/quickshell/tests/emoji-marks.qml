@@ -14,9 +14,11 @@ ShellRoot {
     id: root
 
     readonly property var offsets: [0, 0.25, 0.5, 0.75]
-    // Each of Unicode's groups' first, as the clipboard history marks a
-    // group's row (clipboard/src/emoji.rs), and a heart asking for its
-    // picture, which a selector, not its block, makes one.
+    // Each of Unicode's groups' first, as the clipboard history marked a
+    // group's row on 19 Nov (clipboard/src/emoji.rs); three below the
+    // emoji blocks that are pictures unasked, each filling its box, as a
+    // cup doesn't, whose faint steam the ink leaves out; and a heart asking
+    // for its picture, which a selector, not its block, makes one.
     readonly property var glyphs: [
         { name: "home", glyph: Theme.glyph.home },
         { name: "smileys", glyph: String.fromCodePoint(0x1f600) },
@@ -28,8 +30,15 @@ ShellRoot {
         { name: "objects", glyph: String.fromCodePoint(0x1f453) },
         { name: "symbols", glyph: String.fromCodePoint(0x1f3e7) },
         { name: "flags", glyph: String.fromCodePoint(0x1f3c1) },
+        { name: "ball", glyph: String.fromCodePoint(0x26bd) },
+        { name: "star", glyph: String.fromCodePoint(0x2b50) },
+        { name: "done", glyph: String.fromCodePoint(0x2705) },
         { name: "heart", glyph: `${String.fromCodePoint(0x2764)}\ufe0f` }
     ]
+    // Letters beside the pictures, none of which is one: a star and a heart
+    // drawn as text, a key's sign, an ornament and an arrow past the plane,
+    // and a capital.
+    readonly property var letters: [0x2605, 0x2764, 0x2318, 0x1f650, 0x1f800, 0x41]
     readonly property var cellsMade: [].concat(...offsets.map(by => glyphs.map(one => ({
         name: `${one.name}-${by}`,
         glyph: one.glyph,
@@ -105,6 +114,9 @@ ShellRoot {
             glyphs: root.glyphs.map(one => one.name),
             pictured: root.glyphs.filter(one => MarkSize.pictured(one.glyph))
                 .map(one => one.name),
+            lettersPictured: root.letters
+                .filter(point => MarkSize.pictured(String.fromCodePoint(point)))
+                .map(point => point.toString(16)),
             themePictured: Object.keys(Theme.glyph)
                 .filter(name => MarkSize.pictured(Theme.glyph[name])),
             emojiFace: Qt.fontFamilies().includes("Noto Color Emoji")

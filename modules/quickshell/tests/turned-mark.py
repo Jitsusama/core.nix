@@ -16,12 +16,11 @@ saying which, unless at every line:
 Usage: turned-mark.py FOLDER LOG
 """
 
-import json
 import sys
 from pathlib import Path
-from typing import Any
 
 from PIL import Image
+from shell_said import meant
 
 # How bright a pixel must be to count as ink, on the black the case draws on:
 # past the faint edge a glyph's smoothing leaves, so only its body counts.
@@ -30,17 +29,6 @@ INK = 90
 # How far an edge of the turned ink may stand from the upright's, in device
 # pixels.
 WITHIN = 1
-
-
-def meant(log: Path) -> dict[str, Any]:
-    """Read what the shell said it drew."""
-    for line in log.read_text(encoding="utf-8").splitlines():
-        if "MEANT " in line:
-            said = json.loads(line.split("MEANT ", 1)[1])
-            if isinstance(said, dict):
-                return said
-    silent = f"the shell never said what it drew, in {log}"
-    raise SystemExit(silent)
 
 
 class Ink:

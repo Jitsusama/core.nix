@@ -45,7 +45,9 @@ Text {
         font.family: Theme.level.figure.family
         font.pointSize: Theme.level.figure.pointSize * mark.fine
         onTightBoundingRectChanged: {
-            if (mark.pictured && text !== "" && text === mark.measuring)
+            // Asked of the text measured, not of `pictured`, whose binding
+            // may not yet have followed a row given another glyph.
+            if (text !== "" && text === mark.measuring && MarkSize.pictured(text))
                 MarkSize.measured(mark.measureKey, {
                     x: tightBoundingRect.x,
                     y: tightBoundingRect.y,

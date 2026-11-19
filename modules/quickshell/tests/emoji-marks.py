@@ -1,14 +1,17 @@
 """Read each emoji's mark back to its ink (an-emoji-stands-on-its-names-capitals).
 
-tests/emoji-marks.qml draws the first emoji of each of Emoji's groups, and
-the theme's home mark, through the one mark beside a name's capitals, on
+tests/emoji-marks.qml draws the first emoji of each of Emoji's groups, three
+below the emoji blocks, a heart asking for its picture, and the theme's home
+mark, through the one mark beside a name's capitals, on
 lines a quarter of a point apart, keeps a picture of each at the scale the
 shell ran at, and says what it drew. This finds the ink in each picture, in
 the device's pixels, the mark's left of the cell's middle and the capitals'
 right of it, and fails, saying which, unless:
 
 - the colour emoji face is there, and every emoji, but not the home mark,
-  is taken for a picture, and none of the theme's marks is;
+  is taken for a picture, and none of the theme's marks is, nor any of the
+  letters it asks of beside them;
+- every picture's ground is clear, so ink is the mark's and the capitals';
 - every mark drew ink;
 - each mark's ink has its middle within two device pixels of the capitals'
   middle. A colour emoji used to stand its top edge there, half its height
@@ -19,12 +22,11 @@ right of it, and fails, saying which, unless:
 Usage: emoji-marks.py FOLDER LOG
 """
 
-import json
 import sys
 from pathlib import Path
-from typing import Any
 
 from PIL import Image
+from shell_said import meant
 
 # How opaque a pixel must be to count as ink, on the clear ground the case
 # draws on: past the faint edge smoothing leaves, so only the body counts.
@@ -32,17 +34,6 @@ INK = 128
 
 # How far a mark's ink middle may stand from the capitals', in device pixels.
 WITHIN = 2
-
-
-def meant(log: Path) -> dict[str, Any]:
-    """Read what the shell said it drew."""
-    for line in log.read_text(encoding="utf-8").splitlines():
-        if "MEANT " in line:
-            said = json.loads(line.split("MEANT ", 1)[1])
-            if isinstance(said, dict):
-                return said
-    silent = f"the shell never said what it drew, in {log}"
-    raise SystemExit(silent)
 
 
 def middle(alpha: bytes, wide: int, tall: int, columns: range) -> float | None:
@@ -58,6 +49,10 @@ def faults_in(path: Path) -> list[str]:
     picture = Image.open(path).convert("RGBA")
     wide, tall = picture.size
     alpha = picture.getchannel("A").tobytes()
+    # The cell's corners are its ground, which the case leaves clear.
+    corners = [alpha[0], alpha[wide - 1], alpha[(tall - 1) * wide], alpha[-1]]
+    if any(corners):
+        return [f"{path.stem}: the ground isn't clear, its corners {corners}"]
     mark = middle(alpha, wide, tall, range(wide // 2))
     capitals = middle(alpha, wide, tall, range(wide // 2, wide))
     if mark is None or capitals is None:
@@ -84,6 +79,8 @@ def main() -> None:
         faults.append(f"taken for pictures: {said['pictured']}, not {emoji}")
     if said["themePictured"]:
         faults.append(f"the theme's marks taken for pictures: {said['themePictured']}")
+    if said["lettersPictured"]:
+        faults.append(f"letters taken for pictures: {said['lettersPictured']}")
     for by in said["offsets"]:
         for name in said["glyphs"]:
             faults += faults_in(folder / f"{name}-{by}.png")
