@@ -39,6 +39,85 @@ function ask(text, folder) {
         where !== "" ? { folder: where } : {});
 }
 
+// A token's digits, letters and digits alike, so it stays short.
+const TOKEN_BASE = 36;
+
+// How many tokens one moment can tell apart.
+const TOKEN_CHANCES = 2 ** 32;
+
+// A token naming a start to the agents daemon, which keeps it by that
+// token until told (starts.rs, letters, digits and dashes): the moment
+// `now` and a `chance` in [0, 1), so two asked in one moment differ.
+function token(now, chance) {
+    return `${Math.floor(now).toString(TOKEN_BASE)}-${Math.floor(chance * TOKEN_CHANCES)
+        .toString(TOKEN_BASE)}`;
+}
+
+// How long a start this shell never asked stands kept before it's told.
+// While a switch hands the shell over, the one that asked is still up
+// beside the new one, and says told as it hears the end, a round trip;
+// this is room for a busy shell to, so Joel isn't told it twice.
+const SETTLE_MS = 5000;
+
+// How long a shell waits on the daemon's answer to a start before taking
+// it as none: the daemon says the node's silence within 50 s (sprout.rs's
+// PATIENCE), so a minute with no answer at all, as from a daemon that
+// went as it asked, is no answer.
+const PATIENCE_MS = 60000;
+
+// How long from its asking a start's own shell, if it's still up, has
+// surely told it: its patience, a shut launcher's watch's pace (10 s,
+// Agents' shutPace) and the moment. Each shell comes back to a daemon
+// started again in its own time, so another may hear the record well
+// before the asker does, and waits this out before telling it.
+const ASKER_ANSWERS_MS = PATIENCE_MS + 10000 + SETTLE_MS;
+
+// How long a told the daemon didn't take waits to be said again: a shell
+// held while a switch hands over is taken for the shell only once it's
+// the unit's main process, up to 70 s on (shell-hands-over.sh), and one
+// dropped with the daemon is said again as its watch answers anyway.
+const TOLD_AGAIN_MS = 30000;
+
+// Of the starts the agents daemon keeps ended and untold (`kept`, each
+// `{ token, ended }`), by how this shell stands on each (`known`, a
+// token's "asking", "ended" or "told") and when it first saw each it
+// never heard the end of (`seen`, by token): those to tell, as a shell
+// started since or a start a restart cut off has it, once seen
+// SETTLE_MS before `now` and asked (`at`) ASKER_ANSWERS_MS before it;
+// those still `waiting` that out; those
+// `answered`, still asked here, whose answer the daemon dropped as it
+// went, so its record is the answer; and every token to say told, all
+// but those still asked or waited on.
+function untold(kept, known, seen, now) {
+    // Own keys alone, so a prototype's name is never known; Qt's engine has no Object.hasOwn.
+    const own = (of, named) => Object.keys(of).includes(named);
+    const askerHad = one => !Number.isFinite(one.at) || now - one.at >= ASKER_ANSWERS_MS;
+    const waitedOut = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS
+        && askerHad(one);
+    const unheard = kept.filter(one => !own(known, one.token));
+    const tell = unheard.filter(waitedOut);
+    const waiting = unheard.filter(one => !waitedOut(one)).map(one => one.token);
+    const said = kept.filter(one => (own(known, one.token) ? known[one.token] !== "asking"
+        : waitedOut(one))).map(one => one.token);
+    const answered = kept.filter(one => own(known, one.token) && known[one.token] === "asking");
+    return { tell, told: said, waiting, answered };
+}
+
+// Of the starts to `tell`, those the daemon still keeps by its `answer`
+// to sprout-kept, which names the tokens it keeps of those asked: its
+// asker, up beside this shell while a switch hands over, may have told
+// one since this shell's copy was served, so none is told twice. The
+// daemon answers from the file it keeps, read before it listens, so a
+// daemon just started names those it kept though it serves no record
+// yet. With no answer, or a refusal, none is told yet.
+function stillKept(tell, answer) {
+    const kept = answer?.kept;
+    if (!Array.isArray(kept)) {
+        return [];
+    }
+    return tell.filter(one => kept.includes(one.token));
+}
+
 // Why `ask` would ask nothing, in `said`'s words (`empty` or
 // `unplaced`), or null when it asks; with `said` null, the key alone.
 function refused(text, folder, said) {

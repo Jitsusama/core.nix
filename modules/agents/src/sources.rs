@@ -76,6 +76,10 @@ pub enum Heard {
     /// Joel puts off the want known so (wants.rs's `known`), at this
     /// moment in milliseconds, for an hour.
     PutOffWant(String, u128),
+    /// The starts kept moved, one asked, ended or told, each kept on disk
+    /// before its ask was answered (starts.rs's Keeping), so their
+    /// records are made again.
+    StartsMoved,
 }
 
 /// Where the files the rows are made from are kept.
@@ -295,6 +299,7 @@ impl Inputs {
                     eprintln!("agents: can't keep {}: {why}", path.display());
                 }
             }
+            Heard::StartsMoved => {}
         }
     }
 
