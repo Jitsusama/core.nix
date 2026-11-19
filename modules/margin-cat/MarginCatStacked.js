@@ -324,7 +324,7 @@ function joined(from, best, old) {
     const after = best.after;
     for (const beat of after.beats) {
         beats.push(Object.assign({}, beat, { begins: beat.begins + drops,
-            ends: beat.ends + drops }));
+            ends: beat.ends + drops, since: beat.since + drops }));
     }
     // Till it drops into sight it can find its way again from where it
     // set off (MarginCatPaths.js's replans()).

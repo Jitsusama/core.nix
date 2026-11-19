@@ -409,8 +409,10 @@ PanelWindow {
             slowdown: Theme.motion.slowdown,
             hurried,
             facing: stepped?.facing ?? 0,
-            // A walk set off mid-stride strides on from the one drawn.
+            // A walk set off mid-stride strides on from the one drawn,
+            // as far into it as it was.
             drawnIn: stepped?.pose ?? null,
+            drawnInto: stepped?.into ?? 0,
             height: modelData.height,
             cols: Paths.columns(tiles, 0),
             before: heard.before ? Paths.columns(heard.before, 0) : null,

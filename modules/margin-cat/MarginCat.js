@@ -336,6 +336,24 @@ function walked(shown, drawing, unseen, counted) {
     return { said, line };
 }
 
+// How far `beat` has walked at `spot`, by the ground drawn, from the start
+// of the beats it strides on through, up a side as along a top (Joel,
+// 2026-11-14 22:40: "the kitten when crawling up or across window edges
+// still often does not look like its paws are moving").
+function went(beat, spot) {
+    return (beat.walked ?? 0) + Math.abs(spot.x - beat.from.x) + Math.abs(spot.y - beat.from.y);
+}
+
+// How many strides of `beat` it's taken at `spot`, a whole one counted
+// where floating point leaves it a hair short, and how far `into` the
+// next it is, so a walk set off from there strides on in step.
+function strode(beat, spot) {
+    return Math.floor(went(beat, spot) / beat.stride + 1e-6);
+}
+function into(beat, spot) {
+    return Math.max(0, went(beat, spot) - strode(beat, spot) * beat.stride);
+}
+
 // Which of `strides` a walk is drawn in `t` ms in, each step from the
 // last moving one pair of feet (Joel, 2026-11-14 17:19: "i never want the
 // kitty to skid into place"). `walk.count` says how many strides it's

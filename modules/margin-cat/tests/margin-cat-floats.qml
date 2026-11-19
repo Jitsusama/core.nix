@@ -391,8 +391,40 @@ QtObject {
             const way = Paths.walk({ x: 620, y: 776 }, { x: 640, y }, world({}));
             if (way !== null && skids(way).length > 0)
                 skidding.push(`up to ${y}`);
+            // Set off again mid-stride down a side, its stand held back
+            // past the beats before its climb.
+            for (const drawn of strideOrder) {
+                const down = Paths.walk({ x: 1200, y: 7 }, { x: 900, y }, world({
+                    hurried: true, facing: -1, drawnIn: drawn }));
+                if (down !== null && skids(down, drawn).length > 0)
+                    skidding.push(`down to ${y} from ${drawn}`);
+            }
         }
         expect("nor on any way it goes, set off or climbing", skidding, []);
+        // Walked to a place that moves on every frame, so set off again
+        // from where it's drawn each 16 ms, it strides by the ground it
+        // covers, not once a frame.
+        let chased = Paths.walk({ x: 100, y: 7 }, { x: 700, y: 7 }, world({}));
+        const chasedStride = chased.stride;
+        let chasedFrom = 0;
+        let chasedDrawn = null;
+        let chasedSteps = 0;
+        for (let t = 0; t < 1600; t += 1) {
+            if (t > 600 && t % 16 === 0) {
+                chased = Paths.walk({ x: chasedDrawn.x, y: chasedDrawn.y }, { x: 700, y: 7 },
+                    world({ hurried: true, facing: chasedDrawn.facing,
+                        drawnIn: chasedDrawn.pose, drawnInto: chasedDrawn.into }));
+                chasedFrom = t;
+            }
+            const now = Paths.frame(chased, t - chasedFrom);
+            if (chasedDrawn !== null && now.pose !== chasedDrawn.pose
+                && strideOrder.includes(now.pose))
+                chasedSteps += 1;
+            chasedDrawn = now;
+        }
+        expect("set off again every frame, a stride steps once a stride's ground",
+            [chasedStride > 0, chasedSteps <= Math.ceil((chasedDrawn.x - 100) / chasedStride) + 1],
+            [true, true]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));

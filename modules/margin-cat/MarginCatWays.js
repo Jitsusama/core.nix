@@ -330,11 +330,14 @@ function timed(way) {
         cell: at.cell, drawnIn: at.drawnIn ?? null };
     // Striding beats joined, a walk onto a climb or a climb onto a walk,
     // stride on as one round the corner, rather than each starting its
-    // strides over or holding a drawing across a short one (joined()).
+    // strides over or holding a drawing across a short one (joined()). One
+    // set off mid-stride holds the stride drawn till that stride's ground is
+    // behind it, so walks begun again and again stride by the ground still.
+    const carried = STRIDING[beats[0]?.kind]?.includes(at.drawnIn) ? at.drawnInto ?? 0 : stride;
     for (const [i, beat] of beats.entries()) {
         const was = beats[i - 1];
         beat.walked = joined(was, beat) ? was.walked + Math.abs(was.to.x - was.from.x)
-            + Math.abs(was.to.y - was.from.y) : 0;
+            + Math.abs(was.to.y - was.from.y) : i === 0 ? carried - stride : 0;
         beat.since = joined(was, beat) ? was.since : beat.begins;
         beat.joins = joined(beat, beats[i + 1]);
     }
@@ -415,34 +418,23 @@ function frame(route, t) {
     // from the stride it was drawn in before, or the one it turns in.
     const strides = STRIDING[beat.kind];
     const last = beat.joins ? beat.ends : Math.max(beat.begins, beat.ends - SHOWN);
-    const i = route.beats.indexOf(beat);
-    const before = i > 0 ? route.beats[i - 1].held ?? HOLDS[route.beats[i - 1].kind]
-        : route.drawnIn;
+    const was = route.beats[route.beats.findIndex(one => one.since === beat.since) - 1];
+    const before = was ? was.held ?? was.pose : route.drawnIn;
     const pose = strides
         ? beat.held ?? MarginCat.striding(strides, { shown: SHOWN, last, since: beat.since,
             stand: strides.includes(before) ? before : HOLDS.turns, joins: beat.joins,
             count: time => strodeBy(route, beat, time) }, t)
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
-        beat: beat.name, aboard: beat.aboard === true, done: false };
-}
-
-// How many strides of `beat` it's taken at `spot`, by the ground drawn,
-// from the start of the beats it strides on through, up a side as along a
-// top (Joel, 2026-11-14 22:40: "the kitten when
-// crawling up or across window edges still often does not look like its
-// paws are moving"), a whole stride counted where floating point leaves
-// it a hair short.
-function strode(beat, spot) {
-    const ground = Math.abs(spot.x - beat.from.x) + Math.abs(spot.y - beat.from.y);
-    return Math.floor(((beat.walked ?? 0) + ground) / beat.stride + 1e-6);
+        beat: beat.name, aboard: beat.aboard === true, done: false,
+        into: strides && !beat.held ? MarginCat.into(beat, spot) : 0 };
 }
 
 // How many strides `beat` has taken by `time`, read on whichever beat
 // it strides on through was drawn then, none before they began.
 function strodeBy(route, beat, time) {
     const on = route.beats.find(one => one.since === beat.since && time < one.ends) ?? beat;
-    return strode(on, placed(route, on, Math.max(time, beat.since)));
+    return MarginCat.strode(on, placed(route, on, Math.max(time, beat.since)));
 }
 
 // Where `beat` of `route` has it `t` ms in, drawn, its share `p` of the beat
