@@ -87,6 +87,25 @@ fn the_others_are_named_where_the_call_knows_them() {
 }
 
 #[test]
+fn a_transcript_naming_them_is_summed_up_by_their_name_whoever_spoke_first() {
+    let call = "# Transcript\n\nTheir side is Ada, the one other person invited.\n\n\
+         **Ada**, 0:02: I think we should move the review to Thursday.\n\n\
+         **Joel**, 0:10: Okay, I will tell the team that the review moves.\n";
+    let mut model = Model {
+        picks: "L0, L1",
+        quotes: vec!["we should move the review to Thursday", "tell the team"],
+        verdict: "YES",
+        asked: Vec::new(),
+    };
+    let summary = summarize(&mut |p, _| Ok(model.ask(p)), "Review", Some("Ada"), call).unwrap();
+    assert!(
+        summary.contains("- Ada, to Joel: \"we should move the review to Thursday\" [0:02]"),
+        "{summary}"
+    );
+    assert!(model.asked[0].contains("a call between Joel and Ada"));
+}
+
+#[test]
 fn words_the_line_never_said_are_never_kept() {
     let mut model = Model {
         picks: "L1",

@@ -37,13 +37,22 @@ const ECHO_SLACK: usize = 2 * RATE;
 /// How many of a line's words must be in theirs for it to be their echo.
 const ECHO_SHARE: f32 = 0.6;
 
+/// What the others on a call are called where nobody knows who they are.
+pub const OTHERS: &str = "Others";
+
 /// The transcript: lines in the order they were said, echoes left out, a
 /// speaker's lines in a row joined into one paragraph under the time it
-/// began, Joel's under `me`.
-pub fn markdown(lines: &[Line], me: &str) -> String {
+/// began, Joel's under `me` and theirs under `them`, or Others when who
+/// they are isn't known, or is called the same as Joel, whose lines
+/// wouldn't be told from theirs then. A `note` saying where their name
+/// came from, or who was on the call, comes first, under the heading.
+pub fn markdown(lines: &[Line], me: &str, them: Option<&str>, note: Option<&str>) -> String {
+    let them = them.filter(|them| *them != me).unwrap_or(OTHERS);
     let mut heard: Vec<&Line> = lines.iter().filter(|line| !echoes(line, lines)).collect();
     heard.sort_by_key(|line| line.start);
     let mut paragraphs = vec!["# Transcript".to_owned()];
+    paragraphs.extend(note.map(str::to_owned));
+    // The note is no line, so a run of lines never joins onto it.
     let mut last = None;
     for line in heard {
         match paragraphs.last_mut() {
@@ -54,7 +63,7 @@ pub fn markdown(lines: &[Line], me: &str) -> String {
             _ => {
                 let who = match line.side {
                     Side::Mine => me,
-                    Side::Theirs => "Others",
+                    Side::Theirs => them,
                 };
                 let mut paragraph = String::new();
                 let _ = write!(paragraph, "**{who}**, {}: {}", clock(line.start), line.text);
@@ -67,9 +76,10 @@ pub fn markdown(lines: &[Line], me: &str) -> String {
 }
 
 /// The lines of a transcript `markdown` wrote, a paragraph each, so a
-/// call taken up again after the daemon restarts goes on from them. Only
-/// when each began is kept, which is all the layout needs.
-pub fn read(transcript: &str) -> Vec<Line> {
+/// call taken up again after the daemon restarts goes on from them, a
+/// line Joel's only when it's under `me`. Only when each began is kept,
+/// which is all the layout needs.
+pub fn read(transcript: &str, me: &str) -> Vec<Line> {
     transcript
         .split("\n\n")
         .filter_map(|paragraph| {
@@ -80,11 +90,7 @@ pub fn read(transcript: &str) -> Vec<Line> {
                 .try_fold(0, |sum, part| part.parse::<usize>().map(|n| sum * 60 + n))
                 .ok()?;
             Some(Line {
-                side: if who == "Others" {
-                    Side::Theirs
-                } else {
-                    Side::Mine
-                },
+                side: if who == me { Side::Mine } else { Side::Theirs },
                 start: seconds * RATE,
                 end: seconds * RATE,
                 text: text.trim_end().to_owned(),
@@ -172,7 +178,39 @@ mod tests {
             "**Joel**, 0:09: Great. Thanks.",
             "",
         ];
-        assert_eq!(markdown(&lines, "Joel"), want.join("\n"));
+        assert_eq!(markdown(&lines, "Joel", None, None), want.join("\n"));
+    }
+
+    #[test]
+    fn their_side_is_written_under_their_name_once_its_known_and_read_back_as_theirs() {
+        let lines = [
+            line(Side::Mine, 0, "Can we move it?"),
+            line(Side::Theirs, 4, "Thursday works."),
+        ];
+        let note = "Their side is Ada Lovelace, the one other person invited.";
+        let want = [
+            "# Transcript",
+            "",
+            note,
+            "",
+            "**Joel**, 0:00: Can we move it?",
+            "",
+            "**Ada Lovelace**, 0:04: Thursday works.",
+            "",
+        ];
+        let written = markdown(&lines, "Joel", Some("Ada Lovelace"), Some(note));
+        assert_eq!(written, want.join("\n"));
+        let back = read(&written, "Joel");
+        let sides: Vec<Side> = back.iter().map(|line| line.side).collect();
+        assert_eq!(sides, [Side::Mine, Side::Theirs], "the note is no line");
+    }
+
+    #[test]
+    fn someone_called_what_joel_is_called_is_written_as_others() {
+        let lines = [line(Side::Theirs, 4, "Thursday works.")];
+        let written = markdown(&lines, "Joel", Some("Joel"), None);
+        assert!(written.contains("**Others**, 0:04"), "{written}");
+        assert_eq!(read(&written, "Joel")[0].side, Side::Theirs);
     }
 
     #[test]
@@ -191,7 +229,7 @@ mod tests {
             "**Joel**, 0:06: Great, thank you. Thursday morning works for everyone.",
             "",
         ];
-        assert_eq!(markdown(&lines, "Joel"), want.join("\n"));
+        assert_eq!(markdown(&lines, "Joel", None, None), want.join("\n"));
     }
 
     #[test]
@@ -200,13 +238,13 @@ mod tests {
             line(Side::Mine, 0, "Can we move it?"),
             line(Side::Theirs, 3_725, "Thursday works: mornings."),
         ];
-        let written = markdown(&lines, "Joel");
-        let back = read(&written);
+        let written = markdown(&lines, "Joel", None, None);
+        let back = read(&written, "Joel");
         assert_eq!(back.len(), 2);
         assert_eq!(back[1].side, Side::Theirs);
         assert_eq!(back[1].start, 3_725 * RATE);
         assert_eq!(back[1].text, "Thursday works: mornings.");
-        assert_eq!(markdown(&back, "Joel"), written);
+        assert_eq!(markdown(&back, "Joel", None, None), written);
     }
 
     #[test]

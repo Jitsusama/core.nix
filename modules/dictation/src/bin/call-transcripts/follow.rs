@@ -273,6 +273,8 @@ fn start(
         event: on.event,
         person: on.person,
         account: account.clone(),
+        people: on.people,
+        known: on.known,
         transcript: None,
         opening: None,
         summary: None,

@@ -249,6 +249,7 @@ fn serve(
             program: summarizer,
             calling: Arc::clone(&calling),
             power: PathBuf::from("/sys/class/power_supply"),
+            me: own_name(),
         };
         let (book, again) = (Arc::clone(&book), jobs.clone());
         std::thread::spawn(move || summarizer::run(&summarizer, &book, &summing, &again));
@@ -312,7 +313,7 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
             }
         }
     }
-    print!("{}", markdown(&lines, &own_name()));
+    print!("{}", markdown(&lines, &own_name(), None, None));
     Ok(())
 }
 

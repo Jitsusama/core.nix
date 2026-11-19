@@ -45,7 +45,9 @@ pub fn spoken(text: &str) -> Option<String> {
 
 /// Whether too little was said in `transcript` to sum it up.
 pub fn too_little(transcript: &str) -> bool {
-    let said: HashSet<String> = transcript::read(transcript)
+    // Only what was said counts here, not whose it was, so no name is
+    // Joel's.
+    let said: HashSet<String> = transcript::read(transcript, "")
         .iter()
         .flat_map(|line| words(&line.text).collect::<Vec<_>>())
         .filter(|word| !FILLER.contains(&word.as_str()))

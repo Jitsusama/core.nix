@@ -32,6 +32,39 @@ pub struct Meeting {
     /// after listing its meetings, so the meeting is known to be that
     /// account's; none otherwise, and for a Tuple call.
     pub account: Option<String>,
+    /// The others on it, by name, Joel left out, as `known` says they're
+    /// known; none when nothing says who they are.
+    pub people: Vec<String>,
+    pub known: Option<Known>,
+}
+
+/// How the others on a call are known: from the Tuple call itself, so
+/// they're on it, or from the meeting's invitation, so they were asked,
+/// which is less.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Known {
+    Tuple,
+    Invitation,
+}
+
+impl Known {
+    /// What a call's record says it as.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tuple => "tuple",
+            Self::Invitation => "invitation",
+        }
+    }
+
+    /// What a call's record said, or none for a record from before it
+    /// was kept, or one that says something else.
+    pub fn read(said: &str) -> Option<Self> {
+        match said {
+            "tuple" => Some(Self::Tuple),
+            "invitation" => Some(Self::Invitation),
+            _ => None,
+        }
+    }
 }
 
 /// The call on at `now`, from what's in `runtime`; a Tuple call first,
@@ -113,11 +146,17 @@ fn tuple(call: &Value) -> Option<Meeting> {
     if with.len() > 1 {
         title = format!("{title} and {} more", with.len() - 1);
     }
+    let people: Vec<String> = with
+        .iter()
+        .filter_map(|person| named(person, "name"))
+        .collect();
     Some(Meeting {
         title,
         event: None,
         person: first["email"].as_str().map(str::to_lowercase),
         account: None,
+        known: (!people.is_empty()).then_some(Known::Tuple),
+        people,
     })
 }
 
@@ -133,12 +172,48 @@ fn meeting(meetings: &[Value], now: u64) -> Option<Meeting> {
             start <= now + EARLY_MS && now <= end
         })
         .max_by_key(|meeting| meeting["start"].as_u64())
-        .map(|meeting| Meeting {
-            title: meeting["title"].as_str().unwrap_or_default().to_owned(),
-            event: meeting["id"].as_str().map(str::to_owned),
-            person: None,
-            account: None,
+        .map(|meeting| {
+            let people = invited(meeting);
+            Meeting {
+                title: meeting["title"].as_str().unwrap_or_default().to_owned(),
+                event: meeting["id"].as_str().map(str::to_owned),
+                person: None,
+                account: None,
+                known: (!people.is_empty()).then_some(Known::Invitation),
+                people,
+            }
         })
+}
+
+/// Who else a meeting asked, as the google daemon lists it: who holds it,
+/// when that isn't Joel, then its guests, who are never Joel or a room,
+/// leaving out those who said no.
+fn invited(meeting: &Value) -> Vec<String> {
+    let guests = meeting["guests"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|guest| guest["answer"] != "no");
+    std::iter::once(&meeting["organizer"])
+        .chain(guests)
+        .filter_map(|someone| named(someone, "name").or_else(|| named(someone, "email")))
+        .collect()
+}
+
+/// Someone's `field`, as a name a transcript can write a speaker under:
+/// on one line, with none of the asterisks that would end the speaker's
+/// bold early; or none when that leaves nothing.
+fn named(someone: &Value, field: &str) -> Option<String> {
+    let name = someone[field]
+        .as_str()?
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .filter(|c| *c != '*')
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!name.is_empty()).then_some(name)
 }
 
 /// A call's folder's name: its start in local time, then what it was,
@@ -200,6 +275,30 @@ mod tests {
             "joined a few minutes early"
         );
         assert_eq!(meeting(&[], NOW), None);
+        assert_eq!(
+            on.people,
+            Vec::<String>::new(),
+            "a meeting asking nobody else"
+        );
+        assert_eq!(on.known, None);
+    }
+
+    #[test]
+    fn a_meeting_knows_who_else_it_asked_but_not_who_said_no() {
+        let planning = json!({"id": "e1", "title": "Planning",
+        "start": NOW - 5 * MINUTE, "end": NOW + 25 * MINUTE,
+        "organizer": {"name": "Grace *Hopper*", "email": "grace@example.com"},
+        "guests": [
+            {"name": "Ada\nLovelace", "email": "ada@example.com", "answer": "yes"},
+            {"name": "", "email": "bo@example.com", "answer": "waiting"},
+            {"name": "Cy", "email": "cy@example.com", "answer": "no"},
+        ]});
+        let on = meeting(&[planning], NOW).unwrap();
+        assert_eq!(
+            on.people,
+            ["Grace Hopper", "Ada Lovelace", "bo@example.com"]
+        );
+        assert_eq!(on.known, Some(Known::Invitation));
     }
 
     #[test]
@@ -211,6 +310,8 @@ mod tests {
         let on = tuple(&call).unwrap();
         assert_eq!(on.title, "Ada Lovelace and 1 more");
         assert_eq!(on.person.as_deref(), Some("ada@example.com"));
+        assert_eq!(on.people, ["Ada Lovelace", "Grace Hopper"]);
+        assert_eq!(on.known, Some(Known::Tuple));
         let none = json!({"key": "call:current", "state": "ringing", "since": null, "people": []});
         assert_eq!(tuple(&none), None);
     }
