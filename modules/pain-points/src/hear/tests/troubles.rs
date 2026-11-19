@@ -63,34 +63,116 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
     let run = |at: i64, cells: &str| {
         let ears = Ears { at, ..place.ears() };
         let hour = hear(&ears, cells, &mut |_, _| false).expect("a run");
-        hour.troubles
+        let trouble = hour
+            .troubles
             .iter()
-            .any(|t| t.contains("named no sessions"))
+            .any(|t| t.contains("named no sessions"));
+        (trouble, said(&hour))
     };
+    // Runs on the five-minute beat, each started a few seconds late, as
+    // a busy machine starts them: the limits sit off the beat.
+    let late = 4_000;
     // A node that blinks as the machine goes down is asked again next
-    // run, so a run or two without it fails nothing.
-    assert!(!run(AT, ""), "a first run without cells fails nothing");
+    // run, so a run or two without it fails nothing, though it's said.
+    let (trouble, line) = run(AT, "");
+    assert!(!trouble, "a first run without cells fails nothing");
     assert!(
-        !run(AT + 10 * minute, ""),
-        "ten minutes without cells fails nothing"
+        line.contains("named no sessions for 0 minutes"),
+        "the grace is said: {line}"
     );
     assert!(
-        run(AT + 15 * minute, ""),
-        "a quarter hour without cells is a trouble"
+        !run(AT + 5 * minute + late, "").0,
+        "five minutes without cells fails nothing"
+    );
+    let (trouble, line) = run(AT + 10 * minute + 2 * late, "");
+    assert!(!trouble, "ten minutes without cells fails nothing");
+    assert!(line.contains("for 10 minutes, so pains wait"), "{line}");
+    let (trouble, line) = run(AT + 15 * minute + late, "");
+    assert!(trouble, "a quarter hour without cells is a trouble: {line}");
+    assert!(
+        !line.contains("so pains wait"),
+        "the trouble isn't said twice: {line}"
+    );
+    assert!(
+        run(AT + 20 * minute, "").0,
+        "an outage that goes on fails each run"
     );
     // A run that reads cells starts the count again.
     assert!(
-        !run(AT + 20 * minute, CELLS),
+        !run(AT + 25 * minute, CELLS).0,
         "a run with cells has no such trouble"
     );
     assert!(
-        !run(AT + 25 * minute, ""),
+        !run(AT + 30 * minute, "").0,
         "the count starts again after cells"
     );
-    // A machine that was off isn't a node that said nothing all along.
+    // A machine that was off isn't a node that said nothing all along,
+    // and the count it starts again still ends in a trouble.
+    let back = AT + 5 * 60 * minute;
     assert!(
-        !run(AT + 5 * 60 * minute, ""),
+        !run(back, "").0,
         "a run after hours off starts the count again"
+    );
+    assert!(
+        !run(back + 5 * minute, "").0,
+        "five minutes after hours off fails nothing"
+    );
+    assert!(
+        !run(back + 10 * minute, "").0,
+        "ten minutes after hours off fails nothing"
+    );
+    assert!(
+        run(back + 15 * minute, "").0,
+        "a quarter hour after hours off is a trouble"
+    );
+}
+
+#[test]
+fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
+    let place = Place::new("future-hour");
+    place.routes();
+    a_day(&place);
+    let minute = 60_000;
+    let since = |before: &Hour, at: i64| {
+        fs::write(
+            place.root.join("state/hour.json"),
+            serde_json::to_string(before).expect("an hour"),
+        )
+        .expect("hour.json");
+        let ears = Ears { at, ..place.ears() };
+        hear(&ears, "", &mut |_, _| false)
+            .expect("a run")
+            .cellless_since
+    };
+    let ahead = Hour {
+        at: AT + 60 * minute,
+        cellless_since: Some(AT),
+        ..Hour::default()
+    };
+    assert_eq!(
+        since(&ahead, AT + minute),
+        Some(AT + minute),
+        "a run dated ahead carries nothing"
+    );
+    let begun_ahead = Hour {
+        at: AT,
+        cellless_since: Some(AT + 60 * minute),
+        ..Hour::default()
+    };
+    assert_eq!(
+        since(&begun_ahead, AT + 5 * minute),
+        Some(AT + 5 * minute),
+        "a count begun ahead starts again"
+    );
+    let before = Hour {
+        at: AT,
+        cellless_since: Some(AT - 5 * minute),
+        ..Hour::default()
+    };
+    assert_eq!(
+        since(&before, AT + 5 * minute),
+        Some(AT - 5 * minute),
+        "a count carries on"
     );
 }
 

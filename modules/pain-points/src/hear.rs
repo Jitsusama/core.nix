@@ -26,6 +26,7 @@ pub mod route;
 pub mod said;
 pub mod sore;
 pub mod stalled;
+pub mod troubles;
 
 use heard::Heard;
 use route::{Cell, Routes};
@@ -39,6 +40,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
+use troubles::{CELLLESS_AT_MOST_MS, cellless_since, troubles};
 
 /// How far back a first run hears, and how long a pain stays open.
 pub const DAY_MS: i64 = 86_400_000;
@@ -61,16 +63,6 @@ const ASK_AT_MOST: Duration = Duration::from_secs(5);
 /// send that went but read as failed would otherwise ask a cell the same
 /// question every five minutes.
 pub const SEND_TRIES: u32 = 3;
-
-/// How long the node may name no sessions while pains wait before a run
-/// says so as a trouble: three runs, so a node that blinks as the machine
-/// goes down fails nothing, as the next run sends what waited, and one
-/// that stays broken still fails the unit.
-const CELLLESS_AT_MOST_MS: i64 = 15 * 60_000;
-
-/// How old the run before may be for its count of runs without cells to
-/// carry on: two runs' gap, so a machine that was off starts it again.
-const CELLLESS_GAP_MS: i64 = 10 * 60_000;
 
 /// Where a run listens and what it knows of the time.
 pub struct Ears {
@@ -218,9 +210,14 @@ pub fn listen(
         .is_some_and(|answer| node_took(&answer))
     })?;
     drop(lock);
-    let said = format!(
+    Ok((said(&hour), !hour.troubles.is_empty()))
+}
+
+/// The hour in a line for the journal.
+fn said(hour: &Hour) -> String {
+    format!(
         "pain-points: {} pains heard and {} routed in the hour, {} turns stalled him, {} open \
-         in the day{}{}{}",
+         in the day{}{}{}{}",
         hour.heard,
         hour.routed,
         hour.stalled,
@@ -233,11 +230,18 @@ pub fn listen(
             .iter()
             .map(|t| ["; ", t].concat())
             .collect::<String>(),
+        // A node silent for less than the trouble's limit is still said,
+        // so the grace isn't a quiet hour either.
+        hour.cellless_since
+            .filter(|since| hour.at - since < CELLLESS_AT_MOST_MS)
+            .map_or(String::new(), |since| format!(
+                "; the mycelium has named no sessions for {} minutes, so pains wait",
+                (hour.at - since) / 60_000
+            )),
         hour.unclosed.as_ref().map_or(String::new(), |why| format!(
             "; no pain can close, as {why}"
         ))
-    );
-    Ok((said, !hour.troubles.is_empty()))
+    )
 }
 
 /// Whether the node's answer to a send says it took it: the mycelium
@@ -379,12 +383,7 @@ pub fn hear(
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = unclosed;
     let (waiting, given_up) = unsent(&kept, ears.at);
-    let before: Option<Hour> = fs::read(ears.state.join("hour.json"))
-        .ok()
-        .and_then(|text| serde_json::from_slice(&text).ok())
-        .filter(|before: &Hour| before.at >= ears.at - CELLLESS_GAP_MS);
-    hour.cellless_since = (cells.is_empty() && waiting)
-        .then(|| before.and_then(|b| b.cellless_since).unwrap_or(ears.at));
+    hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
     hour.troubles = troubles(
         &ears.state,
         &routes,
@@ -475,48 +474,6 @@ fn carry_on(h: &mut Heard, key: &str, log: &Following) {
         h.session.clone_from(&log.session);
         h.void = log.void;
     }
-}
-
-/// What kept a run from routing as it should, so a broken listener doesn't
-/// read as a quiet hour: sends that failed this run, and pains given up on.
-fn troubles(
-    state: &Path,
-    routes: &Routes,
-    (failed, given_up): (usize, usize),
-    no_cells: bool,
-) -> Vec<String> {
-    let mut troubles: Vec<String> = Routes::trouble(state).into_iter().collect();
-    troubles.extend(refused(routes));
-    if failed > 0 {
-        troubles.push(format!("{failed} sends failed"));
-    }
-    if given_up > 0 {
-        troubles.push(format!(
-            "gave up on {given_up} pains the node never took, after {SEND_TRIES} sends each"
-        ));
-    }
-    if routes.sends() && no_cells {
-        troubles
-            .push("the mycelium named no sessions for a quarter hour, so none were routed".into());
-    }
-    troubles
-}
-
-/// What the routes say that keeps a run from sending as it should: no
-/// cell named never to send to, or a fallback or keeper that is one.
-fn refused(routes: &Routes) -> Vec<String> {
-    let mut troubles = Vec::new();
-    if routes.from.is_some() && routes.never.is_empty() {
-        troubles.push("routes.json names no cell never to send to, so nothing was sent".into());
-    }
-    for (what, to) in [("fallback", &routes.fallback), ("keeper", &routes.ledgers)] {
-        if let Some(to) = to.as_ref().filter(|to| routes.refuses(to)) {
-            troubles.push(format!(
-                "routes.json's {what} {to} is one never to send to, so what goes to it waits"
-            ));
-        }
-    }
-    troubles
 }
 
 /// Keeps each turn read timed as stalling him in a followed session, so
