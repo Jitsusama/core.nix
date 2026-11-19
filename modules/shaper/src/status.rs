@@ -57,7 +57,13 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
     if let Some(left) = Duration::from_secs(1).checked_sub(first.at.elapsed()) {
         std::thread::sleep(left);
     }
-    blocks.push(first.said(&Spent::now()));
+    blocks.push(
+        first
+            .said(&Spent::now())
+            .iter()
+            .flat_map(|line| set(line, 0, context.room.for_prose()))
+            .collect(),
+    );
     // Written whole at the end, so a reader that stops early, as
     // `grep -q` or `head` does, ends the report rather than panicking it.
     let _ = std::io::stdout().write_all(layout::joined(blocks).as_bytes());
@@ -66,9 +72,9 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
 
 /// A link's name, its network, and what the shaper holds it to and why,
 /// set in `room`.
-fn said(link: &LinkStatus, _room: Room) -> Vec<String> {
+fn said(link: &LinkStatus, room: Room) -> Vec<String> {
     let mut lines = vec![format!("{}  on {}", link.name, link.network)];
-    let mut say = |line: String| lines.push(format!("{INSET}{line}"));
+    let mut say = |line: String| lines.extend(set(&line, INSET.len(), room));
     say(format!("up {}, down {}", mbit(link.up), mbit(link.down)));
     for line in link.lanes.as_ref().map(lanes_said).unwrap_or_default() {
         say(line);
@@ -94,8 +100,25 @@ fn said(link: &LinkStatus, _room: Room) -> Vec<String> {
         .iter()
         .map(|(host, ms)| format!("{host} {ms:.0} ms"))
         .collect();
-    say(format!("quiet round trips: {}", pings.join(", ")));
+    // Parted by the kit's item mark, so a wrap gives way between round
+    // trips and never leaves a host on one line and its time on the next.
+    say(format!("quiet round trips: {}", pings.join(layout::ITEMS)));
     lines
+}
+
+/// A line of status set `inset` cells in, wrapped at whole words to the
+/// room and hung two cells further under its first words, so where one
+/// line ends and the next begins reads at a glance, as disk-guard's
+/// holders do. Into a pipe it stays whole on its line.
+fn set(line: &str, inset: usize, room: Room) -> Vec<String> {
+    layout::hung(line, inset + layout::GAP, room)
+        .split('\n')
+        .enumerate()
+        .map(|(at, part)| {
+            let lead = if at == 0 { inset } else { 0 };
+            format!("{}{part}", " ".repeat(lead))
+        })
+        .collect()
 }
 
 /// How the upload is shared between its lanes, Joel's first, and the
@@ -414,9 +437,10 @@ mod tests {
             down: 2_000_000,
             state: "steady".to_owned(),
             baselines: vec![
-                ("1.1.1.1".to_owned(), 14.0),
-                ("8.8.8.8".to_owned(), 17.0),
-                ("9.9.9.9".to_owned(), 21.0),
+                ("1.0.0.1".to_owned(), 17.0),
+                ("1.1.1.1".to_owned(), 16.0),
+                ("8.8.8.8".to_owned(), 16.0),
+                ("9.9.9.9".to_owned(), 58.0),
             ],
             follows: Some("enp0s13f0u1u4".to_owned()),
             live: true,
@@ -459,6 +483,20 @@ mod tests {
             "{next:?} doesn't hang two cells in from {:?}",
             lines[at]
         );
+    }
+
+    #[test]
+    fn a_round_trip_s_host_stays_beside_its_time() {
+        for cells in [60, 80] {
+            let lines = said(&held(), Room::Cells(cells));
+            for (host, ms) in held().baselines {
+                let trip = format!("{host} {ms:.0} ms");
+                assert!(
+                    lines.iter().any(|line| line.contains(&trip)),
+                    "at {cells} columns {trip:?} was parted: {lines:#?}"
+                );
+            }
+        }
     }
 
     #[test]
