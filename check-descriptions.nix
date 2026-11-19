@@ -503,11 +503,12 @@
     with nobody logged in, and that it can't tell when a PipeWire won't answer; and that a fresh
     call on another of the person's machines is a call unless asked about here alone, which asks
     no node, a stale one none; that one declaring no call probe, one whose probe said nothing,
-    one dated ahead and a node that won't answer, floods past 4 MiB or has a full queue are each
-    named and no wait; that every node is asked at once, so two mute ones starve none, one slowed
-    to three and a half seconds is still heard, and a mute one beside PipeWire's second look still
-    answers within nine seconds; that an account's first 16 nodes are asked and the rest named, a
-    linked socket never asked, and a mistyped flag refused while --verbose isn't
+    one dated ahead and a node that won't answer, drips, floods past 1 MiB or has a full queue are
+    each named and no wait; that every node is asked at once, so two mute ones starve none, one
+    slowed to three and a half seconds is still heard, and a mute one beside PipeWire's second look
+    still answers within nine seconds; that an account's first 16 nodes are asked and the rest
+    named, a linked socket or node folder never asked, a mistyped flag refused while --verbose
+    isn't, and under --json no caution is said in words
   '';
   cargo-builds-on-their-own-filesystem = ''
     a workstation account's cargo keeps each workspace's intermediates in its folder on the

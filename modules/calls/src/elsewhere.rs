@@ -63,8 +63,9 @@ pub struct Heard {
     pub undated: Vec<String>,
     /// Why each node here that didn't answer couldn't, naming its socket.
     pub unanswered: Vec<String>,
-    /// How many records past the first [`MACHINES_AT_MOST`] machines
-    /// were passed over unnamed, none of them a call or on none.
+    /// How many machines past the first [`MACHINES_AT_MOST`] were passed
+    /// over unnamed, each by its strongest record: none of them a call or
+    /// on none.
     pub unnamed: usize,
 }
 
@@ -113,7 +114,10 @@ pub const MACHINES_AT_MOST: usize = 64;
 /// couldn't answer.
 pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
     let mut machines: BTreeMap<String, Said> = BTreeMap::new();
-    let mut unnamed = 0;
+    // Each machine past the most named, by its strongest record, so one
+    // seen in several realms counts once, and not at all when any says it's
+    // on no call.
+    let mut past: BTreeMap<String, Said> = BTreeMap::new();
     let records = answers
         .iter()
         .filter_map(|answer| answer["Ok"]["Machines"].as_array())
@@ -138,15 +142,19 @@ pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
         };
         if said != Said::Call && machines.len() >= MACHINES_AT_MOST && !machines.contains_key(&name)
         {
-            // A machine that said it's on no call goes unnamed anyway.
-            if said != Said::NoCall {
-                unnamed += 1;
-            }
+            let strongest = past.entry(name).or_insert(said);
+            *strongest = (*strongest).max(said);
             continue;
         }
         let strongest = machines.entry(name).or_insert(said);
         *strongest = (*strongest).max(said);
     }
+    // A call past the most is named all the same, and a machine that said
+    // it's on no call goes unnamed anyway.
+    let unnamed = past
+        .iter()
+        .filter(|(name, said)| **said != Said::NoCall && !machines.contains_key(*name))
+        .count();
     let mut heard = Heard {
         unnamed,
         ..Heard::default()
@@ -515,6 +523,29 @@ mod tests {
         assert_eq!(
             heard.unnamed, 0,
             "a machine past the most on no call was counted as unnamed"
+        );
+    }
+
+    #[test]
+    fn a_machine_past_the_most_counts_once_by_its_strongest_record() {
+        let first: Vec<Value> = (0..MACHINES_AT_MOST)
+            .map(|n| record(&format!("m{n:03}"), NOW, false, &json!({})))
+            .collect();
+        let work = answer(&[
+            record("over", NOW, false, &json!({})),
+            record("both", NOW, false, &json!({})),
+            record("late", NOW, true, &json!({})),
+        ]);
+        let home = answer(&[
+            record("over", NOW, false, &json!({})),
+            record("both", NOW, true, &json!({"call": false})),
+            record("late", NOW, true, &json!({"call": true})),
+        ]);
+        let heard = judge(&[answer(&first), work, home], HERE, AT);
+        assert_eq!(heard.calls, ["late"], "a call past the most went unheard");
+        assert_eq!(
+            heard.unnamed, 1,
+            "a machine past the most was counted by each record, not once by its strongest"
         );
     }
 

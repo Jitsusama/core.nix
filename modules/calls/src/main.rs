@@ -71,8 +71,12 @@ fn main() -> ExitCode {
             }
         };
         let heard = heard(runtimes, here);
-        for caution in &heard.cautions {
-            let _ = context.tell("caution", "warning", caution);
+        // Under JSON, stderr holds JSON alone, so the cautions, words for a
+        // person, are left out there.
+        if !context.format().is_json() {
+            for caution in &heard.cautions {
+                let _ = context.tell("caution", "warning", caution);
+            }
         }
         heard.on.map_err(|why| {
             Failure::new(Exit::Unavailable, "it couldn't tell whether a call is on").because(why)
@@ -152,7 +156,7 @@ fn cautions(peers: &calls::elsewhere::Heard) -> Vec<String> {
         .map(|why| format!("{why}, so its peers' calls go unheard"));
     let unnamed = (peers.unnamed > 0).then(|| {
         format!(
-            "the nodes here list more than {} machines, so {} records past them go unnamed",
+            "the nodes here list more than {} machines, so {} machines past them go unnamed",
             calls::elsewhere::MACHINES_AT_MOST,
             peers.unnamed
         )

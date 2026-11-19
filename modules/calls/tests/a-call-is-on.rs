@@ -561,7 +561,7 @@ fn machines_past_the_most_are_said_to_go_unnamed() {
     let told = world.told(&[world.runtimes()]);
     assert_eq!(told.status.code(), Some(1), "no call was one: {told:?}");
     assert!(
-        String::from_utf8_lossy(&told.stderr).contains("so 6 records past them go unnamed"),
+        String::from_utf8_lossy(&told.stderr).contains("so 6 machines past them go unnamed"),
         "the records past the most weren't said to go unnamed: {told:?}"
     );
 }
@@ -593,13 +593,124 @@ fn a_flag_is_read_wherever_it_stands() {
         Some(0),
         "a folder after -- wasn't read as one: {told:?}"
     );
+    // Past --, --here is a second folder, not a flag asking about here.
+    let told = world.told(&["--", world.runtimes(), "--here"]);
+    assert_eq!(
+        told.status.code(),
+        Some(64),
+        "a flag after -- was read as one: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("one folder at most"),
+        "--here after -- wasn't read as a folder: {told:?}"
+    );
+}
+
+#[test]
+fn a_node_folder_crowded_past_its_most_entries_is_named() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let folder = world.runtimes.join("1000").join("mycelium");
+    fs::create_dir_all(&folder).expect("a node's folder");
+    for n in 0..300 {
+        fs::write(folder.join(format!("left-{n}")), "").expect("an entry");
+    }
+    let told = world.told(&[world.runtimes()]);
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("holds more than 256 entries"),
+        "a crowded node folder wasn't named: {told:?}"
+    );
+}
+
+#[test]
+fn a_node_that_drips_is_named_once_its_time_is_up() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let folder = world.runtimes.join("1000").join("mycelium");
+    fs::create_dir_all(&folder).expect("a node's folder");
+    let listener = UnixListener::bind(folder.join("work.sock")).expect("a socket");
+    // A byte every half second, never a whole line: a time given to each
+    // read rather than to the whole answer would wait on it for ever.
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            thread::spawn(move || {
+                let mut asked = String::new();
+                let _ = BufReader::new(&stream).read_line(&mut asked);
+                for _ in 0..60 {
+                    if (&stream).write_all(b"[").is_err() {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(500));
+                }
+            });
+        }
+    });
+    let told = world
+        .told_within(&[world.runtimes()], Duration::from_secs(9))
+        .expect("a dripping node held it past a shaper proof's ten seconds");
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "a dripping node was a wait: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("only part of a line"),
+        "it didn't say the node answered only part of a line: {told:?}"
+    );
+}
+
+#[test]
+fn under_json_stderr_holds_no_caution_in_words() {
+    let world = World::new();
+    world.account("1000", "[]");
+    node(&world, "1000", "work", &peer(10, false, "{}"));
+    let told = world.told(&["--json", world.runtimes()]);
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "an unseen peer was a wait: {told:?}"
+    );
+    let stderr = String::from_utf8_lossy(&told.stderr);
+    assert!(
+        stderr
+            .lines()
+            .all(|line| serde_json::from_str::<serde_json::Value>(line).is_ok()),
+        "stderr held words under --json: {told:?}"
+    );
+    let told = world.told(&[world.runtimes()]);
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("declares no call probe"),
+        "without --json, the unseen peer wasn't named: {told:?}"
+    );
+}
+
+#[test]
+fn a_node_folder_linked_from_elsewhere_is_never_asked() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let elsewhere = world.runtimes.parent().expect("a parent").join("elsewhere");
+    fs::create_dir_all(&elsewhere).expect("a folder elsewhere");
+    serve(
+        &elsewhere.join("work.sock"),
+        &peer(10, true, r#"{"call":true}"#),
+    );
+    std::os::unix::fs::symlink(&elsewhere, world.runtimes.join("1000").join("mycelium"))
+        .expect("a link");
+    let told = world.told(&[world.runtimes()]);
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "a linked node folder was asked: {told:?}"
+    );
 }
 
 #[test]
 fn a_node_answering_without_end_is_named_past_its_limit() {
     let world = World::new();
     world.account("1000", "[]");
-    misbehaving(&world, "work", vec![b'a'; 5 << 20]);
+    // Past the most read by half again, and under what an earlier most let
+    // through.
+    misbehaving(&world, "work", vec![b'a'; 3 << 19]);
     let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
     assert_eq!(
         told.status.code(),
@@ -655,9 +766,10 @@ fn a_node_whose_queue_is_full_is_named_at_once() {
         Some(1),
         "a full node was a wait: {told:?}"
     );
+    let stderr = String::from_utf8_lossy(&told.stderr);
     assert!(
-        String::from_utf8_lossy(&told.stderr).contains("work.sock"),
-        "it didn't name the full node: {told:?}"
+        stderr.contains("work.sock") && stderr.contains("its queue is full"),
+        "it didn't name the full node and why: {told:?}"
     );
 }
 

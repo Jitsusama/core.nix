@@ -41,9 +41,15 @@ const WITHIN: Duration = Duration::from_secs(5);
 /// more is told so, and its first ones asked.
 const EACH_ACCOUNT: usize = 16;
 
-/// The longest answer read: a realm's machines' records run to tens of
-/// kilobytes.
-const AT_MOST: usize = 4 << 20;
+/// The longest answer read: a realm's machines' records run to a few
+/// kilobytes, and each answer is held whole while it's read, up to
+/// [`EACH_ACCOUNT`] of them from one account at once.
+const AT_MOST: usize = 1 << 20;
+
+/// The most entries of an account's node folder looked at: a node keeps a
+/// handful there, and the deadline starts before they're looked at, so no
+/// folder an account fills can spend it.
+const ENTRIES_AT_MOST: usize = 256;
 
 /// What the nodes said: each answer, and why each node that didn't answer
 /// couldn't.
@@ -134,9 +140,20 @@ fn nodes(runtimes: &Path) -> (Vec<Node>, Vec<String>) {
     let mut nodes = Vec::new();
     let mut crowded = Vec::new();
     for (owner, held, entries) in accounts {
-        let mut sockets: Vec<PathBuf> = entries
+        let mut listed: Vec<PathBuf> = entries
+            .take(ENTRIES_AT_MOST + 1)
             .flatten()
             .map(|entry| entry.path())
+            .collect();
+        if listed.len() > ENTRIES_AT_MOST {
+            crowded.push(format!(
+                "{} holds more than {ENTRIES_AT_MOST} entries, and only that many are looked at",
+                named(&held)
+            ));
+            listed.truncate(ENTRIES_AT_MOST);
+        }
+        let mut sockets: Vec<PathBuf> = listed
+            .into_iter()
             .filter(|path| {
                 path.extension()
                     .is_some_and(|extension| extension == "sock")
@@ -163,7 +180,13 @@ fn nodes(runtimes: &Path) -> (Vec<Node>, Vec<String>) {
 fn ask(node: &Node, deadline: Instant) -> Result<Value, String> {
     let name = || format!("the mycelium node at {}", named(&node.socket));
     let failed = |error: io::Error| format!("{}: {error}", name());
-    let mut stream = connect(&node.socket).map_err(failed)?;
+    let mut stream = connect(&node.socket).map_err(|error| {
+        if error.kind() == ErrorKind::WouldBlock {
+            format!("{}: its queue is full, so it takes no one now", name())
+        } else {
+            failed(error)
+        }
+    })?;
     let answerer = sockopt::socket_peercred(&stream)
         .map_err(io::Error::from)
         .map_err(failed)?
