@@ -67,7 +67,9 @@ pub struct Follower {
     write_failed: bool,
     // The days before, oldest first, held until written, so the new day's
     // lines and ticks go on in it; a sleep, which stops `GIVES_UP`'s
-    // clock, can pass more than one midnight.
+    // clock, can pass more than one midnight. Kept only in memory, so a
+    // signal ending health, as a stop or a switch's restart, drops them
+    // with nothing said.
     held: Vec<Day>,
     into: PathBuf,
     zone: TimeZone,
@@ -492,9 +494,7 @@ impl Follower {
         let mut first = Ok(());
         let mut keep = |written: io::Result<()>| {
             let failed = written.is_err();
-            if first.is_ok() {
-                first = written;
-            }
+            first = std::mem::replace(&mut first, Ok(())).and(written);
             failed
         };
         let into = &self.into;
@@ -773,15 +773,15 @@ fn run(
         }
     }
     let written = follower.write();
-    let lost = spell::losing(&follower.held);
-    // A start that gave up says so, whatever its last try came to.
+    // A start that gave up says so, whatever its last try came to; only it
+    // leaves days held, as the loop leaves otherwise once a write works.
     if gave_up {
-        return Err(spell.given_up(&follower.into, &lost));
+        return Err(spell.given_up(&follower.into, &spell::losing(&follower.held)));
     }
     written.map_err(|error| {
         io::Error::new(
             error.kind(),
-            format!("the day couldn't be written as health ended{lost}: {error}"),
+            format!("the day couldn't be written as health ended: {error}"),
         )
     })
 }

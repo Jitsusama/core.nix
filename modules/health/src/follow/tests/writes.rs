@@ -216,8 +216,12 @@ fn a_day_that_can_never_be_written_ends_health_after_an_hour_of_trying_without_s
         said.len() == 1 && said[0].contains("/days") && said[0].contains("60 minutes"),
         "an hour of failed writes wasn't said once, naming the folder and how long: {said:?}"
     );
-    // Past midnight, the day before is held, and a start after giving up
-    // replays only the new one, so health says it loses the day before.
+}
+
+#[test]
+fn health_giving_up_past_midnight_names_the_day_held_from_before() {
+    // A start after giving up replays only the new day, so what the day
+    // before saw since it was last written is lost, and said to be.
     let Outcome { result, .. } = Ran {
         before: 1,
         tomorrow: 1,
@@ -229,7 +233,7 @@ fn a_day_that_can_never_be_written_ends_health_after_an_hour_of_trying_without_s
     assert!(
         result.as_ref().is_err_and(|error| error
             .to_string()
-            .contains("trying, losing 2026-11-12, held from before: ")),
+            .contains("trying, losing what 2026-11-12, held from before, saw since")),
         "giving up past midnight didn't name the day held from before: {result:?}"
     );
 }
@@ -502,17 +506,21 @@ fn how_long_a_spell_lasted_reads_to_the_minute() {
 }
 
 #[test]
-fn health_ending_unable_to_write_names_the_days_held_it_loses() {
+fn health_giving_up_names_the_days_held_it_loses_and_what_failed_last() {
+    // The spell's first failure was a day held from before, written
+    // since, so only the latest names the day still failing.
     let held = |dates: &[&str]| dates.iter().map(|date| Day::new(date)).collect::<Vec<_>>();
     let mut spell = Spell::default();
-    let full = io::Error::other("no space left on device");
-    spell.tried(
-        Some(&full),
-        Instant::now(),
-        Path::new("days"),
-        &|_| {},
-        &|_| {},
-    );
+    for date in ["2026-11-10", "2026-11-13"] {
+        let full = io::Error::other(format!("{date}'s file: no space left on device"));
+        spell.tried(
+            Some(&full),
+            Instant::now(),
+            Path::new("days"),
+            &|_| {},
+            &|_| {},
+        );
+    }
     assert_eq!(
         [
             spell::losing(&held(&[])),
@@ -526,12 +534,13 @@ fn health_ending_unable_to_write_names_the_days_held_it_loses() {
         ],
         [
             String::new(),
-            ", losing 2026-11-12, held from before".to_owned(),
-            "health gave up writing the day into days after 60 minutes of trying, losing \
-             2026-11-11, 2026-11-12 and 2026-11-13, held from before: no space left on device"
+            ", losing what 2026-11-12, held from before, saw since it was last written".to_owned(),
+            "health gave up writing the day into days after 60 minutes of trying, losing what \
+             2026-11-11, 2026-11-12 and 2026-11-13, held from before, saw since each was last \
+             written: 2026-11-13's file: no space left on device"
                 .to_owned(),
         ],
-        "the days held that health lost as it ended went unnamed"
+        "health gave up without naming the days held it lost, or what failed last"
     );
 }
 

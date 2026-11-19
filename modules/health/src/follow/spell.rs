@@ -22,12 +22,15 @@ use crate::day::Day;
 /// minute.
 const QUIET_FOR: Duration = SETTLED;
 
-/// A spell of the day's writes failing: since when and for what, while
-/// they do, whether it was said, and when a spell's end was last told.
+/// A spell of the day's writes failing: since when and for what, first
+/// and latest, while they do, whether it was said, and when a spell's end
+/// was last told. The two causes differ once the day failing does, as
+/// when a day held from before is written and today goes on failing.
 #[derive(Debug, Default)]
 pub(super) struct Spell {
     since: Option<Instant>,
     cause: String,
+    latest: String,
     said: bool,
     told: Option<Instant>,
 }
@@ -46,14 +49,15 @@ impl Spell {
     }
 
     /// What health ends on once it has given up writing the day into
-    /// `into`, with the spell's cause, since its start was said long ago,
-    /// and the days held from before it `lost` (`losing`).
+    /// `into`, with the spell's latest cause, since its first was said long
+    /// ago and may name a day written since, and the days held from before
+    /// it `lost` (`losing`).
     pub(super) fn given_up(&self, into: &Path, lost: &str) -> io::Error {
         io::Error::other(format!(
             "health gave up writing the day into {} after {} minutes of trying{lost}: {}",
             into.display(),
             GIVES_UP.as_secs() / 60,
-            self.cause
+            self.latest
         ))
     }
 
@@ -73,6 +77,9 @@ impl Spell {
         say: &dyn Fn(&str),
         notice: &dyn Fn(&str),
     ) {
+        if let Some(error) = error {
+            self.latest = error.to_string();
+        }
         match (error, self.since) {
             (Some(error), None) => {
                 self.since = Some(at);
@@ -108,6 +115,7 @@ impl Spell {
                 }
                 self.since = None;
                 self.cause.clear();
+                self.latest.clear();
                 self.said = false;
             }
             (None, None) => {}
@@ -138,8 +146,13 @@ pub(super) fn losing(held: &[Day]) -> String {
     let dates: Vec<&str> = held.iter().map(|day| day.date.as_str()).collect();
     match dates.split_last() {
         None => String::new(),
-        Some((last, [])) => format!(", losing {last}, held from before"),
-        Some((last, rest)) => format!(", losing {} and {last}, held from before", rest.join(", ")),
+        Some((last, [])) => {
+            format!(", losing what {last}, held from before, saw since it was last written")
+        }
+        Some((last, rest)) => format!(
+            ", losing what {} and {last}, held from before, saw since each was last written",
+            rest.join(", ")
+        ),
     }
 }
 
