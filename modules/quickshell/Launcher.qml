@@ -11067,21 +11067,20 @@ Scope {
     // daemon have said all they were saying and each source's own hiding
     // has turned, so the fill reads them whole. A card still waiting on
     // niri's size is filled too, as a click fills it, since what it shows
-    // may not be seen.
+    // may not be seen. The wait for niri is left armed, so a fill that
+    // throws is still tried again half a second on (presentedFill).
     function sharedMidOpening() {
         const how = Wanted.sharedMidOpening({ shared: screenShared(),
             unfilled: opening && !open, finding: fillFinding });
         if (how === "find") {
             fillFound("share");
-            if (fillFoundHome)
+            if (fillFoundHome && !fillFoundThrew)
                 console.info(`launcher: home found at once, as ${sharedWhy()}`);
             return;
         }
         if (how !== "fill")
             return;
         const name = openInto === "" ? "home" : openInto;
-        fillPresented = false;
-        fillUnpresented.stop();
         filled("share");
         if (openFilledBy === "share")
             console.info(`launcher: ${name} filled in at once, as ${sharedWhy()}`);

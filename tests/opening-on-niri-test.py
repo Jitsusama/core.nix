@@ -109,10 +109,11 @@ MINUTE_BEGUN = 20
 # (Launcher.qml's spotsFreshened), and room for a loaded builder.
 FRESHENING = timedelta(seconds=75)
 
-# What fills a kept opening in (Launcher.qml's filled): its frame drawn where niri can't say it
-# was presented, niri saying it was or not saying in time, or a key, a click or a share begun
-# before any of them.
-FILLERS = frozenset({"frame", "presented", "unpresented", "key", "click", "share"})
+# What fills a kept opening in with nothing shared and nothing clicked (Launcher.qml's filled):
+# its frame drawn where niri can't say it was presented, niri saying it was or not saying in
+# time, or a key before any of them. A click or a share begun fills it too, but neither comes
+# where this is read.
+FILLERS = frozenset({"frame", "presented", "unpresented", "key"})
 
 # How many windows a case opens, so Windows has rows whose keys are weighed as it opens.
 WINDOWS_WEIGHED = 3
@@ -313,9 +314,14 @@ class CastsStandIn:
         with self.sending:
             self.sources = casts_said(said=said)
             told = json.dumps({"id": "all", "sources": self.sources}) + "\n"
+            # A watcher the shell has left, whose thread is yet to see it go, is dropped here,
+            # so the case fails naming what's missing rather than on a broken pipe.
+            for client in list(self.watching):
+                try:
+                    client.sendall(told.encode())
+                except OSError:
+                    self.watching.remove(client)
             assert self.watching, "nothing watches the stand-in's casts"
-            for client in self.watching:
-                client.sendall(told.encode())
 
     def close(self) -> None:
         """Stop listening and let each client go, so the daemon started again is heard.
@@ -1037,13 +1043,14 @@ def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
                 shell.launcher_until(lambda shown: shown.get("open") and not shown.get("opening"))
             opening = filled_after(shell, timed)
             said = shell.log.read_bytes()[since:].decode(errors="replace")
+            # Asserted before it's put back, so a failure putting it back hides nothing.
+            assert opening.get("filledBy") == "share", f"{name} waited out the share: {opening}"
+            filled = f"launcher: {name} filled in at once, as niri hasn't said its casts yet"
+            assert filled in said, f"{name}'s fill wasn't said:\n{said}"
             shell.as_account(shell.ipc("toggle"))
             shell.launcher_closed()
             stood.say(said=True)
             read_shared(shell, shared=False)
-            assert opening.get("filledBy") == "share", f"{name} waited out the share: {opening}"
-            filled = f"launcher: {name} filled in at once, as niri hasn't said its casts yet"
-            assert filled in said, f"{name}'s fill wasn't said:\n{said}"
 
 
 def opened_by(shell: Shell, *asked: str) -> Json:

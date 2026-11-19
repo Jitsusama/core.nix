@@ -4113,7 +4113,8 @@
     flash starts its time a turn after the frame that draws it, and only for the newest yank;
     and a chord into a kept place draws the rows it kept only once niri has said nothing casts
     the screen, unless its source, a mark or what it's led to lists them afresh, and a share
-    begun before a kept opening is filled in, or before home is found after it, does it at once
+    begun before a kept opening is filled in, or before home is found after it, is judged to
+    do it at once
   '';
   the-launcher-places-each-row-it-is-served = ''
     the rows a daemon serves ready are kept in the order each says, each a change names placed

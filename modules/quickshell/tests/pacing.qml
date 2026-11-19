@@ -520,7 +520,7 @@ QtObject {
             Wanted.sharedMidOpening(begun(true, { finding: true })), "find");
         check(failures, "before the fill, it fills, which finds home too",
             Wanted.sharedMidOpening(begun(true, { unfilled: true, finding: true })), "fill");
-        check(failures, "niri yet to say its casts counts as one begun",
+        check(failures, "an opening missing whether it's shared still fills",
             Wanted.sharedMidOpening(begun(undefined, { unfilled: true })), "fill");
         check(failures, "a share ending leaves the opening to its frame",
             Wanted.sharedMidOpening(begun(false, { unfilled: true, finding: true })), "");
