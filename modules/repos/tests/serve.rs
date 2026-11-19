@@ -1,8 +1,9 @@
 //! `repos serve` as its unit runs it, over a checkout laid out by hand as
 //! git lays it out: a watch is answered with the checkout as the disk
 //! holds it, and told when its branch moves, as git moves one, and when a
-//! tree is cut from it. The daemon hears the disk through inotify, so this
-//! is Linux's alone.
+//! tree is cut from it; and Code's homes are written at its first reading
+//! and again as a tree is cut. The daemon hears the disk through inotify,
+//! so this is Linux's alone.
 #![cfg(target_os = "linux")]
 
 use std::fs;
@@ -51,8 +52,10 @@ impl Drop for Serving {
     }
 }
 
-/// The daemon, looking under `at`, serving in a runtime folder of its
-/// own, named for `at` as `place` names it, so no two tests share one.
+/// The daemon, looking under `at` and writing Code's homes to
+/// `at/homes.json` as the local sites tell its unit to, serving in a
+/// runtime folder of its own, named for `at` as `place` names it, so no
+/// two tests share one.
 /// That folder is named short, and not past its link, since a socket's
 /// path stops at 108 bytes. It's made afresh, readable by this account
 /// alone, so nothing else sharing the temporary folder reaches the socket
@@ -75,6 +78,7 @@ fn serve(at: &Path) -> (Serving, PathBuf) {
         .env("HOME", at)
         .env("XDG_RUNTIME_DIR", &run)
         .env("REPOS_ROOTS", at.join("src"))
+        .env("REPOS_HOMES", at.join("homes.json"))
         .spawn()
         .expect("repos serve started");
     let socket = run.join("daemons/repos.sock");
@@ -113,6 +117,67 @@ fn told_until(lines: &mut impl BufRead, wanted: impl Fn(&Value) -> bool) -> Valu
             return said;
         }
     }
+}
+
+/// Code's homes as the daemon last wrote them to `file`, once they hold
+/// what `wanted` looks for.
+fn homes_until(file: &Path, wanted: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+    let began = Instant::now();
+    loop {
+        let things = fs::read_to_string(file)
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .and_then(|homes| homes["things"].as_array().cloned())
+            .unwrap_or_default();
+        if wanted(&things) {
+            return things;
+        }
+        assert!(
+            began.elapsed() < Duration::from_secs(10),
+            "the homes never came; they hold {things:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Whether `things` hold one keyed `key`.
+fn holding(things: &[Value], key: &str) -> bool {
+    things.iter().any(|thing| thing["key"] == key)
+}
+
+#[test]
+fn the_homes_are_written_at_the_first_reading_and_again_as_a_tree_is_cut() {
+    let at = place("homes");
+    let git = at.join("src/core.nix/.git");
+    written(
+        &git.join("config"),
+        "[remote \"origin\"]\n\turl = git@github.com:Jitsusama/core.nix.git\n",
+    );
+    written(&git.join("HEAD"), "ref: refs/heads/main\n");
+    written(&git.join("refs/heads/main"), &format!("{FIRST}\n"));
+    let (_serving, _socket) = serve(&at);
+    let homes = at.join("homes.json");
+    homes_until(&homes, |things| {
+        holding(things, "github:Jitsusama/core.nix")
+    });
+
+    // Cut well inside the pace, so only a reading of what was heard writes it.
+    let tree = at.join("trees/say-trees");
+    let own = git.join("worktrees/say-trees");
+    written(&own.join("commondir"), "../..\n");
+    written(
+        &own.join("gitdir"),
+        &format!("{}\n", tree.join(".git").display()),
+    );
+    written(&tree.join(".git"), &format!("gitdir: {}\n", own.display()));
+    written(&own.join("HEAD"), "ref: refs/heads/main\n");
+    let path = tree.display().to_string();
+    let things = homes_until(&homes, |things| holding(things, &path));
+    assert!(
+        holding(&things, "github:Jitsusama/core.nix"),
+        "the repository left the homes as the tree came"
+    );
+    fs::remove_dir_all(&at).expect("cleaned");
 }
 
 #[test]

@@ -393,10 +393,19 @@ fn a_failure_is_said_once_until_the_homes_are_written_again() {
         "the same failure was said again"
     );
     fs::remove_dir_all(&file).expect("the folder out of the way");
+    // Said too, so the journal's one line for the failure doesn't read as still failing.
+    assert_eq!(
+        homes.keep(&record()),
+        Some(format!(
+            "repos: Code's homes are written to {} again",
+            file.display()
+        )),
+        "a writing that worked again said so wrongly"
+    );
     assert_eq!(
         homes.keep(&record()),
         None,
-        "a writing that worked said something"
+        "a writing with no failure before it said something"
     );
     assert_eq!(read(&file), of(&record()));
     fs::remove_file(&file).expect("the homes gone");
