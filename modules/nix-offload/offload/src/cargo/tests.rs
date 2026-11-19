@@ -166,6 +166,213 @@ fn a_suite_goes_only_where_a_builder_stands_and_the_tree_is_committed() {
 }
 
 #[test]
+fn a_warm_target_is_named_for_its_repository_and_folder() {
+    for (origin, top, dir, key) in [
+        (
+            Some("https://github.com/Jitsusama/core.nix.git"),
+            "core.nix",
+            "modules/repos",
+            "Jitsusama-core.nix-modules-repos",
+        ),
+        (Some("git@github.com:o/r"), "r", "", "o-r"),
+        (
+            Some("ssh://git@host.example/a/b.git/"),
+            "b",
+            "zone/tool",
+            "a-b-zone-tool",
+        ),
+        (None, "tree", "", "tree"),
+        (None, "tree", "x", "tree-x"),
+        (
+            Some("https://host.example/../x y"),
+            "t",
+            "..",
+            "r-..-x-y-..",
+        ),
+        (None, ".hidden", "", "r-.hidden"),
+        (None, "", "", "r-"),
+    ] {
+        assert_eq!(
+            warm_key(origin, top, dir),
+            key,
+            "{origin:?} at {dir:?} in {top:?}"
+        );
+    }
+    let long = "a".repeat(300);
+    assert_eq!(
+        warm_key(None, &long, "").len(),
+        120,
+        "a long name wasn't cut"
+    );
+}
+
+#[test]
+fn a_suite_goes_there_through_its_warm_target() {
+    assert_eq!(
+        sent_there("k", &words("test --locked")),
+        [
+            "sh",
+            "-c",
+            WARM,
+            "nix-offload-warm",
+            "k",
+            "nix",
+            "develop",
+            "-c",
+            "cargo",
+            "test",
+            "--locked",
+        ]
+        .map(str::to_owned),
+    );
+}
+
+/// The shells a builder's might be: dash, as most are, and the `sh` here.
+fn shells() -> Vec<&'static str> {
+    ["sh", "dash"]
+        .into_iter()
+        .filter(|shell| {
+            Command::new(shell)
+                .args(["-c", "true"])
+                .status()
+                .is_ok_and(|status| status.success())
+        })
+        .collect()
+}
+
+/// `WARM` for the key `k` run by `shell` with `home` as its home, running
+/// `script` with sh in the target it takes, `vars` set too.
+fn warmed(shell: &str, home: &Path, script: &str, vars: &[(&str, &str)]) -> Command {
+    let mut warm = Command::new(shell);
+    warm.args(["-c", WARM, "nix-offload-warm", "k", "sh", "-c", script])
+        .env("HOME", home)
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_BUILD_DIR")
+        .env_remove("NIX_OFFLOAD_WARM_ROOM_KB")
+        .envs(vars.iter().copied());
+    warm
+}
+
+/// What `warmed` said on each stream, once it ended 0.
+fn said(mut warm: Command) -> (String, String) {
+    let out = warm.output().unwrap();
+    assert!(out.status.success(), "{out:?}");
+    (
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+/// Where the key `k`'s target `n` is under `home`.
+fn slot(home: &Path, n: u8) -> String {
+    home.join(format!(".cache/nix-offload/cargo/k/{n}"))
+        .display()
+        .to_string()
+}
+
+// Each suite a lent builder ran compiled every crate it reads afresh, in a
+// folder gone when it ended: 658 crates for a large repository's zone on
+// 19 November. A target kept there for each repository is warm for the
+// next run, and a file a run left in it is there for the one after.
+#[test]
+fn a_run_builds_in_its_repositorys_warm_target_and_the_next_finds_it() {
+    for shell in shells() {
+        let home = tempfile::tempdir().unwrap();
+        let script = "echo \"$CARGO_TARGET_DIR $CARGO_BUILD_BUILD_DIR\"; \
+             ls \"$CARGO_TARGET_DIR\"; mkdir -p \"$CARGO_TARGET_DIR\"; \
+             touch \"$CARGO_TARGET_DIR/kept\"";
+        let (first, told) = said(warmed(shell, home.path(), script, &[]));
+        let at = slot(home.path(), 0);
+        assert_eq!(first, format!("{at}/target {at}/build\n"), "{shell}");
+        assert!(told.contains("warm target 0 of k"), "{shell}: {told}");
+        let (second, _) = said(warmed(shell, home.path(), script, &[]));
+        assert_eq!(
+            second,
+            format!("{at}/target {at}/build\nkept\n"),
+            "{shell}: the next run didn't find what the first left"
+        );
+    }
+}
+
+// Two suites of one repository at once on one builder would wait on
+// cargo's lock of a shared target, so each takes one no other run holds.
+#[test]
+fn a_run_beside_another_takes_a_target_of_its_own() {
+    for shell in shells() {
+        let home = tempfile::tempdir().unwrap();
+        let started = home.path().join("started");
+        let mut first = warmed(
+            shell,
+            home.path(),
+            &format!("touch {}; sleep 5", started.display()),
+            &[],
+        )
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+        let began = std::time::Instant::now();
+        while !started.exists() {
+            assert!(
+                began.elapsed() < std::time::Duration::from_secs(10),
+                "{shell}: the first never began"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let (beside, _) = said(warmed(
+            shell,
+            home.path(),
+            "echo \"$CARGO_TARGET_DIR\"",
+            &[],
+        ));
+        let _ = first.kill();
+        let _ = first.wait();
+        assert_eq!(
+            beside,
+            format!("{}/target\n", slot(home.path(), 1)),
+            "{shell}: a run took the target another holds"
+        );
+    }
+}
+
+// A builder's disk holds its Nix store too, so a target is begun afresh
+// when the disk is short of room, rather than growing into the store's.
+#[test]
+fn a_target_begins_afresh_when_the_builder_is_short_of_room() {
+    for shell in shells() {
+        let home = tempfile::tempdir().unwrap();
+        let leave = "mkdir -p \"$CARGO_TARGET_DIR\"; touch \"$CARGO_TARGET_DIR/kept\"";
+        said(warmed(shell, home.path(), leave, &[]));
+        let (after, told) = said(warmed(
+            shell,
+            home.path(),
+            "ls \"$CARGO_TARGET_DIR\" 2>/dev/null; echo \"$CARGO_TARGET_DIR\"",
+            &[("NIX_OFFLOAD_WARM_ROOM_KB", "999999999999")],
+        ));
+        assert_eq!(
+            after,
+            format!("{}/target\n", slot(home.path(), 0)),
+            "{shell}: the target wasn't begun afresh"
+        );
+        assert!(told.contains("short of room"), "{shell}: {told}");
+    }
+}
+
+#[test]
+fn a_target_the_run_names_is_kept() {
+    for shell in shells() {
+        let home = tempfile::tempdir().unwrap();
+        let (out, _) = said(warmed(
+            shell,
+            home.path(),
+            "echo \"$CARGO_TARGET_DIR\"",
+            &[("CARGO_TARGET_DIR", "/named")],
+        ));
+        assert_eq!(out, "/named\n", "{shell}");
+    }
+}
+
+#[test]
 fn the_dev_shells_words_are_read_as_cargo_and_its_own() {
     let given = words("--cargo /nix/store/x-cargo/bin/cargo -- test -p a");
     assert_eq!(

@@ -6499,7 +6499,10 @@ fn a_run_from_a_tree_off_github_sends_heads_files_within_its_cone() {
         "HEAD's files within the cone went, and no others"
     );
     let given = run.given();
-    assert!(given.contains("tar -xzf -"), "it's unpacked there: {given}");
+    assert!(
+        given.contains("tar -xmzf -"),
+        "it's unpacked there, its files given the time they're unpacked: {given}"
+    );
     assert!(
         given.contains("/tree/zone/tool;"),
         "it runs in its folder: {given}"
