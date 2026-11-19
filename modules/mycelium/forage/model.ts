@@ -10,7 +10,15 @@
 
 import type { Fields, Held } from "../../local-sites/kit/records.ts";
 import { isObject, number, object, text } from "../../local-sites/kit/records.ts";
-import { bothEnds, type Join, joinsOf, splitOf } from "./joins.ts";
+import {
+  bookedOf,
+  bothEnds,
+  type Join,
+  joinsOf,
+  type StartsTold,
+  splitOf,
+  startsUnread,
+} from "./joins.ts";
 
 /** One document a cell keeps for its purpose: a plan, research, a brief or a report. */
 interface Document {
@@ -199,36 +207,6 @@ function forageOf(
   };
 }
 
-/** Where the node said starts came from, over every cell, as a node-wide fault is said once. */
-interface StartsTold {
-  said: boolean;
-  readonly odd: string[];
-}
-
-/** Whether the node's book holds `cell`'s start, by `started_by_from`; else it's claimed. */
-function bookedOf(lineage: Fields, cell: string, told: StartsTold): boolean {
-  const from = lineage["started_by_from"];
-  if (from !== undefined && from !== null) {
-    told.said = true;
-    if (from !== "book" && from !== "presence") {
-      told.odd.push(cell);
-    }
-  }
-  return from === "book";
-}
-
-/** Why starts read as claimed, if the node sent a source neither word, or none beside a starter. */
-function startsUnread(told: StartsTold, read: readonly Pick<Forage, "startedBy">[]): string[] {
-  if (told.odd.length > 0) {
-    const whose = told.odd.length === 1 ? `${told.odd[0]}'s` : `${told.odd.length} cells'`;
-    return [`${whose} started_by_from said neither book nor presence`];
-  }
-  const starters = read.some((each) => each.startedBy !== undefined);
-  return starters && !told.said
-    ? ["which starts the node's book holds, so each reads as claimed"]
-    : [];
-}
-
 /**
  * The cell `forage` grew from, among `here`: the one that started it, else
  * the one it split from, since a split's new cells may be started by
@@ -267,7 +245,7 @@ function grewClaimed(
  */
 function foragesOf(held: Held): Forages {
   const unread: string[] = [];
-  const told: StartsTold = { said: false, odd: [] };
+  const told: StartsTold = { said: false, odd: [], unsourced: [] };
   const read = bothEnds(
     held
       .all()
@@ -275,7 +253,7 @@ function foragesOf(held: Held): Forages {
       .filter((each) => each !== undefined)
       .sort((one, other) => one.cell.localeCompare(other.cell)),
   );
-  unread.push(...startsUnread(told, read));
+  unread.push(...startsUnread(told));
   const here = new Set(read.map((each) => each.cell));
   const started = new Map<string, (typeof read)[number][]>();
   const tops: (typeof read)[number][] = [];

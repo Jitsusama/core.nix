@@ -1,7 +1,8 @@
 // How forages join one another, read from the node's forage records
 // (mycelium's PROTOCOL.md, Forages): the needs one serves and relies on,
-// and the cell it split from or into. A join the page couldn't make sense
-// of is said rather than drawn, while the rest still draw.
+// the cell it split from or into, and whether the node's book holds its
+// start. A join the page couldn't make sense of is said rather than drawn,
+// while the rest still draw.
 
 import type { Fields } from "../../local-sites/kit/records.ts";
 import { isObject, text } from "../../local-sites/kit/records.ts";
@@ -146,5 +147,46 @@ function joined(
   return [...pairs.values()];
 }
 
-export type { Join };
-export { bothEnds, joined, joinsOf, splitOf };
+/** Where the node said starts came from, over every cell, as a node-wide fault is said once. */
+interface StartsTold {
+  said: boolean;
+  readonly odd: string[];
+  readonly unsourced: string[];
+}
+
+/** Whether the node's book holds `cell`'s start, by `started_by_from`; else it's claimed. */
+function bookedOf(lineage: Fields, cell: string, told: StartsTold): boolean {
+  const from = lineage["started_by_from"];
+  if (from !== undefined && from !== null) {
+    told.said = true;
+    if (from !== "book" && from !== "presence") {
+      told.odd.push(cell);
+    }
+  } else if (text(lineage, "started_by") !== undefined) {
+    told.unsourced.push(cell);
+  }
+  return from === "book";
+}
+
+/**
+ * Why starts read as claimed: a source neither word, or a starter with none, said by cell
+ * unless no cell's start had one, as a node from before the field, said once for all.
+ */
+function startsUnread(told: StartsTold): string[] {
+  const whose = (cells: string[]) =>
+    cells.length === 1 ? `${cells[0]}'s` : `${cells.length} cells'`;
+  const unread: string[] = [];
+  if (told.odd.length > 0) {
+    unread.push(`${whose(told.odd)} started_by_from said neither book nor presence`);
+  }
+  if (told.unsourced.length > 0 && told.said) {
+    const starts = told.unsourced.length === 1 ? "start" : "starts";
+    unread.push(`where ${whose(told.unsourced)} ${starts} came from`);
+  } else if (told.unsourced.length > 0) {
+    unread.push("which starts the node's book holds, so each reads as claimed");
+  }
+  return unread;
+}
+
+export type { Join, StartsTold };
+export { bookedOf, bothEnds, joined, joinsOf, splitOf, startsUnread };

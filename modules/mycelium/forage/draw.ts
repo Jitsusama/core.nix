@@ -30,22 +30,6 @@ const ESCAPES: { readonly [character: string]: string } = {
   "'": "&#39;",
 };
 
-/** Each month as a need's since says it, when the need wasn't taken today. */
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
-
 /** Each stage of a document as the page says it. */
 const STAGES: { readonly [stage: string]: string } = {
   think: "Thinking",
@@ -324,8 +308,13 @@ ${forage.documents.map((document) => documentRow(document, forage.quest)).join("
 </section>`;
 }
 
-/** Said after a tie the node can't vouch for, naming no claimer, as either end may be telling it. */
-const CLAIMED = ", as claimed";
+/**
+ * `said`, a tie the node can't vouch for, hedged naming no claimer, as either end may be
+ * telling it; the comma is tied to `said`, so no line starts with one.
+ */
+function asClaimed(said: string): string {
+  return `<span class="tie">${said},</span> as claimed`;
+}
 
 /**
  * The cells a cell started, the book's unheld as claimed: after the list if all, else in
@@ -335,7 +324,7 @@ function startsSaid(started: readonly Pick<Forage, "cell" | "booked">[]): string
   const cells = started.map((each) => each.cell);
   const claimed = new Set(started.filter((each) => !each.booked).map((each) => each.cell));
   if (claimed.size > 0 && claimed.size === cells.length) {
-    return cellsStarted(cells) + CLAIMED;
+    return cellsStarted(cells, cellLink, asClaimed);
   }
   const name = (cell: string) => `${cellLink(cell)}${claimed.has(cell) ? " (as claimed)" : ""}`;
   const counted = cells.slice(namedOf(cells.length));
@@ -355,7 +344,7 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
   if (by === undefined) {
     return "Nothing; it started on its own";
   }
-  return `${cellOrAway(by, here)}${forage.booked ? "" : CLAIMED}`;
+  return forage.booked ? cellOrAway(by, here) : asClaimed(cellOrAway(by, here));
 }
 
 /**
@@ -367,6 +356,7 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
 function cellsStarted(
   started: readonly string[],
   name: (cell: string) => string = cellLink,
+  ending: (last: string) => string = (last) => last,
 ): string {
   if (started.length === 0) {
     return "None here yet";
@@ -374,7 +364,7 @@ function cellsStarted(
   const count = started.length === 1 ? "One cell" : `${started.length} cells`;
   const links = started.slice(0, namedOf(started.length)).map(name);
   const rest = started.length - links.length;
-  const last = rest === 0 ? links.pop() : `${rest} more`;
+  const last = ending(rest === 0 ? (links.pop() ?? "") : `${rest} more`);
   const before = links
     .map((link, at) => (at < links.length - 1 ? `<span class="tie">${link},</span>` : link))
     .join(" ");
@@ -403,7 +393,8 @@ function sinceOf(since: string | undefined, now: number): string {
   }
   const when = new Date(at);
   const today = new Date(now).toDateString() === when.toDateString();
-  const day = today ? "" : `${when.getDate()} ${MONTHS[when.getMonth()]}, `;
+  const month = when.toLocaleString("en", { month: "short" });
+  const day = today ? "" : `${when.getDate()} ${month}, `;
   return `, since <time datetime="${when.toISOString()}">${day}${clockTime(at)}</time>`;
 }
 
@@ -443,11 +434,11 @@ function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): st
   const facts: string[] = [];
   if (forage.splitFrom !== undefined) {
     const from = cellOrAway(forage.splitFrom, here);
-    facts.push(`<div><dt>Split from</dt><dd>${from}${CLAIMED}</dd></div>`);
+    facts.push(`<div><dt>Split from</dt><dd><span>${asClaimed(from)}</span></dd></div>`);
   }
   if (forage.splitInto.length > 0) {
-    const into = cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here));
-    facts.push(`<div><dt>Split into</dt><dd><span>${into}${CLAIMED}</span></dd></div>`);
+    const into = cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here), asClaimed);
+    facts.push(`<div><dt>Split into</dt><dd><span>${into}</span></dd></div>`);
   }
   if (forage.serves.length > 0) {
     const said = needsOf(forage.serves, here, now, (join) => join.cell);
@@ -487,7 +478,7 @@ ${waitsOf(forage)}${documentsOf(forage)}
   <h4 id="ties-title">Where It Grows</h4>
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
-    <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
+    <div><dt>Started by</dt><dd><span>${startedBy(forage, here)}</span></dd></div>
     <div><dt>Started</dt><dd><span>${startsSaid(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>

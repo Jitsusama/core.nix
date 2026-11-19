@@ -73,8 +73,20 @@ it("says a node-wide fault in where starts came from once", () => {
   assert.deepEqual(unread(forage("KESTRL", lineage("Book")), forage("TERNAA", lineage("Book"))), [
     "2 cells' started_by_from said neither book nor presence",
   ]);
-  // One cell's source is enough to show the node sends them; one that names no starter needs none.
-  assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA", lineage())), []);
+  // Once the node sends sources, a starter with none is said by its cell.
+  assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA", lineage())), [
+    "where TERNAA's start came from",
+  ]);
+  assert.deepEqual(
+    unread(
+      forage("KESTRL", lineage("book")),
+      forage("TERNAA", lineage()),
+      forage("SKIFFS", lineage()),
+    ),
+    ["where 2 cells' starts came from"],
+  );
+  // One that names no starter needs no source.
+  assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA")), []);
   assert.deepEqual(unread(forage("KESTRL")), []);
 });
 

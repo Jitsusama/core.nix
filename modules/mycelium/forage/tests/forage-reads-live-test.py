@@ -139,6 +139,7 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
     branch = forage_page.locator('path.hypha[data-cell="SKIFFS"]')
     expect(branch, "SKIFFS's booked branch was dashed").to_have_css("stroke-dasharray", "none")
     branch = forage_page.locator('path.hypha[data-cell="OSPREY"]')
+    expect(branch, "OSPREY's split wasn't drawn").to_have_count(1)
     expect(branch, "OSPREY's claimed split wasn't dashed").not_to_have_css(
         "stroke-dasharray", "none"
     )

@@ -127,7 +127,8 @@ it("links each cell a cell started to that cell's row", () => {
 });
 
 /** A comma tied to the address before it, which the panel never breaks. */
-const TIED = /<span class="tie"><a [^>]*><code>[^<]*<\/code><\/a>( \(as claimed\))?,<\/span>/gu;
+const TIED =
+  /<span class="tie">(<a [^>]*><code>[^<]*<\/code><\/a>( \(as claimed\))?|\d+ more),<\/span>/gu;
 
 /** `count` cells' addresses: AAAAAA, BBBBBB and on. */
 function cells(count: number): readonly string[] {
@@ -184,6 +185,10 @@ it("ties each comma to the address before it, so no line starts with one", () =>
     const line = startedLine(forage(), cells(count), (cell) => cell.charCodeAt(0) % 2 === 0);
     assert.ok(!line.replace(TIED, "").includes(","), `a comma stands loose in ${line}`);
     assert.equal(line.match(TIED)?.length, ties, line);
+    // Every start claimed, so the hedge's comma is tied to the last too.
+    const all = startedLine(forage(), cells(count), () => false);
+    assert.ok(!all.replace(TIED, "").includes(","), `a comma stands loose in ${all}`);
+    assert.equal(all.match(TIED)?.length, ties + 1, all);
   }
 });
 
@@ -290,11 +295,11 @@ it("draws no joins on the floor and says none in the panel when the node sends n
 
 /** The panel's line for the cell TERNAA split from, linked to its row. */
 const SPLIT_FROM =
-  /<dt>Split from<\/dt><dd><a href="#cell=TERNAA" data-cell="TERNAA">.*?<\/a>, as claimed<\/dd>/u;
+  /<dt>Split from<\/dt><dd><span><span class="tie"><a href="#cell=TERNAA" data-cell="TERNAA">.*?<\/a>,<\/span> as claimed<\/span><\/dd>/u;
 
 /** The panel's line for the two cells a cell split into, one here and one away. */
 const SPLIT_INTO =
-  /<dt>Split into<\/dt><dd><span>2 cells: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><code>FARAWAY<\/code>, not standing here<\/span>, as claimed<\/span>/u;
+  /<dt>Split into<\/dt><dd><span>2 cells: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span class="tie"><span><code>FARAWAY<\/code>, not standing here<\/span>,<\/span> as claimed<\/span>/u;
 
 /** The panel's first need a cell serves, linked to the row of OSPREY, which asked it. */
 const SERVES = /<dt>Serves<\/dt><dd class="needs"><span class="need"><a href="#cell=OSPREY"/u;
@@ -399,14 +404,16 @@ it("draws a start the node's book holds solid, and one only claimed dashed", () 
 });
 
 /** The panel's Started by, told as only claimed. */
-const STARTED_CLAIMED = /<dt>Started by<\/dt><dd>.*?<\/a>, as claimed<\/dd>/u;
+const STARTED_CLAIMED =
+  /<dt>Started by<\/dt><dd><span><span class="tie"><a [^>]*>.*?<\/a>,<\/span> as claimed<\/span><\/dd>/u;
 
 /** The panel's Started by, told as only claimed, of a starter not drawn here. */
 const STARTED_AWAY_CLAIMED =
-  /<dt>Started by<\/dt><dd><span><code>FARAWAY<\/code>, not standing here<\/span>, as claimed<\/dd>/u;
+  /<dt>Started by<\/dt><dd><span><span class="tie"><span><code>FARAWAY<\/code>, not standing here<\/span>,<\/span> as claimed<\/span><\/dd>/u;
 
 /** The panel's Started by, told plainly since the node's book holds it. */
-const STARTED_BOOKED = /<dt>Started by<\/dt><dd><a [^>]*><code>KESTRL<\/code><\/a><\/dd>/u;
+const STARTED_BOOKED =
+  /<dt>Started by<\/dt><dd><span><a [^>]*><code>KESTRL<\/code><\/a><\/span><\/dd>/u;
 
 it("says who started a cell as only claimed unless the node's book holds it", () => {
   const here = new Set(["KESTRL"]);
