@@ -276,7 +276,8 @@ Provider {
             whileSharing: Options.doNotDisturb.whileSharing,
             since: at(Quiet.began),
             held: Quiet.held.length,
-            kept: Quiet.kept
+            kept: Quiet.kept,
+            unheard: Quiet.unheard
         }, { named: id => Words.name(id), said: words.said, tells: words.tells }));
     }
 

@@ -43,14 +43,17 @@
   # stood in for.
   do-not-disturb-holds-while-sharing =
     let
-      chosen = "readonly property var doNotDisturb: ({ whileSharing: true })";
+      chosen = "property var doNotDisturb: ({ whileSharing: true })";
       options = singleton "Options.qml" chosen;
     in
     pkgs.runCommandLocal "do-not-disturb-holds-while-sharing" { } ''
       mkdir runtime && chmod 700 runtime
       ${copied [ "Quiet.qml" ]}
       cp ${../tests/quiet.qml} shell.qml
-      cp ${singleton "Niri.qml" "property var casts: ({})"} Niri.qml
+      cp ${singleton "Niri.qml" ''
+        property var casts: ({})
+        property bool castsHeard: false
+      ''} Niri.qml
       cp ${singleton "Notices.qml" "property var history: []"} Notices.qml
       cp ${singleton "Recorder.qml" "property var windowSession: null"} Recorder.qml
       cp ${options} Options.qml

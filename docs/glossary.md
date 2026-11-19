@@ -289,6 +289,7 @@ or a copy, can be opened, copied or forgotten.
 | ---- | ----- | --- | ------- |
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
 | screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
+| screen sharing | the screen shown to others, in a call or a cast, which niri tells the desktop of | screencast | niri's casts |
 | screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
 | colour depth | how many bits a screen gives each of its red, green and blue | | the EDID's bit depth |
 | colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
@@ -305,7 +306,7 @@ or a copy, can be opened, copied or forgotten.
 | notice | what a program said, on the arrival line as it comes and in the launcher's Notices after | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
 | arrival line | one line at the top of the screen, where the launcher stands, showing the notice that waits on Joel as it comes, without taking the keys | | `NoticeLine.qml` |
 | notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
-| Do Not Disturb | the setting that holds notices back while it's on | dnd, quiet | `session:quiet` |
+| Do Not Disturb | the setting that holds notices back while it's on, and on by itself while the screen may be shared | dnd, quiet | `session:quiet` |
 | dictation | what Joel says, typed where the focus is, while he holds Super+D or after Return on its row | | `modules/dictation`, `Dictated.qml` |
 | question | what the desktop asks Joel: a centred box for a password or a yes, or the file chooser's which file, or where to save | | `Polkit.qml`, `Askpass.qml`, the file chooser's `said` |
 | mark | one drawn symbol, such as each one in the margin | glyph, icon | `glyphs.nix` |

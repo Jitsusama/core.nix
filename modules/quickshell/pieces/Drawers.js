@@ -215,6 +215,6 @@ function quiet(state, told) {
             fact(named, "on:quiet:since", state.since),
             fact(named, "on:quiet:held", held)
         ]),
-        body: state.kept ? tells.kept : tells.shared
+        body: state.kept ? tells.kept : state.unheard ? tells.unheard : tells.shared
     };
 }
