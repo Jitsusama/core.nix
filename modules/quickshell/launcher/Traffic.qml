@@ -424,12 +424,10 @@ Provider {
         });
     }
 
-    // How the shaper's search for the connection's most is going, in
-    // Joel's words.
+    // What the shaper is doing with the line, in Joel's words: it writes
+    // only resting or holding, and resting is said as measured alone.
     readonly property var finding: ({
-        climbing: "as measured, still finding its most",
-        holding: "as measured, held while the connection's busy",
-        cut: "as measured, cut while the connection queued"
+        holding: "as measured, held while the connection's busy"
     })
 
     function told() {

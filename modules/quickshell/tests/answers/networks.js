@@ -47,7 +47,7 @@ function run(failures) {
     machine("a slow rate in kilobits", Traffic.bits(500, number), "4.0 kb/s");
     machine("nothing moving", Traffic.bits(0, number), "0 b/s");
     const status = [{
-        name: "wlp0s20f3", ifb: "shaper2", up: 11830, down: 40000, state: "climbing",
+        name: "wlp0s20f3", ifb: "shaper2", up: 11830, down: 40000, state: "holding",
         baselines: [["9.9.9.9", 51.1], ["1.1.1.1", 21.1], ["8.8.8.8", 20.6]], follows: null
     }];
     const link = Traffic.line(status, "wlp0s20f3");

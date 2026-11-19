@@ -235,7 +235,7 @@ ShellRoot {
         counted({ lo: [1000, 2000], eth0: [1000000, 2000000] });
         Written.written(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 100000,
             up: 20000,
-            state: "climbing", baselines: [["one", 12]] }]));
+            state: "resting", baselines: [["one", 12]] }]));
         lookAgain();
         waits.until("eth0 counted", () => traffic.reads.last.all.eth0 !== undefined && idle(),
             () => {
@@ -250,6 +250,8 @@ ShellRoot {
 
     // Each file changed under it, an answer says what was last loaded.
     function loaded() {
+        Expect.expect("a line resting is said as measured", lineNote() === "as measured",
+            lineNote());
         const was = said();
         counted({ lo: [1000, 2000], eth0: [9000000000, 9000000000] });
         Written.written(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 1, up: 1,
@@ -271,10 +273,20 @@ ShellRoot {
             said() === started, `${said()} after ${started}`);
         traffic.reads = kept;
 
-        counted({ lo: [1000, 2000] });
         lookAgain();
-        waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined && idle(),
-            root.gapping);
+        waits.until("a line holding is said so", () => idle()
+            && lineNote() === "as measured, held while the connection's busy", () => {
+            counted({ lo: [1000, 2000] });
+            lookAgain();
+            waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined
+                && idle(), root.gapping);
+        });
+    }
+
+    // What the shaper's line row says of its search, or undefined with no row.
+    function lineNote() {
+        return traffic.answer("speed").rows.find(row => row.name
+            === Words.name("traffic:line"))?.note;
     }
 
     // Asked after a gap with the launcher closed, as a terminal's `launcher
