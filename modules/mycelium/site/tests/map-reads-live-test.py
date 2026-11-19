@@ -6,7 +6,8 @@ realm under test names, node.json, through the node feed exactly as home.nix
 declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, follow a change within its pace, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
-when the server goes, draw a record's words as words and never as markup, and
+when the server goes, draw a record's words as words and never as markup,
+answer its keys as its keys dialog says (keys.ts decides which each asks), and
 pass the web-design skill's page checks and the map's own (site-checks.js) at
 a phone's width and a desk's in both looks. Any error the page logs fails it,
 since that is how the map froze on "reading" unseen. The server, the browser
@@ -61,6 +62,9 @@ BASIN = "shoal"
 BASIN_MARK = f"{BASIN} basin"
 BASIN_MACHINES = ("pool-a", "pool-b")
 BASIN_CELLS = ("HERON1", "HERON2")
+# A cell find is asked for by name, and the title its drawer heads it with.
+SOUGHT = "TERN03"
+SOUGHT_TITLE = "Count the Cleats"
 
 
 @pytest.fixture
@@ -274,6 +278,40 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
+
+
+def test_the_maps_keys_do_what_the_keys_dialog_says(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("?")
+    expect(page.locator("#keys"), "? didn't open the keys").to_be_visible()
+    page.keyboard.press("?")
+    expect(page.locator("#keys"), "? didn't close the keys").to_be_hidden()
+    page.keyboard.press("/")
+    expect(page.locator("#find"), "/ didn't open find").to_be_focused()
+    page.keyboard.type(SOUGHT)
+    page.keyboard.press("Enter")
+    expect(page.locator("#panel-title"), "Return didn't open what was found").to_have_text(
+        SOUGHT_TITLE
+    )
+    page.keyboard.press("Escape")
+    expect(page.locator("#find-line"), "Escape didn't close find first").to_be_hidden()
+    page.keyboard.press("Escape")
+    expect(page, "Escape didn't let go of the cell").to_have_url(re.compile(r"/mycelium/$"))
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    expect(page.locator("#where"), "Return didn't open what the walk reached").to_contain_text(
+        "Opened"
+    )
+    page.keyboard.press("m")
+    expect(page.locator("#where"), "m didn't show the machines").to_contain_text(
+        "machines are shown"
+    )
+    themes = page.locator(".switch button")
+    themes.first.focus()
+    page.keyboard.press("ArrowLeft")
+    expect(themes.last, "the theme switch didn't wrap round").to_be_focused()
 
 
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:
