@@ -491,7 +491,13 @@ the shell, as one served apart from its row does, quotes it on both sides.
 `LAB_DRAWN_IN` names the place stepped into instead of Machine, and an empty
 `LAB_DRAWN` walks that place's own rows: Programs' with `LAB_PROGRAMS = "21"`
 times each program's drawer, as Joel's downs onto Slack and mpv waited on.
-Each line splits its time as the shell said it. Over 76 drawers, 58 came in
+`LAB_DRAWN_WINDOWS` opens that many windows before the walk, none unless
+given, titled Drawn N and then `LAB_TITLED`, which holds no apostrophe, so
+Desktop's Windows names as many, as long, as Joel's Runs do. Each line splits
+its time as the shell said it. A drawer slow enough for the shell to say it
+in the journal, past `FELT_MS` in `launcher/Trials.js`, has a
+`lab-drawer-took` line before its own, saying what its making spent, as the
+shell split it. Over 76 drawers, 58 came in
 the key's own frame in a median 14 ms: 6 until its frame began, 1 to its swap
 and 6 after it. The 18 that came the frame after took a median 32, 18 ms of it
 after the swap, niri's part. Another run on another builder presented a median 40,

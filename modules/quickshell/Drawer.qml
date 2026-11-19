@@ -321,6 +321,15 @@ Floating {
     // wraps, the break falls between two and the dot goes with it, so no
     // line ends or starts on one (VKCF3Z, 2026-11-09, 8e0712aa).
     readonly property bool runs: shown?.runs === true
+    // A run is laid whole only while the keys are in it, where they read,
+    // search and copy every line; at rest it's laid as far as the drawer
+    // could show and a line past it, so it's still cut and says there's
+    // more. Every name laid cost Emoji's 1,914 about 200 ms a drawer, and
+    // as much again to take down (the launcher lab, 2026-11-18). As far as
+    // it's scrolled too, since the keys leaving keep the view where they
+    // left it; at rest nothing else scrolls it, so a walk lays it once.
+    property bool runWhole: false
+    readonly property int runMost: Figure.runMost(scrolled, tall, pitch)
     // Whether its title and prose are shown whole (`whole: true`), as a
     // landing asking Joel something is: the title on as many lines as it
     // takes and the prose never cut, since it's one line by contract
@@ -352,7 +361,8 @@ Floating {
     // Its words as they're given to be drawn, a run measured in their own
     // face, and prose cut while the fold is shut, for the launcher to
     // report.
-    readonly property string bodySaid: runs ? itemsKept(body, bodyFace, wordsBox.width)
+    readonly property string bodySaid: runs
+        ? itemsKept(body, bodyFace, wordsBox.width, runWhole ? 0 : runMost)
         : bodyCut && folded ? proseLaid.said : body
     // How many lines Qt draws its words in, for the launcher to report: a
     // run laid as one is as many as bodySaid's, Qt wrapping none further.
@@ -590,6 +600,7 @@ Floating {
             // back into never says it went round before anything's sought.
             lastSought = null;
             landing = "";
+            runWhole = false;
         }
     }
     // Visual, as on a page: what it chooses by, "letters" or "lines", or
@@ -792,6 +803,8 @@ Floating {
     // Into it: the cursor on the title's first letter where it's in view,
     // else the first line in view, so nothing moves as the keys come in.
     function enter() {
+        // The whole run, first, for the lines read below to hold it.
+        runWhole = true;
         lastChosen = null;
         began = choosing !== "" ? began : null;
         laid = lines();
@@ -809,6 +822,10 @@ Floating {
             // At once, so the new page's first frame draws none of it.
             unflash();
             Qt.callLater(() => {
+                // Not once the keys have gone meanwhile, which would
+                // lay the run whole at rest.
+                if (!keys)
+                    return;
                 scrolled = 0;
                 enter();
             });
@@ -1560,8 +1577,8 @@ Floating {
     // (DrawerFigure.runLines); a line that fits is held whole, and an item
     // wider than its room still wraps by its words, never running past the
     // edge.
-    function itemsKept(words, face, wide) {
-        return Figure.runLines(unbroken(words), wide, widthIn(face))
+    function itemsKept(words, face, wide, most = 0) {
+        return Figure.runLines(unbroken(words), wide, widthIn(face), most)
             .map(line => widthIn(face)(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
             .join("\n");
     }

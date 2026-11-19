@@ -11,14 +11,16 @@ the same on both sides. Each place's line also splits its time at the shell's sw
 shell took to its frame, and what niri took after it to present it, since the VM's niri draws on
 the CPU and once held about half its frames some 150 ms past the swap, which read as the
 launcher's when only the whole was said (RTOIMQ, 2026-11-11). It fails only when an opening
-never says it was presented. Beside it, a second test times each step into a place from home,
-as Joel takes them, since a step is navigation and held to the same 50 ms. A third holds a place
-open while its daemon's changes come, and prints the line the shell says of them as it closes,
-since an update is held to it too: 6 of Machine's 20 on Joel's shell took longer (2026-11-11).
+never says it was presented, or the windows it opened never close. Beside it, a second test
+times each step into a place from home, as Joel takes them, since a step is navigation and held
+to the same 50 ms. A third holds a place open while its daemon's changes come, and prints the
+line the shell says of them as it closes, since an update is held to it too: 6 of Machine's 20
+on Joel's shell took longer (2026-11-11).
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -140,14 +142,18 @@ def said_of(place: str, presented: list[int], took: list[int]) -> str:
     )
 
 
-def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+def test_each_chord_opening_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
     """Open each chord's place from shut, round after round, and print each one's times.
 
     They're printed past pytest's capture, so the build's log holds them when it passes.
     """
     places = os.environ.get("LAB_PLACES", " ".join(PLACES)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    windows = [shell.opened(f"Lab {nth}", app="foot") for nth in range(WINDOWS)]
+    windows = closing(shell, request)
+    for nth in range(WINDOWS):
+        windows.append(shell.opened(f"Lab {nth}", app="foot"))
     # Super+N opens the notices on screen, so a run timing it has some there all along.
     if "notices" in places:
         for nth in range(NOTICES):
@@ -214,8 +220,6 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
             took[place].append(cast("int", opening["took"]))
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
-    for window in windows:
-        shell.close(window)
     for place, spans in timed.items():
         with capsys.disabled():
             print(os.environ.get("LAB_RUN", ""), said_of(place, spans, took[place]), flush=True)
@@ -273,14 +277,15 @@ def test_each_places_changes_are_timed(shell: Shell, capsys: pytest.CaptureFixtu
                     print(f"lab-changes {name} round {round_}: {said}", flush=True)
 
 
-def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+def test_each_step_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
     """Step into each place from home, round after round, and print each step's times."""
     steps = os.environ.get("LAB_STEPS", " ".join(STEPS)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    windows = [
-        shell.opened(f"Lab {nth}", app="foot")
-        for nth in range(int(os.environ.get("LAB_WINDOWS", str(WINDOWS))))
-    ]
+    windows = closing(shell, request)
+    for nth in range(int(os.environ.get("LAB_WINDOWS", str(WINDOWS)))):
+        windows.append(shell.opened(f"Lab {nth}", app="foot"))
     opened(shell, "home")
     shell.close_launcher()
     timed: dict[str, list[int]] = {name: [] for name in steps}
@@ -295,8 +300,6 @@ def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) ->
                     print(f"lab-step-line {name}: {line.split('qml: ', 1)[-1]}", flush=True)
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
-    for window in windows:
-        shell.close(window)
     for name, spans in timed.items():
         with capsys.disabled():
             print(
@@ -322,6 +325,74 @@ DRAWER_PRESENTED = re.compile(
 )
 
 
+def closing(shell: Shell, request: pytest.FixtureRequest) -> list[Json]:
+    """Give a list whose windows are closed as the test ends, however it ends.
+
+    It's handed out before any opens, so a test that fails partway through opening still
+    closes those it opened, since the shell and its niri outlive the test.
+    """
+    windows: list[Json] = []
+    request.addfinalizer(functools.partial(closed, shell, windows))
+    return windows
+
+
+def closed(shell: Shell, windows: list[Json]) -> None:
+    """Close the windows a test opened, once niri lists none of them, so the next hasn't them."""
+    # A close niri refuses doesn't stop the others: the wait says whether its window stayed.
+    refused: list[str] = []
+    for window in windows:
+        try:
+            shell.close(window)
+        except AssertionError as error:
+            refused.append(str(error))
+    ids = {window["id"] for window in windows}
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    # Niri lets a window go once its foot has gone, so it's asked again a poll's length apart.
+    while left := [listed for listed in shell.windows() if listed["id"] in ids]:
+        if time.monotonic() >= deadline:
+            failed = (
+                f"{len(left)} windows never closed: {[w['title'] for w in left]!r}, "
+                f"closes refused: {refused!r}"
+            )
+            raise AssertionError(failed)
+        time.sleep(launcher_on_niri.POLL)
+
+
+def walked_in(shell: Shell, place: str, within: str, request: pytest.FixtureRequest) -> list[Json]:
+    """Open the launcher on the place the drawers are walked in, and give its rows with one.
+
+    Windows open first, none unless the run says (LAB_DRAWN_WINDOWS), each titled at the
+    length LAB_TITLED gives it, so Desktop's Windows names as many, as long, as Joel's Runs
+    do. They're closed as the test ends, however it ends (closing).
+    """
+    titled = os.environ.get("LAB_TITLED", "")
+    # The window's title goes to niri's spawn in single quotes (Shell.opened).
+    if "'" in titled:
+        refused = f"LAB_TITLED can't hold an apostrophe: {titled!r}"
+        raise ValueError(refused)
+    windows = closing(shell, request)
+    for nth in range(int(os.environ.get("LAB_DRAWN_WINDOWS", "0"))):
+        # Named apart from the other tests' Lab windows, should one outlive its test.
+        windows.append(shell.opened(f"Drawn {nth} {titled}".strip(), app="foot"))
+    opened(shell, "home")
+    shell.close_launcher()
+    stepped(shell, place)
+    if within != place:
+        shell.down_to(within)
+        shell.step_in()
+    shell.normal()
+    # Its own rows, each with a drawer, not the acts that follow them, as Copy, which have none.
+    things = cast("list[Json]", shell.showing()["things"])
+    drawn = [thing for thing in things if not str(thing["is"]).startswith("return:")]
+    # This Window, which leads Desktop while a window is open, has no drawer, so the walk
+    # starts on the row below it.
+    if drawn and str(drawn[0]["is"]).startswith("windows:this"):
+        shell.send_chars("j")
+        shell.launcher_until(lambda shown: bool((shown["drawer"] or {}).get("shown")))
+        return drawn[1:]
+    return drawn
+
+
 def drawer_said(shell: Shell, mark: int) -> re.Match[str] | None:
     """Give the first drawer said presented since the mark, waiting a while for niri's frame."""
     deadline = time.monotonic() + 5
@@ -334,7 +405,9 @@ def drawer_said(shell: Shell, mark: int) -> re.Match[str] | None:
     return None
 
 
-def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+def test_each_drawer_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
     """Walk a place's rows by letter, down and up, and print each drawer's line.
 
     The place is a row of Machine's unless the run names another (LAB_DRAWN_IN, LAB_DRAWN), and
@@ -348,16 +421,7 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
     place = os.environ.get("LAB_DRAWN_IN", DRAWN_IN)
     within = os.environ.get("LAB_DRAWN", DRAWN) or place
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    opened(shell, "home")
-    shell.close_launcher()
-    stepped(shell, place)
-    if within != place:
-        shell.down_to(within)
-        shell.step_in()
-    shell.normal()
-    # Its own rows, each with a drawer, not the acts that follow them, as Copy, which have none.
-    things = cast("list[Json]", shell.showing()["things"])
-    drawn = [thing for thing in things if not str(thing["is"]).startswith("return:")]
+    drawn = walked_in(shell, place, within, request)
     walk = "j" * (len(drawn) - 1) + "k" * (len(drawn) - 1)
     timed: list[int] = []
     others = unsaid = 0
@@ -397,6 +461,12 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
             # Its time with where it went, as the shell split it, and how it came.
             spent = f"{found.group(2)} ms ({found.group(3)}), {found.group(4)}" if found else ""
             with capsys.disabled():
+                # What its making spent, as the shell split it: the drawer's own line, not
+                # the key's, which says "j" took as a slow key.
+                for line in said_after(shell, mark, '" took '):
+                    if "launcher: drawer for " not in line:
+                        continue
+                    print(f"lab-drawer-took {line.split('qml: ', 1)[-1]}", flush=True)
                 print(
                     f"lab-drawer {within} round {round_}: {name}, "
                     f"{spent or 'never said'}"

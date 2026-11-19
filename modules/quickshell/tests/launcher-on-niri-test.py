@@ -431,6 +431,60 @@ def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) ->
     shell.close_launcher()
 
 
+def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
+    shell: Shell,
+) -> None:
+    """Emoji's drawer lays its run short at rest, whole once Ctrl+W l goes in, short as left.
+
+    A place's members are laid at rest only as far as the drawer shows, since Emoji's 1,914
+    names laid whole cost about 200 ms a drawer (Drawer.qml's runWhole). The keys read every
+    line, so they lay it whole; leaving it scrolled deep keeps the view there, so the run is
+    laid that far again, with more below, rather than leaving the view past its end.
+    """
+    # Far fewer lines than Emoji's names take whole, and far more than a drawer shows.
+    whole_least = 100
+    # Lines down the run the keys leave it at: twice past the view's 35 at rest, far short of
+    # the end.
+    deep = 80
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("desktop", selecting="Desktop")
+    shell.step_in()
+    shell.down_to("Emoji")
+    shell.launcher_until(
+        lambda shown: shown["drawer"]["title"] == "Emoji" and shown["drawer"]["more"]
+    )
+    rest = shell.showing()["drawer"]["bodyLines"]
+    assert rest < whole_least, f"at rest, {rest} of Emoji's lines were laid, not its view's"
+    shell.normal()
+    # Ctrl+W then l in one batch, as he types it, so the chord never waits on its second key.
+    shell.as_account("wtype -M ctrl -k w -m ctrl -k l")
+    shell.launcher_until(
+        lambda shown: (shown["drawer"]["cursor"] or {}).get("lines", 0) > whole_least
+    )
+    # The cursor counts its lines from one, so it's told by where it began.
+    entered = shell.showing()["drawer"]
+    began, whole = entered["cursor"]["line"], entered["bodyLines"]
+    shell.send_chars("j" * deep)
+    shell.launcher_until(
+        lambda shown: (shown["drawer"]["cursor"] or {}).get("line") == began + deep
+    )
+    shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
+    shell.launcher_until(lambda shown: not shown["drawer"]["keys"])
+    drawer = shell.showing()["drawer"]
+    assert drawer["scrolled"] > 0, f"leaving {deep} lines down didn't keep the view: {drawer}"
+    # The view still shows the lines the cursor left, so they're laid; `more` alone can't
+    # tell, since it weighs the run against the view at rest.
+    assert drawer["bodyLines"] > deep, (
+        f"left {deep} lines down, only {drawer['bodyLines']} were laid: {drawer}"
+    )
+    # Nor at rest again is it laid whole, which every step past it would pay to take down.
+    assert drawer["bodyLines"] < whole, f"left, all {whole} lines stayed laid: {drawer}"
+    # The foot counts what's below where the view was left, so it still says there's more.
+    assert drawer["moreSays"], f"left {deep} lines down, the foot said no more: {drawer}"
+    shell.close_launcher()
+
+
 def openings_kept() -> list[Json]:
     """Give every opening the launcher's trials have kept, in no order."""
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
