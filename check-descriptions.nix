@@ -1030,8 +1030,9 @@
     no more once loaded; a fact is asked on the watch's tick, isn't asked again as it loads,
     keeping its ask's tick, and is given up on the eighth of the watch's ticks after it, about
     two seconds, not the seventh, alone beside facts just asked; one given up leaves nothing
-    reading and is held off as a card is, a minute, then twice as long, kept though it lands
-    late, and let go once asked again it lands in time; the watch keeps a fact that never lands
+    reading and is held off as a card is, a minute, then twice as long, isn't asked again while
+    its read hangs though its wait is over, kept though it lands late, and let go once asked
+    again it lands in time; the watch keeps a fact that never lands
     a second and a half, then gives it up; a name server changed makes the drawer again shut
     and tells the launcher open; a card asked alone, and the facts asked alone, are still
     reading; a card given up keeps the view still reading its file, isn't asked again while

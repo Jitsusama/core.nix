@@ -481,8 +481,12 @@ ShellRoot {
                 networks.cableLoading?.name !== "enp0s2"
                     && !networks.cablesAsked.includes("enp0s2"),
                 JSON.stringify([networks.cableLoading, networks.cablesAsked]));
-            waits.until("a card held up has its drawer made as the daemon says it",
-                within(4000, () => networks.glances.enp0s2 !== undefined), root.watched);
+            // The facts given up again in factsHeld are let go as their
+            // reads land, so watched can ask them.
+            waits.until("a card held up has its drawer made as the daemon says it, and the"
+                + " facts' reads given up landed", within(4000, () =>
+                networks.glances.enp0s2 !== undefined && networks.factsHung.length === 0),
+                root.watched);
         });
     }
 
@@ -519,8 +523,27 @@ ShellRoot {
             JSON.stringify(networks.factsAsked.map(view => String(view.path))));
         for (const held of root.factHolds())
             held.at -= 61000;
+        const hung = networks.factsHung.slice();
         networks.reloadFacts();
-        Expect.expect("a fact held up is asked again once its wait is over",
+        Expect.expect("a fact whose read given up still hangs isn't asked again, though its"
+            + " wait is over", hung.length === asked && networks.factsAsked.length === 0,
+            JSON.stringify(networks.factsAsked.map(view => String(view.path))));
+        // Their reads land as they would, late, a turn or more on.
+        for (const view of hung)
+            networks.factLanded(view);
+        Expect.expect("a fact's hung read landing lets it go and keeps its hold",
+            networks.factsHung.length === 0 && root.factHolds().length === asked,
+            JSON.stringify(networks.factsStuck));
+        for (const held of root.factHolds())
+            held.at += 61000;
+        networks.reloadFacts();
+        Expect.expect("a fact whose read has landed isn't asked again while it's held",
+            networks.factsAsked.length === 0,
+            JSON.stringify(networks.factsAsked.map(view => String(view.path))));
+        for (const held of root.factHolds())
+            held.at -= 61000;
+        networks.reloadFacts();
+        Expect.expect("a fact held up is asked again once its read and its wait are over",
             networks.factsAsked.length === asked,
             JSON.stringify(networks.factsAsked.map(view => String(view.path))));
         root.askedAt(8);
@@ -666,6 +689,7 @@ ShellRoot {
         networks.cablesAsked = [];
         networks.factsAsked = [];
         networks.factsStuck = Object.create(null);
+        networks.factsHung = [];
         networks.stillReading = false;
         networks.reloadFacts();
         Expect.expect("facts asked with no card's cable are still reading",

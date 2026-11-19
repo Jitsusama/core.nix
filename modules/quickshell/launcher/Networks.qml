@@ -158,13 +158,14 @@ Provider {
     // A fact already loading isn't asked again, so its load keeps the
     // tick it was asked on (factsSince, by the view itself, so a path
     // changed as it loads can't lose its tick), and one given up is passed
-    // over while it's held off.
+    // over while it's held off, and while its read still hangs (factsHung).
     property var factsAsked: []
     property var factsSince: new Map()
     property int factsTicks: 0
     function reloadFacts() {
         const fresh = [resolv, resolved, up].filter(view => String(view.path) !== ""
-            && !factsAsked.includes(view) && !holding(factsStuck[String(view.path)]));
+            && !factsAsked.includes(view) && !factsHung.includes(view)
+            && !holding(factsStuck[String(view.path)]));
         if (fresh.length === 0)
             return;
         const since = new Map(factsSince);
@@ -182,8 +183,13 @@ Provider {
     // that never lands, nor a thread taken on it each tick. Each is given
     // up on its own two seconds, so a fact asked just before another is
     // given up isn't given up with it; they're counted in ticks rather
-    // than on the wall clock, which a resume or a clock step jumps.
+    // than on the wall clock, which a resume or a clock step jumps. A read
+    // given up still holds a thread of Qt's pool until it lands, and asking
+    // its view again would take another, so a fact given up is kept in
+    // factsHung, and not asked again until that read lands, as a card isn't
+    // (cablesHung).
     property var factsStuck: Object.create(null)
+    property var factsHung: []
     Timer {
         id: factsWatch
 
@@ -209,14 +215,16 @@ Provider {
                 + ` loaded, and asked again in ${stuck[path].wait / 60000} min`);
         }
         factsStuck = stuck;
+        factsHung = factsHung.concat(late);
         factsAsked = factsAsked.filter(view => !late.includes(view));
         settled();
     }
-    // A fact landing after it's given up keeps its hold (holdAfter); one
-    // landing in time lets it go.
+    // A fact landing after it's given up lets its hung read go and keeps
+    // its hold (holdAfter); one landing in time lets the hold go too.
     function factLanded(view) {
         const late = !factsAsked.includes(view);
         factsAsked = factsAsked.filter(each => each !== view);
+        factsHung = factsHung.filter(each => each !== view);
         const path = String(view.path);
         if (!late && factsStuck[path] !== undefined) {
             const stuck = Object.assign(Object.create(null), factsStuck);
@@ -958,7 +966,7 @@ Provider {
         half: "sends and hears in turn, as when the two ends didn't agree on full"
     })
 
-    // A cable's link, as its card reads it now: the Speed and Duplex it
+    // A cable's link, as its card's files last loaded: the Speed and Duplex it
     // agreed with the other end, each left out where the driver can't say,
     // as while nothing's at the other end; how often its Link was Lost;
     // and its Errors, each way, every kind a step in.
@@ -1008,7 +1016,7 @@ Provider {
         "dropped-out": "set aside before sending, not broken"
     })
 
-    // A cable's errors a step in, as its card reads them now: what came in
+    // A cable's errors a step in, as its card's files last loaded: what came in
     // broken, then each kind it had, what couldn't go out, then each kind
     // of that, and what was set aside each way, which isn't an error.
     function errorParts(name) {
