@@ -472,6 +472,23 @@ QtObject {
             Wanted.opensKept(false), true);
         check(failures, "one under a share opens whole", Wanted.opensKept(true), false);
         check(failures, "as does one that never said", Wanted.opensKept(undefined), false);
+        // A chord into a kept place draws its kept rows only while nothing may
+        // see the screen, as they predate any share and a shut launcher never
+        // makes them again: Super+V's would show a copy, Super+O's a waiting
+        // ask. A place listed as it stands as it opens draws either way.
+        const clipboard = { afresh: false, shared: false };
+        check(failures, "Super+V with nothing sharing draws the copies kept",
+            Wanted.drawsKept(clipboard), true);
+        check(failures, "Super+V under a share opens the copies whole",
+            Wanted.drawsKept(Object.assign({}, clipboard, { shared: true })), false);
+        check(failures, "Super+O under a share opens what's on, and its asks, whole",
+            Wanted.drawsKept({ afresh: false, shared: true }), false);
+        check(failures, "as does a place that never said whether it's shared",
+            Wanted.drawsKept({ afresh: false }), false);
+        check(failures, "a place listed as it stands draws under a share",
+            Wanted.drawsKept({ afresh: true, shared: true }), true);
+        check(failures, "and before niri has said its casts",
+            Wanted.drawsKept({ afresh: true }), true);
         // Found after it, home is searched again by a slice, a key or a
         // click, but a chord only joins, and a step or a word finds its own.
         const stands = { home: true, held: 0, typed: "" };
