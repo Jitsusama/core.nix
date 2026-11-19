@@ -1438,7 +1438,7 @@ pub fn unbilled(
             budget
         }
     };
-    let mut fed = HashSet::new();
+    let mut ever_billed = HashSet::new();
     let mut billed: HashMap<String, f64> = HashMap::new();
     let mut statement = history
         .db
@@ -1460,7 +1460,7 @@ pub fn unbilled(
         let (feed, budget, dollars) = row.map_err(fail)?;
         let budget = billed_budget(&feed, budget);
         *billed.entry(budget.clone()).or_default() += dollars;
-        fed.insert(budget);
+        ever_billed.insert(budget);
     }
     let mut logged: HashMap<String, f64> = HashMap::new();
     let mut statement = history
@@ -1491,44 +1491,49 @@ pub fn unbilled(
         .clock(crate::time::hour_start(last + 1), picture.now);
     let mut out: Vec<Finding> = logged
         .into_iter()
-        .filter(|(budget, _)| fed.contains(budget) && !budgets.is_plan(budget))
+        .filter(|(budget, _)| ever_billed.contains(budget) && !budgets.is_plan(budget))
         .filter_map(|(budget, logged)| {
             let paid = billed.get(&budget).copied().unwrap_or_default();
             (logged >= config.detectors.floor && paid < logged * BILLED_AT_LEAST)
-                .then_some((budget, logged, paid))
-        })
-        .map(|(budget, logged, paid)| {
-            let named = budgets
-                .declared(&budget)
-                .map_or(budget.as_str(), |declared| declared.label.as_str());
-            let named = if named.is_empty() {
-                budget.as_str()
-            } else {
-                named
-            };
-            let mut f = finding(
-                format!("unbilled:{budget}"),
-                "unbilled",
-                Severity::Warning,
-                format!("{named} billed {} of {} logged", whole(paid), whole(logged)),
-                format!(
-                    "In the {UNBILLED_HOURS} hours to {through}, pi's logs priced {named}'s \
-                     sessions at {} and its key was billed {}. The rest went on another key, \
-                     so {named}'s allowance never saw it: check which key its sessions' \
-                     requests carry.",
-                    dollars(logged),
-                    dollars(paid),
-                ),
-            );
-            f.badge = format!("{} billed", percent(paid / logged));
-            f.note = format!("logged {}", whole(logged));
-            f.dollars = logged - paid;
-            f.surprise = 2.0;
-            f
+                .then(|| unbilled_finding(budgets, &budget, logged, paid, &through))
         })
         .collect();
     out.sort_by(|one, other| other.dollars.total_cmp(&one.dollars));
     Ok(out)
+}
+
+/// What's told of `budget`, whose sessions logged `logged` dollars and
+/// whose key was billed `paid` in the window ending at `through`.
+fn unbilled_finding(
+    budgets: &crate::budgets::Budgets,
+    budget: &str,
+    logged: f64,
+    paid: f64,
+    through: &str,
+) -> Finding {
+    let named = budgets
+        .declared(budget)
+        .map_or(budget, |declared| declared.label.as_str());
+    let named = if named.is_empty() { budget } else { named };
+    let mut f = finding(
+        format!("unbilled:{budget}"),
+        "unbilled",
+        Severity::Warning,
+        format!("{named} billed {} of {} logged", whole(paid), whole(logged)),
+        format!(
+            "In the {UNBILLED_HOURS} hours to {through}, pi's logs priced {named}'s \
+             sessions at {} and its key was billed {}. The rest went on another key, \
+             so {named}'s allowance never saw it: check which key its sessions' \
+             requests carry.",
+            dollars(logged),
+            dollars(paid),
+        ),
+    );
+    f.badge = format!("{} billed", percent(paid / logged));
+    f.note = format!("logged {}", whole(logged));
+    f.dollars = logged - paid;
+    f.surprise = 2.0;
+    f
 }
 
 #[cfg(test)]
