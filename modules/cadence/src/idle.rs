@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::ANSWERS_GO;
 use crate::mesh::Presence;
 
 mod tell;
@@ -48,13 +49,6 @@ pub const WORKS_AT_MOST: i64 = 3600;
 
 /// How much of a next step a wake quotes back to its session.
 const QUOTED: usize = 160;
-
-/// What a wake says of answering it. Cadence reads the session's turn or
-/// park, never a reply, and no peer goes by CADENCE, so sessions asked to
-/// answer with re sent their answers to whoever woke them last, which on
-/// 19 November was the cell that owns cadence.
-const NO_ANSWER: &str = "No answer is needed: cadence sees the turn or the park, and an \
-                         answer to CADENCE reaches no peer.";
 
 /// A session, as far as waking it or telling of its idleness needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -386,8 +380,8 @@ fn wakes(
                 "{address}: this session has sat idle {h} h {m:02} min on {quest}, naming no \
                  next step: {how}. Take up its next piece now, and focus a plan whose next \
                  item says it, so it can be woken to it. If it waits on someone, park saying \
-                 on whom or on what; if nothing is left, park saying so. {NO_ANSWER} {by} \
-                 hears of it at two hours idle.",
+                 on whom or on what; if nothing is left, park saying so. Answer this with \
+                 re, saying which. {ANSWERS_GO} {by} hears of it at two hours idle.",
                 address = s.address,
                 quest = quoted(s.quest.as_deref().unwrap_or("its quest")),
             )
@@ -396,7 +390,8 @@ fn wakes(
                 "{address}: this session has sat idle {h} h {m:02} min with a next step of \
                  its own, \"{next}\": {how}. Take it up now. If it waits on someone or on its \
                  work, park saying on what; if it is another's, hand it to them by name. \
-                 {NO_ANSWER} {by} hears of it at two hours idle.",
+                 Answer this with re, saying which. {ANSWERS_GO} {by} hears of it at two \
+                 hours idle.",
                 address = s.address,
                 next = quoted(next),
             )
