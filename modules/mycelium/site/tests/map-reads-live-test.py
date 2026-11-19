@@ -50,8 +50,6 @@ COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells.
 BUDGET = Budget(files=17, kilobytes=700, elements=590)
-# The browser's own line for a feed that couldn't connect, once the server is gone.
-UNREACHED = "WebSocket connection to"
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -589,8 +587,9 @@ def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
-    # The feed tries the server again a second on, which the browser logs.
-    mycelium_opened.expecting(UNREACHED)
+    # The feed tries the server again a second on, and a read in flight is cut
+    # off, which the browser logs.
+    mycelium_opened.losing_the_server()
     _, server = mycelium_served
     server.kill()
     the_map_stands(page, "stale")

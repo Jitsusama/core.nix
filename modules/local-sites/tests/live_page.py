@@ -51,6 +51,10 @@ CRASHED = "Page crashed"
 SIZES = [(390, 844), (1440, 900)]
 LOOKS = ["dark", "light"]
 KILOBYTE = 1024
+# The browser's own lines once the sites' server is gone: the feed's next try to
+# connect, and any read of a file the server was answering or refuses after,
+# which a page with a fetch in flight at the kill logs as a reset.
+SERVER_GONE = ["WebSocket connection to", "Failed to load resource: net::ERR_"]
 # What the server answers a file the browser already holds unchanged.
 NOT_MODIFIED = 304
 OK = 200
@@ -213,6 +217,11 @@ class Opened:
         logged before, nor anything the page threw.
         """
         self.expected.append((words, len(self.logged)))
+
+    def losing_the_server(self) -> None:
+        """Let the browser log what it says of a sites' server taken away, from now on."""
+        for words in SERVER_GONE:
+            self.expecting(words)
 
     def _expected(self, at: int, line: str) -> bool:
         if line.startswith("thrown: "):

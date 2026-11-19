@@ -61,10 +61,6 @@ OLD = "/home/ada/trees/old"
 DRAWS_A_SECOND = 2
 # The server watches a gone daemon again every 2 seconds, so its return shows inside this.
 BACK_MS = 15000
-# The browser's own lines for a feed that couldn't connect and a fetch that
-# failed, once the server is gone: cut off in flight, or refused when the page's
-# second read of its homes starts after.
-UNREACHED = ["WebSocket connection to", "Failed to load resource: net::ERR_"]
 # The kinds the repos daemon serves, each told whole, as home.nix declares them.
 KINDS = ["reading", "repository", "checkout", "tree", "change"]
 # What a first visit to Code may cost, drawn from the stand-in's repositories.
@@ -414,8 +410,7 @@ def test_a_sites_server_that_goes_is_said_stale(code_opened: Opened, code_served
     says_it_stands(code_page, "live")
     # Once the server's gone, the browser logs the feed's next try, and any of
     # the page's reads of its homes not yet answered, as lines of its own.
-    for words in UNREACHED:
-        code_opened.expecting(words)
+    code_opened.losing_the_server()
     _, server = code_served
     server.kill()
     says_it_stands(code_page, "stale")
