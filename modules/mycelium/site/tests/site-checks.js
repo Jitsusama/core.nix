@@ -48,8 +48,8 @@
   const CRUSH_SHARE = 0.5;
   // About as many things as a person tracks at a glance, as view.js's.
   const NAMES_ON_SCREEN = 7;
-  // The least a cell is drawn across before its network folds.
-  const CELL_PX = 8;
+  // The least a cell is drawn across before its network folds, twice view.js's FOLD_PX.
+  const CELL_PX = 5;
   const SLACK_PX = 0.25;
   // A cell's mark is its hit circle, R + 4 round its membrane's R, as
   // view.js draws them; the membrane is what he sees.

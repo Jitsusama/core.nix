@@ -73,7 +73,10 @@ Nothing on it acts on the network.
 - **Talk stays drawn for ten minutes.** The arc between two that
   messaged stays solid in the voice ink, thickening in three steps the
   more they said, so who has been talking to whom reads without
-  anything moving.
+  anything moving. Talk between two networks is one arc between their
+  hubs, as thick as their warmest pair, until it or a cell it touches
+  is open, so the cells read before the talk. Opening a network or a
+  machine only brightens the talk it touches.
 - **Live networks lead.** A network none of whose cells is at work has
   its hub, cord and ground drawn in the lighter ink.
 - **A dashed magenta ring is a question waiting.** A cell asked a
@@ -84,12 +87,12 @@ Nothing on it acts on the network.
   the whole map. The node keeps no link from an answer to its question,
   so any word since counts as one. The panel lists them under Questions
   Waiting, oldest first, with who asked.
-- **Big networks fold.** Past 400 cells, a network whose cells would be
-  drawn too small to read, or that sits off the map, draws as its ground
-  and hub alone, its ground a shade fuller; its cells unfold as you zoom
-  close or open it. What is open, chosen, pointed at or found never
-  folds. Under 400 cells nothing folds. Once networks fold, only the 40
-  busiest are named, and each machine's plate says how many it carries.
+- **Small networks fold.** A network whose cells would be drawn under
+  5 px across, or past 400 cells one that sits off the map, draws as its
+  ground and hub alone, its ground a shade fuller; its cells unfold as
+  you zoom close or open it. What is open, chosen, pointed at or found
+  never folds. Once networks fold, only the 40 busiest are named, and
+  each machine's plate says how many it carries.
 - **Each machine carries one arc.** Its networks sit together on its
   side of the ring, so opening a machine shows its arc. Past 24 networks
   a machine's cords bundle: one trunk each way, forking into a twig for

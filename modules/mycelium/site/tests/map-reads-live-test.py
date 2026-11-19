@@ -9,6 +9,8 @@ stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
 list what each cell, machine, network and branch spent today, most first,
 say what waits on a cell and what holds stand, as the node judges them,
+draw every cell until one is too small to read, gather the talk between two
+networks into one line until it or a cell it touches opens,
 draw a receptor's feeding of a cell while the node says it and not after,
 grow one network out of another while a forage says a cell of the one
 started a cell of the other,
@@ -120,6 +122,19 @@ GROWN_FROM_TITLE = "Rig the Skiff for the Season"
 GROWN_CELL = "HERON1"
 GROWN_BY = "SKIFF1"
 GROWN_BY_TITLE = "Rig The Skiff"
+# A cell's membrane in the map's units (view.js's R), the radius on screen it
+# draws from (view.js's FOLD_PX), and the radius one step out from node.json's
+# whole map stays under at a desk's width, 8 px across, where a hundred cells
+# on a laptop's whole map once all folded.
+CELL_R = 11
+FOLD_PX = 2.5
+STEPPED_PX = 4
+# Two cells of Chart the Harbour who just told TERN03, of Mend the Sails,
+# something, so their talk runs between two networks: HERON1 three times, as
+# warm as view.js's second step (WARM_AT), and HERON2 once.
+TALKERS = {"HERON1": 3, "HERON2": 1}
+HEARD = "TERN03"
+TALKED_WITH = "orchestration.heron1"
 
 
 @pytest.fixture
@@ -313,6 +328,25 @@ def foraging() -> dict[str, list[dict[str, object]]]:
     return {**reading, "forage": []}
 
 
+def told(sender: str, nth: int) -> dict[str, object]:
+    """Make `sender`'s `nth` finding for HEARD, a minute old, as node.json holds a message."""
+    said = datetime.now(UTC) - MINUTE
+    return {
+        "key": f"message:{sender}:{nth}",
+        "at": said.isoformat().replace("+00:00", "Z"),
+        "from": sender,
+        "intent": "finding",
+        "groups": [f"peer.{HEARD.lower()}"],
+    }
+
+
+def talking() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with each of TALKERS having just told HEARD something."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    said = [told(sender, nth) for sender, times in TALKERS.items() for nth in range(times)]
+    return {**reading, "message": said}
+
+
 def serve(folder: Path, node: StandIn) -> Iterator[Served]:
     """Serve the map through the real server beside `node`, its feed as home.nix declares."""
     feed = {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
@@ -380,6 +414,13 @@ def forage_node(tmp_path: Path) -> Iterator[StandIn]:
 @pytest.fixture
 def forage_served(tmp_path: Path, forage_node: StandIn) -> Iterator[Served]:
     yield from serve(tmp_path, forage_node)
+
+
+@pytest.fixture
+def talking_served(tmp_path: Path) -> Iterator[Served]:
+    stand_in = StandIn(tmp_path / "talking.sock", "node", talking()).start()
+    yield from serve(tmp_path, stand_in)
+    stand_in.leave()
 
 
 def reach(browser: Browser, root: str, timeout: int = PACE_MS) -> dict[str, Any]:
@@ -1000,6 +1041,79 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         expect(body, f"{WAITED}'s health left out the question waiting on it").to_contain_text(
             re.compile("|".join(map(re.escape, owed)))
         )
+    finally:
+        opened.close()
+
+
+PAINTED = "document.getElementById('map-ground').painted()"
+
+
+def test_every_cell_is_drawn_until_too_small_to_read(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    page.keyboard.press("o")
+    *_, k = settled(page, "o didn't step out from the whole map")
+    assert FOLD_PX <= k * CELL_R < STEPPED_PX, (
+        f"one step out drew a cell {k * CELL_R:.2f} px round, not the case this reads"
+    )
+    cells = page.locator("#world circle.cell")
+    expect(cells, "a step out folded cells big enough to read").to_have_count(CELLS)
+    assert page.evaluate(f"{PAINTED}.folded") == 0, "a step out folded a network"
+    # Far enough out, a cell is too small to read as one and its network
+    # folds, all but the one the walk points at.
+    while k * CELL_R >= FOLD_PX:
+        page.keyboard.press("o")
+        *_, further = settled(page, "o didn't step further out")
+        assert further < k, f"the map stopped stepping out at a cell {k * CELL_R:.2f} px round"
+        k = further
+    page.wait_for_function(f"{PAINTED}.folded > 0", timeout=PACE_MS)
+    assert cells.count() < CELLS, "every cell was drawn too small to read"
+
+
+def test_talk_between_two_networks_is_one_line_until_it_or_a_cell_it_touches_opens(
+    browser: Browser, talking_served: Served
+) -> None:
+    root, _ = talking_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        page.wait_for_function(f"{PAINTED}.said === {len(TALKERS)}", timeout=PACE_MS)
+        cells = page.locator("#world circle.cell")
+        expect(cells, "the realm's cells folded").to_have_count(CELLS)
+        painted = page.evaluate(PAINTED)
+        assert painted["folded"] == 0, "a network folded, so one line proves no gathering"
+        assert painted["talks"] == ["m-talk warm2 faint"], (
+            f"the talk between two networks was drawn as {painted['talks']}, not one faint"
+            " line as warm as its warmest pair"
+        )
+        ends = painted["talkEnds"]
+        assert all(end.startswith("h:") for end in ends), f"gathered talk ran to {ends}, not hubs"
+        # A network open brightens the line it touches, and keeps it one.
+        page.evaluate(f"location.hash = '#net={TALKED_WITH}'")
+        page.wait_for_function(
+            f"!{PAINTED}.talks.some((t) => t.includes('faint'))", timeout=PACE_MS
+        )
+        drawn = page.evaluate(f"{PAINTED}.talks")
+        assert drawn == ["m-talk warm2"], f"a network open drew its talk as {drawn}"
+        # The line open spreads into the pairs it stands for, its own lit.
+        pair = "encodeURIComponent('c:HERON2|c:TERN03')"
+        page.evaluate(f"location.hash = '#talk=' + {pair}")
+        page.wait_for_function(f"{PAINTED}.talk === {len(TALKERS)}", timeout=PACE_MS)
+        drawn = sorted(page.evaluate(f"{PAINTED}.talks"))
+        assert drawn == ["m-talk warm1 lit", "m-talk warm2"], f"a talk open drew {drawn}"
+        ends = page.evaluate(f"{PAINTED}.talkEnds")
+        assert all(end.startswith("c:") for end in ends), f"a talk open drew lines to {ends}"
+        page.evaluate(f"location.hash = '#cell={HEARD}'")
+        page.wait_for_function(
+            f"{PAINTED}.talks.filter((t) => !t.includes('faint')).length === {len(TALKERS)}",
+            timeout=PACE_MS,
+        )
+        found = page.evaluate((HERE / "site-checks.js").read_text())
+        assert found == [], f"site-checks.js on a realm with talk found {found}"
     finally:
         opened.close()
 
