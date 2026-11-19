@@ -71,6 +71,22 @@ let
   # there. At logout, reboot or poweroff the manager's 5 s comes first.
   stopSeconds = 150;
 
+  # What would run code as the host as its node starts, so a host's unit
+  # clears each and a realm giving one is refused: NODE_OPTIONS, whose
+  # --require or --import runs a script and whose --inspect opens the
+  # inspector; the loader's LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH, which
+  # load a library; and OpenSSL's OPENSSL_CONF and OPENSSL_MODULES, whose
+  # configuration loads a module. mycelium takes no host's word whose
+  # environment gives any of them but blank.
+  loadsCode = [
+    "NODE_OPTIONS"
+    "LD_PRELOAD"
+    "LD_AUDIT"
+    "LD_LIBRARY_PATH"
+    "OPENSSL_CONF"
+    "OPENSSL_MODULES"
+  ];
+
   kinds = {
     attended = "the pi conversations Joel watches";
     background = "the pi conversations that run in the background";
@@ -133,9 +149,9 @@ let
             # takes the host's word for which conversation each pi-spawner
             # serves only where this is the first option on the host's
             # command line, no option there opens the inspector, and the
-            # host's environment gives no NODE_OPTIONS, LD_PRELOAD,
-            # LD_AUDIT or LD_LIBRARY_PATH, which the unit clears below. It
-            # refuses the word of a host started otherwise, and logs why.
+            # host's environment gives none of loadsCode, which the unit
+            # clears below. It refuses the word of a host started
+            # otherwise, and logs why.
             "--disable-sigusr1"
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
@@ -200,22 +216,13 @@ let
         # that boundary. Joel's own signing still finds his agent without
         # the variable.
         #
-        # NODE_OPTIONS goes too, as systemd's last step, after every
+        # loadsCode goes too, as systemd's last step, after every
         # Environment= and EnvironmentFile= a machine adds, so neither those
-        # nor the user manager's environment hand node an option: --inspect
-        # would open the inspector the flag above shuts, and --require or
-        # --import would run code as the host before pi does. So do the
-        # loader's LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH, which would
-        # load a library's code into node as it starts. A hosted
+        # nor the user manager's environment run code as the host before pi
+        # does, or open the inspector the flag above shuts. A hosted
         # conversation's commands, which inherit the host's environment,
         # start without them too.
-        UnsetEnvironment = [
-          "SSH_TPM_AUTH_SOCK"
-          "NODE_OPTIONS"
-          "LD_PRELOAD"
-          "LD_AUDIT"
-          "LD_LIBRARY_PATH"
-        ];
+        UnsetEnvironment = [ "SSH_TPM_AUTH_SOCK" ] ++ loadsCode;
         # The host parks its conversations and keeps their records when told
         # to stop, so only its own failure restarts it; a crash's next start
         # takes back what it held.
@@ -396,12 +403,18 @@ in
         message = toString refused;
       }
     ) cfg
-    # The unit clears NODE_OPTIONS, so a realm's own would be dropped
-    # unseen; it is refused instead, saying why.
-    ++ lib.mapAttrsToList (realm: host: {
-      assertion = !(host.environment ? NODE_OPTIONS);
-      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; drop it. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get no NODE_OPTIONS from it.";
-    }) cfg;
+    # The unit clears loadsCode, so a realm's own would be dropped unseen;
+    # it is refused instead, saying why.
+    ++ lib.mapAttrsToList (
+      realm: host:
+      let
+        given = lib.filter (name: host.environment ? ${name}) loadsCode;
+      in
+      {
+        assertion = given == [ ];
+        message = "jitsusama.pi.hosts.${realm}.environment gives ${lib.concatStringsSep ", " given}, which a pi host's unit clears, since each would run code as the host as its node starts: --require or --import in NODE_OPTIONS, or its --inspect opening the host's inspector; a library LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH loads; or a module OPENSSL_CONF or OPENSSL_MODULES has OpenSSL load. Drop it. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get none of these from it.";
+      }
+    ) cfg;
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (

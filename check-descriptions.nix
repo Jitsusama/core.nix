@@ -2817,8 +2817,9 @@
     realm and how to prove it
   '';
   pi-hosts-refuse-node-options = ''
-    a realm that gives its pi hosts NODE_OPTIONS, which their unit clears so it can't open the
-    host's inspector or run code as the host, fails evaluation naming the realm, rather than
+    a realm that gives its pi hosts NODE_OPTIONS, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH,
+    OPENSSL_CONF or OPENSSL_MODULES, which their unit clears so none opens the host's inspector
+    or runs code as the host, fails evaluation naming the realm and each variable, rather than
     having them dropped unseen
   '';
   pi-rings-low = ''
