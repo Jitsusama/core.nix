@@ -141,8 +141,21 @@ let
   switchesTheHome = area == "outlives-a-switch";
   # The area that shuts the lid on battery to show Keep Awake holds it, so
   # its lid suspends there, as the lid module has it, and its sleep stands
-  # in, leaving a file for the test to find and returning at once.
+  # in, adding a line to a file for the test to count.
   sleepsAtTheLid = area == "minds-the-margin";
+  # The stand-in sleep lasts until the lid opens, as a laptop's does. One
+  # that returned at once had logind, with no holdoff, sleep again for as
+  # long as the lid stayed shut, and swayidle, which runs its before-sleep
+  # lock once for each and one at a time, locked the screen again after the
+  # test had unlocked it, failing every subtest after it (2026-11-19).
+  lidOpen = pkgs.lib.concatStringsSep " " [
+    "${pkgs.systemd}/bin/busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
+    "org.freedesktop.login1.Manager LidClosed | ${pkgs.gnugrep}/bin/grep -qx 'b false'"
+  ];
+  standInSleep = pkgs.writeShellScript "stand-in-sleep" ''
+    echo slept >> /run/suspended
+    until ${lidOpen}; do ${pkgs.coreutils}/bin/sleep 0.1; done
+  '';
   # The area whose lock's password check stalls once the test leaves a
   # file for it, as Quickshell's check can hang (modules/quickshell/Lock.qml),
   # so the lock is seen to kill it and try again. The file goes as it's
@@ -616,7 +629,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           { HandleLidSwitch = "ignore"; };
       systemd.services.systemd-suspend.serviceConfig.ExecStart = lib.mkIf sleepsAtTheLid [
         ""
-        "${pkgs.coreutils}/bin/touch /run/suspended"
+        "${standInSleep}"
       ];
       # keeps-copies fences a command with landrun, which needs a newer
       # Landlock than the stock kernel's, as Joel's machines' kernel has. Only there, so no other area moves with it.

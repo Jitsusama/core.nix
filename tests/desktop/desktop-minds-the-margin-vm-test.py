@@ -48,7 +48,7 @@ JOELS_SCALES = ("1.5", "2")
 # Whether Keep Awake holds something, and whether it holds the lid.
 HELD = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
 LID_HELD = f"{HELD} | grep -q handle-lid-switch"
-# The stand-in sleep leaves this file (tests/desktop.nix).
+# The stand-in sleep adds a line to this file each time (tests/desktop.nix).
 ASLEEP = "test -e /run/suspended"
 # logind sees the lid open and no sleep is coming, queued or running. The sleep unit's state
 # is read, since is-active calls a oneshot still running "activating".
@@ -147,15 +147,25 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
         desktop.lid(shut=True)
         machine.wait_until_succeeds(ASLEEP, timeout=timedelta(minutes=1))
+        # A sleep lasts until the lid opens, so a lid shut long enough for logind to start a
+        # second sleeps once: each repeated sleep locked the screen again after its release.
+        machine.sleep(LOOKING)
+        desktop.lid(shut=False)
+        machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
+        slept = int(machine.succeed("wc -l < /run/suspended"))
+        assert slept == 1, f"one shut lid slept {slept} times"
     finally:
         desktop.lid(shut=False)
-        # The stand-in sleep ends at once and logind may queue another, so it settles first.
+        # The stand-in sleep ends once logind sees the lid open, so it settles first.
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
         machine.succeed("rm -f /run/suspended")
         desktop.power("on")
         # The sleep locked the screen first, as it does before every one.
         desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
         machine.wait_until_fails(locked, timeout=timedelta(seconds=10))
+        # Unlocked, it stays so; relocked, every subtest after failed on it (2026-11-19).
+        machine.sleep(LOOKING)
+        machine.fail(locked)
 
 
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(
