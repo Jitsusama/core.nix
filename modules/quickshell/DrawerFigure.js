@@ -11,13 +11,18 @@ const DOTTED = " \u00b7 ";
 // than `wide` by `width(text)`: as many items to a line as fit, a dot
 // apart, and where the run breaks between two the dot goes with the break,
 // so no line ends or starts on one (VKCF3Z, 2026-11-09). An item wider than
-// a line of its own stands on its own, for its words to wrap.
-function runLines(words, wide, width) {
+// a line of its own stands on its own, for its words to wrap. Given a
+// `most`, it stops at that many lines, each as full as it would be, and
+// measures nothing past them, so a place naming 1,914 emoji lays only what
+// its drawer can show.
+function runLines(words, wide, width, most = 0) {
     const lines = [];
     for (const item of String(words).split(DOTTED)) {
         const last = lines.length - 1;
         if (last >= 0 && width(`${lines[last]}${DOTTED}${item}`) <= wide) {
             lines[last] = `${lines[last]}${DOTTED}${item}`;
+        } else if (most > 0 && lines.length >= most) {
+            break;
         } else {
             lines.push(item);
         }

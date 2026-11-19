@@ -1557,6 +1557,21 @@ QtObject {
         ];
         for (const [what, words, wide, want] of runs)
             holds(`a drawer's run: ${what}`, Figure.runLines(words, wide, width), want);
+        // Laid only as far as the drawer can show, a line past it saying there's more, so a
+        // place of 1,914 emoji measures and lays a view's worth rather than every name.
+        const most = [
+            ["lines up to the most", "aa \u00b7 bb \u00b7 cc \u00b7 dd", 70, 2,
+                ["aa \u00b7 bb", "cc \u00b7 dd"]],
+            ["none past it", "aa \u00b7 bb \u00b7 cc \u00b7 dd \u00b7 ee", 70, 2,
+                ["aa \u00b7 bb", "cc \u00b7 dd"]],
+            ["its last line as full as it would be", "aa \u00b7 bb \u00b7 cc", 30, 2,
+                ["aa", "bb"]],
+            ["fewer lines than the most are all of them", "aa \u00b7 bb", 70, 4,
+                ["aa \u00b7 bb"]]
+        ];
+        for (const [what, words, wide, lines, want] of most)
+            holds(`a drawer's run, to its most: ${what}`,
+                Figure.runLines(words, wide, width, lines), want);
         // A drawer's prose as five lines at most, the rest in its fold (VKCF3Z's
         // wrap rule 4, 76ba12d0): laid as Qt wraps words, at spaces, and where
         // it runs past, cut after the last word the fifth line holds with room

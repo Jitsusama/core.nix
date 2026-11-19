@@ -322,6 +322,34 @@ DRAWER_PRESENTED = re.compile(
 )
 
 
+def walked_in(shell: Shell, place: str, within: str) -> list[Json]:
+    """Open the launcher on the place the drawers are walked in, and say its rows that have one.
+
+    Windows open first, none unless the run says (LAB_WINDOWS), each titled at the length
+    LAB_TITLED gives it, so Desktop's Windows names as many, as long, as Joel's Runs do.
+    """
+    titled = os.environ.get("LAB_TITLED", "")
+    for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):
+        shell.opened(f"Lab {nth} {titled}".strip(), app="foot")
+    opened(shell, "home")
+    shell.close_launcher()
+    stepped(shell, place)
+    if within != place:
+        shell.down_to(within)
+        shell.step_in()
+    shell.normal()
+    # Its own rows, each with a drawer, not the acts that follow them, as Copy, which have none.
+    things = cast("list[Json]", shell.showing()["things"])
+    drawn = [thing for thing in things if not str(thing["is"]).startswith("return:")]
+    # This Window, which leads Desktop while a window is open, has no drawer, so the walk
+    # starts on the row below it.
+    if drawn and str(drawn[0]["is"]).startswith("windows:this"):
+        shell.send_chars("j")
+        shell.launcher_until(lambda shown: bool((shown["drawer"] or {}).get("shown")))
+        return drawn[1:]
+    return drawn
+
+
 def drawer_said(shell: Shell, mark: int) -> re.Match[str] | None:
     """Give the first drawer said presented since the mark, waiting a while for niri's frame."""
     deadline = time.monotonic() + 5
@@ -348,16 +376,7 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
     place = os.environ.get("LAB_DRAWN_IN", DRAWN_IN)
     within = os.environ.get("LAB_DRAWN", DRAWN) or place
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    opened(shell, "home")
-    shell.close_launcher()
-    stepped(shell, place)
-    if within != place:
-        shell.down_to(within)
-        shell.step_in()
-    shell.normal()
-    # Its own rows, each with a drawer, not the acts that follow them, as Copy, which have none.
-    things = cast("list[Json]", shell.showing()["things"])
-    drawn = [thing for thing in things if not str(thing["is"]).startswith("return:")]
+    drawn = walked_in(shell, place, within)
     walk = "j" * (len(drawn) - 1) + "k" * (len(drawn) - 1)
     timed: list[int] = []
     others = unsaid = 0
@@ -397,6 +416,9 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
             # Its time with where it went, as the shell split it, and how it came.
             spent = f"{found.group(2)} ms ({found.group(3)}), {found.group(4)}" if found else ""
             with capsys.disabled():
+                # What its making spent, as the shell split it.
+                for line in said_after(shell, mark, '" took '):
+                    print(f"lab-drawer-took {line.split('qml: ', 1)[-1]}", flush=True)
                 print(
                     f"lab-drawer {within} round {round_}: {name}, "
                     f"{spent or 'never said'}"
