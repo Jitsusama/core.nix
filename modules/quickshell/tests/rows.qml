@@ -417,6 +417,10 @@ ShellRoot {
                 leadColumn: Theme.level.name.pitch + Theme.space.rung.mark
             }
             Choice { id: houseRow; width: root.panel; name: "Home"; glyph: root.house }
+            // A heading named by a session's own title, which looks like
+            // markup, and one of the letter alone, to hold it drawn as typed.
+            Choice { id: markupHeading; width: root.panel; name: "<b>x</b>"; heading: true }
+            Choice { id: letterHeading; width: root.panel; name: "x"; heading: true }
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -1002,6 +1006,17 @@ ShellRoot {
         expect("a place's mark heads its rows at their size", head !== null && row !== null
             && Math.abs(head.font.pointSize - row.font.pointSize) <= 0.01,
             `the head's at ${head?.font.pointSize}, the row's at ${row?.font.pointSize}`);
+    }
+
+    // A heading draws its name as typed, never as markup: For You's name a
+    // session by its own title (What Needs Me, 2026-11-18).
+    function headingPlain() {
+        const markup = textItem(markupHeading, "<b>x</b>");
+        const letter = textItem(letterHeading, "x");
+        expect("a heading's name in markup draws its tags", markup !== null && letter !== null
+            && markup.textFormat === Text.PlainText
+            && markup.implicitWidth > 3 * letter.implicitWidth,
+            `${markup?.implicitWidth} against ${letter?.implicitWidth}`);
     }
 
     // The words a row's side draws: the Text holding them, however it's
@@ -1677,6 +1692,7 @@ ShellRoot {
             root.noteHolds();
             root.sideItemsHold();
             root.headMarkHolds();
+            root.headingPlain();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
