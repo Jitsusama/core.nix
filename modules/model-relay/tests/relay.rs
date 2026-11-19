@@ -1178,7 +1178,7 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--idle-exit", "1", "--stand-down-for", "3"],
+        &["--idle-exit", "1", "--stand-down-for", "10"],
     );
 
     let answer = asked_too_much(&relay.socket, &host).await;
@@ -1195,6 +1195,19 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         "another origin's body too large was answered {:?}",
         String::from_utf8_lossy(&answer)
     );
+    // A body pi leaves is its cancel, though, not a 421 nobody hears.
+    let stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let (mut reading, mut writing) = stream.into_split();
+    writing
+        .write_all(b"POST /echo HTTP/1.1\r\nhost: example.com\r\ncontent-length: 10\r\n\r\nhi")
+        .await
+        .expect("half a body written");
+    writing.shutdown().await.expect("pi leaves");
+    let mut left = Vec::new();
+    // Whatever the relay says to a pi that left, if it says anything.
+    let _ = tokio::time::timeout(LISTENS_WITHIN, reading.read_to_end(&mut left)).await;
     // And standing down, the 421 too, as the origin asked directly may
     // take what the relay won't.
     fail_past_its_share(&relay.socket, &host).await;
@@ -1206,7 +1219,7 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
     );
 
     assert!(
-        relay.left_within(LISTENS_WITHIN).is_some(),
+        relay.left_within(LISTENS_WITHIN * 2).is_some(),
         "the relay didn't leave once idle"
     );
     let said = relay.said();
@@ -1217,9 +1230,10 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         "a body too large went unsaid, or another origin's was said as one: {said}"
     );
     assert!(
-        said.contains("23 asked, 3 refused, 17 failed")
+        said.contains("24 asked, 3 refused, 17 failed")
+            && said.contains("; pi cancelled 1;")
             && said.contains("; 1 refused as it stood down"),
-        "a body too large wasn't counted as refused: {said}"
+        "a body too large wasn't counted as refused, or one pi left as its cancel: {said}"
     );
 }
 
@@ -1310,7 +1324,7 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--idle-exit", "6", "--stand-down-for", "20"],
+        &["--idle-exit", "6", "--stand-down-for", "26"],
     );
 
     fail_past_its_share(&relay.socket, &host).await;
@@ -1340,8 +1354,8 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     }
     let first = retry_after(&got);
     assert!(
-        first.is_some_and(|seconds| (1..=21).contains(&seconds)),
-        "the stand-down's 421 doesn't say it's over within its 20 s: {first:?}"
+        first.is_some_and(|seconds| (1..=27).contains(&seconds)),
+        "the stand-down's 421 doesn't say it's over within its 26 s: {first:?}"
     );
 
     // Quiet past its idle time, and the time it takes to see it and go,
@@ -1367,7 +1381,7 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     );
     let later = retry_after(&got);
     assert!(
-        later.is_some_and(|seconds| (1..=10).contains(&seconds) && Some(seconds) < first),
+        later.is_some_and(|seconds| (1..=16).contains(&seconds) && Some(seconds) < first),
         "the stand-down's 421 11 s in doesn't count down from {first:?}: {later:?}"
     );
     assert_eq!(
@@ -1379,9 +1393,10 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     // Past its stand-down, and within its idle time after, it carries one,
     // on a connection opened afresh. It may not ask sooner than the
     // stand-down's end, which came before the last reset was answered.
-    // Asked 24 s in, a relay that didn't hold on past its stand-down has
-    // left, being idle from 17 s and seeing it by 21.5.
-    tokio::time::sleep_until((stood_down + Duration::from_secs(24)).into()).await;
+    // Asked 28 s in, a relay that didn't hold on past its stand-down has
+    // left, being idle from 17 s and seeing it by 21.5, and one that did
+    // is still there until 32.5 at the soonest.
+    tokio::time::sleep_until((stood_down + Duration::from_secs(28)).into()).await;
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
     assert_eq!(
         got.status,
@@ -1398,13 +1413,13 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     let said = relay.said();
     assert!(
         said.contains(
-            "17 of the 20 requests it finished in ten minutes failed, so it stands down for 20 \
+            "17 of the 20 requests it finished in ten minutes failed, so it stands down for 26 \
              s, retiring its connections"
         ),
         "the stand-down went unsaid: {said}"
     );
     let again = said
-        .find("it stood down 20 s, so it takes requests again, on connections opened afresh")
+        .find("it stood down 26 s, so it takes requests again, on connections opened afresh")
         .unwrap_or_else(|| panic!("taking requests again went unsaid: {said}"));
     // The connection's own line, as the counts said on leaving say
     // "opened" too. This only shows one opened after the return; that the

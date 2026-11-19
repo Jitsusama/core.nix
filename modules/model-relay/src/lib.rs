@@ -1134,9 +1134,14 @@ impl Relay {
         let in_hand = names_origin.then(|| self.busy.one());
         // Its body read whole before any 421, so pi isn't writing one the
         // relay has stopped reading, failing on a broken pipe, when the
-        // 421 would send it direct. A body that can't be read whole still
-        // gets the 421, as it was never to go to the origin anyway.
+        // 421 would send it direct. A body too large or late still gets the
+        // 421, as it was never to go to the origin anyway.
         let read = read_whole(body).await;
+        // A body pi left is a cancel, whatever else, as nobody waits on a
+        // 421 for it.
+        if let Err(Unread::Gone) = read {
+            return self.unread(Unread::Gone);
+        }
         if !names_origin {
             self.counts.refused.fetch_add(1, Ordering::Relaxed);
             return said(
@@ -1152,8 +1157,8 @@ impl Relay {
             );
         }
         // The sleep looked for first, as a sleep forgets a stand-down, and
-        // the stand-down's 421 said whatever came of the body too, as the
-        // origin asked directly may take one the relay won't.
+        // the stand-down's 421 said for a body too large or late too, as
+        // the origin asked directly may take one the relay won't.
         self.retire_after_a_sleep();
         if let Some(standing_down) = self.standing_down() {
             return standing_down;
@@ -1188,8 +1193,7 @@ impl Relay {
             Taking::Yes => None,
             Taking::Again(lasted) => {
                 // Requests it had taken before it stood down may have
-                // opened connections since, on the path it stood down from,
-                // so they go before the line, which may wait on the journal.
+                // opened connections since, on the path it stood down from.
                 self.retire_every();
                 eprintln!(
                     "model-relay: it stood down {} s, so it takes requests again, on \
