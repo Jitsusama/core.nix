@@ -433,6 +433,27 @@ def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) ->
     shell.close_launcher()
 
 
+# How many lines going into a drawer laid for its frame, as the shell says once niri presents it
+# (launcher/Presented.js's intoSaid).
+LAID_GOING_IN = re.compile(r"launcher: into the drawer for .* (\d+) lines? laid first")
+
+
+def laid_going_in(shell: Shell, mark: int) -> int:
+    """Wait for the shell to say it went into a drawer since the mark, and give the lines laid."""
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while time.monotonic() < deadline:
+        with shell.log.open("rb") as log:
+            log.seek(mark)
+            written = log.read().decode(errors="replace")
+        found = LAID_GOING_IN.search(written)
+        if found:
+            return int(found.group(1))
+        # The line is written once niri presents the frame, so it's read again a poll apart.
+        time.sleep(launcher_on_niri.POLL)
+    failed = "going into the drawer was never said presented"
+    raise AssertionError(failed)
+
+
 def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     shell: Shell,
 ) -> None:
@@ -459,6 +480,7 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     rest = shell.showing()["drawer"]["bodyLines"]
     assert rest < whole_least, f"at rest, {rest} of Emoji's lines were laid, not its view's"
     shell.normal()
+    going_in = shell.mark()
     # Ctrl+W then l in one batch, as he types it, so the chord never waits on its second key.
     shell.as_account("wtype -M ctrl -k w -m ctrl -k l")
     shell.launcher_until(
@@ -467,6 +489,10 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     # The cursor counts its lines from one, so it's told by where it began.
     entered = shell.showing()["drawer"]
     began, whole = entered["cursor"]["line"], entered["bodyLines"]
+    # The frame the keys came in laid only what shows, the rest after it: Emoji's whole run
+    # laid first held that frame back a median 526 ms in the drawer lab (2026-11-19).
+    laid = laid_going_in(shell, going_in)
+    assert laid < whole_least, f"going in laid {laid} lines before its frame, not its view's"
     shell.send_chars("j" * deep)
     shell.launcher_until(
         lambda shown: (shown["drawer"]["cursor"] or {}).get("line") == began + deep
@@ -484,6 +510,18 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     assert drawer["bodyLines"] < whole, f"left, all {whole} lines stayed laid: {drawer}"
     # The foot counts what's below where the view was left, so it still says there's more.
     assert drawer["moreSays"], f"left {deep} lines down, the foot said no more: {drawer}"
+    # G typed with the chord, before the rest is laid after its frame, still goes to the run's
+    # end rather than the end of what was laid first.
+    shell.as_account("wtype -M ctrl -k w -m ctrl -k l G")
+    shell.launcher_until(
+        lambda shown: (
+            (shown["drawer"]["cursor"] or {}).get("lines", 0) > whole_least
+            and shown["drawer"]["cursor"]["line"] >= shown["drawer"]["cursor"]["lines"] - 1
+        )
+    )
+    # close_launcher can't close from inside the drawer's keys, so they're left first.
+    shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
+    shell.launcher_until(lambda shown: not shown["drawer"]["keys"])
     shell.close_launcher()
 
 
