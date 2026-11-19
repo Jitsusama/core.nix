@@ -164,7 +164,7 @@ function keysClockSaid(times) {
         return "";
     }
     const each = times.slice().sort((a, b) => a.from - b.from).map(one => {
-        const pressed = one.stamped === false ? "-" : String(Math.floor(one.from));
+        const pressed = one.stamped === true ? String(Math.floor(one.from)) : "-";
         const swapped = one.swapped > 0 ? tenths(one.swapped) : "-";
         const later = one.later > 0
             ? `, ${one.later} ${one.later === 1 ? "frame" : "frames"} of the shell's after its own`
@@ -177,12 +177,13 @@ function keysClockSaid(times) {
 
 // Whether niri gave a key's press a time (keyTimed's `stamped`), and how
 // many frames after the key's own the one niri answered for came
-// (`later`). That is no count of frames niri dropped: when niri drops one
+// (`later`). A record that doesn't say is untimed, so a heard time is
+// never said as niri's press. That is no count of frames niri dropped: when niri drops one
 // the shell asks again only once it hears, and the frame begun before
 // that goes untimed, shown or not (frame-presentation.patch asks once).
 function keyClockOf(key, answered) {
     const later = key.frame !== undefined && answered > key.frame ? answered - key.frame : 0;
-    return { stamped: key.stamped !== false, later };
+    return { stamped: key.stamped === true, later };
 }
 
 // Each part's median, `[from, to, words]`, over those stamped with every

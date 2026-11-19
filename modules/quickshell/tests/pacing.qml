@@ -860,10 +860,11 @@ QtObject {
             [clockOf({ frame: 7, stamped: true }, 7), clockOf({ frame: 7, stamped: true }, 9)]
                 .join(" "),
             '{"stamped":true,"later":0} {"stamped":true,"later":2}');
-        check(failures, "an untimed press reads so, and an unknown or earlier frame is none later",
+        check(failures,
+            "an untimed or unsaid press reads so, an unknown or earlier frame none later",
             [clockOf({ frame: 7, stamped: false }, 8), clockOf({}, 9),
                 clockOf({ frame: 9, stamped: true }, 8)].join(" "),
-            '{"stamped":false,"later":1} {"stamped":true,"later":0} {"stamped":true,"later":0}');
+            '{"stamped":false,"later":1} {"stamped":false,"later":0} {"stamped":true,"later":0}');
         check(failures, "and no keys say nothing of their clock", Presented.keysClockSaid([]), "");
 
         // Joel's openings waited a median 6 frames at 120 Hz for niri after

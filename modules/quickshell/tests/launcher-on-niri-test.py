@@ -82,7 +82,7 @@ FRAMES_BEFORE = re.compile(r", after (?:at least )?\d+ other frames? since it wa
 # the press in whole ms as niri stamps it and the rest to a tenth, "-" for one not timed, so it
 # lines up with niri's own log of its frames.
 KEYS_CLOCK = re.compile(
-    r"launcher: \d+ keys shown, each pressed, swapped and shown in monotonic ms: (.+)"
+    r"launcher: \d+ keys shown, each pressed, swapped and shown in monotonic ms: (.+)\n"
 )
 CLOCK_KEY = re.compile(
     r"(-|\d+) (-|[\d.]+) ([\d.]+)(?:, (\d+) frames? of the shell's after its own)?"
