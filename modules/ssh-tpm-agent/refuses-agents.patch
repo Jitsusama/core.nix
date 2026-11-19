@@ -834,7 +834,7 @@ new file mode 100644
 index 0000000..134a686
 --- /dev/null
 +++ b/agent/gate_test.go
-@@ -0,0 +1,278 @@
+@@ -0,0 +1,287 @@
 +package agent
 +
 +import (
@@ -994,6 +994,23 @@ index 0000000..134a686
 +	}
 +}
 +
++// pidfdOf is a pidfd of pid, closed when the test ends. A kernel without
++// pidfd_open says ENOSYS, as Rosetta does for a Mac's Linux builder, and
++// the test is skipped saying so: the gate there can signal no pidfd, and
++// trusts the peer's pid alone, as without SO_PEERPIDFD.
++func pidfdOf(t *testing.T, pid int) int {
++	t.Helper()
++	pidfd, err := unix.PidfdOpen(pid, 0)
++	if errors.Is(err, unix.ENOSYS) {
++		t.Skipf("SKIPPED: this kernel has no pidfd_open (%v), so no pidfd is judged here", err)
++	}
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { unix.Close(pidfd) })
++	return pidfd
++}
++
 +// exited is a pidfd of a process that has exited and been reaped.
 +func exited(t *testing.T) int {
 +	t.Helper()
@@ -1001,11 +1018,7 @@ index 0000000..134a686
 +	if err != nil {
 +		t.Fatal(err)
 +	}
-+	pidfd, err := unix.PidfdOpen(child.Pid, 0)
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	t.Cleanup(func() { unix.Close(pidfd) })
++	pidfd := pidfdOf(t, child.Pid)
 +	if _, err := child.Wait(); err != nil {
 +		t.Fatal(err)
 +	}
@@ -1021,11 +1034,7 @@ index 0000000..134a686
 +}
 +
 +func TestALiveProcessIsStillThere(t *testing.T) {
-+	pidfd, err := unix.PidfdOpen(os.Getpid(), 0)
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	defer unix.Close(pidfd)
++	pidfd := pidfdOf(t, os.Getpid())
 +	if !stillThere(pidfd) {
 +		t.Error("a live process was taken as gone")
 +	}
