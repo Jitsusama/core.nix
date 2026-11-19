@@ -55,6 +55,36 @@ fn his_own_asks_ship_and_slip_apart_from_the_lists() {
 }
 
 #[test]
+fn an_ask_written_again_is_read_from_its_latest_line() {
+    let mut remarked: serde_json::Value =
+        serde_json::from_str(&ask("his own", None, 10 * 3600)).expect("an ask the tests made");
+    remarked["tracking"] = "derived".into();
+    let mut put_down: serde_json::Value =
+        serde_json::from_str(&ask("twice", None, 12 * 3600)).expect("an ask the tests made");
+    put_down["closed"] = "a standing rule".into();
+    let text = [
+        ask("his own", None, 10 * 3600),
+        ask("twice", None, 12 * 3600),
+        remarked.to_string(),
+        put_down.to_string(),
+    ]
+    .join("\n");
+    assert!(
+        slips(&text, NOW, Tracking::His).behind.is_empty(),
+        "re-marked and put down"
+    );
+    assert_eq!(
+        slips(&text, NOW, Tracking::Derived).behind,
+        ["his own · Y2YBTS"],
+        "once, as its latest line marks it"
+    );
+    assert!(
+        to_first_slice(&text, NOW, Tracking::His).behind.is_empty(),
+        "neither is his now"
+    );
+}
+
+#[test]
 fn the_lists_own_asks_and_mends_have_lines_of_their_own() {
     let text = list();
     let slipped = slips(&text, NOW, Tracking::Derived);

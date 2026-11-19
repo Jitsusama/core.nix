@@ -137,7 +137,21 @@ const fn count(n: usize) -> f64 {
 /// move counts as a slip.
 #[must_use]
 pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
-    let mut slipped: Vec<(i64, String, String)> = lines(text)
+    // The list writes an ask again to move its date, which counts again,
+    // or to re-mark, land or put it down, which doesn't: each date of an
+    // ask, by when and what was asked, is read from its latest line, in
+    // the order the list first wrote it.
+    let mut latest: BTreeMap<[String; 3], (usize, Value)> = BTreeMap::new();
+    for (order, ask) in lines(text).enumerate() {
+        let key = [&ask["at"], &ask["words"], &ask["expected"]].map(Value::to_string);
+        let first = latest.get(&key).map_or(order, |(first, _)| *first);
+        latest.insert(key, (first, ask));
+    }
+    let mut latest: Vec<(usize, Value)> = latest.into_values().collect();
+    latest.sort_by_key(|(order, _)| *order);
+    let mut slipped: Vec<(i64, String, String)> = latest
+        .into_iter()
+        .map(|(_, ask)| ask)
         .filter(|ask| tracking::of(ask) == Some(which))
         .filter_map(|ask| {
             let expected = seconds(&ask["expected"])?;
@@ -187,27 +201,32 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
 /// asks of the kind `which` count, and only his own are held to a target.
 #[must_use]
 pub fn to_first_slice(text: &str, now: i64, which: Tracking) -> Measure {
-    // Each ask, by when and what was asked: its owner and first reaching.
-    let mut asks: BTreeMap<(i64, String), (String, Option<i64>)> = BTreeMap::new();
-    for ask in lines(text).filter(|ask| tracking::of(ask) == Some(which)) {
+    // Each ask, by when and what was asked: its owner, first reaching, and
+    // how its latest line tracks it, since the list re-marks or puts down
+    // an ask by writing it again.
+    type Ask = (String, Option<i64>, Option<Tracking>);
+    let mut asks: BTreeMap<(i64, String), Ask> = BTreeMap::new();
+    for ask in lines(text) {
         let Some(asked) = seconds(&ask["at"]) else {
             continue;
         };
         let reached = seconds(&ask["first"]).or_else(|| seconds(&ask["landed"]));
         let words = ask["words"].as_str().unwrap_or_default().to_owned();
         let owner = first_owner(ask["owner"].as_str().unwrap_or_default());
-        let entry = asks.entry((asked, words)).or_insert((owner, None));
+        let entry = asks.entry((asked, words)).or_insert((owner, None, None));
         entry.1 = match (entry.1, reached) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
+        entry.2 = tracking::of(&ask);
     }
     let counted: Vec<(i64, &str, &str, bool)> = asks
         .iter()
-        .filter(|((asked, _), (_, reached))| {
+        .filter(|(_, (.., latest))| *latest == Some(which))
+        .filter(|((asked, _), (_, reached, _))| {
             *asked <= now && reached.is_none_or(|reached| reached > now - DAY)
         })
-        .map(|((asked, words), (owner, reached))| {
+        .map(|((asked, words), (owner, reached, _))| {
             let until = reached.map_or(now, |reached| reached.min(now));
             (
                 until - asked,

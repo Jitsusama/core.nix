@@ -190,7 +190,11 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
 /// filed before that is back in. Says what to tell the owner of each one
-/// newly filed.
+/// newly filed. His apps under load lead the drag, but they came in ahead
+/// of every class that was filed before them, so while they lead it each
+/// of his apps' figures past its target goes to its own owner, as each
+/// miss does, and the drag the rest of the hour would have is filed too:
+/// his misses still reach their owners whatever his apps read.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -205,11 +209,28 @@ pub fn file(
     for key in closing {
         owe::settle(ledger, &key);
     }
-    let Some(m) = drag(measures) else {
+    let Some(lead) = drag(measures) else {
         return Vec::new();
     };
+    let rest: Vec<Measure> = measures
+        .iter()
+        .filter(|m| m.class != Class::Apps)
+        .cloned()
+        .collect();
+    let mut dragging = vec![lead];
+    if lead.class == Class::Apps {
+        dragging.extend(
+            measures
+                .iter()
+                .filter(|m| m.class == Class::Apps && m.key != lead.key && m.past().is_some()),
+        );
+        dragging.extend(drag(&rest));
+    }
     let mut told = Vec::new();
-    for one in filed(m) {
+    for (m, one) in dragging
+        .into_iter()
+        .flat_map(|m| filed(m).into_iter().map(move |f| (m, f)))
+    {
         if ledger.iter().any(|e| e.open && e.key == one.key) {
             continue;
         }
@@ -374,6 +395,28 @@ mod tests {
             "a reports drag spoke of cells, or of a figure it doesn't wait for: {}",
             told[0].1
         );
+    }
+
+    #[test]
+    fn while_his_apps_lead_the_drag_his_misses_still_reach_their_owners() {
+        let mut apps = measure("apps:call fps p10", Class::Apps, 6.0, Some(0.0));
+        apps.owner = "APPS".to_owned();
+        let mut launcher = measure("apps:launcher", Class::Apps, 180.0, Some(120.0));
+        launcher.owner = "LAUNCHER".to_owned();
+        let passing = measure("apps:freezes", Class::Apps, 0.0, Some(0.0));
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec!["History paused · RCTRF8".to_owned()];
+        let slips = measure("slips", Class::Slip, 3.0, Some(0.0));
+        let mut ledger = Vec::new();
+        let all = [apps, launcher, passing, misses, slips];
+        let told = file(&mut ledger, &all, "2026-11-19", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["APPS", "LAUNCHER", "RCTRF8"],
+            "each figure past its target and the misses weren't filed"
+        );
+        assert_eq!(ledger[2].axis, Class::Miss.name(), "filed as a miss");
     }
 
     #[test]
