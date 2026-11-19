@@ -274,24 +274,31 @@ ShellRoot {
             said() === started, `${said()} after ${started}`);
         traffic.reads = kept;
 
-        // The counters' load lands too, since a look asked while one is
-        // under way is passed over, and the status may land first. Aged
-        // first, since aging counts as a load. The note is claimed once the
-        // row says holding's rates, whatever its note, so a note lost or
-        // reworded says what it was, and a row gone as the status loads
-        // again isn't taken for one.
-        aged(traffic.soonest);
-        const landed = loads;
-        traffic.look();
-        waits.until("the holding status loaded", () => loads > landed && idle()
-            && lineRow() !== undefined && lineRow().side !== resting, () => {
-            Expect.expect("a line holding is said so",
-                lineNote() === "as measured, held to the shaper's limit", lineNote());
-            counted({ lo: [1000, 2000] });
-            lookAgain();
-            waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined
-                && idle(), root.gapping);
+        // A look asked while a load is under way is passed over, and one
+        // Traffic began itself, as its first load's follow-up does, may have
+        // read the status before holding was written. So the look waits for
+        // no load to be under way, and then for the counters' load to land
+        // too, since the status may land first. Aged first, since aging
+        // counts as a load. The note is claimed once the row says holding's
+        // rates, whatever its note, so a note lost or reworded says what it
+        // was, and a row gone as the status loads again isn't taken for one.
+        waits.until("no load under way", () => traffic.loadAsked === 0, () => {
+            aged(traffic.soonest);
+            const landed = loads;
+            traffic.look();
+            waits.until("the holding status loaded", () => loads > landed && idle()
+                && lineRow() !== undefined && lineRow().side !== resting, root.heldOn);
         });
+    }
+
+    // The line holding, said so, and the card gone.
+    function heldOn() {
+        Expect.expect("a line holding is said so",
+            lineNote() === "as measured, held to the shaper's limit", lineNote());
+        counted({ lo: [1000, 2000] });
+        lookAgain();
+        waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined && idle(),
+            root.gapping);
     }
 
     // The shaper's line row, or undefined with none.
