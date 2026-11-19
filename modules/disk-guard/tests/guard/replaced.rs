@@ -81,6 +81,7 @@ fn an_older_build_of_a_crate_is_replaced_and_the_newest_stays() {
                 .join(format!(".fingerprint/alpha-{OLD}")),
         ),
         unit: None,
+        in_variant: false,
         written: 1_000.0,
         size: 15,
     };
@@ -117,31 +118,37 @@ fn build(deps: &Path, written: f64) -> Build {
         ],
         fingerprint: None,
         unit: None,
+        in_variant: false,
         written,
         size: 10,
     }
 }
 
 /// The fingerprint cargo writes beside `deps` for `package`'s `unit`
-/// built at `digest`, built with `features` under the profile and mode
-/// cargo hashes as `profile`.
-pub(crate) fn fingerprinted(
+/// built at `digest`, of the variant `PLAIN` names but for `variant`'s
+/// fields. What a newer build changes, its dependencies, compiler,
+/// declared features and source path, differs for every digest, as it
+/// does when one build replaces another.
+fn fingerprinted(
     deps: &Path,
     package: &str,
     digest: &str,
     unit: &str,
-    features: &str,
-    profile: u64,
+    variant: &[(&str, serde_json::Value)],
 ) -> PathBuf {
     let fingerprint = deps
         .parent()
         .unwrap()
         .join(format!(".fingerprint/{package}-{digest}"));
-    let json = serde_json::json!({
-        "rustc": 9, "features": features, "declared_features": "[]", "target": 1,
-        "profile": profile, "path": 5, "deps": [], "local": [], "rustflags": [],
-        "config": 3, "compile_kind": 0,
+    let built = u64::from_str_radix(&digest[..8], 16).unwrap();
+    let mut json = serde_json::json!({
+        "rustc": built, "features": "[]", "declared_features": format!("[\"{digest}\"]"),
+        "target": 1, "profile": 2, "path": built, "deps": [[built, "dep", false, built]],
+        "local": [built], "rustflags": [], "config": 3, "compile_kind": 0,
     });
+    for (field, value) in variant {
+        json[*field] = value.clone();
+    }
     crate::discover::file(&fingerprint.join(format!("{unit}.json")), &json.to_string());
     for file in [
         unit.to_owned(),
@@ -153,7 +160,7 @@ pub(crate) fn fingerprinted(
     fingerprint
 }
 
-/// The variant `fingerprinted` names, with no features under profile 2.
+/// The variant `fingerprinted` names unless told otherwise.
 const PLAIN: &str = r#""[]" 1 2 0 [] 3"#;
 
 /// A file in `deps` that runs, written at `seconds`.
@@ -170,48 +177,106 @@ fn runnable(deps: &Path, name: &str, seconds: i64) -> PathBuf {
 fn executable(deps: &Path, package: &str, unit: &str, name: &str, digest: &str, seconds: i64) {
     runnable(deps, &format!("{name}-{digest}"), seconds);
     artifact(deps, &format!("{name}-{digest}.d"), seconds);
-    fingerprinted(deps, package, digest, unit, "[]", 2);
+    fingerprinted(deps, package, digest, unit, &[]);
 }
 
-/// A library of `package` cargo built in `deps` with `features` under
-/// `profile`, written at `seconds`: only its metadata when checked, as
-/// profile 7 stands for here.
-fn library(deps: &Path, package: &str, digest: &str, features: &str, profile: u64, seconds: i64) {
-    artifact(deps, &format!("lib{package}-{digest}.rmeta"), seconds);
-    if profile != 7 {
-        artifact(deps, &format!("lib{package}-{digest}.rlib"), seconds);
+/// A test of `server` cargo built in `deps` at `digest` as the variant
+/// `PLAIN` names but for `variant`, written at `seconds`.
+fn test_build(deps: &Path, digest: &str, variant: &[(&str, serde_json::Value)], seconds: i64) {
+    let unit = "test-integration-test-integration";
+    runnable(deps, &format!("integration-{digest}"), seconds);
+    artifact(deps, &format!("integration-{digest}.d"), seconds);
+    fingerprinted(deps, "server", digest, unit, variant);
+}
+
+/// Each older build `replaced` finds, by digest, and whether a newer
+/// build of its own variant replaced it.
+fn judged(target: &Path) -> Vec<(String, bool)> {
+    let mut found: Vec<_> = replaced(target)
+        .into_iter()
+        .map(|build| (build.digest, build.in_variant))
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn only_a_newer_build_of_its_own_variant_says_an_executable_is_done_with() {
+    // A test built with two sets of features, or under two profiles,
+    // holds a build of each, both in use; one differing from a newer
+    // build only in what replacing it changes is done with.
+    use serde_json::json;
+    let variants = [
+        ("features", json!(r#"["a"]"#)),
+        ("target", json!(7)),
+        ("profile", json!(7)),
+        ("compile_kind", json!(7)),
+        ("rustflags", json!(["-Cdebuginfo=0"])),
+        ("config", json!(7)),
+    ];
+    for (field, value) in variants {
+        let root = tempfile::tempdir().unwrap();
+        let deps = root.path().join("target/debug/deps");
+        test_build(&deps, OLD, &[], 1_000);
+        test_build(&deps, NEW, &[], 5_000);
+        test_build(&deps, "aaaaaaaaaaaaaaaa", &[(field, value.clone())], 500);
+        test_build(&deps, "bbbbbbbbbbbbbbbb", &[(field, value)], 900);
+        assert_eq!(
+            judged(&root.path().join("target")),
+            [
+                (OLD.to_owned(), true),
+                ("aaaaaaaaaaaaaaaa".to_owned(), true),
+                ("bbbbbbbbbbbbbbbb".to_owned(), false),
+            ],
+            "a build of another {field} was judged done with, or an older one of its own wasn't"
+        );
     }
-    artifact(deps, &format!("{package}-{digest}.d"), seconds);
-    fingerprinted(
-        deps,
-        package,
-        digest,
-        &format!("lib-{package}"),
-        features,
-        profile,
+}
+
+#[test]
+fn a_fingerprint_reached_through_a_link_names_no_unit() {
+    // A folder anyone can clone can hold a link where cargo writes its
+    // fingerprint, to a file that never ends, so none is followed.
+    let root = tempfile::tempdir().unwrap();
+    let deps = root.path().join("target/debug/deps");
+    test_build(&deps, OLD, &[], 1_000);
+    test_build(&deps, NEW, &[], 5_000);
+    let json = root.path().join(format!(
+        "target/debug/.fingerprint/server-{OLD}/test-integration-test-integration.json"
+    ));
+    let real = root.path().join("elsewhere.json");
+    fs::rename(&json, &real).unwrap();
+    std::os::unix::fs::symlink(&real, &json).unwrap();
+    assert_eq!(
+        judged(&root.path().join("target")),
+        [],
+        "a fingerprint was read through a link"
     );
 }
 
 #[test]
-fn each_variant_of_a_crate_keeps_its_newest_build() {
-    // A crate built with two sets of features, or both checked and built,
-    // holds a build of each, all in use: only the same variant's newer
-    // build replaces one.
+fn a_library_is_replaced_whatever_its_variant_but_never_known_done_with() {
+    // Two live builds of a library can differ only in how a dependency
+    // was built, so only a day unopened says one is done with.
     let root = tempfile::tempdir().unwrap();
     let deps = root.path().join("target/debug/deps");
-    library(&deps, "app", OLD, r#"["a"]"#, 2, 1_000);
-    library(&deps, "app", NEW, r#"["a"]"#, 2, 5_000);
-    library(&deps, "app", "aaaaaaaaaaaaaaaa", r#"["b"]"#, 2, 500);
-    library(&deps, "app", "bbbbbbbbbbbbbbbb", r#"["a"]"#, 7, 400);
-    library(&deps, "app", "cccccccccccccccc", r#"["a"]"#, 7, 600);
-    let found: Vec<_> = replaced(&root.path().join("target"))
-        .into_iter()
-        .map(|build| build.digest)
-        .collect();
+    let features = serde_json::json!(r#"["b"]"#);
+    for (digest, variant, seconds) in [
+        (OLD, vec![], 1_000),
+        (NEW, vec![], 5_000),
+        ("aaaaaaaaaaaaaaaa", vec![("features", features)], 500),
+    ] {
+        artifact(&deps, &format!("libapp-{digest}.rlib"), seconds);
+        artifact(&deps, &format!("app-{digest}.d"), seconds);
+        fingerprinted(&deps, "app", digest, "lib-app", &variant);
+    }
     assert_eq!(
-        found,
-        [OLD, "bbbbbbbbbbbbbbbb"],
-        "a variant's newest build went, or an older one of the same variant stayed"
+        judged(&root.path().join("target")),
+        [
+            (OLD.to_owned(), false),
+            ("aaaaaaaaaaaaaaaa".to_owned(), false)
+        ],
+        "an older library wasn't replaced, or one was judged done with by its variant"
     );
 }
 
@@ -266,6 +331,7 @@ fn an_older_executable_of_a_unit_is_replaced_and_the_newest_stays() {
             name: format!("server/{test}"),
             variant: PLAIN.to_owned(),
         }),
+        in_variant: true,
         written: 1_000.0,
         size: 10,
     };
@@ -343,6 +409,13 @@ fn a_build_a_process_works_in_is_kept_whatever_its_locks_say() {
     );
     // One that only sits there, as a shell naming the target or an
     // editor's macro server does, builds from no older build.
+    // One that can't be read might be working there.
+    looker.finds = Use::Unknown(4244);
+    let outcome = reclaim::build(&anchor, root.path(), &target, &candidate, &mut looker);
+    assert!(
+        matches!(&outcome, Outcome::Kept(why) if why.contains("4244")),
+        "a build an unreadable process may work in wasn't kept: {outcome:?}"
+    );
     looker.finds = Use::Occupied(4243);
     let outcome = reclaim::build(&anchor, root.path(), &target, &candidate, &mut looker);
     assert_eq!(
@@ -639,7 +712,7 @@ fn test_binary(deps: &Path, package: &str, digest: &str, hours: f64) -> PathBuf 
     for path in [&binary, &info] {
         written_ago(path, hours * 3600.0);
     }
-    aged_fingerprint(&fingerprinted(deps, package, digest, unit, "[]", 2), hours);
+    aged_fingerprint(&fingerprinted(deps, package, digest, unit, &[]), hours);
     binary
 }
 
@@ -658,17 +731,17 @@ fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_
     let (_home, made, config) = budgeted(&[("app", 2.0)], 100);
     let target = made[0].join("target");
     let deps = target.join("debug/deps");
-    // budgeted() builds the newer library; both need the fingerprint
-    // naming their unit to be judged by the hour.
+    // budgeted() builds the newer library, and an older one of the same
+    // variant sits beside it.
     aged_fingerprint(
-        &fingerprinted(&deps, "app", "0123456789abcdef", "lib-app", "[]", 2),
+        &fingerprinted(&deps, "app", "0123456789abcdef", "lib-app", &[]),
         2.0,
     );
-    let library = deps.join("libapp-1111111111111111.rlib");
+    let library = deps.join("libapp-5555555555555555.rlib");
     file(&library, "old");
     written_ago(&library, 3.0 * 3600.0);
     aged_fingerprint(
-        &fingerprinted(&deps, "app", "1111111111111111", "lib-app", "[]", 2),
+        &fingerprinted(&deps, "app", "5555555555555555", "lib-app", &[]),
         3.0,
     );
     let unused = test_binary(&deps, "server", "1111111111111111", 3.0);
@@ -686,9 +759,11 @@ fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_
         let offer = find(found, path);
         offer.candidate.spent && plan::windows(&offer.candidate).0 == Group::Waste
     };
+    // A library's live builds can differ only in how a dependency was
+    // built, so it waits its day.
     assert!(
-        spent(&found, &deps.join("app-1111111111111111")),
-        "a replaced library heard unused three hours stayed"
+        !spent(&found, &deps.join("app-5555555555555555")),
+        "a replaced library went within its day"
     );
     assert!(
         spent(&found, &unused),
@@ -729,28 +804,5 @@ fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_
     assert!(
         !spent(&found, &unused),
         "a replaced test binary went within its day outside a budget"
-    );
-}
-
-// Without a fingerprint naming its unit, a replaced library can't be told
-// from a live variant, so it waits its day whatever was heard.
-#[cfg(target_os = "linux")]
-#[test]
-fn a_budgeted_library_with_no_fingerprint_waits_its_day() {
-    use crate::survey::{find, offers_using, written_ago};
-    use crate::survey_trees::{budgeted, heard};
-    use std::collections::BTreeMap;
-    let (_home, made, config) = budgeted(&[("app", 2.0)], 100);
-    let deps = made[0].join("target/debug/deps");
-    let library = deps.join("libapp-1111111111111111.rlib");
-    file(&library, "old");
-    written_ago(&library, 3.0 * 3600.0);
-    let uses = heard(&made, 3.0);
-    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
-    assert!(
-        !find(&found, &deps.join("app-1111111111111111"))
-            .candidate
-            .spent,
-        "a replaced library with no fingerprint went within its day"
     );
 }

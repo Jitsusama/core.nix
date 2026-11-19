@@ -979,10 +979,12 @@ fn replaced_in(
             .awake
             .since(last_used.min(world.now), world.now)
             .max(0.0);
-        // Only a build of the same unit and variant replaces another, and
-        // only a fingerprint says which that is.
+        // Only an executable a newer build of its own unit and variant
+        // replaced is known to be done with: a library another variant
+        // differs from only by how a dependency was built may be one a
+        // live build uses, and every crate above it with it.
         let heard_unused = held.budgeted
-            && build.unit.is_some()
+            && build.in_variant
             && idle >= REPLACED_UNUSED
             && world
                 .uses

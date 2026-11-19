@@ -1,8 +1,10 @@
 //! Replaced builds: the older builds of a crate, or of a test or binary,
 //! a target holds beside a newer one, which cargo keeps until the target
-//! goes. A change of features, flags, a dependency's version or the code
-//! itself gives a unit a new digest, and a busy checkout gathers them for
-//! as long as it's built in.
+//! goes. A change of features, flags, profile, toolchain or a dependency
+//! gives a unit a new digest, while a change to its own code rebuilds it
+//! in place, so a busy checkout gathers them for as long as it's built in.
+//! Not every one is done with: a crate checked and built, or built with
+//! two sets of features, holds a live build of each.
 
 use crate::age::mtime;
 use regex_lite::Regex;
@@ -22,33 +24,50 @@ pub struct Build {
     pub digest: String,
     pub files: Vec<PathBuf>,
     pub fingerprint: Option<PathBuf>,
-    /// The unit it was built for, as its fingerprint says. Nothing for a
-    /// library whose fingerprint doesn't say, and an executable never
-    /// lacks one.
+    /// The unit an executable was built for, as its fingerprint says: an
+    /// executable without one is never a build. Nothing for a library.
     pub unit: Option<Unit>,
+    /// Whether a newer build of its own unit and variant replaced it,
+    /// which only an executable's can, as `replaced` answers: only then
+    /// is it known to be done with, and [`Unit`] says why.
+    pub in_variant: bool,
     /// When its newest file was written, in wall seconds.
     pub written: f64,
     pub size: u64,
 }
 
-/// What a build was built as, by its fingerprint: only a build of the same
-/// unit and variant replaces another.
+/// What an executable was built as, by its fingerprint.
+///
+/// On 19 November this account's builds held 35 units with three or
+/// more builds, each unit's all made within 20 minutes: 12 held more
+/// builds than variants, differing only in how a dependency was built,
+/// as cargo's resolver builds one twice for a test and a build.
+/// Nothing in a fingerprint tells that from a replacement, so a
+/// library, which every crate above it builds from, is never judged
+/// done with by its variant. An executable is: nothing builds from one,
+/// so taking one still in use costs its own link, and 28 GiB of them
+/// was what filled a builds disk on 18 November.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Unit {
     /// Its package and the name its fingerprint gives it, such as
     /// `server/test-integration-test-integration`. A binary and its unit
-    /// tests share a crate name, as two packages' tests can, and a test
-    /// checked rather than built is named as a library is.
+    /// tests share a crate name, as two packages' tests can.
     pub name: String,
     /// Its features, target, profile and mode, kind, flags and config, as
-    /// cargo hashes them: one crate built with two sets of features, or
-    /// both checked and built, holds a build of each, both in use.
+    /// cargo hashes them: a test built with two sets of features, or
+    /// under two profiles, holds a build of each, both in use.
     pub variant: String,
 }
 
+/// The most of a fingerprint's JSON read: cargo writes a few hundred
+/// bytes, and a folder anyone can clone may plant a larger file there.
+const FINGERPRINT_BYTES: u64 = 256 << 10;
+
 /// What of a fingerprint's JSON says which variant of a unit a build is,
-/// leaving what changes when a build replaces another: the code, the
-/// dependencies, the features its manifest declares and the compiler.
+/// leaving what changes when a build replaces another: the dependencies,
+/// the features its manifest declares, the compiler and its source path.
+/// The target's hash leaves out where its source lies, so a checkout
+/// moved, or a snapshot of a later commit, builds the same variant.
 const VARIANT: [&str; 6] = [
     "features",
     "target",
@@ -285,10 +304,10 @@ fn builds(deps: &Path) -> Vec<Build> {
             group.1 = made;
         }
     }
-    let fingerprints = deps
-        .parent()
-        .map(|profile| fingerprints(&profile.join(".fingerprint")))
-        .unwrap_or_default();
+    let fingerprints = match deps.parent() {
+        Some(profile) => fingerprints(&profile.join(".fingerprint")),
+        None => BTreeMap::new(),
+    };
     groups
         .into_iter()
         .filter_map(|((name, digest), (mut files, made))| {
@@ -296,11 +315,12 @@ fn builds(deps: &Path) -> Vec<Build> {
                 return None;
             }
             let fingerprint = fingerprints.get(&digest).cloned();
-            let unit = fingerprint.as_deref().and_then(|dir| unit(dir, &digest));
-            // Nothing else says which unit an executable is.
-            if made == Made::Executable && unit.is_none() {
-                return None;
-            }
+            let unit = if made == Made::Executable {
+                // Nothing else says which unit an executable is.
+                Some(unit(fingerprint.as_deref()?, &digest)?)
+            } else {
+                None
+            };
             files.sort();
             let metadata: Vec<_> = files
                 .iter()
@@ -310,6 +330,7 @@ fn builds(deps: &Path) -> Vec<Build> {
                 deps: deps.to_owned(),
                 fingerprint,
                 unit,
+                in_variant: false,
                 written: files
                     .iter()
                     .filter_map(|file| mtime(file))
@@ -347,7 +368,7 @@ fn unit(fingerprint: &Path, digest: &str) -> Option<Unit> {
         .collect();
     names.sort();
     let [unit] = &names[..] else { return None };
-    let json = fs::read(fingerprint.join(format!("{unit}.json"))).ok()?;
+    let json = small_file(&fingerprint.join(format!("{unit}.json")))?;
     let json: serde_json::Value = serde_json::from_slice(&json).ok()?;
     let variant = VARIANT
         .iter()
@@ -360,35 +381,63 @@ fn unit(fingerprint: &Path, digest: &str) -> Option<Unit> {
     })
 }
 
-/// All but the newest build of each unit and variant, and of each crate
-/// whose fingerprint doesn't say, leaving any a profile shares a file
-/// with: an executable cargo copied up as the profile's own binary is the
-/// one a person runs.
+/// A regular file's first [`FINGERPRINT_BYTES`], read without following
+/// a link or waiting on a pipe. Nothing when it can't be read so.
+fn small_file(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    let flags = rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK;
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(i32::try_from(flags.bits()).ok()?)
+        .open(path)
+        .ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut read = Vec::new();
+    file.take(FINGERPRINT_BYTES).read_to_end(&mut read).ok()?;
+    Some(read)
+}
+
+/// All but the newest build of each executable's unit and each crate's
+/// library, each marked for whether a newer build of its own unit and
+/// variant is among them, leaving any a profile shares a file with: an
+/// executable cargo copied up as the profile's own binary is the one a
+/// person runs.
 fn older(builds: Vec<Build>) -> Vec<Build> {
-    /// What builds replace each other.
-    #[derive(PartialEq, Eq, PartialOrd, Ord)]
-    enum Kin {
-        Unit(Unit),
-        Crate(String),
-    }
-    let mut by_unit: BTreeMap<Kin, Vec<Build>> = BTreeMap::new();
+    let mut kin: BTreeMap<String, Vec<Build>> = BTreeMap::new();
     for build in builds {
-        let kin = match &build.unit {
-            Some(unit) => Kin::Unit(unit.clone()),
-            None => Kin::Crate(build.name.clone()),
+        // A binary and its tests share a crate name, as two packages'
+        // tests can. A library is known by its crate alone, as a build
+        // with no fingerprint can be, since only a day unopened judges it.
+        let key = match &build.unit {
+            Some(unit) => format!("unit {}", unit.name),
+            None => format!("crate {}", build.name),
         };
-        by_unit.entry(kin).or_default().push(build);
+        kin.entry(key).or_default().push(build);
     }
-    by_unit
-        .into_values()
+    kin.into_values()
         .flat_map(|mut builds| {
             builds.sort_by(|a, b| {
                 (a.written, &a.digest)
                     .partial_cmp(&(b.written, &b.digest))
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
+            let variants: Vec<Option<String>> = builds
+                .iter()
+                .map(|build| build.unit.as_ref().map(|unit| unit.variant.clone()))
+                .collect();
             builds.pop();
             builds
+                .into_iter()
+                .enumerate()
+                .map(|(at, mut build)| {
+                    build.in_variant =
+                        variants[at].is_some() && variants[at + 1..].contains(&variants[at]);
+                    build
+                })
+                .collect::<Vec<_>>()
         })
         .filter(|build| !shared(build))
         .collect()
