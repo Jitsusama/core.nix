@@ -18,6 +18,7 @@ const JUDGES: &[&str] = &[
     "pains-open",
     "quarantine-undated",
     "quests-cells-ended",
+    "quests-parked-past-start",
     "quests-without-cells",
     "reports-unasked",
 ];

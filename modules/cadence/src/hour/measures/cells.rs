@@ -1,9 +1,11 @@
 //! How the cells stand: a session left idle with work it could do, one
 //! parked on a quest already done, a quest meant to be moving that no cell
-//! runs, and the cells the map draws wrongly. On 16 November a sweep found
-//! 111 open quests with no session, 16 of them driving, and Joel found
-//! cells the map showed alone after the audit said it was done; the hour
-//! saw none of it, since it read only what shipped.
+//! runs or whose cells parked past a step's start, and the cells the map
+//! draws wrongly. On 16 November a sweep found 111 open quests with no
+//! session, 16 of them driving, and Joel found cells the map showed alone
+//! after the audit said it was done; the hour saw none of it, since it
+//! read only what shipped. Long because its tests replay each measure's
+//! cases beside the code that makes it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -133,7 +135,7 @@ fn judged(
     }
 }
 
-/// The four measures of the cells, from each realm's `mycelium sessions`
+/// The five measures of the cells, from each realm's `mycelium sessions`
 /// answer, by the realm's name, and the quests' READMEs, at `now`; the
 /// quests are none where their store couldn't be read. A cell no
 /// orchestrator or parent owns goes to `fallback`. A node names the
@@ -189,41 +191,15 @@ pub fn cells(
             .unwrap_or(fallback)
             .to_owned()
     };
-    // A step that names Joel waits on him, which no orchestrator can move;
-    // a quest that routes is idle by design; and a step dated ahead counts
-    // its idle time from its start, as idle.rs wakes it.
-    let idle = all
-        .iter()
-        .filter(|c| c.state == "idle" && !c.wanting)
-        .filter(|c| {
-            !c.quest
-                .and_then(|q| readme.get(q))
-                .is_some_and(|q| q.routes)
-        })
-        .filter_map(|c| {
-            let next = c.next.filter(|next| !next.contains("Joel"))?;
-            let at = c.at?;
-            let since = dated::starts(next, now, zone).map_or(at, |s| s.max(at));
-            if now - since < IDLE_AT_MOST {
-                return None;
-            }
-            let minutes = (now - since) / 60;
-            let on = c
-                .machine
-                .filter(|m| *m != here)
-                .map_or_else(String::new, |m| format!(" on {m}"));
-            Some(format!(
-                "{}{on} idle {minutes} min: {} · {}",
-                c.address,
-                short(next),
-                owner(c.quest, c.orchestrator)
-            ))
-        })
-        .collect();
+    let idle = idle(&all, &readme, here, (now, zone), &owner);
     let parked_done = parked_done(&all, &readme, &owner);
-    let (never, ended) = unrun(quests.unwrap_or_default(), &all, &realms, &|q| {
-        owner(Some(q), None)
-    });
+    let [never, ended, past_start] = unrun(
+        quests.unwrap_or_default(),
+        &all,
+        &realms,
+        (now, zone),
+        &|q| owner(Some(q), None),
+    );
     // A realm that didn't answer would read as one whose cells all went,
     // closing their owners' drags; and without the READMEs owners fall
     // back and quests' statuses go stale. Either leaves every measure
@@ -253,13 +229,59 @@ pub fn cells(
         ),
         (
             "quests-cells-ended",
-            "driving and active quests whose every cell has ended",
+            "driving and active quests whose every cell has ended, one not parked",
             ended,
+        ),
+        (
+            "quests-parked-past-start",
+            "driving and active quests whose cells all parked past a step's start",
+            past_start,
         ),
     ]
     .into_iter()
     .map(|(key, says, behind)| judged(key, says, behind, unread, fallback))
     .collect()
+}
+
+/// The cells idle `IDLE_AT_MOST` or more with a step no one else holds,
+/// at `now` in its zone, each with its owner and, off `here`, its machine.
+/// A step that names Joel waits on him, which no orchestrator can move; a
+/// quest that routes is idle by design; and a step dated ahead counts its
+/// idle time from its start, as idle.rs wakes it.
+fn idle(
+    all: &[Cell],
+    readme: &BTreeMap<&str, &Quest>,
+    here: &str,
+    (now, zone): (i64, &TimeZone),
+    owner: &dyn Fn(Option<&str>, Option<&str>) -> String,
+) -> Vec<String> {
+    all.iter()
+        .filter(|c| c.state == "idle" && !c.wanting)
+        .filter(|c| {
+            !c.quest
+                .and_then(|q| readme.get(q))
+                .is_some_and(|q| q.routes)
+        })
+        .filter_map(|c| {
+            let next = c.next.filter(|next| !next.contains("Joel"))?;
+            let at = c.at?;
+            let since = dated::starts(next, now, zone).map_or(at, |s| s.max(at));
+            if now - since < IDLE_AT_MOST {
+                return None;
+            }
+            let minutes = (now - since) / 60;
+            let on = c
+                .machine
+                .filter(|m| *m != here)
+                .map_or_else(String::new, |m| format!(" on {m}"));
+            Some(format!(
+                "{}{on} idle {minutes} min: {} · {}",
+                c.address,
+                short(next),
+                owner(c.quest, c.orchestrator)
+            ))
+        })
+        .collect()
 }
 
 /// The ended cells parked on a quest already concluded or retired, each
@@ -291,15 +313,30 @@ fn parked_done(
 }
 
 /// The quests meant to be moving, in a realm whose node answered, that no
-/// live cell runs: those no cell ever took up, and those whose every cell
-/// ended, each with its owner.
+/// live cell runs: those no cell ever took up, those whose every cell
+/// ended, and those whose cells all parked with a step that started by
+/// `now`, read in its zone, each with its owner. A parked cell wakes to a
+/// question, so it is no miss until a start it named has passed: at 11:10
+/// on 19 November nine parked quests were said ended beside eight that
+/// were. A parked step's weekday and day are read near when its cell last
+/// stood, as it wrote them then, so a start stays one however long ago it
+/// passed. A parked cell with no dated step is named on no line, since
+/// its orchestrator ruled only one past its start a miss.
 fn unrun(
     quests: &[Quest],
     all: &[Cell],
     realms: &BTreeSet<&str>,
+    (now, zone): (i64, &TimeZone),
     owner: &dyn Fn(&str) -> String,
-) -> (Vec<String>, Vec<String>) {
-    let (mut never, mut ended) = (Vec::new(), Vec::new());
+) -> [Vec<String>; 3] {
+    // A step waiting on Joel is no cell's to start, parked or not.
+    let started = |c: &Cell| {
+        c.next.is_some_and(|next| {
+            !next.contains("Joel")
+                && dated::starts(next, c.at.unwrap_or(now), zone).is_some_and(|s| s <= now)
+        })
+    };
+    let (mut never, mut ended, mut parked) = (Vec::new(), Vec::new(), Vec::new());
     for q in quests.iter().filter(|q| {
         q.status == "active"
             && MOVING.contains(&q.priority.as_str())
@@ -321,11 +358,19 @@ fn unrun(
                 "{named} {}, no cell the node knows · {to}",
                 q.priority
             ));
+        } else if of_quest.iter().all(|c| c.presence == Some("parked")) {
+            if let Some(next) = of_quest.iter().find(|c| started(c)).and_then(|c| c.next) {
+                parked.push(format!(
+                    "{named} {}, parked past its start: {} · {to}",
+                    q.priority,
+                    short(next)
+                ));
+            }
         } else {
             ended.push(format!("{named} {}, every cell ended · {to}", q.priority));
         }
     }
-    (never, ended)
+    [never, ended, parked]
 }
 
 /// The cells `mycelium-map-check --json` says the map draws wrongly, from
@@ -607,6 +652,67 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn a_quest_parked_counts_only_once_a_step_it_dated_has_started() {
+        let parked = |address: &str, quest: &str, next: Option<&str>| {
+            let mut c = cell(address, "ended", quest);
+            c["presence"]["state"] = json!("parked");
+            c["doing"] = json!({"next": next});
+            c["orchestrated_by"] = json!("ORCH");
+            c
+        };
+        // Parked twenty days ago, on a step dated then: Sunday 27 December.
+        let mut long_ago = parked("FFFFFF", "FFFFFF", Some("Judge it at Sun 27 09:00"));
+        long_ago["at"] = json!(at(20 * 24 * 60));
+        // NOW is 03:00 on Friday 15 January 2027 in Toronto. At 11:10 on
+        // 19 November nine parked quests were said ended, though a
+        // question wakes each.
+        let answers = [answer(&[
+            parked("AAAAAA", "AAAAAA", Some("Judge it at Fri 15 02:30")),
+            parked("BBBBBB", "BBBBBB", Some("Judge it at Fri 15 23:00")),
+            parked("CCCCCC", "CCCCCC", Some("merge it")),
+            parked("DDDDDD", "DDDDDD", None),
+            parked("EEEEEE", "EEEEEE", Some("Ask Joel at Fri 15 02:30")),
+            long_ago,
+            parked("GGGGG1", "GGGGGG", None),
+            cell("GGGGG2", "ended", "GGGGGG"),
+            parked("HHHHHH", "HHHHHH", Some("Judge it at Fri 15 03:00")),
+            parked("JJJJJ1", "JJJJJJ", None),
+            parked("JJJJJ2", "JJJJJJ", Some("Judge it at Fri 15 01:00")),
+            parked("KKKKK1", "KKKKKK", Some("Judge it at Fri 15 01:00")),
+            cell("KKKKK2", "ended", "KKKKKK"),
+        ])];
+        let quests: Vec<Quest> = [
+            "AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE", "FFFFFF", "GGGGGG", "HHHHHH",
+            "JJJJJJ", "KKKKKK",
+        ]
+        .into_iter()
+        .map(|q| quest_of(q, "active", "driving", None))
+        .collect();
+        let all = cells(&answers, Some(&quests), HERE, &zone(), NOW, "F");
+        assert_eq!(
+            measure(&all, "quests-parked-past-start").behind,
+            [
+                "AAAAAA driving, parked past its start: Judge it at Fri 15 02:30 · ORCH",
+                "FFFFFF driving, parked past its start: Judge it at Sun 27 09:00 · ORCH",
+                "HHHHHH driving, parked past its start: Judge it at Fri 15 03:00 · ORCH",
+                "JJJJJJ driving, parked past its start: Judge it at Fri 15 01:00 · ORCH",
+            ],
+            "a parked quest counted before its step started, with no dated step, on a \
+             step waiting on Joel or beside a cell that ended; or one was missed whose \
+             start passed long ago, this moment, or on another of its parked cells"
+        );
+        assert_eq!(
+            measure(&all, "quests-cells-ended").behind,
+            [
+                "GGGGGG driving, every cell ended · ORCH",
+                "KKKKKK driving, every cell ended · ORCH",
+            ],
+            "a quest whose cells are all parked was said ended, or one with a cell \
+             ended and not parked was missed"
+        );
+    }
+
+    #[test]
     fn the_readme_outranks_a_parked_cells_old_word_of_its_quest() {
         let mut parked = cell("AAAAAA", "ended", "AAAAAA");
         parked["presence"]["state"] = json!("parked");
@@ -721,7 +827,7 @@ pub(super) mod tests {
             NOW,
             "F",
         );
-        assert_eq!(all.len(), 4, "a measure went unsaid: {all:?}");
+        assert_eq!(all.len(), 5, "a measure went unsaid: {all:?}");
         assert!(
             all.iter()
                 .all(|m| m.target.is_none() && m.class == Class::Cells),
