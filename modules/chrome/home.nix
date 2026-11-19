@@ -350,6 +350,30 @@ let
       lib.getExe (pkgs.callPackage ./open-tabs/host/package.nix { })
     else
       null;
+
+  # The profile's folders Chrome writes through shared maps of their files:
+  # its histograms, kept as it runs, and its GPU and Dawn caches. Every
+  # store into such a map is a page Chrome's browser IO thread may wait on
+  # while btrfs writes it back, and that thread carries every message
+  # between Chrome's processes, a call's camera frames included. In a test
+  # call under load it sat in btrfs's waits up to 47 times in 150 s,
+  # freezing the picture, and never with these folders in memory. Chrome
+  # takes no setting to move them, and turning histograms off still leaves
+  # the file mapped, so each folder is a link into the runtime folder, made
+  # again at each login (maps-in-memory.sh). A cache Chrome finds broken it
+  # may move aside and make again on the disk, until the next login links
+  # it back.
+  mappedFolders = [
+    "BrowserMetrics"
+    "Default/GPUCache"
+    "Default/DawnWebGPUCache"
+    "Default/DawnGraphiteCache"
+  ];
+  mapsInMemory = pkgs.writeShellApplication {
+    name = "chrome-maps-in-memory";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = builtins.readFile ./maps-in-memory.sh;
+  };
 in
 {
   imports = [
@@ -372,6 +396,28 @@ in
   };
 
   config = {
+    # As the session starts, before Chrome can, and never under a running
+    # Chrome, which a switch would otherwise find.
+    systemd.user.services.chrome-maps-in-memory = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Moves the folders Chrome writes through shared maps into memory";
+        Before = [ "graphical-session-pre.target" ];
+      };
+      Service = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = lib.concatStringsSep " " (
+          [
+            (lib.getExe mapsInMemory)
+            "%h/.config/google-chrome"
+            "%t/chrome"
+          ]
+          ++ mappedFolders
+        );
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
+
     jitsusama.keys.chrome = keys;
     jitsusama.keys.github = import ./github-keys.nix;
 

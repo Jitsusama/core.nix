@@ -579,6 +579,12 @@
     lists Chrome's own for the address, finding and following a link found, bookmarks, caret
     browsing, searching tabs and moving by the screen or to an end
   '';
+  chrome-maps-land-in-memory = ''
+    the four profile folders Chrome writes through shared maps, its histograms and its GPU and
+    Dawn caches, are links into the runtime folder once the account's command runs on a profile
+    Chrome already filled, its old files gone and the rest left alone; a second run changes
+    nothing, and with Chrome running nothing is touched, so no folder is swapped under it
+  '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
   '';

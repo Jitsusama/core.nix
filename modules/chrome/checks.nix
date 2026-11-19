@@ -117,6 +117,27 @@ onLinux {
         "touch $out"
     );
 
+  # The four profile folders Chrome writes through shared maps, its
+  # histograms and its GPU and Dawn caches, are links into the runtime
+  # folder once the account's command runs on a profile Chrome has already
+  # filled, its old files gone and the rest of the profile left alone; a
+  # second run changes nothing, and with Chrome running nothing is touched
+  # (tests/chrome-maps-land-in-memory.sh).
+  chrome-maps-land-in-memory =
+    let
+      home = account (bareNixos [
+        self.nixosModules.graphical
+        { home-manager.users.someone.imports = [ self.homeModules.chrome ]; }
+      ]);
+      command = pkgs.writeText "chrome-maps-in-memory" (
+        toString (home.systemd.user.services.chrome-maps-in-memory.Service.ExecStart or "")
+      );
+    in
+    pkgs.runCommandLocal "chrome-maps-land-in-memory" { } ''
+      bash ${./tests/chrome-maps-land-in-memory.sh} ${command}
+      touch $out
+    '';
+
   # clippy finds nothing in what reads Chrome's open pages from its session
   # file, its tests included.
   chrome-session-passes-clippy = passesClippy "chrome-session-passes-clippy" session;
