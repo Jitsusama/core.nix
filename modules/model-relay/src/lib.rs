@@ -2058,13 +2058,27 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_body_still_coming_past_its_deadline_is_late_and_one_pi_left_is_gone() {
-        let (_writing, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+        // A piece halfway, and the rest never, so a deadline on the whole
+        // body is told from one on each piece.
+        let (mut writing, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+        let coming = tokio::spawn(async move {
+            tokio::time::sleep(BODY_WITHIN / 2).await;
+            let _ = writing.send_data(Bytes::from_static(b"hi")).await;
+            tokio::time::sleep(BODY_WITHIN).await;
+        });
         let began = tokio::time::Instant::now();
-        let read = read_whole(body).await;
+        // Bounded itself, so a read_whole with no deadline fails here
+        // rather than leaving paused time with nothing to wake it.
+        let read = tokio::time::timeout(BODY_WITHIN * 2, read_whole(body))
+            .await
+            .expect("read_whole waited on a body with no deadline");
+        let waited = began.elapsed();
         assert!(
-            matches!(read, Err(Unread::Late)) && began.elapsed() >= BODY_WITHIN,
-            "a body still coming past its deadline was read as {read:?}"
+            matches!(read, Err(Unread::Late))
+                && (BODY_WITHIN..BODY_WITHIN + Duration::from_millis(5)).contains(&waited),
+            "a body still coming past its deadline was read as {read:?} after {waited:?}"
         );
+        coming.abort();
 
         let (writing, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
         writing.abort(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
