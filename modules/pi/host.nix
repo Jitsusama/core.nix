@@ -75,13 +75,16 @@ let
   # clears each and a realm giving one is refused: NODE_OPTIONS, whose
   # --require or --import runs a script and whose --inspect opens the
   # inspector; NODE_PATH, where a require that finds nothing beside it looks,
-  # as a library's optional require does; the loader's LD_PRELOAD, LD_AUDIT
+  # as a library's optional require does; NODE_COMPILE_CACHE, whose folder
+  # wins over the host's own and whose compiled code node runs as its
+  # modules' (host/service/compile-cache.ts); the loader's LD_PRELOAD, LD_AUDIT
   # and LD_LIBRARY_PATH, which load a library; and OpenSSL's OPENSSL_CONF and
   # OPENSSL_MODULES, whose configuration loads a module. mycelium takes no
   # host's word whose environment gives any of them but blank.
   loadsCode = [
     "NODE_OPTIONS"
     "NODE_PATH"
+    "NODE_COMPILE_CACHE"
     "LD_PRELOAD"
     "LD_AUDIT"
     "LD_LIBRARY_PATH"
@@ -411,10 +414,13 @@ in
       realm: host:
       let
         given = lib.filter (name: host.environment ? ${name}) loadsCode;
+        one = lib.length given == 1;
       in
       {
         assertion = given == [ ];
-        message = "jitsusama.pi.hosts.${realm}.environment gives ${lib.concatStringsSep ", " given}, which a pi host's unit clears, since each would run code as the host as its node starts: NODE_OPTIONS through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. Drop each one. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get none of these from it.";
+        message = "jitsusama.pi.hosts.${realm}.environment gives ${lib.concatStringsSep ", " given}, which a pi host's unit clears, since ${if one then "it" else "each"} would run code as the host as its node starts. Of those the unit clears, NODE_OPTIONS does through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; NODE_COMPILE_CACHE through compiled code node reads back from its folder; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. ${
+          if one then "Drop it." else "Drop each one."
+        } A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get none of these from it.";
       }
     ) cfg;
 

@@ -2794,7 +2794,8 @@
     each realm a machine names gets an attended and a background pi host, started with the
     account's session where the harness is installed, run by the host's pi and its own node, its
     inspector shut to SIGUSR1 and opened or undone by none of its options, started plainly or
-    through env, with NODE_OPTIONS cleared, ready once it says so, in agents.slice with its
+    through env, with NODE_OPTIONS and each other variable that loads code into it cleared, ready
+    once it says so, in agents.slice with its
     realm's environment and its folders first on its PATH, left stopped after refusing what it
     was given and left running through a switch and through the kernel killing one of its
     commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
@@ -2817,10 +2818,11 @@
     realm and how to prove it
   '';
   pi-hosts-refuse-code-loading-variables = ''
-    a realm that gives its pi hosts any one of NODE_OPTIONS, NODE_PATH, LD_PRELOAD, LD_AUDIT,
-    LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, or two at once, which their unit clears so
-    none opens the host's inspector or runs code as the host, fails evaluation naming the realm
-    and just the variables it gave, rather than having them dropped unseen
+    a realm that gives its pi hosts any one of NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE,
+    LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, or two at once beside
+    one that loads nothing, which their unit clears so none opens the host's inspector or runs
+    code as the host, fails evaluation naming the realm and just the variables of those it gave,
+    rather than having them dropped unseen
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the
