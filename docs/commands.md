@@ -270,6 +270,11 @@ duf and bat) and from what they and their guides say:
   does, rather than again on each resize, since an answer already printed
   can't be set again; only a program that redraws the screen, like
   `less`, follows a resize.
+- **The height is `LINES`, then the terminal's**, and there's none into
+  a pipe or where neither says, as on a serial line. Almost no answer
+  reads it, since a terminal scrolls back to whatever ran past the top.
+  It's for an answer with nowhere to scroll, as on the console a failed
+  boot stops at, where what matters most has to fit the rows there are.
 - **Into a pipe nothing gives way.** Each record stays whole on its line
   at any length, rather than fitting 80 as git's `--stat` does, because
   whoever reads a pipe wants a record a line ([clig][clig]), as gh's

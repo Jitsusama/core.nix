@@ -13,12 +13,13 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 /// The variables the kit reads, and no others.
-const READ: [&str; 7] = [
+const READ: [&str; 8] = [
     "NO_COLOR",
     "FORCE_COLOR",
     "TERM",
     "COLORTERM",
     "COLUMNS",
+    "LINES",
     "HOME",
     "XDG_CONFIG_HOME",
 ];
@@ -148,6 +149,16 @@ mod tests {
         assert_eq!(environment.var("NO_COLOR"), None);
         assert_eq!(environment.var("TERM"), Some("dumb"));
         assert_eq!(environment.var("COLUMNS"), None);
+    }
+
+    #[test]
+    fn the_room_a_terminal_was_asked_for_is_read() {
+        for name in ["COLUMNS", "LINES"] {
+            assert!(
+                READ.contains(&name),
+                "{name} isn't read, so a width or height asked for is never seen"
+            );
+        }
     }
 
     /// A folder of name files, removed when the test that made it ends,
