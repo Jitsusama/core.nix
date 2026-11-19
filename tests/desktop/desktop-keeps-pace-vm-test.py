@@ -301,6 +301,10 @@ class Timing:
         # frozen, and how much of what it said has been read, from where it stood.
         self.probed: dict[bool, list[float]] = {True: [], False: []}
         self.probe_read = int(desktop.machine.succeed(f"wc -c < {PROBED}").strip())
+        # The guest's processor time stolen by the builder, and its busy time with it, in ticks,
+        # under load and frozen, and the counts as they stood at the last read.
+        self.stolen: dict[bool, list[int]] = {True: [0, 0], False: [0, 0]}
+        self.ticks = self.cpu_ticks()
         show = "show --property=ControlGroup --value"
         self.groups = [
             desktop.machine.succeed(f"systemctl {show} {COMPOSITOR}").strip(),
@@ -332,8 +336,21 @@ class Timing:
         said = self.desktop.machine.succeed(f"tail -c +{self.probe_read + 1} {PROBED}")
         pieces, used = probed(said)
         self.probe_read += used
+        ticks = self.cpu_ticks()
         if kept:
             self.probed[self.loading].extend(pieces)
+            steal, busy = (now - was for now, was in zip(ticks, self.ticks, strict=True))
+            self.stolen[self.loading][0] += steal
+            self.stolen[self.loading][1] += busy
+        self.ticks = ticks
+
+    def cpu_ticks(self) -> tuple[int, int]:
+        """Give the guest's stolen ticks and its busy ticks with them, over all its processors."""
+        # user nice system idle iowait irq softirq steal, after the line's name.
+        line = self.desktop.machine.succeed("head -1 /proc/stat")
+        ticks = [int(tick) for tick in line.split()[1:9]]
+        user, nice, system, _, _, irq, softirq, steal = ticks
+        return steal, user + nice + system + irq + softirq + steal
 
     def share(self) -> float:
         """Give the builder's share as the probe gauged it so far, saying how it was gauged."""
@@ -351,6 +368,13 @@ class Timing:
             f" load over {len(under)} pieces, against {statistics.fmean(frozen or [0]) / 1000:.2f}"
             f" ms frozen over {len(frozen)}, so the builder's share stretches each bar"
             f" {share:.2f} times"
+        )
+        print(
+            "the guest counted stolen "
+            + ", ".join(
+                f"{steal} of {busy} busy ticks {'under load' if loaded else 'frozen'}"
+                for loaded, (steal, busy) in self.stolen.items()
+            )
         )
         return share
 
@@ -1050,6 +1074,12 @@ def test_the_probe_reads_a_builder_holding_the_machine_back(desktop: Desktop) ->
     timing = Timing(desktop)
     try:
         hold_vm(started, builders[:HELD_TO])
+        held: dict[str, int] = {}
+        for thread in vm_threads(started):
+            with contextlib.suppress(ProcessLookupError):
+                on = ",".join(map(str, sorted(os.sched_getaffinity(thread))))
+                held[on] = held.get(on, 0) + 1
+        print(f"the VM's threads, by the builder's processors each may run on: {held}")
         time.sleep(PROBING)
         timing.load(on=False)
         time.sleep(PROBING)
