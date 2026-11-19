@@ -743,9 +743,21 @@ Provider {
     // from the ask itself (Joel, 2026-11-16: "i have no way to go from the
     // thing it shows to engaging with the thing working on it"); null with
     // no session, or with Agents not there to talk through.
+    // A session asking a question or a yes has no Talk: its ask tool runs
+    // until he answers, and words said to it wait for its run to end
+    // (the harness's lib/mesh/steer.ts), so they'd come after the answer
+    // they were meant to shape; In Your Own Words is how words reach it.
     function talkTo(session) {
         const agents = provider.source("agents");
         return session === null || !agents ? null : agents.sessionAct(session, "talk");
+    }
+
+    // Whether a session wanting Joel asks him something still open, a
+    // question or a yes (the harness's WantKind), rather than having
+    // ended blocked.
+    function asking(session) {
+        const kind = session.presence?.wants?.kind;
+        return kind === "question" || kind === "approval";
     }
 
     // An act on an item, named in the vocabulary.
@@ -1704,10 +1716,11 @@ Provider {
     // session that is so far past what i'm being asked that i don't know if
     // it is still relevant"). Inside, Deal With It brings its window forward
     // with the prompt filled in, naming what it asked, then Talk to it,
-    // Agents' own, then Go To. One parked is woken by any of the three, its
-    // window showing it come back, as a key typed there would; Deal With It
-    // and Talk wake it once what they say is in its inbox, which it reads
-    // as it starts (Sessions.talk).
+    // Agents' own, once its run has ended blocked (asking, it has none:
+    // talkTo), then Go To. One parked is woken by any of them, its window
+    // showing it come back, as a key typed there would; Deal With It and
+    // Talk wake it once what they say is in its inbox, which it reads as
+    // it starts (Sessions.talk).
     // Each is kept while Agents' row for it, what it asked, its title and
     // whether it's parked are the same, as Agents keeps its own row while
     // its window and how it stands are (wantsKept).
@@ -1721,7 +1734,7 @@ Provider {
         wantsNow[session.address] = session;
         return keptAlike(wantsKept, session.address,
             [made, asked, resting, session.title, JSON.stringify(answers),
-                Sessions.wantKnown(session.address)],
+                Sessions.wantKnown(session.address), session.presence?.wants?.kind],
             () => madeWantRow(made, session, asked, resting, answers));
     }
     readonly property var wantsKept: keeper()
@@ -1760,7 +1773,7 @@ Provider {
                     Sessions.goTo(session());
                 }
             })),
-            talkTo(session()),
+            asking(madeFrom) ? null : talkTo(session()),
             thing(Object.assign(named("go"), {
                 key: `verb:on:waiting:go:${key}`,
                 run: () => Sessions.wakeToGo(resting, session())
@@ -1809,8 +1822,9 @@ Provider {
     // row, the recommended first and the cursor on it, whose Return
     // answers at once, since stepping in and picking a labelled answer is
     // already deliberate, and y copies its words; then, set apart, Deal
-    // With It, and In Your Own Words where it takes them; then Talk to
-    // the session, which answers nothing, and Go To it. The session
+    // With It, and In Your Own Words where it takes them; then Go To the
+    // session, which answers nothing, and no Talk, its ask being open
+    // (talkTo). The session
     // says it took the answer by its want leaving, which takes the row
     // out of For You. Its answers are the agents daemon's, which takes the
     // answer too, naming the want itself; the rows are still made here
@@ -1877,7 +1891,7 @@ Provider {
                 if (text !== "")
                     answer({ other: text }, text);
             }
-        }))] : [], [talkTo(session()), thing(Object.assign(named("go"), {
+        }))] : [], [thing(Object.assign(named("go"), {
             key: `verb:on:waiting:go:${key}`,
             side: madeFrom.title,
             later: true,
