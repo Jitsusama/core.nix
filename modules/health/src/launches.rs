@@ -122,14 +122,15 @@ pub struct Launches {
 }
 
 /// A restart waiting for its ready line: in which boot, when on the boot's
-/// clock it stopped and started, and when it stopped or started again, if
-/// it has, since a ready line written after that is the next program's.
+/// clock it stopped and started, and its next job line's time, a stop or
+/// a start, once one is heard, since a ready line written after that is
+/// the next program's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Restarting {
     boot: String,
     stopped: i64,
     started: i64,
-    stopped_again: Option<i64>,
+    next_job: Option<i64>,
 }
 
 /// A reload systemd made: in which boot, how long into it, and by the wall
@@ -185,7 +186,7 @@ impl Launches {
                 .get_mut(unit)
                 .filter(|waiting| waiting.boot == entry.boot)
         {
-            waiting.stopped_again.get_or_insert(entry.since_boot);
+            waiting.next_job.get_or_insert(entry.since_boot);
         }
         match entry.job {
             Some(Job::Stopping) => {
@@ -233,7 +234,7 @@ impl Launches {
                             boot,
                             stopped,
                             started: entry.since_boot,
-                            stopped_again: None,
+                            next_job: None,
                         },
                     );
                 }
@@ -319,7 +320,7 @@ impl Launches {
         let Some(&Restarting {
             stopped,
             started,
-            stopped_again,
+            next_job,
             ..
         }) = self
             .restarting
@@ -328,7 +329,7 @@ impl Launches {
         else {
             return;
         };
-        if stopped_again.is_some_and(|again| again <= entry.since_boot) {
+        if next_job.is_some_and(|next| next <= entry.since_boot) {
             return;
         }
         let after = entry.since_boot.saturating_sub(started);
