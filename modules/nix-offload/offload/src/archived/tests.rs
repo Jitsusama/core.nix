@@ -640,8 +640,8 @@ fn a_run_of_packed_files_keeps_no_pass() {
     let (at, command, read) = there::ForRun::Archived(packed).sent();
     assert!(at.is_none(), "a pass would be kept at {at:?}");
     assert!(
-        command.contains("tar -xzf -"),
-        "it's unpacked there: {command}"
+        command.contains("tar -xmzf -"),
+        "it's unpacked there, its files given the time they're unpacked: {command}"
     );
     assert!(read.is_some(), "the tarball is what the far side reads");
 }
