@@ -212,7 +212,11 @@ def foot(desktop: Desktop, moved_from: str) -> tuple[int, int]:
     except AssertionError as failed:
         # A word told over the keys outlasts any wait, so say what was last read: one an earlier
         # subtest's act left reads as a slow shell otherwise, as it did on 2026-11-18.
-        told = f"the foot never stood alone; it last read {read[0] if read else 'nothing'}"
+        last = read[0] if read else {}
+        told = (
+            f"the foot never stood alone; it last read {last.get('saying')!r} over the keys, "
+            f"on {last.get('selected')}"
+        )
         raise AssertionError(told) from failed
     return read[0]["keysAt"], len(read[0]["glance"])
 
@@ -850,7 +854,9 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # A harmless one is done at once, and once it ends something, offered.
     awake = one(entries, "Keep Awake", "Machine")
     assert not awake["disruptive"]
-    # Its outcome settles here, so the release's wait below can't be met by this one's.
+    # Its outcome settles here, so the release's wait below can't be met by this one's. Either
+    # outcome passes, since its 5 s hold is tight on a loaded builder; the inhibitor is what's
+    # checked, and no other test says whether its row agrees with it.
     with settled(desktop, "session:awake", dt.timedelta(seconds=30)):
         assert ran(awake) == {"done": True, "said": "Machine \u203a Keep Awake"}
         machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))

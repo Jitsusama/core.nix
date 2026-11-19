@@ -27,6 +27,18 @@ QtObject {
         return rows.map(row => reads(null, row) + (row.becoming ? "*" : "")).join(" ");
     }
 
+    // What a firing at `now` settles and when it comes again, as
+    // "a b|2000": each settled hold is let go, or `then` makes the holds.
+    function fireOn(holds, now, then) {
+        let held = holds;
+        const settled = [];
+        const again = Becoming.fire(() => held, now, 5000, one => {
+            settled.push(one.key);
+            held = then ? then(held) : Becoming.without(held, [one.key]);
+        });
+        return `${settled.join(" ")}|${again}`;
+    }
+
     function check(failures, what, got, want) {
         if (got !== want)
             failures.push(`${what}: got ${got}, wanted ${want}`);
@@ -100,17 +112,23 @@ QtObject {
         check(failures, "the next due is the soonest", Becoming.nextDue(holds, 2000, 5000), 4000);
         check(failures, "one past due is due now", Becoming.nextDue(holds, 9000, 5000), 0);
         check(failures, "none held is none due", Becoming.nextDue({}, 0, 5000), -1);
-        // The timer keeps its own clock, so it can fire just before a hold is
+        // Qt's coarse timer can come early, so it can fire just before a hold is
         // due; it comes again for it rather than stopping (goes-places, 2026-11-18).
-        const early = Becoming.fired(holds, 5999, 5000);
         check(failures, "a timer fired early puts nothing back and comes again for it",
-            `${early.late.join(" ")}|${early.again}`, "|1");
-        const onTime = Becoming.fired(holds, 6000, 5000);
+            fireOn(holds, 5999), "|1");
         check(failures, "fired on time, it puts that one back and comes again for the rest",
-            `${onTime.late.join(" ")}|${onTime.again}`, "a|2000");
-        const last = Becoming.fired({ a: holds.a }, 6000, 5000);
-        check(failures, "and with none left it comes no more",
-            `${last.late.join(" ")}|${last.again}`, "a|-1");
+            fireOn(holds, 6000), "a|2000");
+        check(failures, "and with none left it comes no more", fireOn({ a: holds.a }, 6000),
+            "a|-1");
+        // Settling one can let go of another, as an agreed source answers for
+        // both, and a hold gone is never settled again.
+        check(failures, "a hold let go while another settles is not settled",
+            fireOn(holds, 9000, held => Becoming.without(held, ["a", "b"])), "a|-1");
+        // It comes again for what's held once all are settled, not before.
+        const added = { key: "c", row: null, at: 6000 };
+        check(failures, "and comes again for a hold made while settling",
+            fireOn({ a: holds.a }, 6000, held => Object.assign(Becoming.without(held, ["a"]),
+                { c: added })), "a|5000");
         check(failures, "a hold let go is gone from them",
             Object.keys(Becoming.without(holds, ["a"])).join(" "), "b");
         check(failures, "and the rest are left as they were", Object.keys(holds).length, 2);

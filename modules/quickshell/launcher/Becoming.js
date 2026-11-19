@@ -85,14 +85,22 @@ function nextDue(holds, now, within) {
     return ats.length === 0 ? -1 : Math.max(0, Math.min(...ats));
 }
 
-// What the launcher's timer does as it fires at `now`: the holds `late` to
-// put back, and when it's to come `again` for the rest, in ms, or -1 for
-// none left. The timer keeps its own clock, not Date.now's, so it can fire
-// a little before a hold is due, finding none late; it must still come
-// again, or that hold is never put back nor said (goes-places, 2026-11-18).
-function fired(holds, now, within) {
-    const due = late(holds, now, within);
-    return { late: due, again: nextDue(without(holds, due), now, within) };
+// What the launcher's timer does as it fires at `now`: each hold late by
+// then and still held is given to `settle`, which puts it back or lets it
+// go, and it says when to come again for the holds left, in ms, or -1 for
+// none. Settling changes the holds, so each is read afresh from `held()`.
+// The timer is Qt's coarse one, which may come up to 5% of its interval
+// early, and keeps its own clock besides, not Date.now's, so it can fire
+// before a hold is due, finding none late; it must still come again, or
+// that hold is never put back nor said (goes-places, 2026-11-18).
+function fire(held, now, within, settle) {
+    for (const key of late(held(), now, within)) {
+        const one = held()[key];
+        if (one !== undefined) {
+            settle(one);
+        }
+    }
+    return nextDue(held(), now, within);
 }
 
 // What `act` did, as words.json's `did` says it, else `done`: a daemon's
