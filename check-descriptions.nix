@@ -1095,8 +1095,8 @@
     every pose of the margin's cat, each mark drawn as its sitting's glyph or a stride's or
     meant as its own, has no lit pixel standing alone, a diagonal touching, and lit pixels
     within 15% of sitting's, each stride of the walk the cat's code takes steps one pair of
-    feet with its body still, each pair in its turn over the walk, and a leap's rise, tuck and
-    fall are all drawn
+    feet with its body still, each pair in its turn over the walk and meaning what its poses
+    are picked by, and a leap's rise, tuck and fall are all drawn
   '';
   every-pose-fault-is-refused = ''
     the margin's animals' pose rules refuse the cat's own strides out of order, alone, with a
@@ -1117,7 +1117,8 @@
     every pose of the margin's puppy, each mark named or meant for it or drawn as its sitting's
     glyph or a stride's, has no lit pixel standing alone, a diagonal touching, and lit pixels
     within 15% of its own sitting's, each of its strides steps one pair of feet with its body
-    still, each pair in its turn over the walk, and its sitting, bow and strides are drawn; its
+    still, each pair in its turn over the walk and meaning what its poses are picked by, and
+    its sitting, bow and strides are drawn; its
     strides are the walk the cat's code takes, each named for the puppy
   '';
   every-script-finds-what-it-imports = ''
