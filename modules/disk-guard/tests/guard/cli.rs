@@ -523,6 +523,23 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
 }
 
 #[test]
+fn the_journal_says_how_many_replaced_builds_a_pass_swept_from_a_target() {
+    let machine = Machine::new();
+    let replaced = format!(
+        r#"{{"event":"replaced","at":{},"target":"/builds/app","count":3,"bytes":3221225472}}"#,
+        wall() - 60.0
+    );
+    fs::write(machine.env.state.join("journal.jsonl"), format!("{replaced}\n")).unwrap();
+    let (code, out, _) = machine.run("journal");
+    assert_eq!(code, 0, "{out}");
+    let row = out.lines().last().unwrap_or_default();
+    assert!(
+        row.contains("swept") && row.contains("3.0 GiB") && row.ends_with("3 builds from /builds/app"),
+        "a sweep should say what it took, its bytes, how many and from where: {out}"
+    );
+}
+
+#[test]
 fn the_journal_leaves_out_what_a_reclaim_began_with_but_keeps_it_as_json() {
     let machine = Machine::new();
     let now = wall();

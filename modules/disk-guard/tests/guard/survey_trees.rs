@@ -816,16 +816,18 @@ fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_
         found.iter().all(|offer| offer.candidate.path != newest),
         "the newest build of a test was offered"
     );
-    // Heard only half an hour, or only by an earlier guard, an open in the
-    // hour may have gone unheard.
+    // Watched three hours but heard only half an hour, as after the guard
+    // restarts, or watched only by an earlier guard, an open in the hour
+    // may have gone unheard.
     let mut earlier = Uses::default();
+    let mut restarted = Uses::default();
     for dir in watched_dirs(&target) {
         earlier.watching(&dir, now() - 3.0 * 3600.0);
+        restarted.watching(&dir, now() - 3.0 * 3600.0);
+        let handle = disk_guard::opens::handle(&dir).unwrap();
+        restarted.marked(&dir, now() - 1800.0, handle);
     }
-    for (why, uses) in [
-        ("heard half an hour", heard(&made, 0.5)),
-        ("unheard", earlier),
-    ] {
+    for (why, uses) in [("heard half an hour", restarted), ("unheard", earlier)] {
         let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
         assert!(
             !spent(&found, &unused),
