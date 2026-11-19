@@ -756,6 +756,16 @@ QtObject {
             [Cells.cellNamed({ cell: "mycelium:cell/9f3a2b1c#notice-4" }),
                 Cells.cellNamed({ cell: "https://x/BBBBBB" }), Cells.cellNamed({})],
             ["9F3A2B1C", "", ""]);
+        // Those that join their cell: unread, kept, naming one, and not of a
+        // cell wanting Joel, whose want's row already says what it asks, as
+        // a session's own "pi" notices do.
+        const raised = (id, more) => Object.assign({ id, read: false,
+            cell: "mycelium:cell/9F3A2B1C" }, more);
+        expect("unread, kept and naming a cell not wanting Joel, each joins it",
+            Cells.joining([raised(1), raised(2, { read: true }), raised(3, { cell: null }),
+                raised(4, { transient: true }), raised(5, { cell: "mycelium:cell/BBBBBB" })],
+            [cellB]).map(one => one.id), [1]);
+        expect("nothing told, none", Cells.joining(undefined, undefined), []);
         // It stands among what needs Joel now, waiting since it came, so
         // under its heading it weighs as long as it's waited and no more.
         const noticed = ForYou.banded([{ kind: "notice",

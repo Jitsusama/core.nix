@@ -84,9 +84,7 @@ function headingName(cell, served, said) {
 const CELL_LINK = /^mycelium:cell\/(?<address>[A-Za-z0-9]+)(?:[@#]|$)/u;
 
 // The address of the session that raised `notice`, as its `cell` names it,
-// uppercased, or "" where it names none: such a notice stands where it
-// always did, in Desktop alone, and one naming a cell stands in What Needs
-// Me too, so the tray's count of critical ones leaves it out there.
+// uppercased, or "" where it names none, as one not a session's doesn't.
 function cellNamed(notice) {
     const named = CELL_LINK.exec(typeof notice?.cell === "string" ? notice.cell : "");
     return named === null ? "" : named[1].toUpperCase();
@@ -104,6 +102,18 @@ function noticeCell(notice, held) {
     const answers = session => [session.address].concat(session.presence?.addresses ?? [])
         .some(name => String(name ?? "").toUpperCase() === address);
     return (Array.isArray(held) ? held : []).find(answers) ?? null;
+}
+
+// The notices that stand under their cell among what needs Joel now: each
+// unread, kept and naming a cell, but for those of a cell among `wanting`,
+// whose want's row already says what it asks. A session's own notices are
+// pi's, which Desktop leaves to that row (Lately.js's LISTED), so one
+// about a session no longer asking, as away mode's saying a run ended,
+// stood in no list until now.
+function joining(notices, wanting) {
+    return (Array.isArray(notices) ? notices : []).filter(notice => notice !== null
+        && typeof notice === "object" && notice.read !== true && notice.transient !== true
+        && cellNamed(notice) !== "" && noticeCell(notice, wanting) === null);
 }
 
 // A session's notice as For You weighs it: a thing of no kind it counts,

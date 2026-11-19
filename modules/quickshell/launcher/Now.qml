@@ -1884,10 +1884,10 @@ Provider {
     // to reopen, while any are; the sessions wanting Joel, each blocking
     // one, itself; what he can do now; what he's to look at; what the
     // launcher's sources give, by the kind its row says, a to-do where it
-    // says none; and each desktop notice unread that names the session
-    // which raised it, its row Desktop's, so it stands under that session
-    // too (What Needs Me, 42P0R4, 2026-11-19), weighed by how long it's
-    // waited; Desktop still lists it. A session's row is Agents',
+    // says none; and each notice unread that names the session which raised
+    // it, its row Desktop's, so it stands under that session (What Needs
+    // Me, 42P0R4, 2026-11-19), weighed by how long it's waited
+    // (cellNotices). A session's row is Agents',
     // so without Agents there is none, and none is counted. Each `cell()`
     // finds the session behind it, or null, read only as its rows are made
     // (cellRows) and its headings heard (cellsTold), since the sessions
@@ -1937,8 +1937,7 @@ Provider {
             thing: one.thing,
             cell: () => null,
             make: () => one.row
-        })), unreadNotices.filter(notice => Cells.cellNamed(notice) !== "")
-        .map(notice => ({
+        })), cellNotices.map(notice => ({
             kind: "notice",
             thing: Cells.noticeThing(notice),
             cell: () => Cells.noticeCell(notice,
@@ -2002,9 +2001,15 @@ Provider {
     readonly property var bandsKept: ({ items: null, minute: -1, bands: null, times: 0 })
     // A critical notice unread is among what needs him now, as the margin's
     // tray counts it (ForYouHolds.qml), though For You's Desktop holds it;
-    // one naming its session is among the bands already, so not again.
+    // one standing under its cell is among the bands already, so not again.
     readonly property int toDoCount: forYouBands.now.length + forYouBands.agent.length
-        + criticalNotices.filter(notice => Cells.cellNamed(notice) === "").length
+        + criticalNotices.filter(notice => !cellNotices.some(one => one.id === notice.id))
+            .length
+    // The notices standing under the cell that raised them, as For You
+    // holds them while it's open (latelyNotices), so one read there stays
+    // put; those of a cell wanting Joel are its want's row's to say
+    // (ForYouCells.js's joining).
+    readonly property var cellNotices: Cells.joining(latelyNotices, Sessions.wanting)
     readonly property int toLookAtCount: forYouBands.look.length
     readonly property int toTryCount: forYouBands.try.length
     // For You's row's side, the bands as a run (ForYou.js's bandsRun).
