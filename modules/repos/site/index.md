@@ -67,8 +67,10 @@ The repos daemon (`repos serve`) holds five kinds of record. The sole
 `reading` has `machine`, `roots` and `sources`, each source with its
 `name`, `what` and `unread` list. Each `repository:<key>` has `name`,
 `owner`, `remotes`, `trunk`, `written_at` and `read_through`. Each
-`checkout:<path>` has `repository`, `path`, `bare`, `head` and
-`written_at`. Each `tree:<path>` has `repository`, `checkout`, `path`,
+`checkout:<path>` has `repository`, `path`, `bare`, `head`,
+`written_at`, `weight`, `branches` and `config_bytes`, the last two its
+local branch count and its config's bytes, null where they couldn't be
+read. Each `tree:<path>` has `repository`, `checkout`, `path`,
 `snapshot`, `present`, `head`, `written_at` and `change`. Each
 `change:<key>#<number>`, or `@<branch>` before GitHub numbers it, has its
 `title`, `branch`, `checks` and `review`. Times are RFC 3339, UTC.

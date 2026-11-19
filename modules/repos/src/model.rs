@@ -173,6 +173,18 @@ pub struct Checkout {
     /// none where its objects folder can't be read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight: Option<Weight>,
+    /// How many local branches it keeps, each name under `refs/heads/` once,
+    /// loose, packed or in its reftable. Agents' trees left thousands, each
+    /// with a section in the config every git command there reads. None
+    /// where its refs couldn't be read, so a failed reading isn't taken for
+    /// a cleanup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branches: Option<u64>,
+    /// How long its config file is, in bytes, which git reads whole for
+    /// every command run in the checkout or any tree cut from it; files it
+    /// includes aren't counted. None where the file couldn't be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_bytes: Option<u64>,
 }
 
 /// What a checkout's git store holds, which its trees share: objects git

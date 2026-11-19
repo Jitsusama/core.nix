@@ -60,6 +60,8 @@ fn record(own: Head, trees: Vec<Tree>) -> Record {
                 written_at: None,
                 trees,
                 weight: None,
+                branches: Some(1),
+                config_bytes: None,
             }],
             changes: Vec::new(),
             read_through: None,

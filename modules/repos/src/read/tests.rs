@@ -7,6 +7,9 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use super::*;
 
+// A checkout's branch count and config size.
+mod counts;
+
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 const OTHER: &str = "89abcdef0123456789abcdef0123456789abcdef";
 
@@ -221,6 +224,9 @@ fn a_reftable_checkouts_heads_and_trunk_are_read_from_its_tables() {
         &common.join("worktrees/src1/reftable"),
         &[table(&[("HEAD", Some(Ref::Commit(COMMIT.to_owned())))])],
     );
+    // Loose files a reftable checkout doesn't keep its branches in.
+    write(&common.join("refs/heads/jg/stray"), &format!("{COMMIT}\n"));
+    write(&common.join("refs/heads/jg/other"), &format!("{COMMIT}\n"));
     let record = reading(&[world.join("trees")], None);
     let repository = &record.repositories[0];
     assert_eq!(
@@ -247,6 +253,10 @@ fn a_reftable_checkouts_heads_and_trunk_are_read_from_its_tables() {
         ],
         "{repository:#?}"
     );
+    // Its tables hold its one branch, feature. The two loose files beside
+    // them are not where a reftable checkout keeps its refs, so counting
+    // them too would say 3.
+    assert_eq!(repository.checkouts[0].branches, Some(1), "{repository:#?}");
 }
 
 #[test]

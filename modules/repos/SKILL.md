@@ -71,7 +71,8 @@ change `{title, author, draft, branch, base, commit, updated_at, checks
 {state, passed, failed, pending}, review, github {number, url}}`, where a
 check's `state` is passing, failing, pending or none and `review` is approved,
 changes_asked, waiting or none; each checkout
-`{path, bare, head {branch, commit}, written_at, weight, trees}`; each tree
+`{path, bare, head {branch, commit}, written_at, weight, branches, config_bytes,
+trees}`; each tree
 `{path, kind ("worktree" or "snapshot"), present, head, written_at}`. A bare
 checkout's `head` is null, and a `branch` is null where the head is a bare
 commit. A checkout's `weight` is its git store, `{loose, estimated,
@@ -79,7 +80,11 @@ loose_bytes, packs, packed_bytes, due}`. Its bytes are the room the store takes
 on the disk. Loose objects are counted in every folder when few, and where
 `estimated` reckoned from one of the 256, as git's auto-gc does. `due` says
 git's automatic gc, at the checkout's own config, would gather it now. The
-weight is left out where the store couldn't be read. Paths are whole, times
+weight is left out where the store couldn't be read. `branches` counts its local
+branches, loose, packed or in its reftable, each once, and `config_bytes` is its
+config file's length, without files it includes, which every git command there
+reads; either is left out where it couldn't be read, and is null in the
+daemon's checkout records, never 0. Paths are whole, times
 RFC 3339, and an unread one is null.
 `repos NAME --json` holds its one under `repository`, and
 `repos NAME trees --json` its trees, newest first, each naming its

@@ -41,6 +41,8 @@ fn repository(key: &str, name: &str, owner: Option<&str>, trees: Vec<Tree>) -> R
             written_at: None,
             trees,
             weight: None,
+            branches: None,
+            config_bytes: None,
         }],
         changes: Vec::new(),
         read_through: None,

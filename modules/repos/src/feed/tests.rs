@@ -95,6 +95,8 @@ fn record() -> Record {
                     packed_bytes: 4096,
                     due: false,
                 }),
+                branches: Some(3),
+                config_bytes: Some(220),
             }],
             changes: vec![
                 change("joel/say-trees", Some(42)),
@@ -164,6 +166,31 @@ fn a_checkout_says_what_its_git_store_weighs() {
             "packed_bytes": 4096,
             "due": false,
         })
+    );
+}
+
+#[test]
+fn a_checkout_says_how_many_branches_and_config_bytes_it_keeps() {
+    let said = records(&record());
+    let checkout = find(&said, "checkout:/home/joel/src/core.nix");
+    assert_eq!(
+        (&checkout["branches"], &checkout["config_bytes"]),
+        (&json!(3), &json!(220))
+    );
+}
+
+#[test]
+fn a_checkout_whose_counts_couldnt_be_read_says_null_rather_than_zero() {
+    let mut unread = record();
+    let checkout = &mut unread.repositories[0].checkouts[0];
+    checkout.branches = None;
+    checkout.config_bytes = None;
+    let said = records(&unread);
+    let checkout = find(&said, "checkout:/home/joel/src/core.nix");
+    assert_eq!(
+        (&checkout["branches"], &checkout["config_bytes"]),
+        (&Value::Null, &Value::Null),
+        "{checkout:#?}"
     );
 }
 
