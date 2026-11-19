@@ -140,6 +140,7 @@ fn the_homes_are_written_whole_for_anyone_to_read_and_nothing_else_is_left() {
         "nothing was written"
     );
     assert_eq!(read(&file), of(&record()));
+    // The writing begins private, so this holds only if it's opened to readers once whole.
     let mode = fs::metadata(&file).expect("the homes").permissions().mode();
     assert_eq!(
         mode & 0o777,
@@ -195,10 +196,16 @@ fn homes_another_writer_changed_or_removed_are_written_again_at_the_next_reading
     let mut homes = Homes::at(file.clone());
     homes.write(&record()).expect("written");
     fs::write(&file, "x").expect("changed");
-    assert!(homes.write(&record()).expect("written"), "changed homes stayed");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "changed homes stayed"
+    );
     assert_eq!(read(&file), of(&record()));
     fs::remove_file(&file).expect("removed");
-    assert!(homes.write(&record()).expect("written"), "removed homes stayed gone");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "removed homes stayed gone"
+    );
     assert_eq!(read(&file), of(&record()));
     let _ = fs::remove_dir_all(&folder);
 }
@@ -214,10 +221,21 @@ fn a_writing_left_half_done_goes_at_the_next_and_its_link_is_never_followed() {
     // A daemon killed mid-writing, or a link put where the next writes.
     symlink(&target, folder.join(".homes.json.writing")).expect("a link left");
     let mut homes = Homes::at(file.clone());
-    assert!(homes.write(&record()).expect("written"), "nothing was written");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "nothing was written"
+    );
     assert_eq!(read(&file), of(&record()));
-    assert_eq!(fs::read_to_string(&target).expect("kept"), "kept", "the link was followed");
-    assert_eq!(names_in(&folder), ["elsewhere", "homes.json"], "the half-done writing stayed");
+    assert_eq!(
+        fs::read_to_string(&target).expect("kept"),
+        "kept",
+        "the link was followed"
+    );
+    assert_eq!(
+        names_in(&folder),
+        ["elsewhere", "homes.json"],
+        "the half-done writing stayed"
+    );
     let _ = fs::remove_dir_all(&folder);
 }
 

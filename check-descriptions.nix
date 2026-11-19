@@ -3098,8 +3098,9 @@
     every view of them fitting each width, and the GitHub receptor said with its counts, each
     change asking review as owner/name#N of a declared owner and the realm's owners, none of
     them while a read failed, and the daemon's homes for Code, every repository and present tree
-    at its Code address, written whole and readable by the server, not again unchanged, and
-    tried again after a failure it says once
+    at its Code address by key whatever the reading's order, written whole and readable by the
+    server through no link left in its way, not again while the file holds them, put right once
+    another writer changes or removes them, and tried again after a failure it says once
   '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship

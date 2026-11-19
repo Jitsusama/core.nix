@@ -16,7 +16,8 @@
   # repository for each remote, each checkout's store weighed and judged
   # due, every view of them fitting each width, and the GitHub receptor
   # said with its counts, the changes asking review and the realm's
-  # owners, none of them while a read failed.
+  # owners, none of them while a read failed; and Code's homes, as the
+  # daemon writes them.
   repos-reads-the-disk = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in repos, its tests included.
   repos-passes-clippy = passesClippy "repos-passes-clippy" (pkgs.callPackage ./package.nix { });

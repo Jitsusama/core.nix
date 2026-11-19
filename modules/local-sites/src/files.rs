@@ -10,8 +10,9 @@
 //! A mount is the whole of its site but for one file: its `homes.json`,
 //! where the things it's home to are listed for every other site to link
 //! to. Those change with the site's data, which Nix never builds, so a
-//! timer writes them into the documents under the site's name, and a
-//! mount without its own is answered with those.
+//! writer of their own (Code's is the repos daemon) puts them into the
+//! documents under the site's name, and a mount without its own is
+//! answered with those.
 
 use std::path::{Path, PathBuf};
 

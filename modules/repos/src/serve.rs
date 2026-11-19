@@ -109,7 +109,6 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut began = Instant::now();
     let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
     shared.change(feed::records(&record), feed::sources(&record));
-    keep(homes.as_mut(), &record);
     let listener = serve::listen(&socket).map_err(|why| {
         let socket = socket.display();
         Failure::new(Exit::Failed, format!("it couldn't listen on {socket}"))
@@ -117,6 +116,9 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     })?;
     serve::accept(Arc::clone(&shared), listener);
     eprintln!("{}", ready(started.elapsed()));
+    // Once views are answered, so a writing's flush to the disk never
+    // holds up the first.
+    keep(homes.as_mut(), &record);
     // The pace keeps its own time, so agents writing more often than it
     // comes never put off the reading that finds new clones.
     let mut whole = Instant::now();
