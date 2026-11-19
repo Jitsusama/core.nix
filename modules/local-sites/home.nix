@@ -391,9 +391,10 @@ in
       # they last talked, how much each said and of what kinds, and how
       # strong it stood then, never where it went. Of each feeding, which
       # receptor fed which cell something, when and of what kind, which
-      # the node keeps under `source`, never the change itself. Of each murmur the
-      # murmurs page reads only what it draws, not the machine it was said
-      # on.
+      # the node keeps under `source`, never the change itself; `source`
+      # passes whole, holding today only that word. Of each murmur the
+      # murmurs page reads only what it draws, not the machine it was
+      # said on.
       node = {
         socket = "mycelium/${realm}.sock";
         kinds = {

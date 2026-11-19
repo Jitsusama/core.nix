@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { expiryOf, FED_SHOWN_MS, nowOf } from "../model.ts";
+import { expiryOf, FED_AHEAD_MS, FED_SHOWN_MS, nowOf } from "../model.ts";
 
 const AT = Date.parse("2026-11-18T08:00:00Z");
 const MINUTE_MS = 60_000;
@@ -66,9 +66,12 @@ it("a feeding goes once its ten minutes are up, whatever the watch still holds",
   );
 });
 
-it("a feeding said a moment ahead of this clock is drawn, one ten minutes ahead is not", () => {
+it("a feeding said a moment ahead of this clock is drawn, one a minute ahead is not", () => {
+  // Further ahead, it would stay up past its ten minutes, which are its own.
+  assert.equal(FED_AHEAD_MS, MINUTE_MS, "a feeding may be said other than a minute ahead");
   const these = [
     fed("github@kestrel", "KESTRL1", -2000),
+    fed("github@kestrel", "AHEAD1", -MINUTE_MS),
     fed("github@kestrel", "FARAWAY", -10 * MINUTE_MS),
   ];
   assert.deepEqual(

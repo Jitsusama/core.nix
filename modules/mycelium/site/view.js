@@ -955,7 +955,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   };
 
   // What the canvas draws as lines, said for whoever checks the map from
-  // outside (the web-design kit's map.js): each cord, hypha and talk arc
+  // outside (the web-design kit's map.js): each cord, hypha, talk and fed arc
   // the canvas has on screen, as a polyline in the viewport's CSS pixels,
   // worked out fresh on each call from the lines the name placer avoids.
   // Where a line is knocked out round a name, it is said as two, ending
@@ -3363,7 +3363,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>A cell moving: in a turn now</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>Quiet: waiting for its next word</dd></div>` +
       `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, its dot filled while it is reading</dd></div>` +
-      (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Fed: a dotted arc from a receptor to the one cell it fed something from outside, such as a review asked of you, drawn for ten minutes</dd></div>` : "") +
+      (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Fed: a dot-and-dash arc from a receptor to the one cell it fed something from outside, such as a review asked of you or a call's summary, drawn for ten minutes</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
@@ -4320,7 +4320,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
       talkLayer.push({ tag: "path", cls: `m-talk warm${warmLevel(n)}${open}${faint}`, line });
     }
     // A receptor's feeding bows off the hyphae as talk does, so it never
-    // lies over the marks between, but dotted and to the other side, so
+    // lies over the marks between, but dot-and-dash and to the other side, so
     // the two read apart even between the same two. It is drawn whole
     // until a choice that doesn't touch it, being rare and gone in ten
     // minutes, and opens the cell it fed.

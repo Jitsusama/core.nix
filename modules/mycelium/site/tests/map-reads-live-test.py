@@ -22,7 +22,7 @@ import copy
 import json
 import os
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -75,7 +75,14 @@ SOUGHT_TITLE = "Count the Cleats"
 FED_RECEPTOR = "calls@kestrel"
 FED_CELL = "SKIFF1"
 FED_KEY = f"fed:{FED_RECEPTOR}~{FED_CELL}"
-FED_SAID = "a review asked of you"
+FED_SAID = "a call's summary"
+# The two ends' titles in node.json, which their drawers are named by.
+FED_RECEPTOR_TITLE = "Calls"
+FED_CELL_TITLE = "Rig the Skiff"
+# How long before its ten minutes end a second feeding is told, to see the
+# map let it go on its own clock with the node saying nothing more: past the
+# map's 2 s pace, so it is drawn before it goes.
+FED_ENDING_S = 8
 
 
 @pytest.fixture
@@ -212,21 +219,25 @@ def basins() -> dict[str, list[dict[str, object]]]:
     return {**reading, "machine": reading["machine"] + pool, "cell": cells}
 
 
-def fed() -> dict[str, list[dict[str, object]]]:
-    """Node.json's realm with FED_RECEPTOR having just fed FED_CELL a review."""
-    reading = json.loads((HERE / "node.json").read_text())["kinds"]
-    now = datetime.now(UTC)
-    feeding = {
-        "key": FED_KEY,
+def feeding(cell: str, ago: timedelta = timedelta()) -> dict[str, object]:
+    """FED_RECEPTOR feeding `cell` a call's summary, `ago` before now, as the node serves it."""
+    said = datetime.now(UTC) - ago
+    return {
+        "key": f"fed:{FED_RECEPTOR}~{cell}",
         "kind": "fed",
-        "heard": int(now.timestamp() * 1000),
+        "heard": int(said.timestamp() * 1000),
         "receptor": FED_RECEPTOR,
-        "cell": FED_CELL,
-        "at": now.isoformat().replace("+00:00", "Z"),
+        "cell": cell,
+        "at": said.isoformat().replace("+00:00", "Z"),
         # The node moves a field named as the interface's own under source.
-        "source": {"kind": "review"},
+        "source": {"kind": "summary"},
     }
-    return {**reading, "fed": [feeding]}
+
+
+def fed() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with FED_RECEPTOR having just fed FED_CELL a call's summary."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    return {**reading, "fed": [feeding(FED_CELL)]}
 
 
 def serve(folder: Path, node: StandIn) -> Iterator[Served]:
@@ -507,9 +518,10 @@ def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
         # Each end's drawer says what was fed, the cell's by whom.
         title = page.locator("#panel-title")
         body = page.locator("#panel-body")
+        expect(title, "the receptor's drawer never opened").to_contain_text(FED_RECEPTOR_TITLE)
         receptor = title.inner_text()
         page.evaluate(f"location.hash = '#cell={FED_CELL}'")
-        expect(title, "the cell's drawer never opened").not_to_have_text(receptor)
+        expect(title, "the cell's drawer never opened").to_contain_text(FED_CELL_TITLE)
         cell = title.inner_text()
         expect(body, "the cell's drawer left out what it was fed").to_contain_text(
             f"{FED_SAID}, by {receptor}", timeout=PACE_MS
@@ -520,7 +532,18 @@ def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
         )
         found = page.evaluate((HERE / "site-checks.js").read_text())
         assert found == [], f"site-checks.js on a realm with a feeding found {found}"
-        # Once the node stops saying it, the line goes.
+        # A feeding near its ten minutes' end goes on the map's own clock,
+        # with the node saying nothing more of it.
+        ending = feeding("TERN03", timedelta(minutes=10) - timedelta(seconds=FED_ENDING_S))
+        fed_node.tell("fed", changed=[ending])
+        page.wait_for_function(
+            "document.getElementById('map-ground').painted().fed === 2", timeout=PACE_MS
+        )
+        page.wait_for_function(
+            "document.getElementById('map-ground').painted().fed === 1",
+            timeout=PACE_MS + FED_ENDING_S * 1000,
+        )
+        # Once the node stops saying one, its line goes too.
         fed_node.tell("fed", gone=[FED_KEY])
         page.wait_for_function(
             "document.getElementById('map-ground').painted().fed === 0", timeout=PACE_MS

@@ -46,6 +46,13 @@ const TIE_HALF_LIFE_MS = 2 * 3_600_000;
  */
 const FED_SHOWN_MS = 600_000;
 
+/**
+ * How far ahead of the page's clock a feeding may be said and still be drawn:
+ * a minute, for clocks a little apart. A feeding is an event with its own ten
+ * minutes, so one said further ahead would stay up past them.
+ */
+const FED_AHEAD_MS = 60_000;
+
 /** What joins a tie's two ends in its key, which no cell's name holds. */
 const TIE_SEPARATOR = "~";
 
@@ -344,9 +351,9 @@ function fedOf(held: Held | undefined, at: number): Fed[] | null {
     const said = text(record, "at");
     const when = said === undefined ? Number.NaN : Date.parse(said);
     // One said a little ahead of this clock is drawn rather than held back
-    // until something else moves, but as with a balance, never one so far
-    // either side that the clocks can't both be right.
-    if (receptor && cell && said && Math.abs(at - when) < FED_SHOWN_MS) {
+    // until something else moves, but never one so far ahead that it would
+    // stay up past its ten minutes, or that the clocks can't both be right.
+    if (receptor && cell && said && at - when < FED_SHOWN_MS && when - at < FED_AHEAD_MS) {
       // The record's own `kind` is the interface's, so the node moves the
       // feeding's, its word for what was fed, under `source`.
       const kind = text(object(record, "source") ?? {}, "kind") ?? null;
@@ -489,4 +496,4 @@ function nowOf(heard: Heard, at: number): Now {
 }
 
 export type { Balance, Fed, Heard, Message, Now, Tie, Wait };
-export { BALANCE_FRESH_MS, expiryOf, FED_SHOWN_MS, LATEST_MESSAGES, nowOf };
+export { expiryOf, FED_AHEAD_MS, FED_SHOWN_MS, LATEST_MESSAGES, nowOf };

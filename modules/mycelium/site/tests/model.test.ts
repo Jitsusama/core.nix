@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { LATEST_MESSAGES, nowOf } from "../model.ts";
+import { expiryOf, LATEST_MESSAGES, nowOf } from "../model.ts";
 
 const AT = Date.parse("2026-11-16T07:30:00Z");
 
@@ -270,6 +270,24 @@ it("a balance reading 179 s old, or as far ahead, still gives its shares", () =>
     const now = nowOf(toldBalance([skiff], [reading(ago)]), AT);
     assert.notEqual(now.balance, null, `${ago} ms`);
   }
+});
+
+it("the map draws again when its balance reading's three minutes are up", () => {
+  const now = nowOf(toldBalance([skiff], [reading(2 * 60_000)]), AT);
+  assert.equal(expiryOf(now), AT + 60_000);
+});
+
+it("of a balance and a feeding, the map draws again for whichever goes first", () => {
+  /** The watches with a balance read `read` ago and a feeding said `said` ago. */
+  const both = (read: number, said: number) => {
+    const fed = new Held();
+    const at = new Date(AT - said).toISOString();
+    const feeding = { key: "fed:github@kestrel~SKIFF1", kind: "fed", heard: AT - said, at };
+    fed.took({ records: [{ ...feeding, receptor: "github@kestrel", cell: "SKIFF1" }] });
+    return nowOf({ ...toldBalance([skiff], [reading(read)]), fed }, AT);
+  };
+  assert.equal(expiryOf(both(2 * 60_000, 5 * 60_000)), AT + 60_000, "the balance goes first");
+  assert.equal(expiryOf(both(0, 9.5 * 60_000)), AT + 30_000, "the feeding goes first");
 });
 
 it("of the readings each machine's node serves, the newest is the one drawn", () => {
