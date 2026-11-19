@@ -20,15 +20,22 @@
 //! serial console is the serial line rather than the screen, so a stream
 //! on the console or a virtual terminal is drawn with the stand-ins
 //! whatever `TERM` says.
+//!
+//! The shell waits for it, and systemd gives the shell's start only so
+//! long, so every command it asks is held to a deadline (asking.rs): one
+//! that stalls, as a journal on a failing disk can, is stopped and not
+//! asked again, and the summary says what the others told it.
 
+mod asking;
 mod summary;
 
 use std::fs;
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 
 use terminal_kit::flags::Format;
 use terminal_kit::{Context, Exit, Failure, Help, Ink, Pen, ink};
 
+use asking::Budget;
 use summary::Failed;
 
 fn help() -> Help {
@@ -61,13 +68,22 @@ fn run(context: &Context) -> Result<(), Failure> {
                 .try_this("boot-stopped"),
         );
     }
-    let names = failed()?;
-    let units: Vec<Failed> = names
+    let budget = Budget::from_now();
+    let names = failed(&budget)?;
+    let shown = &names[..names.len().min(summary::SHOWN)];
+    // Every unit's description is asked before any journal is, so a slow
+    // journal that spends the budget still leaves each unit named as
+    // systemd describes it.
+    let abouts: Vec<String> = shown
         .iter()
-        .take(summary::SHOWN)
-        .map(|name| Failed {
-            about: described(name).unwrap_or_else(|| name.clone()),
-            said: last(name),
+        .map(|name| described(&budget, name).unwrap_or_else(|| name.clone()))
+        .collect();
+    let units: Vec<Failed> = shown
+        .iter()
+        .zip(abouts)
+        .map(|(name, about)| Failed {
+            about,
+            said: last(&budget, name),
             name: name.clone(),
         })
         .collect();
@@ -104,15 +120,18 @@ fn is_a_console(path: &str) -> bool {
             .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// The units that failed, by name, as systemd lists them.
-fn failed() -> Result<Vec<String>, Failure> {
+/// The units that failed, by name, as systemd lists them. It's asked
+/// with all the time there is, since without it nothing can be said.
+fn failed(budget: &Budget) -> Result<Vec<String>, Failure> {
     let unavailable = |why: String| {
         Failure::new(Exit::Unavailable, "systemd couldn't say which units failed").because(why)
     };
-    let listed = Command::new("systemctl")
-        .args(["list-units", "--failed", "--plain", "--no-legend", "--full"])
-        .output()
-        .map_err(|error| unavailable(format!("systemctl couldn't run: {error}")))?;
+    let listed = budget
+        .ask_with_all_left(
+            "systemctl",
+            &["list-units", "--failed", "--plain", "--no-legend", "--full"],
+        )
+        .map_err(unavailable)?;
     if !listed.status.success() {
         return Err(unavailable(
             String::from_utf8_lossy(&listed.stderr).trim().to_owned(),
@@ -126,10 +145,12 @@ fn failed() -> Result<Vec<String>, Failure> {
 }
 
 /// A unit's description, where systemd gives one.
-fn described(unit: &str) -> Option<String> {
-    let shown = Command::new("systemctl")
-        .args(["show", "--property=Description", "--value", "--", unit])
-        .output()
+fn described(budget: &Budget, unit: &str) -> Option<String> {
+    let shown = budget
+        .ask(
+            "systemctl",
+            &["show", "--property=Description", "--value", "--", unit],
+        )
         .ok()?;
     let about = String::from_utf8_lossy(&shown.stdout).trim().to_owned();
     (shown.status.success() && !about.is_empty()).then_some(about)
@@ -154,34 +175,36 @@ const FAILED_WITH_RESULT: &str = "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c";
 /// then the last result it failed with, each asked apart, since a unit
 /// restarting into its start limit says two results and no exit between.
 /// Any other of its lines only when a unit has neither.
-fn last(unit: &str) -> Vec<String> {
-    let own = summary::last_shown(journal(&[&format!("_SYSTEMD_UNIT={unit}")], 20), 3);
+fn last(budget: &Budget, unit: &str) -> Vec<String> {
+    let own = journal(budget, &[&format!("_SYSTEMD_UNIT={unit}")], 20);
+    let own = summary::last_shown(own, 3);
     if !own.is_empty() {
         return own;
     }
     let systemd = format!("UNIT={unit}");
-    let mut why = journal(&[&systemd, "_PID=1", PROCESS_EXITED], 1);
-    why.extend(journal(&[&systemd, "_PID=1", FAILED_WITH_RESULT], 1));
+    let mut why = journal(budget, &[&systemd, "_PID=1", PROCESS_EXITED], 1);
+    why.extend(journal(
+        budget,
+        &[&systemd, "_PID=1", FAILED_WITH_RESULT],
+        1,
+    ));
     if why.is_empty() {
-        journal(&[&systemd, "_PID=1"], 1)
+        journal(budget, &[&systemd, "_PID=1"], 1)
     } else {
         why
     }
 }
 
 /// The last `lines` this boot's journal holds matching every one of
-/// `matching`, as they were said; nothing where the journal can't be read.
-fn journal(matching: &[&str], lines: usize) -> Vec<String> {
-    Command::new("journalctl")
-        .arg("--boot")
-        .args(matching)
-        .args([
-            &format!("--lines={lines}"),
-            "--output=cat",
-            "--no-pager",
-            "--quiet",
-        ])
-        .output()
+/// `matching`, as they were said; nothing where the journal can't be read
+/// in time.
+fn journal(budget: &Budget, matching: &[&str], lines: usize) -> Vec<String> {
+    let lines = format!("--lines={lines}");
+    let mut args = vec!["--boot"];
+    args.extend(matching);
+    args.extend([lines.as_str(), "--output=cat", "--no-pager", "--quiet"]);
+    budget
+        .ask("journalctl", &args)
         .map(|said| {
             String::from_utf8_lossy(&said.stdout)
                 .lines()
