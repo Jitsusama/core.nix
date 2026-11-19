@@ -43,9 +43,10 @@ EOF
 {
   printf '#!%s\n' "$BASH"
   cat <<'EOF'
-lines=10 own='' systemd='' unit='' pid='' ids=' '
+lines=10 own='' systemd='' unit='' pid='' ids=' ' boot=''
 for arg; do
   case $arg in
+  --boot) boot=1 ;;
   --lines=*) lines=${arg#*=} ;;
   _SYSTEMD_UNIT=*) own=$WORK/own/${arg#*=} ;;
   --unit=*) systemd=$WORK/systemd/${arg#*=} own=$WORK/own/${arg#*=} ;;
@@ -55,6 +56,9 @@ for arg; do
   esac
 done
 [[ -z $unit || -z $pid ]] || systemd=$WORK/systemd/$unit
+# Every line it gives is this boot's, so a read without --boot, which a
+# real journal answers with earlier boots' lines, is refused.
+[[ -n $boot ]] || exit 1
 {
   if [[ -f $systemd ]]; then
     while IFS='|' read -r id line; do
@@ -119,7 +123,9 @@ printf '%s\n' "$exited|quiet.service: Main process exited, code=exited, status=1
   "$cost|quiet.service: Consumed 9ms CPU time." \
   "|quiet.service: Start request repeated too quickly." \
   "$result|quiet.service: Failed with result 'start-limit-hit'." > "$work/systemd/quiet.service"
-printf '%s\n' "$job|Dependency failed for nameless.service." > "$work/systemd/nameless.service"
+# nameless.service's only line carries neither id, so the summary falls
+# back to systemd's last line of the unit.
+printf '%s\n' "$job|Failed to start nameless.service." > "$work/systemd/nameless.service"
 said
 says "  x  home.mount  Mount /home"
 says "     probing the disk"
@@ -134,15 +140,16 @@ grep -q -F "Consumed" "$work/said" && fails "it said what a unit cost, not why i
 grep -q -F -e "Scheduled restart" -e "'signal'" -e "status=1/" -e "repeated too quickly" \
   "$work/said" && fails "it said more than why systemd last failed it"
 says "  x  nameless.service"
-says "     Dependency failed for nameless.service."
+says "     Failed to start nameless.service."
 # Each line under its own unit, and a process's exit before its result.
 at=0
 for line in "  x  home.mount  Mount /home" "     mount: /home: wrong fs type" \
   "  x  quiet.service  A program that said nothing" \
   "     quiet.service: Main process exited, code=killed, status=9/KILL" \
   "     quiet.service: Failed with result 'start-limit-hit'." "  x  nameless.service" \
-  "     Dependency failed for nameless.service." "  x  blank.service  A program that drew nothing"; do
-  next=$(grep -n -x -F -- "$line" "$work/said" | cut -d: -f1 | head -n 1)
+  "     Failed to start nameless.service." "  x  blank.service  A program that drew nothing"; do
+  next=$(grep -n -x -F -- "$line" "$work/said" | cut -d: -f1 | head -n 1) ||
+    fails "no line \"$line\""
   ((next > at)) || fails "\"$line\" isn't where it belongs"
   at=$next
 done
