@@ -32,7 +32,11 @@
 //! It runs as the person, let out of the fence a session works in, so it
 //! sends only HEAD's objects, never the index or the files a fenced
 //! session can write, and refuses a tree with changes not committed or
-//! with objects borrowed from another repository (`there::Sends`).
+//! with objects borrowed from another repository (`there::Sends`). A tree
+//! whose origin isn't on GitHub, which a lent builder has no credential to
+//! fetch from, sends HEAD's files within its sparse cone as a tarball
+//! instead (`archived.rs`): 13.2 MB for a large repository's zone on 18
+//! November, whose suites had all run here.
 
 use std::io::{BufRead, Read, Write};
 use std::path::Path;

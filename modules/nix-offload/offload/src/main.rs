@@ -156,6 +156,7 @@
 //! builder fails its proofs, or none is lent, its file for any work names
 //! the second lent builder, else the warm VM builders, that passed theirs.
 
+mod archived;
 mod busy;
 mod cargo;
 mod changed;
@@ -1433,7 +1434,8 @@ fn standing(dir: &Path) -> Option<String> {
 /// builder standing it waits for one as `waiting` says, and with none it
 /// exits `NOT_TAKEN`, having run nothing, here or anywhere. A run that
 /// ends 0 is kept as passed at the commit, with its words and copies
-/// (`passed.rs`), which `nix-offload passed ran COMMIT` says.
+/// (`passed.rs`), which `nix-offload passed ran COMMIT` says, unless it
+/// went as files cut to its cones (`archived.rs`).
 fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let asked = match command::asked(arguments) {
         Ok(asked) => asked,
@@ -1446,16 +1448,25 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         eprintln!("nix-offload: {why}, so nothing ran");
         ExitCode::from(changed::NOT_TAKEN)
     };
+    let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+    let more = more_dir();
+    let lenders = [dir.as_path(), more.as_path()];
+    // Before packing, which for a tree off GitHub gzips its whole cone
+    // here, only to be thrown away when nothing could take it.
+    if !lenders
+        .iter()
+        .any(|lender| standing(lender).is_some() || there::lends(lender))
+    {
+        return not_run("no builder is lent");
+    }
     let scratch = scratch();
     let Ok(folder) = env::current_dir() else {
         return not_run("this folder can't be read");
     };
-    let source = match there::source(&folder, &scratch, None, there::Sends::Committed) {
-        Ok(source) => source,
+    let (at, checkout, bundle) = match there::for_run(&folder, &scratch) {
+        Ok(sending) => sending.sent(),
         Err(why) => return not_run(&why),
     };
-    let at = there::at_of(&source);
-    let (checkout, bundle) = changed::checked_out(source);
     // One name wherever it goes, since a run sent on to the other builder
     // starts afresh there and never shares this one's files.
     let run = command::run_name();
@@ -1463,9 +1474,6 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         command: command::command(&checkout, &asked, &run),
         bundle,
     };
-    let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
-    let more = more_dir();
-    let lenders = [dir.as_path(), more.as_path()];
     let cuts = there::Cuts::default();
     let on = |store: &str| {
         command::on(
@@ -1499,7 +1507,7 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         }
     }
     if let Some(bundle) = &sending.bundle {
-        let _ = fs::remove_file(bundle);
+        archived::gone(bundle);
     }
     // What ran at the commit sent, kept by nix-offload alone, so a gate
     // (the harness's host tests) can take a pass from a fenced session,

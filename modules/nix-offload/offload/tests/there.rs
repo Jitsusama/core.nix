@@ -6237,6 +6237,80 @@ fn a_run_refuses_a_tree_that_borrows_objects_and_reads_only_its_own() {
     );
 }
 
+// A session can write its repository's config and its `.git` file, and
+// each of these would have sent another repository's files as the person:
+// `core.worktree` naming another folder, a `.git` file naming another
+// repository's git folder or a worktree of it, and a planted worktree
+// whose `commondir` names another repository's objects. A worktree git
+// made itself still goes.
+#[test]
+fn a_run_refuses_a_tree_whose_git_folder_is_another_repositorys() {
+    let run = RunTree::new();
+    let (hidden, _) = run.hidden();
+    let elsewhere = run.folder.path().join("elsewhere");
+    git(
+        &hidden,
+        &run.config,
+        &["worktree", "add", "-q", &elsewhere.to_string_lossy()],
+    );
+
+    run.git(&["config", "core.worktree", &hidden.to_string_lossy()]);
+    run.refused(&run.run(&[]), "isn't within the repository git finds");
+    // A folder holding the tree makes a top the tree is within.
+    run.git(&[
+        "config",
+        "core.worktree",
+        &run.folder.path().to_string_lossy(),
+    ]);
+    run.refused(&run.run(&[]), "names its files elsewhere");
+    run.git(&["config", "--unset", "core.worktree"]);
+
+    let own = run.tree.join(".git");
+    let aside = run.folder.path().join("aside");
+    fs::rename(&own, &aside).unwrap();
+    fs::write(&own, format!("gitdir: {}\n", hidden.join(".git").display())).unwrap();
+    run.refused(&run.run(&[]), "objects are another repository's");
+    let theirs = hidden.join(".git/worktrees/elsewhere");
+    fs::write(&own, format!("gitdir: {}\n", theirs.display())).unwrap();
+    run.refused(&run.run(&[]), "objects are another repository's");
+    let planted = run.folder.path().join("planted");
+    fs::create_dir(&planted).unwrap();
+    fs::write(planted.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+    fs::write(
+        planted.join("commondir"),
+        format!("{}\n", hidden.join(".git").display()),
+    )
+    .unwrap();
+    fs::write(planted.join("gitdir"), format!("{}\n", own.display())).unwrap();
+    fs::write(&own, format!("gitdir: {}\n", planted.display())).unwrap();
+    run.refused(&run.run(&[]), "objects are another repository's");
+    fs::remove_file(&own).unwrap();
+    fs::rename(&aside, &own).unwrap();
+
+    let linked = run.folder.path().join("linked");
+    run.git(&[
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        "linked",
+        &linked.to_string_lossy(),
+    ]);
+    let ran = there_command(&run.bin, &run.offload, run.folder.path())
+        .args(["--never-ask", "--run", "--", "pnpm", "test"])
+        .current_dir(&linked)
+        .env("GIT_CONFIG_GLOBAL", &run.config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "a worktree of its own: {ran:?}");
+    assert_eq!(
+        run.sent().as_deref(),
+        Some(run.head.as_str()),
+        "its HEAD went"
+    );
+}
+
 // A gitlink a session commits names another repository's commit, and the
 // run carries that name alone: the hidden commit and what it holds stay
 // behind, since the builder never fetches a submodule.
@@ -6305,6 +6379,185 @@ fn a_run_carries_a_committed_gitlink_as_its_hash_alone() {
         !has(&hidden_head),
         "the hidden commit stays behind, only named"
     );
+}
+
+impl RunTree {
+    /// The tree's origin moved off GitHub, with HEAD holding `files`, each
+    /// a path and its text, and the builder's ssh keeping what it's sent.
+    fn off_github(&mut self, files: &[(&str, &str)]) {
+        self.git(&[
+            "remote",
+            "set-url",
+            "origin",
+            "https://git.example.org/team/mono.git",
+        ]);
+        for (path, text) in files {
+            let path = self.tree.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+        self.git(&["add", "."]);
+        self.git(&["commit", "-q", "-m", "off GitHub"]);
+        self.head = self.git(&["rev-parse", "HEAD"]);
+        fs::rename(self.bin.join("ssh"), self.bin.join("ssh-builder")).unwrap();
+        executable(
+            &self.bin.join("ssh"),
+            "#!/bin/sh\nhere=$(dirname \"$0\")\n\
+             cat > \"$here/sending\"; [ -s \"$here/sending\" ] && \
+             mv \"$here/sending\" \"$here/received\"; \
+             \"$here/ssh-builder\" \"$@\" </dev/null\n",
+        );
+    }
+
+    /// The files the tarball a run sent holds, each by its path.
+    fn unpacked(&self) -> Vec<String> {
+        let into = self.folder.path().join("unpacked");
+        let _ = fs::remove_dir_all(&into);
+        fs::create_dir(&into).unwrap();
+        let unpacked = Command::new("tar")
+            .arg("-xzf")
+            .arg(self.bin.join("received"))
+            .arg("-C")
+            .arg(&into)
+            .status()
+            .unwrap();
+        assert!(unpacked.success(), "what went is a tarball");
+        let listed = Command::new("find")
+            .args([".", "-type", "f"])
+            .current_dir(&into)
+            .output()
+            .unwrap();
+        let mut files: Vec<String> = String::from_utf8_lossy(&listed.stdout)
+            .lines()
+            .map(|line| line.trim_start_matches("./").to_owned())
+            .collect();
+        files.sort();
+        files
+    }
+
+    /// The command ssh was given for the run.
+    fn given(&self) -> String {
+        fs::read_to_string(self.bin.join("ssh-was-given")).unwrap()
+    }
+}
+
+// A tree whose origin isn't on GitHub can't be fetched there by its
+// commit, and a lent builder holds no credential to fetch it from
+// anywhere else, so a run sends HEAD's files: within its sparse cone, as
+// its checkout holds them, so a large repository's tree costs its own
+// part alone.
+#[test]
+fn a_run_from_a_tree_off_github_sends_heads_files_within_its_cone() {
+    let mut run = RunTree::new();
+    run.off_github(&[
+        ("zone/tool/src/main.rs", "fn main() {}"),
+        ("zone/tool/Cargo.toml", "[package]"),
+        ("zone/beside", "a file of the cone's parent"),
+        ("zone/other/secret", "another zone's"),
+        ("elsewhere/far", "out of the cone"),
+    ]);
+    run.git(&["sparse-checkout", "set", "--cone", "zone/tool"]);
+    let inside = run.tree.join("zone/tool");
+
+    let ran = there_command(&run.bin, &run.offload, run.folder.path())
+        .args(["--never-ask", "--run", "--", "cargo", "test"])
+        .current_dir(&inside)
+        .env("GIT_CONFIG_GLOBAL", &run.config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        run.unpacked(),
+        [
+            "package.json",
+            "zone/beside",
+            "zone/tool/Cargo.toml",
+            "zone/tool/src/main.rs",
+        ],
+        "HEAD's files within the cone went, and no others"
+    );
+    let given = run.given();
+    assert!(given.contains("tar -xzf -"), "it's unpacked there: {given}");
+    assert!(
+        given.contains("/tree/zone/tool;"),
+        "it runs in its folder: {given}"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("as a tarball of"),
+        "its size is said: {ran:?}"
+    );
+    let left: Vec<_> = fs::read_dir(run.folder.path().join("nix-offload-there"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert!(left.is_empty(), "nothing it packed is left: {left:?}");
+    // Files cut to a cone aren't the commit, so a gate mustn't read the
+    // run as passed at it.
+    let kept =
+        fs::read_dir(run.folder.path().join("nix-offload/passed")).map_or(0, Iterator::count);
+    assert_eq!(kept, 0, "a run of packed files kept a pass");
+
+    // Still HEAD alone: a change not committed stops it, as from GitHub.
+    fs::write(inside.join("Cargo.toml"), "[workspace]").unwrap();
+    run.refused(&run.run(&[]), "commit them first");
+}
+
+#[test]
+fn a_run_from_a_tree_off_github_sends_all_of_head_when_it_isnt_sparse() {
+    let mut run = RunTree::new();
+    run.off_github(&[("zone/tool/Cargo.toml", "[package]")]);
+    let ran = run.run(&[]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(run.unpacked(), ["package.json", "zone/tool/Cargo.toml"]);
+}
+
+// Patterns other than cone mode's say nothing a tree of HEAD's can be cut
+// to, and sending all of a large repository would cost far more than its
+// part. git reads a tree sparse with no word of cones as patterns too.
+#[test]
+fn a_run_from_a_tree_off_github_sparse_without_cones_is_refused() {
+    let mut run = RunTree::new();
+    run.off_github(&[("zone/tool/Cargo.toml", "[package]")]);
+    run.git(&["sparse-checkout", "set", "--no-cone", "/package.json"]);
+    run.refused(&run.run(&[]), "sparse without cone mode");
+
+    run.git(&["sparse-checkout", "set", "--cone", "zone/tool"]);
+    run.git(&["config", "--worktree", "--unset", "core.sparseCheckoutCone"]);
+    run.refused(&run.run(&[]), "sparse without cone mode");
+}
+
+// Packing gzips a whole cone here, which is thrown away when no builder
+// is lent to take it, so with none nothing is packed.
+#[test]
+fn a_run_from_a_tree_off_github_with_no_builder_lent_packs_nothing() {
+    let mut run = RunTree::new();
+    run.off_github(&[("zone/tool/Cargo.toml", "[package]")]);
+    fs::remove_file(run.offload.join("store")).unwrap();
+
+    run.refused(&run.run(&[]), "no builder is lent");
+    let scratch = run.folder.path().join("nix-offload-there");
+    let left = fs::read_dir(scratch).map_or(0, Iterator::count);
+    assert_eq!(left, 0, "something was packed");
+}
+
+// A diff in the tree's own repository read a changed file through the
+// clean filter its config and info/attributes named, as the person,
+// outside the fence of the session that could write them.
+#[test]
+fn a_run_reads_the_trees_changes_running_nothing_its_repository_says() {
+    let run = RunTree::new();
+    let ran_filter = run.folder.path().join("filtered");
+    let git_dir = run.tree.join(".git");
+    fs::create_dir_all(git_dir.join("info")).unwrap();
+    fs::write(git_dir.join("info/attributes"), "* filter=planted\n").unwrap();
+    let planted = format!("touch {}; cat", ran_filter.display());
+    run.git(&["config", "filter.planted.clean", &planted]);
+    run.git(&["config", "filter.planted.required", "true"]);
+    fs::write(run.tree.join("package.json"), "{ \"name\": \"changed\" }").unwrap();
+
+    run.refused(&run.run(&[]), "commit them first");
+    assert!(!ran_filter.exists(), "the repository's filter ran");
 }
 
 // A fenced session's changed-checks goes out as the person, and an
