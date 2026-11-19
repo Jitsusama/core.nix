@@ -283,7 +283,8 @@ ShellRoot {
         });
     }
 
-    // What the shaper's line row says of its search, or undefined with no row.
+    // What the shaper's line row notes of what it's doing with the line, or
+    // undefined with no row.
     function lineNote() {
         return traffic.answer("speed").rows.find(row => row.name
             === Words.name("traffic:line"))?.note;

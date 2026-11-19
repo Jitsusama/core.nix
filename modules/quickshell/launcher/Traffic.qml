@@ -426,7 +426,7 @@ Provider {
 
     // What the shaper is doing with the line, in Joel's words: it writes
     // only resting or holding, and resting is said as measured alone.
-    readonly property var finding: ({
+    readonly property var stateNotes: ({
         holding: "as measured, held while the connection's busy"
     })
 
@@ -485,7 +485,7 @@ Provider {
                 name: named("line"),
                 side: `${bits(shaped.in)} in \u00b7 ${bits(shaped.out)} out`,
                 graph: bar(full),
-                note: finding[shaped.state] ?? "as measured",
+                note: stateNotes[shaped.state] ?? "as measured",
                 thing: true,
                 drawer: () => plate(named("line"), [{
                     label: named("full"),
