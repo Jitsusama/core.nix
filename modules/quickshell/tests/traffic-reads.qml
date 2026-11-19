@@ -275,7 +275,7 @@ ShellRoot {
 
         lookAgain();
         waits.until("a line holding is said so", () => idle()
-            && lineNote() === "as measured, held while the connection's busy", () => {
+            && lineNote() === "as measured, held under what the connection can carry", () => {
             counted({ lo: [1000, 2000] });
             lookAgain();
             waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined

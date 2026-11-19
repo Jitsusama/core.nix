@@ -87,8 +87,9 @@ function bits(bytesPerSecond, number) {
 
 // What the shaper says of one uplink: what it holds the line to each way,
 // in bytes a second, what held under load, whether it's resting or holding
-// the line while the connection's busy, and how long each server took to
-// answer while the line was quiet, the quickest first. Null when it doesn't shape that uplink.
+// the line under what the connection can carry, and how long each server
+// took to answer while the line was quiet, the quickest first. Null when
+// it doesn't shape that uplink.
 function line(status, name) {
     if (!Array.isArray(status)) {
         return null;

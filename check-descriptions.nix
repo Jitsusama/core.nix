@@ -1046,13 +1046,13 @@
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,
     though each file has changed since, a first rate over the uptime loaded; the shaper's line
-    resting is said as measured, and holding as held while the connection's busy; asked after
-    a gap with the launcher closed, it says its figures are from when last read and loads them
-    again, reading on until a rate of now has landed, or until the counters fail to load, after
-    which it reads on no more; a load stamped ahead of now, as a clock stepped back leaves it,
-    is old, and the read after it makes no rate over it; a load asked just after one landed
-    loads nothing; in the background, it loads one sysfs file for an interface it already
-    knows, its uevent, gap after gap, and none on a load straight after; leaves out an
+    resting is said as measured, and holding as held under what the connection can carry;
+    asked after a gap with the launcher closed, it says its figures are from when last read and
+    loads them again, reading on until a rate of now has landed, or until the counters fail to
+    load, after which it reads on no more; a load stamped ahead of now, as a clock stepped back
+    leaves it, is old, and the read after it makes no rate over it; a load asked just after one
+    landed loads nothing; in the background, it loads one sysfs file for an interface it
+    already knows, its uevent, gap after gap, and none on a load straight after; leaves out an
     interface first seen until it has loaded it whole; and loads all four again, keeping the
     kind it had until they land, then taking the kind they say and telling the answer shown,
     for one made again under its name or whose uevent is empty or gone
