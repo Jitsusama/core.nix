@@ -71,18 +71,7 @@ mod tests {
             other => panic!("a second proof ran beside the first: {other:?}"),
         }
         drop(first);
-        // flock(2) follows the open file, which a child another test forks
-        // shares until it execs and close-on-exec lets go of it, so the
-        // lock may outlive the drop by that moment.
-        let freed = Instant::now() + Duration::from_secs(2);
-        let next = loop {
-            match alone(&marker) {
-                Err(NotAlone::Another(_)) if Instant::now() < freed => {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                next => break next,
-            }
-        };
+        let next = taken_soon(&marker);
         assert!(
             next.is_ok(),
             "a proof gone still held the next 2 s after the drop: {next:?}"
@@ -95,48 +84,78 @@ mod tests {
     }
 
     // What the wait above outlasts: a child forked while a proof holds
-    // the lock keeps it past the proof's drop, until the child execs.
+    // the lock keeps it past the proof's drop, until the child execs,
+    // and no longer once it has, though it runs on.
     #[test]
     fn a_child_forked_while_held_keeps_the_lock_until_it_execs() {
+        use std::io::Read;
         use std::os::unix::process::CommandExt;
         let dir = std::env::temp_dir().join(format!("shaper-forked-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
         let first = alone(&marker).expect("the first proof");
-        let mut ends = [0; 2];
-        // SAFETY: pipe(2) filling two descriptors this test owns.
-        assert_eq!(unsafe { libc::pipe(ends.as_mut_ptr()) }, 0, "a pipe");
-        let [heard, told] = ends;
+        // std's pipes are close-on-exec, so the child holds its ends only
+        // until its exec, as does a child another test forks meanwhile.
+        let (mut forked, told) = std::io::pipe().expect("a pipe for the fork");
+        let (held, mut go) = std::io::pipe().expect("a pipe for the exec");
+        let (told_fd, held_fd) = (told.as_raw_fd(), held.as_raw_fd());
         let child = std::thread::spawn(move || {
-            let mut command = std::process::Command::new("true");
-            // SAFETY: the child only writes a byte and sleeps, both
-            // async-signal-safe, between its fork and its exec.
+            let mut command = std::process::Command::new("sleep");
+            command.arg("5");
+            // SAFETY: between its fork and its exec the child only writes
+            // a byte and reads one, both async-signal-safe.
             unsafe {
                 command.pre_exec(move || {
-                    let _ = libc::write(told, [1_u8].as_ptr().cast(), 1);
-                    std::thread::sleep(Duration::from_millis(300));
+                    let _ = libc::write(told_fd, [1_u8].as_ptr().cast(), 1);
+                    let mut byte = 0_u8;
+                    let _ = libc::read(held_fd, (&raw mut byte).cast(), 1);
                     Ok(())
                 });
             }
-            command.status()
+            // A spawn returns once the child has execed, and one that
+            // never forked lets go of `told` here, which the read hears.
+            let spawned = command.spawn();
+            drop((told, held));
+            spawned
         });
-        let mut forked = [0_u8; 1];
-        // SAFETY: read(2) into a byte this test owns, from its pipe.
-        let read = unsafe { libc::read(heard, forked.as_mut_ptr().cast(), 1) };
-        assert_eq!(read, 1, "the child never forked");
+        let mut byte = [0_u8; 1];
+        let heard = forked.read(&mut byte).expect("the fork's pipe");
+        assert_eq!(heard, 1, "the child never forked");
         drop(first);
+        // The child waits for this check before it execs, however slow
+        // the machine, and a check that panics lets it go as `go` drops.
         assert!(
             matches!(alone(&marker), Err(NotAlone::Another(_))),
             "a forked child let go of the lock before it execed"
         );
-        let ran = child.join().expect("the child's thread");
-        assert!(ran.is_ok_and(|status| status.success()), "the child ran");
-        assert!(alone(&marker).is_ok(), "a child gone still held the lock");
-        // SAFETY: closing the pipe this test opened.
-        unsafe {
-            libc::close(heard);
-            libc::close(told);
-        }
+        go.write_all(&[1]).expect("the child let go");
+        let mut sleeping = child
+            .join()
+            .expect("the child's thread")
+            .expect("the child ran");
+        let next = taken_soon(&marker);
+        let _ = sleeping.kill();
+        let _ = sleeping.wait();
+        assert!(
+            next.is_ok(),
+            "a child that execed still held the lock: {next:?}"
+        );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Takes the lock beside `marker`, for up to 2 s while another holds
+    /// it: flock(2) follows the open file, which a child another test
+    /// forks shares until it execs, so a lock may outlive its drop by
+    /// that moment.
+    fn taken_soon(marker: &Path) -> Result<fs::File, NotAlone> {
+        let freed = Instant::now() + Duration::from_secs(2);
+        loop {
+            match alone(marker) {
+                Err(NotAlone::Another(_)) if Instant::now() < freed => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                next => return next,
+            }
+        }
     }
 }
