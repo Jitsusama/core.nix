@@ -1936,8 +1936,11 @@
     its hub laid out again as a branch, both drawers saying so and the branch going with the
     forage, a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
-    Escape in its order, the walk, the machines, Now, the tree stepping, closing, opening,
-    going in and out of a branch and opening a row, and the theme switch wrapping),
+    Escape in its order, the walk, the machines, Now and Escape closing it, the view zoomed in
+    and out about its middle, panned a step across and down and fitted whole again, -
+    climbing from a cell to its network, the
+    tree stepping, closing, opening, going in and out of a branch and opening a row, and the
+    theme switch wrapping),
     the web-design skill's page checks and the map's own (each opened thing in view, its drawer
     saying what it is, no more names than it's engaged with) passing at a phone's width and a
     desk's in both looks, a first visit within its budget of files, bytes and elements, both
