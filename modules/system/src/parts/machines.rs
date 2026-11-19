@@ -39,7 +39,7 @@ const BACKUP_HINT: &str = if cfg!(target_os = "linux") {
 /// When this machine's quest backup last backed up, as its time file says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backup {
-    /// It landed this many seconds ago.
+    /// It last backed up this many seconds ago.
     Landed(u64),
     /// Its file is there but says no time this clock can count from, and
     /// why.
@@ -56,7 +56,7 @@ pub fn backup(read: io::Result<String>, now: i64) -> Option<Backup> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
         Err(_) => return Some(Backup::Unread("the backup's time file can't be read")),
     };
-    // No backup landed before 1970: a time of none or less is a writer
+    // No backup ran before 1970: a time of none or less is a writer
     // that wrote no time.
     let Some(landed) = text.trim().parse::<i64>().ok().filter(|landed| *landed > 0) else {
         return Some(Backup::Unread("the backup's time file says no time"));
@@ -334,7 +334,7 @@ fn ago_said(seconds: u64) -> String {
 }
 
 /// A quest backup, said only once it is late, with where to read why, or
-/// when when it last landed can't be told. A late one is said in whole
+/// when when it last backed up can't be told. A late one is said in whole
 /// hours, so its words change once an hour rather than each minute, and
 /// every watcher isn't sent them anew.
 fn backup_looks(words: &mut Said, backup: Backup) {
@@ -474,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn a_landing_file_says_its_age_and_one_that_cant_be_counted_is_worth_a_look() {
+    fn a_time_file_says_its_age_and_one_that_cant_be_counted_is_worth_a_look() {
         let now = 1_000_000;
         let read = |text: &str| backup(Ok(text.to_owned()), now);
         assert_eq!(read("999000\n"), Some(Backup::Landed(1_000)));

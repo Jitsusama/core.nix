@@ -100,8 +100,9 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
   be read, says no time (0 or less included), or says one more than a
   minute ahead of the clock is worth a look, so a broken writer isn't
   quiet; no file says nothing, as on a machine keeping no backup, and so
-  does a backup that has never pushed anything. Only that machine's backup is read, since the file is its own;
-  from another machine it says nothing of it. When the machines can't be
+  does a backup that has never pushed anything. Only that machine's
+  backup is read, since the file is its own; from another machine it
+  says nothing of it. When the machines can't be
   read, the machines part says a late backup itself. The backup runs
   hourly and catches up on waking, so a laptop waking from a night reads
   late for the minute or two that run takes.
