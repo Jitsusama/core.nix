@@ -147,9 +147,8 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
         desktop.lid(shut=True)
         machine.wait_until_succeeds(ASLEEP, timeout=timedelta(minutes=1))
-        # A sleep lasts until the lid opens, so one shut lid is one sleep, and one lock: the
-        # sleeps a shut lid repeated each locked the screen again after it was unlocked. The
-        # lid stays shut a while first, long enough for logind to start a second.
+        # A sleep lasts until the lid opens, so a lid shut long enough for logind to start a
+        # second sleeps once: each repeated sleep locked the screen again after its release.
         machine.sleep(LOOKING)
         desktop.lid(shut=False)
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
@@ -164,8 +163,7 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         # The sleep locked the screen first, as it does before every one.
         desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
         machine.wait_until_fails(locked, timeout=timedelta(seconds=10))
-        # Unlocked, it stays so: a sleep repeated under a shut lid locked it again after this,
-        # and every subtest after it failed on the lock (2026-11-19).
+        # Unlocked, it stays so; relocked, every subtest after failed on it (2026-11-19).
         machine.sleep(LOOKING)
         machine.fail(locked)
 
