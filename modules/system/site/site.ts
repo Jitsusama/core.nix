@@ -73,9 +73,11 @@ setTimeout(() => {
   waiting = false;
   draw();
 }, PATIENCE);
-// What the note last said of problems, so a redraw that finds the same ones
-// leaves the note, and what y said there, alone.
-let problemsSaid = "";
+// What the note last said, of problems and of a landing, so a redraw that
+// finds the same leaves the note, and what y said there, alone.
+let noteSaid = "";
+// What the last landing from an address had to say, beside the problems.
+let landingNote = "";
 // The last thing each watch couldn't read, said until it reads another.
 const heard = new Map<string, string>();
 
@@ -125,9 +127,10 @@ function sayWhen(): void {
   standingLine.dataset["state"] = now?.state ?? "connecting";
   const problems = [...(system?.unread ?? []), ...heard.values()];
   const unreadNote = problems.length > 0 ? `Couldn't read: ${problems.join("; ")}.` : "";
-  if (unreadNote !== problemsSaid) {
-    problemsSaid = unreadNote;
-    note.textContent = unreadNote;
+  const noted = [unreadNote, landingNote].filter((line) => line !== "").join(" ");
+  if (noted !== noteSaid) {
+    noteSaid = noted;
+    note.textContent = noted;
   }
 }
 
@@ -206,9 +209,24 @@ function markPlace(): void {
 }
 
 /**
+ * Whether records that may name a machine are still to come: the machine
+ * watch not live, or the machines part untold or naming records not yet
+ * arrived, as a new machine's can be one push behind its part's.
+ */
+function machinesComing(read: System): boolean {
+  const machines = read.parts.find((part) => part.part === "machines");
+  return (
+    !told.has("machine") ||
+    standings.get("machine")?.state !== "live" ||
+    read.untold.includes("machines") ||
+    (machines?.untold ?? 0) > 0
+  );
+}
+
+/**
  * Puts the cursor where the machine the address asks for lands, saying why
- * when that isn't its own row. One not found while a watch is still to
- * answer waits for a later draw, since its record may yet come.
+ * when that isn't its own row. One not found while its record may yet come
+ * waits for a later draw.
  */
 function landAsked(read: System): void {
   if (asked === undefined) {
@@ -217,20 +235,25 @@ function landAsked(read: System): void {
   const landing = landingOf(
     machinesOf(read).map((thing) => thing.name),
     asked,
+    machinesComing(read),
   );
-  if (landing.row === undefined && !allTold(KINDS, told, standings)) {
+  if (landing.waits) {
     return;
   }
   asked = undefined;
-  if (landing.note !== undefined) {
-    note.textContent = landing.note;
+  // Cleared once answered, so following the same address again is a change
+  // the page hears.
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
+  landingNote = landing.note ?? "";
+  sayWhen();
+  if (landing.row === undefined) {
+    return;
   }
-  if (landing.row !== undefined) {
-    land(
-      list.querySelector<HTMLAnchorElement>(`a[data-row="${CSS.escape(landing.row)}"]`) ??
-        undefined,
-    );
-  }
+  const row = list.querySelector<HTMLAnchorElement>(`a[data-row="${CSS.escape(landing.row)}"]`);
+  // The whole machine brought into sight first, then its name, so arriving
+  // shows what it carries and not only its name at the foot of the screen.
+  row?.closest("section")?.scrollIntoView({ block: "nearest" });
+  land(row ?? undefined);
 }
 
 function draw(): void {
@@ -363,6 +386,9 @@ listen({
 });
 
 list.addEventListener("focusin", (event) => {
+  // Joel's own move ends a landing still waiting, so a record arriving late
+  // never takes the cursor from under him; a landing has cleared it already.
+  asked = undefined;
   if (event.target instanceof HTMLAnchorElement && event.target.dataset["row"] !== undefined) {
     cursor = event.target.dataset["row"];
   }
@@ -391,7 +417,6 @@ globalThis.addEventListener("hashchange", () => {
   asked = askedOf(location.hash);
   if (system !== undefined) {
     landAsked(system);
-    markPlace();
   }
 });
 

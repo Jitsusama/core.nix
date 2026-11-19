@@ -161,6 +161,8 @@ def test_a_machines_address_puts_the_cursor_on_it(browser: Browser, system_serve
             page.locator("#parts a[data-row='machine:osprey']"),
             "osprey's address didn't land on it",
         ).to_be_focused()
+        # Answered, the address is cleared, so following it again is heard.
+        expect(page, "the address answered wasn't cleared").to_have_url(f"{root}system/")
         page.evaluate("location.hash = '#machine=heron'")
         expect(page.locator("#note"), "an address for no machine here didn't say so").to_have_text(
             "No machine here is called heron."
@@ -178,6 +180,18 @@ def test_a_machines_address_puts_the_cursor_on_it(browser: Browser, system_serve
             page.locator('#places a[data-place="machine-1"]'),
             "the place of the machine landed on wasn't marked",
         ).to_have_attribute("aria-current", "location")
+        expect(
+            page.locator("#note"), "a landing with nothing to say left the last note"
+        ).to_have_text("")
+        page.keyboard.press("2")
+        expect(
+            page.locator("#parts a[data-row='machine:osprey']"), "2 didn't move off kestrel"
+        ).to_be_focused()
+        page.evaluate("location.hash = '#machine=kestrel'")
+        expect(
+            page.locator("#parts a[data-row='machine:kestrel']"),
+            "following the same address again didn't land",
+        ).to_be_focused()
     finally:
         opened.close()
 
