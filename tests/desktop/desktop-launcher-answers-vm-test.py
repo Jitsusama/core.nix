@@ -86,10 +86,9 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     desktop: Desktop,
 ) -> None:
     """The launcher copies a MAC's vendor and the charge by y, and steps into the charger's."""
-    # What a sum or a measure says is tests/answers.qml's to hold; here,
-    # only what needs the machine. The vendor comes from the list built
-    # from hwdata, so this proves it's there; the answer holds its parts,
-    # so Return goes in, and yy copies the vendor.
+    # What a sum or a measure says is modules/quickshell/tests/answers.qml's to hold; here, only
+    # what needs the machine. The vendor comes from the list built from hwdata, so this proves it's
+    # there; the answer holds its parts, so Return goes in, and yy copies the vendor.
     desktop.answer("3c:22:fb:12:34:56")
     desktop.step_in()
     desktop.close_launcher()

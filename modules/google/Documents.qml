@@ -44,7 +44,8 @@ Provider {
             later: true
         })
     }
-    // Named, so tests/documents.qml tells it records as the daemon would.
+    // Named, so modules/quickshell/tests/documents.qml tells it records as the
+    // daemon would.
     readonly property alias served: ready
 
     // A document another place serves as a row of its own, as a meeting's

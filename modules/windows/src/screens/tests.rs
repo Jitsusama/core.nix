@@ -609,7 +609,8 @@ fn desk_facts_file_holds_each_screen_by_connector() {
     );
 }
 
-/// The built-in panel as niri says it, from tests/plate.qml's cases.
+/// The built-in panel as niri says it, from the cases of
+/// modules/quickshell/tests/plate.qml.
 fn panel() -> Value {
     json!({
         "make": "LG Display", "model": "0x07C6", "serial": null,

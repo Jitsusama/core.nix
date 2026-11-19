@@ -293,7 +293,7 @@ def warmth_shown(desktop: Desktop, scale: str) -> None:
             desktop.down_to("Warmth")
             desktop.launcher_until(partial(warmth_plated, kelvin=kelvin))
             # The plate is held to the lines, as every plate is; its facts' order is
-            # answers.qml's to hold.
+            # modules/quickshell/tests/answers.qml's to hold.
             drawer = plate_shown(desktop, scale)
             assert drawer["eyebrowNames"] is True, drawer
             desktop.shoot(f"launcher-warmth-{when}-at-{named}")

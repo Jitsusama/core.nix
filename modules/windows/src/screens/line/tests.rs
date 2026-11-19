@@ -1,8 +1,9 @@
-//! The cases for a lit screen's settings on the : line, as tests/plate.qml
-//! held them for Screens.js's lineSet until 11 November 2026: each
-//! completing from its own choices, their words beside, the turns in the
-//! vocabulary's typed words, a whole rate taken where one mode rounds to
-//! it, and a value it doesn't offer saying what it does.
+//! The cases for a lit screen's settings on the : line, as
+//! modules/quickshell/tests/plate.qml held them for Screens.js's lineSet
+//! until 11 November 2026: each completing from its own choices, their
+//! words beside, the turns in the vocabulary's typed words, a whole rate
+//! taken where one mode rounds to it, and a value it doesn't offer saying
+//! what it does.
 
 use super::*;
 use crate::screens::tests::words;

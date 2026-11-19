@@ -1,5 +1,6 @@
 //! Where the laptop is, said as Location says it: the cases
-//! tests/answers.qml held launcher/Here.js to, each kept as it read there.
+//! modules/quickshell/tests/answers.qml held launcher/Here.js to, each
+//! kept as it read there.
 
 use super::*;
 use crate::words::fixture;

@@ -1,7 +1,8 @@
 //! The cases for the Warmth's rows, from the backlight program's record
 //! as modules/machine's steered.rs writes it; Displays.qml's cases for the
-//! same (tests/answers/clock.js's Warmth.note and Warmth.figures) moved
-//! here with it on 2026-11-14.
+//! same (Warmth.note and Warmth.figures in
+//! modules/quickshell/tests/answers/clock.js) moved here with it on
+//! 2026-11-14.
 
 use serde_json::{Value, json};
 

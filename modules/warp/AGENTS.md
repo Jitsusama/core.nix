@@ -24,10 +24,10 @@ has it and the README places it.
 
 [`warp.json`][record] is WARP as one record, drawn from the contract, so
 it's both the Rust tests' golden answer and the input the shell's own
-cases read (`tests/answers.qml`). A figure keeps its unit in its key
-(`latency_ms`, `loss_fraction`, `last_handshake_s`), and one warp-cli
-doesn't give is `null`, never a guess. `warp --json` prints it; `warp`
-prints the page `src/page.rs` draws, held to golden pages
+cases read (`modules/quickshell/tests/answers.qml`). A figure keeps its
+unit in its key (`latency_ms`, `loss_fraction`, `last_handshake_s`), and
+one warp-cli doesn't give is `null`, never a guess. `warp --json` prints
+it; `warp` prints the page `src/page.rs` draws, held to golden pages
 ([`src/golden/`][golden]), written afresh with `WARP_GOLDEN=write cargo
 test`.
 

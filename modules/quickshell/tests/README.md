@@ -12,6 +12,8 @@ it runs by a path from its own folder, rather than being handed it, waits
 there until that piece moves. A path given only to a linter doesn't count.
 The shell's cases still there follow in later changes.
 
+- `answers/`: each place's cases for the launcher's answers, which
+  `answers.qml` runs in turn, as its README says.
 - `compiled-once/`: a shell of three files, started three times by
   `compiled-once.sh` to show Qt compiles each once and keeps it.
 - `screen-picture/`: a shell showing the wallpaper's picture as its
