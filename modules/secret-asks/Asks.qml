@@ -73,6 +73,10 @@ Provider {
     // move. It still waits in For You, hidden there too.
     readonly property bool hiding: Shared.hidden(Niri.castsHeard, Niri.casts,
         Recorder.windowSession)
+    // Asks is never kept to draw at once at the launcher's next opening
+    // (Arming.keepsPlace), so a share starting while it's shut never has
+    // a copy from before it to draw.
+    readonly property bool keptNever: true
     onHidingChanged: {
         forget();
         ready.remade();

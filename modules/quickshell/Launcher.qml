@@ -10179,8 +10179,10 @@ Scope {
     // being timed came by, said in its line.
     property string openInto: ""
     property string openChord: ""
+    // A place whose rows a share hides is never kept (Arming.keepsPlace).
     function keepPlace(name) {
-        if (held.length === 0)
+        if (held.length === 0
+            || !Arming.keepsPlace(collections.find(one => one.settings.name === name)))
             return;
         placesKept[name] = { held: held, matches: matches, depth: homeDepth,
             under: keptUnder(name), led: ledPlaces.includes(name) };

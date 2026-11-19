@@ -89,6 +89,15 @@ function returnAct(how) {
     return how.lands ? "landed" : "ran";
 }
 
+// Whether the place a source `source` lists may be kept, to draw at once
+// at the next opening (Launcher.qml's keepPlace): never one that says its
+// rows are never kept, as Asks does, since a share starting while the
+// launcher is shut would leave the kept copy drawing its first frame as
+// it was before the share, naming what the share hides.
+function keepsPlace(source) {
+    return source?.keptNever !== true;
+}
+
 // Nothing armed.
 function rest() {
     return { key: "", keys: -1, at: 0 };
