@@ -65,8 +65,9 @@ DRAWS_A_SECOND = 2
 BACK_MS = 15000
 # The kinds the repos daemon serves, each told whole, as home.nix declares them.
 KINDS = ["reading", "repository", "checkout", "tree", "change"]
-# What a first visit to Code may cost, drawn from the stand-in's repositories.
-BUDGET = Budget(files=31, kilobytes=565, elements=260)
+# What a first visit to Code may cost, drawn from the stand-in's repositories: two of the files
+# are the map of ties, its view and its logic.
+BUDGET = Budget(files=33, kilobytes=565, elements=260)
 CELLS_SITE = "cells/"
 
 
@@ -804,9 +805,17 @@ def test_a_burst_of_records_draws_the_list_a_few_times(
     assert writes <= allowed, f"21 records in {lasted:.1f} s drew the list {writes} times"
 
 
-def test_code_keeps_to_its_budget(code_opened: Opened, mycelium_node: StandIn) -> None:
-    says_it_stands(code_opened.page, "live")
+@pytest.fixture
+def spanned(mycelium_node: StandIn) -> None:
+    """Tie core and notes before the page opens, so its first read holds the map whole."""
     spanning(mycelium_node)
+
+
+# Tied before the page opens, since a cell told later reads the homes again, which is a
+# second visit's cost and not a first's.
+@pytest.mark.usefixtures("spanned")
+def test_code_keeps_to_its_budget(code_opened: Opened) -> None:
+    says_it_stands(code_opened.page, "live")
     expect(code_opened.page.locator(TIE_ROWS), "the map wasn't drawn").to_have_count(2)
     # Counted once every part the feeds draw is there, so the count is the page's
     # whole and not how far it got.
