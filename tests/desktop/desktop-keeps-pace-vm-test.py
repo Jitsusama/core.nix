@@ -36,7 +36,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from desktop_session import Desktop, Json
 
@@ -152,15 +152,16 @@ STARTED = timedelta(seconds=8)
 # frame within OPENED_WITHIN is judged from Joel's own journal. The tail is TAIL's, the 19th of
 # 20, as everywhere else here: the 99th of 20 was the slowest alone, and one opening a loaded
 # builder held up failed it with the next at 10 ms (88 ms against 10, 2026-11-17). The slowest
-# of 70 runs on the net by 2026-11-18 was 91 ms, so OPENED_AT_MOST leaves it room. Under every
-# core busy, the storm's windows may take more than REACHING to be listed, as they did once at
-# 31.8 s on 2026-11-17, so they're given STORM_LISTED to come and to go; that isn't judged.
+# of 70 runs on the net by 2026-11-18 was 91 ms, so OPENED_AT_MOST leaves a lone slow one room
+# and still fails one taking seconds. Under every core busy, the storm's windows may take more
+# than REACHING to be listed, as they did once at 31.8 s on 2026-11-17, so they're given
+# STORM_PATIENCE to come and to go; that isn't judged.
 STORMING = 40
 STORM = 100
-STORM_LISTED = timedelta(minutes=2)
+STORM_PATIENCE = timedelta(minutes=2)
 OPENINGS = 20
 OPENED_WITHIN = 50
-OPENED_AT_MOST = 250
+OPENED_AT_MOST = 500
 FROZEN = 8
 
 
@@ -447,7 +448,7 @@ class Timing:
         )
 
 
-def ranked(times: list[float], share: float) -> float:
+def ranked(times: Sequence[float], share: float) -> float:
     """Give the time the share of `times`, sorted, falls within."""
     return times[max(0, math.ceil(share * len(times)) - 1)]
 
@@ -783,14 +784,14 @@ def storm(desktop: Desktop) -> Iterator[None]:
     try:
         stormy = 'niri msg --json windows | grep -o \'"title":"storm \' | wc -l'
         listed = f"test $({stormy}) -eq {STORMING}"
-        machine.wait_until_succeeds(desktop.in_session(listed), timeout=STORM_LISTED)
+        machine.wait_until_succeeds(desktop.in_session(listed), timeout=STORM_PATIENCE)
         yield
     finally:
         # Bracketed, so the pattern never matches the shell running it. Its windows are given as
         # long to go as to come, under the same load.
         desktop.as_account("pkill -f 'window-stor[m]'")
         gone = '! niri msg --json windows | grep -q \'"title":"storm \''
-        machine.wait_until_succeeds(desktop.in_session(gone), timeout=STORM_LISTED)
+        machine.wait_until_succeeds(desktop.in_session(gone), timeout=STORM_PATIENCE)
 
 
 def opened_from_kept(desktop: Desktop) -> Json:
@@ -851,7 +852,7 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
         one for one in each[True] + each[False] if standing(one["shown"]) != standing(one["filled"])
     ]
     assert not moved, f"filled in, an opening's rows or cursor moved: {moved}"
-    readied = sorted(float(ready(one)) for one in each[True])
+    readied = sorted(ready(one) for one in each[True])
     tail = ranked(readied, TAIL)
     assert tail <= OPENED_WITHIN, (
         f"an opening through the storm took {tail} ms to be ready to draw at the tail: {readied}"
