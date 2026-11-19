@@ -4031,7 +4031,8 @@
   '';
   the-launcher-says-how-each-session-stands = ''
     a pi session says how it stands in the one order every list keeps, offers its acts in their
-    order, its drawer's times are worded by the clock, and what it landed is kept past its end
+    order, its drawer's times are worded by the clock, the sessions beside the one drawn are found
+    to watch their drawers ahead, and what it landed is kept past its end
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this

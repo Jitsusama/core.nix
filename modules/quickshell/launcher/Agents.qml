@@ -883,9 +883,9 @@ Provider {
 
     // A session's drawer as the agents daemon made it ready
     // (modules/agents/src/drawer.rs), what matters first: watched by its
-    // key only while it's shown, since its figures move every turn, so the
-    // drawer names its key just after it first asks, and fills as the
-    // daemon answers. Only its times are worded here, by the clock
+    // key only while it's shown or beside the one shown (drawersWatched),
+    // since its figures move every turn, so the drawer names its key just
+    // after it first asks, and fills as the daemon answers. Only its times are worded here, by the clock
     // (SessionDrawer.js), so one left open never waits on the daemon to
     // turn a minute.
     property string drawerWanted: ""

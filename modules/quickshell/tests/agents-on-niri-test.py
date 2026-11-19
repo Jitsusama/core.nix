@@ -997,7 +997,8 @@ def test_a_sessions_drawer_beside_the_one_drawn_comes_with_its_key(shell: Shell)
     assert rows.index(names[1]) == rows.index(names[0]) + 1, f"the fold's rows: {rows}"
     shell.down_to(names[0])
     shell.launcher_until(rested_on(names[0]))
-    # Watched only once drawn, Paused's isn't held however long this waits.
+    # Room for Paused's drawer, watched ahead as Listening's is drawn, to come before the arrow,
+    # since nothing reports it held. On main it's watched only once drawn, so no wait holds it.
     time.sleep(PAST_A_ROUND_TRIP)
     since = shell.mark()
     shell.send_key("down")
