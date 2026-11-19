@@ -1995,15 +1995,21 @@ def test_a_launcher_closed_inside_a_place_is_home_before_it_opens(shell: Shell) 
     shell.launcher_until(lambda shown: shown["held"] == [] and "Programs" in shown["rows"])
 
 
-def tallied_rows(laid: Json) -> tuple[int, int, int] | None:
-    """Give the rows the last laying tallied, built and took back, once it says it's done.
+def kept_out(shell: Shell) -> Json:
+    """Give the list's last keeping and its last step back out's, with their tallies."""
+    return cast("Json", json.loads(shell.as_account(shell.ipc("keptOut"))))
+
+
+def tallied_rows(kept: Json, which: str = "kept") -> tuple[int, int, int] | None:
+    """Give the rows a laying tallied, built and took back, once it says it's done.
 
     Every row a laying draws is tallied under its kind, each with its own time, so together
-    they take no more than the laying did; and none is tallied once it's done. None where the
-    last keeping laid nothing.
+    they take no more than the laying did; and none is tallied once it's done. The laying is
+    the last keeping's, or the last step back out's (`which` "stepped"). None where it laid
+    nothing.
     """
-    assert not laid["tallying"], "a laying still listens for rows once it's done"
-    last = laid["kept"] or {}
+    assert not kept["tallying"], "a laying still listens for rows once it's done"
+    last = kept[which] or {}
     if "laidBy" not in last:
         return None
     by = last["laidBy"]
@@ -2041,8 +2047,9 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
         shell.type_in("m")
         laid = laid_out(shell)
         built.append(int(laid["built"]) - before)
-        tallied.append(tallied_rows(laid))
-        kinds |= set((laid["kept"] or {}).get("laidBy") or {})
+        kept_now = kept_out(shell)
+        tallied.append(tallied_rows(kept_now))
+        kinds |= set((kept_now["kept"] or {}).get("laidBy") or {})
         now = set(shell.showing()["rows"])
         kept.append(len(now & was))
         new.append(len(now - was))
@@ -2088,7 +2095,7 @@ def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) 
         shell.normal()
         laid = laid_out(shell)
         built.append(int(laid["built"]) - before)
-        tallied.append(tallied_rows(laid))
+        tallied.append(tallied_rows(kept_out(shell)))
         rounds.append((place, laid))
         stepped_out(shell)
     shell.close_launcher()
@@ -2211,9 +2218,8 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         # Fails loudly if the split is ever passed by, as the bound could hold without it.
         assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
         # Its rows are tallied too, those the split drew among them, in no more than it took,
-        # where its keeping is still the last and split them; one changing no row may follow.
-        splitting = ((laid["kept"] or {}).get("split") or {}).get("from", 0) > 0
-        tallied.append(tallied_rows(laid) if splitting else None)
+        # read from its own keeping, which those after it leave.
+        tallied.append(tallied_rows(kept_out(shell), "stepped"))
         was, now = band_of(standing, far), band_of(laid, far)
         assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"

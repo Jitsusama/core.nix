@@ -367,6 +367,18 @@ function tallied(tally, kind, ms) {
     }
 }
 
+// A keeping (`kept`) as the trials file keeps it: whose rows its laying
+// spent on in whole milliseconds, as the file has always kept times,
+// though the rows' clock reads finer; the rest as it is. Null stays null.
+function keptWhole(kept) {
+    if (kept?.laidBy === undefined) {
+        return kept;
+    }
+    const laidBy = Object.fromEntries(Object.entries(kept.laidBy)
+        .map(([kind, spent]) => [kind, { rows: spent.rows, ms: Math.round(spent.ms) }]));
+    return Object.assign({}, kept, { laidBy });
+}
+
 // Whose rows a laying spent on (`tally`), built or taken back alike: each
 // kind whose rows took a millisecond once rounded, so half of one or more,
 // most first then by name, with how many rows it laid in how long: ', by

@@ -404,7 +404,8 @@ Scope {
         else if (current >= 0)
             current = Rank.pinned(matches, was, current + rows.length - before);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
-            showing: Date.now() - placedAll, kept: list.keptLast, weighing: keysWeighing,
+            showing: Date.now() - placedAll, kept: RowsKept.keptWhole(list.keptLast),
+            weighing: keysWeighing,
             reading: readingSpent() };
     }
 
@@ -6267,6 +6268,7 @@ Scope {
                 pressed: key.pressed, collected: key.collected, thread: key.thread } : null;
         backTo = left;
         list.steppedLast = null;
+        list.steppedKept = null;
         let restarted = false;
         // Words put back are timed as the field's key, within restart,
         // whether or not the step is timed as back's own, so the foot is
@@ -6611,7 +6613,7 @@ Scope {
             searchParts = { before: 0, lists: foundAt - searchBegan, rows: 0,
                 answers: Date.now() - foundAt, each: {}, within: null,
                 composing: { asking: 0, placing: livedAt - foundAt,
-                    showing: Date.now() - livedAt, kept: list.keptLast,
+                    showing: Date.now() - livedAt, kept: RowsKept.keptWhole(list.keptLast),
                     weighing: keysWeighing, reading: readingSpent() } };
             return;
         }
@@ -8233,6 +8235,15 @@ Scope {
             return root.laidOut();
         }
 
+        // The list's last keeping and the last step back out's, with whose
+        // rows each laying spent on, and whether a laying still listens for
+        // rows, so the check can say every row a laying drew was tallied,
+        // and none after. Apart from laidOut, as these change with every
+        // keeping, where nothing drawn may move.
+        function keptOut(): string {
+            return root.keptOut();
+        }
+
         // Every word on the card or its drawer that broke out of its room,
         // the card, or onto another's (Contained.js), as JSON: none, for the
         // check that no words, however long, escape.
@@ -8496,6 +8507,7 @@ Scope {
     // row's shown, with what the row is and how it reads, so a test can say
     // a row that reads the same was drawn in the same place (Joel,
     // 2026-10-25: "text alignment and shit constantly shifting around").
+    // The keepings' tallies are keptOut's, apart from this.
     function laidOut() {
         const rows = [];
         for (let at = 0; at < root.matches.length; at += 1) {
@@ -8544,10 +8556,7 @@ Scope {
         // many fact rows the drawer has made and how many it holds, so it
         // can say an arrow keeps them; and how the last step back out laid
         // out its rows (steppedLast), so it can say the step split them,
-        // whatever kept them since. And the list's last keeping, with
-        // whose rows its laying spent on, and whether a laying still
-        // listens for rows, so it can say every row a laying drew was
-        // tallied, and none after.
+        // whatever kept them since.
         const inside = listBox.mapToItem(card, 0, 0);
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
             numbers: wordsIn(rowsGutter, card), rowTall: root.rowTall,
@@ -8562,9 +8571,14 @@ Scope {
             factsHeld: drawerCard.facts.length, widthsAsked: drawerCard.widths.asked,
             widthsMade: drawerCard.widths.made,
             ahead: list.cacheBuffer, listed: list.count, firstAt, stepped: list.steppedLast,
-            kept: list.keptLast, tallying: list.laidBy !== null,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
+    }
+
+    // The list's last keeping and its last step back out's, for keptOut.
+    function keptOut() {
+        return JSON.stringify({ kept: list.keptLast, stepped: list.steppedKept,
+            tallying: list.laidBy !== null });
     }
 
     // The drawer beside the card (Drawer.qml): what the selected row shows
@@ -13530,6 +13544,11 @@ Scope {
                             // until one is kept, those that change no
                             // row included.
                             property var steppedLast: null
+                            // The last step back out's keeping whole
+                            // (keptLast), kept past those after it as
+                            // steppedLast is, for the check that its
+                            // split's rows were tallied.
+                            property var steppedKept: null
                             // What the laying in hand spent on each kind of
                             // row it built or took back, `{ kind: { rows, ms
                             // } }`, and when its last row was done or its
@@ -13583,8 +13602,10 @@ Scope {
                                     list.rows = rows;
                                     list.rowOf = rowOf;
                                     list.keptLast = { fresh: 0, laying: 0, split: arrival };
-                                    if (root.backTo !== null)
+                                    if (root.backTo !== null) {
                                         list.steppedLast = arrival;
+                                        list.steppedKept = list.keptLast;
+                                    }
                                     return true;
                                 }
                                 for (const step of steps.filter(one => one.remove !== undefined))
@@ -13673,8 +13694,10 @@ Scope {
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built),
                                     laidBy: laidBy.kinds
                                 };
-                                if (root.backTo !== null)
+                                if (root.backTo !== null) {
                                     list.steppedLast = list.keptLast.split;
+                                    list.steppedKept = list.keptLast;
+                                }
                                 return false;
                             }
 

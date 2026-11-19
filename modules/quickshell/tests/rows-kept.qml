@@ -100,6 +100,18 @@ QtObject {
             ["", ""]);
         Expect.same("a kind's half a millisecond rounds to one, and is said",
             RowsKept.saidByKind({ act: { rows: 1, ms: 0.5 } }), ', by kind "act" 1 row in 1');
+        // The trials file keeps a keeping's kinds in whole milliseconds, as
+        // it keeps every time, and the rest of the keeping as it was; the
+        // keeping itself, which the check reads finer, is left as it is.
+        const keptFine = { laying: 41, built: 0, laidBy: dearKinds };
+        Expect.same("the trials file keeps a keeping's kinds whole",
+            [RowsKept.keptWhole(keptFine), keptFine.laidBy.on.ms],
+            [{ laying: 41, built: 0, laidBy: { on: { rows: 5, ms: 20 },
+                program: { rows: 3, ms: 90 }, "AI spend": { rows: 2, ms: 20 },
+                act: { rows: 4, ms: 0 } } }, 20.4]);
+        Expect.same("a keeping that laid nothing is kept as it was",
+            [RowsKept.keptWhole({ fresh: 0, laying: 0 }), RowsKept.keptWhole(null)],
+            [{ fresh: 0, laying: 0 }, null]);
         // Each row held keeps its mark wherever the steps move it, and a
         // row put in is given the next, so a row reads what it shows by its
         // mark, which no other row's coming or going changes: read by its
