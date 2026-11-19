@@ -908,7 +908,9 @@ def test_the_map_draws_a_thread_for_each_cell_joining_two_repositories(
     # to be, so the next j isn't heard moving something else.
     code_page.locator("#ties-map").focus()
     mycelium_node.tell("cell", gone=["cell:W9TIES"])
-    expect(code_page.locator("#ties"), "the map stayed once nothing joined").to_be_hidden()
+    expect(code_page.locator("#ties"), "the map stayed once nothing joined").to_be_hidden(
+        timeout=PACE_MS
+    )
     expect(code_page.locator("#list"), "the keys fell out of the page").to_be_focused()
     # Said outside the hidden map, where a screen reader still hears it.
     ties_said = code_page.locator("#ties-said")
