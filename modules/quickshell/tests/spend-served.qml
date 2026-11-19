@@ -56,6 +56,9 @@ ShellRoot {
         // it did, so a copy is seen landing before the keys go.
         property int shuts: 0
         property string atShut: ""
+        // When a copy last shut it, so a failure says whose ask copied: not
+        // root's copiedAt, which is when the clipboard last changed.
+        property real shutAt: 0
         // What y has done once a copy it ran has copied (Launcher.qml's).
         property var yankedAlone: null
         // What a walk from outside was told, while one runs (Launcher.qml's).
@@ -94,6 +97,7 @@ ShellRoot {
 
         function shutCopied() {
             shuts += 1;
+            shutAt = Date.now();
             atShut = Quickshell.clipboardText ?? "";
             open = false;
         }
@@ -498,6 +502,23 @@ ShellRoot {
         onTriggered: serving.signal(18)
     }
 
+    // Serve's state as the kernel says it, the letter after its name in
+    // /proc's stat. That's the leader thread's, which reads T only once the
+    // stop is set on every thread, so none runs on to answer an ask sent
+    // after it. Every read blocks, since a reload otherwise reads in the
+    // background and text() says the last.
+    FileView {
+        id: serveStat
+        blockAllReads: true
+        printErrors: false
+    }
+    function serveState() {
+        serveStat.path = `/proc/${serving.processId}/stat`;
+        serveStat.reload();
+        const stat = serveStat.text();
+        return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[0];
+    }
+
     // In the launcher, Return on a cut keeps it, holding the keys a Wayland
     // program needs to set the clipboard, until its report is copied, then
     // shuts it saying so.
@@ -538,25 +559,44 @@ ShellRoot {
     // Joel is looking, the launcher left open, copying nothing.
     function unanswered() {
         // SIGSTOP: serve holds the ask unanswered, as a stuck daemon would.
+        // Asked only once the kernel says serve has stopped, since kill
+        // returns before the stop takes: serve answers on a thread of each
+        // connection's, and an ask sent sooner was answered 51 ms on, under
+        // a loaded builder (Y2YBTS's gate, 2026-11-19, df6d69bf).
+        // Cleared first, so a copy said here landed in this case, before
+        // or after its ask.
+        shutLauncher.shutAt = 0;
+        shutLauncher.shuts = 0;
         serving.signal(19);
+        // Armed now too, so serve isn't left stopped if the stop's never seen.
         resume.restart();
-        const began = Date.now();
-        cutsCopy().run();
-        // Ended by a shut too, so a copy that landed says how it ended.
-        waits.until("the wait for a report ended",
-            () => shutLauncher.told.length > 0 || !shutLauncher.open, () => step(() => {
-                serving.signal(18);
-                resume.stop();
-                const waited = Date.now() - began;
-                expect("not answered, it's said at once, the launcher left open",
-                    shutLauncher.told.join(", ") === "By model copy no answer"
-                    && shutLauncher.open && waited >= 1900 && waited < 4000,
-                    `${waited} ms, open ${shutLauncher.open}, shut ${shutLauncher.shuts}`
-                    + ` times, told ${shutLauncher.told.join(", ")}, copied ${clipped()}`);
-                expect("and copies nothing as it gives up", clipped() === "", clipped());
-                shutLauncher.told = [];
-                overtaken();
-            }));
+        const signalled = Date.now();
+        waits.until("serve stopped", () => serveState() === "T", () => step(() => {
+            // Timed from the ask, so the stop's wait takes none of its hold.
+            resume.restart();
+            const began = Date.now();
+            cutsCopy().run();
+            // Ended by a shut too, so a copy that landed says how it ended.
+            waits.until("the wait for a report ended",
+                () => shutLauncher.told.length > 0 || !shutLauncher.open, () => step(() => {
+                    serving.signal(18);
+                    resume.stop();
+                    const waited = Date.now() - began;
+                    // Copied before the ask, it was the case before's late answer.
+                    const shut = shutLauncher.shutAt - began;
+                    const shutWhen = shut < 0 ? `${-shut} ms before` : `${shut} ms after`;
+                    expect("not answered, it's said at once, the launcher left open",
+                        shutLauncher.told.join(", ") === "By model copy no answer"
+                        && shutLauncher.open && waited >= 1900 && waited < 4000,
+                        `${waited} ms, open ${shutLauncher.open}, shut ${shutLauncher.shuts}`
+                        + ` times, told ${shutLauncher.told.join(", ")}, copied ${clipped()}`
+                        + `, shut by a copy ${shutLauncher.shutAt ? `${shutWhen} asking` : "never"}`
+                        + `, asked ${began - signalled} ms after the SIGSTOP was sent`);
+                    expect("and copies nothing as it gives up", clipped() === "", clipped());
+                    shutLauncher.told = [];
+                    overtaken();
+                }));
+        }));
     }
 
     // Two Returns in a row: the first's wait ends quietly, and only the
