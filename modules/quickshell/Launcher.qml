@@ -10932,7 +10932,9 @@ Scope {
     // The opening's own work from its ask, said in laps, so the first
     // opening since a start says which of it ran slow: it worked 15 to 29
     // ms where later ones worked 4, said only as "showing" (5FWIUS's
-    // finding, 19 November).
+    // finding, 2026-11-19). "asking" is all from the ask to the opening's
+    // start, a kept place's listing among it; "showing" is now only what
+    // `opening` turning moves.
     property var openLaps: ({ at: -1, parts: {} })
     function openLap(name) {
         if (openAsked < 0 || openLaps.at < 0)
@@ -11159,11 +11161,14 @@ Scope {
     // it was drawn see-through, blended as no opening draws it, so what
     // an opening draws whole was still first drawn by the first opening.
     // A builder's nested niri doesn't tell the two apart (both drew a
-    // first opening in 1 to 15 ms over eleven runs, 19 November),
+    // first opening in 1 to 15 ms over nineteen runs, 2026-11-19),
     // so Joel's first opening after the switch says whether it holds. The
-    // card is then off the screen but for the surface's one pixel, its
-    // shadow's outer edge, for two frames.
+    // card is then off the screen for two frames but for the surface's
+    // one pixel, its bottom right, which is past the shadows' reach and
+    // clear. While the screen may be shared it's drawn all but clear as
+    // before (`primedWhole`), since the card can name an ask or a copy.
     property bool priming: false
+    property bool primedWhole: false
     // Whether priming is ending, so the card's fall to clear doesn't keep
     // home or collect as a closing would.
     property bool primeEnding: false
@@ -11177,7 +11182,8 @@ Scope {
         if (!priming) {
             return;
         }
-        console.info(`launcher: drawing the card ahead ended ${how}`);
+        console.info(`launcher: drawing the card ahead ended ${how}, `
+            + (primedWhole ? "whole" : "all but clear, as the screen may be shared"));
         primeEnding = true;
         try {
             priming = false;
@@ -11301,6 +11307,7 @@ Scope {
         if (!cardUp && parting === "" && !fading && openingsDrawn === 0) {
             primedFrames = 0;
             priming = true;
+            primedWhole = !screenShared();
             primeOver.restart();
         }
         // Home not held as the pass ends says why, since its first chord
@@ -11469,7 +11476,10 @@ Scope {
         openLap("taking");
         if (openAsked >= 0) {
             openWorked = KeyTimes.now() - openAsked;
-            openParts = openLaps.parts;
+            // A copy, and the laps let go, so nothing taken later writes
+            // into what this opening says.
+            openParts = Object.assign({}, openLaps.parts);
+            openLaps = { at: -1, parts: {} };
         }
         afterFrame(openShown);
     }
@@ -13197,8 +13207,10 @@ Scope {
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
-            // Whole while priming, as root.priming says.
-            opacity: root.cardUp || root.parting !== "" || root.priming ? 1 : 0
+            // Whole while priming unless the screen may be shared, as
+            // root.priming says.
+            opacity: root.cardUp || root.parting !== "" ? 1
+                : root.priming ? (root.primedWhole ? 1 : 0.01) : 0
             // Clear, it's put back to home for the next opening, once the
             // closing's own handler is done (keepHome checks it's still shut).
             onOpacityChanged: {
