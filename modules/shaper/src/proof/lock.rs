@@ -51,8 +51,7 @@ mod tests {
 
     #[test]
     fn only_one_proof_runs_at_once() {
-        let dir = std::env::temp_dir().join(format!("shaper-alone-{}", std::process::id()));
-        fs::create_dir_all(&dir).expect("a folder");
+        let dir = a_folder("shaper-alone");
         let marker = dir.join("was-on");
         // A proof gone before left its pid, longer than this one's.
         fs::write(dir.join("shaper-proof.lock"), "99999999\n").expect("a stale lock");
@@ -90,8 +89,7 @@ mod tests {
     fn a_child_forked_while_held_keeps_the_lock_until_it_execs() {
         use std::io::Read;
         use std::os::unix::process::CommandExt;
-        let dir = std::env::temp_dir().join(format!("shaper-forked-{}", std::process::id()));
-        fs::create_dir_all(&dir).expect("a folder");
+        let dir = a_folder("shaper-forked");
         let marker = dir.join("was-on");
         let first = alone(&marker).expect("the first proof");
         // std's pipes are close-on-exec, so the child holds its ends only
@@ -106,7 +104,9 @@ mod tests {
         let go_fd = go.as_raw_fd();
         let child = std::thread::spawn(move || {
             let mut command = std::process::Command::new("sleep");
-            command.arg("5");
+            // It sleeps till it's killed, so the lock taken below was
+            // free while it ran, however long the taking took.
+            command.arg("infinity");
             // SAFETY: between its fork and its exec the child only closes
             // a descriptor, writes a byte and reads one, all
             // async-signal-safe.
@@ -141,13 +141,34 @@ mod tests {
             .expect("the child's thread")
             .expect("the child ran");
         let next = taken_soon(&marker);
+        let running = sleeping.try_wait();
         let _ = sleeping.kill();
         let _ = sleeping.wait();
+        assert!(
+            matches!(running, Ok(None)),
+            "the child ended before the lock was taken: {running:?}"
+        );
         assert!(
             next.is_ok(),
             "a child that execed still held the lock: {next:?}"
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A folder of this test's own in the temp folder, made here and
+    /// private: never one already there, which another user sharing the
+    /// temp folder could have made, with a link where the lock goes.
+    fn a_folder(name: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::DirBuilderExt;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.subsec_nanos());
+        let dir = std::env::temp_dir().join(format!("{name}-{}-{nanos}", std::process::id()));
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&dir)
+            .expect("a folder of its own");
+        dir
     }
 
     /// Takes the lock beside `marker`, for up to 2 s while another holds
