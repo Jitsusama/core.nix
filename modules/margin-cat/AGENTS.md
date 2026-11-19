@@ -281,6 +281,12 @@ want to see its paws moving when it is walking or running."
   stand a pair at a time"
 - Held by `margin-cat-floats.qml`: "re-planned as it turns in a stride, it holds that stride
   till it's seen"
+- Held by `margin-cat-floats.qml`: "re-planned once the stride it turns in is seen, it steps a
+  pair on at once"
+- Held by `margin-cat-floats.qml`: "set off again easing in, it eases in; at its pace, it keeps
+  it"
+- Held by `margin-cat-floats.qml`: "a step back reads as a skid, but onto its stand as it holds
+  there"
 - Held by `margin-cat-floats.qml`: "it walks out of its stand and back onto it a pair of feet
   at a time"
 - Held by `margin-cat-floats.qml`: "nor fails to go, or skids or flashes a stride, any way,
