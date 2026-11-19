@@ -494,7 +494,8 @@ QtObject {
         check(failures, "as does a place asked for by name",
             Wanted.keptPlaceListed(Object.assign(under(true), { named: true })), "led");
         check(failures, "a source that lists its place lists it, even asked to list now",
-            Wanted.keptPlaceListed(Object.assign(under(true), { listed: true, asNow: true })),
+            Wanted.keptPlaceListed(Object.assign(under(true),
+                { listed: true, asNow: true, named: true })),
             "source");
         // Found after it, home is searched again by a slice, a key or a
         // click, but a chord only joins, and a step or a word finds its own.

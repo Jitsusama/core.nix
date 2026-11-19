@@ -10947,7 +10947,7 @@ Scope {
         // card kept before the share, which can name a waiting ask or a
         // copy (Wanted.opensKept); that opening isn't one said whole.
         openedShared = !open && !opening && !Wanted.opensKept(screenShared());
-        if (openedShared && homeHeld)
+        if (openedShared)
             console.info(`launcher: home opened afresh, as ${sharedWhy()}`);
         if (opening)
             unopened();

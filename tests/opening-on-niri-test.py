@@ -231,6 +231,54 @@ def told(line: str) -> None:
         said.sendall(f"{line}\n".encode())
 
 
+class CastsUnsaid:
+    """Stand in for the windows daemon, answering every ask with nothing and its casts unsaid.
+
+    It says hello as answering, so the shell takes it for the daemon rather than hearing niri
+    itself (Niri.qml's standIn), and answers the places watch with no word on its sources, so
+    the casts stay unsaid (NiriRecords.castsHeard) and the screen may be shared, for as long as
+    it stands in.
+    """
+
+    def __init__(self, path: Path) -> None:
+        """Listen on `path`, where the windows daemon listened."""
+        self.path = path
+        self.came: list[socket.socket] = []
+        self.listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.listening.bind(str(path))
+        self.listening.listen()
+        threading.Thread(target=self.accept, daemon=True).start()
+
+    def accept(self) -> None:
+        """Answer each client that connects, until it's closed."""
+        while True:
+            try:
+                client, _ = self.listening.accept()
+            except OSError:
+                return
+            self.came.append(client)
+            threading.Thread(target=self.serve, args=(client,), daemon=True).start()
+
+    @staticmethod
+    def serve(client: socket.socket) -> None:
+        """Answer one client a line for each ask: hello as answering, any other with nothing."""
+        with contextlib.suppress(OSError), client.makefile("r") as lines:
+            for line in lines:
+                asked = json.loads(line)
+                said: Json = {"id": asked.get("id"), "records": []}
+                if asked.get("ask") == "hello":
+                    said = {"id": "hello", "version": 1, "state": "answering"}
+                client.sendall((json.dumps(said) + "\n").encode())
+
+    def close(self) -> None:
+        """Stop listening and let each client go, so the daemon started again is heard."""
+        self.listening.close()
+        for client in self.came:
+            with contextlib.suppress(OSError):
+                client.close()
+        self.path.unlink(missing_ok=True)
+
+
 def heard_closing(shell: Shell, since: int, by: float) -> None:
     """Wait, reading the shell's log alone, until it says it's closing, or the clock reaches by."""
     while time.monotonic() < by:
@@ -840,6 +888,38 @@ def test_an_opening_as_the_shell_starts_puts_off_keeping_its_places(shell: Shell
 
     shell.launcher_until(timed_after)
     assert each[-1].get("kept"), f"the first chord into On was made whole: {each[-1]}"
+
+
+def test_a_kept_place_opens_afresh_while_niri_hasnt_said_its_casts(shell: Shell) -> None:
+    """A chord into a kept place opens it afresh until niri has said nothing casts the screen.
+
+    Its rows were kept before any share could begin, so a chord in a call drew them on its first
+    frame: Super+V a copy, Super+O a waiting ask. Here a stand-in for the windows daemon holds
+    the shell where niri is yet to say its casts, which counts as a share.
+    """
+    shell.daemon_stopped("windows")
+    unsaid = CastsUnsaid(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "windows.sock")
+    each: list[Json] = []
+    try:
+        shell.launcher_until(lambda shown: shown.get("shared") is True)
+        since = shell.mark()
+        timed = latest(openings(shell))
+        shell.as_account(shell.ipc("collection", "on"))
+        shell.launcher_ready()
+
+        def timed_after(_: Json) -> bool:
+            each[:] = openings(shell)
+            return latest(each) > timed
+
+        shell.launcher_until(timed_after)
+        said = shell.log.read_bytes()[since:].decode(errors="replace")
+    finally:
+        unsaid.close()
+        shell.windows_daemon()
+    assert not each[-1].get("kept"), f"On was drawn from its kept rows under a share: {each[-1]}"
+    assert "launcher: on opened afresh, as niri hasn't said its casts yet" in said, (
+        f"On's opening afresh wasn't said why:\n{said}"
+    )
 
 
 def test_a_first_letter_after_a_restart_is_drawn_on_the_rows_it_lets_go(shell: Shell) -> None:
