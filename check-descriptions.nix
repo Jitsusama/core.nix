@@ -3100,7 +3100,10 @@
     them while a read failed, and the daemon's homes for Code, every repository and present tree
     at its Code address by key whatever the reading's order, written whole and readable by the
     server through no link left in its way, not again while the file holds them, put right once
-    another writer changes or removes them, and tried again after a failure it says once
+    another writer changes or removes them or puts a link or a pipe there, which never holds the
+    daemon, and tried again after a failure it says once for each reason, naming the hidden file
+    where that failed, and says it's over, the running daemon writing them at its first reading
+    and again as a tree is cut
   '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship
