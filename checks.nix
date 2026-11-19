@@ -709,6 +709,7 @@ gather {
     ./modules/udp/checks.nix
     ./modules/unlisted/checks.nix
     ./modules/update-to-main/checks.nix
+    ./modules/usb-camera-holders/checks.nix
     ./modules/v4l2loopback/checks.nix
     ./modules/warp/checks.nix
     ./modules/wezterm/checks.nix
