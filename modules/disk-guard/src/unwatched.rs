@@ -15,6 +15,15 @@ pub enum Seen {
     Lost,
 }
 
+/// Which folder `dir` is, as a watch would name it: never, since nothing
+/// here marks one.
+pub fn handle(_dir: &Path) -> io::Result<Vec<u8>> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "nothing here hears who opens a file",
+    ))
+}
+
 /// A watch there can't be.
 pub struct Watch {
     never: std::convert::Infallible,
@@ -28,7 +37,7 @@ impl Watch {
         ))
     }
 
-    pub fn watch(&self, _dir: &Path) -> io::Result<()> {
+    pub fn watch(&self, _dir: &Path) -> io::Result<Vec<u8>> {
         match self.never {}
     }
 

@@ -89,12 +89,15 @@ or launchd, and [`home.nix`][2] the account's.
   same way, which costs room, never a build in use. Other windows read
   writes alone, so such a reader holds none of them back. The 15
   minutes hold only where this guard's own marks have heard a build's
-  folders, as they are now, for 15 minutes without a gap. A build not
-  marked since the guard started, one whose profile or `deps` was made
-  anew since its mark, one after lost events, and every build where
-  nothing hears, as on macOS, in `plan`, or once the watch fails,
-  keeps the hour. A budget that comes to nothing, as a share of
-  a disk that can't be measured does, is none. While the first root's
+  folders, as they are now, for 15 minutes of awake time without a
+  gap; a folder is told by the file handle its mark was placed through,
+  which a folder made anew never shares. A build not marked since the
+  guard started, one whose profile or `deps` was made anew since its
+  mark, one after lost events, and every build where nothing hears, as
+  on macOS, in `plan`, or once the watch or its listener fails, keeps
+  the hour, and the guard says how many folders it couldn't mark. A
+  budget that comes to nothing, as a share of a disk that can't be
+  measured does, is none. While the first root's
   disk holds more than the budget, the guard makes upkeep due, at most
   once an hour, so a build stays until the first look after its 15
   minutes. Cargo's shared builds folder held 63 GiB on 17 November, 59

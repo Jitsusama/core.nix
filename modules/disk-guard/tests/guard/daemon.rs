@@ -2144,6 +2144,11 @@ fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
         kept.opened.contains_key(&lock),
         "a cargo opening its profile's lock went unheard: {kept:?}"
     );
+    let hears = guard.hears();
+    assert!(
+        hears.contains(&deps) && hears.contains(&deps.parent().unwrap().to_owned()),
+        "the guard's marks on the profile and its deps weren't kept as heard: {hears:?}"
+    );
 }
 
 #[test]

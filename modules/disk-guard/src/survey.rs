@@ -309,7 +309,13 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                     }
                 }
                 if let Some(bytes) = budget_bytes(*budget, roots) {
-                    hold_to_budget(&mut offers[start..], bytes, world.uses, world.now);
+                    hold_to_budget(
+                        &mut offers[start..],
+                        bytes,
+                        world.uses,
+                        world.awake,
+                        world.now,
+                    );
                 }
             }
             Source::Installs { roots, depth } => {
@@ -1007,12 +1013,12 @@ pub fn budget_bytes(budget: Option<Size>, roots: &[PathBuf]) -> Option<u64> {
 /// One already spent goes anyway, so it takes no room. On 17 November a
 /// shared builds folder held 63 GiB in 3,298 builds, 59 GiB of it
 /// written within a day, which no idle window reaches.
-fn hold_to_budget(offers: &mut [Offer], budget: u64, uses: &Uses, now: f64) {
+fn hold_to_budget(offers: &mut [Offer], budget: u64, uses: &Uses, awake: &Awake, now: f64) {
     let mut builds: Vec<(Used, &mut Candidate)> = offers
         .iter_mut()
         .map(|offer| &mut offer.candidate)
         .filter(|candidate| candidate.class == Class::Target && !candidate.spent)
-        .map(|candidate| (Used::of(candidate, uses, now), candidate))
+        .map(|candidate| (Used::of(candidate, uses, awake, now), candidate))
         .collect();
     builds.sort_by(|(a, _), (b, _)| a.idle.total_cmp(&b.idle));
     let mut held: u64 = 0;
@@ -1042,13 +1048,15 @@ impl Used {
     /// a build in use look old: one not yet marked since the guard
     /// started, one made anew since its mark, one past lost events, and
     /// anywhere nothing hears, as on macOS or in `plan`, keeps its hour.
-    fn of(build: &Candidate, uses: &Uses, now: f64) -> Self {
+    /// Both are counted in awake time, as every other idle is, so a
+    /// suspend ages neither an open nor a mark.
+    fn of(build: &Candidate, uses: &Uses, awake: &Awake, now: f64) -> Self {
         let dirs = crate::replaced::watched_dirs(&build.path);
-        let idle = uses
-            .last_opened_in(&dirs)
-            .map_or(build.idle, |opened| build.idle.min(now - opened));
+        let idle = uses.last_opened_in(&dirs).map_or(build.idle, |opened| {
+            build.idle.min(awake.since(opened, now))
+        });
         let floor = match uses.heard_since(&dirs) {
-            Some(since) if now - since >= BUDGET_RECENT => BUDGET_RECENT,
+            Some(since) if awake.since(since, now) >= BUDGET_RECENT => BUDGET_RECENT,
             _ => BUDGET_UNHEARD,
         };
         Self { idle, floor }

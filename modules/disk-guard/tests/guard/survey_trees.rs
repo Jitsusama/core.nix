@@ -620,7 +620,8 @@ fn heard(apps: &[PathBuf], hours: f64) -> Uses {
     for app in apps {
         for dir in watched_dirs(&app.join("target")) {
             uses.watching(&dir, now() - hours * 3600.0);
-            uses.marked(&dir, now() - hours * 3600.0);
+            let handle = disk_guard::opens::handle(&dir).unwrap();
+            uses.marked(&dir, now() - hours * 3600.0, handle);
             assert!(
                 uses.heard.contains_key(&dir),
                 "{} wasn't marked",

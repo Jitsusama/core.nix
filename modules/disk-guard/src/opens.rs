@@ -62,8 +62,10 @@ impl Watch {
     }
 
     /// Hears every open of what's in `dir` from now on, until the
-    /// directory goes. Watching one again changes nothing.
-    pub fn watch(&self, dir: &Path) -> io::Result<()> {
+    /// directory goes. Watching one again changes nothing. Answers the
+    /// folder's [`handle`], read before the mark, so a folder made anew
+    /// in between is the old one's handle and never passes as marked.
+    pub fn watch(&self, dir: &Path) -> io::Result<Vec<u8>> {
         let path = CString::new(dir.as_os_str().as_bytes())?;
         let key = key(&path)?;
         let mask = libc::FAN_OPEN | libc::FAN_OPEN_EXEC | libc::FAN_EVENT_ON_CHILD;
@@ -84,8 +86,8 @@ impl Watch {
         self.dirs
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(key, dir.to_owned());
-        Ok(())
+            .insert(key.clone(), dir.to_owned());
+        Ok(key)
     }
 
     /// What was seen, waiting up to `within` for something.
@@ -189,6 +191,14 @@ impl Watch {
 
 /// A directory as fanotify names it: its filesystem's id, then its file
 /// handle's type and bytes.
+/// Which folder `dir` is now, by its filesystem's id and file handle: the
+/// way a mark names it. The handle carries the inode's generation, so a
+/// folder made anew where one was removed differs even when its inode
+/// number is reused.
+pub fn handle(dir: &Path) -> io::Result<Vec<u8>> {
+    key(&CString::new(dir.as_os_str().as_bytes())?)
+}
+
 fn key(path: &CString) -> io::Result<Vec<u8>> {
     // SAFETY: statfs fills the struct it's given.
     let mut stat: libc::statfs = unsafe { std::mem::zeroed() };

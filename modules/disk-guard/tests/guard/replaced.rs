@@ -197,14 +197,17 @@ fn a_target_is_heard_since_this_guard_marked_its_folders_as_they_are() {
         None,
         "a target an earlier guard watched was heard by this one"
     );
-    uses.marked(&dirs[0], 100.0);
+    let mark = |uses: &mut Uses, dir: &Path, at: f64| {
+        uses.marked(dir, at, disk_guard::opens::handle(dir).unwrap());
+    };
+    mark(&mut uses, &dirs[0], 100.0);
     assert_eq!(
         uses.heard_since(&dirs),
         None,
         "a target with an unmarked deps was heard"
     );
-    uses.marked(&dirs[1], 300.0);
-    uses.marked(&dirs[1], 400.0);
+    mark(&mut uses, &dirs[1], 300.0);
+    mark(&mut uses, &dirs[1], 400.0);
     assert_eq!(
         uses.heard_since(&dirs),
         Some(300.0),
@@ -224,7 +227,18 @@ fn a_target_is_heard_since_this_guard_marked_its_folders_as_they_are() {
         None,
         "a deps made anew was heard through the old one's mark"
     );
-    uses.marked(&dirs[1], 900.0);
+    // Its handle read before it was made anew, as a mark landing on the
+    // new folder after the watch named the old one would be.
+    let before = disk_guard::opens::handle(&dirs[1]).unwrap();
+    fs::remove_dir(&dirs[1]).unwrap();
+    fs::create_dir(&dirs[1]).unwrap();
+    uses.marked(&dirs[1], 800.0, before);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a deps made anew was heard through a handle read of the one before"
+    );
+    mark(&mut uses, &dirs[1], 900.0);
     assert_eq!(
         uses.heard_since(&dirs),
         Some(900.0),
@@ -234,7 +248,7 @@ fn a_target_is_heard_since_this_guard_marked_its_folders_as_they_are() {
     assert_eq!(uses.heard_since(&dirs), None, "a gone deps was heard");
     uses.deaf();
     fs::create_dir(&dirs[1]).unwrap();
-    uses.marked(&dirs[1], 1000.0);
+    mark(&mut uses, &dirs[1], 1000.0);
     assert_eq!(
         uses.heard_since(&dirs),
         None,

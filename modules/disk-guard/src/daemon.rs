@@ -1072,22 +1072,30 @@ impl Guard {
     /// Hears from `watch` who opens the artifacts of the targets it finds,
     /// on a thread of its own, so a busy build's thousands of opens never
     /// wait on a step. The thread ends with the guard, or on an error
-    /// reading them, after which the guard counts itself deaf.
+    /// reading them or a panic, after which the guard counts itself deaf.
     pub fn listen(&mut self, watch: Arc<crate::opens::Watch>) {
+        /// Says the guard no longer hears however the thread ends,
+        /// unwinding included.
+        struct Deafens(Arc<AtomicBool>);
+        impl Drop for Deafens {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::SeqCst);
+            }
+        }
         let uses = Arc::downgrade(&self.uses);
         let heard = Arc::clone(&watch);
-        let listening = Arc::clone(&self.listening);
-        listening.store(true, Ordering::SeqCst);
+        self.listening.store(true, Ordering::SeqCst);
+        let deafens = Deafens(Arc::clone(&self.listening));
         let spawned = std::thread::Builder::new()
             .name("opens".to_owned())
             .spawn(move || {
+                let _deafens = deafens;
                 loop {
                     let seen = heard.wait(Duration::from_secs(1));
                     let Some(uses) = uses.upgrade() else { return };
                     let seen = match seen {
                         Ok(seen) => seen,
                         Err(error) => {
-                            listening.store(false, Ordering::SeqCst);
                             eprintln!(
                                 "disk-guard: stopped hearing opens ({error}), so builds keep the hour"
                             );
@@ -1128,6 +1136,7 @@ impl Guard {
         }
         self.marked_at = Some(tick.wall);
         let mut marked = Vec::new();
+        let mut unmarked = 0_usize;
         for source in self.config.sources.values() {
             let Source::Cargo { roots, depth, .. } = source else {
                 continue;
@@ -1146,20 +1155,29 @@ impl Guard {
                         continue;
                     }
                     for dir in crate::replaced::watched_dirs(&tree.path) {
-                        if watch.watch(&dir).is_ok() {
+                        if let Ok(handle) = watch.watch(&dir) {
                             let at = SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .map_or(0.0, |since| since.as_secs_f64());
-                            marked.push((dir, at));
+                            marked.push((dir, at, handle));
+                        } else if dir.is_dir() {
+                            unmarked += 1;
                         }
                     }
                 }
             }
         }
+        if unmarked > 0 {
+            eprintln!(
+                "disk-guard: {unmarked} build folders couldn't be marked, so their builds keep the hour"
+            );
+        }
         let mut uses = self.uses.lock().unwrap_or_else(PoisonError::into_inner);
-        for (dir, at) in marked {
+        // A mark goes with its folder.
+        uses.heard.retain(|dir, _| dir.is_dir());
+        for (dir, at, handle) in marked {
             uses.watching(&dir, tick.wall);
-            uses.marked(&dir, at);
+            uses.marked(&dir, at, handle);
         }
     }
 
@@ -2266,6 +2284,11 @@ impl Guard {
             }
         }
         Ok(())
+    }
+
+    /// The folders this guard hears now, as a survey would read them.
+    pub fn hears(&self) -> Vec<PathBuf> {
+        self.uses_now().heard.into_keys().collect()
     }
 
     /// When each build's artifacts were last opened: a copy, so a long

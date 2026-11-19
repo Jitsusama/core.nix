@@ -45,12 +45,12 @@ pub struct Uses {
     pub unheard: f64,
 }
 
-/// A mark this guard placed on a folder: when, and on which inode.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+/// A mark this guard placed on a folder: when, and on which folder, by
+/// the handle the watch read before marking it.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Heard {
     pub since: f64,
-    pub dev: u64,
-    pub ino: u64,
+    pub handle: Vec<u8>,
 }
 
 impl Uses {
@@ -64,20 +64,17 @@ impl Uses {
         self.watched.entry(dir.to_owned()).or_insert(at);
     }
 
-    /// This guard's mark landed on `dir` at `at`. A mark again on the
-    /// folder it already marked keeps its time; one on a folder made anew
-    /// at the same path starts afresh. A folder it can't read is left
-    /// unheard.
-    pub fn marked(&mut self, dir: &Path, at: f64) {
-        let Ok(meta) = dir.metadata() else { return };
-        let now = Heard {
-            since: at,
-            dev: meta.dev(),
-            ino: meta.ino(),
-        };
-        let heard = self.heard.entry(dir.to_owned()).or_insert(now);
-        if (heard.dev, heard.ino) != (now.dev, now.ino) {
-            *heard = now;
+    /// This guard's mark landed at `at` on the folder `handle` names, at
+    /// `dir`. A mark again on the folder it already marked keeps its time;
+    /// one on a folder made anew at the same path starts afresh.
+    pub fn marked(&mut self, dir: &Path, at: f64, handle: Vec<u8>) {
+        match self.heard.get_mut(dir) {
+            Some(heard) if heard.handle == handle => {}
+            Some(heard) => *heard = Heard { since: at, handle },
+            None => {
+                self.heard
+                    .insert(dir.to_owned(), Heard { since: at, handle });
+            }
         }
     }
 
@@ -105,8 +102,8 @@ impl Uses {
         }
         dirs.iter().try_fold(self.unheard, |since, dir| {
             let heard = self.heard.get(dir)?;
-            let meta = dir.metadata().ok()?;
-            ((meta.dev(), meta.ino()) == (heard.dev, heard.ino)).then_some(since.max(heard.since))
+            let now = crate::opens::handle(dir).ok()?;
+            (now == heard.handle).then_some(since.max(heard.since))
         })
     }
 
@@ -115,6 +112,7 @@ impl Uses {
         let there = |path: &PathBuf| path.symlink_metadata().is_ok();
         self.opened.retain(|path, _| there(path));
         self.watched.retain(|path, _| there(path));
+        self.heard.retain(|path, _| there(path));
     }
 
     /// When anything right in one of `dirs` was last opened, which for a
