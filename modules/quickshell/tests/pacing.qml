@@ -843,13 +843,21 @@ QtObject {
         const frame = { swapped: 1000, refresh: 8.333 };
         check(failures, "an opening says the frames from its swap to the screen",
             Presented.shownSaid(frame, 1022.6),
-            "; 3 frames at 120 Hz from its swap to the screen");
+            "; 3 frames at 120 Hz from its swap to the screen"
+            + " (swapped 1000.0, shown 1022.6 monotonic ms)");
         check(failures, "niri at the next vblank says one frame",
             Presented.shownSaid(frame, 1008.3),
-            "; 1 frame at 120 Hz from its swap to the screen");
+            "; 1 frame at 120 Hz from its swap to the screen"
+            + " (swapped 1000.0, shown 1008.3 monotonic ms)");
+        // Said to a tenth of a ms, so it lines up with niri's log of its asks.
+        check(failures, "and its swap and vblank in monotonic ms, to a tenth",
+            Presented.shownSaid({ swapped: 123456.789, refresh: 8.333 }, 123481.04),
+            "; 3 frames at 120 Hz from its swap to the screen"
+            + " (swapped 123456.8, shown 123481.0 monotonic ms)");
         check(failures, "and counts at its own refresh",
             Presented.shownSaid({ swapped: 1000, refresh: 16.667 }, 1040),
-            "; 3 frames at 60 Hz from its swap to the screen");
+            "; 3 frames at 60 Hz from its swap to the screen"
+            + " (swapped 1000.0, shown 1040.0 monotonic ms)");
         check(failures, "and nothing where niri gave no refresh",
             Presented.shownSaid({ swapped: 1000 }, 1030), "");
         check(failures, "nor where the frame's swap wasn't timed",

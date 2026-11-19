@@ -113,6 +113,11 @@ function partsSwapped(times, parts) {
 // GPU work done a median 1 ms after their swap, then waited a median 6
 // frames at 120 Hz for niri (2026-11-15), so the count is what a fix in
 // niri moves. "" where niri gave no refresh or the swap wasn't timed.
+// The swap and the vblank are said too, in CLOCK_MONOTONIC ms as the
+// patch reads both, so they line up with niri's own log of when it asked
+// for each frame: its frames reached the screen within two refreshes of
+// its ask, so the wait lies between the swap and the ask (LR3WMN,
+// 2026-11-19).
 function shownSaid(times, at) {
     const refresh = times.refresh ?? 0;
     if (!(refresh > 0) || !(times.swapped > 0)) {
@@ -123,7 +128,9 @@ function shownSaid(times, at) {
     // the vblank it lies on.
     const count = Math.max(1, Math.ceil((at - times.swapped) / refresh - 0.01));
     const frames = `${count} ${count === 1 ? "frame" : "frames"} at ${hz} Hz`;
-    return `; ${frames} from its swap to the screen`;
+    const tenths = ms => (Math.round(ms * 10) / 10).toFixed(1);
+    return `; ${frames} from its swap to the screen`
+        + ` (swapped ${tenths(times.swapped)}, shown ${tenths(at)} monotonic ms)`;
 }
 
 // Each part's median, `[from, to, words]`, over those stamped with every
