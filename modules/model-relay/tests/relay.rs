@@ -277,10 +277,11 @@ const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 /// it's asked and echoes after, `/reset-on-the-first` does so on the
 /// origin's first connection and echoes on any other,
 /// `/reset-but-on-the-second` does so on every connection but the
-/// origin's second, and `/drop` reads it and lets the connection fall with
+/// origin's second, `/calm-down` resets saying to calm down, and `/drop`
+/// reads it and lets the connection fall with
 /// no word at all. An echo says which of the origin's connections it came
 /// on, counted from 0.
-async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<Answer>, io::Error> {
+async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<Answer>, h2::Error> {
     let Served {
         connection,
         kept,
@@ -313,8 +314,8 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             .filter(|handed| handed.uri.ends_with(&path))
             .count()
     };
-    if let Some(why) = resets(&path, heard, connection) {
-        return Err(io::Error::other(why));
+    if let Some(reason) = resets(&path, heard, connection) {
+        return Err(h2::Error::from(reason));
     }
     let answer = match path.as_str() {
         "/stream" | "/long" => {
@@ -378,20 +379,21 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
     Ok(answer.expect("an answer"))
 }
 
-/// Why the origin resets a request for `path`, the `heard`th it was asked
-/// for, on its `connection`, if it does: `answer` says which routes do.
-fn resets(path: &str, heard: usize, connection: usize) -> Option<&'static str> {
-    match path {
-        "/reset" => Some("the origin resets this stream"),
-        "/reset-once" if heard == 1 => Some("the origin resets this stream, this once"),
-        "/reset-on-the-first" if connection == 0 => {
-            Some("the origin resets every stream on this one")
-        }
-        "/reset-but-on-the-second" if connection != 1 => {
-            Some("the origin resets every stream but on its second")
-        }
-        _ => None,
-    }
+/// The reason the origin resets a request for `path` with, the `heard`th
+/// it was asked for, on its `connection`, if it does: `answer` says which
+/// routes do. Each says a protocol error, as the resets of 18 November
+/// did, but `/calm-down`'s, which says to calm down. hyper's server resets
+/// with the reason of the h2 error its service fails with.
+fn resets(path: &str, heard: usize, connection: usize) -> Option<h2::Reason> {
+    let resets = match path {
+        "/calm-down" => return Some(h2::Reason::ENHANCE_YOUR_CALM),
+        "/reset" => true,
+        "/reset-once" => heard == 1,
+        "/reset-on-the-first" => connection == 0,
+        "/reset-but-on-the-second" => connection != 1,
+        _ => false,
+    };
+    resets.then_some(h2::Reason::PROTOCOL_ERROR)
 }
 
 /// The relay, run as its program, and where it listens.
@@ -929,6 +931,9 @@ async fn a_reset_on_a_connection_kept_goes_once_more_on_another_open() {
         .await;
         assert_eq!(got.status, StatusCode::CREATED, "a request one slot resets");
         assert_eq!(got.body, b"hi");
+        // A while between requests, for slot 0's connection to open behind
+        // the one its request was carried on, so a later turn lands on it.
+        tokio::time::sleep(LOOK_EVERY * 5).await;
     }
 
     assert_eq!(
@@ -1052,6 +1057,10 @@ async fn a_burst_reset_while_no_connection_opens_waits_on_one_attempt() {
     );
     let said = relay.said();
     assert!(
+        said.contains("the origin reset a request on connection 0.0, so it's retired"),
+        "the reset went unsaid: {said}"
+    );
+    assert!(
         said.contains("couldn't be sent again, as no other connection would take it"),
         "a request reset and not sent again went unsaid: {said}"
     );
@@ -1065,7 +1074,12 @@ async fn a_burst_reset_while_no_connection_opens_waits_on_one_attempt() {
 async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
     let origin = origin().await;
     let host = origin.address.to_string();
-    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
     let stream = UnixStream::connect(&relay.socket)
         .await
         .expect("the socket answers");
@@ -1102,7 +1116,46 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         String::from_utf8_lossy(&answer)
     );
     assert_eq!(handed_to(&origin, "/echo"), 0, "a body too large went on");
-    drop(relay.said());
+    drop(reading);
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("a request's body passed 64 MiB, so it's refused"),
+        "a body too large went unsaid: {said}"
+    );
+    assert!(
+        said.contains("1 asked, 1 refused, 0 failed"),
+        "a body too large wasn't counted as refused: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_reset_saying_to_calm_down_is_a_502_and_goes_no_more() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 2);
+
+    let got = ask(&relay.socket, request(&host, "/calm-down", b"")).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::BAD_GATEWAY,
+        "a request reset saying to calm down"
+    );
+    assert_eq!(
+        handed_to(&origin, "/calm-down"),
+        1,
+        "a request reset saying to calm down was sent again"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("the origin reset a request on connection 0.0, so it's retired")
+            && said.contains("pi is answered 502"),
+        "the reset went unsaid: {said}"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

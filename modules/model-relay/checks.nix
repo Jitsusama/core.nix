@@ -20,8 +20,9 @@ onLinux {
   # before its answer sent once more on another connection, one already
   # open, even beside one kept, or one opened for a burst of them together,
   # a single attempt heard by all when it fails, and said as a 502 when
-  # reset again, when its connection was kept with no other open or when
-  # none would open, with its connection retired, a body too large or left
+  # reset again, when its connection was kept with no other open, when none
+  # would open or when the reset said to calm down, with its connection
+  # retired, a body too large or left
   # unfinished going nowhere, the counts said as it leaves, the requests pi
   # gave up on
   # counted on each connection and no answer read whole or broken off, a

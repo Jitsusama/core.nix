@@ -1691,7 +1691,8 @@
     a request the origin reset before its answer once more on another connection, one already
     open, even beside one kept, or one opened for a burst of them together, whose failure to open
     each hears at once, and as a 502 when reset again, when its connection was kept with none
-    other open or when none would open, retiring its connection, sends on no body too large or
+    other open, when none would open or when the reset said to calm down, retiring its
+    connection, sends on no body too large or
     left unfinished, says its counts as it leaves, counts on each connection the
     requests pi gave up on and no answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a
