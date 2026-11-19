@@ -1481,6 +1481,24 @@ ShellRoot {
                 [["Go To", ""], ["Deal With It", ""], ["talk", "ACTED"]]),
             JSON.stringify(ownActs));
         WaitingOnYou.now = [form];
+        // While it asks a question or a yes, no row offers Talk to it, the
+        // look it left included: its words would wait for the answer they
+        // were meant to shape.
+        const talksOf = key => forYou().find(row => row.key === key)?.verbs()
+            .filter(act => act.name === "talk").length;
+        const talksActing = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
+        const asked = Object.assign({}, acted, { presence: Object.assign({}, acted.presence,
+            { wants: { kind: "question", said: "Which?" } }) });
+        Sessions.running = [asked];
+        Sessions.wanting = [asked];
+        WaitingOnYou.sessionOf = { "Sign The Form": asked };
+        const talksAsking = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
+        expect("no row offers Talk to a session while it asks, its look included",
+            JSON.stringify([talksActing, talksAsking]) === "[[1,1],[0,0]]",
+            JSON.stringify([talksActing, talksAsking]));
+        Sessions.running = [acted];
+        Sessions.wanting = [acted];
+        WaitingOnYou.sessionOf = { "Sign The Form": acted };
         const heardBefore = root.forYouHeardTimes;
         agents.rows.ACTED.doing = "working";
         agents.remade += 1;
