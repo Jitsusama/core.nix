@@ -904,10 +904,13 @@ def flash_ends_at_once(
             desktop.reported("showing ", told, since, TRIED)
         except AssertionError:
             seen.clear()
-        missed = unreached(seen, before)
-        if not missed:
+        # Whatever came, the flash ends with its page, so even a try that
+        # missed y's turn shows the keys' showing bare.
+        if seen:
             chosen = seen[-1]["drawer"]["chosen"]
             assert not flashing(seen[-1]), f"what {keys} brought showed the copy's flash: {chosen}"
+        missed = unreached(seen, before)
+        if not missed:
             return
         tried.append(missed)
         from_the_keys(desktop, page)
