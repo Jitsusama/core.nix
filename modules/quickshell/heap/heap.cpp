@@ -51,13 +51,15 @@
 // (2026-11-19). A miss never starts the collector later than twice the room
 // past what the chunks held at the first ask since a collection ended, nor
 // sooner than Qt itself would, so a heap whose sweeps keep a few items in
-// each chunk it grew into doesn't grow by the room at every one, and the
-// opening's ask shares the closing's, as an ask for another room does; and
-// it reckons from what each sweep left, not from where leaveRoom set it, so
-// asking twice leaves the room once. weigh() says where the next starts.
-// Each closing asks after its own collection, so such a heap may still
-// climb by up to twice the room between closings, where main let it climb
-// by the room at each ask: the closing's line says what it holds.
+// each chunk it grew into doesn't grow by the room at every one; an ask
+// with no collection since the last, the opening's after the closing's or
+// one for another room, shares its ceiling; and it reckons from what each
+// sweep left, not from where leaveRoom set it, so asking twice leaves the
+// room once. weigh() says where the next starts. Every ask after a
+// collection moves the ceiling, so such a heap may climb by twice the room
+// at each: four rooms between closings when one ran while the launcher was
+// shut, six with the census, where main let it climb by the room at each
+// ask. The closing's line says what it holds.
 //
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,

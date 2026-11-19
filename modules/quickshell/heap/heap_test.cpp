@@ -247,6 +247,7 @@ bool roomFollowsWhatsHeld() {
                                  "the room past what it held at the first ask",
                                  grewFar && collectedFar &&
                                      grown.chunks > ceiling - SMALL_ROOM_MB / 4 &&
+                                     grown.chunks < ceiling + SMALL_ROOM_MB &&
                                      2 * grown.live < ceiling &&
                                      std::abs(grown.collectsAt - ceiling) < SAME_MB,
                                  twice, grown);
@@ -270,6 +271,7 @@ bool roomFollowsWhatsHeld() {
         "asking for another room before a collection counts it from the same place",
         grewLittle && uncollected && little.chunks >= rearmed.chunks + SMALLEST_ROOM_MB &&
             grewOn && collectedOn && other.chunks > otherCeiling - SMALLEST_ROOM_MB / 4 &&
+            other.chunks < otherCeiling + SMALLEST_ROOM_MB &&
             2 * other.live < otherCeiling && std::abs(other.collectsAt - otherCeiling) < SAME_MB,
         rearmed, other);
     heap.leaveRoom(std::numeric_limits<double>::infinity());
@@ -795,7 +797,8 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room, %d collections ago, starts "
                      "the collector as it makes far more in strings held outside it\n",
                      SMALLEST_ROOM_MB, COLLECTIONS_SINCE);
-    const bool reckoned = roomFollowsWhatsHeld() && roomKeepsQtsOwnLimits();
+    const bool reckoned = roomFollowsWhatsHeld();
+    const bool ownLimits = roomKeepsQtsOwnLimits();
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool fits = takesRunsThatFit();
@@ -804,7 +807,7 @@ int main(int argc, char **argv) {
     const bool placed = placesWhatMadeIt();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
-                   reckoned && follows && given && fits && whole && census && placed
+                   reckoned && ownLimits && follows && given && fits && whole && census && placed
                ? 0
                : 1;
 }
