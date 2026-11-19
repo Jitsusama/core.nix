@@ -274,6 +274,44 @@ def test_a_row_the_home_has_not_built_is_named(browser: Browser, tmp_path: Path)
     ]
 
 
+SYSTEM = {"path": "system/", "homes": [{"kind": "machine", "address": "#machine={name}"}]}
+
+
+def taken(path: str, kind: str) -> str:
+    """Say what the probe says of `path`'s claim on `kind`, which the home took for system/."""
+    return (
+        f'"{path}" in sites.json claims {kind}, which system/ is home to as home.nix declares '
+        "it, so the home took the claim: drop it from sites.json, or move the kind's home in "
+        "home.nix"
+    )
+
+
+def test_a_claim_the_home_took_is_named(browser: Browser, tmp_path: Path) -> None:
+    """A pattern the home took, leaving its row home to nothing, is named in sites.json."""
+    notes = {"path": "notes/", "homes": SYSTEM["homes"]}
+    rows = json.dumps({"sites": [SYSTEM, {"path": "notes/", "homes": []}]})
+    assert probed(browser, tmp_path, [notes], NOTHING, rows) == [taken("notes/", "machine")]
+
+
+def test_a_taken_kinds_things_are_not_blamed_twice(browser: Browser, tmp_path: Path) -> None:
+    """A kind taken from a row's names is named once, not again as its homes.json's slip."""
+    notes = {"path": "notes/", "homes": ["note", "machine"]}
+    rows = json.dumps({"sites": [SYSTEM, CODE, {"path": "notes/", "homes": ["note"]}]})
+    things = [
+        {"kind": "note", "name": "diary", "address": "notes/#note=diary"},
+        {"kind": "machine", "name": "studio", "address": "notes/#machine=studio"},
+    ]
+    found = probed(browser, tmp_path, [CODE, notes], NOTHING, rows, code=[NOTEBOOK], notes=things)
+    assert found == [taken("notes/", "machine")]
+
+
+def test_a_declared_rows_own_claims_take_nothing(browser: Browser, tmp_path: Path) -> None:
+    """A declared row in its record's place claims its own; the record's others weren't taken."""
+    stale = [{"path": "./code", "homes": ["repository", "note"]}]
+    rows = json.dumps({"sites": [CODE]})
+    assert probed(browser, tmp_path, stale, NOTHING, rows, code=[NOTEBOOK]) == []
+
+
 def test_no_record_at_all_is_a_fault(browser: Browser, tmp_path: Path) -> None:
     """Sites serving neither rows.json nor sites.json have no homes to read."""
     assert probed(browser, tmp_path, None, NOTHING) == [
