@@ -2409,10 +2409,14 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
     shell.notices_gone()
     drawn, tallied = [], []
     for _ in range(2):
-        # Now's Desktop, which holds the notices rested off the screen, since none is critical.
+        # Now's Desktop, which holds the notices rested off the screen, since none is critical;
+        # home's own row named Desktop is another place.
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
-        shell.launcher_until(lambda shown: "Desktop" in shown["rows"])
+        shell.normal()
+        shell.down_to("Now")
+        shell.step_in()
+        shell.launcher_until(lambda shown: shown["held"] == ["now"] and "Desktop" in shown["rows"])
         shell.normal()
         shell.down_to("Desktop")
         shell.step_in()
