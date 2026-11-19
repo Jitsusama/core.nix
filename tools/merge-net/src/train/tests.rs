@@ -333,6 +333,44 @@ fn a_first_rider_github_refuses_falls_alone() {
 }
 
 #[test]
+fn a_refused_first_rider_keeps_the_search_and_a_second_in_a_row_empties_the_train() {
+    let root = root("turned-twice");
+    for (head, at) in [("a1", 10), ("b2", 20), ("c3", 30), ("d4", 40)] {
+        board(&root, &rider(head, at)).unwrap();
+    }
+    let mut splitting = Splitting::default();
+    assert_eq!(
+        splitting.red(4),
+        After::Narrows,
+        "a red of four didn't narrow"
+    );
+    let turned = |refused: &str| Landing::Turned {
+        refused: refused.to_owned(),
+        why: format!("GitHub refused {refused}: 403"),
+    };
+    let riding: Vec<String> = ["a1", "b2"].map(str::to_owned).into();
+    after_landing(&root, turned("a1"), &riding, 0, &mut splitting);
+    assert_eq!(
+        splitting.take(),
+        1,
+        "the search forgot the red lies among the three riders after the refused one"
+    );
+    let riding: Vec<String> = ["b2"].map(str::to_owned).into();
+    after_landing(&root, turned("b2"), &riding, 0, &mut splitting);
+    let why = fell(&root, "b2").unwrap_or_default();
+    assert!(
+        why.contains("refused the train's first rider before"),
+        "a second refusal in a row wasn't read as GitHub refusing the train: {why}"
+    );
+    assert_eq!(
+        splitting,
+        Splitting::default(),
+        "the train kept a search after GitHub refused it twice"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
     let root = root("untaken");
     for (head, at) in [("a1", 10), ("b2", 20), ("c3", 30), ("d4", 40)] {

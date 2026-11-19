@@ -23,7 +23,11 @@
 //! and signs each merge with the key machines trust main by, which no
 //! agent holds; the train pushes nothing to main. Main's tree after those
 //! merges must be the candidate's, or the train reverts them on GitHub,
-//! the newest first. When main moved before the merges, the candidate is
+//! the newest first. When GitHub refuses one, those it merged before it
+//! stay, as main then holds the candidate's tree just before that merge;
+//! the refused one falls to run again alone, and the rest stay aboard,
+//! unless GitHub refused the first rider twice in a row, when they fall
+//! too (`landing.rs`). A draft never boards. When main moved before the merges, the candidate is
 //! cut again on it, and goes when its pass still speaks for it as one for
 //! a rebased change would (`earlier.rs`); otherwise it runs again with
 //! whoever has boarded since, holding the right of way meanwhile, so
@@ -560,12 +564,12 @@ fn after_landing(
                 alight(root, head);
             }
             keep_landed(root, &landed, &kept, crate::state::now() - began);
-            let before = match kept.len() {
-                1 => "the rider before it".to_owned(),
-                riders => format!("the {riders} riders before it"),
+            let (before, stay) = match kept.len() {
+                1 => ("the rider before it".to_owned(), "stays"),
+                riders => (format!("the {riders} riders before it"), "stay"),
             };
             let said = format!(
-                "{why}; {before} landed as {} and stay, and it leaves the train",
+                "{why}; {before} landed as {} and {stay}, and it leaves the train",
                 short(&landed)
             );
             println!("merge-net: {said}");
@@ -575,11 +579,24 @@ fn after_landing(
             return;
         }
         Landing::Turned { refused, why } => {
-            // Nothing merged, so only the refused rider falls; those after
-            // it stay aboard for the next run.
+            if splitting.turned() {
+                falls(&format!(
+                    "{why}, as it refused the train's first rider before, so every rider \
+                     leaves the train"
+                ));
+                way(root, &Ended::Otherwise);
+                *splitting = Splitting::default();
+                return;
+            }
+            // Nothing merged, so only the refused rider falls, and those
+            // after it stay aboard for the next run with the train's way
+            // and search kept, as after a landing that leaves riders.
             let said = format!("{why}; the train merged nothing, and it leaves the train");
             println!("merge-net: {said}");
             let _ = fall(root, &refused, &said);
+            let left = !riders(root).is_empty();
+            way(root, &Ended::Landed { left });
+            return;
         }
         Landing::Moved => {
             way(root, &Ended::Moved);

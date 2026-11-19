@@ -7,7 +7,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::{Merging, Rider, alight, fall, hub, slug_of, subject};
+use super::{Merging, Rider, alight, hub, slug_of, subject};
 use crate::state::short;
 
 /// An open pull request into main from one of the repository's own
@@ -61,8 +61,8 @@ fn pull_in(listed: &str, owner: &str) -> Option<Pull> {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Boarding {
     Rides,
-    /// A draft, which falls, for this reason.
-    Falls(String),
+    /// A draft, which steps off until it's marked ready, for this reason.
+    Draft(String),
     /// One whose pull request moved on or closed, which steps off.
     StepsOff,
 }
@@ -73,7 +73,7 @@ pub enum Boarding {
 pub fn boarding(open: Option<&Pull>, head: &str) -> Boarding {
     match open {
         Some(pull) if pull.head != head => Boarding::StepsOff,
-        Some(pull) if pull.draft => Boarding::Falls(refused_as_draft(pull)),
+        Some(pull) if pull.draft => Boarding::Draft(refused_as_draft(pull)),
         Some(_) => Boarding::Rides,
         None => Boarding::StepsOff,
     }
@@ -81,7 +81,10 @@ pub fn boarding(open: Option<&Pull>, head: &str) -> Boarding {
 
 /// The riders of `waiting` still their pull request's head, under `root`,
 /// as the candidate merges them, fetched by `git` into the checkout; a
-/// draft falls, and one whose pull request moved on or closed steps off.
+/// draft, or one whose pull request moved on or closed, steps off. A draft
+/// keeps no fell record, which would bar its head from the train once it
+/// was marked ready and cost its owner a gate run alone: `ready` refuses
+/// it while it's a draft, and boards it again once it isn't.
 pub fn aboard(
     root: &Path,
     git: &dyn Fn(&[&str]) -> Result<String, String>,
@@ -94,12 +97,12 @@ pub fn aboard(
         let open = pull_of(slug, &rider.branch);
         let fetched = || git(&["fetch", "--quiet", "origin", &rider.head]).is_ok();
         match (boarding(open.as_ref(), &rider.head), open) {
-            (Boarding::Falls(why), _) => {
+            (Boarding::Draft(why), _) => {
                 println!(
                     "merge-net: {} steps off the train: {why}",
                     short(&rider.head)
                 );
-                let _ = fall(root, &rider.head, &why);
+                alight(root, &rider.head);
             }
             (Boarding::Rides, Some(pull)) if fetched() => mergings.push(Merging {
                 number: pull.number,
@@ -146,7 +149,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_draft_falls_at_boarding_and_a_moved_one_steps_off() {
+    fn a_draft_and_a_moved_one_step_off_at_boarding() {
         let pull = |head: &str, draft: bool| Pull {
             number: 5645,
             title: "Ours".to_owned(),
@@ -157,7 +160,7 @@ mod tests {
         assert!(
             matches!(
                 boarding(Some(&pull("abc", true)), "abc"),
-                Boarding::Falls(why) if why.contains("#5645 is a draft")
+                Boarding::Draft(why) if why.contains("#5645 is a draft")
             ),
             "a draft rode"
         );
