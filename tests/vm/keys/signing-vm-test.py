@@ -195,6 +195,22 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
     joel.machine.wait_until_succeeds(refused.format(shlex.quote(since)), timeout=30)
 
 
+def test_a_commit_where_agents_work_runs_still_signs_with_their_key(joel: Joel, keys: Keys) -> None:
+    """A commit over pipes in the agents' slice is signed with their key, past the gate.
+
+    The agents' agent has no gate, so every commit an agent makes stays signed. Its socket
+    names Joel's gated agent, as an agent's environment might, to show the signer reaches
+    the agents' own agent whatever it is handed.
+    """
+    joel.run(
+        f"systemd-run --user --slice=agents --pipe --wait -q"
+        f" -E SSH_AUTH_SOCK={joel.runtime}/ssh-tpm-agent.sock"
+        ' -E PATH="$PATH" $(command -v git) -C "$HOME/repo"'
+        " commit -q --allow-empty -m from-agents < /dev/null"
+    )
+    assert joel.signer_of_last_commit() == ["G", keys.agent]
+
+
 def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:
     """Git trusts the signers the module lists."""
     signers = joel.run('cat "$(git config gpg.ssh.allowedSignersFile)"')
