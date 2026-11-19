@@ -30,6 +30,8 @@ mod feed;
 #[cfg(target_os = "linux")]
 mod heard;
 #[cfg(target_os = "linux")]
+mod homes;
+#[cfg(target_os = "linux")]
 mod serve;
 mod views;
 
