@@ -316,9 +316,7 @@ Rectangle {
     // The name's room, which it's cut to: all there is to the side, since
     // the words after it give way first, by whole items from their last,
     // and only then is the name cut (VKCF3Z, 2026-11-14 [04792410]).
-    // A heading's name, on its line at the foot of its band, as plain
-    // text: For You's headings name a session by its own title, which Qt
-    // would otherwise read as markup were it to look like some.
+    // A heading's name, on its line at the foot of its band.
     Text {
         id: headingText
         visible: row.heading
@@ -326,7 +324,6 @@ Rectangle {
         anchors.bottom: parent.bottom
         width: Math.max(0, row.width - x - Theme.space.rung.inset)
         elide: Text.ElideRight
-        textFormat: Text.PlainText
         text: row.heading ? row.plainName : ""
         color: Theme.muted
         font.family: Theme.level.name.family

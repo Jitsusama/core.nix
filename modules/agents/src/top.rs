@@ -426,7 +426,6 @@ mod tests {
             orchestrates: false,
             gone: false,
             state,
-            doing: state.to_owned(),
             returns: "switch",
             acts: acts.to_vec(),
             leaves: format!("its folder stays ({address})."),
