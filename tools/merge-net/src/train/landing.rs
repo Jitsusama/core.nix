@@ -24,6 +24,16 @@ pub(super) enum Landing {
         kept: Vec<String>,
         why: String,
     },
+    /// GitHub refused the rider at `refused`, for `why`, after merging the
+    /// riders at `kept`, which stay landed as `landed`, the tree the
+    /// candidate had after them; the riders after the refused one ride
+    /// again.
+    Partly {
+        landed: String,
+        kept: Vec<String>,
+        refused: String,
+        why: String,
+    },
     /// Main moved beside it, so its riders ride the next run.
     Moved,
     /// Main refused it for this reason, though main stood still.
@@ -154,8 +164,11 @@ fn thrice<T>(ask: impl Fn() -> Result<T, String>) -> Result<T, String> {
 /// them, then hold the tree GitHub gives the train's own last merge to the
 /// candidate's. GitHub merges each on main as it is when asked, so one
 /// that landed meanwhile, or a merge GitHub works out otherwise than git,
-/// gives main a tree no gate ran, and so does stopping short at a merge
-/// GitHub refuses; then each merge made is reverted, the newest first. A
+/// gives main a tree no gate ran; then each merge made is reverted, the
+/// newest first. A merge GitHub refuses stops it short, and the merges
+/// before it stay, held to the tree the candidate had after them: each
+/// passed its own checks, and on 19 November reverting two of them for a
+/// draft behind them cost both their owners a revert of the revert. A
 /// change merged after the train's last merge leaves it landed, as that
 /// merge's tree is still the one tested. A merge GitHub can't say it made
 /// stops it at once, keeping every merge and saying so, as reverting
@@ -191,23 +204,40 @@ fn through(
     let Some((_, last)) = made.last() else {
         return Landing::Refused(refused.unwrap_or_default());
     };
-    if let Some(why) = refused {
-        return reverted(hub, &made, why);
-    }
-    let tested = git(&["rev-parse", &format!("{candidate}^{{tree}}")]);
-    let why = match (thrice(|| hub.tree(last)), tested) {
-        (Ok(merged), Ok(tested)) if merged == tested => return Landing::Landed(last.clone()),
-        (Ok(_), _) => format!(
-            "GitHub's merge {} doesn't hold the tree the train tested at {}",
+    // Each rider is a merge along the candidate's first parent, so the
+    // tree after the last made is that many merges back from its top.
+    let short_by = riding.len() - made.len();
+    let tested = git(&["rev-parse", &format!("{candidate}~{short_by}^{{tree}}")]);
+    let landed_as_tested = |why: String| match (thrice(|| hub.tree(last)), &tested) {
+        (Ok(merged), Ok(tested)) if merged == *tested => Ok(()),
+        (Ok(_), _) => Err(format!(
+            "{why}GitHub's merge {} doesn't hold the tree the train tested at {}",
             short(last),
             short(candidate)
-        ),
-        (Err(error), _) => format!(
-            "GitHub couldn't say what its merge {} holds: {error}",
+        )),
+        (Err(error), _) => Err(format!(
+            "{why}GitHub couldn't say what its merge {} holds: {error}",
             short(last)
-        ),
+        )),
     };
-    reverted(hub, &made, why)
+    if let Some(why) = refused {
+        let Some(refusing) = riding.get(made.len()) else {
+            return reverted(hub, &made, why);
+        };
+        return match landed_as_tested(format!("{why}, and ")) {
+            Ok(()) => Landing::Partly {
+                landed: last.clone(),
+                kept: made.iter().map(|(at, _)| at.head.clone()).collect(),
+                refused: refusing.head.clone(),
+                why,
+            },
+            Err(why) => reverted(hub, &made, why),
+        };
+    }
+    match landed_as_tested(String::new()) {
+        Ok(()) => Landing::Landed(last.clone()),
+        Err(why) => reverted(hub, &made, why),
+    }
 }
 
 /// Revert each of `made` through `hub`, the newest first, for `why`,

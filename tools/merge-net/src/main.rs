@@ -334,6 +334,17 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
         if turn::waiting(commit, passes, files) {
             return ExitCode::FAILURE;
         }
+        // A draft is its owner's word that it isn't to land yet, and
+        // GitHub merges none, so it neither boards the train nor is told
+        // it may merge.
+        let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
+        if let Some(said) = (!branch.is_empty())
+            .then(|| train::drafted(&branch))
+            .flatten()
+        {
+            eprintln!("merge-net: {said}");
+            return ExitCode::FAILURE;
+        }
         if let Some(said) = train::gives_way(commit) {
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;

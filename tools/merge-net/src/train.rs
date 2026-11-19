@@ -61,12 +61,15 @@ mod gated;
 mod hub;
 mod installed;
 mod landing;
+mod pulls;
 mod splitting;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
 use installed::{build, hand_over, handed, newer};
 use landing::{Landing, land};
+pub use pulls::drafted;
+use pulls::{pull_of, refused_as_draft};
 use splitting::{After, Splitting, UNTAKEN_FOR};
 
 /// A change waiting on the train.
@@ -542,6 +545,30 @@ fn after_landing(
             way(root, &Ended::Landed { left });
             return;
         }
+        Landing::Partly {
+            landed,
+            kept,
+            refused,
+            why,
+        } => {
+            // The riders landed alight, the refused one falls to run again
+            // alone, and those after it stay aboard for the next run.
+            splitting.landed(kept.len());
+            for head in &kept {
+                alight(root, head);
+            }
+            keep_landed(root, &landed, &kept, crate::state::now() - began);
+            let said = format!(
+                "{why}; the {} riders before it landed as {} and stay, and it leaves the train",
+                kept.len(),
+                short(&landed)
+            );
+            println!("merge-net: {said}");
+            let _ = fall(root, &refused, &said);
+            let left = !riders(root).is_empty();
+            way(root, &Ended::Landed { left });
+            return;
+        }
         Landing::Moved => {
             way(root, &Ended::Moved);
             return;
@@ -661,16 +688,24 @@ fn aboard(
     let mut mergings = Vec::new();
     for rider in waiting {
         let open = pull_of(slug, &rider.branch);
-        let still = open
-            .as_ref()
-            .is_some_and(|(_, _, head)| *head == rider.head);
+        let still = open.as_ref().is_some_and(|pull| pull.head == rider.head);
         let fetched = still && git(&["fetch", "--quiet", "origin", &rider.head]).is_ok();
         match open {
-            Some((number, title, _)) if fetched => mergings.push(Merging {
-                number,
+            // GitHub merges no draft, and refuses one only once the riders
+            // before it have merged, so a draft never rides a candidate.
+            Some(pull) if still && pull.draft => {
+                let why = refused_as_draft(&pull);
+                println!(
+                    "merge-net: {} steps off the train: {why}",
+                    short(&rider.head)
+                );
+                let _ = fall(root, &rider.head, &why);
+            }
+            Some(pull) if fetched => mergings.push(Merging {
+                number: pull.number,
                 head: rider.head.clone(),
-                subject: subject(number, owner, &rider.branch),
-                title,
+                subject: subject(pull.number, owner, &rider.branch),
+                title: pull.title,
             }),
             _ => {
                 println!(
@@ -682,37 +717,6 @@ fn aboard(
         }
     }
     mergings
-}
-
-/// The open pull request from `branch`: its number, title and head.
-fn pull_of(slug: &str, branch: &str) -> Option<(u64, String, String)> {
-    let out = hub::gh(&[
-        "pr",
-        "list",
-        "--repo",
-        slug,
-        "--head",
-        branch,
-        "--state",
-        "open",
-        "--json",
-        "number,title,headRefOid,headRepositoryOwner,baseRefName",
-    ])
-    .ok()?;
-    let pulls: Value = serde_json::from_str(&out).ok()?;
-    // A fork's pull request may name a branch of the same name; only the
-    // repository's own are the rider's, and only one into main, as GitHub
-    // merges a pull request into its own base.
-    let owner = slug.split('/').next().unwrap_or_default();
-    let pull = pulls.as_array()?.iter().find(|pull| {
-        pull["headRepositoryOwner"]["login"].as_str() == Some(owner)
-            && pull["baseRefName"].as_str() == Some("main")
-    })?;
-    Some((
-        pull["number"].as_u64()?,
-        pull["title"].as_str()?.to_owned(),
-        pull["headRefOid"].as_str()?.to_owned(),
-    ))
 }
 
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
