@@ -120,6 +120,19 @@ QtObject {
             Arming.heldWhy({ still: true, run: nothing, stillWhy: "x" }, "nothing sent"), null);
         expect("and one held with no words anywhere is held, not run",
             Arming.heldWhy({ still: true }, ""), "");
+        // A way in from outside is refused where any step on it is held,
+        // not only the last, or where the last one's Return's act is, so
+        // nothing a held row holds is reached past it.
+        const held = { still: true, stillWhy: "not while shared" };
+        const acts = { stays: true, run: nothing };
+        expect("a way through a held row is refused for it",
+            Arming.wayHeldWhy([acts, held, acts], acts, "nothing sent"), "not while shared");
+        expect("as is a way to a row whose Return's act is held",
+            Arming.wayHeldWhy([acts, acts], held, "nothing sent"), "not while shared");
+        expect("while a way held nowhere isn't refused for it",
+            Arming.wayHeldWhy([acts, acts], acts, "nothing sent"), null);
+        expect("nor is one that reaches nothing",
+            Arming.wayHeldWhy([], null, "nothing sent"), null);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
