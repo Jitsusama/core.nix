@@ -184,9 +184,9 @@ the p99 20 ms, 1 within 50 ms
 31 ms, the p99 31 ms, 2 within 50 ms, from machine 2: a median 1 ms before the shell heard it
   INFO qml: launcher: 4 drawers in programs presented a median 24 ms from the key, the \
 slowest 40 ms, the p99 40 ms, 4 within 50 ms: a median 1 ms before it followed, 3 until its \
-frame began and 20 from its frame's start
+frame began and 20 from its frame's start; on DP-4 at 60 Hz
   INFO qml: launcher: drawer for \"↓\" presented 24 ms from the key: a median 1 ms before it \
-followed
+followed; on DP-4 at 60 Hz
   INFO qml: launcher: \"↓\" took 4 ms to its frame, 2 ms searching
 ";
         let figures = launcher(journal);

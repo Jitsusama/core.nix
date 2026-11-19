@@ -9075,13 +9075,13 @@ Scope {
             came } : null;
         drawerKeyAt = 0;
         if (presenting !== null) {
-            presentedAwait(presenting.from, at => {
+            presentedAwait(presenting.from, (at, answered) => {
                 // The screen it was shown on and niri's frame there, as a
                 // key's, so a drawer docked to a 60 Hz screen reads as that.
                 const one = Object.assign(presenting, { at,
                     swapped: root.swappedOf(presenting.frame),
                     screen: root.screenHere?.name ?? "",
-                    refresh: root.refreshOf(presenting.frame) });
+                    refresh: root.refreshOf(answered) });
                 root.drawersPresented = root.drawersPresented.concat([one]).slice(-keysKept);
                 console.info(Presented.drawerSaid(one));
             });
@@ -11831,6 +11831,8 @@ Scope {
     // begin, numbered as the window counts them, and is told by the first
     // presented at or after it, a frame niri dropped being shown by the
     // next. Asked for only while a key's frame waits, never while shut.
+    // Each is told the frame niri answered too, the one whose refresh it
+    // timed, which needn't be the frame it waited on.
     property var presentedWaiting: []
     function presentedAwait(from, said) {
         if (!presentedAvailable())
@@ -11849,7 +11851,7 @@ Scope {
         return surface.FramePresentation.timesOf(frame).swapped || null;
     }
     // Niri's frame in ms on the screen a frame was shown on, or 0 where
-    // niri never timed it, as a dropped frame isn't.
+    // niri never timed it, as it times only the frame it answered.
     function refreshOf(frame) {
         if (frame === undefined)
             return 0;
@@ -11861,7 +11863,7 @@ Scope {
         const due = presentedWaiting.filter(one => frame >= one.frame);
         presentedWaiting = presentedWaiting.filter(one => frame < one.frame);
         for (const one of due)
-            one.said(at);
+            one.said(at, frame);
         if (presentedWaiting.length > 0)
             surface.FramePresentation.ask();
     }

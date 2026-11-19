@@ -2381,7 +2381,7 @@ DRAWERS_SAID = re.compile(r"launcher: \d+ drawers? in \S+ presented a median \d+
 
 def came_in_its_keys_frame(line: str) -> bool:
     """Say whether a drawer's line says it came in its key's frame, before the screen it names."""
-    return line.split("; on ", 1)[0].endswith("in the key's frame")
+    return line.rsplit("; on ", 1)[0].endswith("in the key's frame")
 
 
 def test_a_drawer_is_said_presented_from_the_key_that_brought_it(shell: Shell) -> None:
@@ -2482,6 +2482,11 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
     assert drawer["at"] == brought["at"], (
         f"the drawer came after its key's frame: {drawer}, {brought}"
     )
+    # Shown in the key's frame, it was shown on the key's screen at the key's refresh, and its
+    # line ends with them, as the key's does, so a docked day's drawers read as the screen's.
+    shown_on = (drawer["screen"], drawer["refresh"])
+    assert shown_on == (brought["screen"], brought["refresh"]), (drawer, brought)
+    assert not drawer["screen"] or any(f"; on {drawer['screen']}" in line for line in lines), lines
     shell.close_launcher()
 
 
