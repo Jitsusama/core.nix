@@ -674,6 +674,15 @@ ShellRoot {
         same("its drawer says neither what it asks for, where from, nor why",
             [drawer.title, drawer.eyebrow, drawer.body, drawer.facts?.length],
             [hidden, "", "", 0]);
+        // Nor in any field the row carries, its drawer, verbs and state as
+        // each reads, so a field the launcher draws later fails here if
+        // it's let through, not only the fields named below.
+        const reads = ["drawer", "verbs", "state"];
+        const told = one => JSON.stringify(Object.keys(one ?? {}).map(field => [field,
+            reads.includes(field) && typeof one[field] === "function" ? one[field]()
+                : one[field]]));
+        same("nor anything of what it asks for or where from, in any field",
+            ["Kiln", "kiln", "S1"].filter(word => told(row()).includes(word)), []);
         same("nor anything else the daemon serves, only what it may show",
             [row()?.reads, row()?.graph], ["", null]);
         // The words it's found by go too, so no search finds it by what it
@@ -868,6 +877,7 @@ ShellRoot {
             .map(field => [field, field === "state" ? stands(one) ?? null
                 : reads.includes(field) && typeof one[field] === "function" ? one[field]()
                 : one[field]]));
+        same("it waits before it ends", row()?.waiting, true);
         const waiting = drawn(row());
         link.tellEnded();
         same("the ended ask is its own row, no longer waiting", row()?.waiting, false);
