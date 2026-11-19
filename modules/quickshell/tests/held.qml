@@ -339,26 +339,64 @@ QtObject {
         check("the outermost kept, with steps below it left, is left",
             Held.answer(spentTop, top), "left");
 
-        // A step left by itself goes on no way back, and the way back's
-        // last places, where Joel stepped in from, are now where he is, so
-        // they go too, as the place used last does: Ctrl+O or Tab would go
-        // nowhere, and show it as it was. Where he is reads as it did
-        // before the leave and as it does now, since a row is remade as
-        // offered now, and may be renamed so.
+        afterLeaving(check);
+    }
+
+    // What Ctrl+O, Ctrl+I, Ctrl+T and Tab keep once a step is left by
+    // itself, each told to `check`. Places read as their steps joined by
+    // "/", as the launcher's placeOf joins them.
+    function afterLeaving(check) {
+        // Where Joel stepped in from is now where he is, so the way back's
+        // last places there go, as the place used last does there: each
+        // would go nowhere, and show it as it was. Every place through the
+        // step left goes too, wherever it is, since each would show that
+        // spent step's rows as live. Where he is, and the step left, read
+        // as they did before the leave and as they do now, since a row is
+        // remade as offered now, and may be renamed so.
+        const steps = place => place.split("/");
+        const held = places => places.map(place => ({ held: steps(place) }));
         const at = one => one.held.join("/");
-        const jumped = places => places.map(held => ({ held: [held] }));
-        const after = (jumps, last, landed) => {
-            const now = Held.afterLeave({ jumps: jumped(jumps), last: jumped([last])[0] },
-                landed, at);
-            return `${now.jumps.map(at).join(" ")}; ${now.last === null ? "none" : at(now.last)}`;
+        const after = (went, landed, left) => {
+            const now = Held.afterLeave({
+                jumps: held(went.jumps ?? []),
+                ahead: held(went.ahead ?? []),
+                tags: held(went.tags ?? []),
+                last: went.last === null ? null : held([went.last ?? "elsewhere"])[0]
+            }, { landed: landed.map(steps), left: left.map(steps) }, one => one.join("/"));
+            return [now.jumps, now.ahead, now.tags].map(list => list.map(at).join(" "))
+                .join(" | ") + `; ${now.last === null ? "none" : at(now.last)}`;
         };
         check("a way back and a place used last where a leave landed go",
-            after(["home", "agents", "agents"], "agents", ["agents"]), "home; none");
+            after({ jumps: ["home", "agents", "agents"], last: "agents" }, ["agents"],
+                ["agents/s1"]), "home |  | ; none");
         check("only the last of the way back",
-            after(["agents", "home", "agents"], "agents", ["agents"]), "agents home; none");
+            after({ jumps: ["agents", "home", "agents"] }, ["agents"], ["agents/s1"]),
+            "agents home |  | ; elsewhere");
         check("where it landed as it read before it was remade",
-            after(["home", "Agents"], "Agents", ["Agents", "Agents Now"]), "home; none");
-        check("one to elsewhere stays",
-            after(["home", "agents"], "agents", ["quests"]), "home agents; agents");
+            after({ jumps: ["home", "Agents"] }, ["Agents", "Agents Now"], ["Agents/s1"]),
+            "home |  | ; elsewhere");
+        check("and as it reads now",
+            after({ jumps: ["home", "Agents Now"] }, ["Agents", "Agents Now"],
+                ["Agents/s1"]), "home |  | ; elsewhere");
+        check("every place through the step left goes, the deepest last included",
+            after({ jumps: ["home", "p", "p/s", "p/s/t"], last: "p/s/t" }, ["p"], ["p/s"]),
+            "home |  | ; none");
+        check("wherever it is on the way back",
+            after({ jumps: ["p/s", "q", "p"] }, ["p"], ["p/s"]), "q |  | ; elsewhere");
+        check("through the step left as it read now",
+            after({ jumps: ["home", "p/S Now/t"] }, ["p"], ["p/s", "p/S Now"]),
+            "home |  | ; elsewhere");
+        check("a place through a step beside it stays",
+            after({ jumps: ["home", "agents/s2"], last: "agents/s2" }, ["agents"],
+                ["agents/s1"]), "home agents/s2 |  | ; agents/s2");
+        check("Ctrl+I's places ahead and Ctrl+T's tags go alike",
+            after({ ahead: ["home", "agents/s1/look", "agents"], tags: ["agents/s1", "agents"] },
+                ["agents"], ["agents/s1"]), " | home | ; elsewhere");
+        check("no place used last, as the launcher opens, is none still",
+            after({ jumps: ["home", "agents"], last: null }, ["agents"], ["agents/s1"]),
+            "home |  | ; none");
+        check("a leave elsewhere leaves each as it was",
+            after({ jumps: ["home", "agents"], last: "agents" }, ["quests"], ["quests/x"]),
+            "home agents |  | ; agents");
     }
 }
