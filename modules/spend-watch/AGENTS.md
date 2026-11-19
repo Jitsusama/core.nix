@@ -134,9 +134,11 @@ feed speaks.
   nothing bills them to disagree; a warehouse settled more than 48
   hours behind, or past now, is told once in their place, and a feed
   the config runs that bills pi without saying how far it has settled
-  holds every budget back.
-  Cadence counts these findings each hour while spend-watch's
-  heartbeat is current.
+  holds every budget back. A budget a session asked for in the last
+  day and the harness couldn't draw on, as its budget entry says, is
+  told with how many sessions missed it, the day they start rather
+  than a day later. Cadence counts both kinds of finding each hour
+  while spend-watch's heartbeat is current.
   `src/detect.rs` holds them all, and `spend-watch backtest` replays the
   forecast, the burn and the caps on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first

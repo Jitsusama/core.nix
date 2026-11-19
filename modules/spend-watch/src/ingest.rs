@@ -383,6 +383,46 @@ mod tests {
         assert_eq!(turns(&history), 1);
     }
 
+    // A log written anew keeps no budget it couldn't draw on from before,
+    // and reading it again doesn't write one twice.
+    #[test]
+    fn a_replaced_log_tells_its_unresolved_budgets_once() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("project")).unwrap();
+        let path = dir.path().join("project/2026_s1.jsonl");
+        let missed = |budget: &str| {
+            serde_json::json!({
+                "type": "custom", "customType": "budget", "id": budget,
+                "timestamp": "2026-10-14T10:02:00Z",
+                "data": {"v": 1, "name": null,
+                    "unresolved": {"budget": budget, "missing": "no key"}},
+            })
+            .to_string()
+        };
+        let unresolved = |history: &History| -> Vec<String> {
+            let mut statement = history
+                .db
+                .prepare("SELECT budget FROM unresolved ORDER BY budget")
+                .unwrap();
+            statement
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        let teal = missed("teal");
+        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{teal}\n")).unwrap();
+        let history = History::memory();
+        scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        assert_eq!(unresolved(&history), ["teal"]);
+        // Written anew, as a rewrite of the session would.
+        std::fs::remove_file(&path).unwrap();
+        let ochre = missed("ochre");
+        std::fs::write(&path, format!("{HEADER}\n{ochre}\n")).unwrap();
+        scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        assert_eq!(unresolved(&history), ["ochre"]);
+    }
+
     // A history from before copies were told apart holds a carried log's
     // copied turns beside its parent's; the log is read again once.
     #[test]

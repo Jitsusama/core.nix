@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 8;
+pub const SCHEMA: i64 = 9;
 
 /// The most the write-ahead log keeps on disk once checkpointed. SQLite
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
@@ -94,6 +94,17 @@ END;
     };
 }
 
+/// Each budget a session asked for and couldn't draw on, and why, from
+/// the harness's budget entries.
+macro_rules! unresolved {
+    () => {
+        "
+CREATE TABLE unresolved (session TEXT NOT NULL, at REAL NOT NULL, budget TEXT NOT NULL,
+    missing TEXT NOT NULL);
+"
+    };
+}
+
 /// Each time an allowance went over: from when, until when it came back
 /// under (none while it's over), and what every source said as it went,
 /// kept here as well as in the report written from it.
@@ -160,7 +171,7 @@ macro_rules! cap_events {
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 7] = [
+const UPGRADES: [&str; 8] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -196,6 +207,7 @@ const UPGRADES: [&str; 7] = [
          ALTER TABLE cap_events_7 RENAME TO cap_events;"
     ),
     crossings!(),
+    unresolved!(),
 ];
 
 const TABLES: &str = concat!(
@@ -220,6 +232,9 @@ CREATE INDEX turns_session ON turns (session);
 CREATE INDEX turns_at ON turns (at);
 CREATE TABLE refusals (session TEXT NOT NULL, at REAL NOT NULL, model TEXT NOT NULL,
     said TEXT NOT NULL);
+",
+    unresolved!(),
+    "
 CREATE TABLE runs (
     run TEXT NOT NULL, agent TEXT NOT NULL, kind TEXT NOT NULL, model TEXT NOT NULL,
     persona TEXT NOT NULL, parent TEXT, started REAL NOT NULL, ended REAL,
@@ -490,6 +505,9 @@ impl History {
             self.db
                 .execute("DELETE FROM refusals WHERE session = ?1", [&session])
                 .map_err(sql)?;
+            self.db
+                .execute("DELETE FROM unresolved WHERE session = ?1", [&session])
+                .map_err(sql)?;
         }
         self.db
             .execute("DELETE FROM files WHERE path = ?1", [path])
@@ -578,6 +596,19 @@ impl History {
                     .execute(
                         "INSERT INTO refusals VALUES (?1, ?2, ?3, ?4)",
                         params![session, at, model, said],
+                    )
+                    .map_err(sql)?;
+            }
+            Event::Unresolved {
+                session,
+                at,
+                budget,
+                missing,
+            } => {
+                self.db
+                    .execute(
+                        "INSERT INTO unresolved VALUES (?1, ?2, ?3, ?4)",
+                        params![session, at, budget, missing],
                     )
                     .map_err(sql)?;
             }
@@ -903,9 +934,11 @@ mod tests {
     feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
     before REAL, after REAL, spent REAL NOT NULL, PRIMARY KEY (feed, name, at, kind));
 ";
-        // The seventh shape kept no crossings; the eighth gains them.
+        // The seventh shape kept no crossings, which the eighth gains, nor
+        // unresolved budgets, which the ninth gains.
         TABLES
             .replace(crossings!(), "")
+            .replace(unresolved!(), "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)
@@ -1051,6 +1084,43 @@ mod tests {
             )
             .unwrap();
         assert_eq!(row, ("swarm".into(), "acp@team".into()));
+    }
+
+    // The eighth shape kept no budget a session couldn't draw on; the
+    // ninth gains them, and keeps what was already there.
+    #[test]
+    fn the_eighth_shape_gains_unresolved_budgets() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(&TABLES.replace(unresolved!(), ""))
+                .unwrap();
+            db.execute_batch(
+                "INSERT INTO meta VALUES ('schema', '8');
+                 INSERT INTO refusals VALUES ('s1', 1.0, 'm', 'over');",
+            )
+            .unwrap();
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        history
+            .add_event(&crate::logs::Event::Unresolved {
+                session: "s1".into(),
+                at: 2.0,
+                budget: "teal".into(),
+                missing: "no key for it".into(),
+            })
+            .unwrap();
+        let kept: (i64, i64) = history
+            .db
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM refusals), (SELECT COUNT(*) FROM unresolved)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(kept, (1, 1));
     }
 
     #[test]

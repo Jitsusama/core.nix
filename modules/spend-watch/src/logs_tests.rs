@@ -236,6 +236,87 @@ fn budgets(events: &[Event]) -> Vec<Option<&str>> {
         .collect()
 }
 
+/// A budget entry saying the budget it was asked for couldn't be drawn
+/// on, and why, so its turns draw on the default.
+fn unresolved(id: &str, parent: &str, wanted: &Value) -> String {
+    serde_json::json!({
+        "type": "custom", "customType": "budget", "id": id, "parentId": parent,
+        "timestamp": "2026-11-07T02:20:33Z",
+        "data": {"v": 1, "name": null, "unresolved": wanted},
+    })
+    .to_string()
+}
+
+fn unresolved_of(events: &[Event]) -> Vec<(&str, &str, &str)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Unresolved {
+                session,
+                budget,
+                missing,
+                ..
+            } => Some((session.as_str(), budget.as_str(), missing.as_str())),
+            _ => None,
+        })
+        .collect()
+}
+
+// A budget the harness couldn't draw on is told with its session and
+// why, and the turns after it draw on the default, as the entry says.
+#[test]
+fn a_budget_it_could_not_draw_on_is_told() {
+    let bytes = lines(&[
+        HEADER,
+        &tree_turn("a", "", "2026-11-07T02:00:00Z"),
+        &unresolved(
+            "b",
+            "a",
+            &serde_json::json!({"budget": "teal", "missing": "no key for it"}),
+        ),
+        &tree_turn("c", "b", "2026-11-07T02:21:00Z"),
+    ]);
+    let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
+    assert_eq!(unresolved_of(&events), [("s1", "teal", "no key for it")]);
+    assert_eq!(budgets(&events), [None, Some("")]);
+}
+
+// A carried log's copy of its parent's budget entry is the parent's to
+// count; only one written after its header is its own.
+#[test]
+fn a_carried_log_counts_only_its_own_unresolved_budgets() {
+    let parent = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+    let at = |entry: String, stamp: &str| -> String {
+        let mut entry: Value = serde_json::from_str(&entry).unwrap();
+        entry["timestamp"] = stamp.into();
+        entry.to_string()
+    };
+    let copied = serde_json::json!({"budget": "teal", "missing": "copied"});
+    let own = serde_json::json!({"budget": "ochre", "missing": "its own"});
+    let bytes = lines(&[
+        &carried(parent),
+        &at(unresolved("a", "", &copied), "2026-10-14T10:00:00Z"),
+        &at(unresolved("b", "a", &own), "2026-10-14T10:31:00Z"),
+    ]);
+    let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
+    assert_eq!(unresolved_of(&events), [("s2", "ochre", "its own")]);
+}
+
+// An entry whose unresolved field isn't a budget and a reason, both
+// strings, is passed over, and a plain budget entry says nothing of one.
+#[test]
+fn an_unresolved_field_without_its_strings_is_passed_over() {
+    let bytes = lines(&[
+        HEADER,
+        &unresolved("a", "", &serde_json::json!({"budget": "teal"})),
+        &unresolved("b", "a", &serde_json::json!({"budget": 7, "missing": "x"})),
+        &unresolved("c", "b", &serde_json::json!("teal")),
+        &budget("d", "c", Some("teal")),
+    ]);
+    let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
+    assert_eq!(unresolved_of(&events), [] as [(&str, &str, &str); 0]);
+}
+
 // Before any entry a turn's log says nothing of its budget; after one,
 // it draws on the budget named, or the default for none.
 #[test]
