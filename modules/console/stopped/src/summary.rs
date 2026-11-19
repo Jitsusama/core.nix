@@ -1,8 +1,8 @@
 //! What a failed boot's console says, laid out from what systemd said:
 //! each unit that failed, a step in from the edge, with what it said
 //! under it, or why its journal couldn't say, at most four of them so
-//! the screen holds them above the shell's own words, and the way out
-//! last.
+//! the screen holds them above the shell's own words, which of its files
+//! the journal skipped as unreadable, and the way out last.
 
 use terminal_kit::Pen;
 use terminal_kit::layout::{self, Room};
@@ -33,9 +33,9 @@ pub struct Failed {
 }
 
 /// The summary: the first `SHOWN` of `failed`, how many more there are
-/// of `all`, and the way out, for a room `room` wide. Nothing failed
-/// says nothing.
-pub fn text(failed: &[Failed], all: usize, pen: &Pen, room: Room) -> String {
+/// of `all`, the files journalctl said it `skipped`, and the way out,
+/// for a room `room` wide. Nothing failed says nothing.
+pub fn text(failed: &[Failed], all: usize, skipped: &[String], pen: &Pen, room: Room) -> String {
     if all == 0 {
         return String::new();
     }
@@ -65,6 +65,26 @@ pub fn text(failed: &[Failed], all: usize, pen: &Pen, room: Room) -> String {
         out.push_str(UNDER);
         out.push_str(&pen.role("muted", &format!("and {} more", all - shown)));
         out.push('\n');
+    }
+    // A file the journal skipped may hold any unit's lines, or only an
+    // earlier boot's, so it's said once, for them all, rather than under
+    // a unit as its reason. The first says what kind of trouble it is.
+    if let Some(first) = skipped.first() {
+        let told = match skipped.len() {
+            1 => "journalctl skipped an unreadable file, so lines may be missing:".to_owned(),
+            count => format!(
+                "journalctl skipped {count} unreadable files, so lines may be missing, such as:"
+            ),
+        };
+        out.push('\n');
+        for part in [told.as_str(), first]
+            .into_iter()
+            .flat_map(|line| under(line, room))
+        {
+            out.push_str(UNDER);
+            out.push_str(&pen.role("muted", &part));
+            out.push('\n');
+        }
     }
     out.push('\n');
     out.push_str(UNDER);
@@ -397,6 +417,11 @@ mod tests {
         }
     }
 
+    /// The summary with no file skipped, as most of these tests want it.
+    fn text(failed: &[Failed], all: usize, pen: &Pen, room: Room) -> String {
+        super::text(failed, all, &[], pen, room)
+    }
+
     fn console() -> Pen {
         Pen::new(
             Ink {
@@ -459,6 +484,27 @@ mod tests {
             "\n  x  home.mount  Mount /home\n     its journal couldn't be read: journalctl didn't \
              answer in time, so it was stopped\n\n     Ctrl+Alt+Delete restarts; hold \
              Space as it starts for an older generation.\n\n"
+        );
+    }
+
+    #[test]
+    fn the_files_journalctl_skipped_are_said_once_above_the_way_out() {
+        let failed = [unit("home.mount", "Mount /home", &["wrong fs type"])];
+        let skipped = [
+            "Journal file /j/system@a.journal~ is truncated, ignoring\u{1b}[2J file.".to_owned(),
+            "Journal file /j/user-1000.journal corrupted, ignoring file.".to_owned(),
+        ];
+        assert_eq!(
+            super::text(&failed, 1, &skipped, &console(), Room::Cells(100)),
+            "\n  x  home.mount  Mount /home\n     wrong fs type\n\n     journalctl skipped 2 \
+             unreadable files, so lines may be missing, such as:\n     Journal file \
+             /j/system@a.journal~ is truncated, ignoring file.\n\n     Ctrl+Alt+Delete \
+             restarts; hold Space as it starts for an older generation.\n\n",
+            "the skipped files weren't said once, cleaned, above the way out"
+        );
+        says(
+            &super::text(&failed, 1, &skipped[..1], &console(), Room::Cells(100)),
+            "     journalctl skipped an unreadable file, so lines may be missing:",
         );
     }
 

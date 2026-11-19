@@ -22,7 +22,8 @@
   a-failed-boot-says-what-stopped-it = ''
     a failed boot's shell names up to four failed units and their last lines, in the account's
     theme with the console's marks, and the way out, in time when the journal stalls, why a
-    unit's journal gave nothing when it couldn't be read, and nothing when none failed
+    unit's journal gave nothing when it couldn't be read, once which file the journal skipped,
+    and nothing when none failed
   '';
   a-faint-theme-is-refused = ''
     a theme with text under WCAG's 4.5:1, or text roles under APCA's Lc 75 for text and strong or
