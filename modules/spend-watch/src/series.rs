@@ -506,6 +506,19 @@ impl Inputs {
             .is_some_and(|&(first, through)| hour >= first && hour < through)
     }
 
+    /// What pi's logs priced each budget's work at over the window, at
+    /// list, each piece on the budget it drew on: what that budget's bill
+    /// should come near. It's read before any bill is shared out, since a
+    /// settled hour's pieces are its bill's shares, and a budget its bill
+    /// left out has none.
+    pub fn listed(&self) -> HashMap<String, f64> {
+        let mut out: HashMap<String, f64> = HashMap::new();
+        for piece in self.known.values().flatten() {
+            *out.entry(piece.budget.clone()).or_default() += piece.list;
+        }
+        out
+    }
+
     /// The list-priced pieces of the window, by model, for learning ratios
     /// against the warehouse's pi spend.
     pub fn learning(&self) -> Vec<(i64, String, f64, f64)> {

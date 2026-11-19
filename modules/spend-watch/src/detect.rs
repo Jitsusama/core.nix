@@ -1407,48 +1407,49 @@ const BILLED_AT_LEAST: f64 = 0.5;
 /// A budget whose logs priced more than its key was billed: its sessions'
 /// requests went on another key, the default's most likely, so its own
 /// allowance never saw them. From 23:00 on 17 November to 19:00 on the
-/// 18th, delta's sessions logged $170.55 and its key was billed nothing,
-/// aquifer's logged $375.60 and its key was billed $2.67, because the pi
-/// host wrote its own key over each conversation's. It's held over the
-/// warehouse's last settled hours, since a meter's hour may still grow,
-/// and only for budgets a feed has billed, since one no feed bills is
-/// estimated from the logs and can't disagree with them.
+/// 18th, two team budgets' sessions logged $170.55 and $375.60, and their
+/// keys were billed nothing and $2.67, because the pi host wrote its own
+/// key over each conversation's.
+///
+/// It's held over the hours every warehouse feed has settled, since a
+/// settled hour's bill no longer grows and a feed that lags holds the
+/// window back rather than reading as a key billing nothing. Both sides
+/// are pi's alone: the bill's `pi` tool, and the logs' list prices as the
+/// series attributes them, a run's agents to the budget of the session
+/// that started them. Only budgets a feed has billed pi for are judged,
+/// since one no feed bills is estimated from the logs and can't disagree
+/// with them.
 pub fn unbilled(
     picture: &Picture,
     history: &History,
     config: &Config,
 ) -> Result<Vec<Finding>, String> {
-    let last: Option<i64> = history
+    // The settled hours are [first, through), so the last is through's
+    // hour less one.
+    let through: Option<i64> = history
         .db
         .query_row(
-            "SELECT MAX(hour) FROM billed WHERE source = 'warehouse'",
+            "SELECT MIN(through) FROM settled WHERE source = 'warehouse'",
             [],
             |row| row.get(0),
         )
         .map_err(fail)?;
-    let Some(last) = last else {
+    let Some(through) = through else {
         return Ok(Vec::new());
     };
-    let first = last - UNBILLED_HOURS + 1;
+    let first = through - UNBILLED_HOURS;
     let budgets = &picture.budgets;
-    let billed_budget = |feed: &str, budget: String| {
-        if budget.is_empty() {
-            budgets.of_feed(feed).to_owned()
-        } else {
-            budget
-        }
-    };
     let mut ever_billed = HashSet::new();
     let mut billed: HashMap<String, f64> = HashMap::new();
     let mut statement = history
         .db
         .prepare(
-            "SELECT feed, budget, SUM(CASE WHEN hour >= ?1 AND hour <= ?2 THEN dollars ELSE 0 END)
-             FROM billed WHERE source = 'warehouse' GROUP BY feed, budget",
+            "SELECT feed, budget, SUM(CASE WHEN hour >= ?1 AND hour < ?2 THEN dollars ELSE 0 END)
+             FROM billed WHERE source = 'warehouse' AND tool = 'pi' GROUP BY feed, budget",
         )
         .map_err(fail)?;
     let rows = statement
-        .query_map([first, last], |row| {
+        .query_map([first, through], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -1458,43 +1459,20 @@ pub fn unbilled(
         .map_err(fail)?;
     for row in rows {
         let (feed, budget, dollars) = row.map_err(fail)?;
-        let budget = billed_budget(&feed, budget);
+        let budget = budgets.of_record(&feed, &budget);
         *billed.entry(budget.clone()).or_default() += dollars;
         ever_billed.insert(budget);
     }
-    let mut logged: HashMap<String, f64> = HashMap::new();
-    let mut statement = history
-        .db
-        .prepare(
-            "SELECT provider, budget, SUM(cost) FROM turn_hours
-             WHERE hour >= ?1 AND hour <= ?2 GROUP BY provider, budget",
-        )
-        .map_err(fail)?;
-    let rows = statement
-        .query_map([first, last], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, f64>(2)?,
-            ))
-        })
-        .map_err(fail)?;
-    for row in rows {
-        let (provider, said, cost) = row.map_err(fail)?;
-        let budget = budgets
-            .of_turn(&provider, said.as_deref())
-            .unwrap_or_else(|| budgets.default.clone());
-        *logged.entry(budget).or_default() += cost;
-    }
+    let logged = crate::series::Inputs::read(history, budgets, first, through)?.listed();
     let through = picture
         .zone
-        .clock(crate::time::hour_start(last + 1), picture.now);
+        .clock(crate::time::hour_start(through), picture.now);
     let mut out: Vec<Finding> = logged
         .into_iter()
         .filter(|(budget, _)| ever_billed.contains(budget) && !budgets.is_plan(budget))
         .filter_map(|(budget, logged)| {
             let paid = billed.get(&budget).copied().unwrap_or_default();
-            (logged >= config.detectors.floor && paid < logged * BILLED_AT_LEAST)
+            (logged - paid >= config.detectors.floor && paid < logged * BILLED_AT_LEAST)
                 .then(|| unbilled_finding(budgets, &budget, logged, paid, &through))
         })
         .collect();
@@ -2224,9 +2202,15 @@ mod tests {
 
     /// A turn of `dollars` at `at` whose log said it drew on `budget`.
     fn turn_on(history: &History, at: f64, dollars: f64, budget: Option<&str>) {
+        let session = format!("s-{}", budget.unwrap_or("own"));
+        turn_as(history, &session, at, dollars, budget);
+    }
+
+    /// A turn of `session`'s of `dollars` at `at`, its log saying `budget`.
+    fn turn_as(history: &History, session: &str, at: f64, dollars: f64, budget: Option<&str>) {
         history
             .add_event(&Event::Turn(Turn {
-                session: format!("s-{}", budget.unwrap_or("own")),
+                session: session.into(),
                 at,
                 model: "m".into(),
                 provider: "p".into(),
@@ -2246,10 +2230,16 @@ mod tests {
             .unwrap();
     }
 
-    /// What the warehouse billed `budget` at `hour`, the default's when empty.
+    /// What the warehouse billed `budget` at `hour` for pi, the default's
+    /// when empty.
     fn billed_to(history: &History, hour: &str, budget: &str, dollars: f64) {
+        billed_for(history, hour, "pi", budget, dollars);
+    }
+
+    /// What the warehouse billed `budget` at `hour` for `tool`.
+    fn billed_for(history: &History, hour: &str, tool: &str, budget: &str, dollars: f64) {
         let line = serde_json::json!({
-            "v": 1, "kind": "billed", "source": "warehouse", "hour": hour, "tool": "pi",
+            "v": 1, "kind": "billed", "source": "warehouse", "hour": hour, "tool": tool,
             "model": "m", "vendor": "v", "dollars": dollars, "budget": budget,
             "tokens": {"input": 0, "cached": 0, "cacheWrite": 0, "output": 0},
         });
@@ -2260,14 +2250,36 @@ mod tests {
     /// The warehouse's last settled hour in the tests, 12:00 on 14 October.
     const SETTLED: &str = "2026-10-14T12:00:00Z";
 
+    /// The hour after it, which the warehouse may still be billing.
+    const UNSETTLED: &str = "2026-10-14T13:00:00Z";
+
     /// A moment inside the settled hour.
     const IN_SETTLED: f64 = NOW - 9000.0 + 60.0;
 
-    /// Each budget the history's warehouse billed once, a week before.
+    /// Each budget the history's warehouse billed once, a week before,
+    /// and the warehouse settled through `SETTLED`.
     fn billed_before(history: &History) {
-        for budget in ["", "delta", "aquifer", "worldtree"] {
+        for budget in ["", "teal", "ochre", "slate"] {
             billed_to(history, "2026-10-07T12:00:00Z", budget, 10.0);
         }
+        let settled = serde_json::json!({
+            "v": 1, "kind": "settled", "source": "warehouse", "through": UNSETTLED,
+        });
+        let record = crate::feed::parse(&settled.to_string()).unwrap();
+        crate::feed::store(history, "proxy", &record, NOW).unwrap();
+    }
+
+    /// A council started from `parent` at `at`, its one agent `agent`, whose
+    /// cost its log covers.
+    fn council(history: &History, parent: &str, at: f64, agent: &str, cost: f64) {
+        history
+            .db
+            .execute(
+                "INSERT INTO runs VALUES ('council-1', 'a1', 'council', 'm', 'critic', ?1, ?2,
+                 NULL, ?3, 0, 0, 0, 0, ?4)",
+                rusqlite::params![parent, at, cost, serde_json::to_string(&[agent]).unwrap()],
+            )
+            .unwrap();
     }
 
     fn unbilled_keys(history: &History) -> Vec<String> {
@@ -2281,15 +2293,17 @@ mod tests {
     }
 
     // From 23:00 on 17 November to 19:00 on the 18th, the pi host sent its
-    // own key for every conversation, so teams' work was billed to Joel's.
+    // own key for every conversation, so teams' work was billed to Joel's;
+    // another tool on a team's key doesn't hide it.
     #[test]
     fn a_budget_billed_under_half_what_it_logged_is_told() {
         let history = History::memory();
         billed_before(&history);
-        turn_on(&history, IN_SETTLED, 170.55, Some("delta"));
-        turn_on(&history, IN_SETTLED, 375.60, Some("aquifer"));
+        turn_on(&history, IN_SETTLED, 170.55, Some("teal"));
+        turn_on(&history, IN_SETTLED, 375.60, Some("ochre"));
         turn_on(&history, IN_SETTLED, 5558.23, None);
-        billed_to(&history, SETTLED, "aquifer", 2.67);
+        billed_to(&history, SETTLED, "ochre", 2.67);
+        billed_for(&history, SETTLED, "river", "teal", 500.0);
         billed_to(&history, SETTLED, "", 6619.50);
         let config = config();
         let picture = Picture::read(&history, &config, NOW).unwrap();
@@ -2309,15 +2323,15 @@ mod tests {
             said,
             [
                 (
-                    "unbilled:aquifer",
+                    "unbilled:ochre",
                     Severity::Warning,
-                    "aquifer billed $3 of $376 logged",
+                    "ochre billed $3 of $376 logged",
                     "1% billed"
                 ),
                 (
-                    "unbilled:delta",
+                    "unbilled:teal",
                     Severity::Warning,
-                    "delta billed $0 of $171 logged",
+                    "teal billed $0 of $171 logged",
                     "0% billed"
                 ),
             ]
@@ -2325,7 +2339,7 @@ mod tests {
         assert!(
             found[1]
                 .detail
-                .starts_with("In the 24 hours to 13:00, pi's logs priced delta's sessions at $171"),
+                .starts_with("In the 24 hours to 13:00, pi's logs priced teal's sessions at $171"),
             "the detail says the logged dollars: {}",
             found[1].detail
         );
@@ -2338,9 +2352,9 @@ mod tests {
     fn a_budget_billed_as_it_logged_is_quiet() {
         let history = History::memory();
         billed_before(&history);
-        turn_on(&history, IN_SETTLED, 100.0, Some("delta"));
-        billed_to(&history, SETTLED, "delta", 60.0);
-        turn_on(&history, IN_SETTLED, 20.0, Some("worldtree"));
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        billed_to(&history, SETTLED, "teal", 60.0);
+        turn_on(&history, IN_SETTLED, 20.0, Some("slate"));
         turn_on(&history, IN_SETTLED, 300.0, Some("unfed"));
         turn_on(&history, IN_SETTLED, 50.0, None);
         billed_to(&history, SETTLED, "", 400.0);
@@ -2355,10 +2369,35 @@ mod tests {
         let history = History::memory();
         billed_before(&history);
         billed_to(&history, SETTLED, "", 400.0);
-        turn_on(&history, NOW, 500.0, Some("delta"));
-        turn_on(&history, IN_SETTLED - DAY, 500.0, Some("aquifer"));
+        turn_on(&history, NOW, 500.0, Some("teal"));
+        turn_on(&history, IN_SETTLED - DAY, 500.0, Some("ochre"));
         assert_eq!(unbilled_keys(&history), [] as [String; 0]);
-        turn_on(&history, IN_SETTLED - DAY + HOUR, 500.0, Some("aquifer"));
-        assert_eq!(unbilled_keys(&history), ["unbilled:aquifer"]);
+        turn_on(&history, IN_SETTLED - DAY + HOUR, 500.0, Some("ochre"));
+        assert_eq!(unbilled_keys(&history), ["unbilled:ochre"]);
+    }
+
+    // An hour the warehouse hasn't settled may still grow, so what it
+    // bills a team there doesn't cover the team's settled hours.
+    #[test]
+    fn an_unsettled_hours_bill_is_left_out() {
+        let history = History::memory();
+        billed_before(&history);
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        billed_to(&history, UNSETTLED, "teal", 200.0);
+        assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+    }
+
+    // A council's agent whose log names no budget draws on the budget its
+    // session drew on, as everywhere else in spend-watch.
+    #[test]
+    fn a_runs_agent_counts_on_its_sessions_budget() {
+        let history = History::memory();
+        billed_before(&history);
+        turn_as(&history, "s-teal", IN_SETTLED, 10.0, Some("teal"));
+        turn_as(&history, "r1", IN_SETTLED + 60.0, 200.0, None);
+        council(&history, "s-teal", IN_SETTLED, "r1", 200.0);
+        billed_to(&history, SETTLED, "teal", 5.0);
+        billed_to(&history, SETTLED, "", 300.0);
+        assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
     }
 }

@@ -144,8 +144,11 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
         measures.push(spent_beside_landed(&state_home, now));
+        // spend-watch rewrites its collection only when its text changes,
+        // and this finding is judged over a day, so a day's collection is
+        // still its word.
         measures.push(measures::unbilled::unbilled(
-            collection_since((now - 3600) * 1000).as_deref(),
+            collection_since((now - DAY) * 1000).as_deref(),
             measures::ASKS,
         ));
     }
@@ -285,7 +288,7 @@ fn collection_since(since: i64) -> Option<String> {
         .and_then(|m| m.modified())
         .ok()
         .and_then(|when| when.duration_since(std::time::UNIX_EPOCH).ok())
-        .and_then(|since| i64::try_from(since.as_millis()).ok())?;
+        .and_then(|age| i64::try_from(age.as_millis()).ok())?;
     (written >= since).then(|| fs::read_to_string(at).ok())?
 }
 
