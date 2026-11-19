@@ -1850,8 +1850,9 @@ ShellRoot {
         // Parked, it runs no ask, and woken it reads its inbox as it
         // starts, so Talk to it stands just before Go To (talkTo).
         Sessions.parked = [Sessions.wanting[0]];
-        const parkedActs = forYou().find(one => one.key === "on:waiting:want:WANTE")
-            .verbs().map(one => one.name);
+        const parkedRow = forYou().find(one => one.key === "on:waiting:want:WANTE");
+        const parkedActs = parkedRow.verbs().map(one => one.name);
+        console.log(`DEBUG parked ${parkedRow.side} ${JSON.stringify(parkedActs)}`);
         Sessions.parked = [];
         expect("parked, it offers Talk to it just before Go To",
             parkedActs.includes("talk")
