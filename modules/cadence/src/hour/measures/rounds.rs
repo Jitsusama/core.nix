@@ -40,7 +40,9 @@ struct Merged<'a> {
 }
 
 /// The changes `main` merged in the day before `now`, each from its merge
-/// commit's subject, "Merge pull request #N from Owner/branch".
+/// commit's subject, "Merge pull request #N from Owner/branch". A revert,
+/// GitHub's `revert-N-...` or the net's `merge-net/revert-...`, undoes a
+/// change rather than making one, so no round is owed it.
 fn merged<'a>(main: &Main<'a>, now: i64) -> Vec<Merged<'a>> {
     main.log
         .lines()
@@ -60,6 +62,7 @@ fn merged<'a>(main: &Main<'a>, now: i64) -> Vec<Merged<'a>> {
             })
         })
         .filter(|m| m.at > now - super::DAY && m.at <= now)
+        .filter(|m| !m.branch.starts_with("revert-") && !m.branch.contains("/revert-"))
         .collect()
 }
 
@@ -136,36 +139,48 @@ impl Reviewed {
 }
 
 /// The median council rounds per change merged to `mains` in the day
-/// before `now`, in seconds, from `records`, each the text of one file of
-/// the harness's review runs. A council counts toward a merge when it
-/// started in the `BEFORE` up to it, and once however many records hold
-/// it; a change no council read counts nought.
+/// before `now`, from `records`, each the text of one file of the
+/// harness's review runs. A council counts toward a merge when it started
+/// in the `BEFORE` up to it, and once however many records hold it. A
+/// change with a record but no council counts nought; one with no record
+/// at all may be one the matching can't see, so it is counted apart
+/// rather than read as nought.
 #[must_use]
 pub fn rounds(mains: &[Main], records: &[String], now: i64, owner: &str) -> Measure {
     let reviewed: Vec<Reviewed> = records.iter().filter_map(|r| Reviewed::read(r)).collect();
+    let mut unrecorded = 0;
     let mut each: Vec<(usize, String)> = mains
         .iter()
         .flat_map(|main| merged(main, now))
-        .map(|m| {
-            let councils: BTreeSet<&str> = reviewed
+        .filter_map(|m| {
+            let about: Vec<&Reviewed> = reviewed.iter().filter(|r| r.about(&m)).collect();
+            if about.is_empty() {
+                unrecorded += 1;
+                return None;
+            }
+            let councils: BTreeSet<&str> = about
                 .iter()
-                .filter(|r| r.about(&m))
                 .flat_map(|r| &r.councils)
                 .filter(|(_, at)| *at <= m.at && *at >= m.at - BEFORE)
                 .map(|(id, _)| id.as_str())
                 .collect();
             let label = m.repo.rsplit('/').next().unwrap_or(m.repo);
-            (councils.len(), format!("{label}#{}", m.number))
+            Some((councils.len(), format!("{label}#{}", m.number)))
         })
         .collect();
     let mut figures: Vec<f64> = each.iter().map(|(n, _)| count(*n)).collect();
     figures.sort_by(f64::total_cmp);
     each.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let read = if reviewed.is_empty() {
+        ", no review record read".to_owned()
+    } else {
+        format!(" with a review record, {unrecorded} with none")
+    };
     Measure {
         key: KEY.to_owned(),
         class: Class::Ship,
         says: format!(
-            "median council rounds per change merged in the last day, of {}",
+            "median council rounds per change merged in the last day, of {}{read}",
             figures.len()
         ),
         now: median(&figures),
@@ -229,6 +244,11 @@ mod tests {
                 "eeee {} Merge pull request #10 from Jitsusama/here/ten",
                 NOW - 90_000
             ),
+        ) + &format!(
+            "ffff {} Merge pull request #15 from Jitsusama/revert-11-here/eleven\n\
+             9999 {} Merge pull request #16 from Jitsusama/merge-net/revert-aaaa\n",
+            NOW - 30,
+            NOW - 20
         );
         let six: Vec<String> = (0..6)
             .map(|n| started(&format!("council-six-{n}"), 600))
@@ -246,13 +266,14 @@ mod tests {
                     started("judge-a", 500),
                 ],
             ),
-            // By its branch, the same council again in another record, once.
+            // By its branch, the same council again in another record,
+            // once, and one only this record holds.
             record(
                 "local-range",
                 CORE,
                 "origin/main..here/eleven",
                 "elsewhere",
-                &[started("council-b", 600)],
+                &[started("council-b", 600), started("council-c", 300)],
             ),
             // By its tree, at a commit: six rounds, past the ruling's five.
             record(
@@ -293,12 +314,37 @@ mod tests {
         );
         assert_eq!(m.key, KEY);
         assert_eq!(m.target, None, "no target is set yet");
+        // #14's only record is another repository's, so it has none; the
+        // two reverts are no change of their own.
         assert_eq!(
             m.says,
-            "median council rounds per change merged in the last day, of 4"
+            "median council rounds per change merged in the last day, of 3 with a review \
+             record, 1 with none"
         );
-        // 0, 0, 2 and 6: the two middle ones are 0 and 2.
-        assert_eq!(m.now, 1.0, "rounds of #11 to #14");
+        // 0, 3 and 6.
+        assert_eq!(m.now, 3.0, "rounds of #11 to #13");
         assert_eq!(m.behind, ["core.nix#12: 6 rounds"]);
+    }
+
+    #[test]
+    fn with_no_review_record_read_the_line_says_so() {
+        let log = format!(
+            "aaaa {} Merge pull request #11 from Jitsusama/here\n",
+            NOW - 60
+        );
+        let m = rounds(
+            &[Main {
+                repo: CORE,
+                log: &log,
+            }],
+            &[],
+            NOW,
+            "ORCH",
+        );
+        assert!(
+            m.says.ends_with("of 0, no review record read"),
+            "{}",
+            m.says
+        );
     }
 }
