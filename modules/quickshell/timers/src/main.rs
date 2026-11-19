@@ -572,7 +572,7 @@ fn bus_id(bus: &Connection) -> zbus::Result<String> {
 }
 
 /// The notifications server there is now, as `Notice::server` holds it:
-/// the bus's id, as connect() asked it, and the server's name on it.
+/// the bus's id, as `connect()` asked it, and the server's name on it.
 fn server((bus, id): (&Connection, &str)) -> zbus::Result<String> {
     let name: String = bus
         .call_method(
