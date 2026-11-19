@@ -4073,7 +4073,9 @@
     about its own file, and refused or shut if shut or withdrawn before it's filled in;
     and chords said all through a handover are each presented within 2 s, software-rendered,
     with niri never holding both shells' surfaces, the new shell told to systemd as the unit's
-    main process and the old one ended
+    main process and the old one ended; while niri is yet to say its casts, a chord into On and
+    home each open afresh, the journal saying why, and a share begun as home or On is drawn
+    from what was kept fills it in at once
   '';
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
@@ -4112,7 +4114,9 @@
     its draw shows, and said a place a line, with where their time went as a key's is; and y's
     flash starts its time a turn after the frame that draws it, and only for the newest yank;
     and a chord into a kept place draws the rows it kept only once niri has said nothing casts
-    the screen, unless its source, a mark or what it's led to lists them afresh
+    the screen, unless its source, a mark or what it's led to lists them afresh, and a share
+    begun before a kept opening is filled in, or before home is found after it, is judged to
+    do it at once
   '';
   the-launcher-places-each-row-it-is-served = ''
     the rows a daemon serves ready are kept in the order each says, each a change names placed

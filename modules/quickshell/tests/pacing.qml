@@ -497,10 +497,41 @@ QtObject {
             Wanted.keptPlaceListed(Object.assign(under(true),
                 { listed: true, asNow: true, named: true })),
             "source");
-        // Found after it, home is searched again by a slice, a key or a
-        // click, but a chord only joins, and a step or a word finds its own.
+        // With nothing sharing, each listed afresh still lists so, so the share
+        // decides only a place that isn't.
+        check(failures, "Windows with nothing sharing lists its source as it stands",
+            Wanted.keptPlaceListed(Object.assign(under(false), { listed: true })), "source");
+        check(failures, "a mark into On with nothing sharing lists it as it stands",
+            Wanted.keptPlaceListed(Object.assign(under(false), { asNow: true, named: true })),
+            "asItStands");
+        check(failures, "Super+N with nothing sharing lists what it's led to",
+            Wanted.keptPlaceListed(Object.assign(under(false), { led: true })), "led");
+        check(failures, "as does a place asked for by name with nothing sharing",
+            Wanted.keptPlaceListed(Object.assign(under(false), { named: true })), "led");
+        // A share begun while an opening shows what it kept, before its fill or
+        // before home is found after it, fills it in or finds home at once, so
+        // the rows from before the share go as it begins, not up to half a
+        // second later as niri presents the kept frame.
+        const midway = { unfilled: false, finding: false };
+        const begun = (shared, at) => Object.assign({}, midway, at, { shared: shared });
+        check(failures, "a share begun before the fill fills it in at once",
+            Wanted.sharedMidOpening(begun(true, { unfilled: true })), "fill");
+        check(failures, "one begun before home is found after it finds home at once",
+            Wanted.sharedMidOpening(begun(true, { finding: true })), "find");
+        check(failures, "before the fill, it fills, which finds home too",
+            Wanted.sharedMidOpening(begun(true, { unfilled: true, finding: true })), "fill");
+        check(failures, "an opening missing whether it's shared still fills",
+            Wanted.sharedMidOpening(begun(undefined, { unfilled: true })), "fill");
+        check(failures, "a share ending leaves the opening to its frame",
+            Wanted.sharedMidOpening(begun(false, { unfilled: true, finding: true })), "");
+        check(failures, "one begun with no opening under way does nothing",
+            Wanted.sharedMidOpening(begun(true, {})), "");
+        // Found after it, home is searched again by a slice, a key, a click
+        // or a share, but a chord only joins, and a step or a word finds its
+        // own. Only a chord is told apart, so these pin only that none of them
+        // is ever told apart with it.
         const stands = { home: true, held: 0, typed: "" };
-        for (const by of ["slice", "key", "click"])
+        for (const by of ["slice", "key", "click", "share"])
             check(failures, `found by a ${by}, home is searched again`,
                 Wanted.findsAgain(by, stands), true);
         check(failures, "found by a chord, home is only joined",
