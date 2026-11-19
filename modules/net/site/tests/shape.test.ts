@@ -195,7 +195,8 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ],
     ["\u845b\ufe00 \u845b\u{e01ef}", "net devices '\u845b\ufe00 \u845b\u{e01ef}'"],
     ["\u{1f3f4}\u{e0020}\u{e007f} den", "net devices '\u{1f3f4}\u{e0020}\u{e007f} den'"],
-    // Just past Hangul's ranges that take no cell: a letter and a syllable.
+    // Beside Hangul's ranges that take no cell: the letter just past the
+    // first, and the last syllable, below the second.
     ["a \u1200x", "net devices 'a \u1200x'"],
     ["a \ud7a3x", "net devices 'a \ud7a3x'"],
     ["study", byId],
@@ -240,6 +241,13 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["lamp\u200d-id", byId],
     ["10.0.0\u00ad.2", byId],
     ["Cafe\u0301", byId],
+    // A joiner between a letter and its mark, and a capital net folds
+    // before its mark composes.
+    ["Cafe\u200d\u0301", byId],
+    ["CAFE\u0301", byId],
+    // An id net gives several, which it reads as the first holding it.
+    ["mac:?", byId],
+    ["EERO:unknown", byId],
   ] as const) {
     // A copy, as a device read again is, so the device is known by its id.
     const device = named(name, id);
@@ -251,7 +259,7 @@ it("a device's command names it by a name that pastes as it reads and finds it a
   }
 });
 
-it("a device no name finds is named by its address, its id, or by none", () => {
+it("a device is named by its name, else its address, else its id, or by none", () => {
   const shared = named("Phone", "mac:02:00:00:00:00:02", ["10.0.0.2"]);
   const network = (device: Device): Device[] => [device, shared, named("Hub", "hub", ["10.0.0.9"])];
   for (const [device, command, why] of [

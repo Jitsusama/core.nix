@@ -262,11 +262,13 @@ function folded(word: string): string {
 }
 
 /**
- * A word as it reads to a person: composed as Unicode composes it, without
- * what shapes it, and in net's case.
+ * A word as it reads to a person: without what shapes it, in net's case,
+ * then composed as Unicode composes it. Shaping goes first so a joiner
+ * between a letter and its mark can't keep them apart, and case before
+ * composing so two words net folds to one always read as one.
  */
 function reads(word: string): string {
-  return folded(word.normalize("NFC").replace(UNSHAPED, ""));
+  return folded(word.replace(UNSHAPED, "")).normalize("NFC");
 }
 
 /**
@@ -277,18 +279,19 @@ function reads(word: string): string {
  * nothing else answers to it; then the first address, as net's own try
  * lines choose it, when no other device answers there; then net's id,
  * unless it's one net gives to several. A name that reads as another's
- * name, id or address, composed and without what shapes it, isn't
- * offered, since the command would read as naming the other.
+ * name, id or address, or as an id net gives several, which it reads as
+ * the first device holding it, isn't offered, since the command would read
+ * as naming another.
  */
 function findingWords(device: Device, devices: readonly Device[]): string[] {
   const others = devices.filter((other) => other.id !== device.id);
   const { name } = device;
   const read = reads(name);
-  const nameFinds = others.every((other) =>
-    [other.id, ...other.addresses, other.name].every(
-      (word) => word !== name && reads(word) !== read,
-    ),
-  );
+  const taken = [
+    ...SHARED_IDS,
+    ...others.flatMap((other) => [other.id, ...other.addresses, other.name]),
+  ];
+  const nameFinds = taken.every((word) => reads(word) !== read);
   const address = device.addresses[0];
   const addressFinds =
     address !== undefined &&
