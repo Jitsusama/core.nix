@@ -134,9 +134,19 @@ function sourceNamed(all, nameOf, provider) {
 // other opening find and join there as ever (H6EDLC, 2026-11-18). Nor
 // while the screen may be shared (`shared`, Shared.js's hidden): home kept
 // from before a share can name what it hides, an ask or a copy, which its
-// first frame would draw on the shared screen (5GLTPH, 2026-11-19).
+// first frame would draw on the shared screen (5GLTPH, 2026-11-19). An
+// opening that never says counts as shared, as Shared.js fails closed.
 function findsLater(opening) {
-    return opening.byFill && !opening.intoPlace && opening.kept > 0 && opening.shared !== true;
+    return opening.byFill && !opening.intoPlace && opening.kept > 0 && opening.shared === false;
+}
+
+// Whether a chord may draw home's kept card before it's filled in
+// (Launcher.qml's beginOpening), rather than open whole: only while
+// nothing may see the screen (`shared`, Shared.js's hidden), since the
+// card was kept before any share began and a shut launcher doesn't
+// refresh it, so it can name a waiting ask or a copy (5GLTPH, 2026-11-19).
+function opensKept(shared) {
+    return shared === false;
 }
 
 // Whether that slice, or a key, a click or a chord run before it, searches
