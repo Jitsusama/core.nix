@@ -19,8 +19,8 @@ use serde_json::{Value, json};
 /// Code's homes as written to one file.
 pub struct Homes {
     file: PathBuf,
-    /// Why the last writing failed, so a failure is said once rather than
-    /// at every reading.
+    /// Why the last writing failed, so a failure is said when its reason
+    /// changes rather than at every reading.
     failing: Option<String>,
 }
 
@@ -61,13 +61,13 @@ impl Homes {
         Ok(true)
     }
 
-    /// Writes the homes `record` gives, and answers the line to say when
-    /// they couldn't be written for a reason other than the last said, which
-    /// a reason coming back after another says again, or are right
-    /// again after failing, written or put right by another writer, so a
-    /// failure's line isn't left reading as though it still held. A failure
-    /// is remembered for the run alone: after a restart, the new run's ready
-    /// line is what follows it.
+    /// Writes the homes `record` gives, and answers a line when there's
+    /// something new to say: that they couldn't be written, whenever the
+    /// reason differs from the last said, so one coming back after another
+    /// is said again; or that they're right again after failing, whether
+    /// written or put right by another writer, so a failure's line isn't
+    /// left reading as though it still held. A failure is remembered for the
+    /// run alone: after a restart, the new run's ready line follows it.
     pub fn keep(&mut self, record: &Record) -> Option<String> {
         match self.write(record) {
             Ok(_) => {

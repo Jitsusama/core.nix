@@ -421,6 +421,14 @@ fn a_failure_for_another_reason_is_said_again() {
         then, first,
         "the second failure gave the first one's reason"
     );
+    // The first reason coming back is said again, since the line between
+    // replaced it.
+    fs::remove_dir_all(&temp).expect("the hidden file's way cleared");
+    assert_eq!(
+        homes.keep(&record()),
+        Some(first),
+        "the first reason back wasn't said again"
+    );
     let _ = fs::remove_dir_all(&folder);
 }
 
