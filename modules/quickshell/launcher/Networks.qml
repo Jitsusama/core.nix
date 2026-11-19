@@ -212,10 +212,13 @@ Provider {
         factsAsked = factsAsked.filter(view => !late.includes(view));
         settled();
     }
+    // A fact landing after it's given up keeps its hold (holdAfter); one
+    // landing in time lets it go.
     function factLanded(view) {
+        const late = !factsAsked.includes(view);
         factsAsked = factsAsked.filter(each => each !== view);
         const path = String(view.path);
-        if (factsStuck[path] !== undefined) {
+        if (!late && factsStuck[path] !== undefined) {
             const stuck = Object.assign(Object.create(null), factsStuck);
             delete stuck[path];
             factsStuck = stuck;
@@ -231,8 +234,8 @@ Provider {
     // Each interface's default gateway and its cost, IPv4's and IPv6's, as
     // the routes said when last loaded, and empty before the first load
     // lands, so an answer reads them, never a file.
-    property var routes: ({})
-    property var routes6: ({})
+    property var routes: Object.create(null)
+    property var routes6: Object.create(null)
 
     // A load landed: when the gateways or their costs changed, what
     // changed is said again where it's shown, and the drawers made again,
@@ -426,27 +429,36 @@ Provider {
         return files;
     }
     // The cards whose files are still to be loaded, in turn, and the one
-    // under way, { name, at, texts, state, stale }, or null with none:
-    // `state` is the daemon's word on its link as it began, and `stale`
+    // under way, { name, at, texts, state, stale, inFlight }, or null with
+    // none: `state` is the daemon's word on its link as it began, `stale`
     // whether that word has changed since, or the card gone, so what it
-    // loads isn't kept.
+    // loads isn't kept, and `inFlight` whether its file is asked and not
+    // yet landed, so it's asked once.
     property var cablesAsked: []
     property var cableLoading: null
     // Each card whose files last took too long, by its name, held off as
     // holdAfter says.
     property var cablesStuck: Object.create(null)
+    // Each card given up with its file still reading, by its name, with
+    // the view that reads it: a read that hangs can't be called off, and
+    // asked again through another view it would take another thread, so
+    // the card isn't asked again until it lands, whatever its hold says.
+    property var cablesHung: Object.create(null)
     function stuck(name) {
-        return holding(cablesStuck[name]);
+        return holding(cablesStuck[name]) || cablesHung[name] !== undefined;
     }
+    // The view each file of the card under way is asked through.
+    property var cableProbe: probeMade.createObject(provider)
 
     // A hold on a file given up, { at, wait }: when, and how long until
     // it's asked again, a minute, then twice as long each time it's given
     // up again, to an hour, since a read that hangs holds one of the
     // threads every view in the shell loads on for as long as it does.
-    // It's kept until the file lands, whatever its link does, so a card
-    // that flaps or comes and goes on a hung driver can't take another
-    // thread each time; a clock stepped back ends it rather than holding
-    // it off longer.
+    // It's kept until the file, asked again, lands in time, whatever its
+    // link does, so a card that flaps or comes and goes on a hung driver
+    // can't take another thread each time, nor a slow file landing late be
+    // asked again at once; a clock stepped back ends it rather than
+    // holding it off longer.
     function holdAfter(before) {
         return {
             at: Date.now(),
@@ -484,6 +496,8 @@ Provider {
                 && (cableLoading === null || cableLoading.stale || cableLoading.name !== name));
         if (cards.length === 0)
             return;
+        // Reading until they land, whatever else is asked with them.
+        stillReading = true;
         cablesAsked = cablesAsked.concat(cards);
         if (cableLoading === null)
             nextCable();
@@ -499,14 +513,16 @@ Provider {
         }
         const name = cablesAsked[0];
         const state = (links ?? []).find(link => link.name === name)?.state ?? "";
-        cableLoading = { name: name, at: 0, texts: {}, state: state, stale: false };
+        cableLoading = { name: name, at: 0, texts: {}, state: state, stale: false,
+            inFlight: false };
         cablesAsked = cablesAsked.slice(1);
         Qt.callLater(cableFile);
     }
 
     function cableFile() {
-        if (cableLoading === null)
+        if (cableLoading === null || cableLoading.inFlight)
             return;
+        cableLoading.inFlight = true;
         const path = `${sysfs}/${cableLoading.name}/${cableFiles[cableLoading.at]}`;
         cableWatch.restart();
         if (cableProbe.path === path)
@@ -523,6 +539,10 @@ Provider {
         const loading = cableLoading;
         if (loading === null)
             return;
+        // Each file's two seconds start as it's asked, not as the one
+        // before it landed.
+        cableWatch.stop();
+        loading.inFlight = false;
         loading.texts[cableFiles[loading.at]] = text;
         loading.at += 1;
         if (loading.at < cableFiles.length) {
@@ -592,15 +612,17 @@ Provider {
     // gives up its card's load, its cable said as last loaded, or as the
     // daemon says its link before any has landed, rather than as a file
     // that said nothing, and warned of, and its drawer made as the daemon
-    // says it. Pointed at no file, the view lets go of the load, so one
-    // landing late is dropped rather than taken for another file's. The
-    // card is held off (holdAfter), not asked again each second.
+    // says it. The view still reading is kept by its card (cablesHung)
+    // and another made for the next, so one landing late is never taken
+    // for another file's. The card is held off (holdAfter), not asked
+    // again each second.
     Timer {
         id: cableWatch
 
         interval: 2000
         onTriggered: provider.cableGivenUp()
     }
+    property alias cableWatching: cableWatch.running
     function cableGivenUp() {
         const loading = cableLoading;
         if (loading === null)
@@ -609,9 +631,14 @@ Provider {
         still[loading.name] = holdAfter(cablesStuck[loading.name]);
         cablesStuck = still;
         console.warn(`Networks: ${loading.name}'s ${cableFiles[loading.at]} took two seconds`
-            + " to load, so its cable is said as last loaded, and asked again in"
-            + ` ${still[loading.name].wait / 60000} min`);
-        cableProbe.path = "";
+            + " to load, so its cable is said as last loaded, and asked again once that"
+            + ` read lands and ${still[loading.name].wait / 60000} min have passed`);
+        if (loading.inFlight) {
+            const hung = Object.assign(Object.create(null), cablesHung);
+            hung[loading.name] = cableProbe;
+            cablesHung = hung;
+            cableProbe = probeMade.createObject(provider);
+        }
         nextCable();
         glanceSoon();
     }
@@ -1345,11 +1372,30 @@ Provider {
         }
         onLoadFailed: provider.factLanded(up)
     }
+    // A cable's file landed through `view`: the card under way's, or one
+    // given up landing late, which lets its view go and keeps its hold.
+    function probeLanded(view, text) {
+        if (view === cableProbe) {
+            cableLanded(text);
+            return;
+        }
+        const hung = Object.assign(Object.create(null), cablesHung);
+        for (const name of Object.keys(hung))
+            if (hung[name] === view)
+                delete hung[name];
+        cablesHung = hung;
+        view.destroy();
+    }
     // Each cable's files in turn (recable).
-    FileView {
-        id: cableProbe
-        printErrors: false
-        onLoaded: provider.cableLanded(text())
-        onLoadFailed: provider.cableLanded("")
+    Component {
+        id: probeMade
+
+        FileView {
+            id: probe
+
+            printErrors: false
+            onLoaded: provider.probeLanded(probe, text())
+            onLoadFailed: provider.probeLanded(probe, "")
+        }
     }
 }
