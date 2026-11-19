@@ -21,9 +21,11 @@ const SPACES = /\s+/;
 
 // Every interface's counters, by name, as /proc/net/dev says them: bytes
 // in and out, and packets dropped either way. Its two heading lines, and
-// any line it couldn't have written, say nothing.
+// any line it couldn't have written, say nothing. The map has no
+// prototype, so an interface named as one of an object's own, such as
+// __proto__ or constructor, is kept as any other.
 function counters(text) {
-    const all = {};
+    const all = Object.create(null);
     for (const each of String(text).split("\n")) {
         const said = LINE.exec(each);
         const fields = said ? said[2].trim().split(SPACES).map(Number) : [];

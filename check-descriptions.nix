@@ -1061,7 +1061,8 @@
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,
     though each file has changed since, a first rate over the uptime loaded; the shaper's line
-    resting is said as measured, and holding as held to the shaper's limit;
+    resting is said as measured, holding as held to the shaper's limit, and a state it doesn't
+    know as measured, whatever it's called;
     asked after a gap with the launcher closed, it says its figures are from when last read and
     loads them again, reading on until a rate of now has landed, or until the counters fail to
     load, after which it reads on no more; a load stamped ahead of now, as a clock stepped back
@@ -1073,9 +1074,13 @@
     for one made again under its name or whose uevent is empty or gone; a sysfs file that
     never lands is given up about two seconds on, its view kept and another made, and its
     interface isn't asked again until that read lands, which isn't taken for the file under
-    way and lets the view go; given up as its read begins, the next interface is asked through
-    a new view, and the read lands late with its text through Traffic's own, freeing its
-    interface, as one that fails does; and given up with no read in flight, no view is kept
+    way and lets the view go; two hung at once are each kept by name, and the one landed
+    asked again; an interface given up is held off a minute, then twice as long each time it's
+    given up again, even once its late read lands, until its files land in time; given up as
+    its read begins, the next interface is asked through a new view, and the read lands late
+    with its text through Traffic's own, freeing its interface, as one that fails does; no
+    file is asked while another is in flight; and given up with no read in flight, no view
+    is kept, but its interface is held off
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a

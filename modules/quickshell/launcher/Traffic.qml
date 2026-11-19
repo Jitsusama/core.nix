@@ -116,8 +116,10 @@ Provider {
     // blocking read of each took a median 6 to 14 ms and up to 133 under
     // load (2026-11-17), of a step that has 50 ms for all of it. Until its
     // files land, an interface first seen is left out, and one no longer
-    // sure is what it was.
-    property var interfaceKinds: ({})
+    // sure is what it was. Each map by an interface's name has no
+    // prototype, as the counters' own (Traffic.counters), so no name is
+    // taken for something of an object's own.
+    property var interfaceKinds: Object.create(null)
     readonly property int second: 1000
     readonly property int soonest: 200
     // Reads further apart than this aren't a rate of now, and start a
@@ -195,7 +197,7 @@ Provider {
         loadAsked = 0;
         unreadable = false;
         const all = Traffic.counters(netdev.text());
-        const known = {};
+        const known = Object.create(null);
         for (const name of Object.keys(all)) {
             const kind = interfaceKinds[name];
             if (kind !== undefined)
@@ -228,7 +230,7 @@ Provider {
     property string interfaces: "/sys/class/net"
     // How many sysfs files it has loaded of each interface, so its case
     // holds it to loading few.
-    property var probed: ({})
+    property var probed: Object.create(null)
 
     // The interfaces whose files are still to be asked, in turn, and the
     // one being asked, { name, files, said, done }: its uevent first, and
@@ -239,10 +241,11 @@ Provider {
     property var probing: null
 
     function probeFor(names) {
+        const now = Date.now();
         const queued = asking.map(one => one.name)
             .concat(probing && !probing.done ? [probing.name] : []);
         asking = asking.concat(names.filter(name => !queued.includes(name)
-            && probesHung[name] === undefined)
+            && !Interfaces.holding(probesStuck[name], now) && probesHung[name] === undefined)
             .map(name => ({ name: name, files: ["uevent"], said: {} })));
         if (probing === null)
             probeNext();
@@ -257,7 +260,13 @@ Provider {
             caughtUp();
     }
 
+    // A file is asked only with none in flight, so a call put off to the
+    // next turn (probeSaid) that finds the next interface's read already
+    // under way leaves it be, rather than pointing the view elsewhere
+    // and taking another thread for it.
     function probeFile() {
+        if (probing === null || probing.inFlight)
+            return;
         probeWatch.restart();
         probing.inFlight = true;
         const name = probing.name;
@@ -299,6 +308,12 @@ Provider {
         // One gone from the counters while it was asked is forgotten.
         if (reads?.last.all[one.name] !== undefined)
             interfaceKinds[one.name] = { kind: kind, uevent: uevent, sure: true };
+        // Its files landed in time, so its hold, if any, goes.
+        if (probesStuck[one.name] !== undefined) {
+            const stuck = Object.assign(Object.create(null), probesStuck);
+            delete stuck[one.name];
+            probesStuck = stuck;
+        }
         one.done = true;
         probeWatch.stop();
         Qt.callLater(probeNext);
@@ -316,7 +331,7 @@ Provider {
     // What each interface is, beside its counters, leaving out the
     // shaper's mirrors; the read before needs only its counters.
     function described(all, mirrors) {
-        const out = {};
+        const out = Object.create(null);
         for (const name of Object.keys(all))
             out[name] = {
                 kind: mirrors.includes(name) ? "" : interfaceKind(name),
@@ -326,7 +341,7 @@ Provider {
     }
 
     function countersOf(all) {
-        const out = {};
+        const out = Object.create(null);
         for (const name of Object.keys(all))
             out[name] = { counters: all[name] };
         return out;
@@ -428,8 +443,10 @@ Provider {
     }
 
     // What the shaper is doing with the line, in Joel's words: it writes
-    // only resting or holding, and resting is said as measured alone.
-    readonly property var stateNotes: ({
+    // only resting or holding, and resting is said as measured alone. It
+    // has no prototype, so a state it doesn't know is said as measured,
+    // whatever it's called.
+    readonly property var stateNotes: Object.assign(Object.create(null), {
         holding: "as measured, held to the shaper's limit"
     })
 
@@ -627,7 +644,9 @@ Provider {
     // pointed elsewhere drops its late read, but the read still holds its
     // thread, so the view still reading is kept by its interface
     // (probesHung), another made for the next, and the interface isn't
-    // asked again until that view lands.
+    // asked again until that view lands. Either way it's held off
+    // (probesStuck), so a file slow to land isn't asked again each second
+    // the launcher's open.
     Timer {
         id: probeWatch
         interval: 2 * provider.second
@@ -640,17 +659,26 @@ Provider {
     // and asked again through another view it would take another thread,
     // so the interface isn't asked again until it lands.
     property var probesHung: Object.create(null)
+    // Each interface whose turn was last given up, by its name, held off
+    // as Interfaces.heldAfter says until its files land in time.
+    property var probesStuck: Object.create(null)
     property var probe: probeMade.createObject(provider)
 
     function probeGivenUp() {
         const one = probing;
+        if (one !== null) {
+            const stuck = Object.assign(Object.create(null), probesStuck);
+            stuck[one.name] = Interfaces.heldAfter(probesStuck[one.name], Date.now());
+            probesStuck = stuck;
+        }
         if (one?.inFlight) {
             const hung = Object.assign(Object.create(null), probesHung);
             hung[one.name] = probe;
             probesHung = hung;
             probe = probeMade.createObject(provider);
             console.warn(`Traffic: ${one.name}'s ${one.files[0]} took two seconds to load,`
-                + " so it's asked again once that read lands");
+                + ` so it's asked again once that read lands and`
+                + ` ${probesStuck[one.name].wait / 60000} min have passed`);
         }
         probing = null;
         probeNext();
@@ -666,8 +694,11 @@ Provider {
         }
         const hung = Object.assign(Object.create(null), probesHung);
         for (const name of Object.keys(hung))
-            if (hung[name] === view)
+            if (hung[name] === view) {
                 delete hung[name];
+                console.info(`Traffic: ${name}'s read given up landed, so it's asked again`
+                    + " once its wait is over");
+            }
         probesHung = hung;
         view.destroy();
     }

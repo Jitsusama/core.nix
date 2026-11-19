@@ -164,7 +164,8 @@ Provider {
     property int factsTicks: 0
     function reloadFacts() {
         const fresh = [resolv, resolved, up].filter(view => String(view.path) !== ""
-            && !factsAsked.includes(view) && !holding(factsStuck[String(view.path)]));
+            && !factsAsked.includes(view)
+            && !Interfaces.holding(factsStuck[String(view.path)], Date.now()));
         if (fresh.length === 0)
             return;
         const since = new Map(factsSince);
@@ -178,7 +179,7 @@ Provider {
     }
     // A fact still loading eight of the watch's ticks, about two seconds,
     // after it was asked is said as last loaded, warned of, and held off
-    // as a card is (holdAfter), so a terminal isn't kept asking on a file
+    // as a card is (Interfaces.heldAfter), so a terminal isn't kept asking on a file
     // that never lands, nor a thread taken on it each tick. Each is given
     // up on its own two seconds, so a fact asked just before another is
     // given up isn't given up with it; they're counted in ticks rather
@@ -204,7 +205,7 @@ Provider {
         const stuck = Object.assign(Object.create(null), factsStuck);
         for (const view of late) {
             const path = String(view.path);
-            stuck[path] = holdAfter(factsStuck[path]);
+            stuck[path] = Interfaces.heldAfter(factsStuck[path], Date.now());
             console.warn(`Networks: ${path} took two seconds to load, so it's said as last`
                 + ` loaded, and asked again in ${stuck[path].wait / 60000} min`);
         }
@@ -212,7 +213,7 @@ Provider {
         factsAsked = factsAsked.filter(view => !late.includes(view));
         settled();
     }
-    // A fact landing after it's given up keeps its hold (holdAfter); one
+    // A fact landing after it's given up keeps its hold; one
     // landing in time lets it go.
     function factLanded(view) {
         const late = !factsAsked.includes(view);
@@ -392,7 +393,7 @@ Provider {
         const listed = Object.values(linked.held).filter(record => record.kind === "link")
             .sort((a, b) => a.ifindex - b.ifindex);
         const wireless = listed.filter(link => link.wireless).map(link => String(link.ifname));
-        const sources = {};
+        const sources = Object.create(null);
         for (const link of listed)
             sources[link.ifname] = String(link.addr_assign_type ?? "");
         const now = Interfaces.interfaces(listed, wireless).map(link => Object.assign(link, {
@@ -437,7 +438,10 @@ Provider {
     property var cablesAsked: []
     property var cableLoading: null
     // Each card whose files last took too long, by its name, held off as
-    // holdAfter says.
+    // Interfaces.heldAfter says. A hold is kept until the file, asked
+    // again, lands in time, whatever its link does, so a card that flaps
+    // or comes and goes on a hung driver can't take another thread each
+    // time, nor a slow file landing late be asked again at once.
     property var cablesStuck: Object.create(null)
     // Each card given up with its file still reading, by its name, with
     // the view that reads it: a read that hangs can't be called off, and
@@ -445,32 +449,11 @@ Provider {
     // the card isn't asked again until it lands, whatever its hold says.
     property var cablesHung: Object.create(null)
     function stuck(name) {
-        return holding(cablesStuck[name]) || cablesHung[name] !== undefined;
+        return Interfaces.holding(cablesStuck[name], Date.now())
+            || cablesHung[name] !== undefined;
     }
     // The view each file of the card under way is asked through.
     property var cableProbe: probeMade.createObject(provider)
-
-    // A hold on a file given up, { at, wait }: when, and how long until
-    // it's asked again, a minute, then twice as long each time it's given
-    // up again, to an hour, since a read that hangs holds one of the
-    // threads every view in the shell loads on for as long as it does.
-    // It's kept until the file, asked again, lands in time, whatever its
-    // link does, so a card that flaps or comes and goes on a hung driver
-    // can't take another thread each time, nor a slow file landing late be
-    // asked again at once; a clock stepped back ends it rather than
-    // holding it off longer.
-    function holdAfter(before) {
-        return {
-            at: Date.now(),
-            wait: Math.min(before === undefined ? 60000 : before.wait * 2, 3600000)
-        };
-    }
-    function holding(given) {
-        if (given === undefined)
-            return false;
-        const since = Date.now() - given.at;
-        return since >= 0 && since < given.wait;
-    }
 
     // A cable's link as last loaded, or null before its files first land,
     // which are asked for then, and a terminal's show asks again.
@@ -586,7 +569,7 @@ Provider {
     // daemon says has changed since their files began to load, forgotten,
     // so its newer word is said until they're loaded again; and a card
     // gone, or changed, under way or waiting, isn't kept once loaded. One
-    // given up stays held off through either (holdAfter).
+    // given up stays held off through either (cablesStuck).
     function forgetCables() {
         const cards = Object.create(null);
         for (const link of links ?? [])
@@ -615,7 +598,7 @@ Provider {
     // says it. A view pointed elsewhere drops its late read, but the read
     // still holds its thread, so the view still reading is kept by its card
     // (cablesHung), another made for the next, and the card isn't asked
-    // again until that view lands. It's held off (holdAfter) as well, not
+    // again until that view lands. It's held off (cablesStuck) as well, not
     // asked again each second.
     Timer {
         id: cableWatch
@@ -629,7 +612,7 @@ Provider {
         if (loading === null)
             return;
         const still = Object.assign(Object.create(null), cablesStuck);
-        still[loading.name] = holdAfter(cablesStuck[loading.name]);
+        still[loading.name] = Interfaces.heldAfter(cablesStuck[loading.name], Date.now());
         cablesStuck = still;
         console.warn(`Networks: ${loading.name}'s ${cableFiles[loading.at]} took two seconds`
             + " to load, so its cable is said as last loaded, and asked again once that"

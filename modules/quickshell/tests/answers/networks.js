@@ -21,6 +21,11 @@ function run(failures) {
     machine("every interface listed", Object.keys(counted),
         ["lo", "wlp0s20f3", "tailscale0", "shaper2"]);
     machine("what isn't /proc/net/dev", Traffic.counters("nothing here\n"), {});
+    const odd = Traffic.counters("__proto__: 1 1 0 0 0 0 0 0 2 2 0 0 0 0 0 0\n"
+        + "constructor: 3 3 0 0 0 0 0 0 4 4 0 0 0 0 0 0\n");
+    machine("an interface named as something of an object's own is kept as any other",
+        Object.entries(odd).map(([name, card]) => [name, card.in, card.out]),
+        [["__proto__", 1, 2], ["constructor", 3, 4]]);
     const cardKinds = { lo: "", wlp0s20f3: "wifi", tailscale0: "tunnel", shaper2: "" };
     const named = all => {
         const out = {};
@@ -295,6 +300,16 @@ function run(failures) {
     machine("how long, in whole days", Interfaces.lasted(172800), "2 d");
     machine("how long, only just", Interfaces.lasted(20), "under a minute");
     machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
+    // A file given up is held off a minute, then twice as long each time,
+    // to an hour, and a clock stepped back ends it.
+    const first = Interfaces.heldAfter(undefined, 1000);
+    machine("a file given up is held off a minute", first, { at: 1000, wait: 60000 });
+    machine("given up again, twice as long", Interfaces.heldAfter(first, 5000).wait, 120000);
+    machine("never past an hour", Interfaces.heldAfter({ at: 0, wait: 2400000 }, 0).wait,
+        3600000);
+    machine("a hold holds within its wait, not after or before it, nor with none",
+        [1000, 60999, 61000, 999].map(now => Interfaces.holding(first, now))
+            .concat([Interfaces.holding(undefined, 1000)]), [true, true, false, false, false]);
     machine("a whole reading takes the real minus and no decimals",
         [Numbers.wholeReading(-14), Numbers.wholeReading(-60.4), Numbers.wholeReading(3)],
         ["\u221214", "\u221260", "3"]);
