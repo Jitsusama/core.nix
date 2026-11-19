@@ -712,6 +712,12 @@ QtObject {
             Presented.intoSaid({ key: 'win:a "b"\nlauncher: x', from: 0, at: 20, laid: 1 }),
             'launcher: into the drawer for "win:a \\"b\\"\\nlauncher: x" presented 20 ms '
             + "from the key, 1 line laid first");
+        // JSON leaves the line and paragraph separators and the next-line
+        // mark raw, and a reader splitting on any line end would split there.
+        check(failures, "going in escapes every line end JSON leaves raw",
+            Presented.intoSaid({ key: "win:a\u2028b\u2029c\u0085d", from: 0, at: 20, laid: 1 }),
+            'launcher: into the drawer for "win:a\\u2028b\\u2029c\\u0085d" presented 20 ms '
+            + "from the key, 1 line laid first");
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

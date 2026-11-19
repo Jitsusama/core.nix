@@ -865,8 +865,9 @@ Floating {
     // (2026-11-19; docs/testing.md's Timing the Launcher). Its lines down
     // to the short run's cut are the whole run's too, so the cursor's line
     // still stands once it's laid whole.
+    // The keys leaving lay the run short again; a page shown anew while
+    // they stay keeps it whole, rather than laid short and whole again.
     function enter() {
-        runWhole = false;
         lastChosen = null;
         began = choosing !== "" ? began : null;
         laid = lines();

@@ -12340,14 +12340,16 @@ Scope {
     }
     // The frame awaited is the next to begin, read once the lines are laid
     // and before any frame can sync them, as a key's is.
-    property var intoWaiting: null
+    // Each going-in waits here for its frame's count, so a quick second one
+    // doesn't leave the first unsaid.
+    property var intoWaiting: []
     function intoTimed() {
         const from = intoFrom;
         intoFrom = 0;
         if (!open || from <= 0)
             return;
         const one = { key: drawerRow?.key || drawerRow?.name || "", from, laid: -1 };
-        intoWaiting = one;
+        intoWaiting.push(one);
         // The frame presentedAwait waits on, whose swap says the shell's part.
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
@@ -12359,13 +12361,14 @@ Scope {
     // The lines the frame the keys came in laid, counted as its swap is
     // heard and before the rest is laid after it, so a key typed with the
     // chord that laid the whole run before the frame is counted with it.
+    // Every going-in still waiting was drawn by that frame.
     function intoDrawn(laid) {
-        const one = intoWaiting;
-        intoWaiting = null;
-        if (!one)
-            return;
-        one.laid = laid;
-        intoSay(one);
+        const drawn = intoWaiting;
+        intoWaiting = [];
+        for (const one of drawn) {
+            one.laid = laid;
+            intoSay(one);
+        }
     }
     // Said once both its presentation and its count are in, whichever is
     // heard last.
