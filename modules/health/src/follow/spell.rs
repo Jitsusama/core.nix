@@ -10,15 +10,16 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::{GIVES_UP, SETTLED};
+use crate::day::Day;
 
 /// How long after a spell's end was told that a new one goes unsaid, as a
 /// disk at the edge of full flaps between the two: such a spell is said
 /// once this much has passed, and its end then told too. It's as long as
 /// `SETTLED`, the least a run lasts, since each start says a spell at
 /// once, so health's starts alone say a flapping disk no more often. A
-/// told end can let a run that has had its follower end or a line lost
-/// end at once, though, and the start that follows says the next spell
-/// within a minute.
+/// told end can let a run that has had its follower end end at once,
+/// though, and the start that follows says the next spell within a
+/// minute.
 const QUIET_FOR: Duration = SETTLED;
 
 /// A spell of the day's writes failing: since when and for what, while
@@ -45,10 +46,11 @@ impl Spell {
     }
 
     /// What health ends on once it has given up writing the day into
-    /// `into`, with the spell's cause, since its start was said long ago.
-    pub(super) fn given_up(&self, into: &Path) -> io::Error {
+    /// `into`, with the spell's cause, since its start was said long ago,
+    /// and the days held from before it `lost` (`losing`).
+    pub(super) fn given_up(&self, into: &Path, lost: &str) -> io::Error {
         io::Error::other(format!(
-            "health gave up writing the day into {} after {} minutes of trying: {}",
+            "health gave up writing the day into {} after {} minutes of trying{lost}: {}",
             into.display(),
             GIVES_UP.as_secs() / 60,
             self.cause
@@ -58,9 +60,8 @@ impl Spell {
     /// Take a write's `error` at `at`, if any. A spell's start is said
     /// through `say`, naming the folder `into` and the spell's first
     /// error, and its end through `notice`, once each, since the next
-    /// half minute's would most likely say the same. Only the first error
-    /// is a write's own: within a spell, a new day's line is refused with
-    /// one of health's. A spell starting within `QUIET_FOR` of the last
+    /// half minute's would most likely say the same. A spell starting
+    /// within `QUIET_FOR` of the last
     /// end told is said only once `QUIET_FOR` has passed since, with how
     /// long it has lasted, so a flapping disk is said at most once in each
     /// `QUIET_FOR`, however short its spells, and a lasting one soon.
@@ -112,26 +113,6 @@ impl Spell {
             (None, None) => {}
         }
     }
-
-    /// `error`, a new day's line refused within the spell, with the folder
-    /// `into` and the spell's own cause where it differs, since a spell
-    /// kept quiet may have said neither before health ends on it. Health
-    /// ends on it only once the day is written, so it's over.
-    pub(super) fn lost(&self, error: &io::Error, into: &Path) -> io::Error {
-        let words = if self.cause == error.to_string() {
-            format!(
-                "writing the day into {} failed for a time: {error}",
-                into.display()
-            )
-        } else {
-            format!(
-                "{error}, as writing it into {} failed for a time: {}",
-                into.display(),
-                self.cause
-            )
-        };
-        io::Error::new(error.kind(), words)
-    }
 }
 
 /// What health says of a day it can't write into `into` for `cause`, its
@@ -144,11 +125,22 @@ fn unwritten(cause: &str, into: &Path, lasted: Duration) -> String {
     };
     format!(
         "health: can't write the day into {}: {cause},{already} so it keeps the day and tries \
-         again every half minute for up to {} minutes; a new day's lines that come meanwhile \
-         are heard at health's next start",
+         again every half minute for up to {} minutes",
         into.display(),
         GIVES_UP.saturating_sub(lasted).as_secs() / 60
     )
+}
+
+/// What health says it loses of the days `held` from before as it ends
+/// unable to write them, which a start's replay of only today won't hear
+/// again: nothing when none are held.
+pub(super) fn losing(held: &[Day]) -> String {
+    let dates: Vec<&str> = held.iter().map(|day| day.date.as_str()).collect();
+    match dates.split_last() {
+        None => String::new(),
+        Some((last, [])) => format!(", losing {last}, held from before"),
+        Some((last, rest)) => format!(", losing {} and {last}, held from before", rest.join(", ")),
+    }
 }
 
 /// How long `lasted` was, to the minute: time health was awake to try,
