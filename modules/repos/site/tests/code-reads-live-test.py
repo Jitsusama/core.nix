@@ -806,13 +806,20 @@ def test_a_burst_of_records_draws_the_list_a_few_times(
 
 
 @pytest.fixture
-def spanned(mycelium_node: StandIn) -> None:
-    """Tie core and notes before the page opens, so its first read holds the map whole."""
+def spanned(tmp_path: Path, code_served: Served, mycelium_node: StandIn) -> None:
+    """Tie core and notes, with the tying cell home on the cells' site as the first is."""
+    _ = code_served
+    things = [
+        {"kind": "cell", "key": key, "name": key, "address": f"{CELLS_SITE}#cell={key}"}
+        for key in ("E2ZIAQ", "W9TIES")
+    ]
+    homes = tmp_path / "documents" / CELLS_SITE / "homes.json"
+    homes.write_text(json.dumps({"things": things}))
     spanning(mycelium_node)
 
 
-# Tied before the page opens, since a cell told later reads the homes again, which is a
-# second visit's cost and not a first's.
+# The tying cell is home, since Code asks the sites again for a cell that has none, which is
+# a later visit's cost and not a first's.
 @pytest.mark.usefixtures("spanned")
 def test_code_keeps_to_its_budget(code_opened: Opened) -> None:
     says_it_stands(code_opened.page, "live")
