@@ -90,6 +90,14 @@ pub struct Record {
     pub ended: Option<u64>,
     pub event: Option<String>,
     pub person: Option<String>,
+    /// The Google account its meeting was on, by address, as the google
+    /// program's daemon said it both before and after listing the
+    /// meetings (meeting.rs); none when either read went unheard or they
+    /// differed, or for a call before this was kept. This daemon writes
+    /// it, beside the call, from nothing an agent sends, and the shell is
+    /// never served it. It's read back as written: Joel's own files hold
+    /// no secret from what runs as him, which could run mycelium itself.
+    pub account: Option<String>,
     pub folder: PathBuf,
     pub transcript: Option<PathBuf>,
     pub opening: Option<String>,
@@ -121,6 +129,7 @@ impl Record {
         json!({
             "key": self.key, "title": self.title, "started": self.started,
             "ended": self.ended, "event": self.event, "person": self.person,
+            "account": self.account,
         })
     }
 
@@ -182,6 +191,7 @@ impl Record {
             ended: meta["ended"].as_u64().or_else(changed),
             event: meta["event"].as_str().map(str::to_owned),
             person: meta["person"].as_str().map(str::to_owned),
+            account: meta["account"].as_str().map(str::to_owned),
             folder: folder.to_owned(),
             transcript: transcript.exists().then_some(transcript),
             opening,
@@ -239,6 +249,28 @@ impl Book {
     /// nothing else of them.
     pub fn starts(&self) -> impl Iterator<Item = u64> + '_ {
         self.records.iter().map(|record| record.started)
+    }
+
+    /// The calendar event of each ended call whose summary was written and
+    /// whose meeting was on an account `on` takes, with when it ended and
+    /// its folder, for the calls receptor, which says the event alone and
+    /// looks in the folder only to see the summary is still there. A call
+    /// with no account kept is never listed, whatever `on` takes.
+    pub fn summarized<'a>(
+        &'a self,
+        on: impl Fn(&str) -> bool + 'a,
+    ) -> impl Iterator<Item = (&'a str, u64, &'a Path)> + 'a {
+        self.records.iter().filter_map(move |record| {
+            record.summary.as_ref()?;
+            if !on(record.account.as_deref()?) {
+                return None;
+            }
+            Some((
+                record.event.as_deref()?,
+                record.ended?,
+                record.folder.as_path(),
+            ))
+        })
     }
 
     /// Whether the calls' folder couldn't be listed, or a call's record in
@@ -338,6 +370,7 @@ mod tests {
             ended: None,
             event: Some("e1".to_owned()),
             person: None,
+            account: None,
             folder: folder.join(key),
             transcript: None,
             opening: None,
@@ -394,6 +427,33 @@ mod tests {
         assert_eq!(
             Book::read(folder.path()).record("call:e1").unwrap().ended,
             Some(99)
+        );
+    }
+
+    #[test]
+    fn a_call_s_account_is_kept_beside_it_and_never_served() {
+        let folder = tempfile::tempdir().unwrap();
+        let mut book = Book::default();
+        let record = Record {
+            account: Some("jsama@example.com".to_owned()),
+            ..call(folder.path(), "call:e1", 10)
+        };
+        book.put(record.clone());
+        let read = Book::read(folder.path());
+        assert_eq!(
+            read.record("call:e1").unwrap().account.as_deref(),
+            Some("jsama@example.com"),
+            "the account kept with the call wasn't read back"
+        );
+        assert!(
+            !record.json().to_string().contains("jsama"),
+            "the shell was served the call's account"
+        );
+        book.put(call(folder.path(), "call:e2", 20));
+        assert_eq!(
+            Book::read(folder.path()).record("call:e2").unwrap().account,
+            None,
+            "a call kept with no account read back as one's"
         );
     }
 

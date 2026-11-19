@@ -92,6 +92,40 @@ fn mycelium(test: &str) -> (PathBuf, PathBuf) {
 }
 
 #[test]
+fn an_account_signed_in_between_the_meetings_and_its_calendars_is_said_of_neither() {
+    let at = now().timestamp().as_millisecond();
+    for (switched, meant) in [(false, Some("joel@example.com")), (true, None)] {
+        let path = credentials("receptors-switched", at + 3_600_000);
+        let sign_in = path.clone();
+        // pi signs another account in while the meetings are first
+        // listed, so the calendars are asked as it.
+        let to_switch = std::sync::atomic::AtomicBool::new(switched);
+        let stand_in = StandIn::new(move |path, body| {
+            if path.starts_with("GET /calendar/v3/calendars/primary/events?")
+                && to_switch.swap(false, std::sync::atomic::Ordering::SeqCst)
+            {
+                let file = fs::read_to_string(&sign_in).expect("the sign-in reads");
+                let another = file.replace(
+                    r#""refresh_token": "refresh""#,
+                    r#""refresh_token": "skiff""#,
+                );
+                assert_ne!(file, another, "the sign-in wasn't switched");
+                fs::write(&sign_in, another).expect("the sign-in is switched");
+            }
+            planted(path, body)
+        });
+        let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+        let state = watch.look(&now()).clone();
+        assert_eq!(state.meetings.len(), 1, "the planted meeting wasn't held");
+        assert_eq!(
+            watch.signed_in_as(),
+            meant,
+            "switched {switched}: the address beside the meetings was wrong"
+        );
+    }
+}
+
+#[test]
 fn the_receptors_say_nothing_of_an_account_the_machine_didnt_declare() {
     let (program, said) = mycelium("receptors-another");
     let named = || {

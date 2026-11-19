@@ -240,6 +240,17 @@ fn offer_line(title: &str, key: &str, stops: &Sender<Heard>) -> notices::Shown {
     )
 }
 
+/// The account a call `kept` as its meeting's is kept as once that
+/// meeting is joined on `now`: a meeting rejoined on another account than
+/// it was first is no longer known to be either's, so it keeps none, and a
+/// join whose account went unheard keeps the one it had.
+fn rejoined(kept: Option<String>, now: Option<String>) -> Option<String> {
+    match now {
+        Some(now) if kept.as_ref() != Some(&now) => None,
+        _ => kept,
+    }
+}
+
 /// Starts recording a call, in a record of its own, or in the record of the
 /// same meeting when it's rejoined.
 fn start(
@@ -252,6 +263,7 @@ fn start(
     count: u32,
 ) -> Result<Recording, String> {
     let key = key.to_owned();
+    let account = on.account;
     let mut record = book.lock().record(&key).cloned().unwrap_or_else(|| Record {
         key: key.clone(),
         folder: calls.join(meeting::folder(at, &on.title)),
@@ -260,11 +272,13 @@ fn start(
         ended: None,
         event: on.event,
         person: on.person,
+        account: account.clone(),
         transcript: None,
         opening: None,
         summary: None,
         transcribing: true,
     });
+    record.account = rejoined(record.account.take(), account);
     record.ended = None;
     record.transcribing = true;
     let since = usize::try_from((at - record.started) / 1000).unwrap_or(0) * RATE;
@@ -541,6 +555,31 @@ fn hear_side(out: impl Read, key: &str, side: Side, since: usize, jobs: &Sender<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_meeting_rejoined_on_another_account_is_kept_as_no_one_s() {
+        let ours = || Some("jsama@example.com".to_owned());
+        assert_eq!(
+            rejoined(ours(), ours()),
+            ours(),
+            "rejoined on its own account"
+        );
+        assert_eq!(
+            rejoined(ours(), Some("skiff@example.com".to_owned())),
+            None,
+            "rejoined on another account, it stayed the first's"
+        );
+        assert_eq!(
+            rejoined(ours(), None),
+            ours(),
+            "an unheard rejoin lost its account"
+        );
+        assert_eq!(
+            rejoined(None, ours()),
+            None,
+            "a call with no account took one on rejoining"
+        );
+    }
 
     #[test]
     fn letting_go_of_the_hold_ends_what_holds_it() {

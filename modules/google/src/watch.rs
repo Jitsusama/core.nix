@@ -45,9 +45,6 @@ pub struct Watch {
     state: State,
     /// The calendars Joel may change events on, as last heard.
     writable: Vec<String>,
-    /// The address of the account signed in, as its calendar list last
-    /// said it.
-    primary: Option<String>,
     /// The mail marked read since it was last looked at, so marking one
     /// unread again brings it back at once, before Gmail lists it again.
     read: Vec<Mail>,
@@ -111,7 +108,6 @@ impl Watch {
             keeper: Keeper::default(),
             state: State::default(),
             writable: Vec::new(),
-            primary: None,
             read: Vec::new(),
             documented: None,
             placed: None,
@@ -151,7 +147,7 @@ impl Watch {
     /// The address of the account signed in, as Google last said it in
     /// the calendar list, never as any record or file names it.
     pub fn signed_in_as(&self) -> Option<&str> {
-        self.primary.as_deref()
+        self.state.signed_in.as_deref()
     }
 
     /// How many times running Meet couldn't be asked, so it's asked less
@@ -217,16 +213,21 @@ impl Watch {
         let (from, to) = calendar::window(now);
         match self.asking(now, |google, token| google.events(token, from, to)) {
             Ok(mut answer) => {
+                let listed_as = self.asked_as();
                 match self.asking(now, Google::writable) {
                     Ok(calendars) => {
                         self.writable = calendars.writable;
-                        self.primary = calendars.primary;
+                        // Each ask reads the sign-in afresh, so one pi
+                        // changed between them would put one account's
+                        // address beside another's meetings: none is kept.
+                        self.state.signed_in =
+                            calendars.primary.filter(|_| self.asked_as() == listed_as);
                     }
                     // Whose account answered isn't known this look, so
                     // nothing that needs it is said of it.
                     Err(Looked::Refused(Refused::Unreachable(why))) => {
                         eprintln!("<4>{why}");
-                        self.primary = None;
+                        self.state.signed_in = None;
                     }
                     Err(looked) => {
                         self.fell(looked, Standing::Unreachable);
@@ -516,6 +517,16 @@ impl Watch {
     fn makes_meetings(&self) -> bool {
         self.signed_in()
             .is_ok_and(|account| account.grants(MAKES_MEETINGS))
+    }
+
+    /// Which sign-in Google was last asked as, by its app and refresh
+    /// token, which differ between accounts and stay put while only its
+    /// access token is refreshed.
+    fn asked_as(&self) -> Option<(String, String)> {
+        self.last
+            .borrow()
+            .as_ref()
+            .map(|account| (account.client_id.clone(), account.refresh_token.clone()))
     }
 
     /// The account to ask as, read afresh, since pi rewrites its sign-in

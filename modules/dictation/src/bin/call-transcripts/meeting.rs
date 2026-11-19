@@ -27,16 +27,45 @@ pub struct Meeting {
     pub event: Option<String>,
     /// Who it's with, by address, for a Tuple call.
     pub person: Option<String>,
+    /// The Google account a meeting is on, by address, only when the
+    /// google program's daemon said the same one just before and just
+    /// after listing its meetings, so the meeting is known to be that
+    /// account's; none otherwise, and for a Tuple call.
+    pub account: Option<String>,
 }
 
 /// The call on at `now`, from what's in `runtime`; a Tuple call first,
 /// since it has people only while one is on, and a meeting otherwise.
 pub fn on(runtime: &Path, now: u64) -> Meeting {
-    tuple_call(&runtime.join("daemons/tuple-call.sock"))
+    if let Some(call) = tuple_call(&runtime.join("daemons/tuple-call.sock"))
         .as_ref()
         .and_then(tuple)
-        .or_else(|| meeting(&meetings(&runtime.join("daemons/google.sock")), now))
+    {
+        return call;
+    }
+    let before = signed_in(runtime);
+    let listed = meetings(&runtime.join("daemons/google.sock"));
+    // Asked again only when it can matter, so a daemon that doesn't answer
+    // holds a call's start for two asks rather than three.
+    meeting(&listed, now)
+        .map(|on| Meeting {
+            account: before.filter(|before| signed_in(runtime).as_ref() == Some(before)),
+            ..on
+        })
         .unwrap_or_default()
+}
+
+/// The address of the Google account the meetings are from, as the google
+/// program's daemon in `runtime` serves it; or none when it isn't there,
+/// doesn't answer in time or can't say whose account it holds.
+pub fn signed_in(runtime: &Path) -> Option<String> {
+    let said = asked(
+        &runtime.join("daemons/google.sock"),
+        &json!({"id": 1, "ask": "get", "keys": ["account:google"]}),
+    )?;
+    said["records"][0]["account"]["address"]
+        .as_str()
+        .map(str::to_owned)
 }
 
 /// tuple-call's record of the call; or none when it isn't there or
@@ -88,6 +117,7 @@ fn tuple(call: &Value) -> Option<Meeting> {
         title,
         event: None,
         person: first["email"].as_str().map(str::to_lowercase),
+        account: None,
     })
 }
 
@@ -107,6 +137,7 @@ fn meeting(meetings: &[Value], now: u64) -> Option<Meeting> {
             title: meeting["title"].as_str().unwrap_or_default().to_owned(),
             event: meeting["id"].as_str().map(str::to_owned),
             person: None,
+            account: None,
         })
 }
 
@@ -184,10 +215,25 @@ mod tests {
         assert_eq!(tuple(&none), None);
     }
 
+    /// The account address the account and the calls are on.
+    const ACCOUNT: &str = "jsama@example.com";
+
     /// A fresh runtime folder with two stand-in daemons: tuple-call,
     /// answering its one ask with `record`, and the google program's,
-    /// holding Planning, on now.
+    /// holding Planning, on now, on `ACCOUNT`.
     fn runtime(name: &str, record: &Value) -> std::path::PathBuf {
+        on_accounts(name, record, &json!(ACCOUNT), &json!(ACCOUNT))
+    }
+
+    /// A fresh runtime folder as [`runtime`] makes, but whose google
+    /// daemon says the account is `before` until it lists its meetings,
+    /// and `after` once it has.
+    fn on_accounts(
+        name: &str,
+        record: &Value,
+        before: &Value,
+        after: &Value,
+    ) -> std::path::PathBuf {
         let runtime = std::env::temp_dir().join(format!("meeting-{name}-{}", std::process::id()));
         std::fs::create_dir_all(runtime.join("daemons")).unwrap();
         let call = json!({"records": [record]});
@@ -203,14 +249,25 @@ mod tests {
         let meetings = json!({"records": [
             {"key": "meeting:e1", "kind": "meeting", "heard": NOW, "meeting": planning},
         ]});
-        answering(
+        let whose = json!(["account:google"]);
+        serving(
             &runtime.join("daemons/google.sock"),
-            "list",
-            "kind",
-            json!("meeting"),
-            meetings,
+            vec![
+                ("get", "keys", whose.clone(), account(before)),
+                ("list", "kind", json!("meeting"), meetings),
+                ("get", "keys", whose, account(after)),
+            ],
         );
         runtime
+    }
+
+    /// The google daemon's answer to an ask for its account, which it
+    /// says is `address`'s.
+    fn account(address: &Value) -> Value {
+        json!({"records": [
+            {"key": "account:google", "kind": "account",
+             "account": {"standing": "ready", "address": address}},
+        ]})
     }
 
     /// A stand-in daemon at `socket` answering one `ask`, whose `field` must
@@ -222,18 +279,63 @@ mod tests {
         meant: Value,
         answer: Value,
     ) {
+        serving(socket, vec![(ask, field, meant, answer)]);
+    }
+
+    /// A stand-in daemon at `socket` answering one connection after
+    /// another, each the next of `answers`: its ask, whose field must be
+    /// what's meant, answered under the ask's id.
+    fn serving(socket: &Path, answers: Vec<(&'static str, &'static str, Value, Value)>) {
         let _ = std::fs::remove_file(socket);
         let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
         std::thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            let mut line = String::new();
-            BufReader::new(&stream).read_line(&mut line).unwrap();
-            let asked: Value = serde_json::from_str(&line).unwrap();
-            assert_eq!((asked["ask"].as_str(), &asked[field]), (Some(ask), &meant));
-            let mut answer = answer;
-            answer["id"] = asked["id"].clone();
-            writeln!(&stream, "{answer}").unwrap();
+            for (ask, field, meant, answer) in answers {
+                let (stream, _) = listener.accept().unwrap();
+                let mut line = String::new();
+                BufReader::new(&stream).read_line(&mut line).unwrap();
+                let asked: Value = serde_json::from_str(&line).unwrap();
+                assert_eq!(
+                    (asked["ask"].as_str(), &asked[field]),
+                    (Some(ask), &meant),
+                    "the daemon was asked out of turn"
+                );
+                let mut answer = answer;
+                answer["id"] = asked["id"].clone();
+                writeln!(&stream, "{answer}").unwrap();
+            }
         });
+    }
+
+    #[test]
+    fn a_meeting_is_kept_as_its_account_s_only_when_it_was_said_before_and_after_its_list() {
+        let none = json!({"state": "none", "since": null, "people": []});
+        let on_it = on(&runtime("same", &none), NOW);
+        assert_eq!(
+            (on_it.title.as_str(), on_it.account.as_deref()),
+            ("Planning", Some(ACCOUNT)),
+            "the account said both times is the meeting's"
+        );
+        for (name, before, after) in [
+            ("switched", json!(ACCOUNT), json!("skiff@example.com")),
+            ("unheard-before", Value::Null, json!(ACCOUNT)),
+            ("unheard-after", json!(ACCOUNT), Value::Null),
+        ] {
+            let on_it = on(&on_accounts(name, &none, &before, &after), NOW);
+            assert_eq!(
+                on_it.title, "Planning",
+                "{name}: the meeting is still the call"
+            );
+            assert_eq!(
+                on_it.account, None,
+                "{name}: an account not said alike was kept"
+            );
+        }
+        let call = json!({"state": "connected", "people": [{"name": "Ada", "email": "a@x"}]});
+        assert_eq!(
+            on(&runtime("tuple-account", &call), NOW).account,
+            None,
+            "a Tuple call is no Google account's"
+        );
     }
 
     #[test]
@@ -260,6 +362,43 @@ mod tests {
         std::fs::remove_file(bare.join("daemons/tuple-call.sock")).unwrap();
         std::fs::remove_file(bare.join("daemons/google.sock")).unwrap();
         assert_eq!(on(&bare, NOW), Meeting::default());
+    }
+
+    #[test]
+    fn the_account_signed_in_is_as_the_google_daemon_serves_it_or_unknown() {
+        /// A runtime folder whose google daemon answers the account's ask
+        /// with `answer`.
+        fn serving(name: &str, answer: Value) -> std::path::PathBuf {
+            let runtime =
+                std::env::temp_dir().join(format!("account-{name}-{}", std::process::id()));
+            std::fs::create_dir_all(runtime.join("daemons")).unwrap();
+            answering(
+                &runtime.join("daemons/google.sock"),
+                "get",
+                "keys",
+                json!(["account:google"]),
+                answer,
+            );
+            runtime
+        }
+        assert_eq!(
+            signed_in(&serving("held", account(&json!("jsama@example.com")))).as_deref(),
+            Some("jsama@example.com"),
+            "the address served is the one signed in"
+        );
+        for (name, answer) in [
+            ("unheard", account(&Value::Null)),
+            ("no-record", json!({"records": []})),
+            ("not-text", account(&json!(7))),
+        ] {
+            assert_eq!(
+                signed_in(&serving(name, answer)),
+                None,
+                "{name}: an account no one can say is unknown"
+            );
+        }
+        let gone = std::env::temp_dir().join(format!("account-gone-{}", std::process::id()));
+        assert_eq!(signed_in(&gone), None, "with no daemon, unknown");
     }
 
     #[test]
