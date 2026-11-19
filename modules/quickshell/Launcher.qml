@@ -12340,19 +12340,39 @@ Scope {
     }
     // The frame awaited is the next to begin, read once the lines are laid
     // and before any frame can sync them, as a key's is.
-    function intoTimed(laid) {
+    property var intoWaiting: null
+    function intoTimed() {
         const from = intoFrom;
         intoFrom = 0;
         if (!open || from <= 0)
             return;
-        const one = { key: drawerRow?.key || drawerRow?.name || "", from, laid };
+        const one = { key: drawerRow?.key || drawerRow?.name || "", from, laid: -1 };
+        intoWaiting = one;
         // The frame presentedAwait waits on, whose swap says the shell's part.
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
             Object.assign(one, { at, swapped: root.swappedOf(frame),
                 screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
-            console.info(Presented.intoSaid(one));
+            intoSay(one);
         });
+    }
+    // The lines the frame the keys came in laid, counted as its swap is
+    // heard and before the rest is laid after it, so a key typed with the
+    // chord that laid the whole run before the frame is counted with it.
+    function intoDrawn(laid) {
+        const one = intoWaiting;
+        intoWaiting = null;
+        if (!one)
+            return;
+        one.laid = laid;
+        intoSay(one);
+    }
+    // Said once both its presentation and its count are in, whichever is
+    // heard last.
+    function intoSay(one) {
+        if (one.at === undefined || one.laid < 0)
+            return;
+        console.info(Presented.intoSaid(one));
     }
     // Its frame's start is when the frame presentedAwait waits on began,
     // the next to begin, as a key's is, so its line says where it went.
@@ -15385,15 +15405,18 @@ Scope {
             // Its frame says the keys are here while they're in it, gone in
             // with Space and the right arrow.
             keys: QueryKeys.paged(prompt.mode)
-            onEntering: root.intoComing()
-            onEntered: laid => root.intoTimed(laid)
+            onKeysComing: root.intoComing()
+            onKeysIn: root.intoTimed()
             // Its whole run is laid once the frame the keys came in is
             // drawn, not merely at the next turn, which comes before it;
             // and once that frame's swap is heard, at the turn after, since
             // laid in the swap's own handler it held the others and the
             // swap's stamp behind it: the drawer lab read its swap some
             // 390 ms after niri presented it (2026-11-19).
-            afterFrame: then => root.afterFrame(() => Qt.callLater(then))
+            afterFrame: then => root.afterFrame(() => {
+                root.intoDrawn(drawerCard.laid.length);
+                Qt.callLater(then);
+            })
             // The search being typed on the line, washed as it's typed.
             seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
             seekingForward: !prompt.standing.seek || prompt.standing.seek.forward

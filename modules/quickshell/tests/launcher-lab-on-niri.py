@@ -585,7 +585,7 @@ INTO = "Emoji"
 # The keys going into a drawer as the shell says them once niri presented their frame
 # (launcher/Presented.js's intoSaid).
 INTO_PRESENTED = re.compile(
-    r'launcher: into the drawer for "[^"]*" presented (\d+) ms from the key'
+    r'launcher: into the drawer for "(?:[^"\\]|\\.)*" presented (\d+) ms from the key'
     r"(?:, (\d+) to the shell's swap)?, (\d+) lines? laid"
 )
 
@@ -644,7 +644,8 @@ def test_going_into_a_drawer_is_timed(
     with capsys.disabled():
         print(
             f"lab-into {into}: {len(timed)} presented a median "
-            f"{round(statistics.median(timed))} ms, p90 {p90(timed)}; the shell's to its swap, "
+            f"{round(statistics.median(timed)) if timed else '?'} ms, "
+            f"p90 {p90(timed) if timed else '?'}; the shell's to its swap, "
             f"of the {len(swapped)} that kept one, a median "
             f"{round(statistics.median(swapped)) if swapped else '?'} ms, "
             f"p90 {p90(swapped) if swapped else '?'}",

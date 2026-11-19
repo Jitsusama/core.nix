@@ -706,6 +706,12 @@ QtObject {
             Presented.intoSaid({ key: "app:kitty", from: 0, at: 20, laid: 1 }),
             'launcher: into the drawer for "app:kitty" presented 20 ms from the key, '
             + "1 line laid first");
+        // A row named by a window's title may hold a quote or a line break,
+        // which the journal would read as the line's end or another line.
+        check(failures, "going in quotes its key so a title can't forge a line",
+            Presented.intoSaid({ key: 'win:a "b"\nlauncher: x', from: 0, at: 20, laid: 1 }),
+            'launcher: into the drawer for "win:a \\"b\\"\\nlauncher: x" presented 20 ms '
+            + "from the key, 1 line laid first");
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

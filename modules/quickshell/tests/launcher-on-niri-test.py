@@ -490,8 +490,9 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     entered = shell.showing()["drawer"]
     began, whole = entered["cursor"]["line"], entered["bodyLines"]
     whole_lines = entered["cursor"]["lines"]
-    # The frame the keys came in laid only what shows, the rest after it: Emoji's whole run
-    # laid first held that frame back a median 558 ms in the drawer lab (2026-11-19).
+    # The frame the keys came in laid only what shows, the rest after it, as counted at its
+    # swap: Emoji's whole run laid first held that frame back a median 558 ms in the drawer
+    # lab (2026-11-19).
     laid = laid_going_in(shell, going_in)
     assert laid < whole_least, f"going in laid {laid} lines before its frame, not its view's"
     shell.send_chars("j" * deep)

@@ -613,10 +613,10 @@ Floating {
     property var laid: []
     // The keys coming in, said before its lines are laid, so the launcher
     // reads their time before the lay rather than after it, whichever of
-    // its handlers runs first; and come in, with how many lines were laid
-    // for the frame they came in, for it to time that frame and say so.
-    signal entering()
-    signal entered(int laid)
+    // its handlers runs first; and come in, for it to time the frame they
+    // came in, whose lines it counts as that frame's swap is heard.
+    signal keysComing()
+    signal keysIn()
     // The tops its view may scroll to, none cutting a line, worked out once
     // its lines are laid or its end moves rather than for each key, which
     // on a long page would spend half a key's budget (DrawerPage.js).
@@ -637,9 +637,9 @@ Floating {
         : keys && lastSought ? lastSought.pattern : ""
     onKeysChanged: {
         if (keys) {
-            entering();
+            keysComing();
             enter();
-            entered(laid.length);
+            keysIn();
         } else {
             // y's flash, which the next row's page would wear, goes
             // first, while the readers its paint() reaches are still made.
