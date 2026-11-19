@@ -971,6 +971,7 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     across: (groundLayers[1] || []).length,
     talk: talkLayer.length,
     talks: talkLayer.map((t) => t.cls),
+    talkEnds: talkLayer.flatMap((t) => t.ends),
     fed: fedLayer.length,
     said: talk.size,
     between: talkBetween,
@@ -4090,7 +4091,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       // the rest step back with the map.
       const beside = opened && gatherOf(e) === opened ? "" : " far";
       const open = chosen?.kind === "talk" ? (chosen.id === e ? " lit" : beside) : "";
-      talkLayer.push({ tag: "path", cls: `m-talk warm${warmLevel(n)}${open}${faint}`, line });
+      const cls = `m-talk warm${warmLevel(n)}${open}${faint}`;
+      talkLayer.push({ tag: "path", cls, line, ends: [a, b] });
     }
     // A receptor's feeding bows off the hyphae as talk does, so it never
     // lies over the marks between, but dot-and-dash and to the other side, so

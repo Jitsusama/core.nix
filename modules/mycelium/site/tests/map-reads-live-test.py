@@ -1090,6 +1090,8 @@ def test_talk_between_two_networks_is_one_line_until_it_or_a_cell_it_touches_ope
             f"the talk between two networks was drawn as {painted['talks']}, not one faint"
             " line as warm as its warmest pair"
         )
+        ends = painted["talkEnds"]
+        assert all(end.startswith("h:") for end in ends), f"gathered talk ran to {ends}, not hubs"
         # A network open brightens the line it touches, and keeps it one.
         page.evaluate(f"location.hash = '#net={TALKED_WITH}'")
         page.wait_for_function(
@@ -1103,6 +1105,8 @@ def test_talk_between_two_networks_is_one_line_until_it_or_a_cell_it_touches_ope
         page.wait_for_function(f"{PAINTED}.talk === {len(TALKERS)}", timeout=PACE_MS)
         drawn = sorted(page.evaluate(f"{PAINTED}.talks"))
         assert drawn == ["m-talk warm1 lit", "m-talk warm2"], f"a talk open drew {drawn}"
+        ends = page.evaluate(f"{PAINTED}.talkEnds")
+        assert all(end.startswith("c:") for end in ends), f"a talk open drew lines to {ends}"
         page.evaluate(f"location.hash = '#cell={HEARD}'")
         page.wait_for_function(
             f"{PAINTED}.talks.filter((t) => !t.includes('faint')).length === {len(TALKERS)}",
