@@ -528,6 +528,10 @@ QtObject {
         expect("set off again easing in, it eases in; at its pace, it keeps it",
             [easingAt.atPace, easesFrom(easingAt) > 0, pacedAt.atPace, easesFrom(pacedAt),
                 easingOut.atPace, easesFrom(easingOut) > 0], [false, true, true, 0, false, true]);
+        // Set off with nothing drawn yet, as most of the screen's walks are,
+        // it faces neither way and strides on from no stride.
+        expect("set off with nothing drawn, it carries nothing", Paths.setOffFrom(null),
+            { facing: 0, drawnIn: null, drawnInto: null, drawnAtPace: false });
         // Stepped into a SHOWN early to stop, a stride counts from where it was
         // first drawn, a whole stride by its last frame, not from the stop.
         const stopping = Paths.walk({ x: 100, y: 7 }, { x: 636, y: 7 }, world({ hurried: true }));

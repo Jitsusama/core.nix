@@ -133,13 +133,17 @@ QtObject {
             expect(`${name}, out of sight no more than about two thirds of a second`,
                 comes.t - (all[gone]?.t ?? 0) <= 700, true);
             // A beat strides on from the stride drawn before its chain,
-            // found by the time its chain began (MarginCatWays.js's
+            // found as the first beat its chain began with (MarginCatWays.js's
             // frame()), so a chain shifted to follow the drop still begins
-            // at a beat's start.
-            expect(`${name}, every walk's chain begins where one of its beats does`,
-                move.beats.filter((beat, i) => (beat.since ?? null) !== null
-                    && !move.beats.slice(0, i + 1).some(one => one.begins === beat.since))
-                    .map(beat => [beat.name, beat.since]), []);
+            // at its own first beat's start, and no other chain's.
+            expect(`${name}, every walk's chain begins where its own first beat does`,
+                move.beats.filter((beat, i) => {
+                    if ((beat.since ?? null) === null)
+                        return false;
+                    const chained = move.beats.findIndex(one => one.since === beat.since);
+                    return move.beats[chained].begins !== beat.since
+                        || move.beats.slice(chained, i + 1).some(one => one.since !== beat.since);
+                }).map(beat => [beat.name, beat.since]), []);
             const names = move.beats.map(beat => beat.name);
             const grab = move.beats[names.indexOf(way > 0 ? "drops" : "springs") + 1];
             const caught = [grab?.name, grab?.to.y, grab?.to.x === 616 || grab?.to.x === 624];
