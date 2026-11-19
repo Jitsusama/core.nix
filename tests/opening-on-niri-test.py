@@ -1695,16 +1695,22 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     Inside `open` they were a third of the fill's 14 ms on a builder, and the fill's "opening"
     held a median 27 ms of 32 of Joel's 53 longest stalls before he could type (H6EDLC,
     2026-11-18). The card shows home as kept until then, and a key or a click before it finds
-    home first, so it acts on home found now; with neither, the slice finds it.
+    home first, so it acts on home found now; with neither, the slice finds it. A source that
+    changes in the frame before is refreshed, finding home first too, so that opening is tried
+    again.
     """
-    nth = opened_from_kept(shell)["nth"]
     woke: list[Json] = []
+    for _ in range(REOPENINGS_TRIED):
+        nth = opened_from_kept(shell)["nth"]
 
-    def slept(_: Json) -> bool:
-        woke[:] = [each for each in openings(shell) if each.get("nth") == nth]
-        return bool(woke) and "slices" in woke[0]
+        def slept(_: Json, nth: object = nth) -> bool:
+            woke[:] = [each for each in openings(shell) if each.get("nth") == nth]
+            return bool(woke) and "slices" in woke[0]
 
-    shell.launcher_until(slept)
+        shell.launcher_until(slept)
+        if woke[0].get("foundBy") != "refresh":
+            break
+        shell.close_launcher()
     assert woke[0].get("fillJoined") == 0, f"the fill joined the choices inside `open`: {woke}"
     assert woke[0].get("foundBy") == "slice", f"home wasn't found in a slice of its own: {woke}"
     assert cast("int", woke[0].get("foundJoined", 0)) >= 1, f"the slice never joined: {woke}"

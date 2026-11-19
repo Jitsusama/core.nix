@@ -5668,6 +5668,9 @@ Scope {
         const begun = KeyTimes.now();
         const wasOpen = open;
         if (open) {
+            // One that comes before a kept home's slice finds home first, as
+            // a key does, so it changes home found now and joins once.
+            fillFound("refresh");
             refreshesDone += 1;
             freshen();
         }
@@ -11464,8 +11467,8 @@ Scope {
 
     // Whether a fill has still to join the choices, and find home again
     // where it fills home, which the first slice after its frame does
-    // (wakeNext), or a key, a click or a chord before that, so each acts
-    // on home found now rather than as it was kept. Home is found from what each
+    // (wakeNext), or a key, a click, a chord or a refresh before that, so
+    // each acts on home found now rather than as it was kept. Home is found from what each
     // source made last, as it was inside `open` before, and a row held
     // as it will be that now reads so is let go (heldAgreed), as a
     // source's change would, so none waits on becameLate.

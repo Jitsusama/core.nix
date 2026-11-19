@@ -167,12 +167,15 @@ def p90(spans: list[int]) -> int:
     return ordered[min(len(ordered) - 1, round(0.9 * (len(ordered) - 1)))]
 
 
-def said_of(place: str, presented: list[int], took: list[int], stalled: list[int]) -> str:
+def said_of(
+    place: str, presented: list[int], took: list[int], stalled: list[int], left_out: int
+) -> str:
     """Say a place's openings: presented, split at the shell's swap, and the longest stall.
 
     The longest stall is the longest the shell's thread held a key back, from the ask until
     the opening was usable, so a fill that moves its work after its frame shows here, where
-    its presented time doesn't.
+    its presented time doesn't. Those left out, as still unusable when the lab asked, are
+    the slowest, so how many is said beside it, lest a side losing more look the faster.
     """
     niri = [whole - shell for whole, shell in zip(presented, took, strict=True)]
     # Of how many, as one not usable in time says none and would leave the rest's median.
@@ -182,6 +185,8 @@ def said_of(place: str, presented: list[int], took: list[int], stalled: list[int
         if stalled
         else ""
     )
+    if left_out:
+        stalls += f"; {left_out} left out, unusable past {USABLE_S} s"
     return (
         f"lab-place {place}: {len(presented)} presented a median "
         f"{round(statistics.median(presented))} ms, p90 {p90(presented)}; the shell's frame a "
@@ -248,6 +253,7 @@ def test_each_chord_opening_is_timed(
     # on from to niri's presented frame.
     took: dict[str, list[int]] = {place: [] for place in places}
     stalled: dict[str, list[int]] = {place: [] for place in places}
+    left_out = dict.fromkeys(places, 0)
     for round_ in range(rounds):
         # Each round starts one place further on, so no place always follows the same one.
         for place in places[round_ % len(places) :] + places[: round_ % len(places)]:
@@ -270,13 +276,14 @@ def test_each_chord_opening_is_timed(
             timed[place].append(opening["presented"])
             took[place].append(cast("int", opening["took"]))
             stalled[place].extend(stall_of(shell, opening, mark, place, capsys))
+            left_out[place] += 1 if opening.get("askedEarly") else 0
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
     for place, spans in timed.items():
         with capsys.disabled():
             print(
                 os.environ.get("LAB_RUN", ""),
-                said_of(place, spans, took[place], stalled[place]),
+                said_of(place, spans, took[place], stalled[place], left_out[place]),
                 flush=True,
             )
 
