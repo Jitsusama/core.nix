@@ -18,7 +18,10 @@ pub enum NotAlone {
 }
 
 /// Holds the lock beside `marker` for as long as the file it gives is
-/// open, writing this proof's pid in it.
+/// open, writing this proof's pid in it. The lock follows the open file,
+/// which a child forked meanwhile shares until it execs, so every child
+/// a proof starts execs at once, as `Command`'s do: the file is opened
+/// close-on-exec.
 pub fn alone(marker: &Path) -> Result<fs::File, NotAlone> {
     let at = marker.with_file_name("shaper-proof.lock");
     let mut lock = fs::OpenOptions::new()
@@ -42,13 +45,22 @@ pub fn alone(marker: &Path) -> Result<fs::File, NotAlone> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn only_one_proof_runs_at_once() {
         let dir = std::env::temp_dir().join(format!("shaper-alone-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
+        // A proof gone before left its pid, longer than this one's.
+        fs::write(dir.join("shaper-proof.lock"), "99999999\n").expect("a stale lock");
         let first = alone(&marker).expect("the first proof");
+        // SAFETY: fcntl(2) reading the flags of a file this holds open.
+        let flags = unsafe { libc::fcntl(first.as_raw_fd(), libc::F_GETFD) };
+        assert!(
+            flags & libc::FD_CLOEXEC != 0,
+            "a child that execs would keep the lock"
+        );
         match alone(&marker) {
             Err(NotAlone::Another(who)) => {
                 assert_eq!(who, std::process::id().to_string(), "the holder unnamed");
@@ -59,16 +71,19 @@ mod tests {
         // flock(2) follows the open file, which a child another test forks
         // shares until it execs and close-on-exec lets go of it, so the
         // lock may outlive the drop by that moment.
-        let freed = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let freed = Instant::now() + Duration::from_secs(2);
         let next = loop {
             match alone(&marker) {
-                Err(NotAlone::Another(_)) if std::time::Instant::now() < freed => {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
+                Err(NotAlone::Another(_)) if Instant::now() < freed => {
+                    std::thread::sleep(Duration::from_millis(10));
                 }
                 next => break next,
             }
         };
-        assert!(next.is_ok(), "a proof gone still held the next: {next:?}");
+        assert!(
+            next.is_ok(),
+            "a proof gone still held the next 2 s after the drop: {next:?}"
+        );
         assert!(
             matches!(alone(&dir.join("no/such")), Err(NotAlone::Unopened(_))),
             "a lock it couldn't open taken for another proof's"
