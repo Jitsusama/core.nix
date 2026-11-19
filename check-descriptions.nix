@@ -507,8 +507,9 @@
     each named and no wait; that every node is asked at once, so two mute ones starve none, one
     slowed to three and a half seconds is still heard, and a mute one beside PipeWire's second look
     still answers within nine seconds; that an account's first 16 nodes are asked and the rest
-    named, a linked socket or node folder never asked, a mistyped flag refused while --verbose
-    isn't, and under --json no caution is said in words
+    named, a linked socket or node folder never asked, at most 64 machines named and those past
+    them counted once each, a mistyped flag refused while --verbose isn't, and under --json no
+    caution is said in words
   '';
   cargo-builds-on-their-own-filesystem = ''
     a workstation account's cargo keeps each workspace's intermediates in its folder on the
@@ -1318,7 +1319,8 @@
     go, counts the asks for a secret shown, said yes to unread and asked again though said only as
     information, keeps each disk's least free space and gravest band through a restart as the disk
     guards say them and counts once a guard that stopped beating, each other machine whose calls
-    go unheard and a mycelium node here that won't answer while it stays so, keeps a day by kind
+    go unheard, those past the most named as one, and a mycelium node here that won't answer while
+    it stays so, a look it didn't answer on mending nothing, keeps a day by kind
     and writes it with the figures cadence holds it to every half minute however busy the
     journals, and shows the three worst pains in plain words, pi's as pi's, then a line a kind,
     the gravest first; it times a launcher ready by today's line, each

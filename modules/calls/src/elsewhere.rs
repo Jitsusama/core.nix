@@ -63,6 +63,8 @@ pub struct Heard {
     pub undated: Vec<String>,
     /// Why each node here that didn't answer couldn't, naming its socket.
     pub unanswered: Vec<String>,
+    /// How many nodes here answered.
+    pub answered: usize,
     /// How many machines past the first [`MACHINES_AT_MOST`] were passed
     /// over unnamed, each by its strongest record: none of them a call or
     /// on none.
@@ -84,6 +86,7 @@ pub fn hear(runtimes: &std::path::Path) -> Heard {
         .map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(0));
     Heard {
         unanswered: asked.unanswered,
+        answered: asked.answers.len(),
         ..judge(&asked.answers, &here, now)
     }
 }
@@ -571,6 +574,32 @@ mod tests {
             AT,
         );
         assert_eq!(heard, Heard::default(), "a fresh no didn't win over untold");
+        // The stronger first, so the last record can't be what wins.
+        let heard = judge(
+            &[
+                answer(&[record("skiff", NOW, true, &json!({"call": true}))]),
+                answer(&[record("skiff", NOW, false, &json!({}))]),
+            ],
+            HERE,
+            AT,
+        );
+        assert_eq!(heard.calls, ["skiff"], "a later realm's weaker record won");
+        let first: Vec<Value> = (0..MACHINES_AT_MOST)
+            .map(|n| record(&format!("m{n:03}"), NOW, false, &json!({})))
+            .collect();
+        let heard = judge(
+            &[
+                answer(&first),
+                answer(&[record("over", NOW, true, &json!({"call": false}))]),
+                answer(&[record("over", NOW, false, &json!({}))]),
+            ],
+            HERE,
+            AT,
+        );
+        assert_eq!(
+            heard.unnamed, 0,
+            "past the most, a later realm's weaker record won"
+        );
     }
 
     #[test]

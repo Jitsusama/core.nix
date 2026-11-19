@@ -60,21 +60,46 @@ impl Follower {
     pub fn hear_peers(&mut self, at: i64) {
         if let Some(runtimes) = &self.peers {
             let heard = hear(runtimes);
-            self.see_unheard_calls(unheard(&heard), at);
+            let whole = heard.answered > 0 && heard.unanswered.is_empty();
+            self.see_look(unheard(&heard), whole, at);
         }
+    }
+
+    /// Keep whose calls go `unheard` at `at`, on a look every node here
+    /// answered unless the nodes here are among them. The tests' way in,
+    /// since a look of their own asks no node.
+    #[cfg(test)]
+    pub fn see_unheard_calls(&mut self, unheard: Vec<(String, &str)>, at: i64) {
+        let whole = !unheard.iter().any(|(thing, _)| thing == NODES);
+        self.see_look(unheard, whole, at);
     }
 
     /// Keep whose calls go `unheard` at `at`, each a thing and what's said
     /// of it: each counts once as a service's fault when it's gone unheard
     /// on every look for [`UNHEARD_FOR`], and again only after it's heard
-    /// again, a start between them or not.
-    pub fn see_unheard_calls(&mut self, unheard: Vec<(String, &str)>, at: i64) {
+    /// again, a start between them or not. A look that isn't `whole`, on
+    /// which a node here didn't answer or none did, hears less than the
+    /// last, so it mends nothing: what it didn't hear stays as it stood,
+    /// rather than counting again once the node answers.
+    fn see_look(&mut self, unheard: Vec<(String, &str)>, whole: bool, at: i64) {
         if date_of(at, &self.zone) != self.day.date {
             return;
         }
-        self.unheard_since
-            .retain(|thing, _| unheard.iter().any(|(unheard, _)| unheard == thing));
-        let mut counted = Vec::new();
+        if whole {
+            self.unheard_since
+                .retain(|thing, _| unheard.iter().any(|(unheard, _)| unheard == thing));
+        }
+        let mut counted: Vec<String> = if whole {
+            Vec::new()
+        } else {
+            self.day
+                .seeing
+                .unseen_calls
+                .iter()
+                .filter(|thing| !unheard.iter().any(|(unheard, _)| unheard == *thing))
+                .cloned()
+                .collect()
+        };
         for (thing, said) in unheard {
             let since = *self.unheard_since.entry(thing.clone()).or_insert(at);
             if self.day.seeing.unseen_calls.contains(&thing) {

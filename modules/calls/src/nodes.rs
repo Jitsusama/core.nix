@@ -293,9 +293,48 @@ fn read_line(stream: &mut UnixStream, deadline: Instant) -> io::Result<Vec<u8>> 
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+    use std::time::Instant;
+
     use rustix::process::Uid;
 
-    use super::asks;
+    use super::{Node, WITHIN, ask, asks};
+
+    #[test]
+    fn a_node_answering_as_another_account_than_its_folders_is_refused() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let socket = folder.path().join("work.sock");
+        let listener = UnixListener::bind(&socket).expect("a socket");
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut asked = String::new();
+                let _ = BufReader::new(&stream).read_line(&mut asked);
+                let _ = (&stream).write_all(b"{\"Ok\":{\"Machines\":[]}}\n");
+            }
+        });
+        let me = rustix::process::geteuid().as_raw();
+        let deadline = || Instant::now() + WITHIN;
+        let mine = Node {
+            socket: socket.clone(),
+            owner: me,
+        };
+        assert!(
+            ask(&mine, deadline()).is_ok(),
+            "its own account's node went unheard"
+        );
+        // A link swapped in for a socket would answer as whoever runs the
+        // node it reaches, not as the folder's account.
+        let swapped = Node {
+            socket,
+            owner: me.wrapping_add(1),
+        };
+        let refused = ask(&swapped, deadline()).expect_err("another account's answer was heard");
+        assert!(
+            refused.contains("answers as uid"),
+            "the refusal doesn't say whose answer it was: {refused}"
+        );
+    }
 
     #[test]
     fn root_asks_every_account_and_anyone_else_only_their_own() {

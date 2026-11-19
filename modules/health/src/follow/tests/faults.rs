@@ -341,6 +341,47 @@ fn a_node_here_nobody_answers_on_is_a_fault_once_its_time_is_up() {
 }
 
 #[test]
+fn a_look_a_node_didnt_answer_on_mends_nothing_and_counts_nothing_again() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let unheard = |names: &[&str]| -> Vec<(String, &str)> {
+        names
+            .iter()
+            .map(|name| (format!("calls on {name}"), peers::CALL_UNSEEN))
+            .collect()
+    };
+    follower.see_unheard_calls(unheard(&["skiff"]), NOON);
+    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 120 * second);
+    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 180 * second);
+    // A node restarting answers nothing for a look, so neither machine
+    // heard through it is said then.
+    follower.see_unheard_calls(
+        vec![(peers::NODES.to_owned(), peers::NODE_SILENT)],
+        NOON + 210 * second,
+    );
+    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 240 * second);
+    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 300 * second);
+    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 420 * second);
+    let errors = |name: &str| follower.day.things.get(name).map(|thing| thing.errors);
+    assert_eq!(
+        errors("calls on skiff"),
+        Some(1),
+        "a machine counted before a look a node didn't answer on was counted again after"
+    );
+    assert_eq!(
+        errors("calls on dinghy"),
+        Some(1),
+        "a machine unseen across a look a node didn't answer on lost its time"
+    );
+    assert_eq!(
+        errors(peers::NODES),
+        None,
+        "a node answering again within the three minutes was counted"
+    );
+}
+
+#[test]
 fn each_machine_and_the_nodes_whose_calls_go_unheard_are_a_thing_apart() {
     let heard = calls::elsewhere::Heard {
         unseen: vec!["skiff".to_owned()],
