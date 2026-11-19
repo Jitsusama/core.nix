@@ -388,7 +388,7 @@ in
     # unseen; it is refused instead, saying why.
     ++ lib.mapAttrsToList (realm: host: {
       assertion = !(host.environment ? NODE_OPTIONS);
-      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; drop it. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands get none of the host's.";
+      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; drop it. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get no NODE_OPTIONS from it.";
     }) cfg;
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (

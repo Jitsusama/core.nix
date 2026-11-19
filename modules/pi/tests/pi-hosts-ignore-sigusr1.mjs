@@ -46,6 +46,9 @@ function started(options) {
   const run = spawn(node, [...options, "-e", program], {
     stdio: ["pipe", "pipe", "inherit"],
   });
+  // A node that ended can't be written to; the read after says how it
+  // ended, rather than the write's EPIPE.
+  run.stdin.on("error", () => undefined);
   const lines = createInterface({ input: run.stdout })[Symbol.asyncIterator]();
   const said = async () => {
     const { value, done } = await lines.next();
@@ -79,8 +82,11 @@ try {
       throw new Error(`a node first said ${first}`);
     }
   }
-  shut.run.kill("SIGUSR1");
-  control.run.kill("SIGUSR1");
+  for (const one of [shut, control]) {
+    if (!one.run.kill("SIGUSR1")) {
+      throw new Error("a node couldn't be sent SIGUSR1");
+    }
+  }
   // Node opens its inspector on a thread of its own once the signal lands,
   // so the control is asked until it says so. The other was sent it first.
   const sent = Date.now();
