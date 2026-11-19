@@ -483,6 +483,16 @@ QtObject {
                 same({ is: "answer", name: "4" }, { is: "answer", name: "4" }),
                 same({ is: "answer", name: "4" }, { name: "4" })].join(" "),
             "false true false true false");
+        // An answer's name is the figure it says now, which every re-answer
+        // changes (again()), so it's told by the words asked (its chip), as
+        // again() keeps them: CPU's figure moving is no step to a new place,
+        // and y's flash in it stays.
+        const answer = (chip, name) => ({ is: "answer", chip, name });
+        check("an answer is told by the words asked, whatever it says now",
+            [same(answer("cpu", "4%"), answer("cpu", "5%")),
+                same(answer("cpu", "4"), answer("mem", "4")),
+                same(answer("cpu", "4"), { chip: "cpu", name: "4" })].join(" "),
+            "true false false");
 
         // Held.forgets into Held.afterLeave, over steps as the launcher
         // holds them: a place's own step, with no key, renamed as it was
