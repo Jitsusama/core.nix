@@ -847,6 +847,8 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
         f"rm -f {opened} {first} && mkdir -p {folder} && touch $XDG_RUNTIME_DIR/pi-stays"
     )
     before = {window["id"] for window in desktop.windows()}
+    noticed = starts_noticed(desktop)
+    walked_since = desktop.mark()
     try:
         # Any program of Joel's can ask the shell's catalogue, an agent among them, so From a
         # Link asked that way starts nothing: only his own Return sprouts (#5456's council).
@@ -859,6 +861,18 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
             )
         )
         assert walked.get("done") is not True, f"a walk from outside sprouted: {walked}"
+        # Nor does it put a notice on his screen, which any program could then do: once its
+        # end is journalled, when a notice would have been spawned, and a moment for one to land.
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                f" --after-cursor={shlex.quote(walked_since)}"
+                f" | grep -q {WALK_ENDED}"
+            ),
+            timeout=dt.timedelta(seconds=30),
+        )
+        machine.sleep(NOTICE_LANDS)
+        assert starts_noticed(desktop) == noticed, "a walk from outside raised a notice"
         # The launcher in a terminal walks the same way, even told --yes.
         status, said = machine.execute(
             desktop.in_session(
@@ -913,6 +927,80 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
             f" {PI_PRESENCE}/sprout.json; pkill -f 'sleep 60[0-5]'; true"
         )
         desktop.as_account("rm -rf ~/src/github.com/harbour")
+
+
+def test_new_work_that_starts_nothing_is_told_once_the_launcher_is_shut(
+    desktop: Desktop,
+) -> None:
+    """A start that started nothing says so as a notice when it ends with the launcher shut.
+
+    Joel, 2026-11-18 17:15, of a start the launcher said the end of only on its row, in a
+    launcher he'd shut five seconds after his Return: "That can never happen, things I send in
+    must be seen through." Here the node takes the ask and falls silent, so the end comes after
+    he's gone, as the agents daemon's patience runs out; the shell's journal says it too.
+    """
+    machine = desktop.machine
+    # A repository with no checkout, so the ask the node reads once it runs again starts nothing.
+    link = "https://github.com/harbour/nowhere/issues/8"
+    since = desktop.mark()
+    before = starts_noticed(desktop, UNANSWERED)
+    desktop.as_account("systemctl --user kill --signal=STOP mycelium")
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("new work", selecting="Start New Work")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+        machine.send_chars(link)
+        machine.send_key("ret")
+        # Return empties the field once it's taken the words, and then he leaves.
+        desktop.launcher_until(lambda shown: shown["typed"] == "")
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_until(lambda shown: shown["open"] is False)
+        # The daemon gives up on a silent node within 50 s, the shell on the daemon within 60.
+        told = f"[{STARTS_NOTICED} | select(.body == {json.dumps(UNANSWERED)})] | length > {before}"
+        machine.wait_until_succeeds(
+            desktop.in_session(f"jq -e {shlex.quote(told)} {desktop.NOTICES_KEPT}"),
+            timeout=dt.timedelta(seconds=90),
+        )
+        said = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(since)}"
+        )
+        assert "launcher: new work's start went unanswered; it may still start" in said, (
+            f"its end wasn't journalled: {said}"
+        )
+        # The test's own reports (report[...]), off on his machine, show the line as typed.
+        kept = [line for line in said.splitlines() if "report[" not in line]
+        assert not [line for line in kept if link in line], "the journal kept his words"
+    finally:
+        desktop.as_account("systemctl --user kill --signal=CONT mycelium")
+        desktop.launcher_left_closed()
+
+
+# Start New Work's notices, and what the agents daemon says of a start its node took and fell
+# silent on (modules/agents/src/sprout.rs's SILENT).
+WALK_ENDED = shlex.quote("launcher: new work wasn't started")
+# Seconds for a notice spawned as a walk's end is journalled to reach the notices daemon's
+# kept list, waited before saying none came: there's no event for a notice never sent.
+NOTICE_LANDS = 3
+STARTS_NOTICED = '.notices[]? | select(.app == "Agents" and .summary == "Start New Work")'
+UNANSWERED = (
+    "the node didn't answer in time; it may still start it, so look in Agents before asking again"
+)
+
+
+def starts_noticed(desktop: Desktop, body: str | None = None) -> int:
+    """Give how many notices Start New Work has raised, of `body` if named, none at first."""
+    which = STARTS_NOTICED
+    if body is not None:
+        which = f"{STARTS_NOTICED} | select(.body == {json.dumps(body)})"
+    program = shlex.quote(f"[{which}] | length")
+    return int(
+        desktop.as_account(f"jq {program} {desktop.NOTICES_KEPT} 2>/dev/null || echo 0").strip()
+    )
 
 
 def opened_focused(desktop: Desktop, before: set[int]) -> None:

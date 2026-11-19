@@ -84,7 +84,7 @@ pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> V
             _ => refused(&format!("the node's answer couldn't be read: {reply}")),
         },
         Err(Unanswered::Unreached(why)) => refused(&format!("the node couldn't be reached: {why}")),
-        Err(Unanswered::Silent) => refused(SILENT),
+        Err(Unanswered::Silent) => silent(),
     }
 }
 
@@ -97,6 +97,12 @@ enum Unanswered {
 
 fn refused(why: &str) -> Value {
     json!({"error": {"code": "unsprouted", "message": why}})
+}
+
+/// A silent node's answer, coded apart from a refusal, so the launcher
+/// journals it as a start that may yet begin rather than one that didn't.
+fn silent() -> Value {
+    json!({"error": {"code": "unanswered", "message": SILENT}})
 }
 
 /// Asks the node at `socket` for `request`, one line of its own protocol
@@ -254,15 +260,15 @@ mod tests {
             drop(stream);
         });
         let request = request_of(&ask(&json!({}))).expect("a sprout");
-        let silent = asked(&socket, &request, Duration::from_millis(200));
+        let answered = asked(&socket, &request, Duration::from_millis(200));
         assert!(
-            matches!(silent, Err(Unanswered::Silent)),
+            matches!(answered, Err(Unanswered::Silent)),
             "a node that took the ask and said nothing is silent, never unreached"
         );
         assert_eq!(
-            refused(SILENT)["error"]["message"],
-            json!(SILENT),
-            "and is said as one that may still start it"
+            silent(),
+            json!({"error": {"code": "unanswered", "message": SILENT}}),
+            "and is said as one that may still start it, coded apart from a refusal"
         );
         assert!(
             SILENT.contains("may still start it"),

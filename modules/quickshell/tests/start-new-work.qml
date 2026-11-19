@@ -65,8 +65,12 @@ QtObject {
             Sprouting.ended({ id: "ask-3", error: { code: "unsprouted",
                 message: "only the launcher starts new work here" } }, said),
             { started: false, why: "only the launcher starts new work here" });
+        Expect.same("a node the daemon heard fall silent is unanswered, in its words",
+            Sprouting.ended({ error: { code: "unanswered", message: "it may still start it" } },
+                said), { started: false, unanswered: true, why: "it may still start it" });
         Expect.same("no daemon to ask is no answer",
-            Sprouting.ended(null, said), { started: false, why: "its node didn't answer" });
+            Sprouting.ended(null, said),
+            { started: false, unanswered: true, why: "its node didn't answer" });
         Expect.same("an answer that isn't a sprout's is unread",
             Sprouting.ended({ id: "ask-3", sprouted: {} }, said),
             { started: false, why: "its node's answer couldn't be read" });
@@ -145,5 +149,42 @@ QtObject {
         Expect.same("refused says why",
             Sprouting.told({ started: false, why: "no machine can take it" }, said),
             "no machine can take it");
+
+        // Where each end is said beyond its own row, which Joel may have left.
+        const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };
+        const startedEnd = { started: true, machine: "kestrel", held: "h1" };
+        Expect.same("one refused is told why, and journalled",
+            Sprouting.reach(refusedEnd, said), {
+                journal: "new work wasn't started: /home/j isn't a repository's folder",
+                told: "/home/j isn't a repository's folder"
+            });
+        Expect.same("one unanswered is told, and journalled as one that may yet start",
+            Sprouting.reach(Sprouting.ended(null, said), said), {
+                journal: "new work's start went unanswered; it may still start",
+                told: said.unanswered
+            });
+        Expect.same("one started with no holder's id opens no window, so it's told",
+            Sprouting.reach({ started: true, machine: "kestrel", held: "" }, said), {
+                journal: "new work started on kestrel",
+                told: "started on kestrel; in Agents once up"
+            });
+        Expect.same("one held is journalled, and says itself as it comes up",
+            Sprouting.reach(startedEnd, said),
+            { journal: "new work started on kestrel", told: null });
+
+        // What the foot told is noticed as the launcher shuts unless it was read: a key
+        // pressed since and ten seconds gone, since the keys that shut it are a leaving.
+        const footed = { keys: 4, at: 1000 };
+        Expect.same("shut with no key since, it's noticed",
+            Sprouting.noticedAtShut(footed, 4, 60000), true);
+        Expect.same("shut by keys soon after, it's noticed",
+            Sprouting.noticedAtShut(footed, 7, 4000), true);
+        Expect.same("shut long after a key, it was read",
+            Sprouting.noticedAtShut(footed, 5, 20000), false);
+        Expect.same("nothing footed, nothing noticed",
+            Sprouting.noticedAtShut(null, 4, 4000), false);
+        Expect.same("a notice's body is each end, a line each, as plain text",
+            Sprouting.noticeBody(["<a href=\"x\">look</a> & see", "busy"]),
+            "&lt;a href=\"x\"&gt;look&lt;/a&gt; &amp; see\nbusy");
     }
 }

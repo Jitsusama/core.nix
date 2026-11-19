@@ -1520,15 +1520,21 @@ Provider {
         if (!Sprouting.fromJoel(launcher)) {
             sproutSays(key, words.outside);
             launcher?.walkRefused(words.outside);
+            // The walk is told, and it isn't Joel's, so only the journal
+            // says it: a notice would let any program put one on his screen.
+            console.info(`launcher: new work wasn't started: ${words.outside}`);
             return;
         }
         if (sprouting !== "") {
             sproutSays(key, words.busy);
+            sproutReaches({ started: false, why: words.busy });
             return;
         }
         const ask = Sprouting.ask(said, folder);
         if (ask === null) {
-            sproutSays(key, Sprouting.refused(said, folder, words));
+            const why = Sprouting.refused(said, folder, words);
+            sproutSays(key, why);
+            sproutReaches({ started: false, why: why });
             return;
         }
         sprouting = key;
@@ -1537,8 +1543,11 @@ Provider {
         sproutSays(key, words.starting);
         sproutPatience.restart();
         const heard = answer => {
+            const how = Sprouting.ended(answer, sproutWords());
             if (sprout === sprouts && sprouting !== "")
-                sprouted(Sprouting.ended(answer, sproutWords()));
+                sprouted(how);
+            else
+                console.info(`launcher: late, ${Sprouting.reach(how, sproutWords()).journal}`);
         };
         if (rowsKind)
             rowsKind.ask(ask, heard);
@@ -1566,6 +1575,7 @@ Provider {
         sprouting = "";
         sproutPatience.stop();
         sproutSays(key, Sprouting.told(how, sproutWords()));
+        sproutReaches(how);
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
         if (how.started && how.held !== "") {
@@ -1573,6 +1583,59 @@ Provider {
                 since: Date.now(), letters: provider.launcher?.lettersAt ?? 0 }]);
             openSprouted();
         }
+    }
+
+    // Says how a start ended beyond its own row (Sprouting.reach): in the
+    // journal always, and told Joel when it opens no window, so no start
+    // he gives ends unseen.
+    function sproutReaches(how) {
+        const reach = Sprouting.reach(how, sproutWords());
+        console.info(`launcher: ${reach.journal}`);
+        if (reach.told !== null)
+            sproutTell([reach.told]);
+    }
+    // Tells Joel how starts ended: in the foot while the card is up, and
+    // as a notice while it's shut or if it shuts soon after the foot said
+    // it (sproutFooted, Sprouting.noticedAtShut), since a shut launcher may
+    // not open for hours. That's a notice where an act's end is otherwise the
+    // foot's alone (Joel, 18 November, of a start he shut the launcher on
+    // five seconds after: "things I send in must be seen through").
+    function sproutTell(told) {
+        const launcher = provider.launcher ?? null;
+        const name = Words.name("agents:start-new-work");
+        if (launcher !== null && (launcher.open || launcher.opening)) {
+            const now = Date.now();
+            const unread = Sprouting.noticedAtShut(sproutFooted, launcher.keysTaken, now)
+                ? sproutFooted.told : [];
+            const shown = unread.concat(told).map(text => [name, text]);
+            launcher.tellOnOpen(shown, true);
+            sproutFooted = { told: unread.concat(told), keys: launcher.keysTaken, at: now,
+                shown };
+        } else {
+            sproutNoticed(told);
+        }
+    }
+    property var sproutFooted: null
+    function sproutNoticed(told) {
+        const name = Words.name("agents:start-new-work");
+        Niri.spawn(["notify-send", "--app-name=Agents", "--", name,
+            Sprouting.noticeBody(told)]);
+    }
+    // The launcher shut, or its opening was let go: what the foot said of
+    // a start, unread by Sprouting.noticedAtShut, is noticed, and the foot
+    // forgets it, so the next opening doesn't say it again.
+    function sproutShut() {
+        const footed = sproutFooted;
+        const launcher = provider.launcher ?? null;
+        sproutFooted = null;
+        if (launcher === null
+            || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
+            return;
+        sproutNoticed(footed.told);
+        if (launcher.toldOnOpen === footed.shown)
+            launcher.toldOnOpen = [];
+        if (launcher.saying === footed.shown)
+            launcher.say([]);
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
@@ -1589,8 +1652,8 @@ Provider {
     // the foot says it's up and Go To in Agents opens it. A session comes up
     // in seconds; one not up within the minute is said unopened and opens no
     // window later, when Joel may be at something else (Sprouting.settled).
-    // What a pass says goes to the foot in one tell, at once or when the
-    // launcher next opens, never as a notice.
+    // What a pass says is one tell, in the foot or as a notice as
+    // sproutTell says.
     function openSprouted() {
         const stood = Sprouting.settled(openings, one => sessionOf(one), Date.now(),
             openingPatience);
@@ -1604,8 +1667,7 @@ Provider {
                 told.push(text);
         });
         if (told.length > 0)
-            provider.launcher?.tellOnOpen(told.map(text => [Words.name("agents:start-new-work"),
-                text]));
+            sproutTell(told);
     }
     function sessionOf(one) {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
@@ -1763,8 +1825,16 @@ Provider {
             provider.wrapAhead();
             provider.wrapForTyping();
             // Shut, no drawer shows, so none is watched.
-            if (!provider.launcher.open)
+            if (!provider.launcher.open) {
                 provider.drawerWanted = "";
+                provider.sproutShut();
+            }
+        }
+        // An opening let go before it showed shuts as well: a tell told it
+        // waits for an opening that may be hours off.
+        function onOpeningChanged() {
+            if (!provider.launcher.opening && !provider.launcher.open)
+                provider.sproutShut();
         }
     }
 
