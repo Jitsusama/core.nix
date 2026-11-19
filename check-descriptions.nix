@@ -1968,7 +1968,8 @@
     its day only off the reading's and a lease's time left, and how each set of cells and each
     machine stands and why, worst first, its form, its share and the balance's flags, what each
     set of cells, receptor and cell is doing and how much of the talk asked or found something,
-    and what each spent today, most first, ten to a list and the rest counted and summed
+    what each spent today, most first, ten to a list and the rest counted and summed, and what
+    waits on each cell and what holds stand, oldest first, said as the page names each
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed

@@ -8,6 +8,7 @@ the realm drawn, follow a change within its pace, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
 list what each cell, machine, network and branch spent today, most first,
+say what waits on a cell and what holds stand, as the node judges them,
 draw a receptor's feeding of a cell while the node says it and not after,
 grow one network out of another while a forage says a cell of the one
 started a cell of the other,
@@ -60,11 +61,11 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 24 files since the balance, who started each cell, the tree beside the map,
+# 25 files since the balance, who started each cell, the tree beside the map,
 # what each thing is in words, how a time is said, how each thing stands, what
-# each is doing and what each spent were read in modules of their own, and one
-# spare; about 706 KB, with room above.
-BUDGET = Budget(files=25, kilobytes=745, elements=590)
+# each is doing, what each spent and what waits were read in modules of their
+# own, and one spare; about 708 KB, with room above.
+BUDGET = Budget(files=26, kilobytes=745, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -99,6 +100,15 @@ FED_CELL_TITLE = "Rig The Skiff"
 # and two seconds more are left so it is drawn before it goes.
 FED_DRAWN_MS = 2 * PACE_MS
 FED_ENDING_S = FED_DRAWN_MS // 1000 + 2
+# TERN03's question to HERON1, ten minutes old and unanswered, and GULL01's
+# hold on the skiff's network and the harbour repository, five minutes old
+# with most of an hour left; and the names Now and HERON1's drawer give each.
+ASKER, WAITED, HOLDER = "TERN03", "HERON1", "GULL01"
+ASKED_AGO, HELD_AGO, HELD_FOR = timedelta(minutes=10), timedelta(minutes=5), timedelta(hours=1)
+HELD_ON = ["orchestration.skiff1", "repo.harbour"]
+ASKER_SHORT, WAITED_SHORT, HOLDER_SHORT = "Count the Cleats", "Chart The Harbour", "Paint The Hull"
+ASKED_WORDS = f"a question waiting; it came from {ASKER_SHORT} 10 min ago, with no answer yet"
+HELD_WORDS = "holding Rig the Skiff for the Season and the harbour repository"
 # HERON1, which leads node.json's Chart the Harbour, said by its forage to
 # have been started by SKIFF1, which leads Rig the Skiff, so the one network
 # grows out of the other; and the names the two drawers head them with.
@@ -265,6 +275,38 @@ def fed() -> dict[str, list[dict[str, object]]]:
     return {**reading, "fed": [feeding(FED_CELL)]}
 
 
+def unanswered(key: str, sender: str, ago: timedelta, **said: object) -> dict[str, object]:
+    """Make what the node judges waits on the mesh, sent by `sender` `ago` before now."""
+    since = datetime.now(UTC) - ago
+    return {
+        "key": f"unanswered:{key}",
+        "kind": "unanswered",
+        "heard": int(since.timestamp() * 1000),
+        "id": key,
+        "from": sender,
+        "since": since.isoformat().replace("+00:00", "Z"),
+        "text": "what was said",
+        **said,
+    }
+
+
+def waiting() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with ASKER's question waiting on WAITED and HOLDER's hold standing."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    asked = unanswered(
+        "asked", ASKER, ASKED_AGO, intent="question", groups=[f"peer.{WAITED.lower()}"]
+    )
+    held = unanswered("held", HOLDER, HELD_AGO, intent="hold", groups=HELD_ON)
+    until = datetime.now(UTC) + HELD_FOR
+    return {
+        **reading,
+        "unanswered": [
+            {**asked, "waiting_on": [WAITED]},
+            {**held, "waiting_on": [], "until": until.isoformat().replace("+00:00", "Z")},
+        ],
+    }
+
+
 def foraging() -> dict[str, list[dict[str, object]]]:
     """Node.json's realm with forages served, none of them yet, as a node serves the kind."""
     reading = json.loads((HERE / "node.json").read_text())["kinds"]
@@ -314,6 +356,18 @@ def fed_node(tmp_path: Path) -> Iterator[StandIn]:
 @pytest.fixture
 def fed_served(tmp_path: Path, fed_node: StandIn) -> Iterator[Served]:
     yield from serve(tmp_path, fed_node)
+
+
+@pytest.fixture
+def waiting_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "waiting.sock", "node", waiting()).start()
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def waiting_served(tmp_path: Path, waiting_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, waiting_node)
 
 
 @pytest.fixture
@@ -896,6 +950,46 @@ def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> 
     assert said[: len(skiff)] == skiff, (
         f"the skiff's fold should count its own cells beside its branch: {said}"
     )
+
+
+def day_clock(said: object, now: datetime) -> str:
+    """Say a time as when.ts's dayClock does against `now`, in the zone the browser shares."""
+    t = datetime.fromisoformat(str(said)).astimezone()
+    days = (t.date() - now.astimezone().date()).days
+    hm = f"{t:%H:%M}"
+    near = {0: hm, -1: f"yesterday at {hm}", 1: f"tomorrow at {hm}"}
+    return near.get(days, f"{t:%-d %b} at {hm}")
+
+
+def test_what_waits_and_what_holds_are_said_as_the_node_judges(
+    browser: Browser, waiting_served: Served, waiting_node: StandIn
+) -> None:
+    root, _ = waiting_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        page.locator("#map-view").focus()
+        page.keyboard.press(".")
+        body = page.locator("#panel-body")
+        expect(body, "Now never listed the holds standing").to_contain_text("Holds Standing")
+        now = datetime.now(UTC)
+        held = waiting_node.records["unanswered"]["unanswered:held"]
+        until = f"{day_clock(held['until'], now)} at most"
+        waits = ["Questions Waiting", WAITED_SHORT, ASKED_WORDS, "Holds Standing", HOLDER_SHORT]
+        waits.append(f"{HELD_WORDS} since {day_clock(held['since'], now)}, until {until}")
+        lines = [line for line in body.inner_text().splitlines() if line.strip()]
+        first = lines.index(waits[0]) if waits[0] in lines else len(lines)
+        said = lines[first : first + len(waits)]
+        assert said == waits, f"Now misread what waits and what holds: {said}"
+        page.evaluate(f"location.hash = '#cell={WAITED}'")
+        title = page.locator("#panel-title")
+        expect(title, f"{WAITED}'s drawer never opened").to_have_text(WAITED_SHORT)
+        asked = waiting_node.records["unanswered"]["unanswered:asked"]
+        owed = f"{ASKER_SHORT}'s question waiting since {day_clock(asked['since'], now)}"
+        expect(body, f"{WAITED}'s health left out the question waiting on it").to_contain_text(owed)
+    finally:
+        opened.close()
 
 
 def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) -> None:
