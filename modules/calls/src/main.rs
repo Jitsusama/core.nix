@@ -155,10 +155,13 @@ fn cautions(peers: &calls::elsewhere::Heard) -> Vec<String> {
         .iter()
         .map(|why| format!("{why}, so its peers' calls go unheard"));
     let unnamed = (peers.unnamed > 0).then(|| {
+        let past = match peers.unnamed {
+            1 => "1 machine past them goes".to_owned(),
+            many => format!("{many} machines past them go"),
+        };
         format!(
-            "the nodes here list more than {} machines, so {} machines past them go unnamed",
-            calls::elsewhere::MACHINES_AT_MOST,
-            peers.unnamed
+            "the nodes here list more than {} machines, so {past} unnamed",
+            calls::elsewhere::MACHINES_AT_MOST
         )
     });
     unseen

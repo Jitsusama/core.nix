@@ -5,6 +5,18 @@
 
 use super::*;
 
+/// A look on which `unseen` machines went unseen, `answered` nodes here
+/// answered and those `unanswered` didn't.
+fn look(unseen: &[&str], answered: usize, unanswered: &[&str]) -> calls::elsewhere::Heard {
+    let owned = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
+    calls::elsewhere::Heard {
+        unseen: owned(unseen),
+        unanswered: owned(unanswered),
+        answered,
+        ..calls::elsewhere::Heard::default()
+    }
+}
+
 #[test]
 fn a_lid_gone_wrong_is_a_devices_fault_once() {
     let into = tempfile::tempdir().expect("a folder");
@@ -244,18 +256,17 @@ fn a_disk_guard_that_stopped_is_a_services_fault_once() {
 fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
     let into = tempfile::tempdir().expect("a folder");
     let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
-    let unheard = |names: &[&str]| {
-        names
-            .iter()
-            .map(|name| ((*name).to_owned(), peers::CALL_UNSEEN))
-            .collect()
-    };
+    let unheard = |names: &[&str]| look(names, 1, &[]);
     let second = 1_000_000;
-    let errors = |day: &Day, name: &str| day.things.get(name).map(|thing| thing.errors);
+    let errors = |day: &Day, name: &str| {
+        day.things
+            .get(&format!("calls on {name}"))
+            .map(|thing| thing.errors)
+    };
     // A blip, mended within the three minutes, counts nothing.
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy", "skerry"]), NOON);
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 30 * second);
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 179 * second);
+    follower.see_heard(&unheard(&["skiff", "dinghy", "skerry"]), NOON);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 30 * second);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 179 * second);
     assert_eq!(
         (
             errors(&follower.day, "skiff"),
@@ -264,8 +275,11 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
         (None, None),
         "a machine unseen under three minutes was counted"
     );
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy", "skerry"]), NOON + 180 * second);
-    follower.see_unheard_calls(unheard(&["skiff"]), NOON + 210 * second);
+    follower.see_heard(
+        &unheard(&["skiff", "dinghy", "skerry"]),
+        NOON + 180 * second,
+    );
+    follower.see_heard(&unheard(&["skiff"]), NOON + 210 * second);
     follower.write().expect("the day is written");
     let day = read(into.path(), "2026-11-12");
     assert_eq!(
@@ -278,11 +292,11 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
         "each machine unseen for three minutes wasn't one fault, or one heard between was"
     );
     assert_eq!(
-        day.things["skiff"].kind,
+        day.things["calls on skiff"].kind,
         Some(Kind::Services),
         "an unseen machine isn't a service's fault"
     );
-    let said: Vec<&str> = day.things["skiff"]
+    let said: Vec<&str> = day.things["calls on skiff"]
         .signatures
         .values()
         .map(|said| said.example.as_str())
@@ -292,8 +306,8 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
     // A restart keeps what's still unseen, so it isn't counted again,
     // even once the restarted follower has seen it unseen as long.
     let mut again = Follower::new("2026-11-12", into.path(), TimeZone::UTC).resuming(day);
-    again.see_unheard_calls(unheard(&["skiff"]), NOON + 240 * second);
-    again.see_unheard_calls(unheard(&["skiff"]), NOON + 420 * second);
+    again.see_heard(&unheard(&["skiff"]), NOON + 240 * second);
+    again.see_heard(&unheard(&["skiff"]), NOON + 420 * second);
     assert_eq!(
         errors(&again.day, "skiff"),
         Some(1),
@@ -302,13 +316,13 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
 
     // dinghy, seen again since, counts again once it's unseen again for
     // as long.
-    again.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 450 * second);
+    again.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 450 * second);
     assert_eq!(
         errors(&again.day, "dinghy"),
         Some(1),
         "a machine unseen again was counted at once"
     );
-    again.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 630 * second);
+    again.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 630 * second);
     assert_eq!(
         errors(&again.day, "dinghy"),
         Some(2),
@@ -345,39 +359,65 @@ fn a_look_a_node_didnt_answer_on_mends_nothing_and_counts_nothing_again() {
     let into = tempfile::tempdir().expect("a folder");
     let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
     let second = 1_000_000;
-    let unheard = |names: &[&str]| -> Vec<(String, &str)> {
-        names
-            .iter()
-            .map(|name| (format!("calls on {name}"), peers::CALL_UNSEEN))
-            .collect()
-    };
-    follower.see_unheard_calls(unheard(&["skiff"]), NOON);
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 120 * second);
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 180 * second);
-    // A node restarting answers nothing for a look, so neither machine
-    // heard through it is said then.
-    follower.see_unheard_calls(
-        vec![(peers::NODES.to_owned(), peers::NODE_SILENT)],
-        NOON + 210 * second,
-    );
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 240 * second);
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 300 * second);
-    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 420 * second);
-    let errors = |name: &str| follower.day.things.get(name).map(|thing| thing.errors);
+    let errors = |day: &Day, name: &str| day.things.get(name).map(|thing| thing.errors);
+    let unheard = |names: &[&str]| look(names, 1, &[]);
+    follower.see_heard(&unheard(&["skiff"]), NOON);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 120 * second);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 180 * second);
+    // A node restarting answers nothing for a look while another answers,
+    // so neither machine heard through it is said then; nor on a look
+    // that found no node.
+    follower.see_heard(&look(&[], 1, &["work.sock"]), NOON + 210 * second);
+    follower.see_heard(&look(&[], 0, &[]), NOON + 225 * second);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 240 * second);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 300 * second);
     assert_eq!(
-        errors("calls on skiff"),
+        errors(&follower.day, "calls on dinghy"),
+        Some(1),
+        "a machine unseen across a look a node didn't answer on lost its time"
+    );
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 420 * second);
+    assert_eq!(
+        errors(&follower.day, "calls on skiff"),
         Some(1),
         "a machine counted before a look a node didn't answer on was counted again after"
     );
     assert_eq!(
-        errors("calls on dinghy"),
+        errors(&follower.day, "calls on dinghy"),
         Some(1),
-        "a machine unseen across a look a node didn't answer on lost its time"
+        "a machine unseen across a look a node didn't answer on was counted twice"
     );
     assert_eq!(
-        errors(peers::NODES),
+        errors(&follower.day, peers::NODES),
         None,
         "a node answering again within the three minutes was counted"
+    );
+}
+
+#[test]
+fn a_node_that_stays_mute_keeps_no_machines_time_for_ever() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let errors = |day: &Day| day.things.get("calls on skiff").map(|thing| thing.errors);
+    // One node of two stays mute all along, while skiff, heard through
+    // the other, blips unseen once and is heard for ten minutes.
+    let mute = |unseen: &[&str]| look(unseen, 1, &["work.sock"]);
+    follower.see_heard(&mute(&["skiff"]), NOON);
+    for minute in 1..=10 {
+        follower.see_heard(&mute(&[]), NOON + minute * 60 * second);
+    }
+    follower.see_heard(&mute(&["skiff"]), NOON + 660 * second);
+    assert_eq!(
+        errors(&follower.day),
+        None,
+        "a machine unseen ten minutes before was counted at once, beside a mute node"
+    );
+    follower.see_heard(&mute(&["skiff"]), NOON + 840 * second);
+    assert_eq!(
+        errors(&follower.day),
+        Some(1),
+        "a machine unseen three minutes beside a mute node wasn't counted"
     );
 }
 

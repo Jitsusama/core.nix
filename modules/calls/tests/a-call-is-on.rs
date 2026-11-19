@@ -12,8 +12,9 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -28,17 +29,20 @@ struct World {
     stand_ins: PathBuf,
 }
 
-impl World {
-    fn new() -> World {
-        let dir = tempfile::tempdir().expect("a folder");
-        let runtimes = dir.path().join("user");
-        let stand_ins = dir.path().join("bin");
-        fs::create_dir_all(&runtimes).expect("runtimes");
+/// The folder of stand-ins every world runs, its pw-dump written once
+/// before any test starts a program: a script written while another
+/// thread forks is held open for writing in the child, so running it
+/// fails as busy. It's written under a name of its own and renamed into
+/// place, so another run of these tests never runs it half-written.
+fn stand_ins() -> &'static Path {
+    static STAND_INS: OnceLock<PathBuf> = OnceLock::new();
+    STAND_INS.get_or_init(|| {
+        let stand_ins = Path::new(env!("CARGO_TARGET_TMPDIR")).join("a-call-is-on");
         fs::create_dir_all(&stand_ins).expect("stand-ins");
         let shell = std::env::var("STAND_IN_SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
-        let dump = stand_ins.join("pw-dump");
+        let written = stand_ins.join(format!("pw-dump.{}", std::process::id()));
         fs::write(
-            &dump,
+            &written,
             format!(
                 "#!{shell}\nPATH='{}'\nhere=$XDG_RUNTIME_DIR\n\
                  [ -e \"$here/fails\" ] && exit 1\n\
@@ -49,15 +53,26 @@ impl World {
             ),
         )
         .expect("pw-dump");
-        fs::set_permissions(&dump, fs::Permissions::from_mode(0o755)).expect("runnable");
+        fs::set_permissions(&written, fs::Permissions::from_mode(0o755)).expect("runnable");
+        fs::rename(&written, stand_ins.join("pw-dump")).expect("pw-dump in place");
+        stand_ins
+    })
+}
+
+impl World {
+    fn new() -> World {
+        let dir = tempfile::tempdir().expect("a folder");
+        let runtimes = dir.path().join("user");
+        fs::create_dir_all(&runtimes).expect("runtimes");
         World {
             _dir: dir,
             runtimes,
-            stand_ins,
+            stand_ins: stand_ins().to_path_buf(),
         }
     }
 
-    /// An account's runtime folder with PipeWire running, showing `graph`.
+    /// An account's runtime folder with PipeWire running, showing `graph`;
+    /// the stand-in pw-dump reads it through `XDG_RUNTIME_DIR`.
     fn account(&self, uid: &str, graph: &str) -> PathBuf {
         let folder = self.runtimes.join(uid);
         fs::create_dir_all(&folder).expect("a runtime folder");
@@ -503,10 +518,34 @@ fn a_node_folder_crowded_past_its_most_entries_is_named() {
         fs::write(folder.join(format!("left-{n}")), "").expect("an entry");
     }
     let told = world.told(&[world.runtimes()]);
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "a crowded node folder was a wait: {told:?}"
+    );
     assert!(
         String::from_utf8_lossy(&told.stderr).contains("holds more than 256 entries"),
         "a crowded node folder wasn't named: {told:?}"
     );
+}
+
+#[test]
+fn a_node_answering_what_isnt_a_list_of_machines_is_named() {
+    // What a node says once mycelium answers otherwise than it does now.
+    for (says, named) in [
+        (&b"not a list\n"[..], "answered no JSON"),
+        (&b"{\"Ok\":{\"Machines\":{}}}\n"[..], "listed no machines"),
+    ] {
+        let world = World::new();
+        world.account("1000", "[]");
+        misbehaving(&world, "work", says.to_vec());
+        let told = world.told(&[world.runtimes()]);
+        assert_eq!(told.status.code(), Some(1), "{named} was a wait: {told:?}");
+        assert!(
+            String::from_utf8_lossy(&told.stderr).contains(named),
+            "it didn't say the node {named}: {told:?}"
+        );
+    }
 }
 
 #[test]

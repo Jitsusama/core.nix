@@ -60,48 +60,47 @@ impl Follower {
     pub fn hear_peers(&mut self, at: i64) {
         if let Some(runtimes) = &self.peers {
             let heard = hear(runtimes);
-            let whole = heard.answered > 0 && heard.unanswered.is_empty();
-            self.see_look(unheard(&heard), whole, at);
+            self.see_heard(&heard, at);
         }
     }
 
-    /// Keep whose calls go `unheard` at `at`, on a look every node here
-    /// answered unless the nodes here are among them. The tests' way in,
-    /// since a look of their own asks no node.
-    #[cfg(test)]
-    pub fn see_unheard_calls(&mut self, unheard: Vec<(String, &str)>, at: i64) {
-        let whole = !unheard.iter().any(|(thing, _)| thing == NODES);
-        self.see_look(unheard, whole, at);
-    }
-
-    /// Keep whose calls go `unheard` at `at`, each a thing and what's said
-    /// of it: each counts once as a service's fault when it's gone unheard
-    /// on every look for [`UNHEARD_FOR`], and again only after it's heard
-    /// again, a start between them or not. A look that isn't `whole`, on
-    /// which a node here didn't answer or none did, hears less than the
-    /// last, so it mends nothing: what it didn't hear stays as it stood,
-    /// rather than counting again once the node answers.
-    fn see_look(&mut self, unheard: Vec<(String, &str)>, whole: bool, at: i64) {
+    /// Keep whose calls `heard` says go unheard at `at`: each counts once
+    /// as a service's fault when it's gone unheard on every look for
+    /// [`UNHEARD_FOR`], and again only after it's heard again, a start
+    /// between them or not. A look on which a node here didn't answer, or
+    /// none did, hears less than the last, so what it doesn't hear isn't
+    /// heard: each such thing keeps its time and its count while it was
+    /// unheard within [`UNHEARD_FOR`], so a node restarting counts nothing
+    /// again, and one that stays mute keeps no time for ever.
+    pub fn see_heard(&mut self, heard: &Heard, at: i64) {
         if date_of(at, &self.zone) != self.day.date {
             return;
         }
-        if whole {
-            self.unheard_since
-                .retain(|thing, _| unheard.iter().any(|(unheard, _)| unheard == thing));
-        }
-        let mut counted: Vec<String> = if whole {
-            Vec::new()
-        } else {
-            self.day
-                .seeing
-                .unseen_calls
-                .iter()
-                .filter(|thing| !unheard.iter().any(|(unheard, _)| unheard == *thing))
-                .cloned()
-                .collect()
-        };
-        for (thing, said) in unheard {
-            let since = *self.unheard_since.entry(thing.clone()).or_insert(at);
+        let unheard = unheard(heard);
+        let whole = heard.answered > 0 && heard.unanswered.is_empty();
+        let in_look = |thing: &str| unheard.iter().any(|(unheard, _)| unheard == thing);
+        let lately = |spell: &Spell| !whole && at - spell.last < UNHEARD_FOR;
+        // A thing counted before a start has no spell yet, so it stays
+        // counted until a whole look or one that hears it unheard.
+        let mut counted: Vec<String> = self
+            .day
+            .seeing
+            .unseen_calls
+            .iter()
+            .filter(|thing| {
+                !whole && !in_look(thing) && self.unheard_since.get(*thing).is_none_or(lately)
+            })
+            .cloned()
+            .collect();
+        self.unheard_since
+            .retain(|thing, spell| in_look(thing) || lately(spell));
+        for (thing, said) in unheard.iter().cloned() {
+            let spell = self.unheard_since.entry(thing.clone()).or_insert(Spell {
+                since: at,
+                last: at,
+            });
+            spell.last = at;
+            let since = spell.since;
             if self.day.seeing.unseen_calls.contains(&thing) {
                 counted.push(thing);
             } else if at - since >= UNHEARD_FOR {
@@ -115,6 +114,13 @@ impl Follower {
             self.changed = true;
         }
     }
+}
+
+/// How long a thing whose calls go unheard has gone so: since when, on
+/// every look that heard it, and when a look last heard it unheard.
+pub(super) struct Spell {
+    since: i64,
+    last: i64,
 }
 
 /// Whose calls `heard` says go unheard, each a thing and what's said of
