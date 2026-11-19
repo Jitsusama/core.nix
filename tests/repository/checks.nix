@@ -63,7 +63,7 @@
   # Quickshell's JavaScript lacks some of the language's newer methods, which
   # qmllint lets through and the shell fails on only as it runs, so the
   # shell's code calls none of them, in Quickshell's module and in every
-  # module that gives the shell a file. Spotify's Escape script and the
+  # module that gives the shell a file. Spotify's keys script and the
   # mycelium map's drawing run in a browser, which has them, so they alone
   # are left out (tests/repository/the-desktop-speaks-its-javascript.sh).
   the-desktop-speaks-its-javascript =
@@ -166,9 +166,27 @@
   # Every module core offers is brought into an example machine, by a role,
   # a hardware model, the example itself or another module, so it meets the
   # others there and two that clash fail the example, not a machine
-  # (tests/repository/every-module-meets-the-others.sh).
+  # (tests/repository/every-module-meets-the-others.sh). A made-up module
+  # whose own folder alone names it shows that folder doesn't count.
   every-module-meets-the-others =
     let
+      script = "${lib.getExe pkgs.bash} ${./every-module-meets-the-others.sh}";
+      # foo, which only its own folder names, and bar, which foo's names.
+      madeUp = {
+        outputs = pkgs.writeText "made-up" (
+          lib.concatLines (
+            map (name: "nixosModules ${name}") [
+              "foo"
+              "bar"
+            ]
+          )
+        );
+        said = pkgs.writeText "said" ''
+          No role, hardware, example or other module brings these, so they meet
+          the rest only on a machine; import each in an example (examples/):
+            nixosModules.foo
+        '';
+      };
       offered = system: map (name: "${system} ${name}") (lib.attrNames self.${system});
       outputs = lib.concatMap offered [
         "homeModules"
@@ -177,8 +195,13 @@
       ];
     in
     pkgs.runCommandLocal "every-module-meets-the-others" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
-      ${lib.getExe pkgs.bash} ${./every-module-meets-the-others.sh} ${../..} \
-        ${pkgs.writeText "outputs" (lib.concatLines outputs)}
+      ${script} ${../..} ${pkgs.writeText "outputs" (lib.concatLines outputs)}
+      mkdir -p made-up/roles made-up/hardware made-up/examples made-up/modules/foo
+      touch made-up/flake.nix; echo '"../foo/a.nix" "../bar/a.nix"' >made-up/modules/foo/b.nix
+      if ${script} made-up ${madeUp.outputs} 2>said; then
+        echo "It counted a module that only its own folder names as brought." >&2; exit 1
+      fi
+      diff ${madeUp.said} said
       touch $out
     '';
 
@@ -216,25 +239,147 @@
     '';
 
   # Every path pattern merge-net's must-run.txt, ruff.toml's per-file
-  # ignores and what treefmt leaves unread give still names a file
+  # ignores, what treefmt leaves unread and what this folder's scripts and
+  # checks tell ripgrep to leave out give still names a file
   # (tests/repository/every-pattern-names-a-file.py), since none of the tools
   # says when one matches nothing, and a file moved from under one would
-  # quietly drop its VM tests from the net or its ignores from ruff, and
-  # the next file to take its name would go unlinted. It's given the files'
-  # paths, not what they hold, so only a file added, moved or removed runs it
-  # again, and the checks' names, which an area naming a check matches.
+  # quietly drop its VM tests from the net or its ignores from ruff, the
+  # next file to take its name would go unlinted, and a script would read
+  # the file it meant to leave out. It's given the files' paths, not what
+  # they hold, the checks' names, which an area naming a check matches, and
+  # each file's ripgrep exclusions, read from it here, so only a file added,
+  # moved or removed, or an exclusion changed, runs it again. It reads
+  # those against the root, which each script searches from, so it can't
+  # see a script searching from somewhere else, nor a pattern the shell or
+  # Nix fills in, nor a flag joined to others, as -lg. A made-up tree and
+  # script show it reads each spelling, says each way a pattern names
+  # nothing, and no way one names a file.
   every-pattern-names-a-file =
     let
-      paths = map (file: lib.removePrefix "./" (lib.path.removePrefix ../.. file)) (
-        lib.fileset.toList ../..
+      check = "${lib.getExe pkgs.python3} ${./every-pattern-names-a-file.py}";
+      relative = file: lib.removePrefix "./" (lib.path.removePrefix ../.. file);
+      paths = map relative (lib.fileset.toList ../..);
+      # Each `-g`, `--glob` or `--iglob` given a `!`, quoted or not, a line at
+      # a time once a `\` has joined a line to the next, and past a comment,
+      # since a comment may quote one. A quoted pattern runs to its quote
+      # and a bare one to a space or what ends a command. A line holding
+      # more such flags with a later `!` than it reads, or ending in a bare
+      # flag, gives the line with no flag, so the check says it can't read it
+      # rather than passing it by. The made-up script below splices in its
+      # `!` and its one bare flag, so this file's own reading finds neither.
+      bang = "!";
+      flag = "(-g|--glob|--iglob)";
+      quoted = "['\"]${bang}([^'\"]*)";
+      bare = "${bang}([^'\" \t;)|&]*)";
+      exclusion = "${flag}['\"]?[ =]*\\\\?(${quoted}|${bare})";
+      flagged = "${flag}[^${bang}]*${bang}";
+      ending = ".*${flag}['\"]?";
+      leftOut =
+        name: text:
+        let
+          joined = builtins.replaceStrings [ "\\\n" ] [ " " ] text;
+          trimmed = map lib.trim (lib.splitString "\n" joined);
+          lines = lib.filter (line: !lib.hasPrefix "#" line) trimmed;
+          matches = regex: line: lib.filter lib.isList (builtins.split regex line);
+          pattern = match: lib.findFirst (group: group != null) "" (lib.drop 2 match);
+          row = match: lib.optional (pattern match != "") "${lib.head match}\t${pattern match}";
+          found = line: lib.concatMap row (matches exclusion line);
+          flags = line: lib.length (matches flagged line);
+          unread = line: flags line > lib.length (found line) || builtins.match ending line != null;
+          said = line: if unread line then [ "\t${line}" ] else found line;
+        in
+        map (fields: "${name}\t${fields}") (lib.concatMap said lines);
+      read = file: leftOut (relative file) (builtins.readFile file);
+      here = lib.concatMap read sources;
+      sources = lib.fileset.toList (
+        lib.fileset.fileFilter (file: file.hasExt "sh" || file.hasExt "nix") ./.
       );
+      stale =
+        pattern:
+        "t.sh tells ripgrep to leave out ${pattern}, which matches no file: "
+        + "point it at where the file is now, or take it off.";
+      unreadable =
+        line:
+        "t.sh holds a ripgrep exclusion this check can't read, in ${line}: "
+        + "write its pattern out in full after the flag.";
+      glob = "--glob";
+      madeUp = {
+        paths = [
+          "flake.nix"
+          "README.md"
+          "modules/spotify/speaks-vims-keys.js"
+          "modules/theme/glyphs.nix"
+          "modules/a/tests/case.py"
+          "tests/x.py"
+          "y/x"
+        ];
+        # Each spelling ripgrep takes, and some it takes that this can't read.
+        # Kept in Nix because it's text the check reads and never runs, its
+        # splices keeping its exclusions out of this file's own reading.
+        script = ''
+          # rg --glob '${bang}gone.js', which a comment only quotes
+          rg --glob '${bang}modules/spotify/backs-out.js' --glob "${bang}modules/*.js"
+          rg -g ${bang}modules/*/speaks-vims-keys.js -g'${bang}**/tests/**'
+          rg --glob=${bang}modules/theme/**/glyphs.nix --glob '${bang}/flake.nix'
+          rg --glob '${bang}tests/' --glob '${bang}x/' --glob '${bang}x' --glob '${bang}a/'
+          rg --iglob '${bang}readme.MD' --glob '${bang}readme.MD' --glob '${bang}{a,b}.js'
+          rg --glob "${bang}$name/**" --glob '${bang}spotify/speaks-vims-keys.js'
+          rg --glob '${bang}/x' --glob '${bang}[^z]lake.nix' $(rg -l -g ${bang}y/x)
+          rg -g ${bang}tests/x.py; rg --glob \${bang}flake.nix | rg --glob '${bang}modules/a dir/**'
+          lib.escapeShellArgs [ "--glob" "${bang}README.md" ]
+          rg --glob \
+            '${bang}gone/b.js'
+          rg --glob '${bang}README.md' --glob "$(printf '${bang}%s' x)"
+          rg --glob '${bang}'modules/x.js
+          lib.escapeShellArgs [
+            "${glob}"
+            "${bang}README.md"
+          ]
+        '';
+        # The file gone, a * that stops at a slash, a folder that's only a
+        # file, a name in another case, braces, a path that holds a slash and
+        # so starts at the root, one a leading slash anchors there, a quoted
+        # one holding a space, one a `\` carries to the next line, and three
+        # lines it can't read; nothing else.
+        said =
+          map stale [
+            "modules/spotify/backs-out.js"
+            "modules/*.js"
+            "x/"
+            "readme.MD"
+          ]
+          ++ [
+            (
+              "t.sh tells ripgrep to leave out {a,b}.js, whose braces this check can't read: "
+              + "give each choice a glob of its own."
+            )
+          ]
+          ++ map stale [
+            "spotify/speaks-vims-keys.js"
+            "/x"
+            "modules/a dir/**"
+            "gone/b.js"
+          ]
+          ++ map unreadable [
+            "rg --glob '${bang}README.md' --glob \"$(printf '${bang}%s' x)\""
+            "rg --glob '${bang}'modules/x.js"
+            "\"${glob}\""
+          ];
+      };
+      written = name: lines: pkgs.writeText name (lib.concatLines lines);
     in
+    # A reading that found nothing would pass every tree.
+    assert lib.assertMsg (here != [ ]) "every-pattern-names-a-file read no exclusion here.";
     pkgs.runCommandLocal "every-pattern-names-a-file" { } ''
-      ${lib.getExe pkgs.python3} ${./every-pattern-names-a-file.py} \
-        ${../../tools/merge-net/must-run.txt} ${../../ruff.toml} \
-        ${pkgs.writeText "unread" (lib.concatLines formatterExcludes)} \
-        ${pkgs.writeText "paths" (lib.concatLines paths)} \
-        ${pkgs.writeText "checks" (lib.concatLines (lib.attrNames self.checks.x86_64-linux))}
+      ${check} ${../../tools/merge-net/must-run.txt} ${../../ruff.toml} \
+        ${written "unread" formatterExcludes} ${written "paths" paths} \
+        ${written "checks" (lib.attrNames self.checks.x86_64-linux)} \
+        ${written "left-out" here}
+      if ${check} /dev/null /dev/null /dev/null ${written "made-up" madeUp.paths} /dev/null \
+        ${written "made-up-left-out" (leftOut "t.sh" madeUp.script)} 2>said; then
+        echo "It passed a made-up tree's patterns that name nothing." >&2; exit 1
+      fi
+      diff ${written "said" madeUp.said} said
       touch $out
     '';
 }

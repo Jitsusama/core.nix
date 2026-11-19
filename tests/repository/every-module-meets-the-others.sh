@@ -9,26 +9,26 @@
 # model, an example or a machine flake.nix builds itself, such as the
 # guide's stick, names it as an output, or a role, a hardware model or
 # another module imports its file by path. Checks and tests don't count,
-# since they build a module alone rather than beside the others.
+# since they build a module alone rather than beside the others, and nor
+# does the module's own folder. It searches from the repository's root,
+# since ripgrep reads a glob holding a slash from where it runs.
 set -euo pipefail
 
-repository=$1
-outputs=$2
+outputs=$(realpath "$2")
+cd "$1"
 
 unbrought=()
 while read -r system name; do
   # A name ends where a character a name can't hold follows, so guide isn't
   # taken as brought where only guide-stick is.
   named="$system\\.$name([^a-z0-9_-]|\$)"
-  if rg --quiet --glob '*.nix' "$named" \
-    "$repository/roles" "$repository/hardware" "$repository/examples" ||
-    rg --quiet "self\\.$named" "$repository/flake.nix"; then
+  if rg --quiet --glob '*.nix' "$named" roles hardware examples ||
+    rg --quiet "self\\.$named" flake.nix; then
     continue
   fi
   if rg --quiet --glob '*.nix' --glob '!checks.nix' --glob '!**/checks/**' \
-    --glob '!**/tests/**' --glob "!$name/**" \
-    "(modules/|\\.\\./)$name/[a-z-]+\\.nix" \
-    "$repository/roles" "$repository/hardware" "$repository/modules"; then
+    --glob '!**/tests/**' --glob "!modules/$name/**" \
+    "(modules/|\\.\\./)$name/[a-z-]+\\.nix" roles hardware modules; then
     continue
   fi
   unbrought+=("$system.$name")
