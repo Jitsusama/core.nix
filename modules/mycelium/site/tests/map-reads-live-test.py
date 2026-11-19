@@ -8,6 +8,8 @@ the realm drawn, follow a change within its pace, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
 draw a receptor's feeding of a cell while the node says it and not after,
+grow one network out of another while a forage says a cell of the one
+started a cell of the other,
 answer a key of each kind keys.ts decides (the keys dialog, find and its
 field, stepping through what was found, Escape's order, the walk, the
 machines, Now, the tree and the theme switch), and pass the web-design
@@ -84,6 +86,15 @@ FED_CELL_TITLE = "Rig The Skiff"
 # and two seconds more are left so it is drawn before it goes.
 FED_DRAWN_MS = 2 * PACE_MS
 FED_ENDING_S = FED_DRAWN_MS // 1000 + 2
+# HERON1, which leads node.json's Chart the Harbour, said by its forage to
+# have been started by SKIFF1, which leads Rig the Skiff, so the one network
+# grows out of the other; and the names the two drawers head them with.
+GROWN = "orchestration.heron1"
+GROWN_FROM = "orchestration.skiff1"
+GROWN_FROM_TITLE = "Rig the Skiff for the Season"
+GROWN_CELL = "HERON1"
+GROWN_BY = "SKIFF1"
+GROWN_BY_TITLE = "Rig The Skiff"
 
 
 @pytest.fixture
@@ -241,6 +252,12 @@ def fed() -> dict[str, list[dict[str, object]]]:
     return {**reading, "fed": [feeding(FED_CELL)]}
 
 
+def foraging() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with forages served, none of them yet, as a node serves the kind."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    return {**reading, "forage": []}
+
+
 def serve(folder: Path, node: StandIn) -> Iterator[Served]:
     """Serve the map through the real server beside `node`, its feed as home.nix declares."""
     feed = {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
@@ -284,6 +301,18 @@ def fed_node(tmp_path: Path) -> Iterator[StandIn]:
 @pytest.fixture
 def fed_served(tmp_path: Path, fed_node: StandIn) -> Iterator[Served]:
     yield from serve(tmp_path, fed_node)
+
+
+@pytest.fixture
+def forage_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "forage.sock", "node", foraging()).start()
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def forage_served(tmp_path: Path, forage_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, forage_node)
 
 
 def reach(browser: Browser, root: str, timeout: int = PACE_MS) -> dict[str, Any]:
@@ -550,6 +579,53 @@ def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
         fed_node.tell("fed", gone=[FED_KEY])
         page.wait_for_function(
             "document.getElementById('map-ground').painted().fed === 0", timeout=PACE_MS
+        )
+    finally:
+        opened.close()
+
+
+def test_a_network_whose_cell_another_started_grows_out_of_it(
+    browser: Browser, forage_served: Served, forage_node: StandIn
+) -> None:
+    root, _ = forage_served
+    opened = Opened(browser, f"{root}mycelium/#net={GROWN}", SIZES[-1], "light")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        hub = page.locator(f'#world [data-key="h:{GROWN}"]')
+        expect(hub, "the network to grow was never drawn").to_have_count(1, timeout=PACE_MS)
+        page.wait_for_timeout(REDRAWN_MS)
+        expect(hub, "a network nobody else started was drawn as a branch").not_to_have_attribute(
+            "data-branch-of", re.compile(".")
+        )
+        started = {"started_by": GROWN_BY, "split_from": None, "parent": None}
+        heard = int(datetime.now(UTC).timestamp() * 1000)
+        forage = {"key": f"forage:{GROWN_CELL}", "kind": "forage", "heard": heard}
+        forage["cell"] = GROWN_CELL
+        forage_node.tell("forage", changed=[{**forage, "lineage": started}])
+        expect(hub, "the network never grew out of the one that started it").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        the_map_counts(page, COUNTED, "a branch grown changed the count")
+        # Its drawer says what it grew out of and whose start grew it, and
+        # the cell's says who started it.
+        body = page.locator("#panel-body")
+        expect(body, "the branch's drawer never said what it grew out of").to_contain_text(
+            f"Grown out of {GROWN_FROM_TITLE}", timeout=PACE_MS
+        )
+        expect(body, "the branch's drawer never said whose start grew it").to_contain_text(
+            f"Started by {GROWN_BY_TITLE}: 1 of its 2 cells"
+        )
+        found = page.evaluate((HERE / "site-checks.js").read_text())
+        assert found == [], f"site-checks.js on a realm with a branch grown found {found}"
+        page.evaluate(f"location.hash = '#cell={GROWN_CELL}'")
+        expect(body, "the cell's drawer never said who started it").to_contain_text(
+            f"by {GROWN_BY_TITLE}", timeout=PACE_MS
+        )
+        # Once its forage goes, so does the branch it grew.
+        forage_node.tell("forage", gone=[forage["key"]])
+        expect(hub, "the branch outlived the forage that grew it").not_to_have_attribute(
+            "data-branch-of", re.compile("."), timeout=PACE_MS
         )
     finally:
         opened.close()

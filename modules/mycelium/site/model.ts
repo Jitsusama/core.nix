@@ -14,23 +14,17 @@
 // hold still standing, is the node's own judgement (its `unanswered` kind),
 // read likewise without its words. The ties between cells, each pair that
 // talked in the last day, are the node's too (its `tie` kind): how many
-// messages each end sent and of what kinds, never where they went nor what
-// they said, with a strength the map fades to now. A feeding, a receptor
-// saying one outside change to the one cell whose quest claims it, is the
-// node's (its `fed` kind) as who fed whom, when and the kind in a word,
-// never the change itself.
+// messages each end sent and of what kinds, never what they said, with a
+// strength the map fades to now. A feeding (its `fed` kind) is who fed
+// whom, when and the kind in a word, never the change itself; who started
+// each cell is read off its forage (lineage.ts).
 
 import { type Fields, type Held, isObject, object, text } from "../../local-sites/kit/records.ts";
+import { BALANCE_FRESH_MS, type Balance, balanceOf, latestReading, sharesOf } from "./balance.ts";
+import { type Started, startedOf } from "./lineage.ts";
 
 /** How many messages the map hears, the latest, as `mycelium messages` says. */
 const LATEST_MESSAGES = 20;
-
-/**
- * How old the balance's latest reading may be and still be drawn. The
- * service reads each minute, so three minutes is two missed: past it, the
- * service has stopped and its last reading would only look current.
- */
-const BALANCE_FRESH_MS = 180_000;
 
 /**
  * How long a tie's strength takes to halve, as the node grows it: two
@@ -60,8 +54,9 @@ const TIE_SEPARATOR = "~";
  * The node's records, a watch's for each kind the map reads. The balance is
  * the balance service's latest reading, which a node serves only where the
  * service runs, so a map without it draws as before. What waits on the
- * mesh is there only once its watch has answered, since a node too old to
- * serve it would otherwise read as one with nothing waiting.
+ * mesh, and who started each cell, is there only once its watch has
+ * answered, since a node too old to serve it would otherwise read as one
+ * with nothing waiting, or no cell started by another.
  */
 interface Heard {
   readonly network: Held;
@@ -72,6 +67,7 @@ interface Heard {
   readonly unanswered?: Held | undefined;
   readonly tie?: Held | undefined;
   readonly fed?: Held | undefined;
+  readonly forage?: Held | undefined;
 }
 
 /**
@@ -116,14 +112,6 @@ interface Wait {
   readonly until: unknown;
 }
 
-/** The realm's balance as the map says it, from the service's latest reading. */
-interface Balance {
-  readonly measures: unknown;
-  readonly at: string;
-  readonly imbalance: unknown;
-  readonly held: unknown;
-}
-
 /** A message as the map draws it: who sent, of what intent, to which groups. */
 interface Message {
   readonly at: string;
@@ -143,6 +131,7 @@ interface Now {
   readonly waits: readonly Wait[] | null;
   readonly ties: readonly Tie[] | null;
   readonly fed: readonly Fed[] | null;
+  readonly started: readonly Started[] | null;
 }
 
 /**
@@ -412,57 +401,6 @@ function tiesOf(held: Held | undefined, at: number): Tie[] | null {
   return ties.sort((one, other) => other.strength - one.strength);
 }
 
-/**
- * The newest balance reading held, when it is fresh at `at`: each machine's node
- * serves its own, so the newest wins, and one dated further ahead than a reading
- * may age is a wrong clock, never fresh.
- */
-function latestReading(held: Held | undefined, at: number): Fields | undefined {
-  let latest: Fields | undefined;
-  let latestAt = Number.NEGATIVE_INFINITY;
-  for (const record of held?.all() ?? []) {
-    const when = Date.parse(text(record, "at") ?? "");
-    if (when > latestAt) {
-      latest = record;
-      latestAt = when;
-    }
-  }
-  return Math.abs(at - latestAt) <= BALANCE_FRESH_MS ? latest : undefined;
-}
-
-/** Each machine's share of the realm's work in `reading`, by its name. */
-function sharesOf(reading: Fields | undefined): Map<unknown, Fields> {
-  const shares = new Map<unknown, Fields>();
-  const machines = reading?.["machines"];
-  for (const load of Array.isArray(machines) ? machines : []) {
-    if (isObject(load)) {
-      shares.set(load["machine"], {
-        busy: load["busy"],
-        idle: load["idle"],
-        busy_per_core: load["busy_per_core"],
-        load: load["load"],
-        over: load["over"],
-        room: load["room"],
-      });
-    }
-  }
-  return shares;
-}
-
-/** The realm's balance from `reading`: its definition, time, spread and held flags. */
-function balanceOf(reading: Fields | undefined): Balance | null {
-  const at = reading === undefined ? undefined : text(reading, "at");
-  if (reading === undefined || at === undefined) {
-    return null;
-  }
-  return {
-    measures: reading["measures"],
-    at,
-    imbalance: reading["imbalance"] ?? null,
-    held: reading["held"] ?? [],
-  };
-}
-
 /** Whether a cell is drawn as one: a session or a receptor, not a machine. */
 function drawn(cell: Fields): boolean {
   return cell["type"] === "session" || cell["type"] === "receptor";
@@ -490,10 +428,11 @@ function nowOf(heard: Heard, at: number): Now {
     waits: waitsOf(heard.unanswered),
     ties: tiesOf(heard.tie, at),
     fed: fedOf(heard.fed, at),
+    started: startedOf(heard.forage),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
   return plain(now) as Now;
 }
 
-export type { Balance, Fed, Heard, Message, Now, Tie, Wait };
+export type { Balance, Fed, Heard, Message, Now, Started, Tie, Wait };
 export { expiryOf, FED_AHEAD_MS, FED_SHOWN_MS, LATEST_MESSAGES, nowOf };

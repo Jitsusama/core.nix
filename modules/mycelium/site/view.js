@@ -537,6 +537,34 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     }
     // Where they run is said only to tell two such groups apart.
     if (loose.size === 1) for (const h of loose.values()) h.name = "Working alone";
+    // A network the node sets within none grows out of the network whose
+    // cells started most of its own, as a hypha branches from another: who
+    // started each cell comes from its forage (lineage.ts). Where the node
+    // says a network sits stands, and no branch is grown that would loop
+    // back round to the network it grows from.
+    const startedBy = new Map((now.started || []).map((x) => [x.cell, x.by]));
+    const cellNamed = new Map(cells.map((s) => [s.address, s]));
+    const sitsIn = (h, of) => {
+      for (let at = h, seen = new Set(); at && !seen.has(at); seen.add(at), at = at.within && hubs.get(at.within)) if (at === of) return true;
+      return false;
+    };
+    for (const h of [...hubs.values()].sort((a, b) => collate(a.key, b.key))) {
+      if (h.within) continue;
+      const from = new Map();
+      for (const s of h.cells) {
+        const by = cellNamed.get(startedBy.get(s.address));
+        if (!by?.hub || sitsIn(by.hub, h)) continue;
+        const had = from.get(by.hub) || { by: new Set(), cells: 0 };
+        had.by.add(by);
+        had.cells += 1;
+        from.set(by.hub, had);
+      }
+      const [parent, grown] = [...from].sort(([p, x], [q, y]) => y.cells - x.cells || collate(p.name, q.name))[0] || [];
+      if (!parent) continue;
+      h.within = parent.key;
+      h.grown = { by: [...grown.by].sort((a, b) => collate(a.short, b.short)), cells: grown.cells };
+      parent.children.push(h);
+    }
     for (const h of loose.values()) hubs.set(h.key, h);
     if (outside.cells.length) {
       const senses = outside.cells.map((s) => s.purpose || s.address).sort(collate);
@@ -574,7 +602,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     const repositories = new Set(cells.map((s) => s.repo).filter(Boolean)).size || shared.filter((n) => n.shape === "repository").length;
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
-    return { at: now.at, hubs, cells, byAddress, byId, shared, machines, standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, shared, machines, standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -620,7 +648,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
   const lay = (m) => {
     const room = new Map();
     for (const h of m.hubs.values()) room.set(h.key, roomFor((seeds.get(h.key) || []).length));
-    const key = [...room].map(([k, r]) => `${k}:${r}:${m.hubs.get(k)?.machine || ""}`).join("|") + `|${m.machines.map((x) => x.name).join(",")}`;
+    const key = [...room].map(([k, r]) => `${k}:${r}:${m.hubs.get(k)?.machine || ""}:${m.hubs.get(k)?.within || ""}`).join("|") + `|${m.machines.map((x) => x.name).join(",")}`;
     if (key === layoutKey && layout) return layout;
     layoutKey = key;
     const disc = new Map([...room].map(([k, r]) => [k, discRadius(r)]));
@@ -3377,7 +3405,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
         ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-colony folded" r="12"/><circle class="m-hub" r="7"/></svg></dt><dd>A folded network: drawn too small to read, or off the map, so its cells wait in its ground until you come closer or open it</dd></div>`
         : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><g class="hub quiet" transform="scale(0.82)"><path class="m-spokes" d="${spokesPath(10)}"/><circle class="m-hub" r="10"/><path class="m-hub-shape" d="${SHAPES.square(5)}"/></g></svg></dt><dd>A quiet network: none of its cells at work, so drawn lighter</dd></div>` +
-      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-13,0H13" style="--w:4px"/></svg></dt><dd>A cord: machine to hub, or hub to branch; thicker carries more</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-13,0H13" style="--w:4px"/></svg></dt><dd>A cord: machine to hub, or hub to branch, a network started inside it or grown out of it; thicker carries more</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-hypha" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Hyphae: a hub's cells, branching out from it</dd></div>` +
       (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said"}</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cross m-repository" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Dotted cross-hyphae: cells sharing a repository, group or quest</dd></div>` +
@@ -3475,7 +3503,8 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     const u = s.usage || {};
     const facts = [
       ["Repository", s.repo],
-      ["Started", s.since ? atWords(s.since) : ""],
+      // Who started it, as its forage says, by name where it is drawn.
+      ["Started", [s.since ? atWords(s.since) : "", m.startedBy.has(s.address) ? `by ${m.byAddress.get(m.startedBy.get(s.address))?.short || m.startedBy.get(s.address)}` : ""].filter(Boolean).join(", ")],
       ["Last turn", u.last_turn ? agoWords(u.last_turn) : ""],
     ].filter(([, v]) => v);
     // Its machine as drawn, a basin for a basin's machine; and the machine
@@ -3628,6 +3657,17 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     const fed = feeders > 1 ? `, fed by ${plural(feeders, "machine")}` : feeders ? `, fed by ${h.feeds[0][0]}` : "";
     return `A network of ${plural(h.cells.length, "cell")}${branches}${fed}.`;
   };
+  // A branch grown out of another network says which, and whose start in
+  // it grew it: the cells there that started its own, each one a button.
+  // Each is a line of its own, as who leads is, since a name in a led line
+  // is a whole target and a sentence wrapping round two reads as two.
+  const grownWords = (h, up) => {
+    const named = h.grown.by.map((s) => `<button type="button" class="inline" data-go="cell=${esc(s.address)}">${esc(s.short)}</button>`);
+    const who = named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
+    const n = h.grown.cells;
+    const of = n === h.cells.length ? (n === 1 ? "its cell" : `all ${NUMBER.format(n)} of its cells`) : `${NUMBER.format(n)} of its ${plural(h.cells.length, "cell")}`;
+    return [`Grown out of <button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`, `Started by ${who}: ${of}`];
+  };
   const networkPurpose = (h) => {
     if (h.alone) return "Each its own: these cells work alone, and each one's drawer says what it is for.";
     const work = (h.carries || "").replace(/[.\s]+$/, "");
@@ -3662,6 +3702,7 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
         `<p class="carries">${esc(networkWords(h))}</p>` +
         glance(esc(networkPurpose(h)), esc(h.edge ? sensesDoing(h.cells) : groupDoing(allCells(h))), networkHealth(h)) +
         (h.lead ? `<p class="led">Led by <button type="button" class="inline" data-go="cell=${esc(h.lead.address)}">${esc(h.lead.short)}</button></p>` : "") +
+        (h.grown && up ? grownWords(h, up).map((line) => `<p class="led">${line}</p>`).join("") : "") +
         (h.alone || h.edge ? "" : launcherLink("network", h.key, "Open It in the Launcher")) +
         heldUp(h.cells) +
         talkLine(touching(h.cells, h.key), true) +

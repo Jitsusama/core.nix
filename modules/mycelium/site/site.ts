@@ -17,7 +17,9 @@
 // The ties between cells are watched apart for the same reason: a node too
 // old to serve them draws its talk from the latest messages, as before.
 // What each receptor fed is watched apart too, since only a node new enough
-// serves it, and a map without it draws no feeding at all.
+// serves it, and a map without it draws no feeding at all. So are the
+// forages, which say who started each of this machine's cells: a map without
+// them grows no network out of another.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
@@ -171,6 +173,7 @@ function watch(kind: Kind): Held {
 const waits = watchApart("unanswered");
 const ties = watchApart("tie");
 const feedings = watchApart("fed");
+const forages = watchApart("forage");
 
 // What each watch holds, filled as its records arrive: the drawing reads these
 // and never a copy, since a copy would stay as it was first told. What waits
@@ -190,6 +193,9 @@ const heard: Heard = {
   },
   get fed() {
     return feedings.answered() ? feedings.held : undefined;
+  },
+  get forage() {
+    return forages.answered() ? forages.held : undefined;
   },
 };
 

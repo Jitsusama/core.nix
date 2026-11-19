@@ -27,6 +27,10 @@ Nothing on it acts on the network.
   on) and named beside it. The cord goes to the machine most of its cells
   run on, and is thicker the more cells it carries. An orchestration
   started inside another hangs from its parent's hub by a cord of its own.
+  So does a network grown out of another, one whose cells were started by
+  cells of the other: it branches from the network whose cells started
+  most of its own, and its drawer names them. Who started a cell is known
+  only of this machine's cells for now, so only those grow a branch.
 - **Hyphae join a hub to its cells.** Each session is a cell, seeded round
   its hub like the seeds of a sunflower, and joined to it by fine hyphae.
 - **Dotted cross-hyphae join cells sharing something else**: sea glass
