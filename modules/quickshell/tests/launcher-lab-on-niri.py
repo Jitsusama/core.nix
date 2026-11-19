@@ -67,7 +67,10 @@ PRIMED_S = 6
 # frame after it fills in, well inside this on a loaded builder.
 USABLE_S = 3
 # The lines an opening says once a key could act on it, or that none could in time.
-USABLE_SAID = ("opening usable", "opening not usable")
+USABLE_SAID = ("launcher: opening usable", "launcher: opening not usable")
+# Said by an opening shut before it was usable, on its next tick, which can come after the next
+# opening's mark, so it never answers for that one.
+SHUT_FIRST = ", closed first"
 
 # How many notices are on screen as it runs, when it times Super+N's opening ("notices").
 NOTICES = 3
@@ -125,7 +128,7 @@ def opened(shell: Shell, place: str, mark: int | None = None) -> Json:
         shell.as_account(shell.ipc(*words))
     if mark is not None:
         giving_up = time.monotonic() + USABLE_S
-        while not said_after(shell, mark, *USABLE_SAID) and time.monotonic() < giving_up:
+        while not usable_said(shell, mark) and time.monotonic() < giving_up:
             time.sleep(launcher_on_niri.POLL)
     each: list[Json] = []
 
@@ -146,10 +149,10 @@ def usable_after(shell: Shell, nth: int, mark: int) -> tuple[Json, list[str]]:
     stall it times.
     """
     giving_up = time.monotonic() + USABLE_S
-    said = said_after(shell, mark, *USABLE_SAID)
+    said = usable_said(shell, mark)
     while not said and time.monotonic() < giving_up:
         time.sleep(launcher_on_niri.POLL)
-        said = said_after(shell, mark, *USABLE_SAID)
+        said = usable_said(shell, mark)
     each = [one for one in openings(shell) if one.get("nth") == nth]
     return (each[0] if each else {}), said[:1]
 
@@ -291,6 +294,11 @@ def stall_of(
         )
     stalled = usable.get("stalled")
     return [stalled] if isinstance(stalled, int) else []
+
+
+def usable_said(shell: Shell, mark: int) -> list[str]:
+    """Give the lines since the mark saying whether an opening still open was usable."""
+    return [line for line in said_after(shell, mark, *USABLE_SAID) if SHUT_FIRST not in line]
 
 
 def said_after(shell: Shell, mark: int, *wanted: str) -> list[str]:

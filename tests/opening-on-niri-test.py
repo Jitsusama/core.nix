@@ -963,6 +963,11 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
     assert opening["shown"]["keys"] == left["keys"], f"kept, the rows moved: {left} to {opening}"
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
+    # A place's fill joins inside `open`, as its steps into the place read what's joined; only
+    # home's is put off to a slice of its own.
+    assert cast("int", opening.get("fillJoined", 0)) >= 1, (
+        f"the place's fill didn't join: {opening}"
+    )
     assert shell.showing()["path"] == there, "filled in, it left the place its chord opened"
 
 
@@ -1700,13 +1705,17 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     shell.launcher_until(slept)
     assert woke[0].get("fillJoined") == 0, f"the fill joined the choices inside `open`: {woke}"
     assert woke[0].get("foundBy") == "slice", f"home wasn't found in a slice of its own: {woke}"
-    # Searched again, not only joined, as the kept rows it shows till then list keys either way.
+    # Searched again, not only joined, as the kept rows it shows till then list keys either way;
+    # said only where the slice ran home's search.
     said = shell.log.read_bytes()[since:].decode(errors="replace")
     assert "home found again in" in said, f"the slice didn't find home again: {woke}"
-    # Its time is a slice's, so it's never read as the sources' first wait.
+    # Its time is a slice's, and the sources' first slice comes after it, so the finding is never
+    # read as their first wait. Each is rounded apart, so a millisecond either way.
     found = cast("int", woke[0]["foundTook"])
     assert cast("int", woke[0]["longestSlice"]) >= found, f"the finding went uncounted: {woke}"
-    assert cast("int", woke[0]["foundFrom"]) >= 0, f"the finding ran before the fill: {woke}"
+    first = cast("list[Json]", woke[0]["slices"])[0]
+    ended = cast("int", woke[0]["foundFrom"]) + found
+    assert cast("int", first["from"]) >= ended - 1, f"a source woke before home was found: {woke}"
 
 
 def test_a_kept_openings_sources_wake_though_no_frame_comes(shell: Shell) -> None:

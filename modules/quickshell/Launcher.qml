@@ -9961,6 +9961,9 @@ Scope {
     // Joel's file chooser said no opening line, its keys 100 ms each
     // (2026-11-13, 03:45).
     function into(name) {
+        // A chord as home's fill is still to be found steps in over the
+        // choices joined, as a key would (fillFound).
+        fillFound("chord");
         const asked = !open && !opening && openAsked < 0;
         if (asked)
             askedToOpen();
@@ -10532,6 +10535,7 @@ Scope {
             // open join, and find home, here as ever.
             fillFinding = filling && fillOpening && !fillingPlace && homeKept.length > 0;
             fillFoundBy = "";
+            fillFoundHome = false;
             fillFoundFrom = 0;
             fillFoundTook = 0;
             if (!fillFinding)
@@ -11412,9 +11416,14 @@ Scope {
             return;
         // The fill's own finding is the first slice, alone, said apart
         // from the sources' (wokeSaid), whose first waits from its end.
+        // Its sources wake after it though it throws, as nothing else
+        // would wake them before a shut.
         if (fillFinding) {
-            fillFound("slice");
-            wakeLater();
+            try {
+                fillFound("slice");
+            } finally {
+                wakeLater();
+            }
             return;
         }
         const budget = typed === "" ? wakeBudget : Infinity;
@@ -11442,8 +11451,8 @@ Scope {
 
     // Whether a fill has still to join the choices, and find home again
     // where it fills home, which the first slice after its frame does
-    // (wakeNext), or a key or a click before that, so each acts on home
-    // found now rather than as it was kept. Home is found from what each
+    // (wakeNext), or a key, a click or a chord before that, so each acts
+    // on home found now rather than as it was kept. Home is found from what each
     // source made last, as it was inside `open` before, and a row held
     // as it will be that now reads so is let go (heldAgreed), as a
     // source's change would, so none waits on becameLate.
@@ -11453,9 +11462,10 @@ Scope {
     // to come, and how many times the choices were joined inside it.
     property bool fillOpening: false
     property int fillJoined: 0
-    // What ran it, when after the fill, and what it took, said with the
-    // sources' waking.
+    // What ran it, whether it searched home again, when after the fill
+    // and what it took, said with the sources' waking.
     property string fillFoundBy: ""
+    property bool fillFoundHome: false
     property real fillFoundFrom: 0
     property real fillFoundTook: 0
     function fillFound(by) {
@@ -11464,14 +11474,15 @@ Scope {
         fillFinding = false;
         fillFoundBy = by;
         const began = KeyTimes.now();
-        // A key or a click runs it once filled() has, so it's timed from
-        // the fill's end as a slice is.
+        // A key, a click or a chord runs it once filled() has, so it's
+        // timed from the fill's end as a slice is.
         fillFoundFrom = began - wakeBegan;
         freshen();
         // A step taken, or a word typed, before it ran has found its own.
         if (fillFindsHome && held.length === 0 && prompt.text === "") {
             restart("");
             homeKept = matches;
+            fillFoundHome = true;
         }
         heldAgreed(sources);
         fillFoundTook = KeyTimes.now() - began;
@@ -11517,7 +11528,7 @@ Scope {
         const said = wakeSlices.map(one => one.woke.map(each =>
             `${each.name} ${Math.round(each.took)}`).join(", ")).join("; ");
         const foundSaid = fillFoundBy === "" ? ""
-            : `, ${fillFindsHome ? "home found again" : "joined again"} in`
+            : `, ${fillFoundHome ? "home found again" : "joined again"} in`
                 + ` ${Math.round(fillFoundTook)} ms`
                 + (fillFoundBy === "slice" ? " in a slice of its own" : ` for a ${fillFoundBy}`);
         console.info(`launcher: woke the opening's sources in ${slices.length} slices over`
