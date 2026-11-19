@@ -2541,9 +2541,9 @@ mod tests {
         let last = picture.zone.clock(NOW - HOUR, picture.now);
         assert_eq!(found[0].badge, format!("last {last}"));
         assert!(
-            found[0]
-                .detail
-                .contains(&format!("the last at {last}; the harness said: its key was refused.")),
+            found[0].detail.contains(&format!(
+                "the last at {last}; the harness said: its key was refused."
+            )),
             "{}",
             found[0].detail
         );
