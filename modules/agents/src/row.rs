@@ -114,9 +114,6 @@ pub struct Row {
     /// Out of reach, so it does nothing.
     pub gone: bool,
     pub state: &'static str,
-    /// How it stands in words, among its side's items too: For You's
-    /// heading over the cell says it alone, without its figures.
-    pub doing: String,
     pub returns: &'static str,
     pub acts: Vec<&'static str>,
     /// What Close's ask says stays, where it has a Close, so the launcher
@@ -311,8 +308,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
             &words.agents,
         )
     };
-    let doing_said = doing(stands, session, known, words);
-    let items = figures::side(&doing_said, &figure, &full);
+    let items = figures::side(&doing(stands, session, known, words), &figure, &full);
     let windowed = (known.windowed)(session);
     // An orchestrator's row wears the shape its network is drawn by in
     // place of the agent's mark, so the row and the map agree.
@@ -341,7 +337,6 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         orchestrates: place.orchestrates,
         gone: !session.reachable(),
         state: stands.id(),
-        doing: doing_said,
         // One standing at the top is gone to to be told something, the
         // void above all, so Return talks to it however it stands.
         returns: if at_top.is_some() {

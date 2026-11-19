@@ -476,9 +476,7 @@ let
         function go(each) {}
         property var asked: []
         property var settled: ({})
-        // The session behind each item, by its title, as a test sets it.
-        property var sessionOf: ({})
-        function session(each) { return sessionOf[each.title] ?? null; }
+        function session(each) { return null; }
         function watched(each) { return true; }
         function waitsFor(each) { return null; }
       '';

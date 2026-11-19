@@ -211,7 +211,6 @@
     "When.js"
     "launcher/Ago.js"
     "launcher/ForYou.js"
-    "launcher/ForYouCells.js"
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
     "launcher/Lately.js"
