@@ -130,6 +130,36 @@ QtObject {
         if (forgot !== forgetting)
             failures.push(`a share's start forgets the ways back: ${forgot}, not ${forgetting}`);
 
+        // While a source hides, a place holding one of its steps can't be
+        // gone back to, from any way back: one recorded after the share
+        // began but before the source's rows were remade holds the name
+        // from before it, and a source that never says a share began
+        // (Copies alone) forgets nothing (Launcher.qml's jump, toLastPlace
+        // and tagBack). Those of a source showing, and a step from none,
+        // stay in order.
+        const hiding = { hiding: true };
+        const showing = { hiding: false };
+        const place = (name, from) => ({ held: [{ row: { key: name, name, from } }],
+            here: { typed: "" } });
+        // The ask's step under its collection's, as stepping into Asks holds it.
+        const asked = { held: [{ row: { key: "collection:Asks", name: "Asks" } },
+            { row: { key: "ask", name: "the bank's password", from: hiding } }],
+            here: { typed: "" } };
+        const music = place("music", showing);
+        const home = place("home", undefined);
+        const gone = Steady.hiddenGone({ back: [music, asked, home], ahead: [asked, music],
+            tags: [home, asked], last: asked });
+        const keys = list => list.map(one => one.held[0].row.key).join(" ");
+        const hidden = JSON.stringify([keys(gone.back), keys(gone.ahead), keys(gone.tags),
+            gone.last]);
+        const hiddenWant = JSON.stringify(["music home", "music", "home", null]);
+        if (hidden !== hiddenWant)
+            failures.push(`a hiding source's places can't be gone back to: ${hidden}, `
+                + `not ${hiddenWant}`);
+        const kept = Steady.hiddenGone({ back: [music], ahead: [], tags: [], last: home });
+        if (kept.last !== home || kept.back[0] !== music)
+            failures.push("a place of a showing source or none is gone back to as it was");
+
         // A row that arrives while the list is shown comes at the end, out
         // of the place a tree would give it, so it reads as it would ranked
         // flat, as a session a step in under its orchestrator does once
