@@ -51,9 +51,10 @@
 // (2026-11-19). It never lets the chunks grow past twice the room beyond
 // what they held at the first ask since a collection ended, so a heap whose
 // sweeps keep a few items in each chunk it grew into doesn't grow by the
-// room at every one, and the opening's ask shares the closing's; and it
-// reckons from what each sweep left, not from where leaveRoom set it, so
-// asking twice leaves the room once. weigh() says where the next starts.
+// room at every one, and the opening's ask shares the closing's, as an
+// ask for another room does; and it reckons from what each sweep left, not
+// from where leaveRoom set it, so asking twice leaves the room once.
+// weigh() says where the next starts.
 //
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,

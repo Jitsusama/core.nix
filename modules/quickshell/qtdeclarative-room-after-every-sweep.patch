@@ -11,7 +11,8 @@ now left again at the end of every cycle, in the heap and outside it,
 so the heap grows by it before the next cycle starts. A heap whose
 sweeps keep what it grew into is never let past twice the room beyond
 what it held at the first ask since a cycle ended, so asking again as
-it grows doesn't move that. It is none by default, as Qt has it.
+it grows, or for another room, doesn't move that. It is none by
+default, as Qt has it.
 
 ---
 diff --git a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
@@ -33,10 +34,10 @@ index 65b729e..0e4caa1 100644
  
 +void MemoryManager::leaveRoom(std::size_t bytes)
 +{
-+    // Only an ask after a cycle ends, or for another room, moves where the ceiling is counted
-+    // from, so asking again while what's held grows, as an opening asks after the closing,
-+    // doesn't let it grow by another two rooms.
-+    if (sweptSinceRoomLeft || bytes != roomAfterSweep)
++    // Only an ask after a cycle ends moves where the ceiling is counted from, so asking again
++    // while what's held grows, as an opening asks after the closing, or for another room,
++    // doesn't let it grow by another two rooms: a new room counts from the same place.
++    if (sweptSinceRoomLeft)
 +        slotsHeldWhenRoomLeft = blockAllocator.totalSlots() + icAllocator.totalSlots();
 +    sweptSinceRoomLeft = false;
 +    roomAfterSweep = bytes;
@@ -66,8 +67,8 @@ index 65b729e..0e4caa1 100644
 +
 +std::size_t MemoryManager::heldBeforeCollecting() const
 +{
-+    const std::size_t slots = usedSlotsAfterLastFullSweep * GCOverallocation / 100;
-+    return std::max<std::size_t>(slots, MinSlotsGCLimit) * Chunk::SlotSize;
++    const std::size_t threshold = usedSlotsAfterLastFullSweep * GCOverallocation / 100;
++    return std::max<std::size_t>(threshold, MinSlotsGCLimit) * Chunk::SlotSize;
 +}
 +
  void MemoryManager::registerWeakMap(Heap::MapObject *map)

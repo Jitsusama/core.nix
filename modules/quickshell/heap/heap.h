@@ -50,8 +50,9 @@ public:
     // in its free lists starts the collector, and its strings as many
     // more outside it, and as much again after every collection that ends
     // later, though never past twice the room beyond what its chunks held
-    // at the first ask since a collection ended: up to 1024, and none for 0
-    // or what isn't a number, from the next collection on. Asked after the
+    // at the first ask since a collection ended, whatever room it asked
+    // for: up to 1024, and none for 0 or what isn't a number, from the
+    // next collection on. Asked after the
     // closing's collection and again as an opening is asked, so the
     // opening's allocations don't start one, whatever was made while it was
     // shut or collected since, and the closing's collects what they left

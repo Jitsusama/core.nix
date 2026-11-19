@@ -165,26 +165,33 @@ bool expectRoom(const char *what, bool holds, const Room &before, const Room &af
     return holds;
 }
 
-// Makes objects in batches, keeping a few of each in `kept`, until the
-// heap's chunks hold `upTo` megabytes or GROWN are made.
-void growKeeping(QJSEngine &engine, const Heap &heap, double upTo) {
-    const QString batch = QStringLiteral("for (let i = 0; i < %1; i++) { const made = { n: i, m: i "
-                                         "}; if (i % %2 === 0) kept.push(made); }")
-                              .arg(GROWN_BATCH)
-                              .arg(GROWN_KEPT_ONE_IN);
-    for (int made = 0; made < GROWN && roomOf(heap).chunks < upTo; made += GROWN_BATCH)
-        engine.evaluate(batch);
+// Makes objects in batches through `grow`, which keeps a few of each in
+// `kept`, until the heap's chunks hold `upTo` megabytes or GROWN are
+// made, and says whether every batch ran.
+bool growKeeping(const Heap &heap, const QJSValue &grow, const QJSValue &kept, double upTo) {
+    for (int made = 0; made < GROWN && roomOf(heap).chunks < upTo; made += GROWN_BATCH) {
+        const QJSValue batch = grow.call({kept});
+        if (batch.isError()) {
+            std::fprintf(stderr, "FAIL the kept objects weren't made: %s\n",
+                         qPrintable(batch.toString()));
+            return false;
+        }
+    }
+    return true;
 }
 
 // Whether the room is reckoned from what the chunks hold, as the shell
 // asks for it: a heap holding more than twice what's live and the room
 // besides is still left the whole room after a collection; asking twice
-// leaves it once; a heap grown by half the room since it asked keeps the
-// whole room after a collection, and asking again as it grew, as an
-// opening asks after the closing, doesn't move the ceiling; a heap whose
-// sweeps keep what it grew into collects at twice the room past what it
-// held at that first ask; and the room is held to the most, and none for
-// what's under nothing or isn't a number, from the next collection on.
+// leaves it once; a heap grown by half the room since it asked collects
+// nothing as it grows and keeps the whole room after a collection, and
+// asking again as it grew, as an opening asks after the closing, doesn't
+// move the ceiling; a heap whose sweeps keep what it grew into collects
+// at twice the room past what it held at that first ask; an ask after a
+// collection leaves the whole room again; asking for another room before
+// a collection counts it from the same place; and the room is held to the
+// most, and none for what's under nothing or isn't a number, from the
+// next collection on.
 bool roomFollowsWhatsHeld() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -208,25 +215,52 @@ bool roomFollowsWhatsHeld() {
                    std::abs(twice.collectsAt - once.collectsAt) < SAME_MB &&
                        std::abs(twice.collectsOutsideAt - once.collectsOutsideAt) < SAME_MB,
                    once, twice);
-    engine.evaluate(QStringLiteral("globalThis.kept = []"));
-    growKeeping(engine, heap, twice.chunks + SMALL_ROOM_MB / 2);
+    const QJSValue kept = engine.newArray();
+    const QJSValue grow = engine.evaluate(
+        QStringLiteral("(kept) => { for (let i = 0; i < %1; i++) { const made = { n: i, m: i }; "
+                       "if (i % %2 === 0) kept.push(made); } }")
+            .arg(GROWN_BATCH)
+            .arg(GROWN_KEPT_ONE_IN));
+    const double quiet = heap.collected();
+    const bool grewHalf = growKeeping(heap, grow, kept, twice.chunks + SMALL_ROOM_MB / 2);
+    const bool unprompted = heap.collected() == quiet;
     heap.leaveRoom(SMALL_ROOM_MB);
     engine.collectGarbage();
     const Room regrown = roomOf(heap);
     const bool grownHalf = expectRoom(
-        "a heap grown by half the room since it asked keeps the whole room after a collection",
-        regrown.chunks > twice.chunks + SMALL_ROOM_MB / 4 &&
+        "a heap grown by half the room since it asked collects nothing as it grows and keeps the "
+        "whole room after a collection",
+        grewHalf && unprompted && regrown.chunks > twice.chunks + SMALL_ROOM_MB / 4 &&
             regrown.collectsAt >= regrown.chunks + SMALL_ROOM_MB - SAME_MB,
         twice, regrown);
-    growKeeping(engine, heap, std::numeric_limits<double>::infinity());
+    const double before = heap.collected();
+    const bool grewFar = growKeeping(heap, grow, kept, std::numeric_limits<double>::infinity());
+    const bool collectedFar = heap.collected() > before;
     engine.collectGarbage();
     const Room grown = roomOf(heap);
     const double ceiling = twice.chunks + 2 * SMALL_ROOM_MB;
     const bool held = expectRoom("a heap whose sweeps keep what it grew into collects at twice "
                                  "the room past what it held at the first ask",
-                                 grown.chunks > twice.chunks + 3 * SMALL_ROOM_MB / 2 &&
+                                 grewFar && collectedFar &&
+                                     grown.chunks > twice.chunks + 3 * SMALL_ROOM_MB / 2 &&
                                      std::abs(grown.collectsAt - ceiling) < SAME_MB,
                                  twice, grown);
+    heap.leaveRoom(SMALL_ROOM_MB);
+    const Room rearmed = roomOf(heap);
+    const bool again = expectRoom(
+        "an ask after a collection leaves the whole room again, past the ceiling before it",
+        rearmed.collectsAt >= rearmed.chunks + SMALL_ROOM_MB - SAME_MB, grown, rearmed);
+    const bool grewLittle = growKeeping(heap, grow, kept, rearmed.chunks + SMALLEST_ROOM_MB);
+    heap.leaveRoom(SMALLEST_ROOM_MB);
+    const bool grewOn = growKeeping(heap, grow, kept, std::numeric_limits<double>::infinity());
+    engine.collectGarbage();
+    const Room other = roomOf(heap);
+    const double otherCeiling = rearmed.chunks + 2 * SMALLEST_ROOM_MB;
+    const bool another = expectRoom(
+        "asking for another room before a collection counts it from the same place",
+        grewLittle && grewOn && other.chunks > rearmed.chunks + 3 * SMALLEST_ROOM_MB / 2 &&
+            std::abs(other.collectsAt - otherCeiling) < SAME_MB,
+        rearmed, other);
     heap.leaveRoom(std::numeric_limits<double>::infinity());
     const Room endless = roomOf(heap);
     heap.leaveRoom(2 * MOST_ROOM_MB);
@@ -247,7 +281,7 @@ bool roomFollowsWhatsHeld() {
         "a room under nothing, and one that isn't a number, are none after a collection",
         negative.collectsAt < negative.chunks && notNumber.collectsAt < notNumber.chunks,
         negative, notNumber);
-    return whole && asOne && grownHalf && held && most && none;
+    return whole && asOne && grownHalf && held && again && another && most && none;
 }
 
 // Blocks as large as the shell's answers' pieces, 32 MB in all, and how
