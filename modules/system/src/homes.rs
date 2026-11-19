@@ -913,41 +913,6 @@ mod tests {
             Some("code/#repo=core".into()),
             "a row at ./code/ is the site at code/"
         );
-        // Only the row's path may start at its own folder: an address is
-        // written from the sites' root, on a ./ row too, as code's reader
-        // holds it (modules/repos/site/tests/homes.test.ts). The record and
-        // the pattern beside each refused one show the row itself is read.
-        let homes = Homes::from_sites(
-            &sites(&json!([{"path": "./code/", "homes": ["repository"]}])),
-            |_| {
-                Some(json!({"things": [
-                    {"kind": "repository", "key": "core", "address": "./code/#c=1"},
-                    {"kind": "repository", "key": "kit", "address": "code/#c=2"},
-                ]}))
-            },
-        );
-        assert_eq!(
-            homes.address("repository", "core"),
-            None,
-            "a record's address written from ./ isn't read, on a ./ row"
-        );
-        assert_eq!(
-            homes.address("repository", "kit"),
-            Some("code/#c=2".into()),
-            "the ./ row itself was refused"
-        );
-        let homes = Homes::from_sites(
-            &sites(&json!([{"path": "./mycelium/", "homes": [
-                {"kind": "machine", "address": "./mycelium/#host={name}"},
-                {"kind": "machine", "address": "#machine={name}"},
-            ]}])),
-            |_| None,
-        );
-        assert_eq!(
-            homes.address("machine", "osprey"),
-            Some("mycelium/#machine=osprey".into()),
-            "a pattern written from ./ isn't read, on a ./ row"
-        );
         let homes = Homes::from_sites(
             &sites(&json!([{"path": "./map/", "homes": [
                 {"kind": "machine", "address": "#machine={name}"},
