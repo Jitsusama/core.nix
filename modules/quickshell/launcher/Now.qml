@@ -1882,9 +1882,12 @@ Provider {
     // Everything For You weighs, each as ForYou.js bands it, { kind, thing,
     // make }, `make(now)` giving its row as it's stepped into: the sessions
     // to reopen, while any are; the sessions wanting Joel, each blocking
-    // one, itself; what he can do now; what he's to look at; and what the
-    // launcher's sources give, by the kind
-    // its row says, a to-do where it says none. A session's row is Agents',
+    // one, itself; what he can do now; what he's to look at; what the
+    // launcher's sources give, by the kind its row says, a to-do where it
+    // says none; and each desktop notice unread that names the session
+    // which raised it, its row Desktop's, so it stands under that session
+    // too (What Needs Me, 42P0R4, 2026-11-19), weighed by how long it's
+    // waited; Desktop still lists it. A session's row is Agents',
     // so without Agents there is none, and none is counted. Each `cell()`
     // finds the session behind it, or null, read only as its rows are made
     // (cellRows) and its headings heard (cellsTold), since the sessions
@@ -1934,6 +1937,13 @@ Provider {
             thing: one.thing,
             cell: () => null,
             make: () => one.row
+        })), unreadNotices.filter(notice => Cells.cellNamed(notice) !== "")
+        .map(notice => ({
+            kind: "notice",
+            thing: Cells.noticeThing(notice),
+            cell: () => Cells.noticeCell(notice,
+                [].concat(Sessions.running ?? [], Sessions.parked ?? [])),
+            make: () => provider.source("notices")?.desktopRows([notice.id])[0] ?? null
         }))))
     // How many each band holds, as they stand now (ForYou.js's banded):
     // what needs Joel now, lifted looks and things to try among them, then
@@ -1991,9 +2001,10 @@ Provider {
     }
     readonly property var bandsKept: ({ items: null, minute: -1, bands: null, times: 0 })
     // A critical notice unread is among what needs him now, as the margin's
-    // tray counts it (ForYouHolds.qml), though For You's Desktop holds it.
+    // tray counts it (ForYouHolds.qml), though For You's Desktop holds it;
+    // one naming its session is among the bands already, so not again.
     readonly property int toDoCount: forYouBands.now.length + forYouBands.agent.length
-        + criticalNotices.length
+        + criticalNotices.filter(notice => Cells.cellNamed(notice) === "").length
     readonly property int toLookAtCount: forYouBands.look.length
     readonly property int toTryCount: forYouBands.try.length
     // For You's row's side, the bands as a run (ForYou.js's bandsRun).

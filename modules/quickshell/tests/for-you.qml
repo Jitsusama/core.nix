@@ -735,6 +735,35 @@ QtObject {
         expect("no words, nothing made up", Cells.headingName(cellA, { doing: "working" }, {}),
             "");
 
+        // A desktop notice a session raised names its cell as a link, which
+        // finds the session among those held by any address it answers to,
+        // so the notice stands under that session's heading; one naming no
+        // cell, or one no session holds, finds none.
+        const raising = { address: "KELP01", presence: { addresses: ["KELP01", "9F3A2B1C"] } };
+        const held = [cellB, raising];
+        expect("a notice finds its session by any address it answers to",
+            Cells.noticeCell({ cell: "mycelium:cell/9F3A2B1C@heron#notice-4" }, held), raising);
+        expect("by its own address, whatever the case",
+            Cells.noticeCell({ cell: "mycelium:cell/bbbbbb" }, held), cellB);
+        expect("no cell named, none", Cells.noticeCell({ cell: null }, held), null);
+        expect("not a cell's link, none", Cells.noticeCell({ cell: "https://x/BBBBBB" }, held),
+            null);
+        expect("a session no longer held, none",
+            Cells.noticeCell({ cell: "mycelium:cell/GONE0001" }, held), null);
+        expect("nothing held, none", Cells.noticeCell({ cell: "mycelium:cell/BBBBBB" }, undefined),
+            null);
+        expect("the address a notice names, whatever is held",
+            [Cells.cellNamed({ cell: "mycelium:cell/9f3a2b1c#notice-4" }),
+                Cells.cellNamed({ cell: "https://x/BBBBBB" }), Cells.cellNamed({})],
+            ["9F3A2B1C", "", ""]);
+        // It stands among what needs Joel now, waiting since it came, so
+        // under its heading it weighs as long as it's waited and no more.
+        const noticed = ForYou.banded([{ kind: "notice",
+            thing: Cells.noticeThing({ at: now - hour }) }], now);
+        expect("a session's notice needs Joel now, weighed as it's waited",
+            [noticed.now.length, noticed.now[0]?.weight],
+            [1, ForYou.weigh({ since: now - hour }, now).weight]);
+
         // Agents Asking stands first, above every heading, while any shows,
         // since a heading claims what's under it; with none, before the first
         // loose row that weighs less, as agentAt places it (Y2YBTS,

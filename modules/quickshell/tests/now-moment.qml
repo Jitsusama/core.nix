@@ -1040,6 +1040,21 @@ ShellRoot {
             now.waitsNow === 0 && ForYouHolds.count === 0 && now.homeSays() === "",
             JSON.stringify([now.waitsNow, ForYouHolds.count, now.homeSays()]));
         Notices.live = {};
+        // One a session raised, naming its cell, stands among what needs
+        // Joel now under that session (What Needs Me, 42P0R4, 2026-11-19),
+        // and is still counted once.
+        const raising = { address: "KELP01", title: "Session K",
+            presence: { session: "s-k", addresses: ["KELP01", "9F3A2B1C"] } };
+        Sessions.running = [raising];
+        Notices.history = [{ id: 8, at: Date.now(), app: "pi", summary: "Session K is done",
+            urgency: "critical", read: false, cell: "mycelium:cell/9F3A2B1C@heron#done" }];
+        const joined = now.forYouBands.now.filter(one => one.kind === "notice");
+        expect("a session's notice stands under it among what needs Joel, counted once",
+            now.waiting.side === "1 to do" && ForYouHolds.count === 1 && joined.length === 1
+                && joined[0].cell() === raising,
+            JSON.stringify([now.waiting.side, ForYouHolds.count, joined.length,
+                joined[0]?.cell()?.address ?? null]));
+        Sessions.running = [];
         Notices.history = [];
 
         // For You is asked what it holds as it's stepped into and again as

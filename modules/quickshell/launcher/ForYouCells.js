@@ -78,6 +78,41 @@ function headingName(cell, served, said) {
     return doing === "" ? title : filledOnce(said.cell, { title, doing });
 }
 
+// How a notice names the session that raised it, as the notices daemon
+// serves it (notice.rs's Cell): `mycelium:cell/<ADDRESS>[@<machine>][#<anchor>]`.
+// Its address is read by place, since Qt's engine gives a match no groups.
+const CELL_LINK = /^mycelium:cell\/(?<address>[A-Za-z0-9]+)(?:[@#]|$)/u;
+
+// The address of the session that raised `notice`, as its `cell` names it,
+// uppercased, or "" where it names none: such a notice stands where it
+// always did, in Desktop alone, and one naming a cell stands in What Needs
+// Me too, so the tray's count of critical ones leaves it out there.
+function cellNamed(notice) {
+    const named = CELL_LINK.exec(typeof notice?.cell === "string" ? notice.cell : "");
+    return named === null ? "" : named[1].toUpperCase();
+}
+
+// The session among `held` that raised `notice`, by any address it answers
+// to, or null: one naming no cell, or a session no longer held, stands
+// among Joel's own. Away mode names a session by its own address, which it
+// keeps whatever its quest.
+function noticeCell(notice, held) {
+    const address = cellNamed(notice);
+    if (address === "") {
+        return null;
+    }
+    const answers = session => [session.address].concat(session.presence?.addresses ?? [])
+        .some(name => String(name ?? "").toUpperCase() === address);
+    return (Array.isArray(held) ? held : []).find(answers) ?? null;
+}
+
+// A session's notice as For You weighs it: a thing of no kind it counts,
+// waiting since it came, so it stands among what needs Joel now, under its
+// session's heading, by how long it's waited.
+function noticeThing(notice) {
+    return { kind: "notice", since: notice.at ?? null };
+}
+
 // A template with each {key} filled in one pass, so what a value says is
 // never read again: filled key by key, a title holding "{doing}" was
 // filled a second time, and String.replace read "$&" in one as a pattern.
