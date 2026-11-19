@@ -61,7 +61,7 @@ ceiling() {
 case "${1-}" in
 -h | --help)
   cat <<'EOF'
-efficient-cores  holds the efficient cores' clock, or frees it
+efficient-cores  holds or frees the efficient cores' clock
 
 EXAMPLES
   efficient-cores hold MHZ  hold each at most MHZ, within
