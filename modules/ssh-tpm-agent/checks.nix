@@ -45,11 +45,33 @@
       coreless = holds "ssh-tpm-agent-keeps-no-core" "ssh-tpm-agent may keep a core of its PIN." (
         service.LimitCORE or null == 0
       );
+      # gate-cases.txt copies the slices' names by hand, so a slice renamed
+      # would leave its cases passing and its work served: each slice the
+      # gate names must still be one the workstation makes.
+      named =
+        holds "ssh-tpm-agent-gate-names-real-slices"
+          "ssh-tpm-agent's gate names a slice the workstation doesn't make."
+          (
+            builtins.all (slice: workstation.config.systemd.user.slices ? ${slice}) [
+              "agents"
+              "background"
+              "jobs"
+              "jobs-awaited"
+              "jobs-timed"
+              "jobs-work"
+              "shared"
+            ]
+          );
       inherit (user.sshAuthSock.initialization) bash zsh;
     in
     pkgs.runCommandLocal "ssh-tpm-agent-refuses-agents"
       {
-        inherit agent told coreless;
+        inherit
+          agent
+          told
+          coreless
+          named
+          ;
         nativeBuildInputs = [ pkgs.zsh ];
         inherit bash zsh;
       }

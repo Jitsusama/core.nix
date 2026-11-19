@@ -189,9 +189,10 @@ let
         # Where the proxy runs, agents sign and log in through it; where it
         # doesn't, SSH_AUTH_SOCK is whatever the manager holds. This hides
         # the TPM agent's variable only: its socket is still at a path
-        # everyone knows, open to anything running as Joel, until a host's
-        # commands are refused it (core#5551). Joel's own signing still
-        # finds his agent without the variable.
+        # everyone knows, and what keeps a host's commands from it is the
+        # agent's key gate (modules/ssh-tpm-agent/gate.conf), which refuses
+        # agents.slice. Joel's own signing still finds his agent without
+        # the variable.
         #
         # NODE_OPTIONS goes too, as systemd's last step, after every
         # Environment= and EnvironmentFile= a machine adds, so neither those

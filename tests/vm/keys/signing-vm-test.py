@@ -175,21 +175,24 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
     said = joel.run(listing("agents"), succeed=False)
     assert "refused" in said
     assert keys.joel not in said
-    joel.machine.wait_until_succeeds(
-        f"{journal} -p warning --after-cursor={shlex.quote(since)}"
-        ' | grep -q "refused a request from agents\' work"',
-        timeout=30,
+    refused = (
+        f'{journal} -p warning --after-cursor={{}} | grep -q "refused a request from agents\' work"'
     )
+    joel.machine.wait_until_succeeds(refused.format(shlex.quote(since)), timeout=30)
     head = joel.head()
+    # Read again from here, so the commit's failure is tied to a refusal of its own.
+    since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
     said = joel.run(
         f"systemd-run --user --slice=agents --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
         ' -E SIGN_AS=joel -E PATH="$PATH" $(command -v git) -C "$HOME/repo"'
         " commit -q --allow-empty -m as-joel-from-agents < /dev/null 2>&1",
         succeed=False,
     )
-    # git says this only when the signing failed, so no other failure passes.
+    # git says this when the signing failed, and the gate's refusal after the
+    # cursor shows it was the gate that failed it.
     assert "failed to write commit object" in said
     assert joel.head() == head
+    joel.machine.wait_until_succeeds(refused.format(shlex.quote(since)), timeout=30)
 
 
 def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:

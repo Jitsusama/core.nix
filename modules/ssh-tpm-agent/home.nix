@@ -67,6 +67,9 @@
 
     # So the switch that first brings the gate, and the core limit below,
     # leaves the agent already running without either until its next start.
+    # systemctl shows the new unit's environment straight after the switch,
+    # so the agent's journal says at each start which gate it judges by,
+    # and /proc/<its pid>/environ says what the running one has.
     # zsh's socket text below waits on nothing: each shell opened after the
     # switch keeps the agent it was given.
     #
