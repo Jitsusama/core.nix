@@ -30,7 +30,8 @@ struct World {
 }
 
 /// The folder of stand-ins every world runs, its pw-dump written once
-/// before any test starts a program: a script written while another
+/// before any test starts a program, since [`World::new`] and [`peer`],
+/// which run every program these tests start, ask for it first: a script written while another
 /// thread forks is held open for writing in the child, so running it
 /// fails as busy. It's written under a name of its own and renamed into
 /// place, so another run of these tests never runs it half-written.
@@ -188,6 +189,7 @@ fn peer(ago: i64, declares_call: bool, reached: &str) -> String {
         .expect("after the epoch")
         .as_secs();
     let at = i64::try_from(now).expect("a time") - ago;
+    stand_ins();
     let measured = Command::new("date")
         .args(["-u", "-d", &format!("@{at}"), "+%Y-%m-%dT%H:%M:%S.5Z"])
         .output()

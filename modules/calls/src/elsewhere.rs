@@ -53,6 +53,9 @@ pub const FRESH: i64 = 180;
 pub struct Heard {
     /// Machines whose fresh record says a call is on.
     pub calls: Vec<String>,
+    /// Machines whose fresh record says no call is on: heard well, so
+    /// whatever went unheard of them has mended.
+    pub no_call: Vec<String>,
     /// Machines whose fresh record declares the call probe but holds no
     /// yes or no.
     pub untold: Vec<String>,
@@ -168,7 +171,7 @@ pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
             Said::Untold => &mut heard.untold,
             Said::Unseen => &mut heard.unseen,
             Said::Undated => &mut heard.undated,
-            Said::NoCall => continue,
+            Said::NoCall => &mut heard.no_call,
         };
         list.push(name);
     }
@@ -316,6 +319,31 @@ mod tests {
             let heard = judge(&[answer(&[record("skiff", NOW, true, &reached)])], HERE, AT);
             assert!(heard.calls.is_empty(), "{why} was a call: {heard:?}");
         }
+        // A no is heard well, and only a no: health mends what it hears so.
+        let no = judge(
+            &[answer(&[record(
+                "skiff",
+                NOW,
+                true,
+                &json!({"call": false}),
+            )])],
+            HERE,
+            AT,
+        );
+        assert_eq!(
+            no.no_call,
+            ["skiff"],
+            "a fresh no wasn't heard well: {no:?}"
+        );
+        let untold = judge(
+            &[answer(&[record("skiff", NOW, true, &json!({"call": 1}))])],
+            HERE,
+            AT,
+        );
+        assert!(
+            untold.no_call.is_empty(),
+            "a number was heard well: {untold:?}"
+        );
     }
 
     #[test]
@@ -573,7 +601,14 @@ mod tests {
             HERE,
             AT,
         );
-        assert_eq!(heard, Heard::default(), "a fresh no didn't win over untold");
+        assert_eq!(
+            heard,
+            Heard {
+                no_call: vec!["skiff".to_owned()],
+                ..Heard::default()
+            },
+            "a fresh no didn't win over untold"
+        );
         // The stronger first, so the last record can't be what wins.
         let heard = judge(
             &[

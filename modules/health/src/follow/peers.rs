@@ -2,7 +2,7 @@
 //! mycelium nodes here list them: a-call-is-on names each machine whose
 //! calls it can't hear, and a node here that won't answer, only to
 //! whoever asked, and waits on none, so each stands here as a service's
-//! fault until it mends. A thing counts once it's gone unheard for
+//! fault until it's heard well. A thing counts once it's gone unheard for
 //! [`UNHEARD_FOR`], so a node restarting or one probe running late, each
 //! mended within a minute, isn't a fault.
 
@@ -65,42 +65,40 @@ impl Follower {
     }
 
     /// Keep whose calls `heard` says go unheard at `at`: each counts once
-    /// as a service's fault when it's gone unheard on every look for
-    /// [`UNHEARD_FOR`], and again only after it's heard again, a start
-    /// between them or not. A look on which a node here didn't answer, or
-    /// none did, hears less than the last, so what it doesn't hear isn't
-    /// heard: each such thing keeps its time and its count while it was
-    /// unheard within [`UNHEARD_FOR`], so a node restarting counts nothing
-    /// again, and one that stays mute keeps no time for ever.
+    /// as a service's fault when it's gone unheard for [`UNHEARD_FOR`],
+    /// and again only after it's heard well, a start between them or not.
+    /// A look can say less than is so: a node restarting answers with few
+    /// of its peers or none, and one that stays mute says nothing of those
+    /// heard through it. So only what a look hears well mends (see
+    /// [`mended`]); what it doesn't say keeps its count, and its time while
+    /// it was unheard within [`UNHEARD_FOR`], so a restart counts nothing
+    /// again and a node that stays mute keeps no time for ever.
     pub fn see_heard(&mut self, heard: &Heard, at: i64) {
         if date_of(at, &self.zone) != self.day.date {
             return;
         }
         let unheard = unheard(heard);
-        let whole = heard.answered > 0 && heard.unanswered.is_empty();
+        let mended = mended(heard);
         let in_look = |thing: &str| unheard.iter().any(|(unheard, _)| unheard == thing);
-        let lately = |spell: &Spell| !whole && at - spell.last < UNHEARD_FOR;
-        // A thing counted before a start has no spell yet, so it stays
-        // counted until a whole look or one that hears it unheard.
+        let well = |thing: &str| mended.iter().any(|mended| mended == thing);
         let mut counted: Vec<String> = self
             .day
             .seeing
             .unseen_calls
             .iter()
-            .filter(|thing| {
-                !whole && !in_look(thing) && self.unheard_since.get(*thing).is_none_or(lately)
-            })
+            .filter(|thing| !well(thing) && !in_look(thing))
             .cloned()
             .collect();
-        self.unheard_since
-            .retain(|thing, spell| in_look(thing) || lately(spell));
+        self.unheard_since.retain(|thing, stretch| {
+            !well(thing) && (in_look(thing) || at - stretch.last < UNHEARD_FOR)
+        });
         for (thing, said) in unheard.iter().cloned() {
-            let spell = self.unheard_since.entry(thing.clone()).or_insert(Spell {
+            let stretch = self.unheard_since.entry(thing.clone()).or_insert(Stretch {
                 since: at,
                 last: at,
             });
-            spell.last = at;
-            let since = spell.since;
+            stretch.last = at;
+            let since = stretch.since;
             if self.day.seeing.unseen_calls.contains(&thing) {
                 counted.push(thing);
             } else if at - since >= UNHEARD_FOR {
@@ -117,10 +115,32 @@ impl Follower {
 }
 
 /// How long a thing whose calls go unheard has gone so: since when, on
-/// every look that heard it, and when a look last heard it unheard.
-pub(super) struct Spell {
+/// every look that said it without one hearing it well, and when a look
+/// last said it.
+pub(super) struct Stretch {
     since: i64,
     last: i64,
+}
+
+/// What `heard` hears well, each the thing it's counted under: each
+/// machine a fresh record says is on a call or on none, whatever another
+/// realm's record says, since the strongest wins; and, once every node
+/// here answered, the nodes, and the machines past the most named when
+/// none goes unnamed.
+pub(super) fn mended(heard: &Heard) -> Vec<String> {
+    let mut mended: Vec<String> = heard
+        .calls
+        .iter()
+        .chain(&heard.no_call)
+        .map(|machine| format!("calls on {machine}"))
+        .collect();
+    if heard.answered > 0 && heard.unanswered.is_empty() {
+        mended.push(NODES.to_owned());
+        if heard.unnamed == 0 {
+            mended.push(UNNAMED.to_owned());
+        }
+    }
+    mended
 }
 
 /// Whose calls `heard` says go unheard, each a thing and what's said of

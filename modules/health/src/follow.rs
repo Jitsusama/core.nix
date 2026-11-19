@@ -78,7 +78,7 @@ pub struct Follower {
     peers: Option<PathBuf>,
     /// How long each thing whose calls go unheard has gone so
     /// (follow/peers.rs).
-    unheard_since: BTreeMap<String, peers::Spell>,
+    unheard_since: BTreeMap<String, peers::Stretch>,
     reports: Vec<PathBuf>,
     reported: BTreeSet<PathBuf>,
 }

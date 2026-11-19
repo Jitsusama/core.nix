@@ -1320,7 +1320,7 @@
     information, keeps each disk's least free space and gravest band through a restart as the disk
     guards say them and counts once a guard that stopped beating, each other machine whose calls
     go unheard, those past the most named as one, and a mycelium node here that won't answer while
-    it stays so, a look it didn't answer on mending nothing, keeps a day by kind
+    it stays so, only a machine heard on a call or none mending, keeps a day by kind
     and writes it with the figures cadence holds it to every half minute however busy the
     journals, and shows the three worst pains in plain words, pi's as pi's, then a line a kind,
     the gravest first; it times a launcher ready by today's line, each
