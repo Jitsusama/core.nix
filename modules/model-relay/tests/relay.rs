@@ -10,7 +10,9 @@
 //! of them sharing one opened for them, and is a 502 when reset again or
 //! with nowhere to go, one a fallen connection lost is a 502 and no reset,
 //! the origin hearing a lost one once, a body too large or left unfinished
-//! goes nowhere, the counts are said as the relay leaves, an origin out of
+//! goes nowhere, a relay failing past its share stands down, sending pi
+//! direct, and takes requests again after, the counts are said as the
+//! relay leaves, an origin out of
 //! reach is said as a 502 or a 504 without queueing, a
 //! connection that won't open isn't asked for again on every request, nor
 //! does a failure outlast the origin coming back, the relay leaves once
@@ -1159,6 +1161,64 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
     assert!(
         said.contains("1 asked, 1 refused, 0 failed"),
         "a body too large wasn't counted as refused: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes_requests_again() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "2", "--stand-down-for", "4"],
+    );
+
+    // Each is reset, and then reset again or kept with nowhere else to go.
+    for _ in 0..20 {
+        let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
+        assert_eq!(got.status, StatusCode::BAD_GATEWAY, "a request the origin reset");
+    }
+    let stood_down = Instant::now();
+
+    // Past its idle time, it's still there, standing down.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request while the relay stands down"
+    );
+    let words = String::from_utf8_lossy(&got.body).into_owned();
+    assert!(
+        words.contains("this relay forwards to its own origin alone")
+            && words.contains("so go directly"),
+        "the stand-down's 421 doesn't say what sends pi direct: {words}"
+    );
+    assert!(
+        got.headers.contains_key("retry-after"),
+        "the stand-down's 421 doesn't say when to try it again"
+    );
+    assert_eq!(handed_to(&origin, "/echo"), 0, "a request went on while it stood down");
+
+    // Past its stand-down, and within its idle time after, it carries one.
+    tokio::time::sleep_until((stood_down + Duration::from_secs(5)).into()).await;
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(got.status, StatusCode::CREATED, "a request once it stood down");
+    assert_eq!(got.body, b"hi");
+
+    let said = relay.said();
+    assert!(
+        said.contains(
+            "20 of the 20 requests it finished in ten minutes failed, so it stands down for 4 \
+             s, retiring its connections"
+        ),
+        "the stand-down went unsaid: {said}"
+    );
+    assert!(
+        said.contains("it stood down 4 s, so it takes requests again"),
+        "taking requests again went unsaid: {said}"
     );
 }
 
