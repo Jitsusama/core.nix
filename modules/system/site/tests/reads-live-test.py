@@ -54,11 +54,16 @@ def system_served(tmp_path: Path, system_daemon: StandIn) -> Iterator[Served]:
 
 
 @pytest.fixture
-def system_page(browser: Browser, system_served: Served) -> Iterator[Page]:
+def system_opened(browser: Browser, system_served: Served) -> Iterator[Opened]:
     root, _ = system_served
     opened = Opened(browser, f"{root}system/", SIZES[-1], "dark")
-    yield opened.page
+    yield opened
     opened.close()
+
+
+@pytest.fixture
+def system_page(system_opened: Opened) -> Page:
+    return system_opened.page
 
 
 def says_it_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
@@ -331,11 +336,13 @@ def test_a_system_daemon_that_stops_is_said_broken_then_live(
     counted(system_page)
 
 
-def test_a_sites_server_that_goes_is_said_stale(system_page: Page, system_served: Served) -> None:
-    says_it_stands(system_page, "live")
+def test_a_sites_server_that_goes_is_said_stale(
+    system_opened: Opened, system_served: Served
+) -> None:
+    says_it_stands(system_opened.page, "live")
     _, server = system_served
-    server.kill()
-    says_it_stands(system_page, "stale")
+    system_opened.loses(server)
+    says_it_stands(system_opened.page, "stale")
 
 
 def test_the_system_page_keeps_to_its_budget(browser: Browser, system_served: Served) -> None:

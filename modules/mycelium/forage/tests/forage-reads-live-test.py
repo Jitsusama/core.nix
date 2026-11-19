@@ -38,8 +38,6 @@ HERE = Path(__file__).parent
 PACE_MS = 6000
 # The server watches a gone daemon again every 2 seconds, so its return shows inside this.
 BACK_MS = 15000
-# The browser's own line for a feed that couldn't connect, once the server is gone.
-UNREACHED = "WebSocket connection to"
 # A page that dropped what it drew on a change shows it within a redraw, and one that lost its
 # server tries again a second on (feed.ts); waiting this long lets both happen first.
 REDRAWN_MS = 2500
@@ -266,10 +264,8 @@ def test_a_sites_server_that_goes_is_said_stale(
 ) -> None:
     forage_page = forage_opened.page
     says_it_stands(forage_page, "live")
-    # Once the server's gone, the browser logs the feed's next try as a line of its own.
-    forage_opened.expecting(UNREACHED)
     _, server = forage_served
-    server.kill()
+    forage_opened.loses(server)
     says_it_stands(forage_page, "stale")
     forage_page.wait_for_timeout(REDRAWN_MS)
     every_cell_drawn(forage_page)

@@ -37,8 +37,6 @@ BACK_MS = 12000
 # A page that dropped what it drew on a change shows it within a redraw;
 # waiting this long lets it, before the test looks for what should stay.
 REDRAWN_MS = 1500
-# The browser's own line for a feed that couldn't connect, once the server is gone.
-UNREACHED = "WebSocket connection to"
 # What the three murmurs come to: all said, one of them settled.
 COUNTED = "Three murmured, two still in the air."
 # What a first visit to the page may cost, drawn from the three murmurs.
@@ -219,10 +217,8 @@ def test_a_server_that_goes_is_said_stale_with_the_murmurs_kept(
 ) -> None:
     page = murmurs_opened.page
     the_page_stands(page, "live")
-    # The feed tries the server again a second on, which the browser logs.
-    murmurs_opened.expecting(UNREACHED)
     _, server = murmurs_served
-    server.kill()
+    murmurs_opened.loses(server)
     the_page_stands(page, "stale")
     page.wait_for_timeout(REDRAWN_MS)
     the_page_counts(page, COUNTED, "the stale page lost its murmurs")
