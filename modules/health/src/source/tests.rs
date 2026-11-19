@@ -20,8 +20,8 @@ static HEARD: Mutex<Vec<(u8, String)>> = Mutex::new(Vec::new());
 
 /// Keep what `say_marked` says, at its `mark`.
 pub(super) fn hear(words: &str, mark: u8) {
-    // A test that panicked holding the sayings leaves them whole, so the
-    // rest still keep theirs rather than all failing with it.
+    // No test's code runs under the lock, but taking it back from a panic
+    // keeps one test's failure from failing every saying after it.
     HEARD
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -302,7 +302,7 @@ fn a_replay_whose_follower_cant_follow_on_sends_every_followers_end() {
         if *at == 0 {
             writing(&[])
         } else {
-            Command::new("/nonexistent/journalctl")
+            Command::new("/nonexistent/follow-on-journalctl")
         }
     });
     assert_eq!(
@@ -313,7 +313,7 @@ fn a_replay_whose_follower_cant_follow_on_sends_every_followers_end() {
     // Said as a failure, which health ends on.
     assert_marked(
         "a follower that couldn't follow on",
-        &["couldn't follow on from the day's replay: /nonexistent/journalctl"],
+        &["couldn't follow on from the day's replay: /nonexistent/follow-on-journalctl"],
         1,
         ERROR,
     );
@@ -474,6 +474,17 @@ fn the_journals_last_line_is_where_journald_numbered_its_last() {
             .is_err_and(|error| error.to_string().starts_with("/nonexistent/journalctl: ")),
         "a journalctl that couldn't start wasn't an error naming it"
     );
+    // Said as a warning, which health runs on through.
+    assert!(
+        last_written(sh("exit 7")).is_ok_and(|last| last.is_none()),
+        "a journalctl that failed gave an end"
+    );
+    assert_marked(
+        "a journalctl that couldn't number its last line",
+        &[" -c exit 7 ended, ", "may be heard out of order"],
+        1,
+        WARNING,
+    );
 }
 
 #[test]
@@ -528,11 +539,12 @@ fn the_replay_asks_the_journals_last_line_first_off_healths_own_thread() {
 
 #[test]
 fn a_replay_that_cant_start_sends_every_followers_end() {
-    // Said as a failure, which health ends on, each way it can't.
-    let nowhere = || Command::new("/nonexistent/journalctl");
+    // Said as a failure, which health ends on, each way it can't, each
+    // named for its way so the marks read are its own.
+    let reading = || Command::new("/nonexistent/reading-journalctl");
     for (newest, reading) in [
-        (nowhere(), None),
-        (writing(&[]), Some(nowhere as fn() -> Command)),
+        (Command::new("/nonexistent/newest-journalctl"), None),
+        (writing(&[]), Some(reading as fn() -> Command)),
     ] {
         let (send, heard) = mpsc::channel();
         let count = replayed_by(
@@ -552,12 +564,16 @@ fn a_replay_that_cant_start_sends_every_followers_end() {
              on its every sender being gone"
         );
     }
-    assert_marked(
-        "a replay that couldn't start",
-        &["the day's replay couldn't start: /nonexistent/journalctl"],
-        2,
-        ERROR,
-    );
+    for way in ["newest", "reading"] {
+        assert_marked(
+            &format!("a replay that couldn't start its {way}"),
+            &[&format!(
+                "the day's replay couldn't start: /nonexistent/{way}-journalctl"
+            )],
+            1,
+            ERROR,
+        );
+    }
 }
 
 #[test]

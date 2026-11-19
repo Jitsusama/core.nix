@@ -38,8 +38,8 @@ use spell::Spell;
 /// nothing.
 const EVERY: Duration = Duration::from_secs(30);
 
-// What ends health is a failure and a mended write a notice, named once for a test to pin.
-const SAYS: fn(&str) = crate::source::fail;
+// Health's own faults are failures, and a mended write a notice, named once for a test to pin.
+const FAILS: fn(&str) = crate::source::fail;
 const NOTICES: fn(&str) = crate::source::notice;
 
 /// How long health runs before a follower's end ends it, for systemd or
@@ -640,7 +640,7 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let (lines, read) = mpsc::channel();
     // Dropped however this returns, ending every follower still running.
     let followers = Followers::default();
-    let ended = ended_by(source.start(&now, &lines, &followers), &lines, SAYS);
+    let ended = ended_by(source.start(&now, &lines, &followers), &lines, FAILS);
     drop(lines);
     run(
         &mut follower,
@@ -648,7 +648,7 @@ pub fn follow(into: &Path) -> io::Result<()> {
         Instant::now,
         thread::sleep,
         lid::look,
-        &SAYS,
+        &FAILS,
         &NOTICES,
     )?;
     Err(ended)
