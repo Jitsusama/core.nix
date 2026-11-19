@@ -2624,7 +2624,8 @@
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
     with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
-    conversations to share, node's heap limit set to its realm's heapMb, and pi's SSH agent proxy as their agent wherever the proxy runs,
+    conversations to share, node's heap limit set to its realm's heapMb, and pi's SSH agent
+    proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
     restart, and a machine naming none, or a Mac, gets none
   '';

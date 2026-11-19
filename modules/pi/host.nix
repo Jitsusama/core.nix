@@ -177,6 +177,17 @@ let
           }
           // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
         );
+        # The user manager names the TPM's agent, Joel's own keys, to
+        # everything it starts, and a hosted conversation's commands inherit
+        # the host's environment, so on 18 November the background host
+        # still named it after SSH_AUTH_SOCK above moved to the agents' proxy.
+        # Where the proxy runs, agents sign and log in through it; where it
+        # doesn't, SSH_AUTH_SOCK is whatever the manager holds. This hides
+        # the TPM agent's variable only: its socket is still at a path
+        # everyone knows, open to anything running as Joel, until a host's
+        # commands are refused it (core#5551). Joel's own signing still
+        # finds his agent without the variable.
+        UnsetEnvironment = [ "SSH_TPM_AUTH_SOCK" ];
         # The host parks its conversations and keeps their records when told
         # to stop, so only its own failure restarts it; a crash's next start
         # takes back what it held.
