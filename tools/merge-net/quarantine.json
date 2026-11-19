@@ -45,33 +45,20 @@
   {
     "at": 1794838970,
     "commit": "467f7109b3c34c6195996ce4f98c020a3064fe53",
-    "due": "2026-11-18",
+    "due": "2026-11-21",
+    "due_why": "Its owner, the launcher's, by 2026-11-21 23:59 UTC makes its timing cases hold on a loaded builder, or takes it off once ten runs in a row hold: all 11 failures from 18 Nov to 19 Nov 01:00 UTC were its load cases, 6 of them the launcher's keys under load at four to six times their time with the load frozen",
     "owner_pr": 4953,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 467f7109b3c3",
     "test": "vm-desktop-keeps-pace"
   },
   {
-    "at": 1794845579,
-    "commit": "5ea2f73b278dc06f1b5d19fe4d26d6adc4898374",
-    "due": "2026-11-18",
-    "owner_pr": 4966,
-    "owner_session": "orchestrator",
-    "reason": "failed at 6e2239bfc8b8, and at 5ea2f73b278d after it",
-    "subtests": [
-      "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent",
-      "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back",
-      "test_the_budgets_stand_behind_one_row_at_each_scale",
-      "test_the_home_network_and_nearby_list_whats_around_at_each_scale"
-    ],
-    "test": "vm-desktop-looks"
-  },
-  {
     "at": 1794855899,
     "commit": "ae64e1cb0afab0edef976c2886b759858fdf29d0",
-    "due": "2026-11-18",
+    "due": "2026-11-21",
+    "due_why": "Its owner, the system view's, takes it off by 2026-11-21 23:59 UTC once ten runs in a row hold after the fix to two alike screens: it failed once, on 18 Nov, one session of five left on the alike screen, which that fault would do and its log doesn't prove",
     "owner_pr": 4952,
-    "owner_session": "orchestrator",
+    "owner_session": "BMDYSH",
     "reason": "failed, then passed, at ae64e1cb0afa",
     "subtests": [
       "test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat"
@@ -148,8 +135,9 @@
     "at": 1795068742,
     "commit": "1cb8b38b552e666a9b9be34d86461d9e3d779b74",
     "due": "2026-11-21",
+    "due_why": "Its owner, the system view's, takes it off by 2026-11-21 23:59 UTC once ten runs in a row hold after the fix to two alike screens: 8 of its 14 failures from 18 Nov to 19 Nov 01:00 UTC were this case, the shell taking the alike screen for the one gone come back and dropping the note that would have put its workspaces back",
     "owner_pr": 5626,
-    "owner_session": "orchestrator",
+    "owner_session": "BMDYSH",
     "reason": "failed, then passed, at 1cb8b38b552e",
     "subtests": [
       "test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window"
