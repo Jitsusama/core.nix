@@ -359,7 +359,7 @@ QtObject {
         // between two frames drawn differently, so a sweep of some hundreds
         // of walks reads a fraction of the frames: a stride steps on, never
         // back, and shows for 25 ms at least, so none comes and goes unseen
-        // between two alike.
+        // between two alike, which the sweep holds it to too.
         const drawings = (way, was) => {
             const drawnIn = was ? [{ pose: was, t: -1 }] : [];
             const seen = t => Paths.frame(way, Math.min(t, way.ends)).pose;
@@ -385,10 +385,18 @@ QtObject {
             }
             return drawnIn;
         };
+        // A change skids, or steps back but onto its stand, as a stop may:
+        // three strides on is one back.
+        const stridesOn = (before, pose) =>
+            (strideOrder.indexOf(pose) - strideOrder.indexOf(before) + 4) % 4;
         const skidsIn = drawn => drawn.map((one, i, all) => [all[i - 1]?.pose, one.pose])
             .filter(([before, pose]) => strideOrder.includes(before) && strideOrder.includes(pose)
-                && (strideOrder.indexOf(pose) - strideOrder.indexOf(before)) % 2 === 0);
+                && (stridesOn(before, pose) % 2 === 0
+                    || (pose !== "walkingB" && stridesOn(before, pose) === 3)));
         const skids = (way, was) => skidsIn(drawings(way, was));
+        expect("a step back reads as a skid, but onto its stand",
+            [["walkingA", "walkingD"], ["walkingC", "walkingA"], ["walkingD", "walkingB"]]
+                .map(poses => skidsIn(poses.map(pose => ({ pose }))).length), [1, 1, 0]);
         // And each stride it steps into is drawn for 25 ms at least, all
         // but the one it was set off in, drawn before.
         const flashesIn = drawn => drawn.filter((one, i, all) => i > 0
@@ -481,8 +489,8 @@ QtObject {
             [chasedStride > 0, chasedDrawn.x - chasedAt >= alone * 3 / 4,
                 Math.abs(chasedSteps - chasedStrides) <= 1.5, chasedSkids, chasedFlashes],
             [true, true, true, 0, 0]);
-        // Set off again as it eases in, it eases in on, rather than lurch to
-        // its pace; at its pace, it keeps it.
+        // Set off again as it eases in or out, it eases in on, rather than
+        // lurch to its pace; at its pace, it keeps it.
         // Most of the way up its ramp in, by time, not by what it says of its
         // pace, so a pace judged by the ramp's ground, not its time, fails it.
         const eases = unchased.beats.find(beat => beat.kind === "goes");
@@ -490,12 +498,16 @@ QtObject {
         const easingAt = Paths.frame(unchased,
             eases.begins + (eases.ends - eases.begins) * rampEnds * 0.9);
         const pacedAt = Paths.frame(unchased, 600);
+        // Halfway down its ramp out, by time, as a seat moved as it settles.
+        const rampOut = 2 * eases.ramps[1] / (1 + eases.ramps[0] + eases.ramps[1]);
+        const easingOut = Paths.frame(unchased,
+            eases.ends - (eases.ends - eases.begins) * rampOut * 0.5);
         const easesFrom = one => Paths.walk({ x: one.x, y: one.y }, { x: 700, y: 7 }, world({
             hurried: true, facing: one.facing, drawnIn: one.pose, drawnInto: one.into,
             drawnAtPace: one.atPace })).beats.find(beat => beat.kind === "goes").ramps[0];
         expect("set off again easing in, it eases in; at its pace, it keeps it",
-            [easingAt.atPace, easesFrom(easingAt) > 0, pacedAt.atPace, easesFrom(pacedAt)],
-            [false, true, true, 0]);
+            [easingAt.atPace, easesFrom(easingAt) > 0, pacedAt.atPace, easesFrom(pacedAt),
+                easingOut.atPace, easesFrom(easingOut) > 0], [false, true, true, 0, false, true]);
         // Stepped into a SHOWN early to stop, a stride counts from where it was
         // first drawn, a whole stride by its last frame, not from the stop.
         const stopping = Paths.walk({ x: 100, y: 7 }, { x: 636, y: 7 }, world({ hurried: true }));
@@ -514,7 +526,7 @@ QtObject {
         const runsOf = (way, length) => Array.from({ length }, (_, t) => Paths.frame(way, t).pose)
             .reduce((runs, pose) => {
                 const last = runs[runs.length - 1];
-                if (last?.pose === pose)
+                if (runs.length > 0 && last.pose === pose)
                     last.ms += 1;
                 else
                     runs.push({ pose, ms: 1 });
@@ -539,6 +551,16 @@ QtObject {
             [turning.pose, names(replanned)[0], replanRuns.map(run => run.pose),
                 10 + replanRuns[0].ms >= 33, skidsIn(replanRuns)],
             ["walkingA", "goes", ["walkingA", "walkingC"], true, []]);
+        // Re-planned 60 ms in, once that stride is seen, it steps a pair on
+        // from its first frame.
+        const turnSeen = Paths.frame(turnsMid, 60);
+        const replannedSeen = Paths.walk({ x: turnSeen.x, y: turnSeen.y }, { x: 700, y: 398 },
+            world({ hurried: true, facing: turnSeen.facing, drawnIn: turnSeen.pose,
+                drawnInto: turnSeen.into, drawnAtPace: turnSeen.atPace }));
+        const seenRuns = runsOf(replannedSeen, 300).slice(0, 2);
+        expect("re-planned once the stride it turns in is seen, it steps a pair on at once",
+            [turnSeen.pose, seenRuns.map(run => run.pose), skidsIn([turnSeen, ...seenRuns])],
+            ["walkingA", ["walkingC", "walkingB"], []]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));
