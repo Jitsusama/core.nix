@@ -99,13 +99,20 @@ mod tests {
         let (mut forked, told) = std::io::pipe().expect("a pipe for the fork");
         let (held, mut go) = std::io::pipe().expect("a pipe for the exec");
         let (told_fd, held_fd) = (told.as_raw_fd(), held.as_raw_fd());
+        // The child is forked with a copy of every end, close-on-exec or
+        // not, so it closes its copy of `go` before it waits: with the
+        // parent's the only writer left, `go` dropping is the end of the
+        // pipe, and a check that panics lets the child go on to its exec.
+        let go_fd = go.as_raw_fd();
         let child = std::thread::spawn(move || {
             let mut command = std::process::Command::new("sleep");
             command.arg("5");
-            // SAFETY: between its fork and its exec the child only writes
-            // a byte and reads one, both async-signal-safe.
+            // SAFETY: between its fork and its exec the child only closes
+            // a descriptor, writes a byte and reads one, all
+            // async-signal-safe.
             unsafe {
                 command.pre_exec(move || {
+                    libc::close(go_fd);
                     let _ = libc::write(told_fd, [1_u8].as_ptr().cast(), 1);
                     let mut byte = 0_u8;
                     let _ = libc::read(held_fd, (&raw mut byte).cast(), 1);
