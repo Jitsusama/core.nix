@@ -8,10 +8,12 @@
 // have changed since, and an interface's files are loaded in the
 // background after a load, one uevent for an interface already known
 // rather than all four again. A file that never lands is given up, and
-// its interface isn't asked again until it does, so one read that hangs
-// holds one of the pool's threads, not one more each load. A build has
-// no sysfs, so the files are written here, in sys beside the case, whose
-// lo folder whoever runs it makes first. It exits 0 once every case
+// its interface isn't asked again until it does and its hold is over, a
+// minute and then twice as long, so one read that hangs holds one of the
+// pool's threads, not one more each load, and a slow one isn't asked each
+// second. A build has no sysfs, so the files are written here, in sys
+// beside the case, whose lo folder whoever runs it makes first; an
+// interface with no folder reads as virtual. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -645,7 +647,94 @@ ShellRoot {
                 traffic.probesHung.lo === undefined && traffic.probe === before
                     && traffic.probesStuck.lo?.wait === 60000,
                 JSON.stringify(Object.keys(traffic.probesHung)));
-            Qt.exit(0);
+            root.heldThroughUevent();
         });
+    }
+
+    // A hold goes only once every file of its interface has landed: lo,
+    // held, has a uevent land that isn't the one it was read from, so its
+    // other files are still to come, and given up before they land, it's
+    // held twice as long rather than a minute afresh.
+    function heldThroughUevent() {
+        const held = traffic.probesStuck.lo;
+        const one = { name: "lo", files: ["uevent"], said: {} };
+        traffic.probing = one;
+        traffic.probeSaid("DEVTYPE=other");
+        Expect.expect("an interface held whose uevent lands, its other files to come, is held",
+            traffic.probesStuck.lo === held && one.files.length === 3,
+            `${JSON.stringify(traffic.probesStuck.lo)}, ${one.files.length} to come`);
+        traffic.probeGivenUp();
+        Expect.expect("given up before its other files land, it's held twice as long",
+            traffic.probesStuck.lo?.wait === 120000, JSON.stringify(traffic.probesStuck));
+        waits.until("no probe under way before odd names", () => traffic.probing === null
+            && !traffic.probeWatching, root.oddNamed);
+    }
+
+    // Interfaces named as something of an object's own, counted beside lo,
+    // are each asked, known, described and held as any other, since no map
+    // by an interface's name has a prototype. lo, held, isn't asked, though
+    // the load wants it, its reads aged past being sure of it.
+    readonly property var oddNames: ["constructor", "__proto__"]
+
+    // A map's entries for the odd names, as [name, ...what each says].
+    function oddOf(map, says) {
+        return JSON.stringify(Object.entries(map).filter(([name]) => oddNames.includes(name))
+            .map(([name, value]) => [name].concat(says(value))));
+    }
+
+    function oddNamed() {
+        const each = Object.create(null);
+        each.lo = [1000, 2000];
+        each[oddNames[0]] = [5, 6];
+        each[oddNames[1]] = [7, 8];
+        counted(each);
+        aged(60000);
+        const landed = loads;
+        mark = probed();
+        traffic.counterFile = `${root.sys}/dev`;
+        waits.until("odd names counted and asked", () => loads > landed && idle(), () => {
+            Expect.expect("an interface held isn't asked as a load wants it",
+                traffic.interfaceKinds.lo?.sure === false && probed() === mark,
+                `${probed() - mark} read, ${JSON.stringify(traffic.interfaceKinds.lo)}`);
+            const read = oddOf(traffic.probed, count => [count]);
+            Expect.expect("interfaces named as an object's own are each read whole",
+                read === '[["constructor",4],["__proto__",4]]', read);
+            const kinds = oddOf(traffic.interfaceKinds, kind => [kind.kind, kind.sure]);
+            Expect.expect("and each is what its files say",
+                kinds === '[["constructor","virtual",true],["__proto__","virtual",true]]', kinds);
+            const described = oddOf(traffic.described(traffic.reads.last.all, []),
+                one => [one.kind, one.counters.in]);
+            Expect.expect("and each is described beside its counters",
+                described === '[["constructor","virtual",5],["__proto__","virtual",7]]',
+                described);
+            root.oddHeld();
+        });
+    }
+
+    // The object prototype's own key, given up with its read in flight, is
+    // held and kept hung by its name as any other. Its hold aged out, its
+    // hung read alone keeps it from being asked; that read landing lets its
+    // view go, and it's asked again.
+    function oddHeld() {
+        const odd = oddNames[1];
+        const view = traffic.probe;
+        traffic.probing = { name: odd, files: ["uevent"], said: {}, inFlight: true };
+        traffic.probeGivenUp();
+        const holds = `${oddOf(traffic.probesStuck, held => [held.wait])} and `
+            + oddOf(traffic.probesHung, hung => [hung === view]);
+        Expect.expect("an odd name given up in flight is held and kept hung by its name",
+            holds === '[["__proto__",60000]] and [["__proto__",true]]', holds);
+        traffic.probesStuck[odd].at -= 61000;
+        traffic.probeFor([odd]);
+        Expect.expect("its hold over, it isn't asked while its read hangs",
+            traffic.probing?.name !== odd && !traffic.asking.some(one => one.name === odd),
+            root.asked());
+        traffic.probeLanded(view, "");
+        Expect.expect("its read landing lets its view go", traffic.probesHung[odd] === undefined,
+            oddOf(traffic.probesHung, () => []));
+        traffic.probeFor([odd]);
+        Expect.expect("and it's asked again", traffic.probing?.name === odd
+            || traffic.asking.some(one => one.name === odd), root.asked());
+        Qt.exit(0);
     }
 }
