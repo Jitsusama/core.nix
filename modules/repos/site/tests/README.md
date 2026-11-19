@@ -10,6 +10,7 @@ What proves the Code page, each in the cheapest tier that can show it.
 | `homes.test.ts`           | which site is home to a kind, and where each thing is  | `code-site-holds`      |
 | `asking.test.ts`          | when cells' homes are asked again, and the rows read   | `code-site-holds`      |
 | `weight.test.ts`          | a git store's weight in words, and when upkeep is due  | `code-site-holds`      |
+| `map.test.ts`             | the ties cells make, and the map's rows and threads    | `code-site-holds`      |
 | `code-reads-live-test.py` | the page live in Chromium, beside stand-in daemons     | `code-site-reads-live` |
 | `repos.json`              | the stand-in repos daemon's records, under test names  | `code-site-reads-live` |
 | `node.json`               | the stand-in node's one cell at work                   | `code-site-reads-live` |
