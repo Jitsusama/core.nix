@@ -48,6 +48,7 @@ if TYPE_CHECKING:
         # The probe gauging the builder's share (desktop/pace-probe.py).
         pace_probe: str
 
+
 # Where the stand-in keyboard is told what to press, and says when it did (desktop/keyboard.py).
 KEYBOARD = "/run/keyboard"
 SAID = "/run/keyboard.log"
