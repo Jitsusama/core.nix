@@ -34,6 +34,7 @@ import {
   spends,
   spentBy,
   spentOf,
+  cellsOn as machineCells,
   waitingWords,
 } from "./words.js";
 
@@ -2067,8 +2068,9 @@ import {
 
   // What a node is, in words: the name a tree item goes by (words.ts).
   const describe = perReading((key) => described(current, key));
-  // A machine's cells, one list per reading, so its sum is kept with it.
-  const cellsOn = perReading((id) => current.cells.filter((s) => s.machine === id));
+  // A machine's cells, the one list per reading the tree's words read too, so its sum is kept
+  // with it.
+  const cellsOn = (id) => machineCells(current, id);
   // What a node is and where it hangs, said as the keys land on it.
   const landing = (key) => {
     const m = current;
@@ -4011,8 +4013,11 @@ import {
         `</li>`
       );
     };
-    treeRows = rowsOf(rootsOf(current, machinesShown), expanded, { kids: treeKids, any: hasKids });
-    tree.innerHTML = treeRows.map(item).join("");
+    // The rows are kept for the keys only once they are on the page, so a row that fails to
+    // draw leaves the keys walking the rows still shown.
+    const rows = rowsOf(rootsOf(current, machinesShown), expanded, { kids: treeKids, any: hasKids });
+    tree.innerHTML = rows.map(item).join("");
+    treeRows = rows;
     const find1 = (key) => key && tree.querySelector(`[data-key="${CSS.escape(key)}"]`);
     const active = find1(held) || find1(treeActive) || find1(pointed) || tree.querySelector("[role=treeitem]");
     if (active) {

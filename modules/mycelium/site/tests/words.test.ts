@@ -8,6 +8,7 @@ import { test as it } from "node:test";
 import {
   allCells,
   type Cell,
+  cellsOn,
   cellWords,
   countsOf,
   countsWords,
@@ -70,6 +71,8 @@ it("says dollars to the cent below a hundred and whole above it", () => {
   assert.equal(money(3.456), "$3.46", "cents tell small sums apart");
   assert.equal(money(0), "$0.00", "nothing spent is a sum");
   assert.equal(money(99.994), "$99.99", "just under a hundred keeps cents");
+  assert.equal(money(99.996), "$100.00", "and keeps them rounding up to a hundred");
+  assert.equal(money(100), "$100", "a hundred is whole");
   assert.equal(money(1234.5), "$1,235", "a hundred and up is whole");
   assert.equal(money(null), "", "no sum says nothing");
   assert.equal(money(undefined), "", "an unknown sum says nothing");
@@ -91,6 +94,11 @@ it("sums what cells spent, counting only those that say", () => {
   );
   assert.equal(spentWords(cells), ", $1.50 today", "the sum follows other words");
   assert.equal(spentWords([cells[2] as Cell]), "", "cells that say nothing add no words");
+  assert.equal(
+    spentWords([cells[1] as Cell]),
+    ", $0.00 today",
+    "a cell that spent nothing still says so alone",
+  );
 });
 
 it("counts cells by standing, worst first, and those with questions waiting", () => {
@@ -116,6 +124,12 @@ it("counts cells by standing, worst first, and those with questions waiting", ()
     "one waiting is a question",
   );
   assert.equal(countsWords([]), "0 cells", "no cells, no standings");
+  const each: Cell["standing"][] = ["dormant", "quiet", "moving", "stuck", "asks"];
+  assert.equal(
+    countsWords(each.map((standing, i) => cell(`S${i}`, { standing }))),
+    "5 cells: 1 needs you, 1 stuck, 1 moving, 1 quiet, 1 dormant",
+    "every standing in its place, however the cells come",
+  );
 });
 
 it("says what a cell is doing and what waits on it or it holds", () => {
@@ -210,6 +224,25 @@ it("says whether a machine is ready, how many of a basin's are off, and its cell
   );
   assert.equal(offWords(harbour), "1 machine off", "one of the basin's is off");
   assert.equal(offWords({ name: "kestrel", state: "ready" }), "", "a machine alone has none off");
+  // A machine with no basin reaches the reading as the node's own record,
+  // whatever it holds.
+  const record: Machine = JSON.parse('{"name": "kestrel", "state": "ready", "members": false}');
+  assert.equal(offWords(record), "", "nor one whose members are no list");
+  assert.deepEqual(
+    cellsOn(now, "kestrel").map((s) => s.address),
+    ["A"],
+    "a machine's cells, none of another's",
+  );
+  assert.equal(
+    cellsOn(now, "kestrel"),
+    cellsOn(now, "kestrel"),
+    "the same list all reading, so what it spent is summed once",
+  );
+  assert.notEqual(
+    cellsOn(reading([], [...cells], now.machines), "kestrel"),
+    cellsOn(now, "kestrel"),
+    "and a new list for the next reading",
+  );
 });
 
 it("labels each thing by its name and then the words its row shows", () => {

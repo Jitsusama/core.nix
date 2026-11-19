@@ -1886,9 +1886,10 @@
     from inside it counting, of two that started each other's cells the stronger the trunk and
     no branch looping back round, what each key asks of the map, its tree, its find line, the
     page and the theme switch, chords, typing and a key named after an object's own asking
-    nothing, the tree's networks by name and their cells worst first, the rows only open
-    branches show and where each tree key goes from a row, edges included, and what each cell,
-    network and machine is in words, counts, sums and labels included
+    nothing, the tree's networks and branches by name under a machine or a network and the
+    reading's order at the top, their cells worst first, the rows only open branches show and
+    where each tree key goes from a row, edges included, and what each cell, network and
+    machine is in words, counts, sums and labels included
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed

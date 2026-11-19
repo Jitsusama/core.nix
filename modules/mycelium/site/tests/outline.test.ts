@@ -31,9 +31,12 @@ const cell = (address: string, more: Partial<Cell> = {}): Cell => ({
   ...more,
 });
 
-// Kestrel carries two networks, Harbour (with a branch, Nets) and Cistern;
-// a cell works alone; osprey carries nothing.
-const tide = cell("TIDE", { short: "Tide", standing: "quiet" });
+// Kestrel carries three networks, as the map gives every network a machine:
+// Harbour, with two branches the reading holds out of name order, Cistern,
+// whose key sorts after Harbour's, and the cells working alone. Bay's
+// address sorts after Eddy's, so a sort by address shows. Osprey carries
+// nothing.
+const tide = cell("TIDE", { short: "Bay", standing: "quiet" });
 const gale = cell("GALE", { short: "Gale", standing: "asks" });
 const eddy = cell("EDDY", { short: "Eddy", standing: "quiet", usage: { cost_today: 2 } });
 const reed = cell("REED", { short: "Reed", standing: "stuck" });
@@ -42,19 +45,28 @@ const nets: Network = {
   key: "quest.nets",
   name: "Nets",
   within: "quest.harbour",
+  machine: "kestrel",
   children: [],
   cells: [reed],
+};
+const locks: Network = {
+  key: "quest.locks",
+  name: "Locks",
+  within: "quest.harbour",
+  machine: "kestrel",
+  children: [],
+  cells: [],
 };
 const harbour: Network = {
   key: "quest.harbour",
   name: "Harbour",
   within: null,
   machine: "kestrel",
-  children: [nets],
+  children: [nets, locks],
   cells: [tide, gale, eddy],
 };
 const cistern: Network = {
-  key: "quest.cistern",
+  key: "quest.weir",
   name: "Cistern",
   within: null,
   machine: "kestrel",
@@ -65,6 +77,7 @@ const alone: Network = {
   key: "#loose",
   name: "Working alone",
   within: null,
+  machine: "kestrel",
   children: [],
   cells: [lone],
 };
@@ -76,7 +89,7 @@ const homes: [Cell, Network][] = [
 ];
 const cells = [tide, gale, eddy, reed, lone];
 const now: Reading = {
-  hubs: new Map([harbour, nets, cistern, alone].map((h) => [h.key, h])),
+  hubs: new Map([harbour, nets, locks, cistern, alone].map((h) => [h.key, h])),
   byAddress: new Map([
     ...homes.map(([s, hub]): [string, Cell] => [s.address, { ...s, hub }]),
     ["LONE", { ...lone, hub: null, loose: alone }],
@@ -110,13 +123,13 @@ const drawn = (shown: readonly Row[]): string[] =>
 it("lists networks by name, and a network's branches before its cells, worst first", () => {
   assert.deepEqual(
     kidsOf(now, "m:kestrel"),
-    ["h:quest.cistern", "h:quest.harbour"],
+    ["h:quest.weir", "h:quest.harbour", "h:#loose"],
     "networks by name, no branch among them",
   );
   assert.deepEqual(
     kidsOf(now, "h:quest.harbour"),
-    ["h:quest.nets", "c:GALE", "c:EDDY", "c:TIDE"],
-    "the branch first, then the cell that asks, then the quiet by name",
+    ["h:quest.locks", "h:quest.nets", "c:GALE", "c:TIDE", "c:EDDY"],
+    "the branches by name, then the cell that asks, then the quiet by name",
   );
   assert.deepEqual(kidsOf(now, "m:osprey"), [], "a machine carrying nothing");
   assert.deepEqual(kidsOf(now, "c:TIDE"), [], "nothing hangs from a cell");
@@ -125,7 +138,7 @@ it("lists networks by name, and a network's branches before its cells, worst fir
 
 it("knows what has anything under it", () => {
   assert.equal(hasKids(now, "h:quest.harbour"), true, "a network with cells");
-  assert.equal(hasKids(now, "h:quest.cistern"), false, "a network with none");
+  assert.equal(hasKids(now, "h:quest.weir"), false, "a network with none");
   assert.equal(hasKids(now, "m:kestrel"), true, "a machine carrying networks");
   assert.equal(hasKids(now, "m:osprey"), false, "a machine carrying none");
   assert.equal(hasKids(now, "c:TIDE"), false, "a cell");
@@ -142,7 +155,7 @@ it("says what each thing hangs from, reaching machines only while they're shown"
     "a network its machine while shown",
   );
   assert.equal(upOf(now, "h:quest.harbour", false), null, "nothing while machines are hidden");
-  assert.equal(upOf(now, "h:#loose", true), null, "cells working alone are on no machine");
+  assert.equal(upOf(now, "h:#loose", true), "m:kestrel", "cells working alone on their machine");
   assert.equal(upOf(now, "m:kestrel", true), null, "a machine is the top");
   assert.equal(upOf(now, "c:GONE", true), null, "a cell gone hangs from nothing");
   assert.equal(upOf(now, "h:gone", true), null, "a network gone hangs from nothing");
@@ -162,12 +175,12 @@ it("tops the tree with the machines while shown, else every network that is no b
   assert.deepEqual(rootsOf(now, true), ["m:kestrel", "m:osprey"], "the machines");
   assert.deepEqual(
     rootsOf(now, false),
-    ["h:quest.harbour", "h:quest.cistern", "h:#loose"],
+    ["h:quest.harbour", "h:quest.weir", "h:#loose"],
     "networks as the reading holds them",
   );
   assert.deepEqual(
     rootsOf({ ...now, machines: [] }, true),
-    ["h:quest.harbour", "h:quest.cistern", "h:#loose"],
+    ["h:quest.harbour", "h:quest.weir", "h:#loose"],
     "networks where no machine is known",
   );
 });
@@ -175,7 +188,13 @@ it("tops the tree with the machines while shown, else every network that is no b
 it("shows only the rows of open branches, each with its level and place", () => {
   assert.deepEqual(
     drawn(rowsOf(rootsOf(now, true), new Set(["m:kestrel"]), hanging)),
-    ["- m:kestrel 1/2", "  . h:quest.cistern 1/2", "  + h:quest.harbour 2/2", ". m:osprey 2/2"],
+    [
+      "- m:kestrel 1/2",
+      "  . h:quest.weir 1/3",
+      "  + h:quest.harbour 2/3",
+      "  + h:#loose 3/3",
+      ". m:osprey 2/2",
+    ],
     "the machine open, its networks closed",
   );
   assert.deepEqual(
@@ -188,19 +207,20 @@ it("shows only the rows of open branches, each with its level and place", () => 
     ),
     [
       "- h:quest.harbour 1/3",
-      "  - h:quest.nets 1/4",
+      "  . h:quest.locks 1/5",
+      "  - h:quest.nets 2/5",
       "    . c:REED 1/1",
-      "  . c:GALE 2/4",
-      "  . c:EDDY 3/4",
-      "  . c:TIDE 4/4",
-      ". h:quest.cistern 2/3",
+      "  . c:GALE 3/5",
+      "  . c:TIDE 4/5",
+      "  . c:EDDY 5/5",
+      ". h:quest.weir 2/3",
       "+ h:#loose 3/3",
     ],
     "a branch open inside its network; a closed one shows nothing under it",
   );
   assert.deepEqual(
-    drawn(rowsOf(["h:quest.cistern"], new Set(["h:quest.cistern"]), hanging)),
-    [". h:quest.cistern 1/1"],
+    drawn(rowsOf(["h:quest.weir"], new Set(["h:quest.weir"]), hanging)),
+    [". h:quest.weir 1/1"],
     "opening what has nothing under it opens nothing",
   );
 });
@@ -238,27 +258,33 @@ it("shows each row's name and the words under it, a machine's name set apart", (
 });
 
 // Kestrel open with Harbour open in it and Nets closed: the rows read
-// kestrel, Cistern, Harbour, Nets, Gale, Eddy, Tide, then osprey.
+// kestrel, Cistern, Harbour, Locks, Nets, Gale, Bay, Eddy, Working alone,
+// then osprey.
 const rows = rowsOf(rootsOf(now, true), new Set(["m:kestrel", "h:quest.harbour"]), hanging);
 
 it("walks down and up the rows as they read, stopping at either end", () => {
   assert.deepEqual(
     walked("next", rows, "h:quest.harbour"),
-    { step: "focus", key: "h:quest.nets" },
+    { step: "focus", key: "h:quest.locks" },
     "into what it shows",
   );
   assert.deepEqual(
-    walked("next", rows, "c:TIDE"),
-    { step: "focus", key: "m:osprey" },
+    walked("next", rows, "c:EDDY"),
+    { step: "focus", key: "h:#loose" },
     "out past a branch's last row",
   );
   assert.deepEqual(
     walked("prev", rows, "m:osprey"),
-    { step: "focus", key: "c:TIDE" },
+    { step: "focus", key: "h:#loose" },
+    "back up to the row above",
+  );
+  assert.deepEqual(
+    walked("prev", rows, "h:#loose"),
+    { step: "focus", key: "c:EDDY" },
     "back up into a branch",
   );
   assert.deepEqual(
-    walked("prev", rows, "h:quest.cistern"),
+    walked("prev", rows, "h:quest.weir"),
     { step: "focus", key: "m:kestrel" },
     "up to what holds it",
   );
@@ -284,15 +310,11 @@ it("opens or steps into a branch going in, and closes or steps out of one going 
   );
   assert.deepEqual(
     walked("in", rows, "h:quest.harbour"),
-    { step: "focus", key: "h:quest.nets" },
+    { step: "focus", key: "h:quest.locks" },
     "an open one steps in",
   );
   assert.equal(walked("in", rows, "c:GALE"), null, "nothing to go into in a cell");
-  assert.equal(
-    walked("in", rows, "h:quest.cistern"),
-    null,
-    "nor in a network with nothing under it",
-  );
+  assert.equal(walked("in", rows, "h:quest.locks"), null, "nor in a network with nothing under it");
   assert.deepEqual(
     walked("out", rows, "h:quest.harbour"),
     { step: "collapse", key: "h:quest.harbour" },
@@ -301,7 +323,7 @@ it("opens or steps into a branch going in, and closes or steps out of one going 
   assert.deepEqual(
     walked("out", rows, "c:GALE"),
     { step: "focus", key: "h:quest.harbour" },
-    "a cell steps out to its network",
+    "a cell steps out to its network, not to the row above it",
   );
   assert.deepEqual(
     walked("out", rows, "h:quest.nets"),
@@ -325,15 +347,14 @@ it("opens what it's on, and goes nowhere from a row the tree no longer shows", (
   assert.equal(walked("next", rows, "c:REED"), null, "a row under a closed branch isn't shown");
 });
 
-it("answers every act a tree key can ask with a step the drawing takes", () => {
+it("takes every act a tree key can ask somewhere from some row", () => {
   const steps = new Set<string>(EVERY_TREE_STEP);
+  const from = ["m:kestrel", "h:quest.harbour", "h:quest.nets", "c:GALE", "m:osprey"];
   for (const act of EVERY_TREE_ACT) {
-    for (const r of ["m:kestrel", "h:quest.harbour", "h:quest.nets", "c:GALE", "m:osprey"]) {
-      const step = walked(act, rows, r);
-      assert.ok(
-        step === null || steps.has(step.step),
-        `${act} from ${r} came to ${JSON.stringify(step)}`,
-      );
+    const taken = from.map((r) => walked(act, rows, r)).filter((step) => step !== null);
+    assert.ok(taken.length > 0, `${act} went nowhere from any of ${from.join(", ")}`);
+    for (const step of taken) {
+      assert.ok(steps.has(step.step), `${act} came to ${JSON.stringify(step)}`);
     }
   }
 });

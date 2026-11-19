@@ -433,9 +433,15 @@ def test_the_walk_the_tree_and_the_switch_answer_their_keys(mycelium_opened: Ope
     page.keyboard.press("g")
     expect(items.first, "g didn't go to the tree's first").to_be_focused()
     # h closes an open branch and l opens it again, then steps into it; h
-    # steps back out, and Return opens the row the keys are on.
-    first_open = page.locator("#tree [role=treeitem][aria-expanded=true]").first
-    key = first_open.get_attribute("data-key")
+    # steps back out, and Return opens the row the keys are on. The branch is
+    # one whose first row is closed, since h on an open row closes it rather
+    # than stepping out.
+    key = page.evaluate(
+        """[...document.querySelectorAll("#tree [role=treeitem][aria-expanded=true]")]
+          .find((b) => b.querySelector("[role=treeitem]")
+            ?.getAttribute("aria-expanded") !== "true")?.dataset.key ?? null""",
+    )
+    assert isinstance(key, str), f"no open branch whose first row is closed, but {key!r}"
     branch = page.locator(f'#tree [role=treeitem][data-key="{key}"]')
     branch.focus()
     page.keyboard.press("h")
@@ -448,8 +454,10 @@ def test_the_walk_the_tree_and_the_switch_answer_their_keys(mycelium_opened: Ope
     page.keyboard.press("h")
     expect(branch, "h didn't step out to the branch above").to_be_focused()
     page.keyboard.press("Enter")
-    title = page.locator("#panel-title")
-    expect(title, "Return didn't open the tree's row").not_to_have_text("Now")
+    expect(branch, "Return didn't open the row the keys are on").to_have_attribute(
+        "aria-current",
+        "true",
+    )
     themes = page.locator(".switch button")
     themes.first.focus()
     page.keyboard.press("ArrowLeft")

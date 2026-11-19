@@ -183,15 +183,36 @@ export const hubWords = (h: Network): string => {
   return `${countsWords(h.cells)}${spent}`;
 };
 
+/**
+ * A basin's machines, or none where the node gave anything but a list, since
+ * a machine with no basin reaches the reading as the node's own record.
+ */
+const membersOf = (x: Machine | null | undefined): readonly Machine[] =>
+  Array.isArray(x?.members) ? x.members : [];
+
 /** How many of a basin's machines are off while it runs, in words, or nothing where none is. */
 export const offWords = (x: Machine | null | undefined): string => {
-  const off = (x?.members ?? []).filter((y) => y.state !== "ready").length;
+  const off = membersOf(x).filter((y) => y.state !== "ready").length;
   return off ? `${plural(off, "machine")} off` : "";
 };
 
-/** A machine's cells, as the reading lists them. */
-export const cellsOn = (reading: Reading, id: string): readonly Cell[] =>
-  reading.cells.filter((s) => s.machine === id);
+/** Each reading's cells by machine, so one list serves a reading and its sum is summed once. */
+const ON = new WeakMap<readonly Cell[], Map<string, readonly Cell[]>>();
+
+/** A machine's cells, as the reading lists them, the same list for the whole reading. */
+export const cellsOn = (reading: Reading, id: string): readonly Cell[] => {
+  let by = ON.get(reading.cells);
+  if (by === undefined) {
+    by = new Map();
+    ON.set(reading.cells, by);
+  }
+  let cells = by.get(id);
+  if (cells === undefined) {
+    cells = reading.cells.filter((s) => s.machine === id);
+    by.set(id, cells);
+  }
+  return cells;
+};
 
 /** Whether a machine is ready, and what its cells spent. */
 export const machineWords = (

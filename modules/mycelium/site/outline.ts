@@ -19,7 +19,10 @@ import {
 
 const collate = new Intl.Collator("en-CA").compare;
 
-/** Networks in the order the tree lists them: by name. */
+/**
+ * Networks in the order the tree lists them under a machine or a network: by
+ * name. At the top, with machines hidden, they keep the reading's order.
+ */
 export const byName = (a: { readonly name: string }, b: { readonly name: string }): number =>
   collate(a.name, b.name);
 
