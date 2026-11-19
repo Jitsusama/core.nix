@@ -583,7 +583,8 @@ INTO = "Emoji"
 # The keys going into a drawer as the shell says them once niri presented their frame
 # (launcher/Presented.js's intoSaid).
 INTO_PRESENTED = re.compile(
-    r'launcher: into the drawer for "[^"]+" presented (\d+) ms from the key, (\d+) lines? laid'
+    r'launcher: into the drawer for "[^"]+" presented (\d+) ms from the key'
+    r"(?:, (\d+) to the shell's swap)?, (\d+) lines? laid"
 )
 
 
@@ -603,6 +604,7 @@ def test_going_into_a_drawer_is_timed(
     shell.down_to(into)
     shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("title") == into)
     timed: list[int] = []
+    swapped: list[int] = []
     for round_ in range(rounds):
         mark = shell.mark()
         # Ctrl+W then l in one batch, as he types it, so the chord never waits on its second.
@@ -624,10 +626,12 @@ def test_going_into_a_drawer_is_timed(
             failed = f"going into {into}'s drawer was never said presented, round {round_}"
             raise AssertionError(failed)
         timed.append(int(found.group(1)))
+        if found.group(2) is not None:
+            swapped.append(int(found.group(2)))
         with capsys.disabled():
             print(
                 f"lab-into {into} round {round_}: {found.group(1)} ms, "
-                f"{found.group(2)} lines laid first",
+                f"{found.group(2)} to the shell's swap, {found.group(3)} lines laid first",
                 flush=True,
             )
         shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
@@ -637,7 +641,9 @@ def test_going_into_a_drawer_is_timed(
     with capsys.disabled():
         print(
             f"lab-into {into}: {len(timed)} presented a median "
-            f"{round(statistics.median(timed))} ms, p90 {p90(timed)}",
+            f"{round(statistics.median(timed))} ms, p90 {p90(timed)}; the shell's to its swap "
+            f"a median {round(statistics.median(swapped)) if swapped else '?'} ms, "
+            f"p90 {p90(swapped) if swapped else '?'}",
             flush=True,
         )
 

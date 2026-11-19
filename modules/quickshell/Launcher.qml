@@ -12339,8 +12339,10 @@ Scope {
         const pressed = KeyTimes.pressed();
         const one = { key: drawerRow?.key || drawerRow?.name || "",
             from: pressed > 0 ? pressed : KeyTimes.now() };
+        // The frame presentedAwait waits on, whose swap says the shell's part.
+        const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
-            Object.assign(one, { at, laid: drawerCard.laidFirst,
+            Object.assign(one, { at, swapped: root.swappedOf(frame), laid: drawerCard.laidFirst,
                 screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
             console.info(Presented.intoSaid(one));
         });

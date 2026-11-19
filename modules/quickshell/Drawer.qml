@@ -847,6 +847,9 @@ Floating {
 
     // Into it: the cursor on the title's first letter where it's in view,
     // else the first line in view, so nothing moves as the keys come in.
+    // Its whole run is laid in the frame the keys came in: laid after it,
+    // going into Emoji's took a median 82 ms from the key in the drawer
+    // lab against 45 laid first, its shell's share 21 (2026-11-19).
     function enter() {
         // The whole run, first, for the lines read below to hold it.
         runWhole = true;

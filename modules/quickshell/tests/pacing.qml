@@ -697,6 +697,11 @@ QtObject {
                 screen: "DP-4", refresh: 1000 / 59.997 }),
             'launcher: into the drawer for "place:emoji" presented 31 ms from the key, '
             + "38 lines laid first; on DP-4 at 60 Hz");
+        check(failures, "going in says the shell's share to its frame's swap",
+            Presented.intoSaid({ key: "place:emoji", from: 1000, at: 1094, swapped: 1012.4,
+                laid: 37 }),
+            'launcher: into the drawer for "place:emoji" presented 94 ms from the key, '
+            + "12 to the shell's swap, 37 lines laid first");
         check(failures, "and says one line as one",
             Presented.intoSaid({ key: "app:kitty", from: 0, at: 20, laid: 1 }),
             'launcher: into the drawer for "app:kitty" presented 20 ms from the key, '
