@@ -11050,31 +11050,41 @@ Scope {
     property bool openedShared: false
     // Whether another program may be seeing the screen, as Asks and Copies
     // hide by (launcher/Shared.js), failing closed until niri has said.
+    // Worked out afresh at each gate, so none rests on a binding having
+    // heard its inputs change.
     function screenShared() {
-        return screenMayBeShared;
+        return Shared.hidden(Niri.castsHeard, Niri.casts, Recorder.windowSession);
     }
+    // Only for hearing a share begin (sharedMidOpening).
     readonly property bool screenMayBeShared: Shared.hidden(Niri.castsHeard, Niri.casts,
         Recorder.windowSession)
-    onScreenMayBeSharedChanged: sharedMidOpening()
+    onScreenMayBeSharedChanged: Qt.callLater(sharedMidOpening)
     // A share begun while the card shows what it kept, before its fill or
     // before home is found after it, would be shown those rows, made before
     // it, until niri presents the kept frame, up to half a second on
     // (fillUnpresented), so the opening is filled in, or home found, at once
-    // (Wanted.sharedMidOpening).
+    // (Wanted.sharedMidOpening). It's done a turn later, once Niri and the
+    // daemon have said all they were saying and each source's own hiding
+    // has turned, so the fill reads them whole. A card still waiting on
+    // niri's size is filled too, as a click fills it, since what it shows
+    // may not be seen.
     function sharedMidOpening() {
-        const how = Wanted.sharedMidOpening({ shared: screenMayBeShared,
+        const how = Wanted.sharedMidOpening({ shared: screenShared(),
             unfilled: opening && !open, finding: fillFinding });
-        if (how === "")
-            return;
-        console.info(`launcher: ${openInto === "" ? "home" : openInto} filled in at once, as `
-            + sharedWhy());
         if (how === "find") {
             fillFound("share");
+            if (fillFoundHome)
+                console.info(`launcher: home found at once, as ${sharedWhy()}`);
             return;
         }
+        if (how !== "fill")
+            return;
+        const name = openInto === "" ? "home" : openInto;
         fillPresented = false;
         fillUnpresented.stop();
         filled("share");
+        if (openFilledBy === "share")
+            console.info(`launcher: ${name} filled in at once, as ${sharedWhy()}`);
     }
     // Why it may be, for the journal: a cast seen, or niri yet to say.
     function sharedWhy() {

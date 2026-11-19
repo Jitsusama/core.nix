@@ -529,7 +529,7 @@ QtObject {
         // Found after it, home is searched again by a slice, a key or a
         // click, but a chord only joins, and a step or a word finds its own.
         const stands = { home: true, held: 0, typed: "" };
-        for (const by of ["slice", "key", "click"])
+        for (const by of ["slice", "key", "click", "share"])
             check(failures, `found by a ${by}, home is searched again`,
                 Wanted.findsAgain(by, stands), true);
         check(failures, "found by a chord, home is only joined",

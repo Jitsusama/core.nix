@@ -110,8 +110,9 @@ MINUTE_BEGUN = 20
 FRESHENING = timedelta(seconds=75)
 
 # What fills a kept opening in (Launcher.qml's filled): its frame drawn where niri can't say it
-# was presented, niri saying it was or not saying in time, or a key before any of them.
-FILLERS = frozenset({"frame", "presented", "unpresented", "key"})
+# was presented, niri saying it was or not saying in time, or a key, a click or a share begun
+# before any of them.
+FILLERS = frozenset({"frame", "presented", "unpresented", "key", "click", "share"})
 
 # How many windows a case opens, so Windows has rows whose keys are weighed as it opens.
 WINDOWS_WEIGHED = 3
@@ -247,9 +248,11 @@ class CastsStandIn:
         """Listen on `path`, where the windows daemon listened, with its casts `said` or not."""
         self.path = path
         self.sources: Json = casts_said(said=said)
-        # Held round what the threads share, so a client that comes as it closes is let go too,
-        # and a line told as it answers never lands inside another.
+        # Held round who's come, so a client that comes as it closes is let go too; and apart,
+        # round each line told, so one told as it answers never lands inside another. A send
+        # the shell isn't reading never holds up close, which takes only the first.
         self.lock = threading.Lock()
+        self.sending = threading.Lock()
         self.closed = False
         self.came: list[socket.socket] = []
         self.watching: list[socket.socket] = []
@@ -291,22 +294,26 @@ class CastsStandIn:
                     continue
                 kind = asked.get("kind")
                 casts = asked.get("ask") == "watch" and isinstance(kind, list) and "cast" in kind
-                with self.lock:
+                with self.sending:
                     said: Json = {"id": asked.get("id"), "records": []}
                     if asked.get("ask") == "hello":
                         said = {"id": "hello", "version": 1, "state": "answering"}
                         said["sources"] = self.sources
                     client.sendall((json.dumps(said) + "\n").encode())
-                    if casts:
+                    if casts and client not in self.watching:
                         self.watching.append(client)
                 if casts:
                     self.casts_watched.set()
+        with self.sending:
+            if client in self.watching:
+                self.watching.remove(client)
 
     def say(self, *, said: bool) -> None:
         """Tell the places watch its casts are `said` or not, as the daemon tells a source's."""
-        with self.lock:
+        with self.sending:
             self.sources = casts_said(said=said)
             told = json.dumps({"id": "all", "sources": self.sources}) + "\n"
+            assert self.watching, "nothing watches the stand-in's casts"
             for client in self.watching:
                 client.sendall(told.encode())
 
@@ -1017,20 +1024,24 @@ def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
     left to itself, it fills in as the wait for niri gives up, half a second on.
     """
     with casts_stood_in(shell, said=True) as stood:
-        since = shell.mark()
         for asked, name in [(("toggle",), "home"), (("collection", "on"), "on")]:
             shell.launcher_until(lambda shown: shown.get("kept"))
+            timed = latest(openings(shell))
+            since = shell.mark()
             with launcher_on_niri.niri_held():
+                # Told as the chord's call returns, as the wait for niri gives up half a second
+                # from the kept frame, held or not.
                 shell.as_account(shell.ipc(*asked))
-                shell.launcher_until(lambda shown: shown.get("opening"))
                 stood.say(said=False)
                 read_shared(shell, shared=True)
                 shell.launcher_until(lambda shown: shown.get("open") and not shown.get("opening"))
+            opening = filled_after(shell, timed)
+            said = shell.log.read_bytes()[since:].decode(errors="replace")
             shell.as_account(shell.ipc("toggle"))
             shell.launcher_closed()
             stood.say(said=True)
             read_shared(shell, shared=False)
-            said = shell.log.read_bytes()[since:].decode(errors="replace")
+            assert opening.get("filledBy") == "share", f"{name} waited out the share: {opening}"
             filled = f"launcher: {name} filled in at once, as niri hasn't said its casts yet"
             assert filled in said, f"{name}'s fill wasn't said:\n{said}"
 
