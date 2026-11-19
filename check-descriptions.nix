@@ -500,7 +500,16 @@
     calls counts a call app's running recording as a call, leaving out PipeWire's filters,
     dictation, the camera's videos and monitors; and a-call-is-on says a call is on once the same
     recording goes on two seconds later in any account's PipeWire, none for a moment's recording or
-    with nobody logged in, and that it can't tell when a PipeWire won't answer
+    with nobody logged in, and that it can't tell when a PipeWire won't answer; and that a fresh
+    call on another of the person's machines is a call unless asked about here alone, which asks
+    no node, a stale one none; that one declaring no call probe, one whose probe said nothing,
+    one dated ahead and a node that won't answer, drips, floods past 1 MiB or has a full queue are
+    each named and no wait; that every node is asked at once, so two mute ones starve none, one
+    slowed to three and a half seconds is still heard, and a mute one beside PipeWire's second look
+    still answers within nine seconds; that an account's first 16 nodes are asked and the rest
+    named, a linked socket or node folder never asked, at most 64 machines named and those past
+    them counted once each, a mistyped flag refused while --verbose isn't, and under --json no
+    caution is said in words
   '';
   cargo-builds-on-their-own-filesystem = ''
     a workstation account's cargo keeps each workspace's intermediates in its folder on the
@@ -1309,9 +1318,12 @@
     busy or listening though its process is gone and keeps the day's deaths after their presences
     go, counts the asks for a secret shown, said yes to unread and asked again though said only as
     information, keeps each disk's least free space and gravest band through a restart as the disk
-    guards say them and counts once a guard that stopped beating, keeps a day by kind and writes it with the figures cadence holds it to every half
-    minute however busy the journals, and shows the three worst pains in plain words, pi's as
-    pi's, then a line a kind, the gravest first; it times a launcher ready by today's line, each
+    guards say them and counts once a guard that stopped beating, each other machine whose calls
+    go unheard, those past the most named as one, and a mycelium node here that won't answer while
+    it stays so, only a machine heard on a call or none mending, keeps a day by kind
+    and writes it with the figures cadence holds it to every half minute however busy the
+    journals, and shows the three worst pains in plain words, pi's as pi's, then a line a kind,
+    the gravest first; it times a launcher ready by today's line, each
     launcher part and pi's modelled typing against their budgets, the keys' p99 exactly from every
     key the launcher's trials kept once each though the shell writes them again, saying how many
     it's over, counts the searches typed and those left with nothing picked without what was

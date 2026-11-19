@@ -187,6 +187,7 @@ fn a_day_resumed_across_midnight_keeps_no_faults_and_sees_nothing_wrong() {
     kept.seeing = Seeing {
         lid: true,
         guards: vec![PathBuf::from("/run/user/1000/disk-guard/status.json")],
+        unseen_calls: vec!["skiff".to_owned()],
     };
     let mut day = Day::new("2026-11-12");
     day.resume(kept);
@@ -197,7 +198,7 @@ fn a_day_resumed_across_midnight_keeps_no_faults_and_sees_nothing_wrong() {
     assert_eq!(
         day.seeing,
         Seeing::default(),
-        "yesterday's lid or guard, still seen wrong, would go uncounted today"
+        "yesterday's lid, guard or unseen machine, still seen wrong, would go uncounted today"
     );
 }
 

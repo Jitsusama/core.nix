@@ -1,8 +1,29 @@
 //! The faults health sees itself, rather than hears: the lid reading
-//! wrong and a disk guard gone quiet, each counted once until it clears,
-//! through a start and across midnight.
+//! wrong, a disk guard gone quiet and a machine whose calls go unseen,
+//! each counted once until it clears, through a start and across
+//! midnight.
 
 use super::*;
+
+/// A look on which `unseen` machines went unseen, `answered` nodes here
+/// answered and those `unanswered` didn't.
+fn look(unseen: &[&str], answered: usize, unanswered: &[&str]) -> calls::elsewhere::Heard {
+    let owned = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
+    calls::elsewhere::Heard {
+        unseen: owned(unseen),
+        unanswered: owned(unanswered),
+        answered,
+        ..calls::elsewhere::Heard::default()
+    }
+}
+
+/// A look on which `look` heard, with `well` machines heard on no call.
+fn heard_well(look: calls::elsewhere::Heard, well: &[&str]) -> calls::elsewhere::Heard {
+    calls::elsewhere::Heard {
+        no_call: well.iter().map(|name| (*name).to_owned()).collect(),
+        ..look
+    }
+}
 
 #[test]
 fn a_lid_gone_wrong_is_a_devices_fault_once() {
@@ -236,5 +257,471 @@ fn a_disk_guard_that_stopped_is_a_services_fault_once() {
         read(into.path(), "2026-11-12").disks.filesystems["/"].least_free,
         10,
         "a restart lost the day's least free space"
+    );
+}
+
+#[test]
+fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let unheard = |names: &[&str], well: &[&str]| heard_well(look(names, 1, &[]), well);
+    let second = 1_000_000;
+    let errors = |day: &Day, name: &str| {
+        day.things
+            .get(&format!("calls on {name}"))
+            .map(|thing| thing.errors)
+    };
+    // A blip, mended within the three minutes, counts nothing.
+    follower.see_heard(&unheard(&["skiff", "dinghy", "skerry"], &[]), NOON);
+    follower.see_heard(
+        &unheard(&["skiff", "dinghy"], &["skerry"]),
+        NOON + 30 * second,
+    );
+    follower.see_heard(
+        &unheard(&["skiff", "dinghy"], &["skerry"]),
+        NOON + 179 * second,
+    );
+    assert_eq!(
+        (
+            errors(&follower.day, "skiff"),
+            errors(&follower.day, "dinghy")
+        ),
+        (None, None),
+        "a machine unseen under three minutes was counted"
+    );
+    follower.see_heard(
+        &unheard(&["skiff", "dinghy", "skerry"], &[]),
+        NOON + 180 * second,
+    );
+    follower.see_heard(
+        &unheard(&["skiff"], &["dinghy", "skerry"]),
+        NOON + 210 * second,
+    );
+    follower.write().expect("the day is written");
+    let day = read(into.path(), "2026-11-12");
+    assert_eq!(
+        (
+            errors(&day, "skiff"),
+            errors(&day, "dinghy"),
+            errors(&day, "skerry")
+        ),
+        (Some(1), Some(1), None),
+        "each machine unseen for three minutes wasn't one fault, or one heard between was"
+    );
+    assert_eq!(
+        day.things["calls on skiff"].kind,
+        Some(Kind::Services),
+        "an unseen machine isn't a service's fault"
+    );
+    let said: Vec<&str> = day.things["calls on skiff"]
+        .signatures
+        .values()
+        .map(|said| said.example.as_str())
+        .collect();
+    assert_eq!(said, [peers::CALL_UNSEEN], "said the way Joel reads it");
+
+    // A restart keeps what's still unseen, so it isn't counted again,
+    // even once the restarted follower has seen it unseen as long, or its
+    // first look finds no node yet, as when health and the node start
+    // together.
+    let mut again = Follower::new("2026-11-12", into.path(), TimeZone::UTC).resuming(day);
+    again.see_heard(&look(&[], 0, &[]), NOON + 230 * second);
+    again.see_heard(&unheard(&["skiff"], &[]), NOON + 240 * second);
+    again.see_heard(&unheard(&["skiff"], &[]), NOON + 420 * second);
+    assert_eq!(
+        errors(&again.day, "skiff"),
+        Some(1),
+        "a restart counted again a machine still unseen"
+    );
+
+    // dinghy, seen again since, counts again once it's unseen again for
+    // as long.
+    again.see_heard(&unheard(&["skiff", "dinghy"], &[]), NOON + 450 * second);
+    assert_eq!(
+        errors(&again.day, "dinghy"),
+        Some(1),
+        "a machine unseen again was counted at once"
+    );
+    again.see_heard(&unheard(&["skiff", "dinghy"], &[]), NOON + 630 * second);
+    assert_eq!(
+        errors(&again.day, "dinghy"),
+        Some(2),
+        "a machine unseen again wasn't counted again"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_node_here_nobody_answers_on_is_a_fault_once_its_time_is_up() {
+    let into = tempfile::tempdir().expect("a folder");
+    let runtimes = tempfile::tempdir().expect("runtimes");
+    let held = runtimes.path().join("1000").join("mycelium");
+    std::fs::create_dir_all(&held).expect("a node's folder");
+    // A socket its node has let go of: connecting is refused at once.
+    drop(std::os::unix::net::UnixListener::bind(held.join("work.sock")).expect("a socket"));
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC)
+        .hearing_peers(runtimes.path().to_path_buf());
+    let second = 1_000_000;
+    follower.hear_peers(NOON);
+    assert_eq!(
+        follower
+            .day
+            .things
+            .get(peers::NODES)
+            .map(|thing| thing.errors),
+        None,
+        "a node nobody answers on was counted before its time was up"
+    );
+    follower.hear_peers(NOON + 180 * second);
+    follower.write().expect("the day is written");
+    let day = read(into.path(), "2026-11-12");
+    assert_eq!(
+        day.things.get(peers::NODES).map(|thing| thing.errors),
+        Some(1),
+        "a node nobody answers on wasn't counted once: {:?}",
+        day.things.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_look_a_node_didnt_answer_on_mends_nothing_and_counts_nothing_again() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let errors = |day: &Day, name: &str| day.things.get(name).map(|thing| thing.errors);
+    let unheard = |names: &[&str]| look(names, 1, &[]);
+    follower.see_heard(&unheard(&["skiff"]), NOON);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 120 * second);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 180 * second);
+    // A node restarting answers nothing for a look while another answers,
+    // so neither machine heard through it is said then; nor on a look
+    // that found no node.
+    follower.see_heard(&look(&[], 1, &["work.sock"]), NOON + 210 * second);
+    follower.see_heard(&look(&[], 0, &[]), NOON + 225 * second);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 240 * second);
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 300 * second);
+    assert_eq!(
+        errors(&follower.day, "calls on dinghy"),
+        Some(1),
+        "a machine unseen across a look a node didn't answer on lost its time"
+    );
+    follower.see_heard(&unheard(&["skiff", "dinghy"]), NOON + 420 * second);
+    assert_eq!(
+        errors(&follower.day, "calls on skiff"),
+        Some(1),
+        "a machine counted before a look a node didn't answer on was counted again after"
+    );
+    assert_eq!(
+        errors(&follower.day, "calls on dinghy"),
+        Some(1),
+        "a machine unseen across a look a node didn't answer on was counted twice"
+    );
+    assert_eq!(
+        errors(&follower.day, peers::NODES),
+        None,
+        "a node answering again within the three minutes was counted"
+    );
+}
+
+#[test]
+fn a_node_that_stays_mute_keeps_no_machines_time_for_ever() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let errors = |day: &Day| day.things.get("calls on skiff").map(|thing| thing.errors);
+    // One node of two stays mute all along, while skiff, unseen once,
+    // goes unsaid for ten minutes: its record is the mute node's, or
+    // asleep.
+    let mute = |unseen: &[&str]| look(unseen, 1, &["work.sock"]);
+    follower.see_heard(&mute(&["skiff"]), NOON);
+    for minute in 1..=10 {
+        follower.see_heard(&mute(&[]), NOON + minute * 60 * second);
+    }
+    follower.see_heard(&mute(&["skiff"]), NOON + 660 * second);
+    assert_eq!(
+        errors(&follower.day),
+        None,
+        "a machine unseen ten minutes before was counted at once, beside a mute node"
+    );
+    follower.see_heard(&mute(&["skiff"]), NOON + 840 * second);
+    assert_eq!(
+        errors(&follower.day),
+        Some(1),
+        "a machine unseen three minutes beside a mute node wasn't counted"
+    );
+}
+
+#[test]
+fn only_a_machine_heard_well_mends() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let errors = |day: &Day, name: &str| {
+        day.things
+            .get(&format!("calls on {name}"))
+            .map(|thing| thing.errors)
+    };
+    let mute = |unseen: &[&str], well: &[&str]| heard_well(look(unseen, 1, &["work.sock"]), well);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 180 * second);
+    // Its node restarts and answers before it's heard its peers again,
+    // then goes mute for longer than three minutes.
+    follower.see_heard(&look(&[], 1, &[]), NOON + 210 * second);
+    for minute in 4..=10 {
+        follower.see_heard(&mute(&[], &[]), NOON + minute * 60 * second);
+    }
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 630 * second);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 840 * second);
+    assert_eq!(
+        errors(&follower.day, "skiff"),
+        Some(1),
+        "a machine never heard well was counted again once its node said it"
+    );
+
+    // Beside a mute node, blips heard well between them add up to nothing.
+    follower.see_heard(&mute(&["dinghy"], &[]), NOON + 900 * second);
+    follower.see_heard(&mute(&[], &["dinghy"]), NOON + 1000 * second);
+    follower.see_heard(&mute(&["dinghy"], &[]), NOON + 1050 * second);
+    follower.see_heard(&mute(&["dinghy"], &[]), NOON + 1200 * second);
+    assert_eq!(
+        errors(&follower.day, "dinghy"),
+        None,
+        "blips a mute node's neighbour heard well between were counted"
+    );
+    follower.see_heard(&mute(&["dinghy"], &[]), NOON + 1230 * second);
+    assert_eq!(
+        errors(&follower.day, "dinghy"),
+        Some(1),
+        "a machine unseen three minutes since it was heard well wasn't counted"
+    );
+
+    // Heard on a call, skiff counts again once it's unseen again as long.
+    let on_a_call = calls::elsewhere::Heard {
+        calls: vec!["skiff".to_owned()],
+        ..look(&[], 1, &[])
+    };
+    follower.see_heard(&on_a_call, NOON + 1260 * second);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 1290 * second);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 1470 * second);
+    assert_eq!(
+        errors(&follower.day, "skiff"),
+        Some(2),
+        "a machine heard well and unseen again for three minutes wasn't counted again"
+    );
+}
+
+#[test]
+fn the_nodes_mend_once_every_one_answers_and_those_past_the_most_never() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let errors = |day: &Day, thing: &str| day.things.get(thing).map(|thing| thing.errors);
+    let mute = look(&[], 1, &["work.sock"]);
+    follower.see_heard(&mute, NOON);
+    follower.see_heard(&mute, NOON + 180 * second);
+    // A look that finds no node hears none answer, so mends nothing.
+    follower.see_heard(&look(&[], 0, &[]), NOON + 210 * second);
+    follower.see_heard(&mute, NOON + 240 * second);
+    follower.see_heard(&mute, NOON + 420 * second);
+    assert_eq!(
+        errors(&follower.day, peers::NODES),
+        Some(1),
+        "a look that found no node mended the nodes"
+    );
+    follower.see_heard(&look(&[], 1, &[]), NOON + 450 * second);
+    follower.see_heard(&mute, NOON + 480 * second);
+    follower.see_heard(&mute, NOON + 660 * second);
+    assert_eq!(
+        errors(&follower.day, peers::NODES),
+        Some(2),
+        "the nodes, every one answering between, weren't counted again"
+    );
+
+    // A node restarting lists none past the most, which mends nothing.
+    let crowded = calls::elsewhere::Heard {
+        unnamed: 6,
+        ..look(&[], 1, &[])
+    };
+    follower.see_heard(&crowded, NOON + 700 * second);
+    follower.see_heard(&crowded, NOON + 880 * second);
+    follower.see_heard(&look(&[], 1, &[]), NOON + 910 * second);
+    follower.see_heard(&crowded, NOON + 940 * second);
+    follower.see_heard(&crowded, NOON + 1120 * second);
+    assert_eq!(
+        errors(&follower.day, peers::UNNAMED),
+        Some(1),
+        "the machines past the most, unsaid on one look, were counted again"
+    );
+
+    // A machine named for them is a machine, and mends only its own.
+    let named_so = heard_well(look(&[], 1, &[]), &[peers::UNNAMED]);
+    follower.see_heard(&named_so, NOON + 1150 * second);
+    follower.see_heard(&crowded, NOON + 1180 * second);
+    follower.see_heard(&crowded, NOON + 1360 * second);
+    assert_eq!(
+        errors(&follower.day, peers::UNNAMED),
+        Some(1),
+        "a machine named for the machines past the most mended them"
+    );
+}
+
+#[test]
+fn two_looks_a_suspend_keeps_apart_make_no_three_minutes() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let errors = |day: &Day| day.things.get("calls on skiff").map(|thing| thing.errors);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 3600 * second);
+    assert_eq!(
+        errors(&follower.day),
+        None,
+        "a machine unseen on each side of an hour's suspend was counted at once"
+    );
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 3780 * second);
+    assert_eq!(
+        errors(&follower.day),
+        Some(1),
+        "a machine unseen three minutes after a suspend wasn't counted"
+    );
+
+    // What the day keeps of it is the one thing, however often it's said.
+    for at in [3810, 3840] {
+        follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), NOON + at * second);
+    }
+    follower.see_heard(&look(&["dinghy"], 1, &[]), NOON + 3870 * second);
+    assert_eq!(
+        follower.day.seeing.unseen_calls,
+        ["calls on skiff"],
+        "the day kept other than the one machine counted"
+    );
+}
+
+#[test]
+fn the_day_keeps_what_it_counted_in_order_and_once_each() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), NOON);
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), NOON + 180 * second);
+    assert_eq!(
+        follower.day.seeing.unseen_calls,
+        ["calls on dinghy", "calls on skiff"],
+        "the day didn't keep both machines counted, in order"
+    );
+    follower.changed = false;
+    follower.see_heard(&look(&["dinghy"], 1, &[]), NOON + 210 * second);
+    assert!(
+        !follower.changed,
+        "a look that only moved what the day counted changed the day"
+    );
+    follower.see_heard(&look(&["skiff", "skiff"], 1, &[]), NOON + 240 * second);
+    assert_eq!(
+        follower.day.seeing.unseen_calls,
+        ["calls on dinghy", "calls on skiff"],
+        "a machine said twice in a look was kept twice"
+    );
+}
+
+#[test]
+fn three_minutes_between_two_looks_keep_a_stretch_and_a_second_more_ends_it() {
+    let second = 1_000_000;
+    let counted_after = |gap: i64| {
+        let into = tempfile::tempdir().expect("a folder");
+        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+        follower.see_heard(&look(&["skiff"], 1, &[]), NOON);
+        follower.see_heard(&look(&["skiff"], 1, &[]), NOON + gap * second);
+        follower
+            .day
+            .things
+            .get("calls on skiff")
+            .map(|thing| thing.errors)
+    };
+    assert_eq!(
+        counted_after(180),
+        Some(1),
+        "two looks three minutes apart didn't keep the stretch"
+    );
+    assert_eq!(
+        counted_after(181),
+        None,
+        "two looks past three minutes apart kept the stretch"
+    );
+}
+
+#[test]
+fn a_machine_still_unseen_at_midnight_counts_once_in_each_day() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let midnight = NOON + DAY / 2;
+    let errors = |day: &Day, machine: &str| {
+        day.things
+            .get(&format!("calls on {machine}"))
+            .map(|thing| thing.errors)
+    };
+    follower.see_heard(&look(&["skiff"], 1, &[]), midnight - 200 * second);
+    follower.see_heard(&look(&["dinghy"], 1, &[]), midnight - 190 * second);
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), midnight - 20 * second);
+    assert_eq!(
+        (
+            errors(&follower.day, "skiff"),
+            errors(&follower.day, "dinghy")
+        ),
+        (Some(1), None),
+        "skiff wasn't counted before midnight, or dinghy was before its time"
+    );
+    // A look past midnight, before the journal says the day has turned,
+    // belongs to neither day.
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), midnight + 5 * second);
+    assert_eq!(
+        errors(&follower.day, "dinghy"),
+        None,
+        "a look past midnight counted into the day before"
+    );
+    follower
+        .take(&warning(midnight + 10 * second))
+        .expect("the day rolls over");
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), midnight + 30 * second);
+    assert_eq!(
+        (
+            errors(&follower.day, "skiff"),
+            errors(&follower.day, "dinghy")
+        ),
+        (Some(1), Some(1)),
+        "a machine still unseen at midnight wasn't counted in the new day"
+    );
+    let before = read(into.path(), "2026-11-12");
+    assert_eq!(
+        (errors(&before, "skiff"), errors(&before, "dinghy")),
+        (Some(1), None),
+        "the day before didn't keep its count, or took one past midnight"
+    );
+}
+
+#[test]
+fn each_machine_and_the_nodes_whose_calls_go_unheard_are_a_thing_apart() {
+    let heard = calls::elsewhere::Heard {
+        unseen: vec!["skiff".to_owned()],
+        untold: vec!["dinghy".to_owned()],
+        undated: vec!["punt".to_owned()],
+        unanswered: vec!["one".to_owned(), "two".to_owned()],
+        unnamed: 40_000,
+        ..calls::elsewhere::Heard::default()
+    };
+    assert_eq!(
+        peers::unheard(&heard),
+        [
+            ("calls on skiff".to_owned(), peers::CALL_UNSEEN),
+            ("calls on dinghy".to_owned(), peers::CALL_UNTOLD),
+            ("calls on punt".to_owned(), peers::CALL_UNDATED),
+            (peers::NODES.to_owned(), peers::NODE_SILENT),
+            (peers::UNNAMED.to_owned(), peers::MACHINES_UNNAMED),
+        ],
+        "whose calls go unheard wasn't each a thing of its own"
+    );
+    assert!(
+        peers::unheard(&calls::elsewhere::Heard::default()).is_empty(),
+        "everything heard was still a fault"
     );
 }

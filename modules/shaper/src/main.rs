@@ -706,11 +706,15 @@ struct Call {
 impl Call {
     /// Asks a-call-is-on again once `CALL_EVERY` has passed, says so in the
     /// journal when the answer changes, and gives the `calling` set's
-    /// members. When it can't tell, what was last known stands.
+    /// members. When it can't tell, what was last known stands. It asks
+    /// about this machine alone (`--here`), since the set holds this
+    /// machine's own UDP: a call on a laptop beside it would only put this
+    /// machine's traffic ahead of the laptop's call on the same uplink.
     fn heed(&mut self, now: Instant, users: &Path) -> Vec<String> {
         if self.asked.is_none_or(|at| now - at >= CALL_EVERY) {
             self.asked = Some(now);
             let asked = Command::new("a-call-is-on")
+                .arg("--here")
                 .arg(users)
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

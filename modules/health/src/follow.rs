@@ -75,6 +75,10 @@ pub struct Follower {
     presences: Option<PathBuf>,
     cgroups: Option<(PathBuf, String)>,
     guards: Vec<PathBuf>,
+    peers: Option<PathBuf>,
+    /// How long each thing whose calls go unheard has gone so
+    /// (follow/peers.rs).
+    unheard_since: BTreeMap<String, peers::Stretch>,
     reports: Vec<PathBuf>,
     reported: BTreeSet<PathBuf>,
 }
@@ -117,6 +121,8 @@ impl Follower {
             presences: None,
             cgroups: None,
             guards: Vec::new(),
+            peers: None,
+            unheard_since: BTreeMap::new(),
             reports: Vec::new(),
             reported: BTreeSet::new(),
         }
@@ -555,6 +561,12 @@ pub fn follow(into: &Path) -> io::Result<()> {
         })
         .map(PathBuf::from);
     follower = follower.guarding(disk::statuses(runtime.as_deref(), source.guard_status()));
+    // Every account's runtime folder sits beside this one's, where each
+    // account's mycelium node keeps its sockets; only this account's can
+    // be read, so only its node is asked.
+    if let Some(runtimes) = runtime.as_deref().and_then(Path::parent) {
+        follower = follower.hearing_peers(runtimes.to_owned());
+    }
     if let Some(processes) = source.processes() {
         follower = follower.minding(processes);
     } else if source.asks_ps() {
@@ -716,6 +728,7 @@ fn run(
             follower.count_the_dead(wall);
             follower.weigh(wall);
             follower.guard(wall);
+            follower.hear_peers(wall);
             follower.read_reports();
             follower.feel();
             follower.time_typing();
@@ -750,6 +763,10 @@ fn run(
 // A spell of failed writes, and what health says of it, in a file of
 // its own so the follower reads whole.
 mod spell;
+
+// How the follower hears the person's other machines' calls, in a file of
+// its own, follow/peers.rs.
+mod peers;
 
 // The tests keep a file of their own, follow/tests.rs, so the follower
 // reads whole.
