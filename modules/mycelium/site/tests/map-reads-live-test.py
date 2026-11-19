@@ -70,8 +70,8 @@ BASIN_CELLS = ("HERON1", "HERON2")
 # A cell find is asked for by name, and the title its drawer heads it with.
 SOUGHT = "TERN03"
 SOUGHT_TITLE = "Count the Cleats"
-# A receptor of node.json's feeding one of its cells a review, as the node
-# says a feeding under its `fed` kind.
+# A receptor of node.json's feeding one of its cells a call's summary, as the
+# node says a feeding under its `fed` kind.
 FED_RECEPTOR = "calls@kestrel"
 FED_CELL = "SKIFF1"
 FED_KEY = f"fed:{FED_RECEPTOR}~{FED_CELL}"
