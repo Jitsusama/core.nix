@@ -308,13 +308,23 @@ function factsOf(context: Context, device: Device): Child[] {
       ["up for", device.upS ? lasted(device.upS) : null],
       ["read", read],
     ]),
-    h(
-      "p",
-      { class: "hint" },
-      "At a terminal, ",
-      h("code", {}, command),
-      " shows everything net read of it.",
-    ),
+    // With no word that finds it alone, the hint still says where net
+    // shows it, so it isn't lost without a word.
+    command === undefined
+      ? h(
+          "p",
+          { class: "hint" },
+          "At a terminal, ",
+          h("code", {}, "net devices"),
+          " lists it with every device net read.",
+        )
+      : h(
+          "p",
+          { class: "hint" },
+          "At a terminal, ",
+          h("code", {}, command),
+          " shows everything net read of it.",
+        ),
   ];
 }
 
