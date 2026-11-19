@@ -65,6 +65,9 @@ QtObject {
             Sprouting.ended({ id: "ask-3", error: { code: "unsprouted",
                 message: "only the launcher starts new work here" } }, said),
             { started: false, why: "only the launcher starts new work here" });
+        Expect.same("a node the daemon heard fall silent is unanswered, in its words",
+            Sprouting.ended({ error: { code: "unanswered", message: "it may still start it" } },
+                said), { started: false, unanswered: true, why: "it may still start it" });
         Expect.same("no daemon to ask is no answer",
             Sprouting.ended(null, said),
             { started: false, unanswered: true, why: "its node didn't answer" });
@@ -168,5 +171,20 @@ QtObject {
         Expect.same("one held is journalled, and says itself as it comes up",
             Sprouting.reach(startedEnd, said),
             { journal: "new work started on kestrel", told: null });
+
+        // What the foot told is noticed as the launcher shuts unless it was read: a key
+        // pressed since and ten seconds gone, since the keys that shut it are a leaving.
+        const footed = { keys: 4, at: 1000 };
+        Expect.same("shut with no key since, it's noticed",
+            Sprouting.noticedAtShut(footed, 4, 60000), true);
+        Expect.same("shut by keys soon after, it's noticed",
+            Sprouting.noticedAtShut(footed, 7, 4000), true);
+        Expect.same("shut long after a key, it was read",
+            Sprouting.noticedAtShut(footed, 5, 20000), false);
+        Expect.same("nothing footed, nothing noticed",
+            Sprouting.noticedAtShut(null, 4, 4000), false);
+        Expect.same("a notice's body is each end, a line each, as plain text",
+            Sprouting.noticeBody(["<a href=\"x\">look</a> & see", "busy"]),
+            "&lt;a href=\"x\"&gt;look&lt;/a&gt; &amp; see\nbusy");
     }
 }

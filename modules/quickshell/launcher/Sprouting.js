@@ -60,6 +60,8 @@ function refused(text, folder, said) {
 // id its holder keeps it by ("" where the node gave none), else
 // `{ started: false, why }` in the node's or the daemon's words, or
 // `said`'s where no daemon answered (null) or its answer can't be read.
+// A node the daemon heard fall silent (code `unanswered`) is unanswered,
+// in the daemon's words, since it may yet start.
 function ended(answer, said) {
     if (answer === null || answer === undefined) {
         return { started: false, unanswered: true, why: String(said.unanswered ?? "") };
@@ -71,7 +73,8 @@ function ended(answer, said) {
     }
     const why = answer.error?.message;
     if (typeof why === "string" && why !== "") {
-        return { started: false, why };
+        return answer.error.code === "unanswered" ? { started: false, unanswered: true, why }
+            : { started: false, why };
     }
     return { started: false, why: String(said.unread ?? "") };
 }
@@ -163,4 +166,29 @@ function journalled(how) {
         return "new work's start went unanswered; it may still start";
     }
     return `new work wasn't started: ${how.why}`;
+}
+
+// How long a tell stands in the foot before a close counts as having read
+// it: the keys that shut the launcher (Escape, then :q or ZZ) are a
+// leaving, not a reading, so a close soon after the tell notices it.
+const READ_MS = 10000;
+
+// Whether what the foot told, `footed` ({ keys, at }, the keys taken and
+// the time as it was told), is noticed as the launcher shuts with
+// `keysTaken` and `now`: when no key came since, or it shut within
+// READ_MS of the tell. Told twice, a notice beside a read foot, costs less
+// than an end he never sees.
+function noticedAtShut(footed, keysTaken, now) {
+    if (footed === null || footed === undefined) {
+        return false;
+    }
+    return keysTaken === footed.keys || now - footed.at < READ_MS;
+}
+
+// A notice's body for the ends `told`, one to a line and as plain text,
+// since a notice's body is markup and the node writes the why: one
+// notice, so the notices daemon folds none of them away unseen.
+function noticeBody(told) {
+    return told.map(text => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")).join("\n");
 }
