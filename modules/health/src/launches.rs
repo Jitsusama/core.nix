@@ -115,7 +115,8 @@ pub struct Launches {
     /// (`boot_of`) and in microseconds on the boot's clock and the wall
     /// clock, until it starts: a stop at shutdown and a start in the next
     /// boot are a reboot, not a restart. It's kept by the unit's name
-    /// alone, as `restarting` and `taken` are, so a service of one name in
+    /// alone, as `restarting` is, and a newer stop ends a wait in `taken`
+    /// by name alone too (`untake_stop`), so a service of one name in
     /// two managers, as `disk-guard` is, keeps one stop: when one's stop
     /// comes while the other's waits, it replaces the other's, whose start
     /// then times none. When the two interleave, the earlier's start ends
