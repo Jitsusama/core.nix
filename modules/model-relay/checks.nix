@@ -23,7 +23,9 @@ onLinux {
   # reset again, when its connection was kept with no other open, when none
   # would open or when the reset said to calm down, with its connection
   # retired, a body too large or left
-  # unfinished going nowhere, the counts said as it leaves, the requests pi
+  # unfinished going nowhere, a relay failing past its share standing down
+  # with the 421 that sends pi direct, staying through its idle time and
+  # taking requests again after, the counts said as it leaves, the requests pi
   # gave up on
   # counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen

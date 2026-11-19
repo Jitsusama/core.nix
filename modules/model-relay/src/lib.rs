@@ -43,12 +43,20 @@
 //! may now and then be asked for twice, which pi's own retry of the whole
 //! turn would do anyway. To send one again, it reads each body whole, to
 //! 64 MiB, before it goes, from pi on this machine, and holds it until its
-//! answer begins. After the machine sleeps, the connections it held are retired and opened afresh, since
-//! the network they ran on may be gone and pings would take their time to
-//! say so. A ping is what finds a lost connection, and an unanswered one
-//! fails every request on it, so below h2 each layer holds little ahead
+//! answer begins. After the machine sleeps, the connections it held are
+//! retired and opened afresh, since the network they ran on may be gone
+//! and pings would take their time to say so. A ping is what finds a lost
+//! connection, and an unanswered one fails every request on it, so below h2 each layer holds little ahead
 //! of one: a body goes in short frames, through few records and a kernel
 //! holding little unsent, and on a slow uplink a ping is answered in time.
+//!
+//! Past 15 in 100 failed of the requests it finished in ten minutes, 20
+//! at least, it stands down (src/standing.rs says why): it retires its
+//! connections and answers each request with its own 421, forwarding
+//! nothing, so pi sends it direct, until ten minutes have passed, or
+//! twice the last stand-down, to an hour, when the last ended under an
+//! hour before. Standing down, and for its idle time after, it doesn't
+//! leave, which would forget it.
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
@@ -99,6 +107,10 @@ use tokio::net::{TcpStream, UnixListener};
 use tokio::sync::{Mutex, Notify, watch};
 use tokio_rustls::TlsConnector;
 
+use standing::{Standing, Taking};
+
+mod standing;
+
 /// The port an https origin names when it names none.
 const HTTPS_PORT: u16 = 443;
 /// How long a connection to the origin may take to open, TLS included,
@@ -107,6 +119,9 @@ pub const CONNECT_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay waits, asked nothing and answering nothing, before
 /// it leaves, unless told otherwise.
 pub const IDLE_EXIT: Duration = Duration::from_secs(120);
+/// How long its first stand-down lasts, unless the relay is told
+/// otherwise.
+pub const STANDS_DOWN_FOR: Duration = Duration::from_secs(600);
 /// How often an open connection is pinged, so one the network lost is
 /// found before a request is sent down it.
 const PING_EVERY: Duration = Duration::from_secs(20);
@@ -335,6 +350,8 @@ pub struct Clocks {
     pub connect_within: Duration,
     /// How long it sits asked nothing before it leaves, if ever.
     pub idle_exit: Option<Duration>,
+    /// How long its first stand-down lasts.
+    pub stands_down_for: Duration,
 }
 
 impl Default for Clocks {
@@ -342,6 +359,7 @@ impl Default for Clocks {
         Clocks {
             connect_within: CONNECT_WITHIN,
             idle_exit: Some(IDLE_EXIT),
+            stands_down_for: STANDS_DOWN_FOR,
         }
     }
 }
@@ -865,6 +883,8 @@ pub struct Relay {
     connections: Arc<Connections>,
     counts: Arc<Counts>,
     busy: Arc<Busy>,
+    /// Whether it takes requests, judged by those it finished lately.
+    standing: Standing,
 }
 
 impl Relay {
@@ -904,6 +924,7 @@ impl Relay {
                 now: AtomicUsize::new(0),
                 quiet_since: Held::new(Instant::now()),
             }),
+            standing: Standing::new(clocks.stands_down_for),
         })
     }
 
@@ -1020,12 +1041,14 @@ impl Relay {
         }
     }
 
-    /// Whether it has had nothing in hand for its idle time.
+    /// Whether it has had nothing in hand for its idle time, and hasn't
+    /// stood down within it, which leaving would forget.
     fn is_idle(&self) -> bool {
         self.clocks.idle_exit.is_some_and(|idle_exit| {
             self.busy
                 .quiet_for()
                 .is_some_and(|quiet| quiet >= idle_exit)
+                && !self.standing.holds_on(Instant::now(), idle_exit)
         })
     }
 
@@ -1056,12 +1079,17 @@ impl Relay {
                 "this relay is leaving, so go directly\n",
             );
         }
+        if let Some(standing_down) = self.standing_down() {
+            return standing_down;
+        }
         let in_hand = self.busy.one();
         let whole = match self.readied(&mut parts, body).await {
             Ok(whole) => whole,
             Err(refused) => return *refused,
         };
-        let (answer, on_the_way) = match self.carry(&parts, &whole).await {
+        let carried = self.carry(&parts, &whole).await;
+        self.finished(carried.is_err());
+        let (answer, on_the_way) = match carried {
             Ok(answered) => answered,
             Err(not_carried) => return *not_carried,
         };
@@ -1075,6 +1103,52 @@ impl Relay {
             why
         });
         Response::from_parts(parts, body.boxed())
+    }
+
+    /// The relay's own 421, sending pi direct, while it stands down; or
+    /// none, said as it takes requests again when it does just now.
+    fn standing_down(&self) -> Option<Response<Body>> {
+        match self.standing.taking(Instant::now()) {
+            Taking::Yes => None,
+            Taking::Again(lasted) => {
+                eprintln!(
+                    "model-relay: it stood down {} s, so it takes requests again",
+                    lasted.as_secs()
+                );
+                None
+            }
+            Taking::No(more) => {
+                self.counts.refused.fetch_add(1, Ordering::Relaxed);
+                // Its words hold the ones pi goes direct on, as for the
+                // 421 of a request for another host, and are true here
+                // too.
+                let mut answer = said(
+                    StatusCode::MISDIRECTED_REQUEST,
+                    "this relay forwards to its own origin alone, and stands down from it for \
+                     now, so go directly\n",
+                );
+                answer
+                    .headers_mut()
+                    .insert(header::RETRY_AFTER, (more.as_secs() + 1).into());
+                Some(answer)
+            }
+        }
+    }
+
+    /// Hears a request it carried, or `failed` to, until its answer
+    /// began, and stands down when the share failed lately says to.
+    fn finished(&self, failed: bool) {
+        let Some(stood) = self.standing.heard(Instant::now(), failed) else {
+            return;
+        };
+        eprintln!(
+            "model-relay: {} of the {} requests it finished in ten minutes failed, so it \
+             stands down for {} s, retiring its connections, and pi goes directly",
+            stood.failed,
+            stood.finished,
+            stood.lasting.as_secs()
+        );
+        self.retire_every();
     }
 
     /// Points a request pi asked of the origin at the origin itself, and
@@ -1432,6 +1506,12 @@ impl Relay {
             return;
         }
         eprintln!("model-relay: the machine slept, so its connections are opened afresh");
+        self.retire_every();
+    }
+
+    /// Retires every connection, so each is opened afresh when next asked
+    /// for. An answer already streaming on one carries on.
+    fn retire_every(&self) {
         for slot in &self.slots {
             *slot.open.lock().unwrap_or_else(PoisonError::into_inner) = None;
         }

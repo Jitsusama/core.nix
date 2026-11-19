@@ -23,7 +23,10 @@
 # refused or a protocol error, goes once more, on
 # another connection, and the one that reset it takes no more; reset again,
 # reset saying anything else, or with no other connection to go on, it's a
-# 502, for pi's own retry.
+# 502, for pi's own retry. Past 15 in 100 failed of what it finished in ten
+# minutes, it stands down, sending each request direct with its 421, for
+# ten minutes, or twice as long as the last when that ended within the hour,
+# to an hour; the journal says when it does and when it's back.
 #
 # The relay runs in background.slice, which the shaper sends in the agents'
 # lane, and its connections are the account's own, so they ride the work VPN

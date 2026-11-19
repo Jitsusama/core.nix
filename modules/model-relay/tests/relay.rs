@@ -1178,7 +1178,11 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     // Each is reset, and then reset again or kept with nowhere else to go.
     for _ in 0..20 {
         let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
-        assert_eq!(got.status, StatusCode::BAD_GATEWAY, "a request the origin reset");
+        assert_eq!(
+            got.status,
+            StatusCode::BAD_GATEWAY,
+            "a request the origin reset"
+        );
     }
     let stood_down = Instant::now();
 
@@ -1200,12 +1204,20 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         got.headers.contains_key("retry-after"),
         "the stand-down's 421 doesn't say when to try it again"
     );
-    assert_eq!(handed_to(&origin, "/echo"), 0, "a request went on while it stood down");
+    assert_eq!(
+        handed_to(&origin, "/echo"),
+        0,
+        "a request went on while it stood down"
+    );
 
     // Past its stand-down, and within its idle time after, it carries one.
     tokio::time::sleep_until((stood_down + Duration::from_secs(5)).into()).await;
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
-    assert_eq!(got.status, StatusCode::CREATED, "a request once it stood down");
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request once it stood down"
+    );
     assert_eq!(got.body, b"hi");
 
     let said = relay.said();

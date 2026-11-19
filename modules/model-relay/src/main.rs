@@ -13,17 +13,18 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use model_relay::{CONNECT_WITHIN, Clocks, IDLE_EXIT, Origin, Relay, Roots};
+use model_relay::{CONNECT_WITHIN, Clocks, IDLE_EXIT, Origin, Relay, Roots, STANDS_DOWN_FOR};
 use terminal_kit::{Exit, Failure, Help, flags};
 
 /// The named flags it reads, every one taking a value.
-const FLAGS: [&str; 6] = [
+const FLAGS: [&str; 7] = [
     "--origin",
     "--socket",
     "--connections",
     "--roots",
     "--connect-within",
     "--idle-exit",
+    "--stand-down-for",
 ];
 
 /// How many connections it keeps to the origin unless told.
@@ -65,6 +66,10 @@ fn help() -> Help {
     .option(
         "--idle-exit SECONDS",
         "leave once asked nothing this long, 120 if not told, never at 0",
+    )
+    .option(
+        "--stand-down-for SECONDS",
+        "how long its first stand-down sends pi direct, 600 if not told",
     )
     .exit(
         Exit::Failed,
@@ -213,9 +218,17 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         ));
     }
     let idle_exit = seconds(given[5].as_deref(), "--idle-exit", IDLE_EXIT)?;
+    let stands_down_for = seconds(given[6].as_deref(), "--stand-down-for", STANDS_DOWN_FOR)?;
+    if stands_down_for.is_zero() {
+        return Err(Failure::new(
+            Exit::Usage,
+            "--stand-down-for takes at least a second",
+        ));
+    }
     let clocks = Clocks {
         connect_within,
         idle_exit: (!idle_exit.is_zero()).then_some(idle_exit),
+        stands_down_for,
     };
     let relay = Relay::new(origin, connections, roots, clocks)
         .map_err(|why| Failure::new(Exit::Failed, "its TLS couldn't be set up").because(why))?;
