@@ -82,7 +82,9 @@ ShellRoot {
             const next = Object.assign({}, held);
             const was = held[root.key] ?? root.record("");
             next[root.key] = Object.assign({}, was, {
-                // As row.rs serves an ask no longer waiting.
+                // Its row as row.rs serves an ask no longer waiting; its
+                // side and drawer stay the waiting one's, since the hidden
+                // row keeps neither.
                 row: Object.assign({}, was.row, { state: undefined, hue: "machine",
                     attention: undefined, acts: [] })
             });
@@ -206,6 +208,12 @@ ShellRoot {
         property int untolds: 0
         function untold() {
             untolds += 1;
+        }
+
+        // How many times the foot's word for a Return held still was let go.
+        property int unhelds: 0
+        function unheld() {
+            unhelds += 1;
         }
 
         function afterFrame(then) {
@@ -728,13 +736,17 @@ ShellRoot {
 
     function unshared() {
         const untolds = stage.untolds;
+        const unhelds = stage.unhelds;
         Niri.casts = {};
         stage.selected = row();
         same("the share over, the ask's row says what it asks for again", row()?.name,
             "op://Private/Kiln/password");
         // Else the foot would still say the screen is shared over an ask
         // that would arm on Return.
-        same("and why Return held it is let go from the foot", stage.untolds, untolds + 1);
+        // What another place told while the launcher was shut during the
+        // share stays for the next opening, since nothing hidden is in it.
+        same("and only why Return held it is let go from the foot",
+            [stage.untolds - untolds, stage.unhelds - unhelds], [0, 1]);
         same("nor is it held still", [row()?.still, row()?.stillWhy], [undefined, undefined]);
     }
 
@@ -829,9 +841,11 @@ ShellRoot {
         same("what was told before the share is forgotten", stage.untolds, untolds + 1);
         same("another source's hold is left as it was", stage.becoming["wifi:kiln"] === other,
             true);
+        const untoldsShared = stage.untolds;
         Niri.casts = {};
         same("the share ended holds it again as itself", [held().name, held().row?.name],
             [real, real]);
+        same("and forgets nothing told during it", stage.untolds, untoldsShared);
         same("still saying when it's done after, as it did", held().done === done, true);
     }
 
@@ -842,7 +856,11 @@ ShellRoot {
         // A ready row's state is read as it's drawn, since JSON says any
         // function, and so any state, as null.
         const stands = one => typeof one?.state === "function" ? one.state() : one?.state;
-        const drawn = one => JSON.stringify([one?.hue, stands(one) ?? null, one?.glyph]);
+        // Every field it carries, its state as it reads, but whether it
+        // waits and since when, which For You counts (a named limit).
+        const drawn = one => JSON.stringify(Object.keys(one ?? {}).sort()
+            .filter(field => field !== "waiting" && field !== "asked")
+            .map(field => [field, field === "state" ? stands(one) ?? null : one[field]]));
         const waiting = drawn(row());
         link.tellEnded();
         same("an ask ended while the screen is shared is hidden", row()?.name,
