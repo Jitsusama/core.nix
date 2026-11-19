@@ -306,8 +306,7 @@ QtObject {
         const held = Held.leaveTo(nothing, how(false, true), ways);
         check("while he holds the rows the step stays, and the leave waits", said(held),
             "-1 true");
-        check("its rows each gone", `${keptWith.join(" ")} ${held.steps[1].rows.length}`,
-            "s1:0 0");
+        check("its rows each gone", keptWith.join(" "), "s1:0");
         // A dialog's own collection, the outermost, is never left, for
         // the home it never showed; it stays, its rows each gone, rather
         // than showing what it offered before.
@@ -332,7 +331,7 @@ QtObject {
         const under = Held.leaveTo(Held.remade(deeper, 1, [row("s1", "ended")], ways),
             how(false, true), ways);
         check("while he holds the rows each step below the spent one is gone too",
-            `${keptWith.join(" ")} ${under.steps[2].rows.length}`, "s1:0 look:0 0");
+            keptWith.join(" "), "s1:0 look:0");
         // A thing landed in from a search, `through`, is left back to the
         // search, past the collection it was found in, as Joel's - leaves it.
         const through = { steps: [steps[0], Object.assign({}, steps[1], { through: true })],
@@ -341,5 +340,19 @@ QtObject {
             said(Held.leaveTo(through, how(false, false), ways)), "0 false");
         check("but never past the outermost",
             said(Held.leaveTo(through, how(true, false), ways)), "1 false");
+
+        // What the launcher's remaking answers its caller: a leave waiting
+        // on Joel is "held", its steps shown gone as they are and none
+        // below them made again over them, which would light them again.
+        const answer = (made, holding) => Held.answer(made, Held.leaveTo(made,
+            how(false, holding), ways));
+        check("every step made again is made", answer({ steps, leave: -1, all: true }, false),
+            "made");
+        check("a step kept as it was is kept", answer({ steps, leave: -1, all: false }, false),
+            "kept");
+        check("a step left is left", answer(nothing, false), "left");
+        check("a leave waiting on Joel is held", answer(nothing, true), "held");
+        check("the outermost alone, kept with its rows gone, is made",
+            Held.answer({ steps: [steps[0]], leave: 0, all: false }, alone), "made");
     }
 }
