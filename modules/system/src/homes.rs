@@ -633,6 +633,7 @@ mod tests {
             "code/#machine={name}",
             "mycelium/x#machine={name}",
             "mycelium/#machine",
+            "./mycelium/#machine={name}",
         ] {
             let homes = Homes::from_sites(
                 &sites(&json!([{"path": "mycelium/", "homes": [
@@ -912,6 +913,18 @@ mod tests {
             homes.address("repository", "core"),
             Some("code/#repo=core".into()),
             "a row at ./code/ is the site at code/"
+        );
+        // Only the row's path may start at its own folder: an address is
+        // written from the sites' root, as code's reader holds it too
+        // (modules/repos/site/tests/homes.test.ts).
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "./code/", "homes": ["repository"]}])),
+            |_| Some(home("repository", "core", "core", &[], "./code/#c=1")),
+        );
+        assert_eq!(
+            homes.address("repository", "core"),
+            None,
+            "a record's address written from ./ isn't read, on a ./ row"
         );
         let homes = Homes::from_sites(
             &sites(&json!([{"path": "./map/", "homes": [
