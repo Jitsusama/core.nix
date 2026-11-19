@@ -107,15 +107,42 @@ impl Room {
     }
 }
 
+/// How many rows stdout's terminal shows: `LINES`, then the terminal's;
+/// none into a pipe, or where neither says, as a serial line doesn't, so
+/// whatever must fit one screen decides what a height it can't learn
+/// holds. `LINES` comes first for the reason `COLUMNS` does: no shell
+/// exports it, so it's there only when someone asked for that height.
+/// Most answers never read it, since the terminal scrolls them; it's for
+/// the few with nowhere to scroll to, as a console a boot stopped at.
+pub fn rows_of_stdout(environment: &Environment) -> Option<usize> {
+    if !environment.stdout {
+        return None;
+    }
+    environment
+        .var("LINES")
+        .and_then(|lines| lines.parse().ok())
+        .or_else(|| window(1).map(|size| usize::from(size.rows)))
+        .filter(|rows: &usize| *rows > 0)
+}
+
 /// What the terminal on a file descriptor says its width is.
 fn terminal_width(fd: i32) -> Option<usize> {
-    #[repr(C)]
-    struct WindowSize {
-        rows: u16,
-        columns: u16,
-        across: u16,
-        down: u16,
-    }
+    window(fd)
+        .map(|size| usize::from(size.columns))
+        .filter(|columns| *columns > 0)
+}
+
+/// A terminal's size, as the kernel keeps it.
+#[repr(C)]
+struct WindowSize {
+    rows: u16,
+    columns: u16,
+    across: u16,
+    down: u16,
+}
+
+/// The size of the terminal on a file descriptor, where it is one.
+fn window(fd: i32) -> Option<WindowSize> {
     unsafe extern "C" {
         fn ioctl(fd: i32, request: std::ffi::c_ulong, ...) -> i32;
     }
@@ -132,7 +159,7 @@ fn terminal_width(fd: i32) -> Option<usize> {
     // SAFETY: TIOCGWINSZ writes one winsize, which WindowSize lays out as
     // the kernel does, into memory this frame owns, and reads nothing else.
     let done = unsafe { ioctl(fd, TIOCGWINSZ, &raw mut size) };
-    (done == 0 && size.columns > 0).then_some(usize::from(size.columns))
+    (done == 0).then_some(size)
 }
 
 /// Words' width in cells, by Unicode's width.

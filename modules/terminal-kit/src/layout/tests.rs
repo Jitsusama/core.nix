@@ -427,3 +427,33 @@ fn a_pipe_has_no_width_to_fit() {
     assert_eq!(Room::Unbounded.measure(), MEASURE);
     assert_eq!(Room::Cells(50).measure(), 50);
 }
+
+#[test]
+fn a_pipe_has_no_height_to_fit() {
+    let environment = Environment::of([false; 3], &[("LINES", "33")]);
+    assert_eq!(
+        rows_of_stdout(&environment),
+        None,
+        "a pipe was given a height, so its answer would be cut to a screen"
+    );
+}
+
+#[test]
+fn a_terminal_asked_for_a_height_has_that_height() {
+    let environment = Environment::of([false, true, false], &[("LINES", "33")]);
+    assert_eq!(
+        rows_of_stdout(&environment),
+        Some(33),
+        "LINES wasn't read as the terminal's height"
+    );
+    // A height of nothing, or of words, is no height, so the terminal's
+    // own is asked; whichever answers, it's never zero rows.
+    for lines in ["0", "tall"] {
+        let environment = Environment::of([false, true, false], &[("LINES", lines)]);
+        assert_ne!(
+            rows_of_stdout(&environment),
+            Some(0),
+            "LINES={lines} gave a screen with no rows"
+        );
+    }
+}

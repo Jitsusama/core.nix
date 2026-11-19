@@ -13,12 +13,13 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 /// The variables the kit reads, and no others.
-const READ: [&str; 7] = [
+const READ: [&str; 8] = [
     "NO_COLOR",
     "FORCE_COLOR",
     "TERM",
     "COLORTERM",
     "COLUMNS",
+    "LINES",
     "HOME",
     "XDG_CONFIG_HOME",
 ];
