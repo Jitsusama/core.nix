@@ -1811,9 +1811,9 @@
     none other open, when none would open or when the reset said to calm down, retiring its
     connection, sends on no body too large or
     left unfinished, stands down past its share failed with the 421 that sends pi direct, staying
-    through its idle time and taking requests again after on connections opened afresh, though
-    never for requests no connection would take, says its counts as it leaves, counts on each connection the
-    requests pi gave up on and no answer read whole or broken off, tells one a fallen
+    through its idle time and taking requests again after on connections opened afresh, over one
+    opened while it stood down, though never for requests no connection would take, says its
+    counts as it leaves, counts on each connection the requests pi gave up on and no answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a
     502 or a 504 without queueing, doesn't ask for a connection that won't open on every request, forgets a failure once the origin is back, sends pi direct with a
     421 when it can't trust the origin, answers beside an answer longer than its idle time, leaves

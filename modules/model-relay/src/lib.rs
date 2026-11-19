@@ -56,13 +56,18 @@
 //! connections and answers each request with its own 421, forwarding
 //! nothing, so pi sends it direct, until ten minutes have passed, or
 //! twice the last stand-down, to an hour, when the last ended under an
-//! hour before. A request is judged once it went down a connection: one
-//! that never reached the origin, as when none would open, would fail
-//! direct too, so it says nothing of the relay's connections. Standing
-//! down, and for its idle time after, it doesn't leave, which would forget
-//! it; taking requests again, it retires the connections opened meanwhile
-//! by requests it had already taken. A sleep forgets a stand-down, as the
-//! clock it ran on stopped and the network it judged may be gone.
+//! hour before. A request is judged once its answer ends, so one broken
+//! off midway fails, and only one that went down a connection: one that
+//! never reached the origin, as when none would open, would fail direct
+//! too, so it says nothing of the relay's connections. Nor do a reset
+//! giving the origin's own verdict, such as to calm down, and an error
+//! hyper says was the request's own, so neither is judged. Standing down,
+//! and for its idle time after, it doesn't leave, which would forget it;
+//! taking requests again, it retires the connections opened meanwhile by
+//! requests it had already taken. The last stand-down, which the next
+//! doubles, is forgotten when it leaves or restarts. A sleep forgets a
+//! stand-down, as the clock it ran on stopped and the network it judged
+//! may be gone.
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
@@ -386,9 +391,12 @@ struct Counts {
     cancelled: AtomicU64,
     opened: AtomicU64,
     open: AtomicUsize,
+    /// Requests refused as it stood down, so each went direct, counted
+    /// with the refused too.
+    stood_down: AtomicU64,
     /// What the counts were when last said, but for how many connections
     /// were taking requests.
-    said_as: Held<[u64; 7]>,
+    said_as: Held<[u64; 8]>,
 }
 
 impl Counts {
@@ -403,6 +411,7 @@ impl Counts {
             &self.again,
             &self.cancelled,
             &self.opened,
+            &self.stood_down,
         ]
         .map(|count| count.load(Ordering::Relaxed));
         {
@@ -412,11 +421,20 @@ impl Counts {
             }
             *said_as = now;
         }
-        let [asked, refused, failed, reset, again, cancelled, opened] = now;
+        let [
+            asked,
+            refused,
+            failed,
+            reset,
+            again,
+            cancelled,
+            opened,
+            stood_down,
+        ] = now;
         eprintln!(
             "model-relay: {asked} asked, {refused} refused, {failed} failed, {reset} of them \
              reset; {again} reset and sent again; pi cancelled {cancelled}; {opened} \
-             connections opened, {} taking requests",
+             connections opened, {} taking requests; {stood_down} refused as it stood down",
             self.open.load(Ordering::Relaxed),
         );
     }
@@ -533,9 +551,10 @@ impl OnTheWay {
         }
     }
 
-    /// It came to an end of its own: answered whole, or failed.
-    fn end(&self) {
-        self.ended.store(true, Ordering::Relaxed);
+    /// It came to an end of its own: answered whole, or failed. Says
+    /// whether it ended just now, rather than before.
+    fn end(&self) -> bool {
+        !self.ended.swap(true, Ordering::Relaxed)
     }
 
     /// hyper handed it back unsent, so it was never this connection's.
@@ -555,24 +574,44 @@ impl Drop for OnTheWay {
 }
 
 /// An answer's body, whose request ends once the body has: read to its
-/// end, or as far as its length said, or failed.
+/// end, or as far as its length said, or failed. The relay judges the
+/// request then, so one broken off midway is judged failed.
 struct Answering<B> {
     body: B,
     on_the_way: OnTheWay,
     left: Option<u64>,
+    relay: Arc<Relay>,
 }
 
 impl<B: HttpBody> Answering<B> {
-    /// `body`, the answer to the request `on_the_way`.
-    fn new(body: B, on_the_way: OnTheWay) -> Self {
+    /// `body`, the answer to the request `on_the_way`, which `relay`
+    /// carried.
+    fn new(body: B, on_the_way: OnTheWay, relay: Arc<Relay>) -> Self {
         let left = body.size_hint().exact();
-        if left == Some(0) {
-            on_the_way.end();
-        }
-        Self {
+        let answering = Self {
             body,
             on_the_way,
             left,
+            relay,
+        };
+        if left == Some(0) {
+            answering.ended(None);
+        }
+        answering
+    }
+}
+
+impl<B> Answering<B> {
+    /// Ends the request, answered whole or failing with `why`, and has
+    /// the relay judge it, once, as `fails_the_path` says.
+    fn ended(&self, why: Option<&(dyn std::error::Error + 'static)>) {
+        if !self.on_the_way.end() {
+            return;
+        }
+        match why {
+            None => self.relay.finished(false),
+            Some(why) if fails_the_path(why) => self.relay.finished(true),
+            Some(_) => {}
         }
     }
 }
@@ -580,6 +619,7 @@ impl<B: HttpBody> Answering<B> {
 impl<B> HttpBody for Answering<B>
 where
     B: HttpBody + Unpin,
+    B::Error: std::error::Error + 'static,
 {
     type Data = B::Data;
     type Error = B::Error;
@@ -590,7 +630,10 @@ where
     ) -> Poll<Option<Result<Frame<B::Data>, B::Error>>> {
         let read = Pin::new(&mut self.body).poll_frame(cx);
         match &read {
-            Poll::Ready(None | Some(Err(_))) => self.on_the_way.end(),
+            Poll::Ready(None) => self.ended(None),
+            Poll::Ready(Some(Err(why))) => {
+                self.ended(Some(why as &(dyn std::error::Error + 'static)));
+            }
             Poll::Ready(Some(Ok(frame))) => {
                 let length = frame.data_ref().map_or(0, |data| data.remaining() as u64);
                 // hyper stops reading an answer once it has written the
@@ -598,7 +641,7 @@ where
                 if let Some(left) = self.left.as_mut() {
                     *left = left.saturating_sub(length);
                     if *left == 0 {
-                        self.on_the_way.end();
+                        self.ended(None);
                     }
                 }
             }
@@ -612,7 +655,7 @@ where
         // where an answer read whole may be heard of last.
         let ended = self.body.is_end_stream();
         if ended {
-            self.on_the_way.end();
+            self.ended(None);
         }
         ended
     }
@@ -1108,7 +1151,7 @@ impl Relay {
         without_connection_headers(&mut parts.headers);
         // The request stays in hand until its answer is sent or given up on,
         // so the relay never leaves mid-answer.
-        let body = Answering::new(body, on_the_way).map_err(move |why| {
+        let body = Answering::new(body, on_the_way, Arc::clone(self)).map_err(move |why| {
             let _ = &in_hand;
             why
         });
@@ -1133,6 +1176,7 @@ impl Relay {
             }
             Taking::No(more) => {
                 self.counts.refused.fetch_add(1, Ordering::Relaxed);
+                self.counts.stood_down.fetch_add(1, Ordering::Relaxed);
                 // Its words hold the ones pi goes direct on, as for the
                 // 421 of a request for another host, and are true here
                 // too.
@@ -1150,7 +1194,8 @@ impl Relay {
     }
 
     /// Hears a request that went down a connection, and was answered or
-    /// `failed`, and stands down when the share failed lately says to.
+    /// `failed` for its path, and stands down when the share failed lately
+    /// says to.
     fn finished(&self, failed: bool) {
         let Some(stood) = self.standing.heard(Instant::now(), failed) else {
             return;
@@ -1354,7 +1399,10 @@ impl Relay {
                 }
             }
         };
-        self.finished(answered.is_err());
+        // Answered, it's judged once its answer ends, as it may break off.
+        if answered.as_ref().is_err_and(|why| fails_the_path(why)) {
+            self.finished(true);
+        }
         answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
     }
 
@@ -1719,6 +1767,33 @@ fn goes_once_more(why: &hyper::Error) -> bool {
 /// the request, isn't one to send again at once.
 fn goes_again(reason: h2::Reason) -> bool {
     [h2::Reason::REFUSED_STREAM, h2::Reason::PROTOCOL_ERROR].contains(&reason)
+}
+
+/// Whether a request failing with `why` failed for the relay's path to
+/// the origin, and so is judged: its connection lost, or the origin
+/// resetting it or saying goodbye with a refused stream or a protocol
+/// error, as on 18 November. Neither the origin's own verdict, such as to
+/// calm down or an error of its own, nor an error hyper says was the
+/// request's own says anything of the path, as either would fail direct
+/// too.
+fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
+    if why
+        .downcast_ref::<hyper::Error>()
+        .is_some_and(hyper::Error::is_user)
+    {
+        return false;
+    }
+    let mut beneath = Some(why);
+    while let Some(cause) = beneath {
+        if let Some(h2) = cause.downcast_ref::<h2::Error>() {
+            return match h2.reason() {
+                Some(reason) if h2.is_remote() => goes_again(reason),
+                _ => true,
+            };
+        }
+        beneath = cause.source();
+    }
+    true
 }
 
 /// The reason the origin gave for resetting the request's stream, when it

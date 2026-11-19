@@ -8,7 +8,9 @@
 //! pi with its own 421 so each request goes direct, and takes requests
 //! again after a while. One more stand-down soon after the last doubles
 //! the while, up to a ceiling, so a path that stays bad is tried again
-//! less and less often, while one that mends is back in minutes.
+//! less and less often, while one that mends is back in minutes. It's
+//! all held in memory, so a relay that leaves once idle after a
+//! stand-down, or is restarted, starts over at the first.
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, PoisonError};
@@ -202,6 +204,10 @@ mod tests {
                 finished: 21,
                 lasting: TEN_MINUTES
             })
+        );
+        assert!(
+            hears(&Standing::new(TEN_MINUTES), from, 22, 4).is_some(),
+            "4 of 26 is past 15%, though not past 16"
         );
     }
 

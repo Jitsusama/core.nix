@@ -24,10 +24,12 @@
 # another connection, and the one that reset it takes no more; reset again,
 # reset saying anything else, or with no other connection to go on, it's a
 # 502, for pi's own retry. Past 15 in 100 failed of what it finished in ten
-# minutes, it stands down, sending each request direct with its 421, for
-# ten minutes, or twice as long as the last when that ended within the hour,
-# to an hour; the journal says when it stands down, and when the first
-# request after finds it taking requests again.
+# minutes, 20 at least, it stands down, sending each request direct with its
+# 421, for ten minutes, or twice as long as the last when that ended within
+# the hour, to an hour, while it runs: one that leaves once idle, or is
+# restarted, starts over. The journal says when it stands down, and when
+# the first request after finds it taking requests again; restarting it
+# ends a stand-down.
 #
 # The relay runs in background.slice, which the shaper sends in the agents'
 # lane, and its connections are the account's own, so they ride the work VPN
@@ -93,7 +95,8 @@ in
         # and its socket starts the new build and origin at the next
         # request. Agents busy enough never to leave it two quiet minutes
         # keep the old one until they do, or until it's restarted by hand
-        # with systemctl --user restart model-relay-agents.
+        # with systemctl --user restart model-relay-agents, which is also
+        # how a build switched to during a stand-down takes over at once.
         X-SwitchMethod = "keep-old";
       };
       Service = {
