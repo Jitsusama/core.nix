@@ -3,7 +3,8 @@
 // cell, as map.ts lays them out. The rows are a listbox, so a screen reader hears each with what
 // it's tied to; the arrows, j and k walk them, Return opens the repository as a link to it
 // would, and the threads of the row the keys rest on are drawn brighter. The map keeps its own
-// keys from the page's, which walk the list, and lets the rest through.
+// keys from the page's, which walk the list; the list's other keys act on the list's cursor,
+// not the map's, so on the map they say where they act; and it lets the rest through.
 
 import { escaped } from "./draw.ts";
 import {
@@ -23,6 +24,7 @@ const place = element("#ties", HTMLElement);
 const map = element("#ties-map", HTMLDivElement);
 const here = element("#ties-here", HTMLElement);
 const said = element("#ties-said", HTMLParagraphElement);
+const list = element("#list", HTMLDivElement);
 
 // The keys the map answers, and the way each walks; the page answers the rest.
 const WAYS: { readonly [key: string]: Way } = {
@@ -39,6 +41,8 @@ const WAYS: { readonly [key: string]: Way } = {
   End: "last",
   G: "last",
 };
+// The list's keys that act on its cursor rather than walk it, as site.ts answers them.
+const LISTS = new Set(["-", "o", "y", "z"]);
 // How each way is said when nothing lies that way.
 const NOTHING: { readonly [way in Way]: string } = {
   up: "above",
@@ -90,7 +94,12 @@ function drawMap(repositories: readonly Repository[]): void {
   drawn = mapOf(repositories);
   const kept = drawn.rows.findIndex((each) => each.key === key);
   at = kept === -1 ? Math.min(at, Math.max(0, drawn.rows.length - 1)) : kept;
-  place.hidden = drawn.rows.length === 0;
+  const hiding = drawn.rows.length === 0;
+  // The keys on the map as its last tie goes are handed to the list, not dropped from the page.
+  if (hiding && place.contains(document.activeElement)) {
+    list.focus({ preventScroll: true });
+  }
+  place.hidden = hiding;
   // The threads span every row, which the grid is told the count of, the rows being drawn.
   map.style.setProperty("--tie-rows", String(Math.max(1, drawn.rows.length)));
   write(map, markup());
@@ -112,7 +121,7 @@ function rest(): void {
   map.setAttribute("aria-activedescendant", `tie-${at}`);
   // The caption names each repository as the page does elsewhere, as a link to its home, so a
   // pointer opens any of them and the homes probe reads each named where it lives.
-  write(here, `${linked(row)} ${saidOf(drawn, at, linked)}`);
+  write(here, `${linked(row)}: ${saidOf(drawn, at, linked)}`);
 }
 
 /** Says that nothing lies `way`, in other words when it's said again, so a repeat is heard. */
@@ -131,15 +140,25 @@ function go(way: Way): void {
     return;
   }
   at = to;
+  // Cleared, so the same words said again after a step are heard as new.
   saying = "";
+  said.textContent = "";
   write(map, markup());
   rest();
 }
 
-/** Opens the repository at the row, as following a link to it does. */
+/**
+ * Opens the repository at the row, as following a link to it does, which takes the keys to it in
+ * the list; the one already open moves no address, so the keys are taken there here.
+ */
 function open(index: number): void {
   const row = drawn.rows[index];
-  if (row !== undefined) {
+  if (row === undefined) {
+    return;
+  }
+  if (location.hash === row.address) {
+    list.focus();
+  } else {
     location.hash = row.address;
   }
 }
@@ -153,6 +172,9 @@ map.addEventListener("keydown", (event) => {
     go(way);
   } else if (event.key === "Enter") {
     open(at);
+  } else if (LISTS.has(event.key)) {
+    const name = drawn.rows[at]?.name ?? "";
+    said.textContent = `${event.key} acts on the list: Return takes the keys to ${name} there.`;
   } else if (event.key !== "Escape") {
     return;
   }

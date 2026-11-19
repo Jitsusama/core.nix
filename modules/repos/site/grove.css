@@ -253,9 +253,14 @@
   cursor: pointer;
 }
 
+/* A long name ends in an ellipsis rather than running out of its row, since the rows stand at
+   one height for the threads beside them; the caption and the reader's label say it whole. */
 .tie-name {
+  overflow: hidden;
+  min-inline-size: 0;
   font-family: var(--serif);
   font-size: var(--step-body);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

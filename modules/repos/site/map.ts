@@ -75,7 +75,9 @@ function walked(map: MycelialMap, from: number, way: Way): number | undefined {
  */
 function bowed(thread: Thread, rows: number): number {
   const span = (thread.to - thread.from) / Math.max(1, rows - 1);
-  return Math.min(96, 14 + 70 * span + 4 * thread.lane);
+  // The lanes are kept apart past the tie's own bow, which leaves room for every lane.
+  const lanes = 4 * (THREADS_A_TIE - 1);
+  return Math.min(96 - lanes, 14 + 70 * span) + 4 * thread.lane;
 }
 
 const counted = (count: number): string => `${count}\u00a0${count === 1 ? "cell" : "cells"}`;
