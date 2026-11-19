@@ -2008,8 +2008,20 @@ Provider {
     // The notices standing under the cell that raised them, as For You
     // holds them while it's open (latelyNotices), so one read there stays
     // put; those of a cell wanting Joel are its want's row's to say
-    // (ForYouCells.js's joining).
-    readonly property var cellNotices: Cells.joining(latelyNotices, Sessions.wanting)
+    // (ForYouCells.js's joining). The wanting as For You reads them
+    // (wantingHeard), so a session working, its want the same, bands
+    // nothing again; and the same list while it holds the same notices, by
+    // id, since one read while For You is open is a copy made anew at each
+    // read (Lately.js's holdingStill), so a Slack message coming bands
+    // nothing again. A row is made from the notice as it is then.
+    readonly property var cellNoticesKept: ({ held: [] })
+    readonly property var cellNotices: {
+        const joined = Cells.joining(latelyNotices, wantingHeard);
+        const kept = cellNoticesKept.held;
+        if (joined.length !== kept.length || joined.some((one, at) => one.id !== kept[at].id))
+            cellNoticesKept.held = joined;
+        return cellNoticesKept.held;
+    }
     readonly property int toLookAtCount: forYouBands.look.length
     readonly property int toTryCount: forYouBands.try.length
     // For You's row's side, the bands as a run (ForYou.js's bandsRun).
