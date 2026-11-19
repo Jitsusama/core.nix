@@ -295,19 +295,30 @@ class Timing:
         self.turns = []
 
     def load(self, *, on: bool) -> None:
-        """Let the machine's load run, or freeze it where it stands, which takes no time back."""
+        """Let the machine's load run, or freeze it where it stands, which takes no time back.
+
+        The ticks before it turns go to the turn that's ending.
+        """
+        self.count(kept=True)
+        self.ledger.turning()
+        self.turn(on=on)
+        self.ledger.turned()
+        # The ticks while the load turned are neither turn's, so they're passed over.
+        self.count(kept=False)
+
+    def turn(self, *, on: bool) -> None:
+        """Let the load run or freeze it, counting nothing, as main's load did.
+
+        A count that just failed would likely fail again, so a thaw that mustn't wait on one
+        comes here.
+        """
         verb = "thaw" if on else "freeze"
         # A builder stalling the VM held a freeze for 50 s on 5 November, past the 25 s systemctl
         # waits for its answer by default, though the unit froze. FREEZING is longer than that.
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
-        self.count(kept=True)
-        self.ledger.turning()
         self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs", timeout=2 * FREEZING)
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
-        self.ledger.turned()
-        # The ticks while the load turned are neither turn's, so they're passed over.
-        self.count(kept=False)
 
     def count(self, *, kept: bool) -> None:
         """Count the ticks since the last count, kept with the load as it stands."""
@@ -325,9 +336,10 @@ class Timing:
             self.count(kept=True)
         finally:
             print(self.ledger.said())
-            # Let run as main always tried, the last count failed or not.
+            # Let run as main always tried, the last count failed or not: nothing reads the
+            # ledger now, so the thaw counts nothing first, which could fail as the last did.
             if not self.loading or self.ledger.between:
-                self.load(on=True)
+                self.turn(on=True)
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""
@@ -999,7 +1011,8 @@ def hold_vm(started: int, processors: Sequence[int]) -> None:
     """Run each of the VM's threads on these of the builder's processors alone.
 
     A thread started as they're held takes its starter's processors, so each is held again
-    until a pass finds none left to hold.
+    until a pass finds none left to hold. One still moving after HOLDING passes fails as that,
+    since a VM left partly held would slow whatever runs on it with no line saying why.
     """
     wanted = set(processors)
     for _ in range(HOLDING):
@@ -1012,6 +1025,8 @@ def hold_vm(started: int, processors: Sequence[int]) -> None:
                     moved = True
         if not moved:
             return
+    unsettled = f"the VM's threads still moved after {HOLDING} passes holding them to {processors}"
+    raise AssertionError(unsettled)
 
 
 @pytest.mark.usefixtures("loaded")
