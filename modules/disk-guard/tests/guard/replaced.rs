@@ -1,3 +1,10 @@
+//! The scenarios of a newer build replacing an older one: which builds a
+//! target holds, when one is done with, and how one is taken.
+//!
+//! Long because it holds the scenarios of `src/replaced.rs`, one file per
+//! source module as this folder's README says, and every case builds the
+//! cargo target it reads from the same few helpers.
+
 use crate::discover::{CARGO_TAG, file};
 use disk_guard::activity::Use;
 use disk_guard::anchor::Dir;
