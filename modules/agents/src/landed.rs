@@ -375,25 +375,34 @@ pub fn waiting_for_switch(records: &mut Vec<Value>, carried: &Carried) {
 /// quest it landed for (`titles`, by the quest's id), never by an
 /// address; its ref and its quest's id are nerdy bits, folded away
 /// where y copies them, since no identifier stands among what Joel
-/// reads (VKCF3Z, 2026-11-12). Its time goes out for the shell to word.
-/// Each drawer is a record of its own, `landed-drawer:agents:<key>`, its
-/// landing naming it by that key in `drawer`.
+/// reads (VKCF3Z, 2026-11-12). Its time goes out for the shell to word,
+/// and so does since when the machine has had it, where the switch that
+/// brought it is told (`carried`), since a landing is only
+/// worth trying once it runs. Each drawer is a record of its own,
+/// `landed-drawer:agents:<key>`, its landing naming it by that key in
+/// `drawer`.
 pub fn drawn<S: BuildHasher>(
     records: &mut Vec<Value>,
     words: &Words,
     titles: &HashMap<&str, &str, S>,
+    carried: &Carried,
 ) {
     let mut apart = Vec::new();
     for record in records.iter_mut().filter(|one| one["kind"] == "landed") {
         let key = format!("{DRAWER}:{PLACE}:{}", text(&record["landed"], "key"));
-        let drawer = drawer(&record["landed"], words, titles);
+        let drawer = drawer(&record["landed"], words, titles, carried);
         record["landed"]["drawer"] = json!(key);
         apart.push(json!({"key": key, "kind": DRAWER, "drawer": drawer}));
     }
     records.extend(apart);
 }
 
-fn drawer<S: BuildHasher>(one: &Value, words: &Words, titles: &HashMap<&str, &str, S>) -> Value {
+fn drawer<S: BuildHasher>(
+    one: &Value,
+    words: &Words,
+    titles: &HashMap<&str, &str, S>,
+    carried: &Carried,
+) -> Value {
     let named = |id: &str| words.names.word(id).to_owned();
     let quest = text(one, "quest");
     // A running session with no title is named by its address, which
@@ -411,6 +420,9 @@ fn drawer<S: BuildHasher>(one: &Value, words: &Words, titles: &HashMap<&str, &st
     let mut facts: Vec<Value> = clock::ms_of(&one["at"])
         .map(|at| json!({"label": named("landed"), "value": "", "at": {"at": at, "as": "dated"}}))
         .into_iter()
+        .chain(carried.since(one).map(|since| {
+            json!({"label": named("on-machine"), "value": "", "at": {"at": since, "as": "dated"}})
+        }))
         .collect();
     let said = |pairs: Vec<(&str, String)>| {
         pairs
@@ -865,7 +877,7 @@ mod tests {
         )];
         let (mut records, _) = landed(landings.iter(), &sessions, &Reading::default(), now());
         let titles = HashMap::from([("QEST-1", "The Lighthouse Quest")]);
-        drawn(&mut records, &words(), &titles);
+        drawn(&mut records, &words(), &titles, &Carried::default());
         assert_eq!(
             drawer_of(&records, 0)["eyebrow"][0]["said"],
             "The Lighthouse Quest",
@@ -897,7 +909,7 @@ mod tests {
         ];
         let (mut records, _) = landed(landings.iter(), &sessions, &Reading::default(), now());
         let titles = HashMap::from([("QEST-1", "The Lighthouse Quest")]);
-        drawn(&mut records, &words(), &titles);
+        drawn(&mut records, &words(), &titles, &Carried::default());
         let at = clock::ms_of(&json!("2026-11-11T10:00:00Z")).expect("a time");
         assert_eq!(
             drawer_of(&records, 0),
@@ -958,7 +970,12 @@ mod tests {
              five seconds.",
         )];
         let (mut records, _) = landed(landings.iter(), &sessions, &Reading::default(), now());
-        drawn(&mut records, &words(), &HashMap::<&str, &str>::new());
+        drawn(
+            &mut records,
+            &words(),
+            &HashMap::<&str, &str>::new(),
+            &Carried::default(),
+        );
         let at = clock::ms_of(&json!("2026-11-11T10:00:00Z")).expect("a time");
         assert_eq!(
             records[0]["landed"]["name"],
@@ -985,6 +1002,44 @@ mod tests {
             }),
             "its title is its name, whole; the rest of the line its prose; what landed its one \
              fact after when; where it landed folded with its ids"
+        );
+    }
+
+    #[test]
+    fn a_landings_drawer_says_since_when_the_machine_has_had_it_where_thats_told() {
+        let here = session("s-here", "HERE01", &json!([]));
+        let sessions = [Session(&here)];
+        let mut landing = kept("s-here", "core.nix#2140", "2026-11-11T10:00:00Z", "Try it.");
+        landing["repo"] = json!("Jitsusama/core.nix");
+        let landings = [landing];
+        let (mut records, _) = landed(landings.iter(), &sessions, &Reading::default(), now());
+        let titles = HashMap::<&str, &str>::new();
+        let switched = clock::ms_of(&json!("2026-11-11T12:30:00Z")).expect("a time");
+        let mut told = records.clone();
+        drawn(
+            &mut told,
+            &words(),
+            &titles,
+            &Carried::arrived(2140, switched),
+        );
+        assert_eq!(
+            drawer_of(&told, 0)["facts"][1],
+            json!({"label": "On the Machine", "value": "",
+                   "at": {"at": switched, "as": "dated"}}),
+            "since the switch that brought it, straight after when it landed"
+        );
+        drawn(
+            &mut records,
+            &words(),
+            &titles,
+            &Carried::arrived(2141, switched),
+        );
+        assert!(
+            drawer_of(&records, 0)["facts"]
+                .as_array()
+                .is_some_and(|facts| facts.iter().all(|fact| fact["label"] != "On the Machine")),
+            "no switch told brought it, so nothing says when: {}",
+            drawer_of(&records, 0)["facts"]
         );
     }
 

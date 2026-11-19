@@ -319,6 +319,11 @@
       "name": "What Changed"
     },
     {
+      "id": "agents:on-machine",
+      "in": "agents",
+      "name": "On the Machine"
+    },
+    {
       "id": "agents:item",
       "in": "agents",
       "name": "Item"

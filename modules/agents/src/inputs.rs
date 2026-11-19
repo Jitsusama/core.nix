@@ -448,7 +448,7 @@ impl Inputs {
             .records()
             .filter_map(|(_, one)| Some((one["id"].as_str()?, one["title"].as_str()?)))
             .collect();
-        landed::drawn(&mut records, &self.words, &titles);
+        landed::drawn(&mut records, &self.words, &titles, &self.carried);
         if !self.fed_back.is_empty() {
             let talks: HashMap<String, Talk> = self
                 .talks

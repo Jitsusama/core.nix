@@ -121,6 +121,10 @@ pub struct Paths {
     /// Where pi-packages installs the harness, whose `current` link says
     /// the commit installed, read again as it moves.
     pub harness: Option<PathBuf>,
+    /// The integration's record of switches, which says when each core
+    /// came, read again as a switch adds to it; none where it isn't
+    /// given, when no landing says since when it runs.
+    pub switches: Option<PathBuf>,
 }
 
 impl Heard {
@@ -149,6 +153,7 @@ impl Paths {
         .chain(self.switched.clone())
         .chain(self.clone.as_ref().map(|clone| clone.join("FETCH_HEAD")))
         .chain(self.harness.as_ref().map(|harness| harness.join("current")))
+        .chain(self.switches.clone())
         .collect()
     }
 
@@ -156,6 +161,7 @@ impl Paths {
     /// holds.
     fn says_carried(&self, path: &Path) -> bool {
         self.switched.as_deref() == Some(path)
+            || self.switches.as_deref() == Some(path)
             || self
                 .clone
                 .as_ref()
@@ -325,6 +331,7 @@ impl Inputs {
                 kept: &paths.carried,
                 clone: paths.clone.as_deref(),
                 harness: paths.harness.as_deref(),
+                switches: paths.switches.as_deref(),
             });
         }
     }
@@ -356,6 +363,7 @@ mod tests {
             carried: folder.join("agents").join("carried.json"),
             clone: Some(folder.join("core.git")),
             harness: Some(folder.join("agentic-harness.pi")),
+            switches: Some(folder.join("switches.jsonl")),
         }
     }
 

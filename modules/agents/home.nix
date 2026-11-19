@@ -83,6 +83,11 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
           # installed.
           "--harness"
           "${config.xdg.dataHome}/pi-packages/github.com/Jitsusama/agentic-harness.pi"
+          # The integration's record of switches, a line each saying when
+          # and the core it ran, so a landing of core's says since when the
+          # machine has had it. Where it isn't there, no landing says.
+          "--switches"
+          "${config.xdg.stateHome}/integration/switches.jsonl"
           # Where Quickshell keeps each shell's own state, in which the
           # launcher kept the landings Joel read before the daemon did.
           "--shells"

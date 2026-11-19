@@ -5,6 +5,7 @@
 # is cut from the modules folder holding all four, and built from this
 # one.
 {
+  git,
   lib,
   rustPlatform,
 }:
@@ -35,6 +36,8 @@ rustPlatform.buildRustPackage rec {
     cp ${(import ../quickshell/launcher/words.nix).file} ${src.name}/quickshell/launcher/words.json
   '';
   cargoLock.lockFile = ./Cargo.lock;
+  # What a switch brought is read from real history in its tests.
+  nativeCheckInputs = [ git ];
   meta = {
     description = "Makes Agents' rows ready for the launcher";
     license = lib.licenses.mit;
