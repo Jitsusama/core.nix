@@ -78,6 +78,7 @@
   "launcher/Gathering.qml"
   "launcher/Reached.js"
   "launcher/Headings.js"
+  "launcher/Most.js"
   "launcher/Becoming.js"
   "launcher/Recent.js"
   "launcher/Recents.js"
