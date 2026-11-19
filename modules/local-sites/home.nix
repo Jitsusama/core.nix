@@ -580,10 +580,6 @@ in
         # seconds past its worst, since the same starved machine slows its
         # own ending.
         TimeoutStartSec = "60s";
-        # A read the out-of-memory killer ends is one more failure the writer
-        # keeps the last homes through and says in its line, so the unit ends
-        # well rather than systemd marking it failed for the kill.
-        OOMPolicy = "continue";
         Slice = "background.slice";
       };
     };

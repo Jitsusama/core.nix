@@ -133,7 +133,7 @@ fn a_checkout_gone_when_its_folder_is_heard_is_let_go() {
 }
 
 #[test]
-fn it_says_once_how_long_it_took_to_be_ready_in_the_words_health_times() {
+fn it_says_how_long_it_took_to_be_ready_in_the_words_health_times() {
     // Health reads the first "in N ms" after the word ready as how long a restart
     // was gone (modules/health/src/launches.rs), so the line keeps those words.
     assert_eq!(

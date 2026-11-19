@@ -36,7 +36,9 @@ fi
 # timeout answers 137 for rather than 124. A read the kernel killed answers 137
 # too, sooner, and is a failure rather than a stall, so the time tells them apart.
 started=$SECONDS
-if timeout -k 5 "$waits" repos --json > "$work/repos.json" 2> "$work/said"; then
+# timeout ends itself with the signal that ended the read, which bash would say on a line of its
+# own; the writer's one line says it instead, so bash's goes nowhere.
+if { timeout -k 5 "$waits" repos --json > "$work/repos.json" 2> "$work/said"; } 2> /dev/null; then
   ended=0
 else
   ended=$?
@@ -53,7 +55,14 @@ else
   # A read killed outright says nothing itself, so the signal says it, by the name a
   # journal's reader knows it by.
   if ((ended > 128)); then
-    said="killed by SIG$(kill -l $((ended - 128)))${said:+: $said}"
+    signal=$((ended - 128))
+    # A number no signal has is said as it is, rather than ending the writer with no line.
+    if name=$(kill -l "$signal" 2> /dev/null); then
+      signal=SIG$name
+    else
+      signal="signal $signal"
+    fi
+    said="killed by $signal${said:+: $said}"
   fi
   echo "repos failed ($said); the last homes stay"
   exit 0
