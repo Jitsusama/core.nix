@@ -65,7 +65,9 @@ function started(options) {
 }
 
 const control = started(["--inspect-port=0"]);
-const shut = started(["--disable-sigusr1"]);
+// Both on a port of their own, so the shut node can't read shut only
+// because another holds the default port.
+const shut = started(["--disable-sigusr1", "--inspect-port=0"]);
 try {
   for (const one of [control, shut]) {
     const first = await one.said();

@@ -81,6 +81,37 @@ in
         && lib.hasInfix "hosts.stranger.proof isn't a pi-host-runtime-proof" refusals
         && lib.hasInfix "hosts.later.proof is version 2, not 1" refusals
       );
+
+  # A realm's own NODE_OPTIONS, which a host's unit clears, fails
+  # evaluation, naming the realm, rather than being dropped unseen.
+  pi-hosts-refuse-node-options =
+    let
+      runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
+      realm = environment: {
+        pi = "${runtime}/lib/node_modules/pi";
+        node = "${pkgs.emptyDirectory}/node";
+        proof = proofOf { inherit runtime; };
+        inherit environment;
+      };
+      refusals = lib.concatMapStrings (check: check.message + "\n") (
+        lib.filter (check: !check.assertion)
+          (account (bareNixos [
+            self.nixosModules.workstation
+            {
+              home-manager.users.someone.jitsusama.pi.hosts = {
+                plain = realm { GREETING = "hi"; };
+                optioned = realm { NODE_OPTIONS = "--require /x.js"; };
+              };
+            }
+          ])).assertions
+      );
+    in
+    holds "pi-hosts-refuse-node-options"
+      "A realm's NODE_OPTIONS, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm."
+      (
+        !lib.hasInfix "hosts.plain." refusals
+        && lib.hasInfix "jitsusama.pi.hosts.optioned.environment gives NODE_OPTIONS" refusals
+      );
 }
 # The hosts run as Linux's systemd user units, in slices a Mac has none of.
 // onLinux {
@@ -155,6 +186,11 @@ in
           read = lib.replaceStrings [ "_" ] [ "-" ] words;
         in
         lib.hasInfix "--inspect" read || lib.hasInfix "--no-disable-sigusr1" read;
+      # It refuses what it should, so the check can't pass for a typo.
+      readsOptions =
+        opensInspector "--inspect_brk=0"
+        && opensInspector "--no_disable_sigusr1"
+        && !(opensInspector "--disable-sigusr1 --max-old-space-size=8192");
       # Any process of Joel's may send SIGUSR1, which would open node's
       # inspector and let it run code as the host, whose word the node takes
       # for which conversation a spawner serves; so node is told to ignore
@@ -220,12 +256,8 @@ in
       # % and $ doubled so systemd takes them as they are.
       findsItsPath =
         kind:
-        lib.hasPrefix
-          "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:/100%%/$$HOME:\${PATH}' ${node} "
-          (first services."pi-host-two-${kind}".Service.ExecStart)
-        &&
-          shutsItsInspector services."pi-host-two-${kind}"
-            "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:/100%%/$$HOME:\${PATH}' "
+        shutsItsInspector services."pi-host-two-${kind}"
+          "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:/100%%/$$HOME:\${PATH}' "
         # A realm's own heap reaches both its hosts.
         && lib.hasInfix " '--max-old-space-size=3072' /" (
           first services."pi-host-two-${kind}".Service.ExecStart
@@ -248,7 +280,8 @@ in
     holds "pi-hosts-start-with-the-session"
       "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS to the user manager, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
-        starts "attended"
+        readsOptions
+        && starts "attended"
         && starts "background"
         && findsItsPath "attended"
         && findsItsPath "background"

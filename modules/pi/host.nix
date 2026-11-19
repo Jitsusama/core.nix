@@ -367,16 +367,23 @@ in
     '';
   };
 
-  config.assertions = lib.mapAttrsToList (
-    realm: host:
-    let
-      refused = proofRefusal realm host;
-    in
-    {
-      assertion = refused == null;
-      message = toString refused;
-    }
-  ) cfg;
+  config.assertions =
+    lib.mapAttrsToList (
+      realm: host:
+      let
+        refused = proofRefusal realm host;
+      in
+      {
+        assertion = refused == null;
+        message = toString refused;
+      }
+    ) cfg
+    # The unit clears NODE_OPTIONS, so a realm's own would be dropped
+    # unseen; it is refused instead, saying why.
+    ++ lib.mapAttrsToList (realm: host: {
+      assertion = !(host.environment ? NODE_OPTIONS);
+      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; give node's options another way.";
+    }) cfg;
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (

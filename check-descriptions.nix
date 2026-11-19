@@ -2632,9 +2632,9 @@
     each realm a machine names gets an attended and a background pi host, started with the
     account's session where the harness is installed, run by the host's pi and its own node, its
     inspector shut to SIGUSR1 and opened or undone by none of its options, started plainly or
-    through env, with NODE_OPTIONS cleared, ready once it says so, in agents.slice with its realm's environment and its folders first on its
-    PATH, left stopped after refusing
-    what it was given and left running through a switch and through the kernel killing one of its
+    through env, with NODE_OPTIONS cleared, ready once it says so, in agents.slice with its
+    realm's environment and its folders first on its PATH, left stopped after refusing what it
+    was given and left running through a switch and through the kernel killing one of its
     commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
@@ -2652,6 +2652,11 @@
     a realm's pi reaches its hosts only with the proof that pnpm test:host passed on the runtime
     it is in; a proof of another runtime, or one that isn't a proof, fails evaluation, naming the
     realm and how to prove it
+  '';
+  pi-hosts-refuse-node-options = ''
+    a realm that gives its pi hosts NODE_OPTIONS, which their unit clears so it can't open the
+    host's inspector or run code as the host, fails evaluation naming the realm, rather than
+    having them dropped unseen
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the
