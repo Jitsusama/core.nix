@@ -62,7 +62,10 @@ pub enum Kind {
     /// were refused, or were made twice running.
     Tools,
     /// What Joel typed to a session that sounds like something hurt, by
-    /// where the session ran.
+    /// where the session ran: `pi in <place>`, a name no journal's unit or
+    /// health's own fault takes, so a place called `disk-guard` keeps his
+    /// words apart from the disk guard's lines, each kept as its kind is
+    /// through a start.
     Words,
 }
 
@@ -407,7 +410,7 @@ impl Day {
                 (format!("pi {tool}"), Kind::Tools, why.as_str(), 3)
             }
             Said::Again { tool } => (format!("pi {tool}"), Kind::Tools, "the same call again", 4),
-            Said::Words { text } => (place.to_owned(), Kind::Words, text.as_str(), 3),
+            Said::Words { text } => (format!("pi in {place}"), Kind::Words, text.as_str(), 3),
         };
         let thing = self.things.entry(name).or_default();
         thing.kind = thing.kind.or(Some(kind));
@@ -438,8 +441,9 @@ impl Day {
             .into_iter()
             .filter(|(_, thing)| matches!(thing.kind, Some(Kind::Tools | Kind::Words)))
             .collect();
-        // A thing kept whole, such as a session's place named as a fault's
-        // thing is, already holds the fault, so it's kept, not counted again.
+        // A thing kept whole that a fault was seen in already holds the
+        // fault, so it's kept, not counted again: a day kept before Joel's
+        // words had a name of their own may hold a place named as a fault.
         for seen in kept.seen {
             if whole.contains_key(&seen.name) {
                 self.seen.push(seen);
