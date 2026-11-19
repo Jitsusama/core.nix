@@ -453,7 +453,8 @@ fn until_marked_anew(home: &Path, mark: &str) {
     while marked(home, mark).is_none_or(|at| Some(at) == was) {
         assert!(
             began.elapsed() < PATIENCE,
-            "it never marked anew past {was:?}"
+            "{mark} was never marked anew past {was:?}; it holds {:?}",
+            std::fs::read_to_string(home.join("state/pineapple").join(mark))
         );
         thread::sleep(Duration::from_millis(50));
     }
