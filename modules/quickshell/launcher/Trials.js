@@ -65,8 +65,10 @@ function timed(trial, searched, drawn, parts) {
         return trial;
     }
     const was = trial.timed ?? begun(0, "").timed;
+    const kept = parts?.composing
+        ? Object.assign({}, parts, { composing: showingKept(parts.composing) }) : parts ?? null;
     const keptFelt = felt(drawn) && was.felt.length < FELT_KEPT
-        ? was.felt.concat([{ searched, drawn, parts: parts ?? null }]) : was.felt;
+        ? was.felt.concat([{ searched, drawn, parts: kept }]) : was.felt;
     return Object.assign({}, trial, { timed: {
         count: was.count + 1,
         searched: was.searched + searched,
@@ -124,7 +126,28 @@ function readingSaid(ms) {
     return ms >= 0.5 ? `, ${Math.round(ms)} reading what they hold` : "";
 }
 
-// Where a showing's time went, each part a millisecond or more: listing
+// How long weighing the keys of a showing's rows took, said as the reading.
+function weighingSaid(ms) {
+    return (ms ?? 0) >= 0.5 ? `, ${Math.round(ms)} weighing their keys` : "";
+}
+
+// A showing's parts as the trials file keeps them, in whole milliseconds as
+// it always has (RowsKept.keptWhole), though the rows' clock times them
+// finer for showingSplit's sums; the fine laying is the keeping's own.
+function showingKept(composing) {
+    const whole = {};
+    for (const [part, ms] of Object.entries(composing)) {
+        if (part === "drawer") {
+            whole.drawer = ms && showingKept(ms);
+        } else if (part !== "laying") {
+            whole[part] = typeof ms === "number" ? Math.round(ms) : ms;
+        }
+    }
+    return whole;
+}
+
+// Where a showing's time went, each part said once it rounds to a
+// millisecond, as the weighing and reading are: listing
 // its rows, putting them in the list besides the laying and weighing the
 // line says already, which run as they're put in, and selecting a row and
 // scrolling to it, each less a drawer that joined the key in it, which is
@@ -133,13 +156,14 @@ function readingSaid(ms) {
 // where the rest went (2026-11-19).
 function showingSplit(parts) {
     const drawer = parts.drawer ?? {};
-    const putting = (parts.putting ?? 0) - (parts.kept?.laying ?? 0) - (parts.weighing ?? 0)
-        - (drawer.putting ?? 0);
+    // The laying as the rows' clock timed it, since the keeping's is whole.
+    const laying = parts.laying ?? parts.kept?.laying ?? 0;
+    const putting = (parts.putting ?? 0) - laying - (parts.weighing ?? 0) - (drawer.putting ?? 0);
     const each = [[parts.listing ?? 0, "listing them"],
         [putting, "putting them in besides laying and weighing"],
         [(drawer.putting ?? 0) + (drawer.selecting ?? 0), "making its drawer"],
         [(parts.selecting ?? 0) - (drawer.selecting ?? 0), "selecting and scrolling to it"]]
-        .filter(([ms]) => ms >= 1);
+        .filter(([ms]) => ms >= 0.5);
     return each.map(([ms, words]) => `${Math.round(ms)} ${words}`).join(", ");
 }
 

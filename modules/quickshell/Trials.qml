@@ -150,14 +150,9 @@ Scope {
     // last where a step back out came to.
     function composed(parts) {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
-            + Trials.showingSaid(parts,
-                weighed(parts.weighing) + Trials.readingSaid(parts.reading))
+            + Trials.showingSaid(parts, Trials.weighingSaid(parts.weighing)
+                + Trials.readingSaid(parts.reading))
             : "";
-    }
-
-    // The keys' weighing, where it took any.
-    function weighed(ms) {
-        return (ms ?? 0) >= 0.5 ? `, ${Math.round(ms)} weighing their keys` : "";
     }
 
     // The rows' time, where they took any: matching every choice looked at,

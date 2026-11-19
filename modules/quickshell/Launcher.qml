@@ -423,7 +423,7 @@ Scope {
                 lowest: 0, nth: nth }, Rank.identity);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
             showing: Date.now() - placedAll, kept: RowsKept.keptWhole(list.keptLast),
-            weighing: keysWeighing,
+            weighing: keysWeighing, laying: list.keptLast?.layingFine,
             reading: readingSpent(), listing: puttingAt - listingAt,
             putting: selectingAt - puttingAt, selecting: KeyTimes.now() - selectingAt,
             drawer: { putting: drawerPutting, selecting: drawerJoining - drawerPutting } };
@@ -6873,6 +6873,7 @@ Scope {
                 composing: { asking: 0, placing: livedAt - foundAt,
                     showing: Date.now() - livedAt, kept: RowsKept.keptWhole(list.keptLast),
                     weighing: keysWeighing, reading: readingSpent(),
+                    laying: list.keptLast?.layingFine,
                     listing: puttingAt - listingAt, putting: selectingAt - puttingAt,
                     selecting: KeyTimes.now() - selectingAt,
                     drawer: { putting: drawerPutting,
@@ -14426,6 +14427,9 @@ Scope {
                                     // always said it, though the rows' clock
                                     // reads finer.
                                     laying: Math.round(KeyTimes.now() - laying + aside + split),
+                                    // And fine, which a showing's putting
+                                    // in is told less (Trials.showingSplit).
+                                    layingFine: KeyTimes.now() - laying + aside + split,
                                     // Whole too, as its time was before the
                                     // rows' clock timed it.
                                     split: Object.assign({ from, took: Math.round(split), whole },

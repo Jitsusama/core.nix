@@ -385,7 +385,9 @@ function keptWhole(kept) {
     for (const [kind, spent] of Object.entries(kept.laidBy)) {
         laidBy[kind] = { rows: spent.rows, ms: Math.round(spent.ms) };
     }
-    return Object.assign({}, kept, { laidBy });
+    // The fine laying is a showing's to split by (Trials.showingSplit), and
+    // the file keeps the whole one.
+    return Object.assign({}, kept, { laidBy, layingFine: undefined });
 }
 
 // Whose rows a laying spent on (`tally`), built or taken back alike: each
