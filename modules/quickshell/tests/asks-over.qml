@@ -680,13 +680,16 @@ ShellRoot {
         // Return, meant for a yes, would reach the window behind. It's
         // held still instead, the foot naming no Return, with no run for
         // the right arrow to step into.
-        same("a Return on it keeps the launcher open, doing nothing",
+        same("its row says it holds Return still, with no run",
             [Arming.holdsStill(row()), row()?.still, typeof row()?.run],
             [true, true, "undefined"]);
         // Walked to from a terminal, it's refused, saying why, rather than
         // said done for nothing or thrown on the run it hasn't.
-        same("asked from outside, it's refused while the screen is shared",
+        same("its row gives the share as why it's held",
             Arming.heldWhy(row(), "nothing sent"), "not while your screen is shared");
+        // How it stands goes too, or the foot would say a hidden ask
+        // waits where an answered one says nothing.
+        same("nor does it say how it stands", typeof row()?.state, "undefined");
         same("it still waits for him in For You, hidden there too",
             asks.forYou.map(one => one.row.name), [hidden]);
         same("and its line's time starts again", asks.seen, {});
@@ -724,10 +727,15 @@ ShellRoot {
     }
 
     function unshared() {
+        const untolds = stage.untolds;
         Niri.casts = {};
         stage.selected = row();
         same("the share over, the ask's row says what it asks for again", row()?.name,
             "op://Private/Kiln/password");
+        // Else the foot would still say the screen is shared over an ask
+        // that would arm on Return.
+        same("and why Return held it is let go from the foot", stage.untolds, untolds + 1);
+        same("nor is it held still", [row()?.still, row()?.stillWhy], [undefined, undefined]);
     }
 
     function unsharedShown() {
@@ -752,7 +760,7 @@ ShellRoot {
         const waiting = "not until it's known whether your screen is shared";
         same("saying on the row that it waits on knowing, not on a share",
             [row()?.note, row()?.drawer?.()?.body], [waiting, waiting]);
-        same("and asked from outside, it's refused as waiting on knowing",
+        same("and its row gives waiting on knowing as why it's held",
             Arming.heldWhy(row(), "nothing sent"), waiting);
         const told = stage.toldWhys.length;
         root.madeBefore.run();
@@ -831,7 +839,10 @@ ShellRoot {
     // holds as a waiting one does, where unshared its Return closes.
     function sharedEnded() {
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
-        const drawn = one => JSON.stringify([one?.hue, one?.state, one?.glyph]);
+        // A ready row's state is read as it's drawn, since JSON says any
+        // function, and so any state, as null.
+        const stands = one => typeof one?.state === "function" ? one.state() : one?.state;
+        const drawn = one => JSON.stringify([one?.hue, stands(one) ?? null, one?.glyph]);
         const waiting = drawn(row());
         link.tellEnded();
         same("an ask ended while the screen is shared is hidden", row()?.name,
@@ -842,9 +853,10 @@ ShellRoot {
         same("and draws as a hidden waiting one does", drawn(row()), waiting);
         // Hidden, it looks as a waiting one does, so Return on it holds
         // still too, rather than closing for his next to land behind.
-        same("and its Return keeps the launcher open too, saying why",
+        same("and its row holds Return still too, saying why",
             [Arming.holdsStill(row()), Arming.heldWhy(row(), "nothing sent")],
             [true, "not while your screen is shared"]);
         Niri.casts = {};
+        same("the share over, the ended ask isn't held still", Arming.holdsStill(row()), false);
     }
 }
