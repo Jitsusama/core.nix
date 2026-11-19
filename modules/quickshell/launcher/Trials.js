@@ -127,28 +127,35 @@ function readingSaid(ms) {
 // Where a showing's time went, each part a millisecond or more: listing
 // its rows, putting them in the list besides the laying and weighing the
 // line says already, which run as they're put in, and selecting a row and
-// scrolling to it. Joel's step into a session showed for 49 ms of which
+// scrolling to it, each less a drawer that joined the key in it, which is
+// said as its own. Joel's step into a session showed for 49 ms of which
 // laying took 3, and "→ Programs" 47 of which 17, with nothing saying
 // where the rest went (2026-11-19).
 function showingSplit(parts) {
-    const putting = (parts.putting ?? 0) - (parts.kept?.laying ?? 0) - (parts.weighing ?? 0);
+    const drawer = parts.drawer ?? {};
+    const putting = (parts.putting ?? 0) - (parts.kept?.laying ?? 0) - (parts.weighing ?? 0)
+        - (drawer.putting ?? 0);
     const each = [[parts.listing ?? 0, "listing them"],
         [putting, "putting them in besides laying and weighing"],
-        [parts.selecting ?? 0, "selecting and scrolling to it"]].filter(([ms]) => ms >= 1);
+        [(drawer.putting ?? 0) + (drawer.selecting ?? 0), "making its drawer"],
+        [(parts.selecting ?? 0) - (drawer.selecting ?? 0), "selecting and scrolling to it"]]
+        .filter(([ms]) => ms >= 1);
     return each.map(([ms, words]) => `${Math.round(ms)} ${words}`).join(", ");
 }
 
 // A showing's parts (showingSplit) and then its keeping, with what else it
 // took (`others`), as keptPart says it, so the parts never read as the
 // laying's own. Where it laid nothing keptPart says nothing, and the parts
-// stand with what else it took.
+// and what else it took stand alone, so a weighing is said however small
+// the other parts.
 function showingSaid(parts, others = "") {
     const split = showingSplit(parts);
     const kept = keptPart(parts.kept, others);
-    if (split === "") {
-        return kept;
+    if (kept !== "") {
+        return split === "" ? kept : ` (${split}; ${kept.slice(2)}`;
     }
-    return kept === "" ? ` (${split}${others})` : ` (${split}; ${kept.slice(2)}`;
+    const alone = split === "" ? others.slice(2) : split + others;
+    return alone === "" ? "" : ` (${alone})`;
 }
 
 // How much of a key's wait for answers was past its bound, behind the

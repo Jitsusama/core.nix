@@ -157,7 +157,7 @@ Scope {
 
     // The keys' weighing, where it took any.
     function weighed(ms) {
-        return (ms ?? 0) > 0 ? `, ${ms} weighing their keys` : "";
+        return (ms ?? 0) >= 0.5 ? `, ${Math.round(ms)} weighing their keys` : "";
     }
 
     // The rows' time, where they took any: matching every choice looked at,

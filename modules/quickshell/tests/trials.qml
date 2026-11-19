@@ -406,6 +406,23 @@ QtObject {
                 && Trials.showingSaid({ kept: splitting }, ", 5 weighing their keys")
                     === Trials.keptPart(splitting, ", 5 weighing their keys"),
             Trials.showingSaid({ kept: splitting }, ", 5 weighing their keys"));
+        expect("a showing that laid nothing and split nothing still says its weighing",
+            Trials.showingSaid(Object.assign({}, bareShowing, { putting: 2.9 }), ", 2 weighing")
+                === " (2 weighing)",
+            Trials.showingSaid(Object.assign({}, bareShowing, { putting: 2.9 }), ", 2 weighing"));
+        // A drawer joined the key: 4 of it made as the rows went in, 3 as
+        // the selection moved, each taken from its part and said as one.
+        const joinedShowing = Object.assign({}, showingParts,
+            { drawer: { putting: 4, selecting: 3 }, selecting: 4.2 });
+        expect("a drawer that joined the key is said apart from putting in and selecting",
+            Trials.showingSaid(joinedShowing).startsWith(" (6 listing them, 33 putting them in"
+                + " besides laying and weighing, 7 making its drawer,"
+                + " 1 selecting and scrolling to it; 3 rows new"),
+            Trials.showingSaid(joinedShowing));
+        expect("a part of a millisecond or more is said, and one under it isn't, however rounded",
+            Trials.showingSaid({ kept: bareShowing.kept, listing: 1.2, selecting: 0.6 })
+                === " (1 listing them)",
+            Trials.showingSaid({ kept: bareShowing.kept, listing: 1.2, selecting: 0.6 }));
         expect("a key held past its bound says what it was behind",
             Trials.behindSaid({ behind: 69, behindOn: "syncing 40, 29 unnamed" })
                 === " (69 of it behind the shell's other work: syncing 40, 29 unnamed)",

@@ -391,13 +391,15 @@ Scope {
         // Its showing's parts are timed apart on the rows' finer clock
         // (Trials.showingSplit): listing the rows, the endings, liveness and
         // steadying included; putting them in, which runs their laying and
-        // weighing; then selecting a row and scrolling to it.
+        // weighing; then selecting a row and scrolling to it. A drawer that
+        // joins the key is made in either of the last two, and told apart.
         const listingAt = KeyTimes.now();
         // What ends a search at the top comes after it all, never counted as
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
         list.keptLast = null;
         keysWeighing = 0;
+        drawerJoining = 0;
         readingBegun();
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
@@ -405,6 +407,7 @@ Scope {
         const puttingAt = KeyTimes.now();
         matches = listedRows;
         const selectingAt = KeyTimes.now();
+        const drawerPutting = drawerJoining;
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
         // so is no name Joel was typing, and gave "batt" to a copy that
@@ -422,7 +425,8 @@ Scope {
             showing: Date.now() - placedAll, kept: RowsKept.keptWhole(list.keptLast),
             weighing: keysWeighing,
             reading: readingSpent(), listing: puttingAt - listingAt,
-            putting: selectingAt - puttingAt, selecting: KeyTimes.now() - selectingAt };
+            putting: selectingAt - puttingAt, selecting: KeyTimes.now() - selectingAt,
+            drawer: { putting: drawerPutting, selecting: drawerJoining - drawerPutting } };
     }
 
     // The rows with what the first thing found by its name holds listed
@@ -3787,8 +3791,13 @@ Scope {
     property int rowsToldLate: 0
     // How long weighing the keys of the rows just listed took, in ms, which
     // a key's showing says beside its laying: every row's foot is weighed
-    // as it's listed, not only those drawn (Trials.qml's composed).
-    property int keysWeighing: 0
+    // as it's listed, not only those drawn (Trials.qml's composed), on the
+    // rows' finer clock, since a showing's putting in is told less it.
+    property real keysWeighing: 0
+    // How long a drawer that joined the key took to make, in ms, from
+    // when a showing began: it's made as the selection moves, inside the
+    // showing's putting in or selecting (Trials.showingSplit).
+    property real drawerJoining: 0
 
     onMatchesChanged: {
         // Rows that came put a heading where the selection is: it rests on
@@ -3806,9 +3815,9 @@ Scope {
             Object.values(placesKept).map(kept => kept.matches).concat([homeKept]));
         rowsMade += 1;
         landed();
-        const weighing = Date.now();
+        const weighing = KeyTimes.now();
         noteKeys();
-        keysWeighing = Date.now() - weighing;
+        keysWeighing = KeyTimes.now() - weighing;
         noteFigures();
         noteDigits();
     }
@@ -6834,15 +6843,18 @@ Scope {
             const foundAt = Date.now();
             const lived = live(found);
             const livedAt = Date.now();
-            // Its showing's parts, as the top level's (compose).
+            // Its showing's parts, as the top level's (compose), but for its
+            // liveness, which a step's placing holds.
             const listingAt = KeyTimes.now();
             list.keptLast = null;
             keysWeighing = 0;
+            drawerJoining = 0;
             readingBegun();
             const listedRows = listedAs(lived);
             const puttingAt = KeyTimes.now();
             matches = listedRows;
             const selectingAt = KeyTimes.now();
+            const drawerPutting = drawerJoining;
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
             const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
@@ -6862,7 +6874,9 @@ Scope {
                     showing: Date.now() - livedAt, kept: RowsKept.keptWhole(list.keptLast),
                     weighing: keysWeighing, reading: readingSpent(),
                     listing: puttingAt - listingAt, putting: selectingAt - puttingAt,
-                    selecting: KeyTimes.now() - selectingAt } };
+                    selecting: KeyTimes.now() - selectingAt,
+                    drawer: { putting: drawerPutting,
+                        selecting: drawerJoining - drawerPutting } } };
             return;
         }
         // What the search spends its time on, said with a key that's slow
@@ -9176,7 +9190,9 @@ Scope {
             && Pacing.drawerJoinsKey(drawerMakings, drawerKindOf(selected), prompt.keyHeld)) {
             drawerFollowDue = false;
             drawerJoined = true;
+            const making = KeyTimes.now();
             drawerFollow();
+            drawerJoining += KeyTimes.now() - making;
         } else if (!prompt.keyHeld && !drawerFollowDue) {
             drawerFollowDue = true;
             drawerJoined = false;
