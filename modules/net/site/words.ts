@@ -203,11 +203,15 @@ function shellWord(word: string): string {
 
 /**
  * What the terminal kit keeps to shape a word, though alone it draws
- * nothing: the soft hyphen, the joiners, the variation selectors and the
- * tags that spell a flag. An emoji as a phone types it, a heart with its
- * selector or a family joined, is drawn wrong without them.
+ * nothing, as its `unseen` leaves them: the soft hyphen, Hangul's vowel
+ * filler, Mongolian's selectors and vowel separator, the joiners, the
+ * variation selectors and their supplement, and the tags that spell a
+ * flag. An emoji as a phone types it, a heart with its selector or a
+ * family joined, and a script's letters are drawn wrong without them.
  */
-const SHAPING = String.raw`\u00ad\u200c\u200d\ufe00-\ufe0f\u{e0020}-\u{e007f}`;
+const SHAPING =
+  String.raw`\u00ad\u1160\u180b-\u180f\u200c\u200d\ufe00-\ufe0f` +
+  String.raw`\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}`;
 
 /**
  * What a terminal could be handed besides the words it shows: a control
