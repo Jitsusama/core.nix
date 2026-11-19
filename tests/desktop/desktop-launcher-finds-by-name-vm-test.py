@@ -297,9 +297,7 @@ def finds_where_the_notices_went(desktop: Desktop) -> None:
         desktop.answer(typed)
         desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
         desktop.down_to("Desktop")
-        desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("side") == "Now"
-        )
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "Now")
         if typed == "notices":
             # Normal's Tab steps in; the find's goes to the next row, as Vim's completion does.
             desktop.normal()
