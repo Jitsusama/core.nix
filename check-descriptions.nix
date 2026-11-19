@@ -3559,7 +3559,8 @@
     and ? answering, a tap on a key its head shows doing what typing it does, the web-design skill's
     page checks passing at a phone's width and a desk's in both looks, a first visit within its
     budget of files, bytes and elements, both visits reaching only the sites' server and the second
-    answered unchanged, and nothing logged
+    answered unchanged, a tab whose renderer dies before its first reading opened once more and
+    said, and nothing logged
   '';
   start-new-work-asks-only-a-sprout = ''
     Start New Work asks the realm's node only a sprout of the trimmed words or link, after --,

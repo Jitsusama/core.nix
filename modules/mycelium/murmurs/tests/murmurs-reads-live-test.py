@@ -11,9 +11,11 @@ goes, draw a murmur's words as words and never as markup, step its cursor by
 the keys and by a tap on the keys its head shows, and pass the web-design
 skill's page checks at a phone's width and a desk's in both looks. Anything
 the page logs fails it. The server, the browser and the tab are
-modules/local-sites/tests/live_page.py's.
+modules/local-sites/tests/live_page.py's, which opens once more a tab whose
+renderer died before its first reading, as a busy builder's sometimes does.
 """
 
+import contextlib
 import json
 import os
 import time
@@ -21,7 +23,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Browser, Error, Page, expect
 from stand_in_daemon import StandIn
 
 if TYPE_CHECKING:
@@ -97,6 +99,7 @@ def murmurs_served(tmp_path: Path, murmuring_node: StandIn) -> Iterator[Served]:
 def murmurs_opened(browser: Browser, murmurs_served: Served) -> Iterator[Opened]:
     root, _ = murmurs_served
     opened = Opened(browser, f"{root}web/", SIZES[-1], "dark")
+    opened.first(lambda page: the_page_counts(page, COUNTED, "the page miscounted the murmurs"))
     yield opened
     opened.close()
 
@@ -291,6 +294,27 @@ def test_a_tap_on_a_key_the_head_shows_does_what_typing_it_does(
     the_cursor_is_on(page, f"murmur:OSPREY:{osprey}", "a key typed after a tap didn't step")
     shown.filter(has_text="?").click()
     expect(page.locator("#keys"), "a tap on ? didn't show the keys").to_be_visible()
+
+
+def test_a_tab_that_crashes_before_its_first_reading_is_opened_once_more(
+    browser: Browser, murmurs_served: Served
+) -> None:
+    root, _ = murmurs_served
+    opened = Opened(browser, f"{root}web/", SIZES[-1], "dark")
+
+    def crashed_then_counted(page: Page) -> None:
+        if not opened.reopened:
+            # The renderer dies as a builder short of memory kills it; the
+            # navigation's own error says nothing the count's won't.
+            with contextlib.suppress(Error):
+                page.goto("chrome://crash")
+        the_page_counts(page, COUNTED, "the tab opened once more miscounted the murmurs")
+
+    try:
+        with pytest.warns(UserWarning, match="crashed and was opened once more"):
+            opened.first(crashed_then_counted)
+    finally:
+        opened.close()
 
 
 def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: Served) -> None:
