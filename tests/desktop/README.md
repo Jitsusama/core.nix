@@ -11,8 +11,8 @@ drive the desktop. Every file opens with what it is.
 | `desktop-<area>-vm-test.py`                                | one area's tests, run as the check `vm-desktop-<area>` |
 | [`desktop_session.py`][desktop-session]                    | the boot and the helpers every area shares             |
 | [`looks_session.py`][looks]                                | what the looks areas share: Joel's scales and measures |
-| [`keeps_pace.py`][keeps-pace], `keeps-pace-test.py`        | what keeps-pace judges by, and its cases off any VM    |
-| `checks.nix`                                               | the checks of what the areas judge by, off any VM      |
+| [`keeps_pace.py`][keeps-pace], `keeps-pace-test.py`        | what keeps-pace counts its builder took, and its cases |
+| `checks.nix`                                               | the checks of the areas' own logic, off any VM         |
 | `stand-in-*.py`, `*-stand-in.sh`                           | a daemon, a program or a server the VM can't run       |
 | [`stand-in-virsh.sh`][virsh], [`stand-in-time.conf`][time] | virsh for the launcher's VMs, and a time server        |
 | [`keyboard.py`][keyboard], [`touchscreen.py`][touchscreen] | a keyboard and a touchscreen that act when told        |

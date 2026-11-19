@@ -6,12 +6,12 @@ let
   python = pkgs.python3.withPackages (python: [ python.pytest ]);
 in
 {
-  # How keeps-pace holds a launcher under load to its time frozen, by the
-  # share of the processors the builder gave the guest, proven on the
-  # figures of runs that failed on a busy builder. Only the two files are
-  # copied, so a change to another area's file rebuilds none of this.
-  a-loaded-desktop-is-judged-by-the-builders-share =
-    pkgs.runCommandLocal "a-loaded-desktop-is-judged-by-the-builders-share" { }
+  # How keeps-pace counts what its builder stole from the guest in each turn,
+  # and the share that gives, proven on the figures of a VM held back on a
+  # builder. Only the two files are copied, so a change to another area's
+  # file rebuilds none of this.
+  a-loaded-desktop-counts-what-its-builder-took =
+    pkgs.runCommandLocal "a-loaded-desktop-counts-what-its-builder-took" { }
       ''
         cp ${./keeps_pace.py} keeps_pace.py
         cp ${./keeps-pace-test.py} keeps-pace-test.py

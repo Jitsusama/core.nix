@@ -56,14 +56,6 @@
     in the shell's own Qt, turning a field into a getter in objects whose shapes grow one from
     another leaves every other field of each reading what it was given
   '';
-  a-loaded-desktop-is-judged-by-the-builders-share = ''
-    keeps-pace holds a launcher under load to twice its time frozen and a little more, stretched by
-    how much more of its busy time the guest ran frozen than under load, by what /proc/stat counts
-    stolen, never under once nor past the VM's processors: a key a busy builder held back fails
-    with nothing stolen and holds with half its time stolen, a key slowed past the old bar fails
-    where nothing was, a share stretches the bar by itself alone, what was stolen frozen weighs
-    against what was under load, and idle, iowait and guests' time are never counted busy
-  '';
   a-live-site-stands-alone-as-a-folder = ''
     the system page, built on the real web kit and laid out as a folder that stands alone, has
     its page at the root, reading the theme and the kit from its own web/ and kit/ with no strip
@@ -81,6 +73,15 @@
     stays, as do a data-src, a query, a folder's index, an address built from a start as a
     module runs, by a template or by adding to it, in its file or inline, a page's new URL()
     and another object's fetch method
+  '';
+  a-loaded-desktop-counts-what-its-builder-took = ''
+    keeps-pace counts, from /proc/stat, the guest's busy ticks and those its builder stole in each
+    turn, under load and frozen, and the share they give, how much more of its busy time the guest
+    ran frozen, never under one nor past the VM's processors: nothing stolen gives 1, half stolen
+    under load alone gives 2, what was stolen frozen weighs against what was under load, a turn
+    with no busy ticks gives 1, idle, iowait and guests' time are never counted busy, ticks land
+    in the turn they were counted in and those while the load turned in neither, and what a
+    subtest says names each turn's ticks and the share
   '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
@@ -5239,8 +5240,7 @@
     jobs.slice and build.slice as with that load frozen: half the keys, less the VM's software
     swap and each one's wait for its frame to begin, and nineteen in twenty of the middle turn,
     within twice their frozen times and design.md's budget more, timed in
-    turns in the same machine, and each bar here stretched by the builder's share as the
-    guest counted what it stole; and a step into
+    turns in the same machine so the builder's own load slows both alike; and a step into
     Programs, Chrome's, the reader's, Inkscape's and Neovim's pages, Chrome's Recent and
     Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more;
     and the first opening after the shell starts again, People listing 500 as Joel's lists
@@ -5250,8 +5250,9 @@
     frame within 50 ms of the ask, its own work, the settling after it and the wait for the
     frame, drawn from what the closed launcher kept and filled in without moving a row or the
     cursor, and its drawing takes within twice its time with the load frozen and 50 ms more;
-    and with the VM held to two of the builder's processors under load, the guest counts at least
-    a quarter of its busy time stolen
+    each saying, passed or failed, what the guest counted its builder stole in each turn; and
+    with the VM held to two of the builder's processors under load, the guest counts at least a
+    quarter of its busy time stolen
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and

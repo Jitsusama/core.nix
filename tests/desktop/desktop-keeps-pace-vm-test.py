@@ -4,8 +4,9 @@ Here the launcher keeps pace with the keys while the machine is busy. Every core
 account's jobs.slice and in build.slice, where a workstation's agents and builds run, and each key
 is timed from the moment a stand-in keyboard pressed it to the first frame the launcher drew for
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
-those under load are held against the others, each bar stretched by the share of its processors
-the builder gave the VM, by what the guest counted it stole, which a last test proves it can. That
+those under load are held against the others, so the builder's own load slows both alike, and
+each test says how much of its time the guest counted stolen in each turn, which a last test
+proves it can count, so a run that fails shows whether the builder took the time. That
 text a program types at once is searched once, and a Return among it acts on what it found, is
 proven on a nested niri, in modules/quickshell/tests/launcher-on-niri-test.py. Long because its
 keys, steps and openings are each timed against the same loaded desktop, and a split would boot it
@@ -38,7 +39,7 @@ from desktop_session import (
     neovims_quit,
     retry,
 )
-from keeps_pace import MIDDLE_MORE, PROCESSORS, bound, builders_share, ticks
+from keeps_pace import PROCESSORS, Ledger
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -80,7 +81,7 @@ PHASE = 20
 # processors want to run, and the builder, which can't see the guest's weights, holds the one
 # drawing the launcher behind its own work, as it doesn't hold a processor that's idle. On 5
 # November main's launcher failed and passed at the same commit by what else the builder ran,
-# and these builders give the guest no steal time to tell it by. A desktop the load starves
+# and the tail can't tell that from the shell. A desktop the load starves
 # doesn't show in the tail either: with the desktop's slices weighed 1 its slowest key in twenty
 # took 124 ms against 442 ms frozen. So beside the middle key, what the machine's own weights
 # decide is judged: how long the compositor and the shell were ready to run and waited for a
@@ -93,14 +94,9 @@ PHASE = 20
 # 58 ms more, 78 against 20. Twice the frozen wait and 10 ms more failed 5 of those 48 runs with
 # the weights as they should be, four where the frozen wait came in at 17 to 20 ms; and it failed
 # #2724 on 9 November at 21.8 to 26.1 against 3.9 to 6.9, 18 to 19 ms more.
-#
-# What the guest's weights can't decide is the builder's share: holding all four processors
-# back under load, it slowed the middle key four to six times its frozen time on the net from
-# 16 to 19 November, while the compositor and the shell waited within WAITED. So the middle
-# key's bar, twice its time frozen and MIDDLE_MORE more, is stretched by how much more of its
-# busy time the guest counted stolen under load than frozen (keeps_pace.py), and every bar here
-# held to a time frozen is too.
 WAITED = 45
+SLOWER_MOST = 2
+MIDDLE_MORE = 50
 # The builder's processors the held subtest runs the VM's four on, so under load each runs about
 # half the time, the least part of the guest's busy time it must count stolen for that, and how
 # long it counts, in seconds. Held so on 19 November the guest counted 45% stolen, where unheld
@@ -280,10 +276,8 @@ class Timing:
         # the turn being pressed with what they'd waited when it began.
         self.waited: dict[int, float] = {}
         self.open: tuple[int, float] | None = None
-        # The guest's ticks the builder stole, and its busy ones with them, under load and
-        # frozen, and the kernel's count as it stood at the last read.
-        self.counted: dict[bool, tuple[int, int]] = {True: (0, 0), False: (0, 0)}
-        self.ticks = ticks(desktop.machine.succeed("head -1 /proc/stat"))
+        # The guest's ticks the builder stole, and its busy ones with them, by turn.
+        self.ledger = Ledger(desktop.machine.succeed("head -1 /proc/stat"))
         show = "show --property=ControlGroup --value"
         self.groups = [
             desktop.machine.succeed(f"systemctl {show} {COMPOSITOR}").strip(),
@@ -312,31 +306,18 @@ class Timing:
 
     def count(self, *, kept: bool) -> None:
         """Count the ticks since the last count, kept with the load as it stands."""
-        now = ticks(self.desktop.machine.succeed("head -1 /proc/stat"))
-        if kept:
-            stolen, busy = self.counted[self.loading]
-            self.counted[self.loading] = (
-                stolen + now[0] - self.ticks[0],
-                busy + now[1] - self.ticks[1],
-            )
-        self.ticks = now
+        stat = self.desktop.machine.succeed("head -1 /proc/stat")
+        self.ledger.count(stat, turn=self.loading if kept else None)
 
-    def share(self) -> float:
-        """Give the builder's share as the guest counted it so far, saying how it was counted."""
+    def end(self) -> None:
+        """Let the load run again if it's frozen, and say what the guest counted stolen.
+
+        Said before any of a test's bars is judged, so a run that fails says it too.
+        """
+        if not self.loading:
+            self.load(on=True)
         self.count(kept=True)
-        under, frozen = self.counted[True], self.counted[False]
-        # A turn with no busy ticks would leave every bar unstretched, unseen.
-        if not under[1] or not frozen[1]:
-            pytest.fail(
-                f"the guest counted {under[1]} busy ticks under load and {frozen[1]} frozen"
-            )
-        share = builders_share(under, frozen)
-        print(
-            f"the guest counted {under[0]} of {under[1]} busy ticks stolen under load, against"
-            f" {frozen[0]} of {frozen[1]} frozen, so the builder's share stretches each bar"
-            f" {share:.2f} times"
-        )
-        return share
+        print(self.ledger.said())
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""
@@ -492,11 +473,10 @@ class Timing:
             f"against {unswapped[False]:.0f} ms frozen, and less its wait for its frame to begin "
             f"too, {judged[True]:.0f} ms against {judged[False]:.0f} ms"
         )
-        share = self.share()
-        assert judged[True] <= bound(judged[False], MIDDLE_MORE, share), (
+        assert judged[True] <= SLOWER_MOST * judged[False] + MIDDLE_MORE, (
             f"half the keys under load took {judged[True]:.0f} ms to their frames less their "
             f"swaps and their waits for them to begin, against {judged[False]:.0f} ms with the "
-            f"load frozen, the builder's share {share:.2f}; "
+            f"load frozen; "
             f"as written, {middle:.0f} ms against {middle_free:.0f}"
         )
         assert wait <= wait_free + WAITED, (
@@ -619,11 +599,10 @@ def makings_said(desktop: Desktop, since: str) -> list[str]:
     return [line.strip() for line in said.splitlines() if line.strip()]
 
 
-def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]], share: float) -> list[str]:
+def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]]) -> list[str]:
     """Say each place's drawers by turns, and give those the load slowed past their bound.
 
-    Each is judged by its making alone (Drawn.judged), its wait and drawing said beside it, its
-    bound stretched by the builder's share.
+    Each is judged by its making alone (Drawn.judged), its wait and drawing said beside it.
     """
     slowed = []
     for place in sorted(drawn[True]):
@@ -634,8 +613,8 @@ def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]], share: float) -> l
             f" against {sorted(drawn[False].get(place, []))}, made in {frozen},"
             " with the load frozen"
         )
-        if frozen and loaded[(len(loaded) - 1) // 2] > bound(
-            frozen[(len(frozen) - 1) // 2], STEPPED_MORE, share
+        if frozen and loaded[(len(loaded) - 1) // 2] > (
+            SLOWER_MOST * frozen[(len(frozen) - 1) // 2] + STEPPED_MORE
         ):
             slowed.append(place)
     return slowed
@@ -706,14 +685,12 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
                     searching.setdefault(place, []).append(search)
                     slowest[place] = max(slowest.get(place, (0, "")), (took, line))
     finally:
-        if not timing.loading:
-            timing.load(on=True)
+        timing.end()
         desktop.close_launcher()
 
     def middle(times: list[int]) -> int:
         return sorted(times)[(len(times) - 1) // 2]
 
-    share = timing.share()
     slowed = []
     for place in sorted(under):
         print(
@@ -721,18 +698,17 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
             f" {sorted(searching[place])} of it searching, against {sorted(free.get(place, []))}"
             f" with the load frozen; its slowest said {slowest[place][1]}"
         )
-        if place in free and middle(under[place]) > bound(middle(free[place]), STEPPED_MORE, share):
+        if place in free and middle(under[place]) > (
+            SLOWER_MOST * middle(free[place]) + STEPPED_MORE
+        ):
             slowed.append(place)
-    drawers_slowed = slowed_drawers(drawn, share)
+    drawers_slowed = slowed_drawers(drawn)
     print("under load, made by their parts:", *made[True], sep="\n  ")
     assert "Programs" in under, f"no step into Programs was timed: {sorted(under)}"
     assert "Programs" in drawn[True], f"no drawer in Programs was timed: {drawn}"
     assert not drawers_slowed, f"the load slowed the drawers of {drawers_slowed}: {drawn}"
     assert not early, f"keys done at and timed by frames begun before: {early}"
-    assert not slowed, (
-        f"the load slowed stepping into {slowed}: {under} against {free}, the builder's share"
-        f" {share:.2f}"
-    )
+    assert not slowed, f"the load slowed stepping into {slowed}: {under} against {free}"
 
 
 def openings(desktop: Desktop) -> list[Json]:
@@ -820,8 +796,7 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
             first[loaded].append(opening["took"])
             said.append((loaded, opening, opened_timed(desktop)))
     finally:
-        if not timing.loading:
-            timing.load(on=True)
+        timing.end()
         desktop.as_account(f"echo '0 0' > {CROWD}.new && mv {CROWD}.new {CROWD}")
         desktop.launcher_left_closed()
 
@@ -839,10 +814,9 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
     assert not unusable, f"an opening never answered on time for 100 ms: {unusable}"
     weighing = [after for _, _, after in said if after.get("verbs") != 0]
     assert not weighing, f"an opening after the first weighed the verbs again: {weighing}"
-    share = timing.share()
-    assert middle(first[True]) <= bound(middle(first[False]), STEPPED_MORE, share), (
+    assert middle(first[True]) <= SLOWER_MOST * middle(first[False]) + STEPPED_MORE, (
         f"the load slowed the first opening after a start: {first[True]} ms against "
-        f"{first[False]} ms frozen, the builder's share {share:.2f}"
+        f"{first[False]} ms frozen"
     )
 
 
@@ -917,8 +891,7 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
                 )
                 each[loaded].append(opening)
     finally:
-        if not timing.loading:
-            timing.load(on=True)
+        timing.end()
         desktop.launcher_left_closed()
 
     def middle(times: list[int]) -> int:
@@ -940,10 +913,9 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
         f"an opening through the storm took {readied[-1]} ms to be ready to draw: {readied}"
     )
     drawing = {loaded: [one["after"]["drawing"] for one in each[loaded]] for loaded in each}
-    share = timing.share()
-    assert middle(drawing[True]) <= bound(middle(drawing[False]), STEPPED_MORE, share), (
+    assert middle(drawing[True]) <= SLOWER_MOST * middle(drawing[False]) + STEPPED_MORE, (
         f"the load slowed drawing an opening through the storm: {drawing[True]} ms against "
-        f"{drawing[False]} ms frozen, the builder's share {share:.2f}"
+        f"{drawing[False]} ms frozen"
     )
 
 
@@ -982,8 +954,7 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
                 timing.press("backspace")
         timing.keep()
     finally:
-        if not timing.loading:
-            timing.load(on=True)
+        timing.end()
         desktop.close_launcher()
     timing.said_and_held()
 
@@ -1045,7 +1016,7 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
         timing.count(kept=True)
     finally:
         hold_vm(started, builders)
-    stolen, busy = timing.counted[True]
+    stolen, busy = timing.ledger.turns[True]
     print(f"held, the guest counted {stolen} of {busy} busy ticks stolen")
     assert busy, "held, the guest counted no busy ticks"
     assert stolen / busy >= HELD_STOLEN, (
