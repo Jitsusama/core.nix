@@ -204,6 +204,11 @@ QtObject {
         other[5] = { key: other[5].key };
         Expect.same("and a row made again makes it another list",
             RowsKept.again(lately, other, first) === other, true);
+        // An empty list, as a search shows while its answer is asked, has
+        // nothing worked out over it, so it's never a list listed again.
+        const none = [];
+        Expect.same("nor is an empty list one listed again",
+            RowsKept.again(RowsKept.lately(lately, []), none, first) === none, true);
         let made = 0;
         const counting = () => {
             made += 1;

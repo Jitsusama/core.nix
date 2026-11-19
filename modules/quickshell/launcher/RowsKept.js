@@ -172,6 +172,11 @@ function lately(was, rows, kept = []) {
 // order, or `now`. Never `current`, the list shown now, which given again
 // would change nothing, so nothing would know a key had listed it.
 function again(shown, now, current) {
+    // An empty list has nothing worked out over it, and is one any search
+    // shows while its answer is asked, so it's never one listed again.
+    if (now.length === 0) {
+        return now;
+    }
     const same = shown.find(one => one.rows !== current && one.rows.length === now.length
         && one.rows.every((row, at) => row === now[at]));
     return same ? same.rows : now;
