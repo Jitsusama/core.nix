@@ -131,7 +131,7 @@ pub struct Launches {
     #[serde(skip)]
     stamped: BTreeSet<String>,
     /// The reloads systemd made lately for a switch, and for anything else,
-    /// at most [`MOST_RELOADS`] of each.
+    /// at most [`MOST_RELOADS`] of each kind, boot and manager.
     #[serde(skip)]
     reloaded: BTreeMap<bool, Vec<Reload>>,
     /// The stops and restarts a tool's reload took back, or made its own as

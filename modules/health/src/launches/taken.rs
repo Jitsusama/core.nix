@@ -127,13 +127,22 @@ impl Launches {
             .collect()
     }
 
-    /// Keep what a tool's reload took back, at most [`MOST_RELOADS`].
+    /// Keep what a tool's reload took back, at most [`MOST_RELOADS`] of
+    /// each boot and manager, so an account's tool restarting over and over
+    /// pushes out only its own manager's.
     fn take(&mut self, taken: Taken) {
         if taken.timed.is_none() {
             self.untake_stop(&taken.unit);
         }
-        if self.taken.len() >= MOST_RELOADS {
-            self.taken.remove(0);
+        if self
+            .taken
+            .iter()
+            .filter(|kept| kept.boot == taken.boot)
+            .count()
+            >= MOST_RELOADS
+            && let Some(oldest) = self.taken.iter().position(|kept| kept.boot == taken.boot)
+        {
+            self.taken.remove(oldest);
         }
         self.taken.push(taken);
     }
@@ -323,6 +332,51 @@ mod tests {
             ),
             (MOST_RELOADS - 1, Some(&vec![100])),
             "the restarts taken back grew past the most, or the newest was lost"
+        );
+    }
+
+    #[test]
+    fn an_accounts_tool_restarting_over_and_over_keeps_the_machines_taken() {
+        let clocked = |at, account: Option<&str>, line| Entry {
+            at,
+            since_boot: at,
+            account: account.map(str::to_owned),
+            ..line
+        };
+        let reload = || Entry {
+            origin: Origin::Systemd,
+            ..entry(
+                "systemd",
+                5,
+                "Reload requested from client PID 1 ('systemctl') (unit x.service)...",
+            )
+        };
+        let job = |unit, job| Entry {
+            job: Some(job),
+            ..entry(unit, 6, "")
+        };
+        // The machine's tool restarts its service once, then a tool of his
+        // restarts his own past the most kept: his push out only his.
+        let mut launches = Launches::default();
+        let mut at = 1_000_000;
+        for account in std::iter::once(None).chain([Some("1000"); MOST_RELOADS + 1]) {
+            let unit = account.map_or("backend.service", |_| "janitor.service");
+            launches.heard(&clocked(at, account, reload()));
+            launches.heard(&clocked(at + 500_000, account, job(unit, Job::Stopping)));
+            launches.heard(&clocked(at + 600_000, account, job(unit, Job::Started)));
+            at += 200_000_000;
+        }
+        let kept = |unit| {
+            launches
+                .taken
+                .iter()
+                .filter(|taken| taken.unit == unit)
+                .count()
+        };
+        assert_eq!(
+            (kept("backend.service"), kept("janitor.service")),
+            (1, MOST_RELOADS),
+            "his tool's restarts pushed out the machine's taken back"
         );
     }
 }
