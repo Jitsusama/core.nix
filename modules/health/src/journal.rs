@@ -417,7 +417,8 @@ pub fn followed() -> Vec<Vec<String>> {
 }
 
 /// One journalctl reading the day, as `asked`, from `since`, the day's
-/// start in seconds since 1970, to the journal's end, and ending: the
+/// start in seconds since 1970, or just before it as `leads_in` says, to
+/// the journal's end, and ending: the
 /// histories are merged in the order their lines were written
 /// (`replay.rs`) before each follows on. Every history is given the same
 /// start, rather than each working out "today" as it starts, so all read
@@ -432,7 +433,24 @@ pub fn followed() -> Vec<Vec<String>> {
 /// numbers, which a clock can't step back.
 #[must_use]
 pub fn reading(asked: &[String], since: i64) -> Command {
-    journalctl(&[&format!("--since=@{since}")], asked)
+    journalctl(&[&format!("--since=@{}", leads_in(asked, since))], asked)
+}
+
+/// Where the follower `asked` reads from, for a day starting at `since`, in
+/// seconds since 1970: the restarts' followers, the reloads and the jobs,
+/// from as long before as a stop can be a restart, so a restart across
+/// midnight is timed in the day it ended, as health following it live
+/// times it (`Launches::before`); every other from the day's start.
+fn leads_in(asked: &[String], since: i64) -> i64 {
+    let restarts = [
+        "CODE_FUNC=manager_log_caller".to_owned(),
+        format!("MESSAGE_ID={UNIT_STOPPING}"),
+    ];
+    if asked.iter().any(|word| restarts.contains(word)) {
+        since.saturating_sub(launches::RESTART_WITHIN / 1_000_000)
+    } else {
+        since
+    }
 }
 
 /// One journalctl saying the journal's last line, of every boot, for
@@ -451,12 +469,12 @@ pub fn newest() -> Command {
 }
 
 /// One journalctl following, as `asked`, from just after `after`, the
-/// cursor its history ended at, or from `since`, the day's start its
-/// history read from, when its history had no lines.
+/// cursor its history ended at, or from where its history read, by the
+/// day's start `since`, when its history had no lines.
 #[must_use]
 pub fn following(asked: &[String], after: Option<&str>, since: i64) -> Command {
     let from = after.map_or_else(
-        || format!("--since=@{since}"),
+        || format!("--since=@{}", leads_in(asked, since)),
         |cursor| format!("--after-cursor={cursor}"),
     );
     journalctl(&["--follow", &from], asked)

@@ -66,7 +66,7 @@ pub const RESTARTED_MS: u64 = 5_000;
 
 /// How long after stopping a start still counts as a restart, in
 /// microseconds: a stop systemd gives up on takes 90 s.
-const RESTART_WITHIN: i64 = 120_000_000;
+pub const RESTART_WITHIN: i64 = 120_000_000;
 
 /// How long after a reload something other than a switch asked for a
 /// service stopping is its restart: a second, on 14 November, for the
@@ -119,6 +119,24 @@ pub struct Launches {
     /// at most [`MOST_RELOADS`] of each.
     #[serde(skip)]
     reloaded: BTreeMap<bool, Vec<Reload>>,
+    /// The stops and restarts a tool's reload heard late took back, until
+    /// a switch's reload heard later says they were its own, at most
+    /// [`MOST_RELOADS`]. A new day doesn't carry them: a switch's reload
+    /// heard only after midnight leaves its restart the tool's.
+    #[serde(skip)]
+    taken: Vec<Taken>,
+}
+
+/// A stop a tool's reload took back: the service's, in which boot, when on
+/// the boot's clock and the wall's, and the restart it timed, once its
+/// start is heard, with what was waiting for its ready line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Taken {
+    unit: String,
+    boot: String,
+    stopped: i64,
+    stopped_at: i64,
+    timed: Option<(u64, Restarting)>,
 }
 
 /// A restart waiting for its ready line: in which boot, when on the boot's
@@ -182,16 +200,59 @@ impl Spread<'_> {
 }
 
 impl Launches {
-    /// A new day's, carrying on from this one what a restart across
-    /// midnight needs: the stops still waiting for their start, and the
-    /// recent reloads that say whose a stop is. A restart already timed
-    /// stays the old day's, its ready line after midnight left unheard.
+    /// A new day's, from its first line at `at`, carrying on from this one
+    /// what a restart across midnight needs: the stops still waiting for
+    /// their start, and the reloads that say whose a stop is, each within
+    /// [`RESTART_WITHIN`] before, as no later start can time an older stop.
+    /// A restart already timed stays the old day's, its ready line after
+    /// midnight left unheard.
     #[must_use]
-    pub fn carried(&self) -> Self {
+    pub fn carried(&self, at: i64) -> Self {
+        let recent = |stopped_at: i64| at.saturating_sub(stopped_at) <= RESTART_WITHIN;
         Self {
-            stopping: self.stopping.clone(),
-            reloaded: self.reloaded.clone(),
+            stopping: self
+                .stopping
+                .iter()
+                .filter(|(_, (_, _, stopped_at))| recent(*stopped_at))
+                .map(|(unit, stop)| (unit.clone(), stop.clone()))
+                .collect(),
+            reloaded: self
+                .reloaded
+                .iter()
+                .map(|(&switch, kept)| {
+                    let kept = kept.iter().filter(|reload| recent(reload.at)).cloned();
+                    (switch, kept.collect())
+                })
+                .collect(),
             ..Self::default()
+        }
+    }
+
+    /// Take an entry of the day before, heard after this day began, as a
+    /// follower behind the others hears it, or read just before it, as
+    /// the replay leads in: its stops and reloads, for a restart across
+    /// midnight, and its starts, which end a stop of theirs. What it times
+    /// was the day before's, so nothing is timed.
+    pub fn before(&mut self, entry: &Entry) {
+        match entry.job {
+            Some(Job::Stopping) => {
+                self.heard(entry);
+            }
+            Some(Job::Started) => {
+                if self
+                    .stopping
+                    .get(&entry.thing)
+                    .is_some_and(|(boot, stopped, _)| {
+                        *boot == entry.boot && *stopped <= entry.since_boot
+                    })
+                {
+                    self.stopping.remove(&entry.thing);
+                }
+            }
+            None if entry.origin == Origin::Systemd && reloads::asker(&entry.message).is_some() => {
+                self.heard(entry);
+            }
+            None => {}
         }
     }
 
@@ -224,31 +285,10 @@ impl Launches {
             }
             Some(Job::Started) => {
                 let Some((boot, stopped, stopped_at)) = self.stopping.remove(unit) else {
+                    self.time_taken(entry);
                     return true;
                 };
-                if boot != entry.boot {
-                    return true;
-                }
-                // A oneshot's run ending says "Finished" under a start's
-                // message id; it served nothing, so nothing was gone.
-                if entry.message.starts_with("Finished ") {
-                    return true;
-                }
-                // A restart is timed on the boot's clock, which no step of
-                // the wall clock moves; a start before its stop on it was
-                // heard out of order, or read without the boot's stamp.
-                // That clock stands still while the machine sleeps, though,
-                // so the wall clock bounds it too, as `restarts_itself`
-                // does: a service stopped before a sleep and started after
-                // it wasn't restarted. One stepped forward past the window
-                // reads as a sleep, which the two clocks can't tell apart.
-                // A stop read without the boot's stamp, at 0, can't time
-                // one either.
-                let gone = entry.since_boot.saturating_sub(stopped);
-                if stopped > 0
-                    && (0..=RESTART_WITHIN).contains(&gone)
-                    && entry.at.saturating_sub(stopped_at) <= RESTART_WITHIN
-                {
+                if let Some(gone) = timed(&boot, stopped, stopped_at, entry) {
                     self.restarted
                         .entry(unit.clone())
                         .or_default()
@@ -283,6 +323,35 @@ impl Launches {
         true
     }
 
+    /// Time the restart a start `entry` ends whose stop a tool's reload took
+    /// back, keeping it with what was taken, for a switch's reload heard
+    /// later to give back. One that times nothing goes, as its stop would.
+    fn time_taken(&mut self, entry: &Entry) {
+        let Some(at) = self.taken.iter().position(|taken| {
+            taken.unit == entry.thing && taken.boot == entry.boot && taken.timed.is_none()
+        }) else {
+            return;
+        };
+        let taken = &mut self.taken[at];
+        match timed(&taken.boot, taken.stopped, taken.stopped_at, entry) {
+            Some(gone) => {
+                taken.timed = Some((
+                    millis(gone),
+                    Restarting {
+                        boot: taken.boot.clone(),
+                        stopped: taken.stopped,
+                        started: entry.since_boot,
+                        stopped_at: taken.stopped_at,
+                        next_job: None,
+                    },
+                ));
+            }
+            None => {
+                self.taken.remove(at);
+            }
+        }
+    }
+
     /// Keep the reload `entry` says, a switch's or not. Heard live, a
     /// reload's follower can run ahead of the jobs', so a later reload may
     /// come before a stop written earlier: the recent ones are kept, not
@@ -295,9 +364,10 @@ impl Launches {
     ///
     /// The jobs' follower can run ahead too, so a tool's reload may come
     /// after the stop it caused, or after that restart was timed: either is
-    /// then taken back as the tool's own. One heard after the restart's
-    /// ready line, or after midnight, comes too late, and the restart stays
-    /// counted as a switch's.
+    /// then taken back as the tool's own, until a switch's reload heard
+    /// after it says the stop was the switch's after all. One heard after
+    /// the restart's ready line, or after the day it was timed in, comes
+    /// too late, and the restart stays counted as a switch's.
     fn keep_reload(&mut self, switch: bool, entry: &Entry) {
         let kept = self.reloaded.entry(switch).or_default();
         kept.retain(|reload| {
@@ -314,8 +384,16 @@ impl Launches {
         };
         kept.push(reload.clone());
         if switch {
-            return;
+            self.give_back(&reload);
+        } else {
+            self.take_back(&reload);
         }
+    }
+
+    /// Take back the stops still waiting, and the restarts waiting for
+    /// their ready line, that a tool's `reload` heard after them made its
+    /// own, keeping each in `taken`.
+    fn take_back(&mut self, reload: &Reload) {
         let made = |boot: &str, since_boot, at| {
             reload.made(boot, since_boot, at, RELOADED_WITHIN)
                 && !self.switched_before(boot, since_boot, at)
@@ -333,16 +411,71 @@ impl Launches {
             .map(|(unit, _)| unit.clone())
             .collect();
         for unit in stops {
-            self.stopping.remove(&unit);
+            if let Some((boot, stopped, stopped_at)) = self.stopping.remove(&unit) {
+                self.take(Taken {
+                    unit,
+                    boot,
+                    stopped,
+                    stopped_at,
+                    timed: None,
+                });
+            }
         }
-        // A restart waiting for its ready line was the unit's last timed,
-        // since each timed replaces the one waiting.
+        // A restart waiting for its ready line was its service's last
+        // timed, since each one timed replaces the one waiting.
         for unit in restarts {
-            self.restarting.remove(&unit);
-            if let Some(all) = self.restarted.get_mut(&unit) {
-                all.pop();
-                if all.is_empty() {
-                    self.restarted.remove(&unit);
+            let Some(waiting) = self.restarting.remove(&unit) else {
+                continue;
+            };
+            let Some(gone) = self.restarted.get_mut(&unit).and_then(Vec::pop) else {
+                continue;
+            };
+            if self.restarted.get(&unit).is_some_and(Vec::is_empty) {
+                self.restarted.remove(&unit);
+            }
+            self.take(Taken {
+                unit,
+                boot: waiting.boot.clone(),
+                stopped: waiting.stopped,
+                stopped_at: waiting.stopped_at,
+                timed: Some((gone, waiting)),
+            });
+        }
+    }
+
+    /// Keep what a tool's reload took back, at most [`MOST_RELOADS`].
+    fn take(&mut self, taken: Taken) {
+        if self.taken.len() >= MOST_RELOADS {
+            self.taken.remove(0);
+        }
+        self.taken.push(taken);
+    }
+
+    /// Give back what a tool's reload took that a switch's `reload`, heard
+    /// after it, made: a stop to wait for its start again, or a restart to
+    /// count, waiting for its ready line unless another restart now is.
+    fn give_back(&mut self, reload: &Reload) {
+        let (back, kept) = std::mem::take(&mut self.taken)
+            .into_iter()
+            .partition(|taken| {
+                reload.made(&taken.boot, taken.stopped, taken.stopped_at, RESTART_WITHIN)
+            });
+        self.taken = kept;
+        for taken in back {
+            match taken.timed {
+                None => {
+                    self.stopping.entry(taken.unit).or_insert((
+                        taken.boot,
+                        taken.stopped,
+                        taken.stopped_at,
+                    ));
+                }
+                Some((gone, waiting)) => {
+                    self.restarted
+                        .entry(taken.unit.clone())
+                        .or_default()
+                        .push(gone);
+                    self.restarting.entry(taken.unit).or_insert(waiting);
                 }
             }
         }
@@ -353,7 +486,8 @@ impl Launches {
     /// restarts: it had systemd reload within [`RELOADED_WITHIN`] before it
     /// in its boot, and no switch did within [`RESTART_WITHIN`].
     /// A reload from the boot before counts for neither, however quick the
-    /// reboot, and one before the day's start isn't heard. Within the boot,
+    /// reboot, and one over [`RESTART_WITHIN`] before the day's start isn't
+    /// heard. Within the boot,
     /// both clocks must put it near enough: the boot's, which no step of
     /// the wall clock moves, to put it before the stop, and the wall
     /// clock's, since the boot's stands still while the machine sleeps, so
@@ -614,6 +748,28 @@ fn ready_in(message: &str) -> Option<u64> {
         ["in", ms, "ms"] => ms.parse().ok(),
         _ => None,
     })
+}
+
+/// How long a service stopped in `boot` at `stopped` on its clock and
+/// `stopped_at` on the wall's was gone until the start `entry`, in
+/// microseconds, or none when that start ends no restart. A restart is
+/// timed on the boot's clock, which no step of the wall clock moves; a
+/// start before its stop on it was heard out of order, or read without the
+/// boot's stamp. That clock stands still while the machine sleeps, though,
+/// so the wall clock bounds it too, as `restarts_itself` does: a service
+/// stopped before a sleep and started after it wasn't restarted. One
+/// stepped forward past the window reads as a sleep, which the two clocks
+/// can't tell apart. A stop read without the boot's stamp, at 0, can't
+/// time one either, and a oneshot's run ending says "Finished" under a
+/// start's message id: it served nothing, so nothing was gone.
+fn timed(boot: &str, stopped: i64, stopped_at: i64, entry: &Entry) -> Option<i64> {
+    let gone = entry.since_boot.saturating_sub(stopped);
+    (boot == entry.boot
+        && !entry.message.starts_with("Finished ")
+        && stopped > 0
+        && (0..=RESTART_WITHIN).contains(&gone)
+        && entry.at.saturating_sub(stopped_at) <= RESTART_WITHIN)
+        .then_some(gone)
 }
 
 /// Microseconds as whole milliseconds.

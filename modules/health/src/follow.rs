@@ -444,15 +444,18 @@ impl Follower {
             }
             self.write()?;
             // A restart across midnight is the new day's, so its stop
-            // and the reloads before it carry on. A start after midnight
-            // reads the journal from the day's start, so it never hears
-            // one before.
+            // and the reloads before it carry on, as a start of health
+            // reads the restarts' followers from just before the day
+            // (`journal::reading`).
             let read = std::mem::take(&mut self.day.read);
-            let launches = self.day.launches.carried();
+            let launches = self.day.launches.carried(entry.at);
             self.day = Day::new(&date);
             self.day.read = read;
             self.day.launches = launches;
         } else if date < self.day.date {
+            // That day is done, but a stop or reload of it, heard late or
+            // read as the day leads in, may still be a restart's in this.
+            self.day.launches.before(&entry);
             return Ok(());
         }
         self.day.take(&entry);

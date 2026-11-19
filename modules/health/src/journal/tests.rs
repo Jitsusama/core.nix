@@ -509,6 +509,37 @@ fn a_history_reads_its_day_to_the_journals_end_and_its_follower_follows_on() {
 }
 
 #[test]
+fn the_restarts_followers_read_from_a_restarts_length_before_the_day() {
+    let since = |command: &std::process::Command| {
+        words(command)
+            .into_iter()
+            .filter(|word| word.starts_with("--since"))
+            .collect::<Vec<_>>()
+    };
+    let restarts: Vec<_> = followed()
+        .into_iter()
+        .filter(|asked| {
+            asked.iter().any(|word| {
+                word == "CODE_FUNC=manager_log_caller"
+                    || *word == format!("MESSAGE_ID={UNIT_STOPPING}")
+            })
+        })
+        .map(|asked| {
+            (
+                since(&reading(&asked, 1_763_442_000)),
+                since(&following(&asked, None, 1_763_442_000)),
+            )
+        })
+        .collect();
+    let before = vec!["--since=@1763441880".to_owned()];
+    assert_eq!(
+        restarts,
+        vec![(before.clone(), before.clone()), (before.clone(), before)],
+        "the reloads' and jobs' followers don't read from a restart's length before the day"
+    );
+}
+
+#[test]
 fn a_service_stopping_or_started_is_its_job_and_a_scope_is_none() {
     let line = |id: &str, unit: &str| {
         format!(
