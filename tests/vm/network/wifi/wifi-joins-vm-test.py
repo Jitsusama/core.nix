@@ -307,14 +307,19 @@ def test_a_strangers_network_gets_no_llmnr_or_mdns(machine: BaseMachine, wifid: 
         launcher_saves_lantern(machine)
         machine.wait_until_succeeds(f"test -e {given}", timeout=timedelta(seconds=30))
     if machine.execute("wpa_cli -i wlan2 status | grep -qx ssid=Lantern")[0] != 0:
+        # wifid writes Lantern's file as it starts, before it gives wpa_supplicant the network.
+        retry(
+            lambda _: "\tLantern\t" in machine.succeed("wpa_cli -i wlan2 list_networks"),
+            timeout=timedelta(seconds=30),
+        )
         machine.succeed("wpa_cli -i wlan2 reassociate")
         wifid.joined("Lantern")
     wifid.on_file(given)
     wifid.holds_address("10.42.0.")
-    # resolved takes the link's settings from networkd a moment after it's configured.
-    retry(
-        lambda _: "LLMNR" in machine.succeed("resolvectl status wlan2"),
-        timeout=timedelta(seconds=30),
+    # resolved takes the link's settings from networkd a moment after it's configured, and
+    # until then reads the Inn's, so it's waited on by Lantern's own DNS server.
+    machine.wait_until_succeeds(
+        "resolvectl dns wlan2 | grep -qw 10.42.0.1", timeout=timedelta(seconds=30)
     )
     resolving = machine.succeed("resolvectl status wlan2")
     assert "-LLMNR" in resolving, resolving
