@@ -198,17 +198,29 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
 def test_a_commit_where_agents_work_runs_still_signs_with_their_key(joel: Joel, keys: Keys) -> None:
     """A commit over pipes in the agents' slice is signed with their key, past the gate.
 
-    The agents' agent has no gate, so every commit an agent makes stays signed. Its socket
-    names Joel's gated agent, as an agent's environment might, to show the signer reaches
-    the agents' own agent whatever it is handed.
+    The agents' agent has no gate, so every commit an agent makes stays signed. Both the
+    socket SSH reads and the one the signer takes Joel's agent from name Joel's gated agent,
+    as an agent's environment might. Joel's agent holds the agents' key too, so the key alone
+    can't say which agent signed: the gate, live as the test above shows, refuses this slice,
+    so a signer that asked Joel's agent would fail the commit, and his agent's journal names
+    no refusal while it's made.
     """
-    joel.run(
-        f"systemd-run --user --slice=agents --pipe --wait -q"
-        f" -E SSH_AUTH_SOCK={joel.runtime}/ssh-tpm-agent.sock"
+    socket = f"{joel.runtime}/ssh-tpm-agent.sock"
+    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -o cat"
+    since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
+    said = joel.run(
+        f"systemd-run --user --slice=agents --pipe --wait -q -p RuntimeMaxSec=60"
+        f" -E SSH_AUTH_SOCK={socket} -E SSH_TPM_AUTH_SOCK={socket}"
         ' -E PATH="$PATH" $(command -v git) -C "$HOME/repo"'
-        " commit -q --allow-empty -m from-agents < /dev/null"
+        " commit -q --allow-empty -m from-agents < /dev/null 2>&1 || echo failed"
     )
+    assert "failed" not in said, said
+    assert joel.run("git -C repo log -1 --format=%s").strip() == "from-agents"
     assert joel.signer_of_last_commit() == ["G", keys.agent]
+    refusals = joel.machine.succeed(
+        f"{journal} -p warning --after-cursor={shlex.quote(since)} || true"
+    )
+    assert "refused" not in refusals, refusals
 
 
 def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:
