@@ -556,6 +556,20 @@ mod tests {
                 ],
                 vec![300],
             ),
+            // A job after it ends the restart's ready lines while it is
+            // taken back too: the next program's ready isn't its.
+            (
+                "a ready line after the next job while the restart was taken back",
+                vec![
+                    backend("b", 12_000_000, Job::Stopping),
+                    backend("b", 12_100_000, Job::Started),
+                    reload_in("b", 10_000_000, "systemctl"),
+                    backend("b", 25_000_000, Job::Stopping),
+                    ready(25_500_000),
+                    reload_in("b", 11_000_000, "sd-switch"),
+                ],
+                vec![100],
+            ),
         ];
         each_restarted(days);
     }
