@@ -183,7 +183,7 @@ fn sites() -> Option<PathBuf> {
     Some(data.join("jitsusama/sites"))
 }
 
-/// How this machine's quest backup last landed, as the backup writes it
+/// When this machine's quest backup last backed up, as the backup writes it
 /// under its state home (epoch seconds); none where this machine keeps no
 /// backup.
 fn backup() -> Option<parts::Backup> {
