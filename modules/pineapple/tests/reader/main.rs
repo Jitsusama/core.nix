@@ -14,6 +14,7 @@
 mod deaf;
 mod github;
 mod guard;
+mod kept;
 mod keyring;
 mod live;
 

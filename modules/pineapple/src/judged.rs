@@ -54,6 +54,19 @@ impl Judged {
         let over = self.keys.len().saturating_sub(KEPT);
         self.keys.drain(..over);
     }
+
+    /// Moves `since` back to `fresh`, in seconds, when it lies later, as a
+    /// clock set back since it was kept, or while the reader runs, leaves
+    /// it: a `since` past `fresh` would pass over every message said until
+    /// the clock caught up. Whether it moved; the keys judged stay.
+    pub fn look_back_to(&mut self, fresh: u64) -> bool {
+        let starting = Judged::starting(fresh).since;
+        let later = micros(&self.since) > micros(&starting);
+        if later {
+            self.since = starting;
+        }
+        later
+    }
 }
 
 /// Why a reader starts from `fresh` rather than from what was kept.
@@ -61,12 +74,9 @@ impl Judged {
 pub enum Afresh {
     /// Nothing was kept: a first start.
     Nothing,
-    /// What was kept couldn't be read, so none of it is used.
+    /// What was kept couldn't all be read: whatever keys could be are
+    /// kept, from `fresh`.
     Unreadable,
-    /// What was kept starts later than `fresh`, or at no time at all, so
-    /// it would miss what was said since; the keys judged are kept. A
-    /// clock set back since it was kept leaves one.
-    Ahead,
 }
 
 /// How far Slack has been read, as kept in `state`, and why it starts
@@ -74,16 +84,17 @@ pub enum Afresh {
 #[must_use]
 pub fn read(state: &Path, fresh: u64) -> (Judged, Option<Afresh>) {
     let afresh = |why| (Judged::starting(fresh), Some(why));
-    let Ok(text) = std::fs::read_to_string(state.join(FILE)) else {
-        return afresh(Afresh::Nothing);
+    let text = match std::fs::read_to_string(state.join(FILE)) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return afresh(Afresh::Nothing);
+        }
+        Err(_) => return afresh(Afresh::Unreadable),
     };
-    let Some((since, keys)) = serde_json::from_str::<Value>(&text)
-        .ok()
-        .and_then(|kept| Some((kept.get("since")?.as_str()?.to_owned(), kept)))
-    else {
+    let Ok(kept) = serde_json::from_str::<Value>(&text) else {
         return afresh(Afresh::Unreadable);
     };
-    let keys = keys
+    let keys = kept
         .get("keys")
         .and_then(Value::as_array)
         .into_iter()
@@ -91,15 +102,24 @@ pub fn read(state: &Path, fresh: u64) -> (Judged, Option<Afresh>) {
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect();
-    let starting = Judged::starting(fresh);
-    match micros(&since) {
-        Some(at) if Some(at) <= micros(&starting.since) => (Judged { since, keys }, None),
-        _ => (
+    match kept
+        .get("since")
+        .and_then(Value::as_str)
+        .filter(|since| micros(since).is_some())
+    {
+        Some(since) => (
             Judged {
-                since: starting.since,
+                since: since.to_owned(),
                 keys,
             },
-            Some(Afresh::Ahead),
+            None,
+        ),
+        None => (
+            Judged {
+                keys,
+                ..Judged::starting(fresh)
+            },
+            Some(Afresh::Unreadable),
         ),
     }
 }

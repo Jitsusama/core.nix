@@ -112,11 +112,15 @@ fn a_name_that_isnt_a_whole_path_is_no_name() {
         let said = journal(&home);
         assert!(
             said.contains(&format!(
-                "SAFE_WORD_WAITING names {named:?}, which isn't a whole path, so For You is \
-                 told in {}, which",
-                waiting(&home).display()
+                "<4>SAFE_WORD_WAITING names {named:?}, which isn't a whole path, so For You is \
+                 told in {:?}, which",
+                waiting(&home).to_string_lossy()
             )),
             "and its journal says the name was passed over, and for where: {said}"
+        );
+        assert!(
+            !said.lines().any(|line| line.starts_with("<3>forged")),
+            "and no line of it is the name's own: {said}"
         );
         std::fs::remove_dir_all(&home).expect("the case's home goes");
     }

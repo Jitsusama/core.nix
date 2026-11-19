@@ -321,12 +321,9 @@ fn run(how: &Run) -> Result<(), Failure> {
     };
     let (mut judged, afresh) = judged::read(&state, seconds().saturating_sub(LOOK_BACK));
     match afresh {
-        Some(Afresh::Unreadable) => {
-            eprintln!("<4>how far Slack was read can't be read, so it reads ten minutes back");
-        }
-        Some(Afresh::Ahead) => eprintln!(
-            "<4>how far Slack was read starts later than ten minutes ago, as a clock set back \
-             leaves it, so it reads ten minutes back"
+        Some(Afresh::Unreadable) => eprintln!(
+            "<4>how far Slack was read can't all be read, so it reads from ten minutes back, \
+             keeping what it can of what was judged"
         ),
         Some(Afresh::Nothing) | None => {}
     }
@@ -349,9 +346,9 @@ fn run(how: &Run) -> Result<(), Failure> {
     if let Some(refused) = &waiting.refused {
         eprintln!(
             "<4>SAFE_WORD_WAITING names {:?}, which isn't a whole path, so For You is told in \
-             {}, which the unit's stop won't take away",
+             {:?}, which the unit's stop won't take away",
             refused.to_string_lossy(),
-            waiting.file.display()
+            waiting.file.to_string_lossy()
         );
     }
     let mut deaf = Deaf::new();
@@ -514,6 +511,14 @@ fn round(
         logins: Vec::new(),
         emails: Vec::new(),
     };
+    // Checked each round, as a clock set back while it runs leaves a
+    // since that would pass over everything said until it caught up.
+    if judged.look_back_to(seconds().saturating_sub(LOOK_BACK)) {
+        eprintln!(
+            "<4>how far Slack was read starts later than ten minutes ago, as a clock set back \
+             leaves it, so it reads from ten minutes back"
+        );
+    }
     let tag = format!("<@{}>", account.user);
     // A round counts as read only once both searches answered, so
     // judged.json's read_at never says Slack was read when it wasn't.

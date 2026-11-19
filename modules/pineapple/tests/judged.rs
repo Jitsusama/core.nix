@@ -103,41 +103,74 @@ fn what_was_judged_is_kept_whole_across_a_restart() {
 fn what_cant_be_read_starts_afresh_and_says_why() {
     let state = state("afresh");
     std::fs::create_dir_all(&state).expect("the case's state");
-    for spoiled in ["{not json", r#"{"keys": []}"#, r#"{"since": 1795000000}"#] {
+    let spoiled: [&[u8]; 2] = [b"{not json", b"{\"since\": \"\xff\"}"];
+    for spoiled in spoiled {
         std::fs::write(state.join(FILE), spoiled).expect("spoiled");
         assert_eq!(
             read(&state, FRESH),
             (Judged::starting(FRESH), Some(Afresh::Unreadable)),
-            "{spoiled} can't be read"
+            "{:?} can't be read",
+            String::from_utf8_lossy(spoiled)
+        );
+    }
+    std::fs::remove_file(state.join(FILE)).expect("the spoiled file goes");
+    std::fs::create_dir(state.join(FILE)).expect("a folder in its place");
+    assert_eq!(
+        read(&state, FRESH),
+        (Judged::starting(FRESH), Some(Afresh::Unreadable)),
+        "one that's there but can't be opened can't be read, and is no first start"
+    );
+    std::fs::remove_dir_all(&state).expect("the case's state goes");
+}
+
+#[test]
+fn a_since_that_cant_be_read_starts_afresh_keeping_its_keys() {
+    let state = state("since");
+    std::fs::create_dir_all(&state).expect("the case's state");
+    let key = said("C1", "1795000001.000000").key();
+    for since in [None, Some("1795000000"), Some("\"not a time\"")] {
+        let kept = match since {
+            Some(since) => format!(r#"{{"since": {since}, "keys": ["{key}"]}}"#),
+            None => format!(r#"{{"keys": ["{key}"]}}"#),
+        };
+        std::fs::write(state.join(FILE), &kept).expect("kept");
+        assert_eq!(
+            read(&state, FRESH),
+            (
+                Judged {
+                    keys: vec![key.clone()],
+                    ..Judged::starting(FRESH)
+                },
+                Some(Afresh::Unreadable)
+            ),
+            "{kept} reads from ten minutes back, with what it judged"
         );
     }
     std::fs::remove_dir_all(&state).expect("the case's state goes");
 }
 
 #[test]
-fn a_since_that_would_miss_what_was_said_starts_afresh_keeping_its_keys() {
-    // A clock set back since the file was kept leaves a since past ten
-    // minutes ago, which would pass over everything said till then.
-    let state = state("ahead");
-    for since in ["1795000601.000000", "not a time"] {
-        let kept = Judged {
-            since: since.to_owned(),
-            keys: vec![said("C1", "1795000001.000000").key()],
-        };
-        write(&state, &kept, 1_795_000_002_000).expect("kept");
-        assert_eq!(
-            read(&state, FRESH),
-            (
-                Judged {
-                    keys: kept.keys,
-                    ..Judged::starting(FRESH)
-                },
-                Some(Afresh::Ahead)
-            ),
-            "{since:?} reads from ten minutes back, with what it judged"
-        );
-    }
-    std::fs::remove_dir_all(&state).expect("the case's state goes");
+fn a_since_later_than_ten_minutes_ago_looks_back_keeping_its_keys() {
+    // A clock set back leaves a since past ten minutes ago, which would
+    // pass over everything said until the clock caught up.
+    let keys = vec![said("C1", "1795000001.000000").key()];
+    let mut ahead = Judged {
+        since: "1795000600.000001".to_owned(),
+        keys: keys.clone(),
+    };
+    assert!(ahead.look_back_to(FRESH), "one later looks back");
+    assert_eq!(
+        ahead,
+        Judged {
+            keys,
+            ..Judged::starting(FRESH)
+        },
+        "to ten minutes ago, with what it judged"
+    );
+    assert!(!ahead.look_back_to(FRESH), "and once there, stays");
+    let mut behind = Judged::starting(FRESH - 1);
+    assert!(!behind.look_back_to(FRESH), "one earlier doesn't move");
+    assert_eq!(behind, Judged::starting(FRESH - 1), "and is as it was");
 }
 
 #[test]
