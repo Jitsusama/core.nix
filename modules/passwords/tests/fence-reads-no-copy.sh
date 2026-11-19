@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # Runs as Joel in his session on the desktop's VM (vm-desktop-keeps-copies),
-# while Passwords holds a password it copied from the launcher, to show a
-# command pi fences can't read it. A fenced command's wl-paste is the
+# while Passwords holds a password it copied from the launcher, to show the
+# clipboard door refuses it to a fenced command. A fenced command's
+# wl-paste is the
 # fence's own shim, which asks pi's clipboard door outside the fence
 # (modules/pi/clipboard-door); niri tells the door a copy is a secret by
 # the mark Passwords gives it, and the door refuses it. Joel's own paste
@@ -10,9 +11,12 @@
 # was the door's and not the reader's. That second copy ends Passwords'
 # hold, as any copy over it does. The door's journal says it refused a
 # secret, and never holds the secret. The fence is shaped as the
-# harness's is for the clipboard (bubblewrap with a pid namespace of its
-# own, the shims first on PATH); X11, the other way to a copy, is held by
-# pi-fence-keeps-x11-from-secrets in the same VM.
+# harness's is for the clipboard's shims alone (bubblewrap with a pid
+# namespace of its own, the shims first on PATH): it keeps Joel's runtime
+# folder and niri's own socket, which the harness's fence empties, so it
+# shows the door's refusal, not that no other way reaches niri from it
+# (pi-fence-clipboard-on-niri holds that). X11, the other way to a copy,
+# is held by pi-fence-keeps-x11-from-secrets in the same VM.
 # usage: fence-reads-no-copy.sh <shims> <secret>
 set -euo pipefail
 
