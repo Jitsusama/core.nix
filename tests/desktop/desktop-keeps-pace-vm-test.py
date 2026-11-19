@@ -1040,7 +1040,7 @@ def holdable(thread: Path) -> bool:
     try:
         # The flags are the seventh field after the name, which may hold spaces, in parentheses.
         flags = int((thread / "stat").read_text().rsplit(")", 1)[1].split()[6])
-    except (FileNotFoundError, ProcessLookupError):
+    except FileNotFoundError, ProcessLookupError:
         # One gone as this read is none to hold.
         return False
     return not flags & UNHOLDABLE

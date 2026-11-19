@@ -27,6 +27,9 @@ STOLEN = 800
 BUSIED = 100 + 200 + 300 + 600 + 700 + 800
 # Every tick it counts, idle and iowait with the busy, but not a guest's, already in user and nice.
 EVERY = 100 + 200 + 300 + 400 + 500 + 600 + 700 + 800
+# Every tick the ledger's lines below count under load, and frozen, idle and iowait with the busy.
+TICKED_UNDER = 60 + 30 + 10
+TICKED_FROZEN = 5 + 40
 
 
 def stat(stolen: int, busy: int) -> str:
@@ -96,8 +99,9 @@ def test_each_turn_keeps_every_tick_it_counted_and_a_turning_none() -> None:
     ledger.count("cpu  60 0 0 30 10 0 0 0 0 0", turn=True)
     ledger.count("cpu  90 0 0 80 10 0 0 0 0 0", turn=None)
     ledger.count("cpu  95 0 0 120 10 0 0 0 0 0", turn=False)
-    assert ledger.ticked[True] == 100, f"under load the ledger kept {ledger.ticked[True]} ticks"
-    assert ledger.ticked[False] == 45, f"frozen the ledger kept {ledger.ticked[False]} ticks"
+    under, frozen = ledger.ticked[True], ledger.ticked[False]
+    assert under == TICKED_UNDER, f"under load the ledger kept {under} ticks"
+    assert frozen == TICKED_FROZEN, f"frozen the ledger kept {frozen} ticks"
 
 
 def test_each_count_goes_to_its_own_turn_and_a_turning_to_neither() -> None:
