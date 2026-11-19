@@ -14,15 +14,16 @@
 let
   sites = import ./site.nix { inherit lib pkgs; };
 
-  # The theme's own web kit, as a machine writes it, which every check here
-  # that builds on it reads.
+  # The theme's own web kit, as a machine writes it, which the checks that
+  # read pages live build on; the -holds checks build on an empty one.
   webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
 
   # An account on a machine in a realm. Its node and net feeds are what the
-  # live checks hand their servers, and what forage's feed passes is what
+  # mycelium, murmurs, forage and network live checks hand their servers,
+  # and what forage's feed passes is what
   # forage-feed-passes-what-its-page-reads holds to the page, on every
-  # system. Each call of bareNixos evaluates a whole system, so they share
-  # this one.
+  # system. Each call of bareNixos evaluates a whole system, so the five
+  # share this one.
   inRealm = account (bareNixos [
     self.nixosModules.workstation
     {
@@ -33,7 +34,7 @@ let
     }
   ]);
 
-  # The Python every page's test runs in.
+  # The Python the checks that drive a page in headless Chromium run in.
   python = pkgs.python3.withPackages (python: [
     python.playwright
     python.pytest
