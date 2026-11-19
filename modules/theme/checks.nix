@@ -149,7 +149,11 @@ let
           "never stepping ${builtins.toJSON frozen}"
           "undrawn ${builtins.toJSON missing}"
         ]
-        ++ lib.optional (strides == [ ]) "no strides${readFrom}"
+        # Where they came from, so a pose failing on a change to the code
+        # it's walked by says so.
+        ++ lib.optional (strides == [ ] || walkedFrom != null) (
+          (if strides == [ ] then "no strides" else "strides") + readFrom
+        )
       );
     };
 
@@ -535,6 +539,7 @@ in
         (byWalks "${walksSaid}\nconst STRIDING = Object.freeze({ goes: WALKS }).climbs;")
         (byWalks "${walksSaid}\nconst STRIDING = Object.freeze({ goes: WALKS } || RUNS);")
         (elsewhere "${walksSaid}\n${stridingSaid}\nWALKS.reverse();")
+        (elsewhere "${walksSaid}\n${stridingSaid}\nconst runs = [...WALKS];")
         # Declared again, in a block or as anything else, the name strides
         # by another walk there.
         (once "${walksSaid}\n${stridingSaid}\n{ const STRIDING = { goes: RUNS }; }")
@@ -552,7 +557,7 @@ in
         /* STRIDING[kind] = WALKS reads alike, as a comment.
          * So does WALKS.reverse(); here,
            and STRIDING.goes = RUNS; on a line with no star. */
-        const WALKSPEED = 3, OVERSTRIDING = 2;
+        const WALKSPEED = 3, OVERSTRIDING = 2, MYWALKS = 1;
         const early = kind => STRIDING[kind];
         const WALKS = Object
           .freeze( [
