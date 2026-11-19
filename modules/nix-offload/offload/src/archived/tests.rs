@@ -663,7 +663,7 @@ fn an_unpacked_file_is_newer_than_its_commit() {
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .status()
         .unwrap();
-    assert!(amended.success());
+    assert!(amended.success(), "the commit was dated back: {amended}");
     let commit = git(&top, &["rev-parse", "HEAD"]);
     let packed = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
     let far = folder.path().join("far");
