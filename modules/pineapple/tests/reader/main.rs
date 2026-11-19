@@ -7,9 +7,9 @@
 //! nothing twice; and an alert for Joel's phone finds his own IM and, in
 //! shadow, is only written down. The reader let go live is in live.rs,
 //! with a keyring that hangs in keyring.rs, telling Joel in For You when
-//! Slack can't be heard in deaf.rs, and GitHub's reader, against its own
-//! stand-in, in github.rs, and the guard each case holds its reader by
-//! in guard.rs.
+//! Slack can't be heard in deaf.rs, how far it had read when that can't
+//! be trusted in kept.rs, and GitHub's reader, against its own stand-in,
+//! in github.rs, and the guard each case holds its reader by in guard.rs.
 
 mod deaf;
 mod github;

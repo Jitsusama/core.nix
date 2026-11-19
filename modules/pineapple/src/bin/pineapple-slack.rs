@@ -325,6 +325,10 @@ fn run(how: &Run) -> Result<(), Failure> {
             "<4>how far Slack was read can't all be read, so it reads from ten minutes back, \
              keeping what it can of what was judged"
         ),
+        Some(Afresh::Unjudged) => eprintln!(
+            "<4>which Slack messages were judged can't all be read, so one judged before may be \
+             judged again"
+        ),
         Some(Afresh::Nothing) | None => {}
     }
     let mut phone = Phone {

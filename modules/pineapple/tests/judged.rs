@@ -150,6 +150,36 @@ fn a_since_that_cant_be_read_starts_afresh_keeping_its_keys() {
 }
 
 #[test]
+fn keys_that_cant_all_be_read_keep_since_and_say_so() {
+    let state = state("keys");
+    std::fs::create_dir_all(&state).expect("the case's state");
+    let key = said("C1", "1795000001.000000").key();
+    for keys in [
+        None,
+        Some("\"spoiled\"".to_owned()),
+        Some(format!(r#"[1, "{key}"]"#)),
+    ] {
+        let kept = match &keys {
+            Some(keys) => format!(r#"{{"since": "1795000000.000000", "keys": {keys}}}"#),
+            None => r#"{"since": "1795000000.000000"}"#.to_owned(),
+        };
+        std::fs::write(state.join(FILE), &kept).expect("kept");
+        let (judged, afresh) = read(&state, FRESH);
+        assert_eq!(
+            (judged.since.as_str(), afresh),
+            ("1795000000.000000", Some(Afresh::Unjudged)),
+            "{kept} keeps how far it read, and says what it judged is partly lost"
+        );
+        assert!(
+            judged.keys.iter().all(|kept| kept == &key),
+            "{kept} keeps only the keys that read: {:?}",
+            judged.keys
+        );
+    }
+    std::fs::remove_dir_all(&state).expect("the case's state goes");
+}
+
+#[test]
 fn a_since_later_than_ten_minutes_ago_looks_back_keeping_its_keys() {
     // A clock set back leaves a since past ten minutes ago, which would
     // pass over everything said until the clock caught up.

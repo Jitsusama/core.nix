@@ -69,14 +69,17 @@ impl Judged {
     }
 }
 
-/// Why a reader starts from `fresh` rather than from what was kept.
+/// Why a reader doesn't start from all it kept.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Afresh {
     /// Nothing was kept: a first start.
     Nothing,
-    /// What was kept couldn't all be read: whatever keys could be are
+    /// How far it had read couldn't be read: whatever keys could be are
     /// kept, from `fresh`.
     Unreadable,
+    /// How far it had read is kept, but what it had judged couldn't all
+    /// be read, so a message judged before may be judged again.
+    Unjudged,
 }
 
 /// How far Slack has been read, as kept in `state`, and why it starts
@@ -94,14 +97,14 @@ pub fn read(state: &Path, fresh: u64) -> (Judged, Option<Afresh>) {
     let Ok(kept) = serde_json::from_str::<Value>(&text) else {
         return afresh(Afresh::Unreadable);
     };
-    let keys = kept
-        .get("keys")
-        .and_then(Value::as_array)
+    let listed = kept.get("keys").and_then(Value::as_array);
+    let keys: Vec<String> = listed
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect();
+    let whole = listed.is_some_and(|listed| listed.len() == keys.len());
     match kept
         .get("since")
         .and_then(Value::as_str)
@@ -112,7 +115,7 @@ pub fn read(state: &Path, fresh: u64) -> (Judged, Option<Afresh>) {
                 since: since.to_owned(),
                 keys,
             },
-            None,
+            (!whole).then_some(Afresh::Unjudged),
         ),
         None => (
             Judged {
