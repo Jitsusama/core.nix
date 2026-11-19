@@ -16,7 +16,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from vm_helpers import as_account
+from vm_helpers import as_account, journal_cursor
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -148,6 +148,51 @@ def test_both_keys_are_made_in_the_tpm_and_the_agent_holds_them(joel: Joel, keys
     listed = joel.run(f"SSH_AUTH_SOCK={joel.runtime}/ssh-tpm-agent.sock ssh-add -l")
     assert keys.joel in listed
     assert keys.agent in listed
+
+
+def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: Keys) -> None:
+    """A process in the agents' slice is refused the keys Joel's app slice is served.
+
+    The gate's cases are judged in ssh-tpm-agent-refuses-agents; this proves only that the
+    agent reads its gate and the cgroup the kernel puts the asking process in. The same listing
+    in Joel's app slice, asking the same socket first, is served, and the agent's journal says
+    the refusal was the gate's, so neither a gate refusing everyone nor an agent that isn't there
+    passes it; the refusal is read at warning priority, as health reads the journal. A commit
+    from the same slice asking to be signed as Joel is refused, and leaves no commit.
+    """
+    socket = f"{joel.runtime}/ssh-tpm-agent.sock"
+
+    def listing(slice_: str) -> str:
+        return (
+            f"systemd-run --user --slice={slice_} --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
+            " $(command -v ssh-add) -l 2>&1"
+        )
+
+    assert keys.joel in joel.run(listing("app"))
+    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -o cat"
+    # The journal is read from here on, so only this listing's refusal can pass it.
+    since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
+    said = joel.run(listing("agents"), succeed=False)
+    assert "refused" in said
+    assert keys.joel not in said
+    refused = (
+        f'{journal} -p warning --after-cursor={{}} | grep -q "refused a request from agents\' work"'
+    )
+    joel.machine.wait_until_succeeds(refused.format(shlex.quote(since)), timeout=30)
+    head = joel.head()
+    # Read again from here, so the commit's failure is tied to a refusal of its own.
+    since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
+    said = joel.run(
+        f"systemd-run --user --slice=agents --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
+        ' -E SIGN_AS=joel -E PATH="$PATH" $(command -v git) -C "$HOME/repo"'
+        " commit -q --allow-empty -m as-joel-from-agents < /dev/null 2>&1",
+        succeed=False,
+    )
+    # git says this when the signing failed, and the gate's refusal after the
+    # cursor shows it was the gate that failed it.
+    assert "failed to write commit object" in said
+    assert joel.head() == head
+    joel.machine.wait_until_succeeds(refused.format(shlex.quote(since)), timeout=30)
 
 
 def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:

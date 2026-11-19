@@ -1,0 +1,75 @@
+# What the gate beside this must decide, which checks.nix's judged build
+# of the agent's source checks (TestMachineGate): a verdict, then the cgroups of the peer and each of its
+# parents in turn, as a workstation had them on 18 November.
+# Joel's ssh in his own terminal, and once the sorter has moved it.
+serve /user.slice/user-1000.slice/user@1000.service/app.slice/kitty-2210-1.scope /user.slice/user-1000.slice/user@1000.service/app.slice/app-niri-kitty-1.scope
+serve /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope /user.slice/user-1000.slice/user@1000.service/app.slice/kitty-2210-1.scope
+serve /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaited.service
+# Git signing a commit of Joel's from an editor the launcher started.
+serve /user.slice/user-1000.slice/user@1000.service/app.slice/app-niri-nvim-1.scope
+# A service of the account's own, which names nothing here.
+serve /user.slice/user-1000.slice/user@1000.service/background.slice/health.service
+# A fenced command made inside the awaited slice's cgroups.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope/pi-jobs-ab12.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/pi-jobs-ab12.scope
+# Work moved to the awaited slice is still refused under an agent's parent,
+# and so is a cgroup an agent makes with the awaited slice's names.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope /user.slice/user-1000.slice/user@1000.service/jobs.slice/pi-spawner-3386655-21a0cd4c.scope
+refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope/jobs.slice/jobs-awaited.slice/awaited.service
+# A session window's pi, unheld, and its window's kitty.
+refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service
+refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service
+# A hosted conversation's command, its spawner, and the host itself.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/pi-spawner-3386655-21a0cd4c.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/pi-host-work-background.service
+refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/pi-spawner-3386655-b607f817.scope
+refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/pi-host-work-background.service
+# A terminal session, held by mycelium, and a command it runs.
+refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/mycelium-pi-f0520da9.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-1.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/pi-spawner-13217-b5c53f7b.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/mycelium-pi-f0520da9.scope
+# A command the sorter moved, one waiting its turn, a push waiting its
+# walk slot, an agent's terminal's busy work, the jobs service itself, and
+# a fenced command's scope made somewhere the broker never places one.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/jobs-work-unranked.slice/work-383009-2999244.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-timed.slice/timed-1.scope
+refuse /user.slice/user-1000.slice/user@1000.service/shared.slice/run-p800969-i5013960.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service
+refuse /user.slice/user-1000.slice/user@1000.service/background.slice/pi-jobs-ab12.scope
+# A shell Joel opens in a tab of a session window, in its kitty's scope.
+refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service
+# A unit a hosted conversation's command starts with systemd-run, given its
+# caller's slice, named or not; one started from agents' work placed in the
+# awaited or background slice, refused with Joel's own there, which looks
+# the same; and a scope from Joel's awaited work, as nix-offload's uploads
+# take, judged by its caller.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/run-p800969-i5013960.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/queue-2af2dh-1028.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/run-u9.scope /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/run-p900100-i6000100.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/background.slice/run-p900200-i6000200.service /user.slice/user-1000.slice/user@1000.service/init.scope
+serve /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/run-u7.scope /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope /user.slice/user-1000.slice/user@1000.service/app.slice/kitty-2210-1.scope
+# A unit an agent names itself, as the harness tells it to, started from
+# work placed in the awaited slice; and names as long as awaited or near it,
+# each by its own line and alternative, while awaited.service above is
+# served. The run-*.service in the awaited slice above is refused by
+# gate.conf's first awaited line, as its length isn't awaited's.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/queue-isxeg8-1.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaite.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/build-1.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaxted.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaitex.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/a.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaitedx.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/abcdefg.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awxited.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaixed.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaitxd.service /user.slice/user-1000.slice/user@1000.service/init.scope
+# A spawner somewhere no other line names, which only its own line refuses.
+refuse /user.slice/user-1000.slice/user@1000.service/background.slice/pi-spawner-3386655-c0ffee00.scope
+# Joel's own services there, refused knowingly, as none signs in over SSH.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/sccache.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-timed.slice/merge-net.service /user.slice/user-1000.slice/user@1000.service/init.scope
+# A command an agent moved out of its place with systemd-run --scope, still
+# a spawner's child; and one it started as a service, whose parent is the
+# user manager, which is served: the gate catches accidents, not escapes.
+refuse /user.slice/user-1000.slice/user@1000.service/app.slice/run-u1.scope /user.slice/user-1000.slice/user@1000.service/jobs.slice/pi-spawner-3386655-21a0cd4c.scope
+serve /user.slice/user-1000.slice/user@1000.service/app.slice/run-u2.service /user.slice/user-1000.slice/user@1000.service/init.scope

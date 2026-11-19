@@ -1,0 +1,1335 @@
+agent: Refuse connections from where agents' work runs
+
+On a machine whose agents run as the person's own account, the socket,
+open to the account, serves them every key the agent holds. Read a
+gate, a file named by SSH_TPM_AGENT_GATE, at each connection, and refuse
+a peer when the first process of its chain, itself and then each parent
+up to init, whose cgroup a rule names is refused there. Allow ends the
+search, so a place can be allowed inside a slice that is refused. A
+refused peer hears the protocol's bare failure for every request, and
+the journal says why, naming the place refused and the peer's folder.
+watch journals what would be refused and serves it. A gate this agent
+never read whole, whether gone, unreadable, unparsable or refusing no
+place, refuses everyone. Only a regular file of at most 64 KiB is read,
+opened without waiting, so a pipe or a device put at its path counts as
+unreadable rather than stalling every connection. The journal says at
+each start which gate the agent judges by, or that it has none.
+Refused too is a peer the kernel doesn't name, one whose chain can't be
+read to init, or one gone by the time it's judged, as its pidfd says. A file read once and gone, unreadable or unparsable
+since, as a rollback past the gate or a later gate's format leaves it,
+is judged by what it last said, journalled once as that starts and once
+as a read comes back. Where the variable is unset, nothing changes.
+
+Where systemd hands the agent's output to the journal, as
+JOURNAL_STREAM says by the stream's device and inode, matched against
+standard output's so one run from a terminal a unit started isn't
+taken for it, each line opens with the sd-daemon mark of its
+level's priority, so a refusal, or a gate refusing everyone, reaches
+what reads the journal's warnings rather than standing as info.
+
+diff --git a/agent/agent.go b/agent/agent.go
+index 47a77ee..1f8728f 100644
+--- a/agent/agent.go
++++ b/agent/agent.go
+@@ -343,7 +343,12 @@ func (c *connAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Si
+ }
+ 
+ func (a *Agent) serveConn(c *net.UnixConn) {
+-	ca := &connAgent{Agent: a, peer: peerChain(c)}
++	peer := peerChain(c)
++	if why := refuses(c, peer); why != nil {
++		_ = agent.ServeAgent(refusing{why}, c)
++		return
++	}
++	ca := &connAgent{Agent: a, peer: peer}
+ 	if err := agent.ServeAgent(ca, c); err != io.EOF {
+ 		slog.Info("Agent client connection ended unsuccessfully", slog.String("error", err.Error()))
+ 	}
+diff --git a/agent/gate.go b/agent/gate.go
+new file mode 100644
+index 0000000..81b42c7
+--- /dev/null
++++ b/agent/gate.go
+@@ -0,0 +1,427 @@
++package agent
++
++import (
++	"errors"
++	"fmt"
++	"io"
++	"io/fs"
++	"log/slog"
++	"net"
++	"os"
++	"path/filepath"
++	"regexp"
++	"strconv"
++	"strings"
++	"sync"
++
++	"golang.org/x/crypto/ssh"
++	"golang.org/x/crypto/ssh/agent"
++	"golang.org/x/sys/unix"
++)
++
++// GateVariable names the file of places whose processes the agent refuses.
++// Where it's unset, the agent serves everyone, as upstream does.
++const GateVariable = "SSH_TPM_AGENT_GATE"
++
++// maxGateChain is how far up a peer's ancestors the gate looks for a place.
++const maxGateChain = 32
++
++// maxGateSize is far past any gate's size, so a file larger is refused
++// rather than read whole with every connection waiting on it.
++const maxGateSize = 64 << 10
++
++// errNotAFile and errTooLarge say why a gate's file wasn't read.
++var (
++	errNotAFile = errors.New("isn't a regular file")
++	errTooLarge = fmt.Errorf("is larger than %d bytes", maxGateSize)
++)
++
++// readGateFile reads a gate's file only when it's a regular file of a
++// gate's size. It opens without waiting, so a pipe nobody writes or a
++// device put at its path refuses at once rather than holding the lock
++// every connection takes, and so the link put back is read at the next.
++func readGateFile(file string) ([]byte, error) {
++	f, err := os.OpenFile(file, os.O_RDONLY|unix.O_NONBLOCK, 0)
++	if err != nil {
++		return nil, err
++	}
++	defer f.Close()
++	info, err := f.Stat()
++	if err != nil {
++		return nil, err
++	}
++	if !info.Mode().IsRegular() {
++		return nil, errNotAFile
++	}
++	text, err := io.ReadAll(io.LimitReader(f, maxGateSize+1))
++	if err != nil {
++		return nil, err
++	}
++	if len(text) > maxGateSize {
++		return nil, errTooLarge
++	}
++	return text, nil
++}
++
++// The three refusals below are what the agent journals and answers with;
++// the agent protocol carries no reason, so the process asking hears only
++// that the agent refused, and the journal says why.
++
++// ErrRefusedPlace refuses every request of a process where agents' work runs.
++var ErrRefusedPlace = errors.New("agent: refused, as the process asking runs where agents' work runs")
++
++// ErrGateUnread refuses every process while the gate can't be read or
++// parsed, so a broken gate isn't mistaken for a refused place.
++var ErrGateUnread = errors.New("agent: refused, as its gate can't be read")
++
++// ErrPeerUnknown refuses a process when who it is, or where its chain runs,
++// couldn't be read to the end.
++var ErrPeerUnknown = errors.New("agent: refused, as where the process asking runs couldn't be read")
++
++// A gateRule says what a process in a cgroup matching place is: allowed,
++// which ends the search, or refused.
++type gateRule struct {
++	allow bool
++	place *regexp.Regexp
++}
++
++// A gate is the file named by GateVariable, read again for each connection
++// so that a change takes hold without a restart, which would lose the PINs
++// the agent holds. Each line is `allow <pattern>` or `refuse <pattern>`,
++// a regular expression over a cgroup's path, or `watch`, which journals what
++// would be refused and serves it.
++type gate struct {
++	watching bool
++	rules    []gateRule
++}
++
++func parseGate(text string) (gate, error) {
++	var g gate
++	for n, line := range strings.Split(text, "\n") {
++		line = strings.TrimSpace(line)
++		if line == "" || strings.HasPrefix(line, "#") {
++			continue
++		}
++		word, pattern, _ := strings.Cut(line, " ")
++		pattern = strings.TrimSpace(pattern)
++		switch {
++		case word == "watch" && pattern == "":
++			g.watching = true
++		case (word == "allow" || word == "refuse") && pattern != "":
++			place, err := regexp.Compile(pattern)
++			if err != nil {
++				return gate{}, fmt.Errorf("line %d: %w", n+1, err)
++			}
++			g.rules = append(g.rules, gateRule{allow: word == "allow", place: place})
++		default:
++			return gate{}, fmt.Errorf("line %d: %q is neither allow, refuse nor watch", n+1, line)
++		}
++	}
++	// A gate refusing no place would serve everyone, which looks just like
++	// a gate that works; an emptied file, or one left only allowing, is a
++	// broken one.
++	refusing := false
++	for _, rule := range g.rules {
++		refusing = refusing || !rule.allow
++	}
++	if !refusing {
++		return gate{}, errors.New("it refuses no place")
++	}
++	return g, nil
++}
++
++// A gatePlace is one process of a peer's chain and the cgroup it runs in.
++type gatePlace struct {
++	pid    int
++	cgroup string
++}
++
++// judge finds the first process of chain, the peer first, whose cgroup a
++// rule names, and says whether that rule refuses it. A chain no rule names
++// is served; an empty one, a peer whose place couldn't be read, is refused.
++func (g gate) judge(chain []gatePlace) (refused bool, at gatePlace) {
++	if len(chain) == 0 {
++		return true, gatePlace{}
++	}
++	for _, place := range chain {
++		for _, rule := range g.rules {
++			if rule.place.MatchString(place.cgroup) {
++				return !rule.allow, place
++			}
++		}
++	}
++	return false, chain[0]
++}
++
++// chainOf reads pid's cgroup and each of its ancestors' from the proc
++// filesystem at proc, up to init, at most maxGateChain of them. It says
++// whether it read the whole chain: a process that exits as it's read, or a
++// chain past maxGateChain, leaves part of it unseen, and an unseen part may
++// be the one a rule refuses.
++func chainOf(proc string, pid int) (chain []gatePlace, whole bool) {
++	for pid != 1 {
++		if len(chain) == maxGateChain {
++			return chain, false
++		}
++		cgroup, ok := unifiedCgroup(proc, pid)
++		if !ok {
++			return chain, false
++		}
++		chain = append(chain, gatePlace{pid: pid, cgroup: cgroup})
++		if _, pid = procStatusAt(proc, pid); pid < 1 {
++			return chain, false
++		}
++	}
++	return chain, true
++}
++
++// unifiedCgroup is the path on the "0::" line of pid's cgroup file.
++func unifiedCgroup(proc string, pid int) (string, bool) {
++	b, err := os.ReadFile(filepath.Join(proc, strconv.Itoa(pid), "cgroup"))
++	if err != nil {
++		return "", false
++	}
++	for line := range strings.SplitSeq(string(b), "\n") {
++		if path, ok := strings.CutPrefix(line, "0::"); ok {
++			return path, true
++		}
++	}
++	return "", false
++}
++
++// procStatusAt is procStatus over a proc filesystem at proc.
++func procStatusAt(proc string, pid int) (name string, ppid int) {
++	b, err := os.ReadFile(filepath.Join(proc, strconv.Itoa(pid), "status"))
++	if err != nil {
++		return
++	}
++	for line := range strings.SplitSeq(string(b), "\n") {
++		if v, ok := strings.CutPrefix(line, "Name:"); ok {
++			name = strings.TrimSpace(v)
++		} else if v, ok := strings.CutPrefix(line, "PPid:"); ok {
++			ppid, _ = strconv.Atoi(strings.TrimSpace(v))
++			return
++		}
++	}
++	return
++}
++
++// peerPid is the pid the kernel gives for the process at c's other end,
++// and a pidfd for that process where the kernel gives one (6.5 on), or -1
++// where the kernel doesn't know SO_PEERPIDFD. Any other failure to give one,
++// a peer already gone among them, isn't ok, so a pid alone is trusted only
++// on a kernel that can't pin it.
++func peerPid(c *net.UnixConn) (pid int, pidfd int, ok bool) {
++	rc, err := c.SyscallConn()
++	if err != nil {
++		return 0, -1, false
++	}
++	var ucred *unix.Ucred
++	pidfd = -1
++	if cerr := rc.Control(func(fd uintptr) {
++		ucred, err = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
++		if got, ferr := unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PEERPIDFD); ferr == nil {
++			pidfd = got
++		} else if err == nil {
++			err = pidfdFailed(ferr)
++		}
++	}); cerr != nil || err != nil {
++		if pidfd >= 0 {
++			unix.Close(pidfd)
++		}
++		return 0, -1, false
++	}
++	return int(ucred.Pid), pidfd, true
++}
++
++// stillThere says whether the process pidfd pins is alive, so a chain read
++// by its pid was read of it, and not of another given the pid once it
++// exited. With no pidfd, the pid alone is trusted. Only ESRCH says it's
++// gone: a process of another account, root's ssh under sudo, is there
++// but can't be signalled, which is EPERM.
++func stillThere(pidfd int) bool {
++	if pidfd < 0 {
++		return true
++	}
++	return !gone(signal(pidfd, 0, nil, 0))
++}
++
++// signal is how stillThere signals a pidfd, which a test swaps to meet
++// what the build's sandbox can't give it, a process of another account.
++var signal = unix.PidfdSendSignal
++
++// gone says whether signalling a process failed for its having exited,
++// ESRCH, rather than for its being another account's, EPERM.
++func gone(err error) bool {
++	return errors.Is(err, unix.ESRCH)
++}
++
++// pidfdFailed is what failing to get a peer's pidfd costs: nothing on a
++// kernel that doesn't know SO_PEERPIDFD, ENOPROTOOPT, where the pid alone
++// is trusted, and the peer's refusal for any other failure.
++func pidfdFailed(err error) error {
++	if errors.Is(err, unix.ENOPROTOOPT) {
++		return nil
++	}
++	return err
++}
++
++// placeOf is the chain of pid, read from proc, or ErrPeerUnknown where it
++// couldn't be read to init, or the process pidfd pins went as it was read.
++func placeOf(proc string, pid, pidfd int) ([]gatePlace, error) {
++	chain, whole := chainOf(proc, pid)
++	if !whole || !stillThere(pidfd) {
++		return nil, ErrPeerUnknown
++	}
++	return chain, nil
++}
++
++// lastRead holds the last gate each file parsed into, so a file gone
++// since is judged by what it last said, and why each file is judged so,
++// journalled once as it starts rather than at every connection, which
++// would bury the refusals the journal is watched for.
++var lastRead = struct {
++	sync.Mutex
++	gates  map[string]gate
++	judged map[string]string
++}{gates: map[string]gate{}, judged: map[string]string{}}
++
++// readGate is the gate the file named by GateVariable holds, or ok false
++// where none is set. A file this agent has read once that is gone, can't
++// be read or doesn't parse since, as a rollback past the gate, a removed
++// config folder or a later gate in a format this agent predates leaves it
++// with, is judged by what it last said: Joel's places stay served, so he
++// isn't shut out until a restart asks for his PIN, and agents' work stays
++// refused. Refusing no place counts as not parsing. One this agent never
++// read whole is ErrGateUnread, since a gate that fails open looks just
++// like one that works. Each is read again at the next connection, so
++// putting the file back serves Joel again with no restart. The file is
++// read under the lock, so a read that took longer than a later one can't
++// put back what the file said before it.
++func readGate(peer string) (g gate, ok bool, err error) {
++	file := os.Getenv(GateVariable)
++	if file == "" {
++		return gate{}, false, nil
++	}
++	lastRead.Lock()
++	defer lastRead.Unlock()
++	text, err := readGateFile(file)
++	why := ""
++	switch {
++	case errors.Is(err, fs.ErrNotExist):
++		why = "is gone"
++	case errors.Is(err, errNotAFile), errors.Is(err, errTooLarge):
++		why = err.Error()
++	case err != nil:
++		why = "can't be read: " + err.Error()
++	default:
++		if g, err = parseGate(string(text)); err != nil {
++			why = "doesn't parse: " + err.Error()
++		}
++	}
++	if why == "" {
++		lastRead.gates[file] = g
++		if _, was := lastRead.judged[file]; was {
++			delete(lastRead.judged, file)
++			slog.Info("read the gate's file again, so it judges requests itself", "file", file)
++		}
++		return g, true, nil
++	}
++	if last, read := lastRead.gates[file]; read {
++		if lastRead.judged[file] != why {
++			lastRead.judged[file] = why
++			slog.Warn("judging requests by the gate last read, as its file "+why, "file", file)
++		}
++		return last, true, nil
++	}
++	slog.Error("refused a request, as the gate's file "+why+" and was never read; "+
++		"putting it back serves Joel at the next connection, with no restart",
++		"file", file, "peer", peer)
++	return gate{}, false, ErrGateUnread
++}
++
++// refuses says why the gate refuses c's peer, or nil when it's served, and
++// journals each refusal with the place its chain was refused for, and the
++// peer's own pid and folder. With no
++// gate (readGate) it refuses nothing, and with one it can't read it
++// refuses everything. A peer whose chain can't be read to init is refused
++// too. A watching gate serves each peer it would refuse, saying it would.
++func refuses(c *net.UnixConn, peer string) error {
++	g, ok, err := readGate(peer)
++	if err != nil {
++		return err
++	}
++	if !ok {
++		return nil
++	}
++	why, pid, folder, at := g.verdict(c)
++	if why == nil {
++		return nil
++	}
++	place := at.cgroup[strings.LastIndex(at.cgroup, "/")+1:]
++	said := "refused a request from agents' work"
++	switch {
++	case errors.Is(why, ErrPeerUnknown) && pid == 0:
++		said = "refused a request, as the kernel didn't say who asked"
++	case errors.Is(why, ErrPeerUnknown):
++		said = "refused a request, as where its process runs couldn't be read"
++	}
++	if g.serves(why) {
++		slog.Warn("would have "+said, "place", place, "pid", pid, "folder", folder, "peer", peer)
++		return nil
++	}
++	slog.Warn(said, "place", place, "pid", pid, "folder", folder, "peer", peer)
++	return why
++}
++
++// serves says whether g serves a peer it judged refused for why: only a
++// watching gate does, whatever the refusal.
++func (g gate) serves(why error) bool {
++	return why == nil || g.watching
++}
++
++// verdict is why g refuses c's peer, or nil, with the peer's pid, 0 where
++// the kernel didn't give one, its folder, and the place in its chain a
++// rule named. The folder is read while the peer's pidfd is held and kept
++// only while the peer is still there, so it never names a process that
++// took the pid since.
++func (g gate) verdict(c *net.UnixConn) (why error, pid int, folder string, at gatePlace) {
++	pid, pidfd, ok := peerPid(c)
++	if !ok {
++		return ErrPeerUnknown, 0, "", gatePlace{}
++	}
++	if pidfd >= 0 {
++		defer unix.Close(pidfd)
++	}
++	chain, err := placeOf("/proc", pid, pidfd)
++	if err != nil {
++		why = err
++	} else if refused, named := g.judge(chain); refused {
++		why, at = ErrRefusedPlace, named
++	} else {
++		return nil, pid, "", gatePlace{}
++	}
++	folder, _ = os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
++	if !stillThere(pidfd) {
++		folder = ""
++	}
++	return why, pid, folder, at
++}
++
++// refusing answers every request of a refused peer with a failure, all the
++// agent protocol can say, so its ssh says the agent refused rather than
++// that it went away.
++type refusing struct{ why error }
++
++func (r refusing) List() ([]*agent.Key, error)                        { return nil, r.why }
++func (r refusing) Sign(ssh.PublicKey, []byte) (*ssh.Signature, error) { return nil, r.why }
++func (r refusing) Add(agent.AddedKey) error                           { return r.why }
++func (r refusing) Remove(ssh.PublicKey) error                         { return r.why }
++func (r refusing) RemoveAll() error                                   { return r.why }
++func (r refusing) Lock([]byte) error                                  { return r.why }
++func (r refusing) Unlock([]byte) error                                { return r.why }
++func (r refusing) Signers() ([]ssh.Signer, error)                     { return nil, r.why }
++func (r refusing) SignWithFlags(ssh.PublicKey, []byte, agent.SignatureFlags) (*ssh.Signature, error) {
++	return nil, r.why
++}
++func (r refusing) Extension(string, []byte) ([]byte, error) { return nil, r.why }
+diff --git a/agent/gate_serve_test.go b/agent/gate_serve_test.go
+new file mode 100644
+index 0000000..6739ebb
+--- /dev/null
++++ b/agent/gate_serve_test.go
+@@ -0,0 +1,345 @@
++package agent_test
++
++import (
++	"fmt"
++	"log/slog"
++	"net"
++	"os"
++	"path"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/foxboron/ssh-tpm-agent/agent"
++	"github.com/foxboron/ssh-tpm-agent/internal/keyring"
++	"github.com/foxboron/ssh-tpm-agent/key"
++	"github.com/google/go-tpm/tpm2/transport"
++	sshagent "golang.org/x/crypto/ssh/agent"
++	"golang.org/x/sys/unix"
++)
++
++// gated starts an agent whose gate is the file it returns, holding
++// gateText, or none when gateText is empty, and returns how to list its keys
++// as this test's own process, whatever cgroup the build runs it in.
++func gated(t *testing.T, gateText string) (file string, list func() error) {
++	t.Helper()
++	dir := t.TempDir()
++	file = path.Join(dir, "gate")
++	if gateText != "" {
++		if err := os.WriteFile(file, []byte(gateText), 0o644); err != nil {
++			t.Fatal(err)
++		}
++		t.Setenv(agent.GateVariable, file)
++	}
++	socket := path.Join(dir, "socket")
++	listener, err := net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: socket})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { listener.Close() })
++	ag := agent.NewAgent(listener,
++		[]sshagent.ExtendedAgent{},
++		func() *keyring.ThreadKeyring { return &keyring.ThreadKeyring{} },
++		func() transport.TPMCloser { return nil },
++		func() ([]byte, error) { return []byte(""), nil },
++		func(_ key.SSHTPMKeys) ([]byte, error) { return []byte(""), nil },
++	)
++	t.Cleanup(ag.Stop)
++	return file, func() error {
++		conn, err := net.Dial("unix", socket)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer conn.Close()
++		_, err = sshagent.NewClient(conn).List()
++		return err
++	}
++}
++
++// listWith lists the keys of an agent whose gate reads gateText.
++func listWith(t *testing.T, gateText string) error {
++	t.Helper()
++	_, list := gated(t, gateText)
++	return list()
++}
++
++func TestAGatedPlaceIsRefused(t *testing.T) {
++	if err := listWith(t, "refuse .\n"); err == nil {
++		t.Fatal("a refused place listed the keys")
++	}
++}
++
++func TestAnAllowedPlaceIsServed(t *testing.T) {
++	if err := listWith(t, "allow .\nrefuse .\n"); err != nil {
++		t.Fatalf("an allowed place was refused: %v", err)
++	}
++}
++
++func TestAWatchedPlaceIsServed(t *testing.T) {
++	said := journalled(t)
++	if err := listWith(t, "watch\nrefuse .\n"); err != nil {
++		t.Fatalf("a watched place was refused: %v", err)
++	}
++	if !strings.Contains(said.String(), "would have refused a request from agents' work") {
++		t.Fatalf("a watched refusal went unsaid: %q", said.String())
++	}
++}
++
++func TestNoGateServesEveryone(t *testing.T) {
++	if err := listWith(t, ""); err != nil {
++		t.Fatalf("an agent with no gate refused: %v", err)
++	}
++}
++
++func TestAGateThatCantBeReadRefuses(t *testing.T) {
++	t.Setenv(agent.GateVariable, t.TempDir())
++	if err := listWith(t, ""); err == nil {
++		t.Fatal("a gate that can't be read served")
++	}
++}
++
++// saidBy gathers what the agent journals while a test runs.
++type saidBy struct {
++	sync.Mutex
++	text strings.Builder
++}
++
++func (s *saidBy) Write(b []byte) (int, error) {
++	s.Lock()
++	defer s.Unlock()
++	return s.text.Write(b)
++}
++
++func (s *saidBy) String() string {
++	s.Lock()
++	defer s.Unlock()
++	return s.text.String()
++}
++
++func journalled(t *testing.T) *saidBy {
++	t.Helper()
++	said := &saidBy{}
++	was := slog.Default()
++	slog.SetDefault(slog.New(slog.NewTextHandler(said, nil)))
++	t.Cleanup(func() { slog.SetDefault(was) })
++	return said
++}
++
++// A gate gone before this agent read it can't say who it served, so it
++// refuses everyone until the file is back, and a file put back is read at
++// the next connection, with no restart to ask for Joel's PIN.
++func TestAGateGoneBeforeItWasReadRefusesUntilItIsBack(t *testing.T) {
++	said := journalled(t)
++	file, list := gated(t, "allow .\nrefuse .\n")
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err == nil {
++		t.Fatal("a gate taken away before it was read served")
++	}
++	if !strings.Contains(said.String(), "gate's file is gone and was never read") {
++		t.Fatalf("refusing with no gate read went unsaid: %q", said.String())
++	}
++	// The peer is this test's own process, so the line must name its pid.
++	if !strings.Contains(said.String(), fmt.Sprintf("(%d)", os.Getpid())) {
++		t.Fatalf("refusing with no gate read didn't say who: %q", said.String())
++	}
++	if err := os.WriteFile(file, []byte("allow .\nrefuse .\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err != nil {
++		t.Fatalf("a gate put back didn't serve what it allows: %v", err)
++	}
++}
++
++// A gate gone after it was read keeps serving what it served, so a
++// rollback past the gate doesn't shut Joel out until a restart.
++func TestAGateGoneAfterItWasReadServesWhatItServed(t *testing.T) {
++	said := journalled(t)
++	file, list := gated(t, "allow .\nrefuse .\n")
++	if err := list(); err != nil {
++		t.Fatalf("an allowed place was refused: %v", err)
++	}
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err != nil {
++		t.Fatalf("a gate taken away after it was read refused what it served: %v", err)
++	}
++	if !strings.Contains(said.String(), "gate last read, as its file is gone") {
++		t.Fatalf("judging by the last gate went unsaid: %q", said.String())
++	}
++}
++
++// A gate whose file isn't a regular file, a pipe nobody writes or an
++// endless device, is refused at once rather than read, so no connection
++// waits on it, Joel's included, and putting the file back serves again.
++func TestANonFileGateRefusesAtOnce(t *testing.T) {
++	for name, put := range map[string]func(file string) error{
++		"pipe":   func(file string) error { return unix.Mkfifo(file, 0o644) },
++		"device": func(file string) error { return os.Symlink("/dev/zero", file) },
++	} {
++		t.Run(name, func(t *testing.T) {
++			said := journalled(t)
++			file, list := gated(t, "allow .\nrefuse .\n")
++			if err := os.Remove(file); err != nil {
++				t.Fatal(err)
++			}
++			if err := put(file); err != nil {
++				t.Fatal(err)
++			}
++			done := make(chan error, 1)
++			go func() { done <- list() }()
++			select {
++			case err := <-done:
++				if err == nil {
++					t.Fatal("a gate that isn't a file served")
++				}
++			case <-time.After(5 * time.Second):
++				t.Fatal("a gate that isn't a file kept the connection waiting")
++			}
++			if !strings.Contains(said.String(), "isn't a regular file") {
++				t.Fatalf("refusing a gate that isn't a file went unsaid: %q", said.String())
++			}
++			if err := os.Remove(file); err != nil {
++				t.Fatal(err)
++			}
++			if err := os.WriteFile(file, []byte("allow .\nrefuse .\n"), 0o644); err != nil {
++				t.Fatal(err)
++			}
++			if err := list(); err != nil {
++				t.Fatalf("a gate put back didn't serve what it allows: %v", err)
++			}
++		})
++	}
++}
++
++// A gate past the size any gate needs is refused rather than read whole.
++func TestAGateTooLargeToBeOneRefuses(t *testing.T) {
++	said := journalled(t)
++	file, list := gated(t, "allow .\nrefuse .\n")
++	big := strings.Repeat("# a comment no gate needs this many of\n", 2000)
++	if err := os.WriteFile(file, []byte("allow .\nrefuse .\n"+big), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err == nil {
++		t.Fatal("a gate too large to be one served")
++	}
++	if !strings.Contains(said.String(), "is larger than") {
++		t.Fatalf("refusing a gate too large went unsaid: %q", said.String())
++	}
++}
++
++func TestAGateGoneAfterItWasReadJudgesByWhatItSaid(t *testing.T) {
++	file, list := gated(t, "refuse .\n")
++	if err := list(); err == nil {
++		t.Fatal("a refused place listed the keys")
++	}
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err == nil {
++		t.Fatal("a gate taken away after it was read served what it refused")
++	}
++}
++
++// A gate read once that no longer parses, as a later gate in a format
++// this agent predates would, is judged by what it last said, both ways.
++func TestAGateGarbledAfterItWasReadJudgesByWhatItSaid(t *testing.T) {
++	said := journalled(t)
++	file, list := gated(t, "allow .\nrefuse .\n")
++	if err := list(); err != nil {
++		t.Fatalf("an allowed place was refused: %v", err)
++	}
++	if err := os.WriteFile(file, []byte("serve nothing\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err != nil {
++		t.Fatalf("a gate garbled after it was read refused what it served: %v", err)
++	}
++	if !strings.Contains(said.String(), "gate last read, as its file doesn't parse") {
++		t.Fatalf("judging by the last gate went unsaid: %q", said.String())
++	}
++	refusing, refused := gated(t, "refuse .\n")
++	if err := refused(); err == nil {
++		t.Fatal("a refused place listed the keys")
++	}
++	if err := os.WriteFile(refusing, []byte("# emptied\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := refused(); err == nil {
++		t.Fatal("a gate emptied after it was read served what it refused")
++	}
++}
++
++// A gate read once that can't be read since, a folder in its place, is
++// judged by what it last said, both ways, and says so once rather than
++// at every connection, until a read of the file comes back.
++func TestAGateUnreadableSinceJudgesByItsLast(t *testing.T) {
++	said := journalled(t)
++	file, list := gated(t, "allow .\nrefuse .\n")
++	if err := list(); err != nil {
++		t.Fatalf("an allowed place was refused: %v", err)
++	}
++	unreadable(t, file)
++	for range 3 {
++		if err := list(); err != nil {
++			t.Fatalf("a gate unreadable after it was read refused what it served: %v", err)
++		}
++	}
++	if n := strings.Count(said.String(), "gate last read, as its file isn't a regular file"); n != 1 {
++		t.Fatalf("judging by the last gate was said %d times, not once: %q", n, said.String())
++	}
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(file, []byte("allow .\nrefuse .\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err != nil {
++		t.Fatalf("a gate put back didn't serve what it allows: %v", err)
++	}
++	if !strings.Contains(said.String(), "read the gate's file again") {
++		t.Fatalf("the gate's return went unsaid: %q", said.String())
++	}
++	refusing, refused := gated(t, "refuse .\n")
++	if err := refused(); err == nil {
++		t.Fatal("a refused place listed the keys")
++	}
++	unreadable(t, refusing)
++	if err := refused(); err == nil {
++		t.Fatal("a gate unreadable after it was read served what it refused")
++	}
++}
++
++// unreadable puts a folder where the gate's file was, which no read of a
++// file gets past whoever runs the test, root included.
++func unreadable(t *testing.T, file string) {
++	t.Helper()
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Mkdir(file, 0o755); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestAGateNamingNoPlaceRefuses(t *testing.T) {
++	if err := listWith(t, "# emptied\n"); err == nil {
++		t.Fatal("a gate naming no place served")
++	}
++}
++
++func TestTheGateIsReadAgainForEachConnection(t *testing.T) {
++	file, list := gated(t, "refuse .\n")
++	if err := list(); err == nil {
++		t.Fatal("a refused place listed the keys")
++	}
++	if err := os.WriteFile(file, []byte("allow .\nrefuse .\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err != nil {
++		t.Fatalf("the gate's change didn't hold for the next connection: %v", err)
++	}
++}
+diff --git a/agent/gate_test.go b/agent/gate_test.go
+new file mode 100644
+index 0000000..134a686
+--- /dev/null
++++ b/agent/gate_test.go
+@@ -0,0 +1,278 @@
++package agent
++
++import (
++	"errors"
++	"os"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"testing"
++
++	"golang.org/x/sys/unix"
++)
++
++const account = "/user.slice/user-1000.slice/user@1000.service/"
++
++func places(cgroups ...string) []gatePlace {
++	chain := make([]gatePlace, len(cgroups))
++	for i, cgroup := range cgroups {
++		chain[i] = gatePlace{pid: 100 + i, cgroup: cgroup}
++	}
++	return chain
++}
++
++func mustGate(t *testing.T, text string) gate {
++	t.Helper()
++	g, err := parseGate(text)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return g
++}
++
++func TestGateRefusesTheFirstPlaceItNames(t *testing.T) {
++	g := mustGate(t, "allow /terminal\\.scope$\nrefuse /agents\\.slice/\n")
++	refused, at := g.judge(places(account+"agents.slice/spawner.scope", account+"agents.slice/terminal.scope"))
++	if !refused || at.pid != 100 {
++		t.Fatalf("a peer in agents.slice was served, or blamed on %d", at.pid)
++	}
++}
++
++func TestGateAllowsWhatItAllowsFirst(t *testing.T) {
++	g := mustGate(t, "allow /awaited\\.service$\nrefuse /jobs\\.slice/\n")
++	if refused, _ := g.judge(places(account+"jobs.slice/awaited.service", account+"jobs.slice/jobs.service")); refused {
++		t.Fatal("an allowed place was refused for a refused parent")
++	}
++}
++
++func TestGateLooksPastPlacesItDoesntName(t *testing.T) {
++	g := mustGate(t, "refuse /pi-spawner-[^/]*\\.scope$\n")
++	if refused, at := g.judge(places(account+"app.slice/run.scope", account+"jobs.slice/pi-spawner-1-a.scope")); !refused || at.pid != 101 {
++		t.Fatal("a command whose parent is a spawner was served")
++	}
++}
++
++func TestGateServesAChainItDoesntName(t *testing.T) {
++	g := mustGate(t, "refuse /agents\\.slice/\n")
++	if refused, _ := g.judge(places(account + "app.slice/editor.scope")); refused {
++		t.Fatal("an editor was refused")
++	}
++}
++
++func TestGateRefusesAPeerWithNoPlace(t *testing.T) {
++	if refused, _ := mustGate(t, "refuse /x\n").judge(nil); !refused {
++		t.Fatal("a peer whose cgroup couldn't be read was served")
++	}
++}
++
++func TestGateWatches(t *testing.T) {
++	if g := mustGate(t, "# a comment\nwatch\nrefuse /x\n"); !g.watching {
++		t.Fatal("watch wasn't read")
++	}
++}
++
++func TestGateRefusesALineItCantRead(t *testing.T) {
++	for _, text := range []string{"refuse\n", "allow (\n", "deny /x\n", "watch me\n", "", "# only a comment\n", "watch\n", "allow .\n"} {
++		if _, err := parseGate(text); err == nil {
++			t.Errorf("%q parsed", text)
++		}
++	}
++}
++
++func writeProc(t *testing.T, proc string, pid, ppid int, cgroup string) {
++	t.Helper()
++	dir := filepath.Join(proc, strconv.Itoa(pid))
++	if err := os.MkdirAll(dir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	status := "Name:\tx\nPPid:\t" + strconv.Itoa(ppid) + "\n"
++	if err := os.WriteFile(filepath.Join(dir, "status"), []byte(status), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(dir, "cgroup"), []byte("0::"+cgroup+"\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestChainReadsEachAncestor(t *testing.T) {
++	proc := t.TempDir()
++	writeProc(t, proc, 30, 20, "/c")
++	writeProc(t, proc, 20, 10, "/b")
++	writeProc(t, proc, 10, 1, "/a")
++	chain, whole := chainOf(proc, 30)
++	if !whole {
++		t.Fatal("a chain read to init wasn't whole")
++	}
++	var got []string
++	for _, place := range chain {
++		got = append(got, place.cgroup)
++	}
++	if strings.Join(got, " ") != "/c /b /a" {
++		t.Fatalf("read %v", got)
++	}
++}
++
++func TestChainOfAGonePeerIsEmpty(t *testing.T) {
++	if chain, whole := chainOf(t.TempDir(), 30); len(chain) != 0 || whole {
++		t.Fatalf("read %v, whole %v", chain, whole)
++	}
++}
++
++func TestChainWhoseParentWentIsntWhole(t *testing.T) {
++	proc := t.TempDir()
++	writeProc(t, proc, 30, 20, "/c")
++	if _, whole := chainOf(proc, 30); whole {
++		t.Fatal("a chain whose parent exited as it was read was whole")
++	}
++}
++
++// chainOfLength is a chain of length processes below init, read from its
++// last.
++func chainOfLength(t *testing.T, length int) (chain []gatePlace, whole bool) {
++	t.Helper()
++	proc := t.TempDir()
++	for pid := 2; pid <= length+1; pid++ {
++		writeProc(t, proc, pid, pid-1, "/x")
++	}
++	return chainOf(proc, length+1)
++}
++
++func TestChainAsLongAsTheGateReadsIsWhole(t *testing.T) {
++	if chain, whole := chainOfLength(t, maxGateChain); !whole || len(chain) != maxGateChain {
++		t.Fatalf("a chain of %d read %d, whole %v", maxGateChain, len(chain), whole)
++	}
++}
++
++func TestChainPastTheLongestIsntWhole(t *testing.T) {
++	if _, whole := chainOfLength(t, maxGateChain+1); whole {
++		t.Fatal("a chain longer than the gate reads was whole")
++	}
++}
++
++func TestAPeerWhoseParentWentIsUnknown(t *testing.T) {
++	proc := t.TempDir()
++	writeProc(t, proc, 30, 20, "/c")
++	if _, err := placeOf(proc, 30, -1); !errors.Is(err, ErrPeerUnknown) {
++		t.Fatalf("a peer whose chain stops short was placed: %v", err)
++	}
++}
++
++// exited is a pidfd of a process that has exited and been reaped.
++func exited(t *testing.T) int {
++	t.Helper()
++	child, err := os.StartProcess("/proc/self/exe", []string{"exited", "-test.run=^$"}, &os.ProcAttr{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	pidfd, err := unix.PidfdOpen(child.Pid, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { unix.Close(pidfd) })
++	if _, err := child.Wait(); err != nil {
++		t.Fatal(err)
++	}
++	return pidfd
++}
++
++func TestAPeerGoneAsItWasReadIsUnknown(t *testing.T) {
++	proc := t.TempDir()
++	writeProc(t, proc, 30, 1, "/c")
++	if _, err := placeOf(proc, 30, exited(t)); !errors.Is(err, ErrPeerUnknown) {
++		t.Fatalf("a peer gone as it was read was placed: %v", err)
++	}
++}
++
++func TestALiveProcessIsStillThere(t *testing.T) {
++	pidfd, err := unix.PidfdOpen(os.Getpid(), 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer unix.Close(pidfd)
++	if !stillThere(pidfd) {
++		t.Error("a live process was taken as gone")
++	}
++}
++
++// The build's sandbox has no process of another account to signal, so
++// what signalling one says is judged here rather than met.
++func TestOnlyAnExitedProcessIsGone(t *testing.T) {
++	for _, c := range []struct {
++		err  error
++		gone bool
++	}{{nil, false}, {unix.EPERM, false}, {unix.ESRCH, true}} {
++		if gone(c.err) != c.gone {
++			t.Errorf("signalling that says %v was taken as gone %v", c.err, !c.gone)
++		}
++	}
++}
++
++func TestAnotherAccountsPeerIsStillThere(t *testing.T) {
++	was := signal
++	t.Cleanup(func() { signal = was })
++	for _, c := range []struct {
++		err   error
++		there bool
++	}{{unix.EPERM, true}, {unix.ESRCH, false}} {
++		signal = func(int, unix.Signal, *unix.Siginfo, int) error { return c.err }
++		if stillThere(3) != c.there {
++			t.Errorf("a peer whose signal says %v was taken as there %v", c.err, !c.there)
++		}
++	}
++}
++
++func TestOnlyAKernelWithoutPidfdsHasAPidTrustedAlone(t *testing.T) {
++	if err := pidfdFailed(unix.ENOPROTOOPT); err != nil {
++		t.Errorf("a kernel without SO_PEERPIDFD refused its peer: %v", err)
++	}
++	for _, err := range []error{unix.EINVAL, unix.ESRCH, unix.EBADF} {
++		if pidfdFailed(err) == nil {
++			t.Errorf("a pidfd failing with %v left the pid trusted alone", err)
++		}
++	}
++}
++
++func TestAWatchingGateServesEveryRefusal(t *testing.T) {
++	for _, why := range []error{ErrRefusedPlace, ErrPeerUnknown} {
++		if !(gate{watching: true}).serves(why) {
++			t.Errorf("a watching gate refused for %v", why)
++		}
++		if (gate{}).serves(why) {
++			t.Errorf("a gate not watching served what it refused for %v", why)
++		}
++	}
++}
++
++// TestMachineGate judges the cases a machine gives beside its gate, which the
++// build puts in testdata: each line a verdict, refuse or serve, then the
++// cgroups of the peer and of its ancestors in turn. Either file missing fails
++// it, so a build that lost them can't pass judging nothing.
++func TestMachineGate(t *testing.T) {
++	text, err := os.ReadFile("testdata/gate")
++	if err != nil {
++		t.Fatal(err)
++	}
++	g := mustGate(t, string(text))
++	cases, err := os.ReadFile("testdata/gate-cases")
++	if err != nil {
++		t.Fatal(err)
++	}
++	judged := 0
++	for _, line := range strings.Split(string(cases), "\n") {
++		fields := strings.Fields(line)
++		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
++			continue
++		}
++		verdict, cgroups := fields[0], fields[1:]
++		if verdict != "refuse" && verdict != "serve" || len(cgroups) == 0 {
++			t.Fatalf("case %q is neither refuse nor serve with a place", line)
++		}
++		if refused, _ := g.judge(places(cgroups...)); refused != (verdict == "refuse") {
++			t.Errorf("%s was judged otherwise", line)
++		}
++		judged++
++	}
++	if judged == 0 {
++		t.Fatal("no case was judged")
++	}
++}
+diff --git a/cmd/ssh-tpm-agent/journal.go b/cmd/ssh-tpm-agent/journal.go
+new file mode 100644
+index 0000000..99b3ea5
+--- /dev/null
++++ b/cmd/ssh-tpm-agent/journal.go
+@@ -0,0 +1,82 @@
++package main
++
++import (
++	"bytes"
++	"context"
++	"fmt"
++	"io"
++	"log/slog"
++	"os"
++	"sync"
++
++	"golang.org/x/sys/unix"
++)
++
++// toTheJournal says whether out is the stream JOURNAL_STREAM names by its
++// device and inode, as systemd.exec(5) says to check: a program run from a
++// terminal a unit started inherits the variable but not the stream, and
++// its lines there are a person's to read, unmarked.
++func toTheJournal(stream string, out *os.File) bool {
++	var dev, ino uint64
++	if n, err := fmt.Sscanf(stream, "%d:%d", &dev, &ino); err != nil || n != 2 {
++		return false
++	}
++	var st unix.Stat_t
++	if err := unix.Fstat(int(out.Fd()), &st); err != nil {
++		return false
++	}
++	return uint64(st.Dev) == dev && uint64(st.Ino) == ino
++}
++
++// levelled writes each record as the text handler would, opened with the
++// sd-daemon mark of the priority its level means. The journal stores a line
++// without one at the unit's default, info, so a refusal, or a gate refusing
++// everyone, would never reach `journalctl -p warning` or what watches it.
++type levelled struct {
++	mu   *sync.Mutex
++	out  io.Writer
++	line *bytes.Buffer
++	text slog.Handler
++}
++
++func newLevelled(out io.Writer, opts *slog.HandlerOptions) *levelled {
++	line := &bytes.Buffer{}
++	return &levelled{mu: &sync.Mutex{}, out: out, line: line, text: slog.NewTextHandler(line, opts)}
++}
++
++func (l *levelled) Enabled(ctx context.Context, level slog.Level) bool {
++	return l.text.Enabled(ctx, level)
++}
++
++func (l *levelled) Handle(ctx context.Context, r slog.Record) error {
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	l.line.Reset()
++	if err := l.text.Handle(ctx, r); err != nil {
++		return err
++	}
++	_, err := fmt.Fprintf(l.out, "<%d>%s", priorityOf(r.Level), l.line.Bytes())
++	return err
++}
++
++func (l *levelled) WithAttrs(attrs []slog.Attr) slog.Handler {
++	return &levelled{mu: l.mu, out: l.out, line: l.line, text: l.text.WithAttrs(attrs)}
++}
++
++func (l *levelled) WithGroup(name string) slog.Handler {
++	return &levelled{mu: l.mu, out: l.out, line: l.line, text: l.text.WithGroup(name)}
++}
++
++// priorityOf is syslog's priority for a level: err, warning, info or debug.
++func priorityOf(level slog.Level) int {
++	switch {
++	case level >= slog.LevelError:
++		return 3
++	case level >= slog.LevelWarn:
++		return 4
++	case level >= slog.LevelInfo:
++		return 6
++	default:
++		return 7
++	}
++}
+diff --git a/cmd/ssh-tpm-agent/journal_test.go b/cmd/ssh-tpm-agent/journal_test.go
+new file mode 100644
+index 0000000..718d3f7
+--- /dev/null
++++ b/cmd/ssh-tpm-agent/journal_test.go
+@@ -0,0 +1,95 @@
++package main
++
++import (
++	"bytes"
++	"fmt"
++	"log/slog"
++	"os"
++	"strings"
++	"sync"
++	"testing"
++
++	"golang.org/x/sys/unix"
++)
++
++func TestOnlyTheStreamNamedIsTheJournal(t *testing.T) {
++	out, err := os.CreateTemp(t.TempDir(), "out")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer out.Close()
++	var st unix.Stat_t
++	if err := unix.Fstat(int(out.Fd()), &st); err != nil {
++		t.Fatal(err)
++	}
++	named := fmt.Sprintf("%d:%d", st.Dev, st.Ino)
++	if !toTheJournal(named, out) {
++		t.Errorf("the stream %s names was taken for another", named)
++	}
++	other := fmt.Sprintf("%d:%d", st.Dev, st.Ino+1)
++	elsewhere := fmt.Sprintf("%d:%d", st.Dev+1, st.Ino)
++	for _, stream := range []string{"", other, elsewhere, "journal"} {
++		if toTheJournal(stream, out) {
++			t.Errorf("%q was taken as naming the stream", stream)
++		}
++	}
++}
++
++// Handlers made from one share its line and its lock, so lines written
++// through each at once still come out whole, one priority mark apiece.
++func TestHandlersMadeFromOneWriteWholeLines(t *testing.T) {
++	var out bytes.Buffer
++	log := slog.New(newLevelled(&out, nil))
++	loggers := []*slog.Logger{log, log.With("peer", "x"), log.WithGroup("g").With("k", "v")}
++	const each = 200
++	var wg sync.WaitGroup
++	for _, l := range loggers {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for range each {
++				l.Warn("said")
++			}
++		}()
++	}
++	wg.Wait()
++	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
++	if len(lines) != len(loggers)*each {
++		t.Fatalf("wrote %d lines, not %d", len(lines), len(loggers)*each)
++	}
++	for _, line := range lines {
++		if !strings.HasPrefix(line, "<4>time=") || strings.Count(line, "time=") != 1 {
++			t.Fatalf("a line came out broken: %q", line)
++		}
++	}
++}
++
++func TestEachLineSaysItsPriority(t *testing.T) {
++	var out bytes.Buffer
++	log := slog.New(newLevelled(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
++	log.Debug("one")
++	log.Info("two")
++	log.Warn("three")
++	log.With("peer", "x").Error("four")
++	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
++	want := []string{"<7>", "<6>", "<4>", "<3>"}
++	if len(lines) != len(want) {
++		t.Fatalf("wrote %d lines, not %d: %q", len(lines), len(want), out.String())
++	}
++	for i, line := range lines {
++		if !strings.HasPrefix(line, want[i]+"time=") {
++			t.Errorf("line %d opens %q, not %q and the text", i, line, want[i])
++		}
++	}
++	if !strings.Contains(lines[3], "peer=x") {
++		t.Errorf("the attribute is lost: %q", lines[3])
++	}
++}
++
++func TestALevelBelowTheFloorWritesNothing(t *testing.T) {
++	var out bytes.Buffer
++	slog.New(newLevelled(&out, &slog.HandlerOptions{Level: slog.LevelInfo})).Debug("quiet")
++	if out.Len() != 0 {
++		t.Errorf("wrote %q", out.String())
++	}
++}
+diff --git a/cmd/ssh-tpm-agent/main.go b/cmd/ssh-tpm-agent/main.go
+index 14e9f17..87032cb 100644
+--- a/cmd/ssh-tpm-agent/main.go
++++ b/cmd/ssh-tpm-agent/main.go
+@@ -148,10 +148,25 @@ func main() {
+ 		opts.Level = slog.LevelDebug
+ 	}
+ 
+-	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
++	// Where systemd hands the output to the journal, each line says its
++	// priority, so a refusal is seen by what reads warnings.
++	var handler slog.Handler = slog.NewTextHandler(os.Stdout, opts)
++	if toTheJournal(os.Getenv("JOURNAL_STREAM"), os.Stdout) {
++		handler = newLevelled(os.Stdout, opts)
++	}
++	logger := slog.New(handler)
+ 
+ 	slog.SetDefault(logger)
+ 
++	// A switch keeps a running agent as it started, so its journal says at
++	// each start which gate it judges by, the one way to see whether the
++	// agent running has one.
++	if gate := os.Getenv(agent.GateVariable); gate != "" {
++		slog.Info("judging each request by its gate", "file", gate)
++	} else {
++		slog.Info("serving every request, as no gate is named")
++	}
++
+ 	if installUserUnits {
+ 		if err := utils.InstallUserUnits(system); err != nil {
+ 			log.Fatal(err)

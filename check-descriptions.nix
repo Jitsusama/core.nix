@@ -3359,6 +3359,13 @@
     as Vim scrolls, goes back and forward a page on Ctrl+o and Ctrl+i, and opens its filter on /,
     leaving Escape, Alt, a field and a dialog to Spotify
   '';
+  ssh-tpm-agent-refuses-agents = ''
+    the TPM's SSH agent refuses a process where agents' work runs, keeps no core of its PIN, and
+    its source, beside the gate, passes each case the gate must decide; each slice the gate names
+    is one a machine with a screen makes, awaited is the one service the example laptop puts in its
+    awaited slice, zsh's own text leaves a shell the agent it was given, and bash's points the
+    login's services at the TPM's
+  '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';
