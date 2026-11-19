@@ -142,11 +142,28 @@ impl Holding {
     /// One left the screen and closed, if it was open: one that went by
     /// itself stays missed, and one its program withdrew was read there. A
     /// transient one, never kept, goes. Answers whether it was open, so
-    /// its sender is told only of one that was.
+    /// its sender is told only of one that was. One Joel dismissed, which
+    /// its program withdraws later, as away mode's ask once he answers it,
+    /// is done with as withdrawn then, as `mark` makes one, so it's no
+    /// longer his to read (42P0R4, 19 November). One that went by itself
+    /// stays missed, since he never saw it, and a program clearing its
+    /// notices as it quits withdraws those too.
     pub fn close(&mut self, id: u32, why: Closed, now: i64) -> bool {
-        let Some(notice) = self.get_mut(id).filter(|notice| notice.live) else {
+        let Some(notice) = self.get_mut(id) else {
             return false;
         };
+        if !notice.live {
+            if why == Closed::Withdrawn
+                && !notice.read
+                && notice.left.as_deref() == Some(Closed::Dismissed.said())
+            {
+                notice.read = true;
+                notice.read_at = Some(now);
+                notice.read_how = None;
+                notice.withdrawn = true;
+            }
+            return false;
+        }
         notice.live = false;
         notice.resting = false;
         notice.left = Some(why.said().to_owned());
@@ -432,6 +449,48 @@ mod tests {
         assert!(
             !holding.close(1, Closed::Withdrawn, 20),
             "one closed isn't again"
+        );
+    }
+
+    #[test]
+    fn one_dismissed_then_withdrawn_by_its_program_is_done_with_as_withdrawn() {
+        let mut holding = Holding::default();
+        holding.arrive(notice(1, "away asks"));
+        holding.arrive(notice(2, "gone by"));
+        holding.arrive(notice(3, "read in chat"));
+        assert!(holding.close(1, Closed::Dismissed, 10), "it was open");
+        assert!(holding.close(2, Closed::Expired, 10), "it was open");
+        assert!(holding.close(3, Closed::Dismissed, 10), "it was open");
+        holding.mark(&[3], true, Some("readInSlack"), 15);
+        for id in [1, 2, 3] {
+            assert!(
+                !holding.close(id, Closed::Withdrawn, 20),
+                "{id}, closed already, isn't closed again"
+            );
+        }
+        let said = |id| {
+            let one = holding.get(id).expect("held");
+            (
+                one.read,
+                one.missed,
+                one.done_how().to_owned(),
+                one.done_at(),
+            )
+        };
+        assert_eq!(
+            said(1),
+            (true, false, "withdrawn".to_owned(), 20),
+            "dismissed, then withdrawn: done with as withdrawn, then"
+        );
+        assert_eq!(
+            said(2),
+            (false, true, "earlier".to_owned(), 10),
+            "gone by, then withdrawn: still missed, since Joel never saw it"
+        );
+        assert_eq!(
+            said(3),
+            (true, false, "readInSlack".to_owned(), 15),
+            "read elsewhere, then withdrawn: read as it was"
         );
     }
 
