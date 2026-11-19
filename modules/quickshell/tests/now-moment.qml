@@ -1063,13 +1063,36 @@ ShellRoot {
             app: "Slack", summary: "A message", urgency: "normal", read: false }];
         expect("its notice said anew, another beside it, bands nothing again",
             now.forYouBands === bandsJoined, String(noticed().length));
-        // One not critical stands there too, but counts as the tray counts
-        // it, not at all, so the two never differ.
-        Notices.history = [Object.assign({}, Notices.history[0], { urgency: "normal" })];
-        expect("a notice not critical stands under its session, counted by neither",
-            noticed().length === 1 && ForYouHolds.count === 0 && now.waiting.side !== "1 to do",
+        // One not critical, as away mode's are, stands there too, and is
+        // counted there and in the tray alike, once, as every row among
+        // what needs Joel now is (Holding.js's joined).
+        const raised = Object.assign({}, Notices.history[0], { urgency: "normal" });
+        Notices.history = [raised];
+        expect("a notice not critical stands under its session, counted once by both",
+            noticed().length === 1 && ForYouHolds.count === 1 && now.waiting.side === "1 to do",
             JSON.stringify([noticed().length, ForYouHolds.count, now.waiting.side]));
-        Notices.history = [Object.assign({}, Notices.history[0], { urgency: "critical" })];
+        // Beside another program's critical notice, each counts once, and
+        // home's row says the one it doesn't name as one more.
+        Notices.history = [raised, { id: 7, at: Date.now(), app: "power",
+            summary: "Battery at 5%", urgency: "critical", read: false }];
+        expect("beside another's critical notice, each counts once",
+            ForYouHolds.count === 2 && now.waiting.side === "2 to do"
+                && now.homeSays().endsWith("1 more"),
+            JSON.stringify([ForYouHolds.count, now.waiting.side, now.homeSays()]));
+        // Read while For You is open, it stays where it stood, so no row
+        // moves under the cursor, and the list is the one it was.
+        Notices.history = [raised];
+        const bandsRaised = now.forYouBands;
+        Notices.history = [Object.assign({}, raised, { read: true, readHow: "read",
+            readAt: Date.now() })];
+        expect("read while For You is open, it stays where it stood",
+            noticed().length === 1 && now.forYouBands === bandsRaised, String(noticed().length));
+        // A low one, as away mode's saying a session rests, asks nothing.
+        Notices.history = [Object.assign({}, raised, { urgency: "low" })];
+        expect("a low notice stands nowhere and counts nothing",
+            noticed().length === 0 && ForYouHolds.count === 0,
+            JSON.stringify([noticed().length, ForYouHolds.count]));
+        Notices.history = [Object.assign({}, raised, { urgency: "critical" })];
         // Once it asks Joel something, its want's row says it, so it leaves.
         Sessions.wanting = [Object.assign({}, raising, { presence: Object.assign({},
             raising.presence, { wants: { kind: "question", said: "Which?" } }) })];

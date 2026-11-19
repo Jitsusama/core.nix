@@ -1659,6 +1659,13 @@ Provider {
         property: "given"
         value: provider.given.waiting
     }
+    // A session's own notices listed under its cell, which the tray counts
+    // as For You does, each once (Holding.js's joined).
+    Binding {
+        target: ForYouHolds
+        property: "joined"
+        value: provider.cellNotices
+    }
     // What waits on Joel now, among it a critical notice unread, which
     // waits in For You's Desktop as the tray says (ForYouHolds.qml).
     readonly property int waitsNow: ForYouHolds.count
@@ -2001,11 +2008,11 @@ Provider {
     readonly property var bandsKept: ({ items: null, minute: -1, bands: null, times: 0 })
     // A critical notice unread is among what needs him now, as the margin's
     // tray counts it (ForYouHolds.qml), though For You's Desktop holds it;
-    // and one standing under its cell counts as the tray counts it, critical
-    // or not at all, rather than as a row among the bands, so the two never
-    // differ.
-    readonly property int toDoCount: forYouBands.now.filter(one => one.kind !== "notice")
-        .length + forYouBands.agent.length + criticalNotices.length
+    // one standing under its cell is a row among the bands, which the tray
+    // counts as one too, and never again as critical (Holding.js's joined),
+    // so every row in the band is counted, once, and the two never differ.
+    readonly property int toDoCount: forYouBands.now.length + forYouBands.agent.length
+        + criticalNotices.length
     // The notices standing under the cell that raised them, as For You
     // holds them while it's open (latelyNotices), so one read there stays
     // put; those of a cell wanting Joel, or whose want he put off, are its

@@ -1,7 +1,7 @@
 // What needs Joel now grouped by the cell behind each, What Needs Me (Joel,
 // 2026-11-16: "one 'what needs me' view grouped by cell"; shape agreed by
-// Y2YBTS, 2026-11-18). Apart from the launcher, so tests/for-you.qml holds
-// it in Qt's own engine, and Now.qml only lays out what it gives; the
+// Y2YBTS, 2026-11-18). Apart from the launcher, so tests/for-you-cells.qml
+// holds it in Qt's own engine, and Now.qml only lays out what it gives; the
 // agents daemon takes it over once it serves For You's rows (Y2YBTS).
 .pragma library
 
@@ -109,16 +109,19 @@ function noticeCell(notice, held) {
 // own, unread and kept, from a session among `held`, but for one among
 // `wanting`, whose want's row already says what it asks, or one whose want
 // Joel put off for now (`putOff`, by address in capitals), which he asked
-// to hear nothing of until then. A session's own notices are pi's, which
-// Desktop leaves to its want's row (Lately.js's LISTED), so one about a
-// session no longer asking, as away mode's saying a run ended, stood in no
-// list until now. Another program's naming a cell stays in Desktop alone,
-// as one from a session gone does, so none is listed twice.
+// to hear nothing of until then, or a low one, as away mode's saying a
+// session rests, which asks nothing of him. A session's own notices are
+// pi's, which Desktop leaves to its want's row (Lately.js's LISTED), so one
+// about a session no longer asking, as away mode's saying a run ended,
+// stood in no list until now. Another program's naming a cell stays in
+// Desktop alone, so none is listed twice; one from a session gone is left
+// to the notices' own history, as all pi's were.
 function joining(notices, held, wanting, putOff) {
     const off = putOff ?? {};
     return (Array.isArray(notices) ? notices : []).filter(notice => {
         if (notice === null || typeof notice !== "object" || notice.app !== "pi"
-            || notice.read === true || notice.transient === true) {
+            || notice.read === true || notice.transient === true
+            || notice.urgency === "low") {
             return false;
         }
         const cell = noticeCell(notice, held);
@@ -127,14 +130,17 @@ function joining(notices, held, wanting, putOff) {
     });
 }
 
-// `kept` while it holds the notices `joined` does, by id, else `joined`:
-// so what For You lists from them, and bands, is made again only as which
-// notices join moves, not as each notice is said anew, as one read while
-// For You is open is (Lately.js's holdingStill).
+// `kept` while it holds the notices `joined` does, in its order, each
+// saying the same, else `joined`: so what For You lists from them, and
+// bands, is made again only as which notices join moves, or one is
+// replaced with new words, not as each is said anew, as one read while
+// For You is open is (Lately.js's holdingStill), whose `read` alone moves.
 function alike(kept, joined) {
     const before = Array.isArray(kept) ? kept : [];
+    const same = (one, other) => ["id", "summary", "body", "urgency", "at"]
+        .every(field => one[field] === other[field]);
     return before.length === joined.length
-        && joined.every((notice, at) => notice.id === before[at].id) ? before : joined;
+        && joined.every((notice, at) => same(notice, before[at])) ? before : joined;
 }
 
 // A session's notice as For You weighs it: a thing of no kind it counts,
