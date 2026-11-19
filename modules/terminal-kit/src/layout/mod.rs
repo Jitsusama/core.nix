@@ -115,14 +115,22 @@ impl Room {
 /// Most answers never read it, since the terminal scrolls them; it's for
 /// the few with nowhere to scroll to, as a console a boot stopped at.
 pub fn rows_of_stdout(environment: &Environment) -> Option<usize> {
+    rows_of(environment, || window(1).map(|size| usize::from(size.rows)))
+}
+
+/// The rows a terminal shows, `LINES` before what `terminal` says, as
+/// `rows_of_stdout` reads them. A `LINES` of nothing, or of words, is
+/// passed over for the terminal's, as an unset one is.
+fn rows_of(environment: &Environment, terminal: impl FnOnce() -> Option<usize>) -> Option<usize> {
     if !environment.stdout {
         return None;
     }
+    let positive = |rows: &usize| *rows > 0;
     environment
         .var("LINES")
         .and_then(|lines| lines.parse().ok())
-        .or_else(|| window(1).map(|size| usize::from(size.rows)))
-        .filter(|rows: &usize| *rows > 0)
+        .filter(positive)
+        .or_else(|| terminal().filter(positive))
 }
 
 /// What the terminal on a file descriptor says its width is.

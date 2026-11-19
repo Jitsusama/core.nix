@@ -439,21 +439,31 @@ fn a_pipe_has_no_height_to_fit() {
 }
 
 #[test]
-fn a_terminal_asked_for_a_height_has_that_height() {
+fn a_terminal_asked_for_a_height_has_that_height_before_its_own() {
     let environment = Environment::of([false, true, false], &[("LINES", "33")]);
     assert_eq!(
-        rows_of_stdout(&environment),
+        rows_of(&environment, || Some(40)),
         Some(33),
-        "LINES wasn't read as the terminal's height"
+        "LINES wasn't read as the height before the terminal's own"
     );
-    // A height of nothing, or of words, is no height, so the terminal's
-    // own is asked; whichever answers, it's never zero rows.
-    for lines in ["0", "tall"] {
-        let environment = Environment::of([false, true, false], &[("LINES", lines)]);
-        assert_ne!(
-            rows_of_stdout(&environment),
-            Some(0),
-            "LINES={lines} gave a screen with no rows"
+}
+
+#[test]
+fn a_height_of_nothing_or_of_words_asks_the_terminal() {
+    for vars in [&[][..], &[("LINES", "0")], &[("LINES", "tall")]] {
+        let environment = Environment::of([false, true, false], vars);
+        assert_eq!(
+            rows_of(&environment, || Some(40)),
+            Some(40),
+            "{vars:?} didn't fall back to the terminal's 40 rows"
+        );
+    }
+    let environment = Environment::of([false, true, false], &[("LINES", "0")]);
+    for terminal in [None, Some(0)] {
+        assert_eq!(
+            rows_of(&environment, || terminal),
+            None,
+            "a terminal saying {terminal:?} was given a height"
         );
     }
 }
