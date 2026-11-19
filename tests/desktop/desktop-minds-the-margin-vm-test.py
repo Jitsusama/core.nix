@@ -164,6 +164,10 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         # The sleep locked the screen first, as it does before every one.
         desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
         machine.wait_until_fails(locked, timeout=timedelta(seconds=10))
+        # Unlocked, it stays so: a sleep repeated under a shut lid locked it again after this,
+        # and every subtest after it failed on the lock (2026-11-19).
+        machine.sleep(LOOKING)
+        machine.fail(locked)
 
 
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(
