@@ -1027,11 +1027,21 @@ Provider {
     function actsNamed(drawer, session) {
         if (drawer === null)
             return null;
-        const ids = SessionRow.acts(stateOf(session), windowedOf(session), session.here);
+        // The acts its row serves, in their order, Return marked on the one
+        // the daemon says it does (standing.rs's returns), which for one
+        // paused is Resume, not the first; before the row is served, the
+        // shell's own list, Return on its first.
+        const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
+        const served = (row?.acts ?? []).map(one => String(one.key ?? ""))
+            .filter(key => key.startsWith("verb:agent:"));
+        const ids = served.length > 0 ? served.map(key => key.slice("verb:agent:".length))
+            : SessionRow.acts(stateOf(session), windowedOf(session), session.here);
+        const returning = String(row?.held?.returns ?? "").replace(/^verb:agent:/, "");
+        const marked = ids.includes(returning) ? returning : ids[0];
         return Object.assign({}, drawer, {
-            acts: ids.map((id, at) => ({
+            acts: ids.map(id => ({
                 name: Words.name(`verb:agent:${id}`),
-                key: at === 0 ? "\u21b5" : ""
+                key: id === marked ? "\u21b5" : ""
             }))
         });
     }

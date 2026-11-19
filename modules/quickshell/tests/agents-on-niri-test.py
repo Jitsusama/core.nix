@@ -1057,6 +1057,23 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
     assert [one["text"] for one in talks if "text" in one] == ["how goes it?"], talks
 
 
+def test_a_sessions_drawer_marks_return_on_the_act_return_does(shell: Shell) -> None:
+    """Each session's drawer marks Return on the act its Return does, whatever its state.
+
+    The drawer marked the first of the shell's own acts, Talk or Go To, while Return did the
+    daemon's act for its state, Resume for one paused (2026-11-19), so the drawer said one act
+    and Return did another; Joel answers a session in any state with one Return.
+    """
+    for typed, name, act in (("paused quest", "Paused Quest", "Resume"),
+                             ("listening quest", "Listening Quest", "Talk")):  # fmt: skip
+        row = found(shell, typed, name)
+        shell.launcher_until(rested_on(name))
+        acts = shell.showing()["drawer"]["acts"]
+        marked = [one for one in acts if one.startswith("\u21b5 ")]
+        assert marked == [f"\u21b5 {act}"], (row["verb"], acts)
+        shell.close_launcher()
+
+
 def test_a_sessions_stop_is_an_ending_return_writes_and_a_second_steers(shell: Shell) -> None:
     """Return on Stop writes :interrupt rather than stopping; a second steers a stop, unasked."""
     into_orchestration(shell)
