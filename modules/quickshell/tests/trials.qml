@@ -1,10 +1,11 @@
 // What the launcher keeps of each opening, run in Qt's own JavaScript
 // engine, the one the shell runs it in. The `the-launcher-keeps-its-trials`
-// check copies modules/quickshell/launcher/Trials.js beside this file and
+// check copies modules/quickshell/launcher/Trials.js and Stepped.js beside this file and
 // runs `qml -platform offscreen trials.qml`. Each case is what a verdict on a
 // home leans on: the keys counted by kind, the pick and its time, a miss
 // only where letters were typed and nothing picked, and the oldest let go.
 import QtQuick
+import "Stepped.js" as Stepped
 import "Trials.js" as Trials
 
 QtObject {
@@ -184,7 +185,7 @@ QtObject {
         // opening are its rows.
         const inner = { before: 0, lists: 7, rows: 0, answers: 20, each: {},
             composing: { asking: 0, placing: 2, showing: 18 } };
-        const step = Trials.stepped(inner, { began: 100, made: 105, pushed: 106, opened: 106,
+        const step = Stepped.stepped(inner, { began: 100, made: 105, pushed: 106, opened: 106,
             ended: 136 });
         expect("a step keeps the place's answers", step.answers === 20
             && step.composing.showing === 18, JSON.stringify(step));
@@ -194,7 +195,7 @@ QtObject {
         // A walk's last step is timed from the walk's start, and the 20 ms
         // its places on the way took are said as passing among its lists,
         // never as its own making; a step of its own passes nothing.
-        const walked = Trials.stepped(inner, { walked: 80, began: 100, made: 105, pushed: 106,
+        const walked = Stepped.stepped(inner, { walked: 80, began: 100, made: 105, pushed: 106,
             opened: 106, ended: 136 });
         expect("a walk's last step says its places on the way apart",
             walked.each.passing === 20 && walked.each.making === 5 && walked.lists === 32
@@ -202,16 +203,16 @@ QtObject {
         // A walk stopped short says what it passed beside the search that
         // listed where it stopped, and one that passed nothing is as it was.
         const whereStopped = { before: 1, lists: 4, rows: 3, answers: 0, each: { finding: 4 } };
-        const stopped = Trials.passed(whereStopped, 15);
+        const stopped = Stepped.passed(whereStopped, 15);
         expect("a walk stopped short says what it passed", stopped.lists === 19
             && stopped.each.passing === 15 && stopped.each.finding === 4
-            && whereStopped.lists === 4 && Trials.passed(whereStopped, 0) === whereStopped
-            && Trials.passed(null, 15) === null,
+            && whereStopped.lists === 4 && Stepped.passed(whereStopped, 0) === whereStopped
+            && Stepped.passed(null, 15) === null,
             JSON.stringify(stopped));
         // Its search's time before searching is said apart, as a key's is,
         // so its rows are only what stepping in did after the search: 30 ms
         // after opening are 2 finding, 8 answering, 4 before and 16 rows.
-        const searched = Trials.stepped({ before: 4, lists: 2, rows: 0, answers: 8, each: {},
+        const searched = Stepped.stepped({ before: 4, lists: 2, rows: 0, answers: 8, each: {},
             composing: null, beforeParts: { counting: 1, typed: 2, words: 0, readying: 1 } },
         { began: 0, made: 3, pushed: 4, opened: 5, ended: 35 });
         expect("a step says its search's before apart from its rows",
@@ -248,16 +249,39 @@ QtObject {
         // what it did beside its acts, its parts and their order.
         const split = { acts: 20.4, parts: 59.6, ordering: 2.2 };
         expect("a step's making says its parts, its acts, their order and the rest",
-            Trials.steppedMaking(87, split)
+            Stepped.steppedMaking(87, split)
                 === " (its parts 60, its acts 20, the rest 5, ordering 2)",
-            Trials.steppedMaking(87, split));
+            Stepped.steppedMaking(87, split));
         expect("a step that made nothing, or untold, says no split",
-            Trials.steppedMaking(0, split) === "" && Trials.steppedMaking(40, null) === "",
-            Trials.steppedMaking(40, null));
-        const made = Trials.stepped(null, { began: 0, made: 87, pushed: 90, opened: 91,
+            Stepped.steppedMaking(0, split) === "" && Stepped.steppedMaking(40, null) === "",
+            Stepped.steppedMaking(40, null));
+        const made = Stepped.stepped(null, { began: 0, made: 87, pushed: 90, opened: 91,
             ended: 95, making: split });
         expect("a step keeps its making's split", made.each.making === 87
             && made.makingSplit === split, JSON.stringify(made));
+        // A step out's holding says the rows each source made while it was
+        // held, most first, and the time before it was held.
+        const held = { runs: 99, agents: 3, quests: 2, rooms: 1 };
+        expect("a step out's holding says its sources' rows, then before",
+            Stepped.steppedHolding(38, { before: 1.4, rows: held })
+                === " (runs 99 rows, agents 3 rows, quests 2 rows, before 1)",
+            Stepped.steppedHolding(38, { before: 1.4, rows: held }));
+        expect("a holding that made no rows says so, with no before where it took none",
+            Stepped.steppedHolding(6, { before: 0, rows: {} }) === " (no rows)",
+            Stepped.steppedHolding(6, { before: 0, rows: {} }));
+        expect("a holding of nothing, or untold, says no split",
+            Stepped.steppedHolding(0, { before: 2, rows: held }) === ""
+                && Stepped.steppedHolding(14, null) === "",
+            Stepped.steppedHolding(14, null));
+        const out = Stepped.stepped(null, { began: 0, made: 0, pushed: 38, opened: 38,
+            ended: 40, making: {}, holding: { before: 2,
+                from: { runs: 4, agents: 7, now: 1 }, to: { runs: 103, agents: 7, now: 3 } } });
+        expect("a step out keeps the rows each source made while held",
+            out.each.holding === 38 && out.holdingSplit.before === 2
+                && JSON.stringify(out.holdingSplit.rows) === JSON.stringify({ runs: 99, now: 2 }),
+            JSON.stringify(out));
+        expect("a step with no holding told keeps none", made.holdingSplit === null,
+            JSON.stringify(made.holdingSplit));
         const unstepped = { back: -1, from: 0, took: 0, whole: false, stepping: false };
         expect("a laying says the rows it built and took back",
             Trials.keptSaid({ built: 3, reused: 7, split: unstepped })
@@ -337,7 +361,7 @@ QtObject {
                 === " (3 of it behind the shell's other work)"
                 && Trials.behindSaid({ behind: 0, behindOn: "" }) === "",
             Trials.behindSaid({ behind: 3, behindOn: "" }));
-        const bare = Trials.stepped(null, { began: 0, made: 4, pushed: 4, opened: 5, ended: 9 });
+        const bare = Stepped.stepped(null, { began: 0, made: 4, pushed: 4, opened: 5, ended: 9 });
         expect("a step with no search said", bare.answers === 0 && bare.rows === 4
             && bare.composing === null, JSON.stringify(bare));
 

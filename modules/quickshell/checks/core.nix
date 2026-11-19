@@ -577,7 +577,7 @@ in
   # Each opening of the launcher is kept as what it took: its keys by kind,
   # its pick and how long it took, and a miss only where letters were typed
   # and nothing picked, as modules/quickshell/tests/trials.qml holds
-  # launcher/Trials.js to it in Qt's own engine.
+  # launcher/Trials.js and launcher/Stepped.js to it in Qt's own engine.
   the-launcher-keeps-its-trials =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -585,6 +585,7 @@ in
     pkgs.runCommandLocal "the-launcher-keeps-its-trials" { } ''
       cp ${../tests/trials.qml} trials.qml
       cp ${../launcher/Trials.js} Trials.js
+      cp ${../launcher/Stepped.js} Stepped.js
       cp ${../launcher/RowsKept.js} RowsKept.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

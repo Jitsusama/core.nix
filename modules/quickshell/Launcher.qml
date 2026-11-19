@@ -5116,7 +5116,7 @@ Scope {
     // step, a sound output's use, and an answer's levels its copy. Null
     // where it holds nothing. `spent`, where given, is told how long its
     // acts, its parts and their ordering took, so a step's line says which
-    // of its making to cut (Trials.steppedMaking).
+    // of its making to cut (Stepped.steppedMaking).
     function inside(row, things, spent) {
         const began = KeyTimes.now();
         const own = stepRows(row, things);
@@ -5152,7 +5152,7 @@ Scope {
         // left out what the last took (a council, 2026-11-17).
         const { began, heard, pressed, collected, thread } = walk?.begun ?? stepBegun();
         // The step's own parts are from its own start, and the places a
-        // walk passed before it are said as passing (Trials.stepped).
+        // walk passed before it are said as passing (Stepped.stepped).
         const stepAt = Date.now();
         const walked = walk?.begun ? began : undefined;
         if (held.length > 0 && row.given) {
@@ -6255,20 +6255,30 @@ Scope {
         }
         if (stepped === null)
             return;
-        searchParts = trials.stepped(searchParts, { began, made: began, pushed: stepped,
-            opened: stepped, ended: Date.now(), making: {} });
+        searchParts = trials.stepped(searchParts, { began, made: began, pushed: stepped.pushed,
+            opened: stepped.pushed, ended: Date.now(), making: {}, holding: stepped.holding });
         keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread);
     }
 
     // back's step itself, from leaving `left`, `steps` back, to its rows
     // found and its row selected: when the step is timed as back's own,
-    // with no words put back to search, when held was set; otherwise null.
+    // with no words put back to search, when held was set and what holding
+    // went on (Stepped.steppedHolding); otherwise null.
     function stepBack(left, steps, timed, key) {
         // A talk's words put away are kept at once, not a moment later.
         if (left.row.draft)
             drafts.flush();
+        // Setting held wakes every source's wanting, and a source wanted
+        // again makes its rows within it, so a timed step counts the rows
+        // each made there: Joel's steps out of Now held 14 to 38 ms with
+        // nothing saying where (2026-11-18). A step whose line isn't said
+        // walks no tallies.
+        const holdingFrom = timed ? tallies() : null;
+        const holdingBegan = Date.now();
         held = held.slice(0, -steps);
         const pushed = Date.now();
+        const holding = timed
+            ? { before: holdingBegan - key.began, from: holdingFrom, to: tallies() } : null;
         // A step back onto one whose line holds its words puts them back.
         const onto = held.length > 0 ? held[held.length - 1].row : null;
         const words = onto?.words?.() ?? left.typed;
@@ -6305,7 +6315,7 @@ Scope {
         }
         placeCaret(onto);
         reselect(left);
-        return stepTimed && !wordsBack ? pushed : null;
+        return stepTimed && !wordsBack ? { pushed, holding } : null;
     }
 
     // A step whose line holds its words, as a save's name, says where the
