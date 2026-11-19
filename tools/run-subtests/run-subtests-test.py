@@ -410,6 +410,8 @@ def test_a_check_main_quarantines_fails_saying_so_and_blocking_nothing(
             1,
         ),
         ("x> action timed out after 300 seconds", 1),
+        ("       > ERROR vm-pytest-x/x-vm-test.py::test_a - Timeout", 0),
+        ("x> machine # FAILED x-vm-test.py::test_a - echoed", 1),
     ],
 )
 def test_a_check_main_quarantines_by_its_subtests_is_excused_only_for_those(

@@ -480,18 +480,6 @@ pub fn excuses(held: &Held, failed: &BTreeSet<String>) -> bool {
     held.subtests.is_empty() || (!failed.is_empty() && failed.is_subset(&held.subtests))
 }
 
-/// The subtest a line of a VM test's log says failed, as pytest says it:
-/// `FAILED vm-pytest-x/x-vm-test.py::test_y - why`, a parametrized case
-/// by its function's name. It is merge-net's `failed_on` in subtests.rs,
-/// and changed-checks' in quarantine.rs, copied, so the three change together.
-pub fn failed_on(line: &str) -> Option<&str> {
-    let (_, rest) = line.split_once("FAILED ")?;
-    let (_, name) = rest.split_whitespace().next()?.rsplit_once("::")?;
-    let name = name.split('[').next().unwrap_or(name);
-    (name.starts_with("test_") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-        .then_some(name)
-}
-
 /// Start `command`, passing on every line it says on stderr, where a
 /// build's log comes, and gathering the subtests those lines say failed,
 /// for `built_alone` to judge. A log that can't be read names none.
@@ -783,6 +771,8 @@ pub fn building(folder: &Path, system: &str, checks: &[String]) -> Command {
 }
 
 pub mod mac;
+pub mod pytest;
+pub use pytest::failed_on;
 pub mod runs;
 pub mod turns;
 
