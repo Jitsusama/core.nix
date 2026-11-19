@@ -51,6 +51,11 @@ interface Forage {
   readonly waits: readonly Wait[];
   /** The cell that started it, by address, when one did. */
   readonly startedBy: string | undefined;
+  /**
+   * Whether the node's own start book holds who started it. Otherwise it's
+   * the cell's own word, which a cell may claim of any other.
+   */
+  readonly booked: boolean;
   /** The quest its own sits under, when it sits under one. */
   readonly parent: string | undefined;
   /** The cell whose purpose it took a part of, when it was split from one. */
@@ -182,6 +187,7 @@ function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | und
     documents: documentsOf(record, cell, unread),
     waits: waitsOf(record, cell, unread),
     startedBy: text(lineage, "started_by"),
+    booked: text(lineage, "started_by_from") === "book",
     parent: text(lineage, "parent"),
     ...splitOf(lineage, cell, unread),
     serves: joinsOf(record["serves"], "serves", cell, unread),
@@ -201,6 +207,17 @@ function grewFrom(
   return [forage.startedBy, forage.splitFrom].find(
     (each) => each !== undefined && each !== forage.cell && here.has(each),
   );
+}
+
+/**
+ * Whether the cell `forage` grew from, among `here`, is only its own word:
+ * every split is, and a start is unless the node's book holds it.
+ */
+function grewOnItsWord(
+  forage: Pick<Forage, "cell" | "startedBy" | "splitFrom" | "booked">,
+  here: ReadonlySet<string>,
+): boolean {
+  return !(forage.booked && grewFrom(forage, here) === forage.startedBy);
 }
 
 /**
@@ -427,4 +444,15 @@ function holds(forage: Forage, query: string): boolean {
 }
 
 export type { Document, Forage, Forages, Headline, Join, Wait };
-export { counted, foragesOf, grewFrom, headline, holds, keeps, lede, startedFrom, steps };
+export {
+  counted,
+  foragesOf,
+  grewFrom,
+  grewOnItsWord,
+  headline,
+  holds,
+  keeps,
+  lede,
+  startedFrom,
+  steps,
+};

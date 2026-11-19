@@ -4,51 +4,18 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { Held } from "../../../local-sites/kit/records.ts";
-import { joined } from "../joins.ts";
-import { foragesOf, grewFrom, headline, holds, keeps, lede, startedFrom, steps } from "../model.ts";
-
-const plan = {
-  id: "PLAN-20261116-HOVERS",
-  kind: "plan",
-  title: "Hover Over the Field",
-  stage: "build",
-  ticked: 2,
-  open: 3,
-};
-const report = {
-  id: "REPT-20261116-LANDED",
-  kind: "report",
-  title: "Where It Landed",
-  stage: "concluded",
-  ticked: 1,
-  open: 0,
-};
-
-/** A forage record for `cell`, on kestrel, with `more` over its fields. */
-function forage(cell: string, more: { readonly [field: string]: unknown } = {}) {
-  return {
-    key: `forage:${cell}`,
-    kind: "forage",
-    heard: 0,
-    cell,
-    session: `0000-${cell.toLowerCase()}`,
-    machine: "kestrel",
-    quest: `QEST-20261116-${cell}`,
-    purpose: `${cell} learns to hover over one field.`,
-    status: "active",
-    documents: [report, plan],
-    lineage: { started_by: null, parent: null },
-    ...more,
-  };
-}
-
-/** A watch told `records` whole. */
-function told(records: readonly { readonly key: string }[]): Held {
-  const held = new Held();
-  held.took({ records });
-  return held;
-}
+import {
+  foragesOf,
+  grewFrom,
+  grewOnItsWord,
+  headline,
+  holds,
+  keeps,
+  lede,
+  startedFrom,
+  steps,
+} from "../model.ts";
+import { forage, plan, told } from "./records.ts";
 
 it("each cell comes after the one that started it, by address", () => {
   const { forages } = foragesOf(
@@ -74,6 +41,27 @@ it("a cell started from another machine stands at the top", () => {
   const { forages } = foragesOf(told([forage("KESTRL", { lineage: { started_by: "OSPREY" } })]));
   assert.equal(forages[0]?.depth, 0);
   assert.equal(forages[0]?.startedBy, "OSPREY");
+});
+
+it("a start is booked only when the node says its book holds it", () => {
+  const booked = (lineage: object) =>
+    foragesOf(told([forage("KESTRL", { lineage })])).forages[0]?.booked;
+  assert.equal(booked({ started_by: "OSPREY", started_by_from: "book" }), true);
+  assert.equal(booked({ started_by: "OSPREY", started_by_from: "presence" }), false);
+  // A node from before the field, or one sending something else, is taken at the cell's word.
+  assert.equal(booked({ started_by: "OSPREY" }), false);
+  assert.equal(booked({ started_by: "OSPREY", started_by_from: true }), false);
+});
+
+it("a cell grew on its own word unless it grew from a start the book holds", () => {
+  const here = new Set(["KESTRL", "OSPREY"]);
+  const onItsWord = (startedBy: string | undefined, booked: boolean) =>
+    grewOnItsWord({ cell: "TERNAA", startedBy, splitFrom: "KESTRL", booked }, here);
+  assert.equal(onItsWord("OSPREY", true), false);
+  assert.equal(onItsWord("OSPREY", false), true);
+  // Its booked starter isn't here, so it grows from the cell it split from, on its word.
+  assert.equal(onItsWord("FARAWAY", true), true);
+  assert.equal(onItsWord(undefined, false), true);
 });
 
 it("cells that started each other in a ring each still show once", () => {
@@ -411,72 +399,4 @@ it("the cell a cell grew from is its starter, else its ancestor, only when it's 
     grewFrom({ cell: "KESTRL", startedBy: "KESTRL", splitFrom: undefined }, here),
     undefined,
   );
-});
-
-it("reads the needs a cell serves and relies on, passing over one naming no other cell", () => {
-  const { forages, unread } = foragesOf(
-    told([
-      forage("KESTRL", {
-        serves: [
-          { cell: "OSPREY", need: "a hover review", since: "2026-11-18T13:05:00Z" },
-          { need: "lost" },
-          { cell: "", need: "nobody" },
-          { cell: "KESTRL", need: "itself" },
-        ],
-        relies: [{ cell: "TERNAA" }],
-      }),
-      forage("OSPREY", { serves: { cell: "KESTRL" }, relies: null }),
-    ]),
-  );
-  const [kestrel] = forages;
-  assert.deepEqual(kestrel?.serves, [
-    { cell: "OSPREY", need: "a hover review", since: "2026-11-18T13:05:00Z" },
-  ]);
-  assert.deepEqual(kestrel?.relies, [{ cell: "TERNAA", need: "", since: undefined }]);
-  assert.deepEqual(forages[1]?.serves, []);
-  assert.deepEqual(unread, [
-    "3 of KESTRL's serves named no other cell",
-    "OSPREY's serves listed no needs",
-  ]);
-});
-
-it("a forage the node sends no joins for has none, and splits from nothing", () => {
-  const [kestrel] = foragesOf(told([forage("KESTRL")])).forages;
-  assert.equal(kestrel?.splitFrom, undefined);
-  assert.deepEqual(kestrel?.splitInto, []);
-  assert.deepEqual(kestrel?.serves, []);
-  assert.deepEqual(kestrel?.relies, []);
-});
-
-it("joins each pair a need ties once, however both ends keep it, and only cells here", () => {
-  const { forages } = foragesOf(
-    told([
-      forage("KESTRL", { serves: [{ cell: "OSPREY", need: "a review" }, { cell: "FARAWAY" }] }),
-      forage("OSPREY", { relies: [{ cell: "KESTRL", need: "a review" }, { cell: "OSPREY" }] }),
-      forage("TERNAA", { relies: [{ cell: "KESTRL", need: "a plan" }] }),
-    ]),
-  );
-  assert.deepEqual(joined(forages), [
-    { from: "KESTRL", to: "OSPREY" },
-    { from: "TERNAA", to: "KESTRL" },
-  ]);
-});
-
-it("joins a pair once even when its two ends word the need differently, or keep two", () => {
-  const { forages } = foragesOf(
-    told([
-      forage("KESTRL", {
-        serves: [
-          { cell: "OSPREY", need: "a review" },
-          { cell: "OSPREY", need: "a second look" },
-        ],
-      }),
-      forage("OSPREY", {
-        relies: [{ cell: "KESTRL", need: "review my hover" }],
-        // A need the other way round is still the same pair on the floor.
-        serves: [{ cell: "KESTRL" }],
-      }),
-    ]),
-  );
-  assert.deepEqual(joined(forages), [{ from: "KESTRL", to: "OSPREY" }]);
 });

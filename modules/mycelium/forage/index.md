@@ -15,7 +15,9 @@ a terminal, `mycelium forage` gathers the realm's.
 - **The floor, cut through:** the ground line, the hyphae under it and
   each cell a compartment along them. A cell with its purpose written is
   whole; one without is hollow, told by its shape. A cell started by
-  another, or split from it, branches down from it. A dotted arc, bowing
+  another, or split from it, branches down from it: solid when the node's
+  own start book holds the start, dashed when only the cell says so, as
+  every split is. A dotted arc, bowing
   below both, joins a cell to one serving a need of its. A cap rises over a cell whose plans
   have landed steps, its gills lit as they land. The machine the cells
   stand on is named under the ground. The first 48 cells are drawn; the
@@ -71,7 +73,9 @@ has `id` and `title`, and may have `why`, `minutes`, `when`, `ready`
 and `raised`. Each document has `id`, `kind` (plan, research, brief or
 report), `title`, `stage` (think, draft, build, concluded or retired),
 `ticked` and `open`, its steps done and still to do. The `lineage`
-has `started_by`, the cell that started this one, `parent`, the
+has `started_by`, the cell that started this one, `started_by_from`,
+`book` when the serving node's start book holds that start or
+`presence` when it's the cell's own word, `parent`, the
 quest above its own, and, when its purpose was split, `split_from`, the
 cell it split from, or `split_into`, the cells it split into as it
 ended. Each of `serves` (needs it took from other cells) and `relies`

@@ -12,7 +12,15 @@
 
 import { clockTime } from "../../local-sites/kit/status.ts";
 import { type Join, joined } from "./joins.ts";
-import { type Document, type Forage, grewFrom, keeps, steps, type Wait } from "./model.ts";
+import {
+  type Document,
+  type Forage,
+  grewFrom,
+  grewOnItsWord,
+  keeps,
+  steps,
+  type Wait,
+} from "./model.ts";
 
 const ESCAPES: { readonly [character: string]: string } = {
   "&": "&amp;",
@@ -221,7 +229,8 @@ function cap(x: number, y: number, ticked: number, all: number): string {
  * The floor cut through: the ground, the hyphae under it and each cell a
  * compartment along them, `cursor`'s ringed. Each top cell starts a hypha
  * of its own on the main line; a cell started by another branches down
- * from it. `substrate` names the machine the cells stand on.
+ * from it, dashed where that's only its own word. `substrate` names the
+ * machine the cells stand on.
  */
 function floorOf(forages: readonly Forage[], cursor: string | null, substrate: string): string {
   const cells = placed(forages);
@@ -238,7 +247,8 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
       if (from === undefined || forage.depth === 0) {
         return "";
       }
-      return `<path class="hypha" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
+      const claimed = grewOnItsWord(forage, here) ? " claimed" : "";
+      return `<path class="hypha${claimed}" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
     })
     .join("");
   const joins = joined(cells.map((each) => each.forage))
@@ -314,13 +324,19 @@ ${forage.documents.map((document) => documentRow(document, forage.quest)).join("
 </section>`;
 }
 
+/**
+ * Said after a cell the open cell names only by its own word, as every
+ * split and a start the node's book doesn't hold are.
+ */
+const ITS_WORD = ", as this cell says";
+
 /** The cell that started `forage`, linked to that cell's row when it is drawn here. */
 function startedBy(forage: Forage, here: ReadonlySet<string>): string {
   const by = forage.startedBy;
   if (by === undefined) {
     return "Nothing; it started on its own";
   }
-  return cellOrAway(by, here);
+  return `${cellOrAway(by, here)}${forage.booked ? "" : ITS_WORD}`;
 }
 
 /**
@@ -411,7 +427,8 @@ function needsOf(
 function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): string {
   const facts: string[] = [];
   if (forage.splitFrom !== undefined) {
-    facts.push(`<div><dt>Split from</dt><dd>${cellOrAway(forage.splitFrom, here)}</dd></div>`);
+    const from = cellOrAway(forage.splitFrom, here);
+    facts.push(`<div><dt>Split from</dt><dd>${from}${ITS_WORD}</dd></div>`);
   }
   if (forage.splitInto.length > 0) {
     const into = cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here));
