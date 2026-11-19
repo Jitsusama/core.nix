@@ -581,14 +581,15 @@ Floating {
         if (keys) {
             enter();
         } else {
+            // y's flash, which the next row's page would wear, goes
+            // first, while the readers its paint() reaches are still made.
+            unflash();
             for (const text of texts())
                 text.reading = false;
             // What the last search found goes with it, so a drawer gone
             // back into never says it went round before anything's sought.
             lastSought = null;
             landing = "";
-            // And y's flash, which the next row's page would wear.
-            unflash();
         }
     }
     // Visual, as on a page: what it chooses by, "letters" or "lines", or

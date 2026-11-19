@@ -324,6 +324,7 @@ class InTheDrawer:
         """Say the keys are back on the rows, the launcher open on the selection it had."""
         shown = self.desktop.showing()
         assert shown["open"], shown
+        assert shown["mode"] == "normal", shown
         assert shown["selected"]["name"] == self.rows["selected"]["name"], shown
         assert shown["drawer"]["cursor"] is None, shown["drawer"]
 
@@ -862,6 +863,7 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     page.pressed_until("spc ?", lambda shown: not shown["listing"], lambda: page.press("esc"))
     # More letters than any try above took, so each try's copy differs from the one before.
     flash_ends_at_once(desktop, page, "ctrl-w h", lambda shown: not shown["drawer"]["keys"], TRIES)
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal")
     page.came_back()
     desktop.close_launcher()
 
@@ -904,7 +906,8 @@ def flash_ends_at_once(
             seen.clear()
         missed = unreached(seen, before)
         if not missed:
-            assert not flashing(seen[-1]), f"what {keys} brought showed the copy's flash"
+            chosen = (seen[-1].get("drawer") or {}).get("chosen")
+            assert not flashing(seen[-1]), f"what {keys} brought showed the copy's flash: {chosen}"
             return
         tried.append(missed)
         from_the_keys(desktop, page)
