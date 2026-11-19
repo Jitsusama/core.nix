@@ -327,12 +327,24 @@ in
             { kind = "device"; }
           ];
       };
-      # A row giving one kind two patterns, of which the readers keep the
-      # first alone, and a second pattern the readers drop anyway, which
-      # leaves the first standing. Another kind's pattern between them
-      # doesn't hide the second, and a dropped pattern ahead of a kept one
-      # is no first.
+      # A row giving one kind three patterns, of which the readers keep the
+      # first alone, named once in their order, and a pattern the readers
+      # drop anyway, which leaves the first standing. Another kind's pattern
+      # between them hides none, nor does the kind given by name; the first
+      # given again, from the page or from the sites' root, draws the same
+      # links and is no second; and a dropped pattern ahead of a kept one is
+      # no first.
       again = homes {
+        code.homes = [
+          {
+            kind = "tree";
+            address = "#tree={name}";
+          }
+          {
+            kind = "tree";
+            address = "code/#tree={name}";
+          }
+        ];
         network.homes = [
           {
             kind = "device";
@@ -349,6 +361,7 @@ in
             kind = "part";
             address = "#part={name}";
           }
+          "machine"
           {
             kind = "machine";
             address = "#host={name}";
@@ -356,6 +369,15 @@ in
           {
             kind = "machine";
             address = "#m";
+          }
+          {
+            kind = "machine";
+            address = "system/#machine={name}";
+          }
+          machines
+          {
+            kind = "machine";
+            address = "#third={name}";
           }
         ];
       };
@@ -395,7 +417,10 @@ in
         && twice.dropped == [ ''health's machine, "#m"'' ]
         && dropped.dropped == droppedSaid
         && dropped.homedTwice == [ ]
-        && again.patternedTwice == [ ''system's machine, "#machine={name}" and "#host={name}"'' ]
+        &&
+          again.patternedTwice == [
+            ''system's machine, "#machine={name}", "#host={name}" and "#third={name}"''
+          ]
         &&
           again.dropped == [
             ''network's device, "#d"''

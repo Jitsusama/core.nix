@@ -541,9 +541,10 @@ in
     {
       assertion = declaredHomes.patternedTwice == [ ];
       message = lib.concatStrings [
-        "jitsusama.local-sites.rows gives a kind two patterns on one site: "
+        "jitsusama.local-sites.rows gives a kind more than one pattern on one site: "
         "${lib.concatStringsSep "; " declaredHomes.patternedTwice}; keep one, since the "
-        "homes' readers take the first and never draw the second's links"
+        "homes' readers take the first and never draw the others' links (lib.mkForce "
+        "replaces the homes a site already declares rather than adding to them)"
       ];
     }
   ];

@@ -22,16 +22,19 @@ let
   kept =
     path: address:
     let
-      fragment = lib.removePrefix "${path}/" address;
+      fragment = fragmentOf path address;
     in
     lib.hasPrefix "#" fragment && lib.hasInfix "{name}" fragment && plain fragment;
+  # A pattern as the readers read it, on its row's own page, however it's
+  # written.
+  fragmentOf = path: lib.removePrefix "${path}/";
   # Whether a row's home is a pattern the readers would keep, were it the
   # first its row gives its kind.
   keeps = path: home: !lib.isString home && home ? kind && home ? address && kept path home.address;
   # Each of a row's homes, a kind's name or a kind with its pattern, and
   # whether the readers would take it as a home. Both readers take a row's
   # first kept pattern for a kind and pass over any later one without a
-  # word, so a later one is marked as the first's `again`.
+  # word, so a later one is marked `again`.
   claims = lib.concatLists (
     lib.mapAttrsToList (
       path: row:
@@ -42,7 +45,7 @@ let
             inherit path;
             kind = home;
             homes = true;
-            again = null;
+            again = false;
           }
         else
           let
@@ -55,11 +58,22 @@ let
             kind = home.kind or null;
             address = home.address or null;
             homes = keeps path home && first == null;
-            again = if keeps path home && first != null then first.address else null;
+            again = keeps path home && first != null;
+            fragment = fragmentOf path home.address;
           }
       ) row.homes
     ) rows
   );
+  # The patterns the readers would keep, were each its kind's first, by the
+  # site and kind they're given for.
+  keptPatterns = lib.groupBy (claim: "${claim.path}'s ${claim.kind}") (
+    lib.filter (claim: claim ? fragment && (claim.homes || claim.again)) claims
+  );
+  # Patterns in their order, each read the same way kept once.
+  distinct = lib.foldl' (
+    kept: claim:
+    if lib.any (each: each.fragment == claim.fragment) kept then kept else kept ++ [ claim ]
+  ) [ ];
   # The sites each kind is home on. A row may give its own kind both by
   # name and by pattern, which both readers take as the pattern's, so only
   # a second site counts.
@@ -83,16 +97,21 @@ in
     "${claim.path}'s ${if claim.kind == null then "pattern with no kind" else claim.kind}, ${
       if claim.address == null then "with no address" else builtins.toJSON claim.address
     }"
-  ) (lib.filter (claim: !claim.homes && claim.again == null) claims);
-  # Kinds a site gives a second pattern the readers would keep. Neither
-  # reader says a word of it: each takes the first, so the second's links
-  # are never drawn.
-  patternedTwice = map (
-    claim:
-    let
-      first = builtins.toJSON claim.again;
-      second = builtins.toJSON claim.address;
-    in
-    "${claim.path}'s ${claim.kind}, ${first} and ${second}"
-  ) (lib.filter (claim: claim.again != null) claims);
+  ) (lib.filter (claim: !claim.homes && !claim.again) claims);
+  # Kinds a site gives more than one pattern the readers would keep, each
+  # pattern named once and the first first. Neither reader says a word of
+  # it: each takes the first, so the others' links are never drawn. A
+  # pattern given again, however it's written, draws the first's links, so
+  # it's no second.
+  patternedTwice = lib.concatLists (
+    lib.mapAttrsToList (
+      named: patterns:
+      let
+        written = map (claim: builtins.toJSON claim.address) (distinct patterns);
+      in
+      lib.optional (lib.length written > 1) (
+        "${named}, ${lib.concatStringsSep ", " (lib.init written)} and ${lib.last written}"
+      )
+    ) keptPatterns
+  );
 }
