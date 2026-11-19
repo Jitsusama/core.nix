@@ -5666,8 +5666,9 @@ Scope {
         // One that comes before a kept home's slice waits for it, as it
         // would join and search home inside the fill's frame, or change
         // home before home is found; it's made in a slice of its own after
-        // the find (wakeNext), or at once on a shut (refreshesAgain).
-        if (fillFinding) {
+        // the find (wakeNext), or at once on a shut (refreshesAgain). Shut,
+        // nothing's held, so a shut stopped short leaves no source waiting.
+        if (fillFinding && open) {
             refreshHeld = true;
             return;
         }
@@ -11450,13 +11451,22 @@ Scope {
         }
         // A refresh held for the find is the slice after it, waiting for a
         // frame or the fallback as any slice does, so the sources' first
-        // waits for its end; where the pace's timer is set, that makes it.
-        // The next slice is asked first, so a throw in it stops no waking.
+        // waits for its end. It was due when asked, so it's made as then,
+        // its pace kept as any refresh's (Pacing.took). The next slice is
+        // asked first, so a throw in it stops no waking, and it's said
+        // among the slices, so its time is never read as a wait.
         if (refreshHeld) {
             refreshHeld = false;
-            if (refreshing.length > 0 && !refreshPacing.running) {
+            if (refreshing.length > 0) {
                 wakeLater();
-                refreshDue();
+                const began = KeyTimes.now();
+                try {
+                    refreshDue();
+                } finally {
+                    wakeSlices = wakeSlices.concat([{ from: began - wakeBegan,
+                        took: KeyTimes.now() - began, woke: [], refreshed: true }]);
+                    feltSpan("a held refresh", began);
+                }
                 return;
             }
         }
@@ -11539,9 +11549,6 @@ Scope {
             console.warn(`launcher: finding home after the fill threw: ${said}`
                 + (at === "" ? "" : ` at ${at}`));
         } finally {
-            // Nothing waking makes a held refresh's slice, so it's made now.
-            if (!waking)
-                refreshesAgain();
             // Timed with the fill's record it makes, as that's this slice's
             // work too.
             fillFoundJoined = choicesJoined - joinedBefore;
@@ -11553,13 +11560,13 @@ Scope {
     }
     // Whether a refresh came while home was still to be found, which is
     // asked again, as a source already waiting is never asked again by
-    // its change (refreshed); where the pace's timer is set, that makes it.
+    // its change (refreshed).
     property bool refreshHeld: false
     function refreshesAgain() {
         if (!refreshHeld)
             return;
         refreshHeld = false;
-        if (refreshing.length > 0 && !refreshPacing.running)
+        if (refreshing.length > 0)
             Qt.callLater(refreshDue);
     }
     // Whether finding home after the fill threw, so its span and the
@@ -11579,8 +11586,9 @@ Scope {
     // How the sources woke, said once the last has, with the opening it
     // filled in, so its slices, the longest and what ended each are read.
     function wokeSaid(span) {
-        const slices = wakeSlices.map(one => ({ from: Math.round(one.from),
-            took: Math.round(one.took), woke: one.woke.map(each => each.name) }));
+        const slices = wakeSlices.map(one => Object.assign({ from: Math.round(one.from),
+            took: Math.round(one.took), woke: one.woke.map(each => each.name) },
+            one.refreshed ? { refreshed: true } : {}));
         // The fill's finding, run by its own slice, a key, a click or a
         // chord, is a slice of its own before the sources' (wakeTimes).
         const found = fillFoundBy === "" ? null : { from: fillFoundFrom, took: fillFoundTook };
@@ -11596,8 +11604,10 @@ Scope {
             wokeEarly = woke;
         else if (last?.kept && last.slices === undefined)
             openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, woke)]);
-        const said = wakeSlices.map(one => one.woke.map(each =>
-            `${each.name} ${Math.round(each.took)}`).join(", ")).join("; ");
+        const said = wakeSlices.map(one => one.refreshed
+            ? `a held refresh ${Math.round(one.took)}`
+            : one.woke.map(each => `${each.name} ${Math.round(each.took)}`).join(", "))
+            .join("; ");
         const foundSaid = fillFoundBy === "" ? ""
             : `, ${fillFoundThrew ? "threw finding home"
                 : fillFoundHome ? "home found again" : "joined again"} in`

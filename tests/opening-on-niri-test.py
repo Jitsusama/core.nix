@@ -1680,7 +1680,9 @@ def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
         return bool(woke) and "slices" in woke[0]
 
     shell.launcher_until(slept)
-    slices = cast("list[Json]", woke[0]["slices"])
+    # A refresh held for home's finding is a slice of its own, which wakes no source and has
+    # no budget to run past.
+    slices = [each for each in cast("list[Json]", woke[0]["slices"]) if not each.get("refreshed")]
     names = [name for each in slices for name in each["woke"]]
     assert names[:1] == ["on"], f"home's first row's source didn't wake first: {slices}"
     assert len(names) == len(set(names)), f"a source woke twice: {slices}"
