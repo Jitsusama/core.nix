@@ -1293,6 +1293,7 @@ ShellRoot {
         expect("two asking stand first in Agents Asking, above the headings",
             JSON.stringify(gathered) === JSON.stringify([
                 ["on:waitingOnYou:kind:agent", ""],
+                ["on:waiting:want:LEFTC", ""], ["on:waiting:want:WANTD", ""],
                 ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"], ["on:look:c", ""],
                 ["on:heading:cell:yours", "yours alone"], ["on:waiting:Sign In", ""]]),
             JSON.stringify(gathered));
