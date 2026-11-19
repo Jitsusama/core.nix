@@ -38,7 +38,8 @@ is what makes VM tests time out.
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
 `mypy.ini`), shellcheck for shell with the optional checks no script
-breaks, luacheck for Lua, each file read as the
+breaks, following what each script sources (`.shellcheckrc`), luacheck for
+Lua, each file read as the
 Lua of the program that runs it (`.luacheckrc`), biome with every rule that
 fits for the JavaScript QML imports (`biome.jsonc`, read through
 `modules/treefmt/qt-javascript-lint.sh`) and, formatting it too, for

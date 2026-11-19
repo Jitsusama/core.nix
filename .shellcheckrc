@@ -1,0 +1,5 @@
+# Some test scripts source a file their check hands them, named for
+# shellcheck by a `# shellcheck source=` line. Followed wherever it is, so
+# a run over the script alone reads it too, not only a run that also names
+# the sourced file. shellcheck refuses this as a directive in a script.
+external-sources=true
