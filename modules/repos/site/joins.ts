@@ -49,6 +49,9 @@ interface Tie {
 }
 
 const inOrder = (one: string, other: string): number => one.localeCompare(other);
+// Which of a tie's ends comes first goes by the keys' own characters, since a comparison of
+// words calls a folder written composed and the same written decomposed equal.
+const byUnits = (one: string, other: string): number => Number(one > other) - Number(one < other);
 
 /**
  * Each other repository a cell at work in `repository` works across, by key, with the cell; a
@@ -86,7 +89,7 @@ function ties(repositories: readonly Repository[]): Tie[] {
   const tied = new Map<string, { ends: readonly [string, string]; cells: Set<string> }>();
   for (const repository of repositories) {
     for (const [other, cell] of across(repository, spellings)) {
-      const [one = "", two = ""] = [repository.key, other].sort(inOrder);
+      const [one = "", two = ""] = [repository.key, other].sort(byUnits);
       const id = `${one}${APART}${two}`;
       const tie = tied.get(id) ?? { ends: [one, two], cells: new Set<string>() };
       tie.cells.add(cell);

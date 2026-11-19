@@ -79,10 +79,11 @@ function walked(map: MycelialMap, from: number, way: Way): number | undefined {
 }
 
 /**
- * How deep a thread bows into the gutter beside `rows` rows, out of the gutter's 100: a farther
- * tie deeper, until ties spanning nearly every row bow alike at the deepest a tie may, and each
- * cell's lane a little more, never past the gutter's edge. A near tie's last lanes may bow past a
- * farther tie's first, as the lanes fan past each tie's own bow.
+ * How deep a thread's bend is set into the gutter beside `rows` rows, out of the gutter's 100,
+ * the curve itself reaching three quarters as far: a farther tie deeper, until ties spanning
+ * nearly every row bow alike at the deepest a tie may, and each cell's lane a little more, never
+ * past the gutter's edge. A near tie's last lanes may bow past a farther tie's first, as the lanes
+ * fan past each tie's own bow.
  */
 function bowed(thread: Thread, rows: number): number {
   const span = (thread.to - thread.from) / Math.max(1, rows - 1);
