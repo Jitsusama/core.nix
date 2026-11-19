@@ -108,10 +108,9 @@ in
       named: patterns:
       let
         written = map (claim: builtins.toJSON claim.address) (distinct patterns);
+        listed = "${lib.concatStringsSep ", " (lib.init written)} and ${lib.last written}";
       in
-      lib.optional (lib.length written > 1) (
-        "${named}, ${lib.concatStringsSep ", " (lib.init written)} and ${lib.last written}"
-      )
+      lib.optional (lib.length written > 1) "${named}, ${listed}"
     ) keptPatterns
   );
 }
