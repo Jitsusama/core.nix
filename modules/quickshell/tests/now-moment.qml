@@ -1852,10 +1852,9 @@ ShellRoot {
         Sessions.parked = [Sessions.wanting[0]];
         const parkedRow = forYou().find(one => one.key === "on:waiting:want:WANTE");
         const parkedActs = parkedRow.verbs().map(one => one.name);
-        console.log(`DEBUG parked ${parkedRow.side} ${JSON.stringify(parkedActs)}`);
         Sessions.parked = [];
-        expect("parked, it offers Talk to it just before Go To",
-            parkedActs.includes("talk")
+        expect("parked, its answers offer Talk to it just before Go To",
+            parkedRow.side === "needs your answer \u00b7 2 choices" && parkedActs.includes("talk")
                 && parkedActs.indexOf("talk") === parkedActs.indexOf("Go To") - 1,
             JSON.stringify(parkedActs));
         Sessions.knowns = {};

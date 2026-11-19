@@ -743,12 +743,13 @@ Provider {
     // from the ask itself (Joel, 2026-11-16: "i have no way to go from the
     // thing it shows to engaging with the thing working on it"); null with
     // no session, or with Agents not there to talk through.
-    // A session asking a question or a yes has no Talk, from any row: its
-    // ask tool runs until he answers, and words said to it wait for its
-    // run to end (the harness's lib/mesh/steer.ts), so they'd come after
-    // the answer they were meant to shape; its answer is what reaches it,
-    // In Your Own Words where its question takes words. Parked, it runs no
-    // ask, and woken it reads its inbox as it starts, so Talk stays.
+    // A session asking a question or a yes has no Talk from any row in What
+    // Needs Me (Agents' own row is its own to say): its ask tool runs until
+    // he answers, and words said to it wait for its run to end (the
+    // harness's lib/mesh/steer.ts), so they'd come after the answer they
+    // were meant to shape; its answer is what reaches it, In Your Own Words
+    // where its question takes words. Parked, it runs no ask, and woken it
+    // reads its inbox as it starts, so Talk stays.
     function talkTo(session) {
         const agents = provider.source("agents");
         return !session || !agents || asking(session) ? null
@@ -1081,8 +1082,8 @@ Provider {
     // its window, which a terminal's Open already is, offered as Agents
     // offers it: where it has a window, or is parked and wakes into one;
     // then Explain It, which says what the cell works on in a sentence or
-    // two (explainAct), where the machine has Ask's pi to answer it. None while no cell is held for it, or
-    // Agents isn't there to talk through.
+    // two (explainAct), where the machine has Ask's pi to answer it. None
+    // while no cell is held for it, or Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
@@ -1827,9 +1828,9 @@ Provider {
     // row, the recommended first and the cursor on it, whose Return
     // answers at once, since stepping in and picking a labelled answer is
     // already deliberate, and y copies its words; then, set apart, Deal
-    // With It, and In Your Own Words where it takes them; then Go To the
-    // session, which answers nothing, and no Talk, its ask being open
-    // (talkTo). The session
+    // With It, and In Your Own Words where it takes them; then Talk, only
+    // while it's parked, its ask being open otherwise (talkTo), and Go To
+    // the session, which answers nothing. The session
     // says it took the answer by its want leaving, which takes the row
     // out of For You. Its answers are the agents daemon's, which takes the
     // answer too, naming the want itself; the rows are still made here
@@ -1896,12 +1897,12 @@ Provider {
                 if (text !== "")
                     answer({ other: text }, text);
             }
-        }))] : [], [thing(Object.assign(named("go"), {
+        }))] : [], [talkTo(session()), thing(Object.assign(named("go"), {
             key: `verb:on:waiting:go:${key}`,
             side: madeFrom.title,
             later: true,
             run: () => Sessions.wakeToGo(resting, session())
-        })), putOffWant(address, key, known)]);
+        })), putOffWant(address, key, known)].filter(row => row !== null));
         const count = answers.choices.length;
         const row = member(Object.assign({}, made, {
             key: key,
