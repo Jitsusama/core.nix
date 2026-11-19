@@ -320,16 +320,22 @@ impl Keeper {
 }
 
 /// A nonce no proof before has used.
+fn nonce() -> String {
+    nonce_at(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos()),
+    )
+}
+
+/// A nonce for a proof asked at `since`, in nanoseconds.
 ///
 /// The time alone isn't one: a Mac's clock moves in microseconds, so two
 /// asked within one read the same, and a Mac's build of this failed its
-/// test on it on 19 November. A count of those this process made tells
-/// them apart.
-fn nonce() -> String {
+/// test on it on 19 November 2026. A count of those this process made
+/// tells them apart, and the pid tells one process's from another's.
+fn nonce_at(since: u128) -> String {
     static MADE: AtomicU64 = AtomicU64::new(0);
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_nanos());
     let made = MADE.fetch_add(1, Ordering::Relaxed);
     format!("{since}-{}-{made}", std::process::id())
 }
@@ -1264,11 +1270,6 @@ mod tests {
                  requiredSystemFeatures = [ \"own\" \"big-parallel\" ]; }"
             )
         );
-        let nonces: Vec<String> = (0..10_000).map(|_| nonce()).collect();
-        let mut each = nonces.clone();
-        each.sort();
-        each.dedup();
-        assert_eq!(each.len(), nonces.len(), "each proof's own, asked at once");
         let measuring = expression("17-3", None, &[], Some("/nix/store/abc-coreutils"));
         assert!(
             measuring.contains(
@@ -1277,6 +1278,35 @@ mod tests {
             ),
             "{measuring}"
         );
+    }
+
+    #[test]
+    fn proofs_asked_in_one_instant_from_many_threads_each_build_their_own() {
+        // One fixed time, as a clock that moves in microseconds gives
+        // every proof asked within one, on any machine this runs on.
+        let asked: Vec<String> = std::thread::scope(|scope| {
+            let threads: Vec<_> = (0..8)
+                .map(|_| scope.spawn(|| (0..1_000).map(|_| nonce_at(17)).collect::<Vec<_>>()))
+                .collect();
+            threads
+                .into_iter()
+                .flat_map(|thread| thread.join().expect("each thread asks"))
+                .collect()
+        });
+        let built: Vec<String> = asked
+            .iter()
+            .map(|nonce| expression(nonce, None, &[], None))
+            .collect();
+        for (nonce, expression) in asked.iter().zip(&built) {
+            assert!(
+                expression.contains(&format!("echo {nonce} > $out")),
+                "the derivation keeps the whole nonce: {expression}"
+            );
+        }
+        let mut each = built.clone();
+        each.sort();
+        each.dedup();
+        assert_eq!(each.len(), built.len(), "each proof's own derivation");
     }
 
     #[test]
