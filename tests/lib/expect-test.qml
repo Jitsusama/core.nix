@@ -1,5 +1,5 @@
-// Expect.run, as every QML test's check relies on it: each way a case can
-// end, chosen by the word after `--`, since qml ends with the first.
+// Expect.run, as the QML tests that hand it their cases rely on it: each
+// way a case can end, chosen by the word after `--`, since qml ends with the first.
 // `expect-run-fails-each-case-that-throws` runs it once for each and reads
 // what qml exits with and says.
 import QtQuick
@@ -16,5 +16,15 @@ QtObject {
             throw null;
         if (ending === "word")
             throw "a bare word";
+        // An Error with no words says what it is, and a value that can't
+        // even be made words says what kind of thing it was.
+        if (ending === "wordless")
+            throw new RangeError("");
+        if (ending === "unsayable")
+            throw {
+                toString() {
+                    throw new Error("not this either");
+                }
+            };
     })
 }
