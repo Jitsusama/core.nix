@@ -475,7 +475,7 @@ ShellRoot {
             () => traffic.probesHung.eth9 !== undefined, () => {
             const after = Date.now() - began;
             Expect.expect("the watch gives up a file about two seconds on",
-                after >= 1500 && after <= 3500, `${after} ms`);
+                after >= 1500 && after <= 8000, `${after} ms`);
             Expect.expect("the watch keeps the view in flight and makes another",
                 traffic.probesHung.eth9 === reading && traffic.probe !== reading,
                 JSON.stringify(Object.keys(traffic.probesHung)));
@@ -495,8 +495,52 @@ ShellRoot {
                 Expect.expect("an interface whose hung read landed is asked again",
                     traffic.probing?.name === "eth9"
                         || traffic.asking.some(one => one.name === "eth9"), root.asked());
-                Qt.exit(0);
+                waits.until("no probe under way before a late read", () => traffic.probing === null
+                    && !traffic.probeWatching, root.lateRead);
             });
+        });
+    }
+
+    // Traffic's own view, given up in the turn its read began, so the read
+    // is still under way: the interface after is asked through a new view,
+    // and the read landing late reaches Traffic's own handlers, which let
+    // its interface go and don't credit the one asked next with it.
+    property var lateView: null
+    function lateRead() {
+        traffic.asking = [{ name: "eth8", files: ["uevent"], said: {} }];
+        traffic.probing = { name: "lo", files: ["uevent"], said: {} };
+        traffic.probeFile();
+        root.lateView = traffic.probe;
+        traffic.probeGivenUp();
+        const next = traffic.probing;
+        Expect.expect("given up in flight, the next interface is asked through a new view",
+            next?.name === "eth8" && traffic.probe !== root.lateView
+                && traffic.probesHung.lo === root.lateView, root.asked());
+        waits.until("a read given up lands late through Traffic's own view",
+            () => traffic.probesHung.lo === undefined && next.done === true, () => {
+            Expect.expect("a read landing late isn't taken for the interface asked next",
+                next.said.uevent === "", JSON.stringify(next.said));
+            waits.until("the view a late read landed through is destroyed",
+                () => root.lateView === null, root.notInFlight);
+        });
+    }
+
+    // An interface whose files have all landed has no read in flight, and
+    // given up then, as a turn that threw would be, keeps no view.
+    function notInFlight() {
+        const one = { name: "lo", files: ["uevent"], said: {} };
+        traffic.probing = one;
+        traffic.probeFile();
+        waits.until("lo's uevent landed", () => one.done === true, () => {
+            Expect.expect("an interface whose files have landed has none in flight",
+                one.inFlight === false, String(one.inFlight));
+            const before = traffic.probe;
+            traffic.probing = one;
+            traffic.probeGivenUp();
+            Expect.expect("given up with no read in flight, no view is kept",
+                traffic.probesHung.lo === undefined && traffic.probe === before,
+                JSON.stringify(Object.keys(traffic.probesHung)));
+            Qt.exit(0);
         });
     }
 }

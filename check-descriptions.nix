@@ -1072,7 +1072,9 @@
     for one made again under its name or whose uevent is empty or gone; a sysfs file that
     never lands is given up about two seconds on, its view kept and another made, and its
     interface isn't asked again until that read lands, which isn't taken for the file under
-    way and lets the view go
+    way and lets the view go; given up as its read begins, the next interface is asked through
+    a new view, and the read lands late through Traffic's own, freeing its interface and not
+    credited to the one asked next; and given up with no read in flight, no view is kept
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a
