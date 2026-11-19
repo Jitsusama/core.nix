@@ -44,23 +44,57 @@ function connectorOf(at, screens) {
     return at.output in screens ? at.output : undefined;
 }
 
+// The connectors but `at`'s that one moment's places (`moment`, the other
+// windows a boot kept at once) show `at`'s screen on beside `at`'s own: an
+// alike twin for certain. A boot's sessions' places can't say so, since
+// one ended keeps its place, which may be one monitor's old connector.
+function twinsOf(at, moment) {
+    const on = [...new Set((moment ?? []).filter(one => at.screen && one?.screen === at.screen)
+        .map(one => one.output))];
+    return on.includes(at.output) ? on.filter(output => output !== at.output) : [];
+}
+
+// connectorOf, but not a twin's (twinsOf) nor one `given` a twin this pass
+// (`{ at, output }` each), so with only those connected `at`'s is gone.
+function whereKept(at, moment, screens, given) {
+    const twins = twinsOf(at, moment);
+    const taken = twins.concat((given ?? []).filter(was => twins.includes(was.at.output)).map(was => was.output));
+    const found = connectorOf(at, screens);
+    if (found === undefined || found === at.output || !taken.includes(found)) {
+        return found;
+    }
+    return Object.keys(screens).find(name => screens[name] === at.screen && !taken.includes(name));
+}
+
+// The other screens as `at` is found gone (othersAt): those connected, and
+// its twins (twinsOf) gone too.
+function othersGone(at, moment, screens) {
+    const gone = twinsOf(at, moment).filter(output => !(output in screens));
+    const heard = Object.assign({}, ...gone.map(output => ({ [output]: at.screen })), screens);
+    return othersAt(at.output, Object.keys(screens), gone, heard);
+}
+
 // Where each kept place goes now, in the order given, null for none: on
 // its own screen, wherever it's connected now. One whose screen is gone
 // goes to the screen in use, its workspaces after every workspace the
 // places there use, in their order, as niri moves a gone screen's
 // workspaces, rather than mixed into the same numbers, and says where it
-// belongs (`away`), so its workspace can go there once the screen comes.
-// `screens` maps each connector there is to its description; with none
-// known, as when niri didn't answer, or no screen in use, a gone one is
-// left as it was kept.
-function placed(places, screens, inUse) {
+// belongs (`away`), so its workspace can go there once the screen comes,
+// with the other screens as it was found gone (`others`, of othersGone),
+// each twin (of `moments`, each place's boot's) given a connector of its
+// own. `screens` maps each connector there is to its description; with
+// none known, as when niri didn't answer, or no screen in use, a gone one
+// is left as it was kept.
+function placed(places, screens, inUse, moments) {
     const known = Object.keys(screens ?? {}).length > 0;
-    const found = places.map(at => {
+    const given = [];
+    const found = places.map((at, index) => {
         if (!at) {
             return null;
         }
-        const output = known ? connectorOf(at, screens) : at.output;
-        return output === undefined ? { at, gone: at.screen || at.output } : { at, output };
+        const output = known ? whereKept(at, moments?.[index], screens, given) : at.output;
+        given.push({ at, output });
+        return output === undefined ? { at, gone: at.screen || at.output, index } : { at, output };
     });
     let last = 0;
     for (const one of found) {
@@ -95,7 +129,12 @@ function placed(places, screens, inUse) {
         return Object.assign({}, one.at, {
             output: inUse,
             workspace: after[one.gone] + one.at.workspace,
-            away: { screen: one.gone, workspace: one.at.workspace, output: one.at.output }
+            away: {
+                screen: one.gone,
+                workspace: one.at.workspace,
+                output: one.at.output,
+                others: othersGone(one.at, moments?.[one.index], screens)
+            }
         });
     });
 }
@@ -104,31 +143,78 @@ function placed(places, screens, inUse) {
 // it's connected again. `away` holds, by each screen's description (or its
 // connector, for a place kept before screens were named so), the workspaces
 // given in its place, by niri's id, each with the number it was kept at
-// there and the connector it left (`output`), if known, which wins among
-// screens alike, as niri lists them in no set order. The moves go lowest
-// kept number first; their order there is the windows daemon's to put back.
-// One gone already isn't moved; one on the screen already is marked
-// (`there`) and left. `home` names the screens connected again, done with.
+// there, the connector it left (`output`), if known, and the other screens
+// as it left (`others`, of othersAt). Each decides on its own, by wayBack,
+// lowest kept number first, and the moves go so; their order there is the
+// windows daemon's to put back. One gone already is dropped; one on its
+// screen already is marked (`there`) and left. A twin, a sibling that was
+// another screen as one left or the other way, never takes the other's
+// connector or one given it, and `waiting` is `away` with those still
+// waiting, each knowing those as another screen's for later calls.
 function homeward(away, screens, workspaces) {
     const moves = [];
-    const home = [];
+    const waiting = {};
     for (const screen of Object.keys(away ?? {}).sort()) {
-        const alike = Object.keys(screens ?? {})
-            .filter(name => screens[name] === screen || name === screen);
-        if (alike.length > 0) {
-            home.push(screen);
-            const ranked = away[screen]
-                .filter(one => workspaces.some(each => each.id === one.id))
-                .sort((a, b) => a.workspace - b.workspace);
-            for (const one of ranked) {
-                const output = alike.includes(one.output) ? one.output : alike[0];
-                const now = workspaces.find(each => each.id === one.id);
-                moves.push(now.output === output ? { output, id: one.id, there: true }
-                    : { output, id: one.id });
+        const given = [];
+        const held = [];
+        const live = away[screen]
+            .filter(one => workspaces.some(each => each.id === one.id))
+            .sort((a, b) => a.workspace - b.workspace);
+        const twins = (one, was) => one.others?.[was.output] === screen || was.others?.[one.output] === screen;
+        for (const one of live) {
+            const claimed = [...new Set(given.filter(was => twins(one, was.one)).map(was => was.to)
+                .concat(live.filter(was => was !== one && was.output && twins(one, was)).map(was => was.output)))];
+            const output = wayBack(one, screen, screens, claimed);
+            if (output === null) {
+                const others = Object.assign({}, one.others, ...claimed.map(name => ({ [name]: screen })));
+                held.push(claimed.length > 0 ? Object.assign({}, one, { others }) : one);
+                continue;
             }
+            given.push({ to: output, one });
+            const now = workspaces.find(each => each.id === one.id);
+            moves.push(now.output === output ? { output, id: one.id, there: true } : { output, id: one.id });
+        }
+        if (held.length > 0) {
+            waiting[screen] = held;
         }
     }
-    return { moves, home };
+    return { moves, waiting };
+}
+
+// Where a workspace noted away from `screen` goes now, of `screens` by
+// connector, or null while it waits. The connector it left, once that's the
+// screen again, is home. Else any screen alike is, but one that was another
+// screen alike it as it left, or one not heard yet then, which may have
+// been: two monitors of one model without serials, or a VM's two, describe
+// themselves the same, and taking the one it was sent to for home dropped
+// its note before the one it left came back (vm-screens-keep-places,
+// 2026-11-18). `claimed` are those taken just now by a sibling that was
+// another screen as it left, so two alike back on new connectors take one
+// each. Where it sits now doesn't count, so one Joel moves while it waits
+// stays where he put it.
+function wayBack(one, screen, screens, claimed) {
+    const alike = Object.keys(screens ?? {})
+        .filter(name => screens[name] === screen || name === screen)
+        .sort();
+    if (alike.includes(one.output)) {
+        return one.output;
+    }
+    const others = one.others ?? {};
+    const notIt = name => name in others && (others[name] === screen || others[name] === "");
+    return alike.find(name => !notIt(name) && !claimed.includes(name)) ?? null;
+}
+
+// The connectors other screens as a workspace leaves `left`, by `screens`'
+// descriptions of them, "" for one not heard yet: those connected
+// (`outputs`) and those gone in the same moment (`lefts`), each once.
+function othersAt(left, outputs, lefts, screens) {
+    const others = {};
+    for (const name of outputs.concat(lefts)) {
+        if (name !== left && !(name in others)) {
+            others[name] = screens?.[name] ?? "";
+        }
+    }
+    return others;
 }
 
 // Which window kept, of a boot's windows other than its sessions, a window
@@ -241,23 +327,6 @@ function opensAt(where, beside) {
     return where.after !== undefined ? next.column + 1 : next.column;
 }
 
-// How much of the disk's time may be stalled, as the share of the last ten
-// seconds some task waited on it, before the next session waits too: past
-// it git, rustc and nix sit in D state and journalctl stops answering.
-const ioStalls = 50;
-// How old the queue's heartbeat may be, in seconds, and still be heard.
-const queueHeard = 120;
-// How fast the uplink may already send, in Mbit/s, before the next
-// session is told to carry on: the evening's rate on 2026-11-14, which
-// the builders sharing the home line lived with, where the 22:24 boot's
-// seventy-two told at once sent 6.4 of the 8.2 it had for 17 minutes.
-const uplinkRoom = 4.5;
-// While the queue says nothing of the uplink, this many told and still
-// working at once, each counted until it goes idle or this many seconds
-// pass since it was told.
-const fewAtOnce = 4;
-const fewPatience = 60;
-
 // Where a session to reopen sat, by its id: this boot's place while it
 // has one, else the restored boot's. An orchestrator bringing its own
 // sessions back after a reboot hands them over before Reopen Them All
@@ -269,15 +338,9 @@ const fewPatience = 60;
 function keptFor(id, kept) {
     return kept.now?.[id] ?? kept.restored?.[id] ?? null;
 }
-
-// Reopen Them All's queue, `{ one, kept }` each, with those whose kept
-// place says it `leads` (it orchestrated others as it was kept) first,
-// each part in the order it came, so the sessions an orchestrator leads
-// have it back to answer to as they return. Where each goes doesn't hang on
-// the order begun, since each is placed by the kept places of those back.
-function leadersFirst(queue) {
-    const leads = entry => entry.kept?.leads === true;
-    return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
+// Which boot keptFor took a session's place from: "now", "restored" or "".
+function keptFrom(id, kept) {
+    return ["now", "restored"].find(boot => (kept[boot]?.[id] ?? null) !== null) ?? "";
 }
 
 // The address of the workspace a session goes home to, its orchestrator's,
@@ -328,16 +391,6 @@ function underOrchestrator(title, orchestrator, under) {
         : there.filter(one => one.title.localeCompare(title) < 0);
     const column = Math.max(orchestrator.column, ...before.map(one => one.column)) + 1;
     return { workspace: orchestrator.workspace, column };
-}
-
-// Reopen Them All's queue with `more` joined at its end, but for each one
-// it holds already or has `begun`, by id: an orchestrator handing over its
-// own sessions as it comes back, while the queue still holds them, would
-// otherwise begin each twice, two pis on one log, before either has said
-// it runs here.
-function queuedOnce(queue, more, begun) {
-    const asked = new Set(queue.map(entry => entry.one.id).concat(begun));
-    return queue.concat(more.filter(entry => !asked.has(entry.one.id)));
 }
 
 // The file a pi host keeps its own list of the sessions it runs in, in the
@@ -435,66 +488,4 @@ function freshId(now, random) {
 // `afreshFor` names the session it stands in for.
 function afresh(one, start, id) {
     return Object.assign({}, one, { id, cwd: start, fresh: true, afreshFor: one.id });
-}
-
-// Those of `pending` (each `{ id, wants, carried, leads }`, as reopened,
-// `wants` when it waits on Joel) to tell to carry on now, in the order
-// they're told: those waiting on Joel, then those carried in from another
-// machine, then leaders, then
-// the rest, each part in the order given. `told` is those told already,
-// `{ id, at, idle }` each, `at` in seconds as `now` is, and none of them is
-// told again. With the machine queue's `text` saying the uplink sends under
-// uplinkRoom, one; past it, none. With a queue that says nothing of the
-// uplink, as before the machine queue measured it, fewAtOnce working at
-// once. A queue unread or silent past `queueHeard` says nothing of the
-// line, so all are told, as mayBegin holds nothing back.
-function carryOnsDue(pending, told, text, now) {
-    const done = new Set(told.map(one => one.id));
-    const left = pending.filter(one => !done.has(one.id));
-    const first = [one => one.wants === true, one => Boolean(one.carried),
-        one => one.leads === true];
-    const rank = one => {
-        const at = first.findIndex(is => is(one));
-        return at === -1 ? first.length : at;
-    };
-    const ordered = left.map((one, at) => ({ one, at }))
-        .sort((a, b) => rank(a.one) - rank(b.one) || a.at - b.at).map(entry => entry.one);
-    let read = null;
-    try {
-        read = JSON.parse(text);
-    } catch (_error) {
-        return ordered;
-    }
-    const machine = read?.machine;
-    if (typeof read?.heartbeat !== "number" || now - read.heartbeat > queueHeard || !machine) {
-        return ordered;
-    }
-    const sent = machine.uplink?.sentMbit;
-    if (typeof sent === "number") {
-        return ordered.slice(0, sent < uplinkRoom ? 1 : 0);
-    }
-    const working = told.filter(one => !one.idle && now - one.at < fewPatience).length;
-    return ordered.slice(0, Math.max(0, fewAtOnce - working));
-}
-
-// Whether Reopen Them All may begin the next session now, from the machine
-// queue's own verdict (`text`, /run/user/$UID/jobs/queue.json): not while
-// it says the memory or the processors are over, or while the disk stalls,
-// as eighty sessions begun two seconds apart did eleven minutes after the
-// 09:23 boot on 2026-11-08 (load 245, IO pressure 98%, 16 GB swapped). A
-// queue unread, or silent past `queueHeard`, holds nothing back, so a
-// reopening never waits on a queue that's gone. `now` is in seconds since
-// the epoch, as the heartbeat is.
-function mayBegin(text, now) {
-    let read = null;
-    try {
-        read = JSON.parse(text);
-    } catch (_error) {
-        return true;
-    }
-    const machine = read?.machine;
-    if (typeof read?.heartbeat !== "number" || now - read.heartbeat > queueHeard || !machine) {
-        return true;
-    }
-    return (machine.over ?? []).length === 0 && (machine.pressure?.io ?? 0) < ioStalls;
 }

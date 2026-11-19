@@ -35,6 +35,7 @@ import Quickshell.Io
 import QtQuick
 import "PiSource.js" as Pi
 import "Places.js" as Places
+import "Reopening.js" as Reopening
 import "SessionWindows.js" as SessionWindows
 import "Viewers.js" as Viewers
 import "Waiting.js" as Waiting
@@ -1290,7 +1291,7 @@ Singleton {
         reopenStartedAt = now;
     }
     // And none is begun while the machine queue says the machine has no
-    // room (Places.mayBegin), looked at again this often, since eighty
+    // room (Reopening.mayBegin), looked at again this often, since eighty
     // sessions begun two seconds apart still swamped it after a boot.
     readonly property int roomPace: 5000
     function reopenSoon() {
@@ -1321,7 +1322,7 @@ Singleton {
     }
     function hasRoom() {
         machineQueue.reload();
-        return Places.mayBegin(machineQueue.text(), Date.now() / 1000);
+        return Reopening.mayBegin(machineQueue.text(), Date.now() / 1000);
     }
     // It asks again rather than taking the next at once, since a timer
     // this long is a coarse one, which may fire up to a twentieth of its
@@ -1332,7 +1333,7 @@ Singleton {
     }
 
     // Each session Reopen Them All opened is told to carry on only as the
-    // uplink has room (Places.carryOnsDue), since the words make it send,
+    // uplink has room (Reopening.carryOnsDue), since the words make it send,
     // not its window: an idle pi sends a fraction of a kbit/s, and on
     // 2026-11-14 seventy-two told as each opened sent 6.4 Mbit/s of the
     // home line's 8.2 for 17 minutes, past the builders sharing it. Every
@@ -1362,7 +1363,7 @@ Singleton {
         // Those told an hour ago are long past counting.
         carryingOn.told = carryingOn.told.filter(told => now - told.at < 3600);
         machineQueue.reload();
-        const due = Places.carryOnsDue([pendingOf(one, kept)], toldSoFar(now),
+        const due = Reopening.carryOnsDue([pendingOf(one, kept)], toldSoFar(now),
             machineQueue.text(), now);
         if (due.length === 0)
             return false;
@@ -1394,7 +1395,7 @@ Singleton {
         machineQueue.reload();
         const asked = ready.map(one => Object.assign({}, one,
             { wants: wanting.some(session => session.presence?.session === one.id) }));
-        const due = Places.carryOnsDue(asked, told, machineQueue.text(), now / 1000);
+        const due = Reopening.carryOnsDue(asked, told, machineQueue.text(), now / 1000);
         for (const one of due) {
             steer(runs(one.id).address, { text: carryOn, id: `carry-on-${now}-${one.id}` });
             carryingOn.told.push({ id: one.id, at: now / 1000 });
@@ -1438,11 +1439,15 @@ Singleton {
     // (reopened), as Reopen Them All tells each to carry on.
     property var reopening: null
     function reopenAll(lost, gone, keptAt, told) {
-        const kept = keptAt ?? (id => Places.keptFor(id, { now: arrangement[bootId],
-            restored: arrangement[restoring.boot] }));
+        const boots = { now: arrangement[bootId], restored: arrangement[restoring.boot] };
+        const kept = keptAt ?? (id => Places.keptFor(id, boots));
+        // The other windows its place's boot kept at once, which say which
+        // alike screens were two (Places.js's twinsOf).
+        const moments = { now: arrangedOthers[bootId], restored: arrangedOthers[restoring.boot] };
+        const momentOf = id => keptAt ? [] : moments[Places.keptFrom(id, boots)];
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one, true));
         const here = lost.filter(one => one.machine === undefined);
-        lookAtScreens(() => reopenHere(here, gone, kept, told ?? ""));
+        lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", momentOf));
     }
     // What Reopen Them All tells each session it reopens, so a boot never
     // leaves them waiting to be poked one by one (P9R1KI, 2026-11-02
@@ -1454,15 +1459,16 @@ Singleton {
         + "left off: your plan's next open item."
     // Each kept place found on its own screen as it's connected now, or a
     // gone screen's after the one in use's (Places.js), then in order.
-    function reopenHere(here, gone, kept, told) {
+    function reopenHere(here, gone, kept, told, momentOf) {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
-        const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null);
-        const queue = Places.leadersFirst(here.map((one, at) => ({ one, at: places[at],
+        const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null,
+            here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
+        const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: keptPlaces[at], gone, told })).sort(order));
         if (reopening !== null) {
-            reopening.queue = Places.queuedOnce(reopening.queue, queue, reopening.begun);
+            reopening.queue = Reopening.queuedOnce(reopening.queue, queue, reopening.begun);
             // Settled again once these are placed too, beside the rest.
             reopening.settling = false;
             reopenSettling.stop();
@@ -1997,7 +2003,9 @@ Singleton {
     // connected, once nothing's being placed. A screen can come well after
     // niri starts, as the monitor came 52 s after it on 2026-11-02, and niri
     // keeps a workspace that took a window while its screen was away on the
-    // screen it took it on, so without this they'd stay there.
+    // screen it took it on, so without this they'd stay there. Each keeps
+    // the other screens as it left (`others`, Places.js's othersAt), said by
+    // whoever saw it leave, since a reopen notes one minutes after.
     property var awayFrom: ({})
     function noteAway(away, id) {
         if (!away || id === null || id === undefined)
@@ -2006,7 +2014,8 @@ Singleton {
         if (kept.some(one => one.id === id))
             return;
         const next = Object.assign({}, awayFrom);
-        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output }]);
+        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
+            others: away.others ?? {} }]);
         awayFrom = next;
     }
     // Each workspace's screen and number as last seen with that screen
@@ -2018,34 +2027,49 @@ Singleton {
     // back in its place when the screen comes. One noted already keeps its
     // first screen, so a laptop shut on its dock never takes the monitor's.
     property var workspacesWere: ({})
+    // Says each workspace comeHome holds back once, as it starts to wait,
+    // so a screen test that fails shows whether the shell waited.
+    property var heldSaid: []
+    function sayHeld(waiting) {
+        const held = Object.values(waiting).reduce((all, kept) => all.concat(kept), []);
+        held.filter(one => !heldSaid.includes(one.id)).forEach(one => console.info(
+            `workspace ${one.id} waits for ${one.output ?? "its screen"} to come back`));
+        heldSaid = held.map(one => one.id);
+    }
     function noteGone() {
         const now = Object.values(Niri.workspaces);
         const outputs = now.map(one => one.output ?? "");
         const noted = Object.values(root.awayFrom)
             .reduce((all, kept) => all.concat(kept.map(one => one.id)), []);
+        // Only connectors there as niri last said its workspaces are other
+        // screens, since one that comes in the same moment may be the one
+        // going, on another connector, and those gone just now are siblings.
+        const lefts = root.outputsWere.filter(output => !outputs.includes(output));
+        const stayed = outputs.filter(output => root.outputsWere.includes(output));
         const next = {};
         for (const one of now) {
             const was = root.workspacesWere[one.id];
             const left = was !== undefined && !outputs.includes(was.output);
             if (left && was.output !== (one.output ?? "") && !noted.includes(one.id))
-                root.noteAway({ screen: root.screens[was.output] || was.output,
-                    workspace: was.idx, output: was.output }, one.id);
+                root.noteAway({ screen: root.screens[was.output] || was.output, workspace: was.idx,
+                    output: was.output,
+                    others: Places.othersAt(was.output, stayed, lefts, root.screens) }, one.id);
             next[one.id] = left ? was : { output: one.output ?? "", idx: one.idx };
         }
         root.workspacesWere = next;
+        root.outputsWere = [...new Set(outputs)];
     }
+    property var outputsWere: []
     function comeHome() {
         if (root.placingNow() || Object.keys(awayFrom).length === 0)
             return;
         const going = Places.homeward(awayFrom, screens, Object.values(Niri.workspaces));
-        if (going.home.length === 0)
-            return;
-        const next = {};
-        for (const screen in awayFrom) {
-            if (!going.home.includes(screen))
-                next[screen] = awayFrom[screen];
-        }
-        awayFrom = next;
+        root.sayHeld(going.waiting);
+        if (JSON.stringify(going.waiting) !== JSON.stringify(awayFrom))
+            awayFrom = going.waiting;
+        going.moves.forEach(move => console.info(move.there === true
+            ? `workspace ${move.id} is back on ${move.output}`
+            : `workspace ${move.id} goes back to ${move.output}`));
         const back = Niri.current;
         const moving = going.moves.filter(move => move.there !== true);
         // Their order is the windows daemon's to put back, as Joel last had
@@ -2053,6 +2077,16 @@ Singleton {
         // the screen was away (2026-11-11, modules/windows/src/order.rs).
         moving.forEach(move => Niri.act({ MoveWorkspaceToMonitor: { output: move.output,
             reference: { Id: move.id } } }));
+        // Each is where it was sent, or found, now, so niri moving it there
+        // isn't its screen going again (noteGone), as it was when it went
+        // to an alike screen on another connector than the one it left.
+        if (going.moves.length > 0) {
+            const were = Object.assign({}, root.workspacesWere);
+            going.moves.forEach(move => {
+                were[move.id] = { output: move.output, idx: Niri.workspace(move.id)?.idx ?? 1 };
+            });
+            root.workspacesWere = were;
+        }
         // A screen just connected keeps its empty workspace while it's the
         // active one there, so the first moved is focused, which lets niri
         // drop the empty one, and then Joel's window again.
@@ -2108,7 +2142,7 @@ Singleton {
         const at = going.kept[index];
         const beside = root.besideOf(going.back);
         const found = Places.whereBack(at, beside);
-        const output = found.output ?? Places.connectorOf(at, screens)
+        const output = found.output ?? Places.whereKept(at, going.kept, screens)
             ?? Niri.workspace()?.output ?? null;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
@@ -2122,9 +2156,9 @@ Singleton {
             .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
-        if (into !== null && Places.connectorOf(at, screens) === undefined)
+        if (into !== null && Places.whereKept(at, going.kept, screens) === undefined)
             root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
-                output: at.output }, into);
+                output: at.output, others: Places.othersGone(at, going.kept, screens) }, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;

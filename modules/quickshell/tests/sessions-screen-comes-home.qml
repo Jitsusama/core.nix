@@ -7,8 +7,12 @@ pragma ComponentBehavior: Bound
 // first, since a window opened in the second meanwhile. niri never answers
 // the shell's look at the screens as the monitor comes, as when it lagged
 // and dropped its connection at a redock on 2026-11-15, and the second
-// workspace still goes back to the monitor once niri answers a look again. It
-// exits 0 once that holds, and otherwise 1, saying what didn't.
+// workspace still goes back to the monitor once niri answers a look again.
+// Then a second monitor alike the first, as two of one model without serials
+// are, comes and goes: its workspace waits while only the first is there, and
+// goes to it once it's back, on a connector of its own, and isn't noted away
+// again as niri moves it. It exits 0 once that holds, and otherwise 1, saying
+// what didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -19,9 +23,12 @@ ShellRoot {
 
     property string stage: "docked"
     property real heldSince: 0
+    property real twinGoneSince: 0
+    property real settledSince: 0
 
     readonly property var laptop: ({ make: "Lark", model: "Book", serial: "1", logical: {} })
     readonly property var monitor: ({ make: "Gull", model: "Wide", serial: "2", logical: {} })
+    readonly property var twin: ({ make: "Gull", model: "Wide", serial: "2", logical: {} })
 
     function workspacesAre(listed) {
         const now = {};
@@ -59,6 +66,14 @@ ShellRoot {
                 redocked();
             else if (stage === "answered")
                 answered();
+            else if (stage === "twinned")
+                twinned();
+            else if (stage === "twinGone")
+                twinGone();
+            else if (stage === "twinBack")
+                twinBack();
+            else if (stage === "twinHome")
+                twinHome();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -140,6 +155,96 @@ ShellRoot {
         Expect.expect("the one niri gave back is left there", movedHome(10).length === 0,
             JSON.stringify(Niri.acts));
         console.log("a screen niri is late to name still takes its workspaces back");
+        // niri moves it, and a second monitor alike the first comes on
+        // Virtual-3 with a workspace of its own.
+        root.workspacesAre([
+            { id: 6, idx: 1, output: "Virtual-1", is_focused: true, active_window_id: 90 },
+            { id: 10, idx: 1, output: "Virtual-2" },
+            { id: 14, idx: 2, output: "Virtual-2", active_window_id: 91 },
+            { id: 30, idx: 1, output: "Virtual-3" }
+        ]);
+        Sessions.lookAtScreens(() => {});
+        stage = "twinned";
+    }
+
+    function twinned() {
+        root.answerOutputs({ "Virtual-1": root.laptop, "Virtual-2": root.monitor,
+            "Virtual-3": root.twin });
+        if (Sessions.screens["Virtual-3"] !== "Gull Wide 2")
+            return;
+        // The second monitor goes, and niri puts its workspace on the
+        // laptop's screen. A connector comes in the same moment, which
+        // could be the one going on another, so it's no other screen.
+        root.workspacesAre([
+            { id: 6, idx: 1, output: "Virtual-1", is_focused: true, active_window_id: 90 },
+            { id: 30, idx: 2, output: "Virtual-1" },
+            { id: 10, idx: 1, output: "Virtual-2" },
+            { id: 14, idx: 2, output: "Virtual-2", active_window_id: 91 },
+            { id: 40, idx: 1, output: "Virtual-5" }
+        ]);
+        stage = "twinGone";
+    }
+
+    // The first monitor, alike it, is still there, so it isn't the second
+    // come back: the workspace waits on the laptop's screen. The five
+    // seconds count from the shell saying it holds it back, so they're
+    // seconds comeHome had to move it, however slow the start.
+    function twinGone() {
+        root.answerOutputs({ "Virtual-1": root.laptop, "Virtual-2": root.monitor });
+        const away = (Sessions.awayFrom["Gull Wide 2"] ?? []).find(one => one.id === 30);
+        if (away === undefined || !Sessions.heldSaid.includes(30))
+            return;
+        if (root.twinGoneSince === 0) {
+            Expect.expect("the second monitor's workspace is noted with the other screens as it left",
+                JSON.stringify(away.others) === JSON.stringify({ "Virtual-1": "Lark Book 1",
+                    "Virtual-2": "Gull Wide 2" }), JSON.stringify(Sessions.awayFrom));
+            root.twinGoneSince = Date.now();
+        }
+        if (Date.now() - root.twinGoneSince < 5000)
+            return;
+        Expect.expect("nothing went to the monitor alike the one gone", movedHome(30).length === 0,
+            JSON.stringify(Niri.acts));
+        // It comes back on a connector of its own, with a workspace niri
+        // makes there.
+        root.workspacesAre([
+            { id: 6, idx: 1, output: "Virtual-1", is_focused: true, active_window_id: 90 },
+            { id: 30, idx: 2, output: "Virtual-1" },
+            { id: 10, idx: 1, output: "Virtual-2" },
+            { id: 14, idx: 2, output: "Virtual-2", active_window_id: 91 },
+            { id: 31, idx: 1, output: "Virtual-4" }
+        ]);
+        stage = "twinBack";
+    }
+
+    function twinBack() {
+        root.answerOutputs({ "Virtual-1": root.laptop, "Virtual-2": root.monitor,
+            "Virtual-4": root.twin });
+        if (movedHome(30).length === 0)
+            return;
+        Expect.expect("the second monitor's workspace goes to it on its new connector",
+            movedHome(30).every(output => output === "Virtual-4"), JSON.stringify(Niri.acts));
+        // niri moves it there.
+        root.workspacesAre([
+            { id: 6, idx: 1, output: "Virtual-1", is_focused: true, active_window_id: 90 },
+            { id: 10, idx: 1, output: "Virtual-2" },
+            { id: 14, idx: 2, output: "Virtual-2", active_window_id: 91 },
+            { id: 30, idx: 1, output: "Virtual-4" },
+            { id: 31, idx: 2, output: "Virtual-4" }
+        ]);
+        root.settledSince = Date.now();
+        stage = "twinHome";
+    }
+
+    // Gone from the laptop's screen to the one it was sent to, it isn't
+    // noted away from the connector it left before.
+    function twinHome() {
+        root.answerOutputs({ "Virtual-1": root.laptop, "Virtual-2": root.monitor,
+            "Virtual-4": root.twin });
+        if (Date.now() - root.settledSince < 3000)
+            return;
+        Expect.expect("no workspace waits once each is home", Object.keys(Sessions.awayFrom).length === 0,
+            JSON.stringify(Sessions.awayFrom));
+        console.log("a monitor alike another takes its workspace back, on whatever connector");
         Qt.exit(0);
     }
 
@@ -154,7 +259,7 @@ ShellRoot {
 
     Timer {
         running: true
-        interval: 30000
+        interval: 50000
         onTriggered: Expect.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
             + `${JSON.stringify(Sessions.awayFrom)} ${JSON.stringify(Sessions.screens)}`)
     }

@@ -99,8 +99,8 @@ in
   # after the one in use's and to it once it's back, and each window that
   # reopens itself beside those kept with it, and begins the next session
   # only while the machine queue says there's room, as
-  # modules/quickshell/tests/places.qml holds Places.js and Viewers.js to it in
-  # Qt's own engine.
+  # modules/quickshell/tests/places.qml holds Places.js, Reopening.js and
+  # Viewers.js to it in Qt's own engine.
   reopening-finds-each-screen =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -109,6 +109,7 @@ in
       cp ${../tests/places.qml} places.qml
       ${copied [
         "Places.js"
+        "Reopening.js"
         "Viewers.js"
       ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
