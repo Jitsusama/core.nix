@@ -126,6 +126,29 @@ in
       touch $out
     '';
 
+  # The journalctl a machine boots and the one its initrd carries still word
+  # a skipped journal file as the summary reads it, as
+  # tests/journal-words-skips.sh says. The summary's own check holds what
+  # it does with those words; this holds that systemd still says them, so
+  # a new systemd that rewords them fails here rather than on a failed boot.
+  journalctl-words-skips-as-the-summary-reads =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      systemds = lib.unique [
+        machine.config.systemd.package
+        machine.config.boot.initrd.systemd.package
+      ];
+    in
+    pkgs.runCommandLocal "journalctl-words-skips-as-the-summary-reads" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/journal-words-skips.sh} ${./stopped/src/main.rs} \
+        ${lib.escapeShellArgs systemds}
+      touch $out
+    '';
+
   # The console's font is the account's monospace face at Medium, drawn into
   # the kernel's 16 by 32 cell: a PSF 2 font of at most 256 glyphs, so the
   # console keeps its bright colours, naming what each glyph stands for, with
