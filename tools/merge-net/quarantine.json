@@ -77,18 +77,6 @@
     "test": "vm-desktop-minds-the-margin"
   },
   {
-    "at": 1794969567,
-    "commit": "27089c76aa98e3bdf20218ed67f6dfeeaa417e7b",
-    "due": "2026-11-20",
-    "owner_pr": 5399,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at 27089c76aa98",
-    "subtests": [
-      "test_the_cat_walks_between_workspaces_as_if_on_one_screen"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794985705,
     "commit": "7e89121b2c9010910739e2cb89a5aa5be1ed23c1",
     "due": "2026-11-20",
