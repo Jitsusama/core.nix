@@ -503,6 +503,17 @@ and 6 after it. The 18 that came the frame after took a median 32, 18 ms of it
 after the swap, niri's part. Another run on another builder presented a median 40,
 all the frame after (2026-11-15).
 
+Going into a drawer is timed by `test_going_into_a_drawer_is_timed`, run
+alone with `PYTEST_ADDOPTS = "-k going_into"`: it steps into `LAB_INTO_IN`
+(Desktop unless given), down to `LAB_INTO` (Emoji unless given), then goes
+in by Ctrl+W l and out by Ctrl+W h, round after round. It prints each going
+in's presented time from the key, the shell's share to its swap and how many
+lines its frame laid, then the median and p90. `LAB_DRAWN_WINDOWS` opens
+windows first, as for the drawer walk. With 80 open, going into Emoji's
+1,833 names took a median 45 ms and a p90 67, the shell's share a median 21.
+Laying only what shows first, the rest after the frame, took a median 82
+and a p90 377 (2026-11-19).
+
 A key is timed by `modules/quickshell/tests/launcher-keys-lab-on-niri.py`, the
 `keys-lab` beside it. It opens home round after round and types each of
 `LAB_WORDS` (Joel's `meet` and `om` unless given) a letter at

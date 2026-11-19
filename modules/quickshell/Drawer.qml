@@ -611,9 +611,12 @@ Floating {
     // the cursor: its line, its letter along it, and how far along the
     // line it wants to be, which j and k go back to.
     property var laid: []
-    // How many of them were laid as the keys came in, which the frame they
-    // came in draws, for the launcher to say and report.
-    property int laidFirst: 0
+    // The keys coming in, said before its lines are laid, so the launcher
+    // reads their time before the lay rather than after it, whichever of
+    // its handlers runs first; and come in, with how many lines were laid
+    // for the frame they came in, for it to time that frame and say so.
+    signal entering()
+    signal entered(int laid)
     // The tops its view may scroll to, none cutting a line, worked out once
     // its lines are laid or its end moves rather than for each key, which
     // on a long page would spend half a key's budget (DrawerPage.js).
@@ -634,7 +637,9 @@ Floating {
         : keys && lastSought ? lastSought.pattern : ""
     onKeysChanged: {
         if (keys) {
+            entering();
             enter();
+            entered(laid.length);
         } else {
             // y's flash, which the next row's page would wear, goes
             // first, while the readers its paint() reaches are still made.
@@ -849,14 +854,14 @@ Floating {
     // else the first line in view, so nothing moves as the keys come in.
     // Its whole run is laid in the frame the keys came in: laid after it,
     // going into Emoji's took a median 82 ms from the key in the drawer
-    // lab against 45 laid first, its shell's share 21 (2026-11-19).
+    // lab against 45 laid first, its shell's share 21 (2026-11-19;
+    // docs/testing.md's Timing the Launcher, the lab's going_into case).
     function enter() {
         // The whole run, first, for the lines read below to hold it.
         runWhole = true;
         lastChosen = null;
         began = choosing !== "" ? began : null;
         laid = lines();
-        laidFirst = laid.length;
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
         const top = drawer.shownFrom;
         const held = laid.map((line, at) => at).filter(at => laid[at].top >= top

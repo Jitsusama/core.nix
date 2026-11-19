@@ -9957,9 +9957,6 @@ Scope {
                 // drawer's top, and where its rule is drawn, in from the
                 // drawer's left.
                 keys: drawerCard.keys,
-                // How many lines it laid as the keys came in, for the frame
-                // they came in, the rest laid after it.
-                laidFirst: drawerCard.laidFirst,
                 frame: String(drawerCard.keys ? Theme.accent : Theme.edge),
                 cursor: drawerCard.block === null ? null : {
                     line: drawerCard.cursor.line,
@@ -12333,16 +12330,26 @@ Scope {
     // presented with them, as a drawer a key brought is, and said then with
     // how many lines that frame laid (Presented.intoSaid): Ctrl+W l into
     // Emoji's laid every name before its frame, and nothing timed it.
-    function intoTimed() {
-        if (!open)
-            return;
+    // The key is the one heard as the drawer said the keys were coming, or
+    // for a key a program typed with no time, when that was, read before the
+    // drawer laid its lines, so the lay is the key's.
+    property real intoFrom: 0
+    function intoComing() {
         const pressed = KeyTimes.pressed();
-        const one = { key: drawerRow?.key || drawerRow?.name || "",
-            from: pressed > 0 ? pressed : KeyTimes.now() };
+        intoFrom = pressed > 0 ? pressed : KeyTimes.now();
+    }
+    // The frame awaited is the next to begin, read once the lines are laid
+    // and before any frame can sync them, as a key's is.
+    function intoTimed(laid) {
+        const from = intoFrom;
+        intoFrom = 0;
+        if (!open || from <= 0)
+            return;
+        const one = { key: drawerRow?.key || drawerRow?.name || "", from, laid };
         // The frame presentedAwait waits on, whose swap says the shell's part.
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
-            Object.assign(one, { at, swapped: root.swappedOf(frame), laid: drawerCard.laidFirst,
+            Object.assign(one, { at, swapped: root.swappedOf(frame),
                 screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
             console.info(Presented.intoSaid(one));
         });
@@ -15378,10 +15385,8 @@ Scope {
             // Its frame says the keys are here while they're in it, gone in
             // with Space and the right arrow.
             keys: QueryKeys.paged(prompt.mode)
-            onKeysChanged: {
-                if (keys)
-                    root.intoTimed();
-            }
+            onEntering: root.intoComing()
+            onEntered: laid => root.intoTimed(laid)
             // The search being typed on the line, washed as it's typed.
             seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
             seekingForward: !prompt.standing.seek || prompt.standing.seek.forward

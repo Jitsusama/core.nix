@@ -15,7 +15,8 @@ never says it was presented, or the windows it opened never close. Beside it, a 
 times each step into a place from home, as Joel takes them, since a step is navigation and held
 to the same 50 ms. A third holds a place open while its daemon's changes come, and prints the
 line the shell says of them as it closes, since an update is held to it too: 6 of Machine's 20
-on Joel's shell took longer (2026-11-11).
+on Joel's shell took longer (2026-11-11). A fourth times going into a long drawer by Ctrl+W l,
+which lays every line of it before its frame.
 """
 
 from __future__ import annotations
@@ -576,14 +577,15 @@ def test_each_drawer_is_timed(
         )
 
 
-# The row of LAB_DRAWN_IN whose drawer the keys go into, unless the run says otherwise (LAB_INTO):
-# Emoji's, whose 1,914 names Ctrl+W l laid before its frame (2026-11-19).
+# The place and row whose drawer the keys go into, unless the run says otherwise (LAB_INTO_IN,
+# LAB_INTO): Desktop's Emoji, whose 1,914 names Ctrl+W l lays before its frame (2026-11-19).
+INTO_IN = "Desktop"
 INTO = "Emoji"
 
 # The keys going into a drawer as the shell says them once niri presented their frame
 # (launcher/Presented.js's intoSaid).
 INTO_PRESENTED = re.compile(
-    r'launcher: into the drawer for "[^"]+" presented (\d+) ms from the key'
+    r'launcher: into the drawer for "[^"]*" presented (\d+) ms from the key'
     r"(?:, (\d+) to the shell's swap)?, (\d+) lines? laid"
 )
 
@@ -593,11 +595,11 @@ def test_going_into_a_drawer_is_timed(
 ) -> None:
     """Go into a row's drawer by Ctrl+W l and out by Ctrl+W h, and print each going in's time.
 
-    The row is Desktop's Emoji unless the run names another place and row (LAB_DRAWN_IN,
+    The row is Desktop's Emoji unless the run names another place and row (LAB_INTO_IN,
     LAB_INTO), with LAB_DRAWN_WINDOWS windows open first, and each line says how many of the
     drawer's lines its frame laid.
     """
-    place = os.environ.get("LAB_DRAWN_IN", "Desktop")
+    place = os.environ.get("LAB_INTO_IN", INTO_IN)
     into = os.environ.get("LAB_INTO", INTO)
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
     walked_in(shell, place, place, request)
@@ -628,10 +630,11 @@ def test_going_into_a_drawer_is_timed(
         timed.append(int(found.group(1)))
         if found.group(2) is not None:
             swapped.append(int(found.group(2)))
+        swap = f"{found.group(2)} to the shell's swap" if found.group(2) else "no swap kept"
         with capsys.disabled():
             print(
                 f"lab-into {into} round {round_}: {found.group(1)} ms, "
-                f"{found.group(2)} to the shell's swap, {found.group(3)} lines laid first",
+                f"{swap}, {found.group(3)} lines laid first",
                 flush=True,
             )
         shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
@@ -641,8 +644,9 @@ def test_going_into_a_drawer_is_timed(
     with capsys.disabled():
         print(
             f"lab-into {into}: {len(timed)} presented a median "
-            f"{round(statistics.median(timed))} ms, p90 {p90(timed)}; the shell's to its swap "
-            f"a median {round(statistics.median(swapped)) if swapped else '?'} ms, "
+            f"{round(statistics.median(timed))} ms, p90 {p90(timed)}; the shell's to its swap, "
+            f"of the {len(swapped)} that kept one, a median "
+            f"{round(statistics.median(swapped)) if swapped else '?'} ms, "
             f"p90 {p90(swapped) if swapped else '?'}",
             flush=True,
         )
