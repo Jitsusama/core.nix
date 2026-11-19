@@ -523,10 +523,7 @@ Provider {
         cableLoading.inFlight = true;
         const path = `${sysfs}/${cableLoading.name}/${cableFiles[cableLoading.at]}`;
         cableWatch.restart();
-        if (cableProbe.path === path)
-            cableProbe.reload();
-        else
-            cableProbe.path = path;
+        cableProbe.path = path;
     }
 
     // A file of the card under way landed, saying `text`, or "" where it

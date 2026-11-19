@@ -665,25 +665,7 @@ ShellRoot {
             networks.stillReading && (networks.cableLoading?.name === "enp0s1"
                 || networks.cablesAsked.includes("enp0s1")),
             JSON.stringify([networks.cableLoading, networks.cablesAsked]));
-        waits.until("the card asked for loaded", within(2000, root.swept), root.askedAtItsPath);
-    }
-
-    // A card forgotten once its first file lands, before the next is asked,
-    // then plugged back in, is asked first for the file the probe already
-    // holds, and that file is read again rather than left to its watch.
-    function askedAtItsPath() {
-        const ask = () => {
-            networks.cableLoading = { name: "enp0s1", at: networks.cableFiles.length - 1,
-                texts: {}, state: "", stale: true, inFlight: false };
-            networks.cableFile();
-        };
-        const landed = () => networks.cableLoading === null && !networks.cableWatching;
-        ask();
-        waits.until("a card's last file landed", within(1000, landed), () => {
-            ask();
-            waits.until("a file asked at the probe's own path is read again",
-                within(1000, landed), () => Qt.exit(0));
-        });
+        waits.until("the card asked for loaded", within(2000, root.swept), () => Qt.exit(0));
     }
 
     // A card named as one of an object's own members has a lease and
@@ -723,24 +705,19 @@ ShellRoot {
     // Whether hungReads' view, its read landed late, is gone.
     property bool hungGone: false
 
-    // A file asked that never lands is given up by the cable's own watch.
+    // A file asked that never lands is given up by the cable's own watch,
+    // about two seconds on: its hold is stamped as it's given up, so a
+    // loop held up late can't make the watch look early.
     function watchedCable() {
         networks.cableLoading = { name: "enp0s8", at: 0, texts: {}, state: "", stale: true,
             inFlight: false };
         networks.cableWatching = true;
         const began = Date.now();
-        waits.until("a second and a half on", within(3000, () => Date.now() - began >= 1500),
-            () => {
-            Expect.expect("the watch keeps a cable file a second and a half",
-                networks.cableWatching && networks.cablesStuck.enp0s8 === undefined,
-                JSON.stringify(networks.cablesStuck.enp0s8));
-            root.cableGivenUpByWatch();
-        });
-    }
-
-    function cableGivenUpByWatch() {
         waits.until("the watch gives up a cable file that never lands",
             within(4000, () => networks.cablesStuck.enp0s8 !== undefined), () => {
+            const after = networks.cablesStuck.enp0s8.at - began;
+            Expect.expect("the watch gives up a cable file about two seconds on",
+                after >= 1500 && after <= 3000, `${after} ms`);
             root.hungReads();
             root.oddlyNamed();
             root.factsAlone();

@@ -1033,10 +1033,10 @@
     reading; a card given up keeps the view still reading its file, isn't asked again while
     that read hangs, and once it lands late destroys the view, keeps its hold and credits no
     other card with it; a cable file asked is watched and asked once, its watch stopped as it
-    lands, kept a second and a half by the watch when it never lands, then given up, and read
-    again when asked at the path the probe already holds; a card whose hold is over is asked
-    for by the answer itself; a card gone is forgotten, though its load was under way; a card
-    named __proto__ has its own lease and neighbours; and one named constructor no gateway
+    lands, and given up by the watch about two seconds on when it never does; a card whose
+    hold is over is asked for by the answer itself; a card gone is forgotten, though its load
+    was under way; a card named __proto__ has its own lease and neighbours; and one named
+    constructor no gateway
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,
