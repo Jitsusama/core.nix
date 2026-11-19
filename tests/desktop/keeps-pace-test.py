@@ -47,6 +47,7 @@ def test_half_stolen_under_load_alone_gives_a_share_of_two() -> None:
 def test_what_was_stolen_frozen_weighs_against_what_was_under_load() -> None:
     """The held VM's ticks, stolen from both turns, give much less than half stolen would."""
     share = builders_share(HELD_UNDER, HELD_FROZEN)
+    assert share is not None, "the held ticks gave no share"
     assert math.isclose(share, HELD_SHARE, abs_tol=0.005), f"the held ticks gave {share}"
 
 
@@ -60,12 +61,12 @@ def test_the_share_is_never_under_one_nor_over_the_processors() -> None:
     assert starved == PROCESSORS, f"every tick stolen under load alone gave a share of {starved}"
 
 
-def test_a_turn_with_no_busy_ticks_gives_a_share_of_one() -> None:
-    """With no busy ticks in a turn there's nothing to weigh, rather than a division by none."""
+def test_a_turn_with_no_busy_ticks_gives_no_share() -> None:
+    """With no busy ticks in a turn there's nothing to weigh, where a 1 would read as nothing."""
     unloaded = builders_share((0, 0), (0, BUSY))
     unfrozen = builders_share((0, BUSY), (0, 0))
-    assert unloaded == 1.0, f"no busy ticks under load gave a share of {unloaded}"
-    assert unfrozen == 1.0, f"no busy ticks frozen gave a share of {unfrozen}"
+    assert unloaded is None, f"no busy ticks under load gave a share of {unloaded}"
+    assert unfrozen is None, f"no busy ticks frozen gave a share of {unfrozen}"
 
 
 def test_every_tick_stolen_in_both_turns_gives_a_share_of_one() -> None:
@@ -93,7 +94,7 @@ def test_each_count_goes_to_its_own_turn_and_a_turning_to_neither() -> None:
 
 
 def test_a_turn_that_never_finished_keeps_what_follows_in_neither() -> None:
-    """A freeze that fails partway leaves the ledger between turns, keeping each count after."""
+    """A freeze that fails partway leaves the ledger between turns, each count after in neither."""
     ledger = Ledger(stat(0, 0))
     ledger.count(stat(10, 100), turn=True)
     ledger.turning()
