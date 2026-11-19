@@ -18,8 +18,8 @@
   {
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
-    "due": "2026-11-20",
-    "due_why": "Its owner, the call shaper's, by 2026-11-20 23:59 UTC either fixes what the next failure's trace names and takes it off once three runs after the fix hold, or, with no failure, takes it off once ten runs in a row hold: 2 of 16 gate runs on 18 Nov failed on loaded builders, once the shaper never holding the link in 60 s, which also left test_unshaped its loads, and once a call losing 396 datagrams down with the shaper stopped, so three reruns alone wouldn't take it off",
+    "due": "2026-11-22",
+    "due_why": "Its owner, the call shaper's, by 2026-11-22 23:59 UTC fixes what a failure's trace names and takes it off once three net runs after the fix exit 0, or, with none failing, once ten in a row do, counted by exit code, since a failure only here is recorded as passed: the net excused 7 failures from 14 to 18 Nov, and about 5 in 20 runs failed after the trace, each a call losing 69 to 3,106 datagrams down, once with the shaper stopped, or the shaper not holding within 60 s",
     "owner_pr": 4228,
     "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at 580dc8dbd580",
