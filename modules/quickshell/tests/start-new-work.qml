@@ -186,5 +186,24 @@ QtObject {
         Expect.same("a notice's body is each end, a line each, as plain text",
             Sprouting.noticeBody(["<a href=\"x\">look</a> & see", "busy"]),
             "&lt;a href=\"x\"&gt;look&lt;/a&gt; &amp; see\nbusy");
+
+        // The starts the agents daemon keeps ended and untold: one this shell never heard
+        // the end of is told, and each but one it's still asking is said told.
+        const kept = [
+            { token: "a-1", ended: { error: { code: "unanswered", message: "cut off" } } },
+            { token: "a-2", ended: { sprouted: { machine: "kestrel", held: "h2" } } },
+            { token: "a-3", ended: { error: { code: "unsprouted", message: "no" } } },
+            { token: "a-4", ended: { error: { code: "unsprouted", message: "no" } } }
+        ];
+        const untold = Sprouting.untold(kept, { "a-2": "ended", "a-3": "asking", "a-4": "told" });
+        Expect.same("one never heard is told", untold.tell.map(one => one.token), ["a-1"]);
+        Expect.same("each heard or told is said told, and one still asked isn't",
+            untold.told, ["a-1", "a-2", "a-4"]);
+        Expect.same("none kept, none told", Sprouting.untold([], {}), { tell: [], told: [] });
+        const token = Sprouting.token(1763500000000, 0.5);
+        Expect.same("a start's token is letters, digits and a dash, as the daemon keeps",
+            /^[a-z0-9]+-[a-z0-9]+$/u.test(token), true);
+        Expect.same("two asked in one moment are told apart",
+            token === Sprouting.token(1763500000000, 0.25), false);
     }
 }

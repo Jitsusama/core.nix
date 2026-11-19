@@ -99,6 +99,8 @@ pub struct Made {
     /// Each session's talks as the launcher shows them, a whole record
     /// (inboxes.rs).
     talks: Vec<Value>,
+    /// Each start that ended and isn't told, a whole record (starts.rs).
+    starts: Vec<Value>,
 }
 
 impl Made {
@@ -148,6 +150,12 @@ impl Made {
     #[must_use]
     pub fn with_talks(self, talks: Vec<Value>) -> Self {
         Self { talks, ..self }
+    }
+
+    /// The same, with each start that ended and isn't told.
+    #[must_use]
+    pub fn with_starts(self, starts: Vec<Value>) -> Self {
+        Self { starts, ..self }
     }
 
     /// The same, with the top level's rows after Agents' own (top.rs),
@@ -242,6 +250,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         windows: Vec::new(),
         wants: Vec::new(),
         talks: Vec::new(),
+        starts: Vec::new(),
     }
 }
 
@@ -308,7 +317,8 @@ impl Served {
             .chain(made.closed)
             .chain(made.windows)
             .chain(made.wants)
-            .chain(made.talks);
+            .chain(made.talks)
+            .chain(made.starts);
         for whole in wholes {
             if let Some(key) = whole["key"].as_str() {
                 records.insert(key.to_owned(), whole);

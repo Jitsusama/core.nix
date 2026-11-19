@@ -59,6 +59,7 @@ use agents::served::Served;
 use agents::session::Session;
 use agents::sources::{self, Heard, Paths};
 use agents::sprout;
+use agents::starts::{self, Starts};
 use agents::tell::{self, Routes};
 use agents::wants::{self, PUT_OFF_FOR_MS, PutOff, Wants};
 use daemon_serve::asks::Domain;
@@ -90,6 +91,7 @@ const DOMAIN: Domain = Domain {
         "kept-places",
         "want",
         "talks",
+        starts::KIND,
     ],
     sole: &[],
     named_only: &["landed-drawer"],
@@ -303,16 +305,36 @@ fn own(
 
 /// Start New Work, asked of `node` only for the shell, told apart by the
 /// connection it came on; feedback and a sprout wait on the node, so
-/// neither holds up an ask after it.
-fn sprouts_for_the_shell(shared: &Shared, node: Option<PathBuf>) {
+/// neither holds up an ask after it. Each start the shell names by a
+/// token is kept, told the loop as it's asked and as it ends, until the
+/// shell says it told Joel its end (starts.rs), so neither a restart of
+/// the shell nor one of this daemon ends it untold.
+fn sprouts_for_the_shell(shared: &Shared, node: Option<PathBuf>, told: mpsc::Sender<Heard>) {
     shared.peered(
-        &[sprout::ASK],
+        &[sprout::ASK, starts::TOLD],
         Box::new(move |said, stream| {
-            Some(sprout::answer(
-                said,
-                asker::the_shell(stream),
-                node.as_deref(),
-            ))
+            let asker = asker::the_shell(stream);
+            if said["ask"] == starts::TOLD {
+                return Some(match asker {
+                    Ok(()) => {
+                        let tokens = starts::told_of(said);
+                        let count = tokens.len();
+                        let _ = told.send(Heard::StartsTold(tokens));
+                        json!({"told": count})
+                    }
+                    Err(why) => json!({"error": {"code": "untold", "message": why}}),
+                });
+            }
+            // Only the shell's are kept, so no other program fills the file.
+            let token = asker.as_ref().ok().and_then(|()| starts::token_of(said));
+            if let Some(token) = &token {
+                let _ = told.send(Heard::Begun(token.clone(), clock::now_ms()));
+            }
+            let answer = sprout::answer(said, asker, node.as_deref());
+            if let Some(token) = token {
+                let _ = told.send(Heard::Ended(token, answer.clone()));
+            }
+            Some(answer)
         }),
     );
     shared.slow(&["feedback", sprout::ASK]);
@@ -404,6 +426,7 @@ fn started(words: Words, paths: &Paths) -> Inputs {
             &paths.kept.with_file_name(wants::PUT_OFF_FILE),
             clock::now_ms(),
         ),
+        starts: Starts::read(&paths.kept.with_file_name(starts::FILE), clock::now_ms()),
         ..Inputs::default()
     }
 }
@@ -449,7 +472,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         kept,
     );
     let shared = Shared::new(DOMAIN, own);
-    sprouts_for_the_shell(&shared, args.node.clone());
+    sprouts_for_the_shell(&shared, args.node.clone(), to.clone());
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {
@@ -553,7 +576,7 @@ mod sprouts {
         let node = UnixListener::bind(&at_node).expect("a node's socket");
         node.set_nonblocking(true).expect("the node never waits");
         let shared = Shared::new(DOMAIN, Box::new(|_| None));
-        sprouts_for_the_shell(&shared, Some(at_node));
+        sprouts_for_the_shell(&shared, Some(at_node), mpsc::channel().0);
         let socket = folder.join("agents.sock");
         let listener = serve::listen(&socket).expect("the daemon's socket");
         serve::accept(shared, listener);

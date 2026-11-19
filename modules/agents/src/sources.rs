@@ -20,6 +20,7 @@ use crate::file::{self, Files};
 use crate::inboxes::{self, Inboxes};
 use crate::inputs::Inputs;
 use crate::kept_places::KeptPlaces;
+use crate::starts;
 use crate::talks::Talk;
 use crate::wants;
 
@@ -76,6 +77,13 @@ pub enum Heard {
     /// Joel puts off the want known so (wants.rs's `known`), at this
     /// moment in milliseconds, for an hour.
     PutOffWant(String, u128),
+    /// The shell asked the start it names by this token at this moment
+    /// in milliseconds, kept before the node is asked (starts.rs).
+    Begun(String, u128),
+    /// The start this token names ended with this answer to the shell.
+    Ended(String, Value),
+    /// The shell told Joel how the starts these tokens name ended.
+    StartsTold(Vec<String>),
 }
 
 /// Where the files the rows are made from are kept.
@@ -295,6 +303,11 @@ impl Inputs {
                     eprintln!("agents: can't keep {}: {why}", path.display());
                 }
             }
+            Heard::Begun(token, at) => self.keep_starts(paths, |starts| starts.begun(&token, at)),
+            Heard::Ended(token, answer) => {
+                self.keep_starts(paths, |starts| starts.ended(&token, &answer));
+            }
+            Heard::StartsTold(tokens) => self.keep_starts(paths, |starts| starts.told(&tokens)),
         }
     }
 
@@ -303,6 +316,16 @@ impl Inputs {
     fn keep(&self, paths: &Paths) {
         if let Err(why) = self.kept.write(&paths.kept) {
             eprintln!("agents: can't keep {}: {why}", paths.kept.display());
+        }
+    }
+
+    /// Changes the starts kept as `change` does and writes them, saying
+    /// when it can't, as a start would then go untold past a restart.
+    fn keep_starts(&mut self, paths: &Paths, change: impl FnOnce(&mut starts::Starts)) {
+        change(&mut self.starts);
+        let path = paths.kept.with_file_name(starts::FILE);
+        if let Err(why) = self.starts.write(&path) {
+            eprintln!("agents: can't keep {}: {why}", path.display());
         }
     }
 

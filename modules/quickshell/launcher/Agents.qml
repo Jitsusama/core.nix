@@ -392,7 +392,7 @@ Provider {
 
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
             kind: ["row", "summary", "recent", "landed", "landed-days", "try", "closed",
-                "want", "talks"]
+                "want", "talks", "start"]
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
             paced: provider.launcher
@@ -468,6 +468,8 @@ Provider {
             closedMoves += 1;
         if (moved.some(key => String(key).startsWith("talks:")))
             talksMoves += 1;
+        if (changed.some(key => String(key).startsWith("start:")))
+            sproutsKept(held);
         if (!moved.some(rowKey))
             return;
         for (const key of moved) {
@@ -1558,15 +1560,20 @@ Provider {
         const sprout = sprouts;
         sproutSays(key, words.starting);
         sproutPatience.restart();
+        const token = Sprouting.token(Date.now(), Math.random());
+        sproutTokens[token] = "asking";
+        sproutToken = token;
         const heard = answer => {
             const how = Sprouting.ended(answer, sproutWords());
+            sproutTokens[token] = "ended";
             if (sprout === sprouts && sprouting !== "")
                 sprouted(how);
             else
                 console.info(`launcher: late, ${Sprouting.reach(how, sproutWords()).journal}`);
+            sproutTold([token]);
         };
         if (rowsKind)
-            rowsKind.ask(ask, heard);
+            rowsKind.ask(Object.assign({ start: token }, ask), heard);
         else
             heard(null);
     }
@@ -1584,12 +1591,57 @@ Provider {
     function sproutWords() {
         return Words.of("agents:start-new-work").said ?? {};
     }
+
+    // The daemon keeps each start from its ask until this shell says it
+    // told Joel how it ended (starts.rs), so a start outlives a shell or a
+    // daemon started again under it. `sproutTokens` is how this shell
+    // stands on each it named, by token: "asking", "ended" or "told". One
+    // kept that it never heard the end of, asked by a shell before it or
+    // cut off by a restart, is told as a start's end is, and opens no
+    // window, since nobody waits on it; every one but those still asked is
+    // then said told (Sprouting.untold).
+    property var sproutTokens: ({})
+    // The token of the start running, "" while none runs.
+    property string sproutToken: ""
+    function sproutsKept(held) {
+        const kept = Object.values(held).filter(one => one?.kind === "start")
+            .map(one => one.start ?? {});
+        const stood = Sprouting.untold(kept, sproutTokens);
+        stood.tell.forEach(one => {
+            const how = Sprouting.ended(one.ended, sproutWords());
+            sproutReaches(how);
+            if (how.started && how.held !== "") {
+                openings = openings.concat([{ key: `start:${one.token}`, held: how.held,
+                    machine: how.machine, since: Date.now(),
+                    // No lettersAt is -1, so Sprouting.waitsOn never has it
+                    // take the keys: the foot says it's up for Go To.
+                    letters: -1 }]);
+            }
+        });
+        if (stood.tell.length > 0)
+            openSprouted();
+        sproutTold(stood.told);
+    }
+    function sproutTold(tokens) {
+        if (tokens.length === 0 || !rowsKind)
+            return;
+        tokens.forEach(token => {
+            sproutTokens[token] = "told";
+        });
+        rowsKind.ask({ ask: "sprout-told", starts: tokens });
+    }
     // How the running act ended, said on it and in the journal; another
     // may start from here. One started opens once its session is up.
     function sprouted(how) {
         const key = sprouting;
         sprouting = "";
         sproutPatience.stop();
+        // Ended here, by its answer or by the patience running out, so the
+        // daemon's record of it, heard already or to come, is said told.
+        if (sproutTokens[sproutToken] === "asking")
+            sproutTokens[sproutToken] = "ended";
+        sproutToken = "";
+        sproutsKept(rowsKind?.held ?? {});
         sproutSays(key, Sprouting.told(how, sproutWords()));
         sproutReaches(how);
         Report.say(how.started ? `sprouted new work on ${how.machine}`
