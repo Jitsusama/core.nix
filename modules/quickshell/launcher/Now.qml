@@ -1984,9 +1984,7 @@ Provider {
         })), given.waiting.map(one => ({
             kind: one.row.forYou?.kind ?? "do",
             thing: one.thing,
-            // The cell behind it where its source names one, as Agents
-            // does for a landing; else Joel's own.
-            cell: () => typeof one.cell === "function" ? one.cell() : null,
+            cell: () => null,
             make: () => one.row
         })), cellNotices.map(notice => ({
             kind: "notice",

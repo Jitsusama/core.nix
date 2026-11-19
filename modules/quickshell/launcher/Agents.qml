@@ -2623,9 +2623,7 @@ Provider {
                 hue: "action",
                 forYou: { kind: "try", source: "sessions" }
             }),
-            thing: { kind: "try", ready: true, since: one.at },
-            // The cell that landed it, for What Needs Me's headings.
-            cell: () => provider.landerOf(one)
+            thing: { kind: "try", ready: true, since: one.at }
         })).concat(tries.filter(tried => typeof tried.read === "number").map(tried => ({
             row: kept(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
             done: { how: String(said.read ?? ""), at: tried.read }
