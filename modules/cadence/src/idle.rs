@@ -35,7 +35,8 @@ pub use tell::tell_idle;
 #[must_use]
 pub fn routes(readme: &str) -> bool {
     let front = crate::axes::plans::front(readme);
-    crate::axes::plans::field(front, "hears") == Some("addressed")
+    crate::axes::plans::field(front, "hears")
+        .is_some_and(|hears| hears.trim_matches(['"', '\'']) == "addressed")
 }
 
 /// How long a session with a next step may sit idle before it is woken:
@@ -181,6 +182,9 @@ impl Quiet {
     /// How its spell, begun at `since`, began, with `whose` for its own or
     /// its pi's.
     fn how(&self, since: i64, whose: &str, clock: &impl Fn(i64) -> String) -> String {
+        if self.starts == Some(since) {
+            return format!("{whose} next step said it starts at {}", clock(since));
+        }
         match self.started.filter(|s| self.unstarted && *s != since) {
             Some(started) => format!(
                 "{whose} last turn ended at {}, before {whose} pi started again at {}, \
@@ -365,7 +369,9 @@ fn wakes(
                     (w.next.is_empty() && w.since == since)
                         || w.to_quest.is_some_and(|at| now - at < IDLE_FOR)
                 } else {
-                    w.next == next
+                    // A wake before its step's start, as one before this
+                    // read starts gave, didn't ask it of the step.
+                    w.next == next && s.starts.is_none_or(|starts| w.at >= starts)
                 }
             });
             (!asked && now - since >= WAKE_AFTER).then_some((s, by, since, next))

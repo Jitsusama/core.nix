@@ -53,17 +53,25 @@ fn working(root: &Path, p: &Presence) -> bool {
 }
 
 /// The quests in the harness's store `quests` whose READMEs say they
-/// route, by id; none where the store can't be read.
+/// route, by id. Only a README in the folder its id names counts, so a
+/// copy elsewhere in the store can't mark another quest. A store that
+/// can't be read gives none, and says so, since every router is then
+/// woken again.
 fn routers(quests: &Path) -> BTreeSet<String> {
-    fs::read_dir(quests)
-        .into_iter()
+    let folders = match fs::read_dir(quests) {
+        Ok(folders) => folders,
+        Err(err) => {
+            eprintln!("cadence: reading the quests that route: {err}");
+            return BTreeSet::new();
+        }
+    };
+    folders
         .flatten()
-        .flatten()
-        .filter_map(|entry| fs::read_to_string(entry.path().join("README.md")).ok())
-        .filter(|readme| routes(readme))
-        .filter_map(|readme| {
+        .filter_map(|entry| {
+            let readme = fs::read_to_string(entry.path().join("README.md")).ok()?;
             let front = crate::axes::plans::front(&readme);
-            Some(crate::axes::plans::field(front, "id")?.to_owned())
+            let id = crate::axes::plans::field(front, "id")?;
+            (routes(&readme) && entry.file_name().to_str() == Some(id)).then(|| id.to_owned())
         })
         .collect()
 }
@@ -146,6 +154,32 @@ mod tests {
             "owner": {"pid": pid, "startedAt": started_ms, "bootId": "b"},
         }))
         .expect("a presence")
+    }
+
+    #[test]
+    fn only_a_readme_in_its_own_folder_marks_its_quest_as_routing() {
+        let store = tempfile::tempdir().expect("a folder");
+        let readme = |folder: &str, front: &str| {
+            let path = store.path().join(folder);
+            fs::create_dir_all(&path).expect("its folder");
+            fs::write(path.join("README.md"), format!("---\n{front}---\n# Q\n")).expect("written");
+        };
+        // 8GYNJ6's frontmatter as the harness wrote it on 19 November.
+        readme(
+            "QEST-20261112-8GYNJ6",
+            "id: QEST-20261112-8GYNJ6\nhears: addressed\nrealm: work\nkind: subquest\n",
+        );
+        readme("QEST-1", "id: QEST-1\nstatus: active\n");
+        readme("copy", "id: QEST-1\nhears: addressed\n");
+        assert_eq!(
+            routers(store.path()),
+            BTreeSet::from(["QEST-20261112-8GYNJ6".to_owned()]),
+            "the void unmarked, or a copy marked another quest"
+        );
+        assert!(
+            routers(&store.path().join("gone")).is_empty(),
+            "a store that can't be read named a router"
+        );
     }
 
     #[test]

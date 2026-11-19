@@ -3,7 +3,9 @@
 //! to count it idle on, until that moment passes. Only a start counts, said
 //! with "at" or "after" before a weekday, a day of the month and a time; a
 //! due date, "by Thu 19 12:00" or a bare "Thu 19 18:00, once hubs land", is
-//! work that could be done now, so it stays a step to wake to.
+//! work that could be done now, so it stays a step to wake to. A cell
+//! writes its own step, so a start honoured holds back every word of its
+//! idleness: one further off than `AHEAD_AT_MOST` is no start at all.
 
 use jiff::civil::{Date, Weekday};
 use jiff::tz::TimeZone;
@@ -13,13 +15,20 @@ use jiff::{Span, Timestamp};
 const STARTS: [&str; 2] = ["at", "after"];
 
 /// How many days either side of today a weekday and day of the month are
-/// looked for, since a step names no month: wide enough for a start a
-/// month off, and only one date in it can match both.
-const LOOKED: i64 = 40;
+/// looked for, since a step names no month. Two dates with one day of the
+/// month are 28 days apart at the least, from February into March, so in
+/// 27 days only one can match both.
+const LOOKED: i64 = 13;
+
+/// How far ahead a start is honoured, in seconds: a weekend's, from a
+/// Friday evening to a Monday morning, and no further. The starts that
+/// hid cells were that day's or the next's.
+const AHEAD_AT_MOST: i64 = 3 * 24 * 3600;
 
 /// When `step` says it starts, in seconds, its weekday and day of the
-/// month read as the nearest date to `now` in `tz` that has both; none
-/// where it says no start or the date and time don't make one.
+/// month read as the date within `LOOKED` days of `now` in `tz` that has
+/// both; none where it says no start, the date and time don't make one,
+/// or it is over `AHEAD_AT_MOST` ahead.
 #[must_use]
 pub fn starts(step: &str, now: i64, tz: &TimeZone) -> Option<i64> {
     let words: Vec<&str> = step.split_whitespace().collect();
@@ -36,7 +45,7 @@ pub fn starts(step: &str, now: i64, tz: &TimeZone) -> Option<i64> {
         let (hour, minute) = time(w[3])?;
         let date = nearest(today, weekday, day)?;
         let start = date.at(hour, minute, 0, 0).to_zoned(tz.clone()).ok()?;
-        Some(start.timestamp().as_second())
+        Some(start.timestamp().as_second()).filter(|at| *at - now <= AHEAD_AT_MOST)
     })
 }
 
@@ -120,6 +129,8 @@ mod tests {
             "Judge it at Thu 19 25:00",
             "Judge it at Thu 19 evening",
             "Judge it at Thump 19 09:00",
+            "Judge it at Mon 23 09:00",
+            "Judge it at Sun 22 09:00",
         ] {
             assert_eq!(
                 starts(step, THU_19_0530, &toronto()),
@@ -127,5 +138,21 @@ mod tests {
                 "{step:?} said a start"
             );
         }
+        assert!(
+            starts("Judge it at Sun 22 05:00", THU_19_0530, &toronto()).is_some(),
+            "a start a weekend off was refused"
+        );
+    }
+
+    #[test]
+    fn a_start_four_weeks_back_is_read_as_passed_not_as_next_months() {
+        // Noon on Thursday 4 March 2027 in Toronto: 19 February and 19
+        // March 2027 are both Fridays.
+        let thu_4_march = 1_804_179_600;
+        assert_eq!(
+            starts("Judge it at Fri 19 09:00", thu_4_march, &toronto()),
+            Some(1_803_045_600),
+            "read as 19 March, ahead, or not at all"
+        );
     }
 }

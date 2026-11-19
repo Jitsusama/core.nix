@@ -233,10 +233,44 @@ fn a_cell_of_a_quest_that_routes_is_never_woken_or_told_of() {
         routes(&readme("hears: addressed\n")),
         "the harness's mark unread"
     );
+    assert!(
+        routes(&readme("hears: \"addressed\"\n")),
+        "the mark quoted unread"
+    );
     assert!(!routes(&readme("")), "a quest with no mark read as routing");
     assert!(
         !routes("# Q\n\nhears: addressed\n"),
         "a body's line read as its frontmatter"
+    );
+}
+
+#[test]
+fn a_wake_before_a_steps_start_still_leaves_it_woken_once_it_starts() {
+    // As F8TT8O on 19 November: woken at 05:15 to a step starting 09:00,
+    // before its start was read.
+    let mut told = Told::default();
+    let s = Quiet {
+        starts: Some(NOW + 3600),
+        ..with_next(3 * 3600)
+    };
+    told.woken.insert(
+        "s-1".into(),
+        Woken {
+            since: NOW - 3 * 3600,
+            at: NOW - 600,
+            next: "Merge #12 once its gate passes".into(),
+            to_quest: None,
+        },
+    );
+    let tells = due(
+        std::slice::from_ref(&s),
+        &mut told,
+        NOW + 3600 + WAKE_AFTER,
+        clock,
+    );
+    assert!(
+        tells.len() == 1 && tells[0].wakes,
+        "not woken past its start for an earlier wake: {tells:?}"
     );
 }
 
@@ -263,6 +297,15 @@ fn a_step_dated_ahead_counts_no_idle_time_until_it_starts() {
     assert!(
         tells.len() == 1 && tells[0].wakes,
         "woken twenty minutes past its start: {tells:?}"
+    );
+    assert!(
+        tells[0].text.contains(&format!(
+            "has sat idle 0 h 20 min with a next step of its own, \
+             \"Merge #12 once its gate passes\": its next step said it starts at t{}.",
+            NOW + 3600
+        )),
+        "its spell said as a turn's end: {}",
+        tells[0].text
     );
     assert!(
         told_to_orchestrator(&due(sessions, &mut told, NOW + 3600 + IDLE_FOR - 60, clock))

@@ -127,6 +127,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             &sessions,
             quests.as_deref(),
             &here,
+            &TimeZone::system(),
             now,
             fallback,
         ));

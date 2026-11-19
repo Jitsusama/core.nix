@@ -140,12 +140,15 @@ fn judged(
 /// sessions of every machine it hears from, so a cell on a machine other
 /// than `here` says which: on 19 November A210QS was counted idle from
 /// another machine through the personal realm's node, and its owner
-/// looked for it in vain among this machine's cells.
+/// looked for it in vain among this machine's cells. A step's date is
+/// read in `zone`. A router is known by its README in this machine's
+/// store, which holds those of quests whose cells run elsewhere too.
 #[must_use]
 pub fn cells(
     answers: &[(String, String)],
     quests: Option<&[Quest]>,
     here: &str,
+    zone: &TimeZone,
     now: i64,
     fallback: &str,
 ) -> Vec<Measure> {
@@ -189,7 +192,6 @@ pub fn cells(
     // A step that names Joel waits on him, which no orchestrator can move;
     // a quest that routes is idle by design; and a step dated ahead counts
     // its idle time from its start, as idle.rs wakes it.
-    let zone = TimeZone::system();
     let idle = all
         .iter()
         .filter(|c| c.state == "idle" && !c.wanting)
@@ -201,7 +203,7 @@ pub fn cells(
         .filter_map(|c| {
             let next = c.next.filter(|next| !next.contains("Joel"))?;
             let at = c.at?;
-            let since = dated::starts(next, now, &zone).map_or(at, |s| s.max(at));
+            let since = dated::starts(next, now, zone).map_or(at, |s| s.max(at));
             if now - since < IDLE_AT_MOST {
                 return None;
             }
@@ -393,6 +395,11 @@ pub(super) mod tests {
     /// The machine the hour runs on.
     const HERE: &str = "here";
 
+    /// The zone the hour reads dates in: Toronto's, in winter.
+    fn zone() -> TimeZone {
+        TimeZone::fixed(jiff::tz::offset(-5))
+    }
+
     pub(in crate::hour::measures) fn at(minutes_ago: i64) -> String {
         jiff::Timestamp::from_second(NOW - minutes_ago * 60)
             .expect("a time")
@@ -444,8 +451,8 @@ pub(super) mod tests {
     #[test]
     fn a_readme_says_its_quest_by_its_top_level_fields() {
         let readme = "---\nid: QEST-1\nrealm: work\nkind: subquest\nparent: QEST-0\n\
-                      status: active\npriority: driving\nsessions:\n  - id: s\n    \
-                      status: detached\n---\n# A Quest\n";
+                      status: active\npriority: driving\nhears: addressed\nsessions:\n  \
+                      - id: s\n    status: detached\n---\n# A Quest\n";
         assert_eq!(
             quest(readme),
             Some(Quest {
@@ -454,7 +461,7 @@ pub(super) mod tests {
                 status: "active".to_owned(),
                 priority: "driving".to_owned(),
                 parent: Some("QEST-0".to_owned()),
-                routes: false,
+                routes: true,
             }),
             "a session's status was read as the quest's, or a field was lost"
         );
@@ -482,7 +489,7 @@ pub(super) mod tests {
             idle("DDDDDD", 30, Some("merge it"), json!({"kind": "approval"})),
             idle("EEEEEE", 30, None, Value::Null),
         ])];
-        let all = cells(&answers, Some(&[]), HERE, NOW, "FALLBACK");
+        let all = cells(&answers, Some(&[]), HERE, &zone(), NOW, "FALLBACK");
         let idle = measure(&all, "cells-idle");
         assert_eq!(
             idle.behind,
@@ -508,23 +515,26 @@ pub(super) mod tests {
         far["machine"] = json!("yonder");
         let mut near = idle("NNNNNN", "merge it");
         near["machine"] = json!(HERE);
-        // NOW is 08:00 on Friday 15 January 2027 in UTC; these starts are
-        // ahead and behind in every zone.
+        // NOW is 03:00 on Friday 15 January 2027 in Toronto. One step
+        // started half an hour ago, one ten minutes ago.
         let answers = [answer(&[
             idle("RRRRRR", "hear the next line"),
             idle("AAAAAA", "Judge it at Fri 15 23:00, over the spell"),
             idle("PPPPPP", "Judge it at Thu 14 09:00, over the spell"),
+            idle("SSSSSS", "Judge it at Fri 15 02:30, over the spell"),
+            idle("TTTTTT", "Judge it at Fri 15 02:50, over the spell"),
             idle("DDDDDD", "Land the hubs by Fri 15 23:00"),
             far,
             near,
         ])];
         let mut router = quest_of("RRRRRR", "active", "driving", None);
         router.routes = true;
-        let all = cells(&answers, Some(&[router]), HERE, NOW, "F");
+        let all = cells(&answers, Some(&[router]), HERE, &zone(), NOW, "F");
         assert_eq!(
             measure(&all, "cells-idle").behind,
             [
                 "PPPPPP idle 90 min: Judge it at Thu 14 09:00, over the spell · ORCH",
+                "SSSSSS idle 30 min: Judge it at Fri 15 02:30, over the spell · ORCH",
                 "DDDDDD idle 90 min: Land the hubs by Fri 15 23:00 · ORCH",
                 "FFFFFF on yonder idle 90 min: spawn the streams · ORCH",
                 "NNNNNN idle 90 min: merge it · ORCH",
@@ -551,7 +561,7 @@ pub(super) mod tests {
             quest_of("AAAAAA", "concluded", "someday", Some("PARENT")),
             quest_of("BBBBBB", "retired", "someday", None),
         ];
-        let all = cells(&answers, Some(&quests), HERE, NOW, "FALLBACK");
+        let all = cells(&answers, Some(&quests), HERE, &zone(), NOW, "FALLBACK");
         assert_eq!(
             measure(&all, "cells-parked-done").behind,
             [
@@ -582,7 +592,7 @@ pub(super) mod tests {
             quest_of("FFFFFF", "concluded", "driving", None),
             elsewhere,
         ];
-        let all = cells(&answers, Some(&quests), HERE, NOW, "FALLBACK");
+        let all = cells(&answers, Some(&quests), HERE, &zone(), NOW, "FALLBACK");
         assert_eq!(
             measure(&all, "quests-without-cells").behind,
             ["AAAAAA driving, no cell the node knows · PARENT"],
@@ -609,6 +619,7 @@ pub(super) mod tests {
             &[answer(&[parked, elsewhere])],
             Some(&quests),
             HERE,
+            &zone(),
             NOW,
             "F",
         );
@@ -633,7 +644,14 @@ pub(super) mod tests {
             c
         };
         let quests = [quest_of("AAAAAA", "active", "driving", Some("PARENT"))];
-        let all = cells(&[answer(&[idle(), idle()])], Some(&quests), HERE, NOW, "F");
+        let all = cells(
+            &[answer(&[idle(), idle()])],
+            Some(&quests),
+            HERE,
+            &zone(),
+            NOW,
+            "F",
+        );
         assert_eq!(
             measure(&all, "cells-idle").behind,
             ["AAAAAA idle 30 min: write it · PARENT"],
@@ -644,6 +662,7 @@ pub(super) mod tests {
             &[answer(&[cell("AAAAAA", "ended", "AAAAAA"), idle()])],
             Some(&quests),
             HERE,
+            &zone(),
             NOW,
             "F",
         );
@@ -662,7 +681,7 @@ pub(super) mod tests {
         let quests = [quest_of("AAAAAA", "active", "driving", None)];
         let err = ("work".to_owned(), json!({"Err": "no node"}).to_string());
         assert!(
-            cells(&[err], Some(&quests), HERE, NOW, "F")
+            cells(&[err], Some(&quests), HERE, &zone(), NOW, "F")
                 .iter()
                 .all(|m| m.target.is_none()),
             "a node's error was read as a realm with no cells"
@@ -671,14 +690,21 @@ pub(super) mod tests {
         // would read as gone, and close their owners' drags.
         let silent = ("personal".to_owned(), String::new());
         assert!(
-            cells(&[answer(&[]), silent], Some(&quests), HERE, NOW, "F")
-                .iter()
-                .all(|m| m.target.is_none()),
+            cells(
+                &[answer(&[]), silent],
+                Some(&quests),
+                HERE,
+                &zone(),
+                NOW,
+                "F"
+            )
+            .iter()
+            .all(|m| m.target.is_none()),
             "one realm's silence was read as that realm having no cells"
         );
         // With no READMEs, owners fall back and statuses go stale.
         assert!(
-            cells(&[answer(&[])], None, HERE, NOW, "F")
+            cells(&[answer(&[])], None, HERE, &zone(), NOW, "F")
                 .iter()
                 .all(|m| m.target.is_none()),
             "with no quest store a cells measure read judged"
@@ -691,6 +717,7 @@ pub(super) mod tests {
             &[],
             Some(&[quest_of("AAAAAA", "active", "driving", None)]),
             HERE,
+            &zone(),
             NOW,
             "F",
         );
