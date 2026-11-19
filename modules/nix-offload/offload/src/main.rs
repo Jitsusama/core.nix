@@ -156,6 +156,7 @@
 //! builder fails its proofs, or none is lent, its file for any work names
 //! the second lent builder, else the warm VM builders, that passed theirs.
 
+mod archived;
 mod busy;
 mod cargo;
 mod changed;
@@ -1433,7 +1434,8 @@ fn standing(dir: &Path) -> Option<String> {
 /// builder standing it waits for one as `waiting` says, and with none it
 /// exits `NOT_TAKEN`, having run nothing, here or anywhere. A run that
 /// ends 0 is kept as passed at the commit, with its words and copies
-/// (`passed.rs`), which `nix-offload passed ran COMMIT` says.
+/// (`passed.rs`), which `nix-offload passed ran COMMIT` says, unless it
+/// went as files cut to its cones (`archived.rs`).
 fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let asked = match command::asked(arguments) {
         Ok(asked) => asked,
@@ -1456,10 +1458,11 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
             let (checkout, bundle) = changed::checked_out(source);
             (at, checkout, bundle)
         }
+        // No pass is kept from files the session's own cones cut, since a
+        // gate taking it would take a pass of the whole commit.
         Ok(there::ForRun::Archived(archived)) => {
-            let at = passed::At::new(&archived.commit, archived.dir.clone());
-            let (checkout, archive) = changed::unpacked(archived);
-            (at, checkout, Some(archive))
+            let (checkout, archive) = archived::unpacked(archived);
+            (None, checkout, Some(archive))
         }
         Err(why) => return not_run(&why),
     };

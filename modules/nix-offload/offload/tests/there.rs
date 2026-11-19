@@ -6329,7 +6329,9 @@ impl RunTree {
         executable(
             &self.bin.join("ssh"),
             "#!/bin/sh\nhere=$(dirname \"$0\")\n\
-             cat > \"$here/received\"; \"$here/ssh-builder\" \"$@\" </dev/null\n",
+             cat > \"$here/sending\"; [ -s \"$here/sending\" ] && \
+             mv \"$here/sending\" \"$here/received\"; \
+             \"$here/ssh-builder\" \"$@\" </dev/null\n",
         );
     }
 
@@ -6368,7 +6370,8 @@ impl RunTree {
 // A tree whose origin isn't on GitHub can't be fetched there by its
 // commit, and a lent builder holds no credential to fetch it from
 // anywhere else, so a run sends HEAD's files: within its sparse cone, as
-// its checkout holds them, so a monorepo's tree costs its own part alone.
+// its checkout holds them, so a large repository's tree costs its own
+// part alone.
 #[test]
 fn a_run_from_a_tree_off_github_sends_heads_files_within_its_cone() {
     let mut run = RunTree::new();
@@ -6410,6 +6413,11 @@ fn a_run_from_a_tree_off_github_sends_heads_files_within_its_cone() {
         String::from_utf8_lossy(&ran.stderr).contains("as a tarball of"),
         "its size is said: {ran:?}"
     );
+    let left: Vec<_> = fs::read_dir(run.folder.path().join("nix-offload-there"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert!(left.is_empty(), "nothing it packed is left: {left:?}");
 
     // Still HEAD alone: a change not committed stops it, as from GitHub.
     fs::write(inside.join("Cargo.toml"), "[workspace]").unwrap();
@@ -6426,12 +6434,17 @@ fn a_run_from_a_tree_off_github_sends_all_of_head_when_it_isnt_sparse() {
 }
 
 // Patterns other than cone mode's say nothing a tree of HEAD's can be cut
-// to, and sending all of a monorepo would cost far more than its part.
+// to, and sending all of a large repository would cost far more than its
+// part. git reads a tree sparse with no word of cones as patterns too.
 #[test]
 fn a_run_from_a_tree_off_github_sparse_without_cones_is_refused() {
     let mut run = RunTree::new();
     run.off_github(&[("zone/tool/Cargo.toml", "[package]")]);
     run.git(&["sparse-checkout", "set", "--no-cone", "/package.json"]);
+    run.refused(&run.run(&[]), "sparse without cone mode");
+
+    run.git(&["sparse-checkout", "set", "--cone", "zone/tool"]);
+    run.git(&["config", "--worktree", "--unset", "core.sparseCheckoutCone"]);
     run.refused(&run.run(&[]), "sparse without cone mode");
 }
 

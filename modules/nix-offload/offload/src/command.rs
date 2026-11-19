@@ -35,7 +35,7 @@
 //! with objects borrowed from another repository (`there::Sends`). A tree
 //! whose origin isn't on GitHub, which a lent builder has no credential to
 //! fetch from, sends HEAD's files within its sparse cone as a tarball
-//! instead (`there::Archived`): 13.2 MB for a monorepo's zone on 18
+//! instead (`archived.rs`): 13.2 MB for a large repository's zone on 18
 //! November, whose suites had all run here.
 
 use std::io::{BufRead, Read, Write};
