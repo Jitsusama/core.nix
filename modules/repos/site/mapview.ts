@@ -9,6 +9,7 @@
 import { escaped } from "./draw.ts";
 import {
   bowed,
+  kept,
   type MycelialMap,
   mapOf,
   type Row,
@@ -90,10 +91,9 @@ function markup(): string {
 
 /** Draws the map of `repositories`, keeping the row the keys rest on by its repository. */
 function drawMap(repositories: readonly Repository[]): void {
-  const key = drawn.rows[at]?.key;
+  const was = drawn;
   drawn = mapOf(repositories);
-  const kept = drawn.rows.findIndex((each) => each.key === key);
-  at = kept === -1 ? Math.min(at, Math.max(0, drawn.rows.length - 1)) : kept;
+  at = kept(was, at, drawn);
   const hiding = drawn.rows.length === 0;
   // The keys on the map as its last tie goes are handed to the list, not dropped from the page.
   if (hiding && place.contains(document.activeElement)) {

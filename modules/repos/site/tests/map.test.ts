@@ -69,12 +69,12 @@ it("draws a row for each tied repository, in the grove's order, and a thread for
     ["github:owl/core", "github:owl/harness", "github:owl/world"],
   );
   assert.deepEqual(
-    map.threads.map((each) => [each.from, each.to, each.cell, each.lane, each.lanes]),
+    map.threads.map((each) => [each.from, each.to, each.cell, each.lane]),
     [
-      [0, 1, "B", 0, 1],
-      [0, 2, "A", 0, 3],
-      [0, 2, "B", 1, 3],
-      [0, 2, "C", 2, 3],
+      [0, 1, "B", 0],
+      [0, 2, "A", 0],
+      [0, 2, "B", 1],
+      [0, 2, "C", 2],
     ],
   );
 });

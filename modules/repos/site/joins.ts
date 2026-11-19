@@ -12,6 +12,11 @@ const REPOSITORY_NETWORK = "repo.";
 const NOT_SPELLED = /[^a-z0-9]+/gu;
 const EDGES = /^-|-$/gu;
 
+/** The cells at work, rather than quiet or resting, of `cells`. */
+function atWork(cells: readonly Cell[]): readonly Cell[] {
+  return cells.filter((cell) => cell.standing !== "quiet" && cell.standing !== "dormant");
+}
+
 /** A repository's name as the mesh spells it in a network's name. */
 function spelled(name: string): string {
   return name.toLowerCase().replace(NOT_SPELLED, "-").replace(EDGES, "");
@@ -87,4 +92,4 @@ function ties(repositories: readonly Repository[]): Tie[] {
     .sort((one, other) => inOrder(one.ends.join("\n"), other.ends.join("\n")));
 }
 
-export { joined, type Tie, ties };
+export { atWork, joined, type Tie, ties };

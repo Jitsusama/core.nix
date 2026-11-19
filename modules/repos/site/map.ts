@@ -18,13 +18,12 @@ interface Row {
   readonly address: string;
 }
 
-/** One cell's thread between two rows, `lane` of the `lanes` its tie draws. */
+/** One cell's thread between two rows, in the `lane` it takes among its tie's. */
 interface Thread {
   readonly from: number;
   readonly to: number;
   readonly cell: string;
   readonly lane: number;
-  readonly lanes: number;
 }
 
 /** The rows, the threads between them and the ties they're drawn from. */
@@ -48,10 +47,20 @@ function mapOf(repositories: readonly Repository[]): MycelialMap {
   const threads = all.flatMap((tie) => {
     const [from = 0, to = 0] = tie.ends.map((key) => at.get(key) ?? 0).sort((a, b) => a - b);
     const drawn = tie.cells.slice(0, THREADS_A_TIE);
-    return drawn.map((cell, lane) => ({ from, to, cell, lane, lanes: drawn.length }));
+    return drawn.map((cell, lane) => ({ from, to, cell, lane }));
   });
   threads.sort((one, other) => one.from - other.from || one.to - other.to || one.lane - other.lane);
   return { rows, threads, ties: all };
+}
+
+/**
+ * Where the keys rest on `now` when they rested at `at` on `was`: on the same repository, however
+ * the rows around it moved, or as near the row they left as `now` reaches once it's gone.
+ */
+function kept(was: MycelialMap, at: number, now: MycelialMap): number {
+  const key = was.rows[at]?.key;
+  const same = now.rows.findIndex((each) => each.key === key);
+  return same === -1 ? Math.min(at, Math.max(0, now.rows.length - 1)) : same;
 }
 
 /** The row `way` from the row at `from`, or nothing when there's none that way. */
@@ -115,6 +124,7 @@ function saidOf(
 
 export {
   bowed,
+  kept,
   type MycelialMap,
   mapOf,
   type Row,
