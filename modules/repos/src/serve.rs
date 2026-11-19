@@ -63,6 +63,8 @@ fn health(watched: usize, (unwatched, because): (usize, Option<String>), read_ms
 /// Holds the record, read again as the disk moves, for as long as it
 /// runs.
 pub fn run(home: Option<&Path>) -> Result<(), Failure> {
+    // Timed from its start, as health times the unit's, so the line says the whole wait.
+    let started = Instant::now();
     let socket = socket()?;
     let shared = Shared::new(feed::DOMAIN, Box::new(|_| None));
     let watched = Arc::new(AtomicUsize::new(0));
@@ -107,7 +109,7 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
             .because(why.to_string())
     })?;
     serve::accept(Arc::clone(&shared), listener);
-    eprintln!("{}", ready(began.elapsed()));
+    eprintln!("{}", ready(started.elapsed()));
     // The pace keeps its own time, so agents writing more often than it
     // comes never put off the reading that finds new clones.
     let mut whole = Instant::now();
