@@ -53,7 +53,7 @@ use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Help};
 use timers::{
     Ask, Held, KIND, Notice, Refusal, STOPWATCH, Standing, Stopwatch, Timer, VERSION, Words, ask,
-    error, now, unsaid, watched,
+    error, now, on_bus, unsaid, watched,
 };
 use zbus::blocking::{Connection, MessageIterator};
 use zbus::zvariant::Value as Variant;
@@ -120,6 +120,10 @@ struct Aloud {
 enum Tell {
     /// Rings the timer with this key, unless its ring is up already.
     Ring(String),
+    /// Says the timer's ring again once the bus is dialled again: its card
+    /// in its own place, should it still be up, since what Joel did with
+    /// it meanwhile went unheard, or afresh, should it be gone.
+    Resay(String),
     /// Takes back this notice, should its server still be there.
     Withdraw(Notice),
     /// A listener of the bus dialled this many times over stopped, as one
@@ -422,7 +426,9 @@ fn aloud(shared: &Shared) {
 /// Says each ring as a notice, and takes back each the timer no longer
 /// needs, holding them until a notifications server answers.
 fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
-    let mut connection: Option<Connection> = None;
+    // The bus, with its id as connect() asked it, which every notice said
+    // on it is known by.
+    let mut connection: Option<(Connection, String)> = None;
     // How many times the bus was dialled, so a listener of one since
     // given up that stops is told apart from the one listening now.
     let mut dialled = 0;
@@ -441,7 +447,6 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
             Ok(Tell::Deaf(stopped)) => {
                 if stopped == dialled && connection.take().is_some() {
                     eprintln!("<4>stopped hearing the session bus, so it's dialled again");
-                    forget_notices(shared);
                     lost = true;
                 }
             }
@@ -461,7 +466,7 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
                     // Every rung timer, since what was said before may
                     // have gone with a server; each says itself again
                     // only where it isn't up.
-                    waiting.extend(rung(shared).into_iter().map(Tell::Ring));
+                    waiting.extend(rung(shared).into_iter().map(Tell::Resay));
                 }
                 Err(why) if !refused => {
                     eprintln!("<4>{why}, so rings wait until it can");
@@ -470,12 +475,15 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
                 Err(_) => {}
             }
         }
-        let Some(bus) = &connection else { continue };
+        let Some((bus, id)) = &connection else {
+            continue;
+        };
         let mut still = Vec::new();
         for tell in waiting.drain(..) {
             let done = match &tell {
-                Tell::Ring(key) => ring(shared, bus, words, key),
-                Tell::Withdraw(notice) => withdrawn(bus, notice),
+                Tell::Ring(key) => ring(shared, (bus, id), words, key, false),
+                Tell::Resay(key) => ring(shared, (bus, id), words, key, true),
+                Tell::Withdraw(notice) => withdrawn((bus, id), notice),
                 Tell::Deaf(_) => Ok(()),
             };
             if let Err(why) = done {
@@ -498,7 +506,7 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
 /// the daemon's life.
 /// Each listener, as it stops, says so with `dialled`, the count of this
 /// connection, for the bus to be dialled again.
-fn connect(shared: &Arc<Shared>, dialled: u64) -> Result<Connection, String> {
+fn connect(shared: &Arc<Shared>, dialled: u64) -> Result<(Connection, String), String> {
     let bus = zbus::blocking::connection::Builder::session()
         .and_then(|builder| builder.method_timeout(PATIENCE).build())
         .map_err(|why| format!("couldn't reach the session bus: {why}"))?;
@@ -508,9 +516,11 @@ fn connect(shared: &Arc<Shared>, dialled: u64) -> Result<Connection, String> {
     };
     let acted = listening(acts(), "what Joel does with a notice")?;
     let followed = listening(servers(), "which server takes the notices")?;
+    let id = bus_id(&bus).map_err(|why| format!("couldn't ask the session bus its id: {why}"))?;
     let heard = Arc::clone(shared);
+    let heard_on = id.clone();
     std::thread::spawn(move || {
-        hear(&heard, acted);
+        hear(&heard, acted, &heard_on);
         say(&heard, Tell::Deaf(dialled));
     });
     let shared = Arc::clone(shared);
@@ -518,7 +528,7 @@ fn connect(shared: &Arc<Shared>, dialled: u64) -> Result<Connection, String> {
         follow(&shared, followed);
         say(&shared, Tell::Deaf(dialled));
     });
-    Ok(bus)
+    Ok((bus, id))
 }
 
 /// The notifications server changing hands.
@@ -552,37 +562,35 @@ fn rung(shared: &Shared) -> Vec<String> {
         .collect()
 }
 
-/// Forgets every notice shown, as they went with the bus they were shown
-/// on: a bus begun again names its connections from the start, so a new
-/// server may carry the old one's name, and each rung timer would read as
-/// shown there.
-fn forget_notices(shared: &Shared) {
-    let mut daemon = lock(shared);
-    for timer in &mut daemon.held.timers {
-        timer.notice = None;
-    }
-    if let Err(why) = daemon.held.write(&daemon.kept) {
-        eprintln!("<3>couldn't keep the timers: {why}");
-    }
+/// The bus's own id, which no other bus has: one begun again, as after a
+/// login, names its connections from the start, so a name alone could be
+/// a server gone with the last bus.
+fn bus_id(bus: &Connection) -> zbus::Result<String> {
+    bus.call_method(Some(BUS), BUS_PATH, Some(BUS), "GetId", &())?
+        .body()
+        .deserialize()
 }
 
-/// The bus name of the notifications server there is now.
-fn server(bus: &Connection) -> zbus::Result<String> {
-    bus.call_method(
-        Some(BUS),
-        BUS_PATH,
-        Some(BUS),
-        "GetNameOwner",
-        &NOTIFICATIONS,
-    )?
-    .body()
-    .deserialize()
+/// The notifications server there is now, as `Notice::server` holds it:
+/// the bus's id, as `connect()` asked it, and the server's name on it.
+fn server((bus, id): (&Connection, &str)) -> zbus::Result<String> {
+    let name: String = bus
+        .call_method(
+            Some(BUS),
+            BUS_PATH,
+            Some(BUS),
+            "GetNameOwner",
+            &NOTIFICATIONS,
+        )?
+        .body()
+        .deserialize()?;
+    Ok(on_bus(id, &name))
 }
 
 /// Takes a notice back, from the server that gave it alone, since its id
 /// may name another notice on a server after it.
-fn withdrawn(bus: &Connection, notice: &Notice) -> zbus::Result<()> {
-    if server(bus).ok().as_deref() != Some(notice.server.as_str()) {
+fn withdrawn((bus, id): (&Connection, &str), notice: &Notice) -> zbus::Result<()> {
+    if server((bus, id)).ok().as_deref() != Some(notice.server.as_str()) {
         return Ok(());
     }
     bus.call_method(
@@ -596,13 +604,32 @@ fn withdrawn(bus: &Connection, notice: &Notice) -> zbus::Result<()> {
 }
 
 /// Says one rung timer's notice to the notifications server there is now,
-/// unless it's up there already.
-fn ring(shared: &Shared, bus: &Connection, words: &Words, key: &str) -> zbus::Result<()> {
-    let server = server(bus)?;
-    let (summary, body) = {
+/// unless it's up there already; `again`, in the place of the one it gave,
+/// since a press or putting it away while the bus wasn't heard is lost.
+/// Only a card that server gave is replaced, as the id is only its own.
+fn ring(
+    shared: &Shared,
+    (bus, id): (&Connection, &str),
+    words: &Words,
+    key: &str,
+    again: bool,
+) -> zbus::Result<()> {
+    let server = server((bus, id))?;
+    let (summary, body, replaces) = {
         let daemon = lock(shared);
         match daemon.held.get(key) {
-            Some(timer) if unsaid(timer, &server) => words.notice(timer),
+            Some(timer) if unsaid(timer, &server) => {
+                let (summary, body) = words.notice(timer);
+                (summary, body, 0)
+            }
+            Some(timer) if again && matches!(timer.standing, Standing::Rung { .. }) => {
+                let (summary, body) = words.notice(timer);
+                (
+                    summary,
+                    body,
+                    timer.notice.as_ref().map_or(0, |notice| notice.id),
+                )
+            }
             _ => return Ok(()),
         }
     };
@@ -617,7 +644,7 @@ fn ring(shared: &Shared, bus: &Connection, words: &Words, key: &str) -> zbus::Re
         "Notify",
         &(
             words.app.as_str(),
-            0u32,
+            replaces,
             "",
             summary.as_str(),
             body.as_str(),
@@ -670,16 +697,20 @@ fn follow(shared: &Shared, messages: MessageIterator) {
 
 /// Hears each notice's act and its closing until the bus goes: Again sets
 /// its timer going afresh, and putting it away ends a timer still rung.
-fn hear(shared: &Shared, messages: MessageIterator) {
+fn hear(shared: &Shared, messages: MessageIterator, bus: &str) {
     for message in messages {
         let Ok(message) = message else { break };
         let header = message.header();
         let member = header.member().map(|member| member.as_str().to_owned());
-        // Which server said it, since a notice's id is only its own.
-        let sender = header
-            .sender()
-            .map(|sender| sender.as_str().to_owned())
-            .unwrap_or_default();
+        // Which server said it, on which bus, since a notice's id is only
+        // its own.
+        let sender = on_bus(
+            bus,
+            header
+                .sender()
+                .map(zbus::names::UniqueName::as_str)
+                .unwrap_or_default(),
+        );
         match member.as_deref() {
             Some("ActionInvoked") => {
                 let Ok((id, act)) = message.body().deserialize::<(u32, String)>() else {

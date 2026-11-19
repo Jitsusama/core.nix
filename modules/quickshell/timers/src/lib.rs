@@ -77,13 +77,22 @@ pub struct Timer {
     pub notice: Option<Notice>,
 }
 
-/// A rung timer's notice: its id, and the bus name of the notifications
-/// server that gave it, since an id means nothing to another server, as
-/// the shell's after it starts again.
+/// A rung timer's notice: its id, and the notifications server that gave
+/// it, as `on_bus` says one, since an id means nothing to another server,
+/// as the shell's after it starts again.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Notice {
     pub id: u32,
     pub server: String,
+}
+
+/// A server as a notice holds it: the bus's own id and the server's name
+/// there, since a bus begun again hands out the same names from the
+/// start, and a name alone would match a server gone with the last bus.
+/// Kept while the bus is dialled again, it still matches the server that
+/// stayed, so its card isn't said twice.
+pub fn on_bus(bus: &str, name: &str) -> String {
+    format!("{bus}/{name}")
 }
 
 impl Timer {
@@ -794,16 +803,28 @@ mod tests {
                 late: true
             }
         );
-        assert_eq!(held.unsaid(":1.4"), vec!["timer:1", "timer:2"]);
+        let here = on_bus("b1", ":1.4");
+        assert_eq!(held.unsaid(&here), vec!["timer:1", "timer:2"]);
         held.timers[0].notice = Some(Notice {
             id: 7,
-            server: ":1.4".to_owned(),
+            server: here.clone(),
         });
-        assert_eq!(held.unsaid(":1.4"), vec!["timer:2"]);
+        assert_eq!(held.unsaid(&here), vec!["timer:2"]);
         // Said to a server that's gone, it's unsaid to the one after it.
-        assert_eq!(held.unsaid(":1.9"), vec!["timer:1", "timer:2"]);
-        assert_eq!(held.noticed(7, ":1.4").unwrap().key, "timer:1");
-        assert_eq!(held.noticed(7, ":1.9"), None);
+        assert_eq!(
+            held.unsaid(&on_bus("b1", ":1.9")),
+            vec!["timer:1", "timer:2"]
+        );
+        // And to one on a bus begun again, though it has the same name.
+        let reborn = on_bus("b2", ":1.4");
+        assert_eq!(held.unsaid(&reborn), vec!["timer:1", "timer:2"]);
+        assert_eq!(held.noticed(7, &here).unwrap().key, "timer:1");
+        assert_eq!(held.noticed(7, &on_bus("b1", ":1.9")), None);
+        assert_eq!(
+            held.noticed(7, &reborn),
+            None,
+            "a reborn bus's name isn't the server's"
+        );
         assert_eq!(held.next_end(), None);
     }
 
@@ -814,7 +835,7 @@ mod tests {
         held.due(MINUTE);
         held.timers[0].notice = Some(Notice {
             id: 7,
-            server: ":1.4".to_owned(),
+            server: on_bus("b1", ":1.4"),
         });
         let again = held.again("timer:1", 5 * MINUTE).unwrap();
         assert_eq!(again.standing, Standing::Running { ends: 6 * MINUTE });
