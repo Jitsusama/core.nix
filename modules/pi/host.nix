@@ -82,8 +82,11 @@ let
   # OPENSSL_MODULES, whose configuration loads a module. mycelium keeps the
   # same list in its src/node/asker.rs, once its lock here carries the change
   # that proves a hosted session by its spawner: it then takes no host's word
-  # whose environment gives any of them, but for a blank NODE_OPTIONS. A bump
-  # of its lock checks the two lists still match.
+  # whose environment gives any of them, but for a blank NODE_OPTIONS. The two
+  # lists are kept alike by hand: nothing here reads mycelium's yet. These are
+  # the environment's doors only: a process of the account can still write
+  # the host's own code where pi-packages keeps it, or a module in node's
+  # home folders (~/.node_modules), which no variable names.
   loadsCode = [
     "NODE_OPTIONS"
     "NODE_PATH"
@@ -156,10 +159,11 @@ let
             # node's inspector and let it run code as the host. mycelium
             # takes the host's word for which conversation each pi-spawner
             # serves only where this is the first option on the host's
-            # command line, no option there opens the inspector, and the
-            # host's environment gives none of loadsCode, which the unit
-            # clears below. It refuses the word of a host started
-            # otherwise, and logs why.
+            # command line and no option there opens the inspector; once
+            # its lock here carries its list, also only where the host's
+            # environment gives none of loadsCode, which the unit clears
+            # below. It refuses the word of a host started otherwise, and
+            # logs why.
             "--disable-sigusr1"
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"

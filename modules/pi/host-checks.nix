@@ -145,8 +145,10 @@ in
       prefixOf = realm: "jitsusama.pi.hosts.${realm}.environment gives ";
       refusalOf = realm: lib.findFirst (lib.hasPrefix (prefixOf realm)) null refusals;
       # Whether a realm's refusal names just these variables, as written,
-      # and speaks of one as it and of several as each; then says how each
-      # of loadsCode loads code, and where a command gets one instead.
+      # and speaks of one as it and of several as each; then names each of
+      # loadsCode again where it says how they load code, and where a
+      # command gets one instead. How each loads code is the message's to
+      # word, so only its names are pinned.
       names =
         realm: named:
         let
@@ -162,7 +164,7 @@ in
         && lib.hasSuffix " a command that needs one sets it itself." refused;
     in
     holds "pi-hosts-refuse-code-loading-variables"
-      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then say how each of the eight loads code and that a command needing one sets it itself."
+      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then name each of the eight again where it says how they load code, and say that a command needing one sets it itself."
       (
         refusalOf "plain" == null
         && lib.all (name: names (realmOf name) name) loadsCode
