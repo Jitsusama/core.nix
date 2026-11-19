@@ -170,6 +170,11 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     named("Back\u00a0\u00a0porch", "mac:02:00:00:00:00:0a"),
     named("Ga\ufeffrage", "mac:02:00:00:00:00:0b"),
     named("Hall \u2063 way", "mac:02:00:00:00:00:0c"),
+    named("Tool\tshed", "mac:02:00:00:00:00:0d"),
+    named("Sun\u3164room", "mac:02:00:00:00:00:0e"),
+    named("Mud\u2800room", "mac:02:00:00:00:00:0f"),
+    named("Wine\u115fcellar", "mac:02:00:00:00:00:10"),
+    named(" Shed ", "mac:02:00:00:00:00:11"),
   ];
   for (const [name, command] of [
     ["Hall", "net devices Hall"],
@@ -267,6 +272,11 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["\u03bf\u03b4\u03bf\u03c3 hall", byId],
     ["garage", byId],
     ["hall way", byId],
+    ["tool shed", byId],
+    ["sun room", byId],
+    ["mud room", byId],
+    ["wine cellar", byId],
+    ["shed", byId],
     // And names a letter apart from another's, which are kept.
     ["Cafe", "net devices Cafe"],
     ["Dens", "net devices Dens"],

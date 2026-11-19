@@ -235,15 +235,20 @@ const UNSEEN = new RegExp(
 /**
  * What a person reads past in a word: what shapes it, and what draws
  * nothing, such as a mark of format or a default-ignorable character.
- * Hangul's leading filler is a blank to the kit, so it reads as one.
+ * A tab or a line break is a control, and Hangul's fillers are
+ * default-ignorable, but each shows as a blank, so each reads as one.
  */
 const READ_PAST = new RegExp(
-  String.raw`[[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}${SHAPING}]--[\u115f]]`,
+  String.raw`[[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}${SHAPING}]` +
+    String.raw`--[\t-\r\u115f\u3164\uffa0]]`,
   "gv",
 );
 
-/** A run of blanks, which a person reads as one space: braille's among them. */
-const BLANKS = /[\s\u115f\u2800]+/gu;
+/**
+ * A run of blanks, which a person reads as one space: braille's and
+ * Hangul's among them, which a page draws as a blank.
+ */
+const BLANKS = /[\s\u115f\u2800\u3164\uffa0]+/gu;
 
 /**
  * A character that draws nothing standing where a word starts, as the
