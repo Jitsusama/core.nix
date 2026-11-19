@@ -26,7 +26,9 @@ let
   # mark by mark, so a long comment costs no deeper a regex than a short
   # one: a pattern repeated per character overflows Nix's stack on one of
   # some thousands. Each step's code is made at once, so a long file
-  # leaves no chain of joins as deep as its marks are many.
+  # leaves no chain of joins as deep as its marks are many, though each
+  # copies the code so far, so the cost grows with the square of the
+  # marks: small at this one file's size, and the check's cases are short.
   ways =
     let
       step =
@@ -112,6 +114,12 @@ let
   # says why.
   faults = map (rule: rule.wanted) (
     lib.filter (rule: !rule.met) [
+      # Found first, so a declaration a string's `//` or `/*` hides
+      # fails as that, not as every rule at once.
+      {
+        wanted = "WALKS and STRIDING each found outside a comment";
+        met = walks != "" && striding != "";
+      }
       {
         wanted = "WALKS frozen as quoted words";
         met = builtins.match (frozen "\\[${listed word}]") walks != null;
