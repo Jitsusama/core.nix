@@ -1472,9 +1472,9 @@ Scope {
         for (const step of String(id).split(catalogueStep)) {
             // One held still is found too, so a walk to it is refused with
             // why, as a terminal's do is, rather than said missing; never
-            // one gone, as no listed row is.
-            const row = rows.find(one => (Catalogue.listed(one)
-                || Arming.holdsStill(one) && !one.gone) && steadyId(one) === step) ?? null;
+            // one gone, as no listed row is, nor held (Arming.holdsStill).
+            const row = rows.find(one => (Catalogue.listed(one) || Arming.holdsStill(one))
+                && steadyId(one) === step) ?? null;
             if (row === null)
                 return null;
             path.push(row);

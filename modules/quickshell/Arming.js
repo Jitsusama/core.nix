@@ -21,9 +21,10 @@
 // Return, and has no run, so it has no act for the right arrow to step
 // into; a still row with a run, as the file chooser's, still runs it. A
 // still row is held whatever else it holds, since it says Return has
-// nothing to do.
+// nothing to do; never one gone, as Steady keeps it dimmed, whose Return
+// does nothing and says so nowhere.
 function holdsStill(row) {
-    return !!row && row.still === true && typeof row.run !== "function";
+    return !!row && row.still === true && typeof row.run !== "function" && row.gone !== true;
 }
 
 // Why a row held still does nothing (`stillWhy`), or `fallback` where it
