@@ -2794,10 +2794,11 @@
     each realm a machine names gets an attended and a background pi host, started with the
     account's session where the harness is installed, run by the host's pi and its own node, its
     inspector shut to SIGUSR1 and opened or undone by none of its options, started plainly or
-    through env, with just NODE_OPTIONS, each other variable that loads code into it and the TPM
-    agent's cleared, ready once it says so, in agents.slice with its realm's environment and its
-    folders first on its PATH, left stopped after refusing what it was given and left running through a switch and through the kernel killing one of its
-    commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
+    through env, with just the eight variables that load code into it, as
+    pi-hosts-refuse-code-loading-variables names them, and the TPM agent's cleared, ready once it
+    says so, in agents.slice with its realm's environment and its folders first on its PATH, left
+    stopped after refusing what it was given and left running through a switch and through the
+    kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
     with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
@@ -2822,8 +2823,7 @@
     clears so none opens the host's inspector or runs code as the host, fails evaluation naming
     the realm and only the ones it gave, joined as written and spoken of as it or each, then
     names each of the eight again where it says how they load code, and that a command needing
-    one sets it itself, rather than
-    having them dropped unseen, while a variable that loads nothing passes beside them unnamed
+    one sets it itself, rather than having them dropped unseen, while a variable that loads nothing passes beside them unnamed
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the

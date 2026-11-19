@@ -84,7 +84,9 @@ let
   # that proves a hosted session by its spawner: it then takes no host's word
   # whose environment gives any of them, but for a blank NODE_OPTIONS. The two
   # lists are kept alike by hand: nothing here reads mycelium's yet. These are
-  # the environment's doors only: a process of the account can still write
+  # node's, the loader's and OpenSSL's doors only. pi's own variables, such
+  # as PI_CODING_AGENT_DIR, which moves the extensions it loads, are the
+  # account's doors, like HOME: a process of the account can as well write
   # the host's own code where pi-packages keeps it, or a module in node's
   # home folders (~/.node_modules), which no variable names.
   loadsCode = [
