@@ -175,6 +175,9 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     named("Mud\u2800room", "mac:02:00:00:00:00:0f"),
     named("Wine\u115fcellar", "mac:02:00:00:00:00:10"),
     named(" Shed ", "mac:02:00:00:00:00:11"),
+    named("Pan\uffa0try", "mac:02:00:00:00:00:12"),
+    named("Bath\nroom", "mac:02:00:00:00:00:13"),
+    named("\u03aa\u0301 room", "mac:02:00:00:00:00:14"),
   ];
   for (const [name, command] of [
     ["Hall", "net devices Hall"],
@@ -277,6 +280,12 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["mud room", byId],
     ["wine cellar", byId],
     ["shed", byId],
+    // Hangul's halfwidth filler and a line break each read as a blank.
+    ["pan try", byId],
+    ["bath room", byId],
+    // A letter its case leaves apart from its marks, which only the last
+    // composing brings together: ΐ as the small of Ϊ and its accent.
+    ["\u0390 room", byId],
     // And names a letter apart from another's, which are kept.
     ["Cafe", "net devices Cafe"],
     ["Dens", "net devices Dens"],
