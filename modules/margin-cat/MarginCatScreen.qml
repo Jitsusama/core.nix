@@ -410,9 +410,11 @@ PanelWindow {
             hurried,
             facing: stepped?.facing ?? 0,
             // A walk set off mid-stride strides on from the one drawn,
-            // as far into it as it was; one set off from a hold, at once.
+            // as far into it as it was, at the pace it had if it wasn't
+            // easing in or out; one set off from a hold, at once.
             drawnIn: stepped?.pose ?? null,
             drawnInto: stepped?.into ?? null,
+            drawnAtPace: stepped?.atPace ?? false,
             height: modelData.height,
             cols: Paths.columns(tiles, 0),
             before: heard.before ? Paths.columns(heard.before, 0) : null,

@@ -358,8 +358,8 @@ function strode(beat, spot) {
 // then, so it starts in the one a pair on from that, and `walk.stops`
 // the one it stops into, its stand unless said. One about to stop in the
 // stride both pairs away from that steps on to the one between for its
-// last `walk.shown` ms, or, when that stride itself would be seen for
-// less, stops in the one before it instead (WCJQSG b1034f36); an odd
+// last `walk.shown` ms, or, when this walk shows that stride for less and
+// wasn't set off in it, stops in the one before it (WCJQSG b1034f36); an odd
 // number of strides has none both pairs away. One that `joins` another
 // strides on in, unstopped.
 function striding(strides, walk, t) {
@@ -370,7 +370,8 @@ function striding(strides, walk, t) {
     if (walk.joins || (end - rest + many) % many !== many / 2) {
         return strides[at(t)];
     }
-    if (at(Math.max(walk.since, walk.last - walk.shown)) === end) {
+    const seen = Math.max(walk.since, walk.last - walk.shown);
+    if (at(seen) === end && (walk.last - walk.shown >= walk.since || end === stand)) {
         return strides[t < walk.last ? at(t) : (end + 1) % many];
     }
     const stopping = t >= walk.last - walk.shown && at(t) === end;

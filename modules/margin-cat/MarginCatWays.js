@@ -286,13 +286,12 @@ function timed(way) {
     const stride = Math.min(Math.max(Math.ceil(pace * MarginCat.STRIDE_SECONDS - 1e-6),
         MarginCat.SHORTEST_STRIDE), MarginCat.LONGEST_STRIDE) * at.cell;
     // A walk eases in over its first stride from a standstill and out over its last, at
-    // its pace between, keeping it through a leg joined to another it walks or climbs
-    // (VKCF3Z d1d1ead2) and from one set off mid-stride: each ramp its share of the leg's
-    // ground. Easing costs time rather than quickening its pace, so no drawing is held for
-    // less than its stride at that pace. A climb eases the same, or its last part-stride,
-    // too quick to be seen alone, would be drawn in the one before it, a glide.
-    const going = STRIDING[way.legs[0]?.kind]?.includes(at.drawnIn)
-        && Number.isFinite(at.drawnInto);
+    // its pace between: each ramp its share of the leg's ground, costing time rather than
+    // quickening, so no drawing is held for less than its stride. It keeps its pace through
+    // a leg joined to another (VKCF3Z d1d1ead2), and set off mid-stride at it, not easing.
+    // A climb eases the same, or its last part-stride, too quick to see, is a glide.
+    const mid = STRIDING[way.legs[0]?.kind]?.includes(at.drawnIn) && Number.isFinite(at.drawnInto);
+    const going = mid && at.drawnAtPace === true;
     const ramps = way.legs.map((one, i) => {
         const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
         if (!STRIDING[one.kind] || ground === 0) {
@@ -324,12 +323,12 @@ function timed(way) {
     const from = way.legs[0]?.from ?? { x: way.x, y: way.y };
     const route = { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends,
         cell: at.cell, drawnIn: at.drawnIn ?? null };
-    // Striding beats joined, a walk onto a climb or a climb onto a walk,
-    // stride on as one round the corner, rather than each starting its
-    // strides over or holding a drawing across a short one (joined()). One
-    // set off mid-stride holds the drawn stride for the rest of its ground,
-    // so walks begun again and again stride by the ground; from a hold, at once.
-    const carried = going ? at.drawnInto : 1;
+    // Striding beats joined, a walk onto a climb or a climb onto a walk, stride on as one
+    // round the corner, rather than each starting its strides over or holding a drawing
+    // across a short one (joined()). One set off mid-stride holds the drawn stride for the
+    // rest of its ground, so walks begun again and again stride by the ground; from a hold,
+    // or one held past its stride, at once.
+    const carried = mid ? Math.min(at.drawnInto, 1) : 1;
     for (const [i, beat] of beats.entries()) {
         const was = beats[i - 1];
         beat.walked = joined(was, beat) ? was.walked + Math.abs(was.to.x - was.from.x)
@@ -353,11 +352,10 @@ function timed(way) {
     return route;
 }
 
-// A leap's pose `ms` into it, `whole` ms long, `peak` its share of the way
-// at the top: the stretched drawing rising, tucked about the top for a
-// fifth of it, then reaching down, each pose seen at least SHOWN or folded
-// into the tuck (RSCH-20261113-24R2QV, finding 3). A hop whose fifth is
-// under SHOWN skips the tuck rather than flash it (VKCF3Z c234c1d4).
+// A leap's pose `ms` into it, `whole` ms long, `peak` its share of the way at the top: the
+// stretched drawing rising, tucked about the top for a fifth of it, then reaching down, each
+// pose seen at least SHOWN or folded into the tuck (RSCH-20261113-24R2QV, finding 3). A hop
+// whose fifth is under SHOWN skips the tuck rather than flash it (VKCF3Z c234c1d4).
 function aloft(ms, whole, peak) {
     const tuck = whole / 5 < SHOWN ? 0 : whole / 5;
     let tucks = Math.min(Math.max(0, peak * whole - tuck / 2), whole - tuck);
@@ -396,11 +394,11 @@ function onCells(v, a, b, cell) {
     return on * Math.max(on * a, on * short);
 }
 
-// Where a way has it `t` ms in: its `x` and `y`, the top left of its box;
-// its `pose` by the theme's name, or null for its own as it rides; its
-// `turn`, a quarter turn clockwise (1) or back (-1) as it climbs; the way
-// it's `facing`; the `beat` it's on, and whether it's `aboard` a floating
-// window there; and at its end, `done`, on its seat.
+// Where a way has it `t` ms in: its `x` and `y`, the top left of its box; its `pose` by the
+// theme's name, or null for its own as it rides; its `turn`, a quarter turn clockwise (1) or
+// back (-1) as it climbs; the way it's `facing`; the `beat` it's on, whether it's `aboard` a
+// floating window there, and striding, how far `into` its stride and whether `atPace`,
+// between its ramps (MarginCat.paced()); and at its end, `done`, on its seat.
 function frame(route, t) {
     const beat = route.beats.find(one => t < one.ends);
     if (!beat) {
@@ -422,9 +420,12 @@ function frame(route, t) {
     const pose = strides
         ? beat.held ?? MarginCat.striding(strides, walk, t)
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
+    const [rises, eases] = beat.ramps ?? [0, 0];
+    const steady = 1 + rises + eases;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
         beat: beat.name, aboard: beat.aboard === true, done: false,
-        into: strides && !beat.held ? drawnFor(route, beat, t, { walk, pose }) : null };
+        into: strides && !beat.held ? drawnFor(route, beat, t, { walk, pose }) : null,
+        atPace: !!strides && spot.p >= (2 * rises) / steady && spot.p <= 1 - (2 * eases) / steady };
 }
 
 // How far into `pose`, drawn `t` ms in `walk`, it is, in strides: since it

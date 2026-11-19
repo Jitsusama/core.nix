@@ -317,7 +317,7 @@ QtObject {
         // A stride each 40 ms, A's from 40 and again from 200: stopping on
         // A, it steps on to C when A's been seen a SHOWN, to the ms, and
         // stops on D when it hasn't, though not on the lap before; it
-        // reads none from before its strides began.
+        // counts none of A's time from before its strides began.
         const strideAt = (t, more) => MarginCat.striding(walk, Object.assign({
             stand: "walkingB", shown: 33, since: 0, joins: false,
             count: time => Math.floor(time / 40) }, more), t);
@@ -331,13 +331,19 @@ QtObject {
                 strideAt(232, { last: 232, since: 205 })],
             ["walkingD", "walkingA", "walkingA", "walkingC", "walkingC", "walkingD",
                 "walkingD", "walkingA", "walkingC", "walkingC", "walkingD", "walkingA",
-                "walkingC"]);
+                "walkingD"]);
         // Set off from A, as from a walk begun again, it still stops into B:
         // ending on A it steps on to C, and ending on B it stays there.
+        // Set off from D into A, too briefly to step on, it holds D, as it
+        // does A when it set off in A and has yet to step.
+        const setOff = (t, stand, more) => strideAt(t, Object.assign({ stand,
+            stops: "walkingB" }, more));
         expect("set off from another stride, it's never both pairs off the one it stops into",
-            [strideAt(155, { stand: "walkingA", stops: "walkingB", last: 155 }),
-                strideAt(75, { stand: "walkingA", stops: "walkingB", last: 75 })],
-            ["walkingC", "walkingB"]);
+            [setOff(155, "walkingA", { last: 155 }), setOff(75, "walkingA", { last: 75 }),
+                setOff(10, "walkingD", { last: 20 }), setOff(25, "walkingD", { last: 20 }),
+                setOff(10, "walkingA", { last: 20, count: () => -1 }),
+                setOff(20, "walkingA", { last: 20, count: () => -1 })],
+            ["walkingC", "walkingB", "walkingD", "walkingD", "walkingA", "walkingC"]);
         const changes = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose);
         expect("as many strides as its way holds, the last ending as it stops",
             changes.length, Math.ceil((200 - 99) / going.stride) - 1);
