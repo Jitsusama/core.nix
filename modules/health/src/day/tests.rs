@@ -226,12 +226,32 @@ fn every_fault_of_a_thing_is_kept_through_a_start() {
 }
 
 #[test]
-fn a_fault_in_a_thing_kept_whole_is_kept_and_not_counted_again() {
-    // A session's place may be named as a fault's thing is: a clone
-    // called disk-guard, say.
+fn a_fault_in_words_kept_before_they_had_a_name_of_their_own_counts_once() {
+    // A day kept before the change may hold his words under a bare place
+    // named as a fault is, with the fault inside them, kept whole.
     let mut kept = Day::new("2026-11-12");
-    kept.heard(
-        "disk-guard",
+    kept.things.entry("disk-guard".to_owned()).or_default().kind = Some(Kind::Words);
+    kept.fault("disk-guard", Kind::Services, "stopped saying it's there", 3);
+    let mut day = Day::new("2026-11-12");
+    day.resume(kept);
+    let mut again = Day::new("2026-11-12");
+    again.resume(day);
+    let thing = again
+        .things
+        .get("disk-guard")
+        .map(|thing| (thing.kind, thing.errors));
+    assert_eq!(
+        (thing, again.seen.len()),
+        (Some((Some(Kind::Words), 1)), 1),
+        "two starts counted the fault again: {:?}",
+        again.things
+    );
+}
+
+/// Joel's words, typed at 4 to a session that ran at `place`.
+fn words(place: &str, day: &mut Day) {
+    day.heard(
+        place,
         &Heard {
             at: 4,
             said: Said::Words {
@@ -239,16 +259,54 @@ fn a_fault_in_a_thing_kept_whole_is_kept_and_not_counted_again() {
             },
         },
     );
-    kept.fault("disk-guard", Kind::Services, "stopped saying it's there", 5);
+}
+
+#[test]
+fn joels_words_where_a_fault_is_named_the_same_outlast_two_starts() {
+    // A session's place may be named as a fault's thing is: a clone
+    // called disk-guard, say. The fault seen first once made the thing a
+    // service's, which a start doesn't keep, so his words were lost.
+    let mut kept = Day::new("2026-11-12");
+    kept.fault("disk-guard", Kind::Services, "stopped saying it's there", 3);
+    words("disk-guard", &mut kept);
     let mut day = Day::new("2026-11-12");
     day.resume(kept);
     let mut again = Day::new("2026-11-12");
     again.resume(day);
-    let thing = &again.things["disk-guard"];
+    let counted = |name: &str| {
+        again
+            .things
+            .get(name)
+            .map(|thing| (thing.kind, thing.lines, thing.errors))
+    };
     assert_eq!(
-        (thing.lines, thing.errors, again.seen.len()),
-        (2, 2, 1),
-        "a start counted the fault again into the place that held it: {thing:?}"
+        (counted("pi in disk-guard"), counted("disk-guard")),
+        (
+            Some((Some(Kind::Words), 1, 1)),
+            Some((Some(Kind::Services), 1, 1))
+        ),
+        "his words and the fault weren't each kept once: {:?}",
+        again.things
+    );
+    assert_eq!(again.seen.len(), 1, "the fault was seen again");
+}
+
+#[test]
+fn joels_words_where_a_unit_is_named_the_same_leave_its_lines_to_the_replay() {
+    // His words heard first once made a unit's lines the session's, kept
+    // whole through a start, so the replay counted them a second time.
+    let mut kept = Day::new("2026-11-12");
+    words("disk-guard", &mut kept);
+    kept.take(&entry("disk-guard", 3, "can't read the status"));
+    let mut day = Day::new("2026-11-12");
+    day.resume(kept);
+    day.take(&entry("disk-guard", 3, "can't read the status"));
+    let errors = |name: &str| day.things.get(name).map(|thing| thing.errors);
+    assert_eq!(
+        (errors("disk-guard"), errors("pi in disk-guard")),
+        (Some(1), Some(1)),
+        "the unit's line was counted twice, or his words lost: {:?}",
+        day.things
     );
 }
 

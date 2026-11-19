@@ -62,7 +62,11 @@ pub enum Kind {
     /// were refused, or were made twice running.
     Tools,
     /// What Joel typed to a session that sounds like something hurt, by
-    /// where the session ran.
+    /// where the session ran: `pi in <place>`, a name no unit or fault of
+    /// health's takes, so a place called `disk-guard` keeps his words apart
+    /// from the disk guard's lines, each kept as its kind is through a
+    /// start. A line naming itself so (`logger -t`) still shares it, as one
+    /// naming itself `pi bash` shares a tool's.
     Words,
 }
 
@@ -399,7 +403,7 @@ impl Day {
     /// Count what a session's log said, from the session that ran at
     /// `place`: a tool's failure or refusal is an error of `pi <tool>`, a
     /// call made twice running a warning of it, and Joel's words an error
-    /// of the place he said them.
+    /// of `pi in <place>`.
     pub fn heard(&mut self, place: &str, heard: &Heard) {
         self.to = self.to.max(heard.at);
         let (name, kind, message, priority) = match &heard.said {
@@ -407,7 +411,7 @@ impl Day {
                 (format!("pi {tool}"), Kind::Tools, why.as_str(), 3)
             }
             Said::Again { tool } => (format!("pi {tool}"), Kind::Tools, "the same call again", 4),
-            Said::Words { text } => (place.to_owned(), Kind::Words, text.as_str(), 3),
+            Said::Words { text } => (format!("pi in {place}"), Kind::Words, text.as_str(), 3),
         };
         let thing = self.things.entry(name).or_default();
         thing.kind = thing.kind.or(Some(kind));
@@ -438,15 +442,12 @@ impl Day {
             .into_iter()
             .filter(|(_, thing)| matches!(thing.kind, Some(Kind::Tools | Kind::Words)))
             .collect();
-        // A thing kept whole, such as a session's place named as a fault's
-        // thing is, already holds the fault, so it's kept, not counted again.
         for seen in kept.seen {
-            if whole.contains_key(&seen.name) {
-                self.seen.push(seen);
-            } else {
-                self.fault(&seen.name, seen.kind, &seen.message, seen.at);
-            }
+            self.fault(&seen.name, seen.kind, &seen.message, seen.at);
         }
+        // A thing kept whole replaces what its faults counted into it, since
+        // it holds them already: only a day kept before Joel's words had a
+        // name of their own can hold a fault in one.
         for (name, thing) in whole {
             self.things.insert(name, thing);
         }
