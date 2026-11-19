@@ -250,45 +250,165 @@
   # each file's ripgrep exclusions, read from it here, so only a file added,
   # moved or removed, or an exclusion changed, runs it again. It reads
   # those against the root, which each script searches from, so it can't
-  # see a script searching from somewhere else, nor a pattern the shell or
-  # Nix fills in, nor a flag joined to others, as -lg. A made-up tree and
-  # script show it reads each spelling, says each way a pattern names
-  # nothing, and no way one names a file.
+  # see a script searching from somewhere else, nor a pattern a shell
+  # variable fills in, nor one the shell or Nix fills in after its `!`,
+  # though it reads a quoted one's backtick as written, nor a flag joined to
+  # others, as -lg. A whole glob a `$(` or Nix gives after the flag on a
+  # line running rg, or a backtick after a space, `=` or quote, it can't
+  # read, and says so. It reads each line's quotes afresh, so a quote left
+  # open across lines can hide one, and it reads a pattern glued to a
+  # quoted part opening with a space, as '!a'" b", as ending at the space.
+  # A made-up tree and script show it reads each spelling, says each way a
+  # pattern names nothing, and no way one names a file.
   every-pattern-names-a-file =
     let
       check = "${lib.getExe pkgs.python3} ${./every-pattern-names-a-file.py}";
       relative = file: lib.removePrefix "./" (lib.path.removePrefix ../.. file);
       paths = map relative (lib.fileset.toList ../..);
-      # Each `-g`, `--glob` or `--iglob` given a `!`, quoted or not, a line at
-      # a time once a `\` has joined a line to the next, and past a comment,
-      # since a comment may quote one. A quoted pattern runs to its quote
-      # and a bare one to a space or what ends a command. A line holding
-      # more such flags with a later `!` than it reads, or ending in a bare
-      # flag, gives the line with no flag, so the check says it can't read it
-      # rather than passing it by. The made-up script below splices in its
-      # `!` and its one bare flag, so this file's own reading finds neither.
+      # Each `-g`, `--glob` or `--iglob` starting a word and given a `!`,
+      # quoted or not, past a line that's a comment, since a comment may quote
+      # one, and past a `#` closing a line outside quotes, read as the shell
+      # reads them. A `\` then joins a line to the next, and so does a flag
+      # ending one, as in a list nixfmt has split. A pattern runs to its own
+      # closing quote, or a bare one to a space, a quote or what ends a
+      # command, and must end its word there. A line holding more flags given
+      # a `!` than it reads, or on a line running rg, by name, by a variable or
+      # by its store path, a `$(`, a backtick after a space, `=` or quote, or
+      # in a .nix file a `${`, gives the line with no flag, so the check says
+      # it can't read it rather than passing it by. The made-up script below
+      # splices in its `!`, so this file's own reading finds none, and its
+      # `$(`, `${` and backticks, which that reading takes off.
       bang = "!";
+      run = "$(";
+      tick = "`";
+      brace = "\${";
       flag = "(-g|--glob|--iglob)";
-      quoted = "['\"]${bang}([^'\"]*)";
-      bare = "${bang}([^'\" \t;)|&]*)";
-      exclusion = "${flag}['\"]?[ =]*\\\\?(${quoted}|${bare})";
-      flagged = "${flag}[^${bang}]*${bang}";
-      ending = ".*${flag}['\"]?";
+      start = "[ '\"(=]";
+      single = "'${bang}([^']*)'";
+      double = "\"${bang}([^\"\\\\]*)\\\\?\"";
+      bare = "${bang}([^'\"`\\\\ ;)|&]*)";
+      stop = "[] ;)|&]";
+      exclusion = "${flag}['\"]?[ =]*\\\\?(${single}|${double}|${bare})(${stop}|['\"`]+${stop})";
+      given = "${start}${flag}['\"]?[ =]*\\\\?['\"]?";
+      ending = ".*${given}";
       leftOut =
         name: text:
         let
-          joined = builtins.replaceStrings [ "\\\n" ] [ " " ] text;
-          trimmed = map lib.trim (lib.splitString "\n" joined);
-          lines = lib.filter (line: !lib.hasPrefix "#" line) trimmed;
-          matches = regex: line: lib.filter lib.isList (builtins.split regex line);
-          pattern = match: lib.findFirst (group: group != null) "" (lib.drop 2 match);
+          code = lib.filter (line: !lib.hasPrefix "#" (lib.trim line)) (lib.splitString "\n" text);
+          # Where the `#` opening a line's comment is: one after what ends a
+          # word and outside quotes, a `\` escaping what follows it but in
+          # single quotes. A `${` holds Nix's names, whose primes quote nothing,
+          # and its strings.
+          comment =
+            line:
+            let
+              step =
+                state: c:
+                let
+                  quote = if state.quotes == [ ] then null else lib.head state.quotes;
+                  next = state // {
+                    at = state.at + 1;
+                    before = c;
+                    escaped = false;
+                  };
+                  opened = next // {
+                    quotes = [ c ] ++ state.quotes;
+                  };
+                  closed = next // {
+                    quotes = lib.tail state.quotes;
+                  };
+                in
+                if state.cut != null then
+                  state
+                else if state.escaped then
+                  next // { before = "\\"; }
+                else if c == "\\" && quote != "'" then
+                  next // { escaped = true; }
+                else if quote == "'" then
+                  if c == "'" then closed else next
+                else if (c == "(" || c == "{") && state.before == "$" then
+                  opened
+                else if quote == "\"" then
+                  if c == "\"" then closed else next
+                else if quote == "{" then
+                  if c == "}" then
+                    closed
+                  else if c == "\"" then
+                    opened
+                  else
+                    next
+                else if c == "'" || c == "\"" then
+                  opened
+                else if c == ")" && quote == "(" then
+                  closed
+                else if c == "#" && lib.elem state.before breaks then
+                  state // { cut = state.at; }
+                else
+                  next;
+              # What ends a word before a `#`, a `\` having escaped none.
+              breaks = [
+                " "
+                ";"
+                "&"
+                "|"
+                "("
+                ")"
+              ];
+              begun = {
+                at = 0;
+                before = " ";
+                quotes = [ ];
+                escaped = false;
+                cut = null;
+              };
+            in
+            (lib.foldl' step begun (lib.stringToCharacters line)).cut;
+          uncommented =
+            line:
+            let
+              flat = builtins.replaceStrings [ "\t" ] [ " " ] line;
+              at = if lib.hasInfix "#" flat then comment flat else null;
+            in
+            lib.trim (if at == null then flat else builtins.substring 0 at flat);
+          ended = lib.concatMapStrings (line: "${uncommented line}\n") code;
+          joined = builtins.replaceStrings [ " \\\n" "\\\n" ] [ " " " " ] ended;
+          lines = lib.splitString "\n" joined;
+          ends = map (line: builtins.match ending " ${line}" != null) lines;
+          # A line a flag ending the one before carried is read only there.
+          carries = i: lib.elemAt ends i && !lib.elemAt carried i;
+          carried = lib.genList (i: i > 0 && carries (i - 1)) (lib.length lines);
+          next = i: if i + 1 < lib.length lines then " ${lib.elemAt lines (i + 1)}" else "";
+          read = i: line: if lib.elemAt ends i then "${line}${next i}" else line;
+          kept = lib.concatLists (
+            lib.imap0 (i: line: lib.optional (!lib.elemAt carried i) (read i line)) lines
+          );
+          parts = line: builtins.split exclusion " ${line} ";
+          pattern = match: lib.findFirst (group: group != null) "" (lib.sublist 2 3 match);
           row = match: lib.optional (pattern match != "") "${lib.head match}\t${pattern match}";
-          found = line: lib.concatMap row (matches exclusion line);
-          flags = line: lib.length (matches flagged line);
-          unread = line: flags line > lib.length (found line) || builtins.match ending line != null;
+          # A match counts only where its flag starts a word, or just past the
+          # one before it, whose own end used the space between.
+          starts = before: before == "" || builtins.match ".*${start}" before != null;
+          counted =
+            all: i: part:
+            lib.optionals (lib.isList part && starts (lib.elemAt all (i - 1))) (row part);
+          found = line: lib.concatLists (lib.imap0 (counted (parts line)) (parts line));
+          times = regex: line: lib.count lib.isList (builtins.split regex " ${line} ");
+          named = "([ ;|&(`/'\"=$\{]rg|ripgrep}|\"rg\"})[}'\"]*";
+          runs = line: builtins.match ".*${named} .*" " ${line} " != null;
+          # A `${` is a splice only in a .nix file, a .sh file's being the
+          # shell's own variable, and this file's reading of itself meets its
+          # own splices, which it takes off.
+          shell = "\\$\\(|[ =\"']+`";
+          fills = if lib.hasSuffix ".nix" name then "${shell}|\\$\\{" else shell;
+          filled = "${given}(${fills})";
+          own = "${given}\\$\\{(bang|run|tick|brace)}";
+          splices = line: if name == relative ./checks.nix then times own line else 0;
+          made = line: if runs line then times filled line - splices line else 0;
+          flags = line: times "${given}${bang}" line + made line;
+          unread = line: flags line > lib.length (found line);
           said = line: if unread line then [ "\t${line}" ] else found line;
         in
-        map (fields: "${name}\t${fields}") (lib.concatMap said lines);
+        map (fields: "${name}\t${fields}") (lib.concatMap said kept);
       read = file: leftOut (relative file) (builtins.readFile file);
       here = lib.concatMap read sources;
       sources = lib.fileset.toList (
@@ -296,13 +416,12 @@
       );
       stale =
         pattern:
-        "t.sh tells ripgrep to leave out ${pattern}, which matches no file: "
+        "t.nix tells ripgrep to leave out ${pattern}, which matches no file: "
         + "point it at where the file is now, or take it off.";
       unreadable =
         line:
-        "t.sh holds a ripgrep exclusion this check can't read, in ${line}: "
-        + "write its pattern out in full after the flag.";
-      glob = "--glob";
+        "t.nix holds a ripgrep glob this check can't read, in ${line}: "
+        + "write each pattern given after the flag out in full.";
       madeUp = {
         paths = [
           "flake.nix"
@@ -317,7 +436,8 @@
         # Kept in Nix because it's text the check reads and never runs, its
         # splices keeping its exclusions out of this file's own reading.
         script = ''
-          # rg --glob '${bang}gone.js', which a comment only quotes
+          # rg --glob '${bang}gone.js', which a comment only quotes, ending in \
+          rg --glob '${bang}gone/c.js'
           rg --glob '${bang}modules/spotify/backs-out.js' --glob "${bang}modules/*.js"
           rg -g ${bang}modules/*/speaks-vims-keys.js -g'${bang}**/tests/**'
           rg --glob=${bang}modules/theme/**/glyphs.nix --glob '${bang}/flake.nix'
@@ -329,20 +449,66 @@
           lib.escapeShellArgs [ "--glob" "${bang}README.md" ]
           rg --glob \
             '${bang}gone/b.js'
-          rg --glob '${bang}README.md' --glob "$(printf '${bang}%s' x)"
+          rg --glob '${bang}README.md' --glob "${run}printf '${bang}%s' x)"
           rg --glob '${bang}'modules/x.js
           lib.escapeShellArgs [
-            "${glob}"
-            "${bang}README.md"
+            "--glob"
+            "*.nix"
           ]
+          rg --glob '${bang}x' modules # once --glob '${bang}gone.js'
+          rg -g '*.sh' '^#${bang}' modules; [ "$n" -gt 0 ] && ${bang} cmp a b
+          rg --glob \"${bang}README.md\"
+          rg --glob '${bang}modules/spotify/'backs-out.js
+          lib.escapeShellArgs [
+            "--glob"
+            "${bang}gone/d.js"
+          ]
+          echo usage: rg -g
+          rg -g '${bang}gone/e.js'
+          rg --glob '${bang}x' # once, so not \
+          rg --glob '${bang}gone/f.js'
+          rg -e ' #' --glob '${bang}gone/g.js'
+          rg --glob '${bang}x'${"\t"}# once --glob '${bang}gone.js'
+          [ "--glob=${bang}gone/h.js" ]
+          script = "rg --glob '${bang}README.md'";
+          rg --glob '${bang}README.md" x'
+          x-g '${bang}README.md' && rg --glob "${run}f)"
+          rg --glob "${tick}printf '${bang}%s' gone${tick}"
+          x-g '${bang}gone/n.js'
+          rg -e " #" --glob '${bang}gone/i.js'
+          x = "rg -e \" #\" --glob '${bang}gone/k.js'";
+          rg -e "don't" -e ' #' --glob '${bang}gone/l.js'
+          echo -g
+          echo -g
+          rg -g '${bang}gone/j.js'
+          install -g "${run}id -gn)" a b
+          rg --glob '${bang}modules/a  dir/**'
+          rg -g'${bang}modules/a/'b.js
+          rg --glob '${bang}modules/a/'"case.py"
+          x="$(rg -e "a #" --glob '${bang}gone/z.js')"
+          rg -g '${bang}gone/w.js';# was -g '${bang}gone.js'
+          rg -e a\ #b --glob '${bang}gone/y.js'
+          rg -e \' --glob '${bang}x' # --glob '${bang}gone.js'
+          rg -e '\' --glob '${bang}x' # --glob '${bang}gone.js'
+          ''${lib.getExe pkgs.ripgrep} --glob "${run}f)"
+          /bin/rg --glob "${run}f)"
+          "''${lib.getExe pkgs.ripgrep}" --glob "${run}f)"
+          script = "rg --glob \"${run}f)\"";
+          rg --glob ${brace}lib.escapeShellArg "${bang}gone.js"}
+          "$rg" --glob "${run}f)"
+          ''${lib.getExe' pkgs.ripgrep "rg"} --glob "${run}f)"
+          ''${rg} --glob "${run}f)"
+          ''${lib.getExe' pkgs.ripgrep "rg"} --glob '${bang}gone/v.js' # was --glob '${bang}gone.js'
+          message = "pass `rg -g` a glob";
         '';
-        # The file gone, a * that stops at a slash, a folder that's only a
-        # file, a name in another case, braces, a path that holds a slash and
-        # so starts at the root, one a leading slash anchors there, a quoted
-        # one holding a space, one a `\` carries to the next line, and three
-        # lines it can't read; nothing else.
+        # What it says, in the script's order. The comments, what's included,
+        # a flag not starting a word, another command's flag and a code span
+        # say nothing.
         said =
+          # Past a comment line ending in a `\`, the file gone, a * that stops
+          # at a slash, a folder that's only a file, a name in another case.
           map stale [
+            "gone/c.js"
             "modules/spotify/backs-out.js"
             "modules/*.js"
             "x/"
@@ -350,33 +516,106 @@
           ]
           ++ [
             (
-              "t.sh tells ripgrep to leave out {a,b}.js, whose braces this check can't read: "
+              "t.nix tells ripgrep to leave out {a,b}.js, whose braces this check can't read: "
               + "give each choice a glob of its own."
             )
           ]
+          # A path that holds a slash and so starts at the root, one a leading
+          # slash anchors there, a quoted one holding a space, and one a `\`
+          # carries to the next line.
           ++ map stale [
             "spotify/speaks-vims-keys.js"
             "/x"
             "modules/a dir/**"
             "gone/b.js"
           ]
+          # A `$(`, an empty pattern and a quoted one glued to more.
           ++ map unreadable [
-            "rg --glob '${bang}README.md' --glob \"$(printf '${bang}%s' x)\""
+            "rg --glob '${bang}README.md' --glob \"${run}printf '${bang}%s' x)\""
             "rg --glob '${bang}'modules/x.js"
-            "\"${glob}\""
-          ];
+            "rg --glob '${bang}modules/spotify/'backs-out.js"
+          ]
+          # A split list carried, a flag ending the line before carried and
+          # said once, past a comment closing a line in a `\`, past a ` #` in
+          # quotes, a whole quoted word, and quotes that don't match.
+          ++ map stale [
+            "gone/d.js"
+            "gone/e.js"
+            "gone/f.js"
+            "gone/g.js"
+            "gone/h.js"
+            "README.md\" x"
+          ]
+          # A `$(` beside a flag not starting a word, and a backtick.
+          ++ map unreadable [
+            "x-g '${bang}README.md' && rg --glob \"${run}f)\""
+            "rg --glob \"${tick}printf '${bang}%s' gone${tick}\""
+          ]
+          # Past a ` #` in double quotes, in a Nix string's, in single quotes
+          # after a double-quoted `'`, past two lines ending in flags, and one
+          # holding two spaces running.
+          ++ map stale [
+            "gone/i.js"
+            "gone/k.js"
+            "gone/l.js"
+            "gone/j.js"
+            "modules/a  dir/**"
+          ]
+          # A quoted pattern glued to a bare part, and to a quoted one.
+          ++ map unreadable [
+            "rg -g'${bang}modules/a/'b.js"
+            "rg --glob '${bang}modules/a/'\"case.py\""
+          ]
+          # Past a ` #` in a double-quoted `$(`'s own quotes, before a `;#`,
+          # and past an escaped space before a `#`.
+          ++ map stale [
+            "gone/z.js"
+            "gone/w.js"
+            "gone/y.js"
+          ]
+          # A `$(` given to rg named by its store path, quoted or not, or in a
+          # string, a `${`, and a `$(` given to rg named by a variable or by
+          # its store path's other spelling.
+          ++ map unreadable [
+            "\${lib.getExe pkgs.ripgrep} --glob \"${run}f)\""
+            "/bin/rg --glob \"${run}f)\""
+            "\"\${lib.getExe pkgs.ripgrep}\" --glob \"${run}f)\""
+            "script = \"rg --glob \\\"${run}f)\\\"\";"
+            "rg --glob ${brace}lib.escapeShellArg \"${bang}gone.js\"}"
+            "\"$rg\" --glob \"${run}f)\""
+            "\${lib.getExe' pkgs.ripgrep \"rg\"} --glob \"${run}f)\""
+            "\${rg} --glob \"${run}f)\""
+          ]
+          # Past a comment after a Nix name's prime.
+          ++ map stale [ "gone/v.js" ];
       };
       written = name: lines: pkgs.writeText name (lib.concatLines lines);
     in
     # A reading that found nothing would pass every tree.
-    assert lib.assertMsg (here != [ ]) "every-pattern-names-a-file read no exclusion here.";
+    assert lib.assertMsg (here != [ ]) (
+      "every-pattern-names-a-file read no ripgrep exclusion in tests/repository's .sh and "
+      + ".nix files: a change to its reading has most likely stopped it finding them; "
+      + "take this assert off only if none is meant to be left."
+    );
+    # A .sh file's `${`, the shell's own variable, is passed over.
+    assert lib.assertMsg (leftOut "t.sh" "rg --glob \"${brace}dir}/x\"" == [ ]) (
+      "every-pattern-names-a-file called a .sh file's rg --glob \"\${dir}/x\" unreadable: "
+      + "the shell fills in a .sh file's own variables, which the reading passes over."
+    );
+    # A .sh file's `$(` still can't be read.
+    assert lib.assertMsg
+      (leftOut "t.sh" "rg --glob \"${run}f)\"" == [ "t.sh\t\trg --glob \"${run}f)\"" ])
+      (
+        "every-pattern-names-a-file passed a .sh file's rg --glob \"${run}f)\": "
+        + "the reading should call a glob a command gives unreadable in any file."
+      );
     pkgs.runCommandLocal "every-pattern-names-a-file" { } ''
       ${check} ${../../tools/merge-net/must-run.txt} ${../../ruff.toml} \
         ${written "unread" formatterExcludes} ${written "paths" paths} \
         ${written "checks" (lib.attrNames self.checks.x86_64-linux)} \
         ${written "left-out" here}
       if ${check} /dev/null /dev/null /dev/null ${written "made-up" madeUp.paths} /dev/null \
-        ${written "made-up-left-out" (leftOut "t.sh" madeUp.script)} 2>said; then
+        ${written "made-up-left-out" (leftOut "t.nix" madeUp.script)} 2>said; then
         echo "It passed a made-up tree's patterns that name nothing." >&2; exit 1
       fi
       diff ${written "said" madeUp.said} said

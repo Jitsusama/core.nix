@@ -11,7 +11,7 @@ root. CHECKS lists the flake's checks, a name a line, which a must-run.txt
 pattern opening `check:` names rather than a file. LEFT_OUT lists what
 tests/repository's scripts and checks tell ripgrep to leave out, a line each
 holding the file, the flag and the pattern after its `!`, a tab apart, or the
-file, no flag and a line holding an exclusion it couldn't read. Each pattern is
+file, no flag and a line holding a glob it couldn't read. Each pattern is
 read against the repository's root, which each script searches from, so one
 searching from somewhere else goes unseen.
 
@@ -137,8 +137,8 @@ def left_out_faults(left_out: list[tuple[str, str, str]], paths: list[str]) -> l
             continue
         if not flag:
             said.append(
-                f"{source} holds a ripgrep exclusion this check can't read, in {pattern}: "
-                "write its pattern out in full after the flag."
+                f"{source} holds a ripgrep glob this check can't read, in {pattern}: "
+                "write each pattern given after the flag out in full."
             )
         elif "{" in pattern:
             said.append(
