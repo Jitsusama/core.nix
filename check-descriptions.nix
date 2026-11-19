@@ -80,7 +80,7 @@
     ran frozen, never under one nor past the VM's processors: nothing stolen gives 1, half stolen
     under load alone gives 2, what was stolen frozen weighs against what was under load, every
     tick stolen in both turns gives 1, every tick stolen under load alone the processors, a turn
-    with no busy ticks 1, idle, iowait and guests' time are never counted busy, ticks land in the
+    with no busy ticks none, idle, iowait and guests' time are never counted busy, ticks land in the
     turn they were counted in and those while the load turned, or after a turn that never
     finished, in neither, and what a subtest says names each turn's ticks and the share, or no
     share when a turn had no busy ticks

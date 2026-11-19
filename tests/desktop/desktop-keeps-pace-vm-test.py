@@ -106,6 +106,8 @@ MIDDLE_MORE = 50
 HELD_TO = 2
 HELD_STOLEN = 0.25
 GAUGING = 10
+# The passes holding the VM's threads may take, past which a hold still missing one fails as that.
+HOLDING = 5
 TAIL = 0.95
 # Cage, which holds the compositor here, and the shell, by the units they run in.
 COMPOSITOR = "cage-tty1.service"
@@ -323,8 +325,9 @@ class Timing:
             self.count(kept=True)
         finally:
             print(self.ledger.said())
-        if not self.loading or self.ledger.between:
-            self.load(on=True)
+            # Let run as main always tried, the last count failed or not.
+            if not self.loading or self.ledger.between:
+                self.load(on=True)
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""
@@ -968,7 +971,10 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
 
 
 def vm_threads(started: int) -> list[int]:
-    """Give every thread of the process that started the VM and of those it started, QEMU's."""
+    """Give every thread of the process that started the VM and of those it started.
+
+    They're QEMU's and the virtiofsd's beside it, which run the VM's work too.
+    """
     children: dict[int, list[int]] = {}
     for process in Path("/proc").iterdir():
         if not process.name.isdigit():
@@ -990,11 +996,22 @@ def vm_threads(started: int) -> list[int]:
 
 
 def hold_vm(started: int, processors: Sequence[int]) -> None:
-    """Run each of the VM's threads on these of the builder's processors alone."""
-    for thread in vm_threads(started):
-        # QEMU's workers come and go, and one gone is none to hold.
-        with contextlib.suppress(ProcessLookupError):
-            os.sched_setaffinity(thread, processors)
+    """Run each of the VM's threads on these of the builder's processors alone.
+
+    A thread started as they're held takes its starter's processors, so each is held again
+    until a pass finds none left to hold.
+    """
+    wanted = set(processors)
+    for _ in range(HOLDING):
+        moved = False
+        for thread in vm_threads(started):
+            # QEMU's workers come and go, and one gone is none to hold.
+            with contextlib.suppress(ProcessLookupError):
+                if os.sched_getaffinity(thread) != wanted:
+                    os.sched_setaffinity(thread, processors)
+                    moved = True
+        if not moved:
+            return
 
 
 @pytest.mark.usefixtures("loaded")

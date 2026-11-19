@@ -27,17 +27,18 @@ from __future__ import annotations
 PROCESSORS = 4
 
 
-def builders_share(under: tuple[int, int], frozen: tuple[int, int]) -> float:
+def builders_share(under: tuple[int, int], frozen: tuple[int, int]) -> float | None:
     """Give how much more the builder ran the guest frozen than under load, from 1 to PROCESSORS.
 
     Each turn is its stolen ticks and its busy ones, stolen included, over all the guest's
     processors, and the guest ran the part of its busy time not stolen. A builder stealing
-    from both turns alike gives 1, as one stealing from neither does, and so does a turn with no
-    busy ticks, which has nothing to weigh.
+    from both turns alike gives 1, as one stealing from neither does. A turn with no busy ticks,
+    as when a subtest fails before its first freeze, has nothing to weigh, so gives none: a 1
+    would read as nothing stolen, on the run it may explain.
     """
     (stolen_under, busy_under), (stolen_frozen, busy_frozen) = under, frozen
     if not busy_under or not busy_frozen:
-        return 1.0
+        return None
     ran_under = 1 - stolen_under / busy_under
     ran_frozen = 1 - stolen_frozen / busy_frozen
     # Compared first, so turns stolen alike, wholly so too, give 1 rather than the cap.
@@ -87,18 +88,11 @@ class Ledger:
         self.last = now
 
     def said(self) -> str:
-        """Say each turn's stolen and busy ticks, and the share they give.
-
-        A turn with no busy ticks, as when a subtest fails before its first freeze, says no
-        share: the share of 1 it gives reads as nothing stolen, on the run it may explain.
-        """
+        """Say each turn's stolen and busy ticks, and the share they give, if any."""
         under, frozen = self.turns[True], self.turns[False]
         (stolen_under, busy_under), (stolen_frozen, busy_frozen) = under, frozen
-        shared = (
-            f"a share of {builders_share(under, frozen):.2f}"
-            if busy_under and busy_frozen
-            else "so no share"
-        )
+        share = builders_share(under, frozen)
+        shared = "so no share" if share is None else f"a share of {share:.2f}"
         return (
             f"the guest counted {stolen_under} of {busy_under} busy ticks stolen under load,"
             f" against {stolen_frozen} of {busy_frozen} frozen, {shared}"
