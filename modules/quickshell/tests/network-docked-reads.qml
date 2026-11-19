@@ -218,21 +218,24 @@ ShellRoot {
     }
 
     // Holds once `check` does, failing past `ms` as `what` never held,
-    // with what was said and any load given up, since one given up inside
-    // a step's own wait fails that wait rather than the step before.
-    // `check` is tried first, so a poll that comes late can't fail a wait
+    // with what was said and any load given up since it began, since one
+    // given up inside a step's own wait fails that wait rather than the
+    // step before; the holds held puts on purpose, from before, are left
+    // out. `check` is tried first, so a poll that comes late can't fail a wait
     // that holds. A wait on a load gets four seconds a card, for a loaded
     // builder. Only a wait on a give-up, which no load brings, runs past
     // four.
     function within(ms, check) {
         const began = Date.now();
+        const since = stuck => Object.keys(stuck).filter(name => stuck[name].at >= began);
         return () => {
             if (check())
                 return true;
             if (Date.now() - began > ms)
                 throw new Error(`${waits.what} never held in ${ms} ms: ${said()}; `
                     + `told ${JSON.stringify(told)}; given up `
-                    + JSON.stringify([networks.factsStuck, networks.cablesStuck]));
+                    + JSON.stringify(since(networks.factsStuck)
+                        .concat(since(networks.cablesStuck))));
             return false;
         };
     }
@@ -392,16 +395,20 @@ ShellRoot {
         });
     }
 
-    // The uptime loaded two minutes ahead of the count, as a clock
+    // The uptime loaded about two minutes ahead of the count, as a clock
     // stepped back leaves it, the launcher open: it's told once the load
-    // lands, as it is of one behind.
+    // lands, as it is of one behind. The uptime written leaves the lease's
+    // end half a minute past a whole minute, 90 to 150 s ahead of the
+    // count, so the time left it's told with reads the same for thirty
+    // seconds, however long the steps before took.
     function ahead() {
         told = [];
-        Written.written(up, `${Math.round(networks.uptime()) + 120}.00 4000.00\n`);
+        const minutes = Math.floor((8230 - Math.round(networks.uptime()) - 120) / 60);
+        Written.written(up, `${8230 - minutes * 60 - 30}.00 4000.00\n`);
         networks.reloadFacts();
+        const row = `100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in ${minutes} min`;
         waits.until("the launcher told of an uptime ahead of the count",
-            within(4000, () => told.length > 0 && told[told.length - 1] === said()),
-            root.quiet("served", root.served));
+            within(4000, () => told.includes(row)), root.quiet("served", root.served));
     }
 
     // A name server changed: shut, once its file lands again, the drawer
