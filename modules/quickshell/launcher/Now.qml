@@ -2006,7 +2006,8 @@ Provider {
     }
 
     // What needs Joel now, under a heading for each cell behind it, the
-    // cells by their heaviest row and each one's rows by weight, with what
+    // cells by their heaviest row and each one's rows by weight but for
+    // what it asks, which leads it as what holds it up, with what
     // no session is behind under one heading of his own (ForYouCells.js's
     // byCell; Joel, 2026-11-16: "one 'what needs me' view grouped by
     // cell"). No heading while all of it is his own, and a group whose rows
@@ -2014,7 +2015,7 @@ Provider {
     // or none, stands first while headings show, else by `weight`, its
     // heaviest, among the loose rows (ForYouCells.js's laidOut).
     function cellRows(band, now, asked, weight) {
-        return Cells.laidOut(Cells.byCell(band, one => one.cell()),
+        return Cells.laidOut(Cells.byCell(band, one => one.cell(), one => one.kind === "agent"),
             items => bandRows(items, now), cellHeading, { rows: asked, weight });
     }
 

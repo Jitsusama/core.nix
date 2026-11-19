@@ -10,8 +10,11 @@
 // cell's rows keep it, heaviest first, and the cells stand by their
 // heaviest, the first each holds. Those with no cell, or one with no
 // address, are one group of Joel's own, `cell` null, placed by its heaviest
-// as a cell is. A cell is one by its address, whatever its case.
-function byCell(items, cellOf) {
+// as a cell is. A cell is one by its address, whatever its case. What a
+// cell asks, `leads(item)`, leads it whatever a look it left weighs, since
+// the ask is what holds the session up, and a look left an hour before
+// can weigh as much.
+function byCell(items, cellOf, leads) {
     const groups = [];
     // No prototype, so an address is never taken for one of Object's own.
     const at = Object.create(null);
@@ -24,7 +27,9 @@ function byCell(items, cellOf) {
         }
         groups[at[address]].items.push(item);
     }
-    return groups;
+    const first = leads ?? (() => false);
+    return groups.map(group => Object.assign(group, { items: group.items.filter(first)
+        .concat(group.items.filter(item => !first(item))) }));
 }
 
 // The groups' rows, `rowsOf(items)` each, under each one's heading,

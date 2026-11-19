@@ -688,6 +688,14 @@ QtObject {
             Cells.byCell([{ name: "one" }], () => ({ title: "x" }))
                 .map(group => group.cell), [null]);
         expect("nothing, no groups", Cells.byCell(undefined, () => cellA), []);
+        // What a cell asks leads it, whatever a look it left weighs, since
+        // the ask is what holds the session up; the cells stay where their
+        // heaviest put them.
+        const led = Cells.byCell([{ name: "look", cell: cellA }, { name: "own", cell: null },
+            { name: "ask", cell: cellA, asks: true }], item => item.cell,
+        item => item.asks === true);
+        expect("what a cell asks leads it, the rest in the order they came",
+            led.map(group => group.items.map(item => item.name)), [["ask", "look"], ["own"]]);
 
         // The groups laid out, each one's rows under its heading, a group
         // whose rows all went as they were made left out, and no heading

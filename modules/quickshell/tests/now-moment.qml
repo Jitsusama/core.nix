@@ -1178,22 +1178,6 @@ ShellRoot {
                 && toDosAt.every(at => at > heldOrder[2])
                 && placed("on:waitingOnYou:kind:look") > Math.max(...toDosAt),
             heldFirst.map(row => row.key));
-        // Two asking stand together in Agents Asking, never loose among the
-        // to-dos (Joel, 2026-11-18 10:18), ahead of them, since each blocks
-        // its session, in the hue of what it holds and counting them; one
-        // alone stood as itself, above.
-        Sessions.wanting = Sessions.wanting.concat([{ address: "WANTC", title: "Session C",
-            presence: { session: "s-c", addresses: [], wants: { kind: "question",
-                said: "Which?" } } }]);
-        const led = now.waiting.verbs();
-        const gathered = led[0]?.verbs?.() ?? [];
-        expect("two asking lead For You in Agents Asking, in its hue, counted",
-            led[0]?.key === agentsAsking && gathered.length === 2
-                && led.every(row => !row.key.startsWith("on:waiting:want:"))
-                && led[0].hue === (gathered[0].hue ?? "") && led[0].hue !== "muted"
-                && led[0].side === "2",
-            JSON.stringify(led.map(row => `${row.key} ${row.hue} ${row.side}`)));
-        Sessions.wanting = Sessions.wanting.slice(0, 1);
         const same = (rows, from) => rows.length === from.length
             && rows.every((row, at) => row === from[at]);
         let forYouBefore = now.tally.rows;
@@ -1245,6 +1229,23 @@ ShellRoot {
             JSON.stringify(Sessions.putOffAsked));
         Sessions.putOffAsked = [];
         Sessions.knowns = {};
+        // Two asking stand together in Agents Asking, never loose among the
+        // to-dos (Joel, 2026-11-18 10:18), ahead of them, since each blocks
+        // its session, in the hue of what it holds and counting them; one
+        // alone stood as itself, above. Asked last: B's rows all go into
+        // Agents Asking, so its heading goes, and a later pass makes it anew.
+        WaitingOnYou.now = [toDo("Sign In"), toDo("Say Yes")];
+        Sessions.wanting = Sessions.wanting.concat([{ address: "WANTC", title: "Session W",
+            presence: { session: "s-w", addresses: [], wants: { kind: "question",
+                said: "Which?" } } }]);
+        const led = now.waiting.verbs();
+        const gathered = led[0]?.verbs?.() ?? [];
+        expect("two asking lead For You in Agents Asking, in its hue, counted",
+            led[0]?.key === agentsAsking && gathered.length === 2
+                && led.every(row => !row.key.startsWith("on:waiting:want:"))
+                && led[0].hue === (gathered[0].hue ?? "") && led[0].hue !== "muted"
+                && led[0].side === "2",
+            JSON.stringify(led.map(row => `${row.key} ${row.hue} ${row.side}`)));
         WaitingOnYou.now = [];
         Sessions.wanting = [];
         now.lookTexts = {};
@@ -1272,7 +1273,8 @@ ShellRoot {
         now.lookTexts = { "c.json": lookAt("c", "Read C", "s-c") };
         const shown = () => forYou().map(row => [row.key, row.heading === true ? row.name : ""]);
         const read = shown();
-        // What it wants blocks it, so it weighs most and leads its cell.
+        // What it asks leads its cell, as what holds it up, though the look
+        // it left an hour ago weighs as much.
         expect("a look a session left stands under its heading, each heading saying its cell",
             JSON.stringify(read) === JSON.stringify([
                 ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"],
