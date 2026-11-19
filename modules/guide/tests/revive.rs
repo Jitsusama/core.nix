@@ -5,6 +5,7 @@
 //! sign before anything changes, and the revive an update that keeps the
 //! Mac's disk, through the stick's own usbmuxd.
 
+use guide::observe::disks::LSBLK;
 use guide::revive::{
     CheckSigning, ChooseNetwork, FindMac, FindRestore, JoinNetwork, Mac, RESTORE, Revive,
 };
@@ -12,7 +13,6 @@ use guide::stand_in::StandIn;
 use guide::{Answer, Answers, Ask, Fault, Machine, Program, Secret, Standing, Step, Tool};
 use serde_json::json;
 
-const LSBLK: &[&str] = &["--json", "--output-all", "--bytes"];
 const DESCRIBE: &[&str] = &[
     "call",
     "/run/wifid/io.jitsusama.Wifi",

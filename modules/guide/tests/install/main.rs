@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 use guide::Tool;
 use guide::install::{INSTALL_KEY, Start, TARGET, Target, VAULT_KEY};
+use guide::observe::disks::LSBLK;
 use guide::stand_in::StandIn;
 use guide::vault::store::Directory;
 use guide::vault::{Manifest, Packer, VaultKey};
@@ -127,7 +128,7 @@ fn plugged(stand_in: &mut StandIn, keys: &[(&str, &str)]) {
 }
 
 fn lsblk(stand_in: &mut StandIn, json: &str) {
-    stand_in.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
+    stand_in.prints(Tool::Lsblk, LSBLK, json);
 }
 
 fn wiped(stand_in: &StandIn) -> bool {

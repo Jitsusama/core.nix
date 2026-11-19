@@ -14,6 +14,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use guide::Tool;
+use guide::observe::disks::LSBLK;
 use guide::stand_in::StandIn;
 use guide::stick::gpt::{SECTOR, Table};
 use guide::writer::WriteStick;
@@ -79,7 +80,7 @@ fn repair(directory: &Path) -> WriteStick {
 }
 
 fn lsblk(stand_in: &mut StandIn, json: &str) {
-    stand_in.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
+    stand_in.prints(Tool::Lsblk, LSBLK, json);
 }
 
 /// A payload of nothing but its target, which is all the card reads.

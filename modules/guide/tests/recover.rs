@@ -3,6 +3,7 @@
 //! internal disk and never on the stick, and nothing found on a blank one.
 
 use guide::Machine;
+use guide::observe::disks::LSBLK;
 use guide::recover::boot::BootGeneration;
 use guide::recover::copy::{COPIED, CopyHome};
 use guide::recover::{
@@ -24,7 +25,7 @@ macro_rules! fixture {
 
 fn lsblk(json: &str) -> StandIn {
     let mut stand_in = StandIn::new();
-    stand_in.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
+    stand_in.prints(Tool::Lsblk, LSBLK, json);
     stand_in
 }
 
