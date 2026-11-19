@@ -169,7 +169,8 @@ let
   # after every collection, since the heap holds over twice what's live
   # straight after any sweep, so once one ended the next miss started
   # another: one opening ran two whole collections 16 s apart, each inside
-  # a key (qtdeclarative-room-after-every-sweep.patch).
+  # a key (qtdeclarative-room-after-every-sweep.patch). The heap module
+  # leaves the room through it, so dropping it means changing the module.
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active

@@ -44,11 +44,15 @@
 //
 // Each collection's end sets both again, so the shell's Qt keeps the room
 // and leaves it after every one (qtdeclarative-room-after-every-sweep.patch),
-// and leaveRoom only sets it there: the heap holds over twice what's live
+// and leaveRoom only asks it to there: the heap holds over twice what's live
 // straight after any sweep, not only the closing's, so a room that lasted
 // until the next collection let one opening of Joel's shell run two whole
 // collections 16 s apart, each inside a key, 115 ms of its 175 and 193
-// (2026-11-19).
+// (2026-11-19). It never lets the chunks grow past twice the room beyond
+// what they held when it was asked, so a heap whose sweeps keep a few items
+// in each chunk it grew into doesn't grow by the room at every one; and it
+// reckons from what each sweep left, not from where leaveRoom set it, so
+// asking twice leaves the room once. weigh() says where the next starts.
 //
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,
@@ -187,9 +191,13 @@ QVariantMap Heap::weigh() const {
     // Large items have chunks of their own, as big as each, so they're
     // live and held alike.
     const std::size_t large = manager->getLargeItemsMem();
+    const std::size_t slots =
+        manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
+        {QStringLiteral("chunks"), megabytes(slots * QV4::Chunk::SlotSize)},
+        {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
         {QStringLiteral("free"),
          megabytes(freePages(manager->blockAllocator) + freePages(manager->icAllocator))},
@@ -197,11 +205,9 @@ QVariantMap Heap::weigh() const {
 }
 
 void Heap::leaveRoom(double megabytes) {
-    QV4::MemoryManager *manager = engine->handle()->memoryManager;
-    const double asked = std::isfinite(megabytes) ? megabytes : 0.0;
-    manager->roomAfterSweep =
-        static_cast<std::size_t>(std::clamp(asked, 0.0, MOST_ROOM_MB) * BYTES_PER_MB);
-    manager->leaveRoom();
+    // A room that isn't a number is none, and any other is held to the most.
+    const double asked = std::isnan(megabytes) ? 0.0 : std::clamp(megabytes, 0.0, MOST_ROOM_MB);
+    engine->handle()->memoryManager->leaveRoom(static_cast<std::size_t>(asked * BYTES_PER_MB));
 }
 
 QVariantMap Heap::allocator() const {
