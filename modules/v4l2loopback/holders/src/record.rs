@@ -30,6 +30,9 @@ use crate::v4l2;
 /// How often a streaming camera is said.
 pub const EVERY: Duration = Duration::from_secs(10);
 
+/// The shortest stretch a stopped stream's last line gives a rate for.
+const SHORTEST: Duration = Duration::from_millis(500);
+
 fn attribute(folder: &Path, name: &str) -> Option<String> {
     Some(
         fs::read_to_string(folder.join(name))
@@ -135,7 +138,9 @@ struct Tally {
 
 impl Tally {
     /// Adds what was counted since the last read. A count lower than the
-    /// last is a stream started afresh, whose count is all new.
+    /// last is a stream started afresh, whose count is all new. One that
+    /// started afresh and passed the last read by the next wake, as a
+    /// stream under a second old can, isn't told from one going on.
     fn add(&mut self, now: Counts, at: Instant) {
         self.unread = None;
         let Some((last, from)) = self.last else {
@@ -159,13 +164,15 @@ impl Tally {
     }
 
     /// What the stream gave up to now, and the tally started afresh from
-    /// the count it was at.
+    /// the count it was at. A count that couldn't be read now leaves the
+    /// next stretch to start from its own first read, since the last one
+    /// read is from an earlier wake.
     fn take(&mut self, at: Instant) -> Result<Gave, String> {
         let taken = std::mem::take(self);
-        self.last = taken.last.map(|(counts, _)| (counts, at));
         if let Some(why) = taken.unread {
             return Err(why);
         }
+        self.last = taken.last.map(|(counts, _)| (counts, at));
         let Some((_, from)) = taken.last else {
             return Err("not counted yet".to_owned());
         };
@@ -216,6 +223,7 @@ pub fn line(
     let mut said = named(holders);
     match asked {
         Ok(asked) => {
+            let shown = matches!(asked.format, Some(Ok(_)));
             match &asked.format {
                 Some(Ok(format)) => {
                     let _ = write!(
@@ -230,8 +238,11 @@ pub fn line(
                 None => {}
             }
             match &asked.rate {
+                // The rate follows the format it was asked with, or stands
+                // alone when that couldn't be said.
                 Some(Ok(rate)) => {
-                    let _ = write!(said, " at {rate:.1} fps asked");
+                    let between = if shown { " at" } else { ";" };
+                    let _ = write!(said, "{between} {rate:.1} fps asked");
                 }
                 Some(Err(why)) => {
                     let _ = write!(said, "; rate unknown: {why}");
@@ -348,8 +359,9 @@ pub struct Record {
     sysfs: PathBuf,
     debugfs: PathBuf,
     stream: Stream,
-    /// The controls that didn't answer, kept while the camera is plugged
-    /// in, so each new stream doesn't wait on them again.
+    /// The controls that didn't answer, kept for the stream, so each line
+    /// doesn't wait on them again; the next stream asks them afresh, since
+    /// a camera may time out only as a stream is set up.
     unanswered: BTreeSet<u32>,
 }
 
@@ -385,6 +397,7 @@ impl Record {
         holders.clone_into(&mut stream.holders);
         let since = *stream.since.get_or_insert_with(|| {
             stream.counted = counted(&self.sysfs, &self.debugfs, node);
+            self.unanswered.clear();
             at
         });
         stream.count(at);
@@ -411,14 +424,19 @@ impl Record {
 
     /// Says a stream followed has ended, with what it gave since its last
     /// line up to the last wake that saw it, so none of the time after it
-    /// stopped is in the rate; a stretch begun at that wake is left out.
+    /// stopped is in the rate. A stretch under half a second is left out,
+    /// since the watch's own open of the node wakes it a tenth of a second
+    /// after a line, and a few frames over that would read as a stall.
     /// It's said even when nothing was counted, so a stream's end is told
     /// from the watch's.
     fn stop(&mut self, then: &str) -> Option<String> {
         let mut stopped = std::mem::take(&mut self.stream);
         let seen = stopped.seen?;
         stopped.tallies.retain(|_, tally| {
-            tally.unread.is_some() || tally.last.is_some_and(|(_, from)| seen > from)
+            tally.unread.is_some()
+                || tally
+                    .last
+                    .is_some_and(|(_, from)| seen.saturating_duration_since(from) >= SHORTEST)
         });
         let gave = stopped.take(seen);
         let said = if gave.is_empty() && !stopped.counted.is_empty() {
@@ -504,6 +522,42 @@ mod tests {
                 in_error: 0,
                 restarted: false
             })
+        );
+    }
+
+    #[test]
+    fn a_count_unread_at_a_line_leaves_the_next_to_count_from_its_own_read() {
+        let start = Instant::now();
+        let mut tally = Tally::default();
+        tally.add(at(0, 0, 0), start);
+        tally.add(at(270, 0, 0), start + Duration::from_secs(9));
+        tally.unread = Some("stats: busy".to_owned());
+        let line = start + Duration::from_secs(10);
+        assert_eq!(tally.take(line), Err("stats: busy".to_owned()));
+        // Rebased to the read at nine seconds, the next would give 33.0 fps.
+        tally.add(at(330, 0, 0), start + Duration::from_secs(11));
+        tally.add(at(600, 0, 0), start + Duration::from_secs(20));
+        assert_eq!(
+            tally.take(start + Duration::from_secs(20)),
+            Ok(Gave {
+                rate: 30.0,
+                in_error: 0,
+                restarted: false
+            })
+        );
+    }
+
+    #[test]
+    fn a_rate_whose_format_is_unknown_stands_alone() {
+        let asked = Asked {
+            format: Some(Err("Device or resource busy (os error 16)".to_owned())),
+            rate: Some(Ok(30.0)),
+            controls: v4l2::Controls::default(),
+        };
+        assert_eq!(
+            line(&["chrome".to_owned()], Ok(&asked), &BTreeMap::new()),
+            "streams to \"chrome\"; format unknown: Device or resource busy (os error 16); \
+             30.0 fps asked; gave unknown: uvcvideo's count wasn't found"
         );
     }
 
@@ -692,6 +746,39 @@ mod tests {
                 "streams to \"chrome\"{UNASKED}; gave 30.0 fps, 0 packets in error"
             ))
         );
+    }
+
+    #[test]
+    fn a_stop_a_moment_after_a_line_gives_no_rate_for_the_moment() {
+        let (camera, stats, mut record) = streaming("record-moment");
+        let holders = ["chrome".to_owned()];
+        let start = Instant::now();
+        count(&stats, 10, 0);
+        assert_eq!(record.at(start, &camera.node, &holders), None);
+        count(&stats, 310, 0);
+        let line = start + EVERY;
+        assert!(record.at(line, &camera.node, &holders).is_some(), "no line");
+        // The watch's own open wakes it a tenth of a second on, and two
+        // frames there would read 20.0 fps.
+        count(&stats, 312, 0);
+        let woken = line + Duration::from_millis(100);
+        assert_eq!(record.at(woken, &camera.node, &holders), None);
+        assert_eq!(
+            record
+                .at(woken + Duration::from_secs(1), &camera.node, &[])
+                .as_deref(),
+            Some("streams to \"chrome\"; then stopped")
+        );
+    }
+
+    #[test]
+    fn a_new_stream_asks_again_what_the_last_found_unanswered() {
+        let (camera, stats, mut record) = streaming("record-asks-again");
+        record.unanswered.insert(0x0098_0900);
+        count(&stats, 10, 0);
+        let holders = ["chrome".to_owned()];
+        assert_eq!(record.at(Instant::now(), &camera.node, &holders), None);
+        assert_eq!(record.unanswered.len(), 0);
     }
 
     #[test]

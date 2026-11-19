@@ -185,6 +185,17 @@ fn tidy(output: &Path) {
     }
 }
 
+/// What happened when a watch ended, for a stream's last line. An
+/// unplugged camera's unit is stopped as its device goes, often before the
+/// watch has seen the node go, so a stop finding the node gone is the
+/// camera going.
+fn then(ended: &Ended, there: bool) -> &'static str {
+    match ended {
+        Ended::Stopped if there => "the watch stopped",
+        Ended::Gone | Ended::Stopped => "the camera went",
+    }
+}
+
 /// How a watch ended.
 enum Ended {
     /// The node went, or couldn't be watched.
@@ -293,16 +304,7 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     );
     // A stream the watch ends during has its last seconds said too, since
     // a camera dropping off mid-call is what the record is for.
-    // An unplugged camera's unit is stopped as its device goes, often
-    // before the watch has seen the node go, so a stop finding the node
-    // gone is the camera going.
-    let gone = matches!(ended, Ended::Gone) || !node.exists();
-    let then = if gone {
-        "the camera went"
-    } else {
-        "the watch stopped"
-    };
-    if let Some(line) = record.ended(then) {
+    if let Some(line) = record.ended(then(&ended, node.exists())) {
         say(&line);
     }
     match fs::remove_file(&output) {
@@ -373,6 +375,25 @@ mod tests {
 
     fn named(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_watch_stopped_as_its_camera_goes_says_the_camera_went() {
+        let said = [
+            then(&Ended::Stopped, true),
+            then(&Ended::Stopped, false),
+            then(&Ended::Gone, false),
+            then(&Ended::Gone, true),
+        ];
+        assert_eq!(
+            said,
+            [
+                "the watch stopped",
+                "the camera went",
+                "the camera went",
+                "the camera went"
+            ]
+        );
     }
 
     #[test]
