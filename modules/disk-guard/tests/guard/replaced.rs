@@ -5,6 +5,7 @@ use disk_guard::pass::Outcome;
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::reclaim;
 use disk_guard::replaced::{Build, Unit, Uses, replaced, stands, watched_dirs};
+use disk_guard::survey::gone;
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -783,6 +784,40 @@ fn a_build_stands_while_any_file_of_it_does_though_a_library_has_none_of_its_nam
     let test = deps.join("app-2222222222222222");
     fs::write(&test, "").unwrap();
     assert!(stands(&test), "an executable that stands read as taken");
+}
+
+#[test]
+fn an_offer_is_gone_only_once_what_it_names_is() {
+    // What a pass on a build disk asks of each offer before planning it.
+    let root = tempfile::tempdir().unwrap();
+    let target = target(root.path());
+    let deps = target.join("debug/deps");
+    fs::write(deps.join("liblib_only-4444444444444444.rlib"), "").unwrap();
+    let library = Candidate {
+        path: deps.join("lib_only-4444444444444444"),
+        ..older(&target)
+    };
+    assert!(!gone(&library), "a library whose rlib stands read as gone");
+    let command = Candidate {
+        path: root.path().join("cache#janitor"),
+        class: Class::Producer {
+            every: None,
+            from: None,
+        },
+        ..older(&target)
+    };
+    assert!(!gone(&command), "a command, which is no file, read as gone");
+    let whole = Candidate {
+        path: target.clone(),
+        class: Class::Target,
+        ..older(&target)
+    };
+    assert!(!gone(&whole), "a target that stands read as gone");
+    let missing = Candidate {
+        path: root.path().join("elsewhere/target"),
+        ..whole
+    };
+    assert!(gone(&missing), "a target no longer there read as standing");
 }
 
 #[test]

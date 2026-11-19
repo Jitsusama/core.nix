@@ -203,13 +203,17 @@ impl Uses {
     }
 }
 
-/// The suffixes a library's files take, as [`LIBRARY`] reads them.
+/// The suffixes a library's files take, which [`LIBRARY`] reads.
 pub const LIBRARY_SUFFIXES: [&str; 5] = ["rlib", "rmeta", "so", "a", "dylib"];
 
 /// A library cargo built, which later builds read: `lib<crate>-<digest>`
 /// with the library's own suffix.
 static LIBRARY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^lib(?P<name>\w+)-(?P<digest>[0-9a-f]{16})\.(rlib|rmeta|so|a|dylib)$").unwrap()
+    let suffixes = LIBRARY_SUFFIXES.join("|");
+    Regex::new(&format!(
+        r"^lib(?P<name>\w+)-(?P<digest>[0-9a-f]{{16}})\.({suffixes})$"
+    ))
+    .unwrap()
 });
 
 /// The dep-info rustc writes beside it, named without the prefix.

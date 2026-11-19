@@ -1142,6 +1142,20 @@ pub(crate) fn named(path: &Path, source: &str) -> PathBuf {
     PathBuf::from(named)
 }
 
+/// Whether a candidate is gone already, as the pass on the disk beneath an
+/// image may take what the image's own pass was offered. A command is no
+/// file, and running it takes nothing from another pass. A build's offer
+/// names a file only an executable has, so its own files say.
+pub fn gone(candidate: &Candidate) -> bool {
+    if candidate.class.command() {
+        false
+    } else if candidate.class == Class::Replaced {
+        !crate::replaced::stands(&candidate.path)
+    } else {
+        fs::symlink_metadata(&candidate.path).is_err()
+    }
+}
+
 /// Whether any of the files a producer watches changed after `ran`, the
 /// wall second it last ran; never, when it hasn't run, since it's due
 /// anyway. A file that can't be read hasn't changed.
