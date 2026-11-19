@@ -183,7 +183,7 @@ function startsUnread(told: StartsTold): string[] {
     const starts = told.unsourced.length === 1 ? "start" : "starts";
     unread.push(`where ${whose(told.unsourced)} ${starts} came from`);
   } else if (told.unsourced.length > 0) {
-    unread.push("which starts the node's book holds, so each reads as claimed");
+    unread.push("where any start came from, as the node sends none yet, so each reads as claimed");
   }
   return unread;
 }

@@ -60,7 +60,7 @@ it("a start is booked only when the node says its book holds it", () => {
   const odd = ["KESTRL's started_by_from said neither book nor presence"];
   assert.deepEqual(read("Book").unread, odd);
   assert.deepEqual(read(true).unread, odd);
-  const none = ["which starts the node's book holds, so each reads as claimed"];
+  const none = ["where any start came from, as the node sends none yet, so each reads as claimed"];
   assert.deepEqual(read(null).unread, none);
   assert.deepEqual(read().unread, none);
 });
@@ -85,6 +85,11 @@ it("says a node-wide fault in where starts came from once", () => {
     ),
     ["where 2 cells' starts came from"],
   );
+  // A misspelt source is still a source sent, so a starter with none beside it is said by cell.
+  assert.deepEqual(unread(forage("KESTRL", lineage("Book")), forage("TERNAA", lineage())), [
+    "KESTRL's started_by_from said neither book nor presence",
+    "where TERNAA's start came from",
+  ]);
   // One that names no starter needs no source.
   assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA")), []);
   assert.deepEqual(unread(forage("KESTRL")), []);
@@ -100,7 +105,7 @@ it("how a cell grew is only claimed unless it grew from a start the book holds",
   assert.equal(claimed("FARAWAY", true), true);
   // With no starter it grows from the cell it split from, booked or not.
   assert.equal(claimed(undefined, true), true);
-  // One that grew from none here is never vouched for.
+  // No caller asks this of a cell that grew from none here, but should one, it fails closed.
   assert.equal(
     grewClaimed({ cell: "TERNAA", startedBy: undefined, splitFrom: undefined, booked: true }, here),
     true,

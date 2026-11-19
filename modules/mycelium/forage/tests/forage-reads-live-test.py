@@ -144,6 +144,8 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
         "stroke-dasharray", "none"
     )
     # Each booked end says its cell whole, so a fact gone missing can't pass for one unhedged.
+    # These read text, which is the same however a line wraps; that each hedge stays with its
+    # cell is pinned by the markup in draw.test.ts, which stands in for the layout here.
     panel = opened_on(forage_page, "SKIFFS")
     expect(fact(panel, "Started by"), "SKIFFS's booked start didn't read whole").to_have_text(
         "KESTRL"

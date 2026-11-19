@@ -13,6 +13,15 @@
 import { clockTime } from "../../local-sites/kit/status.ts";
 import { type Join, joined } from "./joins.ts";
 import {
+  cellOrAway,
+  claimedCell,
+  escaped,
+  namedOf,
+  splitSaid,
+  startedBy,
+  startsSaid,
+} from "./lineage.ts";
+import {
   type Document,
   type Forage,
   grewClaimed,
@@ -21,14 +30,6 @@ import {
   steps,
   type Wait,
 } from "./model.ts";
-
-const ESCAPES: { readonly [character: string]: string } = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
 
 /** Each stage of a document as the page says it. */
 const STAGES: { readonly [stage: string]: string } = {
@@ -53,11 +54,6 @@ const FLOOR = {
   scale: 1.5,
 } as const;
 
-/** `text` safe to put in markup, as text or an attribute's value. */
-function escaped(text: string): string {
-  return text.replace(/[&<>"']/gu, (character) => ESCAPES[character] ?? character);
-}
-
 /** How `stage` is said. */
 function staged(stage: string): string {
   return STAGES[stage] ?? stage;
@@ -70,9 +66,6 @@ function command(forage: Forage): string {
 
 /** Where the `mycelium` program's repository is at home, on the Code site. */
 const MYCELIUM_HOME = "../code/#repo=Jitsusama%2Fmycelium";
-
-/** How many of the cells a cell started its panel names before counting the rest. */
-const MOST_STARTED = 6;
 
 /** Where the map opens on `forage`'s cell. */
 function onMap(forage: Forage): string {
@@ -309,79 +302,6 @@ ${forage.documents.map((document) => documentRow(document, forage.quest)).join("
 }
 
 /**
- * `said`, a tie the node can't vouch for, hedged naming no claimer, as either end may be
- * telling it; the comma is tied to `said`, so no line starts with one.
- */
-function asClaimed(said: string): string {
-  return `<span class="tie">${said},</span> as claimed`;
-}
-
-/**
- * The cells a cell started, the book's unheld as claimed: after the list if all, else in
- * brackets after each named and the count, as a bare hedge would read onto the one before.
- */
-function startsSaid(started: readonly Pick<Forage, "cell" | "booked">[]): string {
-  const cells = started.map((each) => each.cell);
-  const claimed = new Set(started.filter((each) => !each.booked).map((each) => each.cell));
-  if (claimed.size > 0 && claimed.size === cells.length) {
-    return cellsStarted(cells, cellLink, asClaimed);
-  }
-  const name = (cell: string) => `${cellLink(cell)}${claimed.has(cell) ? " (as claimed)" : ""}`;
-  const counted = cells.slice(namedOf(cells.length));
-  const some = counted.filter((cell) => claimed.has(cell)).length;
-  const rest = some === 0 ? "" : some === counted.length ? " (as claimed)" : " (some as claimed)";
-  return cellsStarted(cells, name) + rest;
-}
-
-/** How many of `count` cells a list names, past `MOST_STARTED` counting the rest. */
-function namedOf(count: number): number {
-  return count > MOST_STARTED + 1 ? MOST_STARTED : count;
-}
-
-/** The cell that started `forage`, linked to that cell's row when it is drawn here. */
-function startedBy(forage: Forage, here: ReadonlySet<string>): string {
-  const by = forage.startedBy;
-  if (by === undefined) {
-    return "Nothing; it started on its own";
-  }
-  return forage.booked ? cellOrAway(by, here) : asClaimed(cellOrAway(by, here));
-}
-
-/**
- * The cells drawn here that `forage` started, each linked to its row, as "Started by" links
- * back. Past `MOST_STARTED` the rest are counted, as a wall of links would bury the facts
- * below, though one more is named, as "and 1 more" says less than its name. It's one span,
- * read as a sentence, each comma tied to the address before it so no line starts with one.
- */
-function cellsStarted(
-  started: readonly string[],
-  name: (cell: string) => string = cellLink,
-  ending: (last: string) => string = (last) => last,
-): string {
-  if (started.length === 0) {
-    return "None here yet";
-  }
-  const count = started.length === 1 ? "One cell" : `${started.length} cells`;
-  const links = started.slice(0, namedOf(started.length)).map(name);
-  const rest = started.length - links.length;
-  const last = ending(rest === 0 ? (links.pop() ?? "") : `${rest} more`);
-  const before = links
-    .map((link, at) => (at < links.length - 1 ? `<span class="tie">${link},</span>` : link))
-    .join(" ");
-  return before === "" ? `${count}: ${last}` : `${count}: ${before} and ${last}`;
-}
-
-/**
- * `cell` linked to its row when it is drawn here, else said not to stand
- * here, since it may have ended or stand on another machine.
- */
-function cellOrAway(cell: string, here: ReadonlySet<string>): string {
-  return here.has(cell)
-    ? cellLink(cell)
-    : `<span><code>${escaped(cell)}</code>, not standing here</span>`;
-}
-
-/**
  * When `since` was, by the clock when it was today and by the day and
  * clock before, so a need held for days never reads as this morning's;
  * nothing when it isn't a time. `now` is when the page draws.
@@ -433,12 +353,11 @@ function needsOf(
 function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): string {
   const facts: string[] = [];
   if (forage.splitFrom !== undefined) {
-    const from = cellOrAway(forage.splitFrom, here);
-    facts.push(`<div><dt>Split from</dt><dd><span>${asClaimed(from)}</span></dd></div>`);
+    const from = claimedCell(forage.splitFrom, here);
+    facts.push(`<div><dt>Split from</dt><dd><span>${from}</span></dd></div>`);
   }
   if (forage.splitInto.length > 0) {
-    const into = cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here), asClaimed);
-    facts.push(`<div><dt>Split into</dt><dd><span>${into}</span></dd></div>`);
+    facts.push(`<div><dt>Split into</dt><dd><span>${splitSaid(forage, here)}</span></dd></div>`);
   }
   if (forage.serves.length > 0) {
     const said = needsOf(forage.serves, here, now, (join) => join.cell);
@@ -449,12 +368,6 @@ function joinFactsOf(forage: Forage, here: ReadonlySet<string>, now: number): st
     facts.push(`<div><dt>Relies on</dt><dd class="needs">${said}</dd></div>`);
   }
   return facts.map((fact) => `\n    ${fact}`).join("");
-}
-
-/** `cell`'s address, linked to its row, where a press moves the cursor to it. */
-function cellLink(cell: string): string {
-  const address = escaped(cell);
-  return `<a href="#cell=${encodeURIComponent(cell)}" data-cell="${address}"><code>${address}</code></a>`;
 }
 
 /**
@@ -488,4 +401,4 @@ ${waitsOf(forage)}${documentsOf(forage)}
 <p class="act">Press <kbd>Return</kbd> to open <code>${escaped(forage.cell)}</code> on the map.</p>`;
 }
 
-export { command, escaped, floorOf, forageRow, onMap, panelOf, purposeOf };
+export { command, floorOf, forageRow, onMap, panelOf, purposeOf };
