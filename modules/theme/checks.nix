@@ -30,8 +30,9 @@ let
   # four strides or more. Strides are drawn facing left: the fore half is
   # the left one, and the tail's tip is at the top right. What's found, as
   # whether it holds and what it says, for readsAsOne and for the checks
-  # showing each fault refused; `walkedFrom` is where the strides were read from,
-  # and `glyphs` the drawings, the theme's unless that check plants its own.
+  # showing each fault refused; `walkedFrom` is where the strides were
+  # read from, and `glyphs` the drawings, the theme's unless that check
+  # plants its own.
   poseFaults =
     {
       sitting,
@@ -448,16 +449,19 @@ in
   # refused, and one joined by a corner held; on the cat's sitting of 37,
   # just under 15% fewer or more held and just over refused, on one of 20,
   # 15% held and past it refused, and on one of 13, 2 more or fewer
-  # refused; a sitting misnamed said undrawn; and a stride no pose lists held to the stray and size
-  # rules; the cat's own planted on copies of its drawings; and an
-  # animal's poses found by its glyphs and its name (refusals).
+  # refused; a sitting misnamed said undrawn; and a stride no pose lists
+  # held to the stray and size rules; the cat's own planted on copies of
+  # its drawings; and an animal's poses found by its glyphs and the start
+  # of its name, though a sitting or stride is undrawn (refusals).
   every-pose-fault-is-refused =
     let
       unrefused = builtins.toJSON refusals.poses;
+      must = "Every pose fault must be refused by its reason";
+      also = "its near misses held and its poses found";
     in
-    holds "every-pose-fault-is-refused"
-      "Every pose fault must be refused, by its reason: ${unrefused} weren't."
-      (refusals.poses == [ ]);
+    holds "every-pose-fault-is-refused" "${must}, ${also}: ${unrefused} weren't." (
+      refusals.poses == [ ]
+    );
 
   # The cat's walk is read only from its frozen lists: its code read as no
   # walk, by the rule it breaks, when it strides by anything but WALKS's

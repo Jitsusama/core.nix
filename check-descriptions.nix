@@ -1108,7 +1108,8 @@
     though not just under or on the line, and on one of 13; and they say a misnamed sitting
     undrawn, and hold a stride no pose lists to the stray and size rules, the cat's own planted
     on copies of its drawings; and they find an animal's poses by its sitting's and strides'
-    glyphs and its name, and no other mark
+    glyphs and the start of its name, though one of them is undrawn, and no other mark, not
+    one holding the name inside its own
   '';
   every-puppy-pose-reads-as-one-puppy = ''
     every pose of the margin's puppy, each mark named for it or drawn as its sitting's glyph or

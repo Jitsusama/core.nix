@@ -274,8 +274,9 @@ let
     }
   ];
   # A sitting, a stride and marks drawn as either's glyph or named for
-  # the animal are its poses, and no other mark, nor one drawn as no
-  # glyph but a sitting drawn so.
+  # the animal are its poses, and no other mark: not one with the name
+  # inside its own, nor one drawn as no glyph but a sitting drawn so,
+  # even when the sitting or a stride isn't drawn at all.
   markedAs = glyph: { inherit glyph; };
   marks = {
     sat = markedAs "s";
@@ -284,7 +285,9 @@ let
     asStride = markedAs "w";
     petNamed = markedAs "x";
     other = markedAs "x";
+    carpet = markedAs "x";
     bare = { };
+    unmarked = { };
   };
   picked =
     sitting: named:
@@ -322,6 +325,20 @@ let
         "strode"
       ];
     }
+    {
+      found = posesOf {
+        sitting = "gone";
+        strides = [
+          "strode"
+          "absent"
+        ];
+        glyphs = marks;
+      };
+      wanted = [
+        "asStride"
+        "strode"
+      ];
+    }
   ];
   tipped = [
     "walkingA"
@@ -329,11 +346,14 @@ let
     "walkingB"
     "walkingD"
   ];
-  # Code read as no walk is judged by the reader's own faults alone, so a
-  # fault in the pose rules isn't blamed on it.
+  # Code read as no walk is judged by the reader's own faults alone, and
+  # code read as a walk by the walk it reads, so a fault in the pose rules
+  # isn't blamed on it.
   refused =
     walk:
-    if walk ? wanted then
+    if walk ? read then
+      walk.strides == walk.read
+    else if walk ? wanted then
       walk.strides == [ ]
       && lib.elem walk.wanted walk.faults
       && (!(walk.first or false) || lib.head walk.faults == walk.wanted)
@@ -497,7 +517,11 @@ let
     # below it is read, and refused for its skid.
     {
       strides = walkIn "// ${walksSaid}\n${skidded}\n${stridingSaid}";
-      reason = "walkingA to walkingB, both pairs moved";
+      read = [
+        "walkingA"
+        "walkingB"
+      ];
+      reason = "the walk below a copy commented out, read as its own";
     }
     (quoted "")
     (found "")
