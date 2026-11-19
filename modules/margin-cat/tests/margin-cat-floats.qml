@@ -394,15 +394,17 @@ QtObject {
             [names(turnsBack)[0], names(stepsOn).pop(), skids(turnsBack), skids(stepsOn),
                 skids(stepsOff)], ["turns", "settles", [], [], []]);
         // However far it goes, so whichever stride it would stop in: hurried
-        // back, set off again mid-stride from each it could be drawn in, and
-        // up a column's side.
+        // back, set off again mid-stride from each it could be drawn in, half
+        // through it, along or onto a float to settle there, and up a
+        // column's side.
         const skidding = [];
         for (let x = 120; x < 1200; x += 37) {
             const ways = [[`back to ${x}`, Paths.walk({ x: 1100, y: 7 }, { x, y: 7 },
                 world({ hurried: true }))], [`on to ${x}`, Paths.walk({ x: 100, y: 7 },
-                { x, y: 7 }, world({ floats: [flush] }))]].concat(strideOrder.map(drawn =>
-                [`on to ${x} from ${drawn}`, Paths.walk({ x: 100, y: 7 }, { x, y: 7 },
-                    world({ hurried: true, facing: 1, drawnIn: drawn })), drawn]));
+                { x, y: 7 }, world({ floats: [flush] }))]].concat(...strideOrder.map(drawn =>
+                [[], [flush]].map(floats => [`on to ${x} from ${drawn} by ${floats.length}`,
+                    Paths.walk({ x: 100, y: 7 }, { x, y: 7 }, world({ hurried: true, facing: 1,
+                        drawnIn: drawn, drawnInto: 0.5, floats })), drawn])));
             for (const [name, way, was] of ways) {
                 if (way !== null && skids(way, was).length > 0)
                     skidding.push(name);
@@ -416,21 +418,26 @@ QtObject {
             // past the beats before its climb.
             for (const drawn of strideOrder) {
                 const down = Paths.walk({ x: 1200, y: 7 }, { x: 900, y }, world({
-                    hurried: true, facing: -1, drawnIn: drawn }));
+                    hurried: true, facing: -1, drawnIn: drawn, drawnInto: 0.5 }));
                 if (down !== null && skids(down, drawn).length > 0)
                     skidding.push(`down to ${y} from ${drawn}`);
             }
         }
         expect("nor on any way it goes, set off or climbing", skidding, []);
         // Walked to a place that moves on every frame, so set off again
-        // from where it's drawn each 16 ms, it strides by the ground it
-        // covers, not once a frame.
-        let chased = Paths.walk({ x: 100, y: 7 }, { x: 700, y: 7 }, world({}));
+        // from where it's drawn each 16 ms, it goes on at its pace, near a
+        // walk left alone, rather than easing in again each time, and strides
+        // by the ground it covers, neither once a frame nor held.
+        const unchased = Paths.walk({ x: 100, y: 7 }, { x: 700, y: 7 }, world({}));
+        let chased = unchased;
         const chasedStride = chased.stride;
         let chasedFrom = 0;
         let chasedDrawn = null;
         let chasedSteps = 0;
+        let chasedAt = 0;
         for (let t = 0; t < 1600; t += 1) {
+            if (t === 600)
+                chasedAt = chasedDrawn.x;
             if (t > 600 && t % 16 === 0) {
                 chased = Paths.walk({ x: chasedDrawn.x, y: chasedDrawn.y }, { x: 700, y: 7 },
                     world({ hurried: true, facing: chasedDrawn.facing,
@@ -438,14 +445,15 @@ QtObject {
                 chasedFrom = t;
             }
             const now = Paths.frame(chased, t - chasedFrom);
-            if (chasedDrawn !== null && now.pose !== chasedDrawn.pose
-                && strideOrder.includes(now.pose))
+            if (t > 600 && now.pose !== chasedDrawn.pose && strideOrder.includes(now.pose))
                 chasedSteps += 1;
             chasedDrawn = now;
         }
+        const chasedStrides = (chasedDrawn.x - chasedAt) / chasedStride;
+        const alone = Paths.frame(unchased, 1600).x - Paths.frame(unchased, 600).x;
         expect("set off again every frame, a stride steps once a stride's ground",
-            [chasedStride > 0, chasedSteps <= Math.ceil((chasedDrawn.x - 100) / chasedStride) + 1],
-            [true, true]);
+            [chasedStride > 0, chasedDrawn.x - chasedAt >= alone / 2,
+                Math.abs(chasedSteps - chasedStrides) <= 1.5], [true, true, true]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));

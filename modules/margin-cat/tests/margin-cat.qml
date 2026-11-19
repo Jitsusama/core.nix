@@ -332,6 +332,12 @@ QtObject {
             ["walkingD", "walkingA", "walkingA", "walkingC", "walkingC", "walkingD",
                 "walkingD", "walkingA", "walkingC", "walkingC", "walkingD", "walkingA",
                 "walkingC"]);
+        // Set off from A, as from a walk begun again, it still stops into B:
+        // ending on A it steps on to C, and ending on B it stays there.
+        expect("set off from another stride, it's never both pairs off the one it stops into",
+            [strideAt(155, { stand: "walkingA", stops: "walkingB", last: 155 }),
+                strideAt(75, { stand: "walkingA", stops: "walkingB", last: 75 })],
+            ["walkingC", "walkingB"]);
         const changes = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose);
         expect("as many strides as its way holds, the last ending as it stops",
             changes.length, Math.ceil((200 - 99) / going.stride) - 1);

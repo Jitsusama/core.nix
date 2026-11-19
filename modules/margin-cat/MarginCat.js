@@ -345,13 +345,9 @@ function went(beat, spot) {
 }
 
 // How many strides of `beat` it's taken at `spot`, a whole one counted
-// where floating point leaves it a hair short, and how far `into` the
-// next it is, so a walk set off from there strides on in step.
+// where floating point leaves it a hair short.
 function strode(beat, spot) {
     return Math.floor(went(beat, spot) / beat.stride + 1e-6);
-}
-function into(beat, spot) {
-    return Math.max(0, went(beat, spot) - strode(beat, spot) * beat.stride);
 }
 
 // Which of `strides` a walk is drawn in `t` ms in, each step from the
@@ -359,18 +355,19 @@ function into(beat, spot) {
 // kitty to skid into place"). `walk.count` says how many strides it's
 // taken by a time, from `walk.since`, when its strides began, and held
 // from `walk.last` on; `walk.stand` is the one of `strides` it stood in
-// then, so it starts in the one a pair on from that. One about to stop
-// in the stride both pairs away from its stand steps on to the one
-// between for its last `walk.shown` ms, or, when that stride itself
-// would be seen for less, stops in the one before it instead (WCJQSG
-// b1034f36); an odd number of strides has none both pairs away. One that
-// `joins` another strides on in, unstopped.
+// then, so it starts in the one a pair on from that, and `walk.stops`
+// the one it stops into, its stand unless said. One about to stop in the
+// stride both pairs away from that steps on to the one between for its
+// last `walk.shown` ms, or, when that stride itself would be seen for
+// less, stops in the one before it instead (WCJQSG b1034f36); an odd
+// number of strides has none both pairs away. One that `joins` another
+// strides on in, unstopped.
 function striding(strides, walk, t) {
     const many = strides.length;
-    const stand = strides.indexOf(walk.stand);
+    const [stand, rest] = [walk.stand, walk.stops ?? walk.stand].map(one => strides.indexOf(one));
     const at = time => (walk.count(Math.min(time, walk.last)) + stand + 1) % many;
     const end = at(walk.last);
-    if (walk.joins || (end - stand + many) % many !== many / 2) {
+    if (walk.joins || (end - rest + many) % many !== many / 2) {
         return strides[at(t)];
     }
     if (at(Math.max(walk.since, walk.last - walk.shown)) === end) {

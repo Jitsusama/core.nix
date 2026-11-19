@@ -234,22 +234,17 @@ function clings(way, side, dir) {
 // slowdown: a leap as long as falling its height takes; a leg given its
 // own `ms`, as a hold or a peek's climb, that long.
 function lasts(one, pace, at) {
-    if (one.kind === "holds" || (one.kind === "climbs" && one.ms !== undefined)) {
+    if (one.kind === "holds" || one.kind === "falls"
+        || (one.kind === "climbs" && one.ms !== undefined)) {
         return one.ms;
-    }
-    const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
-    if (one.kind === "falls") {
-        return one.ms;
-    }
-    if (one.kind === "leaps" && one.thirds) {
-        const fall = from => Math.sqrt((2 * Math.max(0, from - one.apex)) / at.cell / GRAVITY);
-        const ms = (fall(one.from.y) + fall(one.to.y)) * MarginCat.MS;
-        return Math.min(ACROSS.ms[1], Math.max(ACROSS.ms[0], ms));
     }
     if (one.kind === "leaps") {
         const fall = from => Math.sqrt((2 * Math.max(0, from - one.apex)) / at.cell / GRAVITY);
-        return Math.max(LEAPS_AT_LEAST, (fall(one.from.y) + fall(one.to.y)) * MarginCat.MS);
+        const ms = (fall(one.from.y) + fall(one.to.y)) * MarginCat.MS;
+        return one.thirds ? Math.min(ACROSS.ms[1], Math.max(ACROSS.ms[0], ms))
+            : Math.max(LEAPS_AT_LEAST, ms);
     }
+    const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
     return (ground / at.cell / pace) * MarginCat.MS;
 }
 
@@ -290,21 +285,22 @@ function timed(way) {
     // would end some drawings a cell early, held for two cells' time.
     const stride = Math.min(Math.max(Math.ceil(pace * MarginCat.STRIDE_SECONDS - 1e-6),
         MarginCat.SHORTEST_STRIDE), MarginCat.LONGEST_STRIDE) * at.cell;
-    // A walk eases in over its first stride from a standstill and out over
-    // its last, and goes at its pace between, keeping it through a leg
-    // joined to another it walks or climbs (VKCF3Z d1d1ead2): each ramp its
-    // share of the leg's ground, none where it walks on. Easing costs time
-    // rather than quickening its pace, so no drawing is held for less
-    // than its stride at that pace. A climb eases the same, or its last
-    // part-stride, too quick to be seen alone, would be drawn in the one
-    // before it, a glide.
+    // A walk eases in over its first stride from a standstill and out over its last, at
+    // its pace between, keeping it through a leg joined to another it walks or climbs
+    // (VKCF3Z d1d1ead2) and from one set off mid-stride: each ramp its share of the leg's
+    // ground. Easing costs time rather than quickening its pace, so no drawing is held for
+    // less than its stride at that pace. A climb eases the same, or its last part-stride,
+    // too quick to be seen alone, would be drawn in the one before it, a glide.
+    const going = STRIDING[way.legs[0]?.kind]?.includes(at.drawnIn)
+        && Number.isFinite(at.drawnInto);
     const ramps = way.legs.map((one, i) => {
         const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
         if (!STRIDING[one.kind] || ground === 0) {
             return [0, 0];
         }
         const ramp = Math.min(stride, ground / 2) / ground;
-        return [joined(way.legs[i - 1], one) ? 0 : ramp, joined(one, way.legs[i + 1]) ? 0 : ramp];
+        const on = joined(way.legs[i - 1], one) || (i === 0 && going);
+        return [on ? 0 : ramp, joined(one, way.legs[i + 1]) ? 0 : ramp];
     });
     const natural = way.legs.map((one, i) => one.kind === "rides" ? 0
         : lasts(one, pace, at) * (1 + ramps[i][0] + ramps[i][1]));
@@ -331,13 +327,13 @@ function timed(way) {
     // Striding beats joined, a walk onto a climb or a climb onto a walk,
     // stride on as one round the corner, rather than each starting its
     // strides over or holding a drawing across a short one (joined()). One
-    // set off mid-stride holds the stride drawn till that stride's ground is
-    // behind it, so walks begun again and again stride by the ground still.
-    const carried = STRIDING[beats[0]?.kind]?.includes(at.drawnIn) ? at.drawnInto ?? 0 : stride;
+    // set off mid-stride holds the drawn stride for the rest of its ground,
+    // so walks begun again and again stride by the ground; from a hold, at once.
+    const carried = going ? at.drawnInto : 1;
     for (const [i, beat] of beats.entries()) {
         const was = beats[i - 1];
         beat.walked = joined(was, beat) ? was.walked + Math.abs(was.to.x - was.from.x)
-            + Math.abs(was.to.y - was.from.y) : i === 0 ? carried - stride : 0;
+            + Math.abs(was.to.y - was.from.y) : i === 0 ? (carried - 1) * stride : 0;
         beat.since = joined(was, beat) ? was.since : beat.begins;
         beat.joins = joined(beat, beats[i + 1]);
     }
@@ -415,19 +411,31 @@ function frame(route, t) {
     // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): none but the one stopped
     // on starts in a beat's last SHOWN, and one too short for a stride goes on in the pose
     // it came in; joined to another, its last strides are that one's first. It strides
-    // from the stride it was drawn in before, or the one it turns in.
+    // from the one drawn before, or the one it turns in, and always stops into the latter.
     const strides = STRIDING[beat.kind];
     const last = beat.joins ? beat.ends : Math.max(beat.begins, beat.ends - SHOWN);
     const was = route.beats[route.beats.findIndex(one => one.since === beat.since) - 1];
     const before = was ? was.held ?? was.pose : route.drawnIn;
+    const walk = strides && { shown: SHOWN, last, since: beat.since, joins: beat.joins,
+        stand: strides.includes(before) ? before : HOLDS.turns, stops: HOLDS.turns,
+        count: time => strodeBy(route, beat, time) };
     const pose = strides
-        ? beat.held ?? MarginCat.striding(strides, { shown: SHOWN, last, since: beat.since,
-            stand: strides.includes(before) ? before : HOLDS.turns, joins: beat.joins,
-            count: time => strodeBy(route, beat, time) }, t)
+        ? beat.held ?? MarginCat.striding(strides, walk, t)
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
         beat: beat.name, aboard: beat.aboard === true, done: false,
-        into: strides && !beat.held ? MarginCat.into(beat, spot) : 0 };
+        into: strides && !beat.held ? drawnFor(route, beat, t, { walk, pose }) : null };
+}
+
+// How far into `pose`, drawn `t` ms in `walk`, it is, in strides: since it
+// began, since `walk.last` stepped on to stop, or the stride before held to stop.
+function drawnFor(route, beat, t, { walk, pose }) {
+    const strides = STRIDING[beat.kind];
+    const plain = MarginCat.striding(strides, Object.assign({}, walk, { joins: true }), t);
+    const ahead = pose === strides[(strides.indexOf(plain) + 1) % strides.length];
+    const from = ahead ? MarginCat.went(beat, placed(route, beat, walk.last))
+        : (walk.count(Math.min(t, walk.last)) - (pose === plain ? 0 : 1)) * beat.stride;
+    return Math.max(0, MarginCat.went(beat, placed(route, beat, t)) - from) / beat.stride;
 }
 
 // How many strides `beat` has taken by `time`, read on whichever beat
