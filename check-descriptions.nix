@@ -2645,8 +2645,9 @@
     restart, and a machine naming none, or a Mac, gets none
   '';
   pi-hosts-ignore-sigusr1 = ''
-    node 22, given the --disable-sigusr1 a pi host's unit gives it, outlives SIGUSR1 with its
-    inspector shut, beside a node without it whose inspector the same signal opens
+    node 22, which pi is built with, and this tree's own node, each given the --disable-sigusr1 a
+    pi host's unit gives it, outlive SIGUSR1 with their inspectors shut, beside a node without it
+    whose inspector the same signal opens
   '';
   pi-hosts-refuse-an-unproven-runtime = ''
     a realm's pi reaches its hosts only with the proof that pnpm test:host passed on the runtime

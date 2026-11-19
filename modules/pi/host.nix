@@ -320,7 +320,9 @@ in
             description = ''
               The node that pi was built with, which its native modules are
               built for; the host runs on it, given --disable-sigusr1, so it
-              must be node 22.14 or later, which knows that flag.
+              must be a node that knows that flag: 22.14 or later in 22, or
+              23.7 or later. An older one is refused only as its host starts,
+              which then stops and is said to be down.
             '';
           };
           path = lib.mkOption {
@@ -386,7 +388,7 @@ in
     # unseen; it is refused instead, saying why.
     ++ lib.mapAttrsToList (realm: host: {
       assertion = !(host.environment ? NODE_OPTIONS);
-      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; drop it, and set the host's heap with heapMb, the one node option a realm may set.";
+      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; drop it. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands get none of the host's.";
     }) cfg;
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (

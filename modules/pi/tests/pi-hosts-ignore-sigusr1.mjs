@@ -50,6 +50,10 @@ function started(options) {
   const said = async () => {
     const { value, done } = await lines.next();
     if (done) {
+      // Its output closes before its end is recorded, so the end is awaited.
+      if (run.exitCode === null && run.signalCode === null) {
+        await new Promise((ended) => run.once("exit", ended));
+      }
       throw new Error(`node ${options.join(" ")} ended, by ${run.signalCode ?? run.exitCode}`);
     }
     return value;
@@ -85,6 +89,7 @@ try {
     if (Date.now() > until) {
       throw new Error("the control's inspector never opened on SIGUSR1");
     }
+    await new Promise((later) => setTimeout(later, ASKED_EVERY_MS));
   }
   // The shut node is watched for several times as long as the control
   // took, so a slow inspector, on a loaded builder, still shows.
