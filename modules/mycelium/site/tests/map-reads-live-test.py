@@ -863,7 +863,11 @@ SPENT_IN_SKIFF_BRANCHES = ["Mend the Sails", "$1.35, 2 cells", "Its Cells", "Rig
 def spent(page: Page) -> list[str]:
     """Open the drawer's Spent Today fold and read its lines after its heading and hint."""
     fold = page.locator("#panel details.spend")
-    fold.locator("summary").click()
+    # A click landing while the drawer is redrawn can be lost, and a redraw
+    # keeps an open fold open, so press only while it is shut and wait for it.
+    if fold.get_attribute("open") is None:
+        fold.locator("summary").click()
+    expect(fold.locator("ul.rows").first, "the Spent Today fold never opened").to_be_visible()
     lines = [line for line in fold.inner_text().splitlines() if line.strip()]
     return lines[1:2] + lines[3:]
 
@@ -874,20 +878,23 @@ def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> 
     page.locator("#map-view").focus()
     page.keyboard.press(".")
     now = SPENT_NOW + SPENT_NOW_NETWORKS + SPENT_NOW_CELLS
-    assert spent(page)[: len(now)] == now, f"Now's fold misread what was spent: {spent(page)}"
+    said = spent(page)
+    assert said[: len(now)] == now, f"Now's fold misread what was spent: {said}"
     page.evaluate("location.hash = '#machine=osprey'")
     expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
     osprey = SPENT_ON_OSPREY + SPENT_ON_OSPREY_CELLS
-    assert spent(page)[: len(osprey)] == osprey, (
-        f"osprey's fold should count only the cells that run there: {spent(page)}"
+    said = spent(page)
+    assert said[: len(osprey)] == osprey, (
+        f"osprey's fold should count only the cells that run there: {said}"
     )
     page.evaluate("location.hash = '#net=orchestration.skiff1'")
     expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
         "Rig the Skiff for the Season"
     )
     skiff = SPENT_IN_SKIFF + SPENT_IN_SKIFF_BRANCHES
-    assert spent(page)[: len(skiff)] == skiff, (
-        f"the skiff's fold should count its own cells beside its branch: {spent(page)}"
+    said = spent(page)
+    assert said[: len(skiff)] == skiff, (
+        f"the skiff's fold should count its own cells beside its branch: {said}"
     )
 
 
