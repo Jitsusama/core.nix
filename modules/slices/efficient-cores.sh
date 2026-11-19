@@ -21,10 +21,13 @@ refuse() {
   exit 64
 }
 
-# A speed in MHz, without a leading zero, which bash would read as octal,
-# and short enough that its kHz can't wrap.
+# A speed from 400 to 5000 MHz, which spans every core's clock today and
+# is the range efficient-cores.rules grants, written without a leading
+# zero, which bash would read as octal.
 speed() {
-  [[ "$1" =~ ^[1-9][0-9]{0,5}$ ]] || refuse "holds a speed in MHz, not $1"
+  if [[ ! "$1" =~ ^[1-9][0-9]{2,3}$ ]] || ((10#$1 < 400 || 10#$1 > 5000)); then
+    refuse "holds a speed from 400 to 5000 MHz, not $1"
+  fi
 }
 
 # The efficient cores, one number a line, from the kernel's list, such as
@@ -115,8 +118,8 @@ case "${1-}" in
 efficient-cores  holds or frees the efficient cores' clock
 
 EXAMPLES
-  efficient-cores hold MHZ  hold each at most MHZ, within
-                            its own range
+  efficient-cores hold MHZ  hold each at most MHZ, from 400
+                            to 5000, within its own range
   efficient-cores free      give each its own ceiling back
   efficient-cores free MHZ  the same, if the hold is MHZ's
 

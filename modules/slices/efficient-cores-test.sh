@@ -48,10 +48,12 @@ exits() {
 # between them, so the list's ranges are read rather than assumed. The
 # first efficient core boots below its highest clock, as another writer
 # may have set it, so giving back its ceiling differs from freeing it.
+# The second can't run below 800 MHz, so the lowest speed asked for shows
+# a core held at its own lowest.
 core 0 400000 4800000 4800000
 core 1 400000 4700000 4700000
 core 2 400000 3700000 3000000
-core 3 400000 3300000 3300000
+core 3 800000 3300000 3300000
 core 4 400000 4700000 4700000
 core 5 400000 3300000 3300000
 mkdir -p "$sys/devices/cpu_atom"
@@ -74,10 +76,10 @@ ceilings "${boot}"
 
 # Below a core's lowest clock it's held at its lowest, above its highest at
 # its highest, so no ceiling is one the kernel would refuse.
-exits 0 hold 100
-ceilings "4800000 4700000 400000 400000 4700000 400000"
+exits 0 hold 400
+ceilings "4800000 4700000 400000 800000 4700000 400000"
 exits 0 free
-exits 0 hold 9000
+exits 0 hold 5000
 ceilings "4800000 4700000 3700000 3300000 4700000 3300000"
 exits 0 free
 ceilings "${boot}"
@@ -96,6 +98,10 @@ exits 64
 exits 64 hold
 exits 64 hold 16a
 exits 64 hold 0
+# Only a speed from 400 to 5000 MHz is held, which spans every core's
+# clock today, and is the range the polkit grant allows.
+exits 64 hold 399
+exits 64 hold 5001
 exits 64 hold 010
 exits 64 hold 99999999999999999999
 exits 64 hold 1600 more

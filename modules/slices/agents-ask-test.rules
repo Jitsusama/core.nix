@@ -110,6 +110,16 @@ expect("holding the efficient cores", held("start", hold), "terminal", "yes");
 expect("killing the efficient cores' hold", held("kill", hold), "command", "no");
 expect("restarting the efficient cores' hold", held("restart", hold), "command", "no");
 expect("a hold at no speed", held("start", "efficient-cores-held@0.service"), "command", "no");
+expect("a hold at the lowest speed", held("start", "efficient-cores-held@400.service"),
+  "command", "yes");
+expect("a hold at the highest speed", held("stop", "efficient-cores-held@5000.service"),
+  "command", "yes");
+expect("a hold below the lowest speed", held("start", "efficient-cores-held@399.service"),
+  "command", "no");
+expect("a hold above the highest speed", held("start", "efficient-cores-held@5001.service"),
+  "command", "no");
+expect("a hold at a wrapping speed", held("start", "efficient-cores-held@999999.service"),
+  "command", "no");
 expect("a hold at a speed read as octal", held("start", "efficient-cores-held@010.service"),
   "command", "no");
 expect("a unit ending like the hold", held("start", "x" + hold), "command", "no");
