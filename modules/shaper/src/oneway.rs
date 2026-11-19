@@ -707,9 +707,7 @@ impl Way {
                     } else {
                         plateau
                     };
-                    let plateau = self
-                        .met(at, plateau, ceiling, backing_off, share)
-                        .unwrap_or(plateau);
+                    let plateau = self.met(at, plateau, backing_off, share).unwrap_or(plateau);
                     self.plateau = Some(plateau);
                     self.rate = plateau * self.tuning.hold;
                     self.next_probe = at + PROBE_EVERY_S;
@@ -773,33 +771,28 @@ impl Way {
     /// as resends. It lifts the hold to under that line. A line under the
     /// plateau is left to `elsewhere` and the cuts, which wait out a dip of
     /// a second or two that a probe's few moments can't tell from the line.
-    /// None where the probe measured something else: a ceiling, the VPN's
-    /// flows backing off in any moment of it, our CAKE holding a queue in
-    /// under half its moments, or less than a queue elsewhere is taken back
-    /// at. None too where what got through reads as room the probe's end
+    /// None where the probe measured something else: the VPN's flows
+    /// backing off in any moment of it, our CAKE holding a queue in under
+    /// half its moments, or less than a queue elsewhere is taken back at.
+    /// None too where what got through reads as room the probe's end
     /// didn't find: that was a router's buffer taking the probe while it
-    /// filled, as an empty one does at a stay's start, not the line. Behind
+    /// filled, as an empty one does at a stay's start, not the line. A
+    /// probe a ceiling held that carried it reads so too, and one that
+    /// carried less met the line under the ceiling, which it keeps. Behind
     /// a VPN heard clear its flows count as backing off, so there, as with
     /// `elsewhere`, a probe keeps the plateau. Live, where the controller
     /// steps by whole seconds, one second decides it, as one decides the
     /// room a probe finds; a line read high is taken back by the next
     /// probe, a minute on, which, pushed past it, is held back and found
     /// `elsewhere`.
-    fn met(
-        &self,
-        at: f64,
-        plateau: f64,
-        ceiling: bool,
-        backing_off: bool,
-        share: f64,
-    ) -> Option<f64> {
+    fn met(&self, at: f64, plateau: f64, backing_off: bool, share: f64) -> Option<f64> {
         let probed = self.probed;
-        if ceiling || backing_off || probed.backed_off || probed.queued * 2 < probed.moments {
+        if backing_off || probed.backed_off || probed.queued * 2 < probed.moments {
             return None;
         }
         let line = probed.through / f64::from(probed.queued.max(1));
         let line_full = self
-            .anchor
+            .line()
             .is_none_or(|anchor| line >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD);
         let reached = self.reached(at);
         let taken = line > plateau
@@ -3562,7 +3555,8 @@ mod tests {
     /// Steps a controller as `many_flows_heard_late` does, with our CAKE
     /// holding a queue only where `queued(at)` says, and `(cake_drops,
     /// late, step)` as there. A controller already stepped goes on from
-    /// the moment after its last.
+    /// the moment after its last, stepped as before, with nothing the
+    /// router dropped then still to be sent again.
     fn many_flows_queued(
         c: &mut Controller,
         to: f64,
@@ -3804,7 +3798,8 @@ mod tests {
 
     // A line read high, from the line falling after a probe met it, holds
     // the link over the line by too little to be held back; the next
-    // probe, pushed past it, is, and brings the hold back under the line.
+    // probe, pushed past it, is, and `elsewhere`, not `met`, brings the
+    // hold back under the line, as met's doc counts on.
     #[test]
     fn the_next_probe_takes_back_a_line_that_fell_after_one_met_it() {
         let learned = Learned {
@@ -3822,24 +3817,71 @@ mod tests {
         );
     }
 
-    // A probe a trial's ceiling holds carries the ceiling, not the line.
+    // A probe a trial's ceiling holds that carries less than the ceiling
+    // met the line under it, as one no ceiling holds does.
     #[test]
-    fn a_probe_a_ceiling_holds_learns_no_line_from_it() {
+    fn a_probe_a_ceiling_holds_learns_the_line_it_meets_under_it() {
         let learned = Learned {
             base: None,
             plateau: Some(8_000.0),
         };
         let mut c = Controller::from_learned(learned, Learned::default());
         c.up.tune(Tuning {
-            most_kbit: Some(8_400.0),
+            most_kbit: Some(8_600.0),
             ..Tuning::default()
         });
-        many_flows(&mut c, 10.0, 8_500.0, 0.03);
-        assert_eq!(
-            c.up.plateau,
-            Some(8_000.0),
-            "the ceiling was learned as the line"
-        );
+        many_flows(&mut c, 4.0, 8_300.0, 0.03);
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!((plateau - 8_300.0).abs() < 166.0, "plateau {plateau}");
+    }
+
+    // Home's ceiling sits under its anchor's line, so the line a probe
+    // meets is judged full against the ceiling's line, as `elsewhere`
+    // judges it.
+    #[test]
+    fn under_a_network_s_ceiling_a_probe_learns_the_line_it_meets() {
+        let mut c = ceiled(anchored(8_500.0), 9_500.0);
+        many_flows(&mut c, 4.0, 9_000.0, 0.03);
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!((plateau - 9_000.0).abs() < 180.0, "plateau {plateau}");
+    }
+
+    // Behind a VPN heard clear, what gets through is its flows backing
+    // off, not the line, however far over the plateau it reads.
+    #[test]
+    fn a_probe_behind_a_vpn_heard_clear_learns_no_line() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(8_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let mut at = 0.0;
+        while at < 4.0 {
+            let rate = c.up.limit().map_or(16_000.0, crate::rate::float);
+            let wanted = rate * crate::qdisc::VPN_SHARE;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a positive rate far under u64's range"
+            )]
+            let kbit = |k: f64| k as u64;
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: wanted,
+                up_ours: Some(Ours {
+                    queued: true,
+                    in_vpn: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    resent: kbit((wanted - 8_500.0).max(0.0)),
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(30.0),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        assert_eq!(c.up.plateau, Some(8_000.0), "a VPN backing off learned");
     }
 
     #[test]
