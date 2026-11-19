@@ -105,6 +105,13 @@ const SAVE_EVERY: f64 = 300.0;
 /// first watched.
 const MARK_EVERY: f64 = 3600.0;
 
+/// How many failed reads of opens in a row end the listening, and how
+/// long it waits after each: one that passes, as running short of memory
+/// does, costs a few seconds' lost events rather than an hour floor for
+/// every build until the guard restarts.
+pub const LISTEN_TRIES: u32 = 5;
+const LISTEN_PAUSE: Duration = Duration::from_secs(1);
+
 /// How far back writes are weighed when choosing what to freeze.
 const WRITING_WINDOW: f64 = 60.0;
 
@@ -1071,9 +1078,21 @@ impl Guard {
 
     /// Hears from `watch` who opens the artifacts of the targets it finds,
     /// on a thread of its own, so a busy build's thousands of opens never
-    /// wait on a step. The thread ends with the guard, or on an error
-    /// reading them or a panic, after which the guard counts itself deaf.
+    /// wait on a step. The thread ends with the guard, after
+    /// [`LISTEN_TRIES`] failed reads in a row, or on a panic, after which
+    /// the guard counts itself deaf.
     pub fn listen(&mut self, watch: Arc<crate::opens::Watch>) {
+        let heard = Arc::clone(&watch);
+        self.listen_to(watch, move |within| heard.wait(within));
+    }
+
+    /// [`Guard::listen`], hearing through `wait` what the watch marks: the
+    /// way a test hands it a read that fails or panics.
+    pub fn listen_to(
+        &mut self,
+        watch: Arc<crate::opens::Watch>,
+        mut wait: impl FnMut(Duration) -> io::Result<Vec<Seen>> + Send + 'static,
+    ) {
         /// Says the guard no longer hears however the thread ends,
         /// unwinding included.
         struct Deafens(Arc<AtomicBool>);
@@ -1083,31 +1102,46 @@ impl Guard {
             }
         }
         let uses = Arc::downgrade(&self.uses);
-        let heard = Arc::clone(&watch);
         self.listening.store(true, Ordering::SeqCst);
         let deafens = Deafens(Arc::clone(&self.listening));
         let spawned = std::thread::Builder::new()
             .name("opens".to_owned())
             .spawn(move || {
                 let _deafens = deafens;
+                let mut failed = 0;
                 loop {
-                    let seen = heard.wait(Duration::from_secs(1));
+                    let seen = wait(Duration::from_secs(1));
                     let Some(uses) = uses.upgrade() else { return };
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map_or(0.0, |since| since.as_secs_f64());
                     let seen = match seen {
-                        Ok(seen) => seen,
+                        Ok(seen) => {
+                            failed = 0;
+                            seen
+                        }
+                        // A failed read may have lost opens of anything
+                        // marked, and may pass, as running short of memory
+                        // does, so it counts as lost events and is tried
+                        // again a moment later.
                         Err(error) => {
-                            eprintln!(
-                                "disk-guard: stopped hearing opens ({error}), so builds keep the hour"
-                            );
-                            return;
+                            failed += 1;
+                            uses.lock().unwrap_or_else(PoisonError::into_inner).lost(now);
+                            if failed >= LISTEN_TRIES {
+                                eprintln!(
+                                    "disk-guard: stopped hearing opens ({error}), so builds keep the hour"
+                                );
+                                return;
+                            }
+                            eprintln!("disk-guard: reading opens failed ({error}), trying again");
+                            drop(uses);
+                            std::thread::sleep(LISTEN_PAUSE);
+                            continue;
                         }
                     };
                     if seen.is_empty() {
                         continue;
                     }
-                    let now = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .map_or(0.0, |since| since.as_secs_f64());
                     let mut uses = uses.lock().unwrap_or_else(PoisonError::into_inner);
                     for seen in seen {
                         match seen {
@@ -1137,6 +1171,7 @@ impl Guard {
         self.marked_at = Some(tick.wall);
         let mut marked = Vec::new();
         let mut unmarked = 0_usize;
+        let mut why = None;
         for source in self.config.sources.values() {
             let Source::Cargo { roots, depth, .. } = source else {
                 continue;
@@ -1155,21 +1190,28 @@ impl Guard {
                         continue;
                     }
                     for dir in crate::replaced::watched_dirs(&tree.path) {
-                        if let Ok(handle) = watch.watch(&dir) {
-                            let at = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .map_or(0.0, |since| since.as_secs_f64());
-                            marked.push((dir, at, handle));
-                        } else if dir.is_dir() {
-                            unmarked += 1;
+                        match watch.watch(&dir) {
+                            Ok(handle) => {
+                                let at = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .map_or(0.0, |since| since.as_secs_f64());
+                                marked.push((dir, at, handle));
+                            }
+                            // One gone since the walk found it needs none.
+                            Err(error) if dir.is_dir() => {
+                                unmarked += 1;
+                                why.get_or_insert(error);
+                            }
+                            Err(_) => {}
                         }
                     }
                 }
             }
         }
-        if unmarked > 0 {
+        if let Some(why) = why {
             eprintln!(
-                "disk-guard: {unmarked} build folders couldn't be marked, so their builds keep the hour"
+                "disk-guard: {unmarked} build folders couldn't be marked ({why}, the first), \
+                 so their builds keep the hour"
             );
         }
         let mut uses = self.uses.lock().unwrap_or_else(PoisonError::into_inner);

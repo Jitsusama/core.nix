@@ -2073,6 +2073,12 @@ impl Home {
 
 #[test]
 fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
+    // Only a guard still hearing opens trusts what was watched before it,
+    // as the daemon is.
+    let Ok(watch) = disk_guard::opens::Watch::new() else {
+        eprintln!("no fanotify here, so nothing to check");
+        return;
+    };
     let home = Home::new();
     let (config, deps) = home.replaced_build("100%");
     // Watched for three days, and nothing opened it.
@@ -2080,6 +2086,7 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
     uses.watching(&deps, wall() - 3.0 * 86_400.0);
     disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
     let mut guard = home.guard(config);
+    guard.listen(std::sync::Arc::new(watch));
     guard.step(&tick(), &CALM).unwrap();
     assert!(!deps.join(format!("libapp-{OLD}.rlib")).exists());
     assert!(deps.join(format!("libapp-{NEW}.rlib")).exists());
@@ -2094,7 +2101,7 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
 }
 
 #[test]
-fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
+fn the_opens_a_watch_hears_are_kept_and_its_own_marks_heard() {
     let Ok(watch) = disk_guard::opens::Watch::new() else {
         eprintln!("no fanotify here, so nothing to check");
         return;
@@ -2149,6 +2156,77 @@ fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
         hears.contains(&deps) && hears.contains(&deps.parent().unwrap().to_owned()),
         "the guard's marks on the profile and its deps weren't kept as heard: {hears:?}"
     );
+}
+
+/// How a listener's reads go wrong, from the moment a test says so.
+#[derive(Clone, Copy, Debug)]
+enum Ending {
+    /// One read fails, and the next ones are fine.
+    Once,
+    /// Every read fails.
+    Always,
+    /// A read panics.
+    Panics,
+}
+
+#[test]
+fn a_guard_hears_through_a_failed_read_but_not_once_its_listener_ends() {
+    // The 15 minutes hold only while this guard hears its marks, so a
+    // listener that ends, however, must leave it hearing nothing, while a
+    // read that fails once and passes must not.
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    for ending in [Ending::Once, Ending::Always, Ending::Panics] {
+        let Ok(watch) = disk_guard::opens::Watch::new() else {
+            eprintln!("no fanotify here, so nothing to check");
+            return;
+        };
+        let home = Home::new();
+        let (config, deps) = home.replaced_build("0%");
+        let mut guard = home.guard(config);
+        let ended = Arc::new(AtomicBool::new(false));
+        let ends = Arc::clone(&ended);
+        let mut failed = false;
+        guard.listen_to(Arc::new(watch), move |within| {
+            std::thread::sleep(within.min(std::time::Duration::from_millis(50)));
+            if !ends.load(Ordering::SeqCst) {
+                return Ok(Vec::new());
+            }
+            match ending {
+                Ending::Once if failed => Ok(Vec::new()),
+                Ending::Once | Ending::Always => {
+                    failed = true;
+                    Err(std::io::Error::other("a read that fails"))
+                }
+                Ending::Panics => panic!("a read that panics"),
+            }
+        });
+        guard.step(&tick(), &CALM).unwrap();
+        assert!(
+            guard.hears().contains(&deps),
+            "the guard didn't hear the deps it marked, before anything went wrong"
+        );
+        ended.store(true, Ordering::SeqCst);
+        let tries = std::time::Duration::from_secs(u64::from(disk_guard::daemon::LISTEN_TRIES));
+        let deadline = std::time::Instant::now() + tries + std::time::Duration::from_secs(3);
+        let hears = loop {
+            let hears = guard.hears();
+            if hears.is_empty() || std::time::Instant::now() > deadline {
+                break hears;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        match ending {
+            Ending::Once => assert!(
+                hears.contains(&deps),
+                "one failed read left the guard hearing nothing: {hears:?}"
+            ),
+            Ending::Always | Ending::Panics => assert!(
+                hears.is_empty(),
+                "a guard whose listener ended ({ending:?}) still heard {hears:?}"
+            ),
+        }
+    }
 }
 
 #[test]

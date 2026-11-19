@@ -3,9 +3,11 @@
 
 use crate::discover::{CARGO_TAG, checkout, dir, file};
 use crate::survey::{
-    DAY, config, find, now, offers, offers_using, real, src, surveyed, surveyed_pinned, written_ago,
+    DAY, config, find, now, offers, offers_awake, offers_using, real, src, surveyed,
+    surveyed_pinned, written_ago,
 };
 use disk_guard::activity::Process;
+use disk_guard::clock::{Awake, Tick};
 use disk_guard::config::Config;
 use disk_guard::plan::{self, Class, Group};
 use disk_guard::replaced::{Uses, watched_dirs};
@@ -275,7 +277,7 @@ fn a_pinned_snapshots_older_builds_go_once_an_hour_unused() {
             pinned,
             &BTreeMap::new(),
             &uses,
-            (now(), Sizes::default()),
+            (now(), Sizes::default(), &Awake::default()),
         );
         let older = find(&found, &replaced);
         (older.candidate.spent, plan::windows(&older.candidate).0)
@@ -328,7 +330,7 @@ fn a_pinned_snapshots_incremental_goes_at_once_while_nobody_sits_there() {
             pinned,
             &BTreeMap::new(),
             &Uses::default(),
-            (now(), Sizes::default()),
+            (now(), Sizes::default(), &Awake::default()),
         );
         let offered = find(&found, &variant);
         (offered.candidate.spent, plan::windows(&offered.candidate).0)
@@ -554,6 +556,7 @@ fn a_build_used_within_a_quarter_hour_or_sat_in_counts_but_stays() {
     );
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn a_build_left_past_a_quarter_hour_goes_past_the_budget() {
     // On 18 November the builds disk held 56 GiB against its 20, 55 of it
@@ -564,6 +567,20 @@ fn a_build_left_past_a_quarter_hour_goes_past_the_budget() {
     assert!(
         find(&found, &made[1].join("target")).candidate.spent,
         "a build the watch heard nothing of for a minute past the floor stays past the budget"
+    );
+}
+
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn a_build_left_past_a_quarter_hour_keeps_its_hour_where_nothing_is_heard() {
+    // A Mac has no watch and can't tell one folder from another made
+    // where it stood, so the floor stays the hour it was.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-left", JUST_PAST)], 1);
+    let uses = heard(&made, 3.0);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+    assert!(
+        !find(&found, &made[1].join("target")).candidate.spent,
+        "a build left a minute past the quarter hour went past the budget where nothing is heard"
     );
 }
 
@@ -613,14 +630,63 @@ fn a_build_the_watch_may_have_missed_keeps_its_hour() {
     );
 }
 
+#[test]
+fn a_suspend_ages_neither_a_builds_last_open_nor_its_marks() {
+    // Every other idle is counted awake, and a lid closed for an hour
+    // between two checks would otherwise make the build they share look
+    // an hour old, or its marks an hour trusted.
+    let base = now();
+    let minutes = |m: f64| m * 60.0;
+    let asleep = |from: f64, to: f64| {
+        let mut awake = Awake::default();
+        let tick = |wall: f64, suspended: f64| Tick {
+            wall: base - wall,
+            monotonic: minutes(240.0) - wall - suspended,
+            suspended,
+            boot: "b".into(),
+        };
+        awake.observe(&tick(minutes(240.0), 0.0));
+        awake.observe(&tick(from, 0.0));
+        awake.observe(&tick(to, from - to));
+        awake
+    };
+    // Opened 65 minutes ago, 60 of them asleep, heard for hours.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-opened", 2.0)], 1);
+    let mut uses = heard(&made, 3.0);
+    uses.opened(
+        &made[1].join("target/debug/.cargo-build-lock"),
+        base - minutes(65.0),
+    );
+    let found = offers_awake(&config, &uses, &asleep(minutes(61.0), minutes(1.0)));
+    assert!(
+        !find(&found, &made[1].join("target")).candidate.spent,
+        "a build opened five awake minutes ago went past the budget across a suspend"
+    );
+    // Written 40 minutes ago, marked 20 ago, 10 of those asleep: heard
+    // only 10 awake minutes, so the hour stands.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-written", 40.0 / 60.0)], 1);
+    let uses = heard(&made, 20.0 / 60.0);
+    let found = offers_awake(&config, &uses, &asleep(minutes(20.0), minutes(10.0)));
+    assert!(
+        !find(&found, &made[1].join("target")).candidate.spent,
+        "a build marked ten awake minutes ago kept only a quarter hour's floor"
+    );
+}
+
 /// What the watch says of `apps`' builds when this guard has marked their
-/// profiles and `deps` for `hours` and nothing was opened in them.
+/// profiles and `deps` for `hours` and nothing was opened in them. On a
+/// Mac, which gives no folder a handle, the marks name none, as nothing
+/// there can.
 fn heard(apps: &[PathBuf], hours: f64) -> Uses {
     let mut uses = Uses::default();
     for app in apps {
         for dir in watched_dirs(&app.join("target")) {
             uses.watching(&dir, now() - hours * 3600.0);
-            let handle = disk_guard::opens::handle(&dir).unwrap();
+            let handle = disk_guard::opens::handle(&dir);
+            #[cfg(target_os = "linux")]
+            let handle = handle.unwrap();
+            #[cfg(not(target_os = "linux"))]
+            let handle = handle.unwrap_or_default();
             uses.marked(&dir, now() - hours * 3600.0, handle);
             assert!(
                 uses.heard.contains_key(&dir),

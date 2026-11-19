@@ -68,6 +68,22 @@ pub fn offers_using(
     .0
 }
 
+/// What a survey offers now, of builds `uses` says were heard, after the
+/// machine was awake and asleep as `awake` saw it.
+pub fn offers_awake(config: &Config, uses: &Uses, awake: &Awake) -> Vec<Offer> {
+    let none = BTreeMap::new();
+    surveyed_pinned(
+        config,
+        &[],
+        &|_| false,
+        &|_| false,
+        &none,
+        uses,
+        (now(), Sizes::default(), awake),
+    )
+    .0
+}
+
 /// What a survey offers at `at`, in wall seconds.
 fn offers_at(config: &Config, at: f64) -> Vec<Offer> {
     offers_sized(config, at, Sizes::default()).0
@@ -106,12 +122,12 @@ pub fn surveyed(
         &|_| false,
         ran,
         uses,
-        (at, sizes),
+        (at, sizes, &Awake::default()),
     )
 }
 
 /// As `surveyed`, with the checkouts `pinned` says are snapshots a broker
-/// pinned at a commit.
+/// pinned at a commit, and the machine awake as `awake` saw it.
 pub fn surveyed_pinned(
     config: &Config,
     processes: &[Process],
@@ -119,9 +135,8 @@ pub fn surveyed_pinned(
     pinned: &dyn Fn(&Path) -> bool,
     ran: &BTreeMap<String, f64>,
     uses: &Uses,
-    (at, sizes): (f64, Sizes),
+    (at, sizes, awake): (f64, Sizes, &Awake),
 ) -> (Vec<Offer>, usize, Sizes) {
-    let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
     let said = BTreeMap::new();
     let mut world = World {
@@ -130,7 +145,7 @@ pub fn surveyed_pinned(
         uid: unsafe { libc::geteuid() },
         home: None,
         boot: BOOT,
-        awake: &awake,
+        awake,
         now: at,
         finished: &mut finished,
         pinned,

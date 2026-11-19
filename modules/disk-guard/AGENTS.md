@@ -91,11 +91,17 @@ or launchd, and [`home.nix`][2] the account's.
   minutes hold only where this guard's own marks have heard a build's
   folders, as they are now, for 15 minutes of awake time without a
   gap; a folder is told by the file handle its mark was placed through,
-  which a folder made anew never shares. A build not marked since the
-  guard started, one whose profile or `deps` was made anew since its
-  mark, one after lost events, and every build where nothing hears, as
-  on macOS, in `plan`, or once the watch or its listener fails, keeps
-  the hour, and the guard says how many folders it couldn't mark. A
+  which a folder made anew never shares. The handle and the mark are
+  read through one descriptor, so a folder renamed between them can't
+  lend its handle to another. A build not marked since the guard
+  started, one whose profile or `deps` was made anew since its mark,
+  one after lost events, and every build where nothing hears, as on
+  macOS, in `plan`, or once the watch or its listener fails, keeps the
+  hour, and the guard says how many folders it couldn't mark and why.
+  A failed read or a record it can't parse counts as lost events, and
+  the listener tries again a second later; five failures in a row, or
+  a panic, end it. A guard that no longer hears keeps replaced builds
+  too, as if it had never watched them, since their dates stop there. A
   budget that comes to nothing, as a share of a disk that can't be
   measured does, is none. While the first root's
   disk holds more than the budget, the guard makes upkeep due, at most

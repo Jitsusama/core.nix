@@ -87,9 +87,13 @@ impl Uses {
         self.unheard = self.unheard.max(at);
     }
 
-    /// Forgets every mark, for a guard that hears nothing.
+    /// Forgets every mark, and since when each folder was watched, for a
+    /// guard that hears nothing: an open it missed could be of anything,
+    /// so no build is dated by what it heard before, and a replaced build
+    /// stays as it does where nothing watches.
     pub fn deaf(&mut self) {
         self.heard.clear();
+        self.watched.clear();
     }
 
     /// Since when this guard has heard every one of `dirs` without a gap:

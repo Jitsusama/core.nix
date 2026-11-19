@@ -181,6 +181,8 @@ fn a_target_is_last_opened_when_its_lock_or_a_build_in_its_deps_was() {
     );
 }
 
+// A Mac gives no folder a handle, so nothing there is ever heard.
+#[cfg(target_os = "linux")]
 #[test]
 fn a_target_is_heard_since_this_guard_marked_its_folders_as_they_are() {
     // An open the watch missed would make a build in use look old, so
@@ -247,6 +249,10 @@ fn a_target_is_heard_since_this_guard_marked_its_folders_as_they_are() {
     fs::remove_dir(&dirs[1]).unwrap();
     assert_eq!(uses.heard_since(&dirs), None, "a gone deps was heard");
     uses.deaf();
+    assert!(
+        uses.watched.is_empty(),
+        "a deaf guard still dated replaced builds by what it watched before"
+    );
     fs::create_dir(&dirs[1]).unwrap();
     mark(&mut uses, &dirs[1], 1000.0);
     assert_eq!(
