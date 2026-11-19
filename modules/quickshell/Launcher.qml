@@ -10553,6 +10553,7 @@ Scope {
             fillFoundFrom = 0;
             fillFoundTook = 0;
             fillFoundJoined = 0;
+            fillFoundCall = -1;
             if (!fillFinding)
                 freshen();
             lap("joining");
@@ -11445,9 +11446,11 @@ Scope {
     function wakeNext() {
         if (!open || !waking)
             return;
+        wakeCalls += 1;
         // The fill's own finding is the first slice, alone, said apart
         // from the sources' (wokeSaid), whose first waits from its end.
         if (fillFinding) {
+            fillFoundCall = wakeCalls;
             fillFound("slice");
             wakeLater();
             return;
@@ -11467,7 +11470,8 @@ Scope {
                     refreshDue();
                 } finally {
                     wakeSlices = wakeSlices.concat([{ from: began - wakeBegan,
-                        took: KeyTimes.now() - began, woke: [], refreshed: true }]);
+                        took: KeyTimes.now() - began, woke: [], refreshed: true,
+                        call: wakeCalls }]);
                     feltSpan("a held refresh", began);
                 }
                 return;
@@ -11484,7 +11488,8 @@ Scope {
             source.asleep = false;
             slice.push({ name: source.settings.name, took: KeyTimes.now() - at });
         }
-        wakeSlices = wakeSlices.concat([{ from, took: KeyTimes.now() - began, woke: slice }]);
+        wakeSlices = wakeSlices.concat([{ from, took: KeyTimes.now() - began, woke: slice,
+            call: wakeCalls }]);
         feltSpan("waking", began);
         if (wakeQueue.length > 0) {
             wakeLater();
@@ -11518,6 +11523,11 @@ Scope {
     property real fillFoundFrom: 0
     property real fillFoundTook: 0
     property int fillFoundJoined: 0
+    // Which of wakeNext's calls found home, and how many it's had, so the
+    // waking record says whether a slice shared the find's call, however
+    // close in time the next one comes.
+    property int fillFoundCall: -1
+    property int wakeCalls: 0
     function fillFound(by) {
         if (!fillFinding)
             return;
@@ -11598,7 +11608,8 @@ Scope {
         const { longest, waited } = Wanted.wakeTimes(found, wakeSlices);
         const woke = Object.assign({ slices, longestSlice: longest, longestWake: waited,
             foundBy: fillFoundBy }, found ? { foundFrom: Math.round(found.from),
-            foundTook: Math.round(found.took), foundJoined: fillFoundJoined } : {},
+            foundTook: Math.round(found.took), foundJoined: fillFoundJoined,
+            foundAlone: !wakeSlices.some(one => one.call === fillFoundCall) } : {},
             fillFoundThrew ? { foundThrew: true } : {});
         // Woken before its frame made its record, the last is the opening
         // before's, so this one's waking waits for the frame's (openDrawn).
