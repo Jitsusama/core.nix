@@ -15,7 +15,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Says how a daemon's outside source stands to mycelium, in counts";
+    description = "Says how a daemon's outside source stands to mycelium, in counts and items";
     license = lib.licenses.mit;
     # The daemons that say receptors run on the Linux desktop.
     platforms = lib.platforms.linux;

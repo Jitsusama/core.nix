@@ -2897,8 +2897,9 @@
   '';
   receptor-say-gives-mycelium-words-and-numbers-alone = ''
     a receptor is said by running mycelium's absolute path with fixed words, a realm of
-    mycelium's letters and counts held to the most it takes; said off, each count is none;
-    and only the account or login declared, ASCII case aside, is taken as the source's own
+    mycelium's letters and counts held to the most it takes, with any words its caller adds
+    put after its own and given as built; said off, each count is none; and only the account
+    or login declared, ASCII case aside, is taken as the source's own
   '';
   receptor-say-passes-clippy = ''
     clippy finds nothing in receptor-say, how the daemons say mycelium's receptors
@@ -2933,7 +2934,9 @@
     repository for each remote with each checkout's trees and heads, its trunk and when it was
     last written, a tree whose folder is gone said so, each checkout's store weighed as git's
     auto-gc samples it and due as its config sets, over stores laid out by hand and one git wrote,
-    and every view of them fitting each width
+    every view of them fitting each width, and the GitHub receptor said with its counts, each
+    change asking review as owner/name#N of a declared owner and the realm's owners, none of
+    them while a read failed
   '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship

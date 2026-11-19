@@ -1,18 +1,19 @@
 //! How a daemon says one of mycelium's receptors: how an outside source
-//! stands, in counts, to the realm's mycelium node, which draws it as a
-//! cell on the source's outside network (mycelium's PROTOCOL.md,
-//! Receptors).
+//! stands, in counts and, for a source mycelium keeps more of, its items,
+//! to the realm's mycelium node, which draws it as a cell on the source's
+//! outside network (mycelium's PROTOCOL.md, Receptors).
 //!
 //! Each daemon reading an outside source counts what it already holds and
 //! hands the counts here, so the rules of what reaches mycelium are kept
 //! once, for all of them:
 //!
-//! - Only fixed words and integers are arguments: the source and the
-//!   state are words of this crate's own, never text a source gave, and
+//! - Only fixed words and integers are this crate's arguments: the source
+//!   and the state are words of its own, never text a source gave, and
 //!   each count is held to the most mycelium takes, so a count past it is
 //!   said as that rather than refused. A source mycelium keeps more of,
 //!   as GitHub keeps the changes asking review, adds its own words after
-//!   these (`say_with`), and its caller answers for what they hold.
+//!   these (`say_with`). They are passed on as built, unchecked here, so
+//!   its caller answers for what they hold and its tests prove it.
 //! - mycelium is run by the absolute path the service names, its
 //!   arguments given one by one and never through a shell.
 //! - The realm is the service's, in `MYCELIUM_REALM`, of mycelium's own
