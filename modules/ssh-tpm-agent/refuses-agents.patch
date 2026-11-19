@@ -834,7 +834,7 @@ new file mode 100644
 index 0000000..134a686
 --- /dev/null
 +++ b/agent/gate_test.go
-@@ -0,0 +1,278 @@
+@@ -0,0 +1,299 @@
 +package agent
 +
 +import (
@@ -994,19 +994,44 @@ index 0000000..134a686
 +	}
 +}
 +
-+// exited is a pidfd of a process that has exited and been reaped.
++// pidfdOf is a pidfd of pid, closed when the test ends, or the test
++// skipped, saying why, on a kernel with no pidfd_open, which says ENOSYS.
++// Rosetta says it on a Mac's Linux builder, where a check is built again
++// only to compare, after core's merge gate built it on a Linux kernel,
++// where these tests ran. Any other failure fails the test.
++func pidfdOf(t *testing.T, pid int) int {
++	t.Helper()
++	pidfd, err := unix.PidfdOpen(pid, 0)
++	if errors.Is(err, unix.ENOSYS) {
++		t.Skipf("this kernel has no pidfd_open (%v), so no pidfd is judged here", err)
++	}
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { unix.Close(pidfd) })
++	return pidfd
++}
++
++// exited is a pidfd of a process that has exited and been reaped. The
++// child is reaped however the pidfd went, so a skip leaves no zombie.
 +func exited(t *testing.T) int {
 +	t.Helper()
 +	child, err := os.StartProcess("/proc/self/exe", []string{"exited", "-test.run=^$"}, &os.ProcAttr{})
 +	if err != nil {
 +		t.Fatal(err)
 +	}
-+	pidfd, err := unix.PidfdOpen(child.Pid, 0)
-+	if err != nil {
-+		t.Fatal(err)
++	reaped := false
++	reap := func() error {
++		if reaped {
++			return nil
++		}
++		reaped = true
++		_, err := child.Wait()
++		return err
 +	}
-+	t.Cleanup(func() { unix.Close(pidfd) })
-+	if _, err := child.Wait(); err != nil {
++	t.Cleanup(func() { _ = reap() })
++	pidfd := pidfdOf(t, child.Pid)
++	if err := reap(); err != nil {
 +		t.Fatal(err)
 +	}
 +	return pidfd
@@ -1021,11 +1046,7 @@ index 0000000..134a686
 +}
 +
 +func TestALiveProcessIsStillThere(t *testing.T) {
-+	pidfd, err := unix.PidfdOpen(os.Getpid(), 0)
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	defer unix.Close(pidfd)
++	pidfd := pidfdOf(t, os.Getpid())
 +	if !stillThere(pidfd) {
 +		t.Error("a live process was taken as gone")
 +	}
