@@ -98,6 +98,15 @@ QtObject {
         expect("one asleep in the host keeps the words to view it",
             JSON.stringify(sleeping?.attach) === JSON.stringify(viewing),
             JSON.stringify(sleeping));
+        // One parked on another machine says where, so Wake never reopens
+        // it here; one parked here says nothing of it, as before.
+        const parkedAt = here => Pi.sorted({ "session:s-far": { state: "ended",
+            standing: "parked", here, machine: "far", at: "2026-11-08T01:00:00Z",
+            presence: presence("s-far", "A010", { state: "parked" }) } }).resting[0];
+        const parkedSays = JSON.stringify([parkedAt(false)?.here, parkedAt(false)?.machine,
+            parkedAt(true)?.here !== false]);
+        expect("one parked elsewhere says so, one parked here doesn't",
+            parkedSays === JSON.stringify([false, "far", true]), parkedSays);
 
         const records = Pi.sessions(sorted, "skiff");
         const of = id => records.find(one => one["gen_ai.conversation.id"] === id);

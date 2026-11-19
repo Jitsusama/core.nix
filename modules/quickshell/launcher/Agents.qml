@@ -1221,10 +1221,13 @@ Provider {
         });
         // One asleep in pi's host wakes as it's viewed, which is the
         // shell's to do, as Go To is; the daemon's wake reaches a holder.
+        // One the node refuses, since no holder keeps it this boot, is
+        // reopened where it left off, as Sessions' own Wake does.
         if (Sessions.wokenByViewing(session))
             Sessions.wake(session);
         else
-            provider.actOn(session, "wake");
+            provider.actOn(session, "wake", null,
+                answer => Sessions.reopensUnwoken(session, answer));
     }
 
     // Does one of a session's acts as the daemon serves it: its row's ask
@@ -1232,7 +1235,9 @@ Provider {
     // does by steering the session through the node (modules/agents/src/
     // acts.rs), so the shell steers none itself. The answer is said as a
     // steer's is, a refusal by Sessions' unsteered.
-    function actOn(session, id, fields) {
+    // `took`, where given, may take the answer as its own, saying true,
+    // before it's said as the steer's.
+    function actOn(session, id, fields, took) {
         const acts = rowsKind?.held?.[`row:agents:${session.address}`]?.row?.acts ?? [];
         const ask = acts.find(one => one.key === `verb:agent:${id}`)?.ask
             ?? { ask: id, address: session.address };
@@ -1241,7 +1246,7 @@ Provider {
             Sessions.steered(session.address, null);
             return;
         }
-        rowsKind.ask(said, answer => Sessions.steered(session.address, answer));
+        rowsKind.ask(said, answer => took?.(answer) || Sessions.steered(session.address, answer));
     }
 
     // Reopens a closed orchestrator, its row reading as listening until its

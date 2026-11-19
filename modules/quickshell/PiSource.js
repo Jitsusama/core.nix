@@ -26,12 +26,13 @@ function placed(key, session) {
     // One parked keeps the window its holder keeps, where the node knows
     // it, so the cutover can keep its place before it wakes it, and the
     // words to view it, since one asleep in pi's host wakes only as it's
-    // viewed.
+    // viewed. One parked on another machine says so, as one running there
+    // does, so Wake never reopens it here (Sessions' reopensUnwoken).
     if (session.standing === "parked") {
-        return { into: "resting", entry: {
+        return { into: "resting", entry: Object.assign({
             file: id, presence, window: session.window ?? null, held: session.held ?? null,
             attach: session.attach ?? null
-        } };
+        }, session.here === false ? { machine: String(session.machine), here: false } : {}) };
     }
     if (session.standing === "closed") {
         return { into: "ending", entry: { file: id, presence, window: null, held: null, changed } };
