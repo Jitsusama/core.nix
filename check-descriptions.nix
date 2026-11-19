@@ -1069,7 +1069,9 @@
     the margin's animals' stride rule refuses the cat's own strides out of order, alone, with a
     pair never stepping, after a pose that isn't a stride, undrawn, and none at all, each by
     its reason; and reads the cat's code as no walk when it strides by anything but WALKS's
-    quoted words, though as its walk when they're only spaced or quoted otherwise
+    quoted words, a word holds a space or mismatched quotes, a copy is commented out above,
+    or either list is written to after it's declared, though as its walk when they're only
+    spaced or quoted otherwise and STRIDING is only read
   '';
   every-suppression-says-why = ''
     every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or
