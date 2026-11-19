@@ -787,6 +787,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   let fedShapes = []; // each receptor's feeding of a cell, the last ten minutes
   let fedLayer = []; // those feedings, over the talk
   let cellLayer = []; // the cells, over everything else on the ground
+  let widest = 0; // the widest line the last frame stroked, in CSS px
+  let widestCarried = 0; // the same line's width before the zoom thinned it
   // Each network's ground, [key, x, y, r], so a click on it opens it.
   let groundsAt = [];
   const inks = new Map();
@@ -878,6 +880,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     const g = groundCtx;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
+    widest = 0;
+    widestCarried = 0;
     const finding = world.classList.contains("finding");
     const base = finding ? RECEDED : 1;
     const hovered = hover ? `c:${current?.byId.get(hover)?.address}` : null;
@@ -898,7 +902,12 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
         }
         if (ink.stroke) {
           g.strokeStyle = ink.stroke;
-          g.lineWidth = open.w || ink.width;
+          const width = open.w || ink.width;
+          g.lineWidth = open.tag === "circle" ? width : thinOut(width);
+          if (open.tag !== "circle") {
+            widest = Math.max(widest, g.lineWidth);
+            widestCarried = Math.max(widestCarried, width);
+          }
           g.lineCap = ink.cap || "butt";
           g.setLineDash(ink.dash);
           g.stroke();
@@ -966,7 +975,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   // How many lines the canvas paints, by kind, said for the site's own
   // checks: the lines across networks, the talk arcs, the talk held, the
   // talk with two ends to draw (talk inside one folded network has one),
-  // the feedings, and how many networks are folded into their grounds.
+  // the feedings, how many networks are folded into their grounds, and the
+  // widest line the last frame stroked, as drawn and as wide as it carries.
   groundEl.painted = () => ({
     across: (groundLayers[1] || []).length,
     talk: talkLayer.length,
@@ -976,6 +986,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     said: talk.size,
     between: talkBetween,
     folded: folded.size,
+    widest,
+    widestCarried,
   });
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
@@ -1010,6 +1022,15 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   // cross grounds count, so the ground itself still opens its network.
   const TOUCH_PX = 6;
   const TOUCHED_GROWS = 2;
+  // Stepped out past its own size, the map thins each line with the zoom,
+  // as its cells shrink with it, so a line keeps the weight beside a cell
+  // it has at the map's own size: a cord drawn 4 px across beside cells
+  // 7 px across outweighed them on a laptop's whole map, and thinned only
+  // by the zoom's square root it still did. A line thicker for what it
+  // carries stays so, and none goes under a hairline, so no line is lost;
+  // a disc's rim keeps its width.
+  const HAIRLINE = 1;
+  const thinOut = (width) => (k >= 1 ? width : Math.max(Math.min(width, HAIRLINE), width * k));
   const LIT = /\blit\b/;
   let touched = null;
   const lineAt = (x, y, onGround) => {
