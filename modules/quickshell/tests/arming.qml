@@ -109,14 +109,17 @@ QtObject {
                 Arming.holdsStill(row), held);
         // Asked from a terminal, a row held still is refused, saying why:
         // its own reason, or the launcher's when it gives none; any other
-        // row isn't refused for it.
+        // row isn't refused for it, which says null, so a held row with no
+        // words anywhere is still refused rather than run.
         expect("a row held still is refused for its own reason",
             Arming.heldWhy({ still: true, stillWhy: "not while shared" }, "nothing sent"),
             "not while shared");
         expect("or the launcher's, giving none",
             Arming.heldWhy({ still: true }, "nothing sent"), "nothing sent");
         expect("while a row that acts isn't refused for it",
-            Arming.heldWhy({ still: true, run: nothing, stillWhy: "x" }, "nothing sent"), "");
+            Arming.heldWhy({ still: true, run: nothing, stillWhy: "x" }, "nothing sent"), null);
+        expect("and one held with no words anywhere is held, not run",
+            Arming.heldWhy({ still: true }, ""), "");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
