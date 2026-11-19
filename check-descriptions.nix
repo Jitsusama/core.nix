@@ -676,8 +676,8 @@
     nothing logged
   '';
   code-site-keeps-its-last-homes = ''
-    the code site's writer, while repos fails, ends well in one line and leaves the last homes as
-    they were, and once repos answers replaces them whole with every repository and present tree at
+    the code site's writer, while repos fails or stalls, ends well in one line and leaves the last
+    homes as they were, a stalled read ended in its time, and once repos answers replaces them whole with every repository and present tree at
     its Code address, readable by the server
   '';
   collector-keeps-what-it-is-sent = ''
