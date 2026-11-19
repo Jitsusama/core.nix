@@ -59,9 +59,12 @@ pub struct Follower {
     source: Source,
     day: Day,
     changed: bool,
-    // The last write failed, so a new day's line waits for the next
-    // tick's try rather than serializing the whole day again for each.
+    // The last write failed, so a new day's line leaves the next try to
+    // the tick rather than serializing the whole day again for each.
     write_failed: bool,
+    // The day before, held until it's written, so the new day goes on
+    // meanwhile: its lines, and what the ticks see, are dated in it.
+    held: Option<Day>,
     into: PathBuf,
     zone: TimeZone,
     ends: BTreeMap<String, i64>,
@@ -108,6 +111,7 @@ impl Follower {
             day: Day::new(date),
             changed: false,
             write_failed: false,
+            held: None,
             into: into.to_owned(),
             zone,
             ends: BTreeMap::new(),
@@ -426,31 +430,38 @@ impl Follower {
 
     /// Take one line of the source's. A line of a new day writes
     /// the old one and starts the new, which sees nothing gone wrong yet,
-    /// so a fault still seen counts once in it too. Of one of a day already
-    /// written, only its stops, starts and reloads are taken, for the new
-    /// day's restarts (`Launches::before`), since that day is done.
+    /// so a fault still seen counts once in it too. An old day that can't
+    /// be written is held for `write` to try again, and the new day starts
+    /// all the same. Of one of a day already done, only its stops, starts
+    /// and reloads are taken, for the new day's restarts
+    /// (`Launches::before`).
     ///
     /// # Errors
     ///
-    /// When the finished day can't be written, or a write of it has just
-    /// failed, which only `write` tries again.
+    /// When the finished day can't be written, its line taken all the
+    /// same. After a failed write, only `write` tries again.
     pub fn take(&mut self, line: &str) -> io::Result<()> {
         let Some(entry) = self.source.parse(line) else {
             return Ok(());
         };
         let date = date_of(entry.at, &self.zone);
+        let mut written = Ok(());
         if date > self.day.date {
-            if self.write_failed {
-                return Err(io::Error::other("the day it ends is still unwritten"));
+            if !self.write_failed {
+                written = self.write();
             }
-            self.write()?;
             // A restart across midnight is the new day's, so its stop
             // and the reloads before it carry on, as a start of health
             // reads the restarts' followers from just before the day
             // (`journal::reading`).
-            let read = std::mem::take(&mut self.day.read);
+            let read = self.day.read.clone();
             let launches = self.day.launches.carried(start_of(entry.at, &self.zone));
-            self.day = Day::new(&date);
+            let done = std::mem::replace(&mut self.day, Day::new(&date));
+            // Only a day past `GIVES_UP` of failed writes, which ends
+            // health, could be held already, so none is dropped here.
+            if self.write_failed {
+                self.held = Some(done);
+            }
             self.day.read = read;
             self.day.launches = launches;
         } else if date < self.day.date {
@@ -467,15 +478,22 @@ impl Follower {
             self.day.ended(&entry.boot, end);
         }
         self.changed = true;
-        Ok(())
+        written
     }
 
-    /// Write the day if anything changed since it was last written.
+    /// Write the day held, if any, and then the day if anything changed
+    /// since it was last written.
     ///
     /// # Errors
     ///
-    /// When it can't be written.
+    /// When either can't be written.
     pub fn write(&mut self) -> io::Result<()> {
+        if let Some(held) = &self.held {
+            let written = write_day(held, &self.into);
+            self.write_failed = written.is_err();
+            written?;
+            self.held = None;
+        }
         if !self.changed {
             return Ok(());
         }
@@ -675,16 +693,14 @@ fn ended_by(
 /// and once written again through `notice`, as `Spell` decides; health
 /// tries every half minute and runs on until it can, keeping the day,
 /// for as long as `GIVES_UP`: starting again frees no room, and a start
-/// past midnight would lose the old day's end. A new day's lines can't be
-/// taken meanwhile, so such a lost line ends health as a follower's end
-/// does, once the day is written, for the replay to hear it. Most of what
-/// the ticks see meanwhile, such as the disk guard's and memory's
-/// readings, is dated the new day and so kept in neither.
+/// past midnight would lose the old day's end. A new day meanwhile starts
+/// as ever, holding the old for the next try, so its lines and what the
+/// ticks see, such as the disk guard's and memory's readings, go into it.
 ///
 /// # Errors
 ///
-/// When a new day's line went untaken, the day can't be written as health
-/// ends, or it gave up writing it.
+/// When the day can't be written as health ends, or it gave up writing
+/// it.
 fn run(
     follower: &mut Follower,
     read: &Receiver<Option<String>>,
@@ -699,7 +715,6 @@ fn run(
     let mut ended = false;
     let mut hearing = true;
     let mut spell = Spell::default();
-    let mut lost = None;
     let mut gave_up;
     loop {
         let at = now();
@@ -712,12 +727,11 @@ fn run(
         if hearing {
             match read.recv_timeout(left) {
                 Ok(Some(line)) => {
-                    // Only a new day's line writes, so a line taken without
-                    // one leaves the write's failure as it was.
+                    // Only a new day's line writes, and only a write that
+                    // failed says so, so a line taken without one leaves
+                    // the spell as it was.
                     if let Err(error) = follower.take(&line) {
                         spell.tried(Some(&error), at, &follower.into, say, notice);
-                        ended = true;
-                        lost.get_or_insert_with(|| spell.lost(&error, &follower.into));
                     }
                 }
                 Ok(None) => ended = true,
@@ -768,15 +782,6 @@ fn run(
             error.kind(),
             format!("the day couldn't be written as health ended: {error}"),
         )
-    })?;
-    lost.map_or(Ok(()), |error: io::Error| {
-        Err(io::Error::new(
-            error.kind(),
-            format!(
-                "a new day's line went untaken while the day couldn't be written, for the \
-                 replay to hear: {error}"
-            ),
-        ))
     })
 }
 
