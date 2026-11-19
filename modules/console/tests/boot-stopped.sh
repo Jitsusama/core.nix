@@ -35,24 +35,34 @@ EOF
 } > "$work/bin/systemctl"
 
 # journalctl gives a unit's own lines from $WORK/own and systemd's of it
-# (UNIT= from PID 1) from $WORK/systemd, the last as many as asked for.
-# --unit= gives both, as journalctl's does, with the unit's own last, so a
-# summary that takes its last line there can be given a blank.
+# (UNIT= from PID 1) from $WORK/systemd, each "message id|line", the last
+# as many as asked for; given MESSAGE_ID=, only systemd's lines with one
+# of those ids. --unit= gives both, as journalctl's does, with the unit's
+# own last, so a summary that takes its last line there can be given a
+# blank.
 {
   printf '#!%s\n' "$BASH"
   cat <<'EOF'
-lines=10 from=() unit='' pid=''
+lines=10 own='' systemd='' unit='' pid='' ids=' '
 for arg; do
   case $arg in
   --lines=*) lines=${arg#*=} ;;
-  _SYSTEMD_UNIT=*) from=("$WORK/own/${arg#*=}") ;;
-  --unit=*) from=("$WORK/systemd/${arg#*=}" "$WORK/own/${arg#*=}") ;;
+  _SYSTEMD_UNIT=*) own=$WORK/own/${arg#*=} ;;
+  --unit=*) systemd=$WORK/systemd/${arg#*=} own=$WORK/own/${arg#*=} ;;
   UNIT=*) unit=${arg#*=} ;;
   _PID=1) pid=1 ;;
+  MESSAGE_ID=*) ids+="${arg#*=} " ;;
   esac
 done
-[[ -z $unit || -z $pid ]] || from=("$WORK/systemd/$unit")
-((${#from[@]})) && cat "${from[@]}" 2> /dev/null | tail -n "$lines"
+[[ -z $unit || -z $pid ]] || systemd=$WORK/systemd/$unit
+{
+  if [[ -f $systemd ]]; then
+    while IFS='|' read -r id line; do
+      [[ $ids != ' ' && $ids != *" $id "* ]] || printf '%s\n' "$line"
+    done < "$systemd"
+  fi
+  [[ ! -f $own ]] || cat "$own"
+} | tail -n "$lines"
 exit 0
 EOF
 } > "$work/bin/journalctl"
@@ -90,19 +100,33 @@ blank=$'\xe2\xa0\x80' mark=$'\xe2\x80\x8e'
 printf '%s\n' "Mounting /home" "probing the disk" $'reading its label\a' \
   "mount: /home: wrong fs type" "$blank$blank" $'\e[0m' "$mark" > "$work/own/home.mount"
 printf '%s\n' "$blank" $'\e[31m\e[0m' > "$work/own/blank.service"
-echo "blank.service: Failed with result 'exit-code'." > "$work/systemd/blank.service"
-echo "quiet.service: Main process exited, code=killed, status=9/KILL" > "$work/systemd/quiet.service"
-echo "quiet.service: Failed with result 'signal'." >> "$work/systemd/quiet.service"
+# systemd's lines with the ids sd-messages.h gives a process's exit, a
+# unit's result and what it cost; one it says of a unit with none of them.
+exited=98e322203f7a4ed290d09fe03c09fe15 result=d9b373ed55a64feb8242e02dbe79a49c
+cost=ae8f7b866b0347b9af31fe1c80b127c0
+printf '%s\n' "$result|home.mount: Failed with result 'exit-code'." > "$work/systemd/home.mount"
+printf '%s\n' "$result|blank.service: Failed with result 'exit-code'." \
+  "$cost|blank.service: Consumed 4ms CPU time." > "$work/systemd/blank.service"
+printf '%s\n' "|quiet.service: Scheduled restart job." \
+  "$exited|quiet.service: Main process exited, code=killed, status=9/KILL" \
+  "$result|quiet.service: Failed with result 'signal'." \
+  "$cost|quiet.service: Consumed 9ms CPU time." > "$work/systemd/quiet.service"
+printf '%s\n' "|nameless.service: Start request repeated too quickly." \
+  > "$work/systemd/nameless.service"
 said
 says "  x  home.mount  Mount /home"
 says "     probing the disk"
 says "     reading its label"
 says "     mount: /home: wrong fs type"
 grep -q -F "Mounting /home" "$work/said" && fails "it said more than the last three lines"
+grep -q -F "home.mount: Failed" "$work/said" && fails "it said systemd's line past the unit's own"
 says "  x  quiet.service  A program that said nothing"
+says "     quiet.service: Main process exited, code=killed, status=9/KILL"
 says "     quiet.service: Failed with result 'signal'."
-grep -q -F "status=9/KILL" "$work/said" && fails "it said more than systemd's last line"
+grep -q -F "Consumed" "$work/said" && fails "it said what a unit cost, not why it failed"
+grep -q -F "Scheduled restart" "$work/said" && fails "it said more than why systemd failed it"
 says "  x  nameless.service"
+says "     nameless.service: Start request repeated too quickly."
 says "  x  blank.service  A program that drew nothing"
 says "     blank.service: Failed with result 'exit-code'."
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
