@@ -7,6 +7,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::Deserialize;
+
 use crate::findings::owner_of;
 
 /// The owner of `unit`: whoever `owners` names for `unit:<unit>`, or,
@@ -64,6 +66,84 @@ pub fn a_run(unit: &str) -> bool {
         })
 }
 
+/// What systemd-run starts a unit's description with when it's given
+/// none of its own: `[systemd-run] ` and the command.
+const SYSTEMD_RUN: &str = "[systemd-run] ";
+
+/// Whether `unit`, described as `description`, is one run that systemd-run
+/// started as a service, named or not, which whoever started it reads the
+/// end of, as the sessions' `systemd-run --unit=NAME` runs are. On 18
+/// November 9 of the 13 failed units nobody held were such runs, all told
+/// to the watcher. A run given a description of its own says what it's
+/// for, so it's told; so is a scope, as an app opened from the desktop is
+/// one, and nobody reads its end.
+pub fn started_by_systemd_run(unit: &str, description: &str) -> bool {
+    unit.ends_with(".service") && description.starts_with(SYSTEMD_RUN)
+}
+
+/// systemd's message that a unit started, `Started <description>.`,
+/// which is where a run's description is kept once the run is gone.
+pub const STARTED: &str = "39f53479d3a045ac8e11786248231fbf";
+
+/// The runs systemd-run started, each by the invocation id systemd gave
+/// that one start, with its unit's name.
+pub type Runs = BTreeMap<String, String>;
+
+/// The runs systemd-run started, from `journalctl -o json` of systemd's
+/// message that a unit started, since a run started with `--collect` is
+/// gone once it fails. Only a start a manager wrote counts: the system's,
+/// pid 1, or the account `uid`'s, from its own `init.scope`, because any
+/// process can write an entry's other fields and so could hide a unit's
+/// failures. systemd names the unit before its description when it's set
+/// to, so both shapes are read.
+#[must_use]
+pub fn systemd_runs(json_lines: &str, uid: u32) -> Runs {
+    #[derive(Deserialize)]
+    struct Entry {
+        #[serde(rename = "MESSAGE")]
+        message: Option<String>,
+        #[serde(rename = "UNIT")]
+        unit: Option<String>,
+        #[serde(rename = "USER_UNIT")]
+        user_unit: Option<String>,
+        #[serde(rename = "INVOCATION_ID")]
+        invocation: Option<String>,
+        #[serde(rename = "USER_INVOCATION_ID")]
+        user_invocation: Option<String>,
+        #[serde(rename = "_PID")]
+        pid: Option<String>,
+        #[serde(rename = "_SYSTEMD_CGROUP")]
+        cgroup: Option<String>,
+    }
+    let manager = format!("/user.slice/user-{uid}.slice/user@{uid}.service/init.scope");
+    let mut runs = Runs::new();
+    for entry in json_lines
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Entry>(l).ok())
+    {
+        // Each manager names its own units in its own field.
+        let (unit, invocation) = if entry.pid.as_deref() == Some("1") {
+            (entry.unit, entry.invocation)
+        } else if entry.cgroup.as_deref() == Some(manager.as_str()) {
+            (entry.user_unit, entry.user_invocation)
+        } else {
+            continue;
+        };
+        let (Some(unit), Some(invocation), Some(message)) = (unit, invocation, entry.message)
+        else {
+            continue;
+        };
+        let Some(said) = message.strip_prefix("Started ") else {
+            continue;
+        };
+        let description = said.strip_prefix(&format!("{unit} - ")).unwrap_or(said);
+        if started_by_systemd_run(&unit, description) {
+            runs.insert(invocation, unit);
+        }
+    }
+    runs
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -92,6 +172,92 @@ pub(crate) mod tests {
         ] {
             assert!(!a_run(unit), "{unit}: not a run, so it's told");
         }
+    }
+
+    #[test]
+    fn a_unit_systemd_run_described_is_a_run() {
+        assert!(
+            started_by_systemd_run(
+                "spent-check1.service",
+                "[systemd-run] /run/current-system/sw/bin/bash -c \"x\""
+            ),
+            "systemd-run's own description wasn't a run"
+        );
+        for description in [
+            "Measures the hour's shipping",
+            "systemd-run",
+            "[systemd-run]x",
+            "[Systemd-run] x",
+            "Runs [systemd-run] jobs",
+            "",
+        ] {
+            assert!(
+                !started_by_systemd_run("spent-check1.service", description),
+                "{description:?}: a unit that says what it's for was taken for a run"
+            );
+        }
+        assert!(
+            !started_by_systemd_run("app-gio-mpv-1234.scope", "[systemd-run] mpv film.mkv"),
+            "an app opened from the desktop, a scope nobody reads the end of, was a run"
+        );
+    }
+
+    #[test]
+    fn a_run_is_read_from_its_managers_start_alone() {
+        // A start's line: who wrote it, the field its unit is named in, the
+        // unit, its invocation id and what it said.
+        let start = |by: &str, field: &str, unit: &str, id: &str, said: &str| {
+            let invocation = if field == "UNIT" {
+                "INVOCATION_ID"
+            } else {
+                "USER_INVOCATION_ID"
+            };
+            format!(
+                "{{{by},\"{field}\":\"{unit}\",\"{invocation}\":\"{id}\",\
+                 \"MESSAGE\":\"Started {said}.\"}}\n"
+            )
+        };
+        let cgroup = |path: &str| format!("\"_SYSTEMD_CGROUP\":\"/user.slice/{path}\"");
+        let account = cgroup("user-1000.slice/user@1000.service/init.scope");
+        let system = "\"_PID\":\"1\"";
+        let app = format!(
+            "\"_PID\":\"4242\",{}",
+            cgroup("user-1000.slice/user@1000.service/app.slice/x.scope")
+        );
+        let other = cgroup("user-1001.slice/user@1001.service/init.scope");
+        let run = "[systemd-run] /bin/true";
+        let started = [
+            // The account's run, and the system's, each in its own field.
+            start(&account, "USER_UNIT", "spent-check1.service", "a1", run),
+            start(system, "UNIT", "relay-guard-2.service", "b2", run),
+            // systemd set to name the unit before its description.
+            start(
+                &account,
+                "USER_UNIT",
+                "q16-rc47-build.service",
+                "c3",
+                &format!("q16-rc47-build.service - {run}"),
+            ),
+            // Written by a process that isn't a manager, or by another
+            // account's, or naming a unit in the other manager's field.
+            start(&app, "UNIT", "sshd.service", "d4", run),
+            start(&other, "USER_UNIT", "nginx.service", "e5", run),
+            start(system, "USER_UNIT", "nginx.service", "f6", run),
+            // A service that says what it's for, and a scope.
+            start(&account, "USER_UNIT", "camera.service", "g7", "Camera"),
+            start(&account, "USER_UNIT", "app-gio-mpv-1.scope", "h8", run),
+            "not json\n".to_owned(),
+        ]
+        .concat();
+        assert_eq!(
+            systemd_runs(&started, 1000),
+            Runs::from([
+                ("a1".to_owned(), "spent-check1.service".to_owned()),
+                ("b2".to_owned(), "relay-guard-2.service".to_owned()),
+                ("c3".to_owned(), "q16-rc47-build.service".to_owned()),
+            ]),
+            "a run a manager started wasn't read, or a start no manager wrote was believed"
+        );
     }
 
     #[test]

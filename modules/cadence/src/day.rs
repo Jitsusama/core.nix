@@ -405,17 +405,28 @@ pub fn crashes(json: &str) -> BTreeMap<String, u32> {
 }
 
 /// Each unit that failed, from `journalctl -o json` of systemd's message
-/// for a unit that failed, a system's and the account's alike. A part of
-/// its name that's only digits, a scope's pid, is put as `*`, so the
-/// agents' many work scopes are one name.
+/// for a unit that failed, a system's and the account's alike, but for
+/// runs: those `holders::a_run` names, and a start of systemd-run's in
+/// `runs` that nobody `held`, since a session that names a run for itself
+/// or holds it by an owner line is told. A part of its name that's only
+/// digits, a scope's pid, is put as `*`, so the agents' many work scopes
+/// are one name.
 #[must_use]
-pub fn failed_units(json_lines: &str) -> BTreeMap<String, u32> {
+pub fn failed_units(
+    json_lines: &str,
+    runs: &holders::Runs,
+    held: &dyn Fn(&str) -> bool,
+) -> BTreeMap<String, u32> {
     #[derive(Deserialize)]
     struct Entry {
         #[serde(rename = "UNIT")]
         unit: Option<String>,
         #[serde(rename = "USER_UNIT")]
         user_unit: Option<String>,
+        #[serde(rename = "INVOCATION_ID")]
+        invocation: Option<String>,
+        #[serde(rename = "USER_INVOCATION_ID")]
+        user_invocation: Option<String>,
     }
     let mut named = BTreeMap::new();
     for line in json_lines.lines() {
@@ -425,7 +436,9 @@ pub fn failed_units(json_lines: &str) -> BTreeMap<String, u32> {
         let Some(unit) = entry.user_unit.or(entry.unit) else {
             continue;
         };
-        if holders::a_run(&unit) {
+        let invocation = entry.user_invocation.or(entry.invocation);
+        let a_run = invocation.is_some_and(|id| runs.contains_key(&id)) && !held(&unit);
+        if holders::a_run(&unit) || a_run {
             continue;
         }
         *named.entry(without_pids(&unit)).or_insert(0) += 1;
@@ -614,7 +627,7 @@ mod tests {
             r#"{"USER_UNIT":"zone-check-2af2dh.service"}"#,
             "\nnot json\n"
         );
-        let named = failed_units(lines);
+        let named = failed_units(lines, &holders::Runs::new(), &|_| false);
         assert_eq!(
             named.get("work-*-*.scope"),
             Some(&2),
@@ -640,11 +653,50 @@ mod tests {
             "\n",
             r#"{"USER_UNIT":"camera.service"}"#,
         );
-        let named = failed_units(lines);
+        let named = failed_units(lines, &holders::Runs::new(), &|_| false);
         assert_eq!(
             named.keys().collect::<Vec<_>>(),
             ["camera.service"],
             "a run of the net's or pi's was named as a failed unit"
+        );
+    }
+
+    #[test]
+    fn a_run_systemd_run_started_that_nobody_holds_isnt_a_failed_unit() {
+        // Each failure is matched to its run by the invocation id of that
+        // one start, so a unit sharing a run's name, in the other manager
+        // or started again with a description of its own, is still told.
+        let runs = holders::Runs::from([
+            ("a1".to_owned(), "spent-check1.service".to_owned()),
+            ("b2".to_owned(), "relay-guard-2.service".to_owned()),
+            (
+                "c3".to_owned(),
+                "y2ybts-race-timers-2044.service".to_owned(),
+            ),
+        ]);
+        let failed = concat!(
+            r#"{"USER_UNIT":"spent-check1.service","USER_INVOCATION_ID":"a1"}"#,
+            "\n",
+            r#"{"UNIT":"relay-guard-2.service","INVOCATION_ID":"b2"}"#,
+            "\n",
+            r#"{"UNIT":"spent-check1.service","INVOCATION_ID":"d4"}"#,
+            "\n",
+            r#"{"USER_UNIT":"y2ybts-race-timers-2044.service","USER_INVOCATION_ID":"c3"}"#,
+            "\n",
+            r#"{"USER_UNIT":"camera.service"}"#,
+        );
+        let held = |unit: &str| unit.starts_with("y2ybts-");
+        assert_eq!(
+            failed_units(failed, &runs, &held)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            [
+                ("camera.service".to_owned(), 1),
+                ("spent-check1.service".to_owned(), 1),
+                ("y2ybts-race-timers-*.service".to_owned(), 1),
+            ],
+            "a run nobody holds was named, or a unit that isn't that run, or a run its \
+             session holds, was lost"
         );
     }
 

@@ -404,9 +404,12 @@ fn tell_units(
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
-    let read = units::read(now, true, runtime.as_deref());
+    let mut read = units::read(now, true, runtime.as_deref());
     let mut failed = None;
     let known = mesh.known();
+    units::leave_runs(&mut read.failed, |unit| {
+        holders::owner(unit, &args.owners, &known).is_some()
+    });
     for tell in units::due(&read, &mut told, now, units::last_error, clock) {
         let owner =
             holders::owner(&tell.unit, &args.owners, &known).or_else(|| args.watcher.clone());

@@ -20,6 +20,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::holders::a_run;
 
+mod shown;
+
+pub use shown::leave_runs;
+use shown::{SHOW, shown_from};
+
 /// How far back restarts are counted.
 pub const WITHIN: i64 = 15 * 60;
 
@@ -48,11 +53,13 @@ pub struct Restart {
     pub at: i64,
 }
 
-/// A unit in the failed state, and since when, when systemd says.
+/// A unit in the failed state, since when, when systemd says, and whether
+/// systemd-run started it, a run whose starter reads its end.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Failed {
     pub unit: String,
     pub since: Option<i64>,
+    pub run: bool,
 }
 
 /// One of a daemon's sources, as its socket's health says it.
@@ -201,9 +208,14 @@ pub fn read(at: i64, now: bool, runtime: Option<&Path>) -> Read {
         .unwrap_or_default()
         .lines()
         .filter_map(|line| line.split_whitespace().next())
-        .map(|unit| Failed {
-            unit: unit.to_owned(),
-            since: changed(unit),
+        .map(|unit| {
+            let shown = run("systemctl", &[&SHOW[..], &[unit]].concat()).unwrap_or_default();
+            let (since, run) = shown_from(unit, &shown);
+            Failed {
+                unit: unit.to_owned(),
+                since,
+                run,
+            }
         })
         .collect();
     let sockets = runtime.and_then(|r| r.join("daemons").read_dir().ok());
@@ -240,21 +252,6 @@ pub fn last_error(unit: &str) -> Option<String> {
     let said = run("journalctl", &args).ok()?;
     let line = said.lines().map(str::trim).find(|l| !l.is_empty())?;
     Some(line.chars().take(200).collect())
-}
-
-/// When systemd says `unit` last changed state, which for one failed is
-/// when it failed.
-fn changed(unit: &str) -> Option<i64> {
-    let args = [
-        "--user",
-        "show",
-        "--timestamp=unix",
-        "-p",
-        "StateChangeTimestamp",
-        "--value",
-    ];
-    let said = run("systemctl", &[&args[..], &[unit]].concat()).ok()?;
-    said.trim().strip_prefix('@')?.parse().ok()
 }
 
 /// Asks a daemon's socket how it stands, as daemon-serve answers any
@@ -568,6 +565,7 @@ mod tests {
             failed: vec![Failed {
                 unit: "notices.service".into(),
                 since: Some(50),
+                run: false,
             }],
             ..Read::default()
         };
@@ -591,6 +589,7 @@ mod tests {
         let failed = |unit: &str| Failed {
             unit: unit.into(),
             since: Some(50),
+            run: false,
         };
         // Two kinds of unit failed on 17 November that no one held, each
         // a run its starter already reads the end of, beside a service.
