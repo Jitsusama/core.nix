@@ -155,10 +155,12 @@ function opensKept(shared) {
 // a plain place asked to list now (`asNow`, a margin mark into On);
 // "led" as a source leads to it, for one asked for by name (`named`) or
 // led to (`led`, Super+N's). Each of those makes its rows now, each
-// source hiding its own under a share. Otherwise "kept", its rows as they were kept, only
-// while nothing may see the screen (`shared`, Shared.js's hidden), since
-// they were made before any share began and a shut launcher never makes
-// them again: Super+V's would show a copy, Super+O's a waiting ask.
+// source hiding its own under a share. Otherwise "kept", its rows as
+// they were kept, only while nothing may see the screen (`shared`,
+// Shared.js's hidden), since they were made before any share began and a
+// shut launcher never makes them again: Super+V's would show a copy,
+// Super+O's or For You's a waiting ask. Nothing marks which kept rows
+// are private, so every such place opens whole.
 function keptPlaceListed(place) {
     if (place.listed === true) {
         return "source";

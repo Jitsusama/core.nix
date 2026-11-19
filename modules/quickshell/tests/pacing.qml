@@ -478,11 +478,11 @@ QtObject {
         // ask. A place listed as it stands as it opens draws either way.
         const chord = { listed: false, asNow: false, named: false, led: false };
         const under = shared => Object.assign({}, chord, { shared: shared });
-        check(failures, "a chord with nothing sharing draws the copies or asks kept",
+        check(failures, "Super+V with nothing sharing draws the copies kept",
             Wanted.keptPlaceListed(under(false)), "kept");
-        check(failures, "one under a share opens them whole",
+        check(failures, "Super+V, or For You asked for from outside, under a share opens whole",
             Wanted.keptPlaceListed(under(true)), "");
-        check(failures, "as does a chord that never said whether it's shared",
+        check(failures, "as does a chord missing whether it's shared",
             Wanted.keptPlaceListed(Object.assign({}, chord)), "");
         check(failures, "Windows under a share lists its source as it stands",
             Wanted.keptPlaceListed(Object.assign(under(true), { listed: true })), "source");

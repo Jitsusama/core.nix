@@ -146,7 +146,6 @@ class Shell:
         self.process.terminate()
         self.process.wait(timeout=10)
         self.launch("ab")
-        self.unshared()
         # smithay keeps one keymap active for the seat and sends a virtual keyboard's only when
         # it differs from that one, while a keyboard made since is given the seat's own: the
         # restarted shell would read wtype's next word, if it's the last one typed, by the
@@ -157,14 +156,15 @@ class Shell:
     def unshared(self) -> None:
         """Wait until the shell knows nothing sees the screen, which it can't till niri says.
 
-        Until then a chord opens home, and a place with copies or asks, whole (Wanted.js's
-        opensKept and keptPlaceListed), so a case timing a kept opening waits for this first.
+        Until then a chord opens home, and a kept place it doesn't list afresh, whole (Wanted.js's
+        opensKept and keptPlaceListed), so a case timing a kept chord waits for this first, after
+        each start; a restart doesn't, since some cases act before the shell has made its spots.
         The log's tail says why copies hide, a cast seen or niri yet to say.
         """
         deadline = time.monotonic() + STARTING.total_seconds()
         while self.showing().get("shared") is not False:
             assert time.monotonic() < deadline, f"the screen never read unshared:\n{self.tail()}"
-            time.sleep(POLL)
+            time.sleep(POLL * 2)
 
     def launch(self, mode: str) -> None:
         """Start the shell alone, its log opened in this mode, and wait until it answers, closed."""

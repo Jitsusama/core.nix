@@ -193,7 +193,8 @@ PRESENTED_SAID = re.compile(r"launcher: opening presented (\d+) ms from the chor
 def shell() -> Iterator[Shell]:
     """Give the shell once it has kept home by itself, started once a run and never opened.
 
-    It waits for niri to have said its casts too, as each restart does (Shell.unshared).
+    It waits for niri to have said its casts too (Shell.unshared), as each case does after
+    restarting the shell before it times a kept chord.
     """
     started = launcher_on_niri.started()
     started.unshared()
@@ -211,6 +212,7 @@ def home_kept_after(shell: Shell) -> Iterator[None]:
     """
     yield
     shell.launcher_left_closed()
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
 
 
@@ -511,6 +513,7 @@ def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_starte
     to the frame, while every later chord drew from what was kept in 13 to 35.
     """
     shell.restart()
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
     timed = latest(openings(shell))
     shell.as_account(shell.ipc("collection", "on"))
@@ -820,6 +823,7 @@ def test_an_opening_as_the_shell_starts_puts_off_keeping_its_places(shell: Shell
             f"opened as the shell started, it never kept its places once shut:\n{shell.tail()}"
         )
         time.sleep(launcher_on_niri.POLL)
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
     timed = latest(openings(shell))
     shell.as_account(shell.ipc("collection", "on"))
@@ -1641,6 +1645,7 @@ def test_super_n_first_after_a_restart_draws_the_notices_on_screen_from_what_was
     none on screen it opens the notices, and with some those on screen, each kept apart.
     """
     shell.restart()
+    shell.unshared()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     launcher_on_niri.warmed(shell)
     timed = latest(openings(shell))

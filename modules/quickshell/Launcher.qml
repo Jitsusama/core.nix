@@ -9714,9 +9714,9 @@ Scope {
             // Whether, closed, it holds home kept for the next opening.
             kept: root.homeHeld,
             // Whether the screen may be shared, as it may until niri has
-            // said its casts, so a chord opens a place with copies or asks
-            // whole (Wanted.keptPlaceListed), and a case timing one kept
-            // waits for this to be false.
+            // said its casts, so a chord opens home, and every kept place
+            // not listed afresh, whole (Wanted.keptPlaceListed), and a case
+            // timing one kept waits for this to be false.
             shared: root.screenShared(),
             path: root.path,
             // Whether each of the path's steps is said whole in the field.

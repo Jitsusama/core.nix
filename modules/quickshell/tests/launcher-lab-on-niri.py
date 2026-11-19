@@ -99,6 +99,7 @@ def shell() -> Iterator[Shell]:
     """Give the shell once it has kept home by itself, started once a run and never opened."""
     launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", str(PROGRAMS))))
     with launcher_on_niri.running() as started:
+        started.unshared()
         started.launcher_until(lambda shown: shown.get("kept"))
         yield started
 
