@@ -11,7 +11,9 @@
 // and not before. A second card's load is given up as the watchdog gives
 // up one a busy driver holds up, since FileView refuses a pipe at once
 // and nothing else in a sandbox hangs a read. It exits 0 once every case
-// holds, and otherwise 1, saying which didn't.
+// holds, and otherwise 1, saying which didn't. Long because its steps are
+// one chain, each beginning from the cards, files and holds the one before
+// left, which a split would have to build again in every part.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -205,11 +207,8 @@ ShellRoot {
     // Holds once `check` does, failing past `ms` as `what` never held,
     // with what was said. `check` is tried first, so a poll that comes
     // late can't fail a wait that holds. A wait on a load gets four
-    // seconds a card, for a loaded builder. An ask five seconds past the
-    // last look loads everything again, through the calls the case makes
-    // itself, so such a load proves only what the case's own would. A wait
-    // on a load said to come unasked looks first, so no ask in it can.
-    // Only a wait on a give-up, which no load brings, runs past four.
+    // seconds a card, for a loaded builder. Only a wait on a give-up,
+    // which no load brings, runs past four.
     function within(ms, check) {
         const began = Date.now();
         return () => {
@@ -225,6 +224,19 @@ ShellRoot {
     // Whether nothing is loading for a cable.
     function swept() {
         return networks.cableLoading === null && networks.cablesAsked.length === 0;
+    }
+
+    // `step`, once every load under way has landed, with a look counted
+    // from then. An ask five seconds past the last look loads everything
+    // again, and a load skips what's already under way, so a step that
+    // writes a file and asks begins quiet: no load asked before its write
+    // can answer for it, and no ask in its first five seconds looks again.
+    function quiet(name, step) {
+        return () => waits.until(`the loads before ${name} landed`,
+            within(4000, () => swept() && networks.factsAsked.length === 0), () => {
+            networks.lookedAt = Date.now();
+            step();
+        });
     }
 
     Component.onCompleted: Qt.callLater(root.begun)
@@ -288,7 +300,7 @@ ShellRoot {
             networks.upAt -= 3600 * 1000;
             Expect.expect("the uptime is counted on from its last load",
                 said().endsWith(" | ends in 1 h"), said());
-            root.changed();
+            root.quiet("changed", root.changed)();
         });
     }
 
@@ -314,7 +326,7 @@ ShellRoot {
             networks.stillReading, String(networks.stillReading));
         waits.until("a terminal asking on told what they say now", within(4000, () =>
             !networks.stillReading && said() === "100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in 3 min"
-                && brokenIn() === "5"), root.opening);
+                && brokenIn() === "5"), root.quiet("opening", root.opening));
     }
 
     // The uptime stepped back by more than a minute, and nothing else
@@ -326,7 +338,7 @@ ShellRoot {
         shown.open = true;
         waits.until("the launcher told of the uptime once the opening's load lands",
             within(4000, () => told.includes("100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in 1 h")),
-            root.steady);
+            root.quiet("steady", root.steady));
     }
 
     // The uptime loaded again as it was counted on: nothing is told.
@@ -338,7 +350,7 @@ ShellRoot {
             () => {
             Expect.expect("an uptime load that agrees with the count tells nothing",
                 told.length === 0, JSON.stringify(told));
-            root.served();
+            root.quiet("served", root.served)();
         });
     }
 
@@ -356,7 +368,7 @@ ShellRoot {
             waits.until("shut, a name server changed makes its drawer again",
                 within(4000, () =>
                     JSON.stringify(networks.glances.enp0s1).includes("1.1.1.1")),
-                root.toldServers);
+                root.quiet("toldServers", root.toldServers));
         });
     }
     function toldServers() {
@@ -366,30 +378,25 @@ ShellRoot {
         networks.reloadFacts();
         waits.until("open, the launcher is told of a name server changed",
             within(4000, () => told.some(each => each.includes(" | 8.8.8.8 | "))),
-            root.recabled);
+            root.quiet("recabled", root.recabled));
     }
 
     // Open, with no cable shown, so nothing loads it each second: once its
-    // files load again and land, changed, the launcher is told. Opening set
-    // off a sweep, which may have read the speed already, so it's let land
-    // first, or the speed written here would be asked of no load.
+    // files load again and land, changed, the launcher is told.
     function recabled() {
-        waits.until("the opening's sweep landed", within(4000, root.swept), () => {
-            told = [];
-            Written.written(speed, "2500\n");
-            networks.recable();
-            waits.until("the launcher told once a cable's load lands changed",
-                within(4000, () => told.some(each => each.startsWith("2.5 Gb/s | "))),
-                root.opened);
-        });
+        told = [];
+        Written.written(speed, "2500\n");
+        networks.recable();
+        waits.until("the launcher told once a cable's load lands changed",
+            within(4000, () => told.some(each => each.startsWith("2.5 Gb/s | "))),
+            root.quiet("opened", root.opened));
     }
 
     // A cable shown, held as a step into it: its link loads again each
-    // second, unasked, and the launcher is told when it changes.
-    // Looked at now, so no ask in the five seconds it waits looks again:
-    // the load it waits on is the tick's alone, a second and a sweep on.
+    // second, unasked, and the launcher is told when it changes. Begun
+    // quiet, so the load it waits on is the tick's alone, a second and a
+    // sweep on.
     function opened() {
-        networks.lookedAt = Date.now();
         shown.held = [{ row: { key: "networks:enp0s1" } }];
         told = [];
         Written.written(speed, "1000\n");
@@ -409,7 +416,9 @@ ShellRoot {
         networks.links = [Object.assign({}, docked, { state: "no link" })];
         Expect.expect("a cable the daemon says has changed is said as it says",
             said().startsWith("nothing at the other end | "), said());
-        waits.until("the changed cable loaded again", within(4000, () => root.swept()
+        // The load let go still reads its files before the next is asked,
+        // so this is two sweeps.
+        waits.until("the changed cable loaded again", within(8000, () => root.swept()
             && networks.cables.enp0s1 !== undefined), () => {
             Expect.expect("a load begun before its link changed isn't kept",
                 kept.length > 0 && kept.every(state => state === "no link"),
@@ -550,7 +559,7 @@ ShellRoot {
                     within(9000, () => networks.factsStuck[hungFact.path] !== undefined
                         && !networks.stillReading), () => {
                     networks.factsStuck = Object.create(null);
-                    root.retried();
+                    root.quiet("retried", root.retried)();
                 });
             });
         });
