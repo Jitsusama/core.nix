@@ -133,13 +133,17 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
     assert "Failed with result 'watchdog'" in said, said
     # The watchdog's signal, which the harness's killed-host test sends its host too.
     assert "status=6/ABRT" in said, said
-    # The signal dumps a core, which the host's unlimited limit lets
-    # systemd-coredump keep, with the crash's stack trace in the journal.
-    host.machine.wait_until_succeeds(
-        "journalctl --no-pager -t systemd-coredump"
-        f" | grep -qF 'Process {first} (sleep) of user 1000 dumped core.'",
-        timeout=COMING_BACK,
-    )
+    # The signal would dump a core, which the host's limit of 0 refuses:
+    # systemd-coredump says so rather than writing one, and still names the
+    # signal, which is what a crash leaves.
+    for line in (
+        f"Resource limits disable core dumping for process {first} (sleep).",
+        f"Process {first} (sleep) of user 1000 terminated abnormally with signal 6/ABRT",
+    ):
+        host.machine.wait_until_succeeds(
+            f"journalctl --no-pager -t systemd-coredump | grep -qF '{line}'",
+            timeout=COMING_BACK,
+        )
     assert host.starts()[0] == first
     assert first not in host.starts()[1:]
     # It came back by itself, so nobody is told it's down.

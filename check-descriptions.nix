@@ -2640,8 +2640,8 @@
     commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
-    with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
-    conversations to share, node's heap limit set to its realm's heapMb, and pi's SSH agent
+    with it, a core limit of 0 so it keeps no core when it dies, sixteen codemode workers for
+    its conversations to share, node's heap limit set to its realm's heapMb, and pi's SSH agent
     proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
     restart, and a machine naming none, or a Mac, gets none
@@ -5508,18 +5508,18 @@
   '';
   vm-cores-kept-from-their-owner = ''
     the cores' folder is root's alone from boot and after each crash, so an account that aborts
-    two of its own processes, a stand-in pi host named node and sleep, can neither open nor dump
+    two of its own processes, a stand-in pi named node and sleep, can neither open nor dump
     either core, while the journal still shows it, in wheel, each crash's stack trace; the
     removal keeps a node's core five hours on and takes it seven hours on, leaving the other's
   '';
   vm-a-wedged-pi-starts-again = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
-    killed by the watchdog and started again once its loop stops pinging, its abort's core kept by
-    systemd-coredump, and killed 10 s on when it ignores that abort, and one that
-    crashes
-    at every start is started three times, then left failed with start-limit-hit, and one that
-    refuses what it was given is left down at once, each saying which host is down and why, and
-    one whose command the kernel kills for memory stays up, unrestarted
+    killed by the watchdog and started again once its loop stops pinging, its abort keeping no
+    core while the journal still names its signal, and killed 10 s on when it ignores that
+    abort, and one that crashes at every start is started three times, then left failed with
+    start-limit-hit, and one that refuses what it was given is left down at once, each saying
+    which host is down and why, and one whose command the kernel kills for memory stays up,
+    unrestarted
   '';
   vm-pi-conversations-come-back = ''
     a realm's attended pi host, its unit as the module renders it on the harness's own host
