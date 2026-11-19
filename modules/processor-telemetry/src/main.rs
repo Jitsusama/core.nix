@@ -45,6 +45,8 @@ fn help() -> Help {
 
 /// It runs as long as its socket's unit does, so it only ends by failing.
 fn main() -> ExitCode {
+    // Its ready line counts from here, so building the runtime is in it.
+    let started = Instant::now();
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         if !context.args.is_empty() {
             return Err(
@@ -59,12 +61,11 @@ fn main() -> ExitCode {
             .map_err(|error| {
                 Failure::new(Exit::Failed, "it couldn't start").because(error.to_string())
             })?;
-        runtime.block_on(serve())
+        runtime.block_on(serve(started))
     })
 }
 
-async fn serve() -> Result<(), Failure> {
-    let started = Instant::now();
+async fn serve(started: Instant) -> Result<(), Failure> {
     let class = Path::new("/sys/class/intel_pmt");
     let region = service::find(class, layout::GUID);
     let resting = service::find(class, resting::GUID);
