@@ -7,6 +7,7 @@
 # systemd said of a unit whose programs said nothing, or nothing that
 # shows; at most four units; the account's theme and the console's marks;
 # the way out; why a journal that couldn't be read gave a unit nothing;
+# a file the journal skipped said once, above the way out;
 # each unit described when the journal is slow; and each unit and the
 # way out in time when the journal stalls. How it lays itself out at the
 # console's width is the crate's own tests'.
@@ -43,7 +44,8 @@ EOF
 # own last, so a summary that takes its last line there can be given a
 # blank. With $WORK/stall there, it stalls, as a journal on a failing
 # disk can; with $WORK/slow, it answers each read late; with
-# $WORK/broken, it can't open the journal at all.
+# $WORK/broken, it can't open the journal at all; with $WORK/skipping,
+# it skips a file a crash left truncated, as every read would.
 {
   printf '#!%s\n' "$BASH"
   cat <<'EOF'
@@ -52,6 +54,9 @@ EOF
 if [[ -f $WORK/broken ]]; then
   echo "Failed to open files: Input/output error" >&2
   exit 1
+fi
+if [[ -f $WORK/skipping ]]; then
+  echo "Journal file /j/system@a.journal~ is truncated, ignoring file." >&2
 fi
 # A slow journal answers well inside a read's five seconds, but too
 # slowly for every read to fit in the summary's ten.
@@ -182,6 +187,33 @@ for unit in a b c d e; do echo "$unit.service|$unit" >> "$work/failed"; done
 said
 [[ $(grep -c '^  x  ' "$work/said") == 4 ]] || fails "it listed other than four units"
 says "     and 5 more"
+
+# A file the journal skipped is said once, for every unit, since any
+# unit's lines may have been in it, and is no unit's reason: the units
+# still show what the rest of the journal held, and nameless.service,
+# with nothing in it here, shows nothing under its name.
+touch "$work/skipping"
+mv "$work/systemd/nameless.service" "$work/nameless"
+said
+mv "$work/nameless" "$work/systemd/nameless.service"
+says "     mount: /home: wrong fs type"
+under=$(grep -A 1 -x -F "  x  nameless.service" "$work/said" || true)
+# The row after its name is blank, and $(...) drops a blank last row.
+[[ $under == "  x  nameless.service" ]] ||
+  fails "a skipped file was taken for nameless.service's reason"
+at=0
+for line in "     and 5 more" \
+  "     journalctl skipped a journal file, so lines may be missing:" \
+  "     Journal file /j/system@a.journal~ is truncated, ignoring file." \
+  "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."; do
+  next=$(grep -n -x -F -- "$line" "$work/said" | cut -d: -f1 | head -n 1) ||
+    fails "no line \"$line\""
+  ((next > at)) || fails "\"$line\" isn't where it belongs"
+  at=$next
+done
+rows=$(grep -c -F "ignoring file" "$work/said" || true)
+[[ $rows == 1 ]] || fails "the skipped file was said other than once"
+rm "$work/skipping"
 
 # A journal that can't be opened says why, in its own words, under each
 # unit it couldn't speak for.

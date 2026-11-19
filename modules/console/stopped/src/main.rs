@@ -25,7 +25,9 @@
 //! long, so every command it asks is held to a deadline (asking.rs): one
 //! that stalls, as a journal on a failing disk can, is stopped and not
 //! asked again, and the summary says what the others told it, and under
-//! each unit the journal couldn't speak for, why.
+//! each unit the journal couldn't speak for, why. A journal on a failing
+//! disk can skip the files it can't read and say so, which the summary
+//! says once, since any unit's lines may have been in them.
 
 mod asking;
 mod summary;
@@ -79,11 +81,14 @@ fn run(context: &Context) -> Result<(), Failure> {
         .iter()
         .map(|name| described(&budget, name).unwrap_or_else(|| name.clone()))
         .collect();
+    let mut skipped = Vec::new();
     let units: Vec<Failed> = shown
         .iter()
         .zip(abouts)
         .map(|(name, about)| {
-            let (said, unread) = last(name, |matching, lines| journal(&budget, matching, lines));
+            let (said, unread) = last(name, |matching, lines| {
+                journal(&budget, matching, lines, &mut skipped)
+            });
             Failed {
                 about,
                 said,
@@ -94,7 +99,13 @@ fn run(context: &Context) -> Result<(), Failure> {
         .collect();
     let pen = on_the_console(context);
     context
-        .say(&summary::text(&units, names.len(), &pen, context.room))
+        .say(&summary::text(
+            &units,
+            names.len(),
+            &skipped,
+            &pen,
+            context.room,
+        ))
         .map_err(|error| {
             Failure::new(Exit::Failed, "the summary couldn't be said").because(error.to_string())
         })
@@ -213,36 +224,66 @@ fn last(
 
 /// The last `lines` this boot's journal holds matching every one of
 /// `matching`, as they were said, or why the journal couldn't be read in
-/// time or at all (`heard`).
-fn journal(budget: &Budget, matching: &[&str], lines: usize) -> Result<Vec<String>, String> {
+/// time or at all (`heard`). Each file it skipped is added
+/// to `skipped`, once however many reads skip it.
+fn journal(
+    budget: &Budget,
+    matching: &[&str],
+    lines: usize,
+    skipped: &mut Vec<String>,
+) -> Result<Vec<String>, String> {
     let lines = format!("--lines={lines}");
     let mut args = vec!["--boot"];
     args.extend(matching);
     args.extend([lines.as_str(), "--output=cat", "--no-pager", "--quiet"]);
-    heard(&budget.ask("journalctl", &args)?)
+    let (said, skipping) = heard(&budget.ask("journalctl", &args)?);
+    for file in skipping {
+        if !skipped.contains(&file) {
+            skipped.push(file);
+        }
+    }
+    said
 }
 
+/// What journalctl says of each of its files it skipped, as
+/// journal-util.c words every kind: truncated, corrupted, with a feature
+/// it doesn't know, past its limit of files, or any other error opening
+/// it. It says them whatever `--quiet` asks, and still ends well.
+const SKIPPING: &str = ", ignoring file";
+
+/// The line journalctl adds under a file with a feature it doesn't know,
+/// saying how to look closer, which says nothing of why on its own. It's
+/// found anywhere in a line, since systemd's logging may put words first.
+const SKIPPING_HINT: &str = "Use SYSTEMD_LOG_LEVEL=debug journalctl --file=";
+
 /// What a journal read printed, a line each, or, where it printed nothing
-/// that shows, why: the last line it said on stderr that shows, whether it
-/// ended badly or skipped what it couldn't read and ended well, as it does
-/// with a failing disk's files, or else how it ended, where that was
-/// badly. Nothing matching ends well and says nothing, so it's no reason.
-fn heard(said: &Output) -> Result<Vec<String>, String> {
+/// that shows, why: the last line it said on stderr that shows, or else
+/// how it ended, where that was badly. Nothing matching ends well and
+/// says nothing, so it's no reason. Beside it, what it said of each file
+/// it skipped, however the read went, which is no unit's reason, since
+/// the file may hold only an earlier boot's lines.
+fn heard(said: &Output) -> (Result<Vec<String>, String>, Vec<String>) {
     let lines = |stream: &[u8]| -> Vec<String> {
         String::from_utf8_lossy(stream)
             .lines()
             .map(str::to_owned)
             .collect()
     };
+    let (skipped, words): (Vec<String>, Vec<String>) = lines(&said.stderr)
+        .into_iter()
+        .map(|line| line.trim().to_owned())
+        .filter(|line| !line.contains(SKIPPING_HINT))
+        .partition(|line| line.contains(SKIPPING));
     let printed = lines(&said.stdout);
     if !summary::last_shown(printed.clone(), 1).is_empty() {
-        return Ok(printed);
+        return (Ok(printed), skipped);
     }
-    match summary::last_shown(lines(&said.stderr), 1).pop() {
-        Some(why) => Err(why.trim().to_owned()),
+    let why = match summary::last_shown(words, 1).pop() {
+        Some(why) => Err(why),
         None if !said.status.success() => Err(format!("journalctl ended with {}", said.status)),
         None => Ok(printed),
-    }
+    };
+    (why, skipped)
 }
 
 #[cfg(test)]
@@ -273,7 +314,8 @@ mod tests {
                 1,
                 "disk gone\n",
                 "Failed to read: Input/output error\n"
-            )),
+            ))
+            .0,
             Ok(lines(&["disk gone"])),
             "a read that printed a line that shows lost it"
         );
@@ -286,21 +328,13 @@ mod tests {
                 1,
                 "\u{2800}\n",
                 "Failed to open files: Input/output error\n\x1b[0m\n"
-            )),
+            ))
+            .0,
             Err("Failed to open files: Input/output error".to_owned()),
             "a failed read gave other than the last of its words that shows"
         );
         assert_eq!(
-            heard(&read(
-                0,
-                "",
-                "Journal file system.journal is truncated, ignoring file.\n"
-            )),
-            Err("Journal file system.journal is truncated, ignoring file.".to_owned()),
-            "a read that skipped what it couldn't read and printed nothing said nothing"
-        );
-        assert_eq!(
-            heard(&read(1, "", "")),
+            heard(&read(1, "", "")).0,
             Err("journalctl ended with exit status: 1".to_owned()),
             "a failed read that said nothing didn't say how it ended"
         );
@@ -310,9 +344,97 @@ mod tests {
     fn a_read_that_matched_nothing_is_no_reason() {
         assert_eq!(
             heard(&read(0, "", "")),
-            Ok(Vec::new()),
+            (Ok(Vec::new()), Vec::new()),
             "nothing matching was taken for a journal that couldn't be read"
         );
+    }
+
+    #[test]
+    fn a_skipped_file_is_set_aside_and_is_no_reason() {
+        // An earlier boot's journal left behind by a crash is skipped on
+        // every read, whatever unit it asks of, so it's no unit's reason.
+        assert_eq!(
+            heard(&read(
+                0,
+                "",
+                "Journal file /j/system@a.journal~ is truncated, ignoring file.\n"
+            )),
+            (
+                Ok(Vec::new()),
+                lines(&["Journal file /j/system@a.journal~ is truncated, ignoring file."])
+            ),
+            "a skipped file was taken for a unit's reason, or not set aside"
+        );
+        assert_eq!(
+            heard(&read(
+                0,
+                "",
+                "Journal file /j/b.journal uses an unsupported feature, ignoring file.\n\
+                 Use SYSTEMD_LOG_LEVEL=debug journalctl --file=/j/b.journal to see the details.\n"
+            )),
+            (
+                Ok(Vec::new()),
+                lines(&["Journal file /j/b.journal uses an unsupported feature, ignoring file."])
+            ),
+            "the hint under an unsupported file was taken for a reason or a file"
+        );
+        assert_eq!(
+            heard(&read(
+                1,
+                "",
+                "Journal file /j/c.journal corrupted, ignoring file.\n\
+                 Failed to open files: Input/output error\n"
+            )),
+            (
+                Err("Failed to open files: Input/output error".to_owned()),
+                lines(&["Journal file /j/c.journal corrupted, ignoring file."])
+            ),
+            "a failed read that skipped a file lost its reason or the file"
+        );
+        assert_eq!(
+            heard(&read(
+                1,
+                "",
+                "Journal file /j/c.journal corrupted, ignoring file.\n"
+            )),
+            (
+                Err("journalctl ended with exit status: 1".to_owned()),
+                lines(&["Journal file /j/c.journal corrupted, ignoring file."])
+            ),
+            "a failed read that only skipped a file didn't say how it ended"
+        );
+        assert_eq!(
+            heard(&read(
+                0,
+                "disk gone\n",
+                "Journal file /j/c.journal corrupted, ignoring file.\n"
+            )),
+            (
+                Ok(lines(&["disk gone"])),
+                lines(&["Journal file /j/c.journal corrupted, ignoring file."])
+            ),
+            "a read that printed lines lost the file it skipped"
+        );
+    }
+
+    #[test]
+    fn every_kind_of_skipped_file_is_set_aside() {
+        for said in [
+            "Too many journal files (limit is at 7168) in scope, ignoring file '/j/d.journal'.",
+            "An error was encountered while opening journal file or directory /j/e.journal, \
+             ignoring file: Input/output error",
+            "journalctl[1]: Journal file /j/f.journal is truncated, ignoring file.",
+        ] {
+            assert_eq!(
+                heard(&read(
+                    0,
+                    "",
+                    &format!("{said}\njournalctl[1]: {}/j/f\n", super::SKIPPING_HINT)
+                )),
+                (Ok(Vec::new()), lines(&[said])),
+                "a skipped file or its hint was taken for a reason"
+            );
+        }
     }
 
     #[test]
