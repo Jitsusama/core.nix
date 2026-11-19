@@ -74,6 +74,7 @@ mod ready;
 mod rerun;
 mod rules;
 mod running;
+mod seen;
 mod sharing;
 mod stall;
 mod state;
@@ -351,6 +352,10 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;
         }
+        if !read_by_a_round(commit, main, files) {
+            eprintln!("merge-net: {}", seen::unread(short(commit)));
+            return ExitCode::FAILURE;
+        }
         return turn::passed(commit, passes, files, said);
     }
     eprintln!(
@@ -398,14 +403,35 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
     if gated::asked(&asked) {
         return true;
     }
-    let base = git(&["merge-base", main, commit]).unwrap_or_else(|_| main.to_owned());
-    let Some(change) = patch_id(Path::new("."), &base, commit) else {
-        return false;
-    };
-    let earlier: Vec<String> = candidates(commit, main, files)
-        .unwrap_or_default()
+    let earlier: Vec<String> = same_change(commit, main, files)
         .into_iter()
         .filter(|candidate| knows_rules(candidate))
+        .collect();
+    gated::asked(&earlier.iter().map(String::as_str).collect::<Vec<_>>())
+}
+
+/// Whether a review round of ours read `commit`, or an earlier commit of
+/// the same change that a clean rebase carried here (`seen.rs`). From 17
+/// to 19 November 240 of 429 reviewed pull requests merged at a head no
+/// round had read, a fix pushed after the council going to main unread.
+fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> bool {
+    let read = seen::witnessed(&seen::rounds_folder());
+    read.contains(commit)
+        || same_change(commit, main, files)
+            .iter()
+            .any(|earlier| read.contains(earlier))
+}
+
+/// The earlier commits of `commit`'s change touching `files` whose own
+/// change, against their base on main, is the same patch as `commit`'s.
+fn same_change(commit: &str, main: &str, files: &[String]) -> Vec<String> {
+    let base = git(&["merge-base", main, commit]).unwrap_or_else(|_| main.to_owned());
+    let Some(change) = patch_id(Path::new("."), &base, commit) else {
+        return Vec::new();
+    };
+    candidates(commit, main, files)
+        .unwrap_or_default()
+        .into_iter()
         .filter(|candidate| {
             ready::when_same(
                 candidate,
@@ -416,8 +442,7 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
             )
             .is_some()
         })
-        .collect();
-    gated::asked(&earlier.iter().map(String::as_str).collect::<Vec<_>>())
+        .collect()
 }
 
 /// What to do about `commit`, which must run again: wait for the run
@@ -513,6 +538,12 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             let quarantine = quarantine.unwrap_or_default();
             if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
                 return Ok(said);
+            }
+            // The train merges what it carries, so a head no round read
+            // boards no more than it merges through may_merge.
+            if !read_by_a_round(commit, main, &files) {
+                eprintln!("merge-net: {}", seen::unread(short(commit)));
+                return Ok(ExitCode::FAILURE);
             }
             // A head behind main boards the train as one on it does
             // (`boarding.rs`), and one that can't is told why.
