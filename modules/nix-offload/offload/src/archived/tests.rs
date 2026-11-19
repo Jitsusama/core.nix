@@ -551,6 +551,30 @@ fn unchanged_reads_a_sparse_index() {
     assert_eq!(unchanged(&top, &head, &scratch), Ok(false), "changed");
 }
 
+// A git with no sparse settings expands a sparse index to every file of
+// HEAD before it diffs, reading each tree outside the cones: in a large
+// repository's tree on 19 November that held 3 GB for ten minutes. So a
+// tree within the folder outside the cone is taken away here, which only
+// a git that keeps the index sparse never reads.
+#[test]
+fn unchanged_keeps_a_sparse_index_sparse() {
+    let folder = tempfile::tempdir().unwrap();
+    let top = repository(folder.path(), &[("a/x", "1"), ("b/c/y", "2")]);
+    git(
+        &top,
+        &["sparse-checkout", "set", "--cone", "--sparse-index", "a"],
+    );
+    let head = git(&top, &["rev-parse", "HEAD"]);
+    let outside = git(&top, &["rev-parse", "HEAD:b/c"]);
+    let (fan, rest) = outside.split_at(2);
+    fs::remove_file(top.join(".git/objects").join(fan).join(rest)).unwrap();
+
+    assert_eq!(
+        unchanged(&top, &head, &folder.path().join("scratch")),
+        Ok(true)
+    );
+}
+
 // An index a session planted as a pipe would hold the run forever, and
 // one past a tarball's size would fill the run's folder, most often in
 // memory.

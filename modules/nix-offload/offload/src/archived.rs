@@ -169,8 +169,36 @@ fn diffed(top: &Path, head: &str, run: &Run) -> Result<bool, String> {
             .and_then(|file| copied(file, &run.dir.join(&shared)))
             .map_err(|error| format!("couldn't copy its split index's {shared}: {error}"))?;
     }
+    // Without the tree's cones and sparse settings, git expands a sparse
+    // index to every file of HEAD before it diffs, reading each tree
+    // outside the cones: in a large repository that's minutes and
+    // gigabytes. Cone mode's own file names folders alone, and nothing in
+    // it runs. Whether the index is kept sparse is the tree's own say,
+    // since git can't make a split index sparse.
+    let mut sparse: Vec<&str> = Vec::new();
+    if cones(top)?.is_some() {
+        let text =
+            sparse_file(top).map_err(|why| format!("is sparse, but its sparse file {why}"))?;
+        let info = borrowed.dir.join("info");
+        fs::create_dir_all(&info)
+            .and_then(|()| fs::write(info.join("sparse-checkout"), text))
+            .map_err(|error| format!("couldn't copy its sparse file: {error}"))?;
+        sparse = vec![
+            "-c",
+            "core.sparseCheckout=true",
+            "-c",
+            "core.sparseCheckoutCone=true",
+            "-c",
+            if setting(top, "index.sparse")? {
+                "index.sparse=true"
+            } else {
+                "index.sparse=false"
+            },
+        ];
+    }
     let diffed = borrowed
         .git()
+        .args(&sparse)
         .current_dir(top)
         .env("GIT_WORK_TREE", top)
         .env("GIT_INDEX_FILE", &index)
@@ -339,18 +367,7 @@ fn unpacked_under(archived: Archived, root: &str) -> (String, PathBuf) {
 /// The cones the git tree `top` is checked out to, or none when it isn't
 /// sparse or is a full cone; refused when it's sparse by patterns.
 fn cones(top: &Path) -> Result<Option<Vec<String>>, String> {
-    // Unset reads false; a value git can't read is refused, never taken
-    // as not sparse, which would send all of HEAD.
-    let set = |key: &str| {
-        there::git_with(
-            top,
-            &["config", "--bool", "--default", "false", key],
-            None,
-            &[],
-        )
-        .map(|value| value == "true")
-        .ok_or(format!("has a {key} git can't read"))
-    };
+    let set = |key: &str| setting(top, key);
     if !set("core.sparseCheckout")? {
         return Ok(None);
     }
@@ -365,6 +382,20 @@ fn cones(top: &Path) -> Result<Option<Vec<String>>, String> {
     }
     let text = sparse_file(top).map_err(|why| format!("is sparse, but its sparse file {why}"))?;
     cones_of(&text)
+}
+
+/// Whether the git tree `top` sets its boolean `key`. Unset reads false;
+/// a value git can't read is refused, never taken as false, which for
+/// `core.sparseCheckout` would send all of HEAD.
+fn setting(top: &Path, key: &str) -> Result<bool, String> {
+    there::git_with(
+        top,
+        &["config", "--bool", "--default", "false", key],
+        None,
+        &[],
+    )
+    .map(|value| value == "true")
+    .ok_or(format!("has a {key} git can't read"))
 }
 
 /// The sparse file of the git tree `top`, read once, and only as a plain
