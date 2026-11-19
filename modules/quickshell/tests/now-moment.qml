@@ -1694,11 +1694,14 @@ ShellRoot {
                     ["Choice", "Not yet"], ["Session", "Session E"]]),
             JSON.stringify(drawer.facts));
         const inside = row.verbs();
-        expect("inside, the recommended answer first, then Deal With It apart, Put It Off last",
+        expect("inside, the recommended answer first, then Deal With It apart, Talk and Go To "
+            + "the session, Put It Off last",
             JSON.stringify(inside.map(one => [one.name, one.side ?? "", !!one.gap]))
                 === JSON.stringify([["Yes, push it", "recommended", false],
                     ["Not yet", "", false], ["Deal With It", "", true],
-                    ["In Your Own Words", "", false], ["Put It Off", "for an hour", true]]),
+                    ["In Your Own Words", "", false], ["talk", "", false],
+                    ["Go To", "Session E", false], ["Put It Off", "for an hour", true]])
+                && inside[4].to === "WANTE",
             JSON.stringify(inside.map(one => [one.name, one.side, one.gap])));
         expect("an answer copies its words and its drawer leads with what it means",
             inside[0].copies === "Yes, push it"
@@ -1727,10 +1730,10 @@ ShellRoot {
         expect("his own words go as words",
             JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({ other: "after lunch" }),
             JSON.stringify(agents.answered[2]));
-        inside[4].run();
+        inside[6].run();
         expect("Put It Off asks the daemon to put off its session's want, staying open",
             JSON.stringify(Sessions.putOffAsked) === '["WANTE WANTE question@1"]'
-                && inside[4].stays === true,
+                && inside[6].stays === true,
             JSON.stringify(Sessions.putOffAsked));
         Sessions.putOffAsked = [];
         Sessions.knowns = {};
@@ -1745,10 +1748,11 @@ ShellRoot {
                 recommended: false }] } } };
         const approval = forYou().find(one => one.key === "on:waiting:want:WANTF");
         const asked = approval?.verbs() ?? [];
-        expect("a yes asked with its choices says so, and holds them, Deal With It and Put It Off",
+        expect("a yes asked with its choices says so, and holds them, Deal With It, Talk, "
+            + "Go To and Put It Off",
             approval?.side === "needs your answer \u00b7 2 choices"
                 && JSON.stringify(asked.map(one => one.name))
-                    === '["Yes","No","Deal With It","Put It Off"]',
+                    === '["Yes","No","Deal With It","talk","Go To","Put It Off"]',
             JSON.stringify([approval?.side, asked.map(one => one.name)]));
         asked[0]?.run();
         expect("its Yes asks the daemon to answer it",

@@ -738,6 +738,16 @@ Provider {
         return session ? session.title : window.title ?? "";
     }
 
+    // Talk to a session, Agents' own act, as a look's row offers it
+    // (cellActs), so the session working on what Joel's asked is reached
+    // from the ask itself (Joel, 2026-11-16: "i have no way to go from the
+    // thing it shows to engaging with the thing working on it"); null with
+    // no session, or with Agents not there to talk through.
+    function talkTo(session) {
+        const agents = provider.source("agents");
+        return session === null || !agents ? null : agents.sessionAct(session, "talk");
+    }
+
     // An act on an item, named in the vocabulary.
     function act(each, id, fields) {
         return thing(Object.assign({
@@ -755,8 +765,9 @@ Provider {
     // and by when; and in its drawer its steps and why only he can. One he
     // can do now is strong, one for later muted. Return goes where it's
     // done, its window or its session's, and with nowhere to go steps in, as
-    // the right arrow does: Go To, then Done and Not Now, which stay open as
-    // the item leaves its place, then its quest.
+    // the right arrow does: Go To, Deal With It and Talk where it has a
+    // session, then Done and Not Now, which stay open as the item leaves its
+    // place, then its quest.
     // In For You's weighed list (`weighed`, the time it's weighed at), its
     // side says the strongest reason it's there instead (ForYou.js's reason),
     // and its row is kept while what it says reads the same (itemsKept).
@@ -828,7 +839,8 @@ Provider {
         const inside = () => {
             const one = current();
             const own = typeof one.window === "string" && one.window !== "";
-            return (own ? [does(one), deal(one)] : [deal(one), does(one)]).concat([
+            const talk = talkTo(WaitingOnYou.session(one));
+            return (own ? [does(one), deal(one), talk] : [deal(one), talk, does(one)]).concat([
                 act(one, "done", { stays: true, run: () => WaitingOnYou.settle(one, "done") }),
                 act(one, "notNow", { stays: true,
                     run: () => WaitingOnYou.settle(one, "notNow") }),
@@ -1690,7 +1702,8 @@ Provider {
     // past it (Joel, 2026-11-08: "Selecting one brings me often into a pi
     // session that is so far past what i'm being asked that i don't know if
     // it is still relevant"). Inside, Deal With It brings its window forward
-    // with the prompt filled in, naming what it asked, then Go To. One parked
+    // with the prompt filled in, naming what it asked, then Talk to it,
+    // Agents' own, then Go To. One parked
     // is woken by either, its window showing it come back, as a key typed
     // there would; Deal With It wakes it once the filled prompt is in its
     // inbox, which it reads as it starts, as Talk does (Sessions.talk).
@@ -1746,12 +1759,13 @@ Provider {
                     Sessions.goTo(session());
                 }
             })),
+            talkTo(session()),
             thing(Object.assign(named("go"), {
                 key: `verb:on:waiting:go:${key}`,
                 run: () => Sessions.wakeToGo(resting, session())
             })),
             putOffWant(address, key, known)
-        ];
+        ].filter(row => row !== null);
         const row = member(Object.assign({}, made, {
             key: key,
             forYou: { kind: "agent", source: "sessions" },
@@ -1794,7 +1808,8 @@ Provider {
     // row, the recommended first and the cursor on it, whose Return
     // answers at once, since stepping in and picking a labelled answer is
     // already deliberate, and y copies its words; then, set apart, Deal
-    // With It, and In Your Own Words where it takes them. The session
+    // With It, and In Your Own Words where it takes them; then Talk to
+    // the session, which answers nothing, and Go To it. The session
     // says it took the answer by its want leaving, which takes the row
     // out of For You. Its answers are the agents daemon's, which takes the
     // answer too, naming the want itself; the rows are still made here
@@ -1861,7 +1876,12 @@ Provider {
                 if (text !== "")
                     answer({ other: text }, text);
             }
-        }))] : [], [putOffWant(address, key, known)]);
+        }))] : [], [talkTo(session()), thing(Object.assign(named("go"), {
+            key: `verb:on:waiting:go:${key}`,
+            side: madeFrom.title,
+            later: true,
+            run: () => Sessions.wakeToGo(resting, session())
+        })), putOffWant(address, key, known)].filter(row => row !== null));
         const count = answers.choices.length;
         const row = member(Object.assign({}, made, {
             key: key,
