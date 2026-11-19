@@ -128,7 +128,9 @@ impl Quiet {
                 .next_step()
                 .filter(|next| unasked && !next.contains("Joel"))
                 .map(str::to_owned),
-            stepless: unasked && p.quest.is_some() && p.next_step().is_none(),
+            stepless: unasked
+                && p.quest.as_deref().is_some_and(|q| !q.is_empty())
+                && p.next_step().is_none(),
             working,
         })
     }
@@ -180,8 +182,14 @@ impl Quiet {
 pub struct Woken {
     pub since: i64,
     pub at: i64,
+    /// The step, or empty when it was woken to its quest, naming none.
     #[serde(default)]
     pub next: String,
+    /// When it was last woken to its quest, so one going back and forth
+    /// between a step and none is woken to its quest at most once in
+    /// `IDLE_FOR`, and its orchestrator hears of it in time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_quest: Option<i64>,
 }
 
 /// The spells already told and steps already woken to, by session, so
@@ -325,40 +333,63 @@ fn wakes(
             let by = s.led()?;
             let since = spell(s, told)?;
             let next = s.step(since, now)?;
-            let asked = told.woken.get(&s.session).is_some_and(|w| w.next == next);
+            let asked = told.woken.get(&s.session).is_some_and(|w| {
+                if next.is_empty() {
+                    (w.next.is_empty() && w.since == since)
+                        || w.to_quest.is_some_and(|at| now - at < IDLE_FOR)
+                } else {
+                    w.next == next
+                }
+            });
             (!asked && now - since >= WAKE_AFTER).then_some((s, by, since, next))
         })
         .collect();
     idle.sort_by_key(|(s, _, since, _)| (*since, s.session.clone()));
     let mut tells = Vec::new();
     for (s, by, since, next) in idle.into_iter().take(WAKE_AT_MOST) {
+        let to_quest = if next.is_empty() {
+            Some(now)
+        } else {
+            told.woken.get(&s.session).and_then(|w| w.to_quest)
+        };
         told.woken.insert(
             s.session.clone(),
             Woken {
                 since,
                 at: now,
                 next: next.to_owned(),
+                to_quest,
             },
         );
         let minutes = (now - since) / 60;
         let (h, m) = (minutes / 60, minutes % 60);
-        let how = s.how(since, "its", clock);
+        // Its work's end would have woken it, so one still running past
+        // the hour is said, in case it is what the session waits on.
+        let how = if s.working {
+            format!(
+                "{}, and background work of its own has run all that while, which may be \
+                 what it waits on",
+                s.how(since, "its", clock)
+            )
+        } else {
+            s.how(since, "its", clock)
+        };
         let text = if next.is_empty() {
             format!(
                 "{address}: this session has sat idle {h} h {m:02} min on {quest}, naming no \
                  next step: {how}. Take up its next piece now, and focus a plan whose next \
                  item says it, so it can be woken to it. If it waits on someone, park saying \
-                 on whom; if nothing is left, park saying so. Answer this with re, saying \
-                 which. {by} hears of it at two hours idle.",
+                 on whom or on what; if nothing is left, park saying so. Answer this with re, \
+                 saying which. {by} hears of it at two hours idle.",
                 address = s.address,
-                quest = s.quest.as_deref().unwrap_or("its quest"),
+                quest = quoted(s.quest.as_deref().unwrap_or("its quest")),
             )
         } else {
             format!(
                 "{address}: this session has sat idle {h} h {m:02} min with a next step of \
-                 its own, \"{next}\": {how}. Take it up now. If it waits on someone, park \
-                 saying on whom; if it is another's, hand it to them by name. Answer this \
-                 with re, saying which. {by} hears of it at two hours idle.",
+                 its own, \"{next}\": {how}. Take it up now. If it waits on someone or on its \
+                 work, park saying on what; if it is another's, hand it to them by name. \
+                 Answer this with re, saying which. {by} hears of it at two hours idle.",
                 address = s.address,
                 next = quoted(next),
             )
