@@ -251,12 +251,15 @@ let
     glyphs = planted;
   };
   meantAs =
-    { otherwise, strides }:
+    {
+      otherwise,
+      strides,
+      meant ? "its own pose",
+    }:
     poseFaults {
       sitting = "nothingHere";
       poses = [ "nothingHere" ];
-      inherit strides;
-      meant = "its own pose";
+      inherit strides meant;
       glyphs = lib.mapAttrs (
         name: mark: mark // { means = if name == otherwise then "another's" else "its own pose"; }
       ) planted;
@@ -272,6 +275,14 @@ let
   meantUndrawn = meantAs {
     otherwise = null;
     strides = drawnWalk ++ [ "unseen" ];
+  };
+  # The same strides, every one agreeing, held to words none of them mean,
+  # so a rule weighing the strides against each other rather than against
+  # `meant` fails.
+  meantElse = meantAs {
+    otherwise = null;
+    strides = drawnWalk;
+    meant = "another's";
   };
   meantOtherwise = strides: ''meant otherwise than "its own pose" ${builtins.toJSON strides}'';
   edges = [
@@ -292,6 +303,15 @@ let
         !meantUndrawn.ok
         && lib.hasInfix ''undrawn ["unseen"]'' meantUndrawn.said
         && lib.hasInfix (meantOtherwise [ ]) meantUndrawn.said;
+    }
+    {
+      faults = meantElse;
+      reason = "the same strides, all meant alike but not as asked, each refused";
+      holds =
+        let
+          said = ''meant otherwise than "another's" ${builtins.toJSON drawnWalk}'';
+        in
+        !meantElse.ok && lib.hasInfix said meantElse.said;
     }
     {
       faults = sized;

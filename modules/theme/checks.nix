@@ -204,7 +204,7 @@ let
   # outright. Each is asked for, `named` as null where the animal has no
   # name of its own and `also` empty where it has no such poses, and
   # `meant` must be words, so a live check that stops passing one fails to
-  # build rather than quietly holding its poses to fewer rules. poseFaults
+  # evaluate rather than quietly holding its poses to fewer rules. poseFaults
   # and posesOf ask for theirs too, so dropping one on the way fails the
   # same.
   readsAsOne =
