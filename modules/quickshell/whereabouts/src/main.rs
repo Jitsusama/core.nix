@@ -185,6 +185,9 @@ async fn serve(
     };
     let pin = files.as_ref().map(|files| files.pin.clone());
     let shared = Shared::new(known, words, pin);
+    // What was kept is held before the socket is served, so a watch asked
+    // as the daemon starts is answered with it rather than with nowhere.
+    let last = files.as_ref().and_then(|files| begun(&shared, files));
     {
         let served = shared.served();
         std::thread::spawn(move || daemon_serve::serve::accept(served, listener));
@@ -203,7 +206,7 @@ async fn serve(
         });
     }
     if let Some(files) = files {
-        follow(&shared, &files, pinned).await.map_err(|why| {
+        follow(&shared, &files, last, pinned).await.map_err(|why| {
             Failure::new(Exit::Failed, "location stopped following the laptop")
                 .because(why.to_string())
         })
@@ -332,13 +335,9 @@ fn found_again(shared: &Shared, files: &Files, last: &mut Option<Fix>) -> bool {
     !pin_holds(shared, files, last) && last.is_none()
 }
 
-/// Follows GeoClue for as long as the program runs, asking it again a
-/// minute after it refuses or leaves, and hearing the pin meanwhile.
-async fn follow(
-    shared: &Shared,
-    files: &Files,
-    mut pins: UnboundedReceiver<()>,
-) -> Result<(), Box<dyn Error>> {
+/// Holds the here kept at the last start, or the pin Joel set, and
+/// answers it, as the here GeoClue's next is told against.
+fn begun(shared: &Shared, files: &Files) -> Option<Fix> {
     // A here Joel set whose pin has gone is no here to keep, so GeoClue's
     // next is said wherever it is.
     let mut last = fs::read_to_string(&files.kept)
@@ -358,6 +357,18 @@ async fn follow(
     {
         shared.change(|known| known.names = Some(json!({"state": "answering"})));
     }
+    last
+}
+
+/// Follows GeoClue for as long as the program runs, asking it again a
+/// minute after it refuses or leaves, and hearing the pin meanwhile;
+/// `last` is the here begun with.
+async fn follow(
+    shared: &Shared,
+    files: &Files,
+    mut last: Option<Fix>,
+    mut pins: UnboundedReceiver<()>,
+) -> Result<(), Box<dyn Error>> {
     loop {
         let why = match geoclue_followed(shared, files, &mut last, &mut pins).await {
             Ok(why) | Err(why) => why,
