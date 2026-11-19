@@ -239,7 +239,11 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
     if over {
         return vec![over_finding(picture, view, allowance, &counted, ask)];
     }
-    let mut out = Vec::new();
+    // An end nobody knows needs no forecast to be warned of.
+    let mut out: Vec<Finding> =
+        unending_finding(picture, view, view.clock.as_ref(), allowance, ask.clone())
+            .into_iter()
+            .collect();
     let Some(clock) = &view.clock else {
         return out;
     };
@@ -280,7 +284,15 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
             "caps",
             Severity::Warning,
             format!("near {}", allowance_named(cap)),
-            format!("{} of {}{counted}.", whole(view.spent), whole(allowance)),
+            format!(
+                "{} of {}{counted}.{}",
+                whole(view.spent),
+                whole(allowance),
+                clock.reaches_at.map_or_else(String::new, |at| format!(
+                    " At this pace it's reached by {}.",
+                    picture.zone.clock(at, now)
+                ))
+            ),
         );
         f.badge = percent(share);
         f.note = format!("{} of {}", whole(view.spent), whole(allowance));
@@ -291,6 +303,57 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
     }
     out.extend(ending_finding(picture, view, clock, allowance, ask));
     out
+}
+
+/// An override whose end the feed can't say, warned while the spend is
+/// already over what follows it: the cap refuses the moment it ends, and
+/// nothing can warn ahead of a day nobody knows. On 19 November the
+/// proxy's weekly cap stood at a $40,000 raise, ending who knew when,
+/// over a $4,000 fallback, with $33,671 spent; on 31 October and 2
+/// November the cap refused 107 requests.
+fn unending_finding(
+    picture: &Picture,
+    view: &CapView,
+    clock: Option<&crate::caps::Clock>,
+    allowance: f64,
+    ask: Option<Action>,
+) -> Option<Finding> {
+    let fallback = view.cap.fallback?;
+    let reaches_at = clock.and_then(|clock| clock.reaches_at);
+    if view.ends_at.is_some() || fallback >= allowance || view.spent < fallback {
+        return None;
+    }
+    let now = picture.now;
+    let reaches = reaches_at.map_or_else(String::new, |at| {
+        format!(
+            " At this pace it reaches {} by {}.",
+            whole(allowance),
+            picture.zone.clock(at, now)
+        )
+    });
+    let mut f = finding(
+        cap_key(view, "unending"),
+        "caps",
+        Severity::Warning,
+        format!("{} override's end is unknown", allowance_named(&view.cap)),
+        format!(
+            "The {} override says no end, and the {} spent is already over the {} \
+             that follows it, so the cap refuses the moment it ends.{reaches}",
+            whole(allowance),
+            whole(view.spent),
+            whole(fallback)
+        ),
+    );
+    f.badge = reaches_at.map_or_else(
+        || "end unknown".into(),
+        |at| format!("reached {}", picture.zone.clock(at, now)),
+    );
+    f.note = format!("over the {} after it", whole(fallback));
+    f.dollars = view.spent - fallback;
+    f.surprise = 2.5;
+    f.cap = true;
+    f.action = ask;
+    Some(f)
 }
 
 /// A share of a plan's window used up, or past its warning: said
@@ -2014,6 +2077,60 @@ mod tests {
                 "near the Five Hours allowance",
                 Some("85% of the Five Hours allowance used")
             )]
+        );
+    }
+
+    /// The weekly cap's findings when raised to $40,000 over a $4,000
+    /// fallback, with `spent` spent and the override ending `ends`.
+    fn raised(spent: f64, ends: Option<&str>) -> Vec<Finding> {
+        let history = History::memory();
+        let mut line = serde_json::json!({
+            "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
+            "allowance": 40_000, "windowHours": 168, "spent": spent, "warn": 0.9,
+            "fallback": 4000, "state": "ok", "at": crate::time::rfc3339(NOW - 60.0),
+        });
+        if let Some(ends) = ends {
+            line["ends"] = ends.into();
+            line["endsKnown"] = true.into();
+        }
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, NOW - 60.0).unwrap();
+        let picture = Picture::read(&history, &config(), NOW).unwrap();
+        caps(&picture)
+            .into_iter()
+            .filter(|found| found.key.ends_with(":unending"))
+            .collect()
+    }
+
+    // A raise whose end nobody knows, over a fallback already spent, is
+    // warned: the cap refuses the moment it ends, and no day can be warned
+    // ahead of. Under the fallback, or with its end known, it isn't.
+    #[test]
+    fn a_raise_with_no_known_end_over_what_follows_is_warned() {
+        let found = raised(33_671.0, None);
+        assert_eq!(found.len(), 1, "{found:?}");
+        let found = &found[0];
+        assert_eq!(
+            (found.title.as_str(), found.severity, found.cap),
+            (
+                "the Week allowance override's end is unknown",
+                Severity::Warning,
+                true
+            )
+        );
+        assert!(
+            found.detail.starts_with(
+                "The $40,000 override says no end, and the $33,671 spent is already over \
+                 the $4,000 that follows it"
+            ),
+            "{}",
+            found.detail
+        );
+        assert_eq!(found.dollars, 29_671.0);
+        assert!(raised(3_900.0, None).is_empty(), "under the fallback");
+        assert!(
+            raised(33_671.0, Some("2026-10-20")).is_empty(),
+            "its end is known"
         );
     }
 
