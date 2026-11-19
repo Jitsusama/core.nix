@@ -133,6 +133,26 @@ function shownSaid(times, at) {
         + ` (swapped ${tenths(times.swapped)}, shown ${tenths(at)} monotonic ms)`;
 }
 
+// When each key was pressed, its frame swapped and niri showed it, in
+// CLOCK_MONOTONIC ms as KeyTimes and frame-presentation.patch read them,
+// in the order pressed, "-" for a swap the render thread didn't time, or ""
+// for no keys. The line the keys' medians make can't be lined up with
+// niri's own log of each frame it asked for: on the 60 Hz screen keys
+// spent a median 16 ms from their swap to the screen, against 11 on the
+// 120 Hz panel, and which frames waited needs each key's times (LR3WMN,
+// 2026-11-19).
+function keysShownSaid(times) {
+    if (times.length === 0) {
+        return "";
+    }
+    const tenths = ms => (Math.round(ms * 10) / 10).toFixed(1);
+    const each = times.slice().sort((a, b) => a.from - b.from).map(one =>
+        [one.from, one.swapped > 0 ? one.swapped : null, one.at]
+            .map(ms => ms === null ? "-" : tenths(ms)).join(" "));
+    return `launcher: ${times.length} keys pressed, swapped and shown, in monotonic ms: `
+        + each.join("; ");
+}
+
 // Each part's median, `[from, to, words]`, over those stamped with every
 // part's ends, or "" where none was, said as ": a median A ms <words>, B
 // <words> and C <words>".

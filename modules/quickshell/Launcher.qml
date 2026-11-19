@@ -12611,6 +12611,7 @@ Scope {
 
     function keysPresentedSaid() {
         const first = Presented.keysSaid("presented", keysPresented, true);
+        const clock = Presented.keysShownSaid(keysPresented);
         const updates = Presented.changesSaid(updatesPresented)
             .concat(Presented.drawersSaid(drawersPresented));
         // Each key's own time goes with the opening's trial, where health
@@ -12628,7 +12629,7 @@ Scope {
             delete updatesBy[place];
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
-        for (const said of [first].filter(line => line !== "").concat(updates))
+        for (const said of [first, clock].filter(line => line !== "").concat(updates))
             console.info(said);
     }
 

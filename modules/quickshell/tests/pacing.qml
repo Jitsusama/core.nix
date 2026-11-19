@@ -835,6 +835,12 @@ QtObject {
             + "the p99 300 ms, 1 within 50 ms: a median 10 ms before the shell heard it, "
             + "20 in the shell and 20 from its frame's start (2 to its swap and 18 after it); "
             + "on eDP-1 at 120 Hz");
+        check(failures, "each key says its press, swap and screen on niri's clock, as pressed",
+            Presented.keysShownSaid([Object.assign({ swapped: 2020.04 }, keys[2]), keys[1],
+                Object.assign({ swapped: 82.36 }, keys[0])]),
+            "launcher: 3 keys pressed, swapped and shown, in monotonic ms: 0.0 82.4 100.0; "
+            + "1000.0 - 1050.0; 2000.0 2020.0 2300.0");
+        check(failures, "and no keys say nothing of their clock", Presented.keysShownSaid([]), "");
 
         // Joel's openings waited a median 6 frames at 120 Hz for niri after
         // their GPU work was done (2026-11-15). Presentation times lie on the
