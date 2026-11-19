@@ -350,6 +350,28 @@ QtObject {
                 ends(stepsOff.beats[stepsOff.beats.length - 1]).slice(2)], [[800, 5], [100, 7]]);
         expect("stepping on and off one 2 above, never over its face",
             [overFace(stepsOn, flush), overFace(stepsOff, flush)], [[], []]);
+        // Each stride steps one pair of feet on from the last, and so does
+        // a walk's first from its stand and its last back onto it, the
+        // stand drawn as stride B (WCJQSG b1034f36): every change between
+        // two of the walk's drawings moves one pair, never both, or it skids.
+        const strideOrder = ["walkingA", "walkingC", "walkingB", "walkingD"];
+        const skids = way => {
+            const drawnIn = [];
+            for (let t = 0; t <= way.ends; t += 1) {
+                const pose = Paths.frame(way, t).pose;
+                if (pose !== drawnIn[drawnIn.length - 1])
+                    drawnIn.push(pose);
+            }
+            return drawnIn.map((pose, i) => [drawnIn[i - 1], pose]).filter(([was, pose]) =>
+                strideOrder.includes(was) && strideOrder.includes(pose)
+                    && (strideOrder.indexOf(pose) - strideOrder.indexOf(was)) % 2 === 0);
+        };
+        // Hurried back the way it faced, it turns, standing, then walks.
+        const turnsBack = Paths.walk({ x: 300, y: 7 }, { x: 100, y: 7 },
+            world({ hurried: true }));
+        expect("it walks out of its stand and back onto it a pair of feet at a time",
+            [names(turnsBack)[0], names(stepsOn).pop(), skids(turnsBack), skids(stepsOn),
+                skids(stepsOff)], ["turns", "settles", [], [], []]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));
