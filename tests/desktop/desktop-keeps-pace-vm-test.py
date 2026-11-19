@@ -700,7 +700,13 @@ def opened_timed(desktop: Desktop) -> Json:
 
     def drawn(_: bool) -> bool:
         each[:] = openings(desktop)
-        return latest(each) > timed and "usable" in each[-1] and "presented" in each[-1]
+        if latest(each) <= timed:
+            return False
+        last = each[-1]
+        # A kept home's fill says its rows once home is found again after its frame, which can
+        # come after it's usable, so the storm's check holds home as found to the frame's.
+        filled = "filled" in last or not last.get("kept")
+        return "usable" in last and "presented" in last and filled
 
     retry(drawn, timeout=REACHING)
     desktop.close_launcher()

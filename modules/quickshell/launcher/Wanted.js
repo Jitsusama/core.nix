@@ -125,3 +125,17 @@ function sourceNamed(all, nameOf, provider) {
     }
     return id => byName.get(provider(id)) ?? null;
 }
+
+// How a kept opening's sources woke: the longest slice, and the longest
+// any waited after the one before ended, or the first after the fill.
+// Each is `{ from, took }`, in ms from the fill's end. Home found again
+// after the fill, `found`, or null where it was found inside it, is one
+// slice more before the sources' first, so its time is counted as a
+// slice's and never read as the first's wait (H6EDLC, 2026-11-18).
+function wakeTimes(found, slices) {
+    const timed = (found === null ? [] : [found]).concat(slices);
+    const longest = timed.reduce((most, one) => Math.max(most, Math.round(one.took)), 0);
+    const waited = timed.reduce((most, one, at) => Math.max(most, at === 0 ? one.from
+        : one.from - timed[at - 1].from - timed[at - 1].took), 0);
+    return { longest, waited: Math.round(waited) };
+}

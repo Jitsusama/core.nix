@@ -10,7 +10,8 @@
 // opening says its parts slowest first, and weighs the foot's verbs only
 // once the words or the face have changed, and each row's keys once for
 // what's typed, the steps and the mode; an opening's stall is said by the
-// work it ran into, each frame's rows laid out and its sync apart. What
+// work it ran into, each frame's rows laid out and its sync apart, and its
+// sources' waking counts home found after its fill as a slice. What
 // was presented is said by
 // place, each change timed from the earliest line not yet drawn
 // (launcher/Presented.js). A closing makes again only the spots of the
@@ -420,6 +421,19 @@ QtObject {
             [quests, people, on, power, disk]);
         check(failures, "home's own come first, each once, then the rest",
             order.map(one => one.name).join(" "), "on power disk people quests");
+
+        // Home found again after the fill is a slice of its own, so its
+        // time is a slice's, never the sources' first wait.
+        const slices = [{ from: 20, took: 8.4 }, { from: 30, took: 3 }];
+        const alone = Wanted.wakeTimes(null, slices);
+        check(failures, "with no finding, the first waits from the fill", alone.waited, 20);
+        check(failures, "and the longest slice is a source's", alone.longest, 8);
+        const bySlice = Wanted.wakeTimes({ from: 2, took: 12.6 }, slices);
+        check(failures, "found in a slice, the first waits from its end", bySlice.waited, 5);
+        check(failures, "and the finding is the longest slice", bySlice.longest, 13);
+        const byKey = Wanted.wakeTimes({ from: 0, took: 4 }, [{ from: 37, took: 8 }]);
+        check(failures, "found by a key, the fallback's wait is after it", byKey.waited, 33);
+        check(failures, "a finding shorter than a slice isn't the longest", byKey.longest, 8);
     }
 
     // The source an id names is found asking the vocabulary once for the
