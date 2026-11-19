@@ -50,7 +50,8 @@ fn working(root: &Path, p: &Presence) -> bool {
         })
 }
 
-/// Wakes each session idle with a next step, and tells each orchestrator
+/// Wakes each session idle with a next step, or naming none on a quest,
+/// and tells each orchestrator
 /// of its sessions idle two hours, remembering in `idle.json` what was
 /// said.
 pub fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Result<()> {

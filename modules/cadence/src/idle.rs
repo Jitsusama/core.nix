@@ -2,15 +2,18 @@
 //! the orchestrator when waking it didn't take. A session that finished
 //! its piece and waits to be told its next one does nothing all night
 //! unless someone notices. So each one listening, its pi running this
-//! boot, that names a next step of its own and runs no background work is
+//! boot, that names a next step of its own, or names none on a quest, is
 //! asked itself twenty minutes past its last turn, with a question, which
-//! starts its turn; and each one still idle two hours past it is named to
+//! starts its turn, unless background work of its own has run for less
+//! than an hour of it; and each one still idle two hours past it is named to
 //! the orchestrator its presence names, once the question has had twenty
 //! minutes to take. A session is asked once for each step and told of
 //! once for each idle spell. On 18 November OX4WFV sat idle from 07:52 to
 //! 10:11 past a 09:00 due: only its orchestrator was ever to hear, after
-//! two hours, and each host restart began its spell again. Everything
-//! here is a decision over what was read; tell.rs reads and sends.
+//! two hours, and each host restart began its spell again. That evening
+//! SEYNT2 sat idle from 20:25 to 23:11 unwoken, naming no step and with
+//! two alarm loops running for hours. Everything here is a decision over
+//! what was read; tell.rs reads and sends.
 
 use std::collections::BTreeMap;
 
@@ -36,11 +39,22 @@ pub const IDLE_FOR: i64 = 2 * 3600;
 /// on 18 November.
 pub const WAKE_AT_MOST: usize = 4;
 
+/// How long background work of its own holds back a session's wake past
+/// its last turn. Its end starts a turn, but a loop sleeping until an
+/// alarm hides an idle session for as long as it sleeps: on 18 November
+/// SEYNT2 held one sleeping from 12:51 until 01:30, and sat idle from
+/// 20:25 with nobody asking.
+pub const WORKS_AT_MOST: i64 = 3600;
+
 /// How much of a next step a wake quotes back to its session.
 const QUOTED: usize = 160;
 
 /// A session, as far as waking it or telling of its idleness needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each is a separate fact read of its session"
+)]
 pub struct Quiet {
     pub address: String,
     pub session: String,
@@ -62,12 +76,16 @@ pub struct Quiet {
     pub started: Option<i64>,
     /// Whether it has taken no turn since its pi started.
     pub unstarted: bool,
-    /// The next step it names, the work it would wake to. None while
-    /// background work of its own runs, whose end starts its turn without
-    /// a word from anyone; while it waits on an answer it asked for; or
-    /// while its step names Joel, which only he can move, as the hour's
-    /// cells measure has it.
+    /// The next step it names, the work it would wake to. None while it
+    /// waits on an answer it asked for, or while its step names Joel,
+    /// which only he can move, as the hour's cells measure has it.
     pub next: Option<String>,
+    /// Whether it names no next step at all on a quest it holds, waiting
+    /// on no answer: it is woken to the quest itself.
+    pub stepless: bool,
+    /// Whether background work of its own runs, whose end starts its turn
+    /// without a word from anyone.
+    pub working: bool,
 }
 
 impl Quiet {
@@ -94,7 +112,7 @@ impl Quiet {
         let started = owner.and_then(|o| o.started_at).map(|ms| ms / 1000);
         let turned = p.last_turn_ended();
         let ended = turned.or(logged);
-        let movable = !working && p.wanting.is_null();
+        let unasked = p.wanting.is_null();
         Some(Self {
             address,
             session: p.session.clone(),
@@ -108,9 +126,24 @@ impl Quiet {
             unstarted: started.is_some() && ended < started,
             next: p
                 .next_step()
-                .filter(|next| movable && !next.contains("Joel"))
+                .filter(|next| unasked && !next.contains("Joel"))
                 .map(str::to_owned),
+            stepless: unasked
+                && p.quest.as_deref().is_some_and(|q| !q.is_empty())
+                && p.next_step().is_none(),
+            working,
         })
+    }
+
+    /// The step it would be woken to at `now`, its spell begun at `since`:
+    /// its own next step, or none named on its quest, said as the empty
+    /// step. None while background work of its own has run under
+    /// `WORKS_AT_MOST` of the spell, since that work's end wakes it.
+    fn step(&self, since: i64, now: i64) -> Option<&str> {
+        if self.working && now - since < WORKS_AT_MOST {
+            return None;
+        }
+        self.next.as_deref().or(self.stepless.then_some(""))
     }
 
     /// Its orchestrator, when it is one of an orchestrator's, listening
@@ -149,8 +182,14 @@ impl Quiet {
 pub struct Woken {
     pub since: i64,
     pub at: i64,
+    /// The step, or empty when it was woken to its quest, naming none.
     #[serde(default)]
     pub next: String,
+    /// When it was last woken to its quest, so one going back and forth
+    /// between a step and none is woken to its quest at most once in
+    /// `IDLE_FOR`, and its orchestrator hears of it in time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_quest: Option<i64>,
 }
 
 /// The spells already told and steps already woken to, by session, so
@@ -223,15 +262,16 @@ pub fn due(
         if now - since < IDLE_FOR || told.spells.get(&s.session) == Some(&since) {
             continue;
         }
+        let step = s.step(since, now);
         let woken = told
             .woken
             .get(&s.session)
-            .filter(|w| s.next.as_deref() == Some(w.next.as_str()))
+            .filter(|w| step == Some(w.next.as_str()))
             .cloned();
-        // One with a step of its own is asked first, and its orchestrator
+        // One with a step to take up is asked first, and its orchestrator
         // hears only once the question has had time to take; one first seen
         // past two hours is asked this tick and told of in twenty minutes.
-        if s.next.is_some() && woken.as_ref().is_none_or(|w| now - w.at < WAKE_AFTER) {
+        if step.is_some() && woken.as_ref().is_none_or(|w| now - w.at < WAKE_AFTER) {
             continue;
         }
         told.spells.insert(s.session.clone(), since);
@@ -241,16 +281,20 @@ pub fn due(
             .as_deref()
             .map_or_else(String::new, |q| format!(" on {q}"));
         let woken = woken.map_or_else(String::new, |w| {
+            let what = if w.next.is_empty() {
+                "its quest"
+            } else {
+                "its next step"
+            };
             if w.since == since {
                 format!(
-                    " It was asked at {} to take up its next step, and has taken no turn \
-                     since.",
+                    " It was asked at {} to take up {what}, and has taken no turn since.",
                     clock(w.at)
                 )
             } else {
                 format!(
-                    " It was asked at {} to take up its next step, and the turns since \
-                     haven't moved it.",
+                    " It was asked at {} to take up {what}, and the turns since haven't \
+                     moved it.",
                     clock(w.at)
                 )
             }
@@ -288,37 +332,72 @@ fn wakes(
         .filter_map(|s| {
             let by = s.led()?;
             let since = spell(s, told)?;
-            let next = s.next.as_deref()?;
-            let asked = told.woken.get(&s.session).is_some_and(|w| w.next == next);
+            let next = s.step(since, now)?;
+            let asked = told.woken.get(&s.session).is_some_and(|w| {
+                if next.is_empty() {
+                    (w.next.is_empty() && w.since == since)
+                        || w.to_quest.is_some_and(|at| now - at < IDLE_FOR)
+                } else {
+                    w.next == next
+                }
+            });
             (!asked && now - since >= WAKE_AFTER).then_some((s, by, since, next))
         })
         .collect();
     idle.sort_by_key(|(s, _, since, _)| (*since, s.session.clone()));
     let mut tells = Vec::new();
     for (s, by, since, next) in idle.into_iter().take(WAKE_AT_MOST) {
+        let to_quest = if next.is_empty() {
+            Some(now)
+        } else {
+            told.woken.get(&s.session).and_then(|w| w.to_quest)
+        };
         told.woken.insert(
             s.session.clone(),
             Woken {
                 since,
                 at: now,
                 next: next.to_owned(),
+                to_quest,
             },
         );
         let minutes = (now - since) / 60;
+        let (h, m) = (minutes / 60, minutes % 60);
+        // Its work's end would have woken it, so one still running past
+        // the hour is said, in case it is what the session waits on.
+        let how = if s.working {
+            format!(
+                "{}, and background work of its own has run all that while, which may be \
+                 what it waits on",
+                s.how(since, "its", clock)
+            )
+        } else {
+            s.how(since, "its", clock)
+        };
+        let text = if next.is_empty() {
+            format!(
+                "{address}: this session has sat idle {h} h {m:02} min on {quest}, naming no \
+                 next step: {how}. Take up its next piece now, and focus a plan whose next \
+                 item says it, so it can be woken to it. If it waits on someone, park saying \
+                 on whom or on what; if nothing is left, park saying so. Answer this with re, \
+                 saying which. {by} hears of it at two hours idle.",
+                address = s.address,
+                quest = quoted(s.quest.as_deref().unwrap_or("its quest")),
+            )
+        } else {
+            format!(
+                "{address}: this session has sat idle {h} h {m:02} min with a next step of \
+                 its own, \"{next}\": {how}. Take it up now. If it waits on someone or on its \
+                 work, park saying on what; if it is another's, hand it to them by name. \
+                 Answer this with re, saying which. {by} hears of it at two hours idle.",
+                address = s.address,
+                next = quoted(next),
+            )
+        };
         tells.push(Tell {
             session: s.session.clone(),
             to: s.address.clone(),
-            text: format!(
-                "{address}: this session has sat idle {h} h {m:02} min with a next step of \
-                 its own, \"{next}\": {how}. Take it up now. If it waits on someone, park \
-                 saying on whom; if it is another's, hand it to them by name. Answer this \
-                 with re, saying which. {by} hears of it at two hours idle.",
-                address = s.address,
-                h = minutes / 60,
-                m = minutes % 60,
-                next = quoted(next),
-                how = s.how(since, "its", clock),
-            ),
+            text,
             wakes: true,
         });
     }

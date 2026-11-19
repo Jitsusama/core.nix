@@ -2,6 +2,8 @@ use super::*;
 
 const NOW: i64 = 100_000;
 
+/// One naming no step it can be woken to, as one waiting on an answer
+/// or holding no quest is.
 fn quiet(idle: i64) -> Quiet {
     Quiet {
         address: "8C7D8C31".into(),
@@ -15,7 +17,171 @@ fn quiet(idle: i64) -> Quiet {
         started: None,
         unstarted: false,
         next: None,
+        stepless: false,
+        working: false,
     }
+}
+
+/// SEYNT2 on 18 November, in seconds: its last turn ended at 20:25, its
+/// pi started again at 22:10, and it named no step while two alarm loops
+/// of its own ran, one since 12:51.
+fn seynt2() -> Quiet {
+    Quiet {
+        address: "SEYNT2".into(),
+        session: "01a1d752".into(),
+        quest: Some("QEST-20261113-SEYNT2".into()),
+        orchestrated_by: Some("WCJQSG".into()),
+        turned: Some(1_795_051_546),
+        since: Some(1_795_051_546),
+        started: Some(1_795_057_800),
+        unstarted: true,
+        stepless: true,
+        working: true,
+        ..quiet(0)
+    }
+}
+
+#[test]
+fn a_session_naming_no_step_on_its_quest_is_woken_to_it() {
+    let mut told = Told::default();
+    let s = Quiet {
+        stepless: true,
+        ..quiet(WAKE_AFTER - 60)
+    };
+    assert_eq!(
+        due(std::slice::from_ref(&s), &mut told, NOW, clock),
+        Vec::<Tell>::new(),
+        "not before twenty minutes"
+    );
+    let tells = due(std::slice::from_ref(&s), &mut told, NOW + 60, clock);
+    assert_eq!(tells.len(), 1, "woken at twenty minutes: {tells:?}");
+    assert!(tells[0].wakes, "it is woken itself");
+    assert_eq!(tells[0].to, "8C7D8C31", "to its own address");
+    assert!(
+        tells[0].text.starts_with(
+            "8C7D8C31: this session has sat idle 0 h 20 min on QEST-1, naming no next step"
+        ),
+        "{}",
+        tells[0].text
+    );
+    assert!(
+        tells[0]
+            .text
+            .contains("focus a plan whose next item says it"),
+        "it is told how to be woken to a step: {}",
+        tells[0].text
+    );
+    assert_eq!(
+        due(std::slice::from_ref(&s), &mut told, NOW + 1800, clock),
+        Vec::<Tell>::new(),
+        "asked once"
+    );
+    let later = NOW - (WAKE_AFTER - 60) + IDLE_FOR;
+    let tells = due(&[s], &mut told, later, clock);
+    assert_eq!(
+        tells.len(),
+        1,
+        "its orchestrator hears at two hours: {tells:?}"
+    );
+    assert!(!tells[0].wakes, "{tells:?}");
+    assert!(
+        tells[0]
+            .text
+            .contains("asked at t100060 to take up its quest"),
+        "{}",
+        tells[0].text
+    );
+}
+
+#[test]
+fn background_work_holds_back_a_wake_an_hour_at_most() {
+    let mut told = Told::default();
+    let s = Quiet {
+        working: true,
+        ..with_next(WORKS_AT_MOST - 60)
+    };
+    assert_eq!(
+        due(std::slice::from_ref(&s), &mut told, NOW, clock),
+        Vec::<Tell>::new(),
+        "its work's end will wake it within the hour"
+    );
+    let tells = due(&[s], &mut told, NOW + 60, clock);
+    assert_eq!(tells.len(), 1, "woken past the hour: {tells:?}");
+    assert!(tells[0].wakes, "{tells:?}");
+    assert!(
+        tells[0]
+            .text
+            .contains("background work of its own has run all that while"),
+        "it isn't told its work still runs: {}",
+        tells[0].text
+    );
+}
+
+#[test]
+fn one_woken_to_its_quest_is_asked_again_only_after_two_hours() {
+    let mut told = Told::default();
+    // Idle from `at`, its last turn's end.
+    let from = |at| Quiet {
+        turned: Some(at),
+        since: Some(at),
+        ..quiet(0)
+    };
+    let stepless = |at| Quiet {
+        stepless: true,
+        ..from(at)
+    };
+    assert_eq!(
+        due(&[stepless(NOW - WAKE_AFTER)], &mut told, NOW, clock).len(),
+        1,
+        "woken to its quest"
+    );
+    // It answers, naming a step, and is woken to that step.
+    let stepped = Quiet {
+        next: Some("Merge #12".into()),
+        ..from(NOW + 600)
+    };
+    assert_eq!(
+        due(&[stepped], &mut told, NOW + 600 + WAKE_AFTER, clock).len(),
+        1,
+        "woken to a real step"
+    );
+    // It answers again, naming none, in a spell of its own.
+    let again = NOW + 900 + WAKE_AFTER;
+    assert_eq!(
+        due(&[stepless(again)], &mut told, again + WAKE_AFTER, clock),
+        Vec::<Tell>::new(),
+        "going back and forth between a step and none woke it to its quest again"
+    );
+    let tells = due(&[stepless(again)], &mut told, NOW + IDLE_FOR, clock);
+    assert_eq!(tells.len(), 1, "two hours on, it is asked again: {tells:?}");
+    assert!(tells[0].wakes, "{tells:?}");
+}
+
+#[test]
+fn seynt2_resumed_with_alarms_running_is_woken() {
+    let mut told = Told::default();
+    // 22:15, five minutes after its pi started again.
+    let tells = due(&[seynt2()], &mut told, 1_795_058_100, clock);
+    assert_eq!(tells.len(), 1, "{tells:?}");
+    assert!(tells[0].wakes, "woken itself, not told of: {tells:?}");
+    assert!(
+        tells[0]
+            .text
+            .starts_with("SEYNT2: this session has sat idle 1 h 49 min on QEST-20261113-SEYNT2"),
+        "{}",
+        tells[0].text
+    );
+    let mut told = Told::default();
+    let soon = Quiet {
+        turned: Some(1_795_058_100 - 40 * 60),
+        since: Some(1_795_058_100 - 40 * 60),
+        ..seynt2()
+    };
+    assert_eq!(
+        due(&[soon], &mut told, 1_795_058_100, clock),
+        Vec::<Tell>::new(),
+        "forty minutes into its alarms, their end still wakes it"
+    );
 }
 
 fn with_next(idle: i64) -> Quiet {
@@ -167,8 +333,9 @@ fn one_with_a_next_step_is_woken_itself_at_twenty_minutes_once() {
         tells[0].text,
         "8C7D8C31: this session has sat idle 0 h 20 min with a next step of its own, \
          \"Merge #12 once its gate passes\": its last turn ended at t98800. Take it up now. \
-         If it waits on someone, park saying on whom; if it is another's, hand it to them \
-         by name. Answer this with re, saying which. VP50PC hears of it at two hours idle."
+         If it waits on someone or on its work, park saying on what; if it is another's, \
+         hand it to them by name. Answer this with re, saying which. VP50PC hears of it at \
+         two hours idle."
     );
     assert!(
         due(&[with_next(WAKE_AFTER)], &mut told, NOW + 600, clock).is_empty(),
@@ -416,10 +583,16 @@ fn a_presence_counts_from_its_last_turn_across_a_restart() {
     assert_eq!(q.since, Some(1_000_060), "a restart begins no spell");
     assert_eq!(q.started, Some(1_100_000), "its start is kept to say");
     assert!(q.unstarted, "no turn since its start");
-    assert_eq!(
-        q.next, None,
-        "its background work's end wakes it, not cadence"
+    assert!(
+        q.working,
+        "its background work is kept, to hold back a wake"
     );
+    assert_eq!(
+        q.next.as_deref(),
+        Some("Merge #12"),
+        "its step is kept while it works"
+    );
+    assert!(!q.stepless, "it names a step");
 
     let other_boot =
         Quiet::from(&started_later, None, Some("c"), (false, false), |_| true).expect("one");
@@ -439,6 +612,35 @@ fn a_step_waiting_on_joel_or_on_an_answer_is_none_to_wake_to() {
     asked.wanting = serde_json::json!({"id": "2f95756a"});
     let q = Quiet::from(&asked, None, Some("b"), (false, false), |_| true).expect("one");
     assert_eq!(q.next, None, "a step waiting on the answer it asked for");
+    asked.doing = serde_json::Value::Null;
+    asked.quest = Some("QEST-1".into());
+    let q = Quiet::from(&asked, None, Some("b"), (false, false), |_| true).expect("one");
+    assert!(
+        !q.stepless,
+        "one waiting on an answer isn't woken to its quest"
+    );
+}
+
+#[test]
+fn one_naming_no_step_is_stepless_only_on_a_quest() {
+    let mut none = presence(Some("1970-01-12T13:46:40Z"), 900_000_000);
+    none.doing = serde_json::Value::Null;
+    none.quest = Some("QEST-1".into());
+    let q = Quiet::from(&none, None, Some("b"), (false, false), |_| true).expect("one");
+    assert!(
+        q.stepless && q.next.is_none(),
+        "on a quest, naming no step: {q:?}"
+    );
+    for quest in [None, Some(String::new())] {
+        none.quest = quest;
+        let q = Quiet::from(&none, None, Some("b"), (false, false), |_| true).expect("one");
+        assert!(!q.stepless, "with no quest there's nothing to wake it to");
+    }
+    let mut joel = presence(Some("1970-01-12T13:46:40Z"), 900_000_000);
+    joel.quest = Some("QEST-1".into());
+    joel.doing = serde_json::json!({"next": "Drill with Joel at his work MacBook"});
+    let q = Quiet::from(&joel, None, Some("b"), (false, false), |_| true).expect("one");
+    assert!(!q.stepless, "a step only Joel can move isn't no step");
 }
 
 #[test]
