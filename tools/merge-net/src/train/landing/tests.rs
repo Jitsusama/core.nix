@@ -399,6 +399,57 @@ fn the_riders_merged_before_one_github_refuses_stay_landed() {
     );
 }
 
+// Three riders, the middle one refused: the first stays, held to the
+// candidate's own merge of it rather than its top or the merge after, and
+// the third is never asked to merge, so it rides again.
+#[test]
+fn a_rider_after_the_one_github_refuses_isnt_merged() {
+    let (place, origin, checkout, base) = hubbed("github-partly-three");
+    let git = |arguments: &[&str]| git_in(&checkout, arguments);
+    let one = proposed(&checkout, &base, "one", 1);
+    let two = proposed(&checkout, &base, "two", 2);
+    let three = proposed(&checkout, &base, "three", 3);
+    let riding = [merging(&one, 1), merging(&two, 2), merging(&three, 3)];
+    let done = cut(&git, &base, &riding).unwrap();
+    let candidate = git(&["rev-parse", "HEAD"]).unwrap();
+    let hub = Fake {
+        refuses: Some(2),
+        ..Fake::of(&place, &origin)
+    };
+
+    let landing = land(
+        &checkout,
+        &git,
+        &hub,
+        &base,
+        &candidate,
+        &riding,
+        &done.merged,
+    );
+    let main = git_in(&origin, &["rev-parse", "main"]).unwrap();
+    assert!(
+        matches!(
+            &landing,
+            Landing::Partly { landed, kept, refused, .. }
+                if *landed == main && *kept == [one.clone()] && *refused == two
+        ),
+        "the first rider didn't stay landed alone: {landing:?}"
+    );
+    let mut asked = vec!["merge 1"];
+    asked.extend(vec!["merge 2"; MERGE_TRIES]);
+    assert_eq!(
+        hub.asked.take(),
+        asked,
+        "the rider after the refused one was asked to merge"
+    );
+    let held: Vec<&str> = ["one", "two", "three"]
+        .into_iter()
+        .filter(|file| git_in(&origin, &["cat-file", "-e", &format!("main:{file}")]).is_ok())
+        .collect();
+    assert_eq!(held, ["one"], "main doesn't hold the first rider alone");
+    fs::remove_dir_all(&place).unwrap();
+}
+
 // What GitHub merged before a refusal is still held to the tree the
 // candidate had there, as a whole landing is to the candidate's.
 #[test]

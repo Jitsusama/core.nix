@@ -69,7 +69,7 @@ pub use installed::install;
 use installed::{build, hand_over, handed, newer};
 use landing::{Landing, land};
 pub use pulls::drafted;
-use pulls::{pull_of, refused_as_draft};
+use pulls::{Boarding, boarding, pull_of};
 use splitting::{After, Splitting, UNTAKEN_FOR};
 
 /// A change waiting on the train.
@@ -553,14 +553,19 @@ fn after_landing(
         } => {
             // The riders landed alight, the refused one falls to run again
             // alone, and those after it stay aboard for the next run.
-            splitting.landed(kept.len());
+            // The refused rider leaves the front with those landed, so a
+            // search for a red candidate looks past it too.
+            splitting.landed(kept.len() + 1);
             for head in &kept {
                 alight(root, head);
             }
             keep_landed(root, &landed, &kept, crate::state::now() - began);
+            let before = match kept.len() {
+                1 => "the rider before it".to_owned(),
+                riders => format!("the {riders} riders before it"),
+            };
             let said = format!(
-                "{why}; the {} riders before it landed as {} and stay, and it leaves the train",
-                kept.len(),
+                "{why}; {before} landed as {} and stay, and it leaves the train",
                 short(&landed)
             );
             println!("merge-net: {said}");
@@ -688,20 +693,16 @@ fn aboard(
     let mut mergings = Vec::new();
     for rider in waiting {
         let open = pull_of(slug, &rider.branch);
-        let still = open.as_ref().is_some_and(|pull| pull.head == rider.head);
-        let fetched = still && git(&["fetch", "--quiet", "origin", &rider.head]).is_ok();
-        match open {
-            // GitHub merges no draft, and refuses one only once the riders
-            // before it have merged, so a draft never rides a candidate.
-            Some(pull) if still && pull.draft => {
-                let why = refused_as_draft(&pull);
+        let fetched = || git(&["fetch", "--quiet", "origin", &rider.head]).is_ok();
+        match (boarding(open.as_ref(), &rider.head), open) {
+            (Boarding::Falls(why), _) => {
                 println!(
                     "merge-net: {} steps off the train: {why}",
                     short(&rider.head)
                 );
                 let _ = fall(root, &rider.head, &why);
             }
-            Some(pull) if fetched => mergings.push(Merging {
+            (Boarding::Rides, Some(pull)) if fetched() => mergings.push(Merging {
                 number: pull.number,
                 head: rider.head.clone(),
                 subject: subject(pull.number, owner, &rider.branch),
@@ -758,7 +759,10 @@ fn keep_landed(root: &Path, landed: &str, heads: &[String], seconds: u64) {
 
 /// `owner/name` of the repository at `url`.
 fn slug_of(url: &str) -> String {
-    url.trim_end_matches(".git")
+    // An ssh origin names its host before a colon, git@github.com:owner/repo.
+    let path = url.rsplit_once(':').map_or(url, |(_, path)| path);
+    path.trim_end_matches('/')
+        .trim_end_matches(".git")
         .rsplit('/')
         .take(2)
         .collect::<Vec<_>>()

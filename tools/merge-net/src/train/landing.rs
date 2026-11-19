@@ -201,19 +201,27 @@ fn through(
             }
         }
     }
-    let Some((_, last)) = made.last() else {
+    let Some((last_made, last)) = made.last() else {
         return Landing::Refused(refused.unwrap_or_default());
     };
-    // Each rider is a merge along the candidate's first parent, so the
-    // tree after the last made is that many merges back from its top.
-    let short_by = riding.len() - made.len();
-    let tested = git(&["rev-parse", &format!("{candidate}~{short_by}^{{tree}}")]);
+    // The candidate as it stood after the riders made: all of it when
+    // every rider merged, else its own merge of the last one made.
+    let after = if made.len() == riding.len() {
+        Some(candidate.to_owned())
+    } else {
+        merge_within(git, candidate, &last_made.head, riding.len())
+    };
+    let tested = after
+        .as_ref()
+        .ok_or_else(|| "no merge of it in the candidate".to_owned())
+        .and_then(|after| git(&["rev-parse", &format!("{after}^{{tree}}")]));
+    let at = after.as_deref().unwrap_or(candidate);
     let landed_as_tested = |why: String| match (thrice(|| hub.tree(last)), &tested) {
         (Ok(merged), Ok(tested)) if merged == *tested => Ok(()),
         (Ok(_), _) => Err(format!(
             "{why}GitHub's merge {} doesn't hold the tree the train tested at {}",
             short(last),
-            short(candidate)
+            short(at)
         )),
         (Err(error), _) => Err(format!(
             "{why}GitHub couldn't say what its merge {} holds: {error}",
@@ -238,6 +246,32 @@ fn through(
         Ok(()) => Landing::Landed(last.clone()),
         Err(why) => reverted(hub, &made, why),
     }
+}
+
+/// The candidate's own merge of `head`, among its last `riders` commits
+/// along its first parent, found by its second parent rather than
+/// counted, since a rider whose head the candidate already held left no
+/// merge of its own.
+fn merge_within(
+    git: &dyn Fn(&[&str]) -> Result<String, String>,
+    candidate: &str,
+    head: &str,
+    riders: usize,
+) -> Option<String> {
+    let listed = git(&[
+        "rev-list",
+        "--first-parent",
+        "--parents",
+        "-n",
+        &riders.to_string(),
+        candidate,
+    ])
+    .ok()?;
+    listed.lines().find_map(|line| {
+        let mut commits = line.split(' ');
+        let merge = commits.next()?;
+        (commits.nth(1)? == head).then(|| merge.to_owned())
+    })
 }
 
 /// Revert each of `made` through `hub`, the newest first, for `why`,

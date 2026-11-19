@@ -54,6 +54,28 @@ fn pull_in(listed: &str, owner: &str) -> Option<Pull> {
     })
 }
 
+/// What boarding does with a rider at `head`, by its open pull request.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Boarding {
+    Rides,
+    /// A draft, which falls, for this reason.
+    Falls(String),
+    /// One whose pull request moved on or closed, which steps off.
+    StepsOff,
+}
+
+/// What boarding does with the rider at `head`, whose open pull request
+/// is `open`. GitHub merges no draft, and refuses one only once the
+/// riders before it have merged, so a draft never rides a candidate.
+pub fn boarding(open: Option<&Pull>, head: &str) -> Boarding {
+    match open {
+        Some(pull) if pull.head != head => Boarding::StepsOff,
+        Some(pull) if pull.draft => Boarding::Falls(refused_as_draft(pull)),
+        Some(_) => Boarding::Rides,
+        None => Boarding::StepsOff,
+    }
+}
+
 /// Why the draft `pull` goes no further toward main.
 #[must_use]
 pub fn refused_as_draft(pull: &Pull) -> String {
@@ -79,6 +101,45 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_draft_falls_at_boarding_and_a_moved_one_steps_off() {
+        let pull = |head: &str, draft: bool| Pull {
+            number: 5645,
+            title: "Ours".to_owned(),
+            head: head.to_owned(),
+            draft,
+        };
+        assert_eq!(boarding(Some(&pull("abc", false)), "abc"), Boarding::Rides);
+        assert!(
+            matches!(
+                boarding(Some(&pull("abc", true)), "abc"),
+                Boarding::Falls(why) if why.contains("#5645 is a draft")
+            ),
+            "a draft rode"
+        );
+        assert_eq!(
+            boarding(Some(&pull("newer", true)), "abc"),
+            Boarding::StepsOff,
+            "a draft that moved on fell for being a draft, not for moving"
+        );
+        assert_eq!(boarding(None, "abc"), Boarding::StepsOff);
+    }
+
+    // An ssh origin read as a path named no repository, so ready's draft
+    // check asked GitHub of none and let a draft through.
+    #[test]
+    fn an_origin_names_its_repository_however_its_reached() {
+        for url in [
+            "https://github.com/Jitsusama/core.nix.git",
+            "https://github.com/Jitsusama/core.nix",
+            "git@github.com:Jitsusama/core.nix.git",
+            "ssh://git@github.com/Jitsusama/core.nix.git",
+            "https://github.com/Jitsusama/core.nix.git/",
+        ] {
+            assert_eq!(slug_of(url), "Jitsusama/core.nix", "{url}");
+        }
+    }
 
     #[test]
     fn a_draft_is_read_as_one_from_githubs_list() {
