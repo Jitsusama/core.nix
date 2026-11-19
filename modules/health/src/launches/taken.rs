@@ -343,12 +343,12 @@ mod tests {
             account: account.map(str::to_owned),
             ..line
         };
-        let reload = || Entry {
+        let reload = |program: &str| Entry {
             origin: Origin::Systemd,
             ..entry(
                 "systemd",
                 5,
-                "Reload requested from client PID 1 ('systemctl') (unit x.service)...",
+                &format!("Reload requested from client PID 1 ('{program}') (unit x.service)..."),
             )
         };
         let job = |unit, job| Entry {
@@ -361,7 +361,7 @@ mod tests {
         let mut at = 1_000_000;
         for account in std::iter::once(None).chain([Some("1000"); MOST_RELOADS + 1]) {
             let unit = account.map_or("backend.service", |_| "janitor.service");
-            launches.heard(&clocked(at, account, reload()));
+            launches.heard(&clocked(at, account, reload("systemctl")));
             launches.heard(&clocked(at + 500_000, account, job(unit, Job::Stopping)));
             launches.heard(&clocked(at + 600_000, account, job(unit, Job::Started)));
             at += 200_000_000;
@@ -377,6 +377,14 @@ mod tests {
             (kept("backend.service"), kept("janitor.service")),
             (1, MOST_RELOADS),
             "his tool's restarts pushed out the machine's taken back"
+        );
+        // The machine's switch's reload, written between its tool's and the
+        // stop and heard only now, still gives the machine's restart back.
+        launches.heard(&clocked(1_200_000, None, reload(".switch-to-conf")));
+        assert_eq!(
+            launches.restarted.get("backend.service"),
+            Some(&vec![100]),
+            "a switch's reload heard late gave the machine's restart back no more"
         );
     }
 }
