@@ -53,6 +53,8 @@ PRESENTED_STILL = timedelta(milliseconds=500)
 CHORD_AGO = timedelta(seconds=2)
 # How long the shell is held stopped just after a chord, well past any opening's own time here.
 HELD = timedelta(seconds=2)
+# How long from its key a step out is held at most: its key's own work takes milliseconds.
+HELD_WITHIN = timedelta(seconds=1)
 # How much of niri's screen an opening's card changes at least, where nothing else moves.
 CARD_SHARE = 0.02
 # How many bytes of niri's screen are compared at once, a few rows of pixels.
@@ -5250,9 +5252,8 @@ def test_a_step_out_counts_the_rows_made_while_it_held(shell: Shell) -> None:
     assert holding is not None, "- out of Windows counted nothing as it held"
     made = {name: rows for name, rows in holding["rows"].items() if rows > 0}
     assert made, f"- out of Windows counted no rows made as it held: {holding}"
-    # Held within the key's own work, which takes milliseconds, never a second.
-    until = holding["untilHeld"]
-    assert 0 <= until < 1000, f"- out of Windows was held {until} ms from its key: {holding}"
+    until = timedelta(milliseconds=holding["untilHeld"])
+    assert timedelta(0) <= until < HELD_WITHIN, f"- out of Windows was held {until} from its key"
 
 
 def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> None:

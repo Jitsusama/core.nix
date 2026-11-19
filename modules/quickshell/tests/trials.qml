@@ -289,9 +289,10 @@ QtObject {
             JSON.stringify(made.holdingSplit));
         // The line names a step's three slowest parts, its holding with the
         // rows held, so a slow step out says what its holding made.
-        const line = Stepped.slowest(Object.assign({}, out.each, { finding: 1 }), out);
+        const outLine = Stepped.slowest(Object.assign({}, out.each, { finding: 1 }), out);
         expect("a step out's line says the rows its holding made",
-            line === ": holding 38 (runs 99 rows, now 2 rows, until held 2), finding 1", line);
+            outLine === ": holding 38 (runs 99 rows, now 2 rows, until held 2), finding 1",
+            outLine);
         expect("a line with nothing a millisecond says no parts",
             Stepped.slowest({ holding: 0, making: 0 }, out) === ""
                 && Stepped.slowest(null, null) === "",
