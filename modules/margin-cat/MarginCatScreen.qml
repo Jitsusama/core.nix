@@ -410,8 +410,8 @@ PanelWindow {
             hurried,
             facing: stepped?.facing ?? 0,
             // A walk set off mid-stride strides on from the one drawn,
-            // as far into it as it was, at the pace it had if it wasn't
-            // easing in or out; one set off from a hold, at once.
+            // as far into it as it was, easing in again unless it was at
+            // its pace; from a stride held on the spot, once it's seen.
             drawnIn: stepped?.pose ?? null,
             drawnInto: stepped?.into ?? null,
             drawnAtPace: stepped?.atPace ?? false,

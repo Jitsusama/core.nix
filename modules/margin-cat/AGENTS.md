@@ -275,8 +275,12 @@ want to see its paws moving when it is walking or running."
 
 - Held by `margin-cat.qml`: "it walks onto its seat, never past it"
 - Held by `margin-cat.qml`: "at a run, at most three cells a drawing"
-- Held by `margin-cat.qml`: "a walk starts a pair on from its stand, and stops a pair off
-  it"
+- Held by `margin-cat.qml`: "a walk starts a pair on from its stand, and stops at most a
+  pair off it"
+- Held by `margin-cat-floats.qml`: "set off mid-stride into a turn and a think, it steps to its
+  stand a pair at a time"
+- Held by `margin-cat-floats.qml`: "re-planned as it turns in a stride, it holds that stride
+  till it's seen"
 - Held by `margin-cat-floats.qml`: "it walks out of its stand and back onto it a pair of feet
   at a time"
 - Held by `margin-cat-floats.qml`: "nor fails to go, or skids or flashes a stride, any way,

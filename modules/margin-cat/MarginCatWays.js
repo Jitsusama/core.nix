@@ -213,10 +213,9 @@ function climb(way, column, y, rises) {
     leg(way, "climbs", { x: way.x, y });
 }
 
-// How it hangs on a side: head the way it climbs (`dir`, 1 down), belly to
-// the window, on its left side (-1) or right (1). The theme's profile
-// faces left, belly down: mirrored for 1, then a quarter turn, clockwise
-// for 1 and back for -1.
+// How it hangs on a side: head the way it climbs (`dir`, 1 down), belly to the window, on its left
+// side (-1) or right (1). The theme's profile faces left, belly down: mirrored for 1, then a
+// quarter turn, clockwise for 1 and back for -1.
 function clings(way, side, dir) {
     way.facing = side * dir;
     way.turn = side;
@@ -310,11 +309,8 @@ function timed(way) {
             ends += ms;
         }
     }
-    // Set off mid-stride into a hold on the spot, as a turn, it holds the stride drawn rather
-    // than both pairs of feet jumping to its stand's.
-    if (STRIDING.goes.includes(at.drawnIn) && STRIDING.goes.includes(beats[0]?.pose)) {
-        beats[0].pose = at.drawnIn;
-    }
+    // Set off mid-stride into holds on the spot, it steps to their stands a pair at a time.
+    MarginCat.standsFrom(beats, at.drawnIn, STRIDING.goes, SHOWN);
     const from = way.legs[0]?.from ?? { x: way.x, y: way.y };
     const route = { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends,
         cell: at.cell, drawnIn: at.drawnIn ?? null };
@@ -418,9 +414,12 @@ function frame(route, t) {
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     const ramps = beat.ramps ?? [0, 0];
     const half = (1 + ramps[0] + ramps[1]) / 2;
+    // A stride held on the spot counts as a whole one walked once seen SHOWN, so a walk set off
+    // from it steps on then, and holds it a stride before.
+    const drawn = strides && !beat.held ? drawnFor(route, beat, t, { walk, pose, spot }) : null;
+    const kept = beat.kept === pose ? Number(t - beat.begins >= SHOWN) : null;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
-        beat: beat.name, aboard: beat.aboard === true, done: false,
-        into: strides && !beat.held ? drawnFor(route, beat, t, { walk, pose, spot }) : null,
+        beat: beat.name, aboard: beat.aboard === true, done: false, into: drawn ?? kept,
         atPace: Boolean(strides) && spot.p >= ramps[0] / half && spot.p <= 1 - ramps[1] / half };
 }
 

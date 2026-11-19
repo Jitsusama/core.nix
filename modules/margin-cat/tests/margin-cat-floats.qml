@@ -483,8 +483,11 @@ QtObject {
             [true, true, true, 0, 0]);
         // Set off again as it eases in, it eases in on, rather than lurch to
         // its pace; at its pace, it keeps it.
-        const easingAt = Array.from({ length: 400 }, (_, t) => Paths.frame(unchased, t))
-            .find(one => one.beat === "goes" && strideOrder.includes(one.pose));
+        // Halfway up its ramp in, by time, not by what it says of its pace.
+        const eases = unchased.beats.find(beat => beat.kind === "goes");
+        const rampsUp = eases.ramps[0] / (1 + eases.ramps[0] + eases.ramps[1]);
+        const easingAt = Paths.frame(unchased,
+            eases.begins + (eases.ends - eases.begins) * rampsUp);
         const pacedAt = Paths.frame(unchased, 600);
         const easesFrom = one => Paths.walk({ x: one.x, y: one.y }, { x: 700, y: 7 }, world({
             hurried: true, facing: one.facing, drawnIn: one.pose, drawnInto: one.into,
@@ -506,6 +509,22 @@ QtObject {
             .filter((pose, t, all) => t === 0 || pose !== all[t - 1]).slice(0, 4);
         expect("set off mid-stride into a turn, it turns in the stride drawn",
             turnSteps, ["walkingA", "walkingC", "walkingB", "walkingD"]);
+        // Into a turn and a think, it steps to its stand a pair of feet at a time.
+        const thinksMid = Paths.walk({ x: 1200, y: 7 }, { x: 900, y: 398 },
+            world({ pause: 400, facing: -1, drawnIn: "walkingA" }));
+        const thinkSteps = Array.from({ length: 600 }, (_, t) => Paths.frame(thinksMid, t).pose)
+            .filter((pose, t, all) => t === 0 || pose !== all[t - 1]).slice(0, 4);
+        expect("set off mid-stride into a turn and a think, it steps to its stand a pair at a time",
+            thinkSteps, ["walkingA", "walkingC", "walkingB", "pouncing"]);
+        // Re-planned 10 ms into that turn, it holds the stride it turns in till it's seen.
+        const turning = Paths.frame(turnsMid, 10);
+        const replanned = Paths.walk({ x: turning.x, y: turning.y }, { x: 700, y: 398 },
+            world({ hurried: true, facing: turning.facing, drawnIn: turning.pose,
+                drawnInto: turning.into, drawnAtPace: turning.atPace }));
+        const keptFor = 10 + Array.from({ length: 300 }, (_, t) => Paths.frame(replanned, t).pose)
+            .indexOf("walkingC");
+        expect("re-planned as it turns in a stride, it holds that stride till it's seen",
+            [turning.pose, keptFor >= 33], ["walkingA", true]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));

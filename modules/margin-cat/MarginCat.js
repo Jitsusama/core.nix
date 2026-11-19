@@ -1,9 +1,8 @@
-// Where the margin's cat sits and how big it's drawn (MarginCatScreen.qml): on
-// the top edge of the column Joel is in, in the gap the windows leave above
-// them, so it covers nothing of his and moves only where he already looks;
-// the beats and paces of its walk, which MarginCatPaths.js lays its ways
-// with; how niri's motion moves the windows it holds through or rides; and
-// how it's drawn turned and told.
+// Where the margin's cat sits and how big it's drawn (MarginCatScreen.qml): on the top edge of the
+// column Joel is in, in the gap the windows leave above them, so it covers nothing of his and moves
+// only where he already looks; the beats and paces of its walk, which MarginCatPaths.js lays its
+// ways with; how niri's motion moves the windows it holds through or rides; and how it's drawn
+// turned and told.
 .pragma library
 
 // The share of the gap the cat stands in, so a little of it is left above.
@@ -11,26 +10,22 @@ const STANDS = 2 / 3;
 // How many cells its drawings are across and down (the theme's `pixels`).
 const CELLS = 8;
 
-// How many of the screen's pixels each of the cat's cells takes, in a gap
-// `gap` logical pixels deep at `ratio` device pixels to one: whole ones,
-// so it's as sharp at 1.5 as at 2, about two thirds of the gap all told,
-// and never none.
+// How many of the screen's pixels each of the cat's cells takes, in a gap `gap` logical pixels deep
+// at `ratio` device pixels to one: whole ones, so it's as sharp at 1.5 as at 2, about two thirds of
+// the gap all told, and never none.
 function cell(gap, ratio) {
     return Math.max(1, Math.round((gap * STANDS * ratio) / CELLS));
 }
 
-// Where the cat sits, from `at`: the focused `column` ({ left, top, width }
-// in the screen's logical pixels, as niri says it will come to rest), the
-// screen's width `across`, how many `marks` the margin draws and each one's
-// `cell`, and the cat's own size, `wide` by `tall`. It sits `air` above the
-// column's top edge, one of its own cells, since the focused border is near
-// its hue in both looks (1.19:1 in the light, 1.94:1 in the dark) and its
-// feet would melt into it; over the middle of what's seen of the column,
-// never past the screen's edge. One that would land on the margin's marks, centred on the screen,
-// sits beside them on its column's side, half a cell off, since the marks
-// say what's true and the cat says nothing. A column whose gap above can't
-// hold it and its air, as in fullscreen, has it nowhere: null, as with
-// nothing focused.
+// Where the cat sits, from `at`: the focused `column` ({ left, top, width } in the screen's logical
+// pixels, as niri says it will come to rest), the screen's width `across`, how many `marks` the
+// margin draws and each one's `cell`, and the cat's own size, `wide` by `tall`. It sits `air` above
+// the column's top edge, one of its own cells, since the focused border is near its hue in both
+// looks (1.19:1 in the light, 1.94:1 in the dark) and its feet would melt into it; over the middle
+// of what's seen of the column, never past the screen's edge. One that would land on the margin's
+// marks, centred on the screen, sits beside them on its column's side, half a cell off, since the
+// marks say what's true and the cat says nothing. A column whose gap above can't hold it and its
+// air, as in fullscreen, has it nowhere: null, as with nothing focused.
 function sits(at) {
     const { column } = at;
     if (!column || column.top < at.tall + at.air) {
@@ -64,25 +59,21 @@ const RESTS = 2000;
 // than niri takes between two events of one move, short of a glance.
 const LEAVES = 250;
 
-// How long after the window it sat on closed the next change of its column
-// is still that close's, in ms: niri lays the column out again once the
-// windows left have resized, which it waits on for at most 300 ms, and a
-// busy machine's shell hears of it later still.
+// How long after the window it sat on closed the next change of its column is still that close's,
+// in ms: niri lays the column out again once the windows left have resized, which it waits on for
+// at most 300 ms, and a busy machine's shell hears of it later still.
 const CLOSING = 1000;
 
-// What a walk set going hears of the window it sat on closing, the
-// `close` the screen keeps (the window it was `on`, `at` when, and the
-// windows as it `saw` them then) as it is `now`: within CLOSING, that
-// window gone, as the one it stood on, and the windows as they were at
-// the close, so every walk the close sets going is the close's, its
-// target moved before its first step or its seat laid out again once
-// the windows left have resized, and falls rather than riding the row
-// below down sitting (a builder's nested niri, 2026-11-17: niri moved
-// that row up into the closed one's place as the cat set off, and it
-// rode, turned and landed). After, as it `stands` now: the window it
-// stands on, whether that's `gone`, and the windows it last `seen`; so
-// too a walk that rides nothing, its `seen` null (a fall to the floor,
-// or a move cut short), which is never the close's.
+// What a walk set going hears of the window it sat on closing, the `close` the screen keeps (the
+// window it was `on`, `at` when, and the windows as it `saw` them then) as it is `now`: within
+// CLOSING, that window gone, as the one it stood on, and the windows as they were at the close, so
+// every walk the close sets going is the close's, its target moved before its first step or its
+// seat laid out again once the windows left have resized, and falls rather than riding the row
+// below down sitting (a builder's nested niri, 2026-11-17: niri moved that row up into the closed
+// one's place as the cat set off, and it rode, turned and landed). After, as it `stands` now: the
+// window it stands on, whether that's `gone`, and the windows it last `seen`; so too a walk that
+// rides nothing, its `seen` null (a fall to the floor, or a move cut short), which is never the
+// close's.
 function closeHeard(close, now) {
     const closes = close.on !== null && close.on !== undefined && close.seen !== null;
     if (closes && now - close.at < CLOSING) {
@@ -155,13 +146,11 @@ function easeInOut(p) {
     return (1 - Math.cos(Math.PI * p)) / 2;
 }
 
-// How far niri's workspace slide has gone `t` ms after it set off, from 0
-// to 1, on the spring niri's `workspace-switch` rides (the theme's
-// motion.spring, with niri's mass of 1), slowed as niri slows its clock,
-// as a resize's edge goes on the same spring, so the cat rides a window's
-// top exactly as it moves, and holds through a slide for as long as it
-// lasts. The spring sets off still: the cat never moves before the world
-// does.
+// How far niri's workspace slide has gone `t` ms after it set off, from 0 to 1, on the spring
+// niri's `workspace-switch` rides (the theme's motion.spring, with niri's mass of 1), slowed as
+// niri slows its clock, as a resize's edge goes on the same spring, so the cat rides a window's top
+// exactly as it moves, and holds through a slide for as long as it lasts. The spring sets off
+// still: the cat never moves before the world does.
 function slid(t, spring) {
     const w = Math.sqrt(spring.stiffness);
     const beta = spring.damping * w;
@@ -178,9 +167,8 @@ function slid(t, spring) {
     return 1 - envelope * (Math.cosh(w2 * s) + (beta / w2) * Math.sinh(w2 * s));
 }
 
-// How long the slide lasts, in ms: until it's within the spring's epsilon
-// of its end and stays there, to the millisecond, as niri's clamped
-// duration finds it.
+// How long the slide lasts, in ms: until it's within the spring's epsilon of its end and stays
+// there, to the millisecond, as niri's clamped duration finds it.
 const SLIDES_AT_MOST = 3000;
 function slides(spring) {
     const slow = spring.slowdown ?? 1;
@@ -191,13 +179,12 @@ function slides(spring) {
     return t * slow;
 }
 
-// How far into niri's motion the cat's first frame of it shows, in ms, on
-// a screen drawn every `frame` ms: niri sets a workspace's slide off
-// before the shell hears of it, and the cat's frames reach the screen a
-// frame after niri's own; a resize's layout waits on the window's commit
-// and niri's next refresh as well. On a GPU's nested niri a slide's
-// window was 42 ms ahead of a cat told nothing of it at 60 Hz and about
-// 33 at 120, and a resize's 22 to 39 ms more (PLAN-20261112-V2U3HE, 24).
+// How far into niri's motion the cat's first frame of it shows, in ms, on a screen drawn every
+// `frame` ms: niri sets a workspace's slide off before the shell hears of it, and the cat's frames
+// reach the screen a frame after niri's own; a resize's layout waits on the window's commit and
+// niri's next refresh as well. On a GPU's nested niri a slide's window was 42 ms ahead of a cat
+// told nothing of it at 60 Hz and about 33 at 120, and a resize's 22 to 39 ms more
+// (PLAN-20261112-V2U3HE, 24).
 const HEARS = 25;
 const RESIZES = 30;
 function behind(frame, kind) {
@@ -221,22 +208,20 @@ function above(seat, leaving, aboard) {
     return aboard === true || (seat?.floats === true && !leaving);
 }
 
-// How far into a resize niri says began `began` ms before it told of it
-// the cat's first frame shows, rather than RESIZES' guess at it, and a
-// frame further: a cat late of the edge of a window growing down over it
-// is in that window's face, and one early is in the gap it leaves
-// (VKCF3Z, 3bc784ec). As `behind` gives with no word from niri.
+// How far into a resize niri says began `began` ms before it told of it the cat's first frame
+// shows, rather than RESIZES' guess at it, and a frame further: a cat late of the edge of a window
+// growing down over it is in that window's face, and one early is in the gap it leaves (VKCF3Z,
+// 3bc784ec). As `behind` gives with no word from niri.
 function behindResize(frame, began) {
     return typeof began === "number" && began >= 0
         ? Math.round(HEARS + 2 * frame + began) : behind(frame, "resize");
 }
 
-// Whether it's drawn over the windows, `now` as the screen has it: while
-// Joel's hand `holds` it and as it `falls` from his hand, since it's in
-// front of whatever it was carried over, the one exception to the rule
-// above (VKCF3Z, 9ead6710); then, landed from his hand and not walked
-// since, by the ledge it `landed` on, floating or not; else as above()
-// says by its seat, `leaving` it, or a leg `aboard` a floating window.
+// Whether it's drawn over the windows, `now` as the screen has it: while Joel's hand `holds` it and
+// as it `falls` from his hand, since it's in front of whatever it was carried over, the one
+// exception to the rule above (VKCF3Z, 9ead6710); then, landed from his hand and not walked since,
+// by the ledge it `landed` on, floating or not; else as above() says by its seat, `leaving` it, or
+// a leg `aboard` a floating window.
 function inFront(now) {
     if (now.holds || now.falls) {
         return true;
@@ -256,10 +241,9 @@ const LIFTS = 4;
 // ears over the back of its neck, so it hangs below the pointer.
 const SCRUFF = { x: 3, y: 0 };
 
-// Where its box is as Joel's `hand` holds it, { x, y } in the screen's
-// logical pixels: its scruff cell's middle under the pointer, kept wholly
-// on a screen `across` by `height`, its art's `cell` and its `wide` and
-// `tall` as a walk takes them.
+// Where its box is as Joel's `hand` holds it, { x, y } in the screen's logical pixels: its scruff
+// cell's middle under the pointer, kept wholly on a screen `across` by `height`, its art's `cell`
+// and its `wide` and `tall` as a walk takes them.
 function held(hand, at) {
     const x = hand.x - (SCRUFF.x + 0.5) * at.cell;
     const y = hand.y - (SCRUFF.y + 0.5) * at.cell;
@@ -267,24 +251,21 @@ function held(hand, at) {
         y: Math.min(Math.max(y, 0), at.height - at.tall) };
 }
 
-// The pose Joel's hand gives it, by the theme's name: scruffed while
-// it's `holding`, and falling once it's `dropping` from his hand until
-// its walk has `stepped`, the drop's first step being a fall's, so no
-// frame between shows it sitting in the air (the GPU rig, 2026-11-16);
-// null otherwise, its walk or its seat saying.
+// The pose Joel's hand gives it, by the theme's name: scruffed while it's `holding`, and falling
+// once it's `dropping` from his hand until its walk has `stepped`, the drop's first step being a
+// fall's, so no frame between shows it sitting in the air (the GPU rig, 2026-11-16); null
+// otherwise, its walk or its seat saying.
 function fromHand(holding, dropping, stepped) {
     return holding ? "scruffed" : dropping && stepped === null ? "falling" : null;
 }
 
-// Whether a screen's cat wants every tile of the workspaces it crosses,
-// its ways being over them: while it's on its way to another column or
-// workspace, `going` (unless a scene's walk `handsBack`), `moving` or
-// `resting` before it sets off, and while it's `holding` in Joel's hand,
-// since it falls onto whichever is under where he lets go (the GPU rig,
-// 2026-11-16: knowing only its own, it fell past a lower top to the
-// floor). At rest, and on a scene's wander, which stays over its own
-// window, only the tile under it is, so the shut shell hears no other
-// (2026-11-12: watching every tile made it hear each of 20 resizes).
+// Whether a screen's cat wants every tile of the workspaces it crosses, its ways being over them:
+// while it's on its way to another column or workspace, `going` (unless a scene's walk
+// `handsBack`), `moving` or `resting` before it sets off, and while it's `holding` in Joel's hand,
+// since it falls onto whichever is under where he lets go (the GPU rig, 2026-11-16: knowing only
+// its own, it fell past a lower top to the floor). At rest, and on a scene's wander, which stays
+// over its own window, only the tile under it is, so the shut shell hears no other (2026-11-12:
+// watching every tile made it hear each of 20 resizes).
 function travels(cat) {
     return (!!cat.going && !cat.handsBack) || !!cat.moving || !!cat.resting
         || !!cat.holding;
@@ -349,6 +330,29 @@ function strode(beat, spot) {
     return Math.floor(went(beat, spot) / beat.stride + 1e-6);
 }
 
+// Set off in `drawnIn`, one of `strides`, into holds on the spot, as a turn then a think, it
+// holds that stride through the first of `beats`, then steps on to each next stand a pair of
+// feet at a time, the stride between drawn `shown` ms, or all of a hold too short for both,
+// rather than both pairs jumping to it. Each notes as `kept` the stride it holds, not a stand.
+function standsFrom(beats, drawnIn, strides, shown) {
+    const many = strides.length;
+    for (const [i, beat] of beats.entries()) {
+        const [drawn, pose] = [i === 0 ? drawnIn : beats[i - 1].pose, beat.pose];
+        if (beat.kind !== "holds" || !strides.includes(drawn) || !strides.includes(pose)) {
+            return;
+        }
+        const apart = (strides.indexOf(pose) - strides.indexOf(drawn) + many) % many === many / 2;
+        const between = strides[(strides.indexOf(drawn) + 1) % many];
+        if (i === 0) {
+            Object.assign(beat, { pose: drawn, kept: drawn === pose ? null : drawn });
+        } else if (apart && beat.ends - beat.begins < 2 * shown) {
+            Object.assign(beat, { pose: between, kept: between });
+        } else if (apart) {
+            Object.assign(beat, { kept: between, posed: ms => (ms < shown ? between : pose) });
+        }
+    }
+}
+
 // Which of `strides` a walk is drawn in `t` ms in, each step from the last moving one pair of
 // feet (Joel, 2026-11-14 17:19: "i never want the kitty to skid into place"). `walk.count`
 // says how many strides it's taken by a time from `walk.since`, held from `walk.last` on;
@@ -380,10 +384,9 @@ function striding(strides, walk, t) {
     return strides[stopping ? before : at(t)];
 }
 
-// How far along a walk it is at `p` of its time, from 0 to 1: speeding up
-// evenly over its first `ramps[0]` of the ground, steady, then slowing
-// evenly over its last `ramps[1]`, its time stretched to keep its pace
-// between them (MarginCatWays.js's timed()).
+// How far along a walk it is at `p` of its time, from 0 to 1: speeding up evenly over its first
+// `ramps[0]` of the ground, steady, then slowing evenly over its last `ramps[1]`, its time
+// stretched to keep its pace between them (MarginCatWays.js's timed()).
 function paced(p, ramps) {
     const [rises, eases] = ramps;
     const steady = 1 + rises + eases;
@@ -414,16 +417,14 @@ const PETTED = 600;
 // of the pointer over its new place a frame or two after it gets there.
 const SETTLED = 200;
 
-// Whether the pointer, last seen over the cat at `was` (null as it comes
-// onto it) and now at `at`, both in the screen's pixels, strokes it: moved
-// there once the cat had rested `rested` ms (-1 while it goes), never a
-// pointer at rest it came to under.
+// Whether the pointer, last seen over the cat at `was` (null as it comes onto it) and now at `at`,
+// both in the screen's pixels, strokes it: moved there once the cat had rested `rested` ms (-1
+// while it goes), never a pointer at rest it came to under.
 function strokes(was, at, rested) {
     return rested >= SETTLED && (was === null || was.x !== at.x || was.y !== at.y);
 }
 
-// Which way a cat `size` across leans into a pointer `across` it: -1 to
-// its left, 1 to its right.
+// Which way a cat `size` across leans into a pointer `across` it: -1 to its left, 1 to its right.
 function leansTo(across, size) {
     return across < size / 2 ? -1 : 1;
 }
@@ -432,11 +433,10 @@ function leansTo(across, size) {
 // sits on the seat's cells, whichever way it leans.
 const HEAD_ROWS = 5;
 
-// The cat leaning `way` (leansTo), in the theme's `pixels`: the pose leans
-// to its right, toward its tail. To its left, the same head and neck a
-// cell left of sitting's, over sitting's own body and tail, unmoved, so
-// it never hops away from the hand (VKCF3Z, 10bacc58). Sitting's head is
-// at its drawing's left edge, so that one starts a cell out (leansOut).
+// The cat leaning `way` (leansTo), in the theme's `pixels`: the pose leans to its right, toward its
+// tail. To its left, the same head and neck a cell left of sitting's, over sitting's own body and
+// tail, unmoved, so it never hops away from the hand (VKCF3Z, 10bacc58). Sitting's head is at its
+// drawing's left edge, so that one starts a cell out (leansOut).
 function leaning(way, pixels) {
     if (way > 0) {
         return pixels.leaning;
@@ -450,13 +450,12 @@ function leansOut(way) {
     return way < 0 ? 1 : 0;
 }
 
-// A swat (VKCF3Z, 73c59942): a pointer crossing the cat on its way
-// elsewhere, gone before a pet would lean it in, has it bat after it about
-// one time in three, its paw back down SWATS ms on, never twice within
-// SWATS_APART ms, so it plays rather than nags, and never as it dozes,
-// which only a pet wakes it from. The hold at full reach is two 60 Hz
-// frames under 200 ms, so with the 83 ms the screen takes to show it and
-// take it away the paw is back within 250 ms of showing (VKCF3Z, 38d40d08).
+// A swat (VKCF3Z, 73c59942): a pointer crossing the cat on its way elsewhere, gone before a pet
+// would lean it in, has it bat after it about one time in three, its paw back down SWATS ms on,
+// never twice within SWATS_APART ms, so it plays rather than nags, and never as it dozes, which
+// only a pet wakes it from. The hold at full reach is two 60 Hz frames under 200 ms, so with the 83
+// ms the screen takes to show it and take it away the paw is back within 250 ms of showing (VKCF3Z,
+// 38d40d08).
 const SWATS = 166;
 const SWATS_APART = 20000;
 
@@ -466,11 +465,10 @@ function swats(crossed, since, asleep, roll) {
     return crossed && since >= SWATS_APART && !asleep && roll < 1 / 3;
 }
 
-// The cat swatting `way` (leansTo), toward the side the pointer left by,
-// in the theme's `pixels`: batting's raised paw, beside its head on its
-// tail's side. To its left, the same paw mirrored beside sitting's head,
-// over sitting's own body and tail, so only the paw moves; its drawing
-// then starts three cells out (swatsOut).
+// The cat swatting `way` (leansTo), toward the side the pointer left by, in the theme's `pixels`:
+// batting's raised paw, beside its head on its tail's side. To its left, the same paw mirrored
+// beside sitting's head, over sitting's own body and tail, so only the paw moves; its drawing then
+// starts three cells out (swatsOut).
 function swatting(way, pixels) {
     if (way > 0) {
         return pixels.batting;

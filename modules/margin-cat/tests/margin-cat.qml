@@ -323,7 +323,7 @@ QtObject {
         const strideAt = (t, more) => MarginCat.striding(walk, Object.assign({
             stand: "walkingB", shown: 33, since: 0, joins: false,
             count: time => Math.floor(time / 40) }, more), t);
-        expect("a walk starts a pair on from its stand, and stops a pair off it",
+        expect("a walk starts a pair on from its stand, and stops at most a pair off it",
             [strideAt(0, { last: 235 }), strideAt(40, { last: 235 }),
                 strideAt(220, { last: 235 }), strideAt(235, { last: 235 }),
                 strideAt(300, { last: 235 }), strideAt(205, { last: 210 }),
