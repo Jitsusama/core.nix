@@ -421,14 +421,15 @@ function frame(route, t) {
             beat: "sits", done: true };
     }
     const spot = placed(route, beat, t);
-    // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): one its
-    // beat's last SHOWN would start isn't, and a beat too short for one
-    // goes on in the pose it came in; joined to another it strides on in,
-    // its last strides are that one's first.
+    // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): none starts in a beat's
+    // last SHOWN, and one too short for a stride goes on in the pose it came in; joined to
+    // another, its last strides are that one's first.
     const strides = STRIDING[beat.kind];
     const last = beat.joins ? beat.ends : Math.max(beat.begins, beat.ends - SHOWN);
     const pose = strides
-        ? beat.held ?? strides[strode(beat, t < last ? spot : placed(route, beat, last)) % strides.length]
+        ? beat.held ?? MarginCat.striding(strides, { stand: HOLDS.turns, shown: SHOWN, last,
+            begins: beat.begins, joins: beat.joins,
+            count: time => strode(beat, placed(route, beat, time)) }, t)
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
         beat: beat.name, aboard: beat.aboard === true, done: false };

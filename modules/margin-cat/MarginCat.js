@@ -336,6 +336,30 @@ function walked(shown, drawing, unseen, counted) {
     return { said, line };
 }
 
+// Which of `strides` a walk is drawn in `t` ms in, each step from the
+// last moving one pair of feet (Joel, 2026-11-14 17:19: "i never want the
+// kitty to skid into place"). `walk.count` says how many strides it's
+// taken by a time, held from `walk.last` on, and `walk.stand` is the
+// stride it stands in, so it starts in the one a pair on from that. One
+// about to stop in the stride both pairs away from its stand steps on to
+// the one between for its last `walk.shown` ms, or, when that stride
+// itself would be seen for less, stops in the one before it instead
+// (WCJQSG b1034f36). One that `joins` another strides on in, unstopped.
+function striding(strides, walk, t) {
+    const many = strides.length;
+    const stand = strides.indexOf(walk.stand);
+    const at = time => (walk.count(Math.min(time, walk.last)) + stand + 1) % many;
+    const end = at(walk.last);
+    if (walk.joins || (end - stand + many) % many !== many / 2) {
+        return strides[at(t)];
+    }
+    if (at(Math.max(walk.begins, walk.last - walk.shown)) === end) {
+        return strides[t < walk.last ? at(t) : (end + 1) % many];
+    }
+    const stopping = t >= walk.last - walk.shown && at(t) === end;
+    return strides[stopping ? (end - 1 + many) % many : at(t)];
+}
+
 // A drawing turned the way the cat faces: the theme draws its profiles
 // facing left, so one going right is drawn mirrored, cell for cell.
 function turned(drawing, way) {
