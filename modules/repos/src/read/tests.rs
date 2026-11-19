@@ -247,6 +247,36 @@ fn a_reftable_checkouts_heads_and_trunk_are_read_from_its_tables() {
         ],
         "{repository:#?}"
     );
+    // Its tables hold its one branch; the loose main the folder was laid
+    // out with is not where a reftable checkout keeps its refs.
+    assert_eq!(repository.checkouts[0].branches, 1, "{repository:#?}");
+}
+
+#[test]
+fn a_checkout_counts_its_branches_once_each_and_its_configs_bytes() {
+    let src = place("branches");
+    let folder = src.join("heavy");
+    checkout_at(&folder, Some("https://git.example.org/jg/heavy.git"), 100);
+    let git = folder.join(".git");
+    // main is loose already; jg/a is loose alone, jg/b packed alone, and
+    // main packed too, as a branch written since the last pack is.
+    write(&git.join("refs/heads/jg/a"), &format!("{COMMIT}\n"));
+    write(&git.join("refs/heads/jg/half.lock"), &format!("{OTHER}\n"));
+    write(
+        &git.join("packed-refs"),
+        &format!(
+            "# pack-refs with: peeled fully-peeled sorted\n{COMMIT} refs/heads/jg/b\n\
+             {COMMIT} refs/heads/main\n{OTHER} refs/remotes/origin/main\n{OTHER} refs/tags/v1\n"
+        ),
+    );
+    let config = fs::read(git.join("config")).expect("the config").len() as u64;
+    let record = reading(&[src], None);
+    let checkout = &record.repositories[0].checkouts[0];
+    assert_eq!(
+        (checkout.branches, checkout.config_bytes),
+        (3, config),
+        "{checkout:#?}"
+    );
 }
 
 #[test]

@@ -12,7 +12,7 @@
 //! runs, and no object is opened, so a reading of a thousand trees takes
 //! milliseconds.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -257,6 +257,8 @@ pub fn checkout(common: &Path, home: Option<&Path>) -> Found {
         written_at: written(common),
         trees,
         weight: weight::weigh(common, &limits(&config)),
+        branches: refs.branches(),
+        config_bytes: config.len() as u64,
     };
     Found {
         checkout,
@@ -525,6 +527,46 @@ impl Refs {
 
     fn has(&self, name: &str) -> bool {
         self.get(name).is_some()
+    }
+
+    /// How many local branches the checkout keeps: its tables' or, kept in
+    /// files, its loose refs and packed ones together, each name once, since
+    /// a branch written since the last pack is in both.
+    fn branches(&self) -> u64 {
+        if let Some(table) = &self.table {
+            return table
+                .keys()
+                .filter(|name| name.starts_with("refs/heads/"))
+                .count() as u64;
+        }
+        let mut names: HashSet<String> = self
+            .packed
+            .keys()
+            .filter(|name| name.starts_with("refs/heads/"))
+            .cloned()
+            .collect();
+        loose_refs(&self.common.join("refs/heads"), "refs/heads", &mut names);
+        names.len() as u64
+    }
+}
+
+/// Every loose ref under `folder`, by its full name, `prefix` being the
+/// folder's own. A `.lock` is a write git hasn't finished, not a ref.
+fn loose_refs(folder: &Path, prefix: &str, names: &mut HashSet<String>) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = format!("{prefix}/{}", entry.file_name().to_string_lossy());
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => loose_refs(&entry.path(), &name, names),
+            Ok(kind)
+                if kind.is_file() && entry.path().extension().is_none_or(|ext| ext != "lock") =>
+            {
+                names.insert(name);
+            }
+            _ => {}
+        }
     }
 }
 

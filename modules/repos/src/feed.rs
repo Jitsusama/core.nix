@@ -53,6 +53,8 @@ pub fn records(record: &Record) -> Vec<Value> {
                 "head": checkout.head,
                 "written_at": checkout.written_at,
                 "weight": checkout.weight,
+                "branches": checkout.branches,
+                "config_bytes": checkout.config_bytes,
             }));
             for tree in &checkout.trees {
                 said.push(json!({
