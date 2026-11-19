@@ -970,6 +970,7 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   groundEl.painted = () => ({
     across: (groundLayers[1] || []).length,
     talk: talkLayer.length,
+    talks: talkLayer.map((t) => t.cls),
     fed: fedLayer.length,
     said: talk.size,
     between: talkBetween,
@@ -3152,13 +3153,11 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:0 20 48"/></svg></dt><dd>A basin: machines borrowed from a pool in the cloud, drawn as one box open at the top and named by the basin; its drawer lists each machine</dd></div>` +
       `<div><dt><svg viewBox="-17 -17 34 34" aria-hidden="true"><path class="m-spokes" d="${spokesPath(10)}" style="stroke-width:1.75"/><circle class="m-hub" r="10"/><path class="m-hub-shape" d="${SHAPES.square(5)}"/></svg></dt><dd>A network's hub, a knot: spokes round its ring, and its own shape in the middle; a click on its ground opens it</dd></div>` +
       `<div><dt><svg viewBox="-17 -17 34 34" aria-hidden="true"><path class="m-spokes" d="${spokesPath(10)}" style="stroke-width:1.75"/><circle class="m-hub" r="10"/></svg></dt><dd>A network with no leader, shared by cells of other networks: the same knot, empty in the middle; the cells it shares are the bridge between them</dd></div>` +
-      (m.cells.length > FOLD_OVER
-        ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-colony folded" r="12"/><circle class="m-hub" r="7"/></svg></dt><dd>A folded network: drawn too small to read, or off the map, so its cells wait in its ground until you come closer or open it</dd></div>`
-        : "") +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-colony folded" r="12"/><circle class="m-hub" r="7"/></svg></dt><dd>A folded network: drawn too small to read${m.cells.length > FOLD_OVER ? ", or off the map" : ""}, so its cells wait in its ground until you come closer or open it</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><g class="hub quiet" transform="scale(0.82)"><path class="m-spokes" d="${spokesPath(10)}"/><circle class="m-hub" r="10"/><path class="m-hub-shape" d="${SHAPES.square(5)}"/></g></svg></dt><dd>A quiet network: none of its cells at work, so drawn lighter</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-13,0H13" style="--w:4px"/></svg></dt><dd>A cord: machine to hub, or hub to branch, a network started inside it or grown out of it; thicker carries more</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-hypha" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Hyphae: a hub's cells, branching out from it</dd></div>` +
-      (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet; talk between two networks is one arc between their hubs until you open one of its cells" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said; talk between two networks is one arc between their hubs until you open one of its cells"}</dd></div>` : "") +
+      (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet; talk between two networks is one arc between their hubs until you open it or one of its cells" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said; talk between two networks is one arc between their hubs until you open it or one of its cells"}</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cross m-repository" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Dotted cross-hyphae: cells sharing a repository, group or quest</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-changed" r="13"/><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>A faint outer ring: changed since you last looked</dd></div>` +
       (PULSES
@@ -4032,8 +4031,10 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     talkLayer = [];
     // All talk is drawn, as thick as it is warm, but faint until the choice
     // touches it, and gathered between networks, so the cells read first. A
-    // cell open lifts its own talk; a network lifts the talk within it, since
-    // talk with one of its cells reaches most of the map.
+    // cell open draws its own talk cell to cell, and so does a gathered line
+    // open for the pairs it stands for; a network or a machine open only
+    // brightens the talk it touches, since on one laptop a machine touches
+    // every pair and would bring back the cover the gathering clears.
     const own = chosen?.kind === "cell" ? `c:${chosen.id}` : null;
     const touches = (end) => (end[0] === "h" ? near.hubs.has(end.slice(2)) : near.ids.has(current.byAddress.get(end.slice(2))?.id));
     // A cell folded into its network talks through the network's hub, so
@@ -4055,9 +4056,17 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       const home = s && homeOf(s);
       return home && spots.has(`h:${home}`) ? `h:${home}` : end;
     };
-    const lifted = (e) => {
-      if (chosen?.kind === "talk") return chosen.id === e;
-      return !!near && (own ? e.split("|").includes(own) : e.split("|").every(touches));
+    const gatherOf = (e) => {
+      const [a, b] = e.split("|").map(endOf);
+      return a && b ? pairKey(hubOf(a), hubOf(b)) : null;
+    };
+    const opened = chosen?.kind === "talk" ? gatherOf(chosen.id) : null;
+    const lifted = (e) => (opened ? gatherOf(e) === opened : !!own && e.split("|").includes(own));
+    // Each pair is judged by its own two cells, so a gathered line is as
+    // bright as the most the choice touches of what it stands for.
+    const touched = (e) => {
+      const ends = e.split("|");
+      return !!near && (own ? ends.includes(own) : ends.every(touches));
     };
     const drawn = new Map();
     for (const [e, n] of talk) {
@@ -4066,17 +4075,21 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       if (!lifted(e) && hubOf(a) !== hubOf(b)) [a, b] = [hubOf(a), hubOf(b)];
       const key = a === e.split("|")[0] && b === e.split("|")[1] ? e : pairKey(a, b);
       const was = drawn.get(key);
-      if (!was || was.n < n) drawn.set(key, { e, n, a, b });
+      const hot = touched(e) || !!was?.hot;
+      if (!was || was.n < n) drawn.set(key, { e, n, a, b, hot });
+      else was.hot = hot;
     }
     talkBetween = drawn.size;
-    for (const [key, { e, n, a, b }] of drawn) {
-      const faint = chosen?.kind === "talk" ? "" : !near || !(own ? key.split("|").includes(own) : key.split("|").every(touches)) ? " faint" : "";
+    for (const { e, n, a, b, hot } of drawn.values()) {
+      const faint = chosen?.kind === "talk" || hot ? "" : " faint";
       const arc = arcOf(a, b);
       if (!arc) continue;
       const line = opens([arc.p, arc.c, arc.q], "talk", e);
       talkShapes.push(line);
-      // An opened talk is drawn alone; the rest step back with the map.
-      const open = chosen?.kind === "talk" ? (chosen.id === e ? " lit" : " far") : "";
+      // An opened talk is drawn alone, beside the pairs its line gathered;
+      // the rest step back with the map.
+      const beside = opened && gatherOf(e) === opened ? "" : " far";
+      const open = chosen?.kind === "talk" ? (chosen.id === e ? " lit" : beside) : "";
       talkLayer.push({ tag: "path", cls: `m-talk warm${warmLevel(n)}${open}${faint}`, line });
     }
     // A receptor's feeding bows off the hyphae as talk does, so it never
