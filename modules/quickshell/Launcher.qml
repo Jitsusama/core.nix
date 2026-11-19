@@ -11084,9 +11084,18 @@ Scope {
         if (!homeHeld)
             console.warn(`launcher: home wasn't held as the shell started: ${homeUnheld}`);
         warmedTook += KeyTimes.now() - began;
-        const rows = Object.values(tallies()).reduce((sum, each) => sum + each, 0);
+        // Which sources made them, the most first, as madeSaid says an
+        // opening's: the shell's weight follows its rows, 45 MB of live
+        // script and 150 of jemalloc after starts making about 5,300, 70
+        // and 174 after those making 9,400 (Joel's journal, 17 to 19
+        // November), and only this line can say whose they were.
+        const tallied = tallies();
+        const rows = Object.values(tallied).reduce((sum, each) => sum + each, 0);
+        const most = Object.keys(tallied).filter(name => tallied[name] > 0)
+            .sort((a, b) => tallied[b] - tallied[a] || a.localeCompare(b)).slice(0, 8)
+            .map(name => `${name} ${tallied[name]}`).join(", ");
         console.info(`launcher: home and ${Object.keys(placesKept).length} places kept as the`
-            + ` shell started, ${rows} rows made in ${Math.round(warmedTook)} ms over`
+            + ` shell started, ${rows} rows made (${most}) in ${Math.round(warmedTook)} ms over`
             + ` ${warmed} turns, spread over ${Math.round(KeyTimes.now() - warmedFrom)} ms,`
             + ` the longest wait between them ${Math.round(warmedWaited)} ms after`
             + ` ${warmedWaitedAfter || "none"}`
