@@ -226,21 +226,26 @@ or launchd, and [`home.nix`][2] the account's.
   saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with
   fanotify and keeps when each artifact was last opened in `uses.json`, since
-  under noatime nothing on disk says. A replaced build is an older build of
-  a crate's library, or of an executable's unit, beside a newer one. A unit
-  is its package and target as its fingerprint names it, so a binary and
-  its tests, or two packages' tests of one name, never replace each other,
-  and an executable with no fingerprint is never offered. Once a disk is
+  under noatime nothing on disk says. A replaced build is an older build
+  beside a newer one of the same unit and variant, both read from cargo's
+  fingerprint. The unit is its package and target, so a binary and its
+  tests, or two packages' tests of one name, never replace each other. The
+  variant is its features, target, profile and mode, kind, flags and
+  config, so a crate built two ways, or both checked and built, keeps each
+  way's newest. A library with no readable fingerprint falls back to its
+  crate's name; an executable with none is never offered. Once a disk is
   filling, one goes once nothing has opened it for a day and an hour. In a
-  `cargo` source given a budget, one goes, whatever the band, once this
-  guard has heard its `deps` for an awake hour and nothing opened it in
-  that hour: on 18 November a gate's build held 28 GiB of test binaries a
-  newer build had replaced, nearly all one to six hours old, and filled
-  its disk hours later. A file cargo shares with its profile, as the
-  binary a person runs is, never goes. Each goes with cargo's locks held,
-  and only while no process works in its target by its cwd, its files, its
-  executable or a `CARGO_TARGET_DIR` naming it, since a cargo starting up
-  holds no lock yet. A `deps` never watched dates nothing. Each pass that
+  `cargo` source given a budget, one whose fingerprint names its unit goes,
+  whatever the band, once this guard has heard its `deps` for an awake
+  hour and nothing opened it in that hour: on 18 November a gate's build
+  held 28 GiB of test binaries a newer build had replaced, nearly all one
+  to six hours old, and filled its disk hours later. A file cargo shares
+  with its profile, as the binary a person runs is, never goes. Each goes
+  with cargo's locks held, and only while no process works in its target
+  by its cwd, files, executable or maps, and no builder sits in its
+  checkout or names it, since a cargo starting up holds no lock yet. A
+  shell or editor that only sits there keeps nothing, since nothing builds
+  from an older build. A `deps` never watched dates nothing. Each pass that
   took any journals a `replaced` line per target, saying how many went and
   their bytes.
 - **Freezing.** Once critically full with nothing left to take, the account's guard

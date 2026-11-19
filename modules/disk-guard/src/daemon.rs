@@ -2679,8 +2679,6 @@ impl Guard {
         Ok(report.end)
     }
 
-    /// Notes what came of each action a pass took, whatever it was, so a
-    /// failing command waits its window too.
     /// Journals how many replaced builds a pass took from each target among
     /// `here`'s offers, and their bytes.
     fn journal_replaced(
@@ -2700,6 +2698,8 @@ impl Guard {
         Ok(())
     }
 
+    /// Notes what came of each action a pass took, whatever it was, so a
+    /// failing command waits its window too.
     fn note_actions(&mut self, here: &[Offer], actions: &[(PathBuf, Outcome)], wall: f64) {
         for (taken, outcome) in actions {
             if *outcome == Outcome::Reclaimed

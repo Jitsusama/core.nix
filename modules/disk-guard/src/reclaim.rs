@@ -127,7 +127,11 @@ pub fn target(
 /// executable, and its dep-info in `deps`, and the fingerprint beside
 /// them, so cargo builds it afresh if it's ever wanted again. A process
 /// working in the target keeps it, judged by `looker`, since a cargo
-/// starting up holds no lock yet and a test binary runs without one.
+/// starting up holds no lock yet and a test binary runs without one: one
+/// whose folder, program, files or maps are in it, or a builder sitting in
+/// its checkout or naming it. One that only sits there or names it, as a
+/// shell or rust-analyzer's macro server does, keeps nothing, since an
+/// older build is one nothing builds from.
 /// Cargo's locks on the target are held throughout, so no build reads or
 /// writes it meanwhile; one holding them keeps it.
 pub fn build(
@@ -153,9 +157,9 @@ pub fn build(
     let Some((name, digest)) = stem.rsplit_once('-') else {
         return Outcome::Failed("not a build's name".to_owned());
     };
-    match looker.judge(target, None) {
+    match looker.judge(target, candidate.checkout.as_deref()) {
         Ok(used) => {
-            if let Some(reason) = refusal(used, false) {
+            if let Some(reason) = refusal(used, true) {
                 return Outcome::Kept(reason);
             }
         }

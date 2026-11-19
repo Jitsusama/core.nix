@@ -385,11 +385,13 @@ fn said(entry: &Value) -> [String; 4] {
             "swept".to_owned(),
             "replaced".to_owned(),
             size(entry["bytes"].as_u64().unwrap_or(0)),
-            format!(
-                "{} builds from {}",
-                entry["count"].as_u64().unwrap_or(0),
-                entry["target"].as_str().unwrap_or("?")
-            ),
+            match entry["count"].as_u64().unwrap_or(0) {
+                1 => format!("1 build from {}", entry["target"].as_str().unwrap_or("?")),
+                count => format!(
+                    "{count} builds from {}",
+                    entry["target"].as_str().unwrap_or("?")
+                ),
+            },
         ],
         other => [
             other.unwrap_or("?").to_owned(),

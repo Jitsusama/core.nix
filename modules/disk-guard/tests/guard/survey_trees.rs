@@ -449,7 +449,10 @@ fn aged(path: &Path, hours: f64) {
 /// Checkouts under one root, each with a build last used `hours` ago,
 /// made in the order given, and a cargo source over them with `budget`
 /// bytes: as much as one build holds, times `builds`.
-fn budgeted(checkouts: &[(&str, f64)], builds: u64) -> (tempfile::TempDir, Vec<PathBuf>, Config) {
+pub(crate) fn budgeted(
+    checkouts: &[(&str, f64)],
+    builds: u64,
+) -> (tempfile::TempDir, Vec<PathBuf>, Config) {
     let kept = tempfile::tempdir().unwrap();
     let home = real(kept.path());
     let roots = dir(&home.join("src"));
@@ -708,7 +711,7 @@ fn a_suspend_ages_neither_a_builds_last_open_nor_its_marks() {
 /// profiles and `deps` for `hours` and nothing was opened in them. On a
 /// Mac, which gives no folder a handle, the marks name none, as nothing
 /// there can.
-fn heard(apps: &[PathBuf], hours: f64) -> Uses {
+pub(crate) fn heard(apps: &[PathBuf], hours: f64) -> Uses {
     let mut uses = Uses::default();
     for app in apps {
         for dir in watched_dirs(&app.join("target")) {
@@ -751,115 +754,5 @@ fn a_build_a_cargo_found_fresh_is_used_though_nothing_was_written() {
         checked.idle > 3600.0,
         "an open moved the build's idle time, {}, which only the budget reads",
         checked.idle
-    );
-}
-
-/// A build of `package`'s integration test in `deps`, written `hours` ago,
-/// with its dep-info and the fingerprint naming its unit.
-fn test_binary(deps: &Path, package: &str, digest: &str, hours: f64) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let unit = "test-integration-test-integration";
-    let binary = deps.join(format!("integration-{digest}"));
-    let info = deps.join(format!("integration-{digest}.d"));
-    let fingerprint = deps
-        .parent()
-        .unwrap()
-        .join(format!(".fingerprint/{package}-{digest}/{unit}"));
-    file(&binary, &"x".repeat(4096));
-    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
-    file(&info, "deps");
-    file(&fingerprint, "fingerprint");
-    for path in [&binary, &info, &fingerprint] {
-        written_ago(path, hours * 3600.0);
-    }
-    binary
-}
-
-// A Mac hears nothing, so there every replaced build waits its day.
-#[cfg(target_os = "linux")]
-#[test]
-fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_it_stays() {
-    // On 18 November a gate's build held 28 GiB of test binaries a newer
-    // build of the same test had replaced, nearly all one to six hours
-    // old, so the day a replaced build waited took none of them.
-    let (_home, made, config) = budgeted(&[("app", 2.0)], 100);
-    let target = made[0].join("target");
-    let deps = target.join("debug/deps");
-    let library = deps.join("libapp-1111111111111111.rlib");
-    file(&library, "old");
-    written_ago(&library, 3.0 * 3600.0);
-    let unused = test_binary(&deps, "server", "1111111111111111", 3.0);
-    let newest = test_binary(&deps, "server", "2222222222222222", 2.0);
-    // Another package's test of the same name, the older opened since.
-    let opened = test_binary(&deps, "client", "3333333333333333", 3.0);
-    test_binary(&deps, "client", "4444444444444444", 2.0);
-    let mut uses = heard(&made, 3.0);
-    uses.opened(&opened, now() - 1800.0);
-    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
-    let spent = |found: &[disk_guard::survey::Offer], path: &Path| {
-        let offer = find(found, path);
-        offer.candidate.spent && plan::windows(&offer.candidate).0 == Group::Waste
-    };
-    assert!(
-        spent(&found, &deps.join("app-1111111111111111")),
-        "a replaced library heard unused three hours stayed"
-    );
-    assert!(
-        spent(&found, &unused),
-        "a replaced test binary heard unused three hours stayed"
-    );
-    assert!(
-        !spent(&found, &opened),
-        "a replaced test binary opened half an hour ago went"
-    );
-    assert!(
-        found.iter().all(|offer| offer.candidate.path != newest),
-        "the newest build of a test was offered"
-    );
-    // Watched three hours but heard only half an hour, as after the guard
-    // restarts, or watched only by an earlier guard, an open in the hour
-    // may have gone unheard.
-    let mut earlier = Uses::default();
-    let mut restarted = Uses::default();
-    for dir in watched_dirs(&target) {
-        earlier.watching(&dir, now() - 3.0 * 3600.0);
-        restarted.watching(&dir, now() - 3.0 * 3600.0);
-        let handle = disk_guard::opens::handle(&dir).unwrap();
-        restarted.marked(&dir, now() - 1800.0, handle);
-    }
-    for (why, uses) in [("heard half an hour", restarted), ("unheard", earlier)] {
-        let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
-        assert!(
-            !spent(&found, &unused),
-            "a replaced test binary went within its day, {why}"
-        );
-    }
-    // Outside a budget, nobody asked for builds to be held small.
-    let unbudgeted = crate::survey::config(&format!(
-        r#""cargo": {{ "kind": "cargo", "roots": ["{}"] }}"#,
-        made[0].parent().unwrap().display()
-    ));
-    let found = offers_using(&unbudgeted, &[], &|_| false, &BTreeMap::new(), &uses);
-    assert!(
-        !spent(&found, &unused),
-        "a replaced test binary went within its day outside a budget"
-    );
-    // A cargo building there from elsewhere, before it takes a lock.
-    let cargo = Process {
-        pid: 4242,
-        name: "cargo".into(),
-        exe: Some(PathBuf::from("/nix/store/abc-cargo/bin/cargo")),
-        cmdline: vec![OsString::from("cargo"), OsString::from("test")],
-        cwd: Some(PathBuf::from("/")),
-        env: vec![("CARGO_TARGET_DIR".into(), target.clone().into_os_string())],
-        readable: true,
-        ..Default::default()
-    };
-    let found = offers_using(&config, &[cargo], &|_| false, &BTreeMap::new(), &uses);
-    assert!(
-        found
-            .iter()
-            .all(|offer| !offer.candidate.path.starts_with(&target)),
-        "a target a cargo builds in by its variable was offered"
     );
 }

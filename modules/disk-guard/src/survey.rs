@@ -979,7 +979,10 @@ fn replaced_in(
             .awake
             .since(last_used.min(world.now), world.now)
             .max(0.0);
+        // Only a build of the same unit and variant replaces another, and
+        // only a fingerprint says which that is.
         let heard_unused = held.budgeted
+            && build.unit.is_some()
             && idle >= REPLACED_UNUSED
             && world
                 .uses

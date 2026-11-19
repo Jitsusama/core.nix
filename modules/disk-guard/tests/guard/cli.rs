@@ -527,21 +527,30 @@ fn the_journal_says_how_many_replaced_builds_a_pass_swept_from_a_target() {
     let machine = Machine::new();
     let replaced = format!(
         r#"{{"event":"replaced","at":{},"target":"/builds/app","count":3,"bytes":3221225472}}"#,
+        wall() - 120.0
+    );
+    let one = format!(
+        r#"{{"event":"replaced","at":{},"target":"/builds/lib","count":1,"bytes":1024}}"#,
         wall() - 60.0
     );
     fs::write(
         machine.env.state.join("journal.jsonl"),
-        format!("{replaced}\n"),
+        format!("{replaced}\n{one}\n"),
     )
     .unwrap();
     let (code, out, _) = machine.run("journal");
     assert_eq!(code, 0, "{out}");
-    let row = out.lines().last().unwrap_or_default();
+    let rows: Vec<&str> = out.lines().filter(|row| row.contains("swept")).collect();
     assert!(
-        row.contains("swept")
-            && row.contains("3.0 GiB")
-            && row.ends_with("3 builds from /builds/app"),
+        rows.first().is_some_and(
+            |row| row.contains("3.0 GiB") && row.ends_with("3 builds from /builds/app")
+        ),
         "a sweep should say what it took, its bytes, how many and from where: {out}"
+    );
+    assert!(
+        rows.get(1)
+            .is_some_and(|row| row.ends_with("1 build from /builds/lib")),
+        "a sweep of one build should say so in the singular: {out}"
     );
 }
 

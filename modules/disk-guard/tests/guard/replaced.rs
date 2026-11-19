@@ -1,9 +1,10 @@
 use crate::discover::{CARGO_TAG, file};
+use disk_guard::activity::Use;
 use disk_guard::anchor::Dir;
 use disk_guard::pass::Outcome;
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::reclaim;
-use disk_guard::replaced::{Build, Uses, replaced, watched_dirs};
+use disk_guard::replaced::{Build, Unit, Uses, replaced, watched_dirs};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -121,26 +122,97 @@ fn build(deps: &Path, written: f64) -> Build {
     }
 }
 
-/// An executable cargo built in `deps` for `package`'s `unit`, as its
-/// fingerprint names it, written at `seconds`, with its dep-info.
-fn executable(deps: &Path, package: &str, unit: &str, name: &str, digest: &str, seconds: i64) {
-    use std::os::unix::fs::PermissionsExt;
-    let path = artifact(deps, &format!("{name}-{digest}"), seconds);
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
-    written(&path, seconds);
-    artifact(deps, &format!("{name}-{digest}.d"), seconds);
+/// The fingerprint cargo writes beside `deps` for `package`'s `unit`
+/// built at `digest`, built with `features` under the profile and mode
+/// cargo hashes as `profile`.
+pub(crate) fn fingerprinted(
+    deps: &Path,
+    package: &str,
+    digest: &str,
+    unit: &str,
+    features: &str,
+    profile: u64,
+) -> PathBuf {
     let fingerprint = deps
         .parent()
         .unwrap()
         .join(format!(".fingerprint/{package}-{digest}"));
+    let json = serde_json::json!({
+        "rustc": 9, "features": features, "declared_features": "[]", "target": 1,
+        "profile": profile, "path": 5, "deps": [], "local": [], "rustflags": [],
+        "config": 3, "compile_kind": 0,
+    });
+    crate::discover::file(&fingerprint.join(format!("{unit}.json")), &json.to_string());
     for file in [
         unit.to_owned(),
-        format!("{unit}.json"),
         format!("dep-{unit}"),
         "invoked.timestamp".to_owned(),
     ] {
         crate::discover::file(&fingerprint.join(file), "fingerprint");
     }
+    fingerprint
+}
+
+/// The variant `fingerprinted` names, with no features under profile 2.
+const PLAIN: &str = r#""[]" 1 2 0 [] 3"#;
+
+/// A file in `deps` that runs, written at `seconds`.
+fn runnable(deps: &Path, name: &str, seconds: i64) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = artifact(deps, name, seconds);
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    written(&path, seconds);
+    path
+}
+
+/// An executable cargo built in `deps` for `package`'s `unit`, as its
+/// fingerprint names it, written at `seconds`, with its dep-info.
+fn executable(deps: &Path, package: &str, unit: &str, name: &str, digest: &str, seconds: i64) {
+    runnable(deps, &format!("{name}-{digest}"), seconds);
+    artifact(deps, &format!("{name}-{digest}.d"), seconds);
+    fingerprinted(deps, package, digest, unit, "[]", 2);
+}
+
+/// A library of `package` cargo built in `deps` with `features` under
+/// `profile`, written at `seconds`: only its metadata when checked, as
+/// profile 7 stands for here.
+fn library(deps: &Path, package: &str, digest: &str, features: &str, profile: u64, seconds: i64) {
+    artifact(deps, &format!("lib{package}-{digest}.rmeta"), seconds);
+    if profile != 7 {
+        artifact(deps, &format!("lib{package}-{digest}.rlib"), seconds);
+    }
+    artifact(deps, &format!("{package}-{digest}.d"), seconds);
+    fingerprinted(
+        deps,
+        package,
+        digest,
+        &format!("lib-{package}"),
+        features,
+        profile,
+    );
+}
+
+#[test]
+fn each_variant_of_a_crate_keeps_its_newest_build() {
+    // A crate built with two sets of features, or both checked and built,
+    // holds a build of each, all in use: only the same variant's newer
+    // build replaces one.
+    let root = tempfile::tempdir().unwrap();
+    let deps = root.path().join("target/debug/deps");
+    library(&deps, "app", OLD, r#"["a"]"#, 2, 1_000);
+    library(&deps, "app", NEW, r#"["a"]"#, 2, 5_000);
+    library(&deps, "app", "aaaaaaaaaaaaaaaa", r#"["b"]"#, 2, 500);
+    library(&deps, "app", "bbbbbbbbbbbbbbbb", r#"["a"]"#, 7, 400);
+    library(&deps, "app", "cccccccccccccccc", r#"["a"]"#, 7, 600);
+    let found: Vec<_> = replaced(&root.path().join("target"))
+        .into_iter()
+        .map(|build| build.digest)
+        .collect();
+    assert_eq!(
+        found,
+        [OLD, "bbbbbbbbbbbbbbbb"],
+        "a variant's newest build went, or an older one of the same variant stayed"
+    );
 }
 
 #[test]
@@ -175,8 +247,8 @@ fn an_older_executable_of_a_unit_is_replaced_and_the_newest_stays() {
     )
     .unwrap();
     // Nothing says which unit an executable with no fingerprint is.
-    artifact(&deps, "stray-eeeeeeeeeeeeeeee", 100);
-    artifact(&deps, "stray-ffffffffffffffff", 900);
+    runnable(&deps, "stray-eeeeeeeeeeeeeeee", 100);
+    runnable(&deps, "stray-ffffffffffffffff", 900);
     let found = replaced(&root.path().join("target"));
     let older = Build {
         deps: deps.clone(),
@@ -190,7 +262,10 @@ fn an_older_executable_of_a_unit_is_replaced_and_the_newest_stays() {
             root.path()
                 .join(format!("target/debug/.fingerprint/server-{OLD}")),
         ),
-        unit: Some(format!("server/{test}")),
+        unit: Some(Unit {
+            name: format!("server/{test}"),
+            variant: PLAIN.to_owned(),
+        }),
         written: 1_000.0,
         size: 10,
     };
@@ -243,13 +318,20 @@ fn a_build_a_process_works_in_is_kept_whatever_its_locks_say() {
     // A cargo can be between taking its lock and its rustc, or a test
     // binary run without cargo, so the lock alone can't say a target is
     // free.
-    use disk_guard::activity::Use;
     let root = tempfile::tempdir().unwrap();
     let target = target(root.path());
     let anchor = Dir::open(root.path()).unwrap();
-    let mut looker = crate::reclaim::Script::default();
-    looker.uses.push_back(Use::Busy(4242));
-    let outcome = reclaim::build(&anchor, root.path(), &target, &older(&target), &mut looker);
+    let checkout = root.path().join("app");
+    let candidate = Candidate {
+        checkout: Some(checkout.clone()),
+        ..older(&target)
+    };
+    let mut looker = Judge {
+        target: target.clone(),
+        checkout: checkout.clone(),
+        finds: Use::Busy(4242),
+    };
+    let outcome = reclaim::build(&anchor, root.path(), &target, &candidate, &mut looker);
     assert!(
         matches!(&outcome, Outcome::Kept(why) if why.contains("4242")),
         "a build a process works in wasn't kept for it: {outcome:?}"
@@ -259,6 +341,36 @@ fn a_build_a_process_works_in_is_kept_whatever_its_locks_say() {
         8,
         "a build a process works in lost files"
     );
+    // One that only sits there, as a shell naming the target or an
+    // editor's macro server does, builds from no older build.
+    looker.finds = Use::Occupied(4243);
+    let outcome = reclaim::build(&anchor, root.path(), &target, &candidate, &mut looker);
+    assert_eq!(
+        outcome,
+        Outcome::Reclaimed,
+        "a process sitting in the target kept an older build"
+    );
+}
+
+/// Says `finds` of the target and checkout it was made for, and that
+/// anything else is free, so a take judging the wrong path is seen.
+struct Judge {
+    target: PathBuf,
+    checkout: PathBuf,
+    finds: Use,
+}
+
+impl reclaim::Looker for Judge {
+    fn judge(&mut self, target: &Path, checkout: Option<&Path>) -> std::io::Result<Use> {
+        let asked = target == self.target && checkout == Some(self.checkout.as_path());
+        Ok(if asked { self.finds } else { Use::Free })
+    }
+
+    fn moved(&mut self) {}
+
+    fn waiters(&mut self, _inodes: &[u64]) -> std::io::Result<Vec<i32>> {
+        Ok(Vec::new())
+    }
 }
 
 #[test]
@@ -505,4 +617,140 @@ fn a_target_with_no_builds_replaces_nothing() {
     assert_eq!(replaced(&root.path().join("target")), Vec::<Build>::new());
     fs::create_dir_all(root.path().join("target/debug/deps")).unwrap();
     assert_eq!(replaced(&root.path().join("target")), Vec::<Build>::new());
+}
+
+/// Dates everything in `fingerprint` `hours` ago.
+#[cfg(target_os = "linux")]
+fn aged_fingerprint(fingerprint: &Path, hours: f64) {
+    for entry in fs::read_dir(fingerprint).unwrap() {
+        crate::survey::written_ago(&entry.unwrap().path(), hours * 3600.0);
+    }
+}
+
+/// A build of `package`'s integration test in `deps`, written `hours` ago,
+/// with its dep-info and the fingerprint naming its unit.
+#[cfg(target_os = "linux")]
+fn test_binary(deps: &Path, package: &str, digest: &str, hours: f64) -> PathBuf {
+    use crate::survey::written_ago;
+    let unit = "test-integration-test-integration";
+    let binary = runnable(deps, &format!("integration-{digest}"), 0);
+    file(&binary, &"x".repeat(4096));
+    let info = artifact(deps, &format!("integration-{digest}.d"), 0);
+    for path in [&binary, &info] {
+        written_ago(path, hours * 3600.0);
+    }
+    aged_fingerprint(&fingerprinted(deps, package, digest, unit, "[]", 2), hours);
+    binary
+}
+
+// A Mac hears nothing, so there every replaced build waits its day.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_budgeted_builds_replaced_artifacts_go_an_hour_unused_and_one_opened_within_it_stays() {
+    // On 18 November a gate's build held 28 GiB of test binaries a newer
+    // build of the same test had replaced, nearly all one to six hours
+    // old, so the day a replaced build waited took none of them.
+    use crate::survey::{find, now, offers_using, written_ago};
+    use crate::survey_trees::{budgeted, heard};
+    use disk_guard::plan::{self, Group};
+    use disk_guard::survey::Offer;
+    use std::collections::BTreeMap;
+    let (_home, made, config) = budgeted(&[("app", 2.0)], 100);
+    let target = made[0].join("target");
+    let deps = target.join("debug/deps");
+    // budgeted() builds the newer library; both need the fingerprint
+    // naming their unit to be judged by the hour.
+    aged_fingerprint(
+        &fingerprinted(&deps, "app", "0123456789abcdef", "lib-app", "[]", 2),
+        2.0,
+    );
+    let library = deps.join("libapp-1111111111111111.rlib");
+    file(&library, "old");
+    written_ago(&library, 3.0 * 3600.0);
+    aged_fingerprint(
+        &fingerprinted(&deps, "app", "1111111111111111", "lib-app", "[]", 2),
+        3.0,
+    );
+    let unused = test_binary(&deps, "server", "1111111111111111", 3.0);
+    let newest = test_binary(&deps, "server", "2222222222222222", 2.0);
+    // Another package's test of the same name, the older opened since.
+    let opened = test_binary(&deps, "client", "3333333333333333", 3.0);
+    test_binary(&deps, "client", "4444444444444444", 2.0);
+    let mut uses = heard(&made, 3.0);
+    // One opened a minute inside the hour stays; one a minute past it goes.
+    // Written out rather than read from the rule, so a changed hour fails.
+    uses.opened(&opened, now() - 3540.0);
+    uses.opened(&unused, now() - 3660.0);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+    let spent = |found: &[Offer], path: &Path| {
+        let offer = find(found, path);
+        offer.candidate.spent && plan::windows(&offer.candidate).0 == Group::Waste
+    };
+    assert!(
+        spent(&found, &deps.join("app-1111111111111111")),
+        "a replaced library heard unused three hours stayed"
+    );
+    assert!(
+        spent(&found, &unused),
+        "a replaced test binary last opened a minute past the hour stayed"
+    );
+    assert!(
+        !spent(&found, &opened),
+        "a replaced test binary opened a minute inside the hour went"
+    );
+    assert!(
+        found.iter().all(|offer| offer.candidate.path != newest),
+        "the newest build of a test was offered"
+    );
+    // Watched three hours but heard only half an hour, as after the guard
+    // restarts, or watched only by an earlier guard, an open in the hour
+    // may have gone unheard.
+    let mut earlier = Uses::default();
+    let mut restarted = Uses::default();
+    for dir in watched_dirs(&target) {
+        earlier.watching(&dir, now() - 3.0 * 3600.0);
+        restarted.watching(&dir, now() - 3.0 * 3600.0);
+        let handle = disk_guard::opens::handle(&dir).unwrap();
+        restarted.marked(&dir, now() - 1800.0, handle);
+    }
+    for (why, uses) in [("heard half an hour", restarted), ("unheard", earlier)] {
+        let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+        assert!(
+            !spent(&found, &unused),
+            "a replaced test binary went within its day, {why}"
+        );
+    }
+    // Outside a budget, nobody asked for builds to be held small.
+    let unbudgeted = crate::survey::config(&format!(
+        r#""cargo": {{ "kind": "cargo", "roots": ["{}"] }}"#,
+        made[0].parent().unwrap().display()
+    ));
+    let found = offers_using(&unbudgeted, &[], &|_| false, &BTreeMap::new(), &uses);
+    assert!(
+        !spent(&found, &unused),
+        "a replaced test binary went within its day outside a budget"
+    );
+}
+
+// Without a fingerprint naming its unit, a replaced library can't be told
+// from a live variant, so it waits its day whatever was heard.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_budgeted_library_with_no_fingerprint_waits_its_day() {
+    use crate::survey::{find, offers_using, written_ago};
+    use crate::survey_trees::{budgeted, heard};
+    use std::collections::BTreeMap;
+    let (_home, made, config) = budgeted(&[("app", 2.0)], 100);
+    let deps = made[0].join("target/debug/deps");
+    let library = deps.join("libapp-1111111111111111.rlib");
+    file(&library, "old");
+    written_ago(&library, 3.0 * 3600.0);
+    let uses = heard(&made, 3.0);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+    assert!(
+        !find(&found, &deps.join("app-1111111111111111"))
+            .candidate
+            .spent,
+        "a replaced library with no fingerprint went within its day"
+    );
 }
