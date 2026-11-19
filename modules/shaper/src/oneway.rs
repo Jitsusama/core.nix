@@ -1587,7 +1587,14 @@ impl Controller {
     }
 
     /// Why the upload holds where it does, in one sentence.
+    /// It names the upload's own rate, which letting go hands none of.
     pub fn why(&self) -> String {
+        self.why_holding(self.up.limit())
+    }
+
+    /// The controller's reason, said of the upload held to `up`, for one
+    /// that tells what it handed over beside it, so the two agree.
+    pub fn why_holding(&self, up: Option<u64>) -> String {
         let at = self.last_at.unwrap_or(0.0);
         let since = self.why_since.unwrap_or(at);
         // The guard's figure is the line's, under a network's ceiling; the
@@ -1597,7 +1604,7 @@ impl Controller {
         } else {
             self.anchor
         };
-        crate::why::say(self.why, self.up.limit(), anchor, at - since)
+        crate::why::say(self.why, up, anchor, at - since)
     }
 
     /// The least a call's round trip through the VPN is taken to be, in

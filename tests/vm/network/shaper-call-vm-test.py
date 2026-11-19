@@ -10,6 +10,7 @@ shaper's queues were the ones that lost them.
 
 from __future__ import annotations
 
+import bisect
 import datetime as dt
 import json
 from dataclasses import dataclass
@@ -63,6 +64,9 @@ FILLING = dt.timedelta(seconds=60)
 # hear that a call started, which it asks every 2 s.
 ALONE_SECONDS = 5
 HEARING = dt.timedelta(seconds=10)
+# How many seconds the shaper's last traced ask stands over seconds its trace missed, as a
+# replay takes it (STANDS_S in src/trace.rs): a step that drains two seconds writes one line.
+STANDS = 5
 # The file the client's stand-in for a-call-is-on reads: a call is on while it's there.
 CALL_FLAG = "/run/call-is-on"
 # What systemctl exits with when it's asked to stop a unit that isn't loaded.
@@ -146,16 +150,66 @@ class Rig:
             name: json.loads(self.client.succeed(f"cat /tmp/call-{name}.json")) for name in held
         }
 
+    def asked(self) -> dict[int, str]:
+        """Give what the controller asked each way of eth1 be held to, by the second it stepped on.
+
+        From the shaper's own trace, before its floor and the link's most; a way it asked
+        no limit of reads as no limit. A line still writing is passed over.
+        """
+        _, text = self.client.execute("cat /var/lib/shaper/heard/*.jsonl 2>/dev/null")
+        asked: dict[int, str] = {}
+        for line in text.splitlines():
+            try:
+                step: Json = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(step, dict) and step.get("link") == "eth1" and "at" in step:
+                up, down = step.get("up", "no limit"), step.get("down", "no limit")
+                asked[step["at"]] = f", asked up {up}, down {down}"
+        return asked
+
+    @staticmethod
+    def held(asked: dict[int, str], seconds: list[int], running: bool) -> dict[int, str]:
+        """Give the ask that held each recorded second: the one made after the second before.
+
+        The shaper steps on a second once it's recorded, so what it asked then holds from the
+        next, as a replay scores it. A second whose one before has no line takes the last line's
+        ask for up to STANDS seconds, marked as standing, and reads as not traced past that, or
+        past the trace's last line once the shaper isn't `running`, since nothing held it then.
+        The last line is the trace's newest before that second, whether or not the recorder kept
+        the second after it.
+        """
+        held: dict[int, str] = {}
+        traced = sorted(asked)
+        ended = None if running else traced[-1]
+        for second in seconds:
+            before = bisect.bisect_right(traced, second - 1)
+            last = traced[before - 1] if before else None
+            if last == second - 1:
+                held[second] = asked[last]
+            elif (
+                last is not None
+                and second - 1 - last <= STANDS
+                and (ended is None or second - 1 < ended)
+            ):
+                held[second] = f"{asked[last]} (standing)"
+            else:
+                held[second] = ", not traced"
+        return held
+
     def seconds(self) -> str:
         """Give what the recorder saw each second, a line each.
 
         Each second's upload and download, in kbit/s, from the link's counters, and the
         medians of the delays out and back, in ms, as the controller reads them before
-        taking the reflector's least off.
+        taking the reflector's least off; then the ask that held it (`held`). A trace with no
+        line for eth1, or none that held a recorded second, says so. The recorder is read
+        first, so the trace has stepped on all but its newest second or two.
         """
         status, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl 2>&1")
         if status:
             return f"the recorder's samples couldn't be read: {text.strip()}"
+        asked = self.asked()
         seconds: dict[int, list[Json]] = {}
         for line in text.splitlines():
             try:
@@ -165,6 +219,8 @@ class Rig:
                 continue
             if "tx" in sample:
                 seconds.setdefault(sample["at"] // 1000, []).append(sample)
+        running = self.client.execute("systemctl is-active --quiet shaper.service")[0] == 0
+        held = self.held(asked, sorted(seconds), running) if asked else {}
         rows = []
         last: tuple[int, int] | None = None
         for second, samples in sorted(seconds.items()):
@@ -179,7 +235,12 @@ class Rig:
                 f"{second % 1000:03d} up {up:6d} down {down:6d} kbit/s,"
                 f" out {out[len(out) // 2] if out else None}"
                 f" back {back[len(back) // 2] if back else None}"
+                f"{held.get(second, '')}"
             )
+        if not asked:
+            rows.append("no shaper trace for eth1 under /var/lib/shaper/heard")
+        elif not any(second - 1 in asked for second in seconds):
+            rows.append(f"none of the shaper's {len(asked)} traced seconds held a recorded one")
         return "\n".join(rows)
 
     def counted(self) -> str:

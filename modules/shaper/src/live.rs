@@ -47,9 +47,15 @@ pub struct Heard {
     /// flow waits in.
     pub vpn_ms: Option<f64>,
     pub vpn_base_ms: Option<f64>,
-    /// What the upload is held to, in kbit/s, and where it holds under.
+    /// What the controller asks the upload be held to, in kbit/s, and where
+    /// it holds under.
     pub up_limit: Option<u64>,
     pub plateau: Option<f64>,
+    /// What the controller asks the download be held to, in kbit/s. Both
+    /// asks come before the shaper's floor and the link's most, and none
+    /// asks no limit.
+    #[serde(default)]
+    pub down_limit: Option<u64>,
     /// The trial the upload is tuned by, while one is on: what a
     /// second's limit and delay are to be judged as.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -275,12 +281,17 @@ impl Follow {
             ours: second.up_ours,
             vpn_ms: second.vpn_ms,
             vpn_base_ms: self.controller.vpn_base(),
-            up_limit: self.controller.up.limit(),
+            // What the controller handed over, which letting go makes the
+            // trial's ceiling, or none, whatever its ways' own rates read.
+            up_limit: self.rates.up,
             plateau: self.controller.up.plateau(),
+            down_limit: self.rates.down,
             trial: self.trial,
             ceiling: self.tuning().most_kbit,
             up_tins_kbit: None,
-            why: Some(self.controller.why()),
+            // Said of the upload it tells beside it, even before a new
+            // stay's first step hands over the anchor's hold.
+            why: Some(self.controller.why_holding(self.rates.up)),
         };
         Some((link, heard))
     }
@@ -521,6 +532,15 @@ mod tests {
         assert_eq!(link, "wlan0");
         assert!(rates.down.is_some_and(|d| d < 200_000), "{rates:?}");
         assert_eq!(rates.up, None);
+        let (_, heard) = follow.heard().expect("a second heard");
+        assert_eq!(heard.down_limit, rates.down, "the download's ask, told");
+        // Letting go hands over no download limit while the way keeps its
+        // cut, so what's told is what was handed over, not the way's rate.
+        let mut follow = follow;
+        follow.rates = Rates::default();
+        assert!(follow.controller.down.limit().is_some(), "the way's cut");
+        let (_, heard) = follow.heard().expect("a second heard");
+        assert_eq!(heard.down_limit, None, "a download let go: {heard:?}");
     }
 
     #[test]
@@ -724,8 +744,9 @@ mod tests {
         assert_eq!(
             heard.up_limit,
             follow.controller.up.limit(),
-            "the limit held: {heard:?}"
+            "the limit asked: {heard:?}"
         );
+        assert!(heard.up_limit.is_some(), "no limit asked: {heard:?}");
         assert_eq!(
             heard.plateau,
             follow.controller.up.plateau(),
@@ -814,6 +835,47 @@ mod tests {
             follow.why(last),
             Judged::Nothing,
             "a controller letting go gave a reason"
+        );
+        // Told what it handed over, not the rate its ways still read.
+        let (_, heard) = follow.heard().expect("a second heard");
+        assert_eq!(
+            (heard.up_limit, heard.down_limit),
+            (Some(8_500), None),
+            "what letting go asked: {heard:?}"
+        );
+        // Its reason names the same rate, which status.json shows beside it.
+        assert!(
+            heard
+                .why
+                .as_deref()
+                .is_some_and(|why| why.starts_with("Upload 8.5 Mb/s:")),
+            "the reason named another rate: {heard:?}"
+        );
+    }
+
+    // A new stay on an anchored network starts the upload at the anchor's
+    // hold before anything is handed over, and its status names one rate
+    // until the stay's first second is stepped on.
+    #[test]
+    fn a_new_stay_s_reason_names_the_rate_its_status_does() {
+        let mut follow = waiting();
+        follow.anchor(Anchors::from([("home".to_owned(), 12_000.0)]));
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        follow.take(&parse(&pool(NOV3 + 11_000, Some("home"))).expect("a sample"));
+        assert!(
+            follow.controller.up.limit().is_some(),
+            "no hold at the anchor"
+        );
+        let (_, heard) = follow.heard().expect("a second heard");
+        assert_eq!(heard.up_limit, None, "nothing handed over yet");
+        assert!(
+            heard
+                .why
+                .as_deref()
+                .is_some_and(|why| why.starts_with("Upload unlimited:")),
+            "the reason named another rate: {heard:?}"
         );
     }
 
