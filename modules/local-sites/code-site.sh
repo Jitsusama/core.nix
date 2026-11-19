@@ -53,9 +53,13 @@ else
   said=${said//$'\n'/ }
   said=${said:0:200}
   # A read killed outright says nothing itself, so the signal says it, by the name a
-  # journal's reader knows it by.
-  # A status past any signal's is no kill, and is said as it is.
-  if ((ended > 128)) && name=$(kill -l "$((ended - 128))" 2> /dev/null); then
+  # journal's reader knows it by. A status no named signal explains is no kill, and is said as
+  # it is: past every signal's, or one Linux keeps for its threads, which kill -l names empty.
+  name=""
+  if ((ended > 128)); then
+    name=$(kill -l "$((ended - 128))" 2> /dev/null) || name=""
+  fi
+  if [[ -n $name ]]; then
     said="killed by SIG$name${said:+: $said}"
   elif ((ended > 128)); then
     said="ended $ended${said:+: $said}"
