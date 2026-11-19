@@ -281,6 +281,27 @@ fn a_budget_it_could_not_draw_on_is_told() {
     assert_eq!(budgets(&events), [None, Some("")]);
 }
 
+// A carried log's copy of its parent's budget entry is the parent's to
+// count; only one written after its header is its own.
+#[test]
+fn a_carried_log_counts_only_its_own_unresolved_budgets() {
+    let parent = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+    let at = |entry: String, stamp: &str| -> String {
+        let mut entry: Value = serde_json::from_str(&entry).unwrap();
+        entry["timestamp"] = stamp.into();
+        entry.to_string()
+    };
+    let copied = serde_json::json!({"budget": "teal", "missing": "copied"});
+    let own = serde_json::json!({"budget": "ochre", "missing": "its own"});
+    let bytes = lines(&[
+        &carried(parent),
+        &at(unresolved("a", "", &copied), "2026-10-14T10:00:00Z"),
+        &at(unresolved("b", "a", &own), "2026-10-14T10:31:00Z"),
+    ]);
+    let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
+    assert_eq!(unresolved_of(&events), [("s2", "ochre", "its own")]);
+}
+
 // An entry whose unresolved field isn't a budget and a reason, both
 // strings, is passed over, and a plain budget entry says nothing of one.
 #[test]

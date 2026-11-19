@@ -1588,8 +1588,6 @@ fn unsettled_finding(picture: &Picture, through: i64) -> Finding {
 /// it as the count unjudged.
 pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";
 
-/// What's told of `budget`, whose sessions logged `logged` dollars and
-/// whose key was billed `paid` in the window ending at `through`.
 /// Each budget a session asked for in the last day and the harness
 /// couldn't draw on, as the harness wrote it in the session's log: its
 /// turns went on the default, so its team's allowance never saw them.
@@ -1661,11 +1659,13 @@ fn unresolved_finding(
         ),
     );
     f.badge = format!("last {at}");
-    why.clone_into(&mut f.note);
+    f.note = "drew on the default".into();
     f.surprise = 2.0;
     f
 }
 
+/// What's told of `budget`, whose sessions logged `logged` dollars and
+/// whose key was billed `paid` in the window ending at `through`.
 fn unbilled_finding(
     budgets: &crate::budgets::Budgets,
     budget: &str,
@@ -2518,9 +2518,10 @@ mod tests {
     #[test]
     fn a_budget_sessions_could_not_draw_on_is_told() {
         let history = History::memory();
+        // Written out of time order, so the last is told by its time.
+        missed(&history, "s2", HOUR, "teal", "its key was refused");
         missed(&history, "s1", 3.0 * HOUR, "teal", "no key for it");
         missed(&history, "s1", 2.0 * HOUR, "teal", "no key for it");
-        missed(&history, "s2", HOUR, "teal", "its key was refused");
         missed(&history, "s3", DAY + HOUR, "ochre", "no key for it");
         let config = config();
         let picture = Picture::read(&history, &config, NOW).unwrap();
@@ -2534,8 +2535,17 @@ mod tests {
             [(
                 "unresolved:teal",
                 "2 sessions couldn't draw on teal",
-                "its key was refused"
+                "drew on the default"
             )]
+        );
+        let last = picture.zone.clock(NOW - HOUR, picture.now);
+        assert_eq!(found[0].badge, format!("last {last}"));
+        assert!(
+            found[0]
+                .detail
+                .contains(&format!("the last at {last}; the harness said: its key was refused.")),
+            "{}",
+            found[0].detail
         );
         assert!(
             all(&picture, &history, &config)

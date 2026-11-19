@@ -94,9 +94,6 @@ END;
     };
 }
 
-/// Each time an allowance went over: from when, until when it came back
-/// under (none while it's over), and what every source said as it went,
-/// kept here as well as in the report written from it.
 /// Each budget a session asked for and couldn't draw on, and why, from
 /// the harness's budget entries.
 macro_rules! unresolved {
@@ -108,6 +105,9 @@ CREATE TABLE unresolved (session TEXT NOT NULL, at REAL NOT NULL, budget TEXT NO
     };
 }
 
+/// Each time an allowance went over: from when, until when it came back
+/// under (none while it's over), and what every source said as it went,
+/// kept here as well as in the report written from it.
 macro_rules! crossings {
     () => {
         "
@@ -504,6 +504,9 @@ impl History {
                 .map_err(sql)?;
             self.db
                 .execute("DELETE FROM refusals WHERE session = ?1", [&session])
+                .map_err(sql)?;
+            self.db
+                .execute("DELETE FROM unresolved WHERE session = ?1", [&session])
                 .map_err(sql)?;
         }
         self.db
