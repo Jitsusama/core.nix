@@ -82,7 +82,8 @@ fn help() -> Help {
     .option(
         "--try-path-every SECONDS",
         "how often it tries its path while it stands down, taking requests again once the \
-         path answers, twice as long in the first time, 30 if not told, an hour at most",
+         path answers; the first trial waits twice as long, times as many as the stand-down \
+         has doubled; 30 if not told, an hour at most",
     )
     .exit(
         Exit::Failed,

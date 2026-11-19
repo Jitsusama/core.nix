@@ -53,6 +53,10 @@ struct State {
     down: Option<(Instant, Duration)>,
     /// When the last stand-down ended, and how long it was.
     last: Option<(Instant, Duration)>,
+    /// When its path answering ended a stand-down that no request has
+    /// asked past since, which it holds on for as it would for one ended
+    /// on its clock.
+    mended: Option<Instant>,
     /// When it last forgot, or took requests again: a request sent before
     /// rode a connection it has since retired, and may break off when the
     /// path it was judged on is gone, so it isn't judged.
@@ -133,6 +137,7 @@ impl Standing {
     /// Whether it takes a request asked `at`.
     pub(crate) fn taking(&self, at: Instant) -> Taking {
         let mut state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        state.mended = None;
         match state.down {
             None => Taking::Yes,
             Some((until, _)) if at < until => Taking::No(until - at),
@@ -145,22 +150,26 @@ impl Standing {
         }
     }
 
-    /// Whether it stands down `at`, so its path is to be tried.
-    pub(crate) fn is_down(&self, at: Instant) -> bool {
+    /// The stand-down it's in `at`, so its path is to be tried: until
+    /// when, which tells one stand-down from the next, and how long it
+    /// is; or none.
+    pub(crate) fn down(&self, at: Instant) -> Option<(Instant, Duration)> {
         let state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        state.down.is_some_and(|(until, _)| at < until)
+        state.down.filter(|&(until, _)| at < until)
     }
 
-    /// Takes requests again `at`, ahead of its stand-down's end, as its
-    /// path answers again, and says how long it stood down; or none, when
-    /// it wasn't standing down. A stand-down soon after still doubles the
-    /// one this was to be, as the longest it may last.
-    pub(crate) fn mend(&self, at: Instant) -> Option<Duration> {
+    /// Takes requests again `at`, ahead of the end of the stand-down that
+    /// lasts `until`, as its path answers again, and says how long it
+    /// stood down; or none, when that one is over, or another began. A
+    /// stand-down soon after still doubles the one this was to be, as the
+    /// longest it may last.
+    pub(crate) fn mend(&self, at: Instant, until: Instant) -> Option<Duration> {
         let mut state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        let (until, lasting) = state.down.filter(|&(until, _)| at < until)?;
+        let (_, lasting) = state.down.filter(|&(was, _)| was == until && at < was)?;
         state.down = None;
         state.last = Some((at, lasting));
         state.since = Some(at);
+        state.mended = Some(at);
         Some(lasting.saturating_sub(until - at))
     }
 
@@ -169,12 +178,12 @@ impl Standing {
     /// just ended is a time pi is sent back to it, as being asked is. Once
     /// a request has heard it take requests again, that request is what
     /// holds the relay its idle time, so only a stand-down nobody has
-    /// asked past is held on for.
+    /// asked past is held on for, ended on its clock or by its path
+    /// answering.
     pub(crate) fn holds_on(&self, at: Instant, after: Duration) -> bool {
         let state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        state
-            .down
-            .is_some_and(|(until, _)| until.checked_add(after).is_none_or(|ended| at < ended))
+        let within = |ended: Instant| ended.checked_add(after).is_none_or(|over| at < over);
+        state.down.is_some_and(|(until, _)| within(until)) || state.mended.is_some_and(within)
     }
 
     /// Forgets its stand-down and all it finished, `at` once the machine
@@ -470,24 +479,47 @@ mod tests {
         let down_at = from + A_SECOND * 19;
         let mended_at = down_at + A_SECOND * 90;
 
-        assert!(standing.is_down(mended_at), "it wasn't down to be tried");
+        let (until, lasting) = standing.down(mended_at).expect("it was down to be tried");
         assert_eq!(
-            standing.mend(mended_at),
+            (until, lasting),
+            (down_at + TEN_MINUTES, TEN_MINUTES),
+            "its stand-down wasn't said as it began"
+        );
+        assert_eq!(
+            standing.mend(
+                mended_at,
+                until
+                    .checked_sub(A_SECOND)
+                    .expect("a second before the stand-down ends")
+            ),
+            None,
+            "a trial for a stand-down that wasn't this one ended it"
+        );
+        assert_eq!(
+            standing.mend(mended_at, until),
             Some(A_SECOND * 90),
             "it didn't say how long it stood down before its path answered"
         );
-        assert!(!standing.is_down(mended_at), "it stood down still");
+        assert_eq!(standing.down(mended_at), None, "it stood down still");
+        assert!(
+            standing.holds_on(mended_at + A_SECOND, A_SECOND * 2),
+            "it didn't hold on after a stand-down its path ended, which leaving forgets"
+        );
+        assert!(
+            !standing.holds_on(mended_at + A_SECOND * 2, A_SECOND * 2),
+            "it held on past its idle time after a stand-down its path ended"
+        );
         assert_eq!(
-            standing.taking(mended_at),
+            standing.taking(mended_at + A_SECOND),
             Taking::Yes,
             "it didn't take requests once its path answered"
         );
         assert!(
-            !standing.holds_on(mended_at, Duration::ZERO),
-            "it held on for a stand-down it ended"
+            !standing.holds_on(mended_at + A_SECOND, A_SECOND * 2),
+            "it held on for a stand-down a request had asked past"
         );
         assert_eq!(
-            standing.mend(mended_at),
+            standing.mend(mended_at, until),
             None,
             "it mended a stand-down it wasn't in"
         );
