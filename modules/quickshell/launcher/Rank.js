@@ -75,23 +75,6 @@ function once(rows) {
     return out;
 }
 
-// A collection's own rows with its parts after them, or before them where
-// its vocabulary says they lead, each thing once: a part it lists among its
-// own rows stands where it lists it. The cursor is found by key, so a key
-// listed twice left one row for the other as the rows were laid out again,
-// and Agents' Spec, listed among its rows and as a part, came and went
-// where Joel was looking (2026-11-18).
-function withParts(members, parts, partsLead) {
-    const listed = Object.create(null);
-    for (const row of members) {
-        const id = identity(row);
-        if (id !== "")
-            listed[id] = true;
-    }
-    const own = parts.filter(row => identity(row) === "" || listed[identity(row)] !== true);
-    return partsLead ? own.concat(members) : members.concat(own);
-}
-
 // Rows but the layers of keys a program found beside them holds, named as
 // it is: Neovim the program holds Neovim's keys as Shortcuts a step in, so
 // a search lists one Neovim. A layer named otherwise (Terminal beside

@@ -71,6 +71,7 @@ import "SetWords.js" as SetWords
 import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Member.js" as Member
+import "launcher/Parts.js" as Parts
 import "launcher/Rank.js" as Rank
 import "launcher/Showing.js" as Showing
 import "launcher/Flash.js" as Flash
@@ -5967,7 +5968,10 @@ Scope {
         // enter made it: only the steps below it were, so Now stepped into
         // kept a row that had left it, undimmed, until it was left (PN2VZC,
         // a7b9d465: Work Network's row, past 30 s in one of four runs).
-        const offered = from < 0 ? [] : source.everything();
+        // The step below is looked for in all the collection lists, its
+        // parts too, so one held in Agents' Spec or Budgets is made again
+        // rather than left frozen as it was stepped into (2026-11-18).
+        const offered = from < 0 ? [] : listedWhole(source);
         if (from >= 0 && !heldAgain(steps, Held.own(steps, from, offered, heldWays(source))))
             return false;
         const above = top ? own : offered;
@@ -10076,9 +10080,9 @@ Scope {
     // A collection's rows with nothing typed: all of it, and its parts, the
     // parts first where its vocabulary says they lead ("lead": "parts"),
     // so the Keyboard's keyboards aren't below a hundred keys; a part it
-    // lists itself is listed once, where it lists it (Rank.js's withParts).
+    // lists itself is listed once, where it lists it (Parts.js).
     function listedWhole(from) {
-        return Rank.withParts(from.everything(), partsOf(from),
+        return Parts.withParts(from.everything(), partsOf(from),
             Words.of(from.settings.name).lead === "parts");
     }
 

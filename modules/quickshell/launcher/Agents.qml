@@ -703,8 +703,11 @@ Provider {
     // Said as every row it shows moves, the sessions' and those after
     // them, so a step held in Landed loses a landing as it's read; and
     // only while they're wanted, so a change nobody sees refreshes
-    // nothing. Wanted again, it says whatever moved meanwhile.
-    readonly property var everyRow: provider.wanted ? everything() : null
+    // nothing. Wanted again, it says whatever moved meanwhile. The parts
+    // it makes itself, Budgets and Spec, are said too, though listed as
+    // parts, so a new head or axes from their daemons shows where it's held.
+    readonly property var everyRow: provider.wanted
+        ? everything().concat([budgets, spec].filter(row => row !== null)) : null
     onEveryRowChanged: {
         if (everyRow !== null)
             changedTo(everyRow);

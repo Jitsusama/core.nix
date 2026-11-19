@@ -7,6 +7,7 @@
 import QtQuick
 import "Fading.js" as Fading
 import "Member.js" as Member
+import "Parts.js" as Parts
 import "Rank.js" as Rank
 
 QtObject {
@@ -78,13 +79,13 @@ QtObject {
         // other as the rows were laid out again (Joel, 2026-11-18).
         const members = [row("agent:A", "A"), row("agents:spec", "Spec")];
         const parts = [row("collection:runs", "Runs"), row("agents:spec", "Spec")];
-        expect("a part listed already is one row", keys(Rank.withParts(members, parts, false)),
+        expect("a part listed already is one row", keys(Parts.withParts(members, parts, false)),
             "agent:A agents:spec collection:runs");
         expect("parts that lead are one row each too",
-            keys(Rank.withParts(members, parts, true)),
+            keys(Parts.withParts(members, parts, true)),
             "collection:runs agent:A agents:spec");
         expect("rows with no key are never taken for each other",
-            Rank.withParts([row(undefined, "x")], [row(undefined, "y")], false).length, 2);
+            Parts.withParts([row(undefined, "x")], [row(undefined, "y")], false).length, 2);
 
         // A program's own keys named as it is are one Neovim; a layer named
         // otherwise, or with no program beside it, stays.
