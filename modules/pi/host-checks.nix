@@ -145,23 +145,26 @@ in
       prefixOf = realm: "jitsusama.pi.hosts.${realm}.environment gives ";
       refusalOf = realm: lib.findFirst (lib.hasPrefix (prefixOf realm)) null refusals;
       # Whether a realm's refusal names just these variables, as written,
-      # and speaks of one as it and of several as each.
+      # and speaks of one as it and of several as each; then says how each
+      # of loadsCode loads code, and where a command gets one instead.
       names =
         realm: named:
         let
           refused = refusalOf realm;
           one = !(lib.hasInfix " and " named);
+          head = "${prefixOf realm}${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make";
+          explained = lib.removePrefix head refused;
         in
         refused != null
-        && lib.hasPrefix "${prefixOf realm}${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make" refused
-        && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused;
+        && lib.hasPrefix head refused
+        && lib.all (name: lib.hasInfix " ${name}" explained) loadsCode
+        && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused
+        && lib.hasSuffix " a command that needs one sets it itself." refused;
     in
     holds "pi-hosts-refuse-code-loading-variables"
-      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each."
+      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then say how each of the eight loads code and that a command needing one sets it itself."
       (
         refusalOf "plain" == null
-        # Each message can be read, a passing realm's too.
-        && lib.all (check: lib.isString check.message) checks
         && lib.all (name: names (realmOf name) name) loadsCode
         && names "both" "LD_PRELOAD and OPENSSL_CONF"
         && names "three" "NODE_PATH, LD_AUDIT and OPENSSL_MODULES"

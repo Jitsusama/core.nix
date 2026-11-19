@@ -79,9 +79,11 @@ let
   # wins over the host's own and whose compiled code node runs as its
   # modules' (host/service/compile-cache.ts); the loader's LD_PRELOAD, LD_AUDIT
   # and LD_LIBRARY_PATH, which load a library; and OpenSSL's OPENSSL_CONF and
-  # OPENSSL_MODULES, whose configuration loads a module. mycelium, from the
-  # version that proves a hosted session by its spawner, takes no host's
-  # word whose environment gives any of them, but for a blank NODE_OPTIONS.
+  # OPENSSL_MODULES, whose configuration loads a module. mycelium keeps the
+  # same list in its src/node/asker.rs, once its lock here carries the change
+  # that proves a hosted session by its spawner: it then takes no host's word
+  # whose environment gives any of them, but for a blank NODE_OPTIONS. A bump
+  # of its lock checks the two lists still match.
   loadsCode = [
     "NODE_OPTIONS"
     "NODE_PATH"
@@ -385,7 +387,12 @@ in
               What the realm's own pi launcher would give every pi it starts,
               as the host never runs that launcher. No credential: the host
               resolves its own, and anything set for one launch belongs to the
-              conversation, not here.
+              conversation, not here. It may give none of NODE_OPTIONS,
+              NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT,
+              LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which the
+              host's unit clears since each could make its node run code:
+              evaluation refuses a realm giving one, and a command that needs
+              one sets it itself.
             '';
           };
         };
