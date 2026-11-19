@@ -704,10 +704,13 @@ in
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design
   # document installed for agents beside the aesthetic skill is passed over:
-  # it describes themes, Osaka Jade among them, and draws nothing. So is the
+  # it describes themes, Osaka Jade among them, and draws nothing. So are the
+  # web-design skill's examples, which describe sites drawn in it, and the
   # web kit's theme.css, which carries the dark look beside the light one on
   # purpose, for a site's reader to choose; the-web-kit-carries-the-theme
-  # proves its own side follows the machine's theme.
+  # proves its own side follows the machine's theme. gh's markdown style is
+  # read too, though no home file holds it: glamour finds it by the session
+  # variable naming it.
   a-theme-changes-everything =
     let
       osakaJade = (builtins.fromTOML (builtins.readFile ./osaka-jade.toml)).palette;
@@ -720,13 +723,25 @@ in
     in
     pkgs.runCommandLocal "a-theme-changes-everything" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
       test ${lib.escapeShellArg home.jitsusama.theme.colours.background} = '#FFFCF0'
-      if rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
+      # rg ends in 2 on any error, a match found or not, and a home links
+      # files outside the sandbox that it can't follow; so what it found is
+      # read from what it printed, and only an error of another kind fails.
+      status=0
+      rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
         --glob '!**/skills/aesthetic/design.md' \
+        --glob '!**/skills/web-design/examples/**' \
         --glob '!**/jitsusama/web/theme.css' \
         ${
           lib.concatMapStringsSep " " (colour: "-e ${lib.escapeShellArg colour}") (lib.attrValues osakaJade)
-        } ${home.home-files}/; then
+        } ${home.home-files}/ ${home.home.sessionVariables.GLAMOUR_STYLE} \
+        > found 2> unread || status=$?
+      if [ -s found ]; then
+        cat found
         echo "The files above kept Osaka Jade's colours when the theme changed."
+        exit 1
+      fi
+      if [ "$status" != 1 ] && grep -v 'No such file or directory' unread; then
+        echo "rg couldn't read the files above."
         exit 1
       fi
       touch $out
