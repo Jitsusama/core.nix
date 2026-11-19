@@ -211,18 +211,19 @@ QtObject {
             // What Needs Me lists a session's own notice under its cell,
             // critical or not, so it counts there, as itself, once.
             ["a notice joining its cell counts as itself, critical or not",
-                { notices: [critical, { id: 8, urgency: "normal" }],
-                    joined: [{ id: 8, urgency: "normal" }, critical] },
+                { notices: [Object.assign({ app: "pi" }, critical), { id: 8, app: "pi" }],
+                    joined: [{ id: 8, app: "pi" }, Object.assign({ app: "pi" }, critical)] },
                 "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 0, joined 2"],
             // Its card up, it still counts: its row stands under its cell
             // while the card says it, and one rule counts that row.
             ["a notice joining its cell counts with its card up",
-                { notices: [critical], joined: [critical], onScreen: ["7"] },
+                { notices: [Object.assign({ app: "pi" }, critical)],
+                    joined: [Object.assign({ app: "pi" }, critical)], onScreen: ["7"] },
                 "wanting 0, toDo 0, looks 0, given 0, reopen 0, notices 0, joined 1"],
             // Desktop lists none of pi's (Lately.js's LISTED), so one counted
             // as critical would have no row: a session's own counts joined,
-            // one of a session asking is its want's, one of a session gone
-            // the history's.
+            // one of a session asking is its want's, and one of a session
+            // gone is its card, which a critical one keeps up till Joel acts.
             ["a critical notice of pi's counts only as joined",
                 { notices: [Object.assign({ app: "pi" }, critical)] }, none],
             ["a source that isn't a list holds nothing",

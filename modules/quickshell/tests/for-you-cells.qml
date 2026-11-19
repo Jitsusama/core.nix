@@ -127,17 +127,17 @@ QtObject {
         // held, and not of a cell wanting Joel, whose want's row already
         // says what it asks, nor of one whose want he put off, nor a low
         // one, as away mode's saying a session rests, which asks nothing,
-        // nor one whose card Joel put away, which its session can't take
-        // back once it's off the screen (held.rs's close).
+        // nor one gone from the screen however it went, which its session
+        // can't take back once it has (held.rs's close).
         const raised = (id, more) => Object.assign({ id, app: "pi", read: false,
             cell: "mycelium:cell/9F3A2B1C" }, more);
-        expect("pi's, unread, kept and from a session held not wanting Joel, each joins it",
+        expect("pi's, unread, open and from a session held not wanting Joel, each joins it",
             Cells.joining([raised(1), raised(2, { read: true }), raised(3, { cell: null }),
                 raised(4, { transient: true }), raised(5, { cell: "mycelium:cell/BBBBBB" }),
                 raised(6, { app: "Slack" }), raised(7, { cell: "mycelium:cell/GONE0001" }),
                 raised(8, { urgency: "low" }), raised(9, { left: "dismissed" }),
-                raised(10, { left: "expired" })],
-            held, [cellB], {}).map(one => one.id), [1, 10]);
+                raised(10, { left: "expired" }), raised(11, { left: "withdrawn" })],
+            held, [cellB], {}).map(one => one.id), [1]);
         expect("one whose want Joel put off joins nothing",
             Cells.joining([raised(1)], held, [], { KELP01: true }).length, 0);
         expect("nothing told, none", Cells.joining(undefined, undefined, undefined, undefined),

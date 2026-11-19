@@ -34,12 +34,12 @@ function wanting(sessions) {
 // its row stands among what needs Joel now, and never again as a notice;
 // and none of pi's counts as critical, since Desktop lists none of them
 // (Lately.js's LISTED), so it would have no row: one of a session asking
-// is its want's, and one of a session gone the history's.
+// is its want's, and one of a session gone is its card, which a critical
+// one keeps up until Joel acts on it (Notifications.qml).
 function held(sources) {
     const given = sources ?? {};
     const each = name => Array.isArray(given[name]) ? given[name] : [];
     const shown = each("onScreen").map(String);
-    const joined = each("joined").map(one => String(one?.id));
     return {
         wanting: wanting(each("wanting")),
         toDo: each("toDo"),
@@ -48,8 +48,7 @@ function held(sources) {
         reopen: each("toReopen").length > 0 ? [each("toReopen")] : [],
         notices: each("notices").filter(one => one?.urgency === "critical"
             && one.app !== "pi" && one.read !== true && !one.waits
-            && !shown.includes(String(one.id))
-            && !joined.includes(String(one.id))),
+            && !shown.includes(String(one.id))),
         joined: each("joined")
     };
 }
