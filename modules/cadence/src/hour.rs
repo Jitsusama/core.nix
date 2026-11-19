@@ -144,6 +144,14 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
         measures.push(spent_beside_landed(&state_home, now));
+        // spend-watch rewrites its collection only when its text changes,
+        // so its heartbeat, not the file's time, says whether it's current.
+        measures.push(measures::unbilled::unbilled(
+            spend_watch_file("collection.json").as_deref(),
+            spend_watch_file("status.json").as_deref(),
+            now,
+            measures::ASKS,
+        ));
     }
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
@@ -280,6 +288,12 @@ fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
         |address| measures::spent::quest_of(&presences, address),
     );
     measures::spent::beside(collection.as_deref(), &landed, measures::ASKS)
+}
+
+/// One of the files spend-watch's daemon keeps in its runtime folder.
+fn spend_watch_file(name: &str) -> Option<String> {
+    let runtime = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?);
+    fs::read_to_string(runtime.join("spend-watch").join(name)).ok()
 }
 
 /// The last midnight in `zone` at or before `now`, in milliseconds; `now`

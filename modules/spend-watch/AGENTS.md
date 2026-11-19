@@ -125,6 +125,18 @@ feed speaks.
   outside the month before's tenth to ninetieth percentiles, which lie
   within a quarter of their median, since spend another machine made
   comes and goes by the day; the estimates take the new ratio up at once.
+  A budget a feed billed pi for before the day, whose key the warehouse
+  billed pi under half what its sessions logged over the last 24 hours
+  every feed the config runs has settled, by at least the floor, is
+  told: its work went on another key, as two teams' did on 17 and 18
+  November when the pi host sent its own key for every conversation.
+  Plans and budgets first billed within the day are left out, since
+  nothing bills them to disagree; a warehouse settled more than 48
+  hours behind, or past now, is told once in their place, and a feed
+  the config runs that bills pi without saying how far it has settled
+  holds every budget back.
+  Cadence counts these findings each hour while spend-watch's
+  heartbeat is current.
   `src/detect.rs` holds them all, and `spend-watch backtest` replays the
   forecast, the burn and the caps on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first

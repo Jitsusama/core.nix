@@ -88,6 +88,11 @@ pub struct FeedAction {
     pub fits: Vec<String>,
 }
 
+/// How many hours back the picture keeps each budget's logged spend by
+/// hour: the unbilled detector's day, held back by a warehouse that's up
+/// to two days behind.
+pub const LISTED_HOURS: i64 = 72;
+
 #[derive(Debug, Clone)]
 pub struct Picture {
     pub now: f64,
@@ -116,6 +121,10 @@ pub struct Picture {
     pub caps: Vec<CapView>,
     pub events: Vec<caps::Event>,
     pub refusals: Vec<(f64, String)>,
+    /// What pi's logs priced each budget's work at, by hour, at list, over
+    /// the last `LISTED_HOURS`: the attribution the pieces were made from,
+    /// before any bill was shared out over them.
+    pub listed: Vec<(i64, String, f64)>,
     pub sources: Vec<SourceState>,
     pub actions: Vec<FeedAction>,
     pub said: Vec<(String, String)>,
@@ -255,6 +264,7 @@ impl Picture {
         let inputs = Inputs::read(history, &budgets, first_hour, now_hour + 1)?;
         let (ratios, shifts) = learned(&inputs, &zone);
         let pieces = inputs.pieces(&ratios);
+        let listed = inputs.listed_since(now_hour - LISTED_HOURS);
         let (hours, budget_hours) = hours_of(&pieces);
         let today = zone.day(now);
         let first_day = zone.day(crate::time::hour_start(first_hour)).min(today);
@@ -310,6 +320,7 @@ impl Picture {
             caps,
             events,
             refusals,
+            listed,
             sources,
             actions,
             said,
