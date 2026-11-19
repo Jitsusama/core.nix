@@ -355,12 +355,33 @@ QtObject {
         // stand drawn as stride B (WCJQSG b1034f36): every change between
         // two of the walk's drawings moves one pair, never both, or it skids.
         const strideOrder = ["walkingA", "walkingC", "walkingB", "walkingD"];
+        // Each change is found to the millisecond by halving the 16 ms
+        // between two frames drawn differently, so a sweep of some hundreds
+        // of walks reads a fraction of the frames: a stride steps on, never
+        // back, and shows for 25 ms at least, so none comes and goes unseen
+        // between two alike.
         const skids = (way, was) => {
             const drawnIn = was ? [was] : [];
-            for (let t = 0; t <= way.ends; t += 1) {
-                const pose = Paths.frame(way, t).pose;
-                if (pose !== drawnIn[drawnIn.length - 1])
-                    drawnIn.push(pose);
+            const seen = t => Paths.frame(way, Math.min(t, way.ends)).pose;
+            const changes = (from, to, opens, closes) => {
+                if (opens === closes)
+                    return;
+                if (to - from <= 1) {
+                    drawnIn.push(closes);
+                    return;
+                }
+                const half = Math.floor((from + to) / 2);
+                const middle = seen(half);
+                changes(from, half, opens, middle);
+                changes(half, to, middle, closes);
+            };
+            let posed = seen(0);
+            if (posed !== drawnIn[drawnIn.length - 1])
+                drawnIn.push(posed);
+            for (let t = 16; t < way.ends + 16; t += 16) {
+                const drawnNext = seen(t);
+                changes(t - 16, t, posed, drawnNext);
+                posed = drawnNext;
             }
             return drawnIn.map((pose, i) => [drawnIn[i - 1], pose]).filter(([was, pose]) =>
                 strideOrder.includes(was) && strideOrder.includes(pose)
