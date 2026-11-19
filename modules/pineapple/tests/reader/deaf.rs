@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::keyring::reading_with_keyring;
-use super::{Answered, PATIENCE, answer, answering_whole, home, reader, reading};
+use super::{Answered, PATIENCE, answer, answering_whole, home, journal, reader, reading};
 
 /// Where For You reads what the safe word waits on Joel for.
 fn waiting(home: &Path) -> PathBuf {
@@ -107,6 +107,13 @@ fn a_name_that_isnt_a_whole_path_is_no_name() {
         reader.kill().expect("the reader stops");
         reader.wait().expect("the reader is gone");
         assert!(told, "named {named:?}, the reader tells For You in its own");
+        let said = journal(&home);
+        assert!(
+            said.contains(&format!(
+                "SAFE_WORD_WAITING names {named:?}, which isn't a whole path"
+            )),
+            "and its journal says the name was passed over: {said}"
+        );
         std::fs::remove_dir_all(&home).expect("the case's home goes");
     }
 }

@@ -11,7 +11,8 @@
 //! spent, counts neither way: nothing there is Joel's to do, and the
 //! journal says it.
 
-use std::path::Path;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
@@ -175,6 +176,32 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
             "steps": steps,
         }]
     })
+}
+
+/// Where For You's row is written, and a name passed over for it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Waiting {
+    /// The file the row goes in.
+    pub file: PathBuf,
+    /// A name given that isn't a whole path, and so names nothing.
+    pub refused: Option<PathBuf>,
+}
+
+/// Where For You's row goes: `named`, as the unit names the file its stop
+/// removes (home.nix), when that's a whole path; else For You's own under
+/// `state_home`. A name that isn't whole is kept, for the journal to say.
+#[must_use]
+pub fn waiting(named: Option<&OsStr>, state_home: &Path) -> Waiting {
+    match named.map(PathBuf::from) {
+        Some(named) if named.is_absolute() => Waiting {
+            file: named,
+            refused: None,
+        },
+        refused => Waiting {
+            file: state_home.join("mission/waiting/pineapple.json"),
+            refused,
+        },
+    }
 }
 
 /// Makes `change` to `file`: written in a `.writing` folder beside it
