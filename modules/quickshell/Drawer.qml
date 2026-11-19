@@ -661,7 +661,13 @@ Floating {
     Timer {
         id: flash
         interval: drawer.flashFor
-        onTriggered: drawer.flashing = []
+        // Only a flash still showing ends: a start that waited on its frame
+        // may fire after unflash, and an empty list set again would paint
+        // over readers the keys leaving switched off.
+        onTriggered: {
+            if (drawer.flashing.length > 0)
+                drawer.flashing = [];
+        }
     }
     // y's flash is timed from the first frame that draws it, which only the
     // launcher sees, so each yank says it waits, by its count, and the

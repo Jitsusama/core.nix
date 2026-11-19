@@ -906,7 +906,7 @@ def flash_ends_at_once(
             seen.clear()
         missed = unreached(seen, before)
         if not missed:
-            chosen = (seen[-1].get("drawer") or {}).get("chosen")
+            chosen = seen[-1]["drawer"]["chosen"]
             assert not flashing(seen[-1]), f"what {keys} brought showed the copy's flash: {chosen}"
             return
         tried.append(missed)
@@ -928,7 +928,7 @@ def flashing(shown: Json) -> bool:
 def unreached(seen: list[Json], before: str) -> str:
     """Say how a try never reached keys read in y's turn, or nothing where it did."""
     if not seen:
-        return "its keys came apart"
+        return f"nothing showed as wanted in {TRIED.total_seconds():.0f} s"
     if seen[-1]["drawer"]["chosen"]["copied"] == before:
         return "y copied nothing new"
     if any(flashing(shown) for shown in seen[:-1]):
