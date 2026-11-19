@@ -662,7 +662,7 @@ Scope {
                 });
             // A step left shows itself, and counts as made again.
             const below = remade(steps, at + 1, null, source);
-            if (below !== "made" && below !== "held")
+            if (below !== "made")
                 return below === "left";
         } else if (category !== null && (steps[last].rows.some(row => row.asker === source)
             || (answer && answer.asker === source))) {
@@ -5797,11 +5797,12 @@ Scope {
                 shown = refreshNow(source);
             } catch (error) {
                 threw = true;
-                // One line, where it threw first: a stack's every frame
-                // would bury the journal around it.
+                // One line: the error's kind and where it threw first,
+                // never its message, which could carry what a source
+                // served, nor every frame, which would bury the journal.
                 const where = `${error?.stack ?? ""}`.split("\n")[0];
-                console.warn(`launcher: refreshing ${source.settings.name} failed: ${error}`
-                    + (where ? ` at ${where}` : ""));
+                console.warn(`launcher: refreshing ${source.settings.name} failed: `
+                    + `${error?.name ?? "an error"}${where ? ` at ${where}` : ""}`);
             }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.
@@ -6097,19 +6098,14 @@ Scope {
         // aren't put back over where it went. Counted as shown, it's shown
         // once more after the step out's own search, for the updates
         // measure to count it: one search, once a step is left.
-        // One held, its leave waiting on Joel, is shown as it is, with
-        // nothing below it made again over its greyed steps.
         const itself = from < 0 ? "made"
             : heldAgain(steps, Held.own(steps, from, offered, heldWays(source)), source);
-        if (itself !== "made" && itself !== "held")
+        if (itself !== "made")
             return itself === "left";
-        if (itself === "made") {
-            const above = top ? own : offered;
-            const below = remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above,
-                source);
-            if (below !== "made" && below !== "held")
-                return below === "left";
-        }
+        const above = top ? own : offered;
+        const below = remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above, source);
+        if (below !== "made")
+            return below === "left";
         held = steps;
         return true;
     }
@@ -6136,27 +6132,19 @@ Scope {
     // caller holds, and a step Held.js says to leave, one still offered
     // that now offers nothing, left where Held.leaveTo says: back to the
     // step above it in one step out, as Joel's - would leave it, never past
-    // a dialog's own collection (canGoUp), and not while he acts on the
-    // rows (leavesWait), when it stays with its rows gone until he's done.
+    // a dialog's own collection (canGoUp), which stays with its rows gone.
     // Says, as Held.answer has it, "made" when every step was made again,
-    // one kept with its rows gone included, for the caller to show;
-    // "held" when a leave waits on Joel, its steps shown gone, for the
-    // caller to show while making nothing below them again; "left" when
-    // steps were left, which shows itself, so the caller puts nothing
+    // one kept with its rows gone included, for the caller to show; "left"
+    // when steps were left, which shows itself, so the caller puts nothing
     // back; and "kept" when a step couldn't be made again, so the caller
-    // changes nothing.
-    // `source`, what changed if anything did, is asked again once a leave
-    // held off can go.
+    // changes nothing. `source` is what changed, for the journal.
     function heldAgain(steps, made, source) {
         const outermost = steps[0]?.row.from?.collection?.outermost === true;
-        const leaving = Held.leaveTo(made, { outermost, holding: leavesWait },
-            heldWays(source));
+        const leaving = Held.leaveTo(made, { outermost }, heldWays(source));
         leaving.steps.forEach((step, at) => {
             steps[at] = step;
         });
         const answered = Held.answer(made, leaving);
-        if (made.leave >= 0 && leaving.waits && !leavesWaiting.includes(source))
-            leavesWaiting = leavesWaiting.concat([source]);
         if (answered !== "left")
             return answered;
         // Left by itself, it's no place Joel stepped to, so it goes on
@@ -6172,6 +6160,7 @@ Scope {
             jumping = false;
             lastPlace = last;
         }
+        jumpsBack = Held.unjumped(jumpsBack, placeOf(held), one => placeOf(one.held));
         // Said in the journal, so a step that closes under Joel by itself
         // can be told from one his key left: what changed, and from how
         // deep to how deep, never the row's name, which a source served.
@@ -6182,36 +6171,6 @@ Scope {
         return "left";
     }
 
-    // While Joel acts on the rows or has words in the find, a step that
-    // offers nothing now isn't left under him (Held.leaveTo): what changed
-    // then is asked again once he's done, so the step goes then, rather
-    // than waiting on its source's next change: an answer's asker answers
-    // again (reanswer) as well as refreshing, since what it holds may sit
-    // in a step made from another's rows, and any other source refreshes
-    // at its pace. Words the step's line holds, as a save's name, hold a
-    // leave off too, the step greyed meanwhile: leaving under a name being
-    // typed would change where the file saves.
-    readonly property bool leavesWait: holdingRows || typing
-    property var leavesWaiting: []
-    // Asked a moment later, once the key that let the leave go is done,
-    // and only if nothing holds it off again by then, as the key that
-    // ends visual may begin a find; if something does, the sources wait
-    // on that instead.
-    onLeavesWaitChanged: {
-        if (leavesWait || leavesWaiting.length === 0)
-            return;
-        Qt.callLater(() => {
-            if (leavesWait || !open)
-                return;
-            const waited = leavesWaiting;
-            leavesWaiting = [];
-            for (const source of waited) {
-                if (held.some(step => step.row.asker === source))
-                    reanswer(source);
-                refreshed(source, "a leave held off");
-            }
-        });
-    }
 
     // Each step from `from` on made again from the rows the one above it
     // offers now (`above`, or that step's own rows), as enter made it:

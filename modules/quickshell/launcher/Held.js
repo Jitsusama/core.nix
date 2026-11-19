@@ -125,40 +125,46 @@ function foundNow(foundAs, offered, ways) {
 // step offers nothing now: `keep`, how many steps it keeps, back to the
 // step above the one to leave, or -1 to leave none, with `steps` as
 // they're shown. A dialog's own collection, `how.outermost`, is never
-// left, for the home it never showed, and while Joel acts on the rows,
-// `how.holding`, as visual, a pending operator or words in the find do,
-// none is left under him: the leave `waits` for him to finish. Either
-// way, the step that stays keeps its rows, each gone, as no row offered
-// now says it's left, rather than showing what it offered before, and so
-// does each step kept below it, made from what it offered. A thing
-// landed in from a search, `through`, is left back to the search, past
-// the collection it was found in, as Joel's - leaves it.
+// left, for the home it never showed: it stays with its rows each gone,
+// as no row offered now says it's left, rather than showing what it
+// offered before, its row as it was entered. A thing landed in from a
+// search, `through`, is left back to the search, past the collection it
+// was found in, as Joel's - leaves it.
 function leaveTo(made, how, ways) {
     const steps = made.steps.slice();
     if (made.leave < 0) {
-        return { steps, keep: -1, waits: false };
+        return { steps, keep: -1 };
     }
     const left = made.leave > 0 && steps[made.leave].through === true ? made.leave - 1
         : made.leave;
-    const keep = how.holding ? steps.length : Math.max(left, how.outermost ? 1 : 0);
-    for (let at = made.leave; at < Math.min(keep, steps.length); at += 1) {
-        steps[at] = Object.assign({}, steps[at], { rows: ways.keep(steps[at], []) });
+    const keep = Math.max(left, how.outermost ? 1 : 0);
+    if (keep > made.leave) {
+        steps[made.leave] = Object.assign({}, steps[made.leave], {
+            rows: ways.keep(steps[made.leave], [])
+        });
     }
-    return { steps, keep: keep < steps.length ? keep : -1, waits: how.holding === true };
+    return { steps, keep: keep < steps.length ? keep : -1 };
 }
 
 // What the launcher's remaking answers its caller, from `made` and where
 // `leaving` (leaveTo's answer) goes: "made" when every step was made
 // again, or the outermost alone kept with its rows gone; "kept" when one
-// was kept as it was; "left" when steps were left; and "held" when the
-// leave waits on Joel, its steps shown gone as they are, for the caller
-// to show and make nothing below them again, which would light them.
+// was kept as it was; and "left" when steps were left.
 function answer(made, leaving) {
     if (made.leave < 0) {
         return made.all ? "made" : "kept";
     }
-    if (leaving.keep < 0) {
-        return leaving.waits ? "held" : "made";
+    return leaving.keep < 0 ? "made" : "left";
+}
+
+// The way back, `jumps`, once a step left by itself has landed on the
+// place `here`: where Joel stepped in from is where he now is, so each
+// last place there goes, or Ctrl+O would go nowhere and show it as it
+// was. `placeOf` says where a jump goes, as the launcher's placeOf does.
+function unjumped(jumps, here, placeOf) {
+    let end = jumps.length;
+    while (end > 0 && placeOf(jumps[end - 1]) === here) {
+        end -= 1;
     }
-    return "left";
+    return jumps.slice(0, end);
 }
