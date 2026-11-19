@@ -7,6 +7,7 @@ declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, follow a change within its pace, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
+draw a receptor's feeding of a cell while the node says it and not after,
 answer a key of each kind keys.ts decides (the keys dialog, find and its
 field, stepping through what was found, Escape's order, the walk, the
 machines, Now, the tree and the theme switch), and pass the web-design
@@ -21,6 +22,7 @@ import copy
 import json
 import os
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -68,6 +70,22 @@ BASIN_CELLS = ("HERON1", "HERON2")
 # A cell find is asked for by name, and the title its drawer heads it with.
 SOUGHT = "TERN03"
 SOUGHT_TITLE = "Count the Cleats"
+# A receptor of node.json's feeding one of its cells a call's summary, as the
+# node says a feeding under its `fed` kind.
+FED_RECEPTOR = "calls@kestrel"
+FED_CELL = "SKIFF1"
+FED_KEY = f"fed:{FED_RECEPTOR}~{FED_CELL}"
+FED_SAID = "a call's summary"
+# The names the two ends' drawers head them with: the receptor's title, and
+# the cell's short name, from its window in node.json.
+FED_RECEPTOR_TITLE = "Calls"
+FED_CELL_TITLE = "Rig The Skiff"
+# How long before its ten minutes end a second feeding is told, to see the
+# map let it go on its own clock with the node saying nothing more. Its line
+# may take FED_DRAWN_MS to be drawn, twice the map's pace for a busy builder,
+# and two seconds more are left so it is drawn before it goes.
+FED_DRAWN_MS = 2 * PACE_MS
+FED_ENDING_S = FED_DRAWN_MS // 1000 + 2
 
 
 @pytest.fixture
@@ -204,6 +222,27 @@ def basins() -> dict[str, list[dict[str, object]]]:
     return {**reading, "machine": reading["machine"] + pool, "cell": cells}
 
 
+def feeding(cell: str, ago: timedelta = timedelta()) -> dict[str, object]:
+    """FED_RECEPTOR feeding `cell` a call's summary, `ago` before now, as the node serves it."""
+    said = datetime.now(UTC) - ago
+    return {
+        "key": f"fed:{FED_RECEPTOR}~{cell}",
+        "kind": "fed",
+        "heard": int(said.timestamp() * 1000),
+        "receptor": FED_RECEPTOR,
+        "cell": cell,
+        "at": said.isoformat().replace("+00:00", "Z"),
+        # The node moves a field named as the interface's own under source.
+        "source": {"kind": "summary"},
+    }
+
+
+def fed() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with FED_RECEPTOR having just fed FED_CELL a call's summary."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    return {**reading, "fed": [feeding(FED_CELL)]}
+
+
 def serve(folder: Path, node: StandIn) -> Iterator[Served]:
     """Serve the map through the real server beside `node`, its feed as home.nix declares."""
     feed = {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
@@ -235,6 +274,18 @@ def basins_served(tmp_path: Path) -> Iterator[Served]:
     stand_in = StandIn(tmp_path / "basins.sock", "node", basins()).start()
     yield from serve(tmp_path, stand_in)
     stand_in.leave()
+
+
+@pytest.fixture
+def fed_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "fed.sock", "node", fed()).start()
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def fed_served(tmp_path: Path, fed_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, fed_node)
 
 
 def reach(browser: Browser, root: str, timeout: int = PACE_MS) -> dict[str, Any]:
@@ -453,6 +504,55 @@ def test_a_basin_passes_the_maps_own_checks(browser: Browser, basins_served: Ser
         # They open every machine's drawer, the basin's among them.
         found = opened.page.evaluate((HERE / "site-checks.js").read_text())
         assert found == [], f"site-checks.js on a realm with a basin found {found}"
+    finally:
+        opened.close()
+
+
+def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
+    browser: Browser, fed_served: Served, fed_node: StandIn
+) -> None:
+    root, _ = fed_served
+    opened = Opened(browser, f"{root}mycelium/#cell={FED_RECEPTOR}", SIZES[-1], "light")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        the_map_counts(page, COUNTED, "a feeding changed the count")
+        page.wait_for_function(
+            "document.getElementById('map-ground').painted().fed === 1", timeout=PACE_MS
+        )
+        # Each end's drawer says what was fed, the cell's by whom.
+        title = page.locator("#panel-title")
+        body = page.locator("#panel-body")
+        expect(title, "the receptor's drawer never opened").to_contain_text(FED_RECEPTOR_TITLE)
+        receptor = title.inner_text()
+        page.evaluate(f"location.hash = '#cell={FED_CELL}'")
+        expect(title, "the cell's drawer never opened").to_contain_text(FED_CELL_TITLE)
+        cell = title.inner_text()
+        expect(body, "the cell's drawer left out what it was fed").to_contain_text(
+            f"{FED_SAID}, by {receptor}", timeout=PACE_MS
+        )
+        page.evaluate(f"location.hash = '#cell={FED_RECEPTOR}'")
+        expect(body, "the receptor's drawer left out what it fed to whom").to_contain_text(
+            f"{cell}, {FED_SAID}", timeout=PACE_MS
+        )
+        found = page.evaluate((HERE / "site-checks.js").read_text())
+        assert found == [], f"site-checks.js on a realm with a feeding found {found}"
+        # A feeding near its ten minutes' end goes on the map's own clock,
+        # with the node saying nothing more of it.
+        ending = feeding("TERN03", timedelta(minutes=10) - timedelta(seconds=FED_ENDING_S))
+        fed_node.tell("fed", changed=[ending])
+        page.wait_for_function(
+            "document.getElementById('map-ground').painted().fed === 2", timeout=FED_DRAWN_MS
+        )
+        page.wait_for_function(
+            "document.getElementById('map-ground').painted().fed === 1",
+            timeout=PACE_MS + FED_ENDING_S * 1000,
+        )
+        # Once the node stops saying one, its line goes too.
+        fed_node.tell("fed", gone=[FED_KEY])
+        page.wait_for_function(
+            "document.getElementById('map-ground').painted().fed === 0", timeout=PACE_MS
+        )
     finally:
         opened.close()
 

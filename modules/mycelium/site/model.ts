@@ -15,9 +15,12 @@
 // read likewise without its words. The ties between cells, each pair that
 // talked in the last day, are the node's too (its `tie` kind): how many
 // messages each end sent and of what kinds, never where they went nor what
-// they said, with a strength the map fades to now.
+// they said, with a strength the map fades to now. A feeding, a receptor
+// saying one outside change to the one cell whose quest claims it, is the
+// node's (its `fed` kind) as who fed whom, when and the kind in a word,
+// never the change itself.
 
-import { type Fields, type Held, isObject, text } from "../../local-sites/kit/records.ts";
+import { type Fields, type Held, isObject, object, text } from "../../local-sites/kit/records.ts";
 
 /** How many messages the map hears, the latest, as `mycelium messages` says. */
 const LATEST_MESSAGES = 20;
@@ -35,6 +38,20 @@ const BALANCE_FRESH_MS = 180_000;
  * message reads as it stands now.
  */
 const TIE_HALF_LIFE_MS = 2 * 3_600_000;
+
+/**
+ * How long a feeding is drawn after it was said: ten minutes, the node's own
+ * `SHOWN_FOR`, so the map lets the line go when the node stops serving it,
+ * and before, where the record lingers in a watch with nothing else moving.
+ */
+const FED_SHOWN_MS = 600_000;
+
+/**
+ * How far ahead of the page's clock a feeding may be said and still be drawn:
+ * a minute, for clocks a little apart. A feeding is an event with its own ten
+ * minutes, so one said further ahead would stay up past them.
+ */
+const FED_AHEAD_MS = 60_000;
 
 /** What joins a tie's two ends in its key, which no cell's name holds. */
 const TIE_SEPARATOR = "~";
@@ -54,6 +71,18 @@ interface Heard {
   readonly balance?: Held;
   readonly unanswered?: Held | undefined;
   readonly tie?: Held | undefined;
+  readonly fed?: Held | undefined;
+}
+
+/**
+ * A receptor feeding a cell: the receptor's address, the cell's, when it
+ * was fed and of what kind, a word such as `review`.
+ */
+interface Fed {
+  readonly receptor: string;
+  readonly cell: string;
+  readonly at: string;
+  readonly kind: string | null;
 }
 
 /**
@@ -113,6 +142,7 @@ interface Now {
   readonly balance: Balance | null;
   readonly waits: readonly Wait[] | null;
   readonly ties: readonly Tie[] | null;
+  readonly fed: readonly Fed[] | null;
 }
 
 /**
@@ -306,6 +336,46 @@ function waitsOf(held: Held | undefined): Wait[] | null {
   return waits.sort((one, other) => one.since.localeCompare(other.since));
 }
 
+/**
+ * The feedings still drawn at `at`, the latest first, each said in the last
+ * ten minutes; none at all when the node serves nothing of them.
+ */
+function fedOf(held: Held | undefined, at: number): Fed[] | null {
+  if (held === undefined) {
+    return null;
+  }
+  const fed: { readonly when: number; readonly said: Fed }[] = [];
+  for (const record of held.all()) {
+    const receptor = text(record, "receptor");
+    const cell = text(record, "cell");
+    const said = text(record, "at");
+    const when = said === undefined ? Number.NaN : Date.parse(said);
+    // One said a little ahead of this clock is drawn rather than held back
+    // until something else moves, but never one so far ahead that it would
+    // stay up past its ten minutes, or that the clocks can't both be right.
+    if (receptor && cell && said && at - when < FED_SHOWN_MS && when - at < FED_AHEAD_MS) {
+      // The record's own `kind` is the interface's, so the node moves the
+      // feeding's, its word for what was fed, under `source`.
+      const kind = text(object(record, "source") ?? {}, "kind") ?? null;
+      fed.push({ when, said: { receptor, cell, at: new Date(when).toISOString(), kind } });
+    }
+  }
+  return fed.sort((one, other) => other.when - one.when).map((each) => each.said);
+}
+
+/**
+ * When the first thing drawn of `now` goes out of date, if anything will: a
+ * balance reading going stale, or a feeding's ten minutes ending. The page
+ * draws again then, so either leaves on time with nothing else moving.
+ */
+function expiryOf(now: Now): number | undefined {
+  const dues = [
+    ...(now.balance === null ? [] : [Date.parse(now.balance.at) + BALANCE_FRESH_MS]),
+    ...(now.fed ?? []).map((each) => Date.parse(each.at) + FED_SHOWN_MS),
+  ];
+  return dues.length > 0 ? Math.min(...dues) : undefined;
+}
+
 /** A tie's two ends from its key, when it is a pair's and not a cell's own. */
 function endsOf(key: string): [string, string] | undefined {
   const ends = key.slice(key.indexOf(":") + 1).split(TIE_SEPARATOR);
@@ -419,10 +489,11 @@ function nowOf(heard: Heard, at: number): Now {
     balance: balanceOf(reading),
     waits: waitsOf(heard.unanswered),
     ties: tiesOf(heard.tie, at),
+    fed: fedOf(heard.fed, at),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
   return plain(now) as Now;
 }
 
-export type { Balance, Heard, Message, Now, Tie, Wait };
-export { BALANCE_FRESH_MS, LATEST_MESSAGES, nowOf };
+export type { Balance, Fed, Heard, Message, Now, Tie, Wait };
+export { expiryOf, FED_AHEAD_MS, FED_SHOWN_MS, LATEST_MESSAGES, nowOf };

@@ -767,6 +767,24 @@ body {
   stroke-width: 4;
 }
 
+/* A receptor's feeding: a dot-and-dash arc in the receptor's own ink,
+   from its dish to the cell it fed something, so it reads as what came
+   in from outside: never as talk, which is solid in the voice ink, nor
+   as a bridge's cross-hypha, whose round dots share that ink. */
+.m-fed {
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 0.5 4 7 4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* A feeding the choice doesn't touch steps back, as talk does. */
+.m-fed.faint {
+  opacity: 0.3;
+}
+
 /* A message on its way: a bead of the voice ink travelling the hyphae,
    ringed in the map's ground so it stands off whatever it crosses, and a
    ring opening where it lands. */
@@ -887,6 +905,10 @@ body {
   .trail,
   .m-talk {
     stroke: Highlight;
+  }
+
+  .m-fed {
+    stroke: CanvasText;
   }
 }
 

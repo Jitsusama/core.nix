@@ -16,11 +16,13 @@
 // them nor says them as trouble, and draws without them until they come.
 // The ties between cells are watched apart for the same reason: a node too
 // old to serve them draws its talk from the latest messages, as before.
+// What each receptor fed is watched apart too, since only a node new enough
+// serves it, and a map without it draws no feeding at all.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said } from "../../local-sites/kit/status.ts";
-import { BALANCE_FRESH_MS, type Heard, nowOf } from "./model.ts";
+import { expiryOf, type Heard, nowOf } from "./model.ts";
 import { asked, sayReach } from "./reach.ts";
 
 /** The least time between two readings handed to the drawing. */
@@ -95,13 +97,12 @@ function handOver(): void {
   handed = Date.now();
   const now = nowOf(heard, handed);
   document.dispatchEvent(new CustomEvent(NOW_EVENT, { detail: now }));
-  // A drawn balance goes stale with nothing else moving, as when its service
-  // stops, so draw again the moment it does.
+  // A drawn balance goes stale, and a feeding's line has had its time, with
+  // nothing else moving, as when the service stops or the node falls quiet,
+  // so draw again the moment the first of them does.
   globalThis.clearTimeout(expires);
-  expires =
-    now.balance === null
-      ? undefined
-      : globalThis.setTimeout(owe, Date.parse(now.balance.at) + BALANCE_FRESH_MS - handed + 1);
+  const due = expiryOf(now);
+  expires = due === undefined ? undefined : globalThis.setTimeout(owe, due - handed + 1);
 }
 
 /** Hands a reading over once the floor allows, and while the tab shows. */
@@ -169,6 +170,7 @@ function watch(kind: Kind): Held {
 
 const waits = watchApart("unanswered");
 const ties = watchApart("tie");
+const feedings = watchApart("fed");
 
 // What each watch holds, filled as its records arrive: the drawing reads these
 // and never a copy, since a copy would stay as it was first told. What waits
@@ -185,6 +187,9 @@ const heard: Heard = {
   },
   get tie() {
     return ties.answered() ? ties.held : undefined;
+  },
+  get fed() {
+    return feedings.answered() ? feedings.held : undefined;
   },
 };
 
