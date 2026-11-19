@@ -114,8 +114,9 @@ pub struct Inputs {
     /// The wants Joel put off, each for an hour (wants.rs).
     pub put_off: wants::PutOff,
     /// The starts Joel gave Start New Work, kept until the shell says it
-    /// told him how each ended (starts.rs).
-    pub starts: starts::Starts,
+    /// told him how each ended, shared with the asks that change them
+    /// (starts.rs).
+    pub starts: starts::Keeping,
     /// Landed's records as last made, with what they were made from.
     pub landed_made: LandedCache,
 }

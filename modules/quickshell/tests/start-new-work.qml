@@ -209,13 +209,16 @@ QtObject {
         Expect.same("one still asked is answered by its record",
             untold.answered.map(one => one.token), ["a-3"]);
         // A shell that never asked tells only those the daemon still keeps as it asks,
-        // since its asker may have told it since its own copy was served.
+        // since its asker may have told it since its own copy was served: the daemon
+        // answers sprout-kept from the file it keeps, which it reads before it listens.
         Expect.same("one told since isn't told again",
-            Sprouting.stillKept(untold.tell, [{ key: "start:agents:a-2" }]), []);
+            Sprouting.stillKept(untold.tell, { kept: ["a-2"] }), []);
         Expect.same("one still kept is told", Sprouting.stillKept(untold.tell,
-            [{ key: "start:agents:a-1" }]).map(one => one.token), ["a-1"]);
+            { kept: ["a-1"] }).map(one => one.token), ["a-1"]);
         Expect.same("with no answer, none is told yet",
             Sprouting.stillKept(untold.tell, null), []);
+        Expect.same("nor with a refusal, as from a daemon before sprout-kept",
+            Sprouting.stillKept(untold.tell, { error: { code: "unknown-ask" } }), []);
         // Its asker, still up beside this shell while a switch hands over, says it told
         // first, so one first seen just now waits rather than being told twice.
         const fresh = Sprouting.untold(kept, known, {}, now);

@@ -59,7 +59,7 @@ use agents::served::Served;
 use agents::session::Session;
 use agents::sources::{self, Heard, Paths};
 use agents::sprout;
-use agents::starts::{self, Starts};
+use agents::starts::{self, Keeping, Starts};
 use agents::tell::{self, Routes};
 use agents::wants::{self, PUT_OFF_FOR_MS, PutOff, Wants};
 use daemon_serve::asks::Domain;
@@ -306,21 +306,36 @@ fn own(
 /// Start New Work, asked of `node` only for the shell, told apart by the
 /// connection it came on; feedback and a sprout wait on the node, so
 /// neither holds up an ask after it. Each start the shell names by a
-/// token is kept, told the loop as it's asked and as it ends, until the
-/// shell says it told Joel its end (starts.rs), so neither a restart of
-/// the shell nor one of this daemon ends it untold.
-fn sprouts_for_the_shell(shared: &Shared, node: Option<PathBuf>, told: mpsc::Sender<Heard>) {
+/// token is kept on disk before the node is asked, its end before the
+/// shell hears it, and its told before that's answered, until the shell
+/// says it told Joel its end (starts.rs), so neither a restart of the
+/// shell nor one of this daemon ends it untold or tells it twice. The
+/// loop is told each change, to serve the starts' records anew.
+fn sprouts_for_the_shell(
+    shared: &Shared,
+    node: Option<PathBuf>,
+    keeping: Keeping,
+    told: mpsc::Sender<Heard>,
+) {
     shared.peered(
-        &[sprout::ASK, starts::TOLD],
+        &[sprout::ASK, starts::TOLD, starts::KEPT],
         Box::new(move |said, stream| {
+            let keep = |change: &dyn Fn(&mut Starts)| {
+                if let Err(why) = keeping.change(change) {
+                    eprintln!("agents: can't keep {}: {why}", starts::FILE);
+                }
+                let _ = told.send(Heard::StartsMoved);
+            };
+            if said["ask"] == starts::KEPT {
+                return Some(json!({"kept": keeping.kept(&starts::told_of(said))}));
+            }
             let asker = asker::the_shell(stream);
             if said["ask"] == starts::TOLD {
                 return Some(match asker {
                     Ok(()) => {
                         let tokens = starts::told_of(said);
-                        let count = tokens.len();
-                        let _ = told.send(Heard::StartsTold(tokens));
-                        json!({"told": count})
+                        keep(&|kept: &mut Starts| kept.told(&tokens));
+                        json!({"told": tokens.len()})
                     }
                     Err(why) => json!({"error": {"code": "untold", "message": why}}),
                 });
@@ -328,11 +343,12 @@ fn sprouts_for_the_shell(shared: &Shared, node: Option<PathBuf>, told: mpsc::Sen
             // Only the shell's are kept, so no other program fills the file.
             let token = asker.as_ref().ok().and_then(|()| starts::token_of(said));
             if let Some(token) = &token {
-                let _ = told.send(Heard::Begun(token.clone(), clock::now_ms()));
+                let at = clock::now_ms();
+                keep(&|kept: &mut Starts| kept.begun(token, at));
             }
             let answer = sprout::answer(said, asker, node.as_deref());
-            if let Some(token) = token {
-                let _ = told.send(Heard::Ended(token, answer.clone()));
+            if let Some(token) = &token {
+                keep(&|kept: &mut Starts| kept.ended(token, &answer));
             }
             Some(answer)
         }),
@@ -409,7 +425,7 @@ fn hear(
 
 /// The inputs as the daemon starts: what it keeps read from its own
 /// files, or from the shell's where it has kept none yet.
-fn started(words: Words, paths: &Paths) -> Inputs {
+fn started(words: Words, paths: &Paths, starts: Keeping) -> Inputs {
     Inputs {
         words,
         boot: std::fs::read_to_string(BOOT_ID)
@@ -427,7 +443,7 @@ fn started(words: Words, paths: &Paths) -> Inputs {
             &paths.kept.with_file_name(wants::PUT_OFF_FILE),
             clock::now_ms(),
         ),
-        starts: Starts::read(&paths.kept.with_file_name(starts::FILE), clock::now_ms()),
+        starts,
         ..Inputs::default()
     }
 }
@@ -473,7 +489,10 @@ fn serve(args: Args) -> Result<(), Failure> {
         kept,
     );
     let shared = Shared::new(DOMAIN, own);
-    sprouts_for_the_shell(&shared, args.node.clone(), to.clone());
+    // Read before the socket listens, so a shell's first ask of which are
+    // kept is answered from them, though no record is served yet.
+    let keeping = Keeping::read(&args.kept.with_file_name(starts::FILE), clock::now_ms());
+    sprouts_for_the_shell(&shared, args.node.clone(), keeping.clone(), to.clone());
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {
@@ -516,7 +535,7 @@ fn serve(args: Args) -> Result<(), Failure> {
     sources::follow_files(&paths, to).map_err(|why| {
         Failure::new(Exit::Failed, "agents can't hear the files it reads").because(why.to_string())
     })?;
-    let mut inputs = started(words, &paths);
+    let mut inputs = started(words, &paths, keeping);
     let mut served = Served::default();
     let mut held_landed = Rc::clone(served.landed());
     let mut still = Still::default();
@@ -567,7 +586,8 @@ mod sprouts {
     /// The daemon's own socket, served as `serve` serves it, refuses a
     /// sprout from a process that isn't the shell's, this test's, asks
     /// the node nothing, and keeps nothing of a start it names, nor takes
-    /// its word that one was told.
+    /// its word that one was told. Which are kept it answers anyone, from
+    /// the file as it was read before the socket listened.
     #[test]
     fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
         let folder = std::env::temp_dir().join(format!("agents-sprouts-{}", std::process::id()));
@@ -579,7 +599,11 @@ mod sprouts {
         node.set_nonblocking(true).expect("the node never waits");
         let shared = Shared::new(DOMAIN, Box::new(|_| None));
         let (told, heard) = mpsc::channel();
-        sprouts_for_the_shell(&shared, Some(at_node), told);
+        let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
+        keeping
+            .change(|kept| kept.begun("a-0", clock::now_ms()))
+            .expect("a start kept");
+        sprouts_for_the_shell(&shared, Some(at_node), keeping, told);
         let socket = folder.join("agents.sock");
         let listener = serve::listen(&socket).expect("the daemon's socket");
         serve::accept(shared, listener);
@@ -589,16 +613,27 @@ mod sprouts {
         writeln!(asking, "{ask}").expect("the sprout is asked");
         let ask = json!({"id": 2, "ask": starts::TOLD, "starts": ["a-0"]});
         writeln!(asking, "{ask}").expect("the told is asked");
+        let ask = json!({"id": 3, "ask": starts::KEPT, "starts": ["a-9", "a-0", "a-1"]});
+        writeln!(asking, "{ask}").expect("which are kept is asked");
         let mut reading = BufReader::new(&asking);
         let mut answer_to = |what: &str| {
             let mut line = String::new();
             reading.read_line(&mut line).expect(what);
             serde_json::from_str::<Value>(&line).expect("one line of JSON")
         };
-        let mut answers = [answer_to("an answer"), answer_to("a second answer")];
-        // Each is answered on a thread of its own, so in either order.
+        let mut answers = [
+            answer_to("an answer"),
+            answer_to("a second answer"),
+            answer_to("a third answer"),
+        ];
+        // Each is answered on a thread of its own, so in any order.
         answers.sort_by_key(|one| one["id"].as_u64());
-        let [answer, told_answer] = answers;
+        let [answer, told_answer, kept_answer] = answers;
+        assert_eq!(
+            kept_answer["kept"],
+            json!(["a-0"]),
+            "kept, as the file says, with its told refused: {kept_answer}"
+        );
         assert_eq!(
             told_answer["error"]["code"], "untold",
             "took a told: {told_answer}"

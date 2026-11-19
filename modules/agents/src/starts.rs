@@ -11,7 +11,8 @@
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
@@ -25,6 +26,12 @@ pub const KIND: &str = "start";
 
 /// The shell's ask saying which starts it told Joel the end of.
 pub const TOLD: &str = "sprout-told";
+
+/// The ask a shell makes of which starts are still kept, answered from
+/// the file rather than the records served, which a daemon just started
+/// hasn't made yet. Any connection may ask: it says no more than the
+/// records any watch hears.
+pub const KEPT: &str = "sprout-kept";
 
 /// What a start a restart cut off is ended as, coded as a silent node's
 /// is (sprout.rs), since either may still begin.
@@ -71,7 +78,7 @@ pub fn token_of(said: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// The tokens the shell's `sprout-told` names.
+/// The tokens the shell's `sprout-told` or `sprout-kept` names.
 pub fn told_of(said: &Value) -> Vec<String> {
     said["starts"]
         .as_array()
@@ -202,6 +209,55 @@ impl Starts {
     }
 }
 
+/// The starts kept, shared by the loop that serves them and the shell's
+/// asks that change them: each change is written before the ask is
+/// answered, so a daemon stopped just after answering still keeps what it
+/// said. Handed over to the loop, a start begun, ended or told was kept
+/// only once the loop came to it, after the shell had its answer.
+#[derive(Clone, Debug, Default)]
+pub struct Keeping {
+    starts: Arc<Mutex<Starts>>,
+    path: PathBuf,
+}
+
+impl Keeping {
+    /// The starts `path` keeps at `now_ms` (Starts::read), kept there.
+    pub fn read(path: &Path, now_ms: u128) -> Self {
+        Self {
+            starts: Arc::new(Mutex::new(Starts::read(path, now_ms))),
+            path: path.to_owned(),
+        }
+    }
+
+    /// Changes the starts as `change` does and writes them whole before
+    /// it returns. The change stands though the write fails, as it would
+    /// have been kept only until the daemon stops.
+    pub fn change(&self, change: impl FnOnce(&mut Starts)) -> io::Result<()> {
+        let mut starts = self.starts.lock().unwrap_or_else(PoisonError::into_inner);
+        change(&mut starts);
+        starts.write(&self.path)
+    }
+
+    /// Each start that ended and isn't told, as Starts::records.
+    pub fn records(&self) -> Vec<Value> {
+        self.starts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .records()
+    }
+
+    /// Those of `tokens` still kept, in the order asked, for a shell that
+    /// never asked them to tell only what its asker hasn't.
+    pub fn kept(&self, tokens: &[String]) -> Vec<String> {
+        let starts = self.starts.lock().unwrap_or_else(PoisonError::into_inner);
+        tokens
+            .iter()
+            .filter(|token| starts.0.iter().any(|one| &one.token == *token))
+            .cloned()
+            .collect()
+    }
+}
+
 /// Of `answer`, the daemon's to a sprout, only what the shell tells: the
 /// machine and holder's id of one started, or the code and words of one
 /// that wasn't.
@@ -249,6 +305,52 @@ mod tests {
             std::env::temp_dir().join(format!("agents-starts-{}-{case}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
         folder.join(FILE)
+    }
+
+    #[test]
+    fn each_change_is_on_disk_once_it_returns() {
+        let path = kept_at("keeping");
+        let keeping = Keeping::read(&path, NOW);
+        keeping.change(|starts| starts.begun("a-1", NOW)).unwrap();
+        let found = Starts::read(&path, NOW + 1000).records();
+        assert_eq!(
+            found[0]["start"]["ended"]["error"]["message"], CUT_OFF,
+            "a daemon stopped as the node is asked keeps no start: {found:?}"
+        );
+        let begun = json!({"sprouted": {"machine": "heron", "held": "h-1"}});
+        keeping
+            .change(|starts| starts.ended("a-1", &begun))
+            .unwrap();
+        let found = Starts::read(&path, NOW + 1000).records();
+        assert_eq!(
+            found[0]["start"]["ended"]["sprouted"]["machine"], "heron",
+            "a daemon stopped as the shell is answered keeps no end: {found:?}"
+        );
+        keeping
+            .change(|starts| starts.told(&["a-1".to_owned()]))
+            .unwrap();
+        assert!(
+            Starts::read(&path, NOW + 1000).records().is_empty(),
+            "a daemon stopped as a told is answered serves it again"
+        );
+    }
+
+    #[test]
+    fn kept_names_only_those_still_kept() {
+        let keeping = Keeping::read(&kept_at("kept"), NOW);
+        keeping
+            .change(|starts| {
+                starts.begun("a-1", NOW);
+                starts.begun("a-2", NOW);
+                starts.told(&["a-1".to_owned()]);
+            })
+            .unwrap();
+        let asked = ["a-3", "a-2", "a-1"].map(str::to_owned);
+        assert_eq!(
+            keeping.kept(&asked),
+            ["a-2"],
+            "one told, or never kept, is said kept"
+        );
     }
 
     #[test]

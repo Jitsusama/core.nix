@@ -103,22 +103,19 @@ function untold(kept, known, seen, now) {
     return { tell, told: said, waiting, answered };
 }
 
-// Of the starts to `tell`, those the daemon still keeps by its answer to
-// a get of their keys (`records`, or null when it didn't answer): its
+// Of the starts to `tell`, those the daemon still keeps by its `answer`
+// to sprout-kept, which names the tokens it keeps of those asked: its
 // asker, up beside this shell while a switch hands over, may have told
-// one since this shell's copy was served, and a get names only what's
-// still held, so none is told twice. With no answer, none is told yet.
-function stillKept(tell, records) {
-    if (!Array.isArray(records)) {
+// one since this shell's copy was served, so none is told twice. The
+// daemon answers from the file it keeps, read before it listens, so a
+// daemon just started names those it kept though it serves no record
+// yet. With no answer, or a refusal, none is told yet.
+function stillKept(tell, answer) {
+    const kept = answer?.kept;
+    if (!Array.isArray(kept)) {
         return [];
     }
-    const keys = records.map(record => record?.key);
-    return tell.filter(one => keys.includes(keptKey(one.token)));
-}
-
-// The key the agents daemon serves a kept start under (starts.rs).
-function keptKey(named) {
-    return `start:agents:${named}`;
+    return tell.filter(one => kept.includes(one.token));
 }
 
 // Why `ask` would ask nothing, in `said`'s words (`empty` or

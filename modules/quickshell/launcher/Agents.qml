@@ -406,10 +406,10 @@ Provider {
             // casts, so the daemon says no amount while it is.
             onStateChanged: {
                 provider.tellSharing();
-                // A told the daemon took but went before keeping is said
-                // again to the one saying hello now, since the records it
-                // serves come alike to those held through the gap, so tell
-                // no change that would.
+                // The starts kept are looked at again with the one saying
+                // hello now, so a told it never answered is said again: the
+                // records it serves come alike to those held through the
+                // gap, so tell no change that would.
                 if (state === "answering")
                     provider.sproutsKept(held);
             }
@@ -1642,25 +1642,27 @@ Provider {
         const tell = stood.tell.filter(one => !checking(one.token));
         const telling = tell.map(one => one.token);
         sproutTold(stood.told.filter(token => !checking(token) && !telling.includes(token)));
-        // The start still asked, whose answer went with the daemon, ends as it kept it.
+        if (tell.length > 0 && rowsKind) {
+            telling.forEach(token => {
+                sproutChecking[token] = true;
+            });
+            rowsKind.ask({ ask: "sprout-kept", starts: telling },
+                answer => sproutsChecked(tell, answer));
+        }
+        // The start still asked, whose answer went with the daemon, ends as it kept it: last,
+        // since sprouted looks at the kept starts again, and those being checked are marked.
         const answered = stood.answered.find(one => one.token === sproutToken);
         if (answered !== undefined && sprouting !== "")
             sprouted(Sprouting.ended(answered.ended, sproutWords()));
-        if (tell.length === 0 || !rowsKind)
-            return;
-        telling.forEach(token => {
-            sproutChecking[token] = true;
-        });
-        rowsKind.get(telling.map(Sprouting.keptKey), 0, answer => sproutsChecked(tell, answer));
     }
-    // Tells those of `tell` the daemon still keeps by its `answer` to a
-    // get of them (Sprouting.stillKept): one its asker told since is kept
-    // no more. With no answer, they're asked for again in a moment.
+    // Tells those of `tell` the daemon still keeps by its `answer` to
+    // sprout-kept (Sprouting.stillKept): one its asker told since is kept
+    // no more. With no answer, or a refusal, they're asked again in a moment.
     function sproutsChecked(tell, answer) {
         tell.forEach(one => {
             delete sproutChecking[one.token];
         });
-        if (answer === null) {
+        if (!Array.isArray(answer?.kept)) {
             sproutAgainIn(Sprouting.SETTLE_MS);
             return;
         }
@@ -1723,9 +1725,10 @@ Provider {
         if (sproutTokens[sproutToken] === "asking")
             sproutTokens[sproutToken] = "ended";
         sproutToken = "";
-        sproutsKept(rowsKind?.held ?? {});
         sproutSays(key, Sprouting.told(how, sproutWords()));
+        // Told Joel before the daemon is told it's told, so it's kept until he is.
         sproutReaches(how);
+        sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
         if (how.started && how.held !== "") {
