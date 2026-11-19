@@ -328,18 +328,44 @@ QtObject {
         check("a spent thing landed in from a search leaves past its collection",
             said(Held.leaveTo(through, how(false), ways)), "0");
         check("but never past the outermost", said(Held.leaveTo(through, how(true), ways)), "1");
-        // The step whose places every history forgets, `spent`: the one
-        // left, or the outermost where it's the one that offers nothing,
-        // though it's kept.
-        const forgets = to => `${to.keep} ${to.spent}`;
-        check("the places forgotten are through the step left",
-            forgets(Held.leaveTo(nothing, how(false), ways)), "1 1");
-        check("or through the outermost, kept but spent", forgets(top), "1 0");
-        check("as when it's alone", forgets(alone), "-1 0");
-        check("or through the collection a spent thing was found in",
-            forgets(Held.leaveTo(through, how(false), ways)), "0 0");
-        check("or through the thing itself, where the outermost keeps its collection",
-            forgets(Held.leaveTo(through, how(true), ways)), "1 1");
+        // Only a kept outermost has its rows drawn gone; a step left is
+        // handed back as made.
+        keptWith = [];
+        const left = Held.leaveTo(nothing, how(false), ways);
+        const pastIt = Held.leaveTo(through, how(false), ways);
+        check("a step left isn't kept with its rows gone",
+            `${keptWith.join(" ")}|${read(left.steps)}|${read(pastIt.steps)}`,
+            `|${read(nothing.steps)}|${read(through.steps)}`);
+
+        // What every history forgets: the places through the step that
+        // offers nothing, as they read before it was made again and after,
+        // and where Joel lands, read both ways, each as its depths.
+        const before = steps.map(step => Object.assign({}, step, {
+            row: Object.assign({}, step.row, { says: `${step.row.says} before` })
+        }));
+        const forgets = (made, how) => {
+            const at = Held.forgets(made, Held.leaveTo(made, how, ways), before, made.steps);
+            return at === null ? "none" : [at.landed, at.left].map(both =>
+                both.map(one => one.length).join(",")).join(" ");
+        };
+        check("nothing offering nothing forgets nothing",
+            forgets({ steps: steps, leave: -1, all: true }, how(false)), "none");
+        check("a step left forgets the places through it, landing above it",
+            forgets(nothing, how(false)), "1,1 2,2");
+        check("a spent outermost kept forgets the places through it, landing in it",
+            forgets(spentTop, how(true)), "1,1 1,1");
+        check("as when it's alone",
+            forgets({ steps: [steps[0]], leave: 0, all: false }, how(true)), "1,1 1,1");
+        check("a spent thing found by a search forgets only the places through it",
+            forgets(through, how(false)), "0,0 2,2");
+        check("where the outermost keeps its collection too", forgets(through, how(true)),
+            "1,1 2,2");
+        const spent = Held.forgets(nothing, left, before, nothing.steps);
+        check("each read as it was before it was made again and as it is now",
+            [spent.left[0], spent.left[1], spent.landed[0], spent.landed[1]]
+                .map(one => one[one.length - 1].row.says).join(" | "),
+            [before[1], nothing.steps[1], before[0], nothing.steps[0]]
+                .map(step => step.row.says).join(" | "));
 
         // What the launcher's remaking answers its caller.
         const answer = made => Held.answer(made, Held.leaveTo(made, how(false), ways));
@@ -380,31 +406,31 @@ QtObject {
                 .join(" | ") + `; ${now.last === null ? "none" : at(now.last)}`;
         };
         check("a way back and a place used last where a leave landed go",
-            after({ jumps: ["home", "agents", "agents"], last: "agents" }, ["agents"],
-                ["agents/s1"]), "home |  | ; none");
+            after({ jumps: ["q", "agents", "agents"], last: "agents" }, ["agents"],
+                ["agents/s1"]), "q |  | ; none");
         check("only the last of the way back",
-            after({ jumps: ["agents", "home", "agents"] }, ["agents"], ["agents/s1"]),
-            "agents home |  | ; elsewhere");
+            after({ jumps: ["agents", "q", "agents"] }, ["agents"], ["agents/s1"]),
+            "agents q |  | ; elsewhere");
         check("where it landed as it read before it was remade",
-            after({ jumps: ["home", "Agents"] }, ["Agents", "Agents Now"], ["Agents/s1"]),
-            "home |  | ; elsewhere");
+            after({ jumps: ["q", "Agents"] }, ["Agents", "Agents Now"], ["Agents/s1"]),
+            "q |  | ; elsewhere");
         check("and as it reads now",
-            after({ jumps: ["home", "Agents Now"] }, ["Agents", "Agents Now"],
-                ["Agents/s1"]), "home |  | ; elsewhere");
+            after({ jumps: ["q", "Agents Now"] }, ["Agents", "Agents Now"],
+                ["Agents/s1"]), "q |  | ; elsewhere");
         check("every place through the step left goes, the deepest last included",
-            after({ jumps: ["home", "p", "p/s", "p/s/t"], last: "p/s/t" }, ["p"], ["p/s"]),
-            "home |  | ; none");
+            after({ jumps: ["q", "p", "p/s", "p/s/t"], last: "p/s/t" }, ["p"], ["p/s"]),
+            "q |  | ; none");
         check("wherever it is on the way back",
             after({ jumps: ["p/s", "q", "p"] }, ["p"], ["p/s"]), "q |  | ; elsewhere");
         check("through the step left as it read now",
-            after({ jumps: ["home", "p/S Now/t"] }, ["p"], ["p/s", "p/S Now"]),
-            "home |  | ; elsewhere");
+            after({ jumps: ["q", "p/S Now/t"] }, ["p"], ["p/s", "p/S Now"]),
+            "q |  | ; elsewhere");
         check("a place through a step beside it stays",
-            after({ jumps: ["home", "agents/s2"], last: "agents/s2" }, ["agents"],
-                ["agents/s1"]), "home agents/s2 |  | ; agents/s2");
+            after({ jumps: ["q", "agents/s2"], last: "agents/s2" }, ["agents"],
+                ["agents/s1"]), "q agents/s2 |  | ; agents/s2");
         check("Ctrl+I's places ahead and Ctrl+T's tags go alike",
-            after({ ahead: ["home", "agents/s1/look", "agents"], tags: ["agents/s1", "agents"] },
-                ["agents"], ["agents/s1"]), " | home | ; elsewhere");
+            after({ ahead: ["q", "agents/s1/look", "agents"], tags: ["agents/s1", "agents"] },
+                ["agents"], ["agents/s1"]), " | q | ; elsewhere");
         check("a spent outermost forgets every place through it",
             after({ jumps: ["O/S2", "O", "O/S1", "O"], last: "O/S2" }, ["O"], ["O"]),
             " |  | ; none");
@@ -412,10 +438,29 @@ QtObject {
             after({ jumps: ["", "q", "agents", ""], last: "" }, [""], ["agents"]),
             "~ q |  | ; none");
         check("no place used last, as the launcher opens, is none still",
-            after({ jumps: ["home", "agents"], last: null }, ["agents"], ["agents/s1"]),
-            "home |  | ; none");
+            after({ jumps: ["q", "agents"], last: null }, ["agents"], ["agents/s1"]),
+            "q |  | ; none");
         check("a leave elsewhere leaves each as it was",
-            after({ jumps: ["home", "agents"], last: "agents" }, ["quests"], ["quests/x"]),
-            "home agents |  | ; agents");
+            after({ jumps: ["q", "agents"], last: "agents" }, ["quests"], ["quests/x"]),
+            "q agents |  | ; agents");
+
+        // Held.placeOf, as the launcher tells places apart for this: a row
+        // by its key, as a row remade is matched, so a place recorded under
+        // a name its row had before an earlier remaking is the same place.
+        const at2 = (key, name) => ({ row: { key, name } });
+        const agents = at2("agents", "Agents");
+        const was = [[agents, at2("s1", "s1 working")], [agents, at2("s1", "s1 waiting")],
+            [agents, at2("s2", "s2 working")]].map(one => ({ held: one }));
+        const now = Held.afterLeave({ jumps: was, ahead: [], tags: [], last: was[1] },
+            { landed: [[agents]], left: [[agents, at2("s1", "s1 idle")]] }, Held.placeOf);
+        check("a place through the step left under an older name goes",
+            `${now.jumps.map(one => one.held[1].row.name).join(" ")}; ${now.last}`,
+            "s2 working; null");
+        check("a row with no key is told by its name",
+            [Held.placeOf([{ row: { name: "a" } }]) === Held.placeOf([{ row: { name: "b" } }]),
+                Held.placeOf([{ row: { name: "a" } }]) === Held.placeOf([{ row: { name: "a" } }]),
+                Held.placeOf([{ row: { key: "k", name: "a" } }])
+                    === Held.placeOf([{ row: { name: "k" } }])].join(" "),
+            "false true false");
     }
 }
