@@ -13,8 +13,8 @@
 //! expected, then the lines behind it, and for a row standing for a
 //! report, the report's rows. Such a row says so with a `verb:more` act
 //! stepping into them, after the act Return does. A report's row copies
-//! the report whole, as markdown, says which in `held`, and is found by
-//! the report's title and words too, in `held.also`.
+//! the report whole, asked for at Return (`copy: { ask }`), says which in
+//! `held`, and is found by the report's title and words, in `held.also`.
 //!
 //! How Spend stands, said after its title at home and in Agents, is each
 //! place's `summary:<place>` record, `{ place, said }` as every daemon's
@@ -328,7 +328,11 @@ fn ready(
         held["verb"] = json!(if verb.is_empty() { "run" } else { verb });
         acts.push(json!({"key": "verb:spend:run", "ask": asked("run", of)}));
     } else if report.is_object() {
-        acts.push(json!({"key": "verb:copy", "copy": text(report, "markdown")}));
+        // Asked for at Return, not carried: its words change with each
+        // figure, so carrying them sent the row again each pass. Unnamed,
+        // as every copy is, so the launcher lists it inside the row's step.
+        let copied = json!({"ask": {"ask": "copy", "report": text(line, "report")}});
+        acts.push(json!({"key": "verb:copy", "copy": copied}));
         let also = format!("{} {}", text(report, "title"), text(report, "words"));
         held["also"] = json!(also.trim());
     } else {
@@ -545,8 +549,9 @@ mod tests {
         assert_eq!(made[2]["held"], json!({"report": "week/model"}));
     }
 
-    // A report's row copies the report whole and is found by its title
-    // and words, and steps into the report's rows, which copy their own.
+    // A report's row copies the report whole, asked for at Return, is found
+    // by its title and words, and steps into the report's rows, which copy
+    // their own.
     #[test]
     fn a_report_s_row_steps_into_the_report() {
         let report = json!({"key": "today/model", "name": "By Model", "side": "",
@@ -562,7 +567,8 @@ mod tests {
         );
         assert_eq!(
             made[0]["acts"],
-            json!([{"key": "verb:copy", "copy": "## Spend today by model"},
+            json!([{"key": "verb:copy",
+                    "copy": {"ask": {"ask": "copy", "report": "today/model"}}},
                 {"key": "verb:more", "step": "rows"}])
         );
         assert_eq!(made[0]["held"]["also"], "Spend today by model model");

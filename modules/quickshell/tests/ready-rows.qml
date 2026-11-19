@@ -5,7 +5,9 @@
 // reads from beside the launcher's folder, launcher/Ago.js,
 // launcher/Interfaces.js and tests/lib/Expect.js
 // beside this file and runs `qml -platform offscreen ready-rows.qml` over
-// records made up here in the crate's wrapped form.
+// records made up here in the crate's wrapped form. Long because every
+// case holds one form, the ready rows' (attachments' ready-rows.md), which
+// changes as one, a copy asked for at Return with it.
 import QtQuick
 import "launcher/Found.js" as Found
 import "launcher/ReadyRows.js" as Ready
@@ -43,6 +45,7 @@ QtObject {
             insides();
             acting();
             moving();
+            copyingAsked();
             beneath();
             keywording();
             searching();
@@ -328,6 +331,144 @@ QtObject {
             stamp);
         Expect.same("a key holding no row has none", Ready.stampOf(keys, held, "drawer:wifi:net"),
             null);
+    }
+
+    // A copy whose words its daemon gives only at Return, as a spend
+    // report's whole markdown, which changes with each of its figures:
+    // answered, refused or not answered in time, each said, never a
+    // silent nothing (Y2YBTS, 2026-11-18, 00b48fb4).
+    function copyingAsked() {
+        const asking = { ask: "copy", report: "today/model" };
+        const report = { key: "verb:copy", copy: { ask: asking } };
+        Expect.same("a copy asked for is a copy, Return's to do and y's to take",
+            [Ready.actForm(report), Forms.copyAsked(report)], ["copy", true]);
+        Expect.same("and it carries no words of its own",
+            Ready.copyOf(report, 0, said), "");
+        // A Wayland program sets the clipboard only while it holds the keys,
+        // so Return keeps the launcher until the answer, where a copy
+        // carrying its words closes it.
+        Expect.same("Return keeps the launcher for a copy asked for, and only that copy",
+            [Ready.leaving(report), Ready.leaving({ key: "verb:copy", copy: "hi" }).stays],
+            [{ stays: true, now: false, later: false }, false]);
+        Expect.same("a copy carrying its words, or a time, asks nothing",
+            [{ key: "verb:copy", copy: "hi" }, { key: "verb:copy", copy: { at: 0, as: "moment" } },
+                { key: "verb:copy", copy: { ask: "copy" } }].map(Forms.copyAsked),
+            [false, false, false]);
+        Expect.same("a copy asking anything but its words, as an act, isn't one",
+            Forms.copyAsked({ key: "verb:copy", copy: { ask: { ask: "act", act: "run" } } }),
+            false);
+        const heard = [];
+        const answering = answer => ({ ask: (sent, then) => {
+            heard.push(sent);
+            then(answer);
+        } });
+        const ended = [];
+        const copied = words => ended.push(["copied", words]);
+        const refused = answer => ended.push(["refused", answer]);
+        Forms.askCopy(report, answering({ id: "ask-1", copy: "## Spend" }), copied, refused)();
+        Expect.same("answered, it copies the answer's words, once, even past the wait",
+            [heard, ended], [[asking], [["copied", "## Spend"]]]);
+        ended.length = 0;
+        const no = { id: "ask-2", error: { code: "no-line", said: "no longer there" } };
+        Forms.askCopy(report, answering(no), copied, refused);
+        Expect.same("refused, it says the daemon's refusal and copies nothing", ended,
+            [["refused", no]]);
+        ended.length = 0;
+        Forms.askCopy(report, answering({ id: "ask-3", done: true }), copied, refused);
+        Expect.same("an answer with no words is said as no answer", ended, [["refused", null]]);
+        ended.length = 0;
+        Forms.askCopy(report, answering({ id: "ask-3", copy: "" }), copied, refused);
+        Expect.same("nor do empty words copy, said as no answer", ended, [["refused", null]]);
+        ended.length = 0;
+        let late = null;
+        const waiting = { ask: (sent, then) => {
+            late = then;
+        } };
+        const gaveUp = Forms.askCopy(report, waiting, copied, refused);
+        Expect.same("still waiting, nothing is said yet", ended, []);
+        gaveUp();
+        late({ id: "ask-4", copy: "## Spend" });
+        Expect.same("not answered in time, it says so, and a late answer copies nothing", ended,
+            [["refused", null]]);
+        ended.length = 0;
+        const overtaken = Forms.askCopy(report, waiting, copied, refused);
+        overtaken(true);
+        late({ id: "ask-5", copy: "## Spend" });
+        Expect.same("overtaken by a newer copy, it ends saying nothing and copies nothing", ended,
+            []);
+        Forms.askCopy(report, null, copied, refused)();
+        Expect.same("with no connection it says no answer at once, and only once", ended,
+            [["refused", null]]);
+        ended.length = 0;
+        const closed = { error: { code: "closed", said: "closed first" } };
+        Forms.askCopy(report, waiting, copied, refused)(closed);
+        late({ id: "ask-6", copy: "## Spend" });
+        Expect.same("ended by the launcher closing, it says why, and a late answer copies nothing",
+            ended, [["refused", closed]]);
+        const stood = ["spend", 1, "cut", "return:copy", null, false, 3, false];
+        const moved = at => stood.map((part, here) => here === at ? "other" : part);
+        Expect.same("standing still, it hasn't moved on; any one part changed, it has",
+            [Forms.movedOn(stood, stood.slice())].concat([0, 1, 2, 3, 4, 5, 6]
+                .map(at => Forms.movedOn(stood, moved(at)))),
+            [false, true, true, true, true, true, true, true]);
+        Expect.same("rows held still counts only as begun since, as y over visual ends it",
+            [Forms.movedOn(stood, moved(7)), Forms.movedOn(moved(7), stood)], [true, false]);
+        const at = () => ({ typed: "spend", held: [{ row: { key: "week" } }],
+            matches: [{ key: "model" }, { key: "return:copy" }], current: 1, acted: null,
+            lettingGo: false, holdingRows: false });
+        const moves = [
+            l => { l.typed = "spend x"; }, l => { l.held = []; },
+            l => { l.held = [{ row: { key: "day" } }]; }, l => { l.current = 0; },
+            l => { l.acted = { key: "return:copy" }; }, l => { l.lettingGo = true; },
+            l => { l.holdingRows = true; }];
+        const was = Forms.standing(at(), 3);
+        Expect.same("each part of where he stands, changed, is moving on",
+            moves.map(move => {
+                const now = at();
+                move(now);
+                return Forms.movedOn(was, Forms.standing(now, 3));
+            }).concat([Forms.movedOn(was, Forms.standing(at(), 4))]),
+            [true, true, true, true, true, true, true, true]);
+        const above = at();
+        above.matches = [{ key: "day" }].concat(above.matches);
+        above.current = 2;
+        Expect.same("rows come above it, he's still on the row he was",
+            Forms.movedOn(was, Forms.standing(above, 3)), false);
+        Expect.same("a flash after the wait finds its rows where they've moved, the gone left out",
+            Forms.placesOf(["return:copy", "gone", "model"], above.matches), [2, 1]);
+        yankingAsked();
+    }
+
+    // y over rows holding a copy asked for: it copies the rest, says it,
+    // and flashes only what it copied (ActForms.js's yanking).
+    function yankingAsked() {
+        const words = { alone: "alone", allAlone: "all alone", noCopy: "none" };
+        const copy = (at, alone) => ({ at, action: { alone } });
+        const two = [copy(0, false), copy(1, true), copy(2, false)];
+        const did = done => [done.text, done.run === null, done.says, done.flashed, done.later];
+        Expect.same("y over the rest copies their words, says one copies alone, flashes the rest",
+            did(Forms.yanking(two, "a\nc", words)), ["a\nc", true, "alone", [0, 2], []]);
+        Expect.same("y over copies all asked for copies nothing, says so, flashes none",
+            did(Forms.yanking([copy(0, true), copy(1, true)], "", words)),
+            ["", true, "all alone", [], []]);
+        Expect.same("y over one asked for and one with no words says there's nothing to copy",
+            did(Forms.yanking([copy(0, true), copy(1, false)], "", words)),
+            ["", true, "none", [], []]);
+        const one = copy(4, true);
+        const alone = Forms.yanking([one], "", words);
+        Expect.same("y over one asked for runs its own act, flashing it only once it's copied",
+            [alone.run === one.action, alone.says, alone.flashed, alone.later],
+            [true, "", [], [4]]);
+        const picture = copy(5, false);
+        const own = Forms.yanking([picture], "", words);
+        Expect.same("y over one with no words, as a picture, runs its own act and flashes it",
+            [own.run === picture.action, own.flashed, own.later], [true, [5], []]);
+        Expect.same("y over plain copies says nothing more and flashes each",
+            did(Forms.yanking([copy(0, false), copy(1, false)], "a\nb", words)),
+            ["a\nb", true, "", [0, 1], []]);
+        Expect.same("y over copies with no words says there's nothing to copy",
+            did(Forms.yanking([copy(0, false), copy(1, false)], "", words)),
+            ["", true, "none", [], []]);
     }
 
     function acting() {

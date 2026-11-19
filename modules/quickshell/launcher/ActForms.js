@@ -5,6 +5,12 @@
 // fields, and tests/ready-rows.qml runs them in Qt's own engine.
 .pragma library
 
+// How long Return waits for a copy's words it asks for before it says none
+// came, in ms: a daemon answers from what it holds in a few, so this is only
+// reached when it's stuck or busy, as behind an act its doer is still doing on
+// the same connection, and then said rather than left silent.
+const COPY_WAIT = 2000;
+
 function asks(act) {
     return act?.ask !== null && typeof act?.ask === "object";
 }
@@ -53,6 +59,107 @@ function answeredInto(ask, into, answer) {
     }
     at[path[path.length - 1]] = answer;
     return top;
+}
+
+// Whether a copy asks its daemon for its words at Return, `copy: { ask }`,
+// rather than carrying them, as a spend report's whole markdown, which
+// changes with each of its figures and so was sent again with each
+// (ready-rows.md's acts; Y2YBTS, 2026-11-18, 00b48fb4). Carrying them
+// stays the rule; asking is only for words that large. Only an ask named
+// copy is one, so an ask a daemon names otherwise, as its act, is never sent
+// under a copy's name.
+function copyAsked(act) {
+    return act?.copy !== null && typeof act?.copy === "object" && asks(act.copy)
+        && act.copy.ask.ask === "copy";
+}
+
+// Asks a copy's words of `link`, the rows' own connection: `copied` is given
+// them once answered, `refused` the answer refusing it, or null where none came
+// or it held no words (empty ones too), so each end is said. Only the first end is, and the
+// function returned ends the wait, said as refused, by the refusal it's given
+// (as the launcher closing first) or as no answer, unless it's ended with
+// `true`, quietly, as a newer copy overtaking it is; a late answer then copies
+// nothing.
+function askCopy(act, link, copied, refused) {
+    let waiting = true;
+    const ends = (then, given) => {
+        if (waiting) {
+            waiting = false;
+            then(given);
+        }
+    };
+    if (link) {
+        link.ask(act.copy.ask, answer => {
+            if (typeof answer?.copy === "string" && answer.copy !== "") {
+                ends(copied, answer.copy);
+            } else {
+                ends(refused, answer?.error ? answer : null);
+            }
+        });
+    } else {
+        ends(refused, null);
+    }
+    return ending => {
+        if (ending === true) {
+            waiting = false;
+        } else {
+            ends(refused, ending?.error ? ending : null);
+        }
+    };
+}
+
+// Where Joel stands in the launcher, each part changing as he moves on:
+// what's typed, the steps he's in and the one he's in, the row he's on by
+// its key (its place moves as rows come above it), the act he did that kept
+// it, whether it's letting go for another copy or a paste, and `clipped`,
+// the clipboard's changes. Last, whether visual, an operator or the command
+// line holds the rows, which movedOn counts only as begun since.
+function standing(launcher, clipped) {
+    const held = launcher?.held ?? [];
+    return [launcher?.typed, held.length, held[held.length - 1]?.row?.key,
+        launcher?.matches?.[launcher?.current]?.key, launcher?.acted,
+        launcher?.lettingGo === true, clipped, launcher?.holdingRows === true];
+}
+
+// The places of the rows with these keys among `matches` now, those gone
+// left out, so a flash after a wait finds its rows where they've moved to.
+function placesOf(keys, matches) {
+    return keys.map(key => matches.findIndex(row => row.key === key)).filter(at => at >= 0);
+}
+
+// Whether Joel moved on while a copy's words were asked for, from where he
+// stood as it was asked to where he stands (standing above): any
+// part changed, but the last, a state holding the rows, only begun since,
+// since y over visual ends it as it copies.
+function movedOn(stood, stands) {
+    const last = stood.length - 1;
+    return stood.some((part, at) => at < last && part !== stands[at])
+        || (!stood[last] && Boolean(stands[last]));
+}
+
+// What y does over `copies` (Operators.js's copiesIn), `text` their words
+// joined (its copied): the words to copy, or else the one copy whose own
+// act y runs, as a picture's, what y says, the places of the rows it
+// flashes, and those it flashes only once its run has copied (`later`). An
+// asked copy (`alone`) holds no words to join, so among others y copies the
+// rest, says so, and flashes only what it copied; with none to copy it says
+// why and flashes nothing. Alone, its words are asked for, so it flashes
+// once they're on the clipboard, never before.
+function yanking(copies, text, words) {
+    const alone = copy => copy.action.alone === true;
+    const among = copies.length > 1 && copies.some(alone);
+    if (text !== "") {
+        return { text, run: null, says: among ? words.alone : "",
+            flashed: copies.filter(copy => !(among && alone(copy))).map(copy => copy.at),
+            later: [] };
+    }
+    if (copies.length === 1) {
+        const asked = alone(copies[0]);
+        return { text, run: copies[0].action, says: "", flashed: asked ? [] : [copies[0].at],
+            later: asked ? [copies[0].at] : [] };
+    }
+    return { text, run: null, says: among && copies.every(alone) ? words.allAlone : words.noCopy,
+        flashed: [], later: [] };
 }
 
 // An ask as it's sent: with the activation token the act was given where

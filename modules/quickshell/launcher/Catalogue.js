@@ -330,6 +330,7 @@ function ownAct(row, verb, copyMark) {
         glyph: said === "copy" ? copyMark ?? "" : row.glyph ?? "",
         hue: "action",
         stays: row.stays === true,
+        alone: row.alone === true,
         // Asked through the row, so a run that depends on how the row
         // stands now, a program's switch or start, is read when it's done.
         run: () => row.run()

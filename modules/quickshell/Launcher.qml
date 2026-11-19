@@ -75,6 +75,7 @@ import "launcher/Parts.js" as Parts
 import "launcher/Rank.js" as Rank
 import "launcher/Showing.js" as Showing
 import "launcher/Flash.js" as Flash
+import "launcher/ActForms.js" as ActForms
 import "launcher/Spots.js" as Spots
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
@@ -7139,6 +7140,10 @@ Scope {
     // How many yanks have flashed, so only the last one's frame starts
     // the flash's time.
     property int yanks: 0
+    // While y runs a copy's own act, what's done once one whose words are
+    // asked for has copied them: its row flashed and the launcher left open,
+    // as y does, where Return shuts it (ReadyRows.qml's copyAsked).
+    property var yankedAlone: null
 
     Timer {
         id: flash
@@ -7446,23 +7451,44 @@ Scope {
     // y: every copy over the rows joined a line each and put on the
     // clipboard at once, which takes text while the launcher holds the
     // keys, so the launcher stays as Vim's buffer does. A single copy that
-    // says no text, as a picture, is done by its own act.
+    // says no text, as a picture, is done by its own act. One whose words
+    // are asked for at Return (`alone`, ActForms.js's copyAsked) can't be
+    // joined, so among others y says so rather than leave it out unsaid,
+    // and flashes only what it copied (ActForms.js's yanking).
     function yanked(taken) {
         const words = Words.field.operators ?? {};
         const copies = Operators.copiesIn(taken, actionsOf,
             row => verbOf(row) === "copy" && !!row.run);
-        const text = Operators.copied(copies.map(copy => copy.action));
-        if (text !== "")
-            Quickshell.clipboardText = text;
-        else if (copies.length === 1)
-            copies[0].action.run();
-        else {
-            operatorSays(words.noCopy);
-            return;
+        const done = ActForms.yanking(copies,
+            Operators.copied(copies.map(copy => copy.action)), words);
+        if (done.text !== "")
+            Quickshell.clipboardText = done.text;
+        else if (done.run !== null) {
+            // Flashed by its key, since rows may come above it before it's copied.
+            const later = done.later.map(at => matches[at]?.key);
+            yankedAlone = later.length > 0 ? () => {
+                flashRows(ActForms.placesOf(later, matches));
+                Report.say(`yanked ${later.length}`);
+            } : null;
+            try {
+                done.run.run();
+            } finally {
+                yankedAlone = null;
+            }
         }
+        if (done.says !== "")
+            operatorSays(done.says);
+        if (done.flashed.length === 0)
+            return;
+        flashRows(done.flashed);
+        Report.say(`yanked ${done.flashed.length}`);
+    }
+
+    // Flashes the rows at these places, as a yank's are.
+    function flashRows(places) {
         const flashed = {};
-        for (const copy of copies)
-            flashed[copy.at] = true;
+        for (const at of places)
+            flashed[at] = true;
         flashing = flashed;
         // The flash is timed from the first frame that draws it, so a frame
         // held back past the flash's length still shows it. An earlier
@@ -7472,7 +7498,6 @@ Scope {
         flash.stop();
         const yank = ++yanks;
         flashFromItsFrame(() => yank === yanks, () => flash.restart());
-        Report.say(`yanked ${copies.length}`);
     }
 
     // d: every ending action over the rows, asked about once where any
@@ -11424,6 +11449,13 @@ Scope {
             unopened();
         else
             open = false;
+    }
+
+    // Shuts it once a copy whose words were asked for has them on the
+    // clipboard, saying it copied as every copy's Return does.
+    function shutCopied() {
+        leaveSaying("copied");
+        shut();
     }
 
     // Shut again before it was filled in, as a second press of the chord
