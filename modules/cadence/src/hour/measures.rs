@@ -7,11 +7,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 use serde_json::Value;
 
+use owner::first_owner;
+
 mod balanced;
 mod broken;
 mod cells;
 mod locked;
 mod misses;
+mod owner;
 mod pains;
 mod reports;
 pub mod spent;
@@ -95,16 +98,6 @@ pub fn drag(measures: &[Measure]) -> Option<&Measure> {
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)
-}
-
-/// The first address in an owner field such as `PN2VZC (H6EDLC)`, which
-/// names the one owning it before those helping.
-fn first_owner(owner: &str) -> String {
-    owner
-        .split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .to_owned()
 }
 
 fn lines(text: &str) -> impl Iterator<Item = Value> + '_ {
