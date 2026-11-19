@@ -743,8 +743,12 @@ QtObject {
         const held = [cellB, raising];
         expect("a notice finds its session by any address it answers to",
             Cells.noticeCell({ cell: "mycelium:cell/9F3A2B1C@heron#notice-4" }, held), raising);
-        expect("by its own address, whatever the case",
-            Cells.noticeCell({ cell: "mycelium:cell/bbbbbb" }, held), cellB);
+        expect("by its own address, whatever the case, its anchor alone after it",
+            Cells.noticeCell({ cell: "mycelium:cell/bbbbbb#done" }, held), cellB);
+        expect("by an address alone", Cells.noticeCell({ cell: "mycelium:cell/BBBBBB" }, held),
+            cellB);
+        expect("not an address another runs on from",
+            Cells.noticeCell({ cell: "mycelium:cell/BBBBBB0" }, held), null);
         expect("no cell named, none", Cells.noticeCell({ cell: null }, held), null);
         expect("not a cell's link, none", Cells.noticeCell({ cell: "https://x/BBBBBB" }, held),
             null);
@@ -756,16 +760,30 @@ QtObject {
             [Cells.cellNamed({ cell: "mycelium:cell/9f3a2b1c#notice-4" }),
                 Cells.cellNamed({ cell: "https://x/BBBBBB" }), Cells.cellNamed({})],
             ["9F3A2B1C", "", ""]);
-        // Those that join their cell: unread, kept, naming one, and not of a
-        // cell wanting Joel, whose want's row already says what it asks, as
-        // a session's own "pi" notices do.
-        const raised = (id, more) => Object.assign({ id, read: false,
+        // Those that join their cell: pi's, unread, kept, from a session
+        // held, and not of a cell wanting Joel, whose want's row already
+        // says what it asks, nor of one whose want he put off.
+        const raised = (id, more) => Object.assign({ id, app: "pi", read: false,
             cell: "mycelium:cell/9F3A2B1C" }, more);
-        expect("unread, kept and naming a cell not wanting Joel, each joins it",
+        expect("pi's, unread, kept and from a session held not wanting Joel, each joins it",
             Cells.joining([raised(1), raised(2, { read: true }), raised(3, { cell: null }),
-                raised(4, { transient: true }), raised(5, { cell: "mycelium:cell/BBBBBB" })],
-            [cellB]).map(one => one.id), [1]);
-        expect("nothing told, none", Cells.joining(undefined, undefined), []);
+                raised(4, { transient: true }), raised(5, { cell: "mycelium:cell/BBBBBB" }),
+                raised(6, { app: "Slack" }), raised(7, { cell: "mycelium:cell/GONE0001" })],
+            held, [cellB], {}).map(one => one.id), [1]);
+        expect("one whose want Joel put off joins nothing",
+            Cells.joining([raised(1)], held, [], { KELP01: true }).length, 0);
+        expect("nothing told, none", Cells.joining(undefined, undefined, undefined, undefined),
+            []);
+        // The list kept while it holds the same notices, by id, so a notice
+        // said anew makes nothing again; one more, or one fewer, is new.
+        const keptOnes = [raised(1), raised(2)];
+        expect("the same notices said anew keep the list",
+            Cells.alike(keptOnes, [raised(1), raised(2)]) === keptOnes, true);
+        const another = [raised(1), raised(3)];
+        expect("another notice makes it anew", Cells.alike(keptOnes, another) === another, true);
+        expect("one fewer makes it anew", Cells.alike(keptOnes, [raised(1)]).length, 1);
+        expect("nothing kept yet, what joined", Cells.alike(undefined, another) === another,
+            true);
         // It stands among what needs Joel now, waiting since it came, so
         // under its heading it weighs as long as it's waited and no more.
         const noticed = ForYou.banded([{ kind: "notice",

@@ -80,7 +80,8 @@ function headingName(cell, served, said) {
 
 // How a notice names the session that raised it, as the notices daemon
 // serves it (notice.rs's Cell): `mycelium:cell/<ADDRESS>[@<machine>][#<anchor>]`.
-// Its address is read by place, since Qt's engine gives a match no groups.
+// Its group is named, as biome holds every pattern to, but read by place,
+// since Qt's engine gives a match no `groups`.
 const CELL_LINK = /^mycelium:cell\/(?<address>[A-Za-z0-9]+)(?:[@#]|$)/u;
 
 // The address of the session that raised `notice`, as its `cell` names it,
@@ -104,16 +105,36 @@ function noticeCell(notice, held) {
     return (Array.isArray(held) ? held : []).find(answers) ?? null;
 }
 
-// The notices that stand under their cell among what needs Joel now: each
-// unread, kept and naming a cell, but for those of a cell among `wanting`,
-// whose want's row already says what it asks. A session's own notices are
-// pi's, which Desktop leaves to that row (Lately.js's LISTED), so one
-// about a session no longer asking, as away mode's saying a run ended,
-// stood in no list until now.
-function joining(notices, wanting) {
-    return (Array.isArray(notices) ? notices : []).filter(notice => notice !== null
-        && typeof notice === "object" && notice.read !== true && notice.transient !== true
-        && cellNamed(notice) !== "" && noticeCell(notice, wanting) === null);
+// The notices that stand under their cell among what needs Joel now: pi's
+// own, unread and kept, from a session among `held`, but for one among
+// `wanting`, whose want's row already says what it asks, or one whose want
+// Joel put off for now (`putOff`, by address in capitals), which he asked
+// to hear nothing of until then. A session's own notices are pi's, which
+// Desktop leaves to its want's row (Lately.js's LISTED), so one about a
+// session no longer asking, as away mode's saying a run ended, stood in no
+// list until now. Another program's naming a cell stays in Desktop alone,
+// as one from a session gone does, so none is listed twice.
+function joining(notices, held, wanting, putOff) {
+    const off = putOff ?? {};
+    return (Array.isArray(notices) ? notices : []).filter(notice => {
+        if (notice === null || typeof notice !== "object" || notice.app !== "pi"
+            || notice.read === true || notice.transient === true) {
+            return false;
+        }
+        const cell = noticeCell(notice, held);
+        return cell !== null && noticeCell(notice, wanting) === null
+            && off[String(cell.address).toUpperCase()] !== true;
+    });
+}
+
+// `kept` while it holds the notices `joined` does, by id, else `joined`:
+// so what For You lists from them, and bands, is made again only as which
+// notices join moves, not as each notice is said anew, as one read while
+// For You is open is (Lately.js's holdingStill).
+function alike(kept, joined) {
+    const before = Array.isArray(kept) ? kept : [];
+    return before.length === joined.length
+        && joined.every((notice, at) => notice.id === before[at].id) ? before : joined;
 }
 
 // A session's notice as For You weighs it: a thing of no kind it counts,

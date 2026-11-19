@@ -1056,6 +1056,20 @@ ShellRoot {
                 && joined[0].cell() === raising,
             JSON.stringify([now.waiting.side, ForYouHolds.count, joined.length,
                 joined[0]?.cell()?.address ?? null]));
+        // Said anew as it was, as each notice is when another comes or one
+        // is read, For You bands nothing again.
+        const bandsJoined = now.forYouBands;
+        Notices.history = [Object.assign({}, Notices.history[0]), { id: 9, at: Date.now(),
+            app: "Slack", summary: "A message", urgency: "normal", read: false }];
+        expect("its notice said anew, another beside it, bands nothing again",
+            now.forYouBands === bandsJoined, String(noticed().length));
+        // One not critical stands there too, but counts as the tray counts
+        // it, not at all, so the two never differ.
+        Notices.history = [Object.assign({}, Notices.history[0], { urgency: "normal" })];
+        expect("a notice not critical stands under its session, counted by neither",
+            noticed().length === 1 && ForYouHolds.count === 0 && now.waiting.side !== "1 to do",
+            JSON.stringify([noticed().length, ForYouHolds.count, now.waiting.side]));
+        Notices.history = [Object.assign({}, Notices.history[0], { urgency: "critical" })];
         // Once it asks Joel something, its want's row says it, so it leaves.
         Sessions.wanting = [Object.assign({}, raising, { presence: Object.assign({},
             raising.presence, { wants: { kind: "question", said: "Which?" } }) })];

@@ -2001,25 +2001,24 @@ Provider {
     readonly property var bandsKept: ({ items: null, minute: -1, bands: null, times: 0 })
     // A critical notice unread is among what needs him now, as the margin's
     // tray counts it (ForYouHolds.qml), though For You's Desktop holds it;
-    // one standing under its cell is among the bands already, so not again.
-    readonly property int toDoCount: forYouBands.now.length + forYouBands.agent.length
-        + criticalNotices.filter(notice => !cellNotices.some(one => one.id === notice.id))
-            .length
+    // and one standing under its cell counts as the tray counts it, critical
+    // or not at all, rather than as a row among the bands, so the two never
+    // differ.
+    readonly property int toDoCount: forYouBands.now.filter(one => one.kind !== "notice")
+        .length + forYouBands.agent.length + criticalNotices.length
     // The notices standing under the cell that raised them, as For You
     // holds them while it's open (latelyNotices), so one read there stays
-    // put; those of a cell wanting Joel are its want's row's to say
-    // (ForYouCells.js's joining). The wanting as For You reads them
-    // (wantingHeard), so a session working, its want the same, bands
-    // nothing again; and the same list while it holds the same notices, by
-    // id, since one read while For You is open is a copy made anew at each
-    // read (Lately.js's holdingStill), so a Slack message coming bands
-    // nothing again. A row is made from the notice as it is then.
+    // put; those of a cell wanting Joel, or whose want he put off, are its
+    // want's to say (ForYouCells.js's joining). The wanting as For You
+    // reads them (wantingHeard), and the same list while it holds the same
+    // notices (ForYouCells.js's alike), so a session working, its want the
+    // same, or a notice said anew bands nothing again. A row is made from
+    // the notice as it is then.
     readonly property var cellNoticesKept: ({ held: [] })
     readonly property var cellNotices: {
-        const joined = Cells.joining(latelyNotices, wantingHeard);
-        const kept = cellNoticesKept.held;
-        if (joined.length !== kept.length || joined.some((one, at) => one.id !== kept[at].id))
-            cellNoticesKept.held = joined;
+        cellNoticesKept.held = Cells.alike(cellNoticesKept.held, Cells.joining(latelyNotices,
+            [].concat(Sessions.running ?? [], Sessions.parked ?? []), wantingHeard,
+            Sessions.putOff));
         return cellNoticesKept.held;
     }
     readonly property int toLookAtCount: forYouBands.look.length
