@@ -23,7 +23,10 @@
 // data. And what it says of jemalloc, which the test is linked with as Quickshell is: what's in use
 // grows by a block kept, and what's freed and kept by one let go, and
 // neither is more than what's resident. It exits 0 once all of it holds,
-// and otherwise 1, saying what didn't.
+// and otherwise 1, saying what didn't. Long because each case reads one
+// engine's heap through the same helpers, in the one program linked with
+// Qt's private engine and jemalloc as the shell is: split, each part would
+// build and link that again.
 #include "heap.h"
 
 #include <QCoreApplication>
