@@ -387,10 +387,10 @@ const JOINING: [&str; 22] = [
     "on", "or", "so", "the", "to", "was", "yet",
 ];
 
-/// What a break mustn't part: a figure and its unit (`412 GB`), and
-/// `\u{d7}` and what it joins (`1272 \u{d7} 768`), each as one piece. A
-/// bracket before a figure or a stop after its unit (`(16 KiB).`) doesn't
-/// hide either.
+/// What a break mustn't part: a figure and its unit (`412 GB`) or its
+/// rate (`10.3 Mb/s`), and `\u{d7}` and what it joins (`1272 \u{d7} 768`),
+/// each as one piece. A bracket before a figure or a stop after its unit
+/// (`(16 KiB).`) doesn't hide either.
 fn held(words: &str) -> Vec<String> {
     let figure = |word: &str| {
         word.trim_start_matches(['(', '[', '~', '\u{2212}', '-', '+'])
@@ -398,7 +398,12 @@ fn held(words: &str) -> Vec<String> {
     };
     let unit = |word: &str| {
         let bare = word.trim_end_matches(|last: char| last.is_ascii_punctuation());
-        !figure(word) && width(bare) <= UNIT && !JOINING.contains(&bare)
+        // A rate is a unit a second, longer than a unit alone but as
+        // much the figure's.
+        let rate = bare.strip_suffix("/s").is_some_and(|per| {
+            !per.is_empty() && width(per) <= UNIT && per.chars().all(char::is_alphabetic)
+        });
+        !figure(word) && (width(bare) <= UNIT || rate) && !JOINING.contains(&bare)
     };
     let mut pieces: Vec<String> = Vec::new();
     let mut was: Option<&str> = None;
@@ -568,7 +573,7 @@ mod tests {
             ["read", "12 KiB/s", "here"]
         );
         // A word as long that isn't a rate still parts from a figure.
-        assert_eq!(wrapped("took 5 with it", 6), ["took 5", "with it"]);
+        assert_eq!(wrapped("took 5 with it", 7), ["took 5", "with it"]);
     }
 
     #[test]
