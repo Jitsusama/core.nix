@@ -738,7 +738,12 @@ async fn a_connection_the_origin_lets_go_is_opened_again() {
 async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
     let origin = origin().await;
     let host = origin.address.to_string();
-    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
     let mut asked = request(&host, "/reset", SECRET_BODY);
     asked
         .headers_mut()
@@ -758,15 +763,34 @@ async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
         let again = ask(&relay.socket, request(&host, "/echo", b"again")).await;
         assert_eq!(again.status, StatusCode::CREATED, "a request after a reset");
     }
+    // The second reset, on 0.1, keeps it, as 0.0 was retired just now, so
+    // the echoes go on 0.1 too.
     assert_eq!(
         origin.connections.load(Ordering::SeqCst),
         2,
-        "the connection that reset a request kept taking them, or more were opened"
+        "a connection was opened over the one kept after the second reset"
+    );
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle"
     );
     let said = relay.said();
     assert!(
         said.contains("the origin reset a request on connection 0.0, so it's retired"),
         "the reset, or the connection it came on, went unsaid: {said}"
+    );
+    assert!(
+        said.contains("connection 0.1, kept, as one was retired lately"),
+        "the second reset's connection wasn't said as kept: {said}"
+    );
+    // Sent again and reset again, it's a failed reset, not one the resend
+    // saved.
+    assert!(
+        said.contains(
+            "3 asked, 0 refused, 1 failed, 1 of them reset; 0 reset and sent again; pi \
+             cancelled 0"
+        ),
+        "a resend reset again wasn't counted as failed: {said}"
     );
     assert!(
         said.contains("connection 0.1 opened"),
@@ -1011,7 +1035,10 @@ async fn a_burst_reset_on_one_connection_shares_the_one_opened_for_it() {
     );
     let said = relay.said();
     assert!(
-        said.contains("4 asked, 0 refused, 0 failed, 0 of them reset; 4 reset and sent again"),
+        said.contains(
+            "4 asked, 0 refused, 0 failed, 0 of them reset; 4 reset and sent again; pi \
+             cancelled 0"
+        ),
         "the burst wasn't each reset and sent again once, by the counts: {said}"
     );
 }
@@ -1065,7 +1092,10 @@ async fn a_burst_reset_while_no_connection_opens_waits_on_one_attempt() {
         "a request reset and not sent again went unsaid: {said}"
     );
     assert!(
-        said.contains("3 asked, 0 refused, 3 failed, 3 of them reset; 0 reset and sent again"),
+        said.contains(
+            "3 asked, 0 refused, 3 failed, 3 of them reset; 0 reset and sent again; pi \
+             cancelled 0"
+        ),
         "a request reset and not sent again was counted as sent: {said}"
     );
 }

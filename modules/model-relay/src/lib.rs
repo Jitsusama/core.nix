@@ -32,19 +32,18 @@
 //! after it went is said as a 502, for pi's retry. One the origin reset
 //! before its answer began retires the connection it went on, which may be
 //! refusing every request it's given. Reset saying its stream was refused
-//! or a protocol error, it goes once more on another: one opened since, another already open, or one opened for it,
-//! shared by every request reset there with it, never the one that reset
-//! it. Reset again, reset saying anything else, or with no other
-//! connection to go on, as when its slot retired one lately or none would
-//! open, it's a 502.
-//! Nothing of an answer came, and one bad connection would otherwise fail
-//! every request on it, each a turn some agent retries whole. A reset
-//! saying a protocol error doesn't promise the origin acted on nothing, so
-//! a model's answer may now and then be asked for twice, which pi's own
-//! retry of the whole turn would do anyway. To send one again, it reads each body
-//! whole, to 64 MiB, before it goes, from pi on this machine, and holds it
-//! until its answer begins. After the machine
-//! sleeps, the connections it held are retired and opened afresh, since
+//! or a protocol error, it goes once more on another: one opened since,
+//! another already open, or one opened for it, shared by every request
+//! reset there with it, never the one that reset it. Reset again, reset
+//! saying anything else, or with no other connection to go on, as when its
+//! slot retired one lately or none would open, it's a 502. Nothing of an
+//! answer came, and one bad connection would otherwise fail every request
+//! on it, each a turn some agent retries whole. A reset saying a protocol
+//! error doesn't promise the origin acted on nothing, so a model's answer
+//! may now and then be asked for twice, which pi's own retry of the whole
+//! turn would do anyway. To send one again, it reads each body whole, to
+//! 64 MiB, before it goes, from pi on this machine, and holds it until its
+//! answer begins. After the machine sleeps, the connections it held are retired and opened afresh, since
 //! the network they ran on may be gone and pings would take their time to
 //! say so. A ping is what finds a lost connection, and an unanswered one
 //! fails every request on it, so below h2 each layer holds little ahead
@@ -1270,9 +1269,15 @@ impl Relay {
     /// A connection for a request reset on slot `at`'s `number` to go once
     /// more on, or why there's none: `fresh`'s, refused when it has none.
     async fn another(&self, at: usize, number: u64) -> Result<(usize, Kept), Unreachable> {
-        self.fresh(at, number)
-            .await
-            .unwrap_or(Err(Unreachable::Refused))
+        self.fresh(at, number).await.unwrap_or_else(|| {
+            // Said, so a journal of these isn't read as an origin refusing
+            // connections, when the relay chose to open none.
+            eprintln!(
+                "model-relay: slot {at} kept connection {at}.{number}, as it retired one \
+                 lately, and no other is open, so none is opened for a request it reset"
+            );
+            Err(Unreachable::Refused)
+        })
     }
 
     /// What pi is answered for a request that went `down` a connection and
@@ -1774,7 +1779,7 @@ fn without_connection_headers(headers: &mut HeaderMap) {
     }
 }
 
-/// Says the counts every `COUNTS_EVERY`, when anything was asked since.
+/// Says the counts every `COUNTS_EVERY`, when any has moved since.
 async fn say_counts(counts: Arc<Counts>) {
     loop {
         tokio::time::sleep(COUNTS_EVERY).await;
