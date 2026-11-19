@@ -235,9 +235,10 @@ const UNSEEN = new RegExp(
 /**
  * What a person reads past in a word: what shapes it, and what draws
  * nothing, such as a mark of format or a default-ignorable character.
+ * Hangul's leading filler is a blank to the kit, so it reads as one.
  */
 const READ_PAST = new RegExp(
-  String.raw`[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}${SHAPING}]`,
+  String.raw`[[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}${SHAPING}]--[\u115f]]`,
   "gv",
 );
 
@@ -271,18 +272,20 @@ function folded(word: string): string {
 }
 
 /**
- * A word as it reads to a person: its blanks one space, without what they
- * read past, in Unicode's compatibility form, which reads a wide or
+ * A word as it reads to a person: without what they read past, its blanks
+ * one space, in Unicode's compatibility form, which reads a wide or
  * mathematical letter as the letter, and in one case, then in that form
  * again, since a letter's case can leave its mark apart. What is read past
- * goes first so a joiner between a letter and its mark can't keep them
- * apart. Case goes up then down, so a capital reads as its small letter
- * however it's written, as É, E and its mark, or the Kelvin sign, and so
- * do ß and SS, and Greek's two small sigmas.
+ * goes first, so a joiner can't keep a letter from its mark, and a mark of
+ * format between two blanks, or one JavaScript takes as a blank, can't
+ * leave two spaces or one. Case goes down, up and down again, so a capital
+ * reads as its small letter however it's written, as É, E and its mark, or
+ * the Kelvin sign, and so do ß, ẞ and SS, and Greek's two small sigmas.
  */
 function reads(word: string): string {
-  const seen = word.replace(BLANKS, " ").replace(READ_PAST, "").trim();
-  return seen.normalize("NFKC").toUpperCase().toLowerCase().normalize("NFKC");
+  const seen = word.replace(READ_PAST, "").replace(BLANKS, " ").trim();
+  const cased = seen.normalize("NFKC").toLowerCase().toUpperCase().toLowerCase();
+  return cased.normalize("NFKC");
 }
 
 /**
