@@ -587,11 +587,8 @@ def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
-    # The feed tries the server again a second on, and a read in flight is cut
-    # off, which the browser logs.
-    mycelium_opened.losing_the_server()
     _, server = mycelium_served
-    server.kill()
+    mycelium_opened.loses(server)
     the_map_stands(page, "stale")
     page.wait_for_timeout(REDRAWN_MS)
     expect(page.locator("#world .hub").first, "the stale map dropped the realm").to_be_visible()

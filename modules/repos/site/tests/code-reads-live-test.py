@@ -408,11 +408,8 @@ def test_a_repos_daemon_that_stops_is_said_broken_then_live(
 def test_a_sites_server_that_goes_is_said_stale(code_opened: Opened, code_served: Served) -> None:
     code_page = code_opened.page
     says_it_stands(code_page, "live")
-    # Once the server's gone, the browser logs the feed's next try, and any of
-    # the page's reads of its homes not yet answered, as lines of its own.
-    code_opened.losing_the_server()
     _, server = code_served
-    server.kill()
+    code_opened.loses(server)
     says_it_stands(code_page, "stale")
 
 

@@ -264,11 +264,8 @@ def test_a_sites_server_that_goes_is_said_stale(
 ) -> None:
     forage_page = forage_opened.page
     says_it_stands(forage_page, "live")
-    # Once the server's gone, the browser logs the feed's next try, and any read cut
-    # off, as lines of their own.
-    forage_opened.losing_the_server()
     _, server = forage_served
-    server.kill()
+    forage_opened.loses(server)
     says_it_stands(forage_page, "stale")
     forage_page.wait_for_timeout(REDRAWN_MS)
     every_cell_drawn(forage_page)

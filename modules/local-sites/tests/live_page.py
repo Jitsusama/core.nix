@@ -52,9 +52,23 @@ SIZES = [(390, 844), (1440, 900)]
 LOOKS = ["dark", "light"]
 KILOBYTE = 1024
 # The browser's own lines once the sites' server is gone: the feed's next try to
-# connect, and any read of a file the server was answering or refuses after,
-# which a page with a fetch in flight at the kill logs as a reset.
-SERVER_GONE = ["WebSocket connection to", "Failed to load resource: net::ERR_"]
+# connect, and a file or fetch the server was answering at the kill or is asked
+# for after. Only the errors a server going away gives, so a page that starts
+# reaching anywhere else once it's stale still fails.
+SERVER_GONE = [
+    "WebSocket connection to",
+    *(
+        f"Failed to load resource: net::ERR_{error}"
+        for error in [
+            "CONNECTION_REFUSED",
+            "CONNECTION_RESET",
+            "CONNECTION_CLOSED",
+            "EMPTY_RESPONSE",
+            "CONTENT_LENGTH_MISMATCH",
+            "INCOMPLETE_CHUNKED_ENCODING",
+        ]
+    ),
+]
 # What the server answers a file the browser already holds unchanged.
 NOT_MODIFIED = 304
 OK = 200
@@ -218,10 +232,15 @@ class Opened:
         """
         self.expected.append((words, len(self.logged)))
 
-    def losing_the_server(self) -> None:
-        """Let the browser log what it says of a sites' server taken away, from now on."""
+    def loses(self, server: subprocess.Popen[bytes]) -> None:
+        """Take the sites' `server` away, letting the browser say so from then on.
+
+        One step, so no case can kill the server before it says what to expect.
+        """
         for words in SERVER_GONE:
             self.expecting(words)
+        server.kill()
+        server.wait()
 
     def _expected(self, at: int, line: str) -> bool:
         if line.startswith("thrown: "):

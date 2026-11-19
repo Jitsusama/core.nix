@@ -217,11 +217,8 @@ def test_a_server_that_goes_is_said_stale_with_the_murmurs_kept(
 ) -> None:
     page = murmurs_opened.page
     the_page_stands(page, "live")
-    # The feed tries the server again a second on, and a read in flight is cut
-    # off, which the browser logs.
-    murmurs_opened.losing_the_server()
     _, server = murmurs_served
-    server.kill()
+    murmurs_opened.loses(server)
     the_page_stands(page, "stale")
     page.wait_for_timeout(REDRAWN_MS)
     the_page_counts(page, COUNTED, "the stale page lost its murmurs")

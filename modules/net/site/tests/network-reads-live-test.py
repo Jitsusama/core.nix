@@ -179,11 +179,8 @@ def test_a_sites_server_that_goes_is_said_stale(
 ) -> None:
     network_page = network_opened.page
     says_it_stands(network_page, "live")
-    # Once the server's gone, the browser logs each feed's next try, and any read cut
-    # off, as lines of their own.
-    network_opened.losing_the_server()
     _, server = network_served
-    server.kill()
+    network_opened.loses(server)
     says_it_stands(network_page, "stale")
     network_page.wait_for_timeout(REDRAWN_MS)
     every_device_drawn(network_page)
