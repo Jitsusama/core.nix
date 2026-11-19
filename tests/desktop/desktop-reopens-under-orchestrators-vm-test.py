@@ -871,7 +871,7 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
             ),
             timeout=dt.timedelta(seconds=30),
         )
-        machine.sleep(3)
+        machine.sleep(NOTICE_LANDS)
         assert starts_noticed(desktop) == noticed, "a walk from outside raised a notice"
         # The launcher in a terminal walks the same way, even told --yes.
         status, said = machine.execute(
@@ -983,6 +983,9 @@ def test_new_work_that_starts_nothing_is_told_once_the_launcher_is_shut(
 # Start New Work's notices, and what the agents daemon says of a start its node took and fell
 # silent on (modules/agents/src/sprout.rs's SILENT).
 WALK_ENDED = shlex.quote("launcher: new work wasn't started")
+# Seconds for a notice spawned as a walk's end is journalled to reach the notices daemon's
+# kept list, waited before saying none came: there's no event for a notice never sent.
+NOTICE_LANDS = 3
 STARTS_NOTICED = '.notices[]? | select(.app == "Agents" and .summary == "Start New Work")'
 UNANSWERED = (
     "the node didn't answer in time; it may still start it, so look in Agents before asking again"
