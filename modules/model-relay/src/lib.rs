@@ -2064,7 +2064,8 @@ mod tests {
         let coming = tokio::spawn(async move {
             tokio::time::sleep(BODY_WITHIN / 2).await;
             let _ = writing.send_data(Bytes::from_static(b"hi")).await;
-            tokio::time::sleep(BODY_WITHIN).await;
+            // Held open for good, since letting go would end the body.
+            std::future::pending::<()>().await;
         });
         let began = tokio::time::Instant::now();
         // Bounded itself, so a read_whole with no deadline fails here
