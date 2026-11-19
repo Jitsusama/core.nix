@@ -170,7 +170,7 @@ fn tree_name(path: &str) -> String {
 /// since a row away from the cursor says its side alone (VKCF3Z, 15
 /// November).
 fn side(held: &Held, words: &Words) -> Value {
-    let came = time::at(held.ask.asked_ms, Form::Came);
+    let mut came = time::at(held.ask.asked_ms, Form::Came);
     let stands = match held.state {
         State::Waiting => return json!([came]),
         State::Releasing => "side:releasing",
@@ -180,8 +180,11 @@ fn side(held: &Held, words: &Words) -> Value {
         State::Ended => "side:ended",
     };
     // Where the row hasn't room for both, when the ask came gives way
-    // first, since how it stands is what the row is read for.
-    json!([{"said": words.fill(stands, &[]), "keep": 2}, {"at": came, "keep": 1}])
+    // first, since how it stands is what the row is read for. The time
+    // carries its keep itself, since the shell words an item as a time only
+    // where the item names its form.
+    came["keep"] = json!(1);
+    json!([{"said": words.fill(stands, &[]), "keep": 2}, came])
 }
 
 /// The fact saying what came of an answered ask, or none while it waits.
@@ -517,9 +520,18 @@ mod tests {
             true,
         )["side"]
             .clone();
-        assert!(
-            side[0]["keep"].as_u64() > side[1]["keep"].as_u64(),
-            "how an answered ask stands gives way before when it came: {side}"
+        assert_eq!(
+            (side[0]["keep"].as_u64(), side[1]["keep"].as_u64()),
+            (Some(2), Some(1)),
+            "when an answered ask came keeps 1, giving way before how it stands at 2: {side}"
+        );
+        // The shell words an item as a time only where the item itself
+        // names its form, so a time held inside an item is never drawn:
+        // the item is the moment the ask came, flat, and nothing more.
+        assert_eq!(
+            side[1],
+            json!({ "at": 1_794_458_400_000_i64, "as": "came", "keep": 1 }),
+            "an answered ask's time is the moment it was asked, flat: {side}"
         );
         let (word, items, _) = said(State::Refused);
         assert_eq!(

@@ -162,6 +162,11 @@ QtObject {
                 { said: "" }
             ], now, said), [{ said: "71 \u00b0C", keep: 3 },
                 { said: "29 \u00b0C below high", hue: "warning" }]);
+        // An answered secret ask's side, as secret-asks serves it: how it
+        // stands, then when it came, each with the width it keeps.
+        Expect.same("an answered ask's side says how it stands and when it came",
+            Ready.sideItems([{ said: "released", keep: 2 }, { at: morning, as: "came", keep: 1 }],
+                now, said), [{ said: "released", keep: 2 }, { said: "09:05", keep: 1 }]);
         Expect.same("a time worded into its words",
             Ready.itemSaid({ at: morning, as: "moment", said: "since {time}" }, now, said),
             "since 09:05");
