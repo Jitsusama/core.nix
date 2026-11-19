@@ -3863,16 +3863,19 @@ mod tests {
 
     // Behind a VPN heard clear, what gets through is its flows backing
     // off, not the line, however far over the plateau it reads: heard so
-    // in the probe's settled moments alone, or in its last alone.
+    // throughout, in its settled moments alone, in one of them alone, or
+    // in its last alone. The probe starts at 0 and ends at `PROBE_S`.
     #[test]
     fn a_probe_behind_a_vpn_heard_clear_learns_no_line() {
         let ends = |at: f64| at > PROBE_S - 0.05;
         let throughout: &dyn Fn(f64) -> bool = &|_| true;
-        let settled: &dyn Fn(f64) -> bool = &|at| !ends(at);
+        let settled: &dyn Fn(f64) -> bool = &|at| at > PROBE_SETTLE_S + 0.05 && !ends(at);
+        let once: &dyn Fn(f64) -> bool = &|at| (1.95..2.05).contains(&at);
         let last: &dyn Fn(f64) -> bool = &ends;
         for (heard, clear) in [
             ("throughout", throughout),
             ("settled", settled),
+            ("once", once),
             ("last", last),
         ] {
             let plateau = probed_behind_a_vpn(clear);
@@ -3888,8 +3891,8 @@ mod tests {
             plateau: Some(8_000.0),
         };
         let mut c = Controller::from_learned(learned, Learned::default());
-        let mut at = 0.0;
-        while at < 4.0 {
+        for moment in 0..40_u32 {
+            let at = f64::from(moment) * 0.1;
             let rate = c.up.limit().map_or(16_000.0, crate::rate::float);
             let wanted = rate * crate::qdisc::VPN_SHARE;
             #[expect(
@@ -3912,7 +3915,9 @@ mod tests {
                 vpn_ms: clear(at).then_some(30.0),
                 ..quiet(0.0, 300.0)(at)
             });
-            at += 0.1;
+            if moment == 0 {
+                assert_eq!(c.up.probing_until, Some(PROBE_S), "no probe from the start");
+            }
         }
         c.up.plateau
     }
