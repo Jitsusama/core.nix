@@ -23,6 +23,14 @@ let
       ../terminal-kit/src
     ];
   };
+
+  # A machine that signs an account in, so its failed boot's shell says
+  # what stopped it in the account's theme; only Linux's checks read it.
+  signingIn = bareNixos [
+    self.nixosModules.workstation
+    self.nixosModules.graphical
+    { jitsusama.login.account = "someone"; }
+  ];
 in
 {
   # The console wears the theme of the account the machine signs in, in the
@@ -111,14 +119,9 @@ in
   # on a real console, in minutes; this holds what it says, in seconds.
   a-failed-boot-says-what-stopped-it =
     let
-      machine = bareNixos [
-        self.nixosModules.workstation
-        self.nixosModules.graphical
-        { jitsusama.login.account = "someone"; }
-      ];
       stopped = lib.removePrefix "-" (
         lib.findFirst (lib.hasInfix "boot-stopped") (throw "the emergency shell runs no boot-stopped")
-          machine.config.systemd.services.emergency.serviceConfig.ExecStartPre
+          signingIn.config.systemd.services.emergency.serviceConfig.ExecStartPre
       );
     in
     pkgs.runCommandLocal "a-failed-boot-says-what-stopped-it" { } ''
@@ -126,28 +129,19 @@ in
       touch $out
     '';
 
-  # The journalctl a machine boots and the one its initrd carries still word
-  # a skipped journal file as the summary reads it, as
-  # tests/journal-words-skips.sh says. The summary's own check holds what
-  # it does with those words; this holds that systemd still says them, so
-  # a new systemd that rewords them fails here rather than on a failed boot.
+  # The journalctl the summary runs still words a skipped journal file as
+  # the summary reads it, as tests/journal-words-skips.sh says. The
+  # summary's own check holds what it does with those words; this holds
+  # that systemd still says them, so a new systemd that rewords them fails
+  # here rather than on a failed boot. It's the machine's systemd, which
+  # the summary's wrapper puts on its path in the initrd as after it.
   journalctl-words-skips-as-the-summary-reads =
-    let
-      machine = bareNixos [
-        self.nixosModules.workstation
-        self.nixosModules.graphical
-        { jitsusama.login.account = "someone"; }
-      ];
-      systemds = lib.unique [
-        machine.config.systemd.package
-        machine.config.boot.initrd.systemd.package
-      ];
-    in
-    pkgs.runCommandLocal "journalctl-words-skips-as-the-summary-reads" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/journal-words-skips.sh} ${./stopped/src/main.rs} \
-        ${lib.escapeShellArgs systemds}
-      touch $out
-    '';
+    pkgs.runCommandLocal "journalctl-words-skips-as-the-summary-reads" { }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/journal-words-skips.sh} ${./stopped/src/main.rs} \
+          ${signingIn.config.systemd.package}
+        touch $out
+      '';
 
   # The console's font is the account's monospace face at Medium, drawn into
   # the kernel's 16 by 32 cell: a PSF 2 font of at most 256 glyphs, so the

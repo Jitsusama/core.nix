@@ -1488,8 +1488,9 @@
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
   '';
   journalctl-words-skips-as-the-summary-reads = ''
-    the journalctl a machine boots and the one its initrd carries word each kind of journal file
-    they skip, and the hint under one, as a failed boot's summary reads them
+    the journalctl a failed boot's summary runs, in the initrd as after it, words each kind of
+    journal file it skips, and the hint on its own line under one, word for word as the summary
+    reads them
   '';
   json-strings-at-their-length = ''
     in the shell's own Qt, 20,000 distinct string values of 248 characters parsed grow its memory
