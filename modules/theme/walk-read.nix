@@ -2,25 +2,21 @@
 # it, for modules/theme/checks.nix to hold its strides to; its own file, as
 # it changes only with the cat's code or how that code is read. The check
 # proves the walk that's drawn rather than a copy: the words WALKS lists,
-# when it's every list STRIDING strides by. Only the code is read, comments
-# aside, and each name only as a word of its own, not another's property.
-# Each is read whole, to its semicolon, and must be only what's meant,
-# spaces allowed only between its parts; elsewhere, WALKS is named only in
-# STRIDING, and STRIDING is declared once and otherwise only read by a key,
-# then perhaps by a method that changes nothing, with nothing assigned
-# there and no method that changes a list in place called after it. So
-# anything else, another list, a stride written inline, an entry not a
-# quoted word, something after its bracket, a key nested past three deep,
-# an assignment to either or either not found, reads as no walk, which
-# fails saying where it looked, what it wanted and the read it refused. It
-# guards the walk from an honest change, not a hostile one: a comment's
-# marks are found wherever they stand, so `//` or `/*` inside a string
-# opens a comment there; nor is a delete seen, a write through what a read
-# hands back or a destructuring pattern, a name spelt with a Unicode
-# escape, or one from another file. None of the cat's files has any, and
-# honest reads written otherwise, `kind in STRIDING` or a property wrapped
-# onto its own line say, are refused, failing loudly rather than reading a
-# walk it doesn't take.
+# when it's every list STRIDING strides by. Both are frozen where they're
+# declared, so no code after can change the walk, and only the two
+# declarations are read, comments aside, each whole, to its semicolon. Each
+# must be only what's meant, spaces allowed between its parts: WALKS frozen
+# quoted words, STRIDING frozen strides by WALKS, each declared once, and
+# WALKS named nowhere else, though a word of its own only, not another's
+# property. So anything else, another list, a stride written inline, an
+# entry not a quoted word, a walk left unfrozen, declared twice or not
+# found, reads as no walk, which fails saying what it wanted. It guards the
+# walk from an honest change, not a hostile one: a comment's marks are
+# found wherever they stand, so `//` or `/*` inside a string opens a
+# comment there; nor is a name spelt with a Unicode escape seen, one
+# declared again after a comma or as a parameter, or code that strides by a
+# list of its own rather than STRIDING, which the cat's own Qt cases see.
+# None of the cat's files has any.
 { lib }:
 file:
 let
@@ -76,124 +72,64 @@ let
     lib.head (lib.splitString ";" (lib.elemAt after 2));
   walks = declared "WALKS";
   striding = declared "STRIDING";
-  # Where `name` stands in `text` as a word of its own, not a part of a
-  # longer one or another's property, by the character before it, the
-  # text since the name before, and the statement after it, to its
-  # semicolon, as one line.
+  # How often `name` stands in `text` as a word of its own, not a part of
+  # a longer one or another's property, by the characters either side.
   wordy = c: builtins.match "[A-Za-z0-9_$]" c != null;
-  uses =
+  named =
     name: text:
     let
       pieces = lib.splitString name text;
+      piece = lib.elemAt pieces;
       ending = s: builtins.substring (lib.stringLength s - 1) 1 s;
-      use = i: {
-        before = lib.elemAt pieces i;
-        # Right after the name before it, the character is that name's last.
-        last =
-          if lib.elemAt pieces i != "" then
-            ending (lib.elemAt pieces i)
-          else if i > 0 then
-            ending name
-          else
-            "";
-        after = builtins.replaceStrings [ "\n" ] [ " " ] (
-          lib.head (lib.splitString ";" (lib.concatStringsSep name (lib.drop (i + 1) pieces)))
-        );
-      };
-      next = one: builtins.substring 0 1 one.after;
-      # A spread's dots open a value, not a property.
-      property = one: one.last == "." && !lib.hasSuffix "..." one.before;
-      alone = one: !wordy one.last && !property one && !wordy (next one);
-    in
-    lib.filter alone (lib.genList use (lib.length pieces - 1));
-  named = name: text: lib.length (uses name text);
-  # STRIDING is declared once, and everywhere else read by a key, or keys
-  # in a row, each holding keys of its own up to three deep, then perhaps
-  # by a method that changes nothing, assigning nothing there, by itself
-  # or with an operator, past a closing bracket or not, anywhere up to its
-  # semicolon, and neither counted up nor down, nor changed in place by a
-  # method later in it. A key that can't be read whole, or any other
-  # method, fails it.
-  reading =
-    let
-      by = "(\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?";
-      inner = "\\[([^][]|\\[[^][]*])*]";
-      key = "(\\?\\.)?\\[([^][]|${inner})*]";
-      unchanging = lib.concatStringsSep "|" [
-        "length|includes|indexOf|lastIndexOf|at|slice|concat|join|map|filter|some|every"
-        "find|findIndex|findLast|findLastIndex|forEach|entries|keys|values"
-        "reduce|reduceRight|flat|flatMap|toSorted|toReversed"
-      ];
-      inPlace = "copyWithin|fill|pop|push|reverse|shift|sort|splice|unshift";
-      method = "[[:space:]]*\\??\\.[[:space:]]*(${unchanging})([^A-Za-z0-9_$].*)?";
-      # What follows its keys, past a method that changes nothing.
-      rest =
-        one:
-        let
-          keyed = builtins.match "(${key})+(.*)" one.after;
-          after = if keyed == null then null else lib.last keyed;
-          called = builtins.match method (if after == null then "" else after);
-        in
-        if after == null then
-          null
-        else if called != null then
-          toString (lib.last called)
-        else if builtins.match "[[:space:]]*(\\??\\.|\\[).*" after != null then
-          null
+      # Right after the name before it, the character is that name's last.
+      last =
+        i:
+        if piece i != "" then
+          ending (piece i)
+        else if i > 0 then
+          ending name
         else
-          after;
-      writes =
-        after:
-        builtins.match "[[:space:])]*(${by}=([^=].*)?|(\\+\\+|--).*)" after != null
-        || builtins.match ".*\\.[[:space:]]*(${inPlace})[[:space:]]*\\(.*" after != null;
-      read = one: rest one != null && !writes (rest one) && !bumped one.before;
-      ending = n: s: builtins.substring (lib.max 0 (lib.stringLength s - n)) n s;
-      bumped = before: builtins.match ".*(\\+\\+|--)[[:space:]]*" (ending 8 before) != null;
-      declaring =
-        one:
-        builtins.match "(.*[^A-Za-z0-9_$])?const[[:space:]]+" (
-          builtins.replaceStrings [ "\n" ] [ " " ] (ending 16 one.before)
-        ) != null;
-      all = uses "STRIDING" ways;
-      unread = lib.filter (one: !declaring one && !read one) all;
+          "";
+      # A spread's dots open a value, not a property.
+      property = i: last i == "." && !lib.hasSuffix "..." (piece i);
+      alone = i: !wordy (last i) && !property i && !wordy (builtins.substring 0 1 (piece (i + 1)));
     in
-    {
-      ok = lib.length (lib.filter declaring all) == 1 && unread == [ ];
-      # The first read refused, as its code has it, cut short.
-      refused = lib.mapNullable (one: "STRIDING${builtins.substring 0 40 one.after}") (
-        lib.findFirst (_: true) null unread
-      );
-    };
+    lib.count alone (lib.range 0 (lib.length pieces - 2));
+  # How often `name` is declared, as a constant, a variable, a function or
+  # a class, so one declared again in a block is seen.
+  declaring = "(^|[^A-Za-z0-9_$.])(const|let|var|function|class)[[:space:]]+";
+  declarations =
+    name: lib.count lib.isList (builtins.split "${declaring}${name}([^A-Za-z0-9_$]|$)" ways);
   s = "[[:space:]]*";
   word = "(\"[A-Za-z]+\"|'[A-Za-z]+')";
   stride = "[A-Za-z_]+${s}:${s}WALKS";
   listed = one: "${s}(${one}${s},${s})*${one}${s},?${s}";
+  frozen = value: "Object${s}\\.${s}freeze${s}\\(${s}${value}${s}\\)${s}";
   words = map lib.head (lib.filter lib.isList (builtins.split "[\"']([A-Za-z]+)[\"']" walks));
   # What the code isn't, of what it must be, so a walk read as none
   # says why.
   faults = map (rule: rule.wanted) (
     lib.filter (rule: !rule.met) [
       {
-        wanted = "WALKS as quoted words";
-        met = builtins.match "\\[${listed word}]${s}" walks != null;
+        wanted = "WALKS frozen as quoted words";
+        met = builtins.match (frozen "\\[${listed word}]") walks != null;
       }
       {
-        wanted = "STRIDING as strides by WALKS";
-        met = builtins.match "\\{${listed stride}}${s}" striding != null;
+        wanted = "STRIDING frozen as strides by WALKS";
+        met = builtins.match (frozen "\\{${listed stride}}") striding != null;
       }
       {
         wanted = "WALKS named nowhere else";
         met = named "WALKS" ways == 1 + named "WALKS" striding;
       }
       {
-        wanted = "STRIDING declared once and only read by a key";
-        met = reading.ok;
+        wanted = "WALKS and STRIDING each declared once";
+        met = declarations "WALKS" == 1 && declarations "STRIDING" == 1;
       }
     ]
   );
 in
 {
   inherit faults;
-  inherit (reading) refused;
   walk = lib.optionals (faults == [ ]) words;
 }
