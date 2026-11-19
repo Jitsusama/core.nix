@@ -64,7 +64,11 @@ pub fn counted(sysfs: &Path, debugfs: &Path, node: &Path) -> BTreeMap<u32, PathB
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Counts {
     pub frames: u64,
+    /// Packets the camera flagged as in error.
     pub errors: u64,
+    /// Packets too short for their header, which on an isochronous stream
+    /// are mostly the empty ones sent each interval it has nothing for; it
+    /// tells a stream started afresh, but isn't an error.
     pub invalid: u64,
 }
 
@@ -90,8 +94,9 @@ pub struct Tally {
     /// The count last read, and when it was first read this stretch.
     pub last: Option<(Counts, Instant)>,
     frames: u64,
-    /// uvcvideo counts a packet in error, or one too short for its header,
-    /// rather than a frame.
+    /// The packets the camera flagged as in error. A camera on a fast port
+    /// sends about 8,000 packets a second, nearly all empty, which uvcvideo
+    /// counts as invalid, so those are left out.
     in_error: u64,
     restarted: bool,
     /// Why it couldn't be read, when it couldn't.
@@ -121,7 +126,7 @@ impl Tally {
                 }
             };
         self.frames += since.frames;
-        self.in_error += since.errors + since.invalid;
+        self.in_error += since.errors;
         self.last = Some((now, from));
     }
 
@@ -211,7 +216,25 @@ pub mod tests {
             tally.take(start + Duration::from_secs(10)),
             Ok(Gave {
                 rate: 15.0,
-                in_error: 3,
+                in_error: 1,
+                restarted: false
+            })
+        );
+    }
+
+    #[test]
+    fn the_empty_packets_of_an_isochronous_stream_are_not_in_error() {
+        // A camera on a fast port sends about 8,000 packets a second,
+        // nearly all of them empty, and uvcvideo counts each as invalid.
+        let start = Instant::now();
+        let mut tally = Tally::default();
+        tally.add(at(0, 0, 0), start);
+        tally.add(at(300, 0, 77_474), start + Duration::from_secs(10));
+        assert_eq!(
+            tally.take(start + Duration::from_secs(10)),
+            Ok(Gave {
+                rate: 30.0,
+                in_error: 0,
                 restarted: false
             })
         );
