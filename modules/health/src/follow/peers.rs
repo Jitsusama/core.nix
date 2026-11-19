@@ -6,6 +6,7 @@
 //! [`UNHEARD_FOR`], so a node restarting or one probe running late, each
 //! mended within a minute, isn't a fault.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use calls::elsewhere::Heard;
@@ -71,26 +72,30 @@ impl Follower {
     /// of its peers or none, and one that stays mute says nothing of those
     /// heard through it. So only what a look hears well mends (see
     /// [`mended`]); what it doesn't say keeps its count, and its time while
-    /// it was unheard within [`UNHEARD_FOR`], so a restart counts nothing
-    /// again and a node that stays mute keeps no time for ever.
+    /// it was said within [`UNHEARD_FOR`], so a restart counts nothing
+    /// again, a node that stays mute keeps no time for ever, and two looks
+    /// a suspend or a stopped health keeps apart make no three minutes.
     pub fn see_heard(&mut self, heard: &Heard, at: i64) {
         if date_of(at, &self.zone) != self.day.date {
             return;
         }
         let unheard = unheard(heard);
         let mended = mended(heard);
-        let in_look = |thing: &str| unheard.iter().any(|(unheard, _)| unheard == thing);
-        let well = |thing: &str| mended.iter().any(|mended| mended == thing);
+        // Sets, so a look costs as much as what it says, however many
+        // things a day has counted.
+        let in_look: BTreeSet<&str> = unheard.iter().map(|(thing, _)| thing.as_str()).collect();
+        let well: BTreeSet<&str> = mended.iter().map(String::as_str).collect();
+        let was_counted: BTreeSet<String> = self.day.seeing.unseen_calls.iter().cloned().collect();
         let mut counted: Vec<String> = self
             .day
             .seeing
             .unseen_calls
             .iter()
-            .filter(|thing| !well(thing) && !in_look(thing))
+            .filter(|thing| !well.contains(thing.as_str()) && !in_look.contains(thing.as_str()))
             .cloned()
             .collect();
         self.unheard_since.retain(|thing, stretch| {
-            !well(thing) && (in_look(thing) || at - stretch.last < UNHEARD_FOR)
+            !well.contains(thing.as_str()) && at - stretch.last <= UNHEARD_FOR
         });
         for (thing, said) in unheard.iter().cloned() {
             let stretch = self.unheard_since.entry(thing.clone()).or_insert(Stretch {
@@ -99,7 +104,7 @@ impl Follower {
             });
             stretch.last = at;
             let since = stretch.since;
-            if self.day.seeing.unseen_calls.contains(&thing) {
+            if was_counted.contains(&thing) {
                 counted.push(thing);
             } else if at - since >= UNHEARD_FOR {
                 self.day.fault(&thing, Kind::Services, said, at);
@@ -124,9 +129,9 @@ pub(super) struct Stretch {
 
 /// What `heard` hears well, each the thing it's counted under: each
 /// machine a fresh record says is on a call or on none, whatever another
-/// realm's record says, since the strongest wins; and, once every node
-/// here answered, the nodes, and the machines past the most named when
-/// none goes unnamed.
+/// realm's record says, since the strongest wins; and the nodes, once
+/// every node here answered. The machines past the most named never mend
+/// by going unsaid, since a node restarting lists few or none.
 pub(super) fn mended(heard: &Heard) -> Vec<String> {
     let mut mended: Vec<String> = heard
         .calls
@@ -136,16 +141,14 @@ pub(super) fn mended(heard: &Heard) -> Vec<String> {
         .collect();
     if heard.answered > 0 && heard.unanswered.is_empty() {
         mended.push(NODES.to_owned());
-        if heard.unnamed == 0 {
-            mended.push(UNNAMED.to_owned());
-        }
     }
     mended
 }
 
 /// Whose calls `heard` says go unheard, each a thing and what's said of
 /// it: each machine under `calls on` and its name, apart from any service
-/// of the same name, and the nodes here as one.
+/// of the same name, the nodes here as one, and the machines past the
+/// most named as one.
 pub(super) fn unheard(heard: &Heard) -> Vec<(String, &'static str)> {
     let calls_on = |machine: &String| format!("calls on {machine}");
     let mut unheard: Vec<(String, &str)> = heard

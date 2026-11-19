@@ -363,6 +363,15 @@ fn a_node_here_nobody_answers_on_is_a_fault_once_its_time_is_up() {
         .hearing_peers(runtimes.path().to_path_buf());
     let second = 1_000_000;
     follower.hear_peers(NOON);
+    assert_eq!(
+        follower
+            .day
+            .things
+            .get(peers::NODES)
+            .map(|thing| thing.errors),
+        None,
+        "a node nobody answers on was counted before its time was up"
+    );
     follower.hear_peers(NOON + 180 * second);
     follower.write().expect("the day is written");
     let day = read(into.path(), "2026-11-12");
@@ -486,17 +495,83 @@ fn only_a_machine_heard_well_mends() {
         "a machine unseen three minutes since it was heard well wasn't counted"
     );
 
-    // Heard well, skiff counts again once it's unseen again as long.
-    follower.see_heard(
-        &heard_well(look(&[], 1, &[]), &["skiff"]),
-        NOON + 1260 * second,
-    );
+    // Heard on a call, skiff counts again once it's unseen again as long.
+    let on_a_call = calls::elsewhere::Heard {
+        calls: vec!["skiff".to_owned()],
+        ..look(&[], 1, &[])
+    };
+    follower.see_heard(&on_a_call, NOON + 1260 * second);
     follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 1290 * second);
     follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 1470 * second);
     assert_eq!(
         errors(&follower.day, "skiff"),
         Some(2),
         "a machine heard well and unseen again for three minutes wasn't counted again"
+    );
+}
+
+#[test]
+fn the_nodes_mend_once_every_one_answers_and_those_past_the_most_never() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let errors = |day: &Day, thing: &str| day.things.get(thing).map(|thing| thing.errors);
+    let mute = look(&[], 1, &["work.sock"]);
+    follower.see_heard(&mute, NOON);
+    follower.see_heard(&mute, NOON + 180 * second);
+    // A look that finds no node hears none answer, so mends nothing.
+    follower.see_heard(&look(&[], 0, &[]), NOON + 210 * second);
+    follower.see_heard(&mute, NOON + 240 * second);
+    follower.see_heard(&mute, NOON + 420 * second);
+    assert_eq!(
+        errors(&follower.day, peers::NODES),
+        Some(1),
+        "a look that found no node mended the nodes"
+    );
+    follower.see_heard(&look(&[], 1, &[]), NOON + 450 * second);
+    follower.see_heard(&mute, NOON + 480 * second);
+    follower.see_heard(&mute, NOON + 660 * second);
+    assert_eq!(
+        errors(&follower.day, peers::NODES),
+        Some(2),
+        "the nodes, every one answering between, weren't counted again"
+    );
+
+    // A node restarting lists none past the most, which mends nothing.
+    let crowded = calls::elsewhere::Heard {
+        unnamed: 6,
+        ..look(&[], 1, &[])
+    };
+    follower.see_heard(&crowded, NOON + 700 * second);
+    follower.see_heard(&crowded, NOON + 880 * second);
+    follower.see_heard(&look(&[], 1, &[]), NOON + 910 * second);
+    follower.see_heard(&crowded, NOON + 940 * second);
+    follower.see_heard(&crowded, NOON + 1120 * second);
+    assert_eq!(
+        errors(&follower.day, peers::UNNAMED),
+        Some(1),
+        "the machines past the most, unsaid on one look, were counted again"
+    );
+}
+
+#[test]
+fn two_looks_a_suspend_keeps_apart_make_no_three_minutes() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let errors = |day: &Day| day.things.get("calls on skiff").map(|thing| thing.errors);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON);
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 3600 * second);
+    assert_eq!(
+        errors(&follower.day),
+        None,
+        "a machine unseen on each side of an hour's suspend was counted at once"
+    );
+    follower.see_heard(&look(&["skiff"], 1, &[]), NOON + 3780 * second);
+    assert_eq!(
+        errors(&follower.day),
+        Some(1),
+        "a machine unseen three minutes after a suspend wasn't counted"
     );
 }
 
