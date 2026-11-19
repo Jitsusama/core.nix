@@ -148,8 +148,8 @@ function bandBy(kind, thing, now, due) {
 
 // For You's items in their bands, { now, agent, look, try, read }, and
 // `agentAt`, where in `now` Agents Asking stands in :filter's flat order
-// (For You's own, by the same rule: ForYouCells.js's laidOut), each item
-// { kind, thing } with whatever else its caller keeps, and given its
+// (For You's too while no heading shows, as first with one: ForYouCells.js's
+// laidOut), each item { kind, thing } with what else its caller keeps, given its
 // `weight`. Each band is heaviest first, those alike the oldest first,
 // then in the order they came (VKCF3Z, 2026-11-09). Each item's times are
 // read once and the bands sorted on numbers: a sort that read them in its

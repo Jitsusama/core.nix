@@ -1298,6 +1298,12 @@ ShellRoot {
                 && JSON.stringify(working[0]) === JSON.stringify(
                     ["on:heading:cell:ACTED", "Session E \u00b7 working"]),
             JSON.stringify([root.forYouHeardTimes - heardBefore, working]));
+        const heardWorking = root.forYouHeardTimes;
+        agents.remade += 1;
+        shown();
+        expect("its standing said again as it was leaves For You alone",
+            root.forYouHeardTimes === heardWorking,
+            String(root.forYouHeardTimes - heardWorking));
         Sessions.running = [];
         Sessions.wanting = [];
         delete agents.rows.ACTED;

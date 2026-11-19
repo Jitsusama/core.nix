@@ -2013,9 +2013,12 @@ Provider {
     // cell"). No heading while all of it is his own, and a group whose rows
     // all went as they were made says nothing. `asked`, Agents Asking's row
     // or none, stands first while headings show, else by `weight`, its
-    // heaviest, among the loose rows (ForYouCells.js's laidOut).
+    // heaviest, among the loose rows (ForYouCells.js's laidOut). What a
+    // cell asks is its want's row, or a to-do of its own it blocks on, as a
+    // session whose want is an action asks it (ForYou.js's blocked).
     function cellRows(band, now, asked, weight) {
-        return Cells.laidOut(Cells.byCell(band, one => one.cell(), one => one.kind === "agent"),
+        const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
+        return Cells.laidOut(Cells.byCell(band, one => one.cell(), asks),
             items => bandRows(items, now), cellHeading, { rows: asked, weight });
     }
 
@@ -2042,7 +2045,9 @@ Provider {
     // You again while only Agents' row for it moved: a cell behind a to-do
     // or a look and wanting nothing went on saying how it stood when For
     // You was made. Words, so it moves only as a heading would read
-    // otherwise.
+    // otherwise. It moves as a session turns, working to listening and
+    // back, which remakes For You while it's held, as a heading must to say
+    // it true; shut, it's only these words made again.
     readonly property string cellsTold: Cells.byCell(forYouBands.now, one => one.cell())
         .map(group => cellSaid(group.cell)).join("\n")
 
@@ -2519,7 +2524,8 @@ Provider {
 
     // A filter's place, named for what it keeps, which the head shows after
     // For You. What it holds is For You's rows as they stand when it's
-    // stepped into, in For You's order.
+    // stepped into, in For You's order as it stands with no heading, which
+    // a filter draws none of (ForYou.js's agentAt).
     function filterRow(filter) {
         const rows = () => Filter.filtered(filterable(), filter);
         const row = member({
