@@ -5086,10 +5086,10 @@
     own start, survives a log that takes no write, quotes each holder, gives the packets in
     error, each interface by number when there are several, why a count, format or rate is
     unknown, and the controls under the names v4l2-ctl gives them, a control it can't read said
-    so, and one that timed out, or a list that stalled there, kept unasked, one
-    asked again each minute in turn and all at the next stream; all asked by the kernel's own call numbers and fields; a stop's rate left out for a
-    moment's stretch, and a count unread at a line not carried into the next; and a camera that
-    goes as its unit is stopped said to have gone
+    so, and one that timed out, or a list that stalled there, kept unasked, one asked again each
+    minute in turn and all at the next stream; all asked by the kernel's own call numbers and
+    fields; a stop's rate left out for a moment's stretch, and a count unread at a line not
+    carried into the next; and a camera that goes as its unit is stopped said to have gone
   '';
   usb-camera-holders-may-open-the-camera = ''
     the USB camera watch's unit lets it open a camera to read, under its ProtectClock, with no
