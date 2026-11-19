@@ -1032,6 +1032,11 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
         )
     )
     desktop.shoot(f"launcher-for-you-landing-at-{shot}")
+    # Its parts are the cell that landed it, Talk, with no Go To while TESTQC has no window.
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Talk"])
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: shown["selected"]["name"] == TRYING)
     # Return steps into it where it lives, Agents \u203a Landed, and reads it.
     desktop.machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRYING])

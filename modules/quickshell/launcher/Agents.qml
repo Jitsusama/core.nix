@@ -2206,6 +2206,14 @@ Provider {
             && session.presence?.session === one.session.id)
             ?? here.find(session => session.address === one.session.address) ?? null;
     }
+    // What a landing's row in For You offers of the session that landed it,
+    // Talk and Go To as its own row does (SessionRow.js's behindActs), so
+    // what the mesh said reaches whoever said it; none once it has ended.
+    function landerActs(one) {
+        const session = provider.landerOf(one);
+        return session === null ? [] : SessionRow.behindActs(stateOf(session),
+            windowedOf(session), session.here).map(id => sessionAct(session, id));
+    }
     // Joel reads a landing, which the daemon keeps, and tells as its record
     // moves; one read already is asked nothing.
     function readLanding(key) {
@@ -2599,6 +2607,8 @@ Provider {
             changes: false,
             // Every one says go to, so the foot weighs one of a run.
             keysAlike: "landing:for-you",
+            // Asked as it's stepped into, since its session may have gone.
+            verbs: () => provider.landerActs(one),
             run: () => {
                 provider.launcher?.goTo({ trail: provider.landingTrail(one), spot: "" });
                 provider.readLanding(one.key);
@@ -2613,7 +2623,9 @@ Provider {
                 hue: "action",
                 forYou: { kind: "try", source: "sessions" }
             }),
-            thing: { kind: "try", ready: true, since: one.at }
+            thing: { kind: "try", ready: true, since: one.at },
+            // The cell that landed it, for What Needs Me's headings.
+            cell: () => provider.landerOf(one)
         })).concat(tries.filter(tried => typeof tried.read === "number").map(tried => ({
             row: kept(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
             done: { how: String(said.read ?? ""), at: tried.read }

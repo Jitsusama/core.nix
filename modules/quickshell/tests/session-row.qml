@@ -55,6 +55,22 @@ QtObject {
                     + `not "${want}"`);
         }
 
+        // A row a session is behind but isn't its own, as a landing's,
+        // offers Talk and Go To of its acts, in their order, and none that
+        // steers or ends it: Go To only where it has a window, and one
+        // parked only Talk, which wakes it.
+        const behind = [
+            ["working", true, true, "switch talk"],
+            ["listening", false, false, "talk"],
+            ["paused", true, false, "switch talk"],
+            ["parked", false, true, "talk"]
+        ];
+        for (const [state, windowed, here, want] of behind) {
+            const got = SessionRow.behindActs(state, windowed, here).join(" ");
+            if (got !== want)
+                failures.push(`the acts behind one ${state}: "${got}", not "${want}"`);
+        }
+
 
         // A row says how it stands and what it spent today at its right,
         // the spend kept longest, and nothing more: its address and folder
