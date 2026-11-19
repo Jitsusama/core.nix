@@ -29,8 +29,8 @@ the puppy's pose checks hold their strides to it. A change to `WALKS`'s
 strides fails both until each animal's are drawn for it, a pair of feet a
 step, and a gait added to `STRIDING` by a list other than `WALKS` fails
 them until `walk-read.nix` reads it. The reader sees only those two
-declarations: a gait the code strides by outside `STRIDING`, and the other
-forms its opening comment lists, pass unseen.
+declarations: a gait the code strides by outside `STRIDING` passes unseen,
+as do the forms its opening comment says it doesn't see.
 
 ## Joel's Words
 
