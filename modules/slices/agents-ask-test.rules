@@ -98,22 +98,30 @@ expect("a work slice's weight", weight, "command", "yes");
 expect("a work slice's weight", weight, "timed", "yes");
 expect("a work slice's weight", weight, "terminal", "yes");
 
-// So is holding the efficient cores' clock, and freeing it, but nothing
-// else of that unit's, and no unit named like it.
+// So is holding the efficient cores' clock, and freeing it, for an
+// administrator, but nothing else of that unit's, and no unit named like it.
 function held(verb, unit) {
   return asking("org.freedesktop.systemd1.manage-units", { verb: verb, unit: unit });
 }
-expect("holding the efficient cores", held("start", "efficient-cores-held@1600.service"),
-  "command", "yes");
-expect("freeing the efficient cores", held("stop", "efficient-cores-held@1600.service"),
-  "session", "yes");
-expect("holding the efficient cores", held("start", "efficient-cores-held@1600.service"),
-  "terminal", "yes");
-expect("masking the efficient cores' hold", held("mask", "efficient-cores-held@1600.service"),
-  "command", "no");
+var hold = "efficient-cores-held@1600.service";
+expect("holding the efficient cores", held("start", hold), "command", "yes");
+expect("freeing the efficient cores", held("stop", hold), "session", "yes");
+expect("holding the efficient cores", held("start", hold), "terminal", "yes");
+expect("killing the efficient cores' hold", held("kill", hold), "command", "no");
+expect("restarting the efficient cores' hold", held("restart", hold), "command", "no");
 expect("a hold at no speed", held("start", "efficient-cores-held@0.service"), "command", "no");
-expect("a unit named like the hold", held("start", "efficient-cores-held@1600.service.d"),
+expect("a hold at a speed read as octal", held("start", "efficient-cores-held@010.service"),
   "command", "no");
+expect("a unit ending like the hold", held("start", "x" + hold), "command", "no");
+expect("a unit starting like the hold", held("start", hold + ".d"), "command", "no");
+// Someone who isn't an administrator is granted nothing by it.
+var stranger = joels(pids.command);
+stranger.groups = ["users"];
+var strangers = polkit._runRules(held("start", hold), stranger);
+if (strangers === "yes") {
+  failed += 1;
+  print("FAIL holding the efficient cores as a stranger: yes");
+}
 
 // mycelium's node holds off sleep and shutdown while it keeps work, as
 // Joel's session may; nothing else of agents' does, and it's granted

@@ -585,16 +585,29 @@ in
       # he works leaves the performance cores, which reach 4.7 GHz, the
       # budget; whether that buys his threads their clock is what this unit
       # is for measuring. Starting efficient-cores-held@1600 holds each
-      # efficient core at most 1600 MHz, and stopping it frees each to its
-      # full clock, so one instance runs at a time. Nothing starts it at
+      # efficient core at most 1600 MHz, and stopping it gives each back the
+      # ceiling it had. One hold stands at a time: a second at another speed
+      # is refused (efficient-cores.sh says how). A hold that fails partway
+      # is still freed, since the stop runs after a failed start too. One
+      # that's never stopped ends itself after an hour, so an agent that
+      # dies mid-measurement leaves no cores held. Nothing starts it at
       # boot. Administrators may start and stop it (efficient-cores.rules).
       "efficient-cores-held@" = {
         description = "Holds the efficient cores' clock at most %i MHz";
         serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          ExecStart = "${lib.getExe efficientCores} hold %i";
-          ExecStop = "${lib.getExe efficientCores} free";
+          ExecStartPre = "${lib.getExe efficientCores} hold %i";
+          ExecStart = "${lib.getExe' pkgs.coreutils "sleep"} infinity";
+          ExecStopPost = "${lib.getExe efficientCores} free %i";
+          RuntimeMaxSec = "1h";
+          # Every instance shares the one folder of notes, so one ending
+          # mustn't take it from the hold another stands on.
+          RuntimeDirectory = "efficient-cores";
+          RuntimeDirectoryMode = "0700";
+          RuntimeDirectoryPreserve = true;
+          # Root writes the ceilings as their files' owner, so it needs no
+          # capability. ProtectKernelTunables is left out, unlike the units
+          # beside it, since it makes /sys read-only and the ceilings are
+          # there: the rest of /sys stays writable to it too.
           CapabilityBoundingSet = "";
           NoNewPrivileges = true;
           ProtectSystem = "strict";

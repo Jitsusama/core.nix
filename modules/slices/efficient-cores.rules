@@ -8,7 +8,7 @@ polkit.addRule(function (action, subject) {
   if (
     action.id === "org.freedesktop.systemd1.manage-units" &&
     /^(start|stop)$/.test(action.lookup("verb")) &&
-    /^efficient-cores-held@[1-9][0-9]*\.service$/.test(action.lookup("unit")) &&
+    /^efficient-cores-held@[1-9][0-9]{0,5}\.service$/.test(action.lookup("unit")) &&
     subject.isInGroup("wheel")
   ) {
     return polkit.Result.YES;
