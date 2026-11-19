@@ -31,11 +31,24 @@ export interface Cell {
   /** The questions waiting on it, and the holds it has standing. */
   readonly owes: readonly unknown[];
   readonly holds: readonly unknown[];
-  readonly usage?: { readonly cost_today?: number | null | undefined } | null | undefined;
+  readonly usage?: Usage | null | undefined;
   readonly machine?: string | null | undefined;
   /** The network it is drawn in, or the one it works alone in where it is in none. */
   readonly hub?: Network | null | undefined;
   readonly loose?: Network | null | undefined;
+}
+
+/** What a cell's session says it has used: today's turns and spend, and its context. */
+export interface Usage {
+  readonly cost_today?: number | null | undefined;
+  readonly turns_today?: number | null | undefined;
+  /** When its last turn ended. */
+  readonly last_turn?: string | null | undefined;
+  /** How many tokens its context holds, of how many it can. */
+  readonly context?:
+    | { readonly used: number; readonly limit?: number | null | undefined }
+    | null
+    | undefined;
 }
 
 /** A network as the map's reading holds it: its own cells, and its branches. */

@@ -18,6 +18,22 @@
 // lineage.ts, what each thing is in words in words.ts, and the tree beside
 // the map, its rows and their walk, in outline.ts, which this imports as
 // the modules they're built to.
+import {
+  contextWords,
+  flagNames,
+  flagWords,
+  gib,
+  groupHealth,
+  heldFlags as heldFlagsOf,
+  isSandbox,
+  loadWords,
+  machineForm,
+  machineHealth as machineStands,
+  sandboxWords as sandboxWordsAt,
+  shareWords,
+  VERDICT,
+  verdictOf,
+} from "./health.js";
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
@@ -37,6 +53,7 @@ import {
   cellsOn as machineCells,
   waitingWords,
 } from "./words.js";
+import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClockAt, leftWords as leftWordsAt, minutesWord } from "./when.js";
 
 (() => {
   // The most time between two readings while the node moves: site.ts hands
@@ -266,25 +283,10 @@ import {
     return at > 0 ? [title.slice(0, at), title.slice(at + 2)] : [title, ""];
   };
 
-  // One formatter each, made once: toLocaleString makes a new one on every
-  // call, which at 10k cells was most of what a tree row cost.
-  const HOURS = { hour: "2-digit", minute: "2-digit", hour12: false };
-  const CLOCK = [new Intl.DateTimeFormat("en-CA", HOURS), new Intl.DateTimeFormat("en-CA", { ...HOURS, second: "2-digit" })];
-  const clock = (iso, seconds = true) => CLOCK[+seconds].format(new Date(iso));
-  // A time off the reading's own day carries its day, or yesterday's
-  // 06:49 reads as this morning's.
-  const DAY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
-  const DAY_MS = 86_400_000;
-  const midnight = (t) => new Date(t).setHours(0, 0, 0, 0);
-  const dayClock = (t) => {
-    const days = Math.round((midnight(t) - midnight(current.at)) / DAY_MS);
-    const hm = clock(t, false);
-    return days === 0 ? hm : days === -1 ? `yesterday at ${hm}` : days === 1 ? `tomorrow at ${hm}` : `${DAY.format(new Date(t))} at ${hm}`;
-  };
-  const atWords = (t) => {
-    const said = dayClock(t);
-    return /^\d/.test(said) ? (said.includes(" ") ? `on ${said}` : `at ${said}`) : said;
-  };
+  // Times, said against the reading's own (when.ts).
+  const dayClock = (t) => dayClockAt(t, current.at);
+  const atWords = (t) => atWordsAt(t, current.at);
+  const agoWords = (iso) => agoWordsAt(iso, current.at);
   // What a key says depends on the data alone, so it is worked out once
   // for each reading.
   const perReading = (fn) => {
@@ -299,7 +301,6 @@ import {
       return memo.get(key);
     };
   };
-  const gib = (bytes) => (bytes == null ? "" : `${(bytes / 2 ** 30).toFixed(0)} GiB`);
 
   // ---- The model, from what mycelium says. ----
 
@@ -365,7 +366,6 @@ import {
   const ageOf = (owes) => Math.max(0, Date.parse(current.at) - Date.parse(owes[0].at));
   const swell = (owes) =>
     owes?.length ? Math.min(SWELL_MAX, SWELL_BASE + SWELL_PER_QUESTION * (owes.length - 1) + SWELL_FOR_AGE * Math.min(1, ageOf(owes) / WAIT_FULL_MS)) : 0;
-  const minutesWord = (ms) => (ms < 60_000 ? "under a minute" : `${Math.round(ms / 60_000)} min`);
 
   const STANDING_OF_CELL = { "needs-you": "asks", stuck: "stuck", moving: "moving", quiet: "quiet", dormant: "dormant" };
   const SHARED_WORD = { project: "quest", repository: "repository", group: "group" };
@@ -2948,76 +2948,13 @@ import {
   // stands, in one order at the head of every drawer, so a cell, a
   // network, a branch and a machine all read alike. ----
 
-  const CONTEXT_WATCH = 0.75; // a context this full is worth a look
-  const CONTEXT_TEND = 0.9; // and this full wants tending
-  const HOUR_MS = 3_600_000;
+  // The verdicts, and the words saying why, are health.ts's.
   const DOINGS_SHOWN = 2;
-  const PRESSURE_WATCH = 85; // percent of cpu or memory worth a look
-  const CHARGE_TEND = 20; // percent of battery left that wants tending
-  const LEASE_WATCH_MS = 30 * 60_000; // a sandbox this near its end is worth a look
-  // A machine a provider lent says so in what it declares: it leaves at
-  // its lease's end. Bare metal never does, so the map tells them apart by
-  // what each machine says of itself, never by its name or its provider's.
-  const leavesAt = (x) => x?.leaves_at || x?.declared?.leaves_at || null;
-  const isSandbox = (x) => leavesAt(x) !== null;
-  // A box borrowed from a pool of cloud machines says which basin it is
-  // in, in what it declares; never by its name, which the node makes up.
-  // A basin's machines are drawn as the one basin they are in (model.ts).
-  const isBasin = (x) => Boolean(x?.basin);
   // Every machine as itself, a basin's taken out of it.
   const everyMachine = () => current.machines.flatMap((x) => x.members || [x]);
-  const machineForm = (x) => (isBasin(x) ? "basin" : isSandbox(x) ? "lent" : "shut");
-  const leftWords = (iso) => {
-    const ms = Date.parse(iso) - Date.parse(current.at);
-    if (!(ms > 0)) return "its time is up";
-    const h = Math.floor(ms / HOUR_MS);
-    const min = Math.floor((ms % HOUR_MS) / 60_000);
-    const span = h && min ? `${h} h ${min} min` : h ? `${h} h` : `${min} min`;
-    return `${span} left, until ${dayClock(iso)}`;
-  };
-  const sandboxWords = (x) => {
-    return `a cloud sandbox, ${leftWords(leavesAt(x))}`;
-  };
-  const VERDICT = ["Well", "Watch", "Tend"];
-  const contextShare = (s) => (s.usage?.context?.limit ? s.usage.context.used / s.usage.context.limit : 0);
-  const compactCount = (n) => (n >= 1e6 ? `${NUMBER.format(+(n / 1e6).toFixed(1))}M` : `${NUMBER.format(Math.round(n / 1000))}k`);
-  const contextWords = (s) => {
-    const c = s.usage?.context;
-    return c?.limit ? `context ${Math.round(contextShare(s) * 100)}% of ${compactCount(c.limit)}` : "";
-  };
-  const agoWords = (iso) => {
-    const ms = Date.parse(current.at) - Date.parse(iso);
-    if (!(ms >= 0)) return atWords(iso);
-    return ms < 60_000 ? "under a minute ago" : ms < HOUR_MS ? `${Math.round(ms / 60_000)} min ago` : atWords(iso);
-  };
-  // Tend where anything waits on him or is stuck, owes an answer or is
-  // nearly out of context; watch where a context is filling; else well.
-  const verdictOf = (cells) => {
-    let v = 0;
-    for (const s of cells) {
-      const share = contextShare(s);
-      if (s.standing === "asks" || s.standing === "stuck" || s.owes.length || share >= CONTEXT_TEND) return 2;
-      if (share >= CONTEXT_WATCH) v = 1;
-    }
-    return v;
-  };
+  const leftWords = (iso) => leftWordsAt(iso, current.at);
+  const sandboxWords = (x) => sandboxWordsAt(x, current.at);
   const verdictMark = (v) => `<strong class="verdict v${v}">${VERDICT[v]}</strong>`;
-  const groupHealth = (cells) => {
-    const n = countsOf(cells);
-    const owes = cells.reduce((t, s) => t + s.owes.length, 0);
-    const full = cells.filter((s) => contextShare(s) >= CONTEXT_TEND).length;
-    const filling = cells.filter((s) => contextShare(s) >= CONTEXT_WATCH && contextShare(s) < CONTEXT_TEND).length;
-    const bits = [
-      n.asks ? `${n.asks} ${n.asks === 1 ? "needs" : "need"} you` : "",
-      n.stuck ? `${n.stuck} stuck` : "",
-      owes ? `${plural(owes, "question")} waiting` : "",
-      full ? `${full} nearly out of context` : "",
-      filling ? `${filling} with context filling` : "",
-      ...["moving", "quiet", "dormant"].filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`),
-    ].filter(Boolean);
-    const spent = spentOf(cells);
-    return { v: verdictOf(cells), words: `${bits.join(", ") || "no cells"}${spent ? `; ${money(spent)} today` : ""}` };
-  };
   // One level of health: a name, its verdict and why. A level that opens
   // is a whole button; the level the drawer is about is not.
   const healthRow = (label, cells, go) => {
@@ -3074,58 +3011,17 @@ import {
     const bits = [s.standing === "asks" ? "needs you" : "", s.standing === "stuck" ? "stuck" : "", ...owed, ...s.holds.map(holdWords), contextWords(s), today ? `${today} today` : ""].filter(Boolean);
     return `<p class="health-line">${verdictMark(verdictOf([s]))}: ${esc(bits.join("; ") || "nothing said")}.</p>`;
   };
-  const leaseShort = (x) => {
-    const end = isSandbox(x) && leavesAt(x);
-    return Boolean(end) && Date.parse(end) - Date.parse(current.at) < LEASE_WATCH_MS;
-  };
   // A basin's machines each take a row of their own, named, their cells
   // counted first, since the basin's drawer is the only place they show.
   const machineHealth = (x, { label = "The machine", lead = [], mono = false } = {}) => {
-    const p = x.pressure;
-    const charge = x.power?.on_battery ? x.power.charge : null;
-    const v =
-      x.state !== "ready" || x.over?.length || (charge != null && charge < CHARGE_TEND) ? 2 : (p && (p.cpu >= PRESSURE_WATCH || p.memory >= PRESSURE_WATCH)) || x.disk_band === "filling" || leaseShort(x) ? 1 : 0;
-    const bits = [
-      ...lead,
-      x.state !== "ready" ? x.state : "",
-      p ? `cpu ${Math.round(p.cpu)}%, memory ${Math.round(p.memory)}%, io ${Math.round(p.io)}%` : "",
-      x.over?.length ? `${x.over.join(" and ")} short` : "",
-      x.available != null ? `${gib(x.available)} memory free` : "",
-      x.disk ? `${gib(x.disk_free)} of ${gib(x.disk)} disk free${x.disk_band === "filling" ? ", filling" : ""}` : "",
-      charge != null ? `on battery, ${charge}%` : "",
-      isSandbox(x) && leavesAt(x) ? leftWords(leavesAt(x)) : "",
-    ].filter(Boolean);
-    return `<li class="row still"><span class="what"><span class="name${mono ? " mono" : ""}">${esc(label)}</span><span class="fact">${verdictMark(v)}: ${esc(bits.join("; ") || "nothing said")}</span></span></li>`;
+    const { v, words } = machineStands(x, current.at, lead);
+    return `<li class="row still"><span class="what"><span class="name${mono ? " mono" : ""}">${esc(label)}</span><span class="fact">${verdictMark(v)}: ${esc(words)}</span></span></li>`;
   };
 
   // The realm's balance, as the balance service reads it each minute: how
   // much of the realm's work each machine carries, and what it holds wrong
-  // over most of the last ten minutes. Said in the words `mycelium balance`
-  // says it in. A held flag is worth watching, never a fault: placing is
-  // the realm's, not the machine's.
-  const loadWords = (load) => (typeof load === "number" ? `${Math.round(load * 100)}%` : "");
-  const STANDS_WORDS = { over: "over its limits", room: "with room for more", full: "with no room for more" };
-  const shareWords = (share) => {
-    const stands = share.over ? STANDS_WORDS.over : share.room ? STANDS_WORDS.room : STANDS_WORDS.full;
-    const load = loadWords(share.load);
-    const each = typeof share.busy_per_core === "number" ? `, ${Number(share.busy_per_core.toFixed(2))} busy a core` : "";
-    const sessions = typeof share.busy === "number" ? `; ${plural(share.busy, "cell")} busy and ${NUMBER.format(share.idle || 0)} idle${each}` : "";
-    return `${load ? `${load} loaded, ` : ""}${stands}${sessions}`;
-  };
-  const heldFlags = () => (Array.isArray(current.balance?.held) ? current.balance.held.filter((f) => f && typeof f.flag === "string") : []);
-  const flagNames = (f) => [f.hot, f.cool, f.machine].filter(Boolean);
-  // In a machine's own drawer, `self` is that machine, said as "it".
-  const flagWords = (f, self = null) => {
-    const its = (name) => (name === self ? "its" : `${name}'s`);
-    if (f.flag === "hot_while_cool" && f.hot === self) return `it is over while ${f.cool} has room, so new work should go to ${f.cool}`;
-    if (f.flag === "hot_while_cool" && f.cool === self) return `${f.hot} is over while this has room, so new work should come here`;
-    if (f.flag === "hot_while_cool") return `${f.hot} is over while ${f.cool} has room, so new work should go to ${f.cool}`;
-    if (f.flag === "stranded" && f.spent === "memory") return `${its(f.machine)} memory is nearly all used while its processors idle`;
-    if (f.flag === "stranded") return `${its(f.machine)} processors are spent while half its memory or more is free`;
-    if (f.flag === "stale") return `${its(f.machine)} facts are too old to place by`;
-    if (f.flag === "imbalanced") return "the machines' loads are uneven, so new work leans to the least loaded";
-    return f.flag.replace(/_/g, " ");
-  };
+  // over most of the last ten minutes, in health.ts's words.
+  const heldFlags = () => heldFlagsOf(current.balance);
   const machineShareRow = (x, label = "Its share") => {
     if (!x.share) return "";
     const held = heldFlags().filter((f) => flagNames(f).includes(x.name));
