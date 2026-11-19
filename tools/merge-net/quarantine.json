@@ -127,10 +127,10 @@
     "at": 1795117614,
     "commit": "544161276fa537ea9abc58041ed56d2d72eb917f",
     "due": "2026-11-21",
-    "due_why": "Its owner, the cat's, by 2026-11-21 17:00 UTC makes the frames niri was asked of hold on a loaded builder, then takes it off once ten net runs in a row log it PASSED: its net logs from 14 to 19 Nov held 126 PASSED and none FAILED, and the one miss, a gate at 544161276fa5, asked of 131 of 135 frames against a bound of 132 with frames a median 62 ms apart",
+    "due_why": "Its owner, the cat's, by 2026-11-21 23:59 UTC finds whether the shell or the allowance of three frames still on their way when the cat sits is wrong while niri presents slowly, fixes it with a case that replays a slow presenter and fails without the fix, and takes it off once that case holds and ten net runs in a row log it PASSED, since at one miss in 127 ten pass by luck nine times in ten: its net logs from 14 to 19 Nov held 126 PASSED and none FAILED, and the miss asked niri of 131 of 135 frames against a bound of 132 while niri presented them a median 62 ms apart, the cat stepping under 20 ms apart; while it stands every other check in this subtest goes unguarded, among them the rest before it sets off, the leap over the gap, the beats in order, the 20 ms step, the walk told once, niri showing every frame, the 4 ms draw, more than one stride and never stepping back",
     "owner_pr": 3945,
     "owner_session": "XY9H5C",
-    "reason": "failed at a gate at 544161276fa5, which touches no margin-cat file",
+    "reason": "failed, then passed, at one derivation, built twice for a gate at 544161276fa5",
     "subtests": [
       "test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest"
     ],
