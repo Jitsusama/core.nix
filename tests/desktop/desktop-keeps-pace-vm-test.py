@@ -106,6 +106,11 @@ MIDDLE_MORE = 50
 HELD_TO = 2
 HELD_STOLEN = 0.25
 GAUGING = 10
+# A halted processor has nothing stolen, so little stolen held is a count blind to the builder
+# only while the four are busy: at least this part of their ticks, at /proc/stat's 100 a second.
+# Held so on 19 November they counted 4277 and 4318 of the 4000 they could.
+HELD_BUSY = 0.75
+TICKING = 100
 # The passes holding the VM's threads may take, past which a hold still missing one fails as that.
 HOLDING = 5
 TAIL = 0.95
@@ -293,6 +298,8 @@ class Timing:
         self.timed = framed(self.desktop)["timed"]
         self.pressing = 0
         self.turns = []
+        # What the shell did before the keys is timed by no bar, so its ticks are passed over.
+        self.count(kept=False)
 
     def load(self, *, on: bool) -> None:
         """Let the machine's load run, or freeze it where it stands, which takes no time back.
@@ -302,9 +309,10 @@ class Timing:
         self.count(kept=True)
         self.ledger.turning()
         self.turn(on=on)
-        self.ledger.turned()
-        # The ticks while the load turned are neither turn's, so they're passed over.
+        # The ticks while the load turned are neither turn's, so they're passed over, and only
+        # then is the turn done: one that fails here leaves the ledger between turns.
         self.count(kept=False)
+        self.ledger.turned()
 
     def turn(self, *, on: bool) -> None:
         """Let the load run or freeze it, counting nothing, as main's load did.
@@ -691,6 +699,8 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     made: dict[bool, list[str]] = {True: [], False: []}
     try:
         stepped_round(desktop)
+        # The round warming the drawers up is timed by no bar, so its ticks are passed over.
+        timing.count(kept=False)
         for turn in range(ROUNDS):
             loaded = turn % 2 == 1
             if loaded != timing.loading:
@@ -902,6 +912,8 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
     try:
         # The first opening after the shell starts makes every row, with nothing kept yet.
         opened_timed(desktop)
+        # That opening is timed by no bar, so its ticks are passed over.
+        timing.count(kept=False)
         for loaded, times in ((True, OPENINGS), (False, FROZEN)):
             if loaded != timing.loading:
                 timing.load(on=loaded)
@@ -1014,19 +1026,31 @@ def hold_vm(started: int, processors: Sequence[int]) -> None:
     until a pass finds none left to hold. One still moving after HOLDING passes fails as that,
     since a VM left partly held would slow whatever runs on it with no line saying why.
     """
-    wanted = set(processors)
     for _ in range(HOLDING):
-        moved = False
-        for thread in vm_threads(started):
-            # QEMU's workers come and go, and one gone is none to hold.
-            with contextlib.suppress(ProcessLookupError):
-                if os.sched_getaffinity(thread) != wanted:
-                    os.sched_setaffinity(thread, processors)
-                    moved = True
-        if not moved:
+        moved = [hold_thread(thread, processors) for thread in vm_threads(started)]
+        if not any(moved):
             return
     unsettled = f"the VM's threads still moved after {HOLDING} passes holding them to {processors}"
     raise AssertionError(unsettled)
+
+
+def hold_thread(thread: int, processors: Sequence[int]) -> bool:
+    """Run one of the VM's threads on these of the builder's processors, saying if it moved."""
+    try:
+        if os.sched_getaffinity(thread) == set(processors):
+            return False
+        os.sched_setaffinity(thread, processors)
+    except ProcessLookupError:
+        # QEMU's workers come and go, and one gone is none to hold.
+        return False
+    except OSError as error:
+        # The kernel refuses some threads outright, as io_uring's workers, so it names which.
+        name = "gone"
+        with contextlib.suppress(OSError):
+            name = Path(f"/proc/{thread}/comm").read_text().strip()
+        refused = f"the builder wouldn't hold the VM's thread {thread} ({name}) to {processors}"
+        raise AssertionError(refused) from error
+    return True
 
 
 @pytest.mark.usefixtures("loaded")
@@ -1034,9 +1058,9 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
     """The guest counts as stolen the time the builder runs its processors on fewer of its own.
 
     Held to HELD_TO of the builder's processors, the VM's four run about half the time each under
-    load, when every one is busy, as a busy builder holds them. A guest counting little stolen
-    here is a count blind to the builder, which no other subtest's bars could tell from a quiet
-    builder, and every share would read 1.
+    load, when every one is busy, as a busy builder holds them. A guest whose four were busy
+    and that counted little stolen here has a count blind to the builder, which no other
+    subtest's bars could tell from a quiet builder, and every share would read 1.
     """
     started = desktop.machine.pid
     assert started, "the VM has no process to hold to the builder's processors"
@@ -1064,11 +1088,13 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
         assert list(held) == [holding], f"the VM's threads weren't held to {holding}: {held}"
         time.sleep(GAUGING)
         timing.count(kept=True)
+        stolen, busy = timing.ledger.turns[True]
+        # Said before the VM is let go, which may fail, so the figures it counted are kept.
+        print(f"held, the guest counted {stolen} of {busy} busy ticks stolen")
     finally:
         hold_vm(started, builders)
-    stolen, busy = timing.ledger.turns[True]
-    print(f"held, the guest counted {stolen} of {busy} busy ticks stolen")
-    assert busy, "held, the guest counted no busy ticks"
+    least = HELD_BUSY * PROCESSORS * GAUGING * TICKING
+    assert busy >= least, f"held, the guest's processors were busy {busy} ticks, under {least}"
     assert stolen / busy >= HELD_STOLEN, (
         f"held to {HELD_TO} of the builder's processors, the guest counted {stolen} of {busy}"
         " busy ticks stolen"
