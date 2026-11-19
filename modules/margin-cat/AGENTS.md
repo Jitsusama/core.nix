@@ -18,6 +18,7 @@ layout for it. The scripts work out everything it does, so the Qt cases in
 | `MarginCatFalls.js`  | what it does as the window under it moves or goes        |
 | `MarginCatFloats.js` | floating windows' tops as stops                          |
 | `MarginCatPlays.js`  | a play's beats, as a route on its ways                   |
+| `MarginCatShown.js`  | how its walks and plays reached the screen               |
 | `MarginCatTiles.js`  | niri's layout read as tiles                              |
 
 How it looks and moves is the design's ([docs/design.md][design]); what it

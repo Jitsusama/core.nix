@@ -2,7 +2,7 @@
 // column Joel is in, in the gap the windows leave above them, so it covers nothing of his and moves
 // only where he already looks; the beats and paces of its walk, which MarginCatPaths.js lays its
 // ways with; how niri's motion moves the windows it holds through or rides; and how it's drawn
-// turned and told.
+// turned. How its walks reached the screen is MarginCatShown.js's.
 .pragma library
 
 // The share of the gap the cat stands in, so a little of it is left above.
@@ -279,42 +279,6 @@ function quartered(drawing, turn) {
     return turn === 0 ? drawing : cells[0].map((_column, c) => cells.map((_row, r) => turn > 0
         ? cells[n - 1 - r][c]
         : cells[r][cells[0].length - 1 - c]).join(""));
-}
-
-// How a walk reached the screen, as the journal says it once it sits:
-// `shown`, when niri presented each of its frames, in monotonic ms, so
-// the gaps between them say whether it moved at the screen's rate;
-// `drawing`, how long each took the shell to sync and render, its own
-// cost of a frame, said as the typical frame's and the slowest's, since
-// a busy machine stretches a frame or two by what else it runs;
-// `unseen`, how many niri never showed (Joel,
-// 2026-11-12: "we need proper smooth animations with character to them");
-// and as `counted`, its `begun`, how many frames the shell began
-// meanwhile, so a walk whose frames went unasked of says so rather than
-// reading slower than it ran, and `what` it was: a walk, or a hop, said
-// the same way.
-function walked(shown, drawing, unseen, counted) {
-    const begun = counted?.begun ?? 0;
-    const gaps = shown.slice(1).map((at, i) => at - shown[i]).sort((a, b) => a - b);
-    const costs = drawing.slice().sort((a, b) => a - b);
-    const tenths = ms => Math.round((ms ?? 0) * 10) / 10;
-    const said = {
-        frames: shown.length,
-        median: tenths(gaps[(gaps.length - 1) >> 1]),
-        p99: tenths(gaps[Math.max(0, Math.ceil(gaps.length * 0.99) - 1)]),
-        slowest: tenths(gaps[gaps.length - 1]),
-        typical: tenths(costs[(costs.length - 1) >> 1]),
-        drawn: tenths(drawing.reduce((most, ms) => Math.max(most, ms), 0)),
-        unseen,
-        begun,
-        stepped: counted?.stepped ?? 0
-    };
-    const line = `cat: a ${counted?.what ?? "walk"} presented ${said.frames} of its ${begun} frames `
-        + "a median "        + `${said.median} ms `
-        + `apart, the p99 ${said.p99} ms, the slowest ${said.slowest} ms, each drawn in `
-        + `${said.typical} ms typically and within ${said.drawn} ms, ${unseen} never shown, `
-        + `stepped ${said.stepped} times`;
-    return { said, line };
 }
 
 // How far `beat` has walked at `spot`, by the ground drawn, from the start of the beats it

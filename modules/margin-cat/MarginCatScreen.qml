@@ -18,6 +18,7 @@ import "MarginCatFloats.js" as Floats
 import "MarginCatGames.js" as Games
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
+import "MarginCatShown.js" as Shown
 import "MarginCatStacked.js" as Stacked
 import "MarginCatTiles.js" as Tiles
 import "../Pixels.js" as Pixels
@@ -180,7 +181,7 @@ PanelWindow {
     onSwattingChanged: say()
     // When niri showed each frame of the walk under way, how long the
     // shell took to draw each, and how many niri never showed, said
-    // once it sits (MarginCat.walked). Kept as plain arrays, pushed
+    // once it sits (Shown.walked). Kept as plain arrays, pushed
     // to, so a frame's answer notifies nothing.
     property var shown: []
     property var costs: []
@@ -190,6 +191,13 @@ PanelWindow {
     // say whether it moved on each.
     property int begunAt: 0
     property int steps: 0
+    // A walk, move or play done but not yet told, its kind, while niri
+    // still answers for the frames on their way as it sat: the last of
+    // them, how many it began and how many steps it took.
+    property string telling: ""
+    property int tellsAt: 0
+    property int tellsBegun: 0
+    property int tellsStepped: 0
     // How often this screen draws, in ms, as its last walk showed.
     property real frameMs: 1000 / 60
     // The workspace this screen shows, its id and index, so a move
@@ -447,6 +455,7 @@ PanelWindow {
     // A walk's `plan` played from where it is, from its first step.
     function walks(plan: var): void {
         if (going === null) {
+            sayWalked();
             shown = [];
             costs = [];
             unseen = 0;
@@ -471,6 +480,7 @@ PanelWindow {
         leaving.stop();
         movingTo = null;
         moving = plan(way, { x: place.x, y: place.y }, null);
+        sayWalked();
         shown = [];
         costs = [];
         unseen = 0;
@@ -602,12 +612,29 @@ PanelWindow {
 
     // How its walk, move or play (`what`, its kind) reached the
     // screen, in the journal, so one on Joel's screen says whether it
-    // kept to its rate.
+    // kept to its rate: told once niri has answered for the frames
+    // still on their way as it sat (Shown.heard).
     function tell(what: string): void {
         if (!window.FramePresentation.available)
             return;
-        const told = MarginCat.walked(shown, costs, unseen,
-            { begun: window.FramePresentation.framesBegun - begunAt, stepped: steps, what });
+        sayWalked();
+        telling = what;
+        tellsAt = window.FramePresentation.framesBegun;
+        tellsBegun = tellsAt - begunAt;
+        tellsStepped = steps;
+        answering.restart();
+    }
+    // The walk waiting to be told, told with the frames heard of so
+    // far: once niri has answered for them all, its wait has run out,
+    // or another sets off and needs its counts.
+    function sayWalked(): void {
+        if (telling === "")
+            return;
+        answering.stop();
+        const what = telling;
+        telling = "";
+        const told = Shown.walked(shown, costs, unseen,
+            { begun: tellsBegun, stepped: tellsStepped, what });
         console.info(told.line);
         if (told.said.frames > 10)
             frameMs = told.said.median;
@@ -633,20 +660,41 @@ PanelWindow {
     // of: on a GPU at 60 Hz, and on Joel's screen at 120. Each step asks too (walker, and a
     // hop's lift), before its frame is drawn. Asked only there, a GPU at 120 Hz drew every
     // other frame, so both stay.
+    // Once it's done, the answers still to come are only heard, never
+    // asked after: each frame on its way was asked of as it began.
     FramePresentation.onPresented: (frame, at) => {
-        if (going === null && moving === null)
+        if (going === null && moving === null && telling === "")
             return;
-        shown.push(at);
-        const times = window.FramePresentation.timesOf(frame);
-        if (times.rendered > 0 && times.synchronizing > 0)
-            costs.push(times.rendered - times.synchronizing);
-        window.FramePresentation.ask();
+        const heard = Shown.heard(frame, begunAt, telling === "" ? null : tellsAt);
+        if (heard.counts) {
+            shown.push(at);
+            const times = window.FramePresentation.timesOf(frame);
+            if (times.rendered > 0 && times.synchronizing > 0)
+                costs.push(times.rendered - times.synchronizing);
+        }
+        answered(heard);
     }
-    FramePresentation.onDiscarded: () => {
-        if (going === null && moving === null)
+    FramePresentation.onDiscarded: frame => {
+        if (going === null && moving === null && telling === "")
             return;
-        unseen += 1;
-        window.FramePresentation.ask();
+        const heard = Shown.heard(frame, begunAt, telling === "" ? null : tellsAt);
+        if (heard.counts)
+            unseen += 1;
+        answered(heard);
+    }
+    // After a frame's answer, `heard` (Shown.heard): the walk told once
+    // every frame of it is in, or the next frame asked of while it goes.
+    function answered(heard: var): void {
+        if (heard.ends)
+            sayWalked();
+        else if (telling === "")
+            window.FramePresentation.ask();
+    }
+    // The longest a walk done waits to hear of its last frames.
+    Timer {
+        id: answering
+        interval: Shown.ANSWERS
+        onTriggered: window.sayWalked()
     }
 
     function halt(): void {
@@ -870,6 +918,7 @@ PanelWindow {
         closedOn = null;
         roams = null;
         landedOn = null;
+        sayWalked();
         shown = [];
         costs = [];
         unseen = 0;
