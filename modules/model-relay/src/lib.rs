@@ -1199,7 +1199,10 @@ impl Relay {
 
     /// Hears a request `sent` down a connection, and answered or `failed`
     /// for its path, and stands down when the share failed lately says to.
+    /// A sleep is looked for first, as the streams it cut break before pi
+    /// asks anything new, and they're not to be judged.
     fn finished(&self, sent: Instant, failed: bool) {
+        self.retire_after_a_sleep();
         let Some(stood) = self.standing.heard(Instant::now(), sent, failed) else {
             return;
         };
@@ -1286,7 +1289,7 @@ impl Relay {
         parts: &hyper::http::request::Parts,
         whole: &Bytes,
     ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
-        let (mut request, asked) = (sendable(parts, whole), Instant::now());
+        let (mut request, mut went) = (sendable(parts, whole), Instant::now());
         let mut sent = 0;
         let mut taken = self.sender().await;
         // The connection the origin reset this request on, once it has.
@@ -1311,7 +1314,7 @@ impl Relay {
                     let Some((was_at, was)) = reset_on else {
                         return Err(Box::new(why.said()));
                     };
-                    self.finished(asked, true);
+                    self.finished(went, true);
                     // Reset, and then not sent again, so it's counted with
                     // the requests reset that failed, and a 502 as any
                     // reset is, never a 421 sending pi direct: the origin
@@ -1324,10 +1327,10 @@ impl Relay {
                     return Err(Box::new(not_answered()));
                 }
             };
-            // Dropped while it waits for the answer, as when pi hangs up,
-            // it's counted as cancelled on this connection.
+            // Dropped while it waits for the answer, as when pi hangs up, it's
+            // counted as cancelled here; judged, it's by when this attempt went.
             let on_the_way = OnTheWay::sent(&tally, &self.counts);
-            down = (at, number, tally);
+            (went, down) = (on_the_way.sent, (at, number, tally));
             let went = sender.try_send_request(request).await;
             let mut unread = None;
             let failed = match went {
@@ -1404,7 +1407,7 @@ impl Relay {
         };
         // Answered, it's judged once its answer ends, as it may break off.
         if answered.as_ref().is_err_and(|why| fails_the_path(why)) {
-            self.finished(asked, true);
+            self.finished(went, true);
         }
         answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
     }
@@ -1561,7 +1564,7 @@ impl Relay {
     }
 
     /// Retires every connection when the wall clock ran ahead of the
-    /// relay's own since it was last asked, as it does while the machine
+    /// relay's own since it was last asked or heard, as it does while the machine
     /// sleeps: the network they ran on may be gone, and their pings would
     /// take up to `PING_EVERY` and `PING_ANSWERED_WITHIN` to say so. An
     /// answer already streaming on one carries on.
@@ -1777,15 +1780,18 @@ fn goes_again(reason: h2::Reason) -> bool {
 /// resetting it or saying goodbye with a refused stream or a protocol
 /// error, as on 18 November. The origin's own verdict, such as to calm
 /// down or an error of its own, says nothing of the path, as it would
-/// fail direct too. Every error hyper calls the user's is judged, as the
-/// request's body is whole in memory and can't fail: what's left of them
-/// is chiefly a connection's task gone, which is the path failing.
+/// fail direct too, and nor does h2 refusing what was asked of it, such as
+/// headers it won't send. Every error hyper calls the user's is judged, as
+/// the request's body is whole in memory and can't fail: what's left of
+/// them is chiefly a connection's task gone, which is the path failing.
 fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
     let mut beneath = Some(why);
     while let Some(cause) = beneath {
         if let Some(h2) = cause.downcast_ref::<h2::Error>() {
             return match h2.reason() {
                 Some(reason) if h2.is_remote() => goes_again(reason),
+                // Neither a frame nor the socket, it's h2's own refusal.
+                None if !h2.is_io() => false,
                 _ => true,
             };
         }
@@ -1881,7 +1887,9 @@ async fn reach_any(addresses: &[SocketAddr], within: Duration) -> io::Result<Tcp
 /// Whether the machine slept between `then` and `now`, each the relay's
 /// clock and the wall's: the wall ran more than `SLEPT_AT_LEAST` ahead.
 /// This takes `Instant` to stand still in a suspend, as Linux's monotonic
-/// clock does; a wall clock set back is no sleep.
+/// clock does; a wall clock set back is no sleep. One stepped forward
+/// reads as one, ending a stand-down early, which costs a return judged
+/// afresh.
 fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
     let on_the_wall = now.1.duration_since(then.1).unwrap_or_default();
     on_the_wall > now.0.duration_since(then.0) + SLEPT_AT_LEAST
