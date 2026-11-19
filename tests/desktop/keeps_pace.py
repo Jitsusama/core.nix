@@ -35,19 +35,10 @@ MIDDLE_MORE = 50
 PROCESSORS = 4
 
 
-def builders_share(under: Sequence[float], frozen: Sequence[float]) -> float:
-    """Give how much longer the probe's work took under load than frozen, from 1 to PROCESSORS.
-
-    By the mean of each, not the middle: a piece of work is a couple of milliseconds, shorter
-    than the builder's turns, so most pieces go untouched and the middle one reads as no share
-    at all, while the mean is the share of the time the probe's processor ran. One long stall
-    among the thousands of pieces a subtest gathers moves it by about its own length over
-    theirs, so it takes the builder holding the guest back through a turn to move it far. With
-    no pieces in either it's 1, and the bar is the guest's alone.
-    """
-    if not under or not frozen:
-        return 1.0
-    return min(float(PROCESSORS), max(1.0, fmean(under) / fmean(frozen)))
+def builders_share(under: tuple[int, int], frozen: tuple[int, int]) -> float:
+    """Stand in for the share, to be written."""
+    del under, frozen
+    return 1.0
 
 
 def bound(frozen: float, more: float, share: float) -> float:
@@ -59,10 +50,7 @@ def bound(frozen: float, more: float, share: float) -> float:
     return share * (SLOWER_MOST * frozen + more)
 
 
-def probed(said: str) -> tuple[list[float], int]:
-    """Give the probe's whole lines in what it said, and how many characters they took.
-
-    A line the probe is still writing is left for the next read.
-    """
-    whole = said[: said.rfind("\n") + 1]
-    return [float(line) for line in whole.splitlines() if line.strip()], len(whole)
+def ticks(stat: str) -> tuple[int, int]:
+    """Stand in for reading the kernel's line, to be written."""
+    del stat
+    return 0, 0
