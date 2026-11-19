@@ -687,8 +687,7 @@ impl Way {
                 self.probing_until = None;
                 // A probe the ceiling held carried the ceiling, not the
                 // line, however full our queue stood.
-                let ceiling = self.at_the_ceiling();
-                if ours.queued && !ceiling && through >= self.rate * share * UNDER {
+                if ours.queued && !self.at_the_ceiling() && through >= self.rate * share * UNDER {
                     // The link carried the higher rate with CAKE still
                     // holding a queue, so there is room past it: keep it,
                     // and look higher at once.
@@ -3818,21 +3817,37 @@ mod tests {
     }
 
     // A probe a trial's ceiling holds that carries less than the ceiling
-    // met the line under it, as one no ceiling holds does.
+    // met the line under it, as one no ceiling holds does; one that
+    // carried the ceiling met only the ceiling, and learns nothing.
     #[test]
     fn a_probe_a_ceiling_holds_learns_the_line_it_meets_under_it() {
-        let learned = Learned {
-            base: None,
-            plateau: Some(8_000.0),
-        };
-        let mut c = Controller::from_learned(learned, Learned::default());
-        c.up.tune(Tuning {
-            most_kbit: Some(8_600.0),
-            ..Tuning::default()
-        });
-        many_flows(&mut c, 4.0, 8_300.0, 0.03);
-        let plateau = c.up.plateau.expect("a plateau");
-        assert!((plateau - 8_300.0).abs() < 166.0, "plateau {plateau}");
+        for (line, learned_at) in [(8_300.0, 8_300.0), (9_000.0, 8_000.0)] {
+            let learned = Learned {
+                base: None,
+                plateau: Some(8_000.0),
+            };
+            let mut c = Controller::from_learned(learned, Learned::default());
+            c.up.tune(Tuning {
+                most_kbit: Some(8_600.0),
+                ..Tuning::default()
+            });
+            many_flows(&mut c, 4.0, line, 0.03);
+            let plateau = c.up.plateau.expect("a plateau");
+            assert!(
+                (plateau - learned_at).abs() < 166.0,
+                "plateau {plateau} on a {line} line"
+            );
+        }
+    }
+
+    // An anchored network whose line reads under the anchor's near-hold
+    // is one where something else shares it, as `elsewhere` reads it, so
+    // a probe there learns no line.
+    #[test]
+    fn a_probe_on_a_line_under_its_anchor_s_learns_no_line() {
+        let mut c = anchored(8_000.0);
+        many_flows(&mut c, 4.0, 8_500.0, 0.03);
+        assert_eq!(c.up.plateau, Some(8_000.0), "a shared line learned");
     }
 
     // Home's ceiling sits under its anchor's line, so the line a probe
@@ -3847,9 +3862,27 @@ mod tests {
     }
 
     // Behind a VPN heard clear, what gets through is its flows backing
-    // off, not the line, however far over the plateau it reads.
+    // off, not the line, however far over the plateau it reads: heard so
+    // in the probe's settled moments alone, or in its last alone.
     #[test]
     fn a_probe_behind_a_vpn_heard_clear_learns_no_line() {
+        let ends = |at: f64| at > PROBE_S - 0.05;
+        let throughout: &dyn Fn(f64) -> bool = &|_| true;
+        let settled: &dyn Fn(f64) -> bool = &|at| !ends(at);
+        let last: &dyn Fn(f64) -> bool = &ends;
+        for (heard, clear) in [
+            ("throughout", throughout),
+            ("settled", settled),
+            ("last", last),
+        ] {
+            let plateau = probed_behind_a_vpn(clear);
+            assert_eq!(plateau, Some(8_000.0), "a VPN backing off {heard} learned");
+        }
+    }
+
+    /// A probe from a plateau of 8000 behind a VPN on an 8500 line, its
+    /// tunnel heard clear in the moments `clear(at)` says.
+    fn probed_behind_a_vpn(clear: &dyn Fn(f64) -> bool) -> Option<f64> {
         let learned = Learned {
             base: None,
             plateau: Some(8_000.0),
@@ -3876,12 +3909,12 @@ mod tests {
                     resent: kbit((wanted - 8_500.0).max(0.0)),
                     ..Ours::default()
                 }),
-                vpn_ms: Some(30.0),
+                vpn_ms: clear(at).then_some(30.0),
                 ..quiet(0.0, 300.0)(at)
             });
             at += 0.1;
         }
-        assert_eq!(c.up.plateau, Some(8_000.0), "a VPN backing off learned");
+        c.up.plateau
     }
 
     #[test]
