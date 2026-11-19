@@ -404,13 +404,19 @@ ShellRoot {
     // lands, as it is of one behind. The uptime written leaves the lease's
     // end half a minute past a whole minute, 90 to 150 s ahead of the
     // count, so the time left it's told with reads the same for thirty
-    // seconds, however long the steps before took.
+    // seconds, however long the steps before took, said as the lease's row
+    // says any time left. A count already past where that fits before the
+    // lease's end fails here rather than waiting.
     function ahead() {
         told = [];
-        const minutes = Math.floor((8230 - Math.round(networks.uptime()) - 120) / 60);
-        Written.written(up, `${8230 - minutes * 60 - 30}.00 4000.00\n`);
+        const ends = root.leases.enp0s1.ends;
+        const minutes = Math.floor((ends - Math.round(networks.uptime()) - 120) / 60);
+        Expect.expect("the count leaves room before the lease's end", minutes >= 0,
+            `${networks.uptime()} s counted, the lease ending at ${ends}`);
+        Written.written(up, `${ends - minutes * 60 - 30}.00 4000.00\n`);
         networks.reloadFacts();
-        const row = `100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in ${minutes} min`;
+        const left = Interfaces.lasted(minutes * 60 + 30);
+        const row = `100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in ${left}`;
         waits.until("the launcher told of an uptime ahead of the count",
             within(4000, () => told.includes(row)), root.quiet("served", root.served));
     }

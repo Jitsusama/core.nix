@@ -299,6 +299,12 @@ function run(failures) {
     machine("how long, in whole hours", Interfaces.lasted(72000), "20 h");
     machine("how long, in whole days", Interfaces.lasted(172800), "2 d");
     machine("how long, only just", Interfaces.lasted(20), "under a minute");
+    // An uptime loaded is stepped when nothing was counted before it, or
+    // it's more than a minute off the count either way, never at a minute.
+    machine("an uptime stepped is first, or more than a minute off the count",
+        [[null, 5], [1000, 1060], [1000, 1060.5], [1000, 940], [1000, 939.5]]
+            .map(([kept, loaded]) => Interfaces.stepped(kept, loaded)),
+        [true, false, true, false, true]);
     machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
     // A file given up is held off a minute, then twice as long each time,
     // to an hour, and a clock stepped back ends it.
