@@ -177,7 +177,11 @@ mod tests {
         );
         file("notes.txt", &[round(&json!({"witness": "ccc"}))]);
         let seen = witnessed(&folder);
-        assert!(witnessed(&folder.join("gone")).is_empty());
+        assert_eq!(
+            witnessed(&folder.join("gone")),
+            HashSet::new(),
+            "a folder that's gone holds no witness"
+        );
         fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
             seen,
