@@ -474,8 +474,10 @@ QtObject {
         // Each stride it steps into, and when, to read skids and flashes by.
         const chasedInto = [];
         for (let t = 0; t < 1600; t += 1) {
-            if (t === 600)
+            if (t === 600) {
                 chasedAt = chasedDrawn.x;
+                chasedInto.push({ pose: chasedDrawn.pose, t: -1, beat: chasedDrawn.beat });
+            }
             if (t > 600 && t % 16 === 0) {
                 chased = Paths.walk({ x: chasedDrawn.x, y: chasedDrawn.y }, { x: 700, y: 7 },
                     world({ hurried: true, facing: chasedDrawn.facing, drawnIn: chasedDrawn.pose,
@@ -492,8 +494,7 @@ QtObject {
         const chasedStrides = (chasedDrawn.x - chasedAt) / chasedStride;
         const alone = Paths.frame(unchased, 1600).x - Paths.frame(unchased, 600).x;
         const chasedSkids = skidsIn(chasedInto).length;
-        const chasedFlashes = chasedInto.filter((one, i) => i > 0 && i < chasedInto.length - 1
-            && chasedInto[i + 1].t - one.t < 25).length;
+        const chasedFlashes = flashesIn(chasedInto).length;
         expect("set off again every frame, a stride steps once a stride's ground",
             [chasedStride > 0, chasedDrawn.x - chasedAt >= alone * 3 / 4,
                 Math.abs(chasedSteps - chasedStrides) <= 1.5, chasedSkids, chasedFlashes],
@@ -551,7 +552,9 @@ QtObject {
             [thinkRuns.map(run => run.pose), thinkRuns[1].ms >= 33],
             [["walkingA", "walkingC", "walkingB", "pouncing"], true]);
         // Re-planned 32 ms into that turn, a ms short of SHOWN, it walks
-        // on, holding the stride it turns in till it's seen, then a pair on.
+        // on, holding the stride it turns in till it's seen, then a pair on:
+        // held a stride, as long as the walk out of the turn takes over its
+        // first, so neither flashed nor glided.
         const turning = Paths.frame(turnsMid, 32);
         const replanned = Paths.walk({ x: turning.x, y: turning.y }, { x: 700, y: 398 },
             world({ hurried: true, facing: turning.facing, drawnIn: turning.pose,
@@ -559,8 +562,8 @@ QtObject {
         const replanRuns = runsOf(replanned, 300).slice(0, 2);
         expect("re-planned as it turns in a stride, it holds that stride till it's seen",
             [turning.beat, turning.pose, turning.into, names(replanned)[0],
-                replanRuns.map(run => run.pose), replanRuns[0].ms >= 33],
-            ["turns", "walkingA", 0, "goes", ["walkingA", "walkingC"], true]);
+                replanRuns.map(run => run.pose), replanRuns[0].ms - runsOf(turnsMid, 300)[1].ms],
+            ["turns", "walkingA", 0, "goes", ["walkingA", "walkingC"], 0]);
         // Re-planned 33 ms in, once that stride is seen, it steps a pair on
         // from its first frame.
         const turnSeen = Paths.frame(turnsMid, 33);

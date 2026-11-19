@@ -108,8 +108,8 @@ QtObject {
         const stepsBadly = (before, one) => {
             const on = (strideOrder.indexOf(one.pose) - strideOrder.indexOf(before) + 4) % 4;
             return strideOrder.includes(before) && strideOrder.includes(one.pose)
-                && (on % 2 === 0 || on === 3
-                    && !(one.pose === "walkingB" && standsIn.includes(one.beat)));
+                && (on % 2 === 0 || (on === 3
+                    && !(one.pose === "walkingB" && standsIn.includes(one.beat))));
         };
         const flashes = (journey, said) => {
             let run = null;
