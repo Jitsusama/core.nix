@@ -31,6 +31,20 @@ let
         // fields
       )
     );
+  # What would run code as a host as its node starts, which its unit clears
+  # and a realm may not give: written out rather than read from host.nix's
+  # list, and the unit must clear just these beside the TPM agent's
+  # variable, so a change to either list alone fails here.
+  loadsCode = [
+    "NODE_OPTIONS"
+    "NODE_PATH"
+    "NODE_COMPILE_CACHE"
+    "LD_PRELOAD"
+    "LD_AUDIT"
+    "LD_LIBRARY_PATH"
+    "OPENSSL_CONF"
+    "OPENSSL_MODULES"
+  ];
 in
 {
   # A realm's pi reaches its hosts only with a proof that pnpm test:host passed
@@ -82,9 +96,10 @@ in
         && lib.hasInfix "hosts.later.proof is version 2, not 1" refusals
       );
 
-  # A realm's own NODE_OPTIONS, which a host's unit clears, fails
-  # evaluation, naming the realm, rather than being dropped unseen.
-  pi-hosts-refuse-node-options =
+  # A realm's own NODE_OPTIONS, or any other variable a host's unit clears
+  # since it would run code as the host, fails evaluation, naming the realm
+  # and each variable, rather than being dropped unseen.
+  pi-hosts-refuse-code-loading-variables =
     let
       runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
       realm = environment: {
@@ -93,24 +108,68 @@ in
         proof = proofOf { inherit runtime; };
         inherit environment;
       };
-      refusals = lib.concatMapStrings (check: check.message + "\n") (
-        lib.filter (check: !check.assertion)
-          (account (bareNixos [
-            self.nixosModules.workstation
-            {
-              home-manager.users.someone.jitsusama.pi.hosts = {
+      # A realm giving each alone, named for it: node_options and so on.
+      realmOf = name: lib.toLower name;
+      checks =
+        (account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.jitsusama.pi.hosts =
+              lib.listToAttrs (
+                map (
+                  name:
+                  lib.nameValuePair (realmOf name) (realm {
+                    ${name} = "/x";
+                  })
+                ) loadsCode
+              )
+              // {
                 plain = realm { GREETING = "hi"; };
-                optioned = realm { NODE_OPTIONS = "--require /x.js"; };
+                # Two, beside one that loads nothing, which the
+                # refusal leaves out.
+                both = realm {
+                  OPENSSL_CONF = "/x.cnf";
+                  LD_PRELOAD = "/x.so";
+                  GREETING = "hi";
+                };
+                three = realm {
+                  OPENSSL_MODULES = "/x";
+                  NODE_PATH = "/x";
+                  LD_AUDIT = "/x.so";
+                };
               };
-            }
-          ])).assertions
-      );
+          }
+        ])).assertions;
+      refusals = map (check: check.message) (lib.filter (check: !check.assertion) checks);
+      # The one refusal naming a realm, or none.
+      prefixOf = realm: "jitsusama.pi.hosts.${realm}.environment gives ";
+      refusalOf = realm: lib.findFirst (lib.hasPrefix (prefixOf realm)) null refusals;
+      # Whether a realm's refusal names just these variables, as written,
+      # and speaks of one as it and of several as each; then names each of
+      # loadsCode again where it says how they load code, and where a
+      # command gets one instead. How each loads code is the message's to
+      # word, so only its names are pinned.
+      names =
+        realm: named:
+        let
+          refused = refusalOf realm;
+          one = !(lib.hasInfix " and " named);
+          head = "${prefixOf realm}${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make";
+          explained = lib.removePrefix head refused;
+        in
+        refused != null
+        && lib.hasPrefix head refused
+        && lib.all (name: lib.hasInfix " ${name}" explained) loadsCode
+        && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused
+        && lib.hasSuffix " a command that needs one sets it itself." refused;
     in
-    holds "pi-hosts-refuse-node-options"
-      "A realm's NODE_OPTIONS, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm."
+    holds "pi-hosts-refuse-code-loading-variables"
+      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then name each of the eight again where it says how they load code, and say that a command needing one sets it itself."
       (
-        !lib.hasInfix "hosts.plain." refusals
-        && lib.hasInfix "jitsusama.pi.hosts.optioned.environment gives NODE_OPTIONS" refusals
+        refusalOf "plain" == null
+        && lib.all (name: names (realmOf name) name) loadsCode
+        && names "both" "LD_PRELOAD and OPENSSL_CONF"
+        && names "three" "NODE_PATH, LD_AUDIT and OPENSSL_MODULES"
       );
 }
 # The hosts run as Linux's systemd user units, in slices a Mac has none of.
@@ -195,12 +254,14 @@ in
         && opensInspector "--no_disable_sigusr1"
         && !(opensInspector "--disable-sigusr1 --max-old-space-size=8192");
       # Any process of Joel's may send SIGUSR1, which would open node's
-      # inspector and let it run code as the host, whose word the node takes
+      # inspector and let it run code as the host, whose word mycelium takes
       # for which conversation a spawner serves; so node is told to ignore
       # it, nothing opens the inspector another way, and the unit clears
       # NODE_OPTIONS, so neither the user manager's environment nor a
-      # machine's hands node an option. A host started through env is held
-      # to it as one started plainly is.
+      # machine's hands node an option, nor NODE_PATH a module, nor
+      # NODE_COMPILE_CACHE compiled code, nor the loader's or OpenSSL's
+      # variables a library's or module's code. A host started through env
+      # is held to it as one started plainly is.
       shutsItsInspector =
         unit: start:
         let
@@ -208,7 +269,9 @@ in
         in
         lib.hasPrefix "${start}${node} --disable-sigusr1 " execStart
         && !(opensInspector execStart)
-        && lib.elem "NODE_OPTIONS" (lib.toList (unit.Service.UnsetEnvironment or [ ]));
+        &&
+          lib.sort lib.lessThan (lib.toList (unit.Service.UnsetEnvironment or [ ]))
+          == lib.sort lib.lessThan ([ "SSH_TPM_AUTH_SOCK" ] ++ loadsCode);
       starts =
         kind:
         let
@@ -228,8 +291,6 @@ in
         && unit.Service.TimeoutStartSec or null == "20min"
         # Its core is kept until 20 November (host.nix says why).
         && unit.Service.LimitCORE or null == "infinity"
-        # Never given the TPM agent's own variable.
-        && lib.elem "SSH_TPM_AUTH_SOCK" (lib.toList (unit.Service.UnsetEnvironment or [ ]))
         && unit.Unit.StartLimitIntervalSec or null == 600
         && unit.Unit.StartLimitBurst or null == 3
         && unit.Unit.OnFailure or null == [ "pi-host-down@%N.service" ]
@@ -281,7 +342,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS to the user manager, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         readsOptions
         && starts "attended"

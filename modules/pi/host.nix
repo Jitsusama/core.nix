@@ -71,6 +71,35 @@ let
   # there. At logout, reboot or poweroff the manager's 5 s comes first.
   stopSeconds = 150;
 
+  # What would run code as the host as its node starts, so a host's unit
+  # clears each and a realm giving one is refused: NODE_OPTIONS, whose
+  # --require or --import runs a script and whose --inspect opens the
+  # inspector; NODE_PATH, where a require that finds nothing beside it looks,
+  # as a library's optional require does; NODE_COMPILE_CACHE, whose folder
+  # wins over the host's own and whose compiled code node runs as its
+  # modules' (host/service/compile-cache.ts); the loader's LD_PRELOAD, LD_AUDIT
+  # and LD_LIBRARY_PATH, which load a library; and OpenSSL's OPENSSL_CONF and
+  # OPENSSL_MODULES, whose configuration loads a module. mycelium keeps the
+  # same list in its src/node/asker.rs, once its lock here carries the change
+  # that proves a hosted session by its spawner: it then takes no host's word
+  # whose environment gives any of them, but for a blank NODE_OPTIONS. The two
+  # lists are kept alike by hand: nothing here reads mycelium's yet. These are
+  # node's, the loader's and OpenSSL's doors only. pi's own variables, such
+  # as PI_CODING_AGENT_DIR, which moves the extensions it loads, are the
+  # account's doors, like HOME: a process of the account can as well write
+  # the host's own code where pi-packages keeps it, or a module in node's
+  # home folders (~/.node_modules), which no variable names.
+  loadsCode = [
+    "NODE_OPTIONS"
+    "NODE_PATH"
+    "NODE_COMPILE_CACHE"
+    "LD_PRELOAD"
+    "LD_AUDIT"
+    "LD_LIBRARY_PATH"
+    "OPENSSL_CONF"
+    "OPENSSL_MODULES"
+  ];
+
   kinds = {
     attended = "the pi conversations Joel watches";
     background = "the pi conversations that run in the background";
@@ -131,7 +160,12 @@ let
             # Any process of the account may send SIGUSR1, which would open
             # node's inspector and let it run code as the host. mycelium
             # takes the host's word for which conversation each pi-spawner
-            # serves, and hears no host whose node lacks this.
+            # serves only where this is the first option on the host's
+            # command line and no option there opens the inspector; once
+            # its lock here carries its list, also only where the host's
+            # environment gives none of loadsCode, which the unit clears
+            # below. It refuses the word of a host started otherwise, and
+            # logs why.
             "--disable-sigusr1"
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
@@ -196,17 +230,13 @@ let
         # that boundary. Joel's own signing still finds his agent without
         # the variable.
         #
-        # NODE_OPTIONS goes too, as systemd's last step, after every
+        # loadsCode goes too, as systemd's last step, after every
         # Environment= and EnvironmentFile= a machine adds, so neither those
-        # nor the user manager's environment hand node an option: --inspect
-        # would open the inspector the flag above shuts, and --require or
-        # --import would run code as the host before pi does. A hosted
+        # nor the user manager's environment run code as the host before pi
+        # does, or open the inspector the flag above shuts. A hosted
         # conversation's commands, which inherit the host's environment,
-        # start without it too.
-        UnsetEnvironment = [
-          "SSH_TPM_AUTH_SOCK"
-          "NODE_OPTIONS"
-        ];
+        # start without them too.
+        UnsetEnvironment = [ "SSH_TPM_AUTH_SOCK" ] ++ loadsCode;
         # The host parks its conversations and keeps their records when told
         # to stop, so only its own failure restarts it; a crash's next start
         # takes back what it held.
@@ -363,7 +393,12 @@ in
               What the realm's own pi launcher would give every pi it starts,
               as the host never runs that launcher. No credential: the host
               resolves its own, and anything set for one launch belongs to the
-              conversation, not here.
+              conversation, not here. It may give none of NODE_OPTIONS,
+              NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT,
+              LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which the
+              host's unit clears since each could make its node run code:
+              evaluation refuses a realm giving one, and a command that needs
+              one sets it itself.
             '';
           };
         };
@@ -387,12 +422,27 @@ in
         message = toString refused;
       }
     ) cfg
-    # The unit clears NODE_OPTIONS, so a realm's own would be dropped
-    # unseen; it is refused instead, saying why.
-    ++ lib.mapAttrsToList (realm: host: {
-      assertion = !(host.environment ? NODE_OPTIONS);
-      message = "jitsusama.pi.hosts.${realm}.environment gives NODE_OPTIONS, which a pi host's unit clears, since --inspect there would open the host's inspector and --require or --import run code as the host; drop it. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get no NODE_OPTIONS from it.";
-    }) cfg;
+    # The unit clears loadsCode, so a realm's own would be dropped unseen;
+    # it is refused instead, saying why.
+    ++ lib.mapAttrsToList (
+      realm: host:
+      let
+        given = lib.filter (name: host.environment ? ${name}) loadsCode;
+        one = lib.length given == 1;
+        # "A", "A and B", "A, B and C"; nothing where none is given.
+        named =
+          if lib.length given < 2 then
+            lib.concatStrings given
+          else
+            "${lib.concatStringsSep ", " (lib.init given)} and ${lib.last given}";
+      in
+      {
+        assertion = given == [ ];
+        message = "jitsusama.pi.hosts.${realm}.environment gives ${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make the host's node run code nobody gave it. NODE_OPTIONS does so through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; NODE_COMPILE_CACHE through compiled code node reads back from its folder; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. ${
+          if one then "Drop it." else "Drop each one."
+        } A host's node takes no option from a realm but its heap, set with heapMb. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
+      }
+    ) cfg;
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (
