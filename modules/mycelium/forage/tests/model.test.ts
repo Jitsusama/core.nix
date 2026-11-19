@@ -73,6 +73,11 @@ it("how a cell grew is only claimed unless it grew from a start the book holds",
   assert.equal(claimed("FARAWAY", true), true);
   // With no starter it grows from the cell it split from, booked or not.
   assert.equal(claimed(undefined, true), true);
+  // One that grew from none here is never vouched for.
+  assert.equal(
+    grewClaimed({ cell: "TERNAA", startedBy: undefined, splitFrom: undefined, booked: true }, here),
+    true,
+  );
 });
 
 it("cells that started each other in a ring each still show once", () => {

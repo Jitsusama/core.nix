@@ -151,9 +151,14 @@ it("says the cells a cell started are only claimed unless the node's book holds 
     read(startedLine(forage(), three, () => false)).says,
     "3 cells: OSPREY, SKIFFS and TERNAA, as claimed",
   );
+  // Some claimed: each says so where it's named, and the rest once if any among them is.
   assert.equal(
-    read(startedLine(forage(), three, (cell) => cell !== "SKIFFS")).says,
-    "3 cells: OSPREY, SKIFFS and TERNAA, some as claimed",
+    read(startedLine(forage(), three, (cell) => cell === "SKIFFS")).says,
+    "3 cells: OSPREY as claimed, SKIFFS and TERNAA as claimed",
+  );
+  assert.equal(
+    read(startedLine(forage(), cells(8), (cell) => cell !== "HHHHHH")).says,
+    "8 cells: AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF and 2 more, some of the rest as claimed",
   );
 });
 
@@ -403,7 +408,10 @@ it("says who started a cell as only claimed unless the node's book holds it", ()
   const said = (booked: boolean) =>
     panelOf(forage({ cell: "TERNAA", startedBy: "KESTRL", booked }), here, []);
   assert.match(said(false), STARTED_CLAIMED);
-  const away = panelOf(forage({ cell: "TERNAA", startedBy: "FARAWAY" }), here, []);
-  assert.match(away, STARTED_AWAY_CLAIMED);
+  const away = (booked: boolean) =>
+    panelOf(forage({ cell: "TERNAA", startedBy: "FARAWAY", booked }), here, []);
+  assert.match(away(false), STARTED_AWAY_CLAIMED);
+  // The book holds a start whatever machine its starter stands on.
+  assert.ok(!away(true).includes("as claimed"));
   assert.match(said(true), STARTED_BOOKED);
 });

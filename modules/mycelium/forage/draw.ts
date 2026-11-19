@@ -229,8 +229,8 @@ function cap(x: number, y: number, ticked: number, all: number): string {
  * The floor cut through: the ground, the hyphae under it and each cell a
  * compartment along them, `cursor`'s ringed. Each top cell starts a hypha
  * of its own on the main line; a cell started by another branches down
- * from it, dashed where that's only its own word. `substrate` names the
- * machine the cells stand on.
+ * from it, dashed where that's only claimed, each named for the cell it
+ * leads to. `substrate` names the machine the cells stand on.
  */
 function floorOf(forages: readonly Forage[], cursor: string | null, substrate: string): string {
   const cells = placed(forages);
@@ -248,7 +248,7 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
         return "";
       }
       const claimed = grewClaimed(forage, here) ? " claimed" : "";
-      return `<path class="hypha${claimed}" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
+      return `<path class="hypha${claimed}" data-cell="${escaped(forage.cell)}" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
     })
     .join("");
   const joins = joined(cells.map((each) => each.forage))
@@ -324,20 +324,27 @@ ${forage.documents.map((document) => documentRow(document, forage.quest)).join("
 </section>`;
 }
 
-/**
- * Said after a tie the node can't vouch for: every split, and a start its
- * book doesn't hold. It names nobody as the claimer, since either end of a
- * split may be the one telling it.
- */
+/** Said after a tie the node can't vouch for, naming no claimer, as either end may be telling it. */
 const CLAIMED = ", as claimed";
 
-/** Said after the cells a cell started: nothing when the node's book holds every start. */
-function startsClaimed(started: readonly Pick<Forage, "booked">[]): string {
-  const claimed = started.filter((each) => !each.booked).length;
-  if (claimed === 0) {
-    return "";
+/**
+ * The cells a cell started, those the node's book doesn't hold as claimed: once after
+ * the list when all are, else beside each named, and once for any among those counted.
+ */
+function startsSaid(started: readonly Pick<Forage, "cell" | "booked">[]): string {
+  const cells = started.map((each) => each.cell);
+  const claimed = new Set(started.filter((each) => !each.booked).map((each) => each.cell));
+  if (claimed.size > 0 && claimed.size === cells.length) {
+    return cellsStarted(cells) + CLAIMED;
   }
-  return claimed === started.length ? CLAIMED : ", some as claimed";
+  const name = (cell: string) => `${cellLink(cell)}${claimed.has(cell) ? " as claimed" : ""}`;
+  const unnamed = cells.slice(namedOf(cells.length)).some((cell) => claimed.has(cell));
+  return cellsStarted(cells, name) + (unnamed ? ", some of the rest as claimed" : "");
+}
+
+/** How many of `count` cells a list names, past `MOST_STARTED` counting the rest. */
+function namedOf(count: number): number {
+  return count > MOST_STARTED + 1 ? MOST_STARTED : count;
 }
 
 /** The cell that started `forage`, linked to that cell's row when it is drawn here. */
@@ -350,13 +357,10 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
 }
 
 /**
- * The cells drawn here that `forage` started, each linked to its row, as
- * "Started by" links back. Past `MOST_STARTED` the rest are counted rather
- * than named, since a wall of links would bury the facts below; one more than
- * that is named, since "and 1 more" says less than its name. The panel sets it
- * in one span, so it reads as a sentence rather than a row of the fact's
- * flexed items, and ties each comma to the address before it, so no line
- * starts with one.
+ * The cells drawn here that `forage` started, each linked to its row, as "Started by" links
+ * back. Past `MOST_STARTED` the rest are counted, as a wall of links would bury the facts
+ * below, though one more is named, as "and 1 more" says less than its name. It's one span,
+ * read as a sentence, each comma tied to the address before it so no line starts with one.
  */
 function cellsStarted(
   started: readonly string[],
@@ -366,8 +370,7 @@ function cellsStarted(
     return "None here yet";
   }
   const count = started.length === 1 ? "One cell" : `${started.length} cells`;
-  const named = started.length > MOST_STARTED + 1 ? MOST_STARTED : started.length;
-  const links = started.slice(0, named).map(name);
+  const links = started.slice(0, namedOf(started.length)).map(name);
   const rest = started.length - links.length;
   const last = rest === 0 ? links.pop() : `${rest} more`;
   const before = links
@@ -416,7 +419,7 @@ function needsOf(
   asker: (join: Join) => string,
 ): string {
   // As with the cells a cell started, a long list names six and counts the rest.
-  const named = joins.length > MOST_STARTED + 1 ? MOST_STARTED : joins.length;
+  const named = namedOf(joins.length);
   const lines = joins.slice(0, named).map((join) => {
     const need =
       join.need === "" ? "" : `, for <span${saidBy(asker(join))}>${escaped(join.need)}</span>`;
@@ -483,7 +486,7 @@ ${waitsOf(forage)}${documentsOf(forage)}
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
     <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
-    <div><dt>Started</dt><dd><span>${cellsStarted(started.map((each) => each.cell))}${startsClaimed(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
+    <div><dt>Started</dt><dd><span>${startsSaid(started)}</span></dd></div>${joinFactsOf(forage, here, now)}
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>

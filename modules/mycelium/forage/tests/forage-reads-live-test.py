@@ -3,11 +3,13 @@
 The page is the one Nix builds, served by the real local-sites server beside a
 stand-in node (modules/local-sites/tests/stand_in_daemon.py) holding four cells'
 forage on kestrel (node.json): one with a purpose, a plan and a thing it waits
-on its person for, relying on a need the one it started serves, one with no
-purpose written, split from one whose lineage names nothing but that split.
+on its person for, relying on a need the one it started serves, a start the
+node's book holds, one with no purpose written, split from one whose lineage
+names nothing but that split, which is only claimed.
 Its feed is trimmed to the fields home.nix declares for a machine in a realm
 (NODE_KINDS). It must say it's live with every cell drawn, each started or
-split cell under the one it grew from, say what waits on its person and the
+split cell under the one it grew from, the booked start drawn whole and the
+claimed split dashed and said as claimed at both ends, say what waits on its person and the
 plan furthest from done in its lede, draw each cell's plans, quest, needs and
 split in its panel and the need as a dotted arc, step its cursor by keys,
 follow a purpose written, drawn as words though it holds markup, a wait
@@ -133,20 +135,23 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
             "style", f"--depth:{depth}"
         )
     # SKIFFS's start is in the node's book, so only OSPREY's split is drawn as claimed.
-    expect(forage_page.locator("path.hypha.claimed"), "a branch wasn't dashed right").to_have_count(
-        1
-    )
+    for name, dash in [("SKIFFS", "none"), ("OSPREY", "4px, 4px")]:
+        branch = forage_page.locator(f'path.hypha[data-cell="{name}"]')
+        expect(branch, f"{name}'s branch wasn't drawn {dash}").to_have_css("stroke-dasharray", dash)
     panel = opened_on(forage_page, "SKIFFS")
     expect(fact(panel, "Started by"), "SKIFFS's booked start read as claimed").not_to_contain_text(
         "as claimed"
     )
+    # KESTRL started SKIFFS by the book and split from nothing, so nothing of it is claimed.
+    panel = opened_on(forage_page, "KESTRL")
+    expect(panel, "KESTRL's booked start read as claimed").not_to_contain_text("as claimed")
     panel = opened_on(forage_page, "OSPREY")
     expect(fact(panel, "Split from"), "OSPREY didn't say it split from TERNAA").to_contain_text(
         "TERNAA, as claimed"
     )
     panel = opened_on(forage_page, "TERNAA")
     expect(fact(panel, "Split into"), "TERNAA didn't say it split into OSPREY").to_contain_text(
-        "OSPREY"
+        "OSPREY, as claimed"
     )
 
 

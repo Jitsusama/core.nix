@@ -225,14 +225,17 @@ function grewFrom(
 
 /**
  * Whether how `forage` grew from a cell among `here` is only claimed, so the
- * node can't vouch for it: every split is, and a start is unless the node's
- * book holds it.
+ * node can't vouch for it: every split is, a start is unless the node's book
+ * holds it, and so is a cell that grew from none here, failing closed. One
+ * that both started and split from the same cell grew from it by the book,
+ * though the panel still says the split as claimed.
  */
 function grewClaimed(
   forage: Pick<Forage, "cell" | "startedBy" | "splitFrom" | "booked">,
   here: ReadonlySet<string>,
 ): boolean {
-  return !(forage.booked && grewFrom(forage, here) === forage.startedBy);
+  const from = grewFrom(forage, here);
+  return !(forage.booked && from !== undefined && from === forage.startedBy);
 }
 
 /**
