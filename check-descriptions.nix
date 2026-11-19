@@ -1092,15 +1092,34 @@
     drawn
   '';
   every-cat-pose-reads-as-one-cat = ''
-    every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
-    pixels within 15% of sitting's, each stride of the walk the cat's code takes steps one pair
-    of feet with its body still, and each pair over the walk, and a leap's rise, tuck and fall
-    are all drawn
+    every pose of the margin's cat, each mark drawn as its sitting's glyph or a stride's or
+    meant as its own, has no lit pixel standing alone, a diagonal touching, and lit pixels
+    within 15% of sitting's, each stride of the walk the cat's code takes means what its poses
+    are picked by and steps one pair of feet with its body still, each pair in its turn over
+    the walk, and a leap's rise, tuck and fall are all drawn
+  '';
+  every-pose-fault-is-refused = ''
+    the margin's animals' pose rules refuse the cat's own strides out of order, alone, with a
+    pair never stepping or stepping twice running, across the walk's end too, after a pose
+    that isn't a stride, undrawn, and none at all, each by its reason; a stride planted with
+    its body moved on its top row, the row below, its middle or above its feet, though not one
+    with only its tail's tip moved; a foot moved either side of the feet's middle, and on an
+    odd width in its middle and last column; a pose with a pixel two cells off, though not one
+    joined by a corner alone; and just over 15% fewer or more pixels, on sittings of 37 and 20,
+    though not just under or on the line, and on one of 13; and they say a misnamed sitting
+    undrawn, and a pose listed but missing, hold a stride no pose lists to the stray and size
+    rules, and refuse a stride meant otherwise than its animal's poses are picked by, the
+    cat's own planted on copies of its drawings; and they find an animal's
+    poses by its sitting's and strides' glyphs, the start of its name and what a mark means,
+    though one of them is undrawn, and no other mark, not one holding the name inside its own,
+    one meant otherwise, nor one drawn as no glyph beside a sitting drawn so
   '';
   every-puppy-pose-reads-as-one-puppy = ''
-    every pose of the margin's puppy has no lit pixel standing alone, a diagonal touching, and lit
-    pixels within 15% of its own sitting's, each of its strides steps one pair of feet with its
-    body still, and each pair over the walk, and its sitting, bow and strides are all drawn; its
+    every pose of the margin's puppy, each mark named or meant for it or drawn as its sitting's
+    glyph or a stride's, has no lit pixel standing alone, a diagonal touching, and lit pixels
+    within 15% of its own sitting's, each of its strides means what its poses are picked by
+    and steps one pair of feet with its body still, each pair in its turn over the walk, and
+    its sitting, bow and strides are drawn; its
     strides are the walk the cat's code takes, each named for the puppy
   '';
   every-script-finds-what-it-imports = ''
@@ -3558,6 +3577,16 @@
   the-cat-keeps-joels-words = ''
     every design Joel stated for the margin cat, dated, is held by a phrase one of its cases says
     outside a comment, or owed since a date, and the owed ones are listed
+  '';
+  the-cats-walk-is-read-only-from-its-lists = ''
+    the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
+    frozen quoted words, either isn't found outside a comment, a word holds a space or
+    mismatched quotes, either is left unfrozen or frozen only in part, WALKS is named
+    elsewhere, or either is declared again, in a block or as a function, class or loop's
+    variable, though as its walk when they're only spaced, quoted or commented otherwise,
+    mid-line or at length too, a longer name or another's property holds theirs, and STRIDING
+    is read above its declaration or below; and it's read past a copy commented out, the forms
+    its reader says it doesn't see passing unseen
   '';
   the-click-strength-finds-the-intensity = ''
     the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes

@@ -27,12 +27,12 @@ The theme's checks read its walk too: `modules/theme/walk-read.nix` reads
 the frozen `WALKS` and `STRIDING` in `MarginCatWays.js`, and the cat's and
 the puppy's pose checks hold their strides to it. A change to `WALKS`'s
 strides fails both until each animal's are drawn for it, a pair of feet a
-step, and a gait added to `STRIDING` by a list other than `WALKS` fails
-them until `walk-read.nix` reads it. The reader takes the walk from those
-two declarations alone, and fails the file if either is declared twice or
-`WALKS` is named anywhere else; a gait the code strides by outside
-`STRIDING` passes unseen, as do the forms its opening comment says it
-doesn't see.
+step and each pair in its turn, and a gait added to `STRIDING` by a list
+other than `WALKS` fails them until `walk-read.nix` reads it. The reader
+takes the walk from those two declarations alone, and fails the file if
+either is declared twice or `WALKS` is named anywhere else; a gait the
+code strides by outside `STRIDING` passes unseen, as do the forms its
+opening comment says it doesn't see.
 
 ## Joel's Words
 
