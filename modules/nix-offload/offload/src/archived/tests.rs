@@ -646,6 +646,44 @@ fn a_run_of_packed_files_keeps_no_pass() {
     assert!(read.is_some(), "the tarball is what the far side reads");
 }
 
+// git archive stamps each file with its commit's time, so in a warm
+// target a file an old commit changed read as older than what the run
+// before built from another commit's, and cargo kept that stale build.
+#[test]
+fn an_unpacked_file_is_newer_than_its_commit() {
+    let folder = tempfile::tempdir().unwrap();
+    let top = repository(folder.path(), &[("file", "x")]);
+    let amended = Command::new("git")
+        .args(["-c", "user.name=Test", "-c", "user.email=test@example.org"])
+        .arg("-C")
+        .arg(&top)
+        .args(["commit", "-q", "--amend", "--no-edit"])
+        .env("GIT_COMMITTER_DATE", "2001-01-01T00:00:00Z")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .status()
+        .unwrap();
+    assert!(amended.success());
+    let commit = git(&top, &["rev-parse", "HEAD"]);
+    let packed = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
+    let far = folder.path().join("far");
+    fs::create_dir(&far).unwrap();
+    let (command, archive) = unpacked_under(packed, &far.to_string_lossy());
+    let ran = Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "{command}touch -t 200201010000 ../older; [ file -nt ../older ] && echo newer"
+        ))
+        .stdin(fs::File::open(archive).unwrap())
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&ran.stdout),
+        "newer\n",
+        "the file kept its commit's time: {ran:?}"
+    );
+}
+
 // The far side's shell reads the tarball from its input, runs in the
 // run's folder within it, and leaves nothing once it ends.
 #[test]

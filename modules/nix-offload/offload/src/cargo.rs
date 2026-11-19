@@ -285,34 +285,32 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
 /// folder, so a copy in another folder reuses them too, and only what
 /// changed builds again.
 ///
+/// A crate outside the run's workspace, such as a kit a path dependency
+/// names in a folder beside it, is the exception: cargo keys it by its
+/// whole path, which is new in each copy, so it and what reads it build
+/// again each run, and their earlier builds stay in the target until the
+/// room rule below clears it.
+///
 /// Up to four targets are kept for a key, each held with `flock` while a
-/// run builds in it, since two runs in one would wait on cargo's lock of
-/// it. With all four held, or no `flock`, or a target the run names
-/// itself, it builds as before. A target is begun afresh when its disk has
-/// less than `NIX_OFFLOAD_WARM_ROOM_KB` free (200 GiB), since the disk
-/// holds the builder's Nix store too; room it can't read keeps the target.
-pub const WARM: &str = "key=$1; shift; \
-     if [ -z \"${CARGO_TARGET_DIR-}\" ] && command -v flock >/dev/null 2>&1 \
-     && root=$HOME/.cache/nix-offload/cargo/$key && mkdir -p \"$root\" 2>/dev/null; then \
-     slot=; for n in 0 1 2 3; do \
-     exec 8>\"$root/$n.lock\" && flock -n 8 && { slot=$n; break; }; done; \
-     if [ -n \"$slot\" ]; then \
-     free=$(df -Pk \"$root\" 2>/dev/null | awk 'NR == 2 { print $4 }'); \
-     if [ -n \"$free\" ] && [ \"$free\" -lt \"${NIX_OFFLOAD_WARM_ROOM_KB:-209715200}\" ]; then \
-     rm -rf \"${root:?}/$slot\"; \
-     echo \"nix-offload: the builder is short of room, so warm target $slot of $key \
-     begins afresh\" >&2; fi; \
-     export CARGO_TARGET_DIR=\"$root/$slot/target\" CARGO_BUILD_BUILD_DIR=\"$root/$slot/build\"; \
-     echo \"nix-offload: cargo builds in warm target $slot of $key there\" >&2; \
-     else exec 8>&-; \
-     echo \"nix-offload: every warm target of $key there is in use, so this builds cold\" >&2; \
-     fi; fi; exec \"$@\"";
+/// run builds in it, and by whatever it starts, since two runs in one
+/// would wait on cargo's lock of it. With all four held, no `flock`, or a
+/// `CARGO_TARGET_DIR` the builder's own environment sets, it builds as
+/// before, saying why. Its target replaces one a repository's own cargo
+/// config names, as a fresh copy's would be gone anyway; a `--target-dir`
+/// among the words still wins. When the disk has less than
+/// `NIX_OFFLOAD_WARM_ROOM_KB` free (200 GiB), since it holds the builder's
+/// Nix store too, the targets no run holds are cleared, longest unused
+/// first, until it has; only then is the run's own begun afresh. Room it
+/// can't read clears nothing.
+pub const WARM: &str = include_str!("warm.sh");
 
 /// The name a run's warm target is kept under: the repository `origin`
-/// names, or the top folder's name `top` where it names none, then the
-/// folder `dir` the run is in below the top. Two checkouts of one
-/// repository share it, as two trees of it do; anything a folder's name
-/// can't safely hold is a dash, and it never begins with a dot.
+/// names, with its host, or the top folder's name `top` where it names
+/// none, then the folder `dir` the run is in below the top. Two checkouts
+/// of one repository share it, as two trees of it do. Anything a folder's
+/// name can't safely hold is a dash, and it never begins with a dot; a
+/// hash of the whole name ends it, so two that read alike once dashed,
+/// `o/r-x` and `o-r/x`, stay apart.
 pub fn warm_key(origin: Option<&str>, top: &str, dir: &str) -> String {
     let repository = origin.map(repository_path).unwrap_or_default();
     let mut key = if repository.is_empty() {
@@ -324,7 +322,8 @@ pub fn warm_key(origin: Option<&str>, top: &str, dir: &str) -> String {
         key.push('/');
         key.push_str(dir);
     }
-    let mut key: String = key
+    let whole = key;
+    let mut key: String = whole
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || "._-".contains(c) {
@@ -337,20 +336,32 @@ pub fn warm_key(origin: Option<&str>, top: &str, dir: &str) -> String {
     if key.is_empty() || key.starts_with('.') {
         key.insert_str(0, "r-");
     }
-    key.truncate(120);
-    key
+    key.truncate(100);
+    format!("{key}-{:08x}", fnv(&whole) >> 32)
 }
 
-/// The path an origin names its repository by, past its host: `o/r` of
-/// `https://github.com/o/r.git` or `git@github.com:o/r`.
+/// The 64-bit FNV-1a hash of `text`, the same on every machine and in
+/// every build, as a target's name must be for each sender to find it.
+fn fnv(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+/// The host and path an origin names its repository by: `github.com/o/r`
+/// of `https://github.com/o/r.git` or `git@github.com:o/r`.
 fn repository_path(origin: &str) -> String {
-    let path = match origin.split_once("://") {
-        Some((_, rest)) => rest.split_once('/').map_or("", |(_, path)| path),
-        None => origin.split_once(':').map_or("", |(_, path)| path),
+    let (host, path) = match origin.split_once("://") {
+        Some((_, rest)) => rest.split_once('/').unwrap_or((rest, "")),
+        None => origin.split_once(':').unwrap_or(("", "")),
     };
-    path.trim_end_matches('/')
-        .trim_end_matches(".git")
-        .to_owned()
+    let host = host.rsplit_once('@').map_or(host, |(_, host)| host);
+    let path = path.trim_end_matches('/').trim_end_matches(".git");
+    if path.is_empty() {
+        String::new()
+    } else {
+        format!("{host}/{path}")
+    }
 }
 
 /// The words `there --run` is given for cargo's words `sent`, in the warm
@@ -373,11 +384,19 @@ pub fn sent_there(key: &str, sent: &[String]) -> Vec<String> {
     .collect()
 }
 
-/// The key [`warm_key`] gives the folder here, from git's word of its top
-/// and origin.
+/// The key [`warm_key`] gives the folder here.
 fn key_here() -> String {
+    key_in(&env::current_dir().unwrap_or_default())
+}
+
+/// The key [`warm_key`] gives the folder `here`, from git's word of its
+/// top and origin; git names the top by its real path, so `here` is read
+/// by its own.
+fn key_in(here: &Path) -> String {
     let git = |words: &[&str]| {
         Command::new("git")
+            .arg("-C")
+            .arg(here)
             .args(words)
             .stdin(Stdio::null())
             .stderr(Stdio::null())
@@ -389,7 +408,7 @@ fn key_here() -> String {
     };
     let top = git(&["rev-parse", "--show-toplevel"]).unwrap_or_default();
     let origin = git(&["remote", "get-url", "origin"]);
-    let here = env::current_dir().unwrap_or_default();
+    let here = here.canonicalize().unwrap_or_else(|_| here.to_owned());
     let dir = here
         .strip_prefix(&top)
         .map_or_else(|_| String::new(), |dir| dir.to_string_lossy().into_owned());

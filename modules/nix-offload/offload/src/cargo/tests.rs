@@ -1,3 +1,5 @@
+use std::fs;
+
 use super::*;
 
 fn words(line: &str) -> Vec<String> {
@@ -172,25 +174,30 @@ fn a_warm_target_is_named_for_its_repository_and_folder() {
             Some("https://github.com/Jitsusama/core.nix.git"),
             "core.nix",
             "modules/repos",
-            "Jitsusama-core.nix-modules-repos",
+            "github.com-Jitsusama-core.nix-modules-repos-a83c86fc",
         ),
-        (Some("git@github.com:o/r"), "r", "", "o-r"),
+        (
+            Some("git@github.com:o/r"),
+            "r",
+            "",
+            "github.com-o-r-c78b735a",
+        ),
         (
             Some("ssh://git@host.example/a/b.git/"),
             "b",
             "zone/tool",
-            "a-b-zone-tool",
+            "host.example-a-b-zone-tool-71c39923",
         ),
-        (None, "tree", "", "tree"),
-        (None, "tree", "x", "tree-x"),
+        (None, "tree", "", "tree-5b25b8ef"),
+        (None, "tree", "x", "tree-x-d4aff97f"),
         (
             Some("https://host.example/../x y"),
             "t",
             "..",
-            "r-..-x-y-..",
+            "host.example-..-x-y-..-c390aad3",
         ),
-        (None, ".hidden", "", "r-.hidden"),
-        (None, "", "", "r-"),
+        (None, ".hidden", "", "r-.hidden-28280da0"),
+        (None, "", "", "r--cbf29ce4"),
     ] {
         assert_eq!(
             warm_key(origin, top, dir),
@@ -201,8 +208,56 @@ fn a_warm_target_is_named_for_its_repository_and_folder() {
     let long = "a".repeat(300);
     assert_eq!(
         warm_key(None, &long, "").len(),
-        120,
+        109,
         "a long name wasn't cut"
+    );
+    assert_ne!(
+        warm_key(Some("git@h:o/r-x"), "r-x", ""),
+        warm_key(Some("git@h:o-r"), "o-r", "x"),
+        "two repositories that read alike once dashed shared a target"
+    );
+    assert_ne!(
+        warm_key(Some("https://a.example/o/r"), "r", ""),
+        warm_key(Some("https://b.example/o/r"), "r", ""),
+        "one path on two hosts shared a target"
+    );
+}
+
+// The cargo here names its warm target from the tree it's run in; a
+// folder reached through a link is named for the real one, as git names
+// its top.
+#[test]
+fn the_folder_here_is_named_for_its_origin_and_place() {
+    let folder = tempfile::tempdir().unwrap();
+    let top = folder.path().join("tree");
+    fs::create_dir_all(top.join("zone/tool")).unwrap();
+    let git = |words: &[&str]| {
+        let ran = Command::new("git")
+            .arg("-C")
+            .arg(&top)
+            .args(words)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .unwrap();
+        assert!(ran.status.success(), "git {words:?}: {ran:?}");
+    };
+    git(&["init", "-q"]);
+    let linked = folder.path().join("linked");
+    std::os::unix::fs::symlink(&top, &linked).unwrap();
+    assert_eq!(
+        key_in(&linked.join("zone/tool")),
+        warm_key(None, "tree", "zone/tool"),
+        "a tree with no origin wasn't named for its top"
+    );
+    git(&["remote", "add", "origin", "git@github.com:o/r.git"]);
+    assert_eq!(
+        key_in(&top.join("zone/tool")),
+        warm_key(Some("git@github.com:o/r.git"), "tree", "zone/tool"),
+    );
+    assert_eq!(
+        key_in(&top),
+        warm_key(Some("git@github.com:o/r.git"), "tree", ""),
     );
 }
 
@@ -227,30 +282,62 @@ fn a_suite_goes_there_through_its_warm_target() {
     );
 }
 
-/// The shells a builder's might be: dash, as most are, and the `sh` here.
-fn shells() -> Vec<&'static str> {
-    ["sh", "dash"]
-        .into_iter()
-        .filter(|shell| {
-            Command::new(shell)
-                .args(["-c", "true"])
-                .status()
-                .is_ok_and(|status| status.success())
-        })
-        .collect()
-}
+/// The shells a builder's might be: dash, as most are, which the package
+/// gives its tests, and the `sh` here.
+const SHELLS: [&str; 2] = ["sh", "dash"];
 
 /// `WARM` for the key `k` run by `shell` with `home` as its home, running
-/// `script` with sh in the target it takes, `vars` set too.
+/// `script` with sh in the target it takes, `vars` set too. Its disk is
+/// never short of room unless `vars` says so, so the tests pass on a disk
+/// of any size.
 fn warmed(shell: &str, home: &Path, script: &str, vars: &[(&str, &str)]) -> Command {
+    warmed_for("k", shell, home, script, vars)
+}
+
+/// [`warmed`] for the key `key`.
+fn warmed_for(key: &str, shell: &str, home: &Path, script: &str, vars: &[(&str, &str)]) -> Command {
     let mut warm = Command::new(shell);
-    warm.args(["-c", WARM, "nix-offload-warm", "k", "sh", "-c", script])
+    warm.args(["-c", WARM, "nix-offload-warm", key, "sh", "-c", script])
         .env("HOME", home)
         .env_remove("CARGO_TARGET_DIR")
         .env_remove("CARGO_BUILD_BUILD_DIR")
-        .env_remove("NIX_OFFLOAD_WARM_ROOM_KB")
+        .env("NIX_OFFLOAD_WARM_ROOM_KB", "0")
         .envs(vars.iter().copied());
     warm
+}
+
+/// A run of `key` under `home` that holds its target until `done` is
+/// made, once it has taken it.
+fn holding(key: &str, shell: &str, home: &Path, done: &Path) -> std::process::Child {
+    let took = home.join(format!("took-{key}"));
+    let _ = fs::remove_file(&took);
+    let script = format!(
+        "touch '{}'; while [ ! -e '{}' ]; do sleep 0.05; done",
+        took.display(),
+        done.display()
+    );
+    let child = warmed_for(key, shell, home, &script, &[])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let began = std::time::Instant::now();
+    while !took.exists() {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(20),
+            "{shell}: a run never took its target"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    child
+}
+
+/// Ends the runs `held`, holding until `done` was made.
+fn release(done: &Path, held: Vec<std::process::Child>) {
+    fs::write(done, "").unwrap();
+    for mut child in held {
+        child.wait().unwrap();
+    }
 }
 
 /// What `warmed` said on each stream, once it ended 0.
@@ -276,7 +363,7 @@ fn slot(home: &Path, n: u8) -> String {
 // next run, and a file a run left in it is there for the one after.
 #[test]
 fn a_run_builds_in_its_repositorys_warm_target_and_the_next_finds_it() {
-    for shell in shells() {
+    for shell in SHELLS {
         let home = tempfile::tempdir().unwrap();
         let script = "echo \"$CARGO_TARGET_DIR $CARGO_BUILD_BUILD_DIR\"; \
              ls \"$CARGO_TARGET_DIR\"; mkdir -p \"$CARGO_TARGET_DIR\"; \
@@ -298,35 +385,17 @@ fn a_run_builds_in_its_repositorys_warm_target_and_the_next_finds_it() {
 // cargo's lock of a shared target, so each takes one no other run holds.
 #[test]
 fn a_run_beside_another_takes_a_target_of_its_own() {
-    for shell in shells() {
+    for shell in SHELLS {
         let home = tempfile::tempdir().unwrap();
-        let started = home.path().join("started");
-        let mut first = warmed(
-            shell,
-            home.path(),
-            &format!("touch {}; sleep 5", started.display()),
-            &[],
-        )
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-        let began = std::time::Instant::now();
-        while !started.exists() {
-            assert!(
-                began.elapsed() < std::time::Duration::from_secs(10),
-                "{shell}: the first never began"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        let done = home.path().join("done");
+        let first = holding("k", shell, home.path(), &done);
         let (beside, _) = said(warmed(
             shell,
             home.path(),
             "echo \"$CARGO_TARGET_DIR\"",
             &[],
         ));
-        let _ = first.kill();
-        let _ = first.wait();
+        release(&done, vec![first]);
         assert_eq!(
             beside,
             format!("{}/target\n", slot(home.path(), 1)),
@@ -335,32 +404,126 @@ fn a_run_beside_another_takes_a_target_of_its_own() {
     }
 }
 
-// A builder's disk holds its Nix store too, so a target is begun afresh
-// when the disk is short of room, rather than growing into the store's.
+// With every target of a key held, a run builds cold, as before, rather
+// than wait for one.
 #[test]
-fn a_target_begins_afresh_when_the_builder_is_short_of_room() {
-    for shell in shells() {
+fn a_run_with_every_target_held_builds_cold() {
+    for shell in SHELLS {
+        let home = tempfile::tempdir().unwrap();
+        let done = home.path().join("done");
+        let held: Vec<_> = (0..4)
+            .map(|_| holding("k", shell, home.path(), &done))
+            .collect();
+        let (out, told) = said(warmed(
+            shell,
+            home.path(),
+            "echo \"${CARGO_TARGET_DIR-none}\"",
+            &[],
+        ));
+        release(&done, held);
+        assert_eq!(out, "none\n", "{shell}: it took a held target");
+        assert!(
+            told.contains("is free, so this builds cold"),
+            "{shell}: {told}"
+        );
+    }
+}
+
+// A builder's disk holds its Nix store too, so when it's short of room the
+// targets no run holds are cleared, other keys' first, and the run's own
+// begins afresh only when that isn't enough. On 19 November a disk short
+// of room cleared only the run's own target, so every run built cold
+// while idle keys' targets kept the space.
+#[test]
+fn a_builder_short_of_room_clears_the_targets_no_run_holds() {
+    for shell in SHELLS {
         let home = tempfile::tempdir().unwrap();
         let leave = "mkdir -p \"$CARGO_TARGET_DIR\"; touch \"$CARGO_TARGET_DIR/kept\"";
-        said(warmed(shell, home.path(), leave, &[]));
+        for key in ["idle", "busy", "k"] {
+            said(warmed_for(key, shell, home.path(), leave, &[]));
+        }
+        let done = home.path().join("done");
+        let busy = holding("busy", shell, home.path(), &done);
         let (after, told) = said(warmed(
             shell,
             home.path(),
             "ls \"$CARGO_TARGET_DIR\" 2>/dev/null; echo \"$CARGO_TARGET_DIR\"",
             &[("NIX_OFFLOAD_WARM_ROOM_KB", "999999999999")],
         ));
+        release(&done, vec![busy]);
+        let cache = home.path().join(".cache/nix-offload/cargo");
+        assert!(
+            !cache.join("idle/0").exists(),
+            "{shell}: an idle key's target kept the room: {told}"
+        );
+        assert!(
+            cache.join("busy/0/target/kept").exists(),
+            "{shell}: a target a run held was cleared: {told}"
+        );
         assert_eq!(
             after,
             format!("{}/target\n", slot(home.path(), 0)),
-            "{shell}: the target wasn't begun afresh"
+            "{shell}: the run's own target wasn't begun afresh"
         );
-        assert!(told.contains("short of room"), "{shell}: {told}");
+        assert!(
+            told.contains("clears warm target idle/0"),
+            "{shell}: {told}"
+        );
+        assert!(told.contains("still short of room"), "{shell}: {told}");
+    }
+}
+
+// A lock a builder can't open, or no flock there, builds cold, as before;
+// in dash a redirection `exec` couldn't make ended the whole suite.
+#[test]
+fn a_target_that_cant_be_held_builds_cold() {
+    for shell in SHELLS {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().join(".cache/nix-offload/cargo/k");
+        fs::create_dir_all(&root).unwrap();
+        for n in 0..4 {
+            fs::create_dir(root.join(format!("{n}.lock"))).unwrap();
+        }
+        let (out, told) = said(warmed(
+            shell,
+            home.path(),
+            "echo \"${CARGO_TARGET_DIR-none}\"",
+            &[],
+        ));
+        assert_eq!(out, "none\n", "{shell}: {told}");
+        assert!(told.contains("builds cold"), "{shell}: {told}");
+
+        let bin = home.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        for tool in ["sh", "mkdir"] {
+            let found = Command::new("sh")
+                .args(["-c", &format!("command -v {tool}")])
+                .output()
+                .unwrap();
+            let found = String::from_utf8_lossy(&found.stdout).trim().to_owned();
+            std::os::unix::fs::symlink(found, bin.join(tool)).unwrap();
+        }
+        let shell_path = Command::new("sh")
+            .args(["-c", &format!("command -v {shell}")])
+            .output()
+            .unwrap();
+        let shell_path = String::from_utf8_lossy(&shell_path.stdout)
+            .trim()
+            .to_owned();
+        let (out, told) = said(warmed(
+            &shell_path,
+            home.path(),
+            "echo \"${CARGO_TARGET_DIR-none}\"",
+            &[("PATH", &bin.to_string_lossy())],
+        ));
+        assert_eq!(out, "none\n", "{shell}: {told}");
+        assert!(told.contains("has no flock"), "{shell}: {told}");
     }
 }
 
 #[test]
-fn a_target_the_run_names_is_kept() {
-    for shell in shells() {
+fn a_target_the_builder_names_is_kept() {
+    for shell in SHELLS {
         let home = tempfile::tempdir().unwrap();
         let (out, _) = said(warmed(
             shell,
