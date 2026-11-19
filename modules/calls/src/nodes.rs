@@ -100,6 +100,12 @@ pub fn answers(runtimes: &Path) -> Asked {
     asked
 }
 
+/// Whether `asker` asks the nodes of an account folder `owner` owns: root
+/// asks every account's, anyone else only their own.
+fn asks(asker: rustix::process::Uid, owner: u32) -> bool {
+    asker.is_root() || owner == asker.as_raw()
+}
+
 /// Each node under `runtimes`, in order: only sockets owned by the account
 /// whose runtime folder, itself the account's, holds them, the first
 /// [`EACH_ACCOUNT`] of each; and what's said of each account offering more.
@@ -108,7 +114,6 @@ fn nodes(runtimes: &Path) -> (Vec<Node>, Vec<String>) {
         return (Vec::new(), Vec::new());
     };
     let asker = rustix::process::geteuid();
-    let mine = |owner: u32| asker.is_root() || owner == asker.as_raw();
     let mut accounts: Vec<(u32, PathBuf, fs::ReadDir)> = accounts
         .flatten()
         .filter_map(|account| {
@@ -116,7 +121,7 @@ fn nodes(runtimes: &Path) -> (Vec<Node>, Vec<String>) {
             let owner = folder
                 .is_dir()
                 .then_some(folder.uid())
-                .filter(|owner| mine(*owner))?;
+                .filter(|owner| asks(asker, *owner))?;
             let held = account.path().join("mycelium");
             fs::symlink_metadata(&held)
                 .ok()
@@ -260,5 +265,24 @@ fn read_line(stream: &mut UnixStream, deadline: Instant) -> io::Result<Vec<u8>> 
                 "answered more than {AT_MOST} bytes"
             )));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustix::process::Uid;
+
+    use super::asks;
+
+    #[test]
+    fn root_asks_every_account_and_anyone_else_only_their_own() {
+        assert!(asks(Uid::ROOT, 1000), "root left an account unasked");
+        let person = Uid::from_raw(1000);
+        assert!(asks(person, 1000), "an account left its own nodes unasked");
+        assert!(
+            !asks(person, 1001),
+            "an account asked another's nodes, which could answer as its own"
+        );
+        assert!(!asks(person, 0), "an account asked root's nodes");
     }
 }

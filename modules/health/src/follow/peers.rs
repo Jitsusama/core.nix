@@ -32,8 +32,8 @@ const UNHEARD_FOR: i64 = calls::elsewhere::FRESH * 1_000_000;
 
 /// What the day calls a node here that won't answer, or that an account
 /// offering too many leaves unasked; a-call-is-on names which, and why.
-pub(super) const NODE_SILENT: &str =
-    "a mycelium node here won't answer or isn't asked, so its peers' calls go unheard";
+pub(super) const NODE_SILENT: &str = "a mycelium node here won't answer or isn't asked, so its peers' calls go unheard; \
+     a-call-is-on names which and why";
 
 /// The thing the nodes here are counted under.
 pub(super) const NODES: &str = "the mycelium nodes here";

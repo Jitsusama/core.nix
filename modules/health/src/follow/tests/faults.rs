@@ -316,6 +316,30 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn a_node_here_nobody_answers_on_is_a_fault_once_its_time_is_up() {
+    let into = tempfile::tempdir().expect("a folder");
+    let runtimes = tempfile::tempdir().expect("runtimes");
+    let held = runtimes.path().join("1000").join("mycelium");
+    std::fs::create_dir_all(&held).expect("a node's folder");
+    // A socket its node has let go of: connecting is refused at once.
+    drop(std::os::unix::net::UnixListener::bind(held.join("work.sock")).expect("a socket"));
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC)
+        .hearing_peers(runtimes.path().to_path_buf());
+    let second = 1_000_000;
+    follower.hear_peers(NOON);
+    follower.hear_peers(NOON + 180 * second);
+    follower.write().expect("the day is written");
+    let day = read(into.path(), "2026-11-12");
+    assert_eq!(
+        day.things.get(peers::NODES).map(|thing| thing.errors),
+        Some(1),
+        "a node nobody answers on wasn't counted once: {:?}",
+        day.things.keys().collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn each_machine_and_the_nodes_whose_calls_go_unheard_are_a_thing_apart() {
     let heard = calls::elsewhere::Heard {

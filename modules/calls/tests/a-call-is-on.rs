@@ -527,13 +527,71 @@ fn a_mute_node_and_pipewire_looking_twice_still_answer_inside_a_proofs_time() {
     let folder = world.account("1000", &recording(40, "zoom"));
     fs::write(folder.join("later.json"), "[]").expect("a later graph");
     misbehaving(&world, "work", Vec::new());
+    let started = Instant::now();
     let told = world
         .told_within(&[world.runtimes()], Duration::from_secs(9))
         .expect("a mute node and PipeWire's second look ran past a shaper proof's ten seconds");
+    let took = started.elapsed();
     assert_eq!(
         told.status.code(),
         Some(1),
         "a recording gone two seconds on was a call: {told:?}"
+    );
+    // Both slow paths were taken: the node's whole five seconds, then
+    // PipeWire's look two seconds on.
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("answered nothing within 5s"),
+        "the mute node wasn't waited on: {told:?}"
+    );
+    assert!(
+        took >= Duration::from_secs(7),
+        "it answered in {took:?}, too soon to have waited on both"
+    );
+}
+
+#[test]
+fn machines_past_the_most_are_said_to_go_unnamed() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let skiff = peer(10, false, "{}");
+    let fleet: Vec<String> = (0..70)
+        .map(|n| skiff.replace("\"skiff\"", &format!("\"m{n:02}\"")))
+        .collect();
+    node(&world, "1000", "work", &fleet.join(","));
+    let told = world.told(&[world.runtimes()]);
+    assert_eq!(told.status.code(), Some(1), "no call was one: {told:?}");
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("so 6 records past them go unnamed"),
+        "the records past the most weren't said to go unnamed: {told:?}"
+    );
+}
+
+#[test]
+fn a_flag_is_read_wherever_it_stands() {
+    let world = World::new();
+    world.account("1000", "[]");
+    node(&world, "1000", "work", &peer(10, true, r#"{"call":true}"#));
+    let told = world.told(&[world.runtimes(), "--here"]);
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "--here after the folder heard a peer: {told:?}"
+    );
+    let told = world.told(&[world.runtimes(), "--hear"]);
+    assert_eq!(
+        told.status.code(),
+        Some(64),
+        "a mistyped flag after the folder wasn't refused: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("knows no --hear"),
+        "the refusal doesn't name the mistyped flag: {told:?}"
+    );
+    let told = world.told(&["--", world.runtimes()]);
+    assert_eq!(
+        told.status.code(),
+        Some(0),
+        "a folder after -- wasn't read as one: {told:?}"
     );
 }
 

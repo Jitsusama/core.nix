@@ -59,29 +59,9 @@ struct Heard {
 
 fn main() -> ExitCode {
     terminal_kit::ask(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        // terminal-kit leaves every program's --verbose to it, to say more
-        // of a failure.
-        let args: Vec<&str> = context
-            .args
-            .iter()
-            .map(String::as_str)
-            .filter(|arg| !matches!(*arg, "--verbose" | "-v"))
-            .collect();
-        let (here, runtimes) = match args.as_slice() {
-            ["--here", rest @ ..] => (true, rest),
-            rest => (false, rest),
-        };
-        let runtimes = match runtimes {
+        let (here, folders) = read(&context.args)?;
+        let runtimes = match folders.as_slice() {
             [] => None,
-            // A mistyped flag read as a folder would find no account and
-            // answer no call without a word.
-            [flag] if flag.starts_with('-') => {
-                return Err(Failure::new(
-                    Exit::Usage,
-                    format!("a-call-is-on knows no {flag}; its own is --here"),
-                )
-                .try_this("a-call-is-on --help"));
-            }
             [runtimes] => Some(*runtimes),
             _ => {
                 return Err(
@@ -98,6 +78,33 @@ fn main() -> ExitCode {
             Failure::new(Exit::Unavailable, "it couldn't tell whether a call is on").because(why)
         })
     })
+}
+
+/// Whether `args` ask about here alone, and the folders they name. A flag
+/// is read wherever it stands, up to a `--`; terminal-kit leaves every
+/// program's --verbose to it, to say more of a failure.
+fn read(args: &[String]) -> Result<(bool, Vec<&str>), Failure> {
+    let mut here = false;
+    let mut folders = Vec::new();
+    let mut args = args.iter().map(String::as_str);
+    while let Some(arg) = args.next() {
+        match arg {
+            "--here" => here = true,
+            "--verbose" | "-v" => {}
+            "--" => folders.extend(args.by_ref()),
+            // A mistyped flag read as a folder would find no account and
+            // answer no call without a word.
+            flag if flag.starts_with('-') => {
+                return Err(Failure::new(
+                    Exit::Usage,
+                    format!("a-call-is-on knows no {flag}; its own is --here"),
+                )
+                .try_this("a-call-is-on --help"));
+            }
+            folder => folders.push(folder),
+        }
+    }
+    Ok((here, folders))
 }
 
 /// Whether a call is on here, or, unless `here` alone is asked, on a peer:
@@ -134,7 +141,10 @@ fn cautions(peers: &calls::elsewhere::Heard) -> Vec<String> {
         format!("{machine}'s call probe said nothing lately, so a call there goes unseen")
     });
     let undated = peers.undated.iter().map(|machine| {
-        format!("{machine}'s record is dated ahead of this clock or not at all, so a call there goes unseen")
+        format!(
+            "{machine}'s record is dated ahead of this clock or not at all, \
+             so a call there goes unseen"
+        )
     });
     let unanswered = peers
         .unanswered

@@ -22,10 +22,11 @@
 //!   with no time it can read, is undated, since how old it is can't be
 //!   told.
 //!
-//! A machine's name is kept without its control characters, so no record
-//! steers the terminal or the day it's named in, and at most
-//! [`MACHINES_AT_MOST`] machines are kept, so no answer names as many as
-//! it likes; a call past them still counts.
+//! A machine's name keeps only a host name's printable ASCII, so no record
+//! steers or hides itself in the terminal or the day it's named in, and at
+//! most [`MACHINES_AT_MOST`] machines are kept, so no answer names as many
+//! as it likes; a call past them still counts, and a machine past them on
+//! no call is passed over unremarked.
 //!
 //! Untold, unseen and undated machines, and a node here that won't answer, are
 //! named rather than waited on: whatever asks counts can't tell as busy
@@ -63,7 +64,7 @@ pub struct Heard {
     /// Why each node here that didn't answer couldn't, naming its socket.
     pub unanswered: Vec<String>,
     /// How many records past the first [`MACHINES_AT_MOST`] machines
-    /// were passed over unnamed, none of them a call.
+    /// were passed over unnamed, none of them a call or on none.
     pub unnamed: usize,
 }
 
@@ -121,8 +122,10 @@ pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
         let Some(name) = record["name"]
             .as_str()
             .map(|name| {
+                // A host name's letters: no control, bidi or zero-width
+                // character from a peer reaches a line or the day.
                 name.chars()
-                    .filter(|c| !c.is_control())
+                    .filter(char::is_ascii_graphic)
                     .take(NAMED_IN)
                     .collect::<String>()
             })
@@ -135,7 +138,10 @@ pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
         };
         if said != Said::Call && machines.len() >= MACHINES_AT_MOST && !machines.contains_key(&name)
         {
-            unnamed += 1;
+            // A machine that said it's on no call goes unnamed anyway.
+            if said != Said::NoCall {
+                unnamed += 1;
+            }
             continue;
         }
         let strongest = machines.entry(name).or_insert(said);
@@ -438,19 +444,21 @@ mod tests {
     }
 
     #[test]
-    fn a_name_is_kept_without_its_control_characters() {
+    fn a_name_keeps_only_printable_ascii() {
         let heard = judge(
             &[answer(&[
                 record("sk\u{1b}]52;c;aGk=\u{7}iff", NOW, false, &json!({})),
                 record("\u{1b}\u{7}", NOW, false, &json!({})),
+                record("pu\u{202e}n\u{200b}t", NOW, false, &json!({})),
             ])],
             HERE,
             AT,
         );
         assert_eq!(
             heard.unseen,
-            ["sk]52;c;aGk=iff"],
-            "a name kept a control character, or one of nothing but them was named"
+            ["punt", "sk]52;c;aGk=iff"],
+            "a name kept a control, bidi or zero-width character, \
+             or one of nothing but them was named"
         );
     }
 
@@ -486,6 +494,27 @@ mod tests {
             heard.unnamed,
             100 - MACHINES_AT_MOST,
             "the records passed over weren't counted"
+        );
+    }
+
+    #[test]
+    fn a_machine_named_before_the_most_keeps_its_strongest_record_after() {
+        let first: Vec<Value> = (0..MACHINES_AT_MOST)
+            .map(|n| record(&format!("m{n:03}"), NOW, false, &json!({})))
+            .collect();
+        let later = answer(&[
+            record("m000", NOW, true, &json!({})),
+            record("quiet", NOW, true, &json!({"call": false})),
+        ]);
+        let heard = judge(&[answer(&first), later], HERE, AT);
+        assert_eq!(
+            heard.untold,
+            ["m000"],
+            "a machine already named lost its later realm's stronger record"
+        );
+        assert_eq!(
+            heard.unnamed, 0,
+            "a machine past the most on no call was counted as unnamed"
         );
     }
 
