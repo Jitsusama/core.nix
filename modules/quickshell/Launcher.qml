@@ -5800,9 +5800,16 @@ Scope {
                 // One line: the error's kind and where it threw first,
                 // never its message, which could carry what a source
                 // served, nor every frame, which would bury the journal.
-                const where = `${error?.stack ?? ""}`.split("\n")[0];
+                // A thrown value that isn't an Error is named by its type,
+                // and a first line not shaped as a frame is left out, so
+                // another engine or thrower can't put a message in. Its
+                // kind ends in a colon, as an uncaught throw's does, so
+                // the VM tests' error net still catches it.
+                const real = error instanceof Error;
+                const first = real ? `${error.stack ?? ""}`.split("\n")[0] : "";
+                const where = /@\S+:\d+(:\d+)?$/.test(first) ? ` at ${first}` : "";
                 console.warn(`launcher: refreshing ${source.settings.name} failed: `
-                    + `${error?.name ?? "an error"}${where ? ` at ${where}` : ""}`);
+                    + `${real ? error.name : typeof error}: thrown${where}`);
             }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.
@@ -6145,13 +6152,15 @@ Scope {
             steps[at] = step;
         });
         const answered = Held.answer(made, leaving);
+        const forgetting = Held.forgets(made, leaving, held, steps);
         if (answered !== "left") {
             // The outermost alone, kept though it offers nothing, is made
             // with its rows gone, but every place through it still goes
             // from every history, since each would show its spent rows.
-            if (leaving.spent >= 0) {
-                const outer = [held.slice(0, 1), steps.slice(0, 1)];
-                forgetLeft(outer, outer, lastPlace);
+            // Said once, as it goes spent, not again on every change of a
+            // source while it stays so, its rows each gone already.
+            if (forgetting !== null && held[0]?.rows.some(row => !row.went)) {
+                forgetLeft(forgetting, lastPlace);
                 console.info(`launcher: kept the outermost step of `
                     + `${source?.settings.name ?? "a place"} with its rows gone, as it `
                     + "offers nothing now");
@@ -6162,11 +6171,9 @@ Scope {
         // neither the way back nor as the place used last, even where the
         // row it's left from was renamed as it was remade; and every place
         // through it, and where it lands, goes from every history, as
-        // Held.afterLeave says, even where the leave throws partway, since
-        // held may have moved by then.
+        // Held.forgets and Held.afterLeave say, even where the leave throws
+        // partway. Both are read first, as onHeldChanged moves lastPlace.
         const last = lastPlace;
-        const was = held.slice(0, leaving.keep);
-        const left = [held.slice(0, leaving.spent + 1), steps.slice(0, leaving.spent + 1)];
         jumping = true;
         const before = steps.length;
         try {
@@ -6174,7 +6181,7 @@ Scope {
             back(false, held.length - leaving.keep);
         } finally {
             jumping = false;
-            forgetLeft([was, held], left, last);
+            forgetLeft(forgetting, last);
         }
         // Said in the journal, so a step that closes under Joel by itself
         // can be told from one his key left: what changed, and from how
@@ -6186,13 +6193,15 @@ Scope {
         return "left";
     }
 
-    // Each history made to forget the places through `left`, and the
-    // last places where Joel `landed`, as Held.afterLeave says, from the
-    // place used last as it was before the leave, `last`.
-    function forgetLeft(landed, left, last) {
+    // Each history made to forget what `forgetting` (Held.forgets's answer)
+    // says, as Held.afterLeave does, from the place used last as it was
+    // before the leave, `last`. Places are told apart by their rows' keys,
+    // Held.placeOf, so one recorded under a name a refresh changed since
+    // goes too.
+    function forgetLeft(forgetting, last) {
         const after = Held.afterLeave(
             { jumps: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last },
-            { landed, left }, placeOf);
+            forgetting, Held.placeOf);
         jumpsBack = after.jumps;
         jumpsAhead = after.ahead;
         tagsBack = after.tags;

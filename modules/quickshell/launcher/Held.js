@@ -129,13 +129,11 @@ function foundNow(foundAs, offered, ways) {
 // as no row offered now says it's left, rather than showing what it
 // offered before, its row as it was entered. A thing landed in from a
 // search, `through`, is left back to the search, past the collection it
-// was found in, as Joel's - leaves it. `spent` is the step whose places
-// every history forgets: the step left, or, where the outermost is kept
-// though it offers nothing, the outermost.
+// was found in, as Joel's - leaves it.
 function leaveTo(made, how, ways) {
     const steps = made.steps.slice();
     if (made.leave < 0) {
-        return { steps, keep: -1, spent: -1 };
+        return { steps, keep: -1 };
     }
     const left = made.leave > 0 && steps[made.leave].through === true ? made.leave - 1
         : made.leave;
@@ -145,11 +143,43 @@ function leaveTo(made, how, ways) {
             rows: ways.keep(steps[made.leave], [])
         });
     }
+    return { steps, keep: keep < steps.length ? keep : -1 };
+}
+
+// What every history forgets once `made` says a step offers nothing now,
+// for afterLeave, or null where none does: `left`, the places through
+// that step, whether it's left, left past the collection a search found
+// it in, or kept as a dialog's outermost; and `landed`, where Joel is
+// once `leaving` (leaveTo's answer) has gone, whose last places go. Each
+// is read as `held` read it before the remaking and as `steps` read it
+// after, since a row remade as offered now may be renamed so. Only the
+// spent step's places go, never its collection's, whose other rows still
+// offer what they did.
+function forgets(made, leaving, held, steps) {
+    if (made.leave < 0) {
+        return null;
+    }
+    const through = made.leave + 1;
+    const at = leaving.keep < 0 ? steps.length : leaving.keep;
     return {
-        steps,
-        keep: keep < steps.length ? keep : -1,
-        spent: Math.min(keep, made.leave)
+        landed: [held.slice(0, at), steps.slice(0, at)],
+        left: [held.slice(0, through), steps.slice(0, through)]
     };
+}
+
+// Where a list of steps goes, for telling the histories' places apart:
+// each step's row by its key, or what it is, as the launcher's sameRow
+// matches a row remade, and only a row with neither by its name. So a
+// place recorded under a name its row had before a refresh renamed it
+// is still the same place.
+function placeOf(steps) {
+    return steps.map(step => {
+        const row = step.row ?? {};
+        if ((row.key ?? "") !== "") {
+            return `key\u0000${row.key}`;
+        }
+        return (row.is ?? "") !== "" ? `is\u0000${row.is}` : `name\u0000${row.name ?? ""}`;
+    }).join("\u0001");
 }
 
 // What the launcher's remaking answers its caller, from `made` and where
@@ -172,16 +202,14 @@ function answer(made, leaving) {
 // show that spent step's rows as live; then each list's last places
 // where he landed go, as the place used last does there, since each
 // would go nowhere. `at.landed` and `at.left` hold the steps of where
-// he is and of the step left, each as it read before the leave remade
-// its rows and as it reads now, since a row remade as offered now may
-// be renamed so; `placeOf` says where a list of steps goes, as the
-// launcher's placeOf does.
-function afterLeave(went, at, placeOf) {
-    const landed = at.landed.map(placeOf);
-    const left = at.left.map(steps => ({ depth: steps.length, place: placeOf(steps) }));
+// he is and of the step left, as forgets gives them; `where` says
+// where a list of steps goes, as placeOf above does.
+function afterLeave(went, at, where) {
+    const landed = at.landed.map(where);
+    const left = at.left.map(steps => ({ depth: steps.length, place: where(steps) }));
     const through = one => left.some(step =>
-        one.held.length >= step.depth && placeOf(one.held.slice(0, step.depth)) === step.place);
-    const there = one => landed.includes(placeOf(one.held));
+        one.held.length >= step.depth && where(one.held.slice(0, step.depth)) === step.place);
+    const there = one => landed.includes(where(one.held));
     const kept = places => {
         const away = places.filter(one => !through(one));
         let end = away.length;
