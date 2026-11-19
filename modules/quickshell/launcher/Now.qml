@@ -2178,7 +2178,7 @@ Provider {
         target: Notices
 
         function onHistoryChanged() {
-            provider.changed();
+            provider.noticesMoved("the notices' history");
         }
     }
     // History lists a notice past the notices place's page from the rows
@@ -2191,8 +2191,30 @@ Provider {
         target: provider.source("notices")
 
         function onChanged() {
-            provider.changed();
+            provider.noticesMoved("the notices' rows");
         }
+    }
+
+    // The notices moved, as `why` says. While one of Now's rows is held, and
+    // nothing below it, it's asked with For You's own, after the change
+    // (forYouMoved): said outright there, a session's notice updated as its
+    // work turned just after Return into For You was drawn as Return's act,
+    // though no row For You showed had moved (the niri case, 2026-11-18:
+    // "the notices' history, then the notices' rows"). What such a step
+    // shows is rows of places, whose every drawn line changedTo compares.
+    // Deeper, the notices themselves are shown, in Desktop, History or
+    // what's on screen (leadsTo), whose rows changedTo doesn't reach or
+    // whose hue and drawer it doesn't compare, so there, as with nothing
+    // held, it's said outright and the places a notice is listed in are
+    // made again.
+    function noticesMoved(why) {
+        if (heldKeys().length === 1) {
+            Qt.callLater(Hearing.putOff(forYouTold));
+            return;
+        }
+        changedWhy = why;
+        changed();
+        changedWhy = "";
     }
 
     // What each source holds, { holding, bands }: who each thing it holds
