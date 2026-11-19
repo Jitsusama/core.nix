@@ -153,10 +153,10 @@ def test_both_keys_are_made_in_the_tpm_and_the_agent_holds_them(joel: Joel, keys
 def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: Keys) -> None:
     """A process in the agents' slice is refused the keys Joel's app slice is served.
 
-    The gate's cases are the agent's own build's tests; this proves only that the agent reads
-    its gate and the cgroup the kernel puts the asking process in. The same listing in Joel's
-    app slice, asking the same socket first, is served, and the agent's journal says the
-    refusal was the gate's, so neither a gate refusing everyone nor an agent that isn't there
+    The gate's cases are judged in ssh-tpm-agent-refuses-agents; this proves only that the
+    agent reads its gate and the cgroup the kernel puts the asking process in. The same listing
+    in Joel's app slice, asking the same socket first, is served, and the agent's journal says
+    the refusal was the gate's, so neither a gate refusing everyone nor an agent that isn't there
     passes it; the refusal is read at warning priority, as health reads the journal. A commit
     from the same slice asking to be signed as Joel is refused, and leaves no commit.
     """

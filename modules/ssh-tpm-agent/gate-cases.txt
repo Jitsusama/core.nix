@@ -1,5 +1,5 @@
-# What the gate beside this must decide, which the agent's build checks
-# (TestMachineGate): a verdict, then the cgroups of the peer and each of its
+# What the gate beside this must decide, which checks.nix's judged build
+# of the agent's source checks (TestMachineGate): a verdict, then the cgroups of the peer and each of its
 # parents in turn, as a workstation had them on 18 November.
 # Joel's ssh in his own terminal, and once the sorter has moved it.
 serve /user.slice/user-1000.slice/user@1000.service/app.slice/kitty-2210-1.scope /user.slice/user-1000.slice/user@1000.service/app.slice/app-niri-kitty-1.scope

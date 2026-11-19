@@ -3,8 +3,10 @@
 {
   account,
   bareNixos,
+  exampleLaptop,
   graphical,
   holds,
+  lib,
   pkgs,
   self,
   workstation,
@@ -48,25 +50,45 @@
       coreless = holds "ssh-tpm-agent-keeps-no-core" "ssh-tpm-agent may keep a core of its PIN." (
         service.LimitCORE or null == 0
       );
-      # gate-cases.txt copies the slices' names by hand, so a slice renamed
-      # would leave its cases passing and its work served: each slice the
-      # gate names must still be one a machine with a screen makes, as the
-      # graphical role brings the slices.
+      # The agent's source with the gate beside it, running only the test
+      # that judges each case. go test passes a -run that names no test, so
+      # the build fails unless the log shows TestMachineGate itself passed.
       judged = agent.overrideAttrs (old: {
         preCheck = (old.preCheck or "") + ''
           mkdir -p agent/testdata
           cp ${./gate.conf} agent/testdata/gate
           cp ${./gate-cases.txt} agent/testdata/gate-cases
         '';
-        checkFlags = [ "-run=^TestMachineGate$" ];
+        checkPhase = ''
+          runHook preCheck
+          go test -count=1 -v -run '^TestMachineGate$' ./agent | tee "$NIX_BUILD_TOP/gate.log"
+          test "''${PIPESTATUS[0]}" = 0
+          grep -q -- '^--- PASS: TestMachineGate ' "$NIX_BUILD_TOP/gate.log"
+          runHook postCheck
+        '';
       });
-      services = graphical.config.systemd.user.services;
-      awaitedOnes = builtins.filter (
-        name: (services.${name}.serviceConfig.Slice or null) == "jobs-awaited.slice"
-      ) (builtins.attrNames services);
+      # Every user service the example laptop declares, through NixOS and
+      # through Home Manager, since it imports every module Linux has.
+      laptop = exampleLaptop.config;
+      nixosAwaited = lib.filterAttrs (
+        _: unit: (unit.serviceConfig.Slice or null) == "jobs-awaited.slice"
+      ) laptop.systemd.user.services;
+      homeAwaited = lib.concatMap (
+        home:
+        builtins.attrNames (
+          lib.filterAttrs (
+            _: unit: (unit.Service.Slice or null) == "jobs-awaited.slice"
+          ) home.systemd.user.services
+        )
+      ) (builtins.attrValues laptop.home-manager.users);
+      awaitedOnes = builtins.attrNames nixosAwaited ++ homeAwaited;
+      # gate-cases.txt copies the slices' names by hand, so a slice renamed
+      # would leave its cases passing and its work served: each slice the
+      # gate names must still be one a machine with a screen makes, as the
+      # graphical role brings the slices.
       named =
         holds "ssh-tpm-agent-gate-names-real-slices"
-          "ssh-tpm-agent's gate names a slice, or spares a service, the graphical role lacks."
+          "ssh-tpm-agent's gate names a slice graphical lacks, or awaited isn't alone in its slice."
           (
             # gate.conf spells out every name in the awaited slice but
             # awaited, so that must be the one service the slices put there.

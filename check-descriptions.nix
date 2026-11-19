@@ -3350,9 +3350,8 @@
   ssh-tpm-agent-refuses-agents = ''
     the TPM's SSH agent refuses a process where agents' work runs, keeps no core of its PIN, and
     its source, beside the gate, passes each case the gate must decide; each slice the gate names
-    is one a machine with a screen makes, awaited is the one service its awaited slice holds, and
-    bash's and zsh's own text points
-    them at the agent's socket
+    is one a machine with a screen makes, awaited is the one service the example laptop puts in its
+    awaited slice, and bash's and zsh's own text leaves a shell the agent it was given
   '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
