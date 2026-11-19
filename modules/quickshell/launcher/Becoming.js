@@ -85,6 +85,26 @@ function nextDue(holds, now, within) {
     return ats.length === 0 ? -1 : Math.max(0, Math.min(...ats));
 }
 
+// What the launcher's timer does as it fires at `now`: each hold late by
+// then, and still the hold found late, is given to `settle`, which puts it
+// back or lets it go, and it says when to come again for the holds left,
+// in ms, or -1 for none. Settling changes the holds, so each is read afresh
+// from `held()`. QML's Timer runs on the animation timer, which steps with
+// frames rather than Date.now (qqmltimer.cpp), so it can fire a little
+// before a hold is due, finding none late; it must still come again, or
+// that hold is never put back nor said (goes-places, 2026-11-18).
+function fire(held, now, within, settle) {
+    const found = held();
+    for (const key of late(found, now, within)) {
+        // One let go or made afresh while another settled isn't late.
+        const one = held()[key];
+        if (one === found[key]) {
+            settle(one);
+        }
+    }
+    return nextDue(held(), now, within);
+}
+
 // What `act` did, as words.json's `did` says it, else `done`: a daemon's
 // own word for an act is never said to Joel (PN2VZC, 2026-11-12: "Optimize
 // for Conferencing and Gaming not sqm yet", and Power's "not

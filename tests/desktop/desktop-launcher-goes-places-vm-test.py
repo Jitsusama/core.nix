@@ -10,6 +10,7 @@ opening comment says what the test proves. Every test asks for the desktop, star
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
 import re
@@ -26,7 +27,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
 
@@ -195,9 +196,9 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
 def foot(desktop: Desktop, moved_from: str) -> tuple[int, int]:
     """Give where the foot's keys start, and how long how things stand reads.
 
-    It's read once the selection has left `moved_from` and nothing is told over the keys: an act
-    an earlier subtest ran, as the catalogue's reopening of Lighthouse, may say how it ended while
-    the next walks, and what the foot is told isn't a row's keys.
+    It's read once the selection has left `moved_from` and nothing is told over the keys, since
+    what the foot is told isn't a row's keys. Only a key lets a told word go, so a subtest that
+    runs an act waits for how it came out, as the catalogue does Lighthouse's reopening.
     """
     read: list[Json] = []
 
@@ -206,8 +207,44 @@ def foot(desktop: Desktop, moved_from: str) -> tuple[int, int]:
         moved = (shown["selected"] or {}).get("is", "") != moved_from
         return moved and not shown["saying"]
 
-    desktop.launcher_until(keys_alone)
+    try:
+        desktop.launcher_until(keys_alone)
+    except AssertionError as failed:
+        # A word told over the keys outlasts any wait, so say what was last read: one an earlier
+        # subtest's act left reads as a slow shell otherwise, as it did on 2026-11-18.
+        last = read[0] if read else {}
+        told = (
+            f"the foot never stood alone; it last read {last.get('saying')!r} over the keys, "
+            f"on {last.get('selected')}"
+        )
+        raise AssertionError(told) from failed
     return read[0]["keysAt"], len(read[0]["glance"])
+
+
+@contextlib.contextmanager
+def settled(desktop: Desktop, key: str, within: dt.timedelta) -> Iterator[None]:
+    """Run an act on a row, then wait for the launcher to say how it came out, become or not.
+
+    What didn't become is told at the next opening until a key, so a subtest that runs an act
+    waits here, and its own later openings spend the word. Within is the act's own bound and more.
+    """
+    since = desktop.mark()
+    yield
+    became, not_become = f"became {key}", f"not become {key}"
+
+    def came_out(said: str) -> bool:
+        # What didn't become may say why after a colon. Which came is printed, so the runs show
+        # whether an act that may come out either way ever doesn't become.
+        out = said in {became, not_become} or said.startswith(f"{not_become}: ")
+        if out:
+            print(f"{key} came out: {said}")
+        return out
+
+    try:
+        desktop.reported("", came_out, since, within)
+    except AssertionError as failed:
+        unsaid = f"the launcher never said how {key} came out"
+        raise AssertionError(unsaid) from failed
 
 
 def at_rotation(shown: Json) -> bool:
@@ -792,8 +829,14 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # again where it's closed (#1069), so the launcher doesn't open on it.
     lighthouse = one(listed(), "Lighthouse", closed_in)
     assert lighthouse["kind"] == "action", lighthouse
-    assert ran(lighthouse)["done"]
-    machine.fail(closed)
+    # How the reopening came out is told at the next opening until a key, so it settles here,
+    # where this subtest's own openings and their keys spend it. Left to land late, it was told
+    # as Home opened and stood over the foot it reads before any key (twice on 2026-11-18).
+    # Either way will do: the reopening itself is the sessions test's. It's held 30 s for the
+    # session to start (Sessions.startsWithin), so the wait is longer.
+    with settled(desktop, "orchestrator:TESTQA", dt.timedelta(seconds=60)):
+        assert ran(lighthouse)["done"]
+        machine.fail(closed)
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,
@@ -815,16 +858,22 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # A harmless one is done at once, and once it ends something, offered.
     awake = one(entries, "Keep Awake", "Machine")
     assert not awake["disruptive"]
-    assert ran(awake) == {"done": True, "said": "Machine \u203a Keep Awake"}
-    machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))
+    # Its outcome settles here, so the release's wait below can't be met by this one's. Either
+    # outcome passes, since its 5 s hold is tight on a loaded builder; the inhibitor is what's
+    # checked, and no other test says whether its row agrees with it.
+    with settled(desktop, "session:awake", dt.timedelta(seconds=30)):
+        assert ran(awake) == {"done": True, "said": "Machine \u203a Keep Awake"}
+        machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))
     # On, it keeps its name (VKCF3Z, 99c7bc98), and letting it sleep ends something.
     sleep = one(listed(), "Keep Awake", "Machine")
     assert sleep["id"] == awake["id"], "its id changed with its state"
     assert ran(sleep)["offered"]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake")
     desktop.land()
-    machine.send_key("ret")
-    machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
+    # The last act here, so it settles before the close, where a word it's told is spent.
+    with settled(desktop, "session:awake", dt.timedelta(seconds=30)):
+        machine.send_key("ret")
+        machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
     desktop.close_launcher()
     # One not there says so.
     assert "error" in ran({"id": "nothing:here"})

@@ -5854,20 +5854,24 @@ Scope {
     }
 
     // A hold no source agreed to in time is put back, saying so, unless its
-    // row agrees now, or can't be read to tell.
+    // row agrees now, or can't be read to tell. The timer comes again for
+    // those still held, as Becoming.fire says, even where it came early
+    // and found none late.
     function becameLate() {
-        for (const key of Becoming.late(becoming, Date.now(), becomingWithin)) {
-            const one = becoming[key];
+        becomeAgainIn(Becoming.fire(() => becoming, Date.now(), becomingWithin, one => {
             const now = nowRow(one);
             if (now === undefined || Becoming.agrees(one, now, reads))
-                agreed([key]);
+                agreed([one.key]);
             else
                 takenBack(one, "");
-        }
+        }));
     }
 
     function timeBecoming() {
-        const due = Becoming.nextDue(becoming, Date.now(), becomingWithin);
+        becomeAgainIn(Becoming.nextDue(becoming, Date.now(), becomingWithin));
+    }
+
+    function becomeAgainIn(due) {
         if (due < 0) {
             becomingDue.stop();
             return;
