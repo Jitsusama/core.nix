@@ -6149,11 +6149,13 @@ Scope {
             return answered;
         // Left by itself, it's no place Joel stepped to, so it goes on
         // neither the way back nor as the place used last, even where the
-        // row it's left from was renamed as it was remade; and where it
-        // lands goes from both, as Held.afterLeave says, even where the
-        // leave throws partway, since held may have moved by then.
+        // row it's left from was renamed as it was remade; and every place
+        // through it, and where it lands, goes from every history, as
+        // Held.afterLeave says, even where the leave throws partway, since
+        // held may have moved by then.
         const last = lastPlace;
-        const was = placeOf(held.slice(0, leaving.keep));
+        const was = held.slice(0, leaving.keep);
+        const left = [held.slice(0, leaving.keep + 1), steps.slice(0, leaving.keep + 1)];
         jumping = true;
         const before = steps.length;
         try {
@@ -6161,9 +6163,12 @@ Scope {
             back(false, held.length - leaving.keep);
         } finally {
             jumping = false;
-            const after = Held.afterLeave({ jumps: jumpsBack, last }, [was, placeOf(held)],
-                one => placeOf(one.held));
+            const after = Held.afterLeave(
+                { jumps: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last },
+                { landed: [was, held], left }, placeOf);
             jumpsBack = after.jumps;
+            jumpsAhead = after.ahead;
+            tagsBack = after.tags;
             lastPlace = after.last;
         }
         // Said in the journal, so a step that closes under Joel by itself
@@ -6183,8 +6188,8 @@ Scope {
     // for their verbs and then their parts, anything else for its targets.
     // A step entered from what was typed is made again from its own row,
     // since what was typed found it, not the rows above, as a place the
-    // picker holds at home is found from any folder. Says whether every
-    // step was still there.
+    // picker holds at home is found from any folder. Answers as
+    // heldAgain does, with one of Held.answer's three answers.
     function remade(steps, from, above, source) {
         const rows = above ?? (from > 0 && from <= steps.length ? steps[from - 1].rows : []);
         return heldAgain(steps, Held.remade(steps, from, rows, heldWays()), source);

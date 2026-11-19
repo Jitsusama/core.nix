@@ -157,19 +157,38 @@ function answer(made, leaving) {
     return leaving.keep < 0 ? "made" : "left";
 }
 
-// The way back, `went.jumps`, and the place used last, `went.last`, once
-// a step left by itself has landed where Joel stepped in from, which is
-// now where he is: each of the way back's last places there goes, and
-// the place used last if it's there, or Ctrl+O or Tab would go nowhere
-// and show it as it was. `landed` says where he is, as it read before
-// the leave remade its rows and as it reads now, since a row remade as
-// offered now may be renamed so; `placeOf` says where a jump goes, as
-// the launcher's placeOf does.
-function afterLeave(went, landed, placeOf) {
-    const there = one => !!one && landed.includes(placeOf(one));
-    let end = went.jumps.length;
-    while (end > 0 && there(went.jumps[end - 1])) {
-        end -= 1;
-    }
-    return { jumps: went.jumps.slice(0, end), last: there(went.last) ? null : went.last };
+// What each history keeps once a step left by itself has landed where
+// Joel stepped in from, which is now where he is: the way back
+// (`went.jumps`, Ctrl+O), the places ahead (`went.ahead`, Ctrl+I), the
+// tags (`went.tags`, Ctrl+T), each a list of places with their steps
+// in `held`, and the place used last (`went.last`, Tab, or null). Every
+// place through the step left goes, wherever it is, since each would
+// show that spent step's rows as live; then each list's last places
+// where he landed go, as the place used last does there, since each
+// would go nowhere. `at.landed` and `at.left` hold the steps of where
+// he is and of the step left, each as it read before the leave remade
+// its rows and as it reads now, since a row remade as offered now may
+// be renamed so; `placeOf` says where a list of steps goes, as the
+// launcher's placeOf does.
+function afterLeave(went, at, placeOf) {
+    const landed = at.landed.map(placeOf);
+    const left = at.left.map(steps => ({ depth: steps.length, place: placeOf(steps) }));
+    const through = one => left.some(step =>
+        one.held.length >= step.depth && placeOf(one.held.slice(0, step.depth)) === step.place);
+    const there = one => landed.includes(placeOf(one.held));
+    const kept = places => {
+        const away = places.filter(one => !through(one));
+        let end = away.length;
+        while (end > 0 && there(away[end - 1])) {
+            end -= 1;
+        }
+        return away.slice(0, end);
+    };
+    const last = went.last;
+    return {
+        jumps: kept(went.jumps),
+        ahead: kept(went.ahead),
+        tags: kept(went.tags),
+        last: last === null || through(last) || there(last) ? null : last
+    };
 }
