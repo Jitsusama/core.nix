@@ -67,20 +67,54 @@ enum Ended {
     Unasked,
 }
 
-/// The app to open with at once, without asking the shell: the portal's
-/// default, where it offers no app at all. It asks with none when the app
-/// declared for a link's scheme isn't registered for it in any folder's
-/// mimeinfo.cache, as for an entry in the account's own folder, but still
-/// names that app as the last choice; the shell could only say "Nothing
-/// here opens it" (Joel's mycelium: and tuple: links, 2026-11-17). With one
-/// app offered the portal opens it itself, so this does as it would. It
-/// opens any scheme whose default no folder registers without asking, so
-/// for such a link nothing here asks before it opens; whether anything
-/// asks is the program's it came from, which this code can't see (#5399's
-/// council, 2026-11-18).
-fn at_once(choices: &[String], last: Option<String>) -> Option<String> {
-    if choices.is_empty() { last } else { None }
+/// How the portal's ask, with `options` as it sends them, may end without
+/// asking the shell: in the portal's default, where it offers no app at
+/// all. It asks with none when the app declared for a link's scheme isn't
+/// registered for it in any folder's mimeinfo.cache, as for an entry in the
+/// account's own folder, but still names that app as the last choice; the
+/// shell could only say "Nothing here opens it" (Joel's tuple: links,
+/// 2026-11-17). With one app offered the portal opens it itself, so this
+/// does as it would. Only the links declared in `DECLARED` open so, and
+/// only in the app declared for each, so a default some other program
+/// wrote for a kind no folder registers is asked of the shell as any other
+/// (#5386's council, 2026-11-18). Whether anything asks before such a
+/// link opens is the program's it came from, which this code can't see.
+fn at_once(choices: &[String], options: &HashMap<String, OwnedValue>) -> AtOnce {
+    let Some(last) = text(options, "last_choice") else {
+        return AtOnce::Ask;
+    };
+    if !choices.is_empty() {
+        return AtOnce::Ask;
+    }
+    let kind = text(options, "content_type");
+    let declared = DECLARED
+        .iter()
+        .any(|&(declared, app)| kind.as_deref() == Some(declared) && last == app);
+    if declared {
+        AtOnce::Open(last)
+    } else {
+        AtOnce::Undeclared(last)
+    }
 }
+
+/// What `at_once` makes of an ask.
+#[derive(Debug, PartialEq, Eq)]
+enum AtOnce {
+    /// Open in this app, the one declared for the link.
+    Open(String),
+    /// Ask the shell, though the portal named this app and offered none,
+    /// since nothing here declared it for the link.
+    Undeclared(String),
+    /// Ask the shell, as for any choice.
+    Ask,
+}
+
+/// The links core.nix declares an app for whose entry lives in the
+/// account's own folder, which no mimeinfo.cache registers: Tuple's
+/// (modules/tuple/home.nix). The launcher's mycelium: links aren't here,
+/// since their entry is in the profile, whose cache registers it, so the
+/// portal opens them itself (modules/quickshell/home.nix).
+const DECLARED: [(&str, &str); 1] = [("x-scheme-handler/tuple", "tuple")];
 
 /// What the portal is told for how a choice ended, and the app picked,
 /// which must be one it offered, since the shell's answer is only a line.
@@ -305,9 +339,21 @@ impl Chooser {
         #[zbus(object_server)] server: &ObjectServer,
     ) -> (u32, HashMap<String, OwnedValue>) {
         // The shell asks over its own window, whichever program asked.
-        let _ = (app_id, parent_window);
-        if let Some(app) = at_once(&choices, text(&options, "last_choice")) {
-            return (PICKED, picked(app, &options));
+        let _ = parent_window;
+        // Said each time, with who asked, so what opened without asking, or
+        // was asked of the shell though the portal named an app, can be
+        // found. What a caller sets is quoted, so it can't word a line.
+        let kind = text(&options, "content_type").unwrap_or_default();
+        match at_once(&choices, &options) {
+            AtOnce::Open(app) => {
+                eprintln!("<6>open-with: opens {kind:?} for {app_id:?} in {app}, its declared app");
+                return (PICKED, picked(app, &options));
+            }
+            AtOnce::Undeclared(app) => eprintln!(
+                "<5>open-with: asks the shell of {kind:?} for {app_id:?}, since {app:?} isn't \
+                 declared for it"
+            ),
+            AtOnce::Ask => {}
         }
         let words = vec![
             what(&options),
@@ -452,18 +498,60 @@ mod tests {
     }
 
     #[test]
-    fn the_portals_default_opens_at_once_where_it_offers_no_app() {
-        let default = Some("mycelium-link".to_owned());
+    fn a_declared_link_opens_in_its_app_at_once_where_none_is_offered() {
+        let tuple = [
+            ("uri", "tuple://join/abc"),
+            ("content_type", "x-scheme-handler/tuple"),
+            ("last_choice", "tuple"),
+        ];
         assert_eq!(
-            at_once(&[], default.clone()),
-            Some("mycelium-link".to_owned())
+            at_once(&[], &options(&tuple)),
+            AtOnce::Open("tuple".to_owned())
         );
         assert_eq!(
-            at_once(&offered(), default),
-            None,
+            at_once(&offered(), &options(&tuple)),
+            AtOnce::Ask,
             "one offered went unasked"
         );
-        assert_eq!(at_once(&[], None), None, "an app was made up");
+        assert_eq!(
+            at_once(&[], &options(&tuple[..2])),
+            AtOnce::Ask,
+            "an app was made up"
+        );
+    }
+
+    #[test]
+    fn only_a_declared_link_opens_in_its_declared_app_at_once() {
+        let undeclared = |pairs: &[(&str, &str)]| at_once(&[], &options(pairs));
+        assert_eq!(
+            undeclared(&[
+                ("content_type", "x-scheme-handler/elsewhere"),
+                ("last_choice", "tuple")
+            ]),
+            AtOnce::Undeclared("tuple".to_owned()),
+            "a kind none declared opened unasked"
+        );
+        assert_eq!(
+            undeclared(&[
+                ("content_type", "x-scheme-handler/tuple"),
+                ("last_choice", "elsewhere")
+            ]),
+            AtOnce::Undeclared("elsewhere".to_owned()),
+            "a declared link opened in another's app"
+        );
+        assert_eq!(
+            undeclared(&[
+                ("content_type", "x-scheme-handler/mycelium"),
+                ("last_choice", "mycelium-link")
+            ]),
+            AtOnce::Undeclared("mycelium-link".to_owned()),
+            "a link the portal opens itself opened here"
+        );
+        assert_eq!(
+            undeclared(&[("last_choice", "tuple")]),
+            AtOnce::Undeclared("tuple".to_owned()),
+            "a link of no kind opened unasked"
+        );
     }
 
     #[test]
