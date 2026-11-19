@@ -109,12 +109,12 @@ fn help() -> Help {
                 .example("launcher show --drawers", "home, with every row's drawer")
                 .example(
                     "launcher show --json network",
-                    "what the shell says, as JSON",
+                    "what the desktop says, as JSON",
                 )
                 .argument("<step>...", step)
                 .option("--drawers", "every row's drawer, after the rows")
                 .exit(Exit::NotFound, "a step named nothing")
-                .exit(Exit::Unavailable, "the shell isn't answering"),
+                .exit(Exit::Unavailable, "the desktop isn't answering"),
         )
         .subcommand(
             Help::new("do", "what a row does, or an act a place offers")
@@ -128,19 +128,19 @@ fn help() -> Help {
                 )
                 .argument("<step>...", step)
                 .option("--yes", "does an act that asks first, unasked")
-                .exit(Exit::Failed, "the shell failed at it")
+                .exit(Exit::Failed, "the desktop failed at it")
                 .exit(Exit::NotFound, "a step named nothing")
                 .exit(
                     Exit::Unavailable,
-                    "the shell isn't answering, or the act's daemon had no answer",
+                    "the desktop isn't answering, or the act's daemon had no answer",
                 )
                 .exit(
                     Exit::Bug,
-                    "the shell asked again once told yes, or answered oddly",
+                    "the desktop asked again once told yes, or answered oddly",
                 )
                 .exit(
                     Exit::Refused,
-                    "answered no, no one to ask, or the shell refused it",
+                    "answered no, no one to ask, or the desktop refused it",
                 ),
         )
         .subcommand(
@@ -154,11 +154,11 @@ fn help() -> Help {
                 .example("launcher names machine", "Machine's rows, one a line")
                 .argument("<step>...", step)
                 .exit(Exit::NotFound, "a step named nothing")
-                .exit(Exit::Unavailable, "the shell isn't answering")
+                .exit(Exit::Unavailable, "the desktop isn't answering")
                 .unlisted(),
         )
         .exit(Exit::NotFound, "a step named nothing")
-        .exit(Exit::Unavailable, "the shell isn't answering")
+        .exit(Exit::Unavailable, "the desktop isn't answering")
 }
 
 /// Reads the arguments after the program's name, the kit's flags taken.
@@ -456,7 +456,7 @@ mod tests {
     #[test]
     fn a_do_the_shell_failed_at_exits_as_the_shell_silent() {
         let said = Words::from_value(&serde_json::json!({"terminal": {
-            "failed": "{name} not done \u{b7} the shell failed"}}));
+            "failed": "{name} not done \u{b7} the desktop failed"}}));
         assert_eq!(
             done(
                 &asking::stand_in::qs("failed"),

@@ -429,7 +429,7 @@ mod tests {
         .command("do", "what a row does on Return")
         .option("--yes", "do an act that asks first, unasked")
         .exit(Exit::NotFound, "no such row")
-        .exit(Exit::Unavailable, "the shell isn't answering")
+        .exit(Exit::Unavailable, "the desktop isn't answering")
     }
 
     #[test]
@@ -454,7 +454,7 @@ mod tests {
              --version                   its version\n\
              \n\
              EXIT\n  \
-             0 done \u{b7} 64 asked wrongly \u{b7} 66 no such row \u{b7} 69 the shell isn't answering\n"
+             0 done \u{b7} 64 asked wrongly \u{b7} 66 no such row \u{b7} 69 the desktop isn't answering\n"
         );
     }
 
