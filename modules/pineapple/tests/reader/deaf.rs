@@ -244,3 +244,34 @@ fn a_slack_failing_in_ways_signing_in_cant_mend_isnt_told_as_deaf() {
         std::fs::remove_dir_all(&home).expect("the case's home goes");
     }
 }
+
+#[test]
+fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
+    let (origin, _) =
+        answering_whole(|_, _| Answered::ok(json!({"ok": false, "error": "invalid_auth"})));
+    let home = home();
+    // A file where the row's folder would be, so the tell can't land.
+    let blocked = home.join("blocked");
+    std::fs::write(&blocked, "in the way").expect("in the way");
+    let named = blocked.join("pineapple.json");
+    let mut reader = reading(&home, &origin, &[], Some(&named));
+    let began = Instant::now();
+    while !journal(&home).contains("couldn't tell Joel in For You") && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    let failed = journal(&home);
+    std::fs::remove_file(&blocked).expect("out of the way");
+    let told = until(&named, true);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    assert!(
+        failed.contains("<3>couldn't tell Joel in For You whether Slack is heard"),
+        "a tell that can't land is said: {failed}"
+    );
+    assert!(
+        told,
+        "and made again once it can, rather than counted as told: {}",
+        journal(&home)
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
