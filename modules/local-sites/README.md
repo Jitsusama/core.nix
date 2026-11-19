@@ -43,8 +43,8 @@ its readers keep its rows. The system page
 ([`modules/mycelium/site`][map]) is fed live by the node. Code
 ([`modules/repos/site`][code]) draws every repository live from the repos
 daemon; where each repository and tree is home on it changes with the
-disk, so the repos daemon writes its `homes.json` into the documents as it
-reads, wherever they moved, and a mount without its own `homes.json`
+disk, so the repos daemon writes its `homes.json` into the documents each
+time a reading changes them, and a mount without its own `homes.json`
 answers with the documents' one under its name. The forage page
 ([`modules/mycelium/forage`][forage]), served at `/forage/`, sits
 beside the mycelium module it reads, since `/mycelium/` is the map's, and

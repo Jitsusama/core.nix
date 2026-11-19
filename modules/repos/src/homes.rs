@@ -64,7 +64,9 @@ impl Homes {
     /// Writes the homes `record` gives, and answers the line to say when
     /// they couldn't be written for a reason not said already, or are right
     /// again after failing, written or put right by another writer, so a
-    /// failure's line is never left reading as though it still held.
+    /// failure's line isn't left reading as though it still held. A failure
+    /// is remembered for the run alone: after a restart, the new run's ready
+    /// line is what follows it.
     pub fn keep(&mut self, record: &Record) -> Option<String> {
         match self.write(record) {
             Ok(_) => {
@@ -136,7 +138,9 @@ fn write_whole(temp: &Path, said: &str) -> io::Result<()> {
 /// The homes `record` gives, as Code's page addresses them.
 pub fn of(record: &Record) -> Value {
     // By their keys, not the reading's newest first, so a commit that only
-    // reorders the record changes no homes.
+    // reorders the record changes no homes, and a name two repositories
+    // share links to the same one each time rather than to whichever was
+    // written to last, as the timer before this had it.
     let mut repositories: Vec<_> = record.repositories.iter().collect();
     repositories.sort_by(|a, b| a.key.cmp(&b.key));
     let repositories = repositories.into_iter().map(|repository| {
