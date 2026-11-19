@@ -1,11 +1,13 @@
 // Where Reopen Them All puts each session back, run in Qt's own JavaScript
-// engine, the one the shell runs it in. The `reopening-finds-each-screen`
-// check copies modules/quickshell/Places.js and Viewers.js beside this file and
-// runs `qml -platform offscreen places.qml`. Each case is one a boot or a
+// engine, the one the shell runs it in, and how fast it may go. The
+// `reopening-finds-each-screen` check copies modules/quickshell/Places.js,
+// Reopening.js and Viewers.js beside this file and runs
+// `qml -platform offscreen places.qml`. Each case is one a boot or a
 // dock can make: the same monitor on another connector, a screen gone, and
 // a place kept before screens were named by what they are.
 import QtQuick
 import "Places.js" as Places
+import "Reopening.js" as Reopening
 import "Viewers.js" as Viewers
 
 QtObject {
@@ -323,16 +325,16 @@ QtObject {
         const queue = (over, io, heartbeat) => JSON.stringify({ v: 1,
             heartbeat: heartbeat ?? 5000,
             machine: { over, pressure: { cpu: 30, memory: 2, io } } });
-        expect("room: the next begins", Places.mayBegin(queue([], 10), 5010), true);
-        expect("memory over: it waits", Places.mayBegin(queue(["memory"], 10), 5010), false);
-        expect("processors over: it waits", Places.mayBegin(queue(["cpu"], 10), 5010), false);
-        expect("the disk stalling: it waits", Places.mayBegin(queue([], 60), 5010), false);
+        expect("room: the next begins", Reopening.mayBegin(queue([], 10), 5010), true);
+        expect("memory over: it waits", Reopening.mayBegin(queue(["memory"], 10), 5010), false);
+        expect("processors over: it waits", Reopening.mayBegin(queue(["cpu"], 10), 5010), false);
+        expect("the disk stalling: it waits", Reopening.mayBegin(queue([], 60), 5010), false);
         // A queue that isn't heard from says nothing of the machine, so it
         // never holds a reopening for good.
         expect("a queue gone quiet holds nothing",
-            Places.mayBegin(queue(["memory"], 90, 5000), 5000 + 121), true);
+            Reopening.mayBegin(queue(["memory"], 90, 5000), 5000 + 121), true);
         expect("no queue holds nothing",
-            [Places.mayBegin("", 5010), Places.mayBegin("{", 5010)], [true, true]);
+            [Reopening.mayBegin("", 5010), Reopening.mayBegin("{", 5010)], [true, true]);
 
         // Thirty reopened at once each open as before, but are told to
         // carry on only as the uplink has room, since a session told to
@@ -346,13 +348,13 @@ QtObject {
             machine: { over: [], pressure: { io: 1 }, uplink: mbit === undefined ? undefined
                 : { sentMbit: mbit } } });
         const ids = told => told.map(one => one.id);
-        const due = (text, told) => Places.carryOnsDue(thirty, told, text, 5010);
+        const due = (text, told) => Reopening.carryOnsDue(thirty, told, text, 5010);
         expect("the line full: none is told yet", ids(due(sending(6.1), [])), []);
         expect("the line with room: one at a time", due(sending(2.0), []).length, 1);
         // Those waiting on Joel first, then one carried in, then a leader.
         const wanting = thirty.map(one => Object.assign({}, one, { wants: one.id === "01-7" }));
         expect("waiting on Joel, then carried in, then leaders, then the rest",
-            ids(Places.carryOnsDue(wanting, [], sending(undefined), 5010)),
+            ids(Reopening.carryOnsDue(wanting, [], sending(undefined), 5010)),
             ["01-7", "01-20", "01-25", "01-0"]);
         // With no uplink said yet, four at a time, the next once one has
         // gone idle or a minute has passed since it was told.
@@ -365,7 +367,7 @@ QtObject {
         // A queue not heard from says nothing of the line, so all are told.
         expect("a queue gone quiet: all told at once",
             due(sending(6.1, 5010 - 121), []).length, 30);
-        expect("no queue: all told at once", Places.carryOnsDue(thirty, [], "", 5010)
+        expect("no queue: all told at once", Reopening.carryOnsDue(thirty, [], "", 5010)
             .length, 30);
         // Before the line has room again, no more than the few allowed go:
         // thirty pending through ten looks at a full line, none told.

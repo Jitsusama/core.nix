@@ -116,19 +116,7 @@ function homeward(away, screens, workspaces) {
         const ranked = away[screen]
             .filter(one => workspaces.some(each => each.id === one.id))
             .sort((a, b) => a.workspace - b.workspace);
-        // An alike screen holding one that left another connector is the
-        // screen it was sent to, not its own come back: two monitors of one
-        // model without serials, or a VM's two, describe themselves the
-        // same, and taking that one for home dropped the note before the
-        // screen it left came back.
-        const sentTo = ranked
-            .filter(one => one.output)
-            .map(one => [one.output, workspaces.find(each => each.id === one.id).output])
-            .filter(([left, now]) => now !== left)
-            .map(([, now]) => now);
-        const free = Object.keys(screens ?? {})
-            .filter(name => screens[name] === screen || name === screen)
-            .filter(name => !sentTo.includes(name));
+        const free = comeBack(screen, screens, ranked, workspaces);
         if (free.length > 0) {
             home.push(screen);
             for (const one of ranked) {
@@ -140,6 +128,23 @@ function homeward(away, screens, workspaces) {
         }
     }
     return { moves, home };
+}
+
+// The connectors of the screens alike `screen` that may be it come back, of
+// `screens` by connector. An alike screen holding one of its workspaces that
+// left another connector is the screen it was sent to, not its own come
+// back: two monitors of one model without serials, or a VM's two, describe
+// themselves the same, and taking that one for home dropped the workspace's
+// note before the screen it left came back.
+function comeBack(screen, screens, ranked, workspaces) {
+    const sentTo = ranked
+        .filter(one => one.output)
+        .map(one => [one.output, workspaces.find(each => each.id === one.id).output])
+        .filter(([left, now]) => now !== left)
+        .map(([, now]) => now);
+    return Object.keys(screens ?? {})
+        .filter(name => screens[name] === screen || name === screen)
+        .filter(name => !sentTo.includes(name));
 }
 
 // Which window kept, of a boot's windows other than its sessions, a window
@@ -251,23 +256,6 @@ function opensAt(where, beside) {
     const next = beside.find(one => one.id === (where.after ?? where.before));
     return where.after !== undefined ? next.column + 1 : next.column;
 }
-
-// How much of the disk's time may be stalled, as the share of the last ten
-// seconds some task waited on it, before the next session waits too: past
-// it git, rustc and nix sit in D state and journalctl stops answering.
-const ioStalls = 50;
-// How old the queue's heartbeat may be, in seconds, and still be heard.
-const queueHeard = 120;
-// How fast the uplink may already send, in Mbit/s, before the next
-// session is told to carry on: the evening's rate on 2026-11-14, which
-// the builders sharing the home line lived with, where the 22:24 boot's
-// seventy-two told at once sent 6.4 of the 8.2 it had for 17 minutes.
-const uplinkRoom = 4.5;
-// While the queue says nothing of the uplink, this many told and still
-// working at once, each counted until it goes idle or this many seconds
-// pass since it was told.
-const fewAtOnce = 4;
-const fewPatience = 60;
 
 // Where a session to reopen sat, by its id: this boot's place while it
 // has one, else the restored boot's. An orchestrator bringing its own
@@ -446,66 +434,4 @@ function freshId(now, random) {
 // `afreshFor` names the session it stands in for.
 function afresh(one, start, id) {
     return Object.assign({}, one, { id, cwd: start, fresh: true, afreshFor: one.id });
-}
-
-// Those of `pending` (each `{ id, wants, carried, leads }`, as reopened,
-// `wants` when it waits on Joel) to tell to carry on now, in the order
-// they're told: those waiting on Joel, then those carried in from another
-// machine, then leaders, then
-// the rest, each part in the order given. `told` is those told already,
-// `{ id, at, idle }` each, `at` in seconds as `now` is, and none of them is
-// told again. With the machine queue's `text` saying the uplink sends under
-// uplinkRoom, one; past it, none. With a queue that says nothing of the
-// uplink, as before the machine queue measured it, fewAtOnce working at
-// once. A queue unread or silent past `queueHeard` says nothing of the
-// line, so all are told, as mayBegin holds nothing back.
-function carryOnsDue(pending, told, text, now) {
-    const done = new Set(told.map(one => one.id));
-    const left = pending.filter(one => !done.has(one.id));
-    const first = [one => one.wants === true, one => Boolean(one.carried),
-        one => one.leads === true];
-    const rank = one => {
-        const at = first.findIndex(is => is(one));
-        return at === -1 ? first.length : at;
-    };
-    const ordered = left.map((one, at) => ({ one, at }))
-        .sort((a, b) => rank(a.one) - rank(b.one) || a.at - b.at).map(entry => entry.one);
-    let read = null;
-    try {
-        read = JSON.parse(text);
-    } catch (_error) {
-        return ordered;
-    }
-    const machine = read?.machine;
-    if (typeof read?.heartbeat !== "number" || now - read.heartbeat > queueHeard || !machine) {
-        return ordered;
-    }
-    const sent = machine.uplink?.sentMbit;
-    if (typeof sent === "number") {
-        return ordered.slice(0, sent < uplinkRoom ? 1 : 0);
-    }
-    const working = told.filter(one => !one.idle && now - one.at < fewPatience).length;
-    return ordered.slice(0, Math.max(0, fewAtOnce - working));
-}
-
-// Whether Reopen Them All may begin the next session now, from the machine
-// queue's own verdict (`text`, /run/user/$UID/jobs/queue.json): not while
-// it says the memory or the processors are over, or while the disk stalls,
-// as eighty sessions begun two seconds apart did eleven minutes after the
-// 09:23 boot on 2026-11-08 (load 245, IO pressure 98%, 16 GB swapped). A
-// queue unread, or silent past `queueHeard`, holds nothing back, so a
-// reopening never waits on a queue that's gone. `now` is in seconds since
-// the epoch, as the heartbeat is.
-function mayBegin(text, now) {
-    let read = null;
-    try {
-        read = JSON.parse(text);
-    } catch (_error) {
-        return true;
-    }
-    const machine = read?.machine;
-    if (typeof read?.heartbeat !== "number" || now - read.heartbeat > queueHeard || !machine) {
-        return true;
-    }
-    return (machine.over ?? []).length === 0 && (machine.pressure?.io ?? 0) < ioStalls;
 }

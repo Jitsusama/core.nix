@@ -6,6 +6,7 @@
   "PiSource.qml"
   "PiSource.js"
   "Sessions.qml"
+  "Reopening.js"
   # Run by Sessions.qml to open a session's window in the sessions kitty.
   "opens-in-sessions.sh"
   "SessionTalks.js"

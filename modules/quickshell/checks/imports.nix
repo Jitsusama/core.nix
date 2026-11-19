@@ -71,6 +71,7 @@
   "Sessions.qml" = [
     "PiSource.js"
     "Places.js"
+    "Reopening.js"
     "SessionWindows.js"
     "Viewers.js"
     "Waiting.js"

@@ -35,6 +35,7 @@ import Quickshell.Io
 import QtQuick
 import "PiSource.js" as Pi
 import "Places.js" as Places
+import "Reopening.js" as Reopening
 import "SessionWindows.js" as SessionWindows
 import "Viewers.js" as Viewers
 import "Waiting.js" as Waiting
@@ -1290,7 +1291,7 @@ Singleton {
         reopenStartedAt = now;
     }
     // And none is begun while the machine queue says the machine has no
-    // room (Places.mayBegin), looked at again this often, since eighty
+    // room (Reopening.mayBegin), looked at again this often, since eighty
     // sessions begun two seconds apart still swamped it after a boot.
     readonly property int roomPace: 5000
     function reopenSoon() {
@@ -1321,7 +1322,7 @@ Singleton {
     }
     function hasRoom() {
         machineQueue.reload();
-        return Places.mayBegin(machineQueue.text(), Date.now() / 1000);
+        return Reopening.mayBegin(machineQueue.text(), Date.now() / 1000);
     }
     // It asks again rather than taking the next at once, since a timer
     // this long is a coarse one, which may fire up to a twentieth of its
@@ -1332,7 +1333,7 @@ Singleton {
     }
 
     // Each session Reopen Them All opened is told to carry on only as the
-    // uplink has room (Places.carryOnsDue), since the words make it send,
+    // uplink has room (Reopening.carryOnsDue), since the words make it send,
     // not its window: an idle pi sends a fraction of a kbit/s, and on
     // 2026-11-14 seventy-two told as each opened sent 6.4 Mbit/s of the
     // home line's 8.2 for 17 minutes, past the builders sharing it. Every
@@ -1362,7 +1363,7 @@ Singleton {
         // Those told an hour ago are long past counting.
         carryingOn.told = carryingOn.told.filter(told => now - told.at < 3600);
         machineQueue.reload();
-        const due = Places.carryOnsDue([pendingOf(one, kept)], toldSoFar(now),
+        const due = Reopening.carryOnsDue([pendingOf(one, kept)], toldSoFar(now),
             machineQueue.text(), now);
         if (due.length === 0)
             return false;
@@ -1394,7 +1395,7 @@ Singleton {
         machineQueue.reload();
         const asked = ready.map(one => Object.assign({}, one,
             { wants: wanting.some(session => session.presence?.session === one.id) }));
-        const due = Places.carryOnsDue(asked, told, machineQueue.text(), now / 1000);
+        const due = Reopening.carryOnsDue(asked, told, machineQueue.text(), now / 1000);
         for (const one of due) {
             steer(runs(one.id).address, { text: carryOn, id: `carry-on-${now}-${one.id}` });
             carryingOn.told.push({ id: one.id, at: now / 1000 });
