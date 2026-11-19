@@ -239,21 +239,26 @@ ShellRoot {
         return networks.cableLoading === null && networks.cablesAsked.length === 0;
     }
 
+    // Until held gives loads up on purpose, one given up on a slow builder
+    // is named at the step it came before, by each quiet wait and by held
+    // itself, rather than by the step its hold would fail.
+    function noneGivenUp(name) {
+        if (!root.holdsMade)
+            Expect.expect(`no load before ${name} was given up`,
+                Object.keys(networks.factsStuck).length === 0
+                && Object.keys(networks.cablesStuck).length === 0,
+                JSON.stringify([networks.factsStuck, networks.cablesStuck]));
+    }
+
     // `step`, once every fact and cable load under way has landed, with a look counted
     // from then. An ask five seconds past the last look loads everything
     // again, and a load skips what's already under way, so a step that
     // writes a file and asks begins quiet: no load asked before its write
     // can answer for it, and no ask in its first five seconds looks again.
-    // Until held gives loads up on purpose, one given up on a slow builder
-    // is named here, before the step its hold would fail.
     function quiet(name, step) {
         return () => waits.until(`the loads before ${name} landed`,
             within(4000, () => swept() && networks.factsAsked.length === 0), () => {
-            if (!root.holdsMade)
-                Expect.expect(`no load before ${name} was given up`,
-                    Object.keys(networks.factsStuck).length === 0
-                    && Object.keys(networks.cablesStuck).length === 0,
-                    JSON.stringify([networks.factsStuck, networks.cablesStuck]));
+            root.noneGivenUp(name);
             networks.lookedAt = Date.now();
             step();
         });
@@ -462,6 +467,7 @@ ShellRoot {
     // made so; nothing is left reading, and asked again it's not loaded
     // again at once. Facts that never land are given up too.
     function held() {
+        root.noneGivenUp("held");
         root.holdsMade = true;
         networks.links = [second, docked];
         networks.answer("ethernet");
