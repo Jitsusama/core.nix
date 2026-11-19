@@ -45,8 +45,10 @@ impl Files {
     }
 
     /// Adds a watch on each wanted file's folder, or the nearest above it
-    /// that's there, where none watches it yet.
-    fn watch_toward(&mut self) {
+    /// that's there, where none watches it yet, answering the folders it
+    /// began watching.
+    fn watch_toward(&mut self) -> Vec<PathBuf> {
+        let mut began = Vec::new();
         for file in self.wanted.clone() {
             let Some(folder) = file.ancestors().skip(1).find(|folder| folder.is_dir()) else {
                 continue;
@@ -56,8 +58,10 @@ impl Files {
             }
             if let Ok(watch) = self.inotify.watches().add(folder, mask()) {
                 self.watching.insert(watch, folder.to_owned());
+                began.push(folder.to_owned());
             }
         }
+        began
     }
 
     /// Waits until a wanted file lands or goes, answering which; a folder
@@ -71,8 +75,18 @@ impl Files {
                     named.push((folder.clone(), name.to_owned()));
                 }
             }
-            self.watch_toward();
-            let landed = landed(&self.wanted, &named);
+            let began = self.watch_toward();
+            let mut landed = landed(&self.wanted, &named);
+            // One that landed in a folder made since, before its watch
+            // began, said nothing it could hear, so being there says it.
+            for file in &self.wanted {
+                let watched_since = file
+                    .parent()
+                    .is_some_and(|folder| began.iter().any(|one| one == folder));
+                if watched_since && !landed.contains(file) && file.exists() {
+                    landed.push(file.clone());
+                }
+            }
             if !landed.is_empty() {
                 return Ok(landed);
             }
@@ -115,9 +129,15 @@ pub fn newest(shells: &Path, name: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
     use std::thread;
+    use std::time::Duration;
 
     use super::*;
+
+    /// Long past what hearing a file takes, so one never heard fails rather
+    /// than hangs.
+    const HEARING: Duration = Duration::from_secs(5);
 
     fn folder(name: &str) -> PathBuf {
         let folder =
@@ -168,6 +188,30 @@ mod tests {
         assert_eq!(files.heard().expect("it lands"), [file]);
         fs::write(at.join("heard"), "").expect("the reader says it heard");
         writer.join().expect("the writer ends");
+    }
+
+    #[test]
+    fn a_file_landed_in_a_folder_before_its_watch_is_heard() {
+        let at = folder("before");
+        let file = at.join("agents").join("arrangement.json");
+        let mut files = Files::open(std::slice::from_ref(&file)).expect("the watch opens");
+        // Both land before the reader looks, as a test's mkdir -p then mv
+        // did on 2026-11-19, so the folder's watch comes after the file.
+        fs::create_dir_all(at.join("agents")).expect("the folder made");
+        fs::write(at.join("agents").join("arrangement.json.q"), "{}").expect("written");
+        fs::rename(
+            at.join("agents").join("arrangement.json.q"),
+            at.join("agents").join("arrangement.json"),
+        )
+        .expect("renamed into place");
+        let (said, heard) = mpsc::channel();
+        thread::spawn(move || said.send(files.heard().expect("it lands")));
+        assert_eq!(
+            heard
+                .recv_timeout(HEARING)
+                .expect("heard, not waited on forever"),
+            [file]
+        );
     }
 
     #[test]
