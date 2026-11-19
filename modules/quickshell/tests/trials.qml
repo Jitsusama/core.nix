@@ -1,7 +1,8 @@
 // What the launcher keeps of each opening, run in Qt's own JavaScript
 // engine, the one the shell runs it in. The `the-launcher-keeps-its-trials`
-// check copies modules/quickshell/launcher/Trials.js and Stepped.js beside this file and
-// runs `qml -platform offscreen trials.qml`. Each case is what a verdict on a
+// check copies modules/quickshell/launcher/Trials.js, Stepped.js, Order.js
+// and RowsKept.js beside this file and runs
+// `qml -platform offscreen trials.qml`. Each case is what a verdict on a
 // home leans on: the keys counted by kind, the pick and its time, a miss
 // only where letters were typed and nothing picked, and the oldest let go.
 import QtQuick
@@ -273,6 +274,9 @@ QtObject {
             Stepped.steppedHolding(9, { untilHeld: 0, rows: tied })
                 === " (agents 2 rows, quests 2 rows, runs 2 rows)",
             Stepped.steppedHolding(9, { untilHeld: 0, rows: tied }));
+        expect("a source that made one row says one row",
+            Stepped.steppedHolding(5, { untilHeld: 0, rows: { runs: 1 } }) === " (runs 1 row)",
+            Stepped.steppedHolding(5, { untilHeld: 0, rows: { runs: 1 } }));
         expect("a holding that made no rows says so, with no until held where it took none",
             Stepped.steppedHolding(6, { untilHeld: 0, rows: {} }) === " (no rows)",
             Stepped.steppedHolding(6, { untilHeld: 0, rows: {} }));
@@ -293,6 +297,13 @@ QtObject {
         expect("a step out's line says the rows its holding made",
             outLine === ": holding 38 (runs 99 rows, now 2 rows, until held 2), finding 1",
             outLine);
+        // A step's making says its split on the line, where a holding of no
+        // split told says only its time.
+        const madeLine = Stepped.slowest(Object.assign({}, made.each, { finding: 5 }), made);
+        expect("a step's line says what its making went on",
+            madeLine === ": making 87 (its parts 60, its acts 20, the rest 5, ordering 2),"
+                + " finding 5, holding 3",
+            madeLine);
         expect("a line with nothing a millisecond says no parts",
             Stepped.slowest({ holding: 0, making: 0 }, out) === ""
                 && Stepped.slowest(null, null) === "",

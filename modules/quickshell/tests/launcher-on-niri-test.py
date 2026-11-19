@@ -5239,6 +5239,8 @@ def test_a_step_out_counts_the_rows_made_while_it_held(shell: Shell) -> None:
     to 4, and nothing said where (his journal, 2026-11-18). Setting held wakes home's sources,
     which a chord's place left unwanted, and each makes its rows within it. Counted on either side
     of held alone, those rows are what the step's line names; counted after it, they'd be none.
+    It leans on that waking remaking rows: once it no longer does, the case needs a source that
+    still makes rows as held is set.
     """
     shell.launcher_until(lambda shown: not shown["open"])
     shell.as_account(shell.ipc("collection", "windows"))

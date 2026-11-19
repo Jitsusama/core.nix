@@ -52,12 +52,13 @@ function passed(parts, passing) {
 // What a step out's holding spent on, in parentheses: the rows each source
 // made while the step was held, the three that made most, the first A to
 // Z where two made as many (Order.js), and the time until it was held,
-// from the key. Joel's step out of Now held 14, 22, then 38 ms in one
-// evening, where every other step out held 2 to 4, and the lab's Now held 3
-// to 6 with nothing to say where it went (2026-11-18). `split` holds the
+// from the step's start, its first count of the rows included. Joel's
+// step out of Now held 14, 22, then 38 ms in one evening, where every
+// other step out held 2 to 4, and the lab's Now held 3 to 6 with nothing
+// to say where it went (2026-11-18). `split` holds the
 // rows by source and the ms until held; nothing for an untold split. Its
 // time is said as "until held", never "before", which the line says of the
-// search's own time before it began.
+// search's own time before it began. One row is said as one, never "1 rows".
 function steppedHolding(holding, split) {
     if (!split || !(holding > 0)) {
         return "";
@@ -65,7 +66,7 @@ function steppedHolding(holding, split) {
     const rows = split.rows ?? {};
     const most = Order.then(Order.larger((name) => rows[name]), Order.byName((name) => name));
     const made = Order.sorted(Object.keys(rows).filter((name) => rows[name] > 0), most)
-        .slice(0, 3).map((name) => `${name} ${rows[name]} rows`);
+        .slice(0, 3).map((name) => `${name} ${rows[name]} ${rows[name] === 1 ? "row" : "rows"}`);
     const until = Math.round(split.untilHeld ?? 0);
     const named = made.length > 0 ? made : ["no rows"];
     return ` (${named.concat(until > 0 ? [`until held ${until}`] : []).join(", ")})`;

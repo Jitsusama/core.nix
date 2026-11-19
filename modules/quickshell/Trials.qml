@@ -82,7 +82,8 @@ Scope {
         trial = Trials.timed(trial, searched, drawn, parts);
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
-                + " searching" + (parts ? ` (lists ${parts.lists}${Stepped.slowest(parts.each, parts)},`
+                + " searching" + (parts
+                    ? ` (lists ${parts.lists}${Stepped.slowest(parts.each, parts)},`
                     + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
                     + ` answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`

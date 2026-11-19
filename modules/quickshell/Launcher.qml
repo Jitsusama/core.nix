@@ -6278,8 +6278,9 @@ Scope {
         // nothing saying where (2026-11-18). A step that can't be timed,
         // being untimed or as a place fills or the launcher opens, walks
         // none; setting held changes neither. One putting words back still
-        // does, though the field's key times it, since its words are read
-        // only once held is set.
+        // does and drops the count, since the field's key times it and its
+        // words are read only once held is set. The first walk is timed
+        // within the holding and its until held, the second after both.
         const stepTimed = timed && openAsked < 0 && !fillingPlace;
         const holdingFrom = stepTimed ? tallies() : null;
         const holdingBegan = Date.now();
