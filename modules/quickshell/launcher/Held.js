@@ -157,14 +157,19 @@ function answer(made, leaving) {
     return leaving.keep < 0 ? "made" : "left";
 }
 
-// The way back, `jumps`, once a step left by itself has landed on the
-// place `here`: where Joel stepped in from is where he now is, so each
-// last place there goes, or Ctrl+O would go nowhere and show it as it
-// was. `placeOf` says where a jump goes, as the launcher's placeOf does.
-function unjumped(jumps, here, placeOf) {
-    let end = jumps.length;
-    while (end > 0 && placeOf(jumps[end - 1]) === here) {
+// The way back, `went.jumps`, and the place used last, `went.last`, once
+// a step left by itself has landed where Joel stepped in from, which is
+// now where he is: each of the way back's last places there goes, and
+// the place used last if it's there, or Ctrl+O or Tab would go nowhere
+// and show it as it was. `landed` says where he is, as it read before
+// the leave remade its rows and as it reads now, since a row remade as
+// offered now may be renamed so; `placeOf` says where a jump goes, as
+// the launcher's placeOf does.
+function afterLeave(went, landed, placeOf) {
+    const there = one => !!one && landed.includes(placeOf(one));
+    let end = went.jumps.length;
+    while (end > 0 && there(went.jumps[end - 1])) {
         end -= 1;
     }
-    return jumps.slice(0, end);
+    return { jumps: went.jumps.slice(0, end), last: there(went.last) ? null : went.last };
 }

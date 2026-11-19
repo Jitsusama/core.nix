@@ -6149,8 +6149,11 @@ Scope {
             return answered;
         // Left by itself, it's no place Joel stepped to, so it goes on
         // neither the way back nor as the place used last, even where the
-        // row it's left from was renamed as it was remade.
+        // row it's left from was renamed as it was remade; and where it
+        // lands goes from both, as Held.afterLeave says, even where the
+        // leave throws partway, since held may have moved by then.
         const last = lastPlace;
+        const was = placeOf(held.slice(0, leaving.keep));
         jumping = true;
         const before = steps.length;
         try {
@@ -6158,9 +6161,11 @@ Scope {
             back(false, held.length - leaving.keep);
         } finally {
             jumping = false;
-            lastPlace = last;
+            const after = Held.afterLeave({ jumps: jumpsBack, last }, [was, placeOf(held)],
+                one => placeOf(one.held));
+            jumpsBack = after.jumps;
+            lastPlace = after.last;
         }
-        jumpsBack = Held.unjumped(jumpsBack, placeOf(held), one => placeOf(one.held));
         // Said in the journal, so a step that closes under Joel by itself
         // can be told from one his key left: what changed, and from how
         // deep to how deep, never the row's name, which a source served.
