@@ -76,6 +76,22 @@ struct Cell<'a> {
     machine: Option<&'a str>,
 }
 
+impl Cell<'_> {
+    /// Whether its presence says it parked, whatever state the node gives
+    /// it: at 13:10 on 19 November the node called fifteen parked cells of
+    /// a pi host idle, their host still up, and the hour counted six of
+    /// them idle. The presence is the harness's own word, and idle.rs
+    /// wakes no parked cell either.
+    fn parked(&self) -> bool {
+        self.presence == Some("parked")
+    }
+
+    /// Whether it runs: neither ended nor parked.
+    fn runs(&self) -> bool {
+        self.state != "ended" && !self.parked()
+    }
+}
+
 fn read(session: &Value) -> Option<Cell<'_>> {
     let state = session["state"].as_str()?;
     let presence = &session["presence"];
@@ -256,7 +272,7 @@ fn idle(
     owner: &dyn Fn(Option<&str>, Option<&str>) -> String,
 ) -> Vec<String> {
     all.iter()
-        .filter(|c| c.state == "idle" && !c.wanting)
+        .filter(|c| c.state == "idle" && !c.parked() && !c.wanting)
         .filter(|c| {
             !c.quest
                 .and_then(|q| readme.get(q))
@@ -284,15 +300,15 @@ fn idle(
         .collect()
 }
 
-/// The ended cells parked on a quest already concluded or retired, each
-/// with its owner.
+/// The cells parked on a quest already concluded or retired, each with
+/// its owner.
 fn parked_done(
     all: &[Cell],
     readme: &BTreeMap<&str, &Quest>,
     owner: &dyn Fn(Option<&str>, Option<&str>) -> String,
 ) -> Vec<String> {
     all.iter()
-        .filter(|c| c.presence == Some("parked") && c.state == "ended")
+        .filter(|c| c.parked())
         .filter_map(|c| {
             // The README is written as the quest ends; the cell's word of
             // its quest dates from when it parked.
@@ -346,7 +362,7 @@ fn unrun(
             .iter()
             .filter(|c| c.quest == Some(q.id.as_str()))
             .collect();
-        if of_quest.iter().any(|c| c.state != "ended") {
+        if of_quest.iter().any(|c| c.runs()) {
             continue;
         }
         let named = short_id(&q.id);
@@ -358,7 +374,7 @@ fn unrun(
                 "{named} {}, no cell the node knows · {to}",
                 q.priority
             ));
-        } else if of_quest.iter().all(|c| c.presence == Some("parked")) {
+        } else if of_quest.iter().all(|c| c.parked()) {
             if let Some(next) = of_quest.iter().find(|c| started(c)).and_then(|c| c.next) {
                 parked.push(format!(
                     "{named} {}, parked past its start: {} · {to}",
@@ -709,6 +725,47 @@ pub(super) mod tests {
             ],
             "a quest whose cells are all parked was said ended, or one with a cell \
              ended and not parked was missed"
+        );
+    }
+
+    #[test]
+    fn a_cell_parked_is_parked_whatever_the_node_calls_it() {
+        // At 13:10 on 19 November the node called fifteen parked cells of
+        // a pi host idle, and the hour counted six of them idle.
+        let parked = |address: &str, next: &str| {
+            let mut c = cell(address, "idle", address);
+            c["at"] = json!(at(60));
+            c["presence"]["state"] = json!("parked");
+            c["doing"] = json!({"next": next});
+            c["orchestrated_by"] = json!("ORCH");
+            c
+        };
+        let answers = [answer(&[
+            parked("AAAAAA", "Judge it at Fri 15 02:30"),
+            parked("BBBBBB", "merge it"),
+            parked("CCCCCC", "merge it"),
+        ])];
+        let quests = [
+            quest_of("AAAAAA", "active", "driving", None),
+            quest_of("BBBBBB", "active", "driving", None),
+            quest_of("CCCCCC", "concluded", "driving", None),
+        ];
+        let all = cells(&answers, Some(&quests), HERE, &zone(), NOW, "F");
+        let behind = |key| measure(&all, key).behind.clone();
+        assert_eq!(
+            behind("cells-idle"),
+            Vec::<String>::new(),
+            "a parked cell was counted idle"
+        );
+        assert_eq!(
+            behind("quests-parked-past-start"),
+            ["AAAAAA driving, parked past its start: Judge it at Fri 15 02:30 · ORCH"],
+            "a quest parked past its start went unnamed while its cells were called idle"
+        );
+        assert_eq!(
+            behind("cells-parked-done"),
+            ["CCCCCC parked, its quest concluded · ORCH"],
+            "a cell parked on a quest done went unnamed while it was called idle"
         );
     }
 
