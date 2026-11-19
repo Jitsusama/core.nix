@@ -50,8 +50,10 @@ REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
-# What a first visit to the map may cost, drawn from the stand-in's cells.
-BUDGET = Budget(files=17, kilobytes=700, elements=590)
+# What a first visit to the map may cost, drawn from the stand-in's cells:
+# 18 files since the balance and who started each cell were read in modules
+# of their own, and one spare.
+BUDGET = Budget(files=19, kilobytes=700, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -599,9 +601,9 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
             "data-branch-of", re.compile(".")
         )
         started = {"started_by": GROWN_BY, "split_from": None, "parent": None}
+        key = f"forage:{GROWN_CELL}"
         heard = int(datetime.now(UTC).timestamp() * 1000)
-        forage = {"key": f"forage:{GROWN_CELL}", "kind": "forage", "heard": heard}
-        forage["cell"] = GROWN_CELL
+        forage = {"key": key, "kind": "forage", "heard": heard, "cell": GROWN_CELL}
         forage_node.tell("forage", changed=[{**forage, "lineage": started}])
         expect(hub, "the network never grew out of the one that started it").to_have_attribute(
             "data-branch-of", GROWN_FROM, timeout=PACE_MS
@@ -623,7 +625,7 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
             f"by {GROWN_BY_TITLE}", timeout=PACE_MS
         )
         # Once its forage goes, so does the branch it grew.
-        forage_node.tell("forage", gone=[forage["key"]])
+        forage_node.tell("forage", gone=[key])
         expect(hub, "the branch outlived the forage that grew it").not_to_have_attribute(
             "data-branch-of", re.compile("."), timeout=PACE_MS
         )
