@@ -23,6 +23,11 @@ layout for it. The scripts work out everything it does, so the Qt cases in
 How it looks and moves is the design's ([docs/design.md][design]); what it
 must keep, whatever a ruling says, is Joel's.
 
+The theme's checks read its walk too: `modules/theme/walk-read.nix` reads
+the frozen `WALKS` and `STRIDING` in `MarginCatWays.js`, and the cat's and
+the puppy's pose checks hold their strides to it. A new gait there fails
+both until each animal's strides are drawn for it, a pair of feet a step.
+
 ## Joel's Words
 
 Each design Joel has stated for the cat, in his words and dated, and the Qt

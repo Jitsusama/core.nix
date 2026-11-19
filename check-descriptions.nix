@@ -1068,21 +1068,6 @@
     every shell script meets shellcheck's optional checks for a hidden failure, a set -e turned
     off, an unset uppercase variable and a case with no default, but those still waiting
   '';
-  every-skidding-walk-is-refused = ''
-    the margin's animals' stride rule refuses the cat's own strides out of order, alone, with a
-    pair never stepping, after a pose that isn't a stride, undrawn, and none at all, each by
-    its reason, a stride planted with its body moved on each row, and a foot moved either side
-    of the feet's middle; refuses a pose planted with a pixel two cells off, or just over 15%
-    fewer or more, on sittings of 20 and 13, though not one just under, or on the line; says a
-    misnamed sitting undrawn, and holds a stride no pose lists to the stray rule; and reads
-    the cat's code as no walk, by the rule it breaks, when it strides by anything but WALKS's
-    frozen quoted words, either isn't found outside a comment, a word holds a space or
-    mismatched quotes, either is left unfrozen or frozen only in part, WALKS is named
-    elsewhere, or either is declared again, in a block or as a function, class or loop's
-    variable, though as its walk when they're only spaced, quoted or commented otherwise,
-    mid-line or at length too, a longer name or another's property holds theirs, and STRIDING
-    is read above its declaration or below; and reads past a copy commented out
-  '';
   every-suppression-says-why = ''
     every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or
     in a comment just above, but those still waiting for their reason
