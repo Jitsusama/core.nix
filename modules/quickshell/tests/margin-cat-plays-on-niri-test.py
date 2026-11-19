@@ -176,7 +176,14 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
     told = json.loads(said[done][len(PLAYED) :].split(" ", 1)[1])
     during = [placed(step) for step in steps[start:done] if step is not None]
     frames = [at for at in during if at is not None and (playing(at) or {}).get("play") == kind]
-    after = [placed(line[len(SITS) :]) for line in said[done:] if line.startswith(SITS)]
+    # A play is told once niri has answered for its last frames, which can be after it sits
+    # again, so its seat is looked for from its last step on, not from the telling.
+    ended = max(
+        at
+        for at, step in enumerate(steps[:done])
+        if at >= start and step is not None and asked(step)
+    )
+    after = [placed(line[len(SITS) :]) for line in said[ended + 1 :] if line.startswith(SITS)]
     if not any(home(at, sat, seat) for at in after):
         shell.reported(SITS, lambda said: home(placed(said), sat, seat), shell.mark(), HOME)
     return frames, told, seat
