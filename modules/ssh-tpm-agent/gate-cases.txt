@@ -27,8 +27,8 @@ refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/pi-host-work-b
 refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/mycelium-pi-f0520da9.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-1.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/pi-spawner-13217-b5c53f7b.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/mycelium-pi-f0520da9.scope
 # A command the sorter moved, one waiting its turn, a push waiting its
-# walk slot, an agent's terminal's busy work, and one the jobs broker placed
-# for a fenced command.
+# walk slot, an agent's terminal's busy work, the jobs service itself, and
+# a fenced command's scope made somewhere the broker never places one.
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/jobs-work-unranked.slice/work-383009-2999244.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-timed.slice/timed-1.scope
 refuse /user.slice/user-1000.slice/user@1000.service/shared.slice/run-p800969-i5013960.scope
@@ -46,6 +46,14 @@ refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/queue-2af2dh-102
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/run-p900100-i6000100.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/background.slice/run-p900200-i6000200.service /user.slice/user-1000.slice/user@1000.service/init.scope
 serve /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/run-u7.scope /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope /user.slice/user-1000.slice/user@1000.service/app.slice/kitty-2210-1.scope
+# A unit an agent names itself, as the harness tells it to, started from
+# work placed in the awaited slice; and names as long as awaited or near it,
+# each by its own line, while awaited.service above is served.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/queue-isxeg8-1.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaite.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/build-1.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaxted.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaitex.service /user.slice/user-1000.slice/user@1000.service/init.scope
 # A spawner somewhere no other line names, which only its own line refuses.
 refuse /user.slice/user-1000.slice/user@1000.service/background.slice/pi-spawner-3386655-c0ffee00.scope
 # Joel's own services there, refused knowingly, as none signs in over SSH.

@@ -3349,7 +3349,8 @@
   '';
   ssh-tpm-agent-refuses-agents = ''
     the TPM's SSH agent refuses a process where agents' work runs, keeps no core of its PIN, and
-    its build passes each case the gate must decide
+    its build passes each case the gate must decide; each slice the gate names is one a machine
+    with a screen makes, and bash's and zsh's own text points them at the agent's socket
   '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered

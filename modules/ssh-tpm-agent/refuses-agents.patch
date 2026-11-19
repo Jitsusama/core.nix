@@ -13,9 +13,9 @@ never read whole, whether gone, unreadable, unparsable or refusing no
 place, refuses everyone. Only a regular file of at most 64 KiB is read,
 opened without waiting, so a pipe or a device put at its path counts as
 unreadable rather than stalling every connection. The journal says at
-each start which gate the agent judges by, or that it has none. Refused too is a peer the kernel doesn't name, one whose
-chain can't be read to init, or one gone by the time it's judged, as
-its pidfd says. A file read once and gone, unreadable or unparsable
+each start which gate the agent judges by, or that it has none.
+Refused too is a peer the kernel doesn't name, one whose chain can't be
+read to init, or one gone by the time it's judged, as its pidfd says. A file read once and gone, unreadable or unparsable
 since, as a rollback past the gate or a later gate's format leaves it,
 is judged by what it last said, journalled once as that starts and once
 as a read comes back. Where the variable is unset, nothing changes.
