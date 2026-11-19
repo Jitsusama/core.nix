@@ -48,7 +48,7 @@ MEANWHILE = "/root/meanwhile.log"
 HOMES = timedelta(minutes=1)
 # The repository made on the disk, under the root code-page.nix gives repos instead of its own.
 REPOSITORY = "/home/alice/code/kestrel"
-# A tree cut from it once the daemon runs, and where Code is home to it, as jq's @uri writes it.
+# A tree cut from it once the daemon runs, and where Code is home to it, its path escaped whole.
 TREE = "/home/alice/trees/wing"
 TREE_HOME = "code/#tree=%2Fhome%2Falice%2Ftrees%2Fwing"
 # A commit's author, given each time, since the account has no git config of its own.

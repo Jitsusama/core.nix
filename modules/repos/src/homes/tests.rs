@@ -1,6 +1,6 @@
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use repos::model::{Checkout, Head, Record, Repository, SCHEMA, Tree, TreeKind};
 use serde_json::{Value, json};
@@ -74,7 +74,7 @@ fn folder(name: &str) -> PathBuf {
     folder
 }
 
-fn names_in(folder: &PathBuf) -> Vec<String> {
+fn names_in(folder: &Path) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(folder)
         .expect("the folder")
         .map(|each| {
@@ -88,7 +88,7 @@ fn names_in(folder: &PathBuf) -> Vec<String> {
     names
 }
 
-fn read(file: &PathBuf) -> Value {
+fn read(file: &Path) -> Value {
     serde_json::from_str(&fs::read_to_string(file).expect("the homes")).expect("homes as JSON")
 }
 
@@ -186,6 +186,22 @@ fn homes_unchanged_on_the_disk_are_not_written_again() {
         "changed homes weren't written"
     );
     assert_eq!(read(&file), of(&more));
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn only_a_plain_file_at_the_homes_is_read_so_a_link_there_is_put_right_unfollowed() {
+    // A link to an endless device, or a pipe, would hold the reading loop if read.
+    let folder = folder("linked");
+    let file = folder.join("homes.json");
+    let target = folder.join("same");
+    fs::write(&target, format!("{}\n", of(&record()))).expect("the same homes elsewhere");
+    symlink(&target, &file).expect("a link at the homes");
+    let mut homes = Homes::at(file.clone());
+    assert!(homes.write(&record()).expect("written"), "the link was read as the homes");
+    let kind = fs::symlink_metadata(&file).expect("the homes").file_type();
+    assert!(kind.is_file(), "the link stayed where the homes go");
+    assert_eq!(read(&file), of(&record()));
     let _ = fs::remove_dir_all(&folder);
 }
 
