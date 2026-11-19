@@ -12,25 +12,25 @@ import {
   partsBySpend,
   partWords,
   restWords,
+  shownAndRest,
   splits,
 } from "../spend.ts";
-import type { Cell, Network } from "../words.ts";
+import type { Cell, Network, Usage } from "../words.ts";
 
-/** A quiet cell on `machine` that spent `usd` today, or said nothing where it is null. */
-const cell = (
-  address: string,
-  usd: number | null,
-  machine = "kestrel",
-  turns: number | null = null,
-): Cell => ({
+/** A quiet cell on `machine` that used what `usage` says today. */
+const cell = (address: string, usage: Usage | null, machine = "kestrel"): Cell => ({
   address,
   short: address,
   standing: "quiet",
   owes: [],
   holds: [],
   machine,
-  usage: { cost_today: usd, turns_today: turns },
+  usage,
 });
+
+/** A cell on `machine` that spent `usd` today, its turns unsaid. */
+const spending = (address: string, usd: number | null, machine = "kestrel"): Cell =>
+  cell(address, { cost_today: usd }, machine);
 
 /** A network of its own cells and branches. */
 const network = (
@@ -39,61 +39,97 @@ const network = (
   children: readonly Network[] = [],
 ): Network => ({ key, name: key, within: null, children, cells });
 
+const addresses = (cells: readonly Cell[]): readonly string[] => cells.map((s) => s.address);
+
 it("orders the cells that spent anything, the most first", () => {
-  const cells = [cell("A", 1.5), cell("B", 0), cell("C", null), cell("D", 7.25), cell("E", 3)];
+  const cells = [
+    spending("A", 1.5),
+    spending("B", 0),
+    spending("C", null),
+    spending("D", 7.25),
+    spending("E", 3),
+    cell("F", null),
+  ];
   assert.deepEqual(
-    bySpend(cells).map((s) => s.address),
+    addresses(bySpend(cells)),
     ["D", "E", "A"],
     "a cell that spent nothing, or said nothing, should be left out, and the rest most first",
+  );
+  assert.deepEqual(
+    addresses(bySpend([spending("A", 2), spending("B", 5), spending("C", 2)])),
+    ["B", "A", "C"],
+    "cells that spent the same should keep the order they came in",
   );
 });
 
 it("orders the parts that spent anything, each with its cells", () => {
-  const cells = [cell("A", 2, "kestrel"), cell("B", 5, "osprey"), cell("C", 0, "skiff")];
+  const cells = [
+    spending("A", 2, "kestrel"),
+    spending("B", 5, "osprey"),
+    spending("C", 0, "skiff"),
+    spending("D", 2, "tern"),
+  ];
   const on = (machine: string): readonly Cell[] => cells.filter((s) => s.machine === machine);
   assert.deepEqual(
-    partsBySpend(["kestrel", "osprey", "skiff"], on).map(([m, its]) => [m, its.length]),
+    partsBySpend(["kestrel", "osprey", "skiff", "tern"], on).map(([m, its]) => [m, addresses(its)]),
     [
-      ["osprey", 1],
-      ["kestrel", 1],
+      ["osprey", ["B"]],
+      ["kestrel", ["A"]],
+      ["tern", ["D"]],
     ],
-    "a part whose cells spent nothing should be left out, and the rest most first",
+    "a part whose cells spent nothing should be left out, the rest most first, ties as they came",
   );
 });
 
 it("counts a network's branches with it, or only the cells on one machine", () => {
-  const branch = network("tern", [cell("C", 1, "osprey")]);
-  const hub = network("weir", [cell("A", 1), cell("B", 1, "osprey")], [branch]);
+  const branch = network("tern", [spending("C", 1, "osprey")]);
+  const hub = network("weir", [spending("A", 1), spending("B", 1, "osprey")], [branch]);
   assert.deepEqual(
-    [networkCells(hub).map((s) => s.address), networkCells(hub, "osprey").map((s) => s.address)],
-    [
-      ["A", "B", "C"],
-      ["B", "C"],
-    ],
-    "a network should count its branches' cells, and on a machine only those running there",
+    addresses(networkCells(hub)),
+    ["A", "B", "C"],
+    "a network should count its branches' cells with its own",
+  );
+  assert.deepEqual(
+    addresses(networkCells(hub, "osprey")),
+    ["B", "C"],
+    "on a machine, a network should count only the cells running there",
+  );
+  assert.deepEqual(
+    addresses(networkCells(hub, "")),
+    ["A", "B", "C"],
+    "a machine with no name should count every cell, as no machine does",
   );
 });
 
-it("says what a part and a cell spent", () => {
-  const said = [
-    partWords([cell("A", 1.5), cell("B", 0)]),
-    partWords([cell("A", 120.4)]),
-    cellSpendWords(cell("A", 2, "kestrel", 1)),
-    cellSpendWords(cell("A", 2, "kestrel", 3)),
-    cellSpendWords(cell("A", 2, "kestrel", 0)),
-    cellSpendWords(cell("A", 2)),
-  ];
+it("says what a part of a sum spent, over how many cells", () => {
+  assert.equal(
+    partWords([spending("A", 1.5), spending("B", 0)]),
+    "$1.50, 2 cells",
+    "a part should say its sum to the cent and count every cell in it",
+  );
+  assert.equal(
+    partWords([spending("A", 120.4)]),
+    "$120, 1 cell",
+    "a part past a hundred dollars should say whole dollars, and one cell as one",
+  );
+});
+
+it("says what one cell spent, and its turns where its session says them", () => {
+  const said = [1, 3, 0].map((turns) =>
+    cellSpendWords(cell("A", { cost_today: 2, turns_today: turns })),
+  );
   assert.deepEqual(
     said,
+    ["$2.00, 1 turn", "$2.00, 3 turns", "$2.00, 0 turns"],
+    "a cell's turns should be counted in their number, none as none",
+  );
+  assert.deepEqual(
     [
-      "$1.50, 2 cells",
-      "$120, 1 cell",
-      "$2.00, 1 turn",
-      "$2.00, 3 turns",
-      "$2.00, 0 turns",
-      "$2.00",
+      cellSpendWords(cell("A", { cost_today: 2, turns_today: null })),
+      cellSpendWords(cell("A", { cost_today: 2 })),
     ],
-    "a sum should say its cells, and a cell its turns only where its session says them",
+    ["$2.00", "$2.00"],
+    "a cell whose session says no turns, or leaves them out, should say only its spend",
   );
 });
 
@@ -105,46 +141,65 @@ it("splits a sum only into more than one part", () => {
   );
 });
 
-it("heads a list by its part, or by the ten that spent most", () => {
-  const said = [
-    partHeading("machine", 10),
-    partHeading("machine", 11),
-    partHeading("branch", 2),
-    partHeading("branch", 11),
-    partHeading("network", 11),
-    cellsHeading(10),
-    cellsHeading(11),
-  ];
+it("heads a list by its part while ten or fewer fit it", () => {
   assert.deepEqual(
-    said,
+    [partHeading("machine", 2), partHeading("network", 10), partHeading("branch", 2)],
+    ["By Machine", "By Network", "By Branch"],
+    "a list of ten or fewer should be headed by its part",
+  );
+  assert.equal(cellsHeading(10), "Its Cells", "ten or fewer cells should be its cells");
+});
+
+it("heads a list of more than ten by the ten that spent most", () => {
+  assert.deepEqual(
+    [partHeading("machine", 11), partHeading("network", 11), partHeading("branch", 11)],
     [
-      "By Machine",
       "The 10 Machines That Spent Most",
-      "By Branch",
-      "The 10 Branches That Spent Most",
       "The 10 Networks That Spent Most",
-      "Its Cells",
-      "The 10 Cells That Spent Most",
+      "The 10 Branches That Spent Most",
     ],
-    "ten fit a list whole, and the eleventh should turn it into the ten that spent most",
+    "the eleventh part should turn a list into the ten that spent most",
+  );
+  assert.equal(
+    cellsHeading(11),
+    "The 10 Cells That Spent Most",
+    "the eleventh cell should turn its cells into the ten that spent most",
+  );
+});
+
+it("shows ten of a list and counts the rest", () => {
+  const rows = Array.from({ length: 11 }, (_, i) => i);
+  assert.deepEqual(
+    shownAndRest(rows),
+    [rows.slice(0, 10), [10]],
+    "a list of eleven should show its first ten and count the last",
+  );
+  assert.deepEqual(
+    shownAndRest(rows.slice(0, 10)),
+    [rows.slice(0, 10), []],
+    "a list of ten should show them all and count none",
   );
 });
 
 it("says what the parts past a list's end spent between them", () => {
+  const two = [[spending("A", 2)], [spending("B", 1.5), spending("C", 0)]];
   const said = [
-    restWords([], "machine"),
-    restWords([[cell("A", 2)]], "machine"),
-    restWords([[cell("A", 2)], [cell("B", 1.5), cell("C", 0)]], "branch"),
-    restWords([[cell("A", 0.25)], [cell("B", 0.5)]], "cell"),
+    restWords([[spending("A", 2)]], "machine"),
+    restWords(two, "machine"),
+    restWords(two, "network"),
+    restWords(two, "branch"),
+    restWords([[spending("A", 0.25)], [spending("B", 0.5)]], "cell"),
   ];
   assert.deepEqual(
     said,
     [
-      "",
       "1 more machine spent $2.00 between them.",
+      "2 more machines spent $3.50 between them.",
+      "2 more networks spent $3.50 between them.",
       "2 more branches spent $3.50 between them.",
       "2 more cells spent $0.75 between them.",
     ],
-    "the rest should be counted in their own plural and summed, and no rest say nothing",
+    "the rest should be counted in each part's own plural and summed",
   );
+  assert.equal(restWords([], "machine"), "", "no rest should say nothing");
 });

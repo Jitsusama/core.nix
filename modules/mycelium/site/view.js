@@ -37,7 +37,7 @@ import {
   VERDICT,
   verdictOf,
 } from "./health.js";
-import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, partsBySpend, partWords, restWords, SPEND_SHOWN, splits } from "./spend.js";
+import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, partsBySpend, partWords, restWords, shownAndRest, splits } from "./spend.js";
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
@@ -3077,7 +3077,16 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
   const spendCell = (s) =>
     `<li><button type="button" class="row" data-go="cell=${esc(s.address)}">${stateGlyph(s)}<span class="what"><span class="name">${esc(s.short)}</span>` +
     `<span class="fact">${esc(cellSpendWords(s))}</span></span></button></li>`;
-  // parts: [a part spend.ts names, parts from spendRow in spend order].
+  // A list of parts, or of cells, cut where the fold stops showing rows.
+  const partList = ([noun, rows]) => {
+    const [listed, rest] = shownAndRest(rows);
+    return spendList(partHeading(noun, rows.length), listed.map(([, row]) => row), rest.map(([part]) => part), noun);
+  };
+  const cellList = (top) => {
+    const [listed, rest] = shownAndRest(top);
+    return spendList(cellsHeading(top.length), listed.map(spendCell), rest.map((s) => [s]), "cell");
+  };
+  // parts: [a split spend.ts names, parts from spendRow in spend order].
   const spendBlock = (cells, parts = []) => {
     if (!spends(cells)) return "";
     const top = bySpend(cells);
@@ -3085,24 +3094,8 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
     return (
       `<details class="fold spend" data-keep="spend"><summary>${TURN}<span>Spent Today</span><span class="sum mono">${esc(money(spentOf(cells)))}</span></summary>` +
       `<p class="hint">Since midnight, at the list price of each call, as the sessions count it; the bill may differ.</p>` +
-      shown
-        .map(([noun, rows]) =>
-          spendList(
-            partHeading(noun, rows.length),
-            rows.slice(0, SPEND_SHOWN).map(([, row]) => row),
-            rows.slice(SPEND_SHOWN).map(([part]) => part),
-            noun,
-          ),
-        )
-        .join("") +
-      (top.length
-        ? spendList(
-            cellsHeading(top.length),
-            top.slice(0, SPEND_SHOWN).map(spendCell),
-            top.slice(SPEND_SHOWN).map((s) => [s]),
-            "cell",
-          )
-        : "") +
+      shown.map(partList).join("") +
+      (top.length ? cellList(top) : "") +
       `</details>`
     );
   };

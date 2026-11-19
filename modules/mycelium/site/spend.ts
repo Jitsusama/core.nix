@@ -8,16 +8,26 @@ import { allCells, type Cell, money, type Network, plural, spentBy, spentOf } fr
 /** How many rows a list of the fold shows before it counts the rest. */
 export const SPEND_SHOWN = 10;
 
-/** What a list of the fold splits its sum by. */
-export type Part = "machine" | "network" | "branch" | "cell";
+/** What a list of the fold splits its sum by, beside the list of its cells. */
+export type Split = "machine" | "network" | "branch";
 
-// Each part's words: as a list is split by one, as it names those that spent
-// most, and as the rest past its end are counted.
-const PART_WORDS: Readonly<Record<Part, readonly [string, string, string]>> = {
-  machine: ["Machine", "Machines", "machines"],
-  network: ["Network", "Networks", "networks"],
-  branch: ["Branch", "Branches", "branches"],
-  cell: ["Cell", "Cells", "cells"],
+/** What a list of the fold counts, its cells included. */
+export type Part = Split | "cell";
+
+// Each split's words, as a list is headed by one and as it names those that
+// spent most; the cells' list has headings of its own.
+const HEADING_WORDS: Readonly<Record<Split, readonly [string, string]>> = {
+  machine: ["Machine", "Machines"],
+  network: ["Network", "Networks"],
+  branch: ["Branch", "Branches"],
+};
+
+// Each part's words for more than one, as the rest past a list's end are counted.
+const MANY: Readonly<Record<Part, string>> = {
+  machine: "machines",
+  network: "networks",
+  branch: "branches",
+  cell: "cells",
 };
 
 // The order is kept per list, and each reading brings new lists.
@@ -48,7 +58,15 @@ export const partsBySpend = <T>(
  * up to the sum above it; on a machine, only the cells that run there.
  */
 export const networkCells = (h: Network, machine: string | null = null): readonly Cell[] =>
-  machine === null ? allCells(h) : allCells(h).filter((s) => s.machine === machine);
+  machine === null || machine === ""
+    ? allCells(h)
+    : allCells(h).filter((s) => s.machine === machine);
+
+/** A list cut where the fold stops showing rows: those it shows, and the rest it counts. */
+export const shownAndRest = <T>(rows: readonly T[]): readonly [readonly T[], readonly T[]] => [
+  rows.slice(0, SPEND_SHOWN),
+  rows.slice(SPEND_SHOWN),
+];
 
 /** What a part of a sum spent, over how many cells. */
 export const partWords = (cells: readonly Cell[]): string =>
@@ -69,10 +87,10 @@ export const cellSpendWords = (s: Cell): string => {
 export const splits = (count: number): boolean => count > 1;
 
 /** How a list of `count` parts is headed: by its part, or those that spent most. */
-export const partHeading = (part: Part, count: number): string =>
+export const partHeading = (part: Split, count: number): string =>
   count > SPEND_SHOWN
-    ? `The ${SPEND_SHOWN} ${PART_WORDS[part][1]} That Spent Most`
-    : `By ${PART_WORDS[part][0]}`;
+    ? `The ${SPEND_SHOWN} ${HEADING_WORDS[part][1]} That Spent Most`
+    : `By ${HEADING_WORDS[part][0]}`;
 
 /** How the list of `count` cells is headed: its cells, or those that spent most. */
 export const cellsHeading = (count: number): string =>
@@ -82,5 +100,5 @@ export const cellsHeading = (count: number): string =>
 export const restWords = (rest: readonly (readonly Cell[])[], part: Part): string =>
   rest.length === 0
     ? ""
-    : `${plural(rest.length, `more ${part}`, `more ${PART_WORDS[part][2]}`)} spent ` +
+    : `${plural(rest.length, `more ${part}`, `more ${MANY[part]}`)} spent ` +
       `${money(rest.reduce((t, cells) => t + spentOf(cells), 0))} between them.`;
