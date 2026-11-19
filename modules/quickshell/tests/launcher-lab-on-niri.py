@@ -141,14 +141,17 @@ def said_of(place: str, presented: list[int], took: list[int]) -> str:
     )
 
 
-def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+def test_each_chord_opening_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
     """Open each chord's place from shut, round after round, and print each one's times.
 
     They're printed past pytest's capture, so the build's log holds them when it passes.
     """
     places = os.environ.get("LAB_PLACES", " ".join(PLACES)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    windows = [shell.opened(f"Lab {nth}", app="foot") for nth in range(WINDOWS)]
+    windows = closing(shell, request)
+    windows.extend(shell.opened(f"Lab {nth}", app="foot") for nth in range(WINDOWS))
     # Super+N opens the notices on screen, so a run timing it has some there all along.
     if "notices" in places:
         for nth in range(NOTICES):
@@ -215,8 +218,6 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
             took[place].append(cast("int", opening["took"]))
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
-    for window in windows:
-        shell.close(window)
     for place, spans in timed.items():
         with capsys.disabled():
             print(os.environ.get("LAB_RUN", ""), said_of(place, spans, took[place]), flush=True)
@@ -274,14 +275,17 @@ def test_each_places_changes_are_timed(shell: Shell, capsys: pytest.CaptureFixtu
                     print(f"lab-changes {name} round {round_}: {said}", flush=True)
 
 
-def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+def test_each_step_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
     """Step into each place from home, round after round, and print each step's times."""
     steps = os.environ.get("LAB_STEPS", " ".join(STEPS)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    windows = [
+    windows = closing(shell, request)
+    windows.extend(
         shell.opened(f"Lab {nth}", app="foot")
         for nth in range(int(os.environ.get("LAB_WINDOWS", str(WINDOWS))))
-    ]
+    )
     opened(shell, "home")
     shell.close_launcher()
     timed: dict[str, list[int]] = {name: [] for name in steps}
@@ -296,8 +300,6 @@ def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) ->
                     print(f"lab-step-line {name}: {line.split('qml: ', 1)[-1]}", flush=True)
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
-    for window in windows:
-        shell.close(window)
     for name, spans in timed.items():
         with capsys.disabled():
             print(
@@ -323,14 +325,27 @@ DRAWER_PRESENTED = re.compile(
 )
 
 
-def closed(shell: Shell, window: Json) -> None:
-    """Close a window the lab opened, once niri no longer lists it, so the next test hasn't it."""
-    shell.close(window)
+def closing(shell: Shell, request: pytest.FixtureRequest) -> list[Json]:
+    """Give a list whose windows are closed as the test ends, however it ends.
+
+    It's handed out before any opens, so a test that fails partway through opening still
+    closes those it opened, since the shell and its niri outlive the test.
+    """
+    windows: list[Json] = []
+    request.addfinalizer(functools.partial(closed, shell, windows))
+    return windows
+
+
+def closed(shell: Shell, windows: list[Json]) -> None:
+    """Close the windows a test opened, once niri lists none of them, so the next hasn't them."""
+    for window in windows:
+        shell.close(window)
+    ids = {window["id"] for window in windows}
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     # Niri lets a window go once its foot has gone, so it's asked again a poll's length apart.
-    while any(listed["id"] == window["id"] for listed in shell.windows()):
+    while left := [listed for listed in shell.windows() if listed["id"] in ids]:
         if time.monotonic() >= deadline:
-            failed = f"window {window['title']!r} never closed"
+            failed = f"{len(left)} windows never closed: {[w['title'] for w in left]!r}"
             raise AssertionError(failed)
         time.sleep(launcher_on_niri.POLL)
 
@@ -340,17 +355,17 @@ def walked_in(shell: Shell, place: str, within: str, request: pytest.FixtureRequ
 
     Windows open first, none unless the run says (LAB_DRAWN_WINDOWS), each titled at the
     length LAB_TITLED gives it, so Desktop's Windows names as many, as long, as Joel's Runs
-    do. Each is closed as the test ends, however it ends, since the shell outlives it.
+    do. They're closed as the test ends, however it ends (closing).
     """
     titled = os.environ.get("LAB_TITLED", "")
     # The window's title goes to niri's spawn in single quotes (Shell.opened).
     if "'" in titled:
         refused = f"LAB_TITLED can't hold an apostrophe: {titled!r}"
         raise ValueError(refused)
+    windows = closing(shell, request)
     for nth in range(int(os.environ.get("LAB_DRAWN_WINDOWS", "0"))):
-        # Named apart from the other tests' Lab windows, which may still be closing.
-        window = shell.opened(f"Drawn {nth} {titled}".strip(), app="foot")
-        request.addfinalizer(functools.partial(closed, shell, window))
+        # Named apart from the other tests' Lab windows, should one outlive its test.
+        windows.append(shell.opened(f"Drawn {nth} {titled}".strip(), app="foot"))
     opened(shell, "home")
     shell.close_launcher()
     stepped(shell, place)
