@@ -398,7 +398,10 @@ pub struct Guard {
     /// What this round's passes have tried, so the pass on the disk beneath
     /// an image doesn't try again what the image's own pass did: a target
     /// taken stays an empty folder, a trimmed log stays, and a command
-    /// leaves nothing to look at.
+    /// leaves nothing to look at. A kept one counts too: an install kept
+    /// as written again while it was cleared has been emptied once, and a
+    /// second pass would empty what its owner just wrote. The next round
+    /// tries again.
     tried: BTreeSet<PathBuf>,
     /// Whether a batch from the listing held was refused as stale. Builds
     /// root again what a listing called dead, on 28 October 538 roots
@@ -2711,9 +2714,7 @@ impl Guard {
     /// failing command waits its window too.
     fn note_actions(&mut self, here: &[Offer], actions: &[(PathBuf, Outcome)], wall: f64) {
         for (taken, outcome) in actions {
-            if !matches!(outcome, Outcome::Kept(_)) {
-                self.tried.insert(taken.clone());
-            }
+            self.tried.insert(taken.clone());
             if *outcome == Outcome::Reclaimed
                 && let Some(offered) = &mut self.offered
             {
