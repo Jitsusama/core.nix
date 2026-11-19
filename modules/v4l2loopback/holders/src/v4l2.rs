@@ -188,10 +188,40 @@ pub struct Controls {
 /// line waiting on at most one while the watch can't see who streams, and
 /// the next line goes on past it. Any other failure is asked again, since
 /// a camera may refuse a control only while its stream starts. Asking
-/// what the next control is asks the camera its range the first time, so
-/// one that times out there is kept too, by the id it was asked after,
-/// and the list ends there from then on.
+/// what the next control is asks the camera too: its range the first
+/// time, and its master's value for one that follows another, as exposure
+/// follows auto exposure. One that times out there is kept by the id it
+/// was asked after, and the list ends there, said so, from then on.
 pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
+    listed(file, unanswered)
+}
+
+/// The three calls `controls` makes of a camera, so a test can answer
+/// them as a camera that stalls would.
+trait Asks {
+    fn query(&self, queried: &mut Queried) -> io::Result<()>;
+    fn get(&self, control: &mut Control) -> io::Result<()>;
+    fn menu(&self, menu: &mut Menu) -> io::Result<()>;
+}
+
+impl Asks for File {
+    fn query(&self, queried: &mut Queried) -> io::Result<()> {
+        // SAFETY: QUERY_CONTROL names a v4l2_queryctrl, as Queried is.
+        unsafe { ask(self, QUERY_CONTROL, queried) }
+    }
+
+    fn get(&self, control: &mut Control) -> io::Result<()> {
+        // SAFETY: GET_CONTROL names a v4l2_control, as Control is.
+        unsafe { ask(self, GET_CONTROL, control) }
+    }
+
+    fn menu(&self, menu: &mut Menu) -> io::Result<()> {
+        // SAFETY: QUERY_MENU names a v4l2_querymenu, as Menu is.
+        unsafe { ask(self, QUERY_MENU, menu) }
+    }
+}
+
+fn listed(camera: &impl Asks, unanswered: &mut BTreeSet<u32>) -> Controls {
     let mut values = Vec::new();
     let mut id = NEXT;
     loop {
@@ -211,8 +241,7 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
             flags: 0,
             reserved: [0; 2],
         };
-        // SAFETY: QUERY_CONTROL names a v4l2_queryctrl, as Queried is.
-        if let Err(error) = unsafe { ask(file, QUERY_CONTROL, &mut queried) } {
+        if let Err(error) = camera.query(&mut queried) {
             if unanswering(&error) {
                 unanswered.insert(id);
             }
@@ -237,8 +266,7 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
             id: queried.id,
             value: 0,
         };
-        // SAFETY: GET_CONTROL names a v4l2_control, as Control is.
-        if let Err(error) = unsafe { ask(file, GET_CONTROL, &mut control) } {
+        if let Err(error) = camera.get(&mut control) {
             let timed_out = unanswering(&error);
             values.push(Value {
                 name,
@@ -259,10 +287,7 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
                 name: [0; 32],
                 reserved: 0,
             };
-            // SAFETY: QUERY_MENU names a v4l2_querymenu, as Menu is.
-            unsafe { ask(file, QUERY_MENU, &mut menu) }
-                .ok()
-                .map(|()| text(&{ menu.name }))
+            camera.menu(&mut menu).ok().map(|()| text(&{ menu.name }))
         });
         values.push(Value {
             name,
@@ -338,10 +363,8 @@ mod tests {
 
     #[test]
     fn only_a_control_that_timed_out_is_kept_as_unanswered() {
-        const ETIMEDOUT: i32 = 110;
         const EBUSY: i32 = 16;
         const EPIPE: i32 = 32;
-        const EIO: i32 = 5;
         let error = io::Error::from_raw_os_error;
         let kept: Vec<bool> = [ETIMEDOUT, EBUSY, EPIPE, EIO, EINVAL]
             .map(|code| unanswering(&error(code)))
@@ -361,6 +384,173 @@ mod tests {
         let controls = controls(&full, &mut BTreeSet::new());
         assert_eq!(controls.values.len(), 0);
         assert_eq!(controls.cut_short, None);
+    }
+
+    const ETIMEDOUT: i32 = 110;
+    const EIO: i32 = 5;
+
+    /// A control as the stand-in camera answers it: an errno where it
+    /// fails to say what it is, or to read.
+    struct Standing {
+        id: u32,
+        name: &'static str,
+        kind: u32,
+        queries: Result<(), i32>,
+        reads: Result<i32, i32>,
+    }
+
+    fn standing(id: u32, name: &'static str, reads: Result<i32, i32>) -> Standing {
+        Standing {
+            id,
+            name,
+            kind: INTEGER,
+            queries: Ok(()),
+            reads,
+        }
+    }
+
+    /// A camera that answers from a list, noting each control it's asked
+    /// to read, so a test can count the waits.
+    struct Camera {
+        controls: Vec<Standing>,
+        read: std::cell::RefCell<Vec<u32>>,
+    }
+
+    impl Camera {
+        fn new(controls: Vec<Standing>) -> Self {
+            Self {
+                controls,
+                read: std::cell::RefCell::default(),
+            }
+        }
+
+        fn find(&self, id: u32) -> &Standing {
+            self.controls
+                .iter()
+                .find(|c| c.id == id)
+                .expect("asked of no control")
+        }
+    }
+
+    impl Asks for Camera {
+        fn query(&self, queried: &mut Queried) -> io::Result<()> {
+            assert_ne!(
+                queried.id & NEXT,
+                0,
+                "a control was queried but not after another"
+            );
+            let after = queried.id & !NEXT;
+            let next = self
+                .controls
+                .iter()
+                .find(|c| c.id > after)
+                .ok_or_else(|| io::Error::from_raw_os_error(EINVAL))?;
+            next.queries.map_err(io::Error::from_raw_os_error)?;
+            queried.id = next.id;
+            queried.kind = next.kind;
+            queried.name[..next.name.len()].copy_from_slice(next.name.as_bytes());
+            Ok(())
+        }
+
+        fn get(&self, control: &mut Control) -> io::Result<()> {
+            self.read.borrow_mut().push(control.id);
+            control.value = self
+                .find(control.id)
+                .reads
+                .map_err(io::Error::from_raw_os_error)?;
+            Ok(())
+        }
+
+        fn menu(&self, menu: &mut Menu) -> io::Result<()> {
+            let item = b"Aperture Priority Mode";
+            let mut name = [0; 32];
+            name[..item.len()].copy_from_slice(item);
+            menu.name = name;
+            Ok(())
+        }
+    }
+
+    fn said(controls: &Controls) -> Vec<(&str, Result<i32, &str>, Option<&str>)> {
+        let said = controls.values.iter();
+        said.map(|v| (v.name.as_str(), v.reads, v.item.as_deref()))
+            .collect()
+    }
+
+    #[test]
+    fn a_control_that_times_out_ends_the_line_and_is_passed_over_on_the_next() {
+        let camera = Camera::new(vec![
+            standing(1, "Brightness", Ok(128)),
+            standing(2, "Exposure Time, Absolute", Err(ETIMEDOUT)),
+            standing(3, "Gain", Ok(4)),
+        ]);
+        let mut unanswered = BTreeSet::new();
+        let first = listed(&camera, &mut unanswered);
+        assert_eq!(
+            said(&first),
+            [
+                ("Brightness", Ok(128), None),
+                ("Exposure Time, Absolute", Err("unanswered"), None),
+            ]
+        );
+        assert_eq!(first.cut_short.as_deref(), Some("a control was unanswered"));
+        let next = listed(&camera, &mut unanswered);
+        assert_eq!(
+            said(&next),
+            [
+                ("Brightness", Ok(128), None),
+                ("Exposure Time, Absolute", Err("unanswered"), None),
+                ("Gain", Ok(4), None),
+            ]
+        );
+        assert_eq!(next.cut_short, None);
+        // The one that timed out was waited on once, over both lines.
+        assert_eq!(*camera.read.borrow(), [1, 2, 1, 3]);
+    }
+
+    #[test]
+    fn a_control_refused_is_said_unread_and_asked_again() {
+        let camera = Camera::new(vec![
+            standing(1, "Focus, Absolute", Err(EIO)),
+            Standing {
+                kind: MENU,
+                ..standing(2, "Auto Exposure", Ok(3))
+            },
+        ]);
+        let mut unanswered = BTreeSet::new();
+        let first = listed(&camera, &mut unanswered);
+        let expected = [
+            ("Focus, Absolute", Err("unread"), None),
+            ("Auto Exposure", Ok(3), Some("Aperture Priority Mode")),
+        ];
+        assert_eq!(said(&first), expected);
+        assert_eq!(first.cut_short, None);
+        assert_eq!(said(&listed(&camera, &mut unanswered)), expected);
+        assert_eq!(*camera.read.borrow(), [1, 2, 1, 2]);
+    }
+
+    #[test]
+    fn a_query_that_times_out_ends_the_list_there_from_then_on() {
+        // As exposure's query waits on auto exposure's value.
+        let camera = Camera::new(vec![
+            standing(1, "Brightness", Ok(128)),
+            Standing {
+                queries: Err(ETIMEDOUT),
+                ..standing(2, "Exposure Time, Absolute", Ok(156))
+            },
+        ]);
+        let mut unanswered = BTreeSet::new();
+        let first = listed(&camera, &mut unanswered);
+        assert_eq!(said(&first), [("Brightness", Ok(128), None)]);
+        assert_eq!(
+            first.cut_short.as_deref(),
+            Some("Connection timed out (os error 110)")
+        );
+        let next = listed(&camera, &mut unanswered);
+        assert_eq!(said(&next), [("Brightness", Ok(128), None)]);
+        assert_eq!(
+            next.cut_short.as_deref(),
+            Some("the next control was unanswered")
+        );
     }
 
     #[test]
