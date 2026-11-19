@@ -363,7 +363,7 @@ let
   drawnSaid = ''["walkingA", "walkingC", "walkingB", "walkingD"]'';
   walksSaid = walksOf drawnSaid;
   stridingSaid = "const STRIDING = Object.freeze({ goes: WALKS, climbs: WALKS });";
-  # A walk that skids from A to B.
+  # A walk unlike the drawn one, so reading a copy of that instead fails.
   skidded = walksOf ''["walkingA", "walkingB"]'';
   # Either declared as a constant of its own, frozen.
   walksOf = list: "const WALKS = Object.freeze(${list});";
@@ -514,9 +514,10 @@ let
   ];
   codeWalks = [
     # A copy commented out above is no walk of the cat's: the one
-    # below it is read, and refused for its skid.
+    # below it is read as its own, which the copy is not.
     {
-      strides = walkIn "// ${walksSaid}\n${skidded}\n${stridingSaid}";
+      strides = walkIn belowCopy;
+      inherit (walkRead belowCopy) faults;
       read = [
         "walkingA"
         "walkingB"
@@ -558,7 +559,12 @@ let
   ];
   # The same walk, spaced and quoted otherwise, still reads whole.
   long = "/* ${lib.concatStrings (lib.genList (_: "WALKS ") 20000)}*/";
-  reread = walkIn ''
+  belowCopy = "// ${walksSaid}\n${skidded}\n${stridingSaid}";
+  reread = rereadBy.walk;
+  rereadSaid = faultsSaid rereadBy.faults;
+  wantedSaid = walk: " for want of ${walk.wanted}, though it wanted ${faultsSaid walk.faults}";
+  faultsSaid = faults: if faults == [ ] then "nothing" else lib.concatStringsSep ", " faults;
+  rereadBy = walkRead ''
     ${long}
     // WALKS is the cat's walk, which STRIDING strides by.
     /* STRIDING[kind] = WALKS reads alike, as a comment.
@@ -594,16 +600,16 @@ let
     walks:
     map (
       walk:
-      "${walk.reason}${
-        lib.optionalString (walk ? wanted) (
-          " for want of ${walk.wanted}, though it wanted "
-          + (if walk.faults == [ ] then "nothing" else lib.concatStringsSep ", " walk.faults)
-        )
-      }, said ${(said walk.strides).said}"
+      if walk ? read then
+        "${walk.reason}: read ${builtins.toJSON walk.strides}, wanted "
+        + "${builtins.toJSON walk.read}, for want of ${faultsSaid walk.faults}"
+      else
+        "${walk.reason}${lib.optionalString (walk ? wanted) (wantedSaid walk)}, "
+        + "said ${(said walk.strides).said}"
     ) (lib.filter (walk: !refused walk) walks);
 in
 {
-  inherit drawnWalk reread;
+  inherit drawnWalk reread rereadSaid;
   poses =
     unrefusedOf strideWalks
     ++ map (one: "${one.reason}, said ${(plantedFaults one.pose).said}") unshown

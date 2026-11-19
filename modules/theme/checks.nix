@@ -452,7 +452,8 @@ in
   # refused; a sitting misnamed said undrawn; and a stride no pose lists
   # held to the stray and size rules; the cat's own planted on copies of
   # its drawings; and an animal's poses found by its glyphs and the start
-  # of its name, though a sitting or stride is undrawn (refusals).
+  # of its name, though a sitting or stride is undrawn, and no mark drawn
+  # as no glyph beside a sitting drawn so (refusals).
   every-pose-fault-is-refused =
     let
       unrefused = builtins.toJSON refusals.poses;
@@ -474,8 +475,9 @@ in
     in
     holds check (
       "The cat's walk must be read only from its frozen lists, and whole however it's "
-      + "spaced: ${builtins.toJSON refusals.code} weren't refused, "
-      + "and it read ${builtins.toJSON refusals.reread}."
+      + "spaced: ${builtins.toJSON refusals.code} weren't refused or read as meant, "
+      + "and it read ${builtins.toJSON refusals.reread}, wanted "
+      + "${builtins.toJSON refusals.drawnWalk}, for want of ${refusals.rereadSaid}."
     ) (refusals.code == [ ] && refusals.reread == refusals.drawnWalk);
 
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
