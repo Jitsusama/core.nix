@@ -54,8 +54,10 @@ def test_the_share_is_never_under_one_nor_over_the_processors() -> None:
     """The load can't speed the builder up, nor split it past the VM's processors."""
     faster = builders_share((0, BUSY), (BUSY // 2, BUSY))
     split = builders_share((BUSY * 9 // 10, BUSY), (0, BUSY))
+    starved = builders_share((BUSY, BUSY), (0, BUSY))
     assert faster == 1.0, f"less stolen under load than frozen gave a share of {faster}"
     assert split == PROCESSORS, f"nine in ten ticks stolen under load gave a share of {split}"
+    assert starved == PROCESSORS, f"every tick stolen under load alone gave a share of {starved}"
 
 
 def test_a_turn_with_no_busy_ticks_gives_a_share_of_one() -> None:
@@ -99,4 +101,15 @@ def test_the_ledger_says_each_turns_ticks_and_the_share() -> None:
     assert said == (
         "the guest counted 500 of 1000 busy ticks stolen under load, against 0 of 1000 frozen,"
         " a share of 2.00"
+    ), f"the ledger said {said!r}"
+
+
+def test_the_ledger_says_no_share_for_a_turn_it_never_counted() -> None:
+    """A turn a failure never reached has nothing to weigh, which a share of 1 would clear."""
+    ledger = Ledger(stat(0, 0))
+    ledger.count(stat(500, 1000), turn=True)
+    said = ledger.said()
+    assert said == (
+        "the guest counted 500 of 1000 busy ticks stolen under load, against 0 of 0 frozen,"
+        " so no share"
     ), f"the ledger said {said!r}"
