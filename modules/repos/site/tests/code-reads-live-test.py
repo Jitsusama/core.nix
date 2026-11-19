@@ -812,9 +812,10 @@ def test_code_keeps_to_its_budget(code_opened: Opened, mycelium_node: StandIn) -
     # whole and not how far it got.
     for key in ["github:owl/core", "local:~/src/notes"]:
         expect(row(code_opened.page, key), f"Code drew no row for {key}").to_be_visible()
+    # The cell tying the map works in core's grove beside the one already there.
     expect(
-        row(code_opened.page, "github:owl/core"), "the cell at work wasn't drawn"
-    ).to_contain_text("1 cell", timeout=PACE_MS)
+        row(code_opened.page, "github:owl/core"), "the cells at work weren't drawn"
+    ).to_contain_text("2 cells", timeout=PACE_MS)
     code_opened.keeps_to(BUDGET)
     says_it_stands(code_opened.page, "live")
 
