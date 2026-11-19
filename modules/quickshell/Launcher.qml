@@ -5789,19 +5789,24 @@ Scope {
             const started = KeyTimes.now();
             // One source that throws leaves the rest still refreshed, and
             // says so, rather than leaving them waiting for a next change.
+            // What it changed before it threw is shown again, so the list
+            // never shows a step it may have left.
             let shown = false;
+            let threw = false;
             try {
                 shown = refreshNow(source);
             } catch (error) {
-                console.warn(`launcher: refreshing ${source.settings.name} failed: ${error}`);
+                threw = true;
+                console.warn(`launcher: refreshing ${source.settings.name} failed: ${error}\n`
+                    + `${error?.stack ?? ""}`);
             }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.
             if (spansHeard)
                 feltSpan(`${source.settings.name} changing`, started);
-            return { source, startedAt, shown, tookMs: KeyTimes.now() - started };
+            return { source, startedAt, shown, threw, tookMs: KeyTimes.now() - started };
         });
-        if (done.some(one => one.shown)) {
+        if (done.some(one => one.shown || one.threw)) {
             const reshown = KeyTimes.now();
             reshow(held.length);
             feltSpan("showing again", reshown);
@@ -6086,7 +6091,9 @@ Scope {
         // rather than left frozen as it was stepped into (2026-11-18).
         const offered = from < 0 ? [] : listedWhole(source);
         // A step left shows itself, so it's shown, and the steps it held
-        // aren't put back over where it went.
+        // aren't put back over where it went. Counted as shown, it's shown
+        // once more after the step out's own search, for the updates
+        // measure to count it: one search, once a step is left.
         const itself = from < 0 ? "made"
             : heldAgain(steps, Held.own(steps, from, offered, heldWays(source)), source);
         if (itself !== "made")
@@ -6138,17 +6145,18 @@ Scope {
         });
         if (made.leave < 0)
             return made.all ? "made" : "kept";
-        if (leaving.waits && !leavesWaiting.includes(source ?? null))
-            leavesWaiting = leavesWaiting.concat([source ?? null]);
+        if (leaving.waits && !leavesWaiting.includes(source))
+            leavesWaiting = leavesWaiting.concat([source]);
         if (leaving.keep < 0)
             return "made";
-        held = steps;
-        const before = held.length;
         // Left by itself, it's no place Joel stepped to, so it goes on
-        // neither the way back nor as the place used last.
+        // neither the way back nor as the place used last, even where the
+        // row it's left from was renamed as it was remade.
         const last = lastPlace;
         jumping = true;
+        const before = steps.length;
         try {
+            held = steps;
             back(false, held.length - leaving.keep);
         } finally {
             jumping = false;
@@ -6167,9 +6175,11 @@ Scope {
     // While Joel acts on the rows or has words in the find, a step that
     // offers nothing now isn't left under him (Held.leaveTo): what changed
     // then is asked again once he's done, so the step goes then, rather
-    // than waiting on its source's next change. A place remade with no
-    // source to ask again, as a condition moving does, is read again.
-    readonly property bool leavesWait: holdingRows || typing
+    // than waiting on its source's next change: an answer's asker answers
+    // again (reanswer), and any other source refreshes at its pace. Words
+    // the step's line holds, as a save's name, are no find, so they hold
+    // no leave off.
+    readonly property bool leavesWait: holdingRows || (typing && !holdsWords)
     property var leavesWaiting: []
     onLeavesWaitChanged: {
         if (leavesWait || leavesWaiting.length === 0)
@@ -6178,13 +6188,12 @@ Scope {
         leavesWaiting = [];
         if (!open)
             return;
-        const asked = waited.filter(source => source !== null && !refreshing.includes(source));
-        if (asked.length > 0) {
-            refreshing = refreshing.concat(asked);
-            Qt.callLater(refreshDue);
+        for (const source of waited) {
+            if (held.some(step => step.row.asker === source))
+                reanswer(source);
+            else
+                refreshed(source);
         }
-        if (waited.includes(null))
-            Qt.callLater(placesRead);
     }
 
     // Each step from `from` on made again from the rows the one above it

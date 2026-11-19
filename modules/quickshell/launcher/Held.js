@@ -129,16 +129,20 @@ function foundNow(foundAs, offered, ways) {
 // `how.holding`, as visual, a pending operator or words in the find do,
 // none is left under him: the leave `waits` for him to finish. Either
 // way, the step that stays keeps its rows, each gone, as no row offered
-// now says it's left, rather than showing what it offered before.
+// now says it's left, rather than showing what it offered before, and so
+// does each step kept below it, made from what it offered. A thing
+// landed in from a search, `through`, is left back to the search, past
+// the collection it was found in, as Joel's - leaves it.
 function leaveTo(made, how, ways) {
     const steps = made.steps.slice();
     if (made.leave < 0) {
         return { steps, keep: -1, waits: false };
     }
-    const keep = how.holding ? steps.length : Math.max(made.leave, how.outermost ? 1 : 0);
-    if (keep > made.leave) {
-        const step = steps[made.leave];
-        steps[made.leave] = Object.assign({}, step, { rows: ways.keep(step, []) });
+    const left = made.leave > 0 && steps[made.leave].through === true ? made.leave - 1
+        : made.leave;
+    const keep = how.holding ? steps.length : Math.max(left, how.outermost ? 1 : 0);
+    for (let at = made.leave; at < Math.min(keep, steps.length); at += 1) {
+        steps[at] = Object.assign({}, steps[at], { rows: ways.keep(steps[at], []) });
     }
     return { steps, keep: keep < steps.length ? keep : -1, waits: how.holding === true };
 }
