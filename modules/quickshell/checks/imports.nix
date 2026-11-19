@@ -297,6 +297,7 @@
     "launcher/Targets.js"
   ];
   "launcher/Spend.qml" = [ "Fuzzy.js" ];
+  "launcher/Stepped.js" = [ "launcher/Order.js" ];
   "launcher/Subnets.js" = [
     "launcher/Addresses.js"
     "launcher/Numbers.js"

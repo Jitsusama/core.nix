@@ -2,6 +2,7 @@
 // said (Trials.js), and what its making and holding went on, so a slow
 // step's line in the journal says which part to cut. Trials.qml says them.
 .pragma library
+.import "Order.js" as Order
 
 // What a step spent its time on, said as a key's parts are: `inner` the
 // parts of the search that drew the place stepped into, or null, and
@@ -49,9 +50,9 @@ function passed(parts, passing) {
 }
 
 // What a step out's holding spent on, in parentheses: the rows each source
-// made while the step was held, the three that made most, the first by
-// name where two made as many, and the time until it was held, from
-// the key. Joel's step out of Now held 14, 22, then 38 ms in one
+// made while the step was held, the three that made most, the first A to
+// Z where two made as many (Order.js), and the time until it was held,
+// from the key. Joel's step out of Now held 14, 22, then 38 ms in one
 // evening, where every other step out held 2 to 4, and the lab's Now held 3
 // to 6 with nothing to say where it went (2026-11-18). `split` holds the
 // rows by source and the ms until held; nothing for an untold split. Its
@@ -62,8 +63,8 @@ function steppedHolding(holding, split) {
         return "";
     }
     const rows = split.rows ?? {};
-    const made = Object.keys(rows).filter((name) => rows[name] > 0)
-        .sort((one, other) => rows[other] - rows[one] || one.localeCompare(other))
+    const most = Order.then(Order.larger((name) => rows[name]), Order.byName((name) => name));
+    const made = Order.sorted(Object.keys(rows).filter((name) => rows[name] > 0), most)
         .slice(0, 3).map((name) => `${name} ${rows[name]} rows`);
     const until = Math.round(split.untilHeld ?? 0);
     const named = made.length > 0 ? made : ["no rows"];

@@ -586,6 +586,7 @@ in
       cp ${../tests/trials.qml} trials.qml
       cp ${../launcher/Trials.js} Trials.js
       cp ${../launcher/Stepped.js} Stepped.js
+      cp ${../launcher/Order.js} Order.js
       cp ${../launcher/RowsKept.js} RowsKept.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
