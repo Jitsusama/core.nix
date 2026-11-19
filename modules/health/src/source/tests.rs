@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
 use jiff::Timestamp;
@@ -20,10 +20,28 @@ static HEARD: Mutex<Vec<(u8, String)>> = Mutex::new(Vec::new());
 
 /// Keep what `say_marked` says, at its `mark`.
 pub(super) fn hear(words: &str, mark: u8) {
+    // A test that panicked holding the sayings leaves them whole, so the
+    // rest still keep theirs rather than all failing with it.
     HEARD
         .lock()
-        .expect("the sayings are kept")
+        .unwrap_or_else(PoisonError::into_inner)
         .push((mark, words.to_owned()));
+}
+
+/// Check that `what`, each saying heard holding every one of `words`,
+/// was said at least `times` and every time at `mark`, telling words never
+/// heard, as reworded words are, from words said at another mark.
+pub(crate) fn assert_marked(what: &str, words: &[&str], times: usize, mark: u8) {
+    let marks = marks_of(words);
+    assert!(
+        marks.len() >= times,
+        "{what} was heard {} times, not at least {times}; were its words changed?",
+        marks.len()
+    );
+    assert!(
+        marks.iter().all(|said| *said == mark),
+        "{what} wasn't said at mark {mark} every time: {marks:?}"
+    );
 }
 
 /// The mark of each saying heard so far holding every one of `words`,
@@ -31,7 +49,7 @@ pub(super) fn hear(words: &str, mark: u8) {
 fn marks_of(words: &[&str]) -> Vec<u8> {
     HEARD
         .lock()
-        .expect("the sayings are kept")
+        .unwrap_or_else(PoisonError::into_inner)
         .iter()
         .filter(|(_, said)| words.iter().all(|word| said.contains(word)))
         .map(|(mark, _)| *mark)
@@ -292,11 +310,12 @@ fn a_replay_whose_follower_cant_follow_on_sends_every_followers_end() {
         "with {ends} of 2 ends and the follower's, a follower that couldn't follow on would go \
          unheard, with no start again, until another ended"
     );
-    let marks = marks_of(&["couldn't follow on from the day's replay: /nonexistent/journalctl"]);
-    assert!(
-        !marks.is_empty() && marks.iter().all(|mark| *mark == ERROR),
-        "a follower that couldn't follow on wasn't said as a failure, which health ends on: \
-         {marks:?}"
+    // Said as a failure, which health ends on.
+    assert_marked(
+        "a follower that couldn't follow on",
+        &["couldn't follow on from the day's replay: /nonexistent/journalctl"],
+        1,
+        ERROR,
     );
 }
 
@@ -352,10 +371,12 @@ fn a_history_ending_in_failure_is_whole_only_as_a_grep_that_found_nothing() {
         "a history that wrote nothing gave a line"
     );
     assert!(!failed.ended(), "a history that failed was taken as whole");
-    let marks = marks_of(&["history asking ", " -c exit 1 ended early"]);
-    assert!(
-        !marks.is_empty() && marks.iter().all(|mark| *mark == WARNING),
-        "a history ended early wasn't said as a warning, which health runs on through: {marks:?}"
+    // Said as a warning, which health runs on through.
+    assert_marked(
+        "a history ended early",
+        &["history asking ", " -c exit 1 ended early"],
+        1,
+        WARNING,
     );
     assert_eq!(
         failed.name,
@@ -531,10 +552,11 @@ fn a_replay_that_cant_start_sends_every_followers_end() {
              on its every sender being gone"
         );
     }
-    let marks = marks_of(&["the day's replay couldn't start: /nonexistent/journalctl"]);
-    assert!(
-        marks.len() >= 2 && marks.iter().all(|mark| *mark == ERROR),
-        "a replay that couldn't start wasn't said as a failure each time: {marks:?}"
+    assert_marked(
+        "a replay that couldn't start",
+        &["the day's replay couldn't start: /nonexistent/journalctl"],
+        2,
+        ERROR,
     );
 }
 

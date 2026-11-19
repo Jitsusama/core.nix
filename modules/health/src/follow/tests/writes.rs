@@ -534,3 +534,24 @@ fn health_ending_unable_to_write_names_the_days_held_it_loses() {
         "the days held that health lost as it ended went unnamed"
     );
 }
+
+#[test]
+fn health_says_what_ends_it_as_a_failure_and_a_mended_write_as_a_notice() {
+    // Health's warnings follower counts a failure as one of health's own
+    // and a notice not, so the two swapped as `follow` hands them out
+    // would count every mended write as a fault, and none that ends it.
+    SAYS("health: a failure said to pin its mark");
+    NOTICES("health: a notice said to pin its mark");
+    crate::source::tests::assert_marked(
+        "what ends health",
+        &["a failure said to pin its mark"],
+        1,
+        crate::source::ERROR,
+    );
+    crate::source::tests::assert_marked(
+        "a mended write",
+        &["a notice said to pin its mark"],
+        1,
+        crate::source::NOTICE,
+    );
+}
