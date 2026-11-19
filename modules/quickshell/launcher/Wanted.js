@@ -157,3 +157,12 @@ function wakeTimes(found, slices) {
         : one.from - timed[at - 1].from - timed[at - 1].took), 0);
     return { longest, waited: Math.round(waited) };
 }
+
+// Whether the slice that found home woke behind a frame or fallback of its
+// own, so no source woke in it: `after` names what woke the find, the
+// frame's number or its fallback's turn, and each slice carries its own.
+// One with no name to compare says nothing, so it's never vouched for.
+function foundAlone(after, slices) {
+    const named = one => one !== null && one !== undefined;
+    return named(after) && slices.every(one => named(one.after) && one.after !== after);
+}

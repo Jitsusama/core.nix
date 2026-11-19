@@ -435,6 +435,19 @@ QtObject {
         const byKey = Wanted.wakeTimes({ from: 0, took: 4 }, [{ from: 37, took: 8 }]);
         check(failures, "found by a key, the fallback's wait is after it", byKey.waited, 33);
         check(failures, "a finding shorter than a slice isn't the longest", byKey.longest, 8);
+        // The find woke alone only where no slice ran behind its frame or
+        // fallback, and a missing name never vouches for it.
+        const after = [{ after: 13 }, { after: "the fallback for 4" }];
+        check(failures, "behind frames and a fallback of their own, the find woke alone",
+            Wanted.foundAlone(12, after), true);
+        check(failures, "a slice behind the find's frame woke with it",
+            Wanted.foundAlone(13, after), false);
+        check(failures, "a slice behind the find's fallback woke with it",
+            Wanted.foundAlone("the fallback for 4", after), false);
+        check(failures, "a find with no frame named isn't vouched for",
+            Wanted.foundAlone(null, after), false);
+        check(failures, "nor one beside a slice with none",
+            Wanted.foundAlone(12, after.concat([{}])), false);
 
         // Only home's fill, run by filled() with home kept, finds home
         // after its frame; a place's, or any other opening, in the open.

@@ -11402,8 +11402,8 @@ Scope {
     // fallback after it (wakeFallback) wake it once between them.
     property int wakeTurn: 0
     // What the live slice waits behind: the number of the frame that woke
-    // it, or its fallback's turn, so two slices with nothing drawn between
-    // them read the same however close in time they run.
+    // it, or its fallback's turn, so two slices behind the same frame or the
+    // same fallback read the same however close in time they run.
     property var wakeAfter: null
 
     // The next slice waits for the frame that draws this one's rows, or
@@ -11528,8 +11528,8 @@ Scope {
     property real fillFoundTook: 0
     property int fillFoundJoined: 0
     // The frame or fallback the slice that found home ran after, so the
-    // waking record says whether a slice ran behind the same one, with
-    // nothing drawn between, however close in time the next frame comes.
+    // waking record says whether a slice ran behind the same frame or the
+    // same fallback, however close in time the next frame comes.
     property var fillFoundAfter: null
     function fillFound(by) {
         if (!fillFinding)
@@ -11615,7 +11615,7 @@ Scope {
             // Only a slice's find waits behind a frame; a key's, a click's
             // or a chord's runs in its event, where this says nothing.
             fillFoundBy === "slice"
-                ? { foundAlone: !wakeSlices.some(one => one.after === fillFoundAfter) } : {},
+                ? { foundAlone: Wanted.foundAlone(fillFoundAfter, wakeSlices) } : {},
             fillFoundThrew ? { foundThrew: true } : {});
         // Woken before its frame made its record, the last is the opening
         // before's, so this one's waking waits for the frame's (openDrawn).
