@@ -47,9 +47,10 @@ function acts(standing, windowed, here) {
 // so Joel reaches whoever made the thing from the thing (Joel,
 // 2026-11-16: "i have no way to go from the thing it shows to engaging
 // with the thing working on it"). None steers or ends it, since that row
-// is about what it made, not how it runs.
-function behindActs(standing, windowed, here) {
-    return acts(standing, windowed, here).filter(id => id === "switch" || id === "talk");
+// is about what it made, not how it runs, so where it runs, which only
+// Close weighs, never changes them.
+function behindActs(standing, windowed) {
+    return acts(standing, windowed, false).filter(id => id === "switch" || id === "talk");
 }
 
 // The theme's role its glyph is drawn in: a program's, as a live one

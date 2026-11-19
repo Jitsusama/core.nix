@@ -2212,7 +2212,7 @@ Provider {
     function landerActs(one) {
         const session = provider.landerOf(one);
         return session === null ? [] : SessionRow.behindActs(stateOf(session),
-            windowedOf(session), session.here).map(id => sessionAct(session, id));
+            windowedOf(session)).map(id => sessionAct(session, id));
     }
     // Joel reads a landing, which the daemon keeps, and tells as its record
     // moves; one read already is asked nothing.
@@ -2595,6 +2595,21 @@ Provider {
     readonly property var forYou: {
         const said = Words.of("agents:landed").said ?? {};
         const today = String(Calendars.today ?? "");
+        const opens = one => {
+            provider.launcher?.goTo({ trail: provider.landingTrail(one), spot: "" });
+            provider.readLanding(one.key);
+        };
+        // Its own Open leads its step, as a look's does, so the ↵ its drawer
+        // marks is what Return does and the one Go To is the session's.
+        const own = one => thing({
+            key: `verb:agents:landed:open:${one.key}`,
+            verb: Words.verb("verb:on:look:open"),
+            name: Words.name("verb:on:look:open"),
+            glyph: Words.glyph("verb:on:look:open"),
+            hue: "action",
+            later: true,
+            run: () => opens(one)
+        });
         const row = (one, fields) => thing(Object.assign({
             thing: true,
             name: one.name ?? one.what,
@@ -2607,12 +2622,11 @@ Provider {
             changes: false,
             // Every one says go to, so the foot weighs one of a run.
             keysAlike: "landing:for-you",
-            // Asked as it's stepped into, since its session may have gone.
-            verbs: () => provider.landerActs(one),
-            run: () => {
-                provider.launcher?.goTo({ trail: provider.landingTrail(one), spot: "" });
-                provider.readLanding(one.key);
-            }
+            // Asked as it's stepped into, since its session may have gone;
+            // a read one's in History too, since who landed it is still
+            // whom Joel would talk to of it.
+            verbs: () => [own(one)].concat(provider.landerActs(one)),
+            run: () => opens(one)
         }, provider.landingShows(one), fields));
         const kept = (one, fields) => provider.keptOr(forYouKeeping, fields.key,
             JSON.stringify([one, fields.hue, today]), () => row(one, fields));
