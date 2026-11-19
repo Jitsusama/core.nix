@@ -3,9 +3,12 @@
 //! a candidate, and GitHub refused to merge it only after the two riders
 //! before it had merged, so a draft neither boards nor rides.
 
+use std::path::Path;
+
 use serde_json::Value;
 
-use super::{hub, slug_of};
+use super::{Merging, Rider, alight, fall, hub, slug_of, subject};
+use crate::state::short;
 
 /// An open pull request into main from one of the repository's own
 /// branches, as the train reads it.
@@ -74,6 +77,46 @@ pub fn boarding(open: Option<&Pull>, head: &str) -> Boarding {
         Some(_) => Boarding::Rides,
         None => Boarding::StepsOff,
     }
+}
+
+/// The riders of `waiting` still their pull request's head, under `root`,
+/// as the candidate merges them, fetched by `git` into the checkout; a
+/// draft falls, and one whose pull request moved on or closed steps off.
+pub fn aboard(
+    root: &Path,
+    git: &dyn Fn(&[&str]) -> Result<String, String>,
+    slug: &str,
+    owner: &str,
+    waiting: &[Rider],
+) -> Vec<Merging> {
+    let mut mergings = Vec::new();
+    for rider in waiting {
+        let open = pull_of(slug, &rider.branch);
+        let fetched = || git(&["fetch", "--quiet", "origin", &rider.head]).is_ok();
+        match (boarding(open.as_ref(), &rider.head), open) {
+            (Boarding::Falls(why), _) => {
+                println!(
+                    "merge-net: {} steps off the train: {why}",
+                    short(&rider.head)
+                );
+                let _ = fall(root, &rider.head, &why);
+            }
+            (Boarding::Rides, Some(pull)) if fetched() => mergings.push(Merging {
+                number: pull.number,
+                head: rider.head.clone(),
+                subject: subject(pull.number, owner, &rider.branch),
+                title: pull.title,
+            }),
+            _ => {
+                println!(
+                    "merge-net: {} steps off the train: its pull request moved on or closed",
+                    short(&rider.head)
+                );
+                alight(root, &rider.head);
+            }
+        }
+    }
+    mergings
 }
 
 /// Why the draft `pull` goes no further toward main.

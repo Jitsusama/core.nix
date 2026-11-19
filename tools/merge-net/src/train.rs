@@ -68,8 +68,8 @@ use hub::GitHub;
 pub use installed::install;
 use installed::{build, hand_over, handed, newer};
 use landing::{Landing, land};
+use pulls::aboard;
 pub use pulls::drafted;
-use pulls::{Boarding, boarding, pull_of};
 use splitting::{After, Splitting, UNTAKEN_FOR};
 
 /// A change waiting on the train.
@@ -685,46 +685,6 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
         );
         let _ = fall(root, head, &said);
     }
-}
-
-/// The riders still their pull request's head, as the candidate merges
-/// them, fetched into the checkout; one whose pull request moved on or
-/// closed steps off.
-fn aboard(
-    root: &Path,
-    git: &dyn Fn(&[&str]) -> Result<String, String>,
-    slug: &str,
-    owner: &str,
-    waiting: &[Rider],
-) -> Vec<Merging> {
-    let mut mergings = Vec::new();
-    for rider in waiting {
-        let open = pull_of(slug, &rider.branch);
-        let fetched = || git(&["fetch", "--quiet", "origin", &rider.head]).is_ok();
-        match (boarding(open.as_ref(), &rider.head), open) {
-            (Boarding::Falls(why), _) => {
-                println!(
-                    "merge-net: {} steps off the train: {why}",
-                    short(&rider.head)
-                );
-                let _ = fall(root, &rider.head, &why);
-            }
-            (Boarding::Rides, Some(pull)) if fetched() => mergings.push(Merging {
-                number: pull.number,
-                head: rider.head.clone(),
-                subject: subject(pull.number, owner, &rider.branch),
-                title: pull.title,
-            }),
-            _ => {
-                println!(
-                    "merge-net: {} steps off the train: its pull request moved on or closed",
-                    short(&rider.head)
-                );
-                alight(root, &rider.head);
-            }
-        }
-    }
-    mergings
 }
 
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
