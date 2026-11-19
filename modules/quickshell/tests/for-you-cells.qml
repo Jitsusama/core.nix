@@ -105,9 +105,9 @@ QtObject {
         const raising = { address: "KELP01", presence: { addresses: ["KELP01", "9F3A2B1C"] } };
         const held = [cellB, raising];
         expect("a notice finds its session by any address it answers to",
-            Cells.noticeCell({ cell: "mycelium:cell/9F3A2B1C@heron#notice-4" }, held), raising);
-        expect("by its own address, whatever the case, its anchor alone after it",
-            Cells.noticeCell({ cell: "mycelium:cell/bbbbbb#done" }, held), cellB);
+            Cells.noticeCell({ cell: "mycelium:cell/9F3A2B1C@heron#notice:8" }, held), raising);
+        expect("by its own address, as the daemon names it, its anchor alone after it",
+            Cells.noticeCell({ cell: "mycelium:cell/BBBBBB#notice:12" }, held), cellB);
         expect("by an address alone", Cells.noticeCell({ cell: "mycelium:cell/BBBBBB" }, held),
             cellB);
         expect("not an address another runs on from",
@@ -140,6 +140,17 @@ QtObject {
             held, [cellB], {}).map(one => one.id), [1]);
         expect("one whose want Joel put off joins nothing",
             Cells.joining([raised(1)], held, [], { KELP01: true }).length, 0);
+        expect("another session's want put off, it still joins",
+            Cells.joining([raised(1)], held, [], { BBBBBB: true }).length, 1);
+        // Put away since For You opened, as acting on its row does, it
+        // stays where it stood, as one read then does (Lately.js's
+        // holdingStill); one put away before, or gone any other way, not.
+        expect("put away since For You opened, it stays; before, or gone otherwise, not",
+            Cells.joining([raised(1, { left: "dismissed", leftAt: 10 }),
+                raised(2, { left: "dismissed", leftAt: 3 }),
+                raised(3, { left: "expired", leftAt: 10 }),
+                raised(4, { left: "withdrawn", leftAt: 10 })], held, [], {}, 5)
+                .map(one => one.id), [1]);
         expect("nothing told, none", Cells.joining(undefined, undefined, undefined, undefined),
             []);
         // The list kept while it holds the same notices saying the same, so
@@ -162,6 +173,10 @@ QtObject {
         const reworded = [raised(1, { summary: "Run ended" }), raised(2)];
         expect("one replaced with new words makes it anew",
             Cells.alike(keptOnes, reworded) === reworded, true);
+        const rebodied = [raised(1, { body: "new" }), raised(2)];
+        expect("or a new body", Cells.alike(keptOnes, rebodied) === rebodied, true);
+        const pressing = [raised(1, { urgency: "critical" }), raised(2)];
+        expect("or another urgency", Cells.alike(keptOnes, pressing) === pressing, true);
         // Raised again once its card closed, it weighs from when it came
         // again; replaced in place, it keeps when it first came (held.rs's
         // arrive) but stands under whichever session it names now.

@@ -113,18 +113,25 @@ function noticeCell(notice, held) {
 // session rests, which asks nothing of him, or one gone from the screen
 // however it went (`left`), which its session can't take back once it has
 // (held.rs's close), so a question he answered would stand again once its
-// want ended; and one open as the daemon last stopped comes back left. A
-// session's own notices are pi's, which Desktop leaves to its want's row
-// (Lately.js's LISTED), so one about a session no longer asking, as away
-// mode's saying a run ended, stood in no list until now. Another program's
-// naming a cell stays in Desktop alone, so none is listed twice; one from
-// a session gone is in no list, as all pi's were, but on screen or resting.
-function joining(notices, held, wanting, putOff) {
+// want ended, but for one he put away since `since`, as For You opened, as
+// acting on its row does, which stays where it stood until For You closes,
+// as one read then does (Lately.js's holdingStill). One open as the daemon
+// stops stays open (notices' main.rs), so it joins again, its session still
+// able to take it back. A session's own notices are pi's, which Desktop
+// leaves to its want's row (Lately.js's LISTED), so one about a session no
+// longer asking, as away mode's saying a run ended, stood in no list until
+// now. Another program's naming a cell stays in Desktop alone, so none is
+// listed twice; one from a session gone is in no list, as all pi's were,
+// but on screen or resting, and one put away or expired is in none.
+function joining(notices, held, wanting, putOff, since) {
     const off = putOff ?? {};
+    const from = typeof since === "number" ? since : Number.POSITIVE_INFINITY;
+    const gone = notice => Boolean(notice.left)
+        && !(notice.left === "dismissed" && Number(notice.leftAt) >= from);
     return (Array.isArray(notices) ? notices : []).filter(notice => {
         if (notice === null || typeof notice !== "object" || notice.app !== "pi"
             || notice.read === true || notice.transient === true
-            || notice.urgency === "low" || Boolean(notice.left)) {
+            || notice.urgency === "low" || gone(notice)) {
             return false;
         }
         const cell = noticeCell(notice, held);

@@ -747,13 +747,73 @@ ShellRoot {
                 const history = root.stepIn().history;
                 if (history.some(one => one.name === "Parcel delivered")) {
                     root.waiting = "";
-                    Qt.exit(0);
+                    root.cellNoticeServed();
                 } else if (Date.now() - root.reopenedAt > 15000) {
                     root.waiting = "";
                     root.expect("opened again, History lists past its page",
                         false, JSON.stringify(history.map(one => one.name)));
                 }
             });
+        }
+    }
+    // A session's own notice stands under it among what needs Joel now as
+    // the row Desktop's place serves for it (row.rs's placed), so it's
+    // shown as well as counted: counted alone, the tray and For You said
+    // "1 to do" over a row that wasn't there.
+    function cellNoticeServed() {
+        Sessions.running = [{ address: "KELP01", title: "Session K",
+            presence: { session: "s-k", addresses: ["KELP01", "9F3A2B1C"] } }];
+        const notice = { id: 40, at: Date.now(), app: "pi", summary: "Session K is done",
+            body: "said", read: false, urgency: "critical",
+            cell: "mycelium:cell/9F3A2B1C@heron#notice:40" };
+        Notices.history = Notices.history.concat([notice]);
+        noticesDaemon.notices = noticesDaemon.notices.concat([notice]);
+        waiting = "cell notice served";
+    }
+    function cellNoticeRow() {
+        waiting = "";
+        const noticed = () => now.forYouBands.now.filter(one => one.kind === "notice");
+        const counts = () => JSON.stringify([noticed().length, ForYouHolds.count]);
+        if (tried(() => {
+            const row = now.waitingRows().find(one => one.key === "row:notices-desktop:40")
+                ?? null;
+            expect("a session's notice served stands among what needs Joel as its row",
+                row !== null && ForYouHolds.count === 1,
+                JSON.stringify(now.waitingRows().map(one => one.key)));
+            expect("which :filter holds as a thing to do from the desktop",
+                row.forYou?.kind === "do" && row.forYou?.source === "desktop",
+                JSON.stringify(row.forYou ?? null));
+            expect("and home's row names it", now.homeSays() === "Session K is done",
+                now.homeSays());
+            // Acted on from its row, the daemon reads it and puts it away
+            // (daemon.rs's invoke), and it stays where it stood while For
+            // You is open, as one read does.
+            const done = Date.now();
+            Notices.history = Notices.history.map(one => one.id !== 40 ? one
+                : Object.assign({}, one, { read: true, readAt: done, left: "dismissed",
+                    leftAt: done }));
+            expect("acted on from its row, it stays where it stood",
+                noticed().length === 1 && ForYouHolds.count === 1, counts());
+            // Shut, it's gone, and the tray counts it no more.
+            theLauncher.open = false;
+            expect("the launcher shut, it's gone, and the tray counts nothing",
+                noticed().length === 0 && ForYouHolds.count === 0, counts());
+            // Raised again with the launcher shut, the tray counts it.
+            Notices.history = Notices.history.map(one => one.id !== 40 ? one
+                : Object.assign({}, one, { read: false, readAt: null, left: undefined,
+                    leftAt: undefined }));
+            expect("raised with the launcher shut, the tray counts it",
+                ForYouHolds.count === 1, counts());
+        }))
+            Qt.exit(0);
+    }
+    Timer {
+        running: root.waiting === "cell notice served"
+        interval: 50
+        repeat: true
+        onTriggered: {
+            if (pastNotices.desktopHolds(40))
+                root.cellNoticeRow();
         }
     }
     Timer {
@@ -1048,7 +1108,7 @@ ShellRoot {
             presence: { session: "s-k", addresses: ["KELP01", "9F3A2B1C"] } };
         Sessions.running = [raising];
         Notices.history = [{ id: 8, at: Date.now(), app: "pi", summary: "Session K is done",
-            urgency: "critical", read: false, cell: "mycelium:cell/9F3A2B1C@heron#done" }];
+            urgency: "critical", read: false, cell: "mycelium:cell/9F3A2B1C@heron#notice:8" }];
         const noticed = () => now.forYouBands.now.filter(one => one.kind === "notice");
         const joined = noticed();
         expect("a session's notice stands under it among what needs Joel, counted once",
