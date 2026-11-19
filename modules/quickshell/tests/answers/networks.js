@@ -52,6 +52,7 @@ function run(failures) {
     }];
     const link = Traffic.line(status, "wlp0s20f3");
     machine("what the line carries, in bytes a second", [link.in, link.out], [5000000, 1478750]);
+    machine("the shaper's state", link.state, "holding");
     machine("the quickest server first", link.trips.map(trip => trip.server),
         ["8.8.8.8", "1.1.1.1", "9.9.9.9"]);
     machine("a line not shaped", Traffic.line(status, "enp1s0"), null);

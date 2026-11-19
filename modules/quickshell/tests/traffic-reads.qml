@@ -274,9 +274,11 @@ ShellRoot {
         traffic.reads = kept;
 
         // The counters' load lands too, so the look after it isn't one
-        // asked just after a load and passed over.
+        // asked just after a load and passed over. Aged first, since aging
+        // counts as a load.
+        aged(traffic.soonest);
         const landed = loads;
-        lookAgain();
+        traffic.look();
         waits.until("a line holding is said so", () => loads > landed && idle()
             && lineNote() === "as measured, held to the shaper's limit", () => {
             counted({ lo: [1000, 2000] });
