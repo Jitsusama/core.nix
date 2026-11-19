@@ -671,8 +671,9 @@ ShellRoot {
     }
 
     // Interfaces named as something of an object's own, counted beside lo,
-    // are each asked, known and described as any other, since no map by an
-    // interface's name has a prototype. lo, held, isn't asked.
+    // are each asked, known, described and held as any other, since no map
+    // by an interface's name has a prototype. lo, held, isn't asked, though
+    // the load wants it, its reads aged past being sure of it.
     readonly property var oddNames: ["constructor", "__proto__"]
 
     // A map's entries for the odd names, as [name, ...what each says].
@@ -687,12 +688,14 @@ ShellRoot {
         each[oddNames[0]] = [5, 6];
         each[oddNames[1]] = [7, 8];
         counted(each);
+        aged(60000);
         const landed = loads;
         mark = probed();
         traffic.counterFile = `${root.sys}/dev`;
         waits.until("odd names counted and asked", () => loads > landed && idle(), () => {
-            Expect.expect("an interface held isn't asked as a load wants it", probed() === mark,
-                `${probed() - mark} read`);
+            Expect.expect("an interface held isn't asked as a load wants it",
+                traffic.interfaceKinds.lo?.sure === false && probed() === mark,
+                `${probed() - mark} read, ${JSON.stringify(traffic.interfaceKinds.lo)}`);
             const read = oddOf(traffic.probed, count => [count]);
             Expect.expect("interfaces named as an object's own are each read whole",
                 read === '[["constructor",4],["__proto__",4]]', read);
@@ -704,7 +707,28 @@ ShellRoot {
             Expect.expect("and each is described beside its counters",
                 described === '[["constructor","virtual",5],["__proto__","virtual",7]]',
                 described);
-            Qt.exit(0);
+            root.oddHeld();
         });
+    }
+
+    // The object prototype's own key, given up with its read in flight, is
+    // held and kept hung by its name as any other, not asked again, and
+    // its read landing lets its view go.
+    function oddHeld() {
+        const odd = oddNames[1];
+        const view = traffic.probe;
+        traffic.probing = { name: odd, files: ["uevent"], said: {}, inFlight: true };
+        traffic.probeGivenUp();
+        const holds = `${oddOf(traffic.probesStuck, held => [held.wait])} and `
+            + oddOf(traffic.probesHung, hung => [hung === view]);
+        Expect.expect("an odd name given up in flight is held and kept hung by its name",
+            holds === '[["__proto__",60000]] and [["__proto__",true]]', holds);
+        traffic.probeFor([odd]);
+        Expect.expect("and isn't asked again", traffic.probing?.name !== odd
+            && !traffic.asking.some(one => one.name === odd), root.asked());
+        traffic.probeLanded(view, "");
+        Expect.expect("its read landing lets its view go", traffic.probesHung[odd] === undefined,
+            oddOf(traffic.probesHung, () => []));
+        Qt.exit(0);
     }
 }

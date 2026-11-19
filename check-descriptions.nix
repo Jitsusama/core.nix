@@ -1082,9 +1082,10 @@
     with its text through Traffic's own, letting its view go, as one that fails does; no file
     of the interface under way is asked while its last is in flight; given up with no read in
     flight, no view is kept, but its interface is held off; a hold goes only once every file
-    lands, so one whose uevent landed is held twice as long when its next file is given up;
+    lands, so one whose uevent landed, given up before the rest land, is held twice as long;
     an interface held isn't asked as a load wants it; and interfaces named constructor and
-    __proto__ are each read whole, known and described as any other
+    __proto__ are each read whole, known and described as any other, and one given up in
+    flight is held and kept hung by its name, not asked again, until its read lands
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a
