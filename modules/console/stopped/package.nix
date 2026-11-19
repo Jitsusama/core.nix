@@ -7,16 +7,17 @@
 # dev shell builds against today's kit and says when a bump would need this
 # crate to change; its clippy check passes today's kit as terminalKit for
 # the same reason. A bump (docs/commands.md) runs the VM tests that read a
-# failed boot's console: vm-boot-plymouth's emergency and initrd subtests.
+# failed boot's console: vm-boot-asks-in-the-theme's emergency and initrd
+# subtests (tests/vm/boot/plymouth.nix).
 {
   lib,
   fetchgit,
   rustPlatform,
   terminalKit ? fetchgit {
     url = "https://github.com/Jitsusama/core.nix";
-    rev = "e10b9c29cac62608e02656076eebc8065f7a6d5d";
+    rev = "3840777a489b0aae5a59f407aa1f91731d455fc9";
     rootDir = "modules/terminal-kit";
-    hash = "sha256-vFJbmc1BUttpxrCIzl6TFcYXFIcWKZ7+vUvJe0sXSoo=";
+    hash = "sha256-aSKWzdIyfw2kZkTqIpMZAiEW2GvO807VHokspsCu2Zo=";
   },
 }:
 rustPlatform.buildRustPackage rec {
