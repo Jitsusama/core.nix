@@ -202,14 +202,18 @@ def test_an_address_for_a_machine_still_coming_lands_when_it_comes(
     says_it_stands(system_page, "live")
     counted(system_page)
     # The part names wren a push before wren's own record comes, as a new
-    # machine's can be.
+    # machine's can be, and puts osprey first, which says on the page that
+    # the part has come.
     named: dict[str, object] = {
         "key": "part:machines",
-        "things": ["machine:kestrel", "machine:osprey", "machine:wren"],
+        "things": ["machine:osprey", "machine:kestrel", "machine:wren"],
     }
     system_daemon.tell("part", changed=[named])
-    system_page.keyboard.press("1")
     first = system_page.locator("#parts a[data-row^='machine:']").first
+    expect(first, "the part naming wren never came").to_have_attribute(
+        "data-row", "machine:osprey", timeout=PACE_MS
+    )
+    system_page.keyboard.press("1")
     expect(first, "1 didn't put the cursor on the first machine").to_be_focused()
     system_page.evaluate("location.hash = '#machine=wren'")
     expect(
