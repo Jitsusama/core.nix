@@ -71,7 +71,13 @@ const ACKS_LATE_MS: f64 = 100.0;
 /// download's cuts drain goes within a few of them, a second apart,
 /// while one they leave standing, another's or one no cut of ours
 /// reaches, may stand for minutes with a hidden upload queue beside it,
-/// so past this the upload counts as ever.
+/// so past this the upload counts as ever. That is a trade: an upload
+/// starved since its stay began has nothing better to judge by, so a
+/// spell standing past this teaches it the starved line. A count is put
+/// off this long at most in all, since a download whose queue stands
+/// but for a quick moment now and then, each ending its spell, would
+/// put it off for minutes; it then runs on through late moments without
+/// taking in what they carried.
 const ACKS_WAIT_S: f64 = 20.0;
 /// Below this delay a full direction may climb.
 const CLEAR_MS: f64 = 5.0;
@@ -463,9 +469,9 @@ pub struct Way {
     /// until `STARTING_S` into the stay, and until when.
     started_from: f64,
     starting_until: Option<f64>,
-    /// Since when data has waited with our CAKE holding nothing, and what
-    /// got through each moment of it.
-    elsewhere: Option<(f64, f64, u32)>,
+    /// Since when data has waited with our CAKE holding nothing, what got
+    /// through each moment of it, and how long late acks put it off.
+    elsewhere: Option<(f64, f64, u32, f64)>,
     /// What got through when the queue was last found past our CAKE, which
     /// the rate is held under, and when it next looks for more room, or
     /// until when it is looking.
@@ -678,8 +684,15 @@ impl Way {
         // puts off the seconds a count needs rather than add to them or
         // end them: a download late now and then only puts off what the
         // moments between find. One finding nothing waiting, or the link
-        // at its rate, ends them as ever.
-        let unjudged = ours.acks_late && ours.waiting && held_back && !backing_off;
+        // at its rate, ends them as ever. A count put off `ACKS_WAIT_S`
+        // in all runs on through such moments rather than wait on them,
+        // but never takes in what they carried, which may be starved: it
+        // finishes on the moments it judged.
+        let late = ours.acks_late && ours.waiting && held_back && !backing_off;
+        let unjudged = late
+            && self
+                .elsewhere
+                .is_none_or(|(_, _, _, put_off)| put_off < ACKS_WAIT_S);
         let elsewhere = ours.waiting
             && held_back
             && !backing_off
@@ -688,13 +701,18 @@ impl Way {
             && self.reached(at) > 0.0
             && through >= self.reached(at) * REACHED;
         if unjudged {
-            if let Some((since, _, _)) = self.elsewhere.as_mut() {
+            if let Some((since, _, _, put_off)) = self.elsewhere.as_mut() {
                 *since += dt;
+                *put_off += dt;
             }
-        } else if elsewhere {
-            let (since, sum, n) = self.elsewhere.get_or_insert((at, 0.0, 0));
-            *sum += through;
-            *n += 1;
+        } else if elsewhere || late {
+            // A late moment here has a count to run on, which a judged
+            // moment opened, so the count is never empty.
+            let (since, sum, n, _) = self.elsewhere.get_or_insert((at, 0.0, 0, 0.0));
+            if !late {
+                *sum += through;
+                *n += 1;
+            }
             if at - *since >= ELSEWHERE_S - 0.05 {
                 let plateau = *sum / f64::from(*n);
                 self.elsewhere = None;
@@ -1417,15 +1435,32 @@ impl Controller {
         }
     }
 
-    /// Whether the upload's acks come late at `at`, from whether they do
-    /// by the download's delay, `late`: so for at most `ACKS_WAIT_S` of
-    /// an unbroken spell.
-    fn acks_late(&mut self, at: f64, late: bool) -> bool {
-        if !late {
+    /// Whether the upload's acks come late at `at`, `dt` on from the
+    /// moment before, through a download `idle` or not whose own delay
+    /// read `delay`, if it was read: past `ACKS_LATE_MS`, for at most
+    /// `ACKS_WAIT_S` of an unbroken spell. A moment with no reading
+    /// leaves the spell as it stands, since a queue so late it loses
+    /// every probe is the latest of all, while a gap past `UNANSWERED_S`
+    /// starts it again, unseen.
+    fn acks_late(&mut self, at: f64, dt: f64, idle: bool, delay: Option<f64>) -> bool {
+        if dt > UNANSWERED_S {
             self.acks_late_since = None;
-            return false;
         }
-        at - *self.acks_late_since.get_or_insert(at) < ACKS_WAIT_S
+        let late = if idle {
+            Some(false)
+        } else {
+            delay.map(|delay| delay > ACKS_LATE_MS)
+        };
+        match late {
+            Some(false) => {
+                self.acks_late_since = None;
+                false
+            }
+            Some(true) => at - *self.acks_late_since.get_or_insert(at) < ACKS_WAIT_S,
+            None => self
+                .acks_late_since
+                .is_some_and(|since| at - since < ACKS_WAIT_S),
+        }
     }
 
     /// The share of its lane the VPN's own queue is held to: under one
@@ -1588,6 +1623,9 @@ impl Controller {
             self.tunnel = crate::tunnel::Hold::default();
         }
         if self.given_up() || unanswered {
+            // A spell of late acks the controller didn't judge through is
+            // no longer known unbroken once it starts over.
+            self.acks_late_since = None;
             self.judge(
                 at,
                 if unanswered {
@@ -1631,10 +1669,7 @@ impl Controller {
         // that read its delay do, through the queue a flowing download
         // fills. An idle download's delay is the path's, which the
         // upload's own delay already has taken off.
-        let acks_late = self.acks_late(
-            at,
-            !idle_down && down_own.is_some_and(|delay| delay > ACKS_LATE_MS),
-        );
+        let acks_late = self.acks_late(at, dt, idle_down, down_own);
         let fed = up.map(|delay| {
             let beside = if idle_down { down.unwrap_or(0.0) } else { 0.0 };
             self.step_up(seen, (delay - beside).max(0.0), heeded, acks_late)
@@ -4187,28 +4222,38 @@ mod tests {
         up: impl Fn(f64, bool) -> (f64, bool),
     ) -> (Option<u64>, Option<f64>) {
         let mut cable = Cable::new();
-        beside(c, from, to, |limit, _| cable.step(limit, 0.1), up)
+        let down = |limit, _| {
+            let (kbit, ms) = cable.step(limit, 0.1);
+            (kbit, Some(ms))
+        };
+        beside(c, from, to, down, up)
     }
 
     /// An upload beside a download carrying and late as `down(limit,
-    /// at)` says, in kbit/s and ms, under the download's limit, from
-    /// `from` to `to`: the upload's flows wait to go and carry what
+    /// at)` says, in kbit/s and ms when read, under the download's limit,
+    /// from `from` to `to`: the upload's flows wait to go and carry what
     /// `up(rate, late)` says, with our CAKE holding a queue where it says
-    /// so, `late` where the download stands past `ACKS_LATE_MS`. Answers
-    /// the rate held at the end and the lowest plateau the upload had.
+    /// so, `late` where the download stands past `ACKS_LATE_MS`. A moment
+    /// the download goes unread reads neither way, as the recorder hears
+    /// both from one probe. Answers the rate held at the end and the
+    /// lowest plateau the upload had.
     fn beside(
         c: &mut Controller,
         from: f64,
         to: f64,
-        mut down: impl FnMut(Option<u64>, f64) -> (f64, f64),
+        mut down: impl FnMut(Option<u64>, f64) -> (f64, Option<f64>),
         up: impl Fn(f64, bool) -> (f64, bool),
     ) -> (Option<u64>, Option<f64>) {
         let (mut limits, mut lowest) = (None, c.up.plateau);
+        // Each moment's time counted from `from`, not added up, which
+        // over ten minutes of moments drifts past what `PROVEN_S` takes.
+        let mut moment = 0_u32;
         let mut at = from;
         while at < to {
             let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
             let (down_kbit, down_ms) = down(c.down.limit(), at);
-            let (up_kbit, queued) = up(rate, down_ms > ACKS_LATE_MS);
+            let (up_kbit, queued) = up(rate, down_ms.is_some_and(|ms| ms > ACKS_LATE_MS));
+            let read = quiet(0.0, 300.0)(at);
             limits = c
                 .step(&Seen {
                     at_s: at,
@@ -4219,15 +4264,17 @@ mod tests {
                         ..Ours::default()
                     }),
                     down_kbit,
-                    down_delay_ms: Some(down_ms),
-                    ..quiet(0.0, 300.0)(at)
+                    up_delay_ms: down_ms.and(read.up_delay_ms),
+                    down_delay_ms: down_ms,
+                    ..read
                 })
                 .up;
             lowest = match (lowest, c.up.plateau) {
                 (Some(was), Some(now)) => Some(was.min(now)),
                 (was, now) => was.or(now),
             };
-            at += 0.1;
+            moment += 1;
+            at = from + f64::from(moment) * 0.1;
         }
         (limits, lowest)
     }
@@ -4247,9 +4294,14 @@ mod tests {
 
     /// A flowing download whose queue moves, as one our cuts work on
     /// does, between 150 and 300 ms each second.
-    fn wandering(_: Option<u64>, at: f64) -> (f64, f64) {
+    fn wandering(_: Option<u64>, at: f64) -> (f64, Option<f64>) {
         let high = at.rem_euclid(2.0) >= 1.0;
-        (30_000.0, if high { 300.0 } else { 150.0 })
+        (30_000.0, Some(if high { 300.0 } else { 150.0 }))
+    }
+
+    /// A flowing download whose queue stands short of the upload's acks.
+    fn quick(_: Option<u64>, _: f64) -> (f64, Option<f64>) {
+        (30_000.0, Some(1.0))
     }
 
     // As in the call test on 18 November: an upload behind a 12000 line
@@ -4261,7 +4313,6 @@ mod tests {
         let up = starved_while_late(2_000.0);
         beside(&mut c, 0.0, 12.0, wandering, &up);
         assert_eq!(c.up.plateau, None, "late acks taught a line");
-        let quick = |_: Option<u64>, _: f64| (30_000.0, 1.0);
         let (limits, _) = beside(&mut c, 12.0, 20.0, quick, &up);
         assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
     }
@@ -4274,11 +4325,10 @@ mod tests {
     fn a_queue_past_cake_is_taken_back_beside_late_acks_that_starve_it() {
         let mut c = Controller::new(None, None);
         let up = starved_while_late(1_200.0);
-        let quick = |_: Option<u64>, _: f64| (30_000.0, 1.0);
         beside(&mut c, 0.0, 6.0, quick, &up);
         let now_and_then = |_: Option<u64>, at: f64| {
             let late = at.rem_euclid(1.0) >= 0.5;
-            (30_000.0, if late { 150.0 } else { 1.0 })
+            (30_000.0, Some(if late { 150.0 } else { 1.0 }))
         };
         let (limits, _) = beside(&mut c, 6.0, 12.0, now_and_then, &up);
         assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
@@ -4297,6 +4347,162 @@ mod tests {
         assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
     }
 
+    // A download late 3 s at a time, dipping quick for half a second
+    // between, too short to finish a count: each dip ends its spell, and
+    // the late moments between pause the count rather than end it, so
+    // the dips' quick moments add up to one that finishes, taking in
+    // nothing the upload carried starved while late.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_a_download_that_dips_quick() {
+        let mut c = Controller::new(None, None);
+        let up = starved_while_late(2_000.0);
+        let dipping = |_: Option<u64>, at: f64| {
+            let quick = at.rem_euclid(3.5) >= 3.0;
+            (30_000.0, Some(if quick { 1.0 } else { 150.0 }))
+        };
+        let (limits, lowest) = beside(&mut c, 0.0, 30.0, dipping, &up);
+        assert!(
+            lowest.is_some_and(|lowest| lowest > 11_000.0),
+            "a starved line was learnt: {lowest:?}"
+        );
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // A download late four seconds in five, as one our cuts drain and
+    // its sender fills again, teaches no line from the seconds it
+    // starves the upload: the quick ones between find the router's.
+    #[test]
+    fn a_download_quick_one_second_in_five_teaches_no_starved_line() {
+        let mut c = Controller::new(None, None);
+        let up = starved_while_late(1_500.0);
+        let refilled = |_: Option<u64>, at: f64| {
+            let quick = at.rem_euclid(5.0) >= 4.0;
+            (30_000.0, Some(if quick { 1.0 } else { 250.0 }))
+        };
+        let (limits, lowest) = beside(&mut c, 0.0, 40.0, refilled, &up);
+        assert!(
+            lowest.is_some_and(|lowest| lowest > 11_000.0),
+            "a starved line was learnt: {lowest:?}"
+        );
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // A count put off for `ACKS_WAIT_S` in all then runs on through late
+    // moments without taking in what they carried: beside a download
+    // quick one moment in ten seconds, each ending its spell, an upload
+    // starved while late learns the router's line from the quick ones.
+    #[test]
+    fn a_count_put_off_in_all_takes_in_no_starved_moment() {
+        let mut c = Controller::new(None, None);
+        let up = starved_while_late(2_000.0);
+        let rarely = |limit, at: f64| {
+            let (kbit, _) = wandering(limit, at);
+            let quick = (at + 0.05).rem_euclid(10.0) < 0.1;
+            (kbit, Some(if quick { 1.0 } else { 150.0 }))
+        };
+        let (limits, lowest) = beside(&mut c, 0.0, 40.0, rarely, &up);
+        assert!(
+            lowest.is_some_and(|lowest| lowest > 11_000.0),
+            "a starved line was learnt: {lowest:?}"
+        );
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // A count is put off for `ACKS_WAIT_S` at most in all: beside a
+    // download quick one moment in ten seconds, each ending its spell,
+    // a queue the router hides is taken back once it has been.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_a_download_quick_once_in_a_while() {
+        let mut c = Controller::new(None, None);
+        let up = |rate: f64, _| (rate.min(12_000.0), rate < 12_000.0);
+        let rarely = |limit, at: f64| {
+            let (kbit, _) = wandering(limit, at);
+            let quick = (at + 0.05).rem_euclid(10.0) < 0.1;
+            (kbit, Some(if quick { 1.0 } else { 150.0 }))
+        };
+        let (limits, _) = beside(&mut c, 0.0, 40.0, rarely, up);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // A download so late it loses every probe one second in five leaves
+    // a spell of late acks unbroken, so the spell's wait still ends and
+    // a queue the router hides is taken back once it has.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_a_download_too_late_to_read() {
+        let mut c = Controller::new(None, None);
+        let up = |rate: f64, _| (rate.min(12_000.0), rate < 12_000.0);
+        let unread = |limit, at: f64| {
+            let (kbit, ms) = wandering(limit, at);
+            (kbit, ms.filter(|_| at.rem_euclid(5.0) >= 1.0))
+        };
+        beside(&mut c, 0.0, ACKS_WAIT_S - 1.0, unread, up);
+        assert_eq!(c.up.plateau, None, "the late acks went unheeded");
+        let (limits, _) = beside(&mut c, ACKS_WAIT_S - 1.0, 30.0, unread, up);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // The wait is for each spell of late acks, not once: a second, after
+    // a quick moment, is waited out afresh.
+    #[test]
+    fn a_second_spell_of_late_acks_is_waited_out_afresh() {
+        let mut c = Controller::new(None, None);
+        let up = starved_while_late(2_000.0);
+        beside(&mut c, 0.0, 12.0, wandering, &up);
+        beside(&mut c, 12.0, 13.0, quick, &up);
+        beside(&mut c, 13.0, 30.0, wandering, &up);
+        assert_eq!(c.up.plateau, None, "the second spell went unheeded");
+    }
+
+    // A spell of late acks through the guard giving up is waited out
+    // afresh once the controller shapes again.
+    #[test]
+    fn late_acks_after_giving_up_are_waited_out_afresh() {
+        let mut c = Controller::new(None, None);
+        let up = starved_while_late(2_000.0);
+        beside(&mut c, 0.0, 3.0, wandering, &up);
+        c.returns = GUARD_RETURNS;
+        c.gave_up_at = Some(3.0);
+        beside(&mut c, 3.0, 3.0 + GIVEN_UP_S + 12.0, wandering, &up);
+        assert!(!c.given_up(), "still given up");
+        assert_eq!(c.up.plateau, None, "late acks taught a line");
+    }
+
+    // A gap in the moments, as across a suspend, starts a spell of late
+    // acks again, since it is no longer known unbroken.
+    #[test]
+    fn late_acks_across_a_gap_are_waited_out_afresh() {
+        let mut c = Controller::new(None, None);
+        let up = starved_while_late(2_000.0);
+        beside(&mut c, 0.0, 3.0, wandering, &up);
+        beside(&mut c, 30.0, 40.0, wandering, &up);
+        assert_eq!(c.up.plateau, None, "late acks taught a line");
+    }
+
+    // Late acks with the link carrying its rate and our CAKE holding a
+    // queue find the router passing all it's sent: they end the count,
+    // as any such moment does, rather than put it off.
+    #[test]
+    fn late_acks_with_the_link_at_its_rate_end_the_count() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(14_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let up = |rate: f64, late| {
+            if late {
+                (rate, true)
+            } else {
+                (rate.min(12_000.0), rate < 12_000.0)
+            }
+        };
+        beside(&mut c, 0.0, 1.0, quick, up);
+        beside(&mut c, 1.0, 2.0, wandering, up);
+        beside(&mut c, 2.0, 3.5, quick, up);
+        assert_eq!(c.up.plateau, Some(14_000.0), "the count went on past them");
+        let (limits, _) = beside(&mut c, 3.5, 5.0, quick, up);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
     // Its acks late, the upload carries 2000 and then its line once
     // they come quick, the download still flowing, as the cable drains.
     #[test]
@@ -4311,7 +4517,7 @@ mod tests {
         });
         assert!(
             lowest.is_some_and(|lowest| lowest > 11_000.0),
-            "late acks taught a line: {lowest:?}"
+            "a line under the router's was learnt: {lowest:?}"
         );
         assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
     }
@@ -4360,6 +4566,8 @@ mod tests {
         down: impl Fn(f64) -> (f64, f64),
     ) -> Option<u64> {
         let mut limits = None;
+        // Each moment's time counted from `from`, as `beside` counts it.
+        let mut moment = 0_u32;
         let mut at = from;
         while at < to {
             let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
@@ -4378,7 +4586,8 @@ mod tests {
                     ..quiet(0.0, 300.0)(at)
                 })
                 .up;
-            at += 0.1;
+            moment += 1;
+            at = from + f64::from(moment) * 0.1;
         }
         limits
     }
@@ -4409,6 +4618,19 @@ mod tests {
         let mut c = Controller::new(None, None);
         let limits = flow_queued_beside(&mut c, 0.0, 20.0, |at| {
             let late = at.rem_euclid(2.0) >= 1.0;
+            (30_000.0, if late { 150.0 } else { 1.0 })
+        });
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // A download late six moments in ten, each stretch too short to
+    // finish a count, only puts off what the moments between find, well
+    // within the wait.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_a_download_late_more_often_than_not() {
+        let mut c = Controller::new(None, None);
+        let limits = flow_queued_beside(&mut c, 0.0, 15.0, |at| {
+            let late = at.rem_euclid(1.0) >= 0.4;
             (30_000.0, if late { 150.0 } else { 1.0 })
         });
         assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
