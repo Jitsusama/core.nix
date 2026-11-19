@@ -1,6 +1,7 @@
 //! pineapple-slack telling Joel in For You when it can't hear Slack: a
 //! sign-in Slack refuses, or none to read, writes the row, hearing Slack
-//! again takes it away, and a Slack that can't be reached writes none.
+//! again takes it away, a row that couldn't be written is written once it
+//! can be, and a Slack that can't be reached writes none.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,7 +30,12 @@ fn until(file: &Path, exists: bool) -> bool {
 
 /// The row told, or nothing when none could be read.
 fn row(home: &Path) -> Value {
-    std::fs::read_to_string(waiting(home))
+    row_in(&waiting(home))
+}
+
+/// The row told in `file`, or nothing when none could be read.
+fn row_in(file: &Path) -> Value {
+    std::fs::read_to_string(file)
         .ok()
         .and_then(|said| serde_json::from_str(&said).ok())
         .unwrap_or_default()
@@ -260,17 +266,20 @@ fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
         thread::sleep(Duration::from_millis(20));
     }
     let failed = journal(&home);
-    std::fs::remove_file(&blocked).expect("out of the way");
-    let told = until(&named, true);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    // Said before the way is cleared, so a tell that never fails is told
+    // at once rather than after a second patience; the guard stops the reader.
     assert!(
         failed.contains("<3>couldn't tell Joel in For You whether Slack is heard"),
         "a tell that can't land is said: {failed}"
     );
+    std::fs::remove_file(&blocked).expect("out of the way");
+    let told = until(&named, true);
+    let row = row_in(&named);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
     assert!(
-        told,
-        "and made again once it can, rather than counted as told: {}",
+        told && says(&row, "Slack refused the safe word's sign-in"),
+        "and made again once it can, rather than counted as told: {row}, {}",
         journal(&home)
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
