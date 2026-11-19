@@ -17,6 +17,9 @@ interface Mycelium {
   readonly homes: Homes;
 }
 
+/** What the mycelium has said before it has said anything. */
+const UNHEARD: Mycelium = { cells: [], home: undefined, homes: NOWHERE };
+
 const HOME_FOLDER = /^\/home\/[^/]+/u;
 
 /** The home folder the first of `cells` with one works under, else `known`. */
@@ -29,7 +32,7 @@ function homeOf(cells: readonly Cell[], known: string | undefined): string | und
 
 /** Watches the mycelium, telling `heard` each time it has more. */
 function watchMycelium(heard: (now: Mycelium) => void): void {
-  let now: Mycelium = { cells: [], home: undefined, homes: NOWHERE };
+  let now = UNHEARD;
   const fetching = (address: string, init: RequestInit): Promise<Response> => fetch(address, init);
   const seen = askerOf({
     ask: async () =>
@@ -61,4 +64,4 @@ function watchMycelium(heard: (now: Mycelium) => void): void {
   );
 }
 
-export { type Mycelium, watchMycelium };
+export { type Mycelium, UNHEARD, watchMycelium };
