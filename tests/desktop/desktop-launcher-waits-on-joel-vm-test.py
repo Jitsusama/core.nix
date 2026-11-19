@@ -561,9 +561,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     picked(desktop, "Try the new home")
     # Done in a window of its own, going there leads, then its session's acts.
     desktop.step_in("ret")
-    desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Go To", "Deal With It", "Talk"]
-    )
+    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Go To", "Deal With It", "Talk"])
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
@@ -579,9 +577,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     picked(desktop, "Pick a bucket")
     # Done in its session, dealing with it there leads, then talking to it.
     desktop.step_in("ret")
-    desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Deal With It", "Talk", "Go To"]
-    )
+    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Deal With It", "Talk", "Go To"])
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
@@ -1106,8 +1102,7 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"]
-            == ["Push it", "Hold it", "Deal With It", "Talk", "Go To", "Put It Off"]
+            shown["rows"] == ["Push it", "Hold it", "Deal With It", "Talk", "Go To", "Put It Off"]
             and (shown["selected"] or {}).get("name") == "Push it"
         )
     )
