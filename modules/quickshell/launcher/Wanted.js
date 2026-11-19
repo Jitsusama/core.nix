@@ -149,15 +149,27 @@ function opensKept(shared) {
     return shared === false;
 }
 
-// Whether a chord into a kept place may draw it as kept (Launcher.qml's
-// intoKept), rather than open it whole: one listed as it stands as it
-// opens (`afresh`, as Windows and Super+N's are) always may, since its
-// rows are made now, hidden as a share hides them. Its kept rows only
+// How a chord into a kept place lists it as it's drawn (Launcher.qml's
+// intoKept), or "" to open it whole: "source" by its source as it stands,
+// for one whose source lists it so (`listed`, Windows'); "asItStands" for
+// a plain place asked to list now (`asNow`, a margin mark into On);
+// "led" as a source leads to it, for one asked for by name (`named`) or
+// led to (`led`, Super+N's). Each of those makes its rows now, hidden as
+// a share hides them. Otherwise "kept", its rows as they were kept, only
 // while nothing may see the screen (`shared`, Shared.js's hidden), since
 // they were made before any share began and a shut launcher never makes
 // them again: Super+V's would show a copy, Super+O's a waiting ask.
-function drawsKept(place) {
-    return place.afresh === true || place.shared === false;
+function keptPlaceListed(place) {
+    if (place.listed === true) {
+        return "source";
+    }
+    if (place.asNow === true) {
+        return "asItStands";
+    }
+    if (place.named === true || place.led === true) {
+        return "led";
+    }
+    return place.shared === false ? "kept" : "";
 }
 
 // Whether that slice, or a key, a click or a chord run before it, searches

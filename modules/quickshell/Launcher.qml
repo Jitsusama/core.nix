@@ -9711,8 +9711,11 @@ Scope {
             // How many the find found, said after what's typed in normal.
             found: prompt.narrowSaid ? prompt.narrowed : "",
             held: root.held.map(step => step.row.chip ?? step.row.name),
-            // Whether, closed, it holds home kept for the next opening.
-            kept: root.homeHeld,
+            // Whether, closed, the next chord draws from what it kept: home
+            // held, and nothing that may see the screen, which it can't
+            // know until niri has said its casts (Wanted.opensKept), so a
+            // case waiting on it never times a chord made whole by that.
+            kept: root.homeHeld && Wanted.opensKept(root.screenShared()),
             path: root.path,
             // Whether each of the path's steps is said whole in the field.
             pathWhole: prompt.chipsWhole,
@@ -10220,13 +10223,18 @@ Scope {
         // ask about the last.
         const asNow = listedNow === true && plainPlace(source, name);
         // Its kept rows, made before any share, are drawn only while
-        // nothing may see the screen, or it opens whole (Wanted.drawsKept).
-        const afresh = source?.keptListed === true || listedNow === true || kept.led === true;
-        if (!Wanted.drawsKept({ afresh: afresh, shared: screenShared() }))
+        // nothing may see the screen, or it opens whole, saying why, so a
+        // call's slower chords read apart from a lost kept place
+        // (Wanted.keptPlaceListed).
+        const how = Wanted.keptPlaceListed({ listed: source?.keptListed === true, asNow: asNow,
+            named: listedNow === true, led: kept.led === true, shared: screenShared() });
+        if (how === "") {
+            console.info(`launcher: ${name} opened whole, as the screen may be shared`);
             return false;
-        const listed = source?.keptListed === true ? keptListing(source)
-            : asNow ? source.asItStands(() => keptListing(source))
-            : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
+        }
+        const listed = how === "source" ? keptListing(source)
+            : how === "asItStands" ? source.asItStands(() => keptListing(source))
+            : how === "led" ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
         const steps = asNow ? [placeStep(source)] : kept.held;

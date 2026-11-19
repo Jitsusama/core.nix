@@ -476,19 +476,23 @@ QtObject {
         // see the screen, as they predate any share and a shut launcher never
         // makes them again: Super+V's would show a copy, Super+O's a waiting
         // ask. A place listed as it stands as it opens draws either way.
-        const clipboard = { afresh: false, shared: false };
-        check(failures, "Super+V with nothing sharing draws the copies kept",
-            Wanted.drawsKept(clipboard), true);
-        check(failures, "Super+V under a share opens the copies whole",
-            Wanted.drawsKept(Object.assign({}, clipboard, { shared: true })), false);
-        check(failures, "Super+O under a share opens what's on, and its asks, whole",
-            Wanted.drawsKept({ afresh: false, shared: true }), false);
-        check(failures, "as does a place that never said whether it's shared",
-            Wanted.drawsKept({ afresh: false }), false);
-        check(failures, "a place listed as it stands draws under a share",
-            Wanted.drawsKept({ afresh: true, shared: true }), true);
-        check(failures, "and before niri has said its casts",
-            Wanted.drawsKept({ afresh: true }), true);
+        const chord = { listed: false, asNow: false, named: false, led: false };
+        const under = shared => Object.assign({}, chord, { shared: shared });
+        check(failures, "a chord with nothing sharing draws the copies or asks kept",
+            Wanted.keptPlaceListed(under(false)), "kept");
+        check(failures, "one under a share opens them whole",
+            Wanted.keptPlaceListed(under(true)), "");
+        check(failures, "as does one before niri has said its casts",
+            Wanted.keptPlaceListed(Object.assign({}, chord)), "");
+        check(failures, "Windows under a share lists its source as it stands",
+            Wanted.keptPlaceListed(Object.assign(under(true), { listed: true })), "source");
+        check(failures, "a mark into On under a share lists it as it stands",
+            Wanted.keptPlaceListed(Object.assign(under(true), { asNow: true, named: true })),
+            "asItStands");
+        check(failures, "Super+N under a share lists what it's led to",
+            Wanted.keptPlaceListed(Object.assign(under(true), { led: true })), "led");
+        check(failures, "as does a place asked for by name",
+            Wanted.keptPlaceListed(Object.assign(under(true), { named: true })), "led");
         // Found after it, home is searched again by a slice, a key or a
         // click, but a chord only joins, and a step or a word finds its own.
         const stands = { home: true, held: 0, typed: "" };
