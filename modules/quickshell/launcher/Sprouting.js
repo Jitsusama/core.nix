@@ -171,7 +171,7 @@ function journalled(how) {
 // How long a tell stands in the foot before a close counts as having read
 // it: the keys that shut the launcher (Escape, then :q or ZZ) are a
 // leaving, not a reading, so a close soon after the tell notices it.
-const READ_MS = 10000;
+const READ_MS = 10_000;
 
 // Whether what the foot told, `footed` ({ keys, at }, the keys taken and
 // the time as it was told), is noticed as the launcher shuts with
@@ -185,10 +185,10 @@ function noticedAtShut(footed, keysTaken, now) {
     return keysTaken === footed.keys || now - footed.at < READ_MS;
 }
 
-// A notice's body for the ends `told`, one to a line and as plain text,
-// since a notice's body is markup and the node writes the why: one
+// A notice's body for the ends told, `ends`, one to a line and as plain
+// text, since a notice's body is markup and the node writes the why: one
 // notice, so the notices daemon folds none of them away unseen.
-function noticeBody(told) {
-    return told.map(text => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")).join("\n");
+function noticeBody(ends) {
+    return ends.map(text => String(text).replace(/&/gu, "&amp;").replace(/</gu, "&lt;")
+        .replace(/>/gu, "&gt;")).join("\n");
 }

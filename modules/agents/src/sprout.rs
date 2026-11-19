@@ -260,9 +260,9 @@ mod tests {
             drop(stream);
         });
         let request = request_of(&ask(&json!({}))).expect("a sprout");
-        let silent = asked(&socket, &request, Duration::from_millis(200));
+        let answered = asked(&socket, &request, Duration::from_millis(200));
         assert!(
-            matches!(silent, Err(Unanswered::Silent)),
+            matches!(answered, Err(Unanswered::Silent)),
             "a node that took the ask and said nothing is silent, never unreached"
         );
         assert_eq!(
