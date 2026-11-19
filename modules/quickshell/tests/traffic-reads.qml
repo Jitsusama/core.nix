@@ -504,10 +504,22 @@ ShellRoot {
     // Traffic's own view, given up in the turn its read began, so the read
     // is still under way: the interface after is asked through a new view,
     // and the read landing late reaches Traffic's own handlers, which let
-    // its interface go and don't credit the one asked next with it. lo's
-    // uevent, gone since the gaps, is written again with text no file of
-    // eth8's, which has no folder, can say, so the late read lands with it.
+    // its interface go. lo's uevent, gone since the gaps, is written again,
+    // so the late read lands with text through onLoaded; whether a late
+    // read is credited is hung's to show, since here it lands before or
+    // after the next interface is done as the pool runs it.
     property var lateView: null
+    // What the view given up said as it landed, or null before then.
+    property var lateText: null
+    Connections {
+        target: root.lateView
+        function onLoaded() {
+            root.lateText = root.lateView.text().trim();
+        }
+        function onLoadFailed() {
+            root.lateText = "";
+        }
+    }
     function lateRead() {
         Written.written(uevent, "DEVTYPE=late\n");
         traffic.asking = [{ name: "eth8", files: ["uevent"], said: {} }];
@@ -520,10 +532,29 @@ ShellRoot {
             next?.name === "eth8" && traffic.probe !== root.lateView
                 && traffic.probesHung.lo === root.lateView, root.asked());
         waits.until("a read given up lands late through Traffic's own view",
-            () => traffic.probesHung.lo === undefined && next.done === true, () => {
-            Expect.expect("a read landing late isn't taken for the interface asked next",
-                Object.values(next.said).every(text => text === ""), JSON.stringify(next.said));
+            () => traffic.probesHung.lo === undefined && root.lateText !== null
+                && next.done === true, () => {
+            Expect.expect("a read given up lands late with its text",
+                root.lateText === "DEVTYPE=late", JSON.stringify(root.lateText));
             waits.until("the view a late read landed through is destroyed",
+                () => root.lateView === null, root.lateFailed);
+        });
+    }
+
+    // A read given up that ends failing, as a wedged driver's may once it
+    // stalls, reaches Traffic's own handlers too: eth7 has no folder.
+    function lateFailed() {
+        root.lateText = null;
+        traffic.asking = [];
+        traffic.probing = { name: "eth7", files: ["uevent"], said: {} };
+        traffic.probeFile();
+        root.lateView = traffic.probe;
+        traffic.probeGivenUp();
+        Expect.expect("a read given up as it begins is kept",
+            traffic.probesHung.eth7 === root.lateView, root.asked());
+        waits.until("a read given up that fails lands late through Traffic's own view",
+            () => traffic.probesHung.eth7 === undefined && root.lateText === "", () => {
+            waits.until("the view a failed late read landed through is destroyed",
                 () => root.lateView === null, root.notInFlight);
         });
     }
