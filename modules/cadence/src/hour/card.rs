@@ -60,6 +60,7 @@ pub fn compose(
 ) -> (String, Kept) {
     let mut card = format!("cadence hour at {at}\n");
     for class in [
+        Class::Apps,
         Class::Ship,
         Class::Miss,
         Class::Slip,
@@ -388,6 +389,23 @@ mod tests {
             Some(0),
             "a new drag starts unmoved"
         );
+    }
+
+    #[test]
+    fn his_apps_under_load_lead_the_card_ahead_of_every_class() {
+        let measures = [
+            measure("merge-to-on", Class::Ship, 37.9, Some(18.0)),
+            measure("apps:launcher", Class::Apps, 127.0, Some(50.0)),
+        ];
+        let (card, _) = compose("18:10", &measures, &Kept::default(), &none(), "");
+        assert!(
+            card.starts_with(
+                "cadence hour at 18:10\nHis apps under load:\n  ✕ apps:launcher said: 127, \
+                 at most 50\n"
+            ),
+            "{card}"
+        );
+        assert!(card.contains("Drag: apps:launcher said"), "{card}");
     }
 
     #[test]

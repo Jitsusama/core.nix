@@ -4,7 +4,7 @@
 //! work reads which merges, checks, dates or quests the count is made of
 //! without opening the files it came from.
 
-use super::measures::{Class, Measure, spent};
+use super::measures::{Class, Measure, rounds, spent};
 
 /// How many of the things behind a figure the card names before it
 /// counts the rest.
@@ -43,12 +43,17 @@ fn line(m: &Measure) -> String {
 /// by owner, for the orchestrator to send on without reading the mesh.
 /// The spend measure's lines each end with a quest instead, in its own
 /// order, and are named though it is never judged, since they are what
-/// it is for.
+/// it is for. The merges past five rounds are named too while the
+/// measure waits for a target, as they are what WCJQSG's ruling is about.
 fn behind(m: &Measure) -> Vec<String> {
     if m.key == spent::KEY {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
     }
-    if matches!(m.class, Class::Miss | Class::Clean) || m.past().is_none() || m.behind.is_empty() {
+    let named_unjudged = m.key == rounds::KEY && m.target.is_none();
+    if matches!(m.class, Class::Miss | Class::Clean)
+        || (m.past().is_none() && !named_unjudged)
+        || m.behind.is_empty()
+    {
         return Vec::new();
     }
     if m.class == Class::Cells {
@@ -136,6 +141,24 @@ mod tests {
             shown_lines(Class::Slip, &[&two])[1],
             "  the pager · XY9H5C; a lock · 16V6F4",
             "every one of a few wasn't named"
+        );
+    }
+
+    #[test]
+    fn rounds_per_merge_names_its_merges_past_five_though_unjudged() {
+        let mut rounds = measure(Class::Ship, 2.0, &["core.nix#12: 6 rounds"]);
+        rounds.key = rounds::KEY.to_owned();
+        rounds.target = None;
+        assert_eq!(
+            shown_lines(Class::Ship, &[&rounds])[1],
+            "  core.nix#12: 6 rounds"
+        );
+        let mut other = measure(Class::Ship, 2.0, &["x"]);
+        other.target = None;
+        assert_eq!(
+            shown_lines(Class::Ship, &[&other]).len(),
+            1,
+            "others stay bare"
         );
     }
 

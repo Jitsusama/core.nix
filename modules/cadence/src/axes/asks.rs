@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use super::{Bar, Reading, shown};
 use crate::DAY;
+use crate::tracking::{self, Tracking};
 
 /// How far back the asks are read: a week, as the card reads its merges.
 const WEEK: i64 = 7 * DAY;
@@ -34,7 +35,8 @@ pub fn gather(state_home: &Path) -> String {
     fs::read_to_string(state_home.join("mission/asks.jsonl")).unwrap_or_default()
 }
 
-/// Each line that says when he asked; one that doesn't is no ask.
+/// Each line of his own that says when he asked; one that doesn't is no
+/// ask, and one the list set itself or carries for another is not his.
 fn asks(text: &str) -> Vec<Ask> {
     let time = |v: &Value| {
         v.as_str()
@@ -43,6 +45,7 @@ fn asks(text: &str) -> Vec<Ask> {
     };
     text.lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|ask| tracking::of(ask) == Some(Tracking::His))
         .filter_map(|ask| {
             Some(Ask {
                 at: time(&ask["at"])?,
@@ -224,5 +227,19 @@ mod tests {
             Some("2026-11-02T12:00:00-05:00"),
         );
         assert_eq!(readings(&text, NOW)[0].now, None);
+    }
+
+    #[test]
+    fn only_his_own_asks_are_read_for_the_week() {
+        let kind = |tracking: &str| {
+            let mut ask: Value =
+                serde_json::from_str(&line("2026-11-13T12:00:00-05:00", tracking, None, None))
+                    .unwrap();
+            ask["tracking"] = tracking.into();
+            ask.to_string()
+        };
+        let text = [kind(""), kind("derived"), kind("owner-tracked")].join("\n");
+        let owners: Vec<String> = asks(&text).into_iter().map(|ask| ask.owner).collect();
+        assert_eq!(owners, [""], "his alone, of the three");
     }
 }
