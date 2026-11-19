@@ -104,10 +104,11 @@ mod tests {
         let go_fd = go.as_raw_fd();
         let child = std::thread::spawn(move || {
             let mut command = std::process::Command::new("sleep");
-            // It sleeps till it's killed, so the lock taken below was
-            // free while it ran, however long the taking took.
+            // It sleeps far past the 2 s the taking below may take, so
+            // the lock was free while it ran, and a test killed before it
+            // kills the child leaves it a minute at most.
             command
-                .arg("infinity")
+                .arg("60")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
@@ -117,7 +118,11 @@ mod tests {
             unsafe {
                 command.pre_exec(move || {
                     libc::close(go_fd);
-                    let _ = libc::write(told_fd, [1_u8].as_ptr().cast(), 1);
+                    // A child that can't tell the parent ends here, so the
+                    // parent hears `told` end rather than wait on it.
+                    if libc::write(told_fd, [1_u8].as_ptr().cast(), 1) != 1 {
+                        return Err(std::io::Error::from_raw_os_error(libc::EIO));
+                    }
                     // Only the byte the parent writes once its check holds
                     // lets it exec: the end of the pipe, a check failing,
                     // ends the child here, and spawn gives the error.
