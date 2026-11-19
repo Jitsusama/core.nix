@@ -100,7 +100,9 @@ fn the_row_goes_where_the_unit_names_it() {
 fn a_name_that_isnt_a_whole_path_is_no_name() {
     let (origin, _) =
         answering_whole(|_, _| Answered::ok(json!({"ok": false, "error": "invalid_auth"})));
-    for named in ["", "named/pineapple.json"] {
+    // A name with a quote and a line break is said escaped, so it can't
+    // forge a journal line of its own.
+    for named in ["", "named/pineapple.json", "named\"\n<3>forged"] {
         let home = home();
         let mut reader = reading(&home, &origin, &[], Some(Path::new(named)));
         let told = until(&waiting(&home), true);
@@ -110,9 +112,11 @@ fn a_name_that_isnt_a_whole_path_is_no_name() {
         let said = journal(&home);
         assert!(
             said.contains(&format!(
-                "SAFE_WORD_WAITING names {named:?}, which isn't a whole path"
+                "SAFE_WORD_WAITING names {named:?}, which isn't a whole path, so For You is \
+                 told in {}, which",
+                waiting(&home).display()
             )),
-            "and its journal says the name was passed over: {said}"
+            "and its journal says the name was passed over, and for where: {said}"
         );
         std::fs::remove_dir_all(&home).expect("the case's home goes");
     }

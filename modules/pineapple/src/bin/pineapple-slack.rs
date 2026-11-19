@@ -47,7 +47,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pineapple::deaf::{self, Deaf, Deafness, Round};
 use pineapple::gate::{Asked, gate};
-use pineapple::judged::{self, Judged};
+use pineapple::judged::{self, Afresh, Judged};
 use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
@@ -319,8 +319,17 @@ fn run(how: &Run) -> Result<(), Failure> {
         words: Words::from_object(REPLIES).unwrap_or_default(),
         shadow: how.shadow,
     };
-    let mut judged = judged::read(&state)
-        .unwrap_or_else(|| Judged::starting(seconds().saturating_sub(LOOK_BACK)));
+    let (mut judged, afresh) = judged::read(&state, seconds().saturating_sub(LOOK_BACK));
+    match afresh {
+        Some(Afresh::Unreadable) => {
+            eprintln!("<4>how far Slack was read can't be read, so it reads ten minutes back");
+        }
+        Some(Afresh::Ahead) => eprintln!(
+            "<4>how far Slack was read starts later than ten minutes ago, as a clock set back \
+             leaves it, so it reads ten minutes back"
+        ),
+        Some(Afresh::Nothing) | None => {}
+    }
     let mut phone = Phone {
         origin: how.origin.clone(),
         own: None,
@@ -339,9 +348,9 @@ fn run(how: &Run) -> Result<(), Failure> {
     );
     if let Some(refused) = &waiting.refused {
         eprintln!(
-            "<4>SAFE_WORD_WAITING names \"{}\", which isn't a whole path, so For You is \
-             told in {}",
-            refused.display(),
+            "<4>SAFE_WORD_WAITING names {:?}, which isn't a whole path, so For You is told in \
+             {}, which the unit's stop won't take away",
+            refused.to_string_lossy(),
             waiting.file.display()
         );
     }
