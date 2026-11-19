@@ -23,11 +23,13 @@
 //!
 //! The shell waits for it, and systemd gives the shell's start only so
 //! long, so every command it asks is held to a deadline (`Budget`): one
-//! that stalls, as a journal on a failing disk can, is killed, and the
-//! summary says what the others told it.
+//! that stalls, as a journal on a failing disk can, is killed and not
+//! asked again, and the summary says what the others told it.
 
 mod summary;
 
+use std::cell::RefCell;
+use std::ffi::OsString;
 use std::fs;
 use std::io::Read;
 use std::process::{Command, ExitCode, Output, Stdio};
@@ -114,12 +116,15 @@ fn is_a_console(path: &str) -> bool {
 }
 
 /// How long the summary may take, and each command it asks. systemd
-/// gives the shell's start ninety seconds unless told otherwise, and the
-/// console's font and Plymouth's leaving come first, so the summary takes
-/// a small share. Each command has a share of its own, so one that stalls
-/// leaves the rest their time.
+/// gives the shell's start, this included, ninety seconds, since
+/// emergency.service sets no time of its own, and Plymouth's leaving
+/// comes first, so the summary takes a small share. Each command has a
+/// share of its own, so one that stalls leaves the rest their time, and a
+/// program that stalled once isn't asked again: a journal that stalls on
+/// one unit stalls on the next.
 struct Budget {
     by: Instant,
+    stalled: RefCell<Vec<OsString>>,
 }
 
 impl Budget {
@@ -129,55 +134,88 @@ impl Budget {
     fn from_now() -> Self {
         Budget {
             by: Instant::now() + Self::WHOLE,
+            stalled: RefCell::default(),
         }
     }
 
     /// What a command printed and how it ended, if it ends in its share
-    /// of the time left; past that it's killed.
+    /// of the time left, or why not.
     fn ask(&self, command: &mut Command) -> Result<Output, String> {
-        answered(command, self.by.min(Instant::now() + Self::EACH))
+        let program = command.get_program().to_owned();
+        if self.stalled.borrow().contains(&program) {
+            return Err(format!(
+                "{} didn't answer before, so it wasn't asked again",
+                program.to_string_lossy()
+            ));
+        }
+        answered(command, self.by.min(Instant::now() + Self::EACH)).map_err(|unanswered| {
+            if unanswered.late {
+                self.stalled.borrow_mut().push(program);
+            }
+            unanswered.why
+        })
     }
 }
 
-/// What a command printed and how it ended, if it ends by `by`, or why
-/// not: it couldn't run, or it was killed at `by`. What it prints is read
-/// as it prints it, so a full pipe can't hold it.
-fn answered(command: &mut Command, by: Instant) -> Result<Output, String> {
+/// Why a command gave no answer, and whether that was for want of time.
+#[derive(Debug)]
+struct Unanswered {
+    why: String,
+    late: bool,
+}
+
+/// What a command printed and how it ended, if it ends and closes what it
+/// prints to by `by`; past that it's killed. What it prints is read as it
+/// prints it, so a full pipe can't hold it, and the time covers the reads
+/// too, since a process it leaves behind can hold its pipe past its end.
+fn answered(command: &mut Command, by: Instant) -> Result<Output, Unanswered> {
     let program = command.get_program().to_string_lossy().into_owned();
+    let broken = |why: String| Unanswered { why, late: false };
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("{program} couldn't run: {error}"))?;
-    let stdout = child.stdout.take().map(read_apart);
-    let stderr = child.stderr.take().map(read_apart);
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() < by => thread::sleep(Duration::from_millis(10)),
-            Ok(None) => {
-                // Killed and reaped, and what it printed left unread: a
-                // reader waits on no process that may still hold its pipe.
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!(
-                    "{program} didn't answer in time, so it was stopped"
-                ));
-            }
-            Err(error) => return Err(format!("{program} couldn't be waited on: {error}")),
+        .map_err(|error| broken(format!("{program} couldn't run: {error}")))?;
+    let readers = [
+        child.stdout.take().map(read_apart),
+        child.stderr.take().map(read_apart),
+    ];
+    let mut status = None;
+    loop {
+        if status.is_none() {
+            status = child
+                .try_wait()
+                .map_err(|error| broken(format!("{program} couldn't be waited on: {error}")))?;
         }
-    };
-    let all = |reader: Option<thread::JoinHandle<Vec<u8>>>| {
-        reader
-            .and_then(|reader| reader.join().ok())
-            .unwrap_or_default()
-    };
-    Ok(Output {
-        status,
-        stdout: all(stdout),
-        stderr: all(stderr),
-    })
+        let read = readers
+            .iter()
+            .flatten()
+            .all(thread::JoinHandle::is_finished);
+        if let (Some(status), true) = (status, read) {
+            let [stdout, stderr] = readers.map(|reader| {
+                reader
+                    .and_then(|reader| reader.join().ok())
+                    .unwrap_or_default()
+            });
+            return Ok(Output {
+                status,
+                stdout,
+                stderr,
+            });
+        }
+        if Instant::now() >= by {
+            // Killed and reaped, and its readers left to end on their own:
+            // what holds their pipes may outlive it.
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Unanswered {
+                why: format!("{program} didn't answer in time, so it was stopped"),
+                late: true,
+            });
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 /// A stream read to its end on a thread of its own.
@@ -299,7 +337,7 @@ mod tests {
     use std::process::Command;
     use std::time::{Duration, Instant};
 
-    use super::{answered, is_a_console};
+    use super::{Budget, answered, is_a_console};
 
     #[test]
     fn a_command_that_answers_in_time_is_heard() {
@@ -322,10 +360,51 @@ mod tests {
             Command::new("sleep").arg("30"),
             started + Duration::from_millis(200),
         );
-        assert!(said.is_err(), "a stalled command was heard: {said:?}");
+        assert!(
+            said.as_ref().is_err_and(|unanswered| unanswered.late),
+            "a stalled command wasn't stopped for time: {said:?}"
+        );
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "a stalled command held it {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_process_left_holding_the_pipe_is_out_of_time_too() {
+        let started = Instant::now();
+        let said = answered(
+            Command::new("sh").args(["-c", "sleep 30 & echo started"]),
+            started + Duration::from_millis(200),
+        );
+        assert!(
+            said.as_ref().is_err_and(|unanswered| unanswered.late),
+            "what it left behind was waited on: {said:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "what it left behind held it {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_program_that_stalled_isnt_asked_again() {
+        let budget = Budget::from_now();
+        let first = budget.ask(Command::new("sleep").arg("30"));
+        assert!(first.is_err(), "a stalled command was heard: {first:?}");
+        let started = Instant::now();
+        let again = budget.ask(Command::new("sleep").arg("0"));
+        assert!(
+            again
+                .as_ref()
+                .is_err_and(|why| why.contains("wasn't asked again")),
+            "a program that stalled was asked again: {again:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "asking again took {:?}",
             started.elapsed()
         );
     }
@@ -337,7 +416,9 @@ mod tests {
             Instant::now() + Duration::from_secs(5),
         );
         assert!(
-            said.as_ref().is_err_and(|why| why.contains("couldn't run")),
+            said.as_ref().is_err_and(
+                |unanswered| !unanswered.late && unanswered.why.contains("couldn't run")
+            ),
             "a missing program was heard: {said:?}"
         );
     }
