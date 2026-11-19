@@ -88,11 +88,12 @@ impl Homes {
 /// read, so a pipe or a link to a device there never holds the reading
 /// loop, and is put right like any other homes gone wrong. It's opened
 /// once, following no link and waiting on no pipe, and what was opened is
-/// what's judged, so nothing swapped in after a look can hold it either.
+/// what's judged, so nothing swapped in after a look can hold it either,
+/// and a terminal there never becomes the daemon's.
 fn holds(file: &Path, said: &str) -> bool {
     let Ok(held) = OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY)
         .open(file)
     else {
         return false;
