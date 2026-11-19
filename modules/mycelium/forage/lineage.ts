@@ -4,8 +4,22 @@
 // hedges so no line opens with a comma or a bracket. Every word read from
 // a record is escaped before it reaches the page.
 
-import { escaped } from "./markup.ts";
 import type { Forage } from "./model.ts";
+
+// The escaper lives here rather than in a module of its own, since each
+// module is one more file a first visit asks for, against the page's budget.
+const ESCAPES: { readonly [character: string]: string } = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/** `text` safe to put in markup, as text or an attribute's value. */
+function escaped(text: string): string {
+  return text.replace(/[&<>"']/gu, (character) => ESCAPES[character] ?? character);
+}
 
 /** How many cells a list names before counting the rest, in a panel or a fault. */
 const MOST_STARTED = 6;
@@ -140,4 +154,4 @@ function splitSaid(forage: Forage, here: ReadonlySet<string>): string {
   return cellsStarted(forage.splitInto, (cell) => namedOrAway(cell, here), true);
 }
 
-export { cellOrAway, claimedCell, namedOf, splitSaid, startedBy, startsSaid };
+export { cellOrAway, claimedCell, escaped, namedOf, splitSaid, startedBy, startsSaid };

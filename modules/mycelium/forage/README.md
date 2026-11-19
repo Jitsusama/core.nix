@@ -13,8 +13,8 @@ sites' kit by [`site.nix`][site], which leaves this note behind.
 | `model.ts`   | the forage records read as cells, and the sentence saying them  |
 | `joins.ts`   | how forages join: needs shared, cells split and starts booked   |
 | `draw.ts`    | the floor cut through, the rows, and the cell open as its panel |
-| `lineage.ts` | the panel's cells grown from and into, hedged when claimed      |
-| `markup.ts`  | text made safe for the page's markup                            |
+| `lineage.ts` | the panel's cells grown from and into, hedged when claimed, and |
+|              | text made safe for the page's markup                            |
 | `index.html` | the page, and `site.css` and `panel.css` its styles             |
 | `index.md`   | its Markdown twin, with `llms.txt` for a model                  |
 | `tests/`     | the reading of the records, tried                               |

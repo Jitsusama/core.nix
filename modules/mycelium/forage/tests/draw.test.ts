@@ -153,17 +153,11 @@ it("names up to seven cells a cell started, then names six and counts the rest",
 
 it("says the cells a cell started are only claimed unless the node's book holds each", () => {
   const three = ["OSPREY", "SKIFFS", "TERNAA"];
-  assert.equal(
-    read(startedLine(forage(), three, () => false)).says,
-    "3 cells, all as claimed: OSPREY, SKIFFS and TERNAA",
-  );
-  assert.equal(
-    read(startedLine(forage(), ["OSPREY"], () => false)).says,
-    "One cell, as claimed: OSPREY",
-  );
-  // Some claimed: each in brackets where it's named, and the count by how many of it are.
   const says = (started: readonly string[], claimed: readonly string[]) =>
     read(startedLine(forage(), started, (cell) => !claimed.includes(cell))).says;
+  assert.equal(says(three, three), "3 cells, all as claimed: OSPREY, SKIFFS and TERNAA");
+  assert.equal(says(["OSPREY"], ["OSPREY"]), "One cell, as claimed: OSPREY");
+  // Some claimed: each in brackets where it's named, and the count by how many of it are.
   assert.equal(
     says(three, ["OSPREY", "TERNAA"]),
     "3 cells: OSPREY (as claimed), SKIFFS and TERNAA (as claimed)",
@@ -172,6 +166,11 @@ it("says the cells a cell started are only claimed unless the node's book holds 
   const more = `2 more${COUNT_HELD}`;
   assert.equal(says(cells(8), ["HHHHHH"]), `8 cells: ${six} and ${more}some as claimed)`);
   assert.equal(says(cells(8), ["GGGGGG", "HHHHHH"]), `8 cells: ${six} and ${more}as claimed)`);
+  // Only a named cell claimed: the two counted are both booked, so the count says nothing.
+  assert.equal(
+    says(cells(8), ["AAAAAA"]),
+    `8 cells: AAAAAA (as claimed), ${six.slice("AAAAAA, ".length)} and 2 more`,
+  );
   // All claimed is said before the list, so it can't read as the count's alone.
   assert.equal(says(cells(8), cells(8)), `8 cells, all as claimed: ${six} and 2 more`);
   // Seven are all named, so a claimed seventh is said once, by its name.
