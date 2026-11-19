@@ -54,8 +54,8 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
     });
     // A guard that waits without killing waits for ever, one that does
     // neither leaves its reader running, and one that kills without
-    // reaping leaves it lingering; the case stops and reaps the reader
-    // itself before it says so, rather than leave it.
+    // reaping leaves it lingering; the case stops the reader itself
+    // before it says so, and reaps it too once the guard has given it up.
     if dropped.recv_timeout(PATIENCE).is_err() {
         // Stopped but not reaped: the guard still holds its child and may
         // yet signal its bare pid, which a reap here would free for some
