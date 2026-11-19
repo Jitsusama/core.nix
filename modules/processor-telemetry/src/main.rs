@@ -102,7 +102,10 @@ async fn serve(started: Instant) -> Result<(), Failure> {
     // Health times a restart from this line to the stop before it, and
     // names a daemon that says none to its owner (modules/health,
     // src/launches.rs).
-    println!("<6>ready in {} ms", started.elapsed().as_millis());
+    println!(
+        "<6>processor-telemetry: ready in {} ms",
+        started.elapsed().as_millis()
+    );
     Server::new(listener, telemetry)
         .run()
         .await
