@@ -286,10 +286,14 @@ def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -
     shell.as_account("niri msg action focus-column-left")
     heard(shell, walking, since)
     rested = time.monotonic() - moved
+    # The walk that brought it here tells of itself once niri has answered for its last frames,
+    # which can be after the key, though always before this walk's first step; so this walk's
+    # tellings are read only from its first step on.
+    setoff = shell.mark()
     sits_over(shell, first, since)
-    shell.reported(WALKED, lambda _: True, since, timedelta(seconds=TOLD))
+    shell.reported(WALKED, lambda _: True, setoff, timedelta(seconds=TOLD))
     walked = steps(shell, since)
-    said, _ = shell.said_since(since)
+    said, _ = shell.said_since(setoff)
     told = [
         json.loads(line[len(WALKED) :].split(" ", 1)[1]) for line in said if line.startswith(WALKED)
     ]
