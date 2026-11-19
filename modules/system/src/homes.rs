@@ -491,10 +491,11 @@ mod tests {
     }
 
     // The local sites' declaration refuses a row giving one kind two
-    // patterns; one recorded before that rule still reads as this does, its
-    // first pattern kept, as Code's page and the skill's reader keep it.
+    // patterns, but sites.json is read as it is, and nothing checks a row
+    // there, so a row that gives two is read as Code's page and the skill's
+    // reader read it: the first pattern that can be read keeps the kind.
     #[test]
-    fn a_rows_first_pattern_for_a_kind_keeps_it() {
+    fn a_rows_first_readable_pattern_for_a_kind_holds_against_its_later_ones() {
         let homes = Homes::from_sites(
             &sites(&json!([{"path": "mycelium/", "homes": [
                 {"kind": "machine", "address": "#machine={name}"},
@@ -505,6 +506,19 @@ mod tests {
         assert_eq!(
             homes.address("machine", "osprey"),
             Some("mycelium/#machine=osprey".into())
+        );
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "mycelium/", "homes": [
+                {"kind": "machine", "address": "../{name}"},
+                {"kind": "machine", "address": "#m={name}"},
+                {"kind": "machine", "address": "#machine={name}"},
+            ]}])),
+            |_| None,
+        );
+        assert_eq!(
+            homes.address("machine", "osprey"),
+            Some("mycelium/#m=osprey".into()),
+            "one that can't be read claims nothing"
         );
     }
 
