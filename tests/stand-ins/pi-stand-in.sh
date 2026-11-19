@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2154 # XDG_RUNTIME_DIR is the session's, set by systemd.
 # pi, as the shell opens it, for the VM tests, which have no pi
-# (tests/pi-stand-in.nix): where it started and the quest it was told to
-# load, then what it was told, a line each, written down.
+# (tests/stand-ins/pi-stand-in.nix): where it started and the quest it was
+# told to load, then what it was told, a line each, written down.
 # A sprouted session's first words, as `mycelium sprout` gives them, go in
 # a file of their own so pi-opened reads as it always has, and first, so a
 # test that sees pi-opened finds them already there.

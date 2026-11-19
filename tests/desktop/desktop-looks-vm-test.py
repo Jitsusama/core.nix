@@ -490,9 +490,9 @@ def warp_error_drawn(shown: Json) -> bool:
 def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
     """Have the stand-in warp-cli answer as the contract's files say, each (file, question).
 
-    It answers from what's written in ~/warp-cli (tests/warp-cli-stand-in.sh); a question
-    named with .error is said as warp-cli says an error. Each lands whole, by a rename, so
-    warp never reads half of one, and writable, since mv and rm on a terminal ask before
+    It answers from what's written in ~/warp-cli (tests/stand-ins/warp-cli-stand-in.sh); a
+    question named with .error is said as warp-cli says an error. Each lands whole, by a rename,
+    so warp never reads half of one, and writable, since mv and rm on a terminal ask before
     replacing a file that isn't, as the store's are.
     """
     contract = desktop.values["warp_contract"]

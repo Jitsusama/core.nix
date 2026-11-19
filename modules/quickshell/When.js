@@ -2,8 +2,9 @@
 // launcher says when (Y2YBTS, 2026-11-03), so a file's row, a call's, a
 // mail's and a meeting's read alike. Plain JavaScript, held to it through
 // FileFacts.js by tests/file-facts.qml, through google's Mail.js and
-// Calendar.js by tests/mail.qml and tests/calendar.qml, and through
-// call-transcripts' Transcripts.js by its tests/transcripts.qml.
+// Calendar.js by modules/google/tests/mail.qml and
+// modules/google/tests/calendar.qml, and through call-transcripts'
+// Transcripts.js by modules/call-transcripts/tests/transcripts.qml.
 .pragma library
 
 const MINUTE = 60_000;

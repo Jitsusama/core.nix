@@ -6,8 +6,8 @@
 //! address and its title, a tab between each, as the programs daemon
 //! holds them. A page with a program of its own, or off the web, keeps
 //! its title alone. It's how a person, or the VM test reading a real
-//! Chromium's file (tests/chrome-extension.nix), reads what the daemon
-//! reads.
+//! Chromium's file (tests/vm/programs/chrome-extension.nix), reads what
+//! the daemon reads.
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
 //! through the terminal kit. The VM test parses those lines through a
