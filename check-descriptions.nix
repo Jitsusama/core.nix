@@ -3466,6 +3466,11 @@
     any spelling and repeats left out; it says why when it asks nothing, hears both streams before
     saying it started on the node's machine, else the node's or sprout's why
   '';
+  starts-stopped-lifts-only-on-joels-return = ''
+    Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
+    and Let Them Start asks only on Joel's own Return, never a walk from outside or with no
+    launcher to say
+  '';
   carry-back-asks-the-node-only-a-carry = ''
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended

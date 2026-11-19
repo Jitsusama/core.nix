@@ -53,6 +53,7 @@ import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
 import "Sprouting.js" as Sprouting
+import "StartsStopped.js" as StartsStopped
 import "TalkTo.js" as TalkTo
 import "Wanted.js" as Wanted
 
@@ -107,12 +108,13 @@ Provider {
         // Unpaced as the launcher opens, it's watched again once the
         // opening's frame is drawn, as the tree's rows are.
         paced: provider.launcher
-        make: (row, key) => top.thing(row, key,
+        make: (row, key) => provider.topStood(top.thing(row, key,
             Object.assign(provider.topReopens(row), provider.topDrawer(row),
-                provider.topNetwork(row)))
+                provider.topNetwork(row))), row)
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topGoTo(one)
             ?? provider.topCarryBack(one, row)
+            ?? provider.topLetStart(key, one)
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -214,6 +216,48 @@ Provider {
         });
     }
 
+    // Starts Stopped's Return steps in among its acts, as the right arrow
+    // does, where its drawer is no step this launcher takes
+    // (StartsStopped.stepsIn), as PastNotices.qml's Return steps in for the
+    // same reason. Any other row is as made.
+    function topStood(one, row) {
+        if (one === null || !StartsStopped.stepsIn(row, provider.launcher))
+            return one;
+        return Object.assign(one, { verb: "more", now: false, later: false, stays: true,
+            targets: one.verbs, wordsId: undefined, returns: undefined,
+            run: () => provider.launcher?.enter(one) });
+    }
+
+    // Let Them Start lifts Joel's stop on agents' starts, so only his own
+    // Return in the launcher asks it (StartsStopped.mayLift). Null for any
+    // other act.
+    function topLetStart(key, one) {
+        if (!StartsStopped.lifts(one))
+            return null;
+        return thing({
+            key: one.key,
+            verb: Words.verb(one.key),
+            name: Words.name(one.key),
+            glyph: Words.glyph(one.key),
+            hue: "action",
+            stays: true,
+            run: () => provider.letThemStart(key, one)
+        });
+    }
+
+    function letThemStart(key, one) {
+        const launcher = provider.launcher ?? null;
+        if (!StartsStopped.mayLift(launcher)) {
+            const outside = (Words.of("agents:starts-stopped").said ?? {}).outside ?? "";
+            launcher?.walkRefused(outside);
+            // Only the journal says it, as a refused sprout's is: a notice
+            // would let any program put one on his screen.
+            console.info(`launcher: agents' starts weren't let start: ${outside}`);
+            return;
+        }
+        top.asked(key, one);
+    }
+
     // Carry Back on a carry under Carried is the shell's, asked of the
     // realm's node, never the daemon (CarryBack.js): its row reads as
     // carrying back until the node says the carry has ended, and a refusal
@@ -273,9 +317,10 @@ Provider {
     // each row an arrow first chose made its four act rows, 89 in a frozen
     // turn of 90 keys (keeps-up, 2026-11-13). A network's drawer,
     // "drawer:agents-top:network:<name>", is no session's: it's served in
-    // ready-rows.md's own shape and drawn as any ready-rows drawer is.
+    // ready-rows.md's own shape and drawn as any ready-rows drawer is, as
+    // Starts Stopped's is, "drawer:agents-top:starts-stopped".
     function topDrawer(row) {
-        const address = /^drawer:agents(?:-top)?:(?!network:)(.+)$/u
+        const address = /^drawer:agents(?:-top)?:(?!network:|starts-stopped$)(.+)$/u
             .exec(String(row?.drawer ?? ""))?.[1];
         if (address === undefined)
             return {};

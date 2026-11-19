@@ -6,7 +6,9 @@
 //! sessions there are to reopen, keeping what Joel says of them
 //! (reopen.rs), what the sessions landed, keeping what of it he has
 //! read (landed.rs), the closed orchestrators (closed.rs), and what the
-//! sessions answered of his talks, saying where he read it (answered.rs).
+//! sessions answered of his talks, saying where he read it (answered.rs);
+//! and says while agents' starts are stopped, letting them start again
+//! as the shell asks (`starts_stopped.rs`).
 //!
 //! Usage: `agents --vocabulary WORDS [--node NODE] --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --restore RESTORE
@@ -55,11 +57,13 @@ use agents::kept_places::KeptPlaces;
 use agents::landed::Reading;
 use agents::reopen::Kept;
 use agents::row::Words;
+use agents::said::Said;
 use agents::served::Served;
 use agents::session::Session;
 use agents::sources::{self, Heard, Paths};
 use agents::sprout;
 use agents::starts::{self, Keeping, Starts};
+use agents::starts_stopped;
 use agents::tell::{self, Routes};
 use agents::wants::{self, PUT_OFF_FOR_MS, PutOff, Wants};
 use daemon_serve::asks::Domain;
@@ -303,9 +307,12 @@ fn own(
     })
 }
 
-/// Start New Work, asked of `node` only for the shell, told apart by the
-/// connection it came on; feedback and a sprout wait on the node, so
-/// neither holds up an ask after it. Each start the shell names by a
+/// Start New Work and Let Them Start, asked of `node` only for the
+/// shell, told apart by the connection each came on, so no agent lifts
+/// the stop Joel put on their starts; what the node says of the starts
+/// once they're let start is `stood` at once, rather than at the next
+/// poll. Feedback, a sprout and letting them start wait on the node, so
+/// none holds up an ask after it. Each start the shell names by a
 /// token is kept on disk before the node is asked, its end before the
 /// shell hears it, and its told before that's answered, until the shell
 /// says it told Joel its end (starts.rs), so neither a restart of the
@@ -316,10 +323,19 @@ fn sprouts_for_the_shell(
     node: Option<PathBuf>,
     keeping: Keeping,
     told: mpsc::Sender<Heard>,
+    (stood, words): (Arc<starts_stopped::Told>, Said),
 ) {
     shared.peered(
-        &[sprout::ASK, starts::TOLD, starts::KEPT],
+        &[sprout::ASK, starts::TOLD, starts::KEPT, starts_stopped::ASK],
         Box::new(move |said, stream| {
+            if said["ask"] == starts_stopped::ASK {
+                let (answer, now) =
+                    starts_stopped::answer(asker::the_shell(stream), node.as_deref(), &words);
+                if let Some(now) = now {
+                    stood.tell(now);
+                }
+                return Some(answer);
+            }
             // Whether the change reached the disk: a start or its end is
             // answered either way, the shell being told as it would be with
             // no file, but a told isn't taken, so the shell sends it again
@@ -363,7 +379,7 @@ fn sprouts_for_the_shell(
         }),
     );
     // Told asks the shell's systemd who the shell is, as a sprout does.
-    shared.slow(&["feedback", sprout::ASK, starts::TOLD]);
+    shared.slow(&["feedback", sprout::ASK, starts::TOLD, starts_stopped::ASK]);
 }
 
 /// Follows the node: every kind of record it holds that Agents reads.
@@ -463,6 +479,20 @@ fn main() -> ExitCode {
     })
 }
 
+/// The launcher's words at `path`, or 78 when they can't be read.
+fn vocabulary(path: &Path) -> Result<Words, Failure> {
+    std::fs::read_to_string(path)
+        .map_err(|why| why.to_string())
+        .and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string()))
+        .map_err(|why| {
+            Failure::new(
+                Exit::Config,
+                format!("agents can't read the vocabulary {}", path.display()),
+            )
+            .because(why)
+        })
+}
+
 /// Serves the rows until the sources it hears from are gone.
 ///
 /// # Errors
@@ -470,20 +500,12 @@ fn main() -> ExitCode {
 /// 78 when the vocabulary can't be read, and 1 when it can't listen on
 /// its socket or hear the files it reads.
 fn serve(args: Args) -> Result<(), Failure> {
-    let words = std::fs::read_to_string(&args.vocabulary)
-        .map_err(|why| why.to_string())
-        .and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string()))
-        .map_err(|why| {
-            Failure::new(
-                Exit::Config,
-                format!(
-                    "agents can't read the vocabulary {}",
-                    args.vocabulary.display()
-                ),
-            )
-            .because(why)
-        })?;
+    let words = vocabulary(&args.vocabulary)?;
     let (to, heard) = mpsc::channel();
+    // What the poll and Let Them Start last told of agents' starts, so
+    // each tells only what moved since either.
+    let starts_told = Arc::new(starts_stopped::Told::new(to.clone()));
+    let starts_said = words.starts.clone();
     let routes = Routes::default();
     let landings = Landings::default();
     let wants = Wants::default();
@@ -501,7 +523,13 @@ fn serve(args: Args) -> Result<(), Failure> {
     // Read before the socket listens, so a shell's first ask of which are
     // kept is answered from them, though no record is served yet.
     let keeping = Keeping::read(&args.kept.with_file_name(starts::FILE), clock::now_ms());
-    sprouts_for_the_shell(&shared, args.node.clone(), keeping.clone(), to.clone());
+    sprouts_for_the_shell(
+        &shared,
+        args.node.clone(),
+        keeping.clone(),
+        to.clone(),
+        (Arc::clone(&starts_told), starts_said),
+    );
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {
@@ -514,6 +542,7 @@ fn serve(args: Args) -> Result<(), Failure> {
     }
     if let Some(node) = args.node {
         follow_node(&node, &to);
+        starts_stopped::follow(node.clone(), starts_told);
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
     follow_windows(&args.windows, &to);
@@ -612,7 +641,14 @@ mod sprouts {
         keeping
             .change(|kept| kept.begun("a-0", clock::now_ms()))
             .expect("a start kept");
-        sprouts_for_the_shell(&shared, Some(at_node), keeping, told);
+        let stood = Arc::new(starts_stopped::Told::new(told.clone()));
+        sprouts_for_the_shell(
+            &shared,
+            Some(at_node),
+            keeping,
+            told,
+            (stood, Said::default()),
+        );
         let socket = folder.join("agents.sock");
         let listener = serve::listen(&socket).expect("the daemon's socket");
         serve::accept(shared, listener);
@@ -664,6 +700,51 @@ mod sprouts {
             node.accept()
                 .is_err_and(|error| error.kind() == ErrorKind::WouldBlock),
             "the node was never asked"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// Let Them Start on the daemon's own socket, from a connection that
+    /// isn't the shell's (this test's), asks the node nothing, so no agent
+    /// lifts the stop on itself by asking the daemon.
+    #[test]
+    fn the_daemons_socket_lets_no_one_but_the_shell_lift_the_stop() {
+        let folder = std::env::temp_dir().join(format!("agents-lift-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder for the sockets");
+        let at_node = folder.join("node.sock");
+        let node = UnixListener::bind(&at_node).expect("a node's socket");
+        node.set_nonblocking(true).expect("the node never waits");
+        let shared = Shared::new(DOMAIN, Box::new(|_| None));
+        let (told, heard) = mpsc::channel();
+        let told = Arc::new(starts_stopped::Told::new(told));
+        let words = Words::from_vocabulary(include_str!("../tests/words.json"))
+            .expect("the launcher's words read");
+        sprouts_for_the_shell(&shared, Some(at_node), (told, words.starts));
+        let socket = folder.join("agents.sock");
+        let listener = serve::listen(&socket).expect("the daemon's socket");
+        serve::accept(shared, listener);
+        let mut asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
+        writeln!(asking, "{}", json!({"id": 1, "ask": starts_stopped::ASK}))
+            .expect("Let Them Start is asked");
+        let mut line = String::new();
+        BufReader::new(&asking)
+            .read_line(&mut line)
+            .expect("an answer");
+        let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
+        assert_eq!(
+            answer["error"]["message"],
+            "agents start again only from your own Return in the launcher",
+            "refused in its own words, whatever the kernel lets be told of who asked: {answer}"
+        );
+        assert!(
+            node.accept()
+                .is_err_and(|error| error.kind() == ErrorKind::WouldBlock),
+            "the node was never asked"
+        );
+        assert!(
+            heard.try_recv().is_err(),
+            "and nothing was told of the starts"
         );
         let _ = std::fs::remove_dir_all(&folder);
     }

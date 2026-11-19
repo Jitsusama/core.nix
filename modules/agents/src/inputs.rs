@@ -38,6 +38,7 @@ use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::shape;
 use crate::starts;
+use crate::starts_stopped::{self, Stood};
 use crate::summary;
 use crate::talks::{self, Talk};
 use crate::top;
@@ -119,6 +120,9 @@ pub struct Inputs {
     pub starts: starts::Keeping,
     /// Landed's records as last made, with what they were made from.
     pub landed_made: LandedCache,
+    /// How agents' starts stand, as the node last said, or none before it
+    /// has (`starts_stopped.rs`).
+    pub stood: Option<Stood>,
 }
 
 /// Landed's records as last made, which only `landed` reads or keeps.
@@ -606,6 +610,7 @@ impl Inputs {
         let closed = self.closed();
         let top = self.top(&sessions, &rows, &closed);
         drawers.extend(self.network_drawers(&sessions, &top));
+        drawers.extend(starts_stopped::drawers(self.stood.as_ref(), &self.words));
         served::made(
             &rows,
             &summary::summary(
@@ -729,7 +734,10 @@ impl Inputs {
             closed,
             talks: &talks,
         };
-        let mut made = top::rows(rows, &known, &self.words);
+        // Stopped starts first, above every orchestration, so a stop is
+        // never silent.
+        let mut made = starts_stopped::rows(self.stood.as_ref(), &self.words);
+        made.extend(top::rows(rows, &known, &self.words));
         let networks: Vec<&Value> = self.networks.records().map(|(_, one)| one).collect();
         let after = networks::rows(&networks, &made, &self.words);
         let kept: Vec<&Value> = self.carries.records().map(|(_, one)| one).collect();
@@ -1373,6 +1381,52 @@ mod tests {
             "named as its session's row is"
         );
         assert_eq!(row("row:agents-top:carried")["name"], "Carried");
+    }
+
+    #[test]
+    fn starts_stopped_stands_first_in_agents_top_level_while_the_node_says_so() {
+        let mut inputs = inputs();
+        // The first of Agents' top-level rows, by the order they're served in.
+        let first = |inputs: &Inputs| {
+            let moved = served::Served::default().take(inputs.made());
+            moved
+                .changed
+                .iter()
+                .filter(|one| {
+                    one["key"]
+                        .as_str()
+                        .is_some_and(|key| key.starts_with("row:agents-top:"))
+                        && one["row"]["parent"].is_null()
+                })
+                .min_by_key(|one| one["row"]["order"].as_i64())
+                .map(|one| one["key"].clone())
+        };
+        assert_eq!(
+            first(&inputs),
+            Some(json!("row:agents-top:O")),
+            "no Starts Stopped before the node has said"
+        );
+        inputs.stood = Some(Stood {
+            stopped: true,
+            newest: Vec::new(),
+        });
+        assert_eq!(
+            first(&inputs),
+            Some(json!("row:agents-top:starts-stopped")),
+            "Starts Stopped first, above every orchestration"
+        );
+        assert!(
+            served(&inputs)
+                .get("drawer:agents-top:starts-stopped")
+                .is_some(),
+            "its drawer served with it"
+        );
+        inputs.stood = Some(Stood::default());
+        assert_eq!(
+            first(&inputs),
+            Some(json!("row:agents-top:O")),
+            "and gone once starts are let start"
+        );
     }
 
     #[test]

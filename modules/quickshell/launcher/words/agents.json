@@ -402,6 +402,48 @@
       }
     },
     {
+      "id": "agents:starts-stopped",
+      "in": "agents",
+      "name": "Starts Stopped",
+      "glyph": "pause",
+      "said": {
+        "side": "new sessions won't start",
+        "refusedOne": "1 refused",
+        "refusedCount": "{count} refused",
+        "someone": "an agent",
+        "asking": "{by} asked for {program}",
+        "outside": "agents start again only from your own Return in the launcher",
+        "unanswered": "the node didn't answer in time, so they may start already"
+      },
+      "tells": {
+        "stopped": "You stopped every session an agent asks to start. Sessions you start yourself still start."
+      }
+    },
+    {
+      "id": "agents:refused",
+      "in": "agents",
+      "name": "Refused"
+    },
+    {
+      "id": "agents:last-refused",
+      "in": "agents",
+      "name": "Last Refused"
+    },
+    {
+      "id": "agents:refused-at",
+      "in": "agents",
+      "name": "Refused At"
+    },
+    {
+      "id": "verb:agents:starts:let",
+      "command": "resume",
+      "argument": "starts",
+      "in": "agents",
+      "name": "Let Them Start",
+      "verb": "start",
+      "glyph": "resume"
+    },
+    {
       "id": "agents:standing",
       "in": "agents",
       "name": "Standing"

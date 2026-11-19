@@ -19,7 +19,7 @@ use serde_json::Value;
 pub const LAUNCHERS: &str = include_str!("../tests/words.json");
 
 /// One thing's words, by their keys.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Said(HashMap<String, String>);
 
 #[derive(Deserialize)]
@@ -35,6 +35,9 @@ struct Thing {
     /// agents' do.
     #[serde(default)]
     said: Value,
+    /// What its drawer tells, each a sentence of its own.
+    #[serde(default)]
+    tells: Value,
     /// Its name, where it's a word; a name by state is read as none.
     #[serde(default)]
     name: Value,
@@ -52,12 +55,22 @@ impl Said {
 
     /// The words of the thing going by `id`; none where there's none.
     pub fn of_thing(text: &str, id: &str) -> serde_json::Result<Self> {
+        Self::part_of(text, id, |thing| thing.said)
+    }
+
+    /// What the drawer of the thing going by `id` tells, each a sentence;
+    /// none where there's none.
+    pub fn tells_of(text: &str, id: &str) -> serde_json::Result<Self> {
+        Self::part_of(text, id, |thing| thing.tells)
+    }
+
+    fn part_of(text: &str, id: &str, part: fn(Thing) -> Value) -> serde_json::Result<Self> {
         let vocabulary: Vocabulary = serde_json::from_str(text)?;
         let said = vocabulary
             .things
             .into_iter()
             .find(|thing| thing.id == id)
-            .and_then(|thing| match thing.said {
+            .and_then(|thing| match part(thing) {
                 Value::Object(words) => Some(words),
                 _ => None,
             })
