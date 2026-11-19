@@ -1041,8 +1041,12 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     assert desktop.showing()["selected"]["side"] == "none today", f"at {shot}: {desktop.showing()}"
     desktop.shoot(f"launcher-agents-landed-at-{shot}")
     desktop.follow()
-    # Newest first: the one landed yesterday, then the one from 7 Nov.
-    desktop.launcher_until(lambda shown: shown["rows"] == [TRYING, STOPPED])
+    # Newest first: the one landed within the day, then 7 Nov's, a row for the day whose
+    # landings come only once it's stepped into.
+    on = datetime.fromisoformat(str(LANDINGS[0]["at"]))
+    year = "" if on.year == datetime.now(UTC).year else f" {on.year}"
+    stopped_on = f"{on.day} {on:%b}{year}"
+    desktop.launcher_until(lambda shown: shown["rows"] == [TRYING, stopped_on])
     desktop.down_to(TRYING)
     selected = desktop.showing()["selected"]
     # A day before today, as a row says one, never its ref, which its drawer says last.

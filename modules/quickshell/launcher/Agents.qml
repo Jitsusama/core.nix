@@ -167,7 +167,7 @@ Provider {
             if (provider.launcher?.open)
                 return;
             const began = KeyTimes.now();
-            const all = provider.landingsToday;
+            const all = provider.landings;
             const kept = provider.landedKept(String(Calendars.today ?? ""));
             let at = from;
             while (at < all.length && KeyTimes.now() - began < budget) {
@@ -2113,26 +2113,31 @@ Provider {
             .filter(one => one?.kind === "landed" && one.landed);
         return Order.sorted(held, Order.smaller(one => one.order)).map(one => one.landed);
     }
-    // The landings of a day before today: those of the last day, held
-    // already, then the rest as the day's own watch tells them, newest
-    // first by their own time. The daemon tells a landing over a day old
+    // The landings of a day before the last one, as the day's own watch
+    // tells them, newest first. The daemon tells a landing over a day old
     // only to a watch naming its date (landed.rs's landing_place), and the
     // shell watches only the day Joel is in (landedDayIn), so it makes no
     // row of a day he isn't in: all 4,270 of the past 30 days' landings
     // were held and made rows, most of what the shell weighed (WCJQSG,
-    // bea3796d; 19 November).
+    // bea3796d; 19 November). Those of the last day are Landed's own,
+    // whatever their date, so each landing is listed in one place, the
+    // one the daemon keeps it in, and none goes missing as midnight
+    // passes before the daemon moves it.
     property int landedDayMoves: 0
     readonly property string landedDayIn: {
         const step = heldKeys().find(key => key.startsWith("agents:landed-day:")) ?? "";
         return step.slice("agents:landed-day:".length);
     }
+    // A day's rows are let go once Joel leaves it, as its watch is.
+    onLandedDayInChanged: {
+        if (landedDayIn === "")
+            landedDayKeeping.rows = {};
+    }
     function landingsOn(day) {
-        void landedMoves;
         void landedDayMoves;
         const told = Object.values(landedDayKind?.held ?? {})
-            .filter(one => one?.kind === "landed" && one.landed?.day === day);
-        return landings.filter(one => one.day === day)
-            .concat(Order.sorted(told, Order.smaller(one => one.order)).map(one => one.landed));
+            .filter(one => one?.kind === "landed" && one.key.startsWith(`landed:${day}:`));
+        return Order.sorted(told, Order.smaller(one => one.order)).map(one => one.landed);
     }
     // A landing's record by its own key, in Agents' place or the day's.
     function landingRecord(key) {
@@ -2292,14 +2297,15 @@ Provider {
             });
     }
     // Where a landing lives, Agents \u203a Landed \u203a it, or through its day
-    // where it landed before today, which For You's rows step into rather
-    // than show a copy of (VKCF3Z, 2026-11-10). What waits in To Try is
-    // of the last day, held already, so its day lists it at once.
+    // where the daemon keeps it in its date's place, which For You's rows
+    // step into rather than show a copy of (VKCF3Z, 2026-11-10). What
+    // waits in To Try is of the last day, Landed's own.
     function landingTrail(one) {
-        const day = String(one.day ?? "");
-        const before = day !== "" && day !== String(Calendars.today ?? "");
-        return ["collection:agents", "agents:landed"]
-            .concat(before ? [`agents:landed-day:${day}`] : [], [`agents:landed:${one.key}`]);
+        const record = String(landingRecord(one.key)?.key ?? "");
+        const place = record.split(":")[1] ?? "agents";
+        return ["collection:agents", "agents:landed"].concat(
+            place === "agents" || place === "" ? [] : [`agents:landed-day:${place}`],
+            [`agents:landed:${one.key}`]);
     }
     // A landing as both its rows show it, in Landed and in For You, one
     // component the same in both: when it landed at its side (Landed.js's
@@ -2355,13 +2361,9 @@ Provider {
     // A day's rows kept as Landed's are, apart, so stepping into one day
     // lets go of none of today's.
     readonly property var landedDayKeeping: keeper()
-    // What landed today, Landed's own rows, the rest under their days.
-    readonly property var landingsToday: {
-        const today = String(Calendars.today ?? "");
-        return landings.filter(one => (one.day ?? "") === "" || one.day === today);
-    }
-    // The days before today something landed on, newest first, with how
-    // many, as the daemon counts them (landed.rs's earlier).
+    // The dates whose places hold landings over a day old, newest first,
+    // with how many each holds, as the daemon counts them (landed.rs's
+    // earlier).
     readonly property var landedEarlier: {
         void landedMoves;
         return (rowsKind?.held ?? {})["landed-days:agents"]?.earlier ?? [];
@@ -2385,7 +2387,10 @@ Provider {
             name: landedDayName(day),
             side: String(words.count ?? "").replace("{count}", String(each.count)),
             glyph: Words.glyph("agents:landed"),
-            hue: "action"
+            hue: "action",
+            // Stepped in, it's empty until the day's watch answers, as
+            // Applications is while it reads.
+            empty: "\u2026"
         }, () => {
             const kept = provider.landedKept(today, landedDayKeeping);
             provider.keepingBegun(landedDayKeeping);
@@ -2516,7 +2521,7 @@ Provider {
             // A place's drawer is drawn once it names what it holds, as a
             // Recent's is (Launcher.qml's drawable); with nothing landed,
             // it has nothing to say past its row.
-            heldNames: landingsToday.map(one => one.name ?? one.what)
+            heldNames: landings.map(one => one.name ?? one.what)
                 .concat(landedEarlier.map(each => landedDayName(String(each.day)))),
             drawer: landings.length + landedEarlier.length === 0 ? undefined : () => ({
                 eyebrow: (Words.field.drawer ?? {}).place ?? "",
@@ -2527,18 +2532,18 @@ Provider {
             hue: "action"
         }, () => {
             const today = String(Calendars.today ?? "");
-            const of = [landingsToday, today, Sessions.running, Sessions.parked, landedEarlier];
+            const of = [landings, today, Sessions.running, Sessions.parked, landedEarlier];
             if (landedWhole.rows !== null
                 && of.every((part, at) => part === landedWhole.of[at]))
                 return landedWhole.rows;
             const kept = provider.landedKept(today);
             provider.keepingBegun(landedKeeping);
-            const rows = landingsToday.map(kept)
+            const rows = landings.map(kept)
                 .concat(landedEarlier.map(each => provider.landedDay(each, today)));
             provider.keptOnly(landedKeeping);
             // Each landing looked at is counted, as Windows counts each window it
             // hears, for the check that Landed read again looks at none.
-            provider.tally.looked += landingsToday.length;
+            provider.tally.looked += landings.length;
             landedWhole.rows = rows;
             landedWhole.of = of;
             return rows;

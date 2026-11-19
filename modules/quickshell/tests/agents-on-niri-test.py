@@ -1266,12 +1266,18 @@ LATELY_DAYS = 6
 
 
 def earlier_days() -> list[tuple[str, int]]:
-    """Give Landed's days before today, newest first, as each is named, and how many landed."""
-    today = datetime.now().astimezone().date()
+    """Give Landed's days, newest first, as each is named, and how many each holds.
+
+    A day holds the landings over a day old that landed on it, as the daemon moves them; those
+    of the last day are Landed's own, whatever their date.
+    """
+    now = datetime.now().astimezone()
+    today = now.date()
     counted: dict[tuple[str, str], int] = {}
     for one in LANDINGS:
-        day = datetime.fromisoformat(one["at"]).astimezone().date()
-        if "core.nix#" in one["ref"] and day < today:
+        at = datetime.fromisoformat(one["at"]).astimezone()
+        day = at.date()
+        if "core.nix#" in one["ref"] and now - at >= timedelta(days=1):
             before = (today - day).days
             named = (
                 "Yesterday"
@@ -1288,12 +1294,13 @@ def earlier_days() -> list[tuple[str, int]]:
 def test_landed_lists_a_row_a_day_before_today_whose_landings_come_only_inside(
     shell: Shell,
 ) -> None:
-    """Landed lists today's landings, then a row for each day before, saying how many landed.
+    """Landed lists the last day's landings, then a row for each day before, with its count.
 
     Joel's shell held every one of the past 30 days' landings, 4,270 and 3.95 MB of them, and
     made each a row as it started, about 45% of the rows it made (WCJQSG, bea3796d; 19
     November). A day's landings reach the shell only once he steps into it, so it keeps only
-    today's as it starts, and the day lists its own, newest first.
+    the last day's as it starts, and the day lists its own, newest first. The shell takes
+    whatever its daemon tells it, so the bound on what it kept holds the daemon to it.
     """
     days = earlier_days()
     shell.reported(
@@ -3821,6 +3828,11 @@ def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) ->
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"])
     shell.down_to("Landed")
+    shell.step_in()
+    # It's two days old, so it's in its day.
+    day, _ = earlier_days()[0]
+    shell.launcher_until(lambda shown: day in shown["rows"])
+    shell.down_to(day)
     shell.step_in()
     earliest = "Earlier change 0."
     shell.launcher_until(lambda shown: earliest in shown["rows"])

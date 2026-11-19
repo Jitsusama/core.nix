@@ -531,6 +531,7 @@ pub fn landed<'a>(
         }
     }
     let mut days: BTreeMap<String, u64> = BTreeMap::new();
+    let mut past: BTreeMap<String, u64> = BTreeMap::new();
     let mut records: Vec<Value> = all
         .into_iter()
         .map(|(key, at, mut said)| {
@@ -539,6 +540,9 @@ pub fn landed<'a>(
                 *days.entry(day.clone()).or_default() += 1;
             }
             let place = landing_place(at, &day, now);
+            if place != PLACE {
+                *past.entry(place.clone()).or_default() += 1;
+            }
             said["day"] = json!(day);
             // When Joel read it, `true` where he read it before the shell
             // kept when, and null while he hasn't.
@@ -554,7 +558,7 @@ pub fn landed<'a>(
     records.sort_by_key(|record| record["order"].as_i64());
     let tries: Vec<Value> = records.iter().filter_map(tried).collect();
     records.extend(tries);
-    let earlier = earlier(&days, &clock::date_of(now));
+    let earlier = earlier(&past);
     records
         .push(json!({"key": days_key(), "kind": "landed-days", "days": days, "earlier": earlier}));
     (records, held)
@@ -575,13 +579,14 @@ fn landing_place(at: Option<i64>, day: &str, now: i64) -> String {
     }
 }
 
-/// The days before `today` that anything landed on, newest first, each
-/// with how many landed, as Landed lists a row for each after today's
-/// landings.
-fn earlier(days: &BTreeMap<String, u64>, today: &str) -> Vec<Value> {
-    days.iter()
+/// The dates whose places hold landings, newest first, each with how
+/// many it holds (`past`), as Landed lists a row for each after the
+/// landings of the last day, which it lists itself: counted by the place
+/// each landing's record is in, so the shell lists each landing once,
+/// whatever its clock says the date is.
+fn earlier(past: &BTreeMap<String, u64>) -> Vec<Value> {
+    past.iter()
         .rev()
-        .filter(|(day, _)| day.as_str() < today)
         .map(|(day, count)| json!({"day": day, "count": count}))
         .collect()
 }
@@ -846,6 +851,8 @@ mod tests {
 
     #[test]
     fn a_landing_past_its_day_is_told_only_to_a_watch_naming_its_date() {
+        // Within the last day, yet yesterday by the clock; then exactly a
+        // day before; then two days before; then one with no time.
         let landings = [
             kept(
                 "s",
@@ -853,36 +860,56 @@ mod tests {
                 "2026-11-11T11:00:00Z",
                 "After the next switch, open Agents.",
             ),
+            kept("s", "o#4", "2026-11-10T13:00:00Z", ""),
             kept(
                 "s",
                 "o#2",
-                "2026-11-10T11:00:00Z",
+                "2026-11-10T12:00:00Z",
                 "After the next switch, open Agents.",
             ),
             kept("s", "o#3", "2026-11-09T11:00:00Z", ""),
+            json!({"session": "s", "ref": "o#5", "what": "Land o#5"}),
         ];
         let (records, _) = landed(landings.iter(), &[], &Reading::default(), now());
         let date = |at: &str| clock::date_of(clock::ms_of(&json!(at)).expect("a time"));
-        let keys: Vec<&Value> = records[..3].iter().map(|one| &one["key"]).collect();
+        let mut keys: Vec<&str> = records
+            .iter()
+            .filter(|one| one["kind"] == "landed")
+            .filter_map(|one| one["key"].as_str())
+            .collect();
+        keys.sort_unstable();
+        let mut meant = vec![
+            "landed:agents:s o#1 2026-11-11T11:00:00Z".to_owned(),
+            "landed:agents:s o#4 2026-11-10T13:00:00Z".to_owned(),
+            format!(
+                "landed:{}:s o#2 2026-11-10T12:00:00Z",
+                date("2026-11-10T12:00:00Z")
+            ),
+            format!(
+                "landed:{}:s o#3 2026-11-09T11:00:00Z",
+                date("2026-11-09T11:00:00Z")
+            ),
+        ];
+        let timeless = records
+            .iter()
+            .filter(|one| one["kind"] == "landed")
+            .find(|one| one["landed"]["ref"] == "o#5")
+            .and_then(|one| one["key"].as_str())
+            .expect("one with no time is kept");
+        meant.push(timeless.to_owned());
+        meant.sort_unstable();
         assert_eq!(
-            keys,
-            [
-                &json!("landed:agents:s o#1 2026-11-11T11:00:00Z"),
-                &json!(format!(
-                    "landed:{}:s o#2 2026-11-10T11:00:00Z",
-                    date("2026-11-10T11:00:00Z")
-                )),
-                &json!(format!(
-                    "landed:{}:s o#3 2026-11-09T11:00:00Z",
-                    date("2026-11-09T11:00:00Z")
-                )),
-            ],
-            "within the day in Agents' place, each before in its date's, which a watch of \
-             Agents' place never hears"
+            keys, meant,
+            "within the last day in Agents' place, whatever its date, from a day on in its \
+             date's, which a watch of Agents' place never hears"
+        );
+        assert!(
+            timeless.starts_with("landed:agents:"),
+            "one with no time stays in Agents' place: {timeless}"
         );
         assert_eq!(
-            records[1]["landed"]["day"],
-            json!(date("2026-11-10T11:00:00Z")),
+            records[0]["landed"]["day"],
+            json!(date("2026-11-11T11:00:00Z")),
             "each says the date it landed on"
         );
         let tried: Vec<&Value> = records
@@ -902,17 +929,19 @@ mod tests {
             .iter()
             .map(|one| &one["day"])
             .collect();
-        let before = [date("2026-11-10T11:00:00Z"), date("2026-11-09T11:00:00Z")];
-        let today = date("2026-11-11T12:00:00Z");
-        let meant: Vec<Value> = before
-            .iter()
-            .filter(|day| **day < today)
-            .map(|day| json!(day))
-            .collect();
+        let meant = [
+            json!(date("2026-11-10T12:00:00Z")),
+            json!(date("2026-11-09T11:00:00Z")),
+        ];
         assert_eq!(
             earlier,
             meant.iter().collect::<Vec<_>>(),
-            "the days before today, newest first"
+            "the dates holding landings, newest first, not one only in Agents' place"
+        );
+        assert_eq!(
+            days["earlier"][0]["count"],
+            json!(1),
+            "each counts only what its place holds"
         );
     }
 
