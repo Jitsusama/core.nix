@@ -6,7 +6,7 @@ probe again with the first run's looks, reading what it names lost. The
 first case is the deploy of 18 November 2026 that kept a tracker guide's
 words and lost its masthead, heading art and stylesheets. The probe's path
 comes from WEB_SKILL and a face to load from FACE, as the check running
-this sets them.
+this sets them, and its browser from probe_browser.py, loaded as a plugin.
 """
 
 import os
@@ -18,10 +18,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from playwright.sync_api import Browser, sync_playwright
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
+
+    from playwright.sync_api import Browser
 
 PROBE = Path(os.environ["WEB_SKILL"]) / "looks.js"
 STYLE = """
@@ -56,15 +57,6 @@ def page(head: str, body: str) -> str:
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         f"<title>The Guide</title>{head}</head><body>{body}</body></html>"
     )
-
-
-@pytest.fixture(scope="module")
-def browser() -> Iterator[Browser]:
-    """One headless Chromium for every case."""
-    with sync_playwright() as playwright:
-        opened = playwright.chromium.launch()
-        yield opened
-        opened.close()
 
 
 class Site:

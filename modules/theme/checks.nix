@@ -181,6 +181,12 @@ let
     + lib.optionalString (catWays.faults != [ ]) (
       ", which wanted " + lib.concatStringsSep ", " catWays.faults
     );
+  # The browser the web-design skill's probe tests share, a pytest plugin
+  # put on Python's path alone, so an edit beside it rebuilds neither.
+  probeBrowser = lib.fileset.toSource {
+    root = ./web;
+    fileset = ./web/probe_browser.py;
+  };
 in
 {
   # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
@@ -480,11 +486,12 @@ in
         env = {
           WEB_SKILL = "${./web/skill}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PYTHONPATH = "${probeBrowser}";
           PYTHONDONTWRITEBYTECODE = "1";
         };
       }
       ''
-        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider \
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p probe_browser \
           --basetemp="$TMPDIR/pytest" ${./web/homes-test.py}
         touch $out
       '';
@@ -509,11 +516,12 @@ in
           # it fetched as often as it draws it.
           FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ ]; };
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PYTHONPATH = "${probeBrowser}";
           PYTHONDONTWRITEBYTECODE = "1";
         };
       }
       ''
-        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider \
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p probe_browser \
           --basetemp="$TMPDIR/pytest" ${./web/looks-test.py}
         touch $out
       '';

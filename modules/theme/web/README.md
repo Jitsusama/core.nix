@@ -24,7 +24,8 @@ What the theme module gives a website, on every machine:
   a deploy and after it, names each look the deploy lost.
 - `homes-test.py` holds `homes.js` to its cases in headless Chromium, as the
   `homes-probe-reads-as-the-reader` check runs it, and `looks-test.py`
-  holds `looks.js` to its, as `looks-probe-finds-what-a-deploy-lost` does.
+  holds `looks.js` to its, as `looks-probe-finds-what-a-deploy-lost` does;
+  both read their pages in the one Chromium `probe_browser.py` opens.
 
 A rule every site would need goes in `base.css`; a value every site would
 need goes in `theme.css` through `web.nix`; a verdict of his on a site goes in
