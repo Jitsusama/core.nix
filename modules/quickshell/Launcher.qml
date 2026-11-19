@@ -3344,6 +3344,17 @@ Scope {
             console.info(`launcher: forgot ${forgotten} words told and unread, `
                 + "as the screen may be shared");
     }
+
+    // Lets go of the foot's word for a Return held still (run), once what
+    // held it may no longer, as a share ending lets an ask arm. Only while
+    // the foot still says it: what else it says, or waits to say as the
+    // launcher next opens, stays.
+    property var heldSaying: []
+    function unheld() {
+        if (saying.length > 0 && JSON.stringify(saying) === JSON.stringify(heldSaying))
+            say([]);
+        heldSaying = [];
+    }
     function tellOnOpen(told, loose) {
         if (open) {
             say(told, loose);
@@ -7921,7 +7932,8 @@ Scope {
         // with it.
         const stillWhy = heldWhyOf([choice], choice.returns);
         if (stillWhy !== null) {
-            say([["\u21b5", stillWhy]]);
+            heldSaying = [["\u21b5", stillWhy]];
+            say(heldSaying);
             return;
         }
         traces.began("act", { key: choice.key ?? "", depth: held.length });
