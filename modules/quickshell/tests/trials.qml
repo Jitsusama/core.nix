@@ -378,27 +378,31 @@ QtObject {
             Trials.readingSaid(12.6) === ", 13 reading what they hold"
                 && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",
             Trials.readingSaid(12.6));
-        // A showing's own parts, the putting less the laying it holds, as
-        // Launcher.qml's compose and search time them apart.
+        // A showing's own parts, as Launcher.qml's compose and search time
+        // them apart: the putting in holds the laying and the weighing.
         const showingParts = { kept: { fresh: 3, laying: 3, built: 3, reused: 0,
-            split: unstepped }, listing: 6.4, putting: 40.2, selecting: 2.6 };
-        expect("a showing says what it spent listing, putting in and selecting, past laying",
+            split: unstepped }, weighing: 5, listing: 6.4, putting: 45.2, selecting: 2.6 };
+        expect("a showing says its listing, putting in past laying and weighing, and selecting",
             Trials.showingSaid(showingParts, ", 5 weighing their keys")
-                === " (3 rows new, 3 laying them out: 3 rows built, 0 taken back,"
-                + " 5 weighing their keys, 6 listing them, 37 putting them in, 3 selecting)",
+                === " (6 listing them, 37 putting them in besides laying and weighing,"
+                + " 3 selecting and scrolling to it; 3 rows new, 3 laying them out:"
+                + " 3 rows built, 0 taken back, 5 weighing their keys)",
             Trials.showingSaid(showingParts, ", 5 weighing their keys"));
         const keptShowing = Object.assign({}, showingParts, { kept: splitting });
-        expect("a showing's parts come before where a step back came to",
-            Trials.showingSaid(keptShowing).endsWith(", 6 listing them, 10 putting them in,"
-                + " 3 selecting; 6 of the laying splitting them at row 10, back to row 17)"),
+        expect("a showing's keeping still ends on where a step back came to",
+            Trials.showingSaid(keptShowing).startsWith(" (6 listing them, 10 putting them in")
+                && Trials.showingSaid(keptShowing).endsWith(", 3 selecting and scrolling to it;"
+                    + " 20 rows new, 30 laying them out: 2 rows built, 8 taken back;"
+                    + " 6 of the laying splitting them at row 10, back to row 17)"),
             Trials.showingSaid(keptShowing));
-        const bareShowing = { kept: { fresh: 0, laying: 0, split: unstepped }, listing: 0.4,
-            putting: 12.2, selecting: 0.9 };
-        expect("a showing that laid nothing says its parts alone, a weighing unsaid",
-            Trials.showingSaid(bareShowing, ", 5 weighing") === " (12 putting them in)",
-            Trials.showingSaid(bareShowing, ", 5 weighing"));
+        const bareShowing = { kept: { fresh: 0, laying: 0, split: unstepped }, weighing: 2,
+            listing: 0.4, putting: 14.2, selecting: 0.9 };
+        expect("a showing that laid nothing says its parts and what else it took",
+            Trials.showingSaid(bareShowing, ", 2 weighing")
+                === " (12 putting them in besides laying and weighing, 2 weighing)",
+            Trials.showingSaid(bareShowing, ", 2 weighing"));
         expect("a showing with no part of a millisecond, or none timed, says what keptPart does",
-            Trials.showingSaid(Object.assign({}, bareShowing, { putting: 0.5 })) === ""
+            Trials.showingSaid(Object.assign({}, bareShowing, { putting: 2.9 })) === ""
                 && Trials.showingSaid({ kept: splitting }, ", 5 weighing their keys")
                     === Trials.keptPart(splitting, ", 5 weighing their keys"),
             Trials.showingSaid({ kept: splitting }, ", 5 weighing their keys"));

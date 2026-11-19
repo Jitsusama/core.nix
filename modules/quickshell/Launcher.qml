@@ -388,6 +388,11 @@ Scope {
         // it's shown in (reshow), unless a place still being made is said
         // again in its own order (ordering).
         const placedAll = Date.now();
+        // Its showing's parts are timed apart on the rows' finer clock
+        // (Trials.showingSplit): listing the rows, the endings, liveness and
+        // steadying included; putting them in, which runs their laying and
+        // weighing; then selecting a row and scrolling to it.
+        const listingAt = KeyTimes.now();
         // What ends a search at the top comes after it all, never counted as
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
@@ -396,13 +401,10 @@ Scope {
         readingBegun();
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
-        // Its showing's parts timed apart (Trials.showingSplit): listing the
-        // rows, putting them in, which holds their laying, and selecting.
-        const listingAt = Date.now();
         const listedRows = listedAs(composed);
-        const puttingAt = Date.now();
+        const puttingAt = KeyTimes.now();
         matches = listedRows;
-        const selectingAt = Date.now();
+        const selectingAt = KeyTimes.now();
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
         // so is no name Joel was typing, and gave "batt" to a copy that
@@ -416,12 +418,11 @@ Scope {
         else if (current >= 0)
             current = Steady.selection(matches, { row: was, at: current + rows.length - before,
                 lowest: 0, nth: nth }, Rank.identity);
-        const shownAt = Date.now();
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
-            showing: shownAt - placedAll, kept: RowsKept.keptWhole(list.keptLast),
+            showing: Date.now() - placedAll, kept: RowsKept.keptWhole(list.keptLast),
             weighing: keysWeighing,
             reading: readingSpent(), listing: puttingAt - listingAt,
-            putting: selectingAt - puttingAt, selecting: shownAt - selectingAt };
+            putting: selectingAt - puttingAt, selecting: KeyTimes.now() - selectingAt };
     }
 
     // The rows with what the first thing found by its name holds listed
@@ -6833,13 +6834,15 @@ Scope {
             const foundAt = Date.now();
             const lived = live(found);
             const livedAt = Date.now();
+            // Its showing's parts, as the top level's (compose).
+            const listingAt = KeyTimes.now();
             list.keptLast = null;
             keysWeighing = 0;
             readingBegun();
             const listedRows = listedAs(lived);
-            const puttingAt = Date.now();
+            const puttingAt = KeyTimes.now();
             matches = listedRows;
-            const selectingAt = Date.now();
+            const selectingAt = KeyTimes.now();
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
             const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
@@ -6853,14 +6856,13 @@ Scope {
             // laying them out took, so a letter or a step inside says where
             // its time went. Without the laying, Capture's step said only
             // "showing 138" (Joel, 2026-11-11).
-            const shownAt = Date.now();
             searchParts = { before: 0, lists: foundAt - searchBegan, rows: 0,
-                answers: shownAt - foundAt, each: {}, within: null,
+                answers: Date.now() - foundAt, each: {}, within: null,
                 composing: { asking: 0, placing: livedAt - foundAt,
-                    showing: shownAt - livedAt, kept: RowsKept.keptWhole(list.keptLast),
+                    showing: Date.now() - livedAt, kept: RowsKept.keptWhole(list.keptLast),
                     weighing: keysWeighing, reading: readingSpent(),
-                    listing: puttingAt - livedAt, putting: selectingAt - puttingAt,
-                    selecting: shownAt - selectingAt } };
+                    listing: puttingAt - listingAt, putting: selectingAt - puttingAt,
+                    selecting: KeyTimes.now() - selectingAt } };
             return;
         }
         // What the search spends its time on, said with a key that's slow
