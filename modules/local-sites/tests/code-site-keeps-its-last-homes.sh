@@ -75,8 +75,9 @@ if [ "$homes" != '{"kept":true}' ]; then
   echo "With repos failing, the writer changed the last homes to '$homes'." >&2
   exit 1
 fi
-if [ -z "$said" ] || [[ $said == *$'\n'* ]]; then
-  echo "With repos failing, the writer said '$said' rather than one line." >&2
+failed="repos failed (repos: couldn't write its answer: broken pipe); the last homes stay"
+if [ "$said" != "$failed" ]; then
+  echo "With repos failing, the writer said '$said' rather than what repos said." >&2
   exit 1
 fi
 shopt -s nullglob dotglob
@@ -133,8 +134,16 @@ rm "$work/stalled" "$work/stubborn"
 # A read killed by something else is a failure, not a stall, however it ended, and
 # says what killed it. Its wait is long, so a slow builder can't make the kill a stall.
 touch "$work/killed"
-said=$(CODE_SITE_WAITS=30 "$BASH" "$writer" "$work/site")
-if [[ $said != "repos failed (killed by signal 9"*"); the last homes stay" ]]; then
+if ! said=$(CODE_SITE_WAITS=30 "$BASH" "$writer" "$work/site"); then
+  echo "With repos killed outright, the writer failed, so its unit would fail." >&2
+  exit 1
+fi
+homes=$(< "$work/site/homes.json")
+if [ "$homes" != '{"kept":true}' ]; then
+  echo "With repos killed outright, the writer changed the last homes to '$homes'." >&2
+  exit 1
+fi
+if [[ $said != "repos failed (killed by SIGKILL"*"); the last homes stay" ]]; then
   echo "With repos killed outright, the writer said '$said' rather than what killed it." >&2
   exit 1
 fi
