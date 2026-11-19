@@ -70,8 +70,9 @@ SMOOTH = 50
 # The farthest, in the cat's own size, a step of a move may take it between two frames
 # the shell says, a builder's dropped frames included.
 STEPS_ON = 2
-# The frames of a walk niri may not yet have said it showed as the cat sits.
-ON_THEIR_WAY = 3
+# How long, in seconds, the cat may take to tell of its walk once it sits: it waits up to 2 s
+# for niri's answers on the frames still on their way (MarginCatShown.js's ANSWERS).
+TOLD = 5.0
 # How long niri may take to say its layers have changed.
 LAYERED = 10.0
 # How long a pointer's move or click may take to move niri's focus.
@@ -286,6 +287,7 @@ def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -
     heard(shell, walking, since)
     rested = time.monotonic() - moved
     sits_over(shell, first, since)
+    shell.reported(WALKED, lambda _: True, since, timedelta(seconds=TOLD))
     walked = steps(shell, since)
     said, _ = shell.said_since(since)
     told = [
@@ -308,10 +310,10 @@ def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -
     assert shown["frames"] > 0, f"niri showed none of the walk's frames: {shown}"
     assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
     # Each frame it draws asks niri when it's shown, so a frame asked after the next had begun
-    # can't halve what the journal says of Joel's screen; the last few are still on their way
-    # as it sits.
+    # can't halve what the journal says of Joel's screen; it tells of the walk once niri has
+    # answered for the frames still on their way as it sat, so every one it began is heard of.
     answered = shown["frames"] + shown["unseen"]
-    assert answered >= shown["begun"] - ON_THEIR_WAY, (
+    assert answered >= shown["begun"], (
         f"niri was asked of {answered} of the {shown['begun']} frames it drew: {shown}"
     )
     # The typical frame is the shell's own cost; the slowest is a loaded builder's too, which

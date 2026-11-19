@@ -2,13 +2,14 @@
 // JavaScript engine, the one the shell runs it in. The
 // `the-margin-cat-sits-above-its-column` check copies
 // modules/margin-cat/MarginCat.js, MarginCatLedges.js, MarginCatRoutes.js,
-// MarginCatWays.js, MarginCatFalls.js, MarginCatFloats.js, MarginCatPaths.js
-// and MarginCatPlays.js beside this file and runs
+// MarginCatWays.js, MarginCatFalls.js, MarginCatFloats.js, MarginCatPaths.js,
+// MarginCatPlays.js and MarginCatShown.js beside this file and runs
 // `qml -platform offscreen margin-cat.qml`.
 import QtQuick
 import "MarginCat.js" as MarginCat
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
+import "MarginCatShown.js" as Shown
 import "MarginCatWays.js" as Ways
 
 QtObject {
@@ -401,7 +402,7 @@ QtObject {
             .every(run => run.ends - run.begins >= 33), true);
         const near = Paths.walk(on(0), on(20), cat({ cell: 2, pause: 0 }));
         expect("near, it ambles, two cells a drawing", near.stride, 4);
-        const shown = MarginCat.walked([100, 116.7, 133.3, 150, 200], [1.2, 0.4, 3.04, 0.8], 1,
+        const shown = Shown.walked([100, 116.7, 133.3, 150, 200], [1.2, 0.4, 3.04, 0.8], 1,
             { begun: 7, stepped: 6 });
         expect("a walk's frames as niri showed them, the gaps between them sorted",
             shown.said, {
@@ -415,14 +416,26 @@ QtObject {
             + "a median 16.7 ms apart, the p99 50 ms, the slowest 50 ms, each drawn in 0.8 ms "
             + "typically and within 3 ms, 1 never shown, stepped 6 times");
         expect("a hop's frames are said as a walk's",
-            MarginCat.walked([100, 116.7], [1], 0, { begun: 2, what: "hop" }).line
+            Shown.walked([100, 116.7], [1], 0, { begun: 2, what: "hop" }).line
                 .split(" of its")[0],
             "cat: a hop presented 2");
-        expect("a walk nothing showed says so", MarginCat.walked([], [], 0, { begun: 0 }).said,
+        expect("a walk nothing showed says so", Shown.walked([], [], 0, { begun: 0 }).said,
             {
                 frames: 0, median: 0, p99: 0, slowest: 0, typical: 0, drawn: 0, unseen: 0,
                 begun: 0, stepped: 0
             });
+        // A walk done is told only once niri has answered for every
+        // frame on its way as it sat, the last begun then being 40
+        // (2026-11-19: told at once, a walk on a busy builder said 131
+        // of its 135 frames).
+        expect("while it walks, every answer counts and none ends the wait",
+            Shown.heard(12, null), { counts: true, ends: false });
+        expect("done, an answer before its last frame counts and waits for the rest",
+            Shown.heard(38, 40), { counts: true, ends: false });
+        expect("the answer for its last frame counts and ends the wait",
+            Shown.heard(40, 40), { counts: true, ends: true });
+        expect("an answer after its last frame isn't the walk's, but ends the wait",
+            Shown.heard(41, 40), { counts: false, ends: true });
 
         // niri's own spring, as Joel's niri rides it between workspaces.
         const spring = { damping: 1, stiffness: 1600, epsilon: 0.001 };

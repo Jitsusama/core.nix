@@ -34,6 +34,7 @@ onLinux {
           ./MarginCatPaths.js
           ./MarginCatPlays.js
           ./MarginCatRoutes.js
+          ./MarginCatShown.js
           ./MarginCatStacked.js
           ./MarginCatTiles.js
           ./MarginCatWays.js
