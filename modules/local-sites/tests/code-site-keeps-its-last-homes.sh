@@ -18,6 +18,7 @@ mkdir -p "$work/bin" "$work/site"
 
 # The stand-in answers as repos --json does, or, while $work/down exists, as
 # it does when its answer can't be written whole, half a record out first,
+# ending with the status $work/down holds, 1 if none,
 # or, while $work/silent exists, ends well having said nothing at all, or,
 # while $work/stalled exists, half a record out, stalls as a reading starved
 # on a machine under pressure does, deaf to the first signal while
@@ -32,7 +33,8 @@ fi
 if [ -e "$work/down" ]; then
   printf '{"schema":"repos.repositories/1",'
   echo "repos: couldn't write its answer: broken pipe" >&2
-  exit 1
+  status=\$(< "$work/down")
+  exit "\${status:-1}"
 fi
 if [ -e "$work/silent" ]; then
   exit 0
@@ -85,6 +87,19 @@ shopt -s nullglob dotglob
 left=("$work/site"/*)
 if [ "${left[*]}" != "$work/site/homes.json" ]; then
   echo "The writer left ${left[*]} in the site's folder." >&2
+  exit 1
+fi
+
+# A status past those a signal ends a program with is no kill, and is said as it is.
+echo 200 > "$work/down"
+if ! said=$("$BASH" "$writer" "$work/site" 2> "$work/err"); then
+  echo "With repos ending 200, the writer failed, so its unit would fail." >&2
+  exit 1
+fi
+failed="repos failed (ended 200: repos: couldn't write its answer: broken pipe)"
+failed+="; the last homes stay"
+if [ "$said" != "$failed" ]; then
+  echo "With repos ending 200, the writer said '$said' rather than how it ended." >&2
   exit 1
 fi
 
