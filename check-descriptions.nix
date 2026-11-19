@@ -4287,6 +4287,10 @@
     daemon's one file-preview, only the newest wanted waiting, one changed asked again, and one
     that can't answer said so
   '';
+  the-launcher-says-what-counted-most = ''
+    the launcher's journal names what counted most, the most first and a tie by name, no more
+    than it's asked for, none that counted nothing, and nothing for none
+  '';
   the-launcher-says-the-page-zathura-is-on = ''
     zathura's provider reads open-now's lines as each zathura's document, page and page count,
     says the page beside a document only one zathura has open, and its drawer says each one's

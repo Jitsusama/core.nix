@@ -196,6 +196,7 @@
   "launcher/Makings.js" = [ "launcher/Pacing.js" ];
   "launcher/Media.js" = [ "Music.js" ];
   "launcher/Moment.js" = [ "launcher/Numbers.js" ];
+  "launcher/Most.js" = [ "launcher/Order.js" ];
   "launcher/Nearby.js" = [ "launcher/Order.js" ];
   "launcher/NeedsYou.js" = [ "launcher/Ago.js" ];
   "launcher/Networks.qml" = [

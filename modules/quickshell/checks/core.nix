@@ -352,6 +352,24 @@ in
       touch $out
     '';
 
+  # The launcher's journal names what counted most, the most first and then by
+  # name, and none that counted nothing, as modules/quickshell/tests/most.qml
+  # holds launcher/Most.js to, in Qt's engine.
+  the-launcher-says-what-counted-most =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-says-what-counted-most" { } ''
+      cp ${../tests/most.qml} most.qml
+      ${copied [ "launcher/Most.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml most.qml
+      touch $out
+    '';
+
   # Answers a key's sources find after its search, heard in one turn, are taken
   # in once, and a key's own search drops what's gathered (VKCF3Z's owed red for
   # #4647). Three sources answering in one turn can't be made to on niri, so
