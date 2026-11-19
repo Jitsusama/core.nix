@@ -16,7 +16,7 @@
 mod standing;
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -26,9 +26,12 @@ use pineapple::github::stamp;
 use serde_json::{Value, json};
 
 use super::{
-    Answered, PACE, PATIENCE, a_stop, answering, answering_whole, decisions, each, home, resumed,
-    until_decided,
+    Answered, PACE, PATIENCE, Running, a_stop, answering, answering_whole, decisions, each, home,
+    journal, journal_of, resumed, until_decided, until_marked_anew,
 };
+
+/// Where the GitHub reader marks how far it has read github.com.
+const MARK: &str = "judged-github.json";
 
 /// The stand-in's Joel on GitHub.
 const LOGIN: &str = "joel.example";
@@ -129,14 +132,7 @@ fn joel_resumes(line: &str, now: u64) -> Value {
 
 /// The GitHub reader, signed in with a stand-in token, in shadow unless
 /// `more` says otherwise, its journal kept in `home` for [`journal`].
-fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Child {
-    // Added to, so a reader started again in the same home keeps what the
-    // one before it said.
-    let journal = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(home.join(JOURNAL))
-        .expect("its journal is opened");
+fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Running {
     Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
         .args(["run", "--origin", origin, "--every", PACE])
         .args(more)
@@ -144,17 +140,10 @@ fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Child {
         .env("XDG_STATE_HOME", home.join("state"))
         .env("SIGN_IN_KEYRING", keyring(home))
         .stdout(Stdio::null())
-        .stderr(journal)
+        .stderr(journal_of(home))
         .spawn()
+        .map(Running::over(home))
         .expect("the reader starts")
-}
-
-/// Where in its home a reader's journal is kept.
-const JOURNAL: &str = "journal";
-
-/// What the reader started in `home` has said to its journal so far.
-fn journal(home: &Path) -> String {
-    std::fs::read_to_string(home.join(JOURNAL)).expect("its journal is read")
 }
 
 /// A keyring program printing a stand-in token, as gh's would print his.
@@ -183,6 +172,7 @@ fn github_a_stop_on_a_pull_request_reaches_it_in_shadow_and_is_judged_once() {
     let home = home();
     let mut first = github_reader(&home, &origin, &[]);
     until_decided(&home, 3);
+    until_marked_anew(&home, MARK);
     first.kill().expect("the reader stops");
     first.wait().expect("the reader is gone");
 
@@ -222,6 +212,8 @@ fn github_a_stop_on_a_pull_request_reaches_it_in_shadow_and_is_judged_once() {
     let mut again = github_reader(&home, &origin, &[]);
     let rounds = asked.lock().expect("what was asked").len();
     until_asked(&asked, rounds, 12);
+    // A round with nothing new still says when GitHub was read.
+    until_marked_anew(&home, MARK);
     again.kill().expect("the reader stops");
     again.wait().expect("the reader is gone");
     assert_eq!(decisions(&home).len(), 3, "a restart judges nothing twice");
@@ -354,6 +346,25 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
     let home = home();
     let mut reading = github_reader(&home, &origin, &CODE_SITE);
     until_decided(&home, 4);
+    // Its round marks the site read only once it has decided, so the
+    // reader stops once the mark is there, not at the last decision.
+    let began = Instant::now();
+    loop {
+        let read = Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
+            .arg("--json")
+            .env("XDG_STATE_HOME", home.join("state"))
+            .output()
+            .expect("it answers");
+        let read: Value = serde_json::from_slice(&read.stdout).expect("its answer is JSON");
+        if read["sites"]["code"].as_u64().is_some() {
+            break;
+        }
+        assert!(
+            began.elapsed() < PATIENCE,
+            "it never says when the site was read: {read}"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
 
@@ -382,16 +393,6 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
         "it searches the repository named, by his address: {asked:?}"
     );
     drop(asked);
-    let read = Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
-        .arg("--json")
-        .env("XDG_STATE_HOME", home.join("state"))
-        .output()
-        .expect("it answers");
-    let read: Value = serde_json::from_slice(&read.stdout).expect("its answer is JSON");
-    assert!(
-        read["sites"]["code"].as_u64().is_some(),
-        "it says when the site was read: {read}"
-    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

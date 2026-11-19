@@ -4,18 +4,21 @@
 //! leaves Slack read with the sign-in last read.
 
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-use super::{JOEL, PACE, PATIENCE, decisions, each, home, stand_in, until_decided};
+use super::{
+    JOEL, PACE, PATIENCE, Running, decisions, each, home, journal, journal_of, stand_in,
+    until_decided,
+};
 
 /// The reader started in `home` against `origin`, its keyring a stand-in
 /// secret-tool running `script`, which `{sign_in}` in prints the sign-in
 /// of, and its journal written to home/journal.
-pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> Child {
+pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> Running {
     let sign_in = json!({"token": {
         "accessToken": "xoxc-stand-in", "cookie": "stand-in", "teamId": "T0TEAM0001",
         "userId": JOEL,
@@ -35,7 +38,6 @@ pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> C
         .status()
         .expect("the keyring's shell runs");
     assert!(written.success(), "the keyring wasn't written");
-    let journal = std::fs::File::create(home.join("journal")).expect("the journal");
     Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
         .args(["run", "--origin", origin, "--every", PACE])
         .env_remove("SAFE_WORD_WAITING")
@@ -44,8 +46,9 @@ pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> C
         .env("XDG_STATE_HOME", home.join("state"))
         .env("SIGN_IN_KEYRING", &keyring)
         .stdout(Stdio::null())
-        .stderr(journal)
+        .stderr(journal_of(home))
         .spawn()
+        .map(Running::over(home))
         .expect("the reader starts")
 }
 
@@ -77,7 +80,7 @@ fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest(
         ["stop", "stop", "stop-asked", "stop"],
         "every stop said while the keyring hung is heard"
     );
-    let said = std::fs::read_to_string(home.join("journal")).expect("the journal");
+    let said = journal(&home);
     // Twenty rounds' patience; the rest, at this pace, under a minute.
     assert!(
         said.contains("Slack's sign-in ran past 2 seconds and was stopped")
@@ -106,7 +109,7 @@ fn a_keyring_locked_after_answering_is_asked_once_a_rest_while_slack_is_read() {
             .filter(|line| line.contains("search.messages"))
             .count()
     };
-    let said = || std::fs::read_to_string(home.join("journal")).unwrap_or_default();
+    let said = || journal(&home);
     let began = Instant::now();
     while !said().contains("is locked") && began.elapsed() < PATIENCE {
         thread::sleep(Duration::from_millis(20));
@@ -160,7 +163,7 @@ fn a_keyring_that_hangs_after_answering_leaves_slack_read_with_the_last_sign_in(
             .filter(|line| line.contains("search.messages"))
             .count()
     };
-    let said = || std::fs::read_to_string(home.join("journal")).unwrap_or_default();
+    let said = || journal(&home);
     let began = Instant::now();
     while !said().contains("so the one last read is used") && began.elapsed() < PATIENCE {
         thread::sleep(Duration::from_millis(20));

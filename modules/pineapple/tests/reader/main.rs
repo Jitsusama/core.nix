@@ -8,15 +8,18 @@
 //! shadow, is only written down. The reader let go live is in live.rs,
 //! with a keyring that hangs in keyring.rs, telling Joel in For You when
 //! Slack can't be heard in deaf.rs, and GitHub's reader, against its own
-//! stand-in, in github.rs.
+//! stand-in, in github.rs, and the guard each case holds its reader by
+//! in guard.rs.
 
 mod deaf;
 mod github;
+mod guard;
 mod keyring;
 mod live;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -30,6 +33,77 @@ const PATIENCE: Duration = Duration::from_secs(20);
 
 /// How often the reader searches in a case, in milliseconds.
 const PACE: &str = "100";
+
+/// Where in its home a reader's journal is kept.
+const JOURNAL: &str = "journal";
+
+/// A reader a case started in `home`, stopped once the case is done with
+/// it, whether the case passes or fails part way, so a failed case leaves
+/// no reader still asking its stand-in. A case failing while it holds the
+/// guard is shown its home's journal too, whichever wait or check gave up;
+/// one failing in a helper that has already dropped it is not.
+struct Running {
+    reader: Child,
+    home: PathBuf,
+}
+
+impl Running {
+    /// The guard over `reader`, started in `home`.
+    fn over(home: &Path) -> impl FnOnce(Child) -> Self {
+        let home = home.to_owned();
+        move |reader| Self { reader, home }
+    }
+}
+
+impl Deref for Running {
+    type Target = Child;
+
+    fn deref(&self) -> &Child {
+        &self.reader
+    }
+}
+
+impl DerefMut for Running {
+    fn deref_mut(&mut self) -> &mut Child {
+        &mut self.reader
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        // std reaps a child once and never signals one it has reaped, so a
+        // case that stopped its reader itself makes these do nothing; and
+        // one failing part way has its own panic to say, so there is
+        // nothing more to tell from a kill or a wait that goes wrong.
+        let _ = self.reader.kill();
+        let _ = self.reader.wait();
+        if thread::panicking() {
+            let said = std::fs::read_to_string(self.home.join(JOURNAL))
+                .unwrap_or_else(|why| format!("(its journal couldn't be read: {why})"));
+            eprintln!(
+                "what the readers in {} said to their journal:\n{said}",
+                self.home.display()
+            );
+        }
+    }
+}
+
+/// The journal in a reader's `home`, opened to be added to, so a
+/// reader started again in the same home keeps what the one before it said.
+fn journal_of(home: &Path) -> std::fs::File {
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(home.join(JOURNAL))
+        .expect("its journal is opened")
+}
+
+/// What the readers started in `home` have said to its journal so far,
+/// which their start opened, so a journal that can't be read fails the
+/// case rather than reading as one that said nothing.
+fn journal(home: &Path) -> String {
+    std::fs::read_to_string(home.join(JOURNAL)).expect("its journal is read")
+}
 
 /// The stand-in's Joel, and the colleagues who tag him.
 const JOEL: &str = "U0JOEL0001";
@@ -319,22 +393,25 @@ fn each<'a>(said: &'a [Value], field: &str) -> Vec<&'a str> {
     said.iter().filter_map(|one| one[field].as_str()).collect()
 }
 
-fn reader(home: &Path, origin: &str) -> Child {
+fn reader(home: &Path, origin: &str) -> Running {
     reader_with(home, origin, &[])
 }
 
 /// The reader, given `more` on its line after the stand-in and pace.
-fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Child {
+fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Running {
     reading(home, origin, more, None)
 }
 
 /// The reader, telling For You in `waiting` when it names one, as its
 /// unit does, and finding its own file otherwise, whatever the run's
 /// own environment names. It runs in its home, so a relative name lands
-/// there rather than in the crate.
-fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Child {
+/// there rather than in the crate, and says to its journal there.
+fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Running {
     let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"));
-    reader.current_dir(home).env_remove("SAFE_WORD_WAITING");
+    reader
+        .current_dir(home)
+        .env_remove("SAFE_WORD_WAITING")
+        .env_remove("SIGN_IN_KEYRING");
     if let Some(waiting) = waiting {
         reader.env("SAFE_WORD_WAITING", waiting);
     }
@@ -345,8 +422,9 @@ fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> 
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_STATE_HOME", home.join("state"))
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(journal_of(home))
         .spawn()
+        .map(Running::over(home))
         .expect("the reader starts")
 }
 
@@ -357,6 +435,29 @@ fn decisions(home: &Path) -> Vec<Value> {
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect()
+}
+
+/// When the reader last marked what it judged in its `mark`, if it has.
+fn marked(home: &Path, mark: &str) -> Option<u64> {
+    let kept = std::fs::read_to_string(home.join("state/pineapple").join(mark)).ok()?;
+    serde_json::from_str::<Value>(&kept).ok()?["read_at"].as_u64()
+}
+
+/// Until the reader marks its `mark` anew, after the mark it had then,
+/// so the mark holds all it had decided by the time it was asked. A
+/// round marks only once it ends, so a reader stopped before then
+/// judges that round again when it restarts.
+fn until_marked_anew(home: &Path, mark: &str) {
+    let was = marked(home, mark);
+    let began = Instant::now();
+    while marked(home, mark).is_none_or(|at| Some(at) == was) {
+        assert!(
+            began.elapsed() < PATIENCE,
+            "{mark} was never marked anew past {was:?}; it holds {:?}",
+            std::fs::read_to_string(home.join("state/pineapple").join(mark))
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// Waits until the reader has written `count` decisions, or says it's stuck.
@@ -380,6 +481,7 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     let home = home();
     let mut first = reader(&home, &origin);
     until_decided(&home, 4);
+    until_marked_anew(&home, "judged.json");
     first.kill().expect("the reader stops");
     first.wait().expect("the reader is gone");
 
@@ -446,17 +548,11 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
         // As above, a short wait sees each round without spinning.
         thread::sleep(Duration::from_millis(50));
     }
+    // A round with nothing new still says when Slack was read.
+    until_marked_anew(&home, "judged.json");
     again.kill().expect("the reader stops");
     again.wait().expect("the reader is gone");
     assert_eq!(decisions(&home).len(), 4, "a restart judges nothing twice");
-    let kept: Value = serde_json::from_str(
-        &std::fs::read_to_string(home.join("state/pineapple/judged.json")).expect("the mark"),
-    )
-    .expect("the mark is JSON");
-    assert!(
-        kept["read_at"].as_u64().is_some(),
-        "a round with nothing new still says when Slack was read: {kept}"
-    );
     let heard = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
         .arg("heard")
         .env("XDG_STATE_HOME", home.join("state"))
