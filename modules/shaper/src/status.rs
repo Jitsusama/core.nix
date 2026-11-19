@@ -59,7 +59,7 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
     }
     blocks.push(
         first
-            .said(&Spent::now())
+            .said(&Spent::now(), context.room)
             .iter()
             .flat_map(|line| set(line, 0, context.room.for_prose()))
             .collect(),
@@ -235,8 +235,9 @@ impl Spent {
         }
     }
 
-    /// What was spent between this and `later`, as lines of status.
-    fn said(&self, later: &Self) -> Vec<String> {
+    /// What was spent between this and `later`, as lines of status set
+    /// in `room`.
+    fn said(&self, later: &Self, _room: Room) -> Vec<String> {
         #[expect(
             clippy::cast_possible_truncation,
             reason = "a second or two, far under u64's microseconds"
@@ -426,8 +427,8 @@ mod tests {
     }
 
     /// A link as it reads on a busy afternoon, its upload held for the
-    /// VPN's tunnel: the why is the longest line status says, 103 cells
-    /// set by hand on 19 November.
+    /// VPN's tunnel: a why of 118 cells, longer than the 103 that ran
+    /// off an 80-column terminal on 19 November.
     fn held() -> LinkStatus {
         LinkStatus {
             name: "wlp0s20f3".to_owned(),
@@ -507,6 +508,87 @@ mod tests {
             lines.contains(&format!("{INSET}{why}")),
             "the why was parted into a pipe: {lines:#?}"
         );
+        // The VM test greps these two, so each must stay on one line.
+        for start in ["  quiet round trips: 1.0.0.1 17 ms", "  real-time traffic flows"] {
+            assert!(
+                lines.iter().any(|line| line.starts_with(start)),
+                "no line starts {start:?}: {lines:#?}"
+            );
+        }
+        assert!(
+            lines.iter().all(|line| !line.starts_with("    ")),
+            "a line was hung into a pipe: {lines:#?}"
+        );
+    }
+
+    #[test]
+    fn a_line_that_fits_the_room_stays_on_one_line() {
+        let line = "  at enp0s13f0u1u4's rate: both reach the same router";
+        let lines = said(&held(), Room::Cells(layout::width(line)));
+        assert!(
+            lines.iter().any(|each| each == line),
+            "a line that fit its room was folded: {lines:#?}"
+        );
+    }
+
+    #[test]
+    fn however_wide_the_terminal_a_link_s_lines_are_set_at_eighty() {
+        let lines = said(&held(), Room::Cells(200));
+        assert!(
+            lines.iter().all(|line| layout::width(line) <= layout::MEASURE),
+            "a line ran past the measure at 200 columns: {lines:#?}"
+        );
+        assert!(
+            lines.iter().any(|line| line.starts_with("    ")),
+            "the why wasn't wrapped at the measure: {lines:#?}"
+        );
+    }
+
+    #[test]
+    fn a_network_s_name_draws_no_escape() {
+        let link = LinkStatus {
+            network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
+            ..held()
+        };
+        let lines = said(&link, Room::Cells(80));
+        assert!(
+            !lines[0].contains('\u{1b}') && !lines[0].contains('\u{7}'),
+            "the heading drew a control: {:?}",
+            lines[0]
+        );
+    }
+
+    /// A second of the shaper's spending, as two readings of the
+    /// processor and its services.
+    fn spent() -> (Spent, Spent) {
+        let at = Instant::now();
+        let reading = |softirq: u64, total: u64, shaper: u64| Spent {
+            at,
+            cores: cpu::ticks(&format!(
+                "cpu  {total} 0 0 0 0 0 {softirq} 0\ncpu0 {total} 0 0 0 0 0 {softirq} 0"
+            )),
+            services: vec![Some(shaper), Some(shaper / 10)],
+        };
+        let mut later = reading(30, 1_100, 62_000);
+        later.at = at + Duration::from_secs(1);
+        (reading(10, 100, 0), later)
+    }
+
+    #[test]
+    fn the_processor_s_lines_fit_the_room_and_the_measure() {
+        let (first, later) = spent();
+        for cells in [40, 60, 80, 200] {
+            let lines = first.said(&later, Room::Cells(cells));
+            assert!(
+                lines.iter().any(|line| line.starts_with("softirq")),
+                "no softirq line: {lines:#?}"
+            );
+            let most = cells.min(layout::MEASURE);
+            assert!(
+                lines.iter().all(|line| layout::width(line) <= most),
+                "at {cells} columns a processor line ran past {most}: {lines:#?}"
+            );
+        }
     }
 
     #[test]
