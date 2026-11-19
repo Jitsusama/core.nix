@@ -281,6 +281,13 @@ want to see its paws moving when it is walking or running."
   at a time"
 - Held by `margin-cat-floats.qml`: "nor fails to go, or skids or flashes a stride, any way,
   set off or climbing"
+- Held by `margin-cat.qml`: "set off from another stride, it's never both pairs off the one
+  it stops into"
+- Held by `margin-cat-floats.qml`: "set off again every frame, a stride steps once a stride's
+  ground"
+- Held by `margin-cat-floats.qml`: "set off mid-stride into a turn, it turns in the stride drawn"
+- Held by `margin-cat-floats.qml`: "stepped into early to stop, a stride counts from where it was
+  first drawn"
 - Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"
 - Held by `margin-cat-floats.qml`: "onto and off one 2 above the tops, it steps within its
   walk, never leaping"

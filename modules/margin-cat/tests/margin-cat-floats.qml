@@ -484,7 +484,7 @@ QtObject {
         // Set off again as it eases in, it eases in on, rather than lurch to
         // its pace; at its pace, it keeps it.
         const easingAt = Array.from({ length: 400 }, (_, t) => Paths.frame(unchased, t))
-            .find(one => strideOrder.includes(one.pose));
+            .find(one => one.beat === "goes" && strideOrder.includes(one.pose));
         const pacedAt = Paths.frame(unchased, 600);
         const easesFrom = one => Paths.walk({ x: one.x, y: one.y }, { x: 700, y: 7 }, world({
             hurried: true, facing: one.facing, drawnIn: one.pose, drawnInto: one.into,
@@ -492,6 +492,20 @@ QtObject {
         expect("set off again easing in, it eases in; at its pace, it keeps it",
             [easingAt.atPace, easesFrom(easingAt) > 0, pacedAt.atPace, easesFrom(pacedAt)],
             [false, true, true, 0]);
+        // Stepped into a SHOWN early to stop, a stride counts from where it was
+        // first drawn, a whole stride by its last frame, not from the stop.
+        const stopping = Paths.walk({ x: 100, y: 7 }, { x: 636, y: 7 }, world({ hurried: true }));
+        const stopsAt = stopping.beats.filter(beat => beat.kind === "goes").pop().ends;
+        const earlyDrawn = [66, 34].map(before => Paths.frame(stopping, stopsAt - before));
+        expect("stepped into early to stop, a stride counts from where it was first drawn",
+            earlyDrawn.map(one => [one.pose, one.into]), [["walkingA", 0], ["walkingA", 1]]);
+        // Set off mid-stride into a turn, it turns in the stride drawn, then strides on.
+        const turnsMid = Paths.walk({ x: 1200, y: 7 }, { x: 900, y: 398 },
+            world({ hurried: true, facing: -1, drawnIn: "walkingA" }));
+        const turnSteps = Array.from({ length: 300 }, (_, t) => Paths.frame(turnsMid, t).pose)
+            .filter((pose, t, all) => t === 0 || pose !== all[t - 1]).slice(0, 4);
+        expect("set off mid-stride into a turn, it turns in the stride drawn",
+            turnSteps, ["walkingA", "walkingC", "walkingB", "walkingD"]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));

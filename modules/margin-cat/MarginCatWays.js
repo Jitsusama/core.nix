@@ -5,21 +5,18 @@
 .pragma library
 .import "MarginCat.js" as MarginCat
 
-// How fast it falls, in its cells a second each second: a hop of a cell
-// and a half over a gap lasts about a sixth of a second, a drop between
-// workspaces about two thirds.
+// How fast it falls, in its cells a second each second: a hop of a cell and a half over a gap lasts
+// about a sixth of a second, a drop between workspaces about two thirds.
 const GRAVITY = 400;
 // The fastest it falls, in its heights a second: half its body between two
 // frames at 120 Hz, near enough, so a long fall is never a jump.
 const FALLS_AT_MOST = 54;
 // The shortest a leap may last, so even a small one is seen.
 const LEAPS_AT_LEAST = 160;
-// A leap across a gap: the fewest cells it rises, and the least and most
-// it lasts in ms, so it shows in seven frames at 60 Hz and still reads as
-// a leap (VKCF3Z, 69bb37d0).
+// A leap across a gap: the fewest cells it rises, and the least and most it lasts in ms, so it
+// shows in seven frames at 60 Hz and still reads as a leap (VKCF3Z, 69bb37d0).
 const ACROSS = { rises: 2, ms: [120, 160] };
-// The shortest a pose may show, in ms: two frames at 60 Hz, so no drawing
-// flashes for one.
+// The shortest a pose may show, in ms: two frames at 60 Hz, so no drawing flashes for one.
 const SHOWN = 33;
 // It climbs in bounds, as a cat goes up a tree rather than a lift up a
 // shaft: one each `BOUNDS` of its heights, surging and gripping by
@@ -31,10 +28,9 @@ const SHOWN = 33;
 // peak still holds SHOWN.
 const BOUNDS = 6;
 const SURGES = 0.1;
-// The longest all the beats nobody can see may take together, in ms: off
-// the screen, on a workspace above or below it, it hurries, since only
-// where it comes back into sight is seen, and a cat gone for seconds
-// reads as lost.
+// The longest all the beats nobody can see may take together, in ms: off the screen, on a workspace
+// above or below it, it hurries, since only where it comes back into sight is seen, and a cat gone
+// for seconds reads as lost.
 const UNSEEN = 360;
 // The beats it walks or climbs, its strides stepped by the ground it
 // covers, and each stride's poses: each pair of legs apart two strides
@@ -226,9 +222,8 @@ function clings(way, side, dir) {
     way.turn = side;
 }
 
-// How long a leg lasts at `pace`, its cells a second, before the theme's
-// slowdown: a leap as long as falling its height takes; a leg given its
-// own `ms`, as a hold or a peek's climb, that long.
+// How long a leg lasts at `pace`, its cells a second, before the theme's slowdown: a leap as long
+// as falling its height takes; a leg given its own `ms`, as a hold or a peek's climb, that long.
 function lasts(one, pace, at) {
     if (one.kind === "holds" || one.kind === "falls"
         || (one.kind === "climbs" && one.ms !== undefined)) {
@@ -255,9 +250,8 @@ function seen(one, at) {
         && Math.max(...ys) + at.tall > 0 && Math.min(...ys) < at.height;
 }
 
-// Whether `beat` strides on from `was`, round a corner or straight on;
-// one turning back on the other starts over, easing out and in, as it
-// turns.
+// Whether `beat` strides on from `was`, round a corner or straight on; one turning back on the
+// other starts over, easing out and in, as it turns.
 function joined(was, beat) {
     return was !== undefined && beat !== undefined
         && Boolean(STRIDING[was.kind] && STRIDING[beat.kind])
@@ -315,6 +309,11 @@ function timed(way) {
                     ? one.bounds ?? Math.max(1, Math.round(ground / (BOUNDS * at.tall))) : 0 }));
             ends += ms;
         }
+    }
+    // Set off mid-stride into a hold on the spot, as a turn, it holds the stride drawn rather
+    // than both pairs of feet jumping to its stand's.
+    if (STRIDING.goes.includes(at.drawnIn) && STRIDING.goes.includes(beats[0]?.pose)) {
+        beats[0].pose = at.drawnIn;
     }
     const from = way.legs[0]?.from ?? { x: way.x, y: way.y };
     const route = { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends,
@@ -433,8 +432,9 @@ function drawnFor(route, beat, t, { walk, pose, spot }) {
     const plain = strides[(counted + strides.indexOf(walk.stand) + 1) % strides.length];
     const ahead = pose === strides[(strides.indexOf(plain) + 1) % strides.length];
     const shown = Math.max(walk.since, walk.last - walk.shown);
+    const on = route.beats.find(one => one.since === beat.since && shown < one.ends) ?? beat;
     const fromShown = t >= shown && t < walk.last && !walk.joins && MarginCat.striding(strides,
-        walk, shown) === pose ? MarginCat.went(beat, placed(route, beat, shown)) : Infinity;
+        walk, shown) === pose ? MarginCat.went(on, placed(route, on, shown)) : Infinity;
     const from = Math.min(fromShown, ahead ? MarginCat.went(beat, placed(route, beat, walk.last))
         : (counted - (pose === plain ? 0 : 1)) * beat.stride);
     return Math.max(0, MarginCat.went(beat, spot) - from) / beat.stride;
