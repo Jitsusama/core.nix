@@ -322,8 +322,9 @@ struct Shaped {
     download: Download,
     /// The bytes the upload's CAKE had sent when last read, and when the
     /// controller was last told: what crossed the line, apart from the
-    /// home network's traffic, which the link sends as well.
-    sent_bytes: u64,
+    /// home network's traffic, which the link sends as well. None where
+    /// the last read failed.
+    sent_bytes: Option<u64>,
     sent_told: Option<u64>,
     /// How the upload is split between its lanes, what was put on its
     /// classes, when it was last split, and what Joel's CAKE's tins sent.
@@ -395,7 +396,7 @@ impl Shaped {
         if let Some(now) = up.as_deref().and_then(qdisc::drops) {
             self.dropped += since(self.drops.replace(now), now);
         }
-        self.sent_bytes = up.and_then(|json| qdisc::shaped_bytes(&json)).unwrap_or(0);
+        self.sent_bytes = up.and_then(|json| qdisc::shaped_bytes(&json));
     }
 
     /// Whose the upload's queue has been since last asked: whether CAKE
@@ -410,9 +411,14 @@ impl Shaped {
         let dropped = std::mem::take(&mut self.dropped);
         let seconds = self.told_at.replace(now).map(|at| (now - at).as_secs_f64());
         let dropped = seconds.map_or(0, |s| segments_kbit(dropped, s));
+        // A read that failed, or counts that went back as CAKE was put in
+        // again, counted nothing: the controller would take a CAKE that
+        // sent nothing for one starved.
+        let then = std::mem::replace(&mut self.sent_told, self.sent_bytes);
         let sent = seconds
-            .zip(self.sent_told.replace(self.sent_bytes))
-            .map(|(s, then)| bytes_kbit(self.sent_bytes.saturating_sub(then), s));
+            .zip(then)
+            .zip(self.sent_bytes)
+            .and_then(|((s, then), now)| (now >= then).then(|| bytes_kbit(now - then, s)));
         oneway::Ours::from_reads(link, vpn, wait, waiting, (resent, dropped))
             .map(|ours| oneway::Ours { sent, ..ours })
     }
@@ -597,7 +603,7 @@ fn start(
         dropped: 0,
         told_at: None,
         download: Download::Turned,
-        sent_bytes: 0,
+        sent_bytes: None,
         sent_told: None,
         lanes,
         split,
