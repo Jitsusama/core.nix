@@ -21,7 +21,6 @@
     homeModules.dig
     homeModules.fd
     homeModules.gh
-    homeModules.glow
     homeModules.gnupg
     homeModules.jq
     homeModules.nixfmt

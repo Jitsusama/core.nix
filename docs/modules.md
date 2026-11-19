@@ -47,7 +47,7 @@ file here names a machine, a machine repository or an employer.
    lists; see [Testing][2].
 
 Keep the tool's configuration in its own format beside the module, such as
-`modules/glow/glow.yml`, and read it in rather than translating it to Nix.
+`modules/kitty/kitty.conf`, and read it in rather than translating it to Nix.
 
 ## A Module That Needs an Input
 

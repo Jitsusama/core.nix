@@ -289,7 +289,7 @@ in
     action_alias hints ${hints}
 
     # A link under the pointer underlined in the theme's strongest text, as
-    # glow underlines one, rather than in kitty's own blue curl.
+    # gh's markdown underlines one, rather than in kitty's own blue curl.
     url_color ${colours.strong}
     url_style straight
 

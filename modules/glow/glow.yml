@@ -1,6 +1,0 @@
-# Enable mouse wheel support in TUI mode
-mouse: true
-# Use pager by default for viewing markdown
-pager: true
-# Use full terminal width (0 = dynamic width)
-width: 0
