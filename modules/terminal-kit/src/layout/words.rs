@@ -556,6 +556,22 @@ mod tests {
     }
 
     #[test]
+    fn a_rate_is_held_to_its_figure_as_a_unit_is() {
+        // A rate's unit is longer than a unit's, but a line that ends on
+        // "10.3" and begins the next on "Mb/s" reads as a bare number.
+        assert_eq!(
+            wrapped("which let 10.3 Mb/s through", 14),
+            ["which let", "10.3 Mb/s", "through"]
+        );
+        assert_eq!(
+            wrapped("read 12 KiB/s here", 8),
+            ["read", "12 KiB/s", "here"]
+        );
+        // A word as long that isn't a rate still parts from a figure.
+        assert_eq!(wrapped("took 5 with it", 6), ["took 5", "with it"]);
+    }
+
+    #[test]
     fn words_cut_wrapped_or_shortened_stay_on_one_line() {
         let name = "Den\neero\tPro\u{2029}6";
         assert_eq!(
