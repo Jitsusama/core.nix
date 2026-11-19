@@ -59,11 +59,11 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 23 files since the balance, who started each cell, the tree beside the map,
-# what each thing is in words, how a time is said, how each thing stands and
-# what each is doing were read in modules of their own, and one spare; 704 KB,
-# with room above.
-BUDGET = Budget(files=24, kilobytes=745, elements=590)
+# 24 files since the balance, who started each cell, the tree beside the map,
+# what each thing is in words, how a time is said, how each thing stands, what
+# each is doing and what each spent were read in modules of their own, and one
+# spare; about 706 KB, with room above.
+BUDGET = Budget(files=25, kilobytes=750, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
