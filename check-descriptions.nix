@@ -1041,9 +1041,11 @@
     are each titled by more than their app id or the name of a program running in them
   '';
   every-pixel-mark-stands-level = ''
-    every mark the theme draws in pixels, the margin's cat and puppy in each pose, is square, its
-    ink touching its top and bottom rows and centred across to within a cell, and the three empty
-    places' marks and the cat's and the puppy's poses it names are drawn
+    every mark the theme draws in pixels, the three empty places' marks and the margin's cat and
+    puppy in each pose, is square, its ink touching its top and bottom rows and centred across to
+    within a cell, the cat's yarn standing on the sitting cat's ground line in its square instead,
+    and the three empty places' marks, the cat's and the puppy's poses it names and the yarn are
+    drawn
   '';
   every-cat-pose-reads-as-one-cat = ''
     every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
@@ -1068,10 +1070,11 @@
   every-skidding-walk-is-refused = ''
     the margin's animals' stride rule refuses the cat's own strides out of order, alone, with a
     pair never stepping, after a pose that isn't a stride, undrawn, and none at all, each by
-    its reason; and reads the cat's code as no walk when it strides by anything but WALKS's
-    quoted words, a word holds a space or mismatched quotes, or either list is assigned to or
-    named otherwise after it's declared, though as its walk when they're only spaced, quoted
-    or commented otherwise and STRIDING is only read; and reads past a copy commented out
+    its reason; refuses a pose planted with a stray pixel or too few; and reads the cat's code
+    as no walk when it strides by anything but WALKS's quoted words, a word holds a space or
+    mismatched quotes, or either list is assigned to or named otherwise, though as its walk
+    when they're only spaced, quoted or commented otherwise, a longer name holds theirs, and
+    STRIDING is only read, above its declaration or below; and reads past a copy commented out
   '';
   every-suppression-says-why = ''
     every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or

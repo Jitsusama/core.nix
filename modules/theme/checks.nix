@@ -30,16 +30,17 @@ let
   # four strides or more. Strides are drawn facing left: the fore half is
   # the left one, and the tail's tip is at the top right. What's found, as
   # whether it holds and what it says, for readsAsOne and for the check that
-  # each skid is refused; `walkedFrom` is where the strides were read from.
+  # each skid is refused; `walkedFrom` is where the strides were read from,
+  # and `glyphs` the drawings, the theme's unless that check plants its own.
   poseFaults =
     {
       sitting,
       poses,
       strides,
       walkedFrom ? null,
+      glyphs ? import ./glyphs.nix { inherit lib; },
     }:
     let
-      glyphs = import ./glyphs.nix { inherit lib; };
       # The sitting is named among the undrawn when it's missing or misnamed,
       # rather than every pose being called unlike a sitting of nothing, and
       # so is a stride, which is held to the stray and size rules too rather
@@ -175,21 +176,25 @@ let
   # The walk the cat's code takes, read from the code that walks it, so its
   # check proves the walk that's drawn rather than a copy: the words WALKS
   # lists, when it's every list STRIDING strides by. Only the code is read,
-  # lines that are comments aside. Each is read whole, to its semicolon,
-  # and must be only what's meant, spaces allowed only between its parts;
-  # past it, WALKS is named only in STRIDING, and STRIDING only read by a
-  # key with nothing assigned there, so neither is declared twice. So
-  # anything else, another list, a stride written inline, an entry not a
-  # quoted word, something after its bracket, an assignment to either or
-  # either not found, reads as no walk, which fails saying where it looked
-  # and what it needs. A delete, a write through what a read hands back or
-  # one from another file isn't seen; none of the cat's files does any.
-  walkIn =
+  # comments aside, and each name only as a word of its own. Each is read
+  # whole, to its semicolon, and must be only what's meant, spaces allowed
+  # only between its parts; elsewhere, WALKS is named only in STRIDING,
+  # and STRIDING only read by a key with nothing assigned there, so neither
+  # is declared twice. So anything else, another list, a stride written
+  # inline, an entry not a quoted word, something after its bracket, an
+  # assignment to either or either not found, reads as no walk, which
+  # fails saying where it looked and what it wanted. A delete, a write
+  # through what a read hands back, or one from another file isn't seen;
+  # none of the cat's files does any.
+  walkRead =
     file:
     let
+      # Each line short of a comment that ends it, and none a comment fills.
       ways = lib.concatStringsSep "\n" (
-        lib.filter (line: builtins.match "[[:space:]]*(//|/?\\*).*" line == null) (
-          lib.splitString "\n" file
+        map (line: lib.head (lib.splitString "//" line)) (
+          lib.filter (line: builtins.match "[[:space:]]*(//|/?\\*).*" line == null) (
+            lib.splitString "\n" file
+          )
         )
       );
       # The constant's declaration, up to the semicolon that ends it.
@@ -201,33 +206,74 @@ let
         lib.head (lib.splitString ";" (lib.elemAt after 1));
       walks = declared "WALKS";
       striding = declared "STRIDING";
-      named = name: text: lib.length (lib.splitString name text) - 1;
-      # Every line STRIDING is named on past its declaration reads it, by
-      # a key, and assigns nothing there, by itself or with an operator.
+      # Where `name` stands in `text` as a word of its own, by the text
+      # before it and the line after it.
+      wordy = c: builtins.match "[A-Za-z0-9_$]" c != null;
+      uses =
+        name: text:
+        let
+          pieces = lib.splitString name text;
+          use = i: {
+            before = lib.elemAt pieces i;
+            after = lib.head (lib.splitString "\n" (lib.elemAt pieces (i + 1)));
+          };
+        in
+        lib.filter (
+          one:
+          !wordy (builtins.substring (lib.stringLength one.before - 1) 1 one.before)
+          && !wordy (builtins.substring 0 1 one.after)
+        ) (lib.genList use (lib.length pieces - 1));
+      named = name: text: lib.length (uses name text);
+      # Every STRIDING but its declaration reads it, by a key, and assigns
+      # nothing there, by itself or with an operator.
       onlyRead =
         let
-          past = lib.drop 2 (lib.splitString "STRIDING" ways);
-          lines = map (piece: lib.head (lib.splitString "\n" piece)) past;
           by = "(\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?";
-          writes = line: builtins.match ".*][[:space:]]*${by}=([^=].*)?" line != null;
+          writes = after: builtins.match "\\[[^]]*][[:space:]]*${by}=([^=].*)?" after != null;
         in
-        lib.all (line: lib.hasPrefix "[" line && !writes line) lines;
+        lib.all (one: lib.hasPrefix "[" one.after && !writes one.after) (
+          lib.filter (one: !lib.hasSuffix "const " one.before) (uses "STRIDING" ways)
+        );
       s = "[[:space:]]*";
       word = "(\"[A-Za-z]+\"|'[A-Za-z]+')";
       stride = "[A-Za-z_]+${s}:${s}WALKS";
       listed = one: "${s}(${one}${s},${s})*${one}${s},?${s}";
       words = map lib.head (lib.filter lib.isList (builtins.split "[\"']([A-Za-z]+)[\"']" walks));
+      # What the code isn't, of what it must be, so a walk read as none
+      # says why.
+      faults = map (rule: rule.wanted) (
+        lib.filter (rule: !rule.met) [
+          {
+            wanted = "WALKS as quoted words";
+            met = builtins.match "\\[${listed word}]${s}" walks != null;
+          }
+          {
+            wanted = "STRIDING as strides by WALKS";
+            met = builtins.match "\\{${listed stride}}${s}" striding != null;
+          }
+          {
+            wanted = "WALKS named nowhere else";
+            met = named "WALKS" ways == 1 + named "WALKS" striding;
+          }
+          {
+            wanted = "STRIDING only read by a key";
+            met = onlyRead;
+          }
+        ]
+      );
     in
-    lib.optionals (
-      builtins.match "\\[${listed word}]${s}" walks != null
-      && builtins.match "\\{${listed stride}}${s}" striding != null
-      && named "WALKS" ways == 1 + named "WALKS" striding
-      && onlyRead
-    ) words;
-  catWalk = walkIn (builtins.readFile ../margin-cat/MarginCatWays.js);
+    {
+      inherit faults;
+      walk = lib.optionals (faults == [ ]) words;
+    };
+  walkIn = file: (walkRead file).walk;
+  catWays = walkRead (builtins.readFile ../margin-cat/MarginCatWays.js);
+  catWalk = catWays.walk;
   catWalkedFrom =
-    "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js, which needs each declared "
-    + "once, WALKS as quoted words, and STRIDING only read by a key past it";
+    "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js"
+    + lib.optionalString (catWays.faults != [ ]) (
+      ", which wanted " + lib.concatStringsSep ", " catWays.faults
+    );
 in
 {
   # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
@@ -431,11 +477,41 @@ in
   # The stride rule refuses each way a walk skids, by its reason, so it's
   # shown refusing as well as passing: the cat's own strides out of order,
   # alone, with a pair never stepping, after a pose that isn't a stride,
-  # undrawn, and none at all; and the cat's code read as no walk when it
-  # strides by anything but WALKS's quoted words, though as its walk when
-  # they're only spaced or quoted otherwise.
+  # undrawn, and none at all; a pose planted with a stray pixel or too few;
+  # and the cat's code read as no walk when it strides by anything but
+  # WALKS's quoted words, though as its walk when they're only spaced,
+  # quoted or commented otherwise, or read where it's used.
   every-skidding-walk-is-refused =
     let
+      theirs = import ./glyphs.nix { inherit lib; };
+      rows = theirs.nothingHere.pixels;
+      # The sitting cat with a pixel lit alone at its top right, and with
+      # only its bottom three rows.
+      planted = theirs // {
+        strayed.pixels = [ "${builtins.substring 0 7 (lib.head rows)}#" ] ++ lib.tail rows;
+        shrunk.pixels = lib.genList (_: "........") 5 ++ lib.sublist 5 3 rows;
+      };
+      plantedFaults =
+        pose:
+        poseFaults {
+          sitting = "nothingHere";
+          poses = [ pose ];
+          strides = catWalk;
+          glyphs = planted;
+        };
+      shown = [
+        {
+          pose = "strayed";
+          reason = "stray [\"strayed\"]";
+        }
+        {
+          pose = "shrunk";
+          reason = "unlike [\"shrunk\"]";
+        }
+      ];
+      unshown = lib.filter (
+        one: (plantedFaults one.pose).ok || !lib.hasInfix one.reason (plantedFaults one.pose).said
+      ) shown;
       said =
         strides:
         poseFaults {
@@ -517,6 +593,8 @@ in
         // WALKS is the cat's walk, which STRIDING strides by.
         /* STRIDING[kind] = WALKS reads alike, as a comment.
          * So does WALKS.reverse(); here. */
+        const WALKSPEED = 3, OVERSTRIDING = 2;
+        const early = kind => STRIDING[kind];
         const WALKS = [
           'walkingA',
           'walkingC',
@@ -526,10 +604,14 @@ in
         ${stridingSaid}
         const strides = STRIDING[beat.kind];
         const joined = STRIDING[was.kind] === STRIDING[beat.kind];
+        const pose = STRIDING[beat.kind][0]; // not WALKS.reverse()
+        const kept = STRIDING[beat.kind] && (last[i] = pose);
       '';
-      passed = map (walk: "${walk.reason}, said ${(said walk.strides).said}") (
-        lib.filter (walk: !refused walk) walks
-      );
+      passed =
+        map (walk: "${walk.reason}, said ${(said walk.strides).said}") (
+          lib.filter (walk: !refused walk) walks
+        )
+        ++ map (one: "${one.reason}, said ${(plantedFaults one.pose).said}") unshown;
     in
     holds "every-skidding-walk-is-refused"
       (
