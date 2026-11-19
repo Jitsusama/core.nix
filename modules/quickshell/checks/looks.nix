@@ -367,6 +367,36 @@
       touch $out
     '';
 
+  # An emoji is a picture with no outline, measured by its box, so it stands
+  # centred on the capitals of the name beside it as the theme's marks do, at
+  # his laptop's scale, his big screen's and 1, as
+  # modules/quickshell/tests/emoji-marks.py reads
+  # modules/quickshell/tests/emoji-marks.qml's pictures back.
+  an-emoji-stands-on-its-names-capitals =
+    let
+      machine = graphical.config;
+      measure = lib.getExe (pkgs.python3.withPackages (python: [ python.pillow ]));
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or runs the case with what Nix built; the measuring is Python.
+    pkgs.runCommandLocal "an-emoji-stands-on-its-names-capitals" { } ''
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      for scale in 2 1.5 1; do
+        mkdir at-$scale
+        cd at-$scale
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        ${copied [ "Mark.qml" ]}
+        cp ${../tests/emoji-marks.qml} shell.qml
+        ${shellFolderLint}
+        QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
+        ${measure} ${../tests/emoji-marks.py} . said
+        cd ..
+      done
+      touch $out
+    '';
+
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's

@@ -56,9 +56,31 @@ function faceHeld(family, families) {
 
 // `measure`, kept as `key`'s when `whole`: when the face drawn is the one
 // asked for, not one standing in while it loads. Mark.qml gives it only
-// once the outline is traced from the glyph, which comes after the box.
+// once the outline is traced from the glyph, which comes after the box;
+// or, for a pictured glyph, which has no outline, once its box is measured.
 function measured(key, measure, whole) {
-    if (whole && measure.outline > 0) {
+    if (whole && (measure.outline > 0 || (measure.pictured === true && measure.height > 0))) {
         measures[key] = measure;
     }
+}
+
+// The emoji blocks, from Mahjong's tiles to the newest pictographs, and
+// the selector that asks for a character's picture rather than its letter.
+const PICTURES_FROM = 0x1f000;
+const PICTURES_TO = 0x1faff;
+const AS_PICTURE = 0xfe0f;
+
+// Whether `text` is drawn as a picture, in the colour emoji face, rather
+// than as a letter with an outline: an emoji, or a character asking for
+// its picture. A picture has no outline to trace, so Mark.qml measures it
+// by its box. The theme's marks are the Nerd Fonts' letters, in a private
+// plane far past these, so none is taken for a picture.
+function pictured(text) {
+    for (const character of text) {
+        const point = character.codePointAt(0);
+        if (point === AS_PICTURE || (point >= PICTURES_FROM && point <= PICTURES_TO)) {
+            return true;
+        }
+    }
+    return false;
 }
