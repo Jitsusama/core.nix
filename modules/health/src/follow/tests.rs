@@ -79,6 +79,37 @@ fn a_new_day_writes_the_old_and_starts_empty() {
     );
 }
 
+/// systemd's line of `service` stopping or started, in boot `b`, at `at`
+/// on both clocks.
+fn job(id: &str, service: &str, at: i64) -> String {
+    format!(
+        r#"{{"__REALTIME_TIMESTAMP":"{at}","__MONOTONIC_TIMESTAMP":"{at}","_BOOT_ID":"b",
+        "PRIORITY":"6","SYSLOG_IDENTIFIER":"systemd",
+        "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/init.scope",
+        "MESSAGE_ID":"{id}","USER_UNIT":"{service}","MESSAGE":"{service}"}}"#
+    )
+    .replace('\n', "")
+}
+
+#[test]
+fn a_restart_across_midnight_is_the_new_days() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let midnight = NOON + DAY / 2;
+    for line in [
+        job(journal::UNIT_STOPPING, "google.service", midnight - 100_000),
+        job(journal::UNIT_STARTED, "google.service", midnight + 100_000),
+    ] {
+        follower.take(&line).expect("a line");
+    }
+    follower.write().expect("the new day is written");
+    assert_eq!(
+        read(into.path(), "2026-11-13").launches.restarted,
+        BTreeMap::from([("google.service".to_owned(), vec![200])]),
+        "a stop before midnight was lost to the new day"
+    );
+}
+
 #[test]
 fn a_line_that_isnt_an_entry_changes_nothing() {
     let into = tempfile::tempdir().expect("a folder");
