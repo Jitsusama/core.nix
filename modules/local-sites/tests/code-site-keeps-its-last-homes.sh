@@ -90,18 +90,34 @@ if [ "${left[*]}" != "$work/site/homes.json" ]; then
   exit 1
 fi
 
-# A status past those a signal ends a program with is no kill, and is said as it is.
-echo 200 > "$work/down"
-if ! said=$("$BASH" "$writer" "$work/site" 2> "$work/err"); then
-  echo "With repos ending 200, the writer failed, so its unit would fail." >&2
-  exit 1
-fi
-failed="repos failed (ended 200: repos: couldn't write its answer: broken pipe)"
-failed+="; the last homes stay"
-if [ "$said" != "$failed" ]; then
-  echo "With repos ending 200, the writer said '$said' rather than how it ended." >&2
-  exit 1
-fi
+kept="the last homes stay"
+# The writer says what happened in its one line alone, so the journal holds no
+# other, such as bash's own word on a program a signal ended.
+quiet() {
+  if [ -s "$work/err" ]; then
+    echo "With $1, the writer also said '$(< "$work/err")'." >&2
+    exit 1
+  fi
+}
+
+# A status no named signal explains is no kill, and is said as it is: 200 is past
+# every signal, and 160 is 32's, which Linux keeps for its threads and names nothing.
+ends() {
+  local status=$1 said
+  echo "$status" > "$work/down"
+  if ! said=$("$BASH" "$writer" "$work/site" 2> "$work/err"); then
+    echo "With repos ending $status, the writer failed, so its unit would fail." >&2
+    exit 1
+  fi
+  quiet "repos ending $status"
+  local failed="repos failed (ended $status: repos: couldn't write its answer: broken pipe)"
+  if [ "$said" != "$failed; $kept" ]; then
+    echo "With repos ending $status, the writer said '$said' rather than how it ended." >&2
+    exit 1
+  fi
+}
+ends 200
+ends 160
 
 rm "$work/down"
 touch "$work/silent"
@@ -114,15 +130,6 @@ fi
 
 rm "$work/silent"
 touch "$work/stalled"
-kept="the last homes stay"
-# The writer says what happened in its one line alone, so the journal holds no
-# other, such as bash's own word on a program a signal ended.
-quiet() {
-  if [ -s "$work/err" ]; then
-    echo "With $1, the writer also said '$(< "$work/err")'." >&2
-    exit 1
-  fi
-}
 
 # The writer waits a second here rather than its minute's share, so the check
 # stays quick.
