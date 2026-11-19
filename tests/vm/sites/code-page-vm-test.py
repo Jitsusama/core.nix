@@ -48,6 +48,9 @@ MEANWHILE = "/root/meanwhile.log"
 HOMES = timedelta(minutes=1)
 # The repository made on the disk, under the root code-page.nix gives repos instead of its own.
 REPOSITORY = "/home/alice/code/kestrel"
+# A tree cut from it once the daemon runs, and where Code is home to it, as jq's @uri writes it.
+TREE = "/home/alice/trees/wing"
+TREE_HOME = "code/#tree=%2Fhome%2Falice%2Ftrees%2Fwing"
 # A commit's author, given each time, since the account has no git config of its own.
 AUTHOR = "-c user.name=Ada -c user.email=ada@example.invalid"
 
@@ -172,3 +175,13 @@ def test_the_code_sites_homes_say_where_the_repository_is_home(served: BaseMachi
     homes = json.loads(served.succeed(f"curl -sf {SITES}/code/homes.json"))
     addresses = {thing.get("name"): thing.get("address") for thing in homes.get("things", [])}
     assert addresses.get("kestrel") == "code/#repo=kestrel", f"no home for kestrel in {homes}"
+    # A tree cut after the first reading comes only from a later one, so the homes move with the
+    # disk rather than staying as the daemon first found them.
+    as_account(served, f"git -C {REPOSITORY} worktree add -q {TREE}", account="alice")
+    try:
+        served.wait_until_succeeds(
+            f"curl -sf {SITES}/code/homes.json | grep -qF {shlex.quote(TREE_HOME)}", timeout=HOMES
+        )
+    except Exception:  # noqa: BLE001 # The driver raises a bare Exception when time is up.
+        now = served.succeed(f"curl -sf {SITES}/code/homes.json")
+        pytest.fail(f"the tree cut never came home; the homes say:\n{now}")

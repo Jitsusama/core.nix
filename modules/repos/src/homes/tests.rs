@@ -1,5 +1,5 @@
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::PathBuf;
 
 use repos::model::{Checkout, Head, Record, Repository, SCHEMA, Tree, TreeKind};
@@ -155,17 +155,29 @@ fn the_homes_are_written_whole_for_anyone_to_read_and_nothing_else_is_left() {
 }
 
 #[test]
-fn homes_unchanged_since_the_last_writing_are_not_written_again() {
+fn the_homes_go_by_their_keys_so_a_reading_that_only_reorders_them_changes_none() {
+    // A reading lists the newest written first, so every commit reorders them.
+    let mut both = record();
+    both.repositories[0].checkouts[0].trees[1].present = true;
+    let mut reordered = both.clone();
+    reordered.repositories.reverse();
+    reordered.repositories[1].checkouts[0].trees.reverse();
+    assert_eq!(of(&reordered), of(&both));
+}
+
+#[test]
+fn homes_unchanged_on_the_disk_are_not_written_again() {
     let folder = folder("unchanged");
     let file = folder.join("homes.json");
     let mut homes = Homes::at(file.clone());
     homes.write(&record()).expect("written");
-    fs::write(&file, "x").expect("marked");
+    let first = fs::metadata(&file).expect("the homes").ino();
     assert!(
         !homes.write(&record()).expect("read"),
         "the same homes were written again"
     );
-    assert_eq!(fs::read_to_string(&file).expect("the mark"), "x");
+    let then = fs::metadata(&file).expect("the homes").ino();
+    assert_eq!(then, first, "the same homes were put in place again");
     let mut more = record();
     more.repositories.pop();
     assert!(
@@ -173,6 +185,39 @@ fn homes_unchanged_since_the_last_writing_are_not_written_again() {
         "changed homes weren't written"
     );
     assert_eq!(read(&file), of(&more));
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn homes_another_writer_changed_or_removed_are_written_again_at_the_next_reading() {
+    let folder = folder("clobbered");
+    let file = folder.join("homes.json");
+    let mut homes = Homes::at(file.clone());
+    homes.write(&record()).expect("written");
+    fs::write(&file, "x").expect("changed");
+    assert!(homes.write(&record()).expect("written"), "changed homes stayed");
+    assert_eq!(read(&file), of(&record()));
+    fs::remove_file(&file).expect("removed");
+    assert!(homes.write(&record()).expect("written"), "removed homes stayed gone");
+    assert_eq!(read(&file), of(&record()));
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn a_writing_left_half_done_goes_at_the_next_and_its_link_is_never_followed() {
+    let folder = folder("left");
+    let file = folder.join("homes.json");
+    let elsewhere = folder.join("elsewhere");
+    fs::create_dir_all(&elsewhere).expect("a folder elsewhere");
+    let target = elsewhere.join("kept");
+    fs::write(&target, "kept").expect("a file elsewhere");
+    // A daemon killed mid-writing, or a link put where the next writes.
+    symlink(&target, folder.join(".homes.json.writing")).expect("a link left");
+    let mut homes = Homes::at(file.clone());
+    assert!(homes.write(&record()).expect("written"), "nothing was written");
+    assert_eq!(read(&file), of(&record()));
+    assert_eq!(fs::read_to_string(&target).expect("kept"), "kept", "the link was followed");
+    assert_eq!(names_in(&folder), ["elsewhere", "homes.json"], "the half-done writing stayed");
     let _ = fs::remove_dir_all(&folder);
 }
 
