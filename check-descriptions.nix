@@ -1034,7 +1034,7 @@
     that read hangs, and once it lands late destroys the view, keeps its hold and credits no
     other card with it; a cable file asked is watched and asked once, its watch stopped as it
     lands, and given up in flight by the watch about two seconds on when it never does, its
-    view kept and a new one made; each cable file is read once; a card whose hold is over is
+    view kept and a new one made; each cable file is named once; a card whose hold is over is
     asked for by the answer itself; a card gone is forgotten, though its load
     was under way; a card named __proto__ has its own lease and neighbours; and one named
     constructor no gateway
