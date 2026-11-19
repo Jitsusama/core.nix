@@ -374,6 +374,8 @@ Scope {
         // collection's or an answer's do, never move it.
         const was = !fresh && current >= 0 && matches[current]
             ? Rank.identity(matches[current]) : "";
+        // The second of two alike stays the second (Steady.selection).
+        const nth = was === "" ? 0 : Steady.alikeAbove(matches, current, Rank.identity);
         // And a thing found more than one way is one row, as the one
         // with the most to say.
         // A program's own keys named as it is are the program's, a step in.
@@ -403,7 +405,8 @@ Scope {
         else if (current === -1 && rows.length > 0)
             current = 0;
         else if (current >= 0)
-            current = Rank.pinned(matches, was, current + rows.length - before);
+            current = Steady.selection(matches, { row: was, at: current + rows.length - before,
+                lowest: 0, nth: nth }, Rank.identity);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
             showing: Date.now() - placedAll, kept: RowsKept.keptWhole(list.keptLast),
             weighing: keysWeighing,
@@ -3686,7 +3689,7 @@ Scope {
         if (Headings.isHeading(matches[current]))
             current = Headings.off(matches, current, current);
         // The selection's start keeps to the row it began on, as the
-        // cursor does (compose's Rank.pinned), so rows arriving above it
+        // cursor does (compose's Steady.selection), so rows arriving above it
         // never move what d would take from what's tinted.
         if (visualFrom >= 0)
             visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
@@ -6103,6 +6106,9 @@ Scope {
     function reshow(count, ordered) {
         const was = current >= 0 && selected ? pairedId(selected) : "";
         const at = current;
+        // Rows alike in it above the selection, so it stays on the second of
+        // two alike rather than going up to the first (Steady.selection).
+        const nth = was === "" ? 0 : Steady.alikeAbove(matches, at, pairedId);
         // A provider that throws mid-search mustn't leave every later search
         // keeping its rows as a refresh does.
         steadying = true;
@@ -6121,7 +6127,8 @@ Scope {
         const now = at === -1 && (answer || lineHeads) ? -1 : Steady.selection(matches, {
             row: was,
             at: at,
-            lowest: lowest
+            lowest: lowest,
+            nth: nth
         }, pairedId);
         // The list stays where it stands: Qt keeps the rows in view still as
         // rows above them come or go. Put back to where it had been scrolled,

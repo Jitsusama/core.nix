@@ -458,18 +458,6 @@ function placed(rows, later, latchedKey) {
     return all;
 }
 
-// Where the selection goes when the rows change under it: onto the row it
-// was on, by what that row is, or else where it was.
-function pinned(rows, id, at) {
-    if (id !== "") {
-        const found = rows.findIndex(row => identity(row) === id);
-        if (found >= 0) {
-            return found;
-        }
-    }
-    return Math.max(0, Math.min(at, rows.length - 1));
-}
-
 // What a collection's best find says at its right once it's gathered into
 // the main search, from `found` rows found there: what it belongs to, as
 // a session says whom it's under, then how many more the collection

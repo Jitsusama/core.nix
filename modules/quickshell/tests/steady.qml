@@ -148,6 +148,32 @@ QtObject {
         }
         if (Steady.selection([], { row: "a", at: 0, lowest: 0 }, id) !== 0)
             failures.push("an empty list leaves the selection at the top");
+        // Two rows alike in their id, as two windows titled alike or a key
+        // listed twice: [what, the rows, how many alike stood above, where it goes]
+        const alike = [
+            ["on the second of two alike, it stays on the second", "s a s b", 1, 2],
+            ["on the first, it stays on the first", "s a s b", 0, 0],
+            ["a row coming above both, it stays on the second", "n s a s b", 1, 3],
+            ["with one alike left, it goes onto that one", "a s b", 1, 1]
+        ];
+        // [what, the rows, where the selection is, how many alike stand above it]
+        const above = [
+            ["the second of two alike has one above", "s a s b", 2, 1],
+            ["the first has none", "s a s b", 0, 0],
+            ["a row with no twin has none", "s a s b", 1, 0],
+            ["nothing selected has none", "s a s b", -1, 0],
+            ["nor past the last row", "s a s b", 9, 0]
+        ];
+        for (const [what, now, at, want] of above) {
+            const got = Steady.alikeAbove(rows(now), at, id);
+            if (got !== want)
+                failures.push(`${what}: ${got}, not ${want}`);
+        }
+        for (const [what, now, nth, want] of alike) {
+            const got = Steady.selection(rows(now), { row: "s", at: 2, lowest: 0, nth: nth }, id);
+            if (got !== want)
+                failures.push(`${what}: ${got}, not ${want}`);
+        }
 
         // [what, what came in turn, where each landed, whether it waits after]
         const wantsB = row => row.key === "b";

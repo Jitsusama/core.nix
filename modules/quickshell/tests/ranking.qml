@@ -406,11 +406,6 @@ QtObject {
             [row("copy:image", "Image", { tier: 1 })], "")),
             "program:a program-act:gimp:paste copy:image");
 
-        // The selection stays on its row as rows come before it.
-        const before = [row("a", "A"), row("b", "B", { is: "window:2" })];
-        expect("pinned", Rank.pinned([row("x", "X")].concat(before), "window:2", 1), 2);
-        expect("gone, kept in place", Rank.pinned(before, "window:9", 5), 1);
-
         // A collection's best find, gathered into the main search, says
         // what it belongs to and how many more it found, and its
         // collection's noun only where no kind says what it is already, so
