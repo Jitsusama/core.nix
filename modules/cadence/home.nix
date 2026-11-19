@@ -40,8 +40,9 @@
 # note of what got worse and better, so a regression is named the day it
 # appears.
 # Each finding stays in findings.jsonl until its figure is back two days,
-# goes once to the owner `owners` names for it, and to the orchestrator
-# once more if it's still open past its date.
+# goes once to the owner `owners` names for it, and once it's still open
+# past its date, to each holder of its subject's hub in turn, kept as a
+# need, then to the orchestrator once no holder is left to give it to.
 #
 # Each Friday at 18:00, `cadence review` sends the week's noise (what
 # nobody acted on or came again, by sender) and blind spots (where the

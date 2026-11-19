@@ -110,6 +110,7 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         kind: Some(owed.kind),
         reopened: 0,
         hub: None,
+        put_to: Vec::new(),
     });
 }
 

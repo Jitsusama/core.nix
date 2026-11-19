@@ -62,6 +62,10 @@ pub struct Entry {
     /// holder keeps it over the owner lines until it closes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hub: Option<String>,
+    /// Each it was given to once late, its owner then first, so it goes
+    /// to each holder once and then to the orchestrator, never round them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub put_to: Vec<String>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -148,6 +152,7 @@ pub fn update(
                 entry.told = None;
                 entry.late = false;
                 entry.hub = None;
+                entry.put_to.clear();
             }
             entry.last.clone_from(&day.date);
             entry.last_to = day.to;
@@ -171,6 +176,7 @@ pub fn update(
                 kind: None,
                 reopened: 0,
                 hub: None,
+                put_to: Vec::new(),
             });
         }
     }

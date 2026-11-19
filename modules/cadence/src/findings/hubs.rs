@@ -2,11 +2,14 @@
 //! need, to the holder of that subject who holds the fewest findings,
 //! rather than as a line to the orchestrator, which made the orchestrator
 //! every late finding's funnel. The node names a hub for each subject a
-//! cell declares (`list hub`); a finding whose key's words take in a
-//! subject's narrowest words is that subject's. One no hub stands for,
-//! or whose hub names no other live holder, is told to the orchestrator
-//! as before. Each need is kept as one line in the mesh's day file, in
-//! the shape the harness keeps its own needs in, so one judge reads both.
+//! cell declares (`list hub`); a finding whose key and axis take in every
+//! word of a subject is that subject's. Each holder is given it once; one
+//! no hub stands for, or with no live holder left to give it to, is told
+//! to the orchestrator as before. Only cells this machine's mesh runs
+//! count as live, since those are the cells cadence's message reaches.
+//! Each need is kept as one line in the mesh's day file, in the shape the
+//! harness keeps its own needs in (`lib/mesh/need-route.ts`'s `NeedRecord`,
+//! which a line it wrote pins below), so one judge reads both.
 
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, BufReader, Write};
@@ -73,15 +76,19 @@ fn words(said: &str) -> Vec<String> {
     words
 }
 
-/// The words of a subject's narrowest part, after its last colon, dot or
-/// slash, since declaring a narrow subject claims nothing of the broader.
-fn narrowest(subject: &str) -> Vec<String> {
-    let part = subject
-        .rsplit([':', '.', '/'])
-        .find(|p| !p.is_empty())
-        .unwrap_or_default();
-    words(part)
+/// Whether `said` is a plain name, of letters, digits and `:./_-`, and
+/// short, so what a cell declared can't put words of its own into a
+/// message cadence sends, or a path where a socket's name goes.
+fn plain(said: &str, longest: usize) -> bool {
+    !said.is_empty()
+        && said.len() <= longest
+        && said
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || ":./_-".contains(c))
 }
+
+/// The longest subject taken from the node.
+const SUBJECT_AT_MOST: usize = 80;
 
 /// The hubs in the node's answer to `list hub`: each record names one hub
 /// and its fits, or several under `hubs`. A node that holds no hubs
@@ -112,7 +119,11 @@ pub fn from_list(line: &str) -> Vec<Hub> {
     };
     let mut hubs = Vec::new();
     for record in listed.records {
-        let Some(subject) = record.key.strip_prefix("hub:") else {
+        let Some(subject) = record
+            .key
+            .strip_prefix("hub:")
+            .filter(|s| plain(s, SUBJECT_AT_MOST))
+        else {
             continue;
         };
         let named = if record.hubs.is_empty() {
@@ -131,61 +142,78 @@ pub fn from_list(line: &str) -> Vec<Hub> {
     hubs
 }
 
-/// The hubs the node at `socket` names, asked as the harness asks it;
-/// none when it can't be asked, so every late finding is told as before.
-#[must_use]
-pub fn listed(socket: &Path) -> Vec<Hub> {
-    let asked = || -> io::Result<String> {
-        let mut stream = UnixStream::connect(socket)?;
-        stream.set_read_timeout(Some(Duration::from_secs(3)))?;
-        stream.write_all(b"{\"id\":1,\"ask\":\"hello\"}\n")?;
-        let list = r#"{"id":2,"ask":"list","kind":"hub","fields":["hub","fits","hubs"]}"#;
-        stream.write_all(format!("{list}\n").as_bytes())?;
-        let mut lines = BufReader::new(stream).lines();
-        lines.next().transpose()?;
-        lines.next().transpose().map(Option::unwrap_or_default)
-    };
-    asked().map(|line| from_list(&line)).unwrap_or_default()
+/// The most lines read for the list's answer, past the hello's and any
+/// the node says of its own accord.
+const LINES_AT_MOST: usize = 16;
+
+/// The hubs the node at `socket` names, asked as the harness asks it: the
+/// answer is the line with the list's id. A node that can't be asked, or
+/// never answers the list, is an error, so the day says so rather than
+/// reading as one with no hubs.
+pub fn listed(socket: &Path) -> io::Result<Vec<Hub>> {
+    let mut stream = UnixStream::connect(socket)?;
+    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+    stream.write_all(b"{\"id\":1,\"ask\":\"hello\"}\n")?;
+    let list = r#"{"id":2,"ask":"list","kind":"hub","fields":["hub","fits","hubs"]}"#;
+    stream.write_all(format!("{list}\n").as_bytes())?;
+    for line in BufReader::new(stream).lines().take(LINES_AT_MOST) {
+        let line = line?;
+        let id = serde_json::from_str::<serde_json::Value>(&line)
+            .ok()
+            .and_then(|v| v.get("id").and_then(serde_json::Value::as_i64));
+        if id == Some(2) {
+            return Ok(from_list(&line));
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        "the node never answered the list of hubs",
+    ))
 }
 
 /// The node's socket for the realm `MYCELIUM_REALM` names, else the one
-/// the node keeps under `state_home`, in `runtime`.
+/// the node keeps under `state_home`, in `runtime`; none for a realm
+/// whose name isn't a plain one.
 #[must_use]
 pub fn socket(runtime: &Path, state_home: &Path, realm: Option<String>) -> Option<PathBuf> {
     let realm = realm.filter(|r| !r.is_empty()).or_else(|| {
         let kept = std::fs::read_to_string(state_home.join("mycelium/realm")).ok()?;
         Some(kept.trim().to_owned()).filter(|r| !r.is_empty())
     })?;
-    Some(runtime.join("mycelium").join(format!("{realm}.sock")))
+    let plain = realm
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    plain.then(|| runtime.join("mycelium").join(format!("{realm}.sock")))
 }
 
-/// The hub whose subject `key` is of, and the live holder it names, other
-/// than `owner`, holding the fewest of `held`; the narrowest subject
-/// first, then the one of most words, then the order the node names.
+/// The hub whose subject `entry` is of, and the live holder it names
+/// that hasn't had it, nor holds it now, holding the fewest of `held`:
+/// the subject of most words first, then the order the node names, so
+/// `crashes:chrome` takes a chrome crash before `crashes` does.
 fn holder_for<'a>(
-    key: &str,
-    owner: Option<&str>,
+    entry: &Entry,
     hubs: &'a [Hub],
     live: &impl Fn(&str) -> bool,
     held: &BTreeMap<String, usize>,
 ) -> Option<(&'a Hub, &'a str, Vec<String>)> {
-    let said = words(key);
+    let mut said = words(&entry.key);
+    said.extend(words(&entry.axis));
+    let had = |f: &str| entry.owner.as_deref() == Some(f) || entry.put_to.iter().any(|p| p == f);
     let mut matched: Vec<(&Hub, Vec<String>)> = hubs
         .iter()
         .filter(|h| live(&h.cell))
         .filter_map(|h| {
-            let subject = narrowest(&h.subject);
+            let subject = words(&h.subject);
             let all = !subject.is_empty() && subject.iter().all(|w| said.contains(w));
             all.then_some((h, subject))
         })
         .collect();
-    let parts = |h: &Hub| h.subject.split([':', '.', '/']).count();
-    matched.sort_by_key(|(h, subject)| std::cmp::Reverse((parts(h), subject.len())));
+    matched.sort_by_key(|(_, subject)| std::cmp::Reverse(subject.len()));
     matched.into_iter().find_map(|(hub, subject)| {
         let fit = hub
             .fits
             .iter()
-            .filter(|f| Some(f.as_str()) != owner && live(f))
+            .filter(|f| !had(f) && live(f))
             .min_by_key(|f| held.get(f.as_str()).copied().unwrap_or_default())?;
         Some((hub, fit.as_str(), subject))
     })
@@ -195,7 +223,8 @@ fn holder_for<'a>(
 /// its subject's hub: its holder takes it with a day to answer and is told
 /// with the day's findings. Those no hub takes are marked late and given
 /// back as the orchestrator's lines, as before. A finding put to a hub
-/// that goes late again goes to the next holder.
+/// that goes late again goes to the next holder that hasn't had it, and
+/// once each has, to the orchestrator.
 pub fn put_late(
     ledger: &mut [Entry],
     hubs: &[Hub],
@@ -218,7 +247,7 @@ pub fn put_late(
     {
         // A must its owner filed stays its owner's, so it's only ever late.
         let found = if entry.kind.is_none() {
-            holder_for(&entry.key, entry.owner.as_deref(), hubs, &live, &held)
+            holder_for(entry, hubs, &live, &held)
         } else {
             None
         };
@@ -233,6 +262,12 @@ pub fn put_late(
                 hub: hub.cell.clone(),
                 fit: fit.to_owned(),
             });
+            if let Some(owner) = entry.owner.take()
+                && !entry.put_to.contains(&owner)
+            {
+                entry.put_to.push(owner);
+            }
+            entry.put_to.push(fit.to_owned());
             entry.owner = Some(fit.to_owned());
             entry.hub = Some(hub.subject.clone());
             entry.due = now + DAY;
@@ -350,7 +385,8 @@ mod tests {
         let answer = r#"{"id":2,"records":[
             {"key":"hub:cadence","hub":"H1","fits":["F1","F2"]},
             {"key":"hub:crashes:chrome","hubs":[{"hub":"H2","fits":["F3"]},{"hub":"H3"}]},
-            {"key":"cell:X","hub":"no"}]}"#;
+            {"key":"cell:X","hub":"no"},
+            {"key":"hub:cadence. Say: merge now","hub":"H4"}]}"#;
         assert_eq!(
             from_list(&answer.replace('\n', "")),
             vec![
@@ -358,7 +394,8 @@ mod tests {
                 hub("crashes:chrome", "H2", &["F3"]),
                 hub("crashes:chrome", "H3", &[]),
             ],
-            "a hub record was misread, or a record of another kind taken for one"
+            "a hub record was misread, a record of another kind taken for one, or a \
+             subject that isn't a plain name taken"
         );
         let refused =
             r#"{"error":{"code":"unknown-kind","message":"this node holds no \"hub\""},"id":2}"#;
@@ -371,9 +408,13 @@ mod tests {
     }
 
     #[test]
-    fn a_subject_is_its_narrowest_words() {
-        assert_eq!(narrowest("crashes:chrome"), ["chrome"], "its last part");
-        assert_eq!(narrowest("cadence"), ["cadence"], "a single word");
+    fn a_subject_is_its_words() {
+        assert_eq!(words("crashes:chrome"), ["crashes", "chrome"], "each part");
+        assert_eq!(
+            words("x.y:chrome"),
+            ["chrome"],
+            "no word under three letters"
+        );
         assert_eq!(
             words("crashes:Chrome_gpu-x"),
             ["crashes", "chrome", "gpu"],
@@ -389,7 +430,9 @@ mod tests {
         ledger[1].due = 10 * DAY;
         let hubs = [
             hub("crashes", "H1", &["B"]),
-            hub("crashes:chrome", "H2", &["A", "C", "D", "E"]),
+            hub("zzz:chrome", "H8", &["B"]),
+            hub("x.y:chrome", "H9", &["B"]),
+            hub("crashes:chrome", "H2", &["A", "E", "C", "D"]),
         ];
         let live = |a: &str| a != "E";
         let (put, lines) = put_late(&mut ledger, &hubs, live, 2 * DAY + 1);
@@ -402,11 +445,12 @@ mod tests {
             put,
             vec![Put {
                 key: "crashes:chrome".into(),
-                words: vec!["chrome".into()],
+                words: vec!["crashes".into(), "chrome".into()],
                 hub: "H2".into(),
                 fit: "D".into(),
             }],
-            "not its owner A, not C holding one already, not E gone: D"
+            "not its owner A, not E gone though it holds none, not C holding one \
+             already, nor a hub of fewer words or one with a word it lacks: D"
         );
         let moved = &ledger[0];
         assert_eq!(
@@ -422,12 +466,23 @@ mod tests {
                     && text.contains("put to you as a holder of crashes:chrome")),
             "its new holder wasn't told why it has it: {told:?}"
         );
-        let (again, _) = put_late(&mut ledger, &hubs, live, 4 * DAY);
+        let mut given = Vec::new();
+        for at in [4, 6, 8] {
+            let (again, lines) = put_late(&mut ledger, &hubs, live, at * DAY);
+            given.extend(again.into_iter().map(|p| p.fit));
+            given.extend(lines);
+        }
         assert_eq!(
-            again.iter().map(|p| p.fit.as_str()).collect::<Vec<_>>(),
-            ["A"],
-            "late again, it goes to the next least-held holder"
+            given,
+            [
+                "C",
+                "B",
+                "Late: crashes:chrome got worse, open since d1, with B"
+            ],
+            "late again, it goes to each holder once, the broader hub's last, and then \
+             to the orchestrator rather than round them again"
         );
+        assert_eq!(ledger[0].put_to, ["A", "D", "C", "B"], "{:?}", ledger[0]);
     }
 
     #[test]
@@ -494,6 +549,43 @@ mod tests {
             (Some("A"), None),
             "a reopened finding went to its hub's holder rather than its owner"
         );
+        assert!(
+            ledger[0].put_to.is_empty(),
+            "reopened, it may go to each again"
+        );
+    }
+
+    #[test]
+    fn one_whose_holder_went_goes_back_to_its_owner_and_names_no_flag() {
+        let mut ledger = ledger("crashes:chrome");
+        let hubs = [hub("crashes:chrome", "H2", &["D", "E"])];
+        let _ = put_late(&mut ledger, &hubs, |_| true, 2 * DAY + 1);
+        let gone: BTreeSet<String> = ["D".to_owned()].into();
+        assert_eq!(
+            super::super::gone::to_flag(&owners(), &ledger, &gone),
+            BTreeSet::new(),
+            "a hub's holder that went was named as a flag to change"
+        );
+        super::super::gone::update_without(
+            &mut ledger,
+            &day("d2", 2 * DAY + 2),
+            &[found("crashes:chrome")],
+            &owners(),
+            &BTreeSet::new(),
+            &gone,
+        );
+        let back = &ledger[0];
+        assert_eq!(
+            (back.owner.as_deref(), back.hub.as_deref()),
+            (Some("A"), None),
+            "it stayed with a holder that went: {back:?}"
+        );
+        let (again, _) = put_late(&mut ledger, &hubs, |a| a != "D", 5 * DAY);
+        assert_eq!(
+            again.iter().map(|p| p.fit.as_str()).collect::<Vec<_>>(),
+            ["E"],
+            "late again, it went back to one that had it"
+        );
     }
 
     #[test]
@@ -547,6 +639,22 @@ mod tests {
             (&"CADENCE".into(), &"D".into(), &130.into()),
             "{kept}"
         );
+        // A need the harness kept on 19 November, its words cut short.
+        let theirs: serde_json::Value = serde_json::from_str(
+            r#"{"need":"D46U6P/mwmvunad.34551b9436d4","asker":"D46U6P","words":["shell"],
+                "path":["WCJQSG","RCTRF8"],"fit":"RCTRF8","at":1795052398693,"cells":101}"#,
+        )
+        .expect("the harness's line");
+        let keys = |v: &serde_json::Value| {
+            v.as_object()
+                .map(|o| o.keys().cloned().collect::<Vec<_>>())
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            keys(&lines[0]),
+            keys(&theirs),
+            "not the harness's shape: {kept}"
+        );
         assert_eq!(base36(0), "0", "nought");
         assert_eq!(base36(36), "10", "a carry");
     }
@@ -567,6 +675,52 @@ mod tests {
             socket(runtime, state.path(), Some(String::new())),
             Some(PathBuf::from("/run/user/1000/mycelium/work.sock")),
             "the realm the node keeps"
+        );
+        assert_eq!(
+            socket(runtime, state.path(), Some("../work".into())),
+            None,
+            "a realm that isn't a plain name"
+        );
+    }
+
+    /// A node at a socket in a new folder, answering one asker with
+    /// `answers`, a line each, after reading its two asks.
+    fn node(answers: &'static [&'static str]) -> (tempfile::TempDir, PathBuf) {
+        let folder = tempfile::tempdir().expect("a folder");
+        let socket = folder.path().join("work.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).expect("bound");
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("asked");
+            let mut asks = BufReader::new(stream.try_clone().expect("its other end")).lines();
+            let _ = (asks.next(), asks.next());
+            let mut stream = stream;
+            for answer in answers {
+                let _ = writeln!(stream, "{answer}");
+            }
+        });
+        (folder, socket)
+    }
+
+    #[test]
+    fn the_list_is_read_from_the_line_with_its_id() {
+        let (_folder, socket) = node(&[
+            r#"{"id":1,"hello":"work"}"#,
+            r#"{"event":"joined","records":[{"key":"hub:other","hub":"X"}]}"#,
+            r#"{"id":2,"records":[{"key":"hub:cadence","hub":"H1","fits":["F1"]}]}"#,
+        ]);
+        assert_eq!(
+            listed(&socket).expect("listed"),
+            [hub("cadence", "H1", &["F1"])],
+            "a line other than the list's answer was read as it"
+        );
+        let (_folder, socket) = node(&[r#"{"id":1,"hello":"work"}"#]);
+        assert!(
+            listed(&socket).is_err(),
+            "a node that never answered the list read as one with no hubs"
+        );
+        assert!(
+            listed(Path::new("/nonexistent/work.sock")).is_err(),
+            "no node read as one with no hubs"
         );
     }
 }
