@@ -18,6 +18,7 @@ mod owner;
 mod pains;
 mod reports;
 pub mod spent;
+pub mod unbilled;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};

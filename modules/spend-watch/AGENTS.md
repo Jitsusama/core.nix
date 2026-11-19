@@ -125,6 +125,12 @@ feed speaks.
   outside the month before's tenth to ninetieth percentiles, which lie
   within a quarter of their median, since spend another machine made
   comes and goes by the day; the estimates take the new ratio up at once.
+  A budget a feed bills, whose key the warehouse billed under half what
+  its sessions logged over its last 24 settled hours, at least the floor,
+  is told: its work went on another key, as delta's and aquifer's did on
+  17 and 18 November when the pi host sent its own key for every
+  conversation. Plans and budgets no feed bills are left out, since
+  nothing bills them to disagree. Cadence counts these findings each hour.
   `src/detect.rs` holds them all, and `spend-watch backtest` replays the
   forecast, the burn and the caps on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first

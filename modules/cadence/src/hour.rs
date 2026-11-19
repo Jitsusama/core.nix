@@ -144,6 +144,10 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
         measures.push(spent_beside_landed(&state_home, now));
+        measures.push(measures::unbilled::unbilled(
+            collection_since((now - 3600) * 1000).as_deref(),
+            measures::ASKS,
+        ));
     }
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
@@ -259,17 +263,7 @@ fn gather(
 /// stuck, and isn't read as today's.
 fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
     let midnight = midnight_ms(now, &TimeZone::system());
-    let at = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(|r| PathBuf::from(r).join("spend-watch/collection.json"));
-    let written = at
-        .as_ref()
-        .and_then(|at| fs::metadata(at).and_then(|m| m.modified()).ok())
-        .and_then(|when| when.duration_since(std::time::UNIX_EPOCH).ok())
-        .and_then(|since| i64::try_from(since.as_millis()).ok());
-    let fresh = written.is_some_and(|ms| ms >= midnight && ms >= (now - 3600) * 1000);
-    let collection = at
-        .filter(|_| fresh)
-        .and_then(|at| fs::read_to_string(at).ok());
+    let collection = collection_since(midnight.max((now - 3600) * 1000));
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
@@ -280,6 +274,19 @@ fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
         |address| measures::spent::quest_of(&presences, address),
     );
     measures::spent::beside(collection.as_deref(), &landed, measures::ASKS)
+}
+
+/// spend-watch's collection, if its daemon wrote it at or after `since`,
+/// in milliseconds; it dates nothing inside it, so its file's time says.
+fn collection_since(since: i64) -> Option<String> {
+    let at = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(|r| PathBuf::from(r).join("spend-watch/collection.json"))?;
+    let written = fs::metadata(&at)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|when| when.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|since| i64::try_from(since.as_millis()).ok())?;
+    (written >= since).then(|| fs::read_to_string(at).ok())?
 }
 
 /// The last midnight in `zone` at or before `now`, in milliseconds; `now`
