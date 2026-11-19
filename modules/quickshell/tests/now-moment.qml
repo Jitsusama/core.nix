@@ -1250,6 +1250,7 @@ ShellRoot {
         Sessions.wanting = [];
         now.lookTexts = {};
         cellsHeaded(forYou, toDo, lookAt);
+        ownToDoLeads(forYou);
         answersInPlace(forYou);
         everyAskHasAWayOut(forYou, toDo);
         doneKept(toDo);
@@ -1262,6 +1263,49 @@ ShellRoot {
     // beside what it wants, and each heading saying its cell as Agents'
     // row for it does, its name and how the agents daemon says it stands,
     // Joel's own heading over the to-dos no session is behind.
+    // A session whose want is an action asks it as one of its own to-dos,
+    // not in Agents Asking: that to-do leads its cell, under its heading,
+    // though a look it left long before outweighs it, and its standing
+    // moving is heard though it asks nothing as an agent.
+    function ownToDoLeads(forYou) {
+        const acted = { address: "ACTED", title: "Session E", presence: { session: "s-e",
+            owns: ["QEST-E"], addresses: [], wants: { kind: "action", said: "Sign it" } } };
+        Sessions.running = [acted];
+        Sessions.wanting = [acted];
+        agents.rows.ACTED = { key: "agent:ACTED", name: "Session E", side: "",
+            doing: "listening" };
+        const form = { v: 2, title: "Sign The Form", quest: "QEST-E", ready: false,
+            raisedAt: Date.now() };
+        WaitingOnYou.sessionOf = { "Sign The Form": acted };
+        WaitingOnYou.now = [form];
+        now.lookTexts = { "e.json": JSON.stringify({ v: 1, id: "e", kind: "page",
+            at: new Date(Date.now() - 7 * 3600000).toISOString(),
+            target: "https://example.com", title: "Read E", why: "Because.",
+            state: "waiting", session: "s-e" }) };
+        const shown = () => forYou().map(row => [row.key, row.heading === true ? row.name : ""]);
+        const read = shown();
+        expect("a session's own to-do it asks leads its cell, under its heading",
+            JSON.stringify(read) === JSON.stringify([
+                ["on:heading:cell:ACTED", "Session E \u00b7 listening"],
+                ["on:waiting:Sign The Form", ""], ["on:look:e", ""]]),
+            JSON.stringify(read));
+        const heardBefore = root.forYouHeardTimes;
+        agents.rows.ACTED.doing = "working";
+        agents.remade += 1;
+        const working = shown();
+        expect("its standing moving is heard, though it asks nothing as an agent",
+            root.forYouHeardTimes > heardBefore
+                && JSON.stringify(working[0]) === JSON.stringify(
+                    ["on:heading:cell:ACTED", "Session E \u00b7 working"]),
+            JSON.stringify([root.forYouHeardTimes - heardBefore, working]));
+        Sessions.running = [];
+        Sessions.wanting = [];
+        delete agents.rows.ACTED;
+        WaitingOnYou.sessionOf = {};
+        WaitingOnYou.now = [];
+        now.lookTexts = {};
+    }
+
     function cellsHeaded(forYou, toDo, lookAt) {
         const left = { address: "LEFTC", title: "Session C", presence: { session: "s-c",
             addresses: [], wants: { kind: "question", said: "Which?" } } };
