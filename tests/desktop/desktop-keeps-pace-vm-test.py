@@ -143,22 +143,24 @@ LISTED = 500
 STARTED = timedelta(seconds=8)
 # A storm of windows changing, as Joel's crowd of agents' windows makes: STORMING windows, each
 # a session's, retitled STORM times a second between them, which niri tells the shell of one
-# event at a time. The launcher is opened OPENINGS times through it, every core busy, and each
-# opening is ready to draw within OPENED_WITHIN ms, at the tail as at the middle: Joel's took
-# 6,184 ms to its frame for 107 ms of its own work on 2026-11-10. Ready to draw is its own work,
-# the shell settling after it and the wait for the next frame to begin; the drawing itself is
-# llvmpipe's here, not the laptop's GPU, so it's held to its time with the load frozen, over
-# FROZEN openings, and a whole frame within OPENED_WITHIN is judged from Joel's own journal.
-# The tail is TAIL's, the 19th of 20, as everywhere else here: the 99th of 20 was the slowest
-# alone, and one opening a loaded builder held up failed it with the next at 10 ms (88 ms
-# against 10, 2026-11-17). Under every core busy, the storm's windows may take more than
-# REACHING to be listed, as they did once at 31.8 s that day, so they're given STORM_LISTED;
-# their listing isn't what's judged.
+# event at a time. The launcher is opened OPENINGS times through it, every core busy: nineteen
+# in twenty openings are ready to draw within OPENED_WITHIN ms, and none past OPENED_AT_MOST,
+# so one taking seconds fails though the rest are quick. Joel's took 6,184 ms to its frame for
+# 107 ms of its own work on 2026-11-10. Ready to draw is its own work, the shell settling after
+# it and the wait for the next frame to begin; the drawing itself is llvmpipe's here, not the
+# laptop's GPU, so it's held to its time with the load frozen, over FROZEN openings, and a whole
+# frame within OPENED_WITHIN is judged from Joel's own journal. The tail is TAIL's, the 19th of
+# 20, as everywhere else here: the 99th of 20 was the slowest alone, and one opening a loaded
+# builder held up failed it with the next at 10 ms (88 ms against 10, 2026-11-17). The slowest
+# of 70 runs on the net by 2026-11-18 was 91 ms, so OPENED_AT_MOST leaves it room. Under every
+# core busy, the storm's windows may take more than REACHING to be listed, as they did once at
+# 31.8 s on 2026-11-17, so they're given STORM_LISTED to come and to go; that isn't judged.
 STORMING = 40
 STORM = 100
 STORM_LISTED = timedelta(minutes=2)
 OPENINGS = 20
 OPENED_WITHIN = 50
+OPENED_AT_MOST = 250
 FROZEN = 8
 
 
@@ -398,9 +400,6 @@ class Timing:
         under, free = sorted(self.under), sorted(self.free)
         stamped, handled = sorted(self.stamped), sorted(self.handled)
 
-        def ranked(times: list[float], share: float) -> float:
-            return times[max(0, math.ceil(share * len(times)) - 1)]
-
         def turned(turns: dict[int, list[float]]) -> list[float]:
             return [ranked(sorted(times), TAIL) for _, times in sorted(turns.items())]
 
@@ -446,6 +445,11 @@ class Timing:
             f"under load the compositor and the shell waited {wait:.1f} ms a key for a processor "
             f"in the middle turn, against {wait_free:.1f} ms with the load frozen"
         )
+
+
+def ranked(times: list[float], share: float) -> float:
+    """Give the time the share of `times`, sorted, falls within."""
+    return times[max(0, math.ceil(share * len(times)) - 1)]
 
 
 def selects(key: str, shown: Json) -> bool:
@@ -782,10 +786,11 @@ def storm(desktop: Desktop) -> Iterator[None]:
         machine.wait_until_succeeds(desktop.in_session(listed), timeout=STORM_LISTED)
         yield
     finally:
-        # Bracketed, so the pattern never matches the shell running it.
+        # Bracketed, so the pattern never matches the shell running it. Its windows are given as
+        # long to go as to come, under the same load.
         desktop.as_account("pkill -f 'window-stor[m]'")
         gone = '! niri msg --json windows | grep -q \'"title":"storm \''
-        machine.wait_until_succeeds(desktop.in_session(gone), timeout=REACHING)
+        machine.wait_until_succeeds(desktop.in_session(gone), timeout=STORM_LISTED)
 
 
 def opened_from_kept(desktop: Desktop) -> Json:
@@ -804,10 +809,12 @@ def ready(opening: Json) -> int:
 
 
 @pytest.mark.usefixtures("loaded", "storm")
-def test_each_opening_is_soon_ready_to_draw_through_a_storm_of_windows_changing(
+def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
     desktop: Desktop,
 ) -> None:
-    """Each opening is soon ready to draw through a storm of windows changing, every core busy.
+    """Openings are soon ready to draw through a storm of windows changing, every core busy.
+
+    Nineteen in twenty are ready within OPENED_WITHIN ms, and none takes past OPENED_AT_MOST.
 
     Joel's crowd of agents' windows retitle themselves all day, and an opening that waited on
     the shell making every list again for each change took seconds to show (2026-11-10). So a
@@ -844,10 +851,13 @@ def test_each_opening_is_soon_ready_to_draw_through_a_storm_of_windows_changing(
         one for one in each[True] + each[False] if standing(one["shown"]) != standing(one["filled"])
     ]
     assert not moved, f"filled in, an opening's rows or cursor moved: {moved}"
-    readied = sorted(ready(one) for one in each[True])
-    tail = readied[math.ceil(TAIL * len(readied)) - 1]
+    readied = sorted(float(ready(one)) for one in each[True])
+    tail = ranked(readied, TAIL)
     assert tail <= OPENED_WITHIN, (
         f"an opening through the storm took {tail} ms to be ready to draw at the tail: {readied}"
+    )
+    assert readied[-1] <= OPENED_AT_MOST, (
+        f"an opening through the storm took {readied[-1]} ms to be ready to draw: {readied}"
     )
     drawing = {loaded: [one["after"]["drawing"] for one in each[loaded]] for loaded in each}
     assert middle(drawing[True]) <= SLOWER_MOST * middle(drawing[False]) + STEPPED_MORE, (

@@ -3431,6 +3431,9 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
         "wants": {"kind": "question", "since": datetime.now(UTC).isoformat(), "said": "Which?"},
     }
     lay("TICKER", "Ticking Quest", {**asking, "busy": False})
+    # The leads a turn was heard after Return at, said as a change no key made, so the case is
+    # seen to have reached the race it's about rather than passing with every turn told early.
+    beside: list[float] = []
     try:
         shell.as_account(shell.ipc("collection", "on"))
         shell.launcher_ready()
@@ -3466,8 +3469,11 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             # something was. The launcher's whole state is left out.
             heard = [report for report in said if report.startswith(("act ", "heard "))]
             assert not shown, f"a turn {lead} s before Return was drawn as its act: {heard}"
+            if any(report.startswith("heard on ") for report in said):
+                beside.append(lead)
             shell.send_chars("-")
             shell.launcher_until(lambda shown: shown["held"] == ["now"])
+        assert beside, f"no turn was heard after Return, at any of the leads {LEADS}"
     finally:
         shell.close_launcher()
         lay("TICKER", "Ticking Quest", {"state": "idle"}, closed=True)
