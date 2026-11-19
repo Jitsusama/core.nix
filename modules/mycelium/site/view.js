@@ -3061,8 +3061,10 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     const body = `<span class="what"><span class="name">${esc(label)}</span><span class="fact">${verdictMark(v)}: ${esc(words)}</span></span>`;
     return go ? `<li><button type="button" class="row" data-go="${esc(go)}">${body}</button></li>` : `<li class="row still">${body}</li>`;
   };
-  // What a receptor fed a cell, in words, by the node's word for its kind.
-  const FED_WORDS = { review: "a review asked of you" };
+  // What a receptor fed a cell, in words, by the node's word for its kind:
+  // GitHub's review asked of Joel, or the calls receptor's summary of a
+  // call the cell's quest claims.
+  const FED_WORDS = { review: "a review asked of you", summary: "a call's summary" };
   const fedWords = (kind) => (Object.hasOwn(FED_WORDS, kind) ? FED_WORDS[kind] : "something from outside");
   const factList = (facts) => (facts.length ? `<dl class="facts">${facts.map(([k2, v]) => `<div><dt>${k2}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : "");
   const glance = (purpose, doing, health) =>
