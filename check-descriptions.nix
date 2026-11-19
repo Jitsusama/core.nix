@@ -1077,8 +1077,9 @@
     every program the launcher lists wears a mark of its own, its logo or the theme's mark for it
   '';
   every-pattern-names-a-file = ''
-    every path pattern merge-net's must-run.txt, ruff.toml's per-file ignores and treefmt's
-    unread kinds past treefmt-nix's own give matches a file the repository holds
+    every path pattern merge-net's must-run.txt, ruff.toml's per-file ignores, treefmt's unread
+    kinds past treefmt-nix's own and the ripgrep exclusions of tests/repository's scripts and checks
+    give matches a file the repository holds
   '';
   every-window-says-what-it-holds = ''
     the reader on a page and a kitty running the account's shell, opened on the account's niri,
