@@ -11,7 +11,10 @@ const REQUESTED: &str = "Reload requested from client PID ";
 
 /// The programs a switch has systemd reload from, as systemd names them,
 /// cut to 15 characters: NixOS's switch-to-configuration, as the machine's
-/// own switch and as the follower's, and home-manager's sd-switch.
+/// own switch and as the follower's, and home-manager's sd-switch. The
+/// name is the one a program gives itself, so any program of the user's
+/// can pass for a switch, a reload heard late included: that skews no more
+/// than health's figures, by something that already runs as the user.
 const SWITCHES: [&str; 3] = ["switch-to-confi", ".switch-to-conf", "sd-switch"];
 
 /// Who asked for a reload.
@@ -526,7 +529,51 @@ mod tests {
             boot: "b".to_owned(),
             ..entry("backend", 6, "backend: ready in 5 ms")
         };
+        let served_while_taken = vec![
+            backend("b", 12_000_000, Job::Stopping),
+            backend("b", 12_100_000, Job::Started),
+            reload_in("b", 10_000_000, "systemctl"),
+            ready(12_300_000),
+            reload_in("b", 11_000_000, "sd-switch"),
+        ];
+        let mut day = Day::new("2026-11-17");
+        for entry in &served_while_taken {
+            day.take(entry);
+        }
+        assert_eq!(
+            day.launches.unstamped(),
+            BTreeMap::new(),
+            "a restart given back timed to its ready line was left without its stamp"
+        );
         let days: Vec<(&str, Vec<Entry>, Vec<u64>)> = vec![
+            // A stop a tool's reload heard before it made its own, then a
+            // switch's reload written before the stop and heard after it:
+            // the restart is the switch's.
+            (
+                "a switch's reload heard after a stop a tool's made",
+                vec![
+                    reload_in("b", 10_000_000, "systemctl"),
+                    backend("b", 12_000_000, Job::Stopping),
+                    reload_in("b", 11_000_000, "sd-switch"),
+                    backend("b", 12_100_000, Job::Started),
+                ],
+                vec![100],
+            ),
+            // A newer stop ends the wait of one a tool's reload made, so a
+            // switch's reload heard later can't give the older back for a
+            // start after a crash to time.
+            (
+                "a switch's reload heard after a newer stop and its start",
+                vec![
+                    reload_in("b", 10_000_000, "systemctl"),
+                    backend("b", 12_000_000, Job::Stopping),
+                    backend("b", 30_000_000, Job::Stopping),
+                    backend("b", 30_100_000, Job::Started),
+                    reload_in("b", 11_000_000, "sd-switch"),
+                    backend("b", 40_000_000, Job::Started),
+                ],
+                vec![100],
+            ),
             // A restart taken back, then a newer one timed before a
             // switch's reload gives the first back: it goes before the
             // newer, which still waits for its ready line.
@@ -547,13 +594,7 @@ mod tests {
             // given back timed to it.
             (
                 "a ready line heard while the restart was taken back",
-                vec![
-                    backend("b", 12_000_000, Job::Stopping),
-                    backend("b", 12_100_000, Job::Started),
-                    reload_in("b", 10_000_000, "systemctl"),
-                    ready(12_300_000),
-                    reload_in("b", 11_000_000, "sd-switch"),
-                ],
+                served_while_taken,
                 vec![300],
             ),
             // A job after it ends the restart's ready lines while it is

@@ -3,7 +3,10 @@
 //! back. The jobs' follower can run ahead of the reloads', so health
 //! learns whose a stop was only once both reloads before it are heard.
 
-use super::{Launches, MOST_RELOADS, RELOADED_WITHIN, Ready, Reload, Restarting, millis, ready};
+use super::{
+    Launches, MOST_RELOADS, RELOADED_WITHIN, RESTART_WITHIN, Ready, Reload, Restarting, millis,
+    ready,
+};
 use crate::journal::Entry;
 
 /// A stop a tool's reload took back: the service's, in which boot, when on
@@ -89,8 +92,45 @@ impl Launches {
         }
     }
 
+    /// Keep a stop `entry` that a tool's reload heard before it made its
+    /// own, as one taken back, for a switch's reload heard after it to give
+    /// back.
+    pub(super) fn take_stop(&mut self, entry: &Entry) {
+        self.take(Taken {
+            unit: entry.thing.clone(),
+            boot: entry.boot.clone(),
+            stopped: entry.since_boot,
+            stopped_at: entry.at,
+            timed: None,
+        });
+    }
+
+    /// Let a newer stop of `unit` end the wait of one taken back, as it
+    /// does one in `stopping`: no start can be the older stop's after it.
+    pub(super) fn untake_stop(&mut self, unit: &str) {
+        self.taken
+            .retain(|taken| taken.timed.is_some() || taken.unit != unit);
+    }
+
+    /// The stops taken back still waiting for their start, within
+    /// [`RESTART_WITHIN`] before `midnight`, for the new day to carry as it
+    /// does those in `stopping`. A restart taken back is the old day's,
+    /// and stays behind with it.
+    pub(super) fn taken_across(&self, midnight: i64) -> Vec<Taken> {
+        self.taken
+            .iter()
+            .filter(|taken| {
+                taken.timed.is_none() && midnight.saturating_sub(taken.stopped_at) <= RESTART_WITHIN
+            })
+            .cloned()
+            .collect()
+    }
+
     /// Keep what a tool's reload took back, at most [`MOST_RELOADS`].
     fn take(&mut self, taken: Taken) {
+        if taken.timed.is_none() {
+            self.untake_stop(&taken.unit);
+        }
         if self.taken.len() >= MOST_RELOADS {
             self.taken.remove(0);
         }
@@ -186,19 +226,15 @@ impl Launches {
 
     /// Give back what a tool's reload took that a switch's `reload`, heard
     /// after it, made: a stop to wait for its start again, or a restart to
-    /// count as it would have been. A restart since, timed or waiting for
-    /// its ready line, stays its service's last, as `served` and
-    /// `take_back` read it.
+    /// count as it would have been. `served` and `take_back` read a
+    /// service's last restart as the one `restarting` holds, so one given
+    /// back goes before a newer one still waiting, and otherwise last,
+    /// waiting again for its ready line if it was.
     pub(super) fn give_back(&mut self, reload: &Reload) {
         let (back, kept) = std::mem::take(&mut self.taken)
             .into_iter()
             .partition(|taken| {
-                reload.made(
-                    &taken.boot,
-                    taken.stopped,
-                    taken.stopped_at,
-                    super::RESTART_WITHIN,
-                )
+                reload.made(&taken.boot, taken.stopped, taken.stopped_at, RESTART_WITHIN)
             });
         self.taken = kept;
         for taken in back {

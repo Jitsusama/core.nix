@@ -126,10 +126,11 @@ pub struct Launches {
     /// at most [`MOST_RELOADS`] of each.
     #[serde(skip)]
     reloaded: BTreeMap<bool, Vec<Reload>>,
-    /// The stops and restarts a tool's reload heard late took back, until
-    /// a switch's reload heard later says they were its own, at most
-    /// [`MOST_RELOADS`]. A new day doesn't carry them: a switch's reload
-    /// heard only after midnight leaves its restart the tool's.
+    /// The stops and restarts a tool's reload took back, or made its own as
+    /// they were heard, until a switch's reload heard later says they were
+    /// its own, at most [`MOST_RELOADS`]. A new day carries the stops, as
+    /// it does those in `stopping`; a restart taken back stays the old
+    /// day's, as one timed does.
     #[serde(skip)]
     taken: Vec<Taken>,
 }
@@ -198,8 +199,9 @@ impl Launches {
     /// A new day's, starting at `midnight` in microseconds since 1970,
     /// carrying on from this one what a restart across it needs: the stops
     /// still waiting for their start, within [`RESTART_WITHIN`] before, as
-    /// no later start can time an older stop, and the reloads that say
-    /// whose those stops are, within [`RELOADS_LEAD`] before. A restart
+    /// no later start can time an older stop, those a tool's reload took
+    /// with them, and the reloads that say whose those stops are, within
+    /// [`RELOADS_LEAD`] before. A restart
     /// already timed stays the old day's, its ready line after midnight
     /// left unheard. Measured from midnight, not the first line after it,
     /// it carries what a replay of the new day reads (`journal::reading`).
@@ -221,6 +223,7 @@ impl Launches {
                     (switch, kept.cloned().collect())
                 })
                 .collect(),
+            taken: self.taken_across(midnight),
             ..Self::default()
         }
     }
@@ -229,7 +232,10 @@ impl Launches {
     /// follower behind the others hears it, or read just before it, as
     /// the replay leads in: its stops and reloads, for a restart across
     /// midnight, and its starts, which end a stop of theirs. What it times
-    /// was the day before's, so nothing is timed.
+    /// was the day before's, so nothing is timed: the day before was
+    /// written as it ended, so a restart wholly before midnight heard only
+    /// after it is in neither day, rather than a finished day written
+    /// again.
     pub fn before(&mut self, entry: &Entry) {
         match entry.job {
             Some(Job::Stopping) => {
@@ -277,7 +283,14 @@ impl Launches {
         }
         match entry.job {
             Some(Job::Stopping) => {
-                if !self.restarts_itself(&entry.boot, entry.since_boot, entry.at) {
+                // A stop a tool's reload made is kept with what such a
+                // reload took back, as a switch's reload written before it
+                // may still be heard after it.
+                self.untake_stop(unit);
+                if self.restarts_itself(&entry.boot, entry.since_boot, entry.at) {
+                    self.stopping.remove(unit);
+                    self.take_stop(entry);
+                } else {
                     self.stopping.insert(
                         unit.clone(),
                         (entry.boot.clone(), entry.since_boot, entry.at),
