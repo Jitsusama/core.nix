@@ -69,6 +69,15 @@ function walked(map: MycelialMap, from: number, way: Way): number | undefined {
   return to === undefined || to < 0 || to > last ? undefined : to;
 }
 
+/**
+ * How deep a thread bows into the gutter beside `rows` rows, out of the gutter's 100: farther
+ * ties deeper, and each cell's lane a little more, never past the gutter's edge.
+ */
+function bowed(thread: Thread, rows: number): number {
+  const span = (thread.to - thread.from) / Math.max(1, rows - 1);
+  return Math.min(96, 14 + 70 * span + 4 * thread.lane);
+}
+
 const counted = (count: number): string => `${count}\u00a0${count === 1 ? "cell" : "cells"}`;
 
 /**
@@ -102,4 +111,14 @@ function saidOf(
   return `Joined to ${listed}.`;
 }
 
-export { type MycelialMap, mapOf, type Row, saidOf, type Thread, type Way, walked };
+export {
+  bowed,
+  type MycelialMap,
+  mapOf,
+  type Row,
+  saidOf,
+  THREADS_A_TIE,
+  type Thread,
+  type Way,
+  walked,
+};

@@ -6,7 +6,16 @@
 // keys from the page's, which walk the list, and lets the rest through.
 
 import { escaped } from "./draw.ts";
-import { type MycelialMap, mapOf, type Row, saidOf, type Thread, type Way, walked } from "./map.ts";
+import {
+  bowed,
+  type MycelialMap,
+  mapOf,
+  type Row,
+  saidOf,
+  type Thread,
+  type Way,
+  walked,
+} from "./map.ts";
 import type { Repository } from "./model.ts";
 import { element, write } from "./page.ts";
 
@@ -48,9 +57,7 @@ let saying = "";
 
 /** One thread as an arc from its tie's upper row to its lower, deeper the farther apart. */
 function arc(thread: Thread, rows: number): string {
-  const span = (thread.to - thread.from) / Math.max(1, rows - 1);
-  // Farther ties bow deeper and each cell's lane a little more, never past the gutter's edge.
-  const depth = Math.min(96, 14 + 70 * span + 4 * thread.lane);
+  const depth = bowed(thread, rows);
   const top = thread.from * UNIT + UNIT / 2;
   const bottom = thread.to * UNIT + UNIT / 2;
   const lit = thread.from === at || thread.to === at ? " lit" : "";
