@@ -439,7 +439,7 @@ mod tests {
     }
 
     /// A link as it reads on a busy afternoon, its upload held for the
-    /// VPN's tunnel: a why of 118 cells, longer than the 103 that ran
+    /// VPN's tunnel: a why of 120 cells, longer than the 103 that ran
     /// off an 80-column terminal on 19 November.
     fn held() -> LinkStatus {
         LinkStatus {
