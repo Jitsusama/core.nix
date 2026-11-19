@@ -146,3 +146,19 @@ function leaveTo(made, how, ways) {
     }
     return { steps, keep: keep < steps.length ? keep : -1, waits: how.holding === true };
 }
+
+// What the launcher's remaking answers its caller, from `made` and where
+// `leaving` (leaveTo's answer) goes: "made" when every step was made
+// again, or the outermost alone kept with its rows gone; "kept" when one
+// was kept as it was; "left" when steps were left; and "held" when the
+// leave waits on Joel, its steps shown gone as they are, for the caller
+// to show and make nothing below them again, which would light them.
+function answer(made, leaving) {
+    if (made.leave < 0) {
+        return made.all ? "made" : "kept";
+    }
+    if (leaving.keep < 0) {
+        return leaving.waits ? "held" : "made";
+    }
+    return "left";
+}
