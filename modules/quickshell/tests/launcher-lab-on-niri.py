@@ -323,6 +323,18 @@ DRAWER_PRESENTED = re.compile(
 )
 
 
+def closed(shell: Shell, window: Json) -> None:
+    """Close a window the lab opened, once niri no longer lists it, so the next test hasn't it."""
+    shell.close(window)
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    # Niri lets a window go once its foot has gone, so it's asked again a poll's length apart.
+    while any(listed["id"] == window["id"] for listed in shell.windows()):
+        if time.monotonic() >= deadline:
+            failed = f"window {window['title']!r} never closed"
+            raise AssertionError(failed)
+        time.sleep(launcher_on_niri.POLL)
+
+
 def walked_in(shell: Shell, place: str, within: str, request: pytest.FixtureRequest) -> list[Json]:
     """Open the launcher on the place the drawers are walked in, and give its rows with one.
 
@@ -336,8 +348,9 @@ def walked_in(shell: Shell, place: str, within: str, request: pytest.FixtureRequ
         refused = f"LAB_TITLED can't hold an apostrophe: {titled!r}"
         raise ValueError(refused)
     for nth in range(int(os.environ.get("LAB_DRAWN_WINDOWS", "0"))):
-        window = shell.opened(f"Lab {nth} {titled}".strip(), app="foot")
-        request.addfinalizer(functools.partial(shell.close, window))
+        # Named apart from the other tests' Lab windows, which may still be closing.
+        window = shell.opened(f"Drawn {nth} {titled}".strip(), app="foot")
+        request.addfinalizer(functools.partial(closed, shell, window))
     opened(shell, "home")
     shell.close_launcher()
     stepped(shell, place)
