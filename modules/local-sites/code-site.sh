@@ -25,8 +25,9 @@ work=$(mktemp -d "$site/.repos.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
 waits=${CODE_SITE_WAITS:-40}
-# A wait of nothing would turn the bound off, so only a whole number of seconds stands.
-if [[ ! $waits =~ ^[1-9][0-9]*$ ]]; then
+# A wait of nothing would turn the bound off, and one past bash's arithmetic would wrap, so
+# only a whole number of seconds up to four digits stands.
+if [[ ! $waits =~ ^[1-9][0-9]{0,3}$ ]]; then
   waits=40
 fi
 # A read that won't end on the first signal is killed five seconds on, which
@@ -41,12 +42,18 @@ fi
 if ((ended == 0)); then
   :
 elif ((ended == 124 || (ended == 137 && SECONDS - started > waits))); then
-  echo "repos read for over $waits s, as a machine short of memory makes it; the last homes stay"
+  echo "repos read for over $waits s, as a machine short of memory or disk makes it;" \
+    "the last homes stay"
   exit 0
 else
   said=$(< "$work/said")
   said=${said//$'\n'/ }
-  echo "repos failed (${said:0:200}); the last homes stay"
+  said=${said:0:200}
+  # A read killed outright says nothing itself, so the signal says it.
+  if ((ended > 128)); then
+    said="killed by signal $((ended - 128))${said:+: $said}"
+  fi
+  echo "repos failed ($said); the last homes stay"
   exit 0
 fi
 
