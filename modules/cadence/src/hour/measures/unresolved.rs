@@ -66,6 +66,16 @@ pub fn unresolved(
 mod tests {
     use super::*;
 
+    // The key is a copy of spend-watch's, so one renamed there would read
+    // as no budget missed here rather than as an error; this says so.
+    #[test]
+    fn the_key_is_spend_watchs() {
+        let detect = include_str!("../../../../spend-watch/src/detect.rs");
+        assert_eq!(FINDING, "finding:unresolved:");
+        assert!(detect.contains(r#"pub const UNRESOLVED: &str = "unresolved";"#));
+        assert!(detect.contains(r#"format!("{UNRESOLVED}:{budget}")"#));
+    }
+
     /// The moment the tests read at, 07:00 on 19 November.
     const NOW: i64 = 1_795_089_600;
 

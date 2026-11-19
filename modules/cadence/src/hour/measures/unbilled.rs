@@ -121,6 +121,23 @@ fn seconds(now: i64) -> f64 {
 mod tests {
     use super::*;
 
+    /// spend-watch's source, where the keys copied above are written.
+    const DETECT: &str = include_str!("../../../../spend-watch/src/detect.rs");
+    const COLLECTION: &str = include_str!("../../../../spend-watch/src/collection.rs");
+
+    // The keys are copies of spend-watch's, so one renamed there would read
+    // as no budget unbilled here rather than as an error; this says so.
+    #[test]
+    fn the_keys_are_spend_watchs() {
+        assert!(COLLECTION.contains(r#"format!("finding:{}", finding.key)"#));
+        assert_eq!(FINDING, "finding:unbilled:");
+        assert!(DETECT.contains(r#"format!("unbilled:{budget}")"#));
+        assert_eq!(UNJUDGED[1], "finding:unbilled-unsettled");
+        assert!(DETECT.contains(r#"pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";"#));
+        assert_eq!(UNJUDGED[0], "held");
+        assert!(COLLECTION.contains(r#"line("held", "Watch on hold""#));
+    }
+
     /// As spend-watch wrote it for 17 to 18 November, the teams renamed:
     /// two budgets billed under what they logged, one more Joel marked
     /// expected, beside findings of other kinds.

@@ -12,6 +12,9 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
+      # Its tests read the keys spend-watch writes, which it copies.
+      ../spend-watch/src/detect.rs
+      ../spend-watch/src/collection.rs
     ];
   };
   sourceRoot = "${src.name}/cadence";
