@@ -90,7 +90,7 @@ pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> V
 
 /// Why the node gave no answer: it couldn't be reached, so nothing was
 /// asked, or it took the ask and fell silent, so the work may yet start.
-enum Unanswered {
+pub(crate) enum Unanswered {
     Unreached(io::Error),
     Silent,
 }
@@ -108,7 +108,11 @@ fn silent() -> Value {
 /// Asks the node at `socket` for `request`, one line of its own protocol
 /// with no hello, waiting up to `patience` on each step, and gives its
 /// one line back, or a line it couldn't read as null.
-fn asked(socket: &Path, request: &Value, patience: Duration) -> Result<Value, Unanswered> {
+pub(crate) fn asked(
+    socket: &Path,
+    request: &Value,
+    patience: Duration,
+) -> Result<Value, Unanswered> {
     let mut stream = UnixStream::connect(socket).map_err(Unanswered::Unreached)?;
     stream
         .set_read_timeout(Some(patience))

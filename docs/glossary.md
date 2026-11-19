@@ -159,6 +159,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | background work | a session's background commands, fleets and review rounds together | | `/jobs` |
 | fleet | subagents run at once on one piece of work | fan-out, batch | the `subagent` tool |
 | subagent | a pi a session starts to do part of its work | helper, sub-agent, worker, lane | the `subagent` tool |
+| starts stopped | Joel's stop on every session an agent asks to start, until he lets them start again; sessions he starts himself still start | | `mycelium starts stop` |
 | run | one running of subagents, a fleet, a council or a judge's round, as a whole | | `runs` in the launcher |
 | council | reviewing models each reading one change on their own | | `review_ask council` |
 | judge | the model that consolidates a council's findings | | |

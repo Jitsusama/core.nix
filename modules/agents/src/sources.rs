@@ -20,6 +20,7 @@ use crate::file::{self, Files};
 use crate::inboxes::{self, Inboxes};
 use crate::inputs::Inputs;
 use crate::kept_places::KeptPlaces;
+use crate::starts_stopped::Stood;
 use crate::talks::Talk;
 use crate::wants;
 
@@ -80,6 +81,8 @@ pub enum Heard {
     /// before its ask was answered (starts.rs's Keeping), so their
     /// records are made again.
     StartsMoved,
+    /// How agents' starts stand, as the node says (`starts_stopped.rs`).
+    Starts(Stood),
 }
 
 /// Where the files the rows are made from are kept.
@@ -292,6 +295,7 @@ impl Inputs {
             }
             Heard::FedBack(line) => self.fed_back.push(line),
             Heard::Inboxes(waiting) => self.unsent = waiting,
+            Heard::Starts(stood) => self.stood = Some(stood),
             Heard::PutOffWant(known, now) => {
                 self.put_off.put(&known, now);
                 let path = paths.kept.with_file_name(wants::PUT_OFF_FILE);

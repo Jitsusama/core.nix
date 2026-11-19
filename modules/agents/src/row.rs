@@ -31,6 +31,10 @@ pub struct Words {
     pub carried: Said,
     /// Recent's, for what its place says of what it holds.
     pub recent: Said,
+    /// Starts Stopped's, for its row and drawer (`starts_stopped.rs`).
+    pub starts: Said,
+    /// What Starts Stopped's drawer tells.
+    pub starts_tell: Said,
     /// A session's acts' names and marks, by their ids (`talk` is Talk).
     pub acts: Said,
     pub act_glyphs: Said,
@@ -52,6 +56,8 @@ impl Words {
             landed: Said::of_thing(text, "agents:landed")?,
             carried: Said::of_thing(text, "agents:carried")?,
             recent: Said::of_thing(text, "agents:recent")?,
+            starts: Said::of_thing(text, "agents:starts-stopped")?,
+            starts_tell: Said::tells_of(text, "agents:starts-stopped")?,
             acts: Said::names_under(text, "verb:agent")?,
             act_glyphs: Said::glyphs_under(text, "verb:agent")?,
             talk_stages: Said::of_thing(text, "orchestrators:talk")?,
