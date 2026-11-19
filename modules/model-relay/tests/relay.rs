@@ -262,7 +262,8 @@ where
 /// longer one, `/sized` names its length and ends in a frame of its own,
 /// `/broken` fails after its first half, `/bye` answers
 /// and lets its connection go, `/reset` reads the request and resets
-/// its stream rather than answer, and `/drop` reads it and lets the
+/// its stream rather than answer, `/reset-once` does so the first time
+/// it's asked and echoes after, and `/drop` reads it and lets the
 /// connection fall with no word at all.
 async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<Answer>, io::Error> {
     let Served {
@@ -278,7 +279,9 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         .map(|all| all.to_bytes().to_vec())
         .unwrap_or_default();
     let path = parts.uri.path().to_owned();
-    kept.lock().expect("the origin's record").push(Handed {
+    let heard = {
+        let mut record = kept.lock().expect("the origin's record");
+        record.push(Handed {
         method: parts.method.to_string(),
         uri: parts.uri.to_string(),
         version: parts.version,
@@ -287,8 +290,13 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             .iter()
             .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
             .collect(),
-        body: body.clone(),
-    });
+            body: body.clone(),
+        });
+        record
+            .iter()
+            .filter(|handed| handed.uri.ends_with(&path))
+            .count()
+    };
     let answer = match path.as_str() {
         "/stream" | "/long" => {
             let gap = if path == "/long" {
@@ -339,6 +347,9 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             Response::builder().body(boxed(Full::new(Bytes::from_static(b"bye"))))
         }
         "/reset" => return Err(io::Error::other("the origin resets this stream")),
+        "/reset-once" if heard == 1 => {
+            return Err(io::Error::other("the origin resets this stream, this once"));
+        }
         "/drop" => {
             gone.notify_one();
             return std::future::pending().await;
@@ -701,12 +712,13 @@ async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
 
     let got = ask(&relay.socket, asked).await;
 
-    // A 502, never a 421 sending pi direct: this origin read the request
-    // before it reset it, as a real one may have acted on it.
+    // A 502 once it's reset again on a fresh connection, never a 421
+    // sending pi direct: this origin read the request before it reset
+    // it, as a real one may have acted on it.
     assert_eq!(
         got.status,
         StatusCode::BAD_GATEWAY,
-        "a request the origin reset, maybe acted on, was sent again direct"
+        "a request the origin reset twice, maybe acted on, was sent again direct"
     );
     for _ in 0..2 {
         let again = ask(&relay.socket, request(&host, "/echo", b"again")).await;
@@ -728,12 +740,117 @@ async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
     );
     assert_eq!(
         handed_to(&origin, "/reset"),
-        1,
-        "the origin heard a request it reset more than once"
+        2,
+        "a request the origin reset wasn't sent once more, or was sent more than once more"
     );
     assert!(
         !said.contains("sekrit"),
         "the relay logged a header or a body: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_request_reset_before_its_answer_goes_once_more_on_a_fresh_connection() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    let mut asked = request(&host, "/reset-once", SECRET_BODY);
+    asked
+        .headers_mut()
+        .insert("authorization", SECRET_TOKEN.parse().expect("a value"));
+
+    let got = ask(&relay.socket, asked).await;
+    // An answer the origin breaks off partway was begun, so pi hears it
+    // as it came and it never goes again.
+    let (mut pi, _) = pi_asks(&relay.socket).await;
+    let broken = pi
+        .send_request(request(&host, "/broken", b""))
+        .await
+        .expect("an answer begun")
+        .into_body()
+        .collect()
+        .await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request reset before its answer wasn't sent again"
+    );
+    assert_eq!(got.body, SECRET_BODY, "the request sent again lost its body");
+    let handed: Vec<Handed> = origin
+        .handed
+        .lock()
+        .expect("the origin's record")
+        .iter()
+        .filter(|handed| handed.uri.ends_with("/reset-once"))
+        .cloned()
+        .collect();
+    assert_eq!(handed.len(), 2, "the origin didn't hear the request twice");
+    for again in &handed {
+        assert_eq!(again.body, SECRET_BODY, "a body went short or changed");
+        assert!(
+            again
+                .headers
+                .iter()
+                .any(|(name, value)| name == "authorization" && value == SECRET_TOKEN.as_bytes()),
+            "a request went without its own authorization"
+        );
+    }
+    assert!(broken.is_err(), "an answer the origin broke off came whole");
+    assert_eq!(
+        handed_to(&origin, "/broken"),
+        1,
+        "an answer already begun went again"
+    );
+    assert_eq!(
+        origin.connections.load(Ordering::SeqCst),
+        2,
+        "the request went again on the connection that reset it"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("the origin reset a request on connection 0.0, so it's retired"),
+        "the reset went unsaid: {said}"
+    );
+    assert!(
+        said.contains("sent again on connection 0.1"),
+        "the request sent again didn't say on which connection: {said}"
+    );
+    assert!(
+        !said.contains("sekrit"),
+        "the relay logged a header or a body: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_reset_on_a_connection_kept_goes_again_on_one_opened_for_it() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+
+    // Reset on 0.0, which is retired, and again on 0.1, which is kept,
+    // since its slot retired one just now.
+    let twice = ask(&relay.socket, request(&host, "/reset", b"")).await;
+    // Reset on 0.1, kept still, so it goes again on a connection opened
+    // for it, never down the one that reset it.
+    let once = ask(&relay.socket, request(&host, "/reset-once", b"hello")).await;
+
+    assert_eq!(twice.status, StatusCode::BAD_GATEWAY, "a request reset twice");
+    assert_eq!(once.status, StatusCode::CREATED, "a request reset once");
+    assert_eq!(once.body, b"hello");
+    assert_eq!(
+        origin.connections.load(Ordering::SeqCst),
+        3,
+        "the request went again down the connection kept that reset it"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("connection 0.1, kept, as one was retired lately"),
+        "the second reset didn't keep its connection: {said}"
+    );
+    assert!(
+        said.contains("sent again on connection 0.2"),
+        "the request reset on a connection kept didn't go on a fresh one: {said}"
     );
 }
 
