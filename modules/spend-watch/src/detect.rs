@@ -1647,10 +1647,13 @@ fn unresolved_finding(
         format!("{sessions} sessions")
     };
     let at = picture.zone.clock(last, picture.now);
+    // A note rather than a warning: the person can't draw a budget for
+    // another's session, cadence carries the count to whoever can, and a
+    // warning would take one of the few notices a week a burn needs.
     let mut f = finding(
         format!("{UNRESOLVED}:{budget}"),
         UNRESOLVED,
-        Severity::Warning,
+        Severity::Note,
         format!("{some} couldn't draw on {named}"),
         format!(
             "In the last day, {some} asked for {named} and drew on the default \
@@ -2540,6 +2543,11 @@ mod tests {
         );
         let last = picture.zone.clock(NOW - HOUR, picture.now);
         assert_eq!(found[0].badge, format!("last {last}"));
+        assert_eq!(
+            found[0].severity,
+            Severity::Note,
+            "a note, so it never takes a notice"
+        );
         assert!(
             found[0].detail.contains(&format!(
                 "the last at {last}; the harness said: its key was refused."
