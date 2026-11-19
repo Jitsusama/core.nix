@@ -10219,6 +10219,11 @@ Scope {
         // With's asks what to open each file with, and the kept step would
         // ask about the last.
         const asNow = listedNow === true && plainPlace(source, name);
+        // Its kept rows, made before any share, are drawn only while
+        // nothing may see the screen, or it opens whole (Wanted.drawsKept).
+        const afresh = source?.keptListed === true || listedNow === true || kept.led === true;
+        if (!Wanted.drawsKept({ afresh: afresh, shared: screenShared() }))
+            return false;
         const listed = source?.keptListed === true ? keptListing(source)
             : asNow ? source.asItStands(() => keptListing(source))
             : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
