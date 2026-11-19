@@ -2425,6 +2425,12 @@ def test_a_folder_filling_the_disk_says_its_session_as_agents_says_it(shell: She
         shell.close_launcher()
         status.unlink()
         (PRESENCE / "yeses.json").unlink()
+        # A session asking for Joel's yes, left for the cases after, would stand first in
+        # For You and Agents, so it's gone from the node before they begin.
+        deadline = time.monotonic() + 10
+        while "session:s-yeses" in held_by_node():
+            assert time.monotonic() < deadline, "the node still holds the asking session"
+            time.sleep(0.1)
 
 
 def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: Shell) -> None:

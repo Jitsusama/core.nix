@@ -14,7 +14,7 @@
 // Sessions on the realm's other machines are in the same list, drawn the
 // same, their machine leading the note (VKCF3Z, 2026-10-29, G8 of
 // mycelium's plan), in the one order every list of sessions keeps
-// (SessionRow.js): those needing Joel, then those working, in line,
+// (the agents daemon's standing.rs): those needing Joel, then those working, in line,
 // listening and paused, then those parked, this machine's first in each,
 // then the others by when each last changed. Go To joins one elsewhere
 // through its node; one on a machine out of reach stays, dimmed, saying
@@ -856,13 +856,6 @@ Provider {
         }
     }
 
-    // Where a session's first job waiting for its turn stands in line.
-    function inLine(presence) {
-        const waiting = presence && presence.session
-            ? Jobs.of(presence.session).find(job => job.state === "waiting") : undefined;
-        return waiting ? word("inLine", { place: Numbers.ordinal(waiting.place) }) : "";
-    }
-
     // What a session spent today as spend-watch says, and, for one that
     // `orchestrates`, its whole orchestration's as spend-watch sums its
     // quest and those under it, or nothing to say either by while sharing.
@@ -1278,8 +1271,8 @@ Provider {
         }
     }
 
-    // A session's own acts, in the one order every session keeps
-    // (SessionRow.js), each steering it through its inbox but Go To; an
+    // A session's own acts, in the order SessionRow.js gives them for how
+    // the agents daemon says it stands, each steering it through its inbox but Go To; an
     // orchestrator's row is its session's, with its talks after them.
     function sessionActs(session) {
         return SessionRow.acts(stateOf(session), windowedOf(session), session.here)
