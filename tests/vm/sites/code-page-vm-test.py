@@ -7,7 +7,7 @@ is one a browser on the machine makes: the page and its script fetched by the se
 its feed's WebSocket opened from the page's origin, saying hello and watching a kind as the page's
 kit does, and the code site's homes beside it. The feed must start the daemon through the
 socket systemd holds for it and tell commits git makes while one watch stays open, and the homes
-the code site's timer writes must say where the repository is home. The tests need no value from
+the daemon writes as it reads must say where the repository is home. The tests need no value from
 Nix.
 """
 
@@ -43,8 +43,9 @@ SETTLING_S = 4
 WHILE_WATCHED = ["second", "third", "fourth"]
 # Where what the commits made during a watch said goes, since the feed's own text is read.
 MEANWHILE = "/root/meanwhile.log"
-# How long the code site's timer, a minute apart, has to write its homes.
-HOMES = timedelta(minutes=3)
+# How long the daemon has to write its homes: its first reading writes them, and its pace reads
+# again a minute on.
+HOMES = timedelta(minutes=1)
 # The repository made on the disk, under the root code-page.nix gives repos instead of its own.
 REPOSITORY = "/home/alice/code/kestrel"
 # A commit's author, given each time, since the account has no git config of its own.
@@ -158,16 +159,16 @@ def test_commits_reach_an_open_watch_as_git_writes(served: BaseMachine) -> None:
 
 
 def test_the_code_sites_homes_say_where_the_repository_is_home(served: BaseMachine) -> None:
-    """The code site's timer writes its homes, which the server answers beside the page."""
-    # The timer runs the code site's unit a minute apart, so its homes come on their own.
+    """The daemon writes Code's homes as it reads, which the server answers beside the page."""
+    # The fixture's restart read the repository, and each reading writes homes that changed.
     try:
         served.wait_until_succeeds(
             f"curl -sf {SITES}/code/homes.json | grep -qF kestrel", timeout=HOMES
         )
     except Exception:  # noqa: BLE001 # The driver raises a bare Exception when time is up.
-        journal = "journalctl --user -u code-site.service --no-pager"
+        journal = "journalctl --user -u repos.service --no-pager"
         said = as_account(served, journal, account="alice")
-        pytest.fail(f"no homes came; the code site said:\n{said}")
+        pytest.fail(f"no homes came; the daemon said:\n{said}")
     homes = json.loads(served.succeed(f"curl -sf {SITES}/code/homes.json"))
     addresses = {thing.get("name"): thing.get("address") for thing in homes.get("things", [])}
     assert addresses.get("kestrel") == "code/#repo=kestrel", f"no home for kestrel in {homes}"

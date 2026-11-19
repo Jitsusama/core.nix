@@ -5,8 +5,11 @@
 //! the same folder and renamed over the last, so a reader never sees half,
 //! and a writing that fails leaves the last homes where they were.
 
-use std::io;
-use std::path::PathBuf;
+use std::fmt::Write as _;
+use std::fs::{self, File, Permissions};
+use std::io::{self, Write as _};
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 use repos::model::Record;
 use serde_json::{Value, json};
@@ -34,28 +37,108 @@ impl Homes {
 
     /// Writes the homes `record` gives, unless they're what was last
     /// written, and answers whether it wrote them.
-    pub fn write(&mut self, _record: &Record) -> io::Result<bool> {
-        let _ = (&self.file, &self.written);
-        Ok(false)
+    pub fn write(&mut self, record: &Record) -> io::Result<bool> {
+        let said = of(record).to_string();
+        if self.written.as_ref() == Some(&said) {
+            return Ok(false);
+        }
+        // Until this writing ends well the file may hold anything, so the
+        // next one writes whatever it's given.
+        self.written = None;
+        let folder = match self.file.parent() {
+            Some(folder) if !folder.as_os_str().is_empty() => folder,
+            _ => Path::new("."),
+        };
+        fs::create_dir_all(folder)?;
+        let name = self.file.file_name().unwrap_or_default().to_string_lossy();
+        let temp = folder.join(format!(".{name}.{}", std::process::id()));
+        let wrote = write_whole(&temp, &said).and_then(|()| fs::rename(&temp, &self.file));
+        if let Err(why) = wrote {
+            let _ = fs::remove_file(&temp);
+            return Err(why);
+        }
+        self.written = Some(said);
+        Ok(true)
     }
 
     /// Writes the homes `record` gives, and answers the line to say when
     /// they couldn't be written for a reason not said already.
-    pub fn keep(&mut self, _record: &Record) -> Option<String> {
-        let _ = &self.failing;
-        None
+    pub fn keep(&mut self, record: &Record) -> Option<String> {
+        match self.write(record) {
+            Ok(_) => {
+                self.failing = None;
+                None
+            }
+            Err(why) => {
+                let why = why.to_string();
+                if self.failing.as_ref() == Some(&why) {
+                    return None;
+                }
+                let file = self.file.display();
+                let said =
+                    format!("repos: couldn't write Code's homes to {file} ({why}); the last stay");
+                self.failing = Some(why);
+                Some(said)
+            }
+        }
     }
 }
 
+/// `said` in a file of its own at `temp`, readable by every reader, since
+/// the local sites' server reads it as another account.
+fn write_whole(temp: &Path, said: &str) -> io::Result<()> {
+    let mut file = File::create(temp)?;
+    file.write_all(said.as_bytes())?;
+    file.write_all(b"\n")?;
+    file.set_permissions(Permissions::from_mode(0o644))?;
+    file.sync_all()
+}
+
 /// The homes `record` gives, as Code's page addresses them.
-pub fn of(_record: &Record) -> Value {
-    json!({"things": []})
+pub fn of(record: &Record) -> Value {
+    let repositories = record.repositories.iter().map(|repository| {
+        let named = match &repository.owner {
+            Some(owner) => format!("{owner}/{}", repository.name),
+            None => repository.name.clone(),
+        };
+        json!({
+            "kind": "repository",
+            "key": repository.key,
+            "name": repository.name,
+            "names": [repository.name],
+            "address": format!("code/#repo={}", uri(&named)),
+        })
+    });
+    let trees = record
+        .repositories
+        .iter()
+        .flat_map(|repository| &repository.checkouts)
+        .flat_map(|checkout| &checkout.trees)
+        .filter(|tree| tree.present)
+        .map(|tree| {
+            json!({
+                "kind": "tree",
+                "key": tree.path,
+                "name": tree.path,
+                "names": [tree.path],
+                "address": format!("code/#tree={}", uri(&tree.path)),
+            })
+        });
+    json!({"things": repositories.chain(trees).collect::<Vec<_>>()})
 }
 
 /// `text` as an address's part, as jq's `@uri` writes it: every byte
 /// percent-encoded but letters, digits and `-_.~`.
 pub fn uri(text: &str) -> String {
-    text.to_owned()
+    let mut said = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte) {
+            said.push(char::from(byte));
+        } else {
+            let _ = write!(said, "%{byte:02X}");
+        }
+    }
+    said
 }
 
 #[cfg(test)]

@@ -77,7 +77,12 @@ fn folder(name: &str) -> PathBuf {
 fn names_in(folder: &PathBuf) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(folder)
         .expect("the folder")
-        .map(|each| each.expect("an entry").file_name().to_string_lossy().into_owned())
+        .map(|each| {
+            each.expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
     names.sort();
     names
@@ -130,11 +135,22 @@ fn the_homes_are_written_whole_for_anyone_to_read_and_nothing_else_is_left() {
     let folder = folder("whole");
     let file = folder.join("homes.json");
     let mut homes = Homes::at(file.clone());
-    assert!(homes.write(&record()).expect("written"), "nothing was written");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "nothing was written"
+    );
     assert_eq!(read(&file), of(&record()));
     let mode = fs::metadata(&file).expect("the homes").permissions().mode();
-    assert_eq!(mode & 0o777, 0o644, "the homes can't be read by every reader");
-    assert_eq!(names_in(&folder), ["homes.json"], "a writing left something behind");
+    assert_eq!(
+        mode & 0o777,
+        0o644,
+        "the homes can't be read by every reader"
+    );
+    assert_eq!(
+        names_in(&folder),
+        ["homes.json"],
+        "a writing left something behind"
+    );
     let _ = fs::remove_dir_all(&folder);
 }
 
@@ -145,11 +161,17 @@ fn homes_unchanged_since_the_last_writing_are_not_written_again() {
     let mut homes = Homes::at(file.clone());
     homes.write(&record()).expect("written");
     fs::write(&file, "x").expect("marked");
-    assert!(!homes.write(&record()).expect("read"), "the same homes were written again");
+    assert!(
+        !homes.write(&record()).expect("read"),
+        "the same homes were written again"
+    );
     assert_eq!(fs::read_to_string(&file).expect("the mark"), "x");
     let mut more = record();
     more.repositories.pop();
-    assert!(homes.write(&more).expect("written"), "changed homes weren't written");
+    assert!(
+        homes.write(&more).expect("written"),
+        "changed homes weren't written"
+    );
     assert_eq!(read(&file), of(&more));
     let _ = fs::remove_dir_all(&folder);
 }
@@ -165,11 +187,21 @@ fn a_writing_that_fails_leaves_nothing_and_is_tried_again_at_the_next() {
     fs::create_dir_all(file.join("in the way")).expect("a folder in the way");
     let mut fewer = record();
     fewer.repositories.pop();
-    assert!(homes.write(&fewer).is_err(), "a rename onto a full folder succeeded");
-    assert_eq!(names_in(&folder), ["homes.json"], "a failed writing left its file");
+    assert!(
+        homes.write(&fewer).is_err(),
+        "a rename onto a full folder succeeded"
+    );
+    assert_eq!(
+        names_in(&folder),
+        ["homes.json"],
+        "a failed writing left its file"
+    );
     fs::remove_dir_all(&file).expect("the folder out of the way");
     // The homes last written are written again, since the file no longer holds them.
-    assert!(homes.write(&record()).expect("written"), "the homes weren't tried again");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "the homes weren't tried again"
+    );
     assert_eq!(read(&file), of(&record()));
     let _ = fs::remove_dir_all(&folder);
 }
@@ -182,18 +214,31 @@ fn a_failure_is_said_once_until_the_homes_are_written_again() {
     let mut homes = Homes::at(file.clone());
     let said = homes.keep(&record()).expect("the failure said");
     assert!(
-        said.starts_with(&format!("repos: couldn't write Code's homes to {}", file.display()))
-            && said.ends_with("; the last stay"),
+        said.starts_with(&format!(
+            "repos: couldn't write Code's homes to {}",
+            file.display()
+        )) && said.ends_with("; the last stay"),
         "the failure said {said:?}"
     );
-    assert_eq!(homes.keep(&record()), None, "the same failure was said again");
+    assert_eq!(
+        homes.keep(&record()),
+        None,
+        "the same failure was said again"
+    );
     fs::remove_dir_all(&file).expect("the folder out of the way");
-    assert_eq!(homes.keep(&record()), None, "a writing that worked said something");
+    assert_eq!(
+        homes.keep(&record()),
+        None,
+        "a writing that worked said something"
+    );
     assert_eq!(read(&file), of(&record()));
     fs::remove_file(&file).expect("the homes gone");
     fs::create_dir_all(file.join("in the way")).expect("a folder in the way");
     let mut fewer = record();
     fewer.repositories.pop();
-    assert!(homes.keep(&fewer).is_some(), "a failure after a writing wasn't said");
+    assert!(
+        homes.keep(&fewer).is_some(),
+        "a failure after a writing wasn't said"
+    );
     let _ = fs::remove_dir_all(&folder);
 }

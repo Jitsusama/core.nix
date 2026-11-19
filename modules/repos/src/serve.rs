@@ -14,6 +14,10 @@
 //! disk cheap. A pace reads everything, walking the roots, for what's not
 //! watched: a checkout cloned under a root, and when a tree was last
 //! written, which moves with its index.
+//!
+//! Each reading writes Code's homes too, where `REPOS_HOMES` names a file
+//! for them, whenever they changed (homes.rs): so they move with the disk,
+//! and nothing reads every repository again to write them.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -31,6 +35,7 @@ use terminal_kit::{Exit, Failure};
 
 use crate::feed;
 use crate::heard::{self, Folders, Heard, Of};
+use crate::homes::Homes;
 
 /// How often the disk is read whole with nothing heard.
 const PACE: Duration = Duration::from_mins(1);
@@ -100,9 +105,11 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     // pace; and it's listening only once it's watching, so a view that
     // reaches the socket is told everything from then on.
     let mut folders = Folders::new();
+    let mut homes = homes_named();
     let mut began = Instant::now();
     let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
     shared.change(feed::records(&record), feed::sources(&record));
+    keep(homes.as_mut(), &record);
     let listener = serve::listen(&socket).map_err(|why| {
         let socket = socket.display();
         Failure::new(Exit::Failed, format!("it couldn't listen on {socket}"))
@@ -137,6 +144,22 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
             Err(RecvTimeoutError::Disconnected) => return Err(deaf("inotify stopped")),
         };
         shared.change(feed::records(&record), feed::sources(&record));
+        keep(homes.as_mut(), &record);
+    }
+}
+
+/// Code's homes, at the file `REPOS_HOMES` names, where it names one.
+fn homes_named() -> Option<Homes> {
+    std::env::var_os("REPOS_HOMES")
+        .filter(|file| !file.is_empty())
+        .map(|file| Homes::at(PathBuf::from(file)))
+}
+
+/// Writes the homes `record` gives, saying to the journal why they
+/// couldn't be, once for each reason; the last homes stay meanwhile.
+fn keep(homes: Option<&mut Homes>, record: &Record) {
+    if let Some(said) = homes.and_then(|homes| homes.keep(record)) {
+        eprintln!("{said}");
     }
 }
 

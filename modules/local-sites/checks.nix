@@ -244,22 +244,6 @@ in
     touch $out
   '';
 
-  # The code site's writer keeps its last homes while repos fails or stalls, and
-  # replaces them whole once repos answers, each at Code's address for it
-  # (tests/code-site-keeps-its-last-homes.sh).
-  code-site-keeps-its-last-homes = pkgs.runCommandLocal "code-site-keeps-its-last-homes" { } ''
-    ${lib.getExe pkgs.bash} ${./tests/code-site-keeps-its-last-homes.sh} ${
-      lib.escapeShellArgs [
-        ./code-site.sh
-        (lib.makeBinPath [
-          pkgs.coreutils
-          pkgs.jq
-        ])
-      ]
-    }
-    touch $out
-  '';
-
   # What a switch refuses in the declared rows' homes (rows-homes.nix), read
   # in evaluation alone, so the rules cost no machine of their own.
   local-sites-rows-homes-read-as-readers-do =
