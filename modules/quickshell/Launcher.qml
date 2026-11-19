@@ -5663,14 +5663,17 @@ Scope {
     function refreshDue() {
         if (refreshing.length === 0)
             return;
+        // One that comes before a kept home's slice waits for it, as it
+        // would join and search home inside the fill's frame, or change
+        // home before home is found; the find, or a shut, asks it again
+        // (refreshesHeld).
+        if (fillFinding)
+            return;
         keepPace(Pacing.took(Date.now(), pace));
         const refreshedAt = pace.at;
         const begun = KeyTimes.now();
         const wasOpen = open;
         if (open) {
-            // One that comes before a kept home's slice finds home first, as
-            // a key does, so it changes home found now and joins once.
-            fillFound("refresh");
             refreshesDone += 1;
             freshen();
         }
@@ -10490,6 +10493,7 @@ Scope {
             // Nor is home found for a fill that's shut before its slice,
             // whose rows are said as the card showed them.
             fillFinding = false;
+            refreshesHeld();
             fillSaidLate();
             // What waits on a frame runs, since no frame of the launcher's
             // is coming.
@@ -11467,11 +11471,12 @@ Scope {
 
     // Whether a fill has still to join the choices, and find home again
     // where it fills home, which the first slice after its frame does
-    // (wakeNext), or a key, a click, a chord or a refresh before that, so
-    // each acts on home found now rather than as it was kept. Home is found from what each
-    // source made last, as it was inside `open` before, and a row held
-    // as it will be that now reads so is let go (heldAgreed), as a
-    // source's change would, so none waits on becameLate.
+    // (wakeNext), or a key, a click or a chord before that, so each acts
+    // on home found now rather than as it was kept; a refresh waits for
+    // it. Home is found from what each source made last, as it was inside
+    // `open` before, and a row held as it will be that now reads so is let
+    // go (heldAgreed), as a source's change would, so none waits on
+    // becameLate.
     property bool fillFinding: false
     property bool fillFindsHome: false
     // Whether filled() is opening it, as only a fill it runs has a slice
@@ -11527,7 +11532,16 @@ Scope {
             fillFoundTook = KeyTimes.now() - began;
             feltSpan(fillFoundThrew ? "a throw finding home"
                 : fillFoundHome ? "finding home" : "joining", began);
+            refreshesHeld();
         }
+    }
+    // The refreshes held while home was still to be found are made after
+    // the next frame, which shows home as found, rather than lengthening
+    // the find's own slice; asked again, as a source already waiting is
+    // never asked again by its change (refreshed). Shut, it's at once.
+    function refreshesHeld() {
+        if (refreshing.length > 0)
+            afterFrame(refreshDue);
     }
     // Whether finding home after the fill threw, so its span and the
     // waking line say so where they're read, not only the warning.

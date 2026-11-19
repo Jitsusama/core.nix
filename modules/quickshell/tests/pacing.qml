@@ -447,11 +447,10 @@ QtObject {
             Wanted.findsLater(Object.assign({}, home, { byFill: false })), false);
         check(failures, "an opening with no home kept finds it there",
             Wanted.findsLater(Object.assign({}, home, { kept: 0 })), false);
-        // Found after it, home is searched again by a slice, a key, a click
-        // or a refresh, but a chord only joins, and a step or a word finds
-        // its own.
+        // Found after it, home is searched again by a slice, a key or a
+        // click, but a chord only joins, and a step or a word finds its own.
         const stands = { home: true, held: 0, typed: "" };
-        for (const by of ["slice", "key", "click", "refresh"])
+        for (const by of ["slice", "key", "click"])
             check(failures, `found by a ${by}, home is searched again`,
                 Wanted.findsAgain(by, stands), true);
         check(failures, "found by a chord, home is only joined",
