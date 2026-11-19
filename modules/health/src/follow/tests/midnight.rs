@@ -182,6 +182,31 @@ fn a_start_of_the_day_before_without_its_stamp_ends_the_stop_it_cant_time() {
 }
 
 #[test]
+fn a_switchs_reload_carried_keeps_a_restart_after_midnight_the_switchs() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let m = MIDNIGHT;
+    let (stopping, started) = (journal::UNIT_STOPPING, journal::UNIT_STARTED);
+    // A switch reloads, then something it runs that calls itself a tool,
+    // both before the turn: the stop after midnight is still the switch's.
+    for line in [
+        reload("g", "sd-switch", m - 20 * SECOND),
+        reload("g", "systemctl", m - 8 * SECOND),
+        warning(m + 1),
+        job("g", stopping, "switched.service", m + SECOND),
+        job("g", started, "switched.service", m + 1_100_000),
+    ] {
+        follower.take(&line).expect("a line");
+    }
+    follower.write().expect("the new day is written");
+    assert_eq!(
+        read(into.path(), "2026-11-13").launches.restarted,
+        BTreeMap::from([("switched.service".to_owned(), vec![100])]),
+        "the switch's reload was left in the old day, so the tool's took its restart"
+    );
+}
+
+#[test]
 fn the_new_day_carries_from_midnight_and_a_late_line_changes_it() {
     let into = tempfile::tempdir().expect("a folder");
     let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
