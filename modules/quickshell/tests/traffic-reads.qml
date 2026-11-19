@@ -273,14 +273,18 @@ ShellRoot {
             said() === started, `${said()} after ${started}`);
         traffic.reads = kept;
 
-        // The counters' load lands too, so the look after it isn't one
-        // asked just after a load and passed over. Aged first, since aging
-        // counts as a load.
+        // The counters' load lands too, since a look asked while one is
+        // under way is passed over, and the status may land first. Aged
+        // first, since aging counts as a load. The note is claimed once the
+        // row is back with another than resting's, so a reworded one says
+        // what it was, and a row gone as the status loads again isn't one.
         aged(traffic.soonest);
         const landed = loads;
         traffic.look();
-        waits.until("a line holding is said so", () => loads > landed && idle()
-            && lineNote() === "as measured, held to the shaper's limit", () => {
+        waits.until("the line leaves resting", () => loads > landed && idle()
+            && lineNote() !== undefined && lineNote() !== "as measured", () => {
+            Expect.expect("a line holding is said so",
+                lineNote() === "as measured, held to the shaper's limit", lineNote());
             counted({ lo: [1000, 2000] });
             lookAgain();
             waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined
