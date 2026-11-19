@@ -374,8 +374,9 @@ function keptWhole(kept) {
     if (kept?.laidBy === undefined) {
         return kept;
     }
-    // Built by hand, as Qt's engine has no Object.fromEntries.
-    const laidBy = {};
+    // Built by hand, as Qt's engine has no Object.fromEntries, on nothing,
+    // as the tally was, so no kind's name is taken for one of Object's.
+    const laidBy = bare();
     for (const [kind, spent] of Object.entries(kept.laidBy)) {
         laidBy[kind] = { rows: spent.rows, ms: Math.round(spent.ms) };
     }

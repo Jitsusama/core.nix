@@ -2012,8 +2012,8 @@ def laid_and_kept(shell: Shell) -> tuple[Json, Json]:
         if now == was:
             return now
         was = now
-    assert was is not None
-    return was
+    msg = f"laidOut and keptOut never read the same twice: {was}"
+    raise AssertionError(msg)
 
 
 def tallied_rows(kept: Json, which: str = "kept") -> tuple[int, int, int] | None:
@@ -2240,8 +2240,8 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         drawn.append(int(laid["drawn"]) - before)
         # Fails loudly if the split is ever passed by, as the bound could hold without it.
         assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
-        # Its rows are tallied too, those the split drew among them, in no more than it took,
-        # read from its own keeping, which those after it leave: the split's own.
+        # Its rows are tallied too, those the split drew among them, in no more than its laying
+        # took, read from its own keeping, which those after it leave: the split's own.
         read = (kept_now["stepped"] or {}).get("split")
         assert read == laid["stepped"], f"the tally read {read}, not the split {laid['stepped']}"
         tallied.append(tallied_rows(kept_now, "stepped"))
