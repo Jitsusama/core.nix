@@ -2000,11 +2000,29 @@ def kept_out(shell: Shell) -> Json:
     return cast("Json", json.loads(shell.as_account(shell.ipc("keptOut"))))
 
 
+def laid_and_kept(shell: Shell) -> tuple[Json, Json]:
+    """Give laidOut and keptOut read together, once two reads in a row of both agree.
+
+    Read apart, a keeping landing between the two would give one keeping's rows beside
+    another's tally.
+    """
+    was: tuple[Json, Json] | None = None
+    for _ in range(20):
+        now = (cast("Json", json.loads(shell.as_account(shell.ipc("laidOut")))), kept_out(shell))
+        if now == was:
+            return now
+        was = now
+    assert was is not None
+    return was
+
+
 def tallied_rows(kept: Json, which: str = "kept") -> tuple[int, int, int] | None:
     """Give the rows a laying tallied, built and took back, once it says it's done.
 
-    Every row a laying draws is tallied under its kind, each with its own time, so together
-    they take no more than the laying did; and none is tallied once it's done. The laying is
+    Every row a laying draws is tallied under its kind, each with its own time, and none once
+    it's done. Their times together are bounded by the laying's, which catches a row counted
+    twice or a time read late; where each row's time starts is rows-kept.qml's, as a warm
+    shell's reused rows always start after the laying's own mark. The laying is
     the last keeping's, or the last step back out's (`which` "stepped"). None where it laid
     nothing.
     """
@@ -2038,18 +2056,18 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
     each time, up to 43 ms of laying them out (2026-11-13 and 14). Now the rows it lets go
     are given to those it lists.
     """
-    built, kept, new, tallied, kinds = [], [], [], [], set()
+    built, kept, new, tallied, kinds, handed = [], [], [], [], set(), []
     for _ in range(3):
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
         was = set(shell.showing()["rows"])
         before = int(laid_out(shell)["built"])
         shell.type_in("m")
-        laid = laid_out(shell)
+        laid, kept_now = laid_and_kept(shell)
         built.append(int(laid["built"]) - before)
-        kept_now = kept_out(shell)
         tallied.append(tallied_rows(kept_now))
         kinds |= set((kept_now["kept"] or {}).get("laidBy") or {})
+        handed.append((kept_now["composed"] or {}).get("laidBy"))
         now = set(shell.showing()["rows"])
         kept.append(len(now & was))
         new.append(len(now - was))
@@ -2068,6 +2086,11 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
     # not only as the sort every row has.
     own = kinds - {"act", "holds", "figure"}
     assert own, f"no 'm' tallied a row as what it is, only {sorted(kinds)}"
+    # The trials file is handed each kind's time whole, as it keeps every time.
+    by_kind = [by for by in handed if by]
+    assert by_kind, f"no 'm' handed the trials file its rows by kind: {handed}"
+    fine = [each["ms"] for by in by_kind for each in by.values() if not isinstance(each["ms"], int)]
+    assert not fine, f"the trials file was handed kinds' times of {fine} ms"
 
 
 def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:
@@ -2093,9 +2116,9 @@ def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) 
         shell.step_in()
         shell.launcher_until(functools.partial(stands_in, place))
         shell.normal()
-        laid = laid_out(shell)
+        laid, kept_now = laid_and_kept(shell)
         built.append(int(laid["built"]) - before)
-        tallied.append(tallied_rows(kept_out(shell)))
+        tallied.append(tallied_rows(kept_now))
         rounds.append((place, laid))
         stepped_out(shell)
     shell.close_launcher()
@@ -2213,13 +2236,15 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         depth = len(shell.showing()["held"])
         shell.send_chars("-")
         shell.launcher_until(functools.partial(stepped_back_to, depth=depth, far=far))
-        laid = laid_out(shell)
+        laid, kept_now = laid_and_kept(shell)
         drawn.append(int(laid["drawn"]) - before)
         # Fails loudly if the split is ever passed by, as the bound could hold without it.
         assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
         # Its rows are tallied too, those the split drew among them, in no more than it took,
-        # read from its own keeping, which those after it leave.
-        tallied.append(tallied_rows(kept_out(shell), "stepped"))
+        # read from its own keeping, which those after it leave: the split's own.
+        read = (kept_now["stepped"] or {}).get("split")
+        assert read == laid["stepped"], f"the tally read {read}, not the split {laid['stepped']}"
+        tallied.append(tallied_rows(kept_now, "stepped"))
         was, now = band_of(standing, far), band_of(laid, far)
         assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"
@@ -2235,6 +2260,8 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
     laid_rows = [each for each in tallied if each is not None]
     assert laid_rows, f"no - back's split tallied a row: {tallied}"
     drew = [(rows, made + back) for rows, made, back in laid_rows]
+    # Else every split drew nothing, and the tally's matching proves nothing.
+    assert any(count > 0 for _, count in drew), f"no - back's split drew a row: {drew}"
     assert all(rows == count for rows, count in drew), f"rows each - back tallied, drew: {drew}"
 
 

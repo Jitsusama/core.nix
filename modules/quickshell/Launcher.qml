@@ -8238,8 +8238,9 @@ Scope {
         // The list's last keeping and the last step back out's, with whose
         // rows each laying spent on, and whether a laying still listens for
         // rows, so the check can say every row a laying drew was tallied,
-        // and none after. Apart from laidOut, as these change with every
-        // keeping, where nothing drawn may move.
+        // and none after; and the keeping a key's parts hand the trials
+        // file, so it can say the file keeps them whole. Apart from laidOut,
+        // as these change with every keeping, where nothing drawn may move.
         function keptOut(): string {
             return root.keptOut();
         }
@@ -8575,10 +8576,11 @@ Scope {
             lines: wordsIn(commandRows, card) });
     }
 
-    // The list's last keeping and its last step back out's, for keptOut.
+    // The list's last keeping, its last step back out's and the last key's
+    // parts', for keptOut.
     function keptOut() {
         return JSON.stringify({ kept: list.keptLast, stepped: list.steppedKept,
-            tallying: list.laidBy !== null });
+            composed: root.composeParts?.kept ?? null, tallying: list.laidBy !== null });
     }
 
     // The drawer beside the card (Drawer.qml): what the selected row shows

@@ -374,8 +374,11 @@ function keptWhole(kept) {
     if (kept?.laidBy === undefined) {
         return kept;
     }
-    const laidBy = Object.fromEntries(Object.entries(kept.laidBy)
-        .map(([kind, spent]) => [kind, { rows: spent.rows, ms: Math.round(spent.ms) }]));
+    // Built by hand, as Qt's engine has no Object.fromEntries.
+    const laidBy = {};
+    for (const [kind, spent] of Object.entries(kept.laidBy)) {
+        laidBy[kind] = { rows: spent.rows, ms: Math.round(spent.ms) };
+    }
     return Object.assign({}, kept, { laidBy });
 }
 
