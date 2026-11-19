@@ -221,7 +221,7 @@ pub struct Keeping {
 }
 
 impl Keeping {
-    /// The starts `path` keeps at `now_ms` (Starts::read), kept there.
+    /// The starts `path` keeps at `now_ms` (`Starts::read`), kept there.
     pub fn read(path: &Path, now_ms: u128) -> Self {
         Self {
             starts: Arc::new(Mutex::new(Starts::read(path, now_ms))),
@@ -238,7 +238,7 @@ impl Keeping {
         starts.write(&self.path)
     }
 
-    /// Each start that ended and isn't told, as Starts::records.
+    /// Each start that ended and isn't told, as `Starts::records`.
     pub fn records(&self) -> Vec<Value> {
         self.starts
             .lock()
