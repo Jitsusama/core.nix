@@ -846,8 +846,7 @@ async fn a_request_the_origin_resets_twice_goes_direct_and_retires_its_connectio
         "a request the origin reset twice didn't go direct"
     );
     assert_eq!(
-        got.body,
-        b"this relay can't carry a request to its origin, so go directly\n",
+        got.body, b"this relay can't carry a request to its origin, so go directly\n",
         "a request reset twice wasn't sent direct in the words pi goes direct on"
     );
     for _ in 0..2 {
@@ -1850,8 +1849,8 @@ async fn requests_sent_again_after_it_took_requests_again_are_judged() {
         let got = asked.await.expect("a held request");
         assert_eq!(
             got.status,
-            StatusCode::BAD_GATEWAY,
-            "a held request reset each time"
+            StatusCode::MISDIRECTED_REQUEST,
+            "a held request reset each time didn't go direct"
         );
     }
 
@@ -2062,8 +2061,8 @@ async fn a_connection_says_how_many_requests_pi_gave_up_on_it() {
     assert!(waited.is_err(), "pi was answered before it gave up");
     assert_eq!(
         reset.status,
-        StatusCode::BAD_GATEWAY,
-        "a request the origin reset"
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request the origin reset twice didn't go direct"
     );
     assert!(left.is_some(), "the relay didn't leave once idle");
     let said = relay.said();

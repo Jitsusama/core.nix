@@ -20,13 +20,14 @@ onLinux {
   # connection the origin lets go opened again, a request the origin reset
   # before its answer sent once more on another connection, one already
   # open, even beside one kept, or one opened for a burst of them together,
-  # a single attempt heard by all when it fails, and said as a 502 when
-  # reset again, when its connection was kept with no other open, when none
-  # would open or when the reset said to calm down, with its connection
-  # retired, a body too large or left
+  # a single attempt heard by all when it fails, and sent direct with the
+  # relay's own 421 when reset again, when its connection was kept with no
+  # other open or when none would open, but said as a 502 when the reset
+  # said to calm down, with its connection retired, a body too large or left
   # unfinished going nowhere, a relay failing past its share standing down
-  # with the 421 that sends pi direct, staying through its idle time and
-  # taking requests again after, over a connection opened while it stood
+  # with the 421 that sends pi direct, staying through its idle time,
+  # trying its path while it stands down and taking requests again once
+  # the path answers, or after, over a connection opened while it stood
   # down, for answers broken off as their connection falls or requests
   # sent again once it takes requests again, though never for requests no
   # connection would take, the origin's own verdicts, answers pi gives up

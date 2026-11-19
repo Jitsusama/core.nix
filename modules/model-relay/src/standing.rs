@@ -6,9 +6,10 @@
 //! were what the path broke, so the relay judges itself by the requests
 //! it finished lately: past a share failed, it stands down, answering
 //! pi with its own 421 so each request goes direct, and takes requests
-//! again after a while. One more stand-down soon after the last doubles
-//! the while, up to a ceiling, so a path that stays bad is tried again
-//! less and less often, while one that mends is back in minutes. It's
+//! again once its path answers a trial, or after a while at most. One
+//! more stand-down soon after the last doubles the while, up to a
+//! ceiling, so a path that stays bad is tried with pi's requests less and
+//! less often, while one that mends is back as soon as a trial says so. It's
 //! all held in memory, so a relay that leaves once idle after a
 //! stand-down, or is restarted, starts over at the first.
 
@@ -142,6 +143,25 @@ impl Standing {
                 Taking::Again(lasting)
             }
         }
+    }
+
+    /// Whether it stands down `at`, so its path is to be tried.
+    pub(crate) fn is_down(&self, at: Instant) -> bool {
+        let state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        state.down.is_some_and(|(until, _)| at < until)
+    }
+
+    /// Takes requests again `at`, ahead of its stand-down's end, as its
+    /// path answers again, and says how long it stood down; or none, when
+    /// it wasn't standing down. A stand-down soon after still doubles the
+    /// one this was to be, as the longest it may last.
+    pub(crate) fn mend(&self, at: Instant) -> Option<Duration> {
+        let mut state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        let (until, lasting) = state.down.filter(|&(until, _)| at < until)?;
+        state.down = None;
+        state.last = Some((at, lasting));
+        state.since = Some(at);
+        Some(lasting.saturating_sub(until - at))
     }
 
     /// Whether it stands down `at`, or stood down within `after` before,
@@ -440,6 +460,46 @@ mod tests {
             Taking::Again(TEN_MINUTES)
         );
         assert_eq!(standing.taking(down_at + TEN_MINUTES), Taking::Yes);
+    }
+
+    #[test]
+    fn its_path_answering_it_takes_requests_again_early_and_the_next_still_doubles() {
+        let standing = Standing::new(TEN_MINUTES);
+        let from = Instant::now();
+        hears(&standing, from, 0, 20).expect("it stands down");
+        let down_at = from + A_SECOND * 19;
+        let mended_at = down_at + A_SECOND * 90;
+
+        assert!(standing.is_down(mended_at), "it wasn't down to be tried");
+        assert_eq!(
+            standing.mend(mended_at),
+            Some(A_SECOND * 90),
+            "it didn't say how long it stood down before its path answered"
+        );
+        assert!(!standing.is_down(mended_at), "it stood down still");
+        assert_eq!(
+            standing.taking(mended_at),
+            Taking::Yes,
+            "it didn't take requests once its path answered"
+        );
+        assert!(
+            !standing.holds_on(mended_at, Duration::ZERO),
+            "it held on for a stand-down it ended"
+        );
+        assert_eq!(
+            standing.mend(mended_at),
+            None,
+            "it mended a stand-down it wasn't in"
+        );
+        assert_eq!(
+            hears(&standing, mended_at + A_SECOND, 0, 20),
+            Some(StoodDown {
+                failed: 20,
+                finished: 20,
+                lasting: TEN_MINUTES * 2,
+            }),
+            "one soon after a stand-down its path ended didn't double"
+        );
     }
 
     #[test]
