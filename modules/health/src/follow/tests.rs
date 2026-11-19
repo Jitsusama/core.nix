@@ -5,6 +5,8 @@ use crate::journal;
 
 // The faults health sees itself, rather than hears.
 mod faults;
+// A restart across midnight, and the old day's lines heard after it.
+mod midnight;
 // A day health can't write, as on a full disk.
 mod writes;
 
@@ -103,6 +105,11 @@ fn a_moment_is_dated_in_its_zone() {
         date_of(NOON - 8 * 3_600_000_000, &west),
         "2026-11-11",
         "04:00 UTC is still the day before five hours west"
+    );
+    assert_eq!(
+        (start_of(NOON, &TimeZone::UTC), start_of(NOON, &west)),
+        (NOON - 12 * 3_600_000_000, NOON - 7 * 3_600_000_000),
+        "a day starts at its own zone's midnight"
     );
 }
 

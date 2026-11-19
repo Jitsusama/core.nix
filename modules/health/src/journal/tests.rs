@@ -509,6 +509,55 @@ fn a_history_reads_its_day_to_the_journals_end_and_its_follower_follows_on() {
 }
 
 #[test]
+fn only_the_restarts_followers_read_from_before_the_day() {
+    let since = |command: &std::process::Command| {
+        words(command)
+            .into_iter()
+            .filter(|word| word.starts_with("--since"))
+            .collect::<Vec<_>>()
+    };
+    let from = |asked: &[String]| {
+        if asked
+            .iter()
+            .any(|word| word == "CODE_FUNC=manager_log_caller")
+        {
+            "--since=@1763441760"
+        } else if asked
+            .iter()
+            .any(|word| *word == format!("MESSAGE_ID={UNIT_STOPPING}"))
+        {
+            "--since=@1763441880"
+        } else {
+            "--since=@1763442000"
+        }
+    };
+    let followers = followed();
+    let read: Vec<_> = followers
+        .iter()
+        .map(|asked| {
+            (
+                since(&reading(asked, 1_763_442_000)),
+                since(&following(asked, None, 1_763_442_000)),
+            )
+        })
+        .collect();
+    let meant: Vec<_> = followers
+        .iter()
+        .map(|asked| (vec![from(asked).to_owned()], vec![from(asked).to_owned()]))
+        .collect();
+    let leading = meant
+        .iter()
+        .filter(|(start, _)| start[0] != "--since=@1763442000")
+        .count();
+    assert_eq!(
+        (read, leading),
+        (meant, 2),
+        "the reloads' follower doesn't read from 240 s before the day, the jobs' from 120 s, \
+         or another from the day's start"
+    );
+}
+
+#[test]
 fn a_service_stopping_or_started_is_its_job_and_a_scope_is_none() {
     let line = |id: &str, unit: &str| {
         format!(

@@ -699,3 +699,61 @@ fn a_program_reloading_over_and_over_costs_health_only_the_reloads_it_keeps() {
         "the reloads kept grew past their bounds, or the newest was lost"
     );
 }
+
+#[test]
+fn a_new_day_carries_only_the_stops_and_reloads_a_restart_can_still_need() {
+    let mut launches = Launches::default();
+    let line = |thing: &str, at, job| Entry {
+        at,
+        since_boot: at,
+        job: Some(job),
+        ..entry(thing, 6, "")
+    };
+    let reload = |at| Entry {
+        at,
+        since_boot: at,
+        origin: Origin::Systemd,
+        ..entry(
+            "systemd",
+            5,
+            "Reload requested from client PID 1 ('systemctl') (unit x.service)...",
+        )
+    };
+    for heard in [
+        reload(79_000_000),
+        reload(80_000_000),
+        line("older.service", 199_000_000, Job::Stopping),
+        line("old.service", 200_000_000, Job::Stopping),
+        line("timed.service", 300_000_000, Job::Stopping),
+        line("timed.service", 300_100_000, Job::Started),
+        reload(400_000_000),
+        line("recent.service", 450_000_000, Job::Stopping),
+    ] {
+        launches.heard(&heard);
+    }
+    // The new day starts just the restart window after the old stop, past
+    // it after the older, just twice it after the second reload, and past
+    // that after the first, by a second each.
+    let carried = launches.carried(320_000_000);
+    let reloads: Vec<i64> = carried
+        .reloaded
+        .values()
+        .flatten()
+        .map(|reload| reload.at)
+        .collect();
+    assert_eq!(
+        (
+            carried.stopping.keys().cloned().collect::<Vec<_>>(),
+            reloads,
+            carried.restarted.is_empty()
+                && carried.restarting.is_empty()
+                && carried.stamped.is_empty(),
+        ),
+        (
+            vec!["old.service".to_owned(), "recent.service".to_owned()],
+            vec![80_000_000, 400_000_000],
+            true,
+        ),
+        "a new day carried a stop or reload past the restart window, or a restart already timed"
+    );
+}

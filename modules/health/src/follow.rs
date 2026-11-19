@@ -426,8 +426,9 @@ impl Follower {
 
     /// Take one line of the source's. A line of a new day writes
     /// the old one and starts the new, which sees nothing gone wrong yet,
-    /// so a fault still seen counts once in it too; one of a day already
-    /// written is left out, since that day is done.
+    /// so a fault still seen counts once in it too. Of one of a day already
+    /// written, only its stops, starts and reloads are taken, for the new
+    /// day's restarts (`Launches::before`), since that day is done.
     ///
     /// # Errors
     ///
@@ -443,10 +444,20 @@ impl Follower {
                 return Err(io::Error::other("the day it ends is still unwritten"));
             }
             self.write()?;
+            // A restart across midnight is the new day's, so its stop
+            // and the reloads before it carry on, as a start of health
+            // reads the restarts' followers from just before the day
+            // (`journal::reading`).
             let read = std::mem::take(&mut self.day.read);
+            let launches = self.day.launches.carried(start_of(entry.at, &self.zone));
             self.day = Day::new(&date);
             self.day.read = read;
+            self.day.launches = launches;
         } else if date < self.day.date {
+            // That day is done, but a stop or reload of it, heard late or
+            // read as the day leads in, may still be a restart's in this.
+            self.day.launches.before(&entry);
+            self.changed = true;
             return Ok(());
         }
         self.day.take(&entry);
@@ -519,6 +530,15 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
     Timestamp::from_microsecond(at)
         .map(|at| at.to_zoned(zone.clone()).date().to_string())
         .unwrap_or_default()
+}
+
+/// The start of the day a moment in microseconds since the epoch falls in,
+/// in the zone given, in microseconds: the moment itself when it can't be
+/// placed, as for a stamp out of jiff's range.
+fn start_of(at: i64, zone: &TimeZone) -> i64 {
+    Timestamp::from_microsecond(at)
+        .and_then(|moment| moment.to_zoned(zone.clone()).start_of_day())
+        .map_or(at, |start| start.timestamp().as_microsecond())
 }
 
 /// Follow the machine's own source into `into` until a follower ends,
