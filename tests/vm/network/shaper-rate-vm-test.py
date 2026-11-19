@@ -164,7 +164,7 @@ class Rig:
         Each reading's plateau and reason go into `said` too, since the journal tells only
         where a spell of limits begins and ends. They're filed under the second they were
         read, which is a second or so after the one the shaper last heard; the trace's own
-        rows give each recorded second's hold and plateau exactly. `said` is the caller's,
+        rows give each recorded second's ask and plateau exactly. `said` is the caller's,
         so a reading that fails partway still leaves what it heard.
         """
         self.client.succeed(
@@ -179,8 +179,8 @@ class Rig:
             rates.append(int(link.get("up", 0)))
             heard = link.get("heard") or {}
             plateau = heard.get("plateau")
-            plateau = None if plateau is None else round(plateau)
-            why = heard.get("why")
+            plateau = "none" if plateau is None else round(plateau)
+            why = heard.get("why", "none")
             said.append(f"{second:03d} read {rates[-1]} kbit/s, plateau {plateau}: {why}")
             status, _ = self.client.execute(
                 f"systemctl -M alice@ --user is-active --quiet ping-{name}"
@@ -202,14 +202,12 @@ class Rig:
         """Say whether the shaper holds under that rate with the connection's queue drained."""
         return self.up() < kbit and self.backlog() < DRAINED
 
-    def trace(self) -> str:
-        """Give what the recorder saw each second, and what the shaper said, for a failure.
+    def traced(self) -> dict[int, str]:
+        """Give what the shaper's own trace says of eth1, by the recorded second it was for.
 
-        Each second's upload over every link to the router, in kbit/s, from their counters,
-        and the median of its own delays up, in ms, before the controller takes each
-        reflector's least off; then what the shaper held the upload to that second, the
-        plateau it held under, and whether its queue was ours, from its own trace. A line
-        either is still writing is passed over.
+        What the controller asked the upload be held to, before the floor and the link's
+        most, any ceiling over it, the plateau it held under, and whether its queue was ours.
+        A line still writing is passed over.
         """
         # Read as it stands, so a missing file can't bury the failure it explains.
         _, text = self.client.execute("cat /var/lib/shaper/heard/*.jsonl")
@@ -219,11 +217,30 @@ class Rig:
                 step: Json = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if step.get("link") == "eth1":
-                queued = (step.get("ours") or {}).get("queued")
+            if step.get("link") == "eth1" and "at" in step:
+                # The trace leaves out what had no value: no limit, ceiling, plateau or queue.
+                asked = step.get("up", "no limit")
+                ceiling = step.get("ceiling", "none")
+                queued = (step.get("ours") or {}).get("queued", "none")
                 held[step["at"]] = (
-                    f", held {step.get('up')}, plateau {step.get('plateau')}, queued {queued}"
+                    f", asked {asked}, ceiling {ceiling}, plateau {step.get('plateau', 'none')},"
+                    f" queued {queued}"
                 )
+        return held
+
+    def trace(self) -> str:
+        """Give what the recorder saw each second, and what the shaper said, for a failure.
+
+        Each second's upload over every link to the router, in kbit/s, from their counters,
+        and the median of its own delays up, in ms, before the controller takes each
+        reflector's least off; then what the shaper's own trace says of that second. A line
+        the recorder is still writing is passed over. A recorded second the trace has no line
+        for reads as not traced, and a trace with no line for eth1, or none for any recorded
+        second, says so, so a join that found nothing reads apart from a shaper that held
+        nothing.
+        """
+        held = self.traced()
+        # Read as it stands, so a missing file can't bury the failure it explains.
         _, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl")
         seconds: dict[int, tuple[list[int], list[float]]] = {}
         for line in text.splitlines():
@@ -237,6 +254,7 @@ class Rig:
             sent.append(sample["tx"])
             if "out" in sample:
                 delays.append(sample["out"])
+        untraced = ", not traced" if held else ""
         rows = []
         last = None
         for second, (sent, delays) in sorted(seconds.items()):
@@ -245,8 +263,12 @@ class Rig:
             last = (second, max(sent))
             median = sorted(delays)[len(delays) // 2] if delays else None
             rows.append(
-                f"{second % 1000:03d} {kbit:6d} kbit/s up, out {median}{held.get(second, '')}"
+                f"{second % 1000:03d} {kbit:6d} kbit/s up, out {median}{held.get(second, untraced)}"
             )
+        if not held:
+            rows.append("no shaper trace for eth1 under /var/lib/shaper/heard")
+        elif not held.keys() & seconds.keys():
+            rows.append(f"none of the shaper's {len(held)} traced seconds was one recorded")
         _, said = self.client.execute("journalctl -u shaper -u shaper-record -o cat --no-pager")
         _, status = self.client.execute("cat /run/shaper/status.json")
         return "\n".join([*rows, said, status])
@@ -324,7 +346,11 @@ def test_finds_the_connection(loaded: Rig) -> None:
         # The rates show where it settled, not what took it there.
         # Said first, as it needs nothing more of a guest that may have gone.
         print("while the pings went, the shaper said:", *said, sep="\n")
-        print(loaded.trace())
+        # A trace that can't be read is said beside the failure, never in its place.
+        try:
+            print(loaded.trace())
+        except Exception as error:  # noqa: BLE001 # Any error of the trace's is only said.
+            print(f"no trace: {error!r}")
         raise
 
 
