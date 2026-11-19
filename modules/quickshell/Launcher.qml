@@ -1682,8 +1682,9 @@ Scope {
                 return { error: `${said} takes words: ${act.ask ?? ""}` };
             return ran(walkedRun(() => act.given(words)));
         }
-        // One with nothing to run, as an answered ask or a figure, does
-        // nothing and says so, as a terminal's do does, rather than throw.
+        // One whose Return's act has nothing to run, which the catalogue
+        // lists none of today, does nothing and says so, as a terminal's do
+        // does, rather than throw.
         if (typeof act.run !== "function")
             return refused(Words.field.becoming?.idle ?? "");
         // As Return does it, save that what's typed, Ask's question, picks
@@ -13231,7 +13232,8 @@ Scope {
                                 : root.stepsThing(root.selected) ? "entered"
                                 : root.endsSomething(root.selected) ? "lined"
                                 : root.lands(root.selected) ? "landed"
-                                : Arming.holdsStill(root.selected) ? "held" : "ran";
+                                : root.heldWhyOf([root.selected], root.selected?.returns)
+                                    !== null ? "held" : "ran";
                             // Arming did its own press, armed or done, and
                             // any landing before it is over.
                             if (arming)

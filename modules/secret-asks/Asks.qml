@@ -50,7 +50,8 @@ Provider {
         toldAs: key => provider.hiding ? Words.name("asks:hidden") : ready.served(key)?.name ?? ""
         // Withheld while hidden for the share, or before niri has said
         // whether there is one, which fails closed.
-        whyWithheld: () => !provider.hiding ? undefined : provider.hiddenWhy()
+        // Undefined with no word for it, so ReadyRows says its own.
+        whyWithheld: () => !provider.hiding ? undefined : provider.hiddenWhy() || undefined
         place: "asks"
         beside: ["summary"]
         make: (row, key) => provider.made(row, key)
@@ -74,8 +75,10 @@ Provider {
     onHidingChanged: {
         forget();
         ready.remade();
-        if (hiding)
-            launcher?.untold?.();
+        // What was told goes either way: before a share it names what's
+        // hidden now, and after one it says why Return held an ask that
+        // would now arm.
+        launcher?.untold?.();
         heldAgain();
         changed();
     }
