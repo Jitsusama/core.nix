@@ -326,7 +326,20 @@ QtObject {
         check("steps it doesn't leave are as made",
             read(Held.leaveTo(below, how(false, false), ways).steps.slice(0, 2)),
             read(below.steps.slice(0, 2)));
-        check("and as many as there were", Held.leaveTo(below, how(false, true), ways)
-            .steps.length, deeper.length);
+        // A step below the spent one, made from what it offered, is gone
+        // with it, so the one on screen shows nothing stale under him.
+        keptWith = [];
+        const under = Held.leaveTo(Held.remade(deeper, 1, [row("s1", "ended")], ways),
+            how(false, true), ways);
+        check("while he holds the rows each step below the spent one is gone too",
+            `${keptWith.join(" ")} ${under.steps[2].rows.length}`, "s1:0 look:0 0");
+        // A thing landed in from a search, `through`, is left back to the
+        // search, past the collection it was found in, as Joel's - leaves it.
+        const through = { steps: [steps[0], Object.assign({}, steps[1], { through: true })],
+            leave: 1, all: false };
+        check("a spent thing landed in from a search leaves past its collection",
+            said(Held.leaveTo(through, how(false, false), ways)), "0 false");
+        check("but never past the outermost",
+            said(Held.leaveTo(through, how(true, false), ways)), "1 false");
     }
 }
