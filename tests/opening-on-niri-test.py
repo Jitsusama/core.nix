@@ -83,6 +83,9 @@ WAKE_BUDGET_MS = 7
 WAKE_HELD = timedelta(milliseconds=600)
 WAKES_HELD = 3
 WAKE_WAITS_MS = 300
+# How far a wait worked out again from a record's times may stand from the one it says, as each
+# time is rounded apart from the others it's worked from.
+WAKE_ROUNDED_MS = 2
 # What the shell says once a kept opening is filled in, before its sources wake.
 FILLED_SAID = b"launcher: filled the opening in "
 
@@ -963,6 +966,11 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
     assert opening["shown"]["keys"] == left["keys"], f"kept, the rows moved: {left} to {opening}"
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
+    # A place's fill joins inside `open`, as its steps into the place read what's joined; only
+    # home's is put off to a slice of its own.
+    assert cast("int", opening.get("fillJoined", 0)) >= 1, (
+        f"the place's fill didn't join: {opening}"
+    )
     assert shell.showing()["path"] == there, "filled in, it left the place its chord opened"
 
 
@@ -1672,12 +1680,68 @@ def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
         return bool(woke) and "slices" in woke[0]
 
     shell.launcher_until(slept)
-    slices = cast("list[Json]", woke[0]["slices"])
+    # A refresh held for home's finding is a slice of its own, which wakes no source and has
+    # no budget to run past.
+    slices = [each for each in cast("list[Json]", woke[0]["slices"]) if not each.get("refreshed")]
     names = [name for each in slices for name in each["woke"]]
     assert names[:1] == ["on"], f"home's first row's source didn't wake first: {slices}"
     assert len(names) == len(set(names)), f"a source woke twice: {slices}"
     assert all(each["took"] >= WAKE_BUDGET_MS for each in slices[:-1]), (
         f"a slice ended before its budget: {slices}"
+    )
+
+
+def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> None:
+    """A kept home's fill finds home again, and joins, in a slice of its own after the fill.
+
+    Inside `open` they were a third of the fill's 14 ms on a builder, and the fill's "opening"
+    held a median 27 ms of 32 of Joel's 53 longest stalls before he could type (H6EDLC,
+    2026-11-18). The card shows home as kept until then, and a key or a click before it finds
+    home first, so it acts on home found now; with neither, the slice finds it. A source's
+    refresh waits for it, which no change here times into that window, so the storm's retitles
+    in desktop-keeps-pace are what reach it.
+    """
+    nth = opened_from_kept(shell)["nth"]
+    woke: list[Json] = []
+
+    def slept(_: Json) -> bool:
+        woke[:] = [each for each in openings(shell) if each.get("nth") == nth]
+        return bool(woke) and "slices" in woke[0]
+
+    shell.launcher_until(slept)
+    assert woke[0].get("fillJoined") == 0, f"the fill joined the choices inside `open`: {woke}"
+    assert woke[0].get("foundBy") == "slice", f"home wasn't found in a slice of its own: {woke}"
+    assert cast("int", woke[0].get("foundJoined", 0)) >= 1, f"the slice never joined: {woke}"
+    # A slice runs once a frame is drawn, or the fallback's 33 ms, so never as the fill ends;
+    # one inside `open` shows as fillJoined above, as the fill's own clock starts after it.
+    assert cast("int", woke[0]["foundFrom"]) >= 1, f"home was found as the fill ended: {woke}"
+    # Searched again, not only joined, as the kept rows it shows till then list keys either way:
+    # the fill says its rows once the slice has found home, and says what found them, which the
+    # storm's check holds to the first frame's; found with nothing changed, they stand there.
+    assert woke[0].get("filledFoundBy") == "slice", f"the slice didn't find home again: {woke}"
+    shown, filled = cast("Json", woke[0]["shown"]), cast("Json", woke[0]["filled"])
+    assert (filled["keys"], filled["at"]) == (shown["keys"], shown["at"]), (
+        f"found again, home's rows or cursor moved: {woke}"
+    )
+    # Its time is a slice's, and the sources' first slice comes after it, so the finding is never
+    # read as their first wait: the longest wait is the finding's own from the fill, or one
+    # after it.
+    found = cast("int", woke[0]["foundTook"])
+    slices = cast("list[Json]", woke[0]["slices"])
+    # Each is rounded alike, so the longest is the finding's or a source slice's exactly.
+    longest = max([found] + [cast("int", one["took"]) for one in slices])
+    assert woke[0]["longestSlice"] == longest, f"the finding went uncounted: {woke}"
+    # The sources' first wakes on the frame after, or the fallback's 33 ms, never in the same
+    # slice. The shell says so by the frame or fallback each ran behind, not their times, which
+    # are rounded and can stand close when the next frame comes soon after a long find.
+    assert woke[0]["foundAlone"] is True, f"a source woke in the finding's slice: {woke}"
+    befores = [{"from": woke[0]["foundFrom"], "took": found}, *slices]
+    waits = [cast("int", woke[0]["foundFrom"])] + [
+        cast("int", one["from"]) - cast("int", before["from"]) - cast("int", before["took"])
+        for before, one in zip(befores, slices, strict=False)
+    ]
+    assert abs(cast("int", woke[0]["longestWake"]) - max(waits)) <= WAKE_ROUNDED_MS, (
+        f"the sources' waits weren't counted from the finding's end: {woke}"
     )
 
 

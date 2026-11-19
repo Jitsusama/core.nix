@@ -125,3 +125,44 @@ function sourceNamed(all, nameOf, provider) {
     }
     return id => byName.get(provider(id)) ?? null;
 }
+
+// Whether an opening leaves finding home and joining its sources to a
+// slice after its fill's frame (Launcher.qml's fillFound), since the card
+// already shows what was kept: only home's fill, run by `filled()` and so
+// sure of a slice to follow, with a home kept for the card to stand on
+// until then. A place's fill, whose steps into it run in the open, and any
+// other opening find and join there as ever (H6EDLC, 2026-11-18).
+function findsLater(opening) {
+    return opening.byFill && !opening.intoPlace && opening.kept > 0;
+}
+
+// Whether that slice, or a key, a click or a chord run before it, searches
+// home again rather than only joining: only where the open would have
+// found home, and never for a chord, which steps away from it at once, or
+// once a step taken or a word typed has found its own.
+function findsAgain(by, stands) {
+    return stands.home && by !== "chord" && stands.held === 0 && stands.typed === "";
+}
+
+// How a kept opening's sources woke: the longest slice, and the longest
+// any waited after the one before ended, or the first after the fill.
+// Each is `{ from, took }`, in ms from the fill's end. Home found again
+// after the fill, `found`, or null where it was found inside it, is one
+// slice more before the sources' first, so its time is counted as a
+// slice's and never read as the first's wait (H6EDLC, 2026-11-18).
+function wakeTimes(found, slices) {
+    const timed = (found === null ? [] : [found]).concat(slices);
+    const longest = timed.reduce((most, one) => Math.max(most, Math.round(one.took)), 0);
+    const waited = timed.reduce((most, one, at) => Math.max(most, at === 0 ? one.from
+        : one.from - timed[at - 1].from - timed[at - 1].took), 0);
+    return { longest, waited: Math.round(waited) };
+}
+
+// Whether the slice that found home woke behind a frame or fallback of its
+// own, so no source woke in it: `after` names what woke the find, the
+// frame's number or its fallback's turn, and each slice carries its own.
+// One with no name to compare says nothing, so it's never vouched for.
+function foundAlone(after, slices) {
+    const named = one => one !== null && one !== undefined;
+    return named(after) && slices.every(one => named(one.after) && one.after !== after);
+}

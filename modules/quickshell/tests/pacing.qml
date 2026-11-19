@@ -10,7 +10,9 @@
 // opening says its parts slowest first, and weighs the foot's verbs only
 // once the words or the face have changed, and each row's keys once for
 // what's typed, the steps and the mode; an opening's stall is said by the
-// work it ran into, each frame's rows laid out and its sync apart. What
+// work it ran into, each frame's rows laid out and its sync apart, and its
+// sources' waking counts home found after its fill as a slice, which only
+// home's fill leaves to one, searching home again but for a chord. What
 // was presented is said by
 // place, each change timed from the earliest line not yet drawn
 // (launcher/Presented.js). A closing makes again only the spots of the
@@ -420,6 +422,58 @@ QtObject {
             [quests, people, on, power, disk]);
         check(failures, "home's own come first, each once, then the rest",
             order.map(one => one.name).join(" "), "on power disk people quests");
+
+        // Home found again after the fill is a slice of its own, so its
+        // time is a slice's, never the sources' first wait.
+        const slices = [{ from: 20, took: 8.4 }, { from: 30, took: 3 }];
+        const alone = Wanted.wakeTimes(null, slices);
+        check(failures, "with no finding, the first waits from the fill", alone.waited, 20);
+        check(failures, "and the longest slice is a source's", alone.longest, 8);
+        const bySlice = Wanted.wakeTimes({ from: 2, took: 12.6 }, slices);
+        check(failures, "found in a slice, the first waits from its end", bySlice.waited, 5);
+        check(failures, "and the finding is the longest slice", bySlice.longest, 13);
+        const byKey = Wanted.wakeTimes({ from: 0, took: 4 }, [{ from: 37, took: 8 }]);
+        check(failures, "found by a key, the fallback's wait is after it", byKey.waited, 33);
+        check(failures, "a finding shorter than a slice isn't the longest", byKey.longest, 8);
+        // The find woke alone only where no slice ran behind its frame or
+        // fallback, and a missing name never vouches for it.
+        const after = [{ after: 13 }, { after: "the fallback for 4" }];
+        check(failures, "behind frames and a fallback of their own, the find woke alone",
+            Wanted.foundAlone(12, after), true);
+        check(failures, "a slice behind the find's frame woke with it",
+            Wanted.foundAlone(13, after), false);
+        check(failures, "a slice behind the find's fallback woke with it",
+            Wanted.foundAlone("the fallback for 4", after), false);
+        check(failures, "a find with no frame named isn't vouched for",
+            Wanted.foundAlone(null, after), false);
+        check(failures, "nor one beside a slice with none",
+            Wanted.foundAlone(12, after.concat([{}])), false);
+
+        // Only home's fill, run by filled() with home kept, finds home
+        // after its frame; a place's, or any other opening, in the open.
+        const home = { byFill: true, intoPlace: false, kept: 8 };
+        check(failures, "home's fill finds home after its frame",
+            Wanted.findsLater(home), true);
+        check(failures, "a place's fill finds it in the open",
+            Wanted.findsLater(Object.assign({}, home, { intoPlace: true })), false);
+        check(failures, "an open filled() didn't run finds it there",
+            Wanted.findsLater(Object.assign({}, home, { byFill: false })), false);
+        check(failures, "an opening with no home kept finds it there",
+            Wanted.findsLater(Object.assign({}, home, { kept: 0 })), false);
+        // Found after it, home is searched again by a slice, a key or a
+        // click, but a chord only joins, and a step or a word finds its own.
+        const stands = { home: true, held: 0, typed: "" };
+        for (const by of ["slice", "key", "click"])
+            check(failures, `found by a ${by}, home is searched again`,
+                Wanted.findsAgain(by, stands), true);
+        check(failures, "found by a chord, home is only joined",
+            Wanted.findsAgain("chord", stands), false);
+        check(failures, "found after a step, home is only joined",
+            Wanted.findsAgain("key", Object.assign({}, stands, { held: 1 })), false);
+        check(failures, "found after a word, home is only joined",
+            Wanted.findsAgain("key", Object.assign({}, stands, { typed: "g" })), false);
+        check(failures, "where the open wouldn't find home, it's only joined",
+            Wanted.findsAgain("slice", Object.assign({}, stands, { home: false })), false);
     }
 
     // The source an id names is found asking the vocabulary once for the

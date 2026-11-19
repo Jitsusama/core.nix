@@ -5663,6 +5663,18 @@ Scope {
     function refreshDue() {
         if (refreshing.length === 0)
             return;
+        // One that comes before a kept home's slice waits for it, as it
+        // would join and search home inside the fill's frame, or change
+        // home before home is found; it's made in a slice of its own after
+        // the find (wakeNext), or at once on a shut (refreshesAgain). Shut,
+        // nothing's held, so a shut stopped short leaves no source waiting.
+        if (fillFinding && open) {
+            refreshHeld = true;
+            return;
+        }
+        // Any refresh made takes those held with it, so the slice after the
+        // find makes one only while one held still waits.
+        refreshHeld = false;
         keepPace(Pacing.took(Date.now(), pace));
         const refreshedAt = pace.at;
         const begun = KeyTimes.now();
@@ -9981,6 +9993,9 @@ Scope {
     // Joel's file chooser said no opening line, its keys 100 ms each
     // (2026-11-13, 03:45).
     function into(name) {
+        // A chord as home's fill is still to be found steps in over the
+        // choices joined, as a key would (fillFound).
+        fillFound("chord");
         const asked = !open && !opening && openAsked < 0;
         if (asked)
             askedToOpen();
@@ -10501,6 +10516,11 @@ Scope {
             // walked from outside or a closed launcher's check finds it as
             // ever; shut, none of its rows are wanted, so none are made.
             wakeRest();
+            // Nor is home found for a fill that's shut before its slice,
+            // whose rows are said as the card showed them.
+            fillFinding = false;
+            refreshesAgain();
+            fillSaidLate();
             // What waits on a frame runs, since no frame of the launcher's
             // is coming.
             afterFramesDue();
@@ -10539,7 +10559,23 @@ Scope {
             // home would open saying the count of the last join.
             choicesStale = true;
             lap("marking");
-            freshen();
+            // A fill joins, and finds home, in a slice of its own after its
+            // frame (fillFound), since the card already shows what was
+            // kept: inside `open` they were a third of the fill's 14 ms on
+            // a builder, and the fill's "opening" held a median 27 ms of
+            // 32 of Joel's 53 longest stalls (2026-11-18). Only home's
+            // fill, with home kept (Wanted.findsLater).
+            fillFinding = Wanted.findsLater({ byFill: fillOpening, intoPlace: fillingPlace,
+                kept: homeKept.length });
+            fillFoundBy = "";
+            fillFoundThrew = false;
+            fillFoundHome = false;
+            fillFoundFrom = 0;
+            fillFoundTook = 0;
+            fillFoundJoined = 0;
+            fillFoundAfter = null;
+            if (!fillFinding)
+                freshen();
             lap("joining");
             trials.opened(KeyTimes.now());
             lap("trials");
@@ -10575,7 +10611,8 @@ Scope {
             // kept yet it's found, since the card's height is home's. Over a
             // viewer no row is shown at all (over), so neither is home.
             const homeFound = !(openingInto || viewing) || homeKept.length === 0;
-            if (homeFound) {
+            fillFindsHome = fillFinding && homeFound;
+            if (homeFound && !fillFinding) {
                 restart("");
                 homeKept = matches;
             }
@@ -11121,10 +11158,14 @@ Scope {
 
     // Whether the opening began from what was kept, and what filled it in:
     // its first frame, or a key or a click before that frame was drawn,
-    // whose fill is said once the frame is, since it's that opening's.
+    // whose fill's record is made once the frame's is, since it's that
+    // opening's; home's, once home is found again after it (fillFound),
+    // though each fill is said as it ends. Its sources'
+    // waking, done before that frame, waits for the frame's record too.
     property bool openKept: false
     property string openFilledBy: ""
-    property real fillEarly: -1
+    property var fillEarly: null
+    property var wokeEarly: null
 
     // A second after an opening asked for home as it was kept, rows still
     // unfilled say how they stand as being read (PlaceRow.unfilled), since
@@ -11156,7 +11197,8 @@ Scope {
         keptUnfilled.restart();
         openKept = true;
         openFilledBy = "";
-        fillEarly = -1;
+        fillEarly = null;
+        wokeEarly = null;
         fillPresented = false;
         fillUnpresented.stop();
         openFramesSized = 0;
@@ -11291,25 +11333,28 @@ Scope {
     // the key acts on what's there and nothing moves the cursor after it.
     function keyPressing() {
         filled("key");
+        fillFound("key");
         landOn = Steady.landing(landOn, { key: true }).waiting;
     }
 
     // Brings a card shown from what it kept up to now: open, every source
-    // it reads wakes, home is found again where its rows stand, and its
-    // drawer comes. A key or a click before its first frame is drawn does
-    // this first, so it acts on what's there now, never on what was kept.
+    // it reads wakes, home is found again where its rows stand, after its
+    // frame (fillFound), and its drawer comes. A key or a click before its
+    // first frame is drawn does this first, so it acts on what's there
+    // now, never on what was kept.
     function filled(by) {
         if (!opening || open)
             return;
         openFilledBy = by;
         const began = KeyTimes.now();
         fillFrom = feltFrom < 0 ? -1 : began - feltFrom;
-        // Its sources wake a few a frame from the next (wakeNext), so home,
-        // or the place a chord opened, is found again here from what each
-        // made last.
+        // Its sources wake a few a frame from the next (wakeNext), so the
+        // place a chord opened is found again here from what each made
+        // last, and home in the first slice, before any wakes (fillFound).
         // Each part of the fill is felt by its own name inside filling,
         // which held 31 to 68 ms of Joel's openings' longest stalls with
         // nothing saying which part (BXNMUC, 2026-11-14, 09:18 to 09:45).
+        const joinedBefore = choicesJoined;
         const ordering = KeyTimes.now();
         wakeQueue = wakingOrder();
         for (const source of wakeQueue)
@@ -11319,28 +11364,46 @@ Scope {
         waking = true;
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
-        if (place !== "") {
-            const lands = landsOnFill;
-            fillingPlace = true;
-            try {
-                into(place);
-            } finally {
-                fillingPlace = false;
+        // Cleared however the fill ends, so no later open defers home
+        // with no slice to follow.
+        fillOpening = true;
+        try {
+            if (place !== "") {
+                const lands = landsOnFill;
+                fillingPlace = true;
+                try {
+                    into(place);
+                } finally {
+                    fillingPlace = false;
+                }
+                if (lands !== null)
+                    landingOn(lands.wanted, lands.normal);
+            } else {
+                const opened = KeyTimes.now();
+                open = true;
+                feltSpan("opening", opened);
             }
-            if (lands !== null)
-                landingOn(lands.wanted, lands.normal);
-        } else {
-            const opened = KeyTimes.now();
-            open = true;
-            feltSpan("opening", opened);
+        } finally {
+            fillOpening = false;
         }
+        fillJoined = choicesJoined - joinedBefore;
         wakeBegan = KeyTimes.now();
         feltSpan("filling", began);
         wakeLater();
-        if (openAsked >= 0)
-            fillEarly = KeyTimes.now() - began;
-        else
-            filledSaid(KeyTimes.now() - began);
+        // Said as it ends, but its record takes it, and home's rows, once
+        // home is found again after it, so a check reading them, as the
+        // storm's does, reads those found, never the kept ones the card
+        // showed till then.
+        fillEarly = fillSaid(KeyTimes.now() - began);
+        fillSaidLate();
+    }
+    // A fill's record made once its frame's is and home is found again,
+    // whichever comes last.
+    function fillSaidLate() {
+        if (fillEarly === null || fillFinding || openAsked >= 0)
+            return;
+        filledSaid(fillEarly);
+        fillEarly = null;
     }
 
     // Whether a kept opening's sources are waking, and those still to wake,
@@ -11358,6 +11421,10 @@ Scope {
     // Which wait for the next slice is the live one, so the frame and the
     // fallback after it (wakeFallback) wake it once between them.
     property int wakeTurn: 0
+    // What the live slice waits behind: the number of the frame that woke
+    // it, or its fallback's turn, so two slices behind the same frame or the
+    // same fallback read the same however close in time they run.
+    property var wakeAfter: null
 
     // The next slice waits for the frame that draws this one's rows, or
     // for wakeFallback where that frame doesn't come. Niri sends no frame
@@ -11368,13 +11435,14 @@ Scope {
     function wakeLater() {
         const turn = wakeTurn + 1;
         wakeTurn = turn;
-        afterFrame(() => wakeAgain(turn));
+        afterFrame((begun, frame) => wakeAgain(turn, frame));
         wakeFallback.restart();
     }
-    function wakeAgain(turn) {
+    function wakeAgain(turn, frame) {
         if (turn !== wakeTurn)
             return;
         wakeTurn = turn + 1;
+        wakeAfter = frame ?? `the fallback for ${turn}`;
         wakeFallback.stop();
         wakeNext();
     }
@@ -11403,6 +11471,36 @@ Scope {
     function wakeNext() {
         if (!open || !waking)
             return;
+        const after = wakeAfter;
+        // The fill's own finding is the first slice, alone, said apart
+        // from the sources' (wokeSaid), whose first waits from its end.
+        if (fillFinding) {
+            fillFoundAfter = after;
+            fillFound("slice");
+            wakeLater();
+            return;
+        }
+        // A refresh held for the find is the slice after it, waiting for a
+        // frame or the fallback as any slice does, so the sources' first
+        // waits for its end. It was due when asked, so it's made as then,
+        // its pace kept as any refresh's (Pacing.took). The next slice is
+        // asked first, so a throw in it stops no waking, and it's said
+        // among the slices, so its time is never read as a wait.
+        if (refreshHeld) {
+            refreshHeld = false;
+            if (refreshing.length > 0) {
+                wakeLater();
+                const began = KeyTimes.now();
+                try {
+                    refreshDue();
+                } finally {
+                    wakeSlices = wakeSlices.concat([{ from: began - wakeBegan,
+                        took: KeyTimes.now() - began, woke: [], refreshed: true, after }]);
+                    feltSpan("a held refresh", began);
+                }
+                return;
+            }
+        }
         const budget = typed === "" ? wakeBudget : Infinity;
         const began = KeyTimes.now();
         const slice = [];
@@ -11414,7 +11512,8 @@ Scope {
             source.asleep = false;
             slice.push({ name: source.settings.name, took: KeyTimes.now() - at });
         }
-        wakeSlices = wakeSlices.concat([{ from, took: KeyTimes.now() - began, woke: slice }]);
+        wakeSlices = wakeSlices.concat([{ from, took: KeyTimes.now() - began, woke: slice,
+            after }]);
         feltSpan("waking", began);
         if (wakeQueue.length > 0) {
             wakeLater();
@@ -11425,6 +11524,90 @@ Scope {
         if (choicesStale)
             afterFrame(freshen);
     }
+
+    // Whether a fill has still to join the choices, and find home again
+    // where it fills home, which the first slice after its frame does
+    // (wakeNext), or a key, a click or a chord before that, so each acts
+    // on home found now rather than as it was kept; a refresh waits for
+    // it. Home is found from what each source made last, as it was inside
+    // `open` before, and a row held as it will be that now reads so is let
+    // go (heldAgreed), as a source's change would, so none waits on
+    // becameLate.
+    property bool fillFinding: false
+    property bool fillFindsHome: false
+    // Whether filled() is opening it, as only a fill it runs has a slice
+    // to come, and how many times the choices were joined inside it.
+    property bool fillOpening: false
+    property int fillJoined: 0
+    // What ran it, whether it searched home again, when after the fill,
+    // what it took and how many times it joined the choices, said with
+    // the sources' waking.
+    property string fillFoundBy: ""
+    property bool fillFoundHome: false
+    property real fillFoundFrom: 0
+    property real fillFoundTook: 0
+    property int fillFoundJoined: 0
+    // The frame or fallback the slice that found home ran after, so the
+    // waking record says whether a slice ran behind the same frame or the
+    // same fallback, however close in time the next frame comes.
+    property var fillFoundAfter: null
+    function fillFound(by) {
+        if (!fillFinding)
+            return;
+        fillFinding = false;
+        fillFoundBy = by;
+        const began = KeyTimes.now();
+        const joinedBefore = choicesJoined;
+        // A key, a click or a chord runs it once filled() has, so it's
+        // timed from the fill's end as a slice is.
+        fillFoundFrom = began - wakeBegan;
+        // A throw is said and goes no further, so the slice still wakes
+        // the sources after it, a frame's other callbacks still run, and
+        // the key, click or chord that ran it still acts.
+        try {
+            freshen();
+            if (Wanted.findsAgain(by, { home: fillFindsHome, held: held.length,
+                typed: prompt.text })) {
+                restart("");
+                homeKept = matches;
+                fillFoundHome = true;
+                // The card's height is home's as found, as the open
+                // handler sized it from before home was found after it.
+                tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap)
+                    ? apart : 0);
+            }
+            heldAgreed(sources);
+        } catch (error) {
+            fillFoundThrew = true;
+            // One line, where the journal's other warnings are one each.
+            const at = (error.stack ?? "").split("\n")[0];
+            const said = String(error.message).split("\n")[0];
+            console.warn(`launcher: finding home after the fill threw: ${said}`
+                + (at === "" ? "" : ` at ${at}`));
+        } finally {
+            // Timed with the fill's record it makes, as that's this slice's
+            // work too.
+            fillFoundJoined = choicesJoined - joinedBefore;
+            fillSaidLate();
+            fillFoundTook = KeyTimes.now() - began;
+            feltSpan(fillFoundThrew ? "a throw finding home"
+                : fillFoundHome ? "finding home" : "joining", began);
+        }
+    }
+    // Whether a refresh came while home was still to be found, which is
+    // asked again, as a source already waiting is never asked again by
+    // its change (refreshed).
+    property bool refreshHeld: false
+    function refreshesAgain() {
+        if (!refreshHeld)
+            return;
+        refreshHeld = false;
+        if (refreshing.length > 0)
+            Qt.callLater(refreshDue);
+    }
+    // Whether finding home after the fill threw, so its span and the
+    // waking line say so where they're read, not only the warning.
+    property bool fillFoundThrew: false
 
     // Every source still asleep woken at once, as a closing wants none.
     function wakeRest() {
@@ -11439,25 +11622,42 @@ Scope {
     // How the sources woke, said once the last has, with the opening it
     // filled in, so its slices, the longest and what ended each are read.
     function wokeSaid(span) {
-        const slices = wakeSlices.map(one => ({ from: Math.round(one.from),
-            took: Math.round(one.took), woke: one.woke.map(each => each.name) }));
-        const longest = slices.reduce((most, one) => Math.max(most, one.took), 0);
-        // The longest a slice waited after the one before ended, or the
-        // first after the opening filled in, for its frame or the fallback
-        // in its place.
-        const waited = Math.round(wakeSlices.reduce((most, one, at) => Math.max(most,
-            at === 0 ? one.from : one.from - wakeSlices[at - 1].from - wakeSlices[at - 1].took),
-            0));
+        const slices = wakeSlices.map(one => Object.assign({ from: Math.round(one.from),
+            took: Math.round(one.took), woke: one.woke.map(each => each.name) },
+            one.refreshed ? { refreshed: true } : {}));
+        // The fill's finding, run by its own slice, a key, a click or a
+        // chord, is a slice of its own before the sources' (wakeTimes).
+        const found = fillFoundBy === "" ? null : { from: fillFoundFrom, took: fillFoundTook };
+        const { longest, waited } = Wanted.wakeTimes(found, wakeSlices);
+        const woke = Object.assign({ slices, longestSlice: longest, longestWake: waited,
+            foundBy: fillFoundBy }, found ? { foundFrom: Math.round(found.from),
+            foundTook: Math.round(found.took), foundJoined: fillFoundJoined } : {},
+            // Only a slice's find waits behind a frame; a key's, a click's
+            // or a chord's runs in its event, where this says nothing.
+            fillFoundBy === "slice"
+                ? { foundAlone: Wanted.foundAlone(fillFoundAfter, wakeSlices) } : {},
+            fillFoundThrew ? { foundThrew: true } : {});
+        // Woken before its frame made its record, the last is the opening
+        // before's, so this one's waking waits for the frame's (openDrawn).
         const last = openingsTimed[openingsTimed.length - 1];
-        if (last?.kept && last.slices === undefined) {
-            openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last,
-                { slices, longestSlice: longest, longestWake: waited })]);
-        }
-        const said = wakeSlices.map(one => one.woke.map(each =>
-            `${each.name} ${Math.round(each.took)}`).join(", ")).join("; ");
-        console.info(`launcher: woke the opening's sources in ${slices.length} slices over`
+        if (openAsked >= 0)
+            wokeEarly = woke;
+        else if (last?.kept && last.slices === undefined)
+            openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, woke)]);
+        const said = wakeSlices.map(one => one.refreshed
+            ? `a held refresh ${Math.round(one.took)}`
+            : one.woke.map(each => `${each.name} ${Math.round(each.took)}`).join(", "))
+            .join("; ");
+        const foundSaid = fillFoundBy === "" ? ""
+            : `, ${fillFoundThrew ? "threw finding home"
+                : fillFoundHome ? "home found again" : "joined again"} in`
+                + ` ${Math.round(fillFoundTook)} ms`
+                + (fillFoundBy === "slice" ? " in a slice of its own" : ` for a ${fillFoundBy}`);
+        // The find and a held refresh are slices of their own, as wakeTimes counts them.
+        console.info(`launcher: woke the opening's sources in`
+            + ` ${slices.length + (found ? 1 : 0)} slices over`
             + ` ${Math.round(span)} ms, the longest ${longest} ms, the longest wait between`
-            + ` them ${waited} ms (${said})`);
+            + ` them ${waited} ms (${said})${foundSaid}`);
     }
 
     // Shuts it however it's shown, for a source done with it: shut again
@@ -11488,6 +11688,8 @@ Scope {
         if (unlooked.length > 0 || unready.length > 0)
             readying.start();
         openAsked = -1;
+        fillEarly = null;
+        wokeEarly = null;
         markOpen(false);
         afterFramesDue();
     }
@@ -11657,7 +11859,10 @@ Scope {
     }
 
     // What filling an opening in took, said once it's done, with the rows
-    // it shows then beside those its first frame showed.
+    // it shows then beside those its first frame showed. Home's fill shows
+    // home as kept until home is found again after it (fillFound), and is
+    // said once it is (fillSaidLate), with what found it: none where home
+    // was left kept, a step or a word taken first, a chord or a throw.
     // Its own work's parts and all of it, and the rest, every binding and
     // source that woke as it opened, said apart, so a fill that holds the
     // first keys says which held them.
@@ -11665,19 +11870,30 @@ Scope {
     property real fillWorked: 0
     // When the fill began, from the chord or the ask, as `presented` is.
     property real fillFrom: -1
-    function filledSaid(took) {
+    // The fill said as it ends, giving what its record will take.
+    function fillSaid(took) {
+        const worked = Math.round(fillWorked);
+        const figures = { filling: Math.round(took), fillWorked: worked, fillParts: fillParts,
+            fillJoined: fillJoined,
+            fillFrom: Math.round(fillFrom), verbs: openVerbsWeighed,
+            filledBy: openFilledBy,
+            woke: openWoke,
+            madeBy: madeBy() };
+        const made = Object.values(figures.madeBy).reduce((sum, rows) => sum + rows, 0);
+        console.info(`launcher: filled the opening in ${figures.filling} ms, ${worked} ms`
+            + ` working (${partsSaid(fillParts)}) and the rest waking; ${made} rows made`
+            + ` (${Pacing.openingParts(figures.madeBy)})`);
+        return figures;
+    }
+    // The fill's figures kept in its opening's record, with the rows it
+    // left and what found them, once home is found again after it.
+    function filledSaid(figures) {
         const last = openingsTimed[openingsTimed.length - 1];
         if (!last || !last.kept || last.filling !== undefined)
             return;
-        const worked = Math.round(fillWorked);
-        const filled = { filling: Math.round(took), fillWorked: worked, fillParts: fillParts,
-            fillFrom: Math.round(fillFrom), verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy, woke: openWoke,
-            madeBy: madeBy() };
-        openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, filled)]);
-        const made = Object.values(filled.madeBy).reduce((sum, rows) => sum + rows, 0);
-        console.info(`launcher: filled the opening in ${filled.filling} ms, ${worked} ms`
-            + ` working (${partsSaid(fillParts)}) and the rest waking; ${made} rows made`
-            + ` (${Pacing.openingParts(filled.madeBy)})`);
+        openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, figures,
+            { filled: rowsSaid(),
+                filledFoundBy: fillFoundHome && !fillFoundThrew ? fillFoundBy : "" })]);
     }
     // An opening's parts, with waking's split by the source each woke.
     function partsSaid(parts) {
@@ -11703,6 +11919,12 @@ Scope {
     function openDrawn(beganAt, frame) {
         const asked = openAsked;
         openAsked = -1;
+        // Shut before its frame, an opening makes no record, so what
+        // waited for one goes unsaid rather than onto another's.
+        if (asked >= 0 && !open && !opening) {
+            fillEarly = null;
+            wokeEarly = null;
+        }
         if ((!open && !opening) || asked < 0)
             return;
         const sized = KeyTimes.now();
@@ -11753,12 +11975,11 @@ Scope {
             frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
             into: openChord };
         if (kept)
-            timed.shown = rowsSaid();
+            Object.assign(timed, { shown: rowsSaid() }, wokeEarly ?? {});
+        wokeEarly = null;
         openingsTimed = openingsTimed.concat([timed]).slice(-20);
-        if (kept && fillEarly >= 0) {
-            filledSaid(fillEarly);
-            fillEarly = -1;
-        }
+        if (kept)
+            fillSaidLate();
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
             + ` (${parts}), then ${after.settling} settling, ${after.waiting} waiting for a`
             + ` frame and ${after.drawing} drawing it, ${rows} rows made (${most})`
@@ -12704,9 +12925,10 @@ Scope {
             MouseArea {
                 anchors.fill: cardBands
                 z: 1
-                enabled: root.opening
+                enabled: root.opening || root.fillFinding
                 onPressed: mouse => {
                     root.filled("click");
+                    root.fillFound("click");
                     mouse.accepted = false;
                 }
             }

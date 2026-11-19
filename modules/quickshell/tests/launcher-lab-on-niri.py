@@ -63,6 +63,15 @@ WINDOWS = 4
 # two frames or three seconds at most once home is kept, with room for a loaded builder.
 PRIMED_S = 6
 
+# How long a presented opening waits to say it's usable, in seconds: its sources wake a few a
+# frame after it fills in, well inside this on a loaded builder.
+USABLE_S = 3
+# The lines an opening says once a key could act on it, or that none could in time.
+USABLE_SAID = ("launcher: opening usable", "launcher: opening not usable")
+# Said by an opening shut before it was usable, on its next tick, which can come after the next
+# opening's mark, so it never answers for that one.
+SHUT_FIRST = ", closed first"
+
 # How many notices are on screen as it runs, when it times Super+N's opening ("notices").
 NOTICES = 3
 
@@ -103,10 +112,14 @@ def latest(timed: list[Json]) -> int:
     return cast("int", timed[-1].get("nth", len(timed))) if timed else 0
 
 
-def opened(shell: Shell, place: str) -> Json:
+def opened(shell: Shell, place: str, mark: int | None = None) -> Json:
     """Open a place from shut as its chord asks, and give that opening once niri presented it.
 
     It's asked once the shut launcher has kept home, as Joel's openings come seconds apart.
+    Given the log's mark from before the ask, it asks the shell nothing until the opening says
+    whether it was usable, as the shell answers on the thread whose stall the lab times. One
+    still unusable when the wait gives up is asked about while its stall is timed, so it's
+    marked as such, and its stall is left out.
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     before = latest(openings(shell))
@@ -115,6 +128,12 @@ def opened(shell: Shell, place: str) -> Json:
     else:
         words = ("toggle",) if place == "home" else ("collection", place)
         shell.as_account(shell.ipc(*words))
+    asked_early = False
+    if mark is not None:
+        giving_up = time.monotonic() + USABLE_S
+        while not usable_said(shell, mark) and time.monotonic() < giving_up:
+            time.sleep(launcher_on_niri.POLL)
+        asked_early = not usable_said(shell, mark)
     each: list[Json] = []
 
     def presented(_: Json) -> bool:
@@ -122,7 +141,24 @@ def opened(shell: Shell, place: str) -> Json:
         return latest(each) > before and "presented" in each[-1]
 
     shell.launcher_until(presented)
-    return each[-1]
+    return {**each[-1], "askedEarly": True} if asked_early else each[-1]
+
+
+def usable_after(shell: Shell, nth: int, mark: int) -> tuple[Json, list[str]]:
+    """Give the opening numbered once it has said when it was usable, with its line.
+
+    An opening says it once a key could act on it, which can come after it's presented; one
+    shut first never says it, so the wait gives up and gives the opening as it stands. It waits
+    on the shell's log, not on asking the shell, whose answering would run on the thread whose
+    stall it times.
+    """
+    giving_up = time.monotonic() + USABLE_S
+    said = usable_said(shell, mark)
+    while not said and time.monotonic() < giving_up:
+        time.sleep(launcher_on_niri.POLL)
+        said = usable_said(shell, mark)
+    each = [one for one in openings(shell) if one.get("nth") == nth]
+    return (each[0] if each else {}), said[:1]
 
 
 def p90(spans: list[int]) -> int:
@@ -131,14 +167,31 @@ def p90(spans: list[int]) -> int:
     return ordered[min(len(ordered) - 1, round(0.9 * (len(ordered) - 1)))]
 
 
-def said_of(place: str, presented: list[int], took: list[int]) -> str:
-    """Say a place's openings: presented, and that split at the shell's swap of its frame."""
+def said_of(
+    place: str, presented: list[int], took: list[int], stalled: list[int], left_out: int
+) -> str:
+    """Say a place's openings: presented, split at the shell's swap, and the longest stall.
+
+    The longest stall is the longest the shell's thread held a key back, from the ask until
+    the opening was usable, so a fill that moves its work after its frame shows here, where
+    its presented time doesn't. Those left out, as still unusable when the lab asked, are
+    the slowest, so how many is said beside it, lest a side losing more look the faster.
+    """
     niri = [whole - shell for whole, shell in zip(presented, took, strict=True)]
+    # Of how many, as one not usable in time says none and would leave the rest's median.
+    stalls = (
+        f"; its longest stall a median {round(statistics.median(stalled))} ms, p90 {p90(stalled)}"
+        f", of {len(stalled)}"
+        if stalled
+        else ""
+    )
+    if left_out:
+        stalls += f"; {left_out} left out, unusable past {USABLE_S} s"
     return (
         f"lab-place {place}: {len(presented)} presented a median "
         f"{round(statistics.median(presented))} ms, p90 {p90(presented)}; the shell's frame a "
         f"median {round(statistics.median(took))} ms, niri's after it a median "
-        f"{round(statistics.median(niri))} ms, p90 {p90(niri)}"
+        f"{round(statistics.median(niri))} ms, p90 {p90(niri)}{stalls}"
     )
 
 
@@ -199,10 +252,13 @@ def test_each_chord_opening_is_timed(
     # From the ask to the shell's swap of the frame at the card's size, which `presented` runs
     # on from to niri's presented frame.
     took: dict[str, list[int]] = {place: [] for place in places}
+    stalled: dict[str, list[int]] = {place: [] for place in places}
+    left_out = dict.fromkeys(places, 0)
     for round_ in range(rounds):
         # Each round starts one place further on, so no place always follows the same one.
         for place in places[round_ % len(places) :] + places[: round_ % len(places)]:
-            opening = opened(shell, place)
+            mark = shell.mark()
+            opening = opened(shell, place, mark)
             said = {
                 "place": place,
                 "round": round_,
@@ -211,6 +267,7 @@ def test_each_chord_opening_is_timed(
                 "took": opening.get("took"),
                 "niri": opening["presented"] - cast("int", opening["took"]),
                 "rows": opening.get("rows"),
+                "filling": opening.get("filling"),
             }
             with capsys.disabled():
                 print(f"lab-opening {os.environ.get('LAB_RUN', '')} {json.dumps(said)}", flush=True)
@@ -218,19 +275,53 @@ def test_each_chord_opening_is_timed(
                 pytest.fail(f"{place}'s opening closed unpresented: {opening}")
             timed[place].append(opening["presented"])
             took[place].append(cast("int", opening["took"]))
+            stalled[place].extend(stall_of(shell, opening, mark, place, capsys))
+            left_out[place] += 1 if opening.get("askedEarly") else 0
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
     for place, spans in timed.items():
         with capsys.disabled():
-            print(os.environ.get("LAB_RUN", ""), said_of(place, spans, took[place]), flush=True)
+            print(
+                os.environ.get("LAB_RUN", ""),
+                said_of(place, spans, took[place], stalled[place], left_out[place]),
+                flush=True,
+            )
+
+
+def stall_of(
+    shell: Shell, opening: Json, mark: int, place: str, capsys: pytest.CaptureFixture[str]
+) -> list[int]:
+    """Give an opening's longest stall once it's usable, printing the line that names its parts.
+
+    It's said once the opening is usable, which presented alone doesn't wait for, and given as
+    a list of one, or none where the opening's record never said it or the shell was asked
+    about it before it was usable.
+    """
+    usable, said = usable_after(shell, cast("int", opening["nth"]), mark)
+    early = "; asked before usable, so left out" if opening.get("askedEarly") else ""
+    with capsys.disabled():
+        print(
+            f"lab-usable {os.environ.get('LAB_RUN', '')} {place}: "
+            f"{said[0].split('launcher: ', 1)[-1] if said else f'unsaid in {USABLE_S} s'}{early}",
+            flush=True,
+        )
+    stalled = usable.get("stalled")
+    return [stalled] if isinstance(stalled, int) and not early else []
+
+
+def usable_said(shell: Shell, mark: int) -> list[str]:
+    """Give the lines since the mark saying whether an opening still open was usable."""
+    return [line for line in said_after(shell, mark, *USABLE_SAID) if SHUT_FIRST not in line]
 
 
 def said_after(shell: Shell, mark: int, *wanted: str) -> list[str]:
-    """Give the shell's log lines since the mark that hold any of the words wanted."""
+    """Give the shell's whole log lines since the mark that hold any of the words wanted."""
     with shell.log.open("rb") as log:
         log.seek(mark)
         written = log.read().decode(errors="replace")
-    return [line for line in written.splitlines() if any(word in line for word in wanted)]
+    # Only lines ended, as the last may be read while it's still being written.
+    whole = written[: written.rfind("\n") + 1]
+    return [line for line in whole.splitlines() if any(word in line for word in wanted)]
 
 
 def stepped(shell: Shell, name: str) -> tuple[Json, list[str]]:
