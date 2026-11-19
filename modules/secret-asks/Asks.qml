@@ -367,7 +367,11 @@ Provider {
                 ? Words.of("verb:release").said?.arms ?? "" : "",
             // What it is and where it's from, which For You filters by.
             forYou: { kind: "do", source: "asks" }
-        }, !hiding ? {} : {
+        }, !hiding ? {
+            // Made showing, so no way back goes to a place holding it once
+            // a share hides asks (Steady.hiddenGone), wherever it's held.
+            shownBy: provider
+        } : {
             // Hidden, an ask's Return keeps the launcher open and does
             // nothing (Arming.holdsStill), since the launcher closes on a
             // row with no run, and his second Return, meant for a yes,

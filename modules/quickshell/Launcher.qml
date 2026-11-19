@@ -4177,14 +4177,20 @@ Scope {
     property var jumpsBack: []
     property var jumpsAhead: []
     property bool jumping: false
-    // Lets go of every place on a way back holding a step from a source
-    // that hides now, before any way back is taken (Steady.hiddenGone):
-    // untold empties them as a share starts, but a key before Asks' rows
-    // are remade records the step as it was named, and Copies never says
-    // a share began.
+    // Lets go of every place on a way back holding a row made showing by
+    // a source that hides now, before any way back is taken
+    // (Steady.hiddenGone): untold empties them as a share starts, but a
+    // key before Asks' rows are remade records the step as it was named,
+    // and Copies never says a share began.
     function hiddenForgotten() {
         const left = Steady.hiddenGone({ back: jumpsBack, ahead: jumpsAhead, tags: tagsBack,
             last: lastPlace });
+        const dropped = jumpsBack.length - left.back.length + jumpsAhead.length
+            - left.ahead.length + tagsBack.length - left.tags.length
+            + (left.last !== lastPlace ? 1 : 0);
+        // How many alone, never which, as untold says what it forgot.
+        if (dropped > 0)
+            console.info(`launcher: let go of ${dropped} places back, as the screen may be shared`);
         if (left.back.length !== jumpsBack.length)
             jumpsBack = left.back;
         if (left.ahead.length !== jumpsAhead.length)
