@@ -112,18 +112,6 @@
     "test": "vm-desktop-minds-the-margin"
   },
   {
-    "at": 1794956752,
-    "commit": "60f3a312fa2595f2fde857ec31063211ee9cf752",
-    "due": "2026-11-19",
-    "owner_pr": 5369,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at 60f3a312fa25",
-    "subtests": [
-      "test_a_service_nothing_named_a_slice_for_is_said_of_and_left"
-    ],
-    "test": "vm-apps-come-first"
-  },
-  {
     "at": 1794969567,
     "commit": "27089c76aa98e3bdf20218ed67f6dfeeaa417e7b",
     "due": "2026-11-20",

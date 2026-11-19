@@ -34,9 +34,9 @@ impl Told {
 
     /// A line for each of systemd-run's services under `under` not said of
     /// yet, reading its first process's command from `proc`. One with no
-    /// process yet, or whose process is still systemd's executor setting it
-    /// up, waits for a later look, and one gone is forgotten, so a name used
-    /// again is said of again.
+    /// process yet, or whose process is still systemd setting it up, waits
+    /// for a later look, and one gone is forgotten, so a name used again is
+    /// said of again.
     pub fn look(&mut self, under: &[PathBuf], proc: &Path) -> Vec<String> {
         let found: Vec<PathBuf> = under.iter().flat_map(|slice| made_by_run(slice)).collect();
         self.units.retain(|unit| found.contains(unit));
@@ -48,8 +48,13 @@ impl Told {
             let Some(pid) = first(&unit) else {
                 continue;
             };
-            let command = fs::read(proc.join(pid.to_string()).join("cmdline")).unwrap_or_default();
-            if starting(&command) {
+            let process = proc.join(pid.to_string());
+            // The program first, then its words: a program read as its own
+            // already holds its own words, so a hand-over between the two
+            // reads can't leave the setup's name said of a command.
+            let exe = fs::read_link(process.join("exe"));
+            let command = fs::read(process.join("cmdline")).unwrap_or_default();
+            if starting(exe, &command) {
                 continue;
             }
             says.push(line(&unit, &command));
@@ -76,14 +81,38 @@ fn made_by_run(slice: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Whether a command is still systemd's executor, which runs in a new
-/// service's process until it hands over to the service's own command, so
-/// a look between the two would name the executor rather than the command.
-fn starting(command: &[u8]) -> bool {
+/// Whether a service's process is still systemd setting it up, so a look
+/// would name systemd rather than the service's own command. The manager
+/// forks the process into the service's cgroup as a copy of itself, which
+/// runs `systemd-executor`, which renames itself to the command's name in
+/// brackets, `(sleep)`, before it hands over. A look in that last step once
+/// said a stray ran `(sleep)`. So the program is read from the process's
+/// `exe`, which no rename changes, and where it reads, only systemd's two
+/// programs wait: any other program named in brackets is said of. The
+/// user manager's `exe` is refused even to its own account, and so was
+/// the process renamed `(sleep)` in the VM test. One refused, or gone as
+/// it was looked at, waits while its first word is systemd's or a name in
+/// brackets, since the next look sees what it became.
+fn starting(exe: std::io::Result<PathBuf>, command: &[u8]) -> bool {
+    let systemds = |name: &str| name == "systemd" || name == "systemd-executor";
     let program = command.split(|byte| *byte == 0).next().unwrap_or_default();
-    Path::new(&*String::from_utf8_lossy(program))
+    let first_word_is_systemds = Path::new(&*String::from_utf8_lossy(program))
         .file_name()
-        .is_some_and(|name| name == "systemd-executor")
+        .is_some_and(|name| systemds(&name.to_string_lossy()));
+    if let Ok(exe) = exe {
+        let exe = exe.to_string_lossy();
+        let exe = exe.strip_suffix(" (deleted)").unwrap_or(&exe);
+        return Path::new(exe)
+            .file_name()
+            .is_some_and(|name| systemds(&name.to_string_lossy()));
+    }
+    let bracketed = program.len() > 2 && program.starts_with(b"(") && program.ends_with(b")");
+    bracketed || first_word_is_systemds
+}
+
+/// Whether a character turns the direction text reads in, or marks it.
+fn turns_direction(c: char) -> bool {
+    matches!(c, '\u{200e}' | '\u{200f}' | '\u{061c}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
 }
 
 /// A cgroup's first process, if it has one.
@@ -93,7 +122,11 @@ fn first(cgroup: &Path) -> Option<u32> {
 }
 
 /// What's said of one service, its command's arguments joined by spaces
-/// and cut at `LONGEST` characters.
+/// and cut at `LONGEST` characters. A control character in an argument is
+/// written out, `\n` for a newline, so a command can't start a journal line
+/// of its own; a backslash is doubled, so a written-out one can't pass for
+/// it, and a mark turning the text's direction is written out too, so the
+/// line reads in the order it holds.
 fn line(unit: &Path, command: &[u8]) -> String {
     let name = |path: &Path| {
         path.file_name()
@@ -105,7 +138,18 @@ fn line(unit: &Path, command: &[u8]) -> String {
     let words: Vec<String> = command
         .split(|byte| *byte == 0)
         .filter(|word| !word.is_empty())
-        .map(|word| String::from_utf8_lossy(word).into_owned())
+        .map(|word| {
+            String::from_utf8_lossy(word)
+                .chars()
+                .map(|c| {
+                    if c.is_control() || c == '\\' || turns_direction(c) {
+                        c.escape_default().to_string()
+                    } else {
+                        c.to_string()
+                    }
+                })
+                .collect()
+        })
         .collect();
     let mut command = words.join(" ");
     if command.chars().count() > LONGEST {
@@ -191,7 +235,40 @@ mod tests {
             Vec::<String>::new(),
             "systemd's executor hasn't started the command yet, so it waits for a later look"
         );
-        fs::write(dir.join("proc/46/cmdline"), b"sleep\x001008\x00").unwrap();
+        let exe = dir.join("proc/46/exe");
+        let runs = |program: &str, command: &[u8]| {
+            let _ = fs::remove_file(&exe);
+            std::os::unix::fs::symlink(program, &exe).unwrap();
+            fs::write(dir.join("proc/46/cmdline"), command).unwrap();
+        };
+        runs(
+            "/nix/store/a-systemd/lib/systemd/systemd",
+            b"/nix/store/a-systemd/lib/systemd/systemd\x00--user\x00",
+        );
+        assert_eq!(
+            told.look(&under, &proc),
+            Vec::<String>::new(),
+            "the manager's own copy, forked into the service before it runs the executor, waits"
+        );
+        runs(
+            "/nix/store/a-systemd/lib/systemd/systemd-executor",
+            b"(sleep)\x00",
+        );
+        assert_eq!(
+            told.look(&under, &proc),
+            Vec::<String>::new(),
+            "the executor renamed after the command in brackets as it sets up still waits"
+        );
+        runs(
+            "/nix/store/a-systemd/lib/systemd/systemd-executor (deleted)",
+            b"(sleep)\x00",
+        );
+        assert_eq!(
+            told.look(&under, &proc),
+            Vec::<String>::new(),
+            "so does an executor whose file a later switch removed"
+        );
+        runs("/nix/store/a-coreutils/bin/sleep", b"sleep\x001008\x00");
         assert_eq!(
             told.look(&under, &proc),
             [
@@ -201,6 +278,105 @@ mod tests {
             "once the command runs, it's said of by its own words"
         );
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_readable_program_decides_whatever_its_first_word_says() {
+        let sleep = || Ok(PathBuf::from("/nix/store/a-coreutils/bin/sleep"));
+        assert!(
+            !starting(
+                sleep(),
+                b"/nix/store/a-systemd/lib/systemd/systemd\x00--user\x00"
+            ),
+            "a program that names itself systemd's is said of by what it is"
+        );
+        assert!(
+            !starting(sleep(), b"(sleep)\x00"),
+            "and so is one that names itself in brackets"
+        );
+    }
+
+    #[test]
+    fn a_process_whose_program_cant_be_read_waits_only_while_it_reads_as_systemds() {
+        let refused = || Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        let gone = || Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+        for plain in [&b"()\x00"[..], b"(sleep\x00", b"sleep)\x00", b"\x00", b""] {
+            assert!(
+                !starting(refused(), plain),
+                "only a name opened and closed by brackets, with one inside, reads as the \
+                 setup's: {plain:?}"
+            );
+        }
+        assert!(
+            starting(refused(), b"(sleep)\x00"),
+            "the manager's copy, which no one may read, renamed after the command, waits"
+        );
+        assert!(
+            starting(
+                refused(),
+                b"/nix/store/a-systemd/lib/systemd/systemd\x00--user\x00"
+            ),
+            "a refused process whose first word is the manager's waits"
+        );
+        assert!(
+            !starting(refused(), b"ssh-agent\x00-D\x00"),
+            "a program that hides itself from readers but names itself plainly is said of"
+        );
+        assert!(
+            starting(gone(), b"(sleep)\x00"),
+            "a process gone as it was looked at, renamed in brackets, waits for the next look"
+        );
+        assert!(
+            !starting(gone(), b"sleep\x001008\x00"),
+            "one gone after its command ran is said of by it"
+        );
+        assert!(
+            starting(gone(), b"systemd-executor\x00--deserialize\x0075\x00"),
+            "a gone process whose first word is the executor's waits"
+        );
+    }
+
+    #[test]
+    fn a_command_that_names_itself_in_brackets_is_still_said_of() {
+        let dir = std::env::temp_dir().join(format!("strays-brackets-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        unit(&dir, "run-u4.service", "47\n");
+        fs::create_dir_all(dir.join("proc/47")).unwrap();
+        std::os::unix::fs::symlink("/nix/store/a-coreutils/bin/sleep", dir.join("proc/47/exe"))
+            .unwrap();
+        fs::write(dir.join("proc/47/cmdline"), b"(hidden)\x001007\x00").unwrap();
+        let mut told = Told::default();
+
+        assert_eq!(
+            told.look(&[dir.join("app.slice")], &dir.join("proc")),
+            [
+                "Stray service run-u4.service in app.slice runs (hidden) 1007; nothing named its \
+              slice, so systemd-run put it there."
+            ],
+            "a name in brackets alone doesn't make a program systemd's executor"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_commands_control_characters_are_written_out_rather_than_breaking_the_line() {
+        let says = line(
+            Path::new("/u/app.slice/run-u2.service"),
+            b"sh\x00-c\x00x\nStray service run-u9.service\x00",
+        );
+        assert!(
+            says.contains("runs sh -c x\\nStray service run-u9.service;"),
+            "a newline in an argument can't start a line of its own: {says}"
+        );
+        let says = line(
+            Path::new("/u/app.slice/run-u2.service"),
+            "echo\x00a\\nb\u{202e}c\x00".as_bytes(),
+        );
+        assert!(
+            says.contains("runs echo a\\\\nb\\u{202e}c;"),
+            "a backslash is written doubled, so it can't pass for a written-out newline, and a \
+             mark turning the text's direction is written out: {says}"
+        );
     }
 
     #[test]
