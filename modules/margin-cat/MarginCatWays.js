@@ -317,8 +317,8 @@ function timed(way) {
     // Striding beats joined, a walk onto a climb or a climb onto a walk, stride on as one
     // round the corner, rather than each starting its strides over or holding a drawing
     // across a short one (joined()). One set off mid-stride holds the drawn stride for the
-    // rest of its ground, so walks begun again and again stride by the ground; from a hold,
-    // or one held past its stride, at once.
+    // rest of its ground, so walks begun again and again stride by the ground; from a hold
+    // seen SHOWN, or one held past its stride, at once.
     const carried = mid ? Math.min(at.drawnInto, 1) : 1;
     for (const [i, beat] of beats.entries()) {
         const was = beats[i - 1];
