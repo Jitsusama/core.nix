@@ -221,7 +221,7 @@ fn told_of_an_end(answer: &Value) -> Value {
 /// words for a refusal run to a line or two.
 const WORDS_AT_MOST: usize = 500;
 
-/// `said` as a string of at most WORDS_AT_MOST characters, or none where
+/// `said` as a string of at most `WORDS_AT_MOST` characters, or none where
 /// it isn't one, so no end grows the file or a record past a few lines.
 fn words(said: &Value) -> Value {
     said.as_str().map_or(Value::Null, |text| {

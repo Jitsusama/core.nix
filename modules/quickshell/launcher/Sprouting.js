@@ -109,15 +109,16 @@ function untold(kept, known, seen, now) {
 // one since this shell's copy was served, and a get names only what's
 // still held, so none is told twice. With no answer, none is told yet.
 function stillKept(tell, records) {
-    if (!Array.isArray(records))
+    if (!Array.isArray(records)) {
         return [];
+    }
     const keys = records.map(record => record?.key);
     return tell.filter(one => keys.includes(keptKey(one.token)));
 }
 
 // The key the agents daemon serves a kept start under (starts.rs).
-function keptKey(token) {
-    return `start:agents:${token}`;
+function keptKey(named) {
+    return `start:agents:${named}`;
 }
 
 // Why `ask` would ask nothing, in `said`'s words (`empty` or
