@@ -7,11 +7,14 @@ declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, follow a change within its pace, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
-answer its keys as its keys dialog says (keys.ts decides which each asks), and
-pass the web-design skill's page checks and the map's own (site-checks.js) at
-a phone's width and a desk's in both looks. Any error the page logs fails it,
-since that is how the map froze on "reading" unseen. The server, the browser
-and the tab are modules/local-sites/tests/live_page.py's.
+answer a key of each kind keys.ts decides (the keys dialog, find and its
+field, stepping through what was found, Escape's order, the walk, the
+machines, Now, the tree and the theme switch), and pass the web-design
+skill's page checks and the map's own (site-checks.js) at a phone's width
+and a desk's in both looks. Any error the page logs fails it, since that is
+how the map froze on "reading" unseen, and how the drawing says a key
+keys.ts can ask does nothing. The server, the browser and the tab are
+modules/local-sites/tests/live_page.py's.
 """
 
 import copy
@@ -280,8 +283,9 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
 
 
-def test_the_maps_keys_do_what_the_keys_dialog_says(mycelium_opened: Opened) -> None:
+def test_the_keys_dialog_and_find_answer_their_keys(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
+    title, find_line = page.locator("#panel-title"), page.locator("#find-line")
     the_map_stands(page, "live")
     page.locator("#map-view").focus()
     page.keyboard.press("?")
@@ -290,24 +294,62 @@ def test_the_maps_keys_do_what_the_keys_dialog_says(mycelium_opened: Opened) -> 
     expect(page.locator("#keys"), "? didn't close the keys").to_be_hidden()
     page.keyboard.press("/")
     expect(page.locator("#find"), "/ didn't open find").to_be_focused()
+    # A letter typed into find is find's: m here shows no machines.
+    page.keyboard.press("m")
+    expect(page.locator("#find"), "m typed into find didn't stay there").to_have_value("m")
+    expect(page.locator("#where"), "m typed into find acted").not_to_contain_text("machines")
+    # Escape in find's own field closes the line, and the map takes focus.
+    page.keyboard.press("Escape")
+    expect(find_line, "Escape in find didn't close it").to_be_hidden()
+    expect(page.locator("#map-view"), "closing find left focus nowhere").to_be_focused()
+    page.keyboard.press("/")
     page.keyboard.type(SOUGHT)
     page.keyboard.press("Enter")
-    expect(page.locator("#panel-title"), "Return didn't open what was found").to_have_text(
-        SOUGHT_TITLE
-    )
+    expect(title, "Return didn't open what was found").to_have_text(SOUGHT_TITLE)
+    # Several match the start of its name, and n and N step between them.
+    page.keyboard.press("/")
+    page.keyboard.type(SOUGHT[:-1])
+    page.keyboard.press("Enter")
+    expect(title, "Return found nothing").not_to_have_text("")
+    first = title.inner_text()
+    page.keyboard.press("n")
+    expect(title, "n didn't go to the next match").not_to_have_text(first)
+    page.keyboard.press("Shift+N")
+    expect(title, "N didn't go back to the match before").to_have_text(first)
+    # Escape closes the find line and only that, then lets go.
     page.keyboard.press("Escape")
-    expect(page.locator("#find-line"), "Escape didn't close find first").to_be_hidden()
+    expect(find_line, "Escape didn't close find first").to_be_hidden()
+    expect(title, "the first Escape let go too").to_have_text(first)
     page.keyboard.press("Escape")
     expect(page, "Escape didn't let go of the cell").to_have_url(re.compile(r"/mycelium/$"))
+
+
+def test_the_walk_the_tree_and_the_switch_answer_their_keys(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    where = page.locator("#where")
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    # Focus starts the walk somewhere, so Return opens what it reached, and a
+    # step with j then opens something else.
     page.keyboard.press("Enter")
+    expect(where, "Return didn't open what the walk reached").to_contain_text("Opened")
+    opened = where.inner_text()
+    page.keyboard.press("j")
     page.keyboard.press("Enter")
-    expect(page.locator("#where"), "Return didn't open what the walk reached").to_contain_text(
-        "Opened"
-    )
+    expect(where, "j didn't walk anywhere new").not_to_have_text(opened)
+    expect(where, "Return didn't open where j walked").to_contain_text("Opened")
     page.keyboard.press("m")
-    expect(page.locator("#where"), "m didn't show the machines").to_contain_text(
-        "machines are shown"
-    )
+    expect(where, "m didn't show the machines").to_contain_text("machines are shown")
+    page.keyboard.press(".")
+    expect(page.locator("#panel-title"), ". didn't open Now").to_have_text("Now")
+    items = page.locator("#tree [role=treeitem]")
+    items.first.focus()
+    page.keyboard.press("j")
+    expect(items.nth(1), "j didn't step down the tree").to_be_focused()
+    page.keyboard.press("Shift+G")
+    expect(items.last, "G didn't go to the tree's last").to_be_focused()
+    page.keyboard.press("g")
+    expect(items.first, "g didn't go to the tree's first").to_be_focused()
     themes = page.locator(".switch button")
     themes.first.focus()
     page.keyboard.press("ArrowLeft")

@@ -1,10 +1,14 @@
 // What each of the map's keys asks, decided apart from the drawing: every
-// key its dialog names, the chords and fields that keep them from acting,
-// and the order Escape closes things in.
+// key keys.ts answers, the chords and fields that keep them from acting,
+// and the order Escape closes things in. The tables here are written out
+// again rather than read from keys.ts, so an edit to one of its tables
+// shows; whether the page's keys dialog says the same is for the page.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import {
+  EVERY_PAGE_ACT,
+  EVERY_TREE_ACT,
   findKey,
   mapKey,
   type Pressed,
@@ -51,8 +55,10 @@ it("walks the map by arrows and by h, j, k and l alike", () => {
 });
 
 it("moves the map rather than walking it while Shift is held, a capital as its letter", () => {
-  assert.deepEqual(mapKey(press("ArrowUp", { shiftKey: true })), { act: "pan", way: [0, -1] });
-  assert.deepEqual(mapKey(press("J", { shiftKey: true })), { act: "pan", way: [0, 1] });
+  const up = mapKey(press("ArrowUp", { shiftKey: true }));
+  assert.deepEqual(up, { act: "pan", way: [0, -1] }, "Shift+Up didn't move the map");
+  const down = mapKey(press("J", { shiftKey: true }));
+  assert.deepEqual(down, { act: "pan", way: [0, 1] }, "Shift+J didn't move the map");
 });
 
 it("opens what the walk reached with Return or Space, and leaves other keys alone", () => {
@@ -62,15 +68,55 @@ it("opens what the walk reached with Return or Space, and leaves other keys alon
 });
 
 it("leaves every chord to the browser, on the map, the tree and the page", () => {
+  // The keys a chord is likeliest to slip through on: each kind each
+  // function answers, the ones it answers before any other check included.
+  const asked = {
+    map: ["j", "ArrowUp", "Enter", " "],
+    tree: ["j", "Home", "Enter"],
+    page: ["?", "F1", "/", "Escape", "-", "m", "n"],
+  };
+  const everything = standing({ findOpen: true, finding: true, chosen: true, nowOpen: true });
   for (const held of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
-    assert.equal(mapKey(press("j", held)), null, `the map took ${JSON.stringify(held)}`);
-    assert.equal(treeKey(press("j", held)), null, `the tree took ${JSON.stringify(held)}`);
-    assert.equal(
-      pageKey(press("m", held), standing()),
-      null,
-      `the page took ${JSON.stringify(held)}`,
-    );
+    const chord = JSON.stringify(held);
+    for (const key of asked.map) {
+      assert.equal(mapKey(press(key, held)), null, `the map took ${key} with ${chord}`);
+    }
+    for (const key of asked.tree) {
+      assert.equal(treeKey(press(key, held)), null, `the tree took ${key} with ${chord}`);
+    }
+    for (const key of asked.page) {
+      const act = pageKey(press(key, held), everything);
+      assert.equal(act, null, `the page took ${key} with ${chord}`);
+    }
   }
+});
+
+it("names nothing for a key named after what every object answers to", () => {
+  for (const key of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    assert.equal(mapKey(press(key)), null, `the map answered ${key}`);
+    assert.equal(treeKey(press(key)), null, `the tree answered ${key}`);
+    assert.equal(pageKey(press(key), standing()), null, `the page answered ${key}`);
+    assert.equal(switchedTo(key, 0, 3), null, `the switch answered ${key}`);
+  }
+});
+
+it("lists every act it can ask, so the drawing can say it does each", () => {
+  const tree = ["j", "k", "l", "h", "g", "G", "Enter"].map((key) =>
+    treeKey(press(key, { shiftKey: key === "G" })),
+  );
+  assert.deepEqual(new Set(tree), new Set(EVERY_TREE_ACT), "the tree's list isn't what it asks");
+  const all = standing({ findOpen: true, finding: true, chosen: true, nowOpen: true });
+  const page = [
+    pageKey(press("?"), standing()),
+    pageKey(press("/"), standing()),
+    pageKey(press("Escape"), all),
+    pageKey(press("Escape"), standing({ chosen: true })),
+    pageKey(press("Escape"), standing({ nowOpen: true })),
+    pageKey(press("n"), all),
+    pageKey(press("N", { shiftKey: true }), all),
+    ...[".", "m", "0", "i", "o", "-"].map((key) => pageKey(press(key), standing())),
+  ];
+  assert.deepEqual(new Set(page), new Set(EVERY_PAGE_ACT), "the page's list isn't what it asks");
 });
 
 it("steps the tree as a tree does, by arrows and letters, Home and End, g and G", () => {
@@ -100,7 +146,7 @@ it("answers Shift in the tree only as the G that goes last", () => {
   assert.equal(treeKey(press("ArrowDown", { shiftKey: true })), null, "Shift+Down stepped it");
 });
 
-it("says each of the page's letters asks what its keys dialog names", () => {
+it("says what each of the page's letters asks, with nothing open", () => {
   const acts = {
     "?": "keys",
     F1: "keys",
@@ -181,4 +227,10 @@ it("moves the theme's switch by its arrows, round and round", () => {
   assert.equal(switchedTo("ArrowUp", 0, 3), 2, "up from the first didn't come round");
   assert.equal(switchedTo("ArrowDown", 0, 3), 1, "down didn't move on");
   assert.equal(switchedTo("Enter", 0, 3), null, "a key that isn't an arrow moved it");
+});
+
+it("moves the theme's switch from no choice as find steps from no match", () => {
+  assert.equal(switchedTo("ArrowRight", -1, 3), 0, "right from none didn't land on the first");
+  assert.equal(switchedTo("ArrowLeft", -1, 3), 2, "left from none didn't land on the last");
+  assert.equal(switchedTo("ArrowRight", 0, 0), null, "the switch moved with no choices");
 });

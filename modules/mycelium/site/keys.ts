@@ -23,24 +23,34 @@ export type MapAct =
   | { readonly act: "pan"; readonly way: Way }
   | { readonly act: "open" };
 
+/**
+ * Every act a key in the tree can ask, listed so the drawing, which no
+ * typechecker reads, can say at load that it does each one.
+ */
+export const EVERY_TREE_ACT = ["next", "prev", "in", "out", "first", "last", "open"] as const;
+
 /** What a key in the tree asks of the item it's on. */
-export type TreeAct = "next" | "prev" | "in" | "out" | "first" | "last" | "open";
+export type TreeAct = (typeof EVERY_TREE_ACT)[number];
+
+/** Every act one of the page's letters can ask, listed as the tree's are. */
+export const EVERY_PAGE_ACT = [
+  "keys",
+  "find",
+  "close-find",
+  "next-found",
+  "found-before",
+  "let-go",
+  "close-now",
+  "now",
+  "machines",
+  "fit",
+  "zoom-in",
+  "zoom-out",
+  "out",
+] as const;
 
 /** What one of the page's letters asks. */
-export type PageAct =
-  | "keys"
-  | "find"
-  | "close-find"
-  | "next-found"
-  | "found-before"
-  | "let-go"
-  | "close-now"
-  | "now"
-  | "machines"
-  | "fit"
-  | "zoom-in"
-  | "zoom-out"
-  | "out";
+export type PageAct = (typeof EVERY_PAGE_ACT)[number];
 
 /** What the page's letters read of where it stands as a key comes. */
 export interface Standing {
@@ -113,6 +123,12 @@ const SWITCH_STEPS: Readonly<Record<string, number>> = {
 // the map's.
 const chorded = (pressed: Pressed): boolean => pressed.ctrlKey || pressed.metaKey || pressed.altKey;
 
+// A key's entry in one of the tables above, or null for a key it doesn't
+// name, even one an object answers to, such as `constructor`, as the kit's
+// own keys are looked up.
+const named = <T>(table: Readonly<Record<string, T>>, key: string): T | null =>
+  Object.hasOwn(table, key) ? (table[key] ?? null) : null;
+
 /**
  * What a key on the map asks: an arrow or h, j, k or l walks the network,
  * held with Shift it moves the map instead, and Return or Space opens
@@ -123,7 +139,7 @@ export const mapKey = (pressed: Pressed): MapAct | null => {
     return null;
   }
   // Shift makes a letter capital, and a capital walks as its letter.
-  const way = WAYS[pressed.key.length === 1 ? pressed.key.toLowerCase() : pressed.key];
+  const way = named(WAYS, pressed.key.length === 1 ? pressed.key.toLowerCase() : pressed.key);
   if (way) {
     return { act: pressed.shiftKey ? "pan" : "walk", way };
   }
@@ -138,7 +154,7 @@ export const treeKey = (pressed: Pressed): TreeAct | null => {
   if (chorded(pressed) || (pressed.shiftKey && pressed.key !== "G")) {
     return null;
   }
-  return TREE_KEYS[pressed.key] ?? null;
+  return named(TREE_KEYS, pressed.key);
 };
 
 /**
@@ -177,7 +193,7 @@ export const pageKey = (pressed: Pressed, at: Standing): PageAct | null => {
   if ((key === "n" || key === "N") && at.finding) {
     return key === "n" ? "next-found" : "found-before";
   }
-  return LETTERS[key] ?? null;
+  return named(LETTERS, key);
 };
 
 /**
@@ -204,9 +220,9 @@ export const stepped = (at: number, by: number, count: number): number | null =>
 
 /**
  * Which of the theme switch's `count` choices an arrow moves to from `at`,
- * round and round, or null for a key that isn't an arrow.
+ * round and round as `stepped` goes, or null for a key that isn't an arrow.
  */
 export const switchedTo = (key: string, at: number, count: number): number | null => {
-  const by = SWITCH_STEPS[key];
-  return by === undefined ? null : (at + by + count) % count;
+  const by = named(SWITCH_STEPS, key);
+  return by === null ? null : stepped(at, by, count);
 };

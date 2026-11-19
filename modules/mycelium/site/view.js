@@ -15,7 +15,7 @@
 // by what changes for one reason as it is rewritten in TypeScript on the
 // kit (modules/mycelium/site/README.md says what remains). What each key
 // asks is decided in keys.ts, which this imports as the module it's built to.
-import { findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
+import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 
 (() => {
   // The most time between two readings while the node moves: site.ts hands
@@ -4075,31 +4075,41 @@ import { findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.j
     li.focus({ preventScroll: true });
     li.firstElementChild.scrollIntoView({ block: "nearest" });
   };
+  // What each of the tree's keys does to the item it's on, once keys.ts
+  // has said which.
+  const TREE_DOES = {
+    next: ({ list, at }) => focusItem(list[at + 1]),
+    prev: ({ list, at }) => focusItem(list[at - 1]),
+    first: ({ list }) => focusItem(list[0]),
+    last: ({ list }) => focusItem(list[list.length - 1]),
+    in: ({ li, key, open, shut }) => {
+      if (shut) {
+        expanded.add(key);
+        renderTree();
+      } else if (open) focusItem(li.querySelector("[role=treeitem]"));
+    },
+    out: ({ li, key, open }) => {
+      if (open) {
+        expanded.delete(key);
+        renderTree();
+      } else focusItem(li.parentElement.closest("[role=treeitem]"));
+    },
+    open: ({ key }) => visit(choiceOf(key)),
+  };
   tree.addEventListener("keydown", (e) => {
     const li = e.target.closest("[role=treeitem]");
     const act = treeKey(e);
     if (!li || !act) return;
     e.preventDefault();
-    const key = li.dataset.key;
     const list = treeItems();
-    const at = list.indexOf(li);
-    const open = li.getAttribute("aria-expanded") === "true";
-    const shut = li.getAttribute("aria-expanded") === "false";
-    if (act === "next") focusItem(list[at + 1]);
-    else if (act === "prev") focusItem(list[at - 1]);
-    else if (act === "first") focusItem(list[0]);
-    else if (act === "last") focusItem(list[list.length - 1]);
-    else if (act === "in") {
-      if (shut) {
-        expanded.add(key);
-        renderTree();
-      } else if (open) focusItem(li.querySelector("[role=treeitem]"));
-    } else if (act === "out") {
-      if (open) {
-        expanded.delete(key);
-        renderTree();
-      } else focusItem(li.parentElement.closest("[role=treeitem]"));
-    } else visit(choiceOf(key));
+    TREE_DOES[act]({
+      li,
+      key: li.dataset.key,
+      list,
+      at: list.indexOf(li),
+      open: li.getAttribute("aria-expanded") === "true",
+      shut: li.getAttribute("aria-expanded") === "false",
+    });
   });
   // Focus in the tree moves the map's pointer to the same thing.
   tree.addEventListener("focusin", (e) => {
@@ -4704,7 +4714,7 @@ import { findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.j
     }
   };
   // What each of the page's letters does, once keys.ts has said which.
-  const PAGE_ACTS = {
+  const PAGE_DOES = {
     keys: () => toggleKeys(),
     find: () => openFind(),
     "close-find": () => closeFind(),
@@ -4731,8 +4741,18 @@ import { findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.j
     });
     if (!asked) return;
     e.preventDefault();
-    PAGE_ACTS[asked]();
+    PAGE_DOES[asked]();
   });
+  // keys.ts lists every act a key can ask, and no typechecker reads this
+  // file, so a table here missing one would swallow its key unseen. The
+  // page says so as it loads instead, where every page test hears it.
+  for (const [does, every, what] of [
+    [TREE_DOES, EVERY_TREE_ACT, "tree"],
+    [PAGE_DOES, EVERY_PAGE_ACT, "page"],
+  ]) {
+    const undone = every.filter((act) => typeof does[act] !== "function");
+    if (undone.length) console.error(`The map's ${what} keys do nothing for ${undone.join(", ")}.`);
+  }
   // The skip link moves focus without writing the map's place into the
   // address, which back would then have to walk through.
   document.querySelector(".skip").addEventListener("click", (e) => {
