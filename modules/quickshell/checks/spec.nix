@@ -5,6 +5,7 @@
   account,
   copied,
   graphical,
+  launcherOnNiri,
   lib,
   noFonts,
   pkgs,
@@ -52,4 +53,24 @@
         timeout 60 ${qs} -p shell.qml
       touch $out
     '';
+
+  # On the whole launcher, over cadence-spec itself and a stand-in for cadence
+  # printing a file the cases rewrite, Agents lists Spec once with the cursor
+  # staying on it as the daemon's answer changes, and a step held in Spec takes
+  # the rows the daemon serves after a restart (modules/quickshell/tests/
+  # spec-on-niri-test.py). Spec's place among the parts is held in Qt's own
+  # engine (tests/ranking.qml); the order here is the cadence module's.
+  agents-lists-spec-once-on-niri = launcherOnNiri {
+    name = "agents-lists-spec-once-on-niri";
+    tests = ../tests/spec-on-niri-test.py;
+    given = [
+      "CADENCE_SPEC=${lib.getExe (pkgs.callPackage ../../cadence/spec/package.nix { })}"
+      "SPEC_ROWS=${../../cadence/tests/served-stand-in.sh}"
+      "WORDS=${(import ../launcher/words.nix).file}"
+    ];
+    shell.launcher.providers.spec = {
+      order = 54;
+      source = ../../cadence/Spec.qml;
+    };
+  };
 }

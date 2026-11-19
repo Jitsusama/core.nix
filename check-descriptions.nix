@@ -280,6 +280,11 @@
     cargo itself, and runs cargo itself for a person, on a lent builder, without nix-offload, or
     beside one too old to know cargo
   '';
+  agents-lists-spec-once-on-niri = ''
+    on the account's whole shell on niri, over the cadence-spec daemon itself, Agents lists Spec
+    once, the cursor staying on it as the daemon's answer changes, and a step held in Spec takes
+    the rows the daemon serves after a restart
+  '';
   agents-makes-the-launchers-rows = ''
     the agents daemon says how each pi session stands, its acts and what Return does, lays
     sessions under their orchestrators with the waiting folded, and words each row's side, each
