@@ -181,6 +181,13 @@ let
             PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
           }
           // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
+          // {
+            # Cleared last, so neither the user manager's environment nor a
+            # machine's hands node an option: --inspect would open the
+            # inspector the flag above shuts, and --require or --import
+            # would run code as the host before pi does.
+            NODE_OPTIONS = "";
+          }
         );
         # The user manager names the TPM's agent, Joel's own keys, to
         # everything it starts, and a hosted conversation's commands inherit
@@ -308,7 +315,8 @@ in
             type = lib.types.path;
             description = ''
               The node that pi was built with, which its native modules are
-              built for; the host runs on it.
+              built for; the host runs on it, given --disable-sigusr1, so it
+              must be node 22.14 or later, which knows that flag.
             '';
           };
           path = lib.mkOption {
