@@ -15,7 +15,7 @@ that changes what it prints fails a test rather than a person's install.
 | `efivar-<name>-<guid>`         | `/sys/firmware/efi/efivars/<name>-<guid>`, read whole |
 | `fido2-token-L.txt`            | `fido2-token -L`, with no YubiKey plugged in      |
 | `fido2-token-I.txt`            | `fido2-token -I`, of the key that lists: on the XPS 14 its virtual linux-id, captured on 2026-10-22 |
-| `lsblk.json`                   | `lsblk -J -O -b`, the short form of the guide's `--json --output-all --bytes` |
+| `lsblk.json`                   | `lsblk -J -O -b`, every column: more than the guide asks for, which it reads past |
 | `sbctl-status.json`            | `sbctl status --json`                             |
 | `sbctl-verify.json`            | `sbctl verify --json`, as root                    |
 | `efivar-db-<guid>`             | the firmware's db, which trusts its sbctl db certificate |

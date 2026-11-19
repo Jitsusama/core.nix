@@ -54,12 +54,20 @@ impl Disk {
     }
 }
 
+/// How lsblk is asked for the disks: only the columns `Device` reads.
+/// Asked for every column, lsblk 2.42 prints `sched` from a stack buffer
+/// it never filled when a device's queue/scheduler can't be read, as for
+/// an opened LUKS volume on the stick, so now and then a byte that isn't
+/// UTF-8 stopped the guide mid-recovery.
+pub const LSBLK: &[&str] = &[
+    "--json",
+    "--bytes",
+    "--output",
+    "NAME,PATH,TYPE,ID-LINK,MODEL,SERIAL,SIZE,TRAN,RM,PARTN,PARTLABEL,FSTYPE,UUID,MOUNTPOINTS",
+];
+
 pub fn observe(machine: &mut dyn Machine) -> Result<Vec<Disk>, Fault> {
-    parse(
-        &machine
-            .run(Tool::Lsblk, &["--json", "--output-all", "--bytes"])?
-            .ok()?,
-    )
+    parse(&machine.run(Tool::Lsblk, LSBLK)?.ok()?)
 }
 
 #[derive(Deserialize)]
@@ -147,11 +155,7 @@ mod tests {
     #[test]
     fn the_surfaces_own_drive_is_internal_and_in_use() {
         let mut stand_in = StandIn::new();
-        stand_in.prints(
-            Tool::Lsblk,
-            &["--json", "--output-all", "--bytes"],
-            surface!("lsblk.json"),
-        );
+        stand_in.prints(Tool::Lsblk, LSBLK, surface!("lsblk.json"));
         let disks = observe(&mut stand_in).unwrap();
         assert_eq!(disks.len(), 1);
         let disk = &disks[0];

@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 use guide::install::carry::{Carried, ChooseCarry, PackHome, RestoreHome, WhenCarried, accounts};
 use guide::install::{INSTALL_KEY, TARGET, Target, VAULT_KEY};
+use guide::observe::disks::LSBLK;
 use guide::recover::OpenDisk;
 use guide::stand_in::StandIn;
 use guide::vault::store::Directory;
@@ -100,11 +101,7 @@ fn on_the_stick(
     stand_in
         .with_vault(Box::new(store))
         .file(VAULT_KEY, key.to_secret().expose().as_bytes())
-        .prints(
-            Tool::Lsblk,
-            &["--json", "--output-all", "--bytes"],
-            &listing.to_string(),
-        )
+        .prints(Tool::Lsblk, LSBLK, &listing.to_string())
         .file("/mnt/etc/passwd", OLD_PASSWD.as_bytes())
         .no_file(HELD_KEY)
         .no_file("/run/guide/packed");

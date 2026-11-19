@@ -89,15 +89,6 @@
     "test": "murmurs-site-reads-live"
   },
   {
-    "at": 1795022147,
-    "commit": "28d1e29f9bd69c9661b0ae2dc85309c626bdf43a",
-    "due": "2026-11-20",
-    "owner_pr": 5520,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at 28d1e29f9bd6",
-    "test": "vm-guide-recovers"
-  },
-  {
     "at": 1795057672,
     "commit": "7030d16c46ae51a01fbba1097171a051925097cb",
     "due": "2026-11-22",

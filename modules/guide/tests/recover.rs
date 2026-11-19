@@ -9,6 +9,7 @@ use guide::recover::{
     AlreadyThere, CHECKED, CheckSystem, FindMachine, MountSystem, OpenDisk, STOPPED, STOPPED_EARLY,
     already_there, the_machine,
 };
+use guide::observe::disks::LSBLK;
 use guide::stand_in::StandIn;
 use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
@@ -24,7 +25,7 @@ macro_rules! fixture {
 
 fn lsblk(json: &str) -> StandIn {
     let mut stand_in = StandIn::new();
-    stand_in.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
+    stand_in.prints(Tool::Lsblk, LSBLK, json);
     stand_in
 }
 
