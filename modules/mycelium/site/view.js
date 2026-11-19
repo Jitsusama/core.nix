@@ -14,10 +14,28 @@
 // so the map moves to the feed without changing what it draws; it is split
 // by what changes for one reason as it is rewritten in TypeScript on the
 // kit (modules/mycelium/site/README.md says what remains). What each key
-// asks is decided in keys.ts, and which network grows out of which in
-// lineage.ts, which this imports as the modules they're built to.
-import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
+// asks is decided in keys.ts, which network grows out of which in
+// lineage.ts, what each thing is in words in words.ts, and the tree beside
+// the map, its rows and their walk, in outline.ts, which this imports as
+// the modules they're built to.
+import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
+import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
+import {
+  allCells,
+  countsOf,
+  described,
+  money,
+  NUMBER,
+  offWords,
+  plural,
+  STANDING_WORD,
+  STANDINGS,
+  spends,
+  spentBy,
+  spentOf,
+  waitingWords,
+} from "./words.js";
 
 (() => {
   // The most time between two readings while the node moves: site.ts hands
@@ -249,12 +267,6 @@ import { grownOf } from "./lineage.js";
 
   // One formatter each, made once: toLocaleString makes a new one on every
   // call, which at 10k cells was most of what a tree row cost.
-  const NUMBER = new Intl.NumberFormat("en-CA");
-  // Dollars to the cent below a hundred, where cents still tell cells
-  // apart, and whole above it, where they are noise.
-  const WHOLE = new Intl.NumberFormat("en-CA", { maximumFractionDigits: 0 });
-  const CENTS = new Intl.NumberFormat("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const money = (usd) => (usd == null ? "" : `$${(usd >= 100 ? WHOLE : CENTS).format(usd)}`);
   const HOURS = { hour: "2-digit", minute: "2-digit", hour12: false };
   const CLOCK = [new Intl.DateTimeFormat("en-CA", HOURS), new Intl.DateTimeFormat("en-CA", { ...HOURS, second: "2-digit" })];
   const clock = (iso, seconds = true) => CLOCK[+seconds].format(new Date(iso));
@@ -272,7 +284,6 @@ import { grownOf } from "./lineage.js";
     const said = dayClock(t);
     return /^\d/.test(said) ? (said.includes(" ") ? `on ${said}` : `at ${said}`) : said;
   };
-  const plural = (n, one, many = `${one}s`) => `${NUMBER.format(n)} ${n === 1 ? one : many}`;
   // What a key says depends on the data alone, so it is worked out once
   // for each reading.
   const perReading = (fn) => {
@@ -289,23 +300,8 @@ import { grownOf } from "./lineage.js";
   };
   const gib = (bytes) => (bytes == null ? "" : `${(bytes / 2 ** 30).toFixed(0)} GiB`);
 
-  // What cells spent today: each session's own sum, since local midnight,
-  // of the list price pi puts on every call it makes. The bill is
-  // spend-watch's to say; this is what the sessions say of themselves.
-  const spentBy = (s) => s.usage?.cost_today || 0;
-  const spends = (cells) => cells.some((s) => s.usage?.cost_today != null);
-  // The sum is kept per list, and each reading brings new lists.
-  const SPENT = new WeakMap();
-  const spentOf = (cells) => {
-    if (!SPENT.has(cells)) SPENT.set(cells, cells.reduce((t, s) => t + spentBy(s), 0));
-    return SPENT.get(cells);
-  };
-  const spentWords = (cells) => (spends(cells) ? `, ${money(spentOf(cells))} today` : "");
-
   // ---- The model, from what mycelium says. ----
 
-  const STANDINGS = ["asks", "stuck", "moving", "quiet", "dormant"];
-  const STANDING_WORD = { asks: "needs you", stuck: "stuck", moving: "moving", quiet: "quiet", dormant: "dormant" };
   // What waits on the mesh is the node's judgement where it serves one: a
   // question waits on each peer it went to until that peer answers it or
   // anything in its thread, and a hold stands until its sender ends it.
@@ -369,7 +365,6 @@ import { grownOf } from "./lineage.js";
   const swell = (owes) =>
     owes?.length ? Math.min(SWELL_MAX, SWELL_BASE + SWELL_PER_QUESTION * (owes.length - 1) + SWELL_FOR_AGE * Math.min(1, ageOf(owes) / WAIT_FULL_MS)) : 0;
   const minutesWord = (ms) => (ms < 60_000 ? "under a minute" : `${Math.round(ms / 60_000)} min`);
-  const waitingWords = (owes) => `${owes.length === 1 ? "a question" : `${owes.length} questions`} waiting`;
 
   const STANDING_OF_CELL = { "needs-you": "asks", stuck: "stuck", moving: "moving", quiet: "quiet", dormant: "dormant" };
   const SHARED_WORD = { project: "quest", repository: "repository", group: "group" };
@@ -2070,50 +2065,10 @@ import { grownOf } from "./lineage.js";
     goTo([k, w / 2 - k * p[0], h / 2 - k * p[1]]);
   };
 
-  const countsWords = (cells) => {
-    const n = countsOf(cells);
-    const bits = STANDINGS.filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`);
-    const held = cells.filter((s) => s.owes.length).length;
-    return `${plural(cells.length, "cell")}${bits.length ? `: ${bits.join(", ")}` : ""}${held ? `; ${held} with ${held === 1 ? "a question" : "questions"} waiting` : ""}`;
-  };
-  const cellWords = (s) =>
-    (s.standing === "asks" ? (s.wants ? `needs you: ${s.wants}` : STANDING_WORD.asks) : s.standing === "moving" ? `moving: ${s.doing || "in a turn"}` : STANDING_WORD[s.standing]) +
-    (s.owes.length ? `; ${waitingWords(s.owes)}` : "") +
-    (s.holds.length ? `; ${s.holds.length === 1 ? "a hold" : `${s.holds.length} holds`} standing` : "");
-
-  // What a node is, in words: the name a tree item goes by.
-  const describe = perReading((key) => {
-    const m = current;
-    const id = key.slice(2);
-    if (key[0] === "c") {
-      const s = m.byAddress.get(id);
-      return s ? `${s.short}, ${cellWords(s)}` : id;
-    }
-    if (key[0] === "h") {
-      const h = m.hubs.get(id);
-      return h ? `${h.name}, ${hubWords(h)}, a network${h.children.length ? ` with ${plural(h.children.length, "branch", "branches")}` : ""}` : id;
-    }
-    const x = current.machines.find((y) => y.name === id);
-    return `${id}, ${machineWords(id)}, ${x?.members ? `a basin of ${plural(x.members.length, "machine")}` : "a machine"}`;
-  });
-  // The words a tree row shows under a name are the words its name says
-  // after it, so what's read aloud holds what's seen.
-  const machineWords = (id) => {
-    const x = current.machines.find((y) => y.name === id);
-    const cells = cellsOn(id);
-    const state = x?.state !== "ready" ? "off" : offWords(x) ? `ready, ${offWords(x)}` : "ready";
-    return `${state}, ${plural(cells.length, "cell")}${spentWords(cells)}`;
-  };
+  // What a node is, in words: the name a tree item goes by (words.ts).
+  const describe = perReading((key) => described(current, key));
   // A machine's cells, one list per reading, so its sum is kept with it.
   const cellsOn = perReading((id) => current.cells.filter((s) => s.machine === id));
-  // A network with its branches, every cell under it, one list per hub.
-  const ALL_CELLS = new WeakMap();
-  const allCells = (h) => {
-    if (!ALL_CELLS.has(h)) ALL_CELLS.set(h, h.children.length ? [...h.cells, ...h.children.flatMap(allCells)] : h.cells);
-    return ALL_CELLS.get(h);
-  };
-  const hubWords = (h) =>
-    `${countsWords(h.cells)}${h.children.length && spends(allCells(h)) ? `, ${money(spentOf(allCells(h)))} today with its branches` : spentWords(h.cells)}`;
   // What a node is and where it hangs, said as the keys land on it.
   const landing = (key) => {
     const m = current;
@@ -2962,11 +2917,6 @@ import { grownOf } from "./lineage.js";
 
   // ---- The panel. ----
 
-  const countsOf = (cells) => {
-    const n = Object.fromEntries(STANDINGS.map((s) => [s, 0]));
-    for (const s of cells) n[s.standing]++;
-    return n;
-  };
   const countsLine = (cells) => {
     const n = countsOf(cells);
     const bits = [plural(cells.length, kindWord(cells))];
@@ -3012,12 +2962,6 @@ import { grownOf } from "./lineage.js";
   // in, in what it declares; never by its name, which the node makes up.
   // A basin's machines are drawn as the one basin they are in (model.ts).
   const isBasin = (x) => Boolean(x?.basin);
-  // How many of a basin's machines are off while it runs, in words, or
-  // nothing where none is.
-  const offWords = (x) => {
-    const off = (x?.members || []).filter((y) => y.state !== "ready").length;
-    return off ? `${plural(off, "machine")} off` : "";
-  };
   // Every machine as itself, a basin's taken out of it.
   const everyMachine = () => current.machines.flatMap((x) => x.members || [x]);
   const machineForm = (x) => (isBasin(x) ? "basin" : isSandbox(x) ? "lent" : "shut");
@@ -3254,7 +3198,6 @@ import { grownOf } from "./lineage.js";
     return current.messages.filter((x) => from.has(x.from) || (x.groups || []).some((g) => g === key || peers.has(g)));
   };
 
-  const worstFirst = (a, b) => STANDINGS.indexOf(a.standing) - STANDINGS.indexOf(b.standing) || collate(a.short, b.short);
 
   // Spent today, as a sum that opens on what it counts: the parts it
   // splits into, then the cells that spent most, highest first.
@@ -4006,58 +3949,31 @@ import { grownOf } from "./lineage.js";
 
   // ---- The network as a tree, for keys and screen readers. ----
 
-  // Machines hold the networks their cords carry, networks hold their
-  // branches and then their cells, worst first. Only open branches are
-  // drawn, so the tree stays small however large the network grows. The
-  // item with focus is where the map's pointer is, and the other way round.
+  // What hangs from what, which rows an open set of branches shows, and
+  // where each of the tree's keys goes from a row are outline.ts's to say;
+  // this writes the rows into the page and takes the steps. The item with
+  // focus is where the map's pointer is, and the other way round.
   const expanded = new Set();
   let treeActive = null;
   let treeSeeded = false;
-  const byName = (a, b) => collate(a.name, b.name);
+  // The rows last written into the page, which the keys walk.
+  let treeRows = [];
   // Each branch's children are sorted once for each reading of the data,
   // and only once it opens: a closed branch needs only to know it has any.
   const kidsCache = new Map();
-  let kidsOf = null;
+  let kidsRead = null;
   const treeKids = (key) => {
-    const m = current;
-    if (kidsOf !== m) {
+    if (kidsRead !== current) {
       kidsCache.clear();
-      kidsOf = m;
+      kidsRead = current;
     }
-    if (kidsCache.has(key)) return kidsCache.get(key);
-    const id = key.slice(2);
-    let kids = [];
-    if (key[0] === "m") kids = [...m.hubs.values()].filter((h) => !h.within && h.machine === id).sort(byName).map((h) => `h:${h.key}`);
-    else if (key[0] === "h" && m.hubs.has(id)) {
-      const h = m.hubs.get(id);
-      kids = [...[...h.children].sort(byName).map((c) => `h:${c.key}`), ...[...h.cells].sort(worstFirst).map((s) => `c:${s.address}`)];
-    }
-    kidsCache.set(key, kids);
-    return kids;
+    if (!kidsCache.has(key)) kidsCache.set(key, kidsOf(current, key));
+    return kidsCache.get(key);
   };
-  const hasKids = (key) => {
-    if (kidsCache.has(key) && kidsOf === current) return kidsCache.get(key).length > 0;
-    if (key[0] === "h") {
-      const h = current.hubs.get(key.slice(2));
-      return !!h && h.children.length + h.cells.length > 0;
-    }
-    return key[0] === "m" && treeKids(key).length > 0;
-  };
-  const treeUp = (key) => {
-    const m = current;
-    const id = key.slice(2);
-    if (key[0] === "h") {
-      const h = m.hubs.get(id);
-      return h ? (h.within ? `h:${h.within}` : h.machine && machinesShown ? `m:${h.machine}` : null) : null;
-    }
-    if (key[0] === "c") {
-      const s = m.byAddress.get(id);
-      return s ? `h:${(s.hub || s.loose).key}` : null;
-    }
-    return null;
-  };
+  const hasKids = (key) => (key[0] === "m" || (kidsRead === current && kidsCache.has(key)) ? treeKids(key).length > 0 : hangsAny(current, key));
+  const treeUp = (key) => upOf(current, key, machinesShown);
   const openTo = (key) => {
-    for (let up = treeUp(key); up; up = treeUp(up)) expanded.add(up);
+    for (const up of openedTo(key, treeUp)) expanded.add(up);
   };
   // A machine's mark in small: its box, a cord leaving each side.
   const MACHINE_GLYPH = `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-cord" d="M-12,0H-7M7,0H12" style="--w:1.5px"/><rect class="m-box" x="-7" y="-5" width="14" height="10"/></svg>`;
@@ -4065,17 +3981,11 @@ import { grownOf } from "./lineage.js";
     `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-receptor" d="M-9,-5.4Q0,14.4 9,-5.4"/>${hearing ? '<circle class="m-nucleus" r="4.5"/>' : '<circle class="m-quiet" r="4"/>'}</svg>`;
   const TWISTY = `<svg class="twisty" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5L7 5L3 8.5"/></svg>`;
   const treeRow = perReading((key) => {
-    const m = current;
-    const id = key.slice(2);
-    if (key[0] === "c") {
-      const s = m.byAddress.get(id);
-      return [stateGlyph(s), s.short, cellWords(s), ""];
-    }
-    if (key[0] === "h") {
-      const h = m.hubs.get(id);
-      return [glyph(h.shape, 10), h.name, hubWords(h), ""];
-    }
-    return [MACHINE_GLYPH, id, machineWords(id), " mono"];
+    const { name, fact, mono } = rowWords(current, key);
+    let mark = MACHINE_GLYPH;
+    if (key[0] === "c") mark = stateGlyph(current.byAddress.get(key.slice(2)));
+    else if (key[0] === "h") mark = glyph(current.hubs.get(key.slice(2))?.shape, 10);
+    return [mark, name, fact, mono ? " mono" : ""];
   });
   const renderTree = (how) => timed("mycelium-tree", () => drawTree(how));
   // Drawn alone, the tree keeps the column's place itself; drawn with the
@@ -4089,22 +3999,20 @@ import { grownOf } from "./lineage.js";
     const held = document.activeElement?.closest?.("#tree [role=treeitem]")?.dataset.key;
     const scroll = keepScroll ? treeBox.scrollTop : 0;
     const opened = keyOf(chosen);
-    const item = (key, level, i, n) => {
-      const any = hasKids(key);
-      const open = any && expanded.has(key);
-      const kids = open ? treeKids(key) : [];
+    const item = ({ key, level, at, of, open, kids }) => {
+      const any = open !== null;
       const [mark, name, fact, mono] = treeRow(key);
       return (
-        `<li role="treeitem" data-key="${esc(key)}" aria-level="${level}" aria-setsize="${n}" aria-posinset="${i + 1}"` +
+        `<li role="treeitem" data-key="${esc(key)}" aria-level="${level}" aria-setsize="${of}" aria-posinset="${at}"` +
         `${any ? ` aria-expanded="${open}"` : ""}${key === opened ? ' aria-current="true"' : ""} aria-label="${esc(describe(key))}" tabindex="-1">` +
         `<div class="ti${key === opened ? " opened" : ""}" style="--level:${level - 1}" aria-hidden="true">${any ? TWISTY : '<span class="twisty"></span>'}${mark}` +
         `<span class="what"><span class="name${mono}">${esc(name)}</span><span class="fact">${esc(fact)}</span></span></div>` +
-        (open ? `<ul role="group">${kids.map((c, j) => item(c, level + 1, j, kids.length)).join("")}</ul>` : "") +
+        (open ? `<ul role="group">${kids.map(item).join("")}</ul>` : "") +
         `</li>`
       );
     };
-    const roots = shownMachines().length ? shownMachines().map((x) => `m:${x.name}`) : [...current.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`);
-    tree.innerHTML = roots.map((key, i) => item(key, 1, i, roots.length)).join("");
+    treeRows = rowsOf(rootsOf(current, machinesShown), expanded, { kids: treeKids, any: hasKids });
+    tree.innerHTML = treeRows.map(item).join("");
     const find1 = (key) => key && tree.querySelector(`[data-key="${CSS.escape(key)}"]`);
     const active = find1(held) || find1(treeActive) || find1(pointed) || tree.querySelector("[role=treeitem]");
     if (active) {
@@ -4114,7 +4022,6 @@ import { grownOf } from "./lineage.js";
     if (keepScroll) treeBox.scrollTop = scroll;
     if (held && active) active.focus({ preventScroll: true });
   };
-  const treeItems = () => [...tree.querySelectorAll("[role=treeitem]")];
   const focusItem = (li) => {
     if (!li) return;
     for (const x of tree.querySelectorAll('[tabindex="0"]')) x.tabIndex = -1;
@@ -4123,41 +4030,27 @@ import { grownOf } from "./lineage.js";
     li.focus({ preventScroll: true });
     li.firstElementChild.scrollIntoView({ block: "nearest" });
   };
-  // What each of the tree's keys does to the item it's on, once keys.ts
-  // has said which.
-  const TREE_DOES = {
-    next: ({ list, at }) => focusItem(list[at + 1]),
-    prev: ({ list, at }) => focusItem(list[at - 1]),
-    first: ({ list }) => focusItem(list[0]),
-    last: ({ list }) => focusItem(list[list.length - 1]),
-    in: ({ li, key, open, shut }) => {
-      if (shut) {
-        expanded.add(key);
-        renderTree();
-      } else if (open) focusItem(li.querySelector("[role=treeitem]"));
+  // What each step a key in the tree comes to does, once keys.ts has said
+  // which act the key asks and outline.ts where that goes from the row.
+  const TREE_STEPS = {
+    focus: (key) => focusItem(tree.querySelector(`[data-key="${CSS.escape(key)}"]`)),
+    expand: (key) => {
+      expanded.add(key);
+      renderTree();
     },
-    out: ({ li, key, open }) => {
-      if (open) {
-        expanded.delete(key);
-        renderTree();
-      } else focusItem(li.parentElement.closest("[role=treeitem]"));
+    collapse: (key) => {
+      expanded.delete(key);
+      renderTree();
     },
-    open: ({ key }) => visit(choiceOf(key)),
+    open: (key) => visit(choiceOf(key)),
   };
   tree.addEventListener("keydown", (e) => {
     const li = e.target.closest("[role=treeitem]");
     const act = treeKey(e);
     if (!li || !act) return;
     e.preventDefault();
-    const list = treeItems();
-    TREE_DOES[act]({
-      li,
-      key: li.dataset.key,
-      list,
-      at: list.indexOf(li),
-      open: li.getAttribute("aria-expanded") === "true",
-      shut: li.getAttribute("aria-expanded") === "false",
-    });
+    const step = walked(act, treeRows, li.dataset.key);
+    if (step) TREE_STEPS[step.step](step.key);
   });
   // Focus in the tree moves the map's pointer to the same thing.
   tree.addEventListener("focusin", (e) => {
@@ -4809,11 +4702,12 @@ import { grownOf } from "./lineage.js";
     e.preventDefault();
     PAGE_DOES[asked]();
   });
-  // keys.ts lists every act a key can ask, and no typechecker reads this
-  // file, so a table here missing one would swallow its key unseen. The
-  // page says so as it loads instead, where every page test hears it.
+  // keys.ts lists every act a page key can ask, and outline.ts every step
+  // a tree key comes to, and no typechecker reads this file, so a table
+  // here missing one would swallow its key unseen. The page says so as it
+  // loads instead, where every page test hears it.
   for (const [does, every, what] of [
-    [TREE_DOES, EVERY_TREE_ACT, "tree"],
+    [TREE_STEPS, EVERY_TREE_STEP, "tree"],
     [PAGE_DOES, EVERY_PAGE_ACT, "page"],
   ]) {
     const undone = every.filter((act) => typeof does[act] !== "function");

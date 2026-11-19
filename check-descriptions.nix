@@ -1884,9 +1884,11 @@
     a network the node sets within none growing out of the one whose cells started more of its
     cells than any other, a tie going by name, where the node sets a network standing, no start
     from inside it counting, of two that started each other's cells the stronger the trunk and
-    no branch looping back round, and what each key asks of the map, its tree, its find line,
-    the page and the theme switch, chords, typing and a key named after an object's own asking
-    nothing
+    no branch looping back round, what each key asks of the map, its tree, its find line, the
+    page and the theme switch, chords, typing and a key named after an object's own asking
+    nothing, the tree's networks by name and their cells worst first, the rows only open
+    branches show and where each tree key goes from a row, edges included, and what each cell,
+    network and machine is in words, counts, sums and labels included
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
@@ -1899,7 +1901,8 @@
     its hub laid out again as a branch, both drawers saying so and the branch going with the
     forage, a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
-    Escape in its order, the walk, the machines, Now, the tree and the theme switch wrapping),
+    Escape in its order, the walk, the machines, Now, the tree stepping, closing, opening,
+    going in and out of a branch and opening a row, and the theme switch wrapping),
     the web-design skill's page checks and the map's own (each opened thing in view, its drawer
     saying what it is, no more names than it's engaged with) passing at a phone's width and a
     desk's in both looks, a first visit within its budget of files, bytes and elements, both

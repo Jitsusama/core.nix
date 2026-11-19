@@ -12,7 +12,8 @@ grow one network out of another while a forage says a cell of the one
 started a cell of the other,
 answer a key of each kind keys.ts decides (the keys dialog, find and its
 field, stepping through what was found, Escape's order, the walk, the
-machines, Now, the tree and the theme switch), and pass the web-design
+machines, Now, the tree's steps, branches and Return, and the theme
+switch), and pass the web-design
 skill's page checks and the map's own (site-checks.js) at a phone's width
 and a desk's in both looks. Any error the page logs fails it, since that is
 how the map froze on "reading" unseen, and how the drawing says a key
@@ -51,9 +52,10 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 18 files since the balance and who started each cell were read in modules
-# of their own, and one spare.
-BUDGET = Budget(files=19, kilobytes=700, elements=590)
+# 20 files since the balance, who started each cell, the tree beside the map
+# and what each thing is in words were read in modules of their own, and one
+# spare.
+BUDGET = Budget(files=21, kilobytes=700, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -430,6 +432,24 @@ def test_the_walk_the_tree_and_the_switch_answer_their_keys(mycelium_opened: Ope
     expect(items.last, "G didn't go to the tree's last").to_be_focused()
     page.keyboard.press("g")
     expect(items.first, "g didn't go to the tree's first").to_be_focused()
+    # h closes an open branch and l opens it again, then steps into it; h
+    # steps back out, and Return opens the row the keys are on.
+    first_open = page.locator("#tree [role=treeitem][aria-expanded=true]").first
+    key = first_open.get_attribute("data-key")
+    branch = page.locator(f'#tree [role=treeitem][data-key="{key}"]')
+    branch.focus()
+    page.keyboard.press("h")
+    expect(branch, "h didn't close the open branch").to_have_attribute("aria-expanded", "false")
+    page.keyboard.press("l")
+    expect(branch, "l didn't open the closed branch").to_have_attribute("aria-expanded", "true")
+    page.keyboard.press("l")
+    under = branch.locator("[role=treeitem]").first
+    expect(under, "l didn't step into the open branch").to_be_focused()
+    page.keyboard.press("h")
+    expect(branch, "h didn't step out to the branch above").to_be_focused()
+    page.keyboard.press("Enter")
+    title = page.locator("#panel-title")
+    expect(title, "Return didn't open the tree's row").not_to_have_text("Now")
     themes = page.locator(".switch button")
     themes.first.focus()
     page.keyboard.press("ArrowLeft")

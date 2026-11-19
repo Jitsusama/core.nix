@@ -11,6 +11,8 @@ which leaves this note behind.
 | `model.ts`     | the node's records made into what the map draws             |
 | `view.js`      | the drawing, as it was written by hand before the feed      |
 | `keys.ts`      | what each key asks of the drawing, decided apart from it    |
+| `outline.ts`   | the tree beside the map: what hangs from what, and its walk |
+| `words.ts`     | what each cell, network and machine is, in words            |
 | `reach.ts`     | whether the drawing reaches every cell, said when asked     |
 | `map-check.sh` | `mycelium-map-check`, asking the page this machine serves   |
 | `index.html`   | the page, and `site.css` its styles                         |
@@ -19,11 +21,12 @@ which leaves this note behind.
 | `tests/`       | the making of the map from the records, and the page, tried |
 
 `view.js`, `index.html` and `site.css` are the drawing as it was written
-by hand, served unchanged but for two seams: site.ts hands it each reading,
-and keys.ts says what each key it hears asks, so those decisions are typed
-and unit-tested while the drawing carries them out. They come under the
-linters as the drawing is rewritten in TypeScript on the kit, and until
-then `treefmt.nix` names them as kept out.
+by hand, served unchanged but for its seams: site.ts hands it each reading,
+keys.ts says what each key it hears asks, outline.ts which rows the tree
+shows and where its keys go, and words.ts what each thing is in words, so
+those decisions are typed and unit-tested while the drawing carries them
+out. They come under the linters as the drawing is rewritten in TypeScript
+on the kit, and until then `treefmt.nix` names them as kept out.
 
 The `tests/` folder's `map-reads-live-test.py` reads the page as Nix builds
 it in headless Chromium, through the real server beside a stand-in node holding
