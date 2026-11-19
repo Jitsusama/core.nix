@@ -17,7 +17,10 @@ onLinux {
   # of their own: a request forwarded whole, another host refused, many
   # requests at once on a few connections, an answer streamed as it comes, a
   # connection the origin lets go opened again, a request the origin reset
-  # said as a 502 with its connection retired, the requests pi gave up on
+  # before its answer sent once more on a connection opened after the one
+  # that reset it, kept or not, and said as a 502 when reset again, with its
+  # connection retired, an answer already begun never sent again, the
+  # requests pi gave up on
   # counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen
   # connection lost, an origin out of reach said as a 502 or a 504 without a

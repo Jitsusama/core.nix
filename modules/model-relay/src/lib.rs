@@ -30,9 +30,13 @@
 //! request. A request hyper hands back unsent, as when its connection was
 //! retired before it went, goes again on another; one the origin dropped
 //! after it went is said as a 502, for pi's retry. One the origin reset
-//! rather than answer is a 502 too, since the origin may have acted on it,
-//! and retires the connection it went on, which may be refusing every
-//! request it's given. After the machine
+//! before its answer began retires the connection it went on, which may be
+//! refusing every request it's given, and goes once more, on a connection
+//! opened after that one; reset again, it's a 502. Nothing of an answer
+//! came, and one bad connection would otherwise fail every request on it,
+//! each a turn some agent retries whole. So the relay reads each body
+//! whole before it goes, from pi on this machine, and holds it until its
+//! answer begins. After the machine
 //! sleeps, the connections it held are retired and opened afresh, since
 //! the network they ran on may be gone and pings would take their time to
 //! say so. A ping is what finds a lost connection, and an unanswered one
@@ -141,8 +145,9 @@ const SLEPT_AT_LEAST: Duration = Duration::from_secs(10);
 
 /// What a relay answers with: the origin's body, or a line of its own.
 type Body = BoxBody<Bytes, hyper::Error>;
-/// What a relay sends to its origin: pi's body, in pieces.
-type Sent = InPieces<Incoming>;
+/// What a relay sends to its origin: pi's body, read whole and sent in
+/// pieces, so it can go again.
+type Sent = InPieces<Full<Bytes>>;
 
 /// A body handed on in pieces of at most `HELD_AHEAD_AT_MOST`, so that no
 /// DATA frame h2 writes is longer, since h2 cuts a frame from one piece
@@ -338,6 +343,8 @@ struct Counts {
     refused: AtomicU64,
     failed: AtomicU64,
     reset: AtomicU64,
+    /// Requests reset before their answers began and sent once more.
+    again: AtomicU64,
     cancelled: AtomicU64,
     opened: AtomicU64,
     open: AtomicUsize,
@@ -954,6 +961,33 @@ impl Relay {
             );
         }
         let in_hand = self.busy.one();
+        let whole = match self.readied(&mut parts, body).await {
+            Ok(whole) => whole,
+            Err(refused) => return *refused,
+        };
+        let (answer, on_the_way) = match self.carry(&parts, &whole).await {
+            Ok(answered) => answered,
+            Err(not_carried) => return *not_carried,
+        };
+        let (mut parts, body) = answer.into_parts();
+        parts.version = Version::HTTP_11;
+        without_connection_headers(&mut parts.headers);
+        // The request stays in hand until its answer is sent or given up on,
+        // so the relay never leaves mid-answer.
+        let body = Answering::new(body, on_the_way).map_err(move |why| {
+            let _ = &in_hand;
+            why
+        });
+        Response::from_parts(parts, body.boxed())
+    }
+
+    /// Points a request pi asked of the origin at the origin itself, and
+    /// reads its body whole, or says why pi is refused.
+    async fn readied(
+        &self,
+        parts: &mut hyper::http::request::Parts,
+        body: Incoming,
+    ) -> Result<Bytes, Box<Response<Body>>> {
         let path = parts
             .uri
             .path_and_query()
@@ -966,19 +1000,45 @@ impl Relay {
             .build()
         else {
             self.counts.refused.fetch_add(1, Ordering::Relaxed);
-            return said(
+            return Err(Box::new(said(
                 StatusCode::BAD_REQUEST,
                 "this relay couldn't read the request's path\n",
-            );
+            )));
         };
         parts.uri = uri;
         parts.version = Version::HTTP_2;
         without_connection_headers(&mut parts.headers);
+        // Read whole so it can go again. pi sends it over a socket on this
+        // machine, so nothing waits long on the reading, and pi's requests
+        // carry no trailers to keep.
+        let Ok(read) = body.collect().await else {
+            self.counts.refused.fetch_add(1, Ordering::Relaxed);
+            return Err(Box::new(said(
+                StatusCode::BAD_REQUEST,
+                "this relay couldn't read the request's body\n",
+            )));
+        };
+        Ok(read.to_bytes())
+    }
 
-        let mut request = Request::from_parts(parts, InPieces::new(body));
+    /// Sends a request to the origin until its answer begins, or says what
+    /// pi is answered when it never does.
+    async fn carry(
+        self: &Arc<Relay>,
+        parts: &hyper::http::request::Parts,
+        whole: &Bytes,
+    ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
+        let mut request = sendable(parts, whole);
         let mut sent = 0;
+        // The connection the origin reset this request on, once it has.
+        let mut reset_on: Option<(usize, u64)> = None;
+        let mut say_again = false;
         let mut down;
         let answered = loop {
+            let taken = match reset_on {
+                Some((at, number)) => self.fresh(at, number).await,
+                None => self.sender().await,
+            };
             let (
                 at,
                 Kept {
@@ -986,16 +1046,24 @@ impl Relay {
                     mut sender,
                     tally,
                 },
-            ) = match self.sender().await {
+            ) = match taken {
                 Ok(taken) => taken,
                 Err(why) => {
                     self.counts.failed.fetch_add(1, Ordering::Relaxed);
-                    return why.said();
+                    return Err(Box::new(why.said()));
                 }
             };
             // Dropped while it waits for the answer, as when pi hangs up,
             // it's counted as cancelled on this connection.
             let on_the_way = OnTheWay::sent(&tally, &self.counts);
+            if let Some((was_at, was)) = reset_on
+                && std::mem::take(&mut say_again)
+            {
+                eprintln!(
+                    "model-relay: a request reset on connection {was_at}.{was} is sent again \
+                     on connection {at}.{number}"
+                );
+            }
             down = (at, number, tally);
             match sender.try_send_request(request).await {
                 Ok(answer) => break Ok((answer, on_the_way)),
@@ -1013,59 +1081,39 @@ impl Relay {
                             sent += 1;
                             request = unread;
                         }
+                        // Reset before its answer began, so it goes once
+                        // more, on a connection opened after this one.
+                        None if reset_on.is_none() && reset_by_the_origin(failed.error()) => {
+                            self.said_reset(
+                                failed.error(),
+                                &down,
+                                "it goes once more on a fresh connection",
+                            );
+                            self.counts.again.fetch_add(1, Ordering::Relaxed);
+                            reset_on = Some((at, number));
+                            say_again = true;
+                            request = sendable(parts, whole);
+                        }
                         _ => break Err(failed.into_error()),
                     }
                 }
             }
         };
-        match answered {
-            Ok((answer, on_the_way)) => {
-                let (mut parts, body) = answer.into_parts();
-                parts.version = Version::HTTP_11;
-                without_connection_headers(&mut parts.headers);
-                // The request stays in hand until its answer is sent or
-                // given up on, so the relay never leaves mid-answer.
-                let body = Answering::new(body, on_the_way).map_err(move |why| {
-                    let _ = &in_hand;
-                    why
-                });
-                Response::from_parts(parts, body.boxed())
-            }
-            Err(why) => self.not_carried(&why, &down),
-        }
+        answered.map_err(|why| Box::new(self.not_carried(&why, &down)))
     }
 
-    /// What pi is answered for a request that went down connection `at`'s
-    /// `number`, which `tally` counts, and came back with no answer.
-    fn not_carried(
-        &self,
-        why: &hyper::Error,
-        (at, number, tally): &(usize, u64, Arc<Tally>),
-    ) -> Response<Body> {
-        let (at, number) = (*at, *number);
+    /// What pi is answered for a request that went `down` a connection and
+    /// came back with no answer, and wasn't sent again.
+    fn not_carried(&self, why: &hyper::Error, down: &Down) -> Response<Body> {
         // hyper's error says what failed, never what was sent, which a
         // test holds it to.
         self.counts.failed.fetch_add(1, Ordering::Relaxed);
         if reset_by_the_origin(why) {
-            // On 18 November the origin reset 1,545 of 24,218 requests,
-            // each within a second of its asking, in spells of minutes that
-            // took 10 to 15% of every session's: the shape one connection of
-            // several refusing all it's given would make. Retired, such a
-            // connection costs one request. It's still a 502 rather than a
-            // 421 sending pi direct, since only a reset saying the stream
-            // was refused promises the origin acted on nothing, and these
-            // said a protocol error. The number says whether a fresh
-            // connection is reset too, which one bad one wouldn't be, and
-            // the tally whether the connections reset carried more of pi's
-            // cancels than those left be.
-            let done = self.slots[at].retire(number).said();
+            // It's a 502 rather than a 421 sending pi direct, since only a
+            // reset saying the stream was refused promises the origin acted
+            // on nothing, and these said a protocol error.
+            self.said_reset(why, down, "pi is answered 502");
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
-            eprintln!(
-                "model-relay: the origin reset a request on connection {at}.{number}, {done}, \
-                 {}: {}",
-                tally.said(),
-                with_causes(why)
-            );
         } else {
             eprintln!(
                 "model-relay: a request couldn't be carried: {}",
@@ -1076,6 +1124,41 @@ impl Relay {
             StatusCode::BAD_GATEWAY,
             "this relay's request to its origin failed\n",
         )
+    }
+
+    /// Retires connection `at`'s `number`, which the origin reset a request
+    /// on, and says so, with what came of the request.
+    fn said_reset(&self, why: &hyper::Error, (at, number, tally): &Down, then: &str) {
+        // On 18 November the origin reset 1,545 of 24,218 requests, each
+        // within a second of its asking, in spells of minutes that took 10
+        // to 15% of every session's: the shape one connection of several
+        // refusing all it's given would make. Retired, such a connection
+        // costs one request. The number says whether a fresh connection is
+        // reset too, which one bad one wouldn't be, and the tally whether
+        // the connections reset carried more of pi's cancels than those
+        // left be.
+        let (at, number) = (*at, *number);
+        let done = self.slots[at].retire(number).said();
+        eprintln!(
+            "model-relay: the origin reset a request on connection {at}.{number}, {done}, \
+             {}: {}; {then}",
+            tally.said(),
+            with_causes(why)
+        );
+    }
+
+    /// A connection in slot `at` opened after its connection `number`,
+    /// which the origin reset a request on: the one there now if it's
+    /// newer, or one opened for the request. A connection the slot kept
+    /// after a reset, as it retired one lately, is passed by and replaced,
+    /// so each connection reset on costs at most one opened for the
+    /// requests it reset, however many there were.
+    async fn fresh(&self, at: usize, number: u64) -> Result<(usize, Kept), Unreachable> {
+        let _opening = self.slots[at].opening.lock().await;
+        if let Some(kept) = self.slots[at].sender().filter(|kept| kept.number > number) {
+            return Ok((at, kept));
+        }
+        self.open_now(at).await.map(|kept| (at, kept))
     }
 
     /// A connection to send down: the next in turn if it's open, or any
@@ -1391,6 +1474,21 @@ fn said(status: StatusCode, why: &'static str) -> Response<Body> {
     answer
 }
 
+/// Where a request went: the slot, the connection's number there, and
+/// the tally that counts what the connection carried.
+type Down = (usize, u64, Arc<Tally>);
+
+/// The request `parts` names with its body `whole`, made afresh each time
+/// it goes, since sending one hands it to hyper.
+fn sendable(parts: &hyper::http::request::Parts, whole: &Bytes) -> Request<Sent> {
+    let mut request = Request::new(InPieces::new(Full::new(whole.clone())));
+    *request.method_mut() = parts.method.clone();
+    *request.uri_mut() = parts.uri.clone();
+    *request.version_mut() = parts.version;
+    *request.headers_mut() = parts.headers.clone();
+    request
+}
+
 /// The headers that belong to one hop's connection, which HTTP/2 forbids
 /// and the next hop mustn't read as its own: those any `Connection` line
 /// names, and the standing ones, `Host` among them, since HTTP/2 names its
@@ -1439,10 +1537,12 @@ async fn say_counts(counts: Arc<Counts>) {
         last = asked;
         eprintln!(
             "model-relay: {asked} asked, {} refused, {} failed, {} of them reset; \
-             pi cancelled {}; {} connections opened, {} taking requests",
+             {} reset and sent again; pi cancelled {}; {} connections opened, \
+             {} taking requests",
             counts.refused.load(Ordering::Relaxed),
             counts.failed.load(Ordering::Relaxed),
             counts.reset.load(Ordering::Relaxed),
+            counts.again.load(Ordering::Relaxed),
             counts.cancelled.load(Ordering::Relaxed),
             counts.opened.load(Ordering::Relaxed),
             counts.open.load(Ordering::Relaxed),

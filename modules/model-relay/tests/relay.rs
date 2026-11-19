@@ -282,14 +282,14 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
     let heard = {
         let mut record = kept.lock().expect("the origin's record");
         record.push(Handed {
-        method: parts.method.to_string(),
-        uri: parts.uri.to_string(),
-        version: parts.version,
-        headers: parts
-            .headers
-            .iter()
-            .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
-            .collect(),
+            method: parts.method.to_string(),
+            uri: parts.uri.to_string(),
+            version: parts.version,
+            headers: parts
+                .headers
+                .iter()
+                .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
+                .collect(),
             body: body.clone(),
         });
         record
@@ -776,7 +776,10 @@ async fn a_request_reset_before_its_answer_goes_once_more_on_a_fresh_connection(
         StatusCode::CREATED,
         "a request reset before its answer wasn't sent again"
     );
-    assert_eq!(got.body, SECRET_BODY, "the request sent again lost its body");
+    assert_eq!(
+        got.body, SECRET_BODY,
+        "the request sent again lost its body"
+    );
     let handed: Vec<Handed> = origin
         .handed
         .lock()
@@ -835,7 +838,11 @@ async fn a_reset_on_a_connection_kept_goes_again_on_one_opened_for_it() {
     // for it, never down the one that reset it.
     let once = ask(&relay.socket, request(&host, "/reset-once", b"hello")).await;
 
-    assert_eq!(twice.status, StatusCode::BAD_GATEWAY, "a request reset twice");
+    assert_eq!(
+        twice.status,
+        StatusCode::BAD_GATEWAY,
+        "a request reset twice"
+    );
     assert_eq!(once.status, StatusCode::CREATED, "a request reset once");
     assert_eq!(once.body, b"hello");
     assert_eq!(
