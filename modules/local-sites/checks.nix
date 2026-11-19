@@ -262,7 +262,7 @@ in
 
   # What a switch refuses in the declared rows' homes (rows-homes.nix), read
   # in evaluation alone, so the rules cost no machine of their own.
-  local-sites-rows-home-each-kind-once =
+  local-sites-rows-homes-read-as-readers-do =
     let
       homes = import ./rows-homes.nix { inherit lib; };
       machines = {
@@ -301,32 +301,51 @@ in
         ];
       };
       # Every way a pattern is dropped: no name, no fragment, another page,
-      # a byte that breaks markup, no kind, no address.
+      # each byte that could break a link or markup, one that isn't visible
+      # ASCII, no kind and no address.
       dropped = homes {
-        network.homes = [
-          {
-            kind = "device";
-            address = "#device";
-          }
-          {
-            kind = "device";
-            address = "device={name}";
-          }
-          {
-            kind = "device";
-            address = "system/#device={name}";
-          }
-          {
-            kind = "device";
-            address = "#device=<{name}>";
-          }
-          { address = "#device={name}"; }
-          { kind = "device"; }
-        ];
+        network.homes =
+          map
+            (address: {
+              kind = "device";
+              inherit address;
+            })
+            [
+              "#device"
+              "device={name}"
+              "system/#device={name}"
+              "#device=<{name}>"
+              "#device=\\{name}"
+              "#device=\"{name}"
+              "#device=`{name}"
+              "#device={name} x"
+              "#device={name}é"
+              "#device=\t{name}"
+            ]
+          ++ [
+            { address = "#device={name}"; }
+            { kind = "device"; }
+          ];
       };
+      # What the switch says of each, so its words are read as well.
+      droppedSaid = [
+        ''network's device, "#device"''
+        ''network's device, "device={name}"''
+        ''network's device, "system/#device={name}"''
+        ''network's device, "#device=<{name}>"''
+        ''network's device, "#device=\\{name}"''
+        ''network's device, "#device=\"{name}"''
+        ''network's device, "#device=`{name}"''
+        ''network's device, "#device={name} x"''
+        ''network's device, "#device={name}é"''
+        ''network's device, "#device=\t{name}"''
+        ''network's pattern with no kind, "#device={name}"''
+        "network's device, with no address"
+      ];
+      found = builtins.toJSON { inherit standing twice dropped; };
     in
-    holds "local-sites-rows-home-each-kind-once"
-      "The declared rows' homes aren't refused as the homes' readers would read them."
+    holds "local-sites-rows-homes-read-as-readers-do"
+      "The declared rows' homes aren't refused as their readers would read them: ${found}."
       (
         standing == {
           homedTwice = [ ];
@@ -334,7 +353,7 @@ in
         }
         && twice.homedTwice == [ "machine (network, system)" ]
         && twice.dropped == [ ''health's machine, "#m"'' ]
-        && lib.length dropped.dropped == 6
+        && dropped.dropped == droppedSaid
         && dropped.homedTwice == [ ]
       );
 }

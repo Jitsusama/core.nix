@@ -26,11 +26,11 @@ built with it. The home writes every row it lists, the declared ones as
 declared, into `rows.json` beside it, for the readers of a row's `homes`
 (the system daemon's, the web-design skill's and Code's). A switch refuses
 declared rows that give one kind two sites as its home, or a pattern the
-readers would drop, since the daemon would take one site's links away without
-a word ([`rows-homes.nix`][rows-homes] says which). Each reads `rows.json`
-first and `sites.json` only where it's missing, so `sites.json` keeps
-only the rows nothing declares; a session's edit to a live row there no longer
-reaches the home. A home rolled back
+readers would drop: the skill's reader calls either a fault, and the daemon
+can take a site's links away without a word ([`rows-homes.nix`][rows-homes]
+says when). Each reads `rows.json` first and `sites.json` only where it's
+missing, so `sites.json` keeps only the rows nothing declares; a session's
+edit to a live row there no longer reaches the home. A home rolled back
 to before `rows.json` leaves the last one in place, so remove it then, or
 its readers keep its rows. The system page
 ([`modules/system/site`][system]) is the first, and the mycelium map

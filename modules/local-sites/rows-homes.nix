@@ -2,7 +2,7 @@
 # readers read them (modules/system/src/homes.rs and the web-design
 # skill's modules/theme/web/skill/homes.js): a kind two declared sites are
 # home to, and a pattern the readers would drop. home.nix asserts both are
-# empty; local-sites-rows-home-each-kind-once holds them to rows that trip
+# empty; local-sites-rows-homes-read-as-readers-do holds them to rows that trip
 # each rule.
 { lib }:
 rows:
@@ -56,14 +56,15 @@ let
 in
 {
   # Kinds more than one declared site is home to. The web-design skill's
-  # reader calls a kind's second home a fault, and the system daemon gives a
-  # pattern's kind wholly to the first row claiming it, so between two
-  # declared rows one site's links would go.
+  # reader calls a kind's second home a fault. The system daemon merges two
+  # rows naming a kind, thing by thing, but gives a pattern's kind wholly to
+  # the first row claiming it, so there one site's links would go.
   homedTwice = lib.mapAttrsToList (kind: paths: "${kind} (${lib.concatStringsSep ", " paths})") (
     lib.filterAttrs (_: paths: lib.length paths > 1) sites
   );
-  # Patterns the readers drop, which leave their kind with no home on the
-  # row: the daemon without a word, so its links would simply go.
+  # Patterns the readers drop. The skill's reader calls each a fault, and
+  # where one is its row's only claim on a kind, the daemon leaves the kind
+  # no home there without a word, so its links would simply go.
   dropped = map (
     claim:
     "${claim.path}'s ${if claim.kind == null then "pattern with no kind" else claim.kind}, ${

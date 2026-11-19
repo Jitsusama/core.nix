@@ -1600,9 +1600,10 @@
   local-sites-passes-clippy = ''
     clippy finds nothing in the local sites' server or its tests
   '';
-  local-sites-rows-home-each-kind-once = ''
-    a switch refuses declared local site rows that give one kind two sites as its home, or a
-    pattern the homes' readers drop, and lets a row give its own kind both by name and by pattern
+  local-sites-rows-homes-read-as-readers-do = ''
+    the rules a switch asserts over declared local site rows name each kind two sites are home to
+    and each pattern the homes' readers drop, every byte they refuse included, and let a row give
+    its own kind both by name and by pattern
   '';
   local-sites-serves-its-sites = ''
     the local sites' server serves the documents and a mount, answers a file the browser holds by
