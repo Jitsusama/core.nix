@@ -58,6 +58,11 @@ LAPTOP = "Virtual-2"
 PASSWORD = "correct-horse"  # noqa: S105 (a test machine's, said in screens.nix)
 
 
+def laid_out(workspaces: list[dict[str, Any]]) -> set[tuple[int, str, int]]:
+    """Give each workspace's id, screen and place on it, leaving out what focus changes."""
+    return {(one["id"], one["output"], one["idx"]) for one in workspaces}
+
+
 class Screens:
     """The machine with niri on its two screens, signed in as the account."""
 
@@ -431,12 +436,20 @@ class Screens:
         # The shell hears both through the agents daemon, a moment after they're
         # written, and a reopen asked before then puts every session nowhere, in
         # no order (at 9bceeeda and a9f253f9, by 2026-11-19).
-        self.places_heard(f"a-boot-before: {' '.join(sorted(where))},", "restoring a-boot-before]")
+        self.heard_handed_over(where)
         return self.machine.succeed("cat /proc/sys/kernel/random/boot_id").strip()
 
+    def heard_handed_over(self, where: dict[str, dict[str, Any]]) -> None:
+        """Wait until the shell running now says it heard `hand_over`'s places and boot."""
+        self.places_heard(f"a-boot-before: {' '.join(sorted(where))},", "restoring a-boot-before]")
+
     def places_heard(self, *parts: str) -> None:
-        """Wait until the shell says, this boot, it heard places with each of `parts` in a line."""
-        said = "journalctl --user -u quickshell -b -o cat | grep -F 'heard places kept for'"
+        """Wait until the shell running now says it heard places with each of `parts` in a line."""
+        # Its own lines alone, as a shell started again hears them again.
+        said = (
+            'journalctl --user -o cat _PID="$(systemctl --user show quickshell -p MainPID --value)"'
+            " | grep -F 'heard places kept for'"
+        )
         deadline = time.monotonic() + HEARING.total_seconds()
         while True:
             lines = self.machine.execute(self.in_niri(f"{said} || true"))[1].splitlines()
@@ -481,10 +494,14 @@ class Screens:
         """
         for _ in range(READS_TO_AGREE):
             listed = json.loads(self.machine.succeed(self.in_niri("niri msg --json workspaces")))
-            spaces = {one["id"]: one for one in listed}
             windows = json.loads(self.machine.succeed(self.in_niri("niri msg --json windows")))
+            after = json.loads(self.machine.succeed(self.in_niri("niri msg --json workspaces")))
+            spaces = {one["id"]: one for one in listed}
             on = [one for one in windows if one["workspace_id"] is not None]
-            if all(window["workspace_id"] in spaces for window in on):
+            # The same workspaces, where they sit, either side of the windows, each listed.
+            if laid_out(listed) == laid_out(after) and all(
+                window["workspace_id"] in spaces for window in on
+            ):
                 break
             time.sleep(1)
         return [(one, spaces[one["workspace_id"]]) for one in on if one["workspace_id"] in spaces]
