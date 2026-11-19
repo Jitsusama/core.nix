@@ -2165,7 +2165,7 @@ def test_each_of_agents_places_says_what_it_holds_in_a_drawer(shell: Shell) -> N
 
     Every row has a drawer giving a little more than its line (Joel, 2026-11-11 22:00), a
     place's saying what it holds even while it holds nothing, as Windows' does. AI Spend's Start
-    the Watch shows only while the watch is down, so tests/spend-served.qml holds its case.
+    the Watch shows only while the watch is down, so spend-served.qml beside this holds its case.
     """
     opened(shell)
     shell.launcher_until(lambda shown: "Start a Session" in shown["rows"])

@@ -1,10 +1,10 @@
 # shellcheck shell=bash
-# Readies a folder for tests/asks-served.qml: a git tree to run in, op and
-# loginctl stood in for, and two asks put up as an agent puts one, through
-# the real secret-asks. op leaves a line in op-ran each time it runs and
-# gives a value only for the one item; loginctl says the session is locked
-# as the file `locked` says, "no" to begin with. It prints the two asks'
-# ids, the one to release then the one to refuse.
+# Readies a folder for modules/quickshell/tests/asks-served.qml: a git tree
+# to run in, op and loginctl stood in for, and two asks put up as an agent
+# puts one, through the real secret-asks. op leaves a line in op-ran each
+# time it runs and gives a value only for the one item; loginctl says the
+# session is locked as the file `locked` says, "no" to begin with. It
+# prints the two asks' ids, the one to release then the one to refuse.
 # usage: asks-stand-ins.sh <folder> <item> <secret-asks> <git> <a shell>
 set -euo pipefail
 

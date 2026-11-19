@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # Stands in for `cadence axes --served WORDS` in the launcher's Spec check
-# (tests/spec-served.qml): two axes as cadence words them, Time to Done out
-# of spec with one reading inside it, and Quality in spec, and the head
-# saying one is out. Its arguments are cadence's, and read by nobody here.
+# (modules/quickshell/tests/spec-served.qml): two axes as cadence words
+# them, Time to Done out of spec with one reading inside it, and Quality in
+# spec, and the head saying one is out. Its arguments are cadence's, and
+# read by nobody here.
 cat <<'EOF'
 {
   "head": {"key": "head:spec", "place": "spec", "said": "1 reading out of spec", "glyph": "failed"},

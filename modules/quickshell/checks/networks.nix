@@ -83,15 +83,16 @@ in
       (offers [ { home-manager.sharedModules = [ self.homeModules.eero ]; } ] && !offers [ ]);
 
   # The figures a network's rates and sizes are said in, and the Home
-  # Network's holding, as tests/home-network.qml says, in Qt's own engine;
-  # its rows and drawers are the eero daemon's, held by modules/eero's tests.
+  # Network's holding, as modules/quickshell/tests/home-network.qml says, in
+  # Qt's own engine; its rows and drawers are the eero daemon's, held by
+  # modules/eero's tests.
   the-home-network-says-each-figure =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-home-network-says-each-figure" { } ''
       mkdir launcher
-      cp ${../../../tests/home-network.qml} home-network.qml
+      cp ${../tests/home-network.qml} home-network.qml
       ${copied [ "launcher/HomeNetwork.js" ]}
       cp ${../../eero/home-network.json} home-network.json
       export QML_XHR_ALLOW_FILE_READ=1 TZ=UTC

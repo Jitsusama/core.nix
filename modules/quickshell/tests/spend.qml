@@ -14,8 +14,8 @@
 // steps down, with See What Spends and Pause for a session that's running
 // and nothing else; urgent in the alert colour once out; quiet while
 // shared; saying what can't be read; and gone while the watch has stopped.
-// The launcher's collection is tests/spend-served.qml's. It exits 0 once
-// every case holds, and otherwise 1, saying which didn't.
+// The launcher's collection is modules/quickshell/tests/spend-served.qml's.
+// It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io

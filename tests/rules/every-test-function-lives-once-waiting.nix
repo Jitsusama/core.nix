@@ -112,7 +112,7 @@
   "modules/quickshell/tests/machines.qml" = 1;
   "modules/mpv/tests/mpv-program.qml" = 2;
   "modules/quickshell/tests/now-moment.qml" = 1;
-  "tests/order.qml" = 1;
+  "modules/quickshell/tests/order.qml" = 1;
   "modules/quickshell/tests/pacing.qml" = 1;
   "modules/quickshell/tests/part-names.qml" = 2;
   "modules/quickshell/tests/passwords-on-niri-test.py" = 1;

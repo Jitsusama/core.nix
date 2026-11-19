@@ -1,8 +1,8 @@
 // Waits in a QML test for what a daemon it runs has yet to do: `until`
 // checks `holds` every 50 ms, ten seconds at most, then goes on to `then`,
 // or fails saying `what`; `then` failing fails too, and either exits 1.
-// A test copies it beside itself and holds one, as tests/spend-served.qml
-// and tests/asks-served.qml do.
+// A test copies it beside itself and holds one, as spend-served.qml and
+// asks-served.qml in modules/quickshell/tests/ do.
 import QtQuick
 
 Timer {

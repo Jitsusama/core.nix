@@ -11,8 +11,9 @@
 // marking it expected are asked of the socket, spawning nothing, from the
 // launcher's rows and the bar's piece alike; and a watch that never answers
 // is drawn from what's held while it's still reading, with no row made
-// twice. (tests/spend-served.qml holds the rows against the real daemon.)
-// It exits 0 once every case holds, and otherwise 1, saying which didn't.
+// twice. (modules/quickshell/tests/spend-served.qml holds the rows against
+// the real daemon.) It exits 0 once every case holds, and otherwise 1,
+// saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
