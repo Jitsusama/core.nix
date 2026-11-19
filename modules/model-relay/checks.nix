@@ -18,10 +18,12 @@ onLinux {
   # requests at once on a few connections, an answer streamed as it comes, a
   # connection the origin lets go opened again, a request the origin reset
   # before its answer sent once more on another connection, one already
-  # open or one opened for a burst of them together, a single attempt heard
-  # by all when it fails, and said as a 502 when reset again or when its
-  # connection was kept with no other open, with its connection retired,
-  # the requests pi gave up on
+  # open, even beside one kept, or one opened for a burst of them together,
+  # a single attempt heard by all when it fails, and said as a 502 when
+  # reset again, when its connection was kept with no other open or when
+  # none would open, with its connection retired, a body too large or left
+  # unfinished going nowhere, the counts said as it leaves, the requests pi
+  # gave up on
   # counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen
   # connection lost, an origin out of reach said as a 502 or a 504 without a

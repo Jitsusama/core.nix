@@ -5,9 +5,13 @@
 //! what the origin was handed: a request passes whole, only the origin is
 //! reached, many requests share a few connections at once, answers stream
 //! as they come, a connection the origin lets go is opened again, a
-//! request the origin resets is a 502 and retires its connection, one a
-//! fallen connection lost is a 502 and no reset, the origin hearing each
-//! once, an origin out of reach is said as a 502 or a 504 without queueing, a
+//! request the origin resets before its answer retires its connection and
+//! goes once more on another, never one kept after a reset, with a burst
+//! of them sharing one opened for them, and is a 502 when reset again or
+//! with nowhere to go, one a fallen connection lost is a 502 and no reset,
+//! the origin hearing a lost one once, a body too large or left unfinished
+//! goes nowhere, the counts are said as the relay leaves, an origin out of
+//! reach is said as a 502 or a 504 without queueing, a
 //! connection that won't open isn't asked for again on every request, nor
 //! does a failure outlast the origin coming back, the relay leaves once
 //! idle but never mid-answer, even while refusing other hosts, its socket
@@ -42,6 +46,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use rcgen::{BasicConstraints, CertificateParams, IsCa, Issuer, KeyPair};
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, UnixStream};
 use tokio::sync::Notify;
 use tokio_rustls::TlsAcceptor;
@@ -260,6 +265,9 @@ where
     body.map_err(|never| match never {}).boxed()
 }
 
+/// The most of a body the relay reads, as its own constant has it.
+const BODY_AT_MOST: usize = 64 * 1024 * 1024;
+
 /// The origin's answer: `/echo` hands the body back, `/held` waits a
 /// moment first, `/stream` sends its halves a gap apart and `/long` a
 /// longer one, `/sized` names its length and ends in a frame of its own,
@@ -267,8 +275,11 @@ where
 /// and lets its connection go, `/reset` reads the request and resets
 /// its stream rather than answer, `/reset-once` does so the first time
 /// it's asked and echoes after, `/reset-on-the-first` does so on the
-/// origin's first connection and echoes on any other, and `/drop` reads
-/// it and lets the connection fall with no word at all.
+/// origin's first connection and echoes on any other,
+/// `/reset-but-on-the-second` does so on every connection but the
+/// origin's second, and `/drop` reads it and lets the connection fall with
+/// no word at all. An echo says which of the origin's connections it came
+/// on, counted from 0.
 async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<Answer>, io::Error> {
     let Served {
         connection,
@@ -302,6 +313,9 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             .filter(|handed| handed.uri.ends_with(&path))
             .count()
     };
+    if let Some(why) = resets(&path, heard, connection) {
+        return Err(io::Error::other(why));
+    }
     let answer = match path.as_str() {
         "/stream" | "/long" => {
             let gap = if path == "/long" {
@@ -351,15 +365,6 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             bye.notify_one();
             Response::builder().body(boxed(Full::new(Bytes::from_static(b"bye"))))
         }
-        "/reset" => return Err(io::Error::other("the origin resets this stream")),
-        "/reset-once" if heard == 1 => {
-            return Err(io::Error::other("the origin resets this stream, this once"));
-        }
-        "/reset-on-the-first" if connection == 0 => {
-            return Err(io::Error::other(
-                "the origin resets every stream on this one",
-            ));
-        }
         "/drop" => {
             gone.notify_one();
             return std::future::pending().await;
@@ -367,9 +372,26 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         _ => Response::builder()
             .status(StatusCode::CREATED)
             .header("x-origin-said", "echo")
+            .header("x-origin-connection", connection.to_string())
             .body(boxed(Full::new(Bytes::from(body)))),
     };
     Ok(answer.expect("an answer"))
+}
+
+/// Why the origin resets a request for `path`, the `heard`th it was asked
+/// for, on its `connection`, if it does: `answer` says which routes do.
+fn resets(path: &str, heard: usize, connection: usize) -> Option<&'static str> {
+    match path {
+        "/reset" => Some("the origin resets this stream"),
+        "/reset-once" if heard == 1 => Some("the origin resets this stream, this once"),
+        "/reset-on-the-first" if connection == 0 => {
+            Some("the origin resets every stream on this one")
+        }
+        "/reset-but-on-the-second" if connection != 1 => {
+            Some("the origin resets every stream but on its second")
+        }
+        _ => None,
+    }
 }
 
 /// The relay, run as its program, and where it listens.
@@ -865,17 +887,7 @@ async fn a_reset_goes_once_more_on_another_connection_already_open() {
     let origin = origin().await;
     let host = origin.address.to_string();
     let relay = Relay::start(&format!("https://{host}"), &origin.roots, 2);
-    // The second is carried on the first's connection while another is
-    // opened behind it.
-    for _ in 0..2 {
-        let warm = ask(&relay.socket, request(&host, "/echo", b"")).await;
-        assert_eq!(warm.status, StatusCode::CREATED, "a request to open them");
-    }
-    let asked = Instant::now();
-    while origin.connections.load(Ordering::SeqCst) < 2 && asked.elapsed() < LISTENS_WITHIN / 5 {
-        tokio::time::sleep(LOOK_EVERY).await;
-    }
-    assert_eq!(origin.connections.load(Ordering::SeqCst), 2, "both opened");
+    warm_both(&relay, &host).await;
 
     let got = ask(&relay.socket, request(&host, "/reset-once", b"hello")).await;
 
@@ -887,18 +899,80 @@ async fn a_reset_goes_once_more_on_another_connection_already_open() {
         "a connection was opened for a request another open one could take"
     );
     let said = relay.said();
+    let (reset, again) = [("0.0", "1.0"), ("1.0", "0.0")]
+        .into_iter()
+        .find(|(reset, _)| said.contains(&format!("reset a request on connection {reset},")))
+        .unwrap_or_else(|| panic!("the reset went unsaid: {said}"));
     assert!(
-        said.contains("is sent again on connection 1.0")
-            || said.contains("is sent again on connection 0.0"),
-        "the request reset didn't go on the other connection: {said}"
+        said.contains(&format!(
+            "reset on connection {reset} is sent again on connection {again}"
+        )),
+        "the request reset on {reset} didn't go on the other connection: {said}"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_reset_on_a_connection_kept_goes_once_more_on_another_open() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 2);
+    warm_both(&relay, &host).await;
+
+    // Taken in turn, slot 0's requests are reset: on 0.0, which is
+    // retired, then on 0.1, kept since its slot retired one just now. Each
+    // goes once more on 1.0, which the origin answers.
+    for _ in 0..10 {
+        let got = ask(
+            &relay.socket,
+            request(&host, "/reset-but-on-the-second", b"hi"),
+        )
+        .await;
+        assert_eq!(got.status, StatusCode::CREATED, "a request one slot resets");
+        assert_eq!(got.body, b"hi");
+    }
+
+    assert_eq!(
+        origin.connections.load(Ordering::SeqCst),
+        3,
+        "a connection was opened over one kept after a reset"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("connection 0.1, kept, as one was retired lately"),
+        "no reset came on the connection kept: {said}"
+    );
+    assert!(
+        said.contains("reset on connection 0.1 is sent again on connection 1.0"),
+        "a request reset on the connection kept didn't go on the other: {said}"
+    );
+}
+
+/// Opens both of a two-connection relay's connections: the second request
+/// is carried on the first's connection while the other is opened behind
+/// it, and it's open once a request is answered on it.
+async fn warm_both(relay: &Relay, host: &str) {
+    let asked = Instant::now();
+    while asked.elapsed() < LISTENS_WITHIN {
+        let warm = ask(&relay.socket, request(host, "/echo", b"")).await;
+        assert_eq!(warm.status, StatusCode::CREATED, "a request to open them");
+        if warm.headers["x-origin-connection"] == "1" {
+            return;
+        }
+        tokio::time::sleep(LOOK_EVERY).await;
+    }
+    panic!("the relay's second connection never took a request");
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn a_burst_reset_on_one_connection_shares_the_one_opened_for_it() {
     let origin = origin().await;
     let host = origin.address.to_string();
-    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
     let path = "/reset-on-the-first";
 
     let (first, second, third, fourth) = tokio::join!(
@@ -926,7 +1000,15 @@ async fn a_burst_reset_on_one_connection_shares_the_one_opened_for_it() {
         2,
         "a burst reset on one connection opened more than one for it"
     );
-    drop(relay.said());
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("4 asked, 0 refused, 0 failed, 0 of them reset; 4 reset and sent again"),
+        "the burst wasn't each reset and sent again once, by the counts: {said}"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -934,43 +1016,130 @@ async fn a_burst_reset_while_no_connection_opens_waits_on_one_attempt() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let origin = origin_on(listener, Serves::TheFirst, tls());
     let host = origin.address.to_string();
-    let relay = Relay::start_with(
+    let mut relay = Relay::start_with(
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--connect-within", CONNECT_WITHIN],
+        &["--connect-within", CONNECT_WITHIN, "--idle-exit", "1"],
     );
-    let asked = Instant::now();
 
     // Each is reset on the one connection that answers, and the one
-    // opened to send them again never does.
+    // opened to send them again never does. The origin counts each
+    // attempt as it's accepted, so a third would show.
     let got = tokio::join!(
         ask(&relay.socket, request(&host, "/reset", b"")),
         ask(&relay.socket, request(&host, "/reset", b"")),
         ask(&relay.socket, request(&host, "/reset", b"")),
     );
 
-    let took = asked.elapsed();
+    // A 502, as any request reset is, never a 504 or a 421 sending pi
+    // direct, since the origin may have acted on it.
     for answered in [&got.0, &got.1, &got.2] {
-        assert!(
-            answered.status.is_server_error(),
-            "a request with nowhere to go again was answered {}",
-            answered.status
+        assert_eq!(
+            answered.status,
+            StatusCode::BAD_GATEWAY,
+            "a request reset with nowhere to go again"
         );
     }
-    assert!(
-        took < Duration::from_secs(2),
-        "the burst took {took:?}, an attempt to connect for each in turn"
-    );
     assert_eq!(
         origin.connections.load(Ordering::SeqCst),
         2,
         "each request reset made its own attempt to connect"
     );
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle"
+    );
     let said = relay.said();
     assert!(
-        said.contains("couldn't be sent again, as no connection opened"),
+        said.contains("couldn't be sent again, as no other connection would take it"),
         "a request reset and not sent again went unsaid: {said}"
+    );
+    assert!(
+        said.contains("3 asked, 0 refused, 3 failed, 3 of them reset; 0 reset and sent again"),
+        "a request reset and not sent again was counted as sent: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    let stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let (mut reading, mut writing) = stream.into_split();
+    let length = BODY_AT_MOST + 1;
+    let head = format!("POST /echo HTTP/1.1\r\nhost: {host}\r\ncontent-length: {length}\r\n\r\n");
+    // Written apart from the reading, with its failure let be, since the
+    // relay answers before it has read the rest and may close on it.
+    let writer = tokio::spawn(async move {
+        let _ = writing.write_all(head.as_bytes()).await;
+        let _ = writing.write_all(&vec![b'x'; length]).await;
+    });
+
+    let mut answer = Vec::new();
+    let answered = tokio::time::timeout(LISTENS_WITHIN, async {
+        let mut piece = [0; 1024];
+        while !answer.windows(4).any(|end| end == b"\r\n\r\n") {
+            match reading.read(&mut piece).await {
+                Ok(0) | Err(_) => break,
+                Ok(read) => answer.extend_from_slice(&piece[..read]),
+            }
+        }
+    })
+    .await;
+    writer.abort();
+
+    assert!(
+        answered.is_ok(),
+        "the relay never answered a body too large"
+    );
+    assert!(
+        answer.starts_with(b"HTTP/1.1 413"),
+        "a body too large was answered {:?}",
+        String::from_utf8_lossy(&answer)
+    );
+    assert_eq!(handed_to(&origin, "/echo"), 0, "a body too large went on");
+    drop(relay.said());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_body_pi_leaves_unfinished_is_counted_as_a_cancel() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
+    let mut stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let head = format!("POST /echo HTTP/1.1\r\nhost: {host}\r\ncontent-length: 100\r\n\r\npartly");
+    stream
+        .write_all(head.as_bytes())
+        .await
+        .expect("the head and part of the body");
+    drop(stream);
+
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle"
+    );
+    assert_eq!(
+        handed_to(&origin, "/echo"),
+        0,
+        "a body left unfinished went on"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains(
+            "1 asked, 0 refused, 0 failed, 0 of them reset; 0 reset and sent again; pi cancelled 1"
+        ),
+        "a body pi left unfinished wasn't counted as its cancel: {said}"
     );
 }
 

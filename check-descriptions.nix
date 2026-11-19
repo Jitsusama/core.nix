@@ -1689,9 +1689,10 @@
     headers and body as they came, a body of many pieces whole, refuses any other host, carries many
     requests at once on a few connections, streams an answer as it comes, opens again a connection the origin lets go, says
     a request the origin reset before its answer once more on another connection, one already
-    open or one opened for a burst of them together, whose failure to open each hears at once,
-    and as a 502 when reset again or when its connection was kept with none other open, retiring
-    its connection, counts on each connection the
+    open, even beside one kept, or one opened for a burst of them together, whose failure to open
+    each hears at once, and as a 502 when reset again, when its connection was kept with none
+    other open or when none would open, retiring its connection, sends on no body too large or
+    left unfinished, says its counts as it leaves, counts on each connection the
     requests pi gave up on and no answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a
     502 or a 504 without queueing, doesn't ask for a connection that won't open on every request, forgets a failure once the origin is back, sends pi direct with a
