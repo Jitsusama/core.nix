@@ -1277,9 +1277,10 @@ Floating {
     // laying and lines ask of each, made the first time it's asked for and
     // let go as its face's font changes, rather than a property of the
     // face, which a binding could read before it was set. And how many
-    // widths they asked and how many reached the face, for the check that
-    // a drawer shown again measures little anew. A plain object's, as a
-    // binding asks them.
+    // widths they and its words' (drawnWidthOf) asked and how many reached
+    // a face, for the checks that a drawer shown again measures little anew
+    // and that one stepped off a long run measures none of it. A plain
+    // object's, as a binding asks them.
     readonly property var widths: ({ asked: 0, made: 0, held: new Map() })
     function widthIn(face) {
         const held = widths.held.get(face);
@@ -1692,9 +1693,11 @@ Floating {
     // don't. Only a handler asks it, never a binding.
     function drawnWidthOf(face) {
         return words => {
+            widths.asked += 1;
             const held = Measures.drawnWidth(face, words);
             if (held !== undefined)
                 return held;
+            widths.made += 1;
             proseInk.text = words;
             const wide = proseInk.advanceWidth;
             Measures.drew(face, words, wide);
