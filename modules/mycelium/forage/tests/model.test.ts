@@ -55,12 +55,27 @@ it("a start is booked only when the node says its book holds it", () => {
   assert.equal(booked(), false);
   assert.equal(booked(null), false);
   assert.equal(booked(true), false);
-  // Only a word it doesn't know is said, so a misspelt node shows.
+  // A source neither word is said, so a misspelt node shows, and so is none sent at all.
   assert.deepEqual(read("presence").unread, []);
-  assert.deepEqual(read(null).unread, []);
-  assert.deepEqual(read("Book").unread, [
-    "KESTRL's started_by_from said neither book nor presence",
+  const odd = ["KESTRL's started_by_from said neither book nor presence"];
+  assert.deepEqual(read("Book").unread, odd);
+  assert.deepEqual(read(true).unread, odd);
+  const none = ["which starts the node's book holds, so each reads as claimed"];
+  assert.deepEqual(read(null).unread, none);
+  assert.deepEqual(read().unread, none);
+});
+
+it("says a node-wide fault in where starts came from once", () => {
+  const lineage = (from?: unknown) => ({
+    lineage: { started_by: "OSPREY", started_by_from: from },
+  });
+  const unread = (...records: ReturnType<typeof forage>[]) => foragesOf(told(records)).unread;
+  assert.deepEqual(unread(forage("KESTRL", lineage("Book")), forage("TERNAA", lineage("Book"))), [
+    "2 cells' started_by_from said neither book nor presence",
   ]);
+  // One cell's source is enough to show the node sends them; one that names no starter needs none.
+  assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA", lineage())), []);
+  assert.deepEqual(unread(forage("KESTRL")), []);
 });
 
 it("how a cell grew is only claimed unless it grew from a start the book holds", () => {

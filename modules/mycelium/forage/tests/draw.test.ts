@@ -127,7 +127,7 @@ it("links each cell a cell started to that cell's row", () => {
 });
 
 /** A comma tied to the address before it, which the panel never breaks. */
-const TIED = /<span class="tie"><a [^>]*><code>[^<]*<\/code><\/a>,<\/span>/gu;
+const TIED = /<span class="tie"><a [^>]*><code>[^<]*<\/code><\/a>( \(as claimed\))?,<\/span>/gu;
 
 /** `count` cells' addresses: AAAAAA, BBBBBB and on. */
 function cells(count: number): readonly string[] {
@@ -151,15 +151,19 @@ it("says the cells a cell started are only claimed unless the node's book holds 
     read(startedLine(forage(), three, () => false)).says,
     "3 cells: OSPREY, SKIFFS and TERNAA, as claimed",
   );
-  // Some claimed: each says so where it's named, and the rest once if any among them is.
+  // Some claimed: each in brackets where it's named, and the count by how many of it are.
+  const says = (started: readonly string[], claimed: readonly string[]) =>
+    read(startedLine(forage(), started, (cell) => !claimed.includes(cell))).says;
   assert.equal(
-    read(startedLine(forage(), three, (cell) => cell === "SKIFFS")).says,
-    "3 cells: OSPREY as claimed, SKIFFS and TERNAA as claimed",
+    says(three, ["OSPREY", "TERNAA"]),
+    "3 cells: OSPREY (as claimed), SKIFFS and TERNAA (as claimed)",
   );
-  assert.equal(
-    read(startedLine(forage(), cells(8), (cell) => cell !== "HHHHHH")).says,
-    "8 cells: AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF and 2 more, some of the rest as claimed",
-  );
+  const six = "AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF";
+  assert.equal(says(cells(8), ["HHHHHH"]), `8 cells: ${six} and 2 more (some as claimed)`);
+  assert.equal(says(cells(8), ["GGGGGG", "HHHHHH"]), `8 cells: ${six} and 2 more (as claimed)`);
+  assert.equal(says(cells(8), cells(8)), `8 cells: ${six} and 2 more, as claimed`);
+  // Seven are all named, so a claimed seventh is said once, by its name.
+  assert.equal(says(cells(7), ["GGGGGG"]), `7 cells: ${six} and GGGGGG (as claimed)`);
 });
 
 it("escapes an address the node gives before linking it", () => {
@@ -176,7 +180,8 @@ it("ties each comma to the address before it, so no line starts with one", () =>
     [7, 5],
     [8, 5],
   ] as const) {
-    const line = startedLine(forage(), cells(count));
+    // Every other start claimed, so a claimed name's comma is tied too.
+    const line = startedLine(forage(), cells(count), (cell) => cell.charCodeAt(0) % 2 === 0);
     assert.ok(!line.replace(TIED, "").includes(","), `a comma stands loose in ${line}`);
     assert.equal(line.match(TIED)?.length, ties, line);
   }

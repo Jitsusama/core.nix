@@ -76,8 +76,9 @@ report), `title`, `stage` (think, draft, build, concluded or retired),
 `ticked` and `open`, its steps done and still to do. The `lineage`
 has `started_by`, the cell that started this one, `started_by_from`,
 `book` when the serving node's start book holds that start or
-`presence` when it's the cell's own word (any other word is said among
-what couldn't be read), `parent`, the
+`presence` when it's the cell's own word, which the node works out from
+its own book and never takes from a presence (any other word, or none
+sent beside a starter, is said among what couldn't be read), `parent`, the
 quest above its own, and, when its purpose was split, `split_from`, the
 cell it split from, or `split_into`, the cells it split into as it
 ended. Each of `serves` (needs it took from other cells) and `relies`

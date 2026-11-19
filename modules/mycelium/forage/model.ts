@@ -171,7 +171,11 @@ function waitsOf(record: Fields, cell: string, unread: string[]): readonly Wait[
 }
 
 /** The forage in `record`, without its depth, or none when it names no cell. */
-function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | undefined {
+function forageOf(
+  record: Fields,
+  unread: string[],
+  told: StartsTold,
+): Omit<Forage, "depth"> | undefined {
   const cell = text(record, "cell");
   if (cell === undefined) {
     unread.push(`${text(record, "key") ?? "a forage"} named no cell`);
@@ -187,7 +191,7 @@ function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | und
     documents: documentsOf(record, cell, unread),
     waits: waitsOf(record, cell, unread),
     startedBy: text(lineage, "started_by"),
-    booked: bookedOf(lineage, cell, unread),
+    booked: bookedOf(lineage, cell, told),
     parent: text(lineage, "parent"),
     ...splitOf(lineage, cell, unread),
     serves: joinsOf(record["serves"], "serves", cell, unread),
@@ -195,18 +199,34 @@ function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | und
   };
 }
 
-/**
- * Whether the node's start book holds `cell`'s start, by its lineage's
- * `started_by_from`. Anything else is taken as only the cell's word, and a
- * word neither "book" nor "presence" is said too, so a node sending one
- * shows rather than leaving every branch dashed for no reason given.
- */
-function bookedOf(lineage: Fields, cell: string, unread: string[]): boolean {
+/** Where the node said starts came from, over every cell, as a node-wide fault is said once. */
+interface StartsTold {
+  said: boolean;
+  readonly odd: string[];
+}
+
+/** Whether the node's book holds `cell`'s start, by `started_by_from`; else it's claimed. */
+function bookedOf(lineage: Fields, cell: string, told: StartsTold): boolean {
   const from = lineage["started_by_from"];
-  if (from !== undefined && from !== null && from !== "book" && from !== "presence") {
-    unread.push(`${cell}'s started_by_from said neither book nor presence`);
+  if (from !== undefined && from !== null) {
+    told.said = true;
+    if (from !== "book" && from !== "presence") {
+      told.odd.push(cell);
+    }
   }
   return from === "book";
+}
+
+/** Why starts read as claimed, if the node sent a source neither word, or none beside a starter. */
+function startsUnread(told: StartsTold, read: readonly Pick<Forage, "startedBy">[]): string[] {
+  if (told.odd.length > 0) {
+    const whose = told.odd.length === 1 ? `${told.odd[0]}'s` : `${told.odd.length} cells'`;
+    return [`${whose} started_by_from said neither book nor presence`];
+  }
+  const starters = read.some((each) => each.startedBy !== undefined);
+  return starters && !told.said
+    ? ["which starts the node's book holds, so each reads as claimed"]
+    : [];
 }
 
 /**
@@ -247,13 +267,15 @@ function grewClaimed(
  */
 function foragesOf(held: Held): Forages {
   const unread: string[] = [];
+  const told: StartsTold = { said: false, odd: [] };
   const read = bothEnds(
     held
       .all()
-      .map((record) => forageOf(record, unread))
+      .map((record) => forageOf(record, unread, told))
       .filter((each) => each !== undefined)
       .sort((one, other) => one.cell.localeCompare(other.cell)),
   );
+  unread.push(...startsUnread(told, read));
   const here = new Set(read.map((each) => each.cell));
   const started = new Map<string, (typeof read)[number][]>();
   const tops: (typeof read)[number][] = [];

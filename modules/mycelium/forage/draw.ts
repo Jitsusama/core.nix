@@ -328,8 +328,8 @@ ${forage.documents.map((document) => documentRow(document, forage.quest)).join("
 const CLAIMED = ", as claimed";
 
 /**
- * The cells a cell started, those the node's book doesn't hold as claimed: once after
- * the list when all are, else beside each named, and once for any among those counted.
+ * The cells a cell started, the book's unheld as claimed: after the list if all, else in
+ * brackets after each named and the count, as a bare hedge would read onto the one before.
  */
 function startsSaid(started: readonly Pick<Forage, "cell" | "booked">[]): string {
   const cells = started.map((each) => each.cell);
@@ -337,9 +337,11 @@ function startsSaid(started: readonly Pick<Forage, "cell" | "booked">[]): string
   if (claimed.size > 0 && claimed.size === cells.length) {
     return cellsStarted(cells) + CLAIMED;
   }
-  const name = (cell: string) => `${cellLink(cell)}${claimed.has(cell) ? " as claimed" : ""}`;
-  const unnamed = cells.slice(namedOf(cells.length)).some((cell) => claimed.has(cell));
-  return cellsStarted(cells, name) + (unnamed ? ", some of the rest as claimed" : "");
+  const name = (cell: string) => `${cellLink(cell)}${claimed.has(cell) ? " (as claimed)" : ""}`;
+  const counted = cells.slice(namedOf(cells.length));
+  const some = counted.filter((cell) => claimed.has(cell)).length;
+  const rest = some === 0 ? "" : some === counted.length ? " (as claimed)" : " (some as claimed)";
+  return cellsStarted(cells, name) + rest;
 }
 
 /** How many of `count` cells a list names, past `MOST_STARTED` counting the rest. */

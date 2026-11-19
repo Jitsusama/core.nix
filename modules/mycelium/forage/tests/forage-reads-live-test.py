@@ -24,6 +24,7 @@ modules/local-sites/tests/live_page.py's.
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -107,8 +108,8 @@ def opened_on(page: Page, name: str) -> Locator:
 
 
 def fact(panel: Locator, said: str) -> Locator:
-    """Give what the panel says beside the term `said`."""
-    term = panel.page.locator("dt", has_text=said)
+    """Give what the panel says beside the term `said`, whole, so Started isn't Started by."""
+    term = panel.page.locator("dt", has_text=re.compile(f"^{re.escape(said)}$"))
     return panel.locator(".facts > div").filter(has=term).locator("dd")
 
 
@@ -135,16 +136,21 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
             "style", f"--depth:{depth}"
         )
     # SKIFFS's start is in the node's book, so only OSPREY's split is drawn as claimed.
-    for name, dash in [("SKIFFS", "none"), ("OSPREY", "4px, 4px")]:
-        branch = forage_page.locator(f'path.hypha[data-cell="{name}"]')
-        expect(branch, f"{name}'s branch wasn't drawn {dash}").to_have_css("stroke-dasharray", dash)
-    panel = opened_on(forage_page, "SKIFFS")
-    expect(fact(panel, "Started by"), "SKIFFS's booked start read as claimed").not_to_contain_text(
-        "as claimed"
+    branch = forage_page.locator('path.hypha[data-cell="SKIFFS"]')
+    expect(branch, "SKIFFS's booked branch was dashed").to_have_css("stroke-dasharray", "none")
+    branch = forage_page.locator('path.hypha[data-cell="OSPREY"]')
+    expect(branch, "OSPREY's claimed split wasn't dashed").not_to_have_css(
+        "stroke-dasharray", "none"
     )
-    # KESTRL started SKIFFS by the book and split from nothing, so nothing of it is claimed.
+    # Each booked end says its cell whole, so a fact gone missing can't pass for one unhedged.
+    panel = opened_on(forage_page, "SKIFFS")
+    expect(fact(panel, "Started by"), "SKIFFS's booked start didn't read whole").to_have_text(
+        "KESTRL"
+    )
     panel = opened_on(forage_page, "KESTRL")
-    expect(panel, "KESTRL's booked start read as claimed").not_to_contain_text("as claimed")
+    expect(fact(panel, "Started"), "KESTRL's booked start didn't read whole").to_have_text(
+        "One cell: SKIFFS"
+    )
     panel = opened_on(forage_page, "OSPREY")
     expect(fact(panel, "Split from"), "OSPREY didn't say it split from TERNAA").to_contain_text(
         "TERNAA, as claimed"
