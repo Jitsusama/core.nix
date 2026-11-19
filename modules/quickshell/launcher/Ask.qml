@@ -31,7 +31,6 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "SessionRow.js" as SessionRow
 
 Provider {
     id: provider
@@ -171,7 +170,8 @@ Provider {
 
     // Talking it over with an orchestrator (P9R1KI, 2026-10-26: a row
     // under Ask's answer sending the question on to it): the first one
-    // running in the one order of how sessions stand (SessionRow.js), so
+    // running in the one order of how sessions stand, as the agents
+    // daemon's rows rank them (modules/agents/src/standing.rs), so
     // one waiting on Joel comes first. Its words go to its inbox as Talk's
     // do, and the launcher lands inside its row in Agents, where the talk
     // says how it went as its session replies. With none running, there's
@@ -186,9 +186,8 @@ Provider {
                 === one.address) ?? null }))
             .filter(each => each.session !== null) : [];
         const first = running.map((each, at) => Object.assign({ at,
-            stands: agents.stateOf(each.session) }, each))
-            .sort((a, b) => SessionRow.rank(a.stands) - SessionRow.rank(b.stands)
-                || a.at - b.at)[0] ?? null;
+            rank: agents.rankOf(each.session) }, each))
+            .sort((a, b) => a.rank - b.rank || a.at - b.at)[0] ?? null;
         if (first === null)
             return [];
         const session = first.session;

@@ -788,11 +788,22 @@ Provider {
             : [row]), []);
     }
 
-    // How a session stands (SessionRow.js), from its presence, whether its
-    // want is truly Joel's and whether it waits its turn in line.
+    // How a session stands as the agents daemon's row says it, in the one
+    // rule and order every list keeps (modules/agents/src/standing.rs), so
+    // nothing here works it out a second way; "off" before it's said.
     function stateOf(session) {
-        return SessionRow.state(session.presence, Sessions.asks(session),
-            inLine(session.presence) !== "");
+        void placings;
+        const served = rowsKind?.held?.[`row:agents:${session.address}`]?.row;
+        return String(served?.held?.state ?? "off");
+    }
+
+    // Where a session stands in that order, as the daemon's row says it,
+    // so Ask's pick keeps the order Agents lists in; after them all before
+    // it's said.
+    function rankOf(session) {
+        void placings;
+        const served = rowsKind?.held?.[`row:agents:${session.address}`]?.row;
+        return Number(served?.held?.rank ?? Number.MAX_SAFE_INTEGER);
     }
 
     // One of the vocabulary's words for a session, filled in.

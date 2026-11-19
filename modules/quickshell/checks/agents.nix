@@ -228,7 +228,7 @@
       touch $out
     '';
 
-  # A pi session says how it stands and its acts, its drawer's times are
+  # A pi session offers its acts as it stands, its drawer's times are
   # worded, and the sessions beside the one drawn are found to watch their
   # drawers ahead, as modules/quickshell/tests/session-row.qml holds
   # launcher/SessionRow.js and SessionDrawer.js to them in Qt's own engine, and
