@@ -339,7 +339,7 @@ or a copy, can be opened, copied or forgotten.
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the status line at the bottom of the launcher: the mode, the glance and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
-| For You | the one place for what needs Joel and what came for him, with where each came from: Now's first row, weighed, the most pressing first | | `ForYou.js` |
+| For You | the one place for what needs Joel, with where each came from: Now's first row, weighed, the most pressing first | | `ForYou.js` |
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
 | to-do daemon | what finds a to-do done or ready by itself, running its check and hearing its signal | the desktop's daemon | `modules/to-do`, `verdicts.json` |
 | check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
@@ -348,7 +348,7 @@ or a copy, can be opened, copied or forgotten.
 | to look at | a look For You holds in its row of them, one that neither blocks a session nor is due | | `for-you:kind:look` |
 | to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it, or a day from when it landed | | |
 | to read | a look that asks nothing of Joel, only to be seen, kept in For You's last row 24 hours and then put in History as expired | | `for-you:kind:read` |
-| Lately | For You's band for what came for Joel, one row for each place it came from | | |
+| Lately | what came for Joel that asks nothing of him, one row for each place it came from, among Now's own rows after the moment's; Desktop's stands in For You while a critical notice waits unread | | |
 | clipboard | what was copied last, and what was copied before it | | |
 | selected text | what Joel has selected in any window, Wayland's primary selection, read only when asked and never kept | | `selection:primary` |
 | On the Selection | the place on Super+X: the selected text at its head, and what an agent can do with it as pi-verbs serves them, Ask last | | `OnSelection.qml`, `pi-verbs` |

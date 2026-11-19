@@ -354,7 +354,7 @@ ShellRoot {
         return madeNow().map((count, at) => count - before[at]);
     }
     function stepIn() {
-        const held = now.leadsTo("notices")[1].verbs();
+        const held = now.leadsTo("notices").slice(-1)[0].verbs();
         return { held: held, history: held[held.length - 1].verbs() };
     }
     // Whether History holds notice `id`, as it holds only the read.
@@ -1980,11 +1980,37 @@ ShellRoot {
         WaitingOnYou.now = [toDo("Sign In")];
         WaitingOnYou.later = [toDo("Renew It")];
         Sessions.wanting = [session(false, "Which?", "d1")];
-        // Agents Asking's sessions read beside the rest.
-        const forYou = () => now.waiting.verbs().reduce((all, row) => all.concat([row],
+        // Agents Asking's sessions read beside the rest, and Now's own rows,
+        // where what asks nothing of Joel stands.
+        const inForYou = () => now.waiting.verbs().reduce((all, row) => all.concat([row],
             row.key === "on:waitingOnYou:kind:agent" ? row.verbs() : []), []);
+        const forYou = () => inForYou().concat(now.everything());
         const byKey = rows => rows.reduce((keyed, row) => Object.assign(keyed,
             { [row.key]: row }), {});
+        // Mail, Slack and Desktop ask nothing of Joel, so they stand in
+        // Now's own rows, not What Needs Me (Joel, 2026-11-19: "I almost
+        // never know what I am supposed to do with it").
+        const asksNothing = ["on:mail", "on:slack", "on:waiting:desktop"];
+        const keysOf = rows => rows.map(row => row.key);
+        expect("Mail, Slack and Desktop stand in Now's own rows, not For You",
+            asksNothing.every(key => keysOf(now.everything()).includes(key)
+                && !keysOf(inForYou()).includes(key)),
+            JSON.stringify([keysOf(inForYou()), keysOf(now.everything())]));
+        // A critical notice unread is one to do, so Desktop, which holds
+        // it, stands in For You while it waits, and leaves Now's rows.
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: false }].concat(told);
+        expect("a critical notice unread keeps Desktop in For You, and out of Now's rows",
+            keysOf(inForYou()).includes("on:waiting:desktop")
+                && !keysOf(now.everything()).includes("on:waiting:desktop")
+                && now.leadsTo("notices").length === 2,
+            JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").length]));
+        Notices.history = told;
+        expect("once it's gone, Desktop goes back to Now's rows, Super+N with it",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && now.leadsTo("notices").length === 1
+                && now.leadsTo("notices")[0].key === "on:waiting:desktop",
+            JSON.stringify(now.leadsTo("notices").map(row => row.key)));
         const first = byKey(forYou());
         const mail = first["on:mail"];
         let before = now.tally.rows;
@@ -2002,15 +2028,17 @@ ShellRoot {
         expect("Mail said anew as it was keeps its row, and its act is Mail's as it is now",
             said["on:mail"] === mail && ran === "mail now", `${ran}, ${said["on:mail"] === mail}`);
         const waitingRow = now.waiting;
-        Notices.history = [notice(1)].concat(told);
+        // Counted from before it comes, since Now's own rows, where Desktop
+        // stands, are made as it does.
         before = now.tally.rows;
+        Notices.history = [notice(1)].concat(told);
         const came = byKey(forYou());
         const remade = Object.keys(came).filter(key => came[key] !== first[key]);
         expect("one notice arriving makes only Desktop's row again",
             now.tally.rows - before === 1 && JSON.stringify(remade)
                 === JSON.stringify(["on:waiting:desktop"]) && now.waiting === waitingRow,
             JSON.stringify([now.tally.rows - before, remade]));
-        const desktop = () => now.waiting.verbs().find(row => row.key === "on:waiting:desktop")
+        const desktop = () => now.everything().find(row => row.key === "on:waiting:desktop")
             .verbs();
         desktop();
         before = now.tally.rows;

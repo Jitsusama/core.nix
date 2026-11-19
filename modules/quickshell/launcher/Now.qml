@@ -71,9 +71,10 @@ Provider {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
             && fact.piece.present && fact.piece.active && above(fact) === "");
         // What waits on Joel, then this moment's rows, which are always
-        // there, so the top never moves; then the rest by group, what
-        // wants Joel first, and by name within each, so a row keeps its
-        // place while its group stands (NowGroups.js).
+        // there, so the top never moves; then what came for him that asks
+        // nothing of him (latelyInForYou); then the rest by group, what wants
+        // Joel first, and by name within each, so a row keeps its place
+        // while its group stands (NowGroups.js).
         keepingBegun(piecesKept);
         for (const mark of Object.keys(piecesNow))
             delete piecesNow[mark];
@@ -92,6 +93,7 @@ Provider {
         // own, so each is read through `standing`, which makes it as it
         // stands when the launcher lists Now shut (Provider's asItStands).
         return [standing("waiting", waiting)].concat(momentAt(standing("location", location)),
+            latelyRows(Date.now()).filter(row => !latelyInForYou(row)),
             Groups.ordered(rows).map(each => each.row));
     })
     // Said only when what the rows show has changed (Provider's
@@ -1605,9 +1607,11 @@ Provider {
 
     // Where a place named from outside leads, by the rows Joel would step
     // through from home: "notices", as Super+N with none on screen and the
-    // margin's Show Them ask, is For You's Desktop, one key to one place
-    // whatever it holds (VKCF3Z, 2026-11-09), never the Notices place it
-    // once was; the notices stay found by `/` (PastNotices.qml). "forYou",
+    // margin's Show Them ask, is Desktop, one key to one place whatever it
+    // holds (VKCF3Z, 2026-11-09), never the Notices place it once was,
+    // found where it stands: in For You while a critical notice waits
+    // there, else among Now's own rows (latelyInForYou). The notices stay
+    // found by `/` (PastNotices.qml). "forYou",
     // as the margin's tray is pressed, is For You itself. "onScreen", as
     // Super+N with notices on screen, is those notices alone (onScreenRow).
     function leadsTo(name) {
@@ -1618,9 +1622,9 @@ Provider {
         if (name !== "notices")
             return null;
         const { holding } = latelyBands(Date.now());
-        return [waiting, keptNoticesRow("desktop",
-            Lately.members(holding.desktop, one => one.who),
-            { kind: "notice", source: "desktop" })];
+        const desktop = keptNoticesRow("desktop", Lately.members(holding.desktop, one => one.who),
+            { kind: "notice", source: "desktop" });
+        return latelyInForYou(desktop) ? [waiting, desktop] : [desktop];
     }
 
     // Everything that wants Joel, For You, one row however many: the pi
@@ -2184,9 +2188,10 @@ Provider {
 
     // For You's own rows, each as it's for (ForYou.js's bands), the
     // heaviest first in each: what needs Joel now, under the cell behind
-    // each (cellRows), then To Look At, To Try and To Read, then Lately,
-    // Later and History (VKCF3Z, 2026-11-09, and 2026-11-12 for To Read,
-    // which nothing counts).
+    // each (cellRows), then To Look At, To Try and To Read, then Desktop
+    // while it holds a critical notice (latelyInForYou), Later and History
+    // (VKCF3Z, 2026-11-09, and 2026-11-12 for To Read, which nothing
+    // counts).
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
     // so what's no longer there is let go; a look is let go once its file
     // is, since History's looks are kept beside them.
@@ -2203,7 +2208,7 @@ Provider {
         const rows = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0).concat(
             kindRow("look", bandRows(bands.look, now)),
             kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
-            latelyRows(now),
+            latelyRows(now).filter(latelyInForYou),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
@@ -2223,13 +2228,25 @@ Provider {
         return bandRows(bands.now.slice(0, bands.agentAt), now).concat(
             bandRows(bands.agent, now), bandRows(bands.now.slice(bands.agentAt), now),
             bandRows(bands.look, now),
-            bandRows(bands.try, now), bandRows(bands.read, now), latelyRows(now));
+            bandRows(bands.try, now), bandRows(bands.read, now),
+            latelyRows(now).filter(latelyInForYou));
     }
 
-    // What came for Joel, For You's Lately band, after what he can do and
-    // before what's for later (Y2YBTS, 2026-11-08; Joel: "a notice stays
-    // until read or forgotten"): a row for each source holding something
-    // unread. Mail and Slack are their pieces' rows (NewMail.qml,
+    // Whether one of Lately's rows stands in For You: Desktop only while
+    // it holds a critical notice unread, which is one to do (toDoCount).
+    // Mail, Slack and Desktop otherwise ask nothing of Joel, so they stand
+    // in Now's own rows, after the moment's, and leave For You to what
+    // needs him (Joel, 2026-11-19: "I almost never know what I am supposed
+    // to do with it"; Y2YBTS, 2026-11-19). Each asking of `all`, For You
+    // and its filter is a pass of all of Lately's rows, so each keeps
+    // every row (latelyKept) whichever it shows.
+    function latelyInForYou(row) {
+        return row.forYou?.source === "desktop" && criticalNotices.length > 0;
+    }
+
+    // What came for Joel, Lately, in Now's own rows after the moment's, or
+    // For You's (latelyInForYou; Joel: "a notice stays until read or
+    // forgotten"): a row for each source holding something unread. Mail and Slack are their pieces' rows (NewMail.qml,
     // NewSlack.qml), each piece saying what it holds (Piece.qml's lately
     // and came), and Desktop is the notices unread, the shell's own for
     // what For You lists left out. The rows stand by the heaviest each
@@ -2874,7 +2891,8 @@ Provider {
     // (Starting.qml) is the calendar's next one but for the few minutes one
     // runs on past its start, and is then the moment's meeting row.
     function above(fact) {
-        // What came for Joel is For You's Lately, and the notices missed
+        // What came for Joel is Lately's, whose rows stand after the
+        // moment's or in For You (latelyInForYou), and the notices missed
         // are among its Desktop row's (latelyRows). The margin's tray is
         // For You's own.
         if (fact.entry.mark === "forYou" || Lately.SOURCES.includes(fact.piece.lately))

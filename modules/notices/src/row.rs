@@ -10,7 +10,7 @@
 //!
 //! - `notices`, the lists of read and unread together (a search, a
 //!   program's), where an unread one says so before its age.
-//! - `notices-desktop`, For You's Desktop, the unread, its age alone,
+//! - `notices-desktop`, Now's Desktop, the unread, its age alone,
 //!   since Desktop's head says they're unread; one read while Joel looks
 //!   stays in place saying "read", until he no longer does (VKCF3Z,
 //!   2026-11-09).

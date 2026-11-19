@@ -826,8 +826,8 @@ Scope {
 
     // Where a collection that's no place of its own leads, as one found row,
     // found by the collection's own words, its name, noun and the names it
-    // once had: "notices" and "notifications" find For You's Desktop, where
-    // Super+N goes, whether or not For You lists it now, and never by the
+    // once had: "notices" and "notifications" find Desktop, where
+    // Super+N goes, in For You or among Now's rows, and never by the
     // name it leads to, which that row answers, so there's never two
     // (VKCF3Z, 2026-11-09: a rename never loses a row). It's the leading
     // source's own row, its key and drawer, said where it is, and Return,
@@ -10499,7 +10499,7 @@ Scope {
     function intoWhole(name, passing) {
         openInto = "";
         // A name a source leads somewhere deeper, as Now leads "notices"
-        // to For You's Desktop (`leadsTo`), opens on its place and steps
+        // to Desktop (`leadsTo`), opens on its place and steps
         // through those rows as Joel would, so - climbs back out the same
         // way and Escape at rest closes there. Its place opens first and
         // the steps are passed through, as a walk's are (walkTo), so only

@@ -50,7 +50,7 @@ Provider {
         make: (row, key) => provider.made(mixed, row, key)
         drawn: provider.launcher?.open ?? false
     }
-    // For You's Desktop, the unread and those read while Joel looks, each
+    // Now's Desktop, the unread and those read while Joel looks, each
     // read one saying so. Watched only while the launcher is open, since
     // the daemon keeps one read here only while it's watched, so it goes
     // to History once the launcher closes.
@@ -446,7 +446,7 @@ Provider {
         return everyRow.rows;
     }
 
-    // The notices of `ids`, as For You's Desktop (Now.qml) holds the
+    // The notices of `ids`, as Now's Desktop (Now.qml) holds the
     // unread: each read one says so, as one read while Joel looks stays
     // where it was (VKCF3Z, 2026-11-09), as the daemon words it.
     // Desktop's are in the order of `ids`, each its own place's row once
@@ -633,7 +633,7 @@ Provider {
 
     // The notices on screen step aside while the launcher holds a place
     // listing them, so each is in one place: where the keys reach it. That's
-    // a row that says it gathers them, as For You's Desktop does, where
+    // a row that says it gathers them, as Now's Desktop does, where
     // every way to the notices goes (Now.qml's leadsTo), or one of these.
     Binding {
         target: Notices

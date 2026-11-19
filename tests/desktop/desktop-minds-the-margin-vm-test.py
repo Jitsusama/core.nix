@@ -423,7 +423,7 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show What's Held"])
     desktop.type_in("show", selecting="Show What's Held")
     machine.send_key("ret")
-    # What's held is unread, so it's For You's Desktop, where every way to
+    # What's held is unread, so it's Desktop, where every way to
     # the notices goes (VKCF3Z, 2026-11-09).
     desktop.launcher_until(
         lambda shown: (
@@ -457,7 +457,8 @@ def test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray(
     # want Joel. The time and the date are among Now's own rows, each its
     # own answer as it's placed anywhere; the VM has no forecast and no
     # calendar, so the location follows them. The notices aren't a row of
-    # Now's: they're For You's, among what came for Joel.
+    # Now's but Desktop's, after the moment's rows, since they ask nothing
+    # of Joel (Joel, 2026-11-19).
     machine.send_key("meta_l-o")
     desktop.in_now("For You")
     things = desktop.showing()["things"]
@@ -466,14 +467,13 @@ def test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray(
     time, today = things[at : at + 2]
     assert kinds[at + 2] == "on:location", things
     assert not any(thing["reads"].startswith("Notices") for thing in things), things
+    assert any(thing["reads"].startswith("Desktop") for thing in things[at + 3 :]), things
     # This year's date, which says no year; ISO Date inside says it.
     date = machine.succeed("date '+%A %-d %B'").strip()
     assert time["is"] == "answer:time", time
     assert re.match(r"Time \u00b7 \d\d:\d\d", time["reads"]), time
     assert today["is"] == "answer:today", today
     assert today["reads"].startswith(f"Date \u00b7 {date}"), today
-    machine.send_key("ret")
-    desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
     desktop.down_to("Desktop")
     # A place's row: nothing after its name or below it, how many to read
     # at its right, and who sent them in its drawer (VKCF3Z, 2026-11-09).
@@ -485,12 +485,10 @@ def test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray(
             and shown["drawer"]["out"]
         )
     )
-    # For You's Lately band, Desktop's row on, for the design's look.
-    desktop.shoot("launcher-for-you-lately")
+    # Now's Lately, Desktop's row on, for the design's look.
+    desktop.shoot("launcher-now-lately")
     machine.send_key("ret")
-    desktop.launcher_until(
-        lambda shown: shown["keys"] and shown["held"] == ["now", "For You", "Desktop"]
-    )
+    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["now", "Desktop"])
     says_each_thing_once(desktop)
     desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
@@ -527,7 +525,7 @@ def says_each_thing_once(desktop: Desktop) -> None:
 def reads_them_all(desktop: Desktop) -> None:
     """Mark Them Read reads every notice, and Super+N then says nothing's unread over History.
 
-    With no cards, Super+N goes to For You's Desktop, as every way to the notices does. With
+    With no cards, Super+N goes to Now's Desktop, as every way to the notices does. With
     none unread, the empty line says so where any empty place says it, and History is its one
     row, the cursor on it (VKCF3Z, 2026-11-09: a row Return does nothing on is a fake one).
     """
@@ -541,7 +539,7 @@ def reads_them_all(desktop: Desktop) -> None:
     desktop.machine.send_key("meta_l-n")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["now", "For You", "Desktop"]
+            shown["held"] == ["now", "Desktop"]
             and shown["nothing"] == "Nothing unread from the desktop."
             and shown["rows"] == ["History"]
             and (shown["selected"] or {}).get("name") == "History"

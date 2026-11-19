@@ -90,7 +90,7 @@
   # another, and the clock's zone is a link that names another than the place's.
   # For You's looks are given as the to-do daemon's stream tells them, kept only
   # while each reads the same, and what's on as pieces whose rows are kept while
-  # each reads the same. For You's Desktop holds the notices' rows as their
+  # each reads the same. Now's Desktop holds the notices' rows as their
   # daemon serves them, stood in (tests/lib/NoticesDaemon.qml), each kept while
   # its notice is the same. Lately's rows are kept as well, so a notice arriving
   # makes only Desktop's row again, and a session's move that leaves what For

@@ -493,7 +493,7 @@ let
       # read; without it, a minute turning mid-case threw before the time
       # was marked stale.
       report = singleton "Report.qml" "function say(text) {}";
-      # For You's Desktop row holds the notices unread, as the notices
+      # Now's Desktop row holds the notices unread, as the notices
       # daemon serves them (tests/lib/NoticesDaemon.qml stands it in), and
       # For You counts a critical one among what waits while no card says
       # it.
