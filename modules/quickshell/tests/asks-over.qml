@@ -708,6 +708,12 @@ ShellRoot {
         same("nor its search words", [finds(root.madeBefore), finds(row())], [true, false]);
         // What a ready row draws of the kept fields: its glyph.
         same("while keeping what says it's an ask", row()?.glyph, root.madeBefore?.glyph);
+        // The row made showing says so, by the source that hides it now, so
+        // no way back goes to a place holding it (Steady.hiddenGone); one
+        // made hidden says nothing, so such a place stays.
+        same("a row made showing says so, and one made hidden doesn't",
+            [root.madeBefore?.shownBy === asks, root.madeBefore?.shownBy?.hiding,
+                "shownBy" in (row() ?? {})], [true, true, false]);
         same("it has no act, so no key answers it unseen",
             [row()?.arms, row()?.verbs ?? null], ["", null]);
         // The launcher closes on a Return with no run, so his second

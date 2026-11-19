@@ -4188,9 +4188,10 @@ Scope {
         const dropped = jumpsBack.length - left.back.length + jumpsAhead.length
             - left.ahead.length + tagsBack.length - left.tags.length
             + (left.last !== lastPlace ? 1 : 0);
-        // How many alone, never which, as untold says what it forgot.
+        // How many alone, never which, as untold says what it forgot: one
+        // place left is often on several ways back, so these are counted.
         if (dropped > 0)
-            console.info(`launcher: let go of ${dropped} places back, as the screen may be shared`);
+            console.info(`launcher: let go of ${dropped} ways back, as the screen may be shared`);
         if (left.back.length !== jumpsBack.length)
             jumpsBack = left.back;
         if (left.ahead.length !== jumpsAhead.length)

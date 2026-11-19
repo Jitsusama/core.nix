@@ -169,6 +169,9 @@ QtObject {
         const kept = Steady.hiddenGone({ back: [music], ahead: [], tags: [], last: remade });
         if (kept.last !== remade || kept.back[0] !== music)
             failures.push("a place showing nothing that hides now is gone back to as it was");
+        // As each opening leaves it, with no last place yet.
+        if (Steady.hiddenGone({ back: [], ahead: [], tags: [], last: null }).last !== null)
+            failures.push("with no last place, none is made");
 
         // A row that arrives while the list is shown comes at the end, out
         // of the place a tree would give it, so it reads as it would ranked
