@@ -41,8 +41,9 @@
   # to the session that left it or its quest's, and gathers what other
   # sources give it, as Passwords' one to-do, weighed beside the rest or
   # done, and finds the cell a look leads to, its own session or one on its
-  # quest, as tests/for-you.qml holds ForYou.js and Looks.js to it in Qt's
-  # own engine.
+  # quest, and groups what needs him now by the cell behind each, as
+  # tests/for-you.qml holds ForYou.js, ForYouCells.js and Looks.js to it in
+  # Qt's own engine.
   for-you-weighs-what-needs-joel =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -50,6 +51,7 @@
     pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
       cp ${../../../tests/for-you.qml} for-you.qml
       cp ${../launcher/ForYou.js} ForYou.js
+      cp ${../launcher/ForYouCells.js} ForYouCells.js
       cp ${../launcher/Looks.js} Looks.js
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

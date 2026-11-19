@@ -7,6 +7,7 @@
   "launcher/Explaining.js"
   "launcher/NowGroups.js"
   "launcher/ForYou.js"
+  "launcher/ForYouCells.js"
   "launcher/ForYouFilter.js"
   "launcher/Looks.js"
 ]
