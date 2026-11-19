@@ -326,8 +326,8 @@ fn run(how: &Run) -> Result<(), Failure> {
              keeping what it can of what was judged"
         ),
         Some(Afresh::Unjudged) => eprintln!(
-            "<4>which Slack messages were judged can't all be read, so any said since how far it \
-             had read may be judged again"
+            "<4>which Slack messages were judged can't all be read, so any of the newest said \
+             since it first started may be judged, and answered, again"
         ),
         Some(Afresh::Nothing) | None => {}
     }

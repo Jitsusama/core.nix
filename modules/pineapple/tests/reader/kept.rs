@@ -57,17 +57,19 @@ fn a_mark_that_cant_be_trusted_is_said_once_and_a_stop_is_still_heard() {
             "kept {kept}, what was said since is judged, once"
         );
         let said = journal(&home);
-        // Each warning about the mark names how far Slack was read or
-        // which messages were judged; the reader's others are not this
-        // case's business.
+        // Only the warnings about the mark; the reader's others are not
+        // this case's business.
         let warned: Vec<&str> = said
             .lines()
-            .filter(|line| line.starts_with("<4>"))
-            .filter(|line| line.contains("Slack was read") || line.contains("were judged"))
+            .filter(|line| {
+                [UNREADABLE, AHEAD, UNJUDGED]
+                    .iter()
+                    .any(|warning| line.starts_with(&format!("<4>{warning}")))
+            })
             .collect();
         assert!(
             warned.len() == 1 && warned[0].starts_with(&format!("<4>{says}")),
-            "kept {kept}, the journal warns about the mark {says:?} once and nothing else: {said}"
+            "kept {kept}, the journal warns {says:?} once, and no other warning about the mark: {said}"
         );
         std::fs::remove_dir_all(&home).expect("the case's home goes");
     }
