@@ -1012,8 +1012,9 @@ def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
 
     A kept opening is filled in once niri has presented its frame, up to half a second after
     it's drawn, so a share begun in between was shown the rows kept from before it, a copy or
-    a waiting ask, all that while. Niri is held, so no frame comes to fill it in, and the
-    stand-in takes back its word on the casts, as the daemon does when niri's stream drops.
+    a waiting ask, all that while. Niri is held, so nothing it presents fills it in, and the
+    stand-in takes back its word on the casts, as the daemon does when niri's stream drops;
+    left to itself, it fills in as the wait for niri gives up, half a second on.
     """
     with casts_stood_in(shell, said=True) as stood:
         since = shell.mark()
@@ -1023,6 +1024,7 @@ def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
                 shell.as_account(shell.ipc(*asked))
                 shell.launcher_until(lambda shown: shown.get("opening"))
                 stood.say(said=False)
+                read_shared(shell, shared=True)
                 shell.launcher_until(lambda shown: shown.get("open") and not shown.get("opening"))
             shell.as_account(shell.ipc("toggle"))
             shell.launcher_closed()
