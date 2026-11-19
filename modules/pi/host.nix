@@ -214,6 +214,19 @@ let
             # The stop limit below, which the host parks within.
             PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
           }
+          # The TPM's libraries, which every program on NSS or p11-kit loads
+          # (Chrome's the browser tool drives included), are pointed at no
+          # TPM and at a token store that can't be read or made, so nothing
+          # the conversations start signs with a key the TPM holds that needs
+          # no PIN, such as a device's own. Joel's account may open the TPM,
+          # and a key opened there answers whoever asks. A program that opens
+          # the device by its own path still reaches it: only the fence, with
+          # no TPM in its /dev, holds that. A machine's value can't undo it.
+          // lib.genAttrs [ "TPM2TOOLS_TCTI" "TPM2_PKCS11_TCTI" "TSS2_TCTI" ] (_: "device:/var/empty/tpm")
+          // {
+            TPM2_PKCS11_STORE = "/var/empty";
+            TSS2_FAPICONF = "/var/empty/fapi-config.json";
+          }
           // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
         );
         # The user manager names the TPM's agent, Joel's own keys, to
