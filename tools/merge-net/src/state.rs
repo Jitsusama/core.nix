@@ -9,6 +9,9 @@
 //! - `results.jsonl`: a line for each run of a check at a commit, with its
 //!   exit, its log and the seconds it took, so no check that passed at a
 //!   commit runs there again, and a round starts its longest checks first.
+//!   A failure a quarantine excused is `passed` for blame and `excused`
+//!   too; lines before 19 November lack `excused`, and there a `passed`
+//!   with a `code` other than 0 says the same.
 //! - `hold.json`: while a merge broke a test and its revert isn't on main,
 //!   the bad commit and the revert, which a switch reads to stay put.
 //! - `unsettled.json`: a held test whose search couldn't tell which merge

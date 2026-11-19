@@ -175,6 +175,12 @@ fn an_excused_failure_is_kept_apart_from_a_pass() {
     state
         .record("bbbb", "vm-a", Ran::Passed, Some(1), &log, 40)
         .unwrap();
+    state
+        .record("cccc", "vm-a", Ran::Failed, Some(1), &log, 30)
+        .unwrap();
+    state
+        .record("dddd", "vm-a", Ran::Stalled, None, &log, 3000)
+        .unwrap();
     assert_eq!(
         state.lasted().get("vm-a"),
         Some(&600),
@@ -187,8 +193,8 @@ fn an_excused_failure_is_kept_apart_from_a_pass() {
         .collect();
     assert_eq!(
         excused,
-        [false, true],
-        "each run says whether it was excused: {record}"
+        [false, true, false, false],
+        "only the pass that failed was excused, not a failure or a stall: {record}"
     );
     assert_eq!(
         state.runs("bbbb", "vm-a"),
