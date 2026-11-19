@@ -12,7 +12,7 @@
 //! screen.
 
 use terminal_kit::Pen;
-use terminal_kit::layout::Room;
+use terminal_kit::layout::{self, Room};
 
 use crate::summary::{UNDER, under, way_out};
 
@@ -71,10 +71,20 @@ impl Line {
         // so its rows split back into them.
         let pieces: Vec<&str> = whole.iter().flat_map(|row| row.split(' ')).collect();
         let tail = |from: usize| under(&format!("{more} {}", pieces[from..].join(" ")), room);
-        (1..pieces.len())
-            .map(tail)
-            .find(|laid| laid.len() <= rows)
-            .unwrap_or_else(|| tail(pieces.len() - 1))
+        // Fewer pieces never wrap to more rows, so the most that fit is
+        // found by halving rather than by laying every tail, since a
+        // journal line runs to 48K and the shell waits on this. Where
+        // none fit, as the mark wrapping on its own, the last piece stays.
+        let (mut from, mut last) = (1, pieces.len() - 1);
+        while from < last {
+            let half = from + (last - from) / 2;
+            if tail(half).len() <= rows {
+                last = half;
+            } else {
+                from = half + 1;
+            }
+        }
+        tail(from)
     }
 }
 
@@ -149,13 +159,17 @@ impl Screen {
     /// the module says; what can't go stays, however few the rows.
     pub fn fit(&mut self, rows: usize, pen: &Pen, room: Room) {
         let rows = rows.saturating_sub(LEFT_FOR_THE_SHELL);
-        while self.drawn(pen, room).matches('\n').count() > rows
-            && self.trimmed(room, pen.mark("more"))
-        {}
+        loop {
+            let taken = rows_drawn(&self.drawn(pen, room), room);
+            if taken <= rows || !self.trimmed(room, pen.mark("more"), taken - rows) {
+                break;
+            }
+        }
     }
 
-    /// Whether the least needed of what's left could go, and it went.
-    fn trimmed(&mut self, room: Room, more: &str) -> bool {
+    /// Whether the least needed of what's left could go, and it went,
+    /// with `over` rows still to find.
+    fn trimmed(&mut self, room: Room, more: &str, over: usize) -> bool {
         let taken = |unit: &Told| -> usize {
             unit.lines
                 .iter()
@@ -175,8 +189,10 @@ impl Screen {
             skipped.example = false;
             return true;
         }
-        // A line is cut a row at a time, the longest first, each cut to
-        // fewer rows than the last, so the cutting ends.
+        // The longest line is cut by the rows still over, to one at
+        // least, each cut to fewer rows than the last, so the cutting
+        // ends; cut a row at a time, a 48K line would be laid hundreds
+        // of times.
         let longest = self
             .units
             .iter_mut()
@@ -185,7 +201,7 @@ impl Screen {
             .filter(|(laid, line)| *laid > 1 && line.rows.is_none_or(|rows| *laid <= rows))
             .max_by_key(|(laid, _)| *laid);
         if let Some((laid, line)) = longest {
-            line.rows = Some(laid - 1);
+            line.rows = Some(laid.saturating_sub(over).max(1));
             return true;
         }
         if self.skipped.take().is_some() {
@@ -199,11 +215,49 @@ impl Screen {
     }
 }
 
+/// The rows `drawn` takes on a console `room` wide, as its cursor moves
+/// down them: a line wider than the console, as a long unit's name or
+/// the way out on a narrow one, wraps to more than one.
+fn rows_drawn(drawn: &str, room: Room) -> usize {
+    let Some(cells) = room.cells() else {
+        return drawn.matches('\n').count();
+    };
+    drawn
+        .split_inclusive('\n')
+        .filter(|line| line.ends_with('\n'))
+        .map(|line| {
+            shown(line.trim_end_matches('\n'))
+                .div_ceil(cells.max(1))
+                .max(1)
+        })
+        .sum()
+}
+
+/// The cells a drawn line shows, without the colours the pen inks it in.
+fn shown(line: &str) -> usize {
+    let mut bare = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            // The pen inks with select-graphic sequences alone, which end
+            // at their final byte.
+            for c in chars.by_ref() {
+                if ('\u{40}'..='\u{7e}').contains(&c) && c != '[' {
+                    break;
+                }
+            }
+        } else {
+            bare.push(c);
+        }
+    }
+    layout::width(&bare)
+}
+
 #[cfg(test)]
 mod tests {
     use terminal_kit::layout::Room;
-    use terminal_kit::{Ink, Pen};
 
+    use crate::summary::tests::console;
     use crate::summary::{Failed, text};
 
     fn unit(name: &str, said: &[&str]) -> Failed {
@@ -215,19 +269,17 @@ mod tests {
         }
     }
 
-    fn console() -> Pen {
-        Pen::new(
-            Ink {
-                console: true,
-                ..Ink::plain()
-            },
-            None,
-        )
-    }
-
     /// The rows a summary takes, as the console's cursor moves down them.
     fn rows(summary: &str) -> usize {
         summary.matches('\n').count()
+    }
+
+    /// The units a summary shows, by their headings.
+    fn shown(summary: &str) -> usize {
+        summary
+            .lines()
+            .filter(|line| line.starts_with("  ") && !line.starts_with("     "))
+            .count()
     }
 
     /// A line of `words` words, each its number.
@@ -267,9 +319,18 @@ mod tests {
     fn every_console_is_given_no_more_rows_than_it_has() {
         let failed = four();
         let skipped = ["Journal file /j/a.journal~ is truncated, ignoring file.".to_owned()];
-        // Four headings, "and 2 more" and the way out take 14 rows, which
-        // stay whatever the height; from there up, the summary fits.
-        for height in 22..80 {
+        // However short the screen, one unit with a row of its last line,
+        // the count of the rest and the way out stay; past that the
+        // summary fits, units going at the shortest.
+        let least = rows(&text(
+            &failed,
+            6,
+            &skipped,
+            &console(),
+            Room::Cells(80),
+            Some(0),
+        ));
+        for height in least + super::LEFT_FOR_THE_SHELL..80 {
             let summary = text(
                 &failed,
                 6,
@@ -331,8 +392,8 @@ mod tests {
     }
 
     #[test]
-    fn the_skipped_files_example_goes_before_any_units_line() {
-        let failed = [unit("a.service", &["a one"])];
+    fn the_skipped_files_example_goes_before_a_line_is_cut() {
+        let failed = [unit("a.service", &[&long(30)])];
         let skipped = ["Journal file /j/a.journal~ is truncated, ignoring file.".to_owned()];
         let whole = text(&failed, 1, &skipped, &console(), Room::Cells(80), None);
         let fitted = text(
@@ -344,7 +405,7 @@ mod tests {
             Some(rows(&whole) + 7),
         );
         assert!(
-            fitted.contains("a one")
+            fitted.contains("w1 ")
                 && fitted
                     .contains("     journalctl skipped a journal file, so lines may be missing.\n")
                 && !fitted.contains("truncated"),
@@ -360,8 +421,8 @@ mod tests {
             "a short screen didn't keep the first units and count the last: {fitted}"
         );
         assert!(
-            fitted.contains("     and 4 more\n") || fitted.contains("     and 3 more\n"),
-            "the units left out weren't counted: {fitted}"
+            fitted.contains(&format!("     and {} more\n", 6 - shown(&fitted))),
+            "the units left out weren't counted as those not shown: {fitted}"
         );
         assert!(
             rows(&fitted) <= 19 - super::LEFT_FOR_THE_SHELL,
@@ -379,6 +440,49 @@ mod tests {
         assert!(
             fitted.contains("     and 5 more\n"),
             "the units left out weren't counted: {fitted}"
+        );
+    }
+
+    #[test]
+    fn a_journal_length_line_is_fitted_at_once() {
+        // journald keeps a line of up to 48K; laid a tail at a time and
+        // cut a row at a time, this took minutes the shell waits on.
+        let said = format!("{} because the disk went away", long(8000));
+        let failed = [unit("a.service", &[&said])];
+        let started = std::time::Instant::now();
+        let fitted = text(&failed, 1, &[], &console(), Room::Cells(80), Some(24));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "a 48K line took {:?} to fit",
+            started.elapsed()
+        );
+        assert!(
+            fitted.contains("because the disk went away") && rows(&fitted) <= 16,
+            "a 48K line lost its end or ran past the screen: {fitted}"
+        );
+    }
+
+    #[test]
+    fn a_heading_wider_than_the_console_is_counted_as_it_wraps() {
+        let name = format!("{}.mount", "a".repeat(100));
+        let failed = [
+            unit(&name, &["one", "two", "three"]),
+            unit("b.service", &["b one"]),
+        ];
+        let fitted = text(&failed, 2, &[], &console(), Room::Cells(40), Some(20));
+        // The console's pen inks nothing here, so each row is its
+        // characters, forty to a row.
+        let wrapped: usize = fitted
+            .split_inclusive('\n')
+            .map(|line| line.trim_end().chars().count().div_ceil(40).max(1))
+            .sum();
+        assert!(
+            wrapped <= 20 - super::LEFT_FOR_THE_SHELL,
+            "a wrapped heading ran the summary past the screen: {fitted}"
+        );
+        assert!(
+            fitted.contains(&name) && fitted.contains("three"),
+            "the first unit lost its name or its last line: {fitted}"
         );
     }
 }

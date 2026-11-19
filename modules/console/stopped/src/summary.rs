@@ -251,7 +251,7 @@ pub fn last_shown(lines: Vec<String>, count: usize) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use terminal_kit::Ink;
 
@@ -404,7 +404,9 @@ mod tests {
         super::text(failed, all, &[], pen, room, None)
     }
 
-    fn console() -> Pen {
+    /// A pen as the console inks, with its marks: fit.rs's tests draw
+    /// with it too.
+    pub(crate) fn console() -> Pen {
         Pen::new(
             Ink {
                 console: true,

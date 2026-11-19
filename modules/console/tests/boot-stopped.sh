@@ -192,14 +192,17 @@ says "     and 5 more"
 # On a terminal of sixteen rows, which a console's LINES can say, it
 # leaves eight for the emergency shell's own words, so it fits what
 # matters most in the rest: a unit, the count of the others and the way
-# out. util-linux's script gives it the terminal; into a pipe, as above,
-# there's no height to fit.
-LINES=16 SHELL=$BASH TERM=linux FORCE_COLOR=1 script -q -e \
-  -c "$BASH $work/stopped < /dev/null" /dev/null < /dev/null > "$work/raw"
+# out. util-linux's script gives it the terminal, sized as a console's
+# is, so its height is the terminal's own; into a pipe, as above, there's
+# no height to fit.
+SHELL=$BASH TERM=linux FORCE_COLOR=1 script -q -e \
+  -c "stty rows 16 columns 80 && $BASH $work/stopped < /dev/null" /dev/null \
+  < /dev/null > "$work/raw"
 sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\r$//' "$work/raw" > "$work/said"
 rows=$(wc -l < "$work/said")
 ((rows <= 8)) || fails "it drew $rows rows where the console leaves it eight"
 says "  x  home.mount  Mount /home"
+says "     mount: /home: wrong fs type"
 grep -q -E '^     and [0-9]+ more$' "$work/said" || fails "it didn't count the units left out"
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
 
