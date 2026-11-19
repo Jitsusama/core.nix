@@ -293,49 +293,34 @@ QtObject {
         const said = to => `${to.keep}`;
 
         check("nothing to leave keeps every step",
-            said(Held.leaveTo({ steps: steps, leave: -1, all: true }, how(false), ways)), "-1");
+            said(Held.leaveTo({ steps: steps, leave: -1, all: true }, how(false))), "-1");
         check("a step offering nothing is left, back to the step above it",
-            said(Held.leaveTo(nothing, how(false), ways)), "1");
+            said(Held.leaveTo(nothing, how(false))), "1");
         check("and a step below one that does, back to it",
-            said(Held.leaveTo(below, how(false), ways)), "2");
-        // A dialog's own collection, the outermost, is never left, for
-        // the home it never showed; it stays, its rows each gone, rather
-        // than showing what it offered before. Its row stays as it was
-        // entered, as the step a source's change leaves alone does.
+            said(Held.leaveTo(below, how(false))), "2");
         const spentTop = { steps: steps, leave: 0, all: false };
-        keptWith = [];
-        const top = Held.leaveTo(spentTop, how(true), ways);
-        check("the outermost step is kept, the steps below it left", said(top), "1");
-        check("its rows each gone", keptWith.join(" "), "agents:0");
-        check("as it hands them back", read(top.steps.slice(0, 1)), "agents=Agents[]");
-        check("the steps below it as they were", read(top.steps.slice(1)),
-            "s1=working[stop look]");
-        check("and what it was given is as it was", read(steps),
-            "agents=Agents[s1] s1=working[stop look]");
-        keptWith = [];
-        const alone = Held.leaveTo({ steps: [steps[0]], leave: 0, all: false }, how(true), ways);
-        check("the outermost alone is kept with its rows gone, nothing left",
-            `${said(alone)} ${keptWith.join(" ")} ${read(alone.steps)}`,
-            "-1 agents:0 agents=Agents[]");
-        check("any other leaves to home", said(Held.leaveTo(spentTop, how(false), ways)), "0");
-        check("steps it doesn't leave are as made",
-            read(Held.leaveTo(below, how(false), ways).steps.slice(0, 2)),
-            read(below.steps.slice(0, 2)));
+        check("a spent first step leaves to home", said(Held.leaveTo(spentTop, how(false))),
+            "0");
+        check("steps it doesn't leave are as made, and handed back as made",
+            read(Held.leaveTo(below, how(false)).steps), read(below.steps));
         // A thing landed in from a search, `through`, is left back to the
-        // search, past the collection it was found in, as Joel's - leaves it.
+        // search, past the collection it was found in, as Joel's - leaves it,
+        // but never past a dialog's own collection, the outermost.
         const through = { steps: [steps[0], Object.assign({}, steps[1], { through: true })],
             leave: 1, all: false };
         check("a spent thing landed in from a search leaves past its collection",
-            said(Held.leaveTo(through, how(false), ways)), "0");
-        check("but never past the outermost", said(Held.leaveTo(through, how(true), ways)), "1");
-        // Only a kept outermost has its rows drawn gone; a step left is
-        // handed back as made.
+            said(Held.leaveTo(through, how(false))), "0");
+        check("but never past the outermost", said(Held.leaveTo(through, how(true))), "1");
+        // The outermost is itself never left: a dialog's collection is a
+        // place's own step, with no key, which own keeps with its rows
+        // each gone, its row as entered, rather than leaving.
+        const placeStep = { row: { key: "", says: "Chooser" }, rows: [row("f", "f")] };
         keptWith = [];
-        const left = Held.leaveTo(nothing, how(false), ways);
-        const pastIt = Held.leaveTo(through, how(false), ways);
-        check("a step left isn't kept with its rows gone",
-            `${keptWith.join(" ")}|${read(left.steps)}|${read(pastIt.steps)}`,
-            `|${read(nothing.steps)}|${read(through.steps)}`);
+        const spentPlace = Held.own([placeStep], 0, [], ways);
+        check("a place's own step offering nothing is kept, its rows each gone",
+            `${spentPlace.leave} ${spentPlace.all} ${keptWith.join(" ")} `
+                + read(spentPlace.steps), "-1 true :0 =Chooser[]");
+        const left = Held.leaveTo(nothing, how(false));
 
         // What every history forgets: the places through the step that
         // offers nothing, as they read before it was made again and after,
@@ -344,7 +329,7 @@ QtObject {
             row: Object.assign({}, step.row, { says: `${step.row.says} before` })
         }));
         const forgets = (made, how) => {
-            const at = Held.forgets(made, Held.leaveTo(made, how, ways), before, made.steps);
+            const at = Held.forgets(made, Held.leaveTo(made, how), before, made.steps);
             return at === null ? "none" : [at.landed, at.left].map(both =>
                 both.map(one => one.length).join(",")).join(" ");
         };
@@ -352,10 +337,8 @@ QtObject {
             forgets({ steps: steps, leave: -1, all: true }, how(false)), "none");
         check("a step left forgets the places through it, landing above it",
             forgets(nothing, how(false)), "1,1 2,2");
-        check("a spent outermost kept forgets the places through it, landing in it",
-            forgets(spentTop, how(true)), "1,1 1,1");
-        check("as when it's alone",
-            forgets({ steps: [steps[0]], leave: 0, all: false }, how(true)), "1,1 1,1");
+        check("a spent first step forgets the places through it, landing at home",
+            forgets(spentTop, how(false)), "0,0 1,1");
         check("a spent thing found by a search forgets only the places through it",
             forgets(through, how(false)), "0,0 2,2");
         check("where the outermost keeps its collection too", forgets(through, how(true)),
@@ -368,16 +351,44 @@ QtObject {
                 .map(step => step.row.says).join(" | "));
 
         // What the launcher's remaking answers its caller.
-        const answer = made => Held.answer(made, Held.leaveTo(made, how(false), ways));
-        check("every step made again is made", answer({ steps, leave: -1, all: true }), "made");
-        check("a step kept as it was is kept", answer({ steps, leave: -1, all: false }), "kept");
-        check("a step left is left", answer(nothing), "left");
-        check("the outermost alone, kept with its rows gone, is made",
-            Held.answer({ steps: [steps[0]], leave: 0, all: false }, alone), "made");
-        check("the outermost kept, with steps below it left, is left",
-            Held.answer(spentTop, top), "left");
+        check("every step made again is made",
+            Held.answer({ steps, leave: -1, all: true }), "made");
+        check("a step kept as it was is kept",
+            Held.answer({ steps, leave: -1, all: false }), "kept");
+        check("a step left is left", Held.answer(nothing), "left");
+        check("as is one left past the outermost's search", Held.answer(through), "left");
 
         afterLeaving(check);
+        thrownAs(check);
+    }
+
+    // A throw caught as a source refreshes, as the journal says it, each
+    // told to `check`: never its message, and always with a kind ending
+    // "Error:", as the VM tests' error nets look for.
+    function thrownAs(check) {
+        const shaped = (kind, stack) => Object.assign(Object.create(kind.prototype), {
+            message: "joel's secret", stack
+        });
+        check("an Error says its kind and frame, never its message",
+            Held.thrown(shaped(TypeError, "refreshNow@file:///Launcher.qml:5991\nwalk@x:1")),
+            "TypeError: thrown at refreshNow@file:///Launcher.qml:5991");
+        check("a frame with no function still says where",
+            Held.thrown(shaped(Error, "@file:///Launcher.qml:12:4")),
+            "Error: thrown at @file:///Launcher.qml:12:4");
+        check("a first line shaped as another engine's message is left out",
+            Held.thrown(shaped(Error, "Error: could not reach joel@box:22\nf@x:1")),
+            "Error: thrown");
+        check("as is a stack with none", Held.thrown(shaped(RangeError, undefined)),
+            "RangeError: thrown");
+        const named = shaped(Error, "f@x:1");
+        named.name = "joel's secret";
+        check("an Error named otherwise is said as Error", Held.thrown(named),
+            "Error: thrown at f@x:1");
+        check("a thrown string says its type, never itself", Held.thrown("joel's secret"),
+            "Error: string thrown");
+        check("as does a thrown object", Held.thrown({ message: "joel's secret" }),
+            "Error: object thrown");
+        check("and nothing thrown", Held.thrown(undefined), "Error: undefined thrown");
     }
 
     // What Ctrl+O, Ctrl+I, Ctrl+T and Tab keep once a step is left by
@@ -431,12 +442,14 @@ QtObject {
         check("Ctrl+I's places ahead and Ctrl+T's tags go alike",
             after({ ahead: ["q", "agents/s1/look", "agents"], tags: ["agents/s1", "agents"] },
                 ["agents"], ["agents/s1"]), " | q | ; elsewhere");
-        check("a spent outermost forgets every place through it",
-            after({ jumps: ["O/S2", "O", "O/S1", "O"], last: "O/S2" }, ["O"], ["O"]),
-            " |  | ; none");
-        check("a leave to home forgets home last on the way back, not before",
+        check("a spent first step forgets every place through it",
+            after({ jumps: ["O/S2", "q", "O/S1", "O"], last: "O/S2" }, [""], ["O"]),
+            "q |  | ; none");
+        // Home is never a place a leave strands: going back to it brings
+        // back what was typed there, which may be another search.
+        check("a leave to home keeps home on the way back and as the place used last",
             after({ jumps: ["", "q", "agents", ""], last: "" }, [""], ["agents"]),
-            "~ q |  | ; none");
+            "~ q ~ |  | ; ~");
         check("no place used last, as the launcher opens, is none still",
             after({ jumps: ["q", "agents"], last: null }, ["agents"], ["agents/s1"]),
             "q |  | ; none");
@@ -456,11 +469,37 @@ QtObject {
         check("a place through the step left under an older name goes",
             `${now.jumps.map(one => one.held[1].row.name).join(" ")}; ${now.last}`,
             "s2 working; null");
-        check("a row with no key is told by its name",
-            [Held.placeOf([{ row: { name: "a" } }]) === Held.placeOf([{ row: { name: "b" } }]),
-                Held.placeOf([{ row: { name: "a" } }]) === Held.placeOf([{ row: { name: "a" } }]),
-                Held.placeOf([{ row: { key: "k", name: "a" } }])
-                    === Held.placeOf([{ row: { name: "k" } }])].join(" "),
-            "false true false");
+        const same = (one, other) =>
+            Held.placeOf([{ row: one }]) === Held.placeOf([{ row: other }]);
+        check("a row with a key is told by it alone, whatever its name",
+            [same({ key: "k", name: "a" }, { key: "k", name: "b" }),
+                same({ key: "k", name: "a" }, { key: "j", name: "a" }),
+                same({ key: "k", name: "a" }, { name: "k" })].join(" "), "true false false");
+        // Every answer is the same "answer", so one with no key is told by
+        // what it is and its name together.
+        check("a row with no key is told by what it is and its name",
+            [same({ name: "a" }, { name: "b" }), same({ name: "a" }, { key: "", name: "a" }),
+                same({ is: "answer", name: "4" }, { is: "answer", name: "5" }),
+                same({ is: "answer", name: "4" }, { is: "answer", name: "4" }),
+                same({ is: "answer", name: "4" }, { name: "4" })].join(" "),
+            "false true false true false");
+
+        // Held.forgets into Held.afterLeave, over steps as the launcher
+        // holds them: a place's own step, with no key, renamed as it was
+        // made again, so each history's places are found under each name.
+        const step = (key, name) => ({ row: { key, name }, rows: [] });
+        const old = [step("", "Agents"), step("s1", "s1 working")];
+        const anew = [step("", "Agents Now"), step("s1", "s1 idle")];
+        const made = { steps: anew, leave: 1, all: false };
+        const forgetting = Held.forgets(made, Held.leaveTo(made, { outermost: false }), old,
+            anew);
+        const places = [[old[0], old[1]], [anew[0], anew[1]], [old[0], step("s2", "s2")],
+            [anew[0]]].map(one => ({ held: one }));
+        const across = Held.afterLeave(
+            { jumps: places, ahead: [], tags: [], last: { held: [old[0]] } },
+            forgetting, Held.placeOf);
+        check("each history forgets the step left and where it landed, named either way",
+            `${across.jumps.map(one => one.held.map(at => at.row.name).join("/")).join(" ")}; `
+                + `${across.last}`, "Agents/s2; null");
     }
 }
