@@ -4755,6 +4755,11 @@
     jemalloc holds in the shell's own process, and no memfd backs the heap, so each of its
     pages is held once
   '';
+  a-meter-stays-its-moment-once-drawn-on-niri = ''
+    the screen's brightness picked while the nested niri is held stopped for 2.5 s, longer than
+    a meter's moment, has the brightness meter drawn once niri goes on, and gone no sooner
+    than 1.3 s after it was drawn
+  '';
   the-shells-list-names-what-it-runs = ''
     the list of the shell's files its companion compares after a switch also names the command
     the shell runs and each setting in its environment, so a new Quickshell is taken too

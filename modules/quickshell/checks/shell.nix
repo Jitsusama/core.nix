@@ -609,4 +609,11 @@
     tests = ../tests/shell-stays-light-on-niri-test.py;
     given = [ "QS_GIVEN=--log-rules qt.qml.gc.allocatorStats.debug=true" ];
   };
+
+  # A meter picked while niri can't draw is drawn once it can, and stays its
+  # moment from then (modules/quickshell/tests/meter-on-niri-test.py).
+  a-meter-stays-its-moment-once-drawn-on-niri = launcherOnNiri {
+    name = "a-meter-stays-its-moment-once-drawn-on-niri";
+    tests = ../tests/meter-on-niri-test.py;
+  };
 }
