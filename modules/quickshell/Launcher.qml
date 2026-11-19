@@ -11297,8 +11297,8 @@ Scope {
     }
 
     // Brings a card shown from what it kept up to now: open, every source
-    // it reads wakes, home is found again where its rows stand, and its
-    // drawer comes. A key or a click before its first frame is drawn does
+    // it reads wakes, home is found again where its rows stand, after its
+    // frame (fillFound), and its drawer comes. A key or a click before its first frame is drawn does
     // this first, so it acts on what's there now, never on what was kept.
     function filled(by) {
         if (!opening || open)
@@ -11306,9 +11306,9 @@ Scope {
         openFilledBy = by;
         const began = KeyTimes.now();
         fillFrom = feltFrom < 0 ? -1 : began - feltFrom;
-        // Its sources wake a few a frame from the next (wakeNext), so home,
-        // or the place a chord opened, is found again here from what each
-        // made last.
+        // Its sources wake a few a frame from the next (wakeNext), so the
+        // place a chord opened is found again here from what each made
+        // last, and home in the first slice, before any wakes (fillFound).
         // Each part of the fill is felt by its own name inside filling,
         // which held 31 to 68 ms of Joel's openings' longest stalls with
         // nothing saying which part (BXNMUC, 2026-11-14, 09:18 to 09:45).
@@ -11416,14 +11416,9 @@ Scope {
             return;
         // The fill's own finding is the first slice, alone, said apart
         // from the sources' (wokeSaid), whose first waits from its end.
-        // Its sources wake after it though it throws, as nothing else
-        // would wake them before a shut.
         if (fillFinding) {
-            try {
-                fillFound("slice");
-            } finally {
-                wakeLater();
-            }
+            fillFound("slice");
+            wakeLater();
             return;
         }
         const budget = typed === "" ? wakeBudget : Infinity;
@@ -11477,16 +11472,37 @@ Scope {
         // A key, a click or a chord runs it once filled() has, so it's
         // timed from the fill's end as a slice is.
         fillFoundFrom = began - wakeBegan;
-        freshen();
-        // A step taken, or a word typed, before it ran has found its own.
-        if (fillFindsHome && held.length === 0 && prompt.text === "") {
-            restart("");
-            homeKept = matches;
-            fillFoundHome = true;
+        // A throw is said and goes no further, so the slice still wakes
+        // the sources after it, a frame's other callbacks still run, and
+        // the key, click or chord that ran it still acts.
+        try {
+            freshen();
+            // A step taken, or a word typed, before it ran has found its own.
+            if (fillFindsHome && held.length === 0 && prompt.text === "") {
+                restart("");
+                homeKept = matches;
+                fillFoundHome = true;
+            }
+            heldAgreed(sources);
+            if (fillFoundHome)
+                filledFound();
+        } catch (error) {
+            console.warn(`launcher: finding home after the fill threw: ${error.message}\n`
+                + (error.stack ?? ""));
+        } finally {
+            fillFoundTook = KeyTimes.now() - began;
+            feltSpan(fillFoundHome ? "finding home" : "joining", began);
         }
-        heldAgreed(sources);
-        fillFoundTook = KeyTimes.now() - began;
-        feltSpan("finding home", began);
+    }
+    // Home's rows once found again stand for the fill's (filledSaid), as
+    // the check that a fill moves no row or cursor reads them, and the
+    // fill's own were still the kept ones. Where the fill hasn't said
+    // them yet, it says these as it does.
+    function filledFound() {
+        const last = openingsTimed[openingsTimed.length - 1];
+        if (last?.kept && last.filled !== undefined)
+            openingsTimed = openingsTimed.slice(0, -1)
+                .concat([Object.assign({}, last, { filled: rowsSaid() })]);
     }
 
     // Every source still asleep woken at once, as a closing wants none.
@@ -11735,7 +11751,8 @@ Scope {
     // What filling an opening in took, said once it's done, with the rows
     // it shows then beside those its first frame showed. Home's fill shows
     // home as kept until home is found again after it (fillFound), so its
-    // rows here are the kept ones; the waking line says when it was.
+    // rows here are the kept ones until those found replace them
+    // (filledFound); the waking line says when that was.
     // Its own work's parts and all of it, and the rest, every binding and
     // source that woke as it opened, said apart, so a fill that holds the
     // first keys says which held them.

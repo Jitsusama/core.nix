@@ -1709,6 +1709,12 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     # said only where the slice ran home's search.
     said = shell.log.read_bytes()[since:].decode(errors="replace")
     assert "home found again in" in said, f"the slice didn't find home again: {woke}"
+    # Found again with nothing changed, its rows and cursor stand where the first frame showed
+    # them, and the fill's record says those, as the storm's check reads it.
+    shown, filled = cast("Json", woke[0]["shown"]), cast("Json", woke[0]["filled"])
+    assert (filled["keys"], filled["at"]) == (shown["keys"], shown["at"]), (
+        f"found again, home's rows or cursor moved: {woke}"
+    )
     # Its time is a slice's, and the sources' first slice comes after it, so the finding is never
     # read as their first wait. Each is rounded apart, so a millisecond either way.
     found = cast("int", woke[0]["foundTook"])
