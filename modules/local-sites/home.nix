@@ -167,6 +167,9 @@ let
   astray = lib.filter (path: builtins.match "${step}(/${step})*" path == null) (
     lib.attrNames cfg.rows
   );
+  # Kinds two declared sites are home to, and patterns the homes' readers
+  # would drop, each of which takes links away (rows-homes.nix says how).
+  declaredHomes = import ./rows-homes.nix { inherit lib; } cfg.rows;
   roots = config.jitsusama.repos.roots or null;
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
   # map-check.sh): the map's live-page test, pointed at the page this
@@ -517,6 +520,21 @@ in
         "jitsusama.local-sites.rows names sites by paths that lead off the sites: "
         "${toString astray}; name each by plain steps of letters, digits and -._~, "
         "none starting with a dot"
+      ];
+    }
+    {
+      assertion = declaredHomes.homedTwice == [ ];
+      message = lib.concatStrings [
+        "jitsusama.local-sites.rows names more than one site as home to a kind: "
+        "${lib.concatStringsSep "; " declaredHomes.homedTwice}; let one site be each kind's home"
+      ];
+    }
+    {
+      assertion = declaredHomes.dropped == [ ];
+      message = lib.concatStrings [
+        "jitsusama.local-sites.rows gives patterns the homes' readers drop: "
+        "${lib.concatStringsSep "; " declaredHomes.dropped}; give each a kind and an "
+        "address that is a fragment (#) on its own page holding {name}, in plain bytes"
       ];
     }
   ];

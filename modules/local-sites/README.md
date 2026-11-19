@@ -24,10 +24,13 @@ row in `jitsusama.local-sites.rows`, which the home lists in place of any
 row `sites.json` has at its path, so what the home says of a live site is
 built with it. The home writes every row it lists, the declared ones as
 declared, into `rows.json` beside it, for the readers of a row's `homes`
-(the system daemon's, the web-design skill's and Code's). Each reads it
-first and `sites.json` only where it's missing, so `sites.json` keeps
-only the rows nothing declares; a session's edit to a live row there no longer
-reaches the home. A home rolled back
+(the system daemon's, the web-design skill's and Code's). A switch refuses
+declared rows that give one kind two sites as its home, or a pattern the
+readers would drop: the skill's reader calls either a fault, and the daemon
+can take a site's links away without a word ([`rows-homes.nix`][rows-homes]
+says when). Each reads `rows.json` first and `sites.json` only where it's
+missing, so `sites.json` keeps only the rows nothing declares; a session's
+edit to a live row there no longer reaches the home. A home rolled back
 to before `rows.json` leaves the last one in place, so remove it then, or
 its readers keep its rows. The system page
 ([`modules/system/site`][system]) is the first, and the mycelium map
@@ -74,6 +77,7 @@ builds, each document still loading a script file of its own.
 | ----------------------------------- | ------------------------------------------------------- |
 | [`home.nix`][module]                | the server's unit, its options, the sites and the home  |
 | [`package.nix`][package]            | the server's build, its tests run as it builds          |
+| [`rows-homes.nix`][rows-homes]      | what a switch refuses in the declared rows' homes       |
 | [`site.nix`][site]                  | how the kit and a live site are built and tested        |
 | [`standalone.sh`][standalone]       | a built live site laid out as a folder standing alone   |
 | [`headless-browsers.nix`][browsers] | the one browser a headless launch opens                 |
@@ -101,6 +105,7 @@ map's `mycelium-site-reads-live`.
 [main]: ./src/main.rs
 [module]: ./home.nix
 [package]: ./package.nix
+[rows-homes]: ./rows-homes.nix
 [site]: ./site.nix
 [standalone]: ./standalone.sh
 [src]: ./src

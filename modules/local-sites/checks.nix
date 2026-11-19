@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  holds,
   lib,
   onLinux,
   passesClippy,
@@ -258,6 +259,103 @@ in
     }
     touch $out
   '';
+
+  # What a switch refuses in the declared rows' homes (rows-homes.nix), read
+  # in evaluation alone, so the rules cost no machine of their own.
+  local-sites-rows-homes-read-as-readers-do =
+    let
+      homes = import ./rows-homes.nix { inherit lib; };
+      machines = {
+        kind = "machine";
+        address = "#machine={name}";
+      };
+      # The rows core declares, a row giving its kind both ways, and one
+      # writing its pattern from the sites' root, all of which stand.
+      standing = homes {
+        system.homes = [
+          "machine"
+          machines
+        ];
+        code.homes = [
+          "repository"
+          "tree"
+        ];
+        network.homes = [ ];
+        health.homes = [
+          {
+            kind = "part";
+            address = "health/#part={name}";
+          }
+        ];
+      };
+      # A second site home to machines, and a dropped pattern beside them,
+      # which claims nothing and so isn't a second home.
+      twice = homes {
+        system.homes = [ machines ];
+        network.homes = [ "machine" ];
+        health.homes = [
+          {
+            kind = "machine";
+            address = "#m";
+          }
+        ];
+      };
+      # Every way a pattern is dropped: no name, no fragment, another page,
+      # each byte that could break a link or markup, one that isn't visible
+      # ASCII, no kind and no address.
+      dropped = homes {
+        network.homes =
+          map
+            (address: {
+              kind = "device";
+              inherit address;
+            })
+            [
+              "#device"
+              "device={name}"
+              "system/#device={name}"
+              "#device=<{name}>"
+              "#device=\\{name}"
+              "#device=\"{name}"
+              "#device=`{name}"
+              "#device={name} x"
+              "#device={name}é"
+              "#device=\t{name}"
+            ]
+          ++ [
+            { address = "#device={name}"; }
+            { kind = "device"; }
+          ];
+      };
+      # What the switch says of each, so its words are read as well.
+      droppedSaid = [
+        ''network's device, "#device"''
+        ''network's device, "device={name}"''
+        ''network's device, "system/#device={name}"''
+        ''network's device, "#device=<{name}>"''
+        ''network's device, "#device=\\{name}"''
+        ''network's device, "#device=\"{name}"''
+        ''network's device, "#device=`{name}"''
+        ''network's device, "#device={name} x"''
+        ''network's device, "#device={name}é"''
+        ''network's device, "#device=\t{name}"''
+        ''network's pattern with no kind, "#device={name}"''
+        "network's device, with no address"
+      ];
+      found = builtins.toJSON { inherit standing twice dropped; };
+    in
+    holds "local-sites-rows-homes-read-as-readers-do"
+      "The declared rows' homes aren't refused as their readers would read them: ${found}."
+      (
+        standing == {
+          homedTwice = [ ];
+          dropped = [ ];
+        }
+        && twice.homedTwice == [ "machine (network, system)" ]
+        && twice.dropped == [ ''health's machine, "#m"'' ]
+        && dropped.dropped == droppedSaid
+        && dropped.homedTwice == [ ]
+      );
 }
 # The server is a Linux user service, and builds only there.
 // onLinux {
