@@ -62,16 +62,16 @@ impl Homes {
     }
 
     /// Writes the homes `record` gives, and answers the line to say when
-    /// they couldn't be written for a reason not said already, or were
-    /// written again after failing, so a failure's line is never left
-    /// reading as though it still held.
+    /// they couldn't be written for a reason not said already, or are right
+    /// again after failing, written or put right by another writer, so a
+    /// failure's line is never left reading as though it still held.
     pub fn keep(&mut self, record: &Record) -> Option<String> {
         match self.write(record) {
             Ok(_) => {
                 let file = self.file.display();
                 self.failing
                     .take()
-                    .map(|_| format!("repos: Code's homes are written to {file} again"))
+                    .map(|_| format!("repos: Code's homes at {file} are right again"))
             }
             Err(why) => {
                 let why = why.to_string();
