@@ -109,6 +109,13 @@ it("lets a pattern hold its kind against its own row's name, said before it or a
   }
 });
 
+it("holds a kind by the first of two good patterns one row gives it", () => {
+  // As the system's homes keep it, and a declared site giving two is refused at the switch.
+  const other = { kind: "machine", address: "#host={name}" };
+  const sites = { sites: [{ path: "mycelium/", homes: [machines, other] }] };
+  assert.deepEqual(holdingOf(sites, "machine"), held, "the row's first pattern didn't hold it");
+});
+
 it("lets no pattern take a kind an earlier row has named", () => {
   const sites = {
     sites: [
