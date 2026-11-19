@@ -9,12 +9,12 @@
 // background after a load, one uevent for an interface already known
 // rather than all four again. A file that never lands is given up, and
 // its interface isn't asked again until it does and its hold is over, a
-// minute and then twice as long, so one read that hangs holds one of the
-// pool's threads, not one more each load, and a slow one isn't asked each
-// second. A build has no sysfs, so the files are written here, in sys
-// beside the case, whose lo folder whoever runs it makes first; an
-// interface with no folder reads as virtual. It exits 0 once every case
-// holds, and otherwise 1, saying which didn't.
+// minute and then twice as long each time, to an hour, so one read that
+// hangs holds one of the pool's threads, not one more each load, and a
+// slow one isn't asked each second. A build has no sysfs, so the files are
+// written here, in sys beside the case, whose lo folder whoever runs it
+// makes first; an interface with no folder reads as virtual. It exits 0
+// once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -135,8 +135,26 @@ ShellRoot {
         onExited: root.unread(2)
     }
 
+    // A wait that runs out says what Traffic was doing, since its name
+    // alone can't say which part never held.
     Until {
         id: waits
+
+        saw: root.seen
+    }
+
+    function seen() {
+        const one = traffic.probing;
+        return JSON.stringify({
+            probing: one && { name: one.name, files: one.files, inFlight: one.inFlight },
+            asking: traffic.asking.map(each => each.name),
+            loads,
+            loadAsked: traffic.loadAsked,
+            stillReading: traffic.stillReading,
+            probeWatching: traffic.probeWatching,
+            held: Object.keys(traffic.probesStuck),
+            hung: Object.keys(traffic.probesHung)
+        });
     }
 
     readonly property string loopback: Interfaces.sysKind("lo", { uevent: "IFINDEX=1", type: "772" })
@@ -656,6 +674,9 @@ ShellRoot {
     // other files are still to come, and given up before they land, it's
     // held twice as long rather than a minute afresh.
     function heldThroughUevent() {
+        Expect.expect("lo was last read from the uevent notInFlight's read left",
+            traffic.interfaceKinds.lo?.uevent === "DEVTYPE=late",
+            JSON.stringify(traffic.interfaceKinds.lo));
         const held = traffic.probesStuck.lo;
         const one = { name: "lo", files: ["uevent"], said: {} };
         traffic.probing = one;
@@ -691,6 +712,9 @@ ShellRoot {
         aged(60000);
         const landed = loads;
         mark = probed();
+        // Emptied first, so the counters load afresh whatever path an
+        // earlier step left.
+        traffic.counterFile = "";
         traffic.counterFile = `${root.sys}/dev`;
         waits.until("odd names counted and asked", () => loads > landed && idle(), () => {
             Expect.expect("an interface held isn't asked as a load wants it",
