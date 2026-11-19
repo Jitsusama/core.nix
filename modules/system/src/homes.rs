@@ -490,6 +490,24 @@ mod tests {
         );
     }
 
+    // The local sites' declaration refuses a row giving one kind two
+    // patterns; one recorded before that rule still reads as this does, its
+    // first pattern kept, as Code's page and the skill's reader keep it.
+    #[test]
+    fn a_rows_first_pattern_for_a_kind_keeps_it() {
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "mycelium/", "homes": [
+                {"kind": "machine", "address": "#machine={name}"},
+                {"kind": "machine", "address": "#m={name}"},
+            ]}])),
+            |_| None,
+        );
+        assert_eq!(
+            homes.address("machine", "osprey"),
+            Some("mycelium/#machine=osprey".into())
+        );
+    }
+
     #[test]
     fn the_first_row_to_claim_a_kind_by_record_keeps_all_of_it() {
         let homes = Homes::from_sites(
