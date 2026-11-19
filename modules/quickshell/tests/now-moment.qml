@@ -196,7 +196,8 @@ ShellRoot {
         function say(keys) {
             said = keys;
         }
-        readonly property var sources: [weather, calendar, cameras, power, pastNotices, agents]
+        // Set without one only by a case that asks what's left without it.
+        property var sources: [weather, calendar, cameras, power, pastNotices, agents]
         property int placed: 0
 
         function resolved(id) {
@@ -1379,7 +1380,8 @@ ShellRoot {
         const actsOf = row => row.verbs().map(act => act.key.replace(/:on:waiting:want:.*$/u, ""));
         expect("a session asking a question offers no Talk, its words held behind the ask",
             JSON.stringify(actsOf(wantKept).slice(0, 2))
-                === JSON.stringify(["verb:on:waiting:deal", "verb:on:waiting:go"]),
+                === JSON.stringify(["verb:on:waiting:deal", "verb:on:waiting:go"])
+                && !actsOf(wantKept).includes("verb:agent:talk"),
             JSON.stringify(actsOf(wantKept)));
         Sessions.wanting = [Object.assign({}, movedB, { presence: Object.assign({},
             movedB.presence, { wants: { kind: "blocked", said: "Which?" } }) })];
@@ -1390,6 +1392,9 @@ ShellRoot {
                 && blockedB.verbs()[1].to === "WANTB" && blockedB !== wantKept,
             JSON.stringify(actsOf(blockedB)));
         Sessions.wanting = [movedB];
+        const askedAgain = forYou().find(row => row.key === "on:waiting:want:WANTB");
+        expect("asking again, it offers no Talk once more",
+            !actsOf(askedAgain).includes("verb:agent:talk"), JSON.stringify(actsOf(askedAgain)));
         Sessions.wentTo = null;
         // Joel's own report: a plain ask's Put It Off names the ask the
         // row shows, and one asked anew makes the row again with it.
@@ -1450,7 +1455,7 @@ ShellRoot {
     // moving is heard though it asks nothing as an agent.
     function ownToDoLeads(forYou) {
         const acted = { address: "ACTED", title: "Session E", presence: { session: "s-e",
-            owns: ["QEST-E"], addresses: [], wants: { kind: "action", said: "Sign it" } } };
+            owns: ["QEST-E"], addresses: ["ACTED"], wants: { kind: "action", said: "Sign it" } } };
         Sessions.running = [acted];
         Sessions.wanting = [acted];
         agents.rows.ACTED = { key: "agent:ACTED", name: "Session E", side: "",
@@ -1498,23 +1503,45 @@ ShellRoot {
         Sessions.running = [asked];
         Sessions.wanting = [asked];
         WaitingOnYou.sessionOf = { "Sign The Form": asked };
-        const talksAsking = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
+        // Its want, asked of Agents Asking, stands as a row of its own.
+        const talksAll = () => [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e"),
+            talksOf("on:waiting:want:ACTED")];
+        const talksAsking = talksAll();
         const approved = Object.assign({}, acted, { presence: Object.assign({},
             acted.presence, { wants: { kind: "approval", said: "May I?" } }) });
         Sessions.running = [approved];
         Sessions.wanting = [approved];
         WaitingOnYou.sessionOf = { "Sign The Form": approved };
-        const talksYes = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
+        const talksYes = talksAll();
         // Parked, it runs no ask: woken, it reads its inbox as it starts,
         // so Talk reaches it, waking it as Agents' own row does.
         Sessions.running = [];
         Sessions.parked = [approved];
-        const talksParked = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
+        const talksParked = talksAll();
         Sessions.parked = [];
         expect("no row offers Talk to a session while it asks or wants a yes, but parked",
             JSON.stringify([talksActing, talksAsking, talksYes, talksParked])
-                === "[[1,1],[0,0],[0,0],[1,1]]",
+                === "[[1,1],[0,0,0],[0,0,0],[1,1,1]]",
             JSON.stringify([talksActing, talksAsking, talksYes, talksParked]));
+        // With Agents not there to talk through, no row offers Talk, rather
+        // than one that goes nowhere, and each keeps its own acts.
+        const blocked = Object.assign({}, acted, { presence: Object.assign({},
+            acted.presence, { wants: { kind: "blocked", said: "Stuck" } }) });
+        Sessions.running = [blocked];
+        Sessions.wanting = [blocked];
+        WaitingOnYou.sessionOf = { "Sign The Form": blocked };
+        const withAgents = talksAll();
+        const sources = theLauncher.sources;
+        theLauncher.sources = sources.filter(one => one !== agents);
+        const namesOf = key => forYou().find(row => row.key === key)?.verbs()
+            .map(act => act.name) ?? null;
+        const without = [namesOf("on:waiting:Sign The Form"), namesOf("on:waiting:want:ACTED")];
+        theLauncher.sources = sources;
+        expect("with Agents gone, no row offers Talk, and each keeps Deal With It and Go To",
+            JSON.stringify(withAgents) === "[1,1,1]"
+                && without.every(names => names !== null && !names.includes("talk")
+                    && names[0] === "Deal With It" && names.includes("Go To")),
+            JSON.stringify([withAgents, without]));
         // Its look offers Talk and then Go To where it has a window, and only
         // Go To while it asks, among the look's own Open and Clear.
         const lookActs = () => forYou().find(row => row.key === "on:look:e").verbs()
@@ -1749,7 +1776,7 @@ ShellRoot {
     function answersInPlace(forYou) {
         const since = "2026-11-12T07:00:00Z";
         Sessions.wanting = [{ address: "WANTE", title: "Session E", presence: {
-            session: "s-e", addresses: [], wants: { kind: "question", since: since,
+            session: "s-e", addresses: ["WANTE"], wants: { kind: "question", since: since,
                 said: "Push the branch?" } } }];
         // As the daemon serves them: the one it recommends first.
         agents.wants = { WANTE: { answers: { want: "question@2026-11-12T07:00:00.000Z",
@@ -1820,6 +1847,16 @@ ShellRoot {
                 && named("Put It Off").stays === true,
             JSON.stringify(Sessions.putOffAsked));
         Sessions.putOffAsked = [];
+        // Parked, it runs no ask, and woken it reads its inbox as it
+        // starts, so Talk to it stands just before Go To (talkTo).
+        Sessions.parked = [Sessions.wanting[0]];
+        const parkedActs = forYou().find(one => one.key === "on:waiting:want:WANTE")
+            .verbs().map(one => one.name);
+        Sessions.parked = [];
+        expect("parked, it offers Talk to it just before Go To",
+            parkedActs.includes("talk")
+                && parkedActs.indexOf("talk") === parkedActs.indexOf("Go To") - 1,
+            JSON.stringify(parkedActs));
         Sessions.knowns = {};
         // A yes asked of him, as the harness's approval gate asks it once
         // its want carries Yes and No, is answered in its row the same way.

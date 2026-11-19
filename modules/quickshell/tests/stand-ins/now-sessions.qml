@@ -48,7 +48,6 @@ Singleton {
     function parkedAs(address) {
         const upper = String(address).toUpperCase();
         return parked.find(one => (one.presence?.addresses ?? [one.address])
-            .concat([one.address])
             .some(each => String(each).toUpperCase() === upper)) ?? null;
     }
 
