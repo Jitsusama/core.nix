@@ -152,6 +152,19 @@ function next(lively, draw, last, more) {
     return after === null ? null : { after, scene: scene(lively, draw, last, more) };
 }
 
+// What a scene's beat leaves of what it was drawn with (`was`) once it's
+// handed out: whether the scene still `answers` the play `asked` for, that
+// play, and whether the yarn's rest starts now (`rests`). A screen's cat
+// took the beat or none did (`taken`; a pose is always taken). One none
+// took plays nothing, as a cat still walking or held turns a play down,
+// so the ask waits for a later scene and the yarn rests only once batted.
+function handed(was, beat, taken) {
+    if (!taken) {
+        return { answers: false, asked: was.asked, rests: false };
+    }
+    return { answers: false, asked: was.answers ? "" : was.asked, rests: beat.play === "yarn" };
+}
+
 // Where a short wander goes, from `at` as sits takes it with the `seat` it
 // sits at: its `cells`, each `step` across, along the margin the `way` it
 // was drawn, or the other where that one's off its window's `column`,

@@ -34,6 +34,7 @@ QtObject {
         rooms(expect);
         yarn(expect);
         rests(expect);
+        turnedDown(expect);
         drawn(expect);
         pounce(expect);
         hop(expect);
@@ -209,6 +210,31 @@ QtObject {
         expect("four idle hours, the yarn a few times, 15 minutes apart at the least, unevenly",
             [yarned.length >= 4, apart.every(gap => gap >= 15 * 60_000),
                 Math.max(...apart) - Math.min(...apart) > 5 * 60_000], [true, true, true]);
+    }
+
+    // A play a cat turns down, still walking or held as its beat comes, is
+    // neither spent nor rested from: the yarn asked for comes in a later
+    // scene, and its rest starts only once a cat bats it (a test on niri
+    // waited a minute for a yarn its first scene's cat had turned down).
+    function turnedDown(expect) {
+        const yarn = { play: "yarn", pause: 200 };
+        const back = { walk: true, to: "column" };
+        const answering = { answers: true, asked: "yarn" };
+        const refused = Plays.handed(answering, yarn, false);
+        expect("the yarn asked for, turned down, still asked, and not rested from",
+            refused, { answers: false, asked: "yarn", rests: false });
+        expect("nor spent by the walk back that follows it",
+            Plays.handed(refused, back, true).asked, "yarn");
+        expect("the yarn asked for, batted, spent, and its rest begun",
+            Plays.handed(answering, yarn, true), { answers: false, asked: "", rests: true });
+        expect("a yarn drawn at random, batted, rests and leaves another play asked",
+            Plays.handed({ answers: false, asked: "pounce" }, yarn, true),
+            { answers: false, asked: "pounce", rests: true });
+        expect("a play asked for in place, spent by its first pose",
+            Plays.handed({ answers: true, asked: "batting" }, { pose: "batting" }, true).asked,
+            "");
+        expect("asked again while one plays, kept through that one's walk back",
+            Plays.handed({ answers: false, asked: "yarn" }, back, true).asked, "yarn");
     }
 
     // The yarn drawn once a look (MarginCat.yarnLooks), as the screen draws

@@ -102,9 +102,11 @@ Scope {
     // stroll nothing could take moves on rather than waiting.
     property string strollTo: ""
     property bool strollTaken: false
-    // The play a test asks to come next, by its name, kept until its level
-    // has it; "" for one at random.
+    // The play a test asks to come next, by its name, kept until a scene
+    // drawn for it is under way; "" for one at random. And whether the
+    // scene under way was, until its first beat is taken (Plays.handed).
     property string asked: ""
+    property bool answers: false
 
     IpcHandler {
         target: "cat"
@@ -162,16 +164,27 @@ Scope {
                 wandering = { cells: next.cells, way: next.way };
             if (next.play !== undefined)
                 playing = { kind: next.play, pause: next.pause };
-            if (next.play === "yarn")
-                yarnFrom = Date.now() + Plays.yarnRests(Math.random());
             strollTo = next.play !== undefined ? "play" : next.to;
+            handed(next, strollTaken);
             if (!strollTaken)
                 beat();
             return;
         }
+        handed(next, true);
         posed = next.pose;
         beating.interval = next.ms;
         beating.restart();
+    }
+
+    // What handing out a beat leaves of the play asked for and the yarn's
+    // rest, as Plays.handed says, so a play a cat turned down is neither
+    // spent nor rested from.
+    function handed(beat: var, taken: bool): void {
+        const left = Plays.handed({ answers, asked }, beat, taken);
+        answers = left.answers;
+        asked = left.asked;
+        if (left.rests)
+            yarnFrom = Date.now() + Plays.yarnRests(Math.random());
     }
 
     Daemon {
@@ -200,8 +213,7 @@ Scope {
         onTriggered: {
             if (root.coming === null)
                 return;
-            if (root.coming.name === root.asked)
-                root.asked = "";
+            root.answers = root.coming.name === root.asked;
             root.played = root.coming.name;
             root.beats = root.coming.beats;
             root.coming = null;
