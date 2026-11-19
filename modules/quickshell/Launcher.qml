@@ -5665,10 +5665,12 @@ Scope {
             return;
         // One that comes before a kept home's slice waits for it, as it
         // would join and search home inside the fill's frame, or change
-        // home before home is found; the find, or a shut, asks it again
-        // (refreshesHeld).
-        if (fillFinding)
+        // home before home is found; it's made in a slice of its own after
+        // the find (wakeNext), or at once on a shut (refreshesAgain).
+        if (fillFinding) {
+            refreshHeld = true;
             return;
+        }
         keepPace(Pacing.took(Date.now(), pace));
         const refreshedAt = pace.at;
         const begun = KeyTimes.now();
@@ -10493,7 +10495,7 @@ Scope {
             // Nor is home found for a fill that's shut before its slice,
             // whose rows are said as the card showed them.
             fillFinding = false;
-            refreshesHeld();
+            refreshesAgain();
             fillSaidLate();
             // What waits on a frame runs, since no frame of the launcher's
             // is coming.
@@ -11446,6 +11448,18 @@ Scope {
             wakeLater();
             return;
         }
+        // A refresh held for the find is the slice after it, waiting for a
+        // frame or the fallback as any slice does, so the sources' first
+        // waits for its end; where the pace's timer is set, that makes it.
+        // The next slice is asked first, so a throw in it stops no waking.
+        if (refreshHeld) {
+            refreshHeld = false;
+            if (refreshing.length > 0 && !refreshPacing.running) {
+                wakeLater();
+                refreshDue();
+                return;
+            }
+        }
         const budget = typed === "" ? wakeBudget : Infinity;
         const began = KeyTimes.now();
         const slice = [];
@@ -11525,6 +11539,9 @@ Scope {
             console.warn(`launcher: finding home after the fill threw: ${said}`
                 + (at === "" ? "" : ` at ${at}`));
         } finally {
+            // Nothing waking makes a held refresh's slice, so it's made now.
+            if (!waking)
+                refreshesAgain();
             // Timed with the fill's record it makes, as that's this slice's
             // work too.
             fillFoundJoined = choicesJoined - joinedBefore;
@@ -11532,16 +11549,18 @@ Scope {
             fillFoundTook = KeyTimes.now() - began;
             feltSpan(fillFoundThrew ? "a throw finding home"
                 : fillFoundHome ? "finding home" : "joining", began);
-            refreshesHeld();
         }
     }
-    // The refreshes held while home was still to be found are made after
-    // the next frame, which shows home as found, rather than lengthening
-    // the find's own slice; asked again, as a source already waiting is
-    // never asked again by its change (refreshed). Shut, it's at once.
-    function refreshesHeld() {
-        if (refreshing.length > 0)
-            afterFrame(refreshDue);
+    // Whether a refresh came while home was still to be found, which is
+    // asked again, as a source already waiting is never asked again by
+    // its change (refreshed); where the pace's timer is set, that makes it.
+    property bool refreshHeld: false
+    function refreshesAgain() {
+        if (!refreshHeld)
+            return;
+        refreshHeld = false;
+        if (refreshing.length > 0 && !refreshPacing.running)
+            Qt.callLater(refreshDue);
     }
     // Whether finding home after the fill threw, so its span and the
     // waking line say so where they're read, not only the warning.

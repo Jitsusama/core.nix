@@ -1696,7 +1696,8 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     held a median 27 ms of 32 of Joel's 53 longest stalls before he could type (H6EDLC,
     2026-11-18). The card shows home as kept until then, and a key or a click before it finds
     home first, so it acts on home found now; with neither, the slice finds it. A source's
-    refresh waits for it, so it never joins in the fill's frame nor beats the slice.
+    refresh waits for it, which no change here times into that window, so the storm's retitles
+    in desktop-keeps-pace are what reach it.
     """
     nth = opened_from_kept(shell)["nth"]
     woke: list[Json] = []
@@ -1724,8 +1725,10 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     # read as their first wait: the longest wait is the finding's own from the fill, or one
     # after it.
     found = cast("int", woke[0]["foundTook"])
-    assert cast("int", woke[0]["longestSlice"]) >= found, f"the finding went uncounted: {woke}"
     slices = cast("list[Json]", woke[0]["slices"])
+    # Each is rounded alike, so the longest is the finding's or a source slice's exactly.
+    longest = max([found] + [cast("int", one["took"]) for one in slices])
+    assert woke[0]["longestSlice"] == longest, f"the finding went uncounted: {woke}"
     ended = cast("int", woke[0]["foundFrom"]) + found
     # The sources' first wakes on the frame after, or the fallback's 33 ms, never in the same
     # slice: a millisecond past its end at least, though each is rounded.
