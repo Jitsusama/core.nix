@@ -38,8 +38,8 @@ use spell::Spell;
 /// nothing.
 const EVERY: Duration = Duration::from_secs(30);
 
-/// How long health runs before a follower's end, or a line lost to a day
-/// it couldn't write, ends it, for systemd or launchd to start it again
+/// How long health runs before a follower's end ends it, for systemd or
+/// launchd to start it again
 /// with every follower and the day read again, which hears what went
 /// unheard meanwhile that day, short of a start that falls past midnight,
 /// which reads only the new day. Followers that end at every start then
@@ -62,9 +62,10 @@ pub struct Follower {
     // The last write failed, so a new day's line leaves the next try to
     // the tick rather than serializing the whole day again for each.
     write_failed: bool,
-    // The day before, held until it's written, so the new day goes on
-    // meanwhile: its lines, and what the ticks see, are dated in it.
-    held: Option<Day>,
+    // The days before, oldest first, held until written, so the new day's
+    // lines and ticks go on in it; a sleep, which stops `GIVES_UP`'s
+    // clock, can pass more than one midnight.
+    held: Vec<Day>,
     into: PathBuf,
     zone: TimeZone,
     ends: BTreeMap<String, i64>,
@@ -111,7 +112,7 @@ impl Follower {
             day: Day::new(date),
             changed: false,
             write_failed: false,
-            held: None,
+            held: Vec::new(),
             into: into.to_owned(),
             zone,
             ends: BTreeMap::new(),
@@ -457,10 +458,8 @@ impl Follower {
             let read = self.day.read.clone();
             let launches = self.day.launches.carried(start_of(entry.at, &self.zone));
             let done = std::mem::replace(&mut self.day, Day::new(&date));
-            // Only a day past `GIVES_UP` of failed writes, which ends
-            // health, could be held already, so none is dropped here.
             if self.write_failed {
-                self.held = Some(done);
+                self.held.push(done);
             }
             self.day.read = read;
             self.day.launches = launches;
@@ -481,27 +480,29 @@ impl Follower {
         written
     }
 
-    /// Write the day held, if any, and then the day if anything changed
-    /// since it was last written.
+    /// Write each day held, and the day if anything changed since it was
+    /// last written, each tried whatever the others do, so one that can't
+    /// be written keeps none of the rest from the disk.
     ///
     /// # Errors
     ///
-    /// When either can't be written.
+    /// The first that can't be written's, the rest kept for the next try.
     pub fn write(&mut self) -> io::Result<()> {
-        if let Some(held) = &self.held {
-            let written = write_day(held, &self.into);
-            self.write_failed = written.is_err();
-            written?;
-            self.held = None;
+        let mut first = Ok(());
+        let mut keep = |written: io::Result<()>| {
+            let failed = written.is_err();
+            if first.is_ok() {
+                first = written;
+            }
+            failed
+        };
+        let into = &self.into;
+        self.held.retain(|day| keep(write_day(day, into)));
+        if self.changed && !keep(write_day(&self.day, into)) {
+            self.changed = false;
         }
-        if !self.changed {
-            return Ok(());
-        }
-        let written = write_day(&self.day, &self.into);
-        self.write_failed = written.is_err();
-        written?;
-        self.changed = false;
-        Ok(())
+        self.write_failed = first.is_err();
+        first
     }
 }
 
@@ -565,9 +566,9 @@ fn start_of(at: i64, zone: &TimeZone) -> i64 {
 ///
 /// # Errors
 ///
-/// When a follower has ended, its followers couldn't start or a line was
-/// lost, no sooner than `SETTLED` after health started and once the day
-/// is written, or when the day can't be written as health ends.
+/// When a follower has ended or its followers couldn't start, no sooner
+/// than `SETTLED` after health started and once the day is written, or
+/// when the day can't be written as health ends.
 pub fn follow(into: &Path) -> io::Result<()> {
     let source = Source::here();
     let zone = TimeZone::system();

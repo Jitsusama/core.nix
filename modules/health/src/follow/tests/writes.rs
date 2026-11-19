@@ -5,9 +5,8 @@ use super::*;
 
 #[test]
 fn a_new_day_starts_on_a_day_that_cant_be_written_holding_it_for_the_next_try() {
-    // Room is made just after the roll fails, so a line that wrote again
-    // would write the old day; only `write`, the tick's, may. What a tick
-    // sees meanwhile is the new day's, as the lid seen wrong is.
+    // What a tick sees while the old day is held is the new day's, as
+    // the lid seen wrong is, and the next try writes both.
     let into = tempfile::tempdir().expect("a folder");
     let days = into.path().join("days");
     fs::write(&days, "").expect("a file in the folder's place");
@@ -20,11 +19,7 @@ fn a_new_day_starts_on_a_day_that_cant_be_written_holding_it_for_the_next_try() 
     fs::remove_file(&days).expect("room made for the day");
     follower
         .take(&warning(NOON + DAY + 1))
-        .expect("a line of the new day, which doesn't write");
-    assert!(
-        written(&days, "2026-11-12").is_none(),
-        "a new day's line wrote the day held rather than waiting for the next try"
-    );
+        .expect("a line of the new day");
     let wrong = |keys| Looked {
         shut: true,
         screen_on: true,
@@ -50,6 +45,73 @@ fn a_new_day_starts_on_a_day_that_cant_be_written_holding_it_for_the_next_try() 
         (Some(1), Some(2), Some(1)),
         "the day held, or the new day's lines and what its ticks saw, weren't written: {:?}",
         tomorrow.things
+    );
+}
+
+#[test]
+fn days_held_across_two_midnights_are_all_written_at_the_next_try() {
+    // As when the machine sleeps past a second midnight while it can't
+    // write: neither day before is dropped for the next.
+    let into = tempfile::tempdir().expect("a folder");
+    let days = into.path().join("days");
+    fs::write(&days, "").expect("a file in the folder's place");
+    let mut follower = Follower::new("2026-11-12", &days, TimeZone::UTC);
+    follower.take(&warning(NOON)).expect("the day's own line");
+    assert!(
+        follower.take(&warning(NOON + DAY)).is_err(),
+        "the roll wrote"
+    );
+    follower
+        .take(&warning(NOON + DAY * 2))
+        .expect("a roll after a failed write tries none");
+    fs::remove_file(&days).expect("room made for the days");
+    follower.write().expect("the next try");
+    assert_eq!(
+        ["2026-11-12", "2026-11-13", "2026-11-14"].map(|date| written(&days, date).is_some()),
+        [true; 3],
+        "a day held across a second midnight wasn't written"
+    );
+}
+
+#[test]
+fn a_held_day_that_cant_be_written_keeps_neither_today_nor_itself_from_the_disk() {
+    // A folder in the held day's place fails its write alone; today is
+    // written all the same, and the held day once there's room for it.
+    let into = tempfile::tempdir().expect("a folder");
+    let days = into.path().join("days");
+    fs::create_dir_all(file_of(&days, "2026-11-12")).expect("a folder in the day's place");
+    let mut follower = Follower::new("2026-11-12", &days, TimeZone::UTC);
+    follower.take(&warning(NOON)).expect("the day's own line");
+    assert!(
+        follower.take(&warning(NOON + DAY)).is_err(),
+        "the roll wrote"
+    );
+    assert!(
+        follower.write().is_err() && written(&days, "2026-11-13").is_some(),
+        "the held day's failure went unsaid, or kept today from the disk"
+    );
+    fs::remove_dir(file_of(&days, "2026-11-12")).expect("room made for the held day");
+    follower.write().expect("the next try");
+    assert!(
+        written(&days, "2026-11-12").is_some(),
+        "the held day wasn't kept for the next try"
+    );
+}
+
+#[test]
+fn a_tick_with_nothing_new_still_writes_today() {
+    // `health` calls today's day stood still when its file goes three
+    // minutes unwritten, which holds only while every look rewrites it.
+    let into = tempfile::tempdir().expect("a folder");
+    let proc = tempfile::tempdir().expect("no processes");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC).minding(proc.path());
+    follower.mind(NOON);
+    follower.write().expect("the day is written");
+    assert!(!follower.changed, "a written day was left changed");
+    follower.mind(NOON + 30_000_000);
+    assert!(
+        follower.changed,
+        "a look that saw nothing new left the day to go unwritten"
     );
 }
 

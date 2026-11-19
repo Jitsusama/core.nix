@@ -220,7 +220,11 @@ const STALE_AFTER: Duration = Duration::from_mins(3);
 /// What `health` says of the day `date` kept in `into` when it's `today`
 /// and its file was last written `STALE_AFTER` or more before `now`, so
 /// what it shows has stood still: nothing for another day, which is done,
-/// or a file it can't time.
+/// or a file it can't time. A file timed past `now`, as after the clock
+/// went back, is said nothing of, since how long it stood can't be told;
+/// a running health writes it again within half a minute. Across a
+/// change of time zone, before health starts again in the new one, today
+/// here may be a day it wrote in the old, which is then said to stand.
 pub fn stale(into: &Path, date: &str, today: &str, now: SystemTime) -> Option<String> {
     if date != today {
         return None;
