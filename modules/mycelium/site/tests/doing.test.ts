@@ -11,7 +11,7 @@ import {
   groupDoing,
   lastTurnOf,
   sensesDoing,
-  talkWords,
+  talkLineWords,
 } from "../doing.ts";
 import type { Cell } from "../words.ts";
 
@@ -47,6 +47,7 @@ it("finds the latest turn a set of cells ended", () => {
     cell("B", { usage: { last_turn: "2026-11-19T09:40:00" } }),
     cell("C"),
     cell("D", { usage: { last_turn: "" } }),
+    cell("E", { usage: { last_turn: "2026-11-19T09:20:00" } }),
   ];
   assert.equal(lastTurnOf(cells), "2026-11-19T09:40:00", "the latest turn should be B's");
   assert.equal(lastTurnOf([cell("A")]), undefined, "no turn said should be none");
@@ -69,6 +70,11 @@ it("says a set of cells by its moving ones, two named and the rest counted", () 
     "each doing should lose its full stop, and a silent one be in a turn",
   );
   assert.equal(
+    groupDoing([cell("A", { standing: "moving", doing: "" })], AT),
+    "1 cell moving. A: in a turn.",
+    "an empty doing should read as in a turn",
+  );
+  assert.equal(
     groupDoing([cell("A", { standing: "moving", doing: "Building" })], AT),
     "1 cell moving. A: Building.",
     "one moving cell should be named with nothing more",
@@ -81,19 +87,21 @@ it("says a set with nothing moving by what waits, or its last turn", () => {
       [cell("A", { standing: "asks" }), cell("B", { usage: { last_turn: "2026-11-19T09:55:00" } })],
       AT,
     ),
+    groupDoing([cell("A", { standing: "asks" }), cell("B", { standing: "asks" })], AT),
     groupDoing([cell("A", { usage: { last_turn: "2026-11-19T09:55:00" } })], AT),
-    groupDoing([cell("A")], AT),
+    groupDoing([cell("A"), cell("B", { usage: { last_turn: "" } })], AT),
     groupDoing([], AT),
   ];
   assert.deepEqual(
     said,
     [
       "Nothing moving; 1 cell waiting on you.",
+      "Nothing moving; 2 cells waiting on you.",
       "Nothing moving; the last turn ended 5 min ago.",
       "Nothing moving.",
       "Nothing moving.",
     ],
-    "what waits on the person should come before the last turn",
+    "cells waiting on the person should be counted before any last turn, and none said is none",
   );
 });
 
@@ -101,14 +109,19 @@ it("says each receptor in full, and how many are reading", () => {
   const said = [
     sensesDoing([cell("GH", { standing: "moving", doing: "Reading a review." }), cell("CALLS")]),
     sensesDoing([cell("GH")]),
+    sensesDoing([
+      cell("GH", { standing: "moving", doing: "" }),
+      cell("CALLS", { standing: "moving", doing: "Summing a call" }),
+    ]),
   ];
   assert.deepEqual(
     said,
     [
       "1 receptor reading. GH: Reading a review; CALLS: listening.",
       "Nothing reading. GH: listening.",
+      "2 receptors reading. GH: listening; CALLS: Summing a call.",
     ],
-    "a receptor saying nothing should be listening",
+    "readers should be counted, and a receptor saying nothing, or nothing but empty, listening",
   );
 });
 
@@ -116,26 +129,32 @@ it("says what one cell is doing by how it stands", () => {
   const said = [
     cellDoing(cell("A", { standing: "moving", doing: "Building." }), AT),
     cellDoing(cell("A", { standing: "moving" }), AT),
+    cellDoing(cell("A", { standing: "moving", doing: "" }), AT),
     cellDoing(cell("A", { standing: "asks", wants: "a yes" }), AT),
     cellDoing(cell("A", { standing: "asks" }), AT),
+    cellDoing(cell("A", { standing: "asks", wants: "" }), AT),
     cellDoing(cell("A", { standing: "stuck" }), AT),
     cellDoing(cell("A", { standing: "dormant" }), AT),
     cellDoing(cell("A", { usage: { last_turn: "2026-11-19T08:30:00" } }), AT),
     cellDoing(cell("A"), AT),
+    cellDoing(cell("A", { usage: { last_turn: "" } }), AT),
   ];
   assert.deepEqual(
     said,
     [
       "Building.",
       "In a turn now",
+      "In a turn now",
       "Asks you: a yes",
+      "Waiting on you",
       "Waiting on you",
       "Stuck: paused, waiting to be resumed",
       "Parked, its place kept",
       "Quiet, waiting for its next word; its last turn ended at 08:30",
       "Quiet, waiting for its next word",
+      "Quiet, waiting for its next word",
     ],
-    "a moving cell should keep its doing as it says it",
+    "each standing should say its own words, a moving doing kept whole, and an empty one as none",
   );
 });
 
@@ -158,10 +177,12 @@ it("says how much of the talk asked or found something", () => {
     {},
   ];
   const said = [
-    talkWords(talk, 15, false),
-    talkWords(talk.slice(4, 5), 15, true),
-    talkWords(talk.slice(0, 1), 15, true),
-    talkWords([], 15, false),
+    talkLineWords(talk, 15, false),
+    talkLineWords(talk.slice(4, 5), 15, true),
+    talkLineWords(talk.slice(0, 1), 15, true),
+    talkLineWords(talk.slice(3, 6), 15, true),
+    talkLineWords(talk.slice(5), 15, false),
+    talkLineWords([], 15, false),
   ];
   assert.deepEqual(
     said,
@@ -171,8 +192,11 @@ it("says how much of the talk asked or found something", () => {
         "0 asked or found something, and 1 was for context only.",
       "Of the latest 15 messages, 1 touches it: " +
         "1 asked or found something, and 0 were for context only.",
+      "Of the latest 15 messages, 3 touch it: " +
+        "1 asked or found something, and 2 were for context only.",
+      "Of the latest 1 message: 0 asked or found something, and 1 was for context only.",
       "",
     ],
-    "no talk should say nothing",
+    "the talk should be counted, touches and messages in their number, and no talk say nothing",
   );
 });

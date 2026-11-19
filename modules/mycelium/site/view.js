@@ -19,7 +19,7 @@
 // map, its rows and their walk, in outline.ts, how a time is said in
 // when.ts, how each thing stands and why in health.ts, and what each is
 // doing in doing.ts, which this imports as the modules they're built to.
-import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkWords } from "./doing.js";
+import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
   flagNames,
@@ -2962,7 +2962,6 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
     const body = `<span class="what"><span class="name">${esc(label)}</span><span class="fact">${verdictMark(v)}: ${esc(words)}</span></span>`;
     return go ? `<li><button type="button" class="row" data-go="${esc(go)}">${body}</button></li>` : `<li class="row still">${body}</li>`;
   };
-  // What a receptor fed a cell, in words, by the node's word for its kind:
   const factList = (facts) => (facts.length ? `<dl class="facts">${facts.map(([k2, v]) => `<div><dt>${k2}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : "");
   const glance = (purpose, doing, health) =>
     `<dl class="glance">` +
@@ -3051,7 +3050,7 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
 
   // Signal against noise, in doing.ts's words.
   const talkLine = (messages, among) => {
-    const said = talkWords(messages, current.messages.length, Boolean(among));
+    const said = talkLineWords(messages, current.messages.length, Boolean(among));
     return said ? `<p class="talk-line">${esc(said)}</p>` : "";
   };
   const touching = (cells, key) => {

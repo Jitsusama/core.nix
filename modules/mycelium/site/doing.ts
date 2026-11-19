@@ -98,7 +98,11 @@ export const asksOrFinds = (x: Said): boolean => SIGNAL.has(x.intent ?? "");
  * against what was sent for context only. Where the talk is `among` the
  * latest `latest` messages, it says how many of those touch the thing.
  */
-export const talkWords = (messages: readonly Said[], latest: number, among: boolean): string => {
+export const talkLineWords = (
+  messages: readonly Said[],
+  latest: number,
+  among: boolean,
+): string => {
   if (messages.length === 0) {
     return "";
   }
