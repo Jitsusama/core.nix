@@ -289,7 +289,8 @@ let
       faults = meantUndrawn;
       reason = "an undrawn stride said undrawn, not meant otherwise";
       holds =
-        lib.hasInfix ''undrawn ["unseen"]'' meantUndrawn.said
+        !meantUndrawn.ok
+        && lib.hasInfix ''undrawn ["unseen"]'' meantUndrawn.said
         && lib.hasInfix (meantOtherwise [ ]) meantUndrawn.said;
     }
     {
