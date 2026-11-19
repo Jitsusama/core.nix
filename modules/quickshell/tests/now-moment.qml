@@ -1851,12 +1851,18 @@ ShellRoot {
         // starts, so Talk to it stands just before Go To (talkTo).
         Sessions.parked = [Sessions.wanting[0]];
         const parkedRow = forYou().find(one => one.key === "on:waiting:want:WANTE");
-        const parkedActs = parkedRow.verbs().map(one => one.name);
+        const parkedVerbs = parkedRow.verbs();
+        const parkedActs = parkedVerbs.map(one => one.name);
+        parkedVerbs[parkedActs.indexOf("Go To")].run();
+        const parkedWoke = Sessions.woke?.address ?? null;
         Sessions.parked = [];
-        expect("parked, its answers offer Talk to it just before Go To",
+        Sessions.wentTo = null;
+        expect("parked, its answers offer Talk to it just before Go To, which wakes it",
             parkedRow.side === "needs your answer \u00b7 2 choices" && parkedActs.includes("talk")
-                && parkedActs.indexOf("talk") === parkedActs.indexOf("Go To") - 1,
-            JSON.stringify(parkedActs));
+                && parkedActs.indexOf("talk") === parkedActs.indexOf("Go To") - 1
+                && parkedVerbs[parkedActs.indexOf("talk")].to === "WANTE"
+                && parkedWoke === "WANTE",
+            JSON.stringify([parkedActs, parkedVerbs[parkedActs.indexOf("talk")].to, parkedWoke]));
         Sessions.knowns = {};
         // A yes asked of him, as the harness's approval gate asks it once
         // its want carries Yes and No, is answered in its row the same way.

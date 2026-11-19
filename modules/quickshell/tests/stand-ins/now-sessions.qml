@@ -15,6 +15,7 @@ Singleton {
     property var wanting: []
     property var toReopen: []
     property var wentTo: null
+    property var woke: null
     property var steered: []
     property bool puts: true
     property var putOffAsked: []
@@ -51,8 +52,9 @@ Singleton {
             .some(each => String(each).toUpperCase() === upper)) ?? null;
     }
 
-    // None here wakes, so going is all there is to it.
+    // Keeps whom it woke, as the real one wakes only one parked (resting).
     function wakeToGo(resting, session) {
+        woke = resting;
         goTo(session);
     }
 }

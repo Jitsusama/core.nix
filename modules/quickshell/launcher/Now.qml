@@ -1727,8 +1727,9 @@ Provider {
     // showing it come back, as a key typed there would; Deal With It and
     // Talk wake it once what they say is in its inbox, which it reads as
     // it starts (Sessions.talk).
-    // Each is kept while Agents' row for it, what it asked, its title and
-    // whether it's parked are the same, as Agents keeps its own row while
+    // Each is kept while Agents' row for it, what it asked, its title,
+    // whether it's parked, its answers and its want's kind are the same,
+    // the kind deciding Talk (talkTo), as Agents keeps its own row while
     // its window and how it stands are (wantsKept).
     function wantRow(made, session) {
         // What it asked, in its own words, or the session by its name.
