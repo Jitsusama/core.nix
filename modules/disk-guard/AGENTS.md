@@ -100,8 +100,11 @@ or launchd, and [`home.nix`][2] the account's.
   hour, and the guard says how many folders it couldn't mark and why.
   A failed read or a record it can't parse counts as lost events, and
   the listener tries again a second later; five failures in a row, or
-  a panic, end it. A guard that no longer hears keeps replaced builds
-  too, as if it had never watched them, since their dates stop there. A
+  a panic, end it. A guard whose listener ended, or a daemon with no
+  watch, forgets what it watched and marks nothing more, in its saved
+  record too, so it and the next guard keep replaced builds until they
+  have watched them afresh. `plan` and `explain` never listen, and read
+  what the daemon watched. A
   budget that comes to nothing, as a share of a disk that can't be
   measured does, is none. While the first root's
   disk holds more than the budget, the guard makes upkeep due, at most

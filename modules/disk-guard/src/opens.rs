@@ -266,3 +266,104 @@ fn key(folder: &OwnedFd) -> io::Result<Vec<u8>> {
     key.extend_from_slice(&handle_bytes[header..header + bytes]);
     Ok(key)
 }
+
+// The kernel never hands a watch a malformed event to test with, so these
+// cases build the bytes themselves and read them as a watch would.
+#[cfg(test)]
+mod tests {
+    use super::{Seen, Watch};
+    use std::collections::HashMap;
+    use std::os::fd::OwnedFd;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    const HANDLE: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    /// A watch over `/w`, by [`HANDLE`], that reads what it's given and
+    /// holds no fanotify group.
+    fn watch() -> Watch {
+        let mut key = 7_u64.to_ne_bytes().to_vec();
+        key.extend_from_slice(&1_i32.to_ne_bytes());
+        key.extend_from_slice(&HANDLE);
+        Watch {
+            fd: OwnedFd::from(std::fs::File::open("/dev/null").unwrap()),
+            dirs: Mutex::new(HashMap::from([(key, PathBuf::from("/w"))])),
+            me: 0,
+        }
+    }
+
+    /// A directory and name record for [`HANDLE`], of type 1 on
+    /// filesystem 7, naming `lib.rlib`, as `alter` leaves it before its
+    /// length is filled in.
+    fn record(alter: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+        let mut record = vec![libc::FAN_EVENT_INFO_TYPE_DFID_NAME, 0, 0, 0];
+        record.extend_from_slice(&7_u64.to_ne_bytes());
+        record.extend_from_slice(&u32::try_from(HANDLE.len()).unwrap().to_ne_bytes());
+        record.extend_from_slice(&1_i32.to_ne_bytes());
+        record.extend_from_slice(&HANDLE);
+        record.extend_from_slice(b"lib.rlib\0");
+        alter(&mut record);
+        let length = u16::try_from(record.len()).unwrap();
+        record[2..4].copy_from_slice(&length.to_ne_bytes());
+        record
+    }
+
+    /// What a watch reads of an open by another process carrying
+    /// `records`, in an event of version `vers`.
+    fn read(vers: u8, records: &[u8]) -> Vec<Seen> {
+        let header = size_of::<libc::fanotify_event_metadata>();
+        let metadata = libc::fanotify_event_metadata {
+            event_len: u32::try_from(header + records.len()).unwrap(),
+            vers,
+            reserved: 0,
+            metadata_len: u16::try_from(header).unwrap(),
+            mask: libc::FAN_OPEN,
+            fd: -1,
+            pid: 42,
+        };
+        // SAFETY: the struct is plain data with no padding, read as its
+        // bytes.
+        let bytes = unsafe { std::slice::from_raw_parts((&raw const metadata).cast(), header) };
+        let mut events = bytes.to_vec();
+        events.extend_from_slice(records);
+        let mut seen = Vec::new();
+        watch().parse(&events, &mut seen);
+        seen
+    }
+
+    #[test]
+    fn an_event_that_cant_be_read_counts_as_lost() {
+        let version = libc::FANOTIFY_METADATA_VERSION;
+        assert_eq!(
+            read(version, &record(|_| {})),
+            [Seen::Opened(PathBuf::from("/w/lib.rlib"))],
+            "a well-formed record wasn't read as the open it names"
+        );
+        assert_eq!(
+            read(version + 1, &record(|_| {})),
+            [Seen::Lost],
+            "an event of another version was read as if it were this one"
+        );
+        let mut short = record(|_| {});
+        short[2..4].copy_from_slice(&2_u16.to_ne_bytes());
+        assert_eq!(
+            read(version, &short),
+            [Seen::Lost],
+            "a record shorter than its own header was passed over"
+        );
+        let unended = record(|record| {
+            record.pop();
+        });
+        assert_eq!(
+            read(version, &unended),
+            [Seen::Lost],
+            "a record whose name never ends was passed over"
+        );
+        let overlong = record(|record| record[12..16].copy_from_slice(&200_u32.to_ne_bytes()));
+        assert_eq!(
+            read(version, &overlong),
+            [Seen::Lost],
+            "a record whose handle runs past it was passed over"
+        );
+    }
+}

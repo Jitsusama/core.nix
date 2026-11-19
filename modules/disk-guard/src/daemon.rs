@@ -1094,16 +1094,21 @@ impl Guard {
         mut wait: impl FnMut(Duration) -> io::Result<Vec<Seen>> + Send + 'static,
     ) {
         /// Says the guard no longer hears however the thread ends,
-        /// unwinding included.
-        struct Deafens(Arc<AtomicBool>);
+        /// unwinding included, and forgets what it heard and watched, so
+        /// neither this guard nor the next, reading the saved record,
+        /// takes the deaf stretch for heard.
+        struct Deafens(Arc<AtomicBool>, std::sync::Weak<Mutex<Uses>>);
         impl Drop for Deafens {
             fn drop(&mut self) {
                 self.0.store(false, Ordering::SeqCst);
+                if let Some(uses) = self.1.upgrade() {
+                    uses.lock().unwrap_or_else(PoisonError::into_inner).deaf();
+                }
             }
         }
         let uses = Arc::downgrade(&self.uses);
         self.listening.store(true, Ordering::SeqCst);
-        let deafens = Deafens(Arc::clone(&self.listening));
+        let deafens = Deafens(Arc::clone(&self.listening), Arc::downgrade(&self.uses));
         let spawned = std::thread::Builder::new()
             .name("opens".to_owned())
             .spawn(move || {
@@ -1126,10 +1131,13 @@ impl Guard {
                         // again a moment later.
                         Err(error) => {
                             failed += 1;
-                            uses.lock().unwrap_or_else(PoisonError::into_inner).lost(now);
+                            uses.lock()
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .lost(now);
                             if failed >= LISTEN_TRIES {
                                 eprintln!(
-                                    "disk-guard: stopped hearing opens ({error}), so builds keep the hour"
+                                    "disk-guard: stopped hearing opens ({error}), \
+                                     so builds keep the hour"
                                 );
                                 return;
                             }
@@ -1163,8 +1171,13 @@ impl Guard {
     /// A folder that was made anew loses its mark with the old one and gets
     /// one again, heard from then. Each is dated as its mark lands, since
     /// the walk can take minutes in which an unmarked folder hears nothing.
+    /// A guard that no longer hears marks nothing, as nothing would come of
+    /// it.
     fn mark(&mut self, tick: &Tick) {
         let Some(watch) = &self.opens else { return };
+        if !self.listening.load(Ordering::SeqCst) {
+            return;
+        }
         if self.marked_at.is_some_and(|at| tick.wall - at < MARK_EVERY) {
             return;
         }
@@ -1215,10 +1228,17 @@ impl Guard {
             );
         }
         let mut uses = self.uses.lock().unwrap_or_else(PoisonError::into_inner);
+        // A listener that ended while the walk ran forgets what was heard,
+        // and these marks must not bring it back. It says it stopped before
+        // it takes this lock to forget, so either this sees that, or its
+        // forgetting comes after these marks.
+        if !self.listening.load(Ordering::SeqCst) {
+            return;
+        }
         // A mark goes with its folder.
         uses.heard.retain(|dir, _| dir.is_dir());
         for (dir, at, handle) in marked {
-            uses.watching(&dir, tick.wall);
+            uses.watching(&dir, at);
             uses.marked(&dir, at, handle);
         }
     }
@@ -2330,22 +2350,40 @@ impl Guard {
 
     /// The folders this guard hears now, as a survey would read them.
     pub fn hears(&self) -> Vec<PathBuf> {
-        self.uses_now().heard.into_keys().collect()
+        let uses = self.uses_now();
+        uses.heard
+            .keys()
+            .filter(|dir| uses.heard_since(std::slice::from_ref(*dir)).is_some())
+            .cloned()
+            .collect()
     }
 
     /// When each build's artifacts were last opened: a copy, so a long
-    /// survey never holds up what hears the opens. A guard that no longer
-    /// listens hears nothing, so the copy says so, whatever it marked.
+    /// survey never holds up what hears the opens. A listener that ended
+    /// forgot what it heard, and a guard with none marks nothing, so the
+    /// copy hears nothing then. A guard with none still reads what was
+    /// watched, as `plan` reads the daemon's record.
     fn uses_now(&self) -> Uses {
-        let mut uses = self
-            .uses
+        self.uses
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        if self.opens.is_none() || !self.listening.load(Ordering::SeqCst) {
-            uses.deaf();
-        }
-        uses
+            .clone()
+    }
+
+    /// When the last lost events were, as the listener counts them: the
+    /// moment from which nothing marked is heard.
+    pub fn lost_at(&self) -> f64 {
+        self.uses_now().unheard
+    }
+
+    /// Forgets what earlier guards watched, for a daemon that can't hear
+    /// opens: their dates stop where it starts, so an older build would
+    /// otherwise look unopened for every hour it ran deaf.
+    pub fn hears_nothing(&mut self) {
+        self.uses
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .deaf();
     }
 
     /// What reads this machine's processes for `me`, vouched for by the

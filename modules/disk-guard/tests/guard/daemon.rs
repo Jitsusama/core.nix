@@ -2158,75 +2158,146 @@ fn the_opens_a_watch_hears_are_kept_and_its_own_marks_heard() {
     );
 }
 
-/// How a listener's reads go wrong, from the moment a test says so.
-#[derive(Clone, Copy, Debug)]
-enum Ending {
-    /// One read fails, and the next ones are fine.
-    Once,
-    /// Every read fails.
-    Always,
-    /// A read panics.
+/// How a listener's reads go, once a test says they start going wrong:
+/// failing (`Err`), passing (`Ok`) or panicking, in turn, and then as the
+/// last says for good.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Read {
+    Fails,
+    Passes,
     Panics,
 }
 
-#[test]
-fn a_guard_hears_through_a_failed_read_but_not_once_its_listener_ends() {
-    // The 15 minutes hold only while this guard hears its marks, so a
-    // listener that ends, however, must leave it hearing nothing, while a
-    // read that fails once and passes must not.
+/// A guard listening through reads that go as `reads` says once they turn,
+/// its builds' deps, and how many reads went since they turned.
+struct Listening {
+    home: Home,
+    guard: Guard,
+    deps: PathBuf,
+    read: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// Starts a guard on a real watch whose reads, after its first step has
+/// marked the build, go as `reads` says; nothing when there's no
+/// fanotify here.
+fn listening(reads: &'static [Read]) -> Option<Listening> {
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    for ending in [Ending::Once, Ending::Always, Ending::Panics] {
-        let Ok(watch) = disk_guard::opens::Watch::new() else {
-            eprintln!("no fanotify here, so nothing to check");
-            return;
-        };
-        let home = Home::new();
-        let (config, deps) = home.replaced_build("0%");
-        let mut guard = home.guard(config);
-        let ended = Arc::new(AtomicBool::new(false));
-        let ends = Arc::clone(&ended);
-        let mut failed = false;
-        guard.listen_to(Arc::new(watch), move |within| {
-            std::thread::sleep(within.min(std::time::Duration::from_millis(50)));
-            if !ends.load(Ordering::SeqCst) {
-                return Ok(Vec::new());
-            }
-            match ending {
-                Ending::Once if failed => Ok(Vec::new()),
-                Ending::Once | Ending::Always => {
-                    failed = true;
-                    Err(std::io::Error::other("a read that fails"))
-                }
-                Ending::Panics => panic!("a read that panics"),
-            }
-        });
-        guard.step(&tick(), &CALM).unwrap();
-        assert!(
-            guard.hears().contains(&deps),
-            "the guard didn't hear the deps it marked, before anything went wrong"
-        );
-        ended.store(true, Ordering::SeqCst);
-        let tries = std::time::Duration::from_secs(u64::from(disk_guard::daemon::LISTEN_TRIES));
-        let deadline = std::time::Instant::now() + tries + std::time::Duration::from_secs(3);
-        let hears = loop {
-            let hears = guard.hears();
-            if hears.is_empty() || std::time::Instant::now() > deadline {
-                break hears;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        };
-        match ending {
-            Ending::Once => assert!(
-                hears.contains(&deps),
-                "one failed read left the guard hearing nothing: {hears:?}"
-            ),
-            Ending::Always | Ending::Panics => assert!(
-                hears.is_empty(),
-                "a guard whose listener ended ({ending:?}) still heard {hears:?}"
-            ),
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    let Ok(watch) = disk_guard::opens::Watch::new() else {
+        eprintln!("no fanotify here, so nothing to check");
+        return None;
+    };
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("0%");
+    let mut guard = home.guard(config);
+    let turned = Arc::new(AtomicBool::new(false));
+    let read = Arc::new(AtomicUsize::new(0));
+    let (turns, reading) = (Arc::clone(&turned), Arc::clone(&read));
+    guard.listen_to(Arc::new(watch), move |within| {
+        std::thread::sleep(within.min(std::time::Duration::from_millis(20)));
+        if !turns.load(Ordering::SeqCst) {
+            return Ok(Vec::new());
         }
+        let at = reading.fetch_add(1, Ordering::SeqCst);
+        match reads[at.min(reads.len() - 1)] {
+            Read::Fails => Err(std::io::Error::other("a read that fails")),
+            Read::Passes => Ok(Vec::new()),
+            Read::Panics => panic!("a read that panics"),
+        }
+    });
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        guard.hears().contains(&deps),
+        "the guard didn't hear the deps it marked, before anything went wrong"
+    );
+    turned.store(true, Ordering::SeqCst);
+    Some(Listening {
+        home,
+        guard,
+        deps,
+        read,
+    })
+}
+
+/// Waits up to `seconds` for `done`.
+fn within(seconds: u64, mut done: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
+    while !done() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
+}
+
+#[test]
+fn a_guard_hears_through_failed_reads_that_pass_before_five() {
+    // A read can fail and pass, as running short of memory does, so only
+    // five failures in a row end the listener; each counts as lost events.
+    use Read::{Fails, Passes};
+    use std::sync::atomic::Ordering;
+    static READS: [Read; 11] = [
+        Fails, Fails, Fails, Fails, Passes, Fails, Fails, Fails, Fails, Passes, Passes,
+    ];
+    let started = wall();
+    let Some(listening) = listening(&READS) else {
+        return;
+    };
+    within(20, || listening.read.load(Ordering::SeqCst) >= READS.len());
+    assert!(
+        listening.read.load(Ordering::SeqCst) >= READS.len(),
+        "the listener stopped reading after {} reads, though none failed five in a row",
+        listening.read.load(Ordering::SeqCst)
+    );
+    let hears = listening.guard.hears();
+    assert!(
+        hears.contains(&listening.deps),
+        "failed reads that passed before five left the guard hearing nothing: {hears:?}"
+    );
+    assert!(
+        listening.guard.lost_at() >= started,
+        "a failed read didn't count as lost events"
+    );
+}
+
+/// Checks a guard whose listener ended hears nothing, saves no watched
+/// dates for the next guard, and marks nothing an hour on.
+fn ends_deaf(reads: &'static [Read]) {
+    let Some(mut listening) = listening(reads) else {
+        return;
+    };
+    let tries = u64::from(disk_guard::daemon::LISTEN_TRIES);
+    within(tries + 3, || listening.guard.hears().is_empty());
+    let hears = listening.guard.hears();
+    assert!(
+        hears.is_empty(),
+        "a guard whose listener ended ({reads:?}) still heard {hears:?}"
+    );
+    let later = Tick {
+        wall: wall() + 3700.0,
+        monotonic: 7300.0,
+        ..tick()
+    };
+    listening.guard.step(&later, &CALM).unwrap();
+    let kept: Uses = disk_guard::state::load(&listening.home.root.join("state/uses.json"))
+        .unwrap()
+        .unwrap_or_default();
+    assert!(
+        kept.watched.is_empty(),
+        "a deaf guard saved what it watched for the next guard to trust: {kept:?}"
+    );
+    let hears = listening.guard.hears();
+    assert!(
+        hears.is_empty(),
+        "a deaf guard marked its builds again an hour on: {hears:?}"
+    );
+}
+
+#[test]
+fn a_guard_whose_reads_keep_failing_hears_nothing() {
+    ends_deaf(&[Read::Fails]);
+}
+
+#[test]
+fn a_guard_whose_listener_panicked_hears_nothing() {
+    ends_deaf(&[Read::Panics]);
 }
 
 #[test]
