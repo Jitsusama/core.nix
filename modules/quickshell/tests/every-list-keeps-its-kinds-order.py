@@ -2,12 +2,12 @@
 
 modules/quickshell/checks/core.nix runs this with the folders the launcher's places are in: the
 launcher's own and the people module's. Each place named below sorts its rows by its kind's order
-from launcher/Order.js, which tests/order.qml holds to the rule. No sort in those folders breaks a
-tie A to Z by hand, since A to Z is only ever Order.js's last tie (RSCH-20261030-GB56HX found
-Programs, Screens, Sound, Bluetooth and Connections falling back to it), and Qt's engine leaves out
-the numeric reading a hand-made one asks for. No list sorts by an order of Order.js with Array.sort
-either, since Qt's engine sorts unstably and shuffles rows alike: Order.sorted keeps them as they
-came.
+from launcher/Order.js, which modules/quickshell/tests/order.qml holds to the rule. No sort in
+those folders breaks a tie A to Z by hand, since A to Z is only ever Order.js's last tie
+(RSCH-20261030-GB56HX found Programs, Screens, Sound, Bluetooth and Connections falling back to
+it), and Qt's engine leaves out the numeric reading a hand-made one asks for. No list sorts by an
+order of Order.js with Array.sort either, since Qt's engine sorts unstably and shuffles rows
+alike: Order.sorted keeps them as they came.
 """
 
 from __future__ import annotations

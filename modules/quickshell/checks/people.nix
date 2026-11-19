@@ -168,13 +168,14 @@
 
   # How the shell says a Tuple call, who's in it and for how long, a
   # call's link in what was copied, and Tuple's Recent, its order and each
-  # call's words (tests/tuple.qml, over Tuple.js and the When.js it reads).
+  # call's words (modules/quickshell/tests/tuple.qml, over Tuple.js and the
+  # When.js it reads).
   the-desktop-follows-tuple-calls =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-desktop-follows-tuple-calls" { } ''
-      cp ${../../../tests/tuple.qml} tuple.qml
+      cp ${../tests/tuple.qml} tuple.qml
       cp ${../../tuple/Tuple.js} Tuple.js
       ${copied [ "When.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

@@ -15,9 +15,9 @@
 {
   # The launcher's Documents make no row while it's shut, however the clock
   # and the google daemon's rows move, and make them once as it opens, in
-  # the daemon's order (tests/documents.qml), through the real
-  # ReadyRows.qml and Daemon.qml, with Google's account, the clock, the
-  # mail, the saves and the entry its links open through stood in.
+  # the daemon's order (modules/quickshell/tests/documents.qml), through
+  # the real ReadyRows.qml and Daemon.qml, with Google's account, the clock,
+  # the mail, the saves and the entry its links open through stood in.
   a-shut-launcher-makes-no-document-rows =
     let
       # The entry every Google link opens through, as google's home.nix
@@ -68,7 +68,7 @@
       cp ${mail} Mail.qml
       cp ${saves} Saves.qml
       cp ${niri} Niri.qml
-      cp ${../../../tests/documents.qml} shell.qml
+      cp ${../tests/documents.qml} shell.qml
       mkdir -p share/applications
       cp ${opens} share/applications/google-opens.desktop
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

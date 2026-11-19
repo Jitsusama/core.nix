@@ -39,8 +39,9 @@ QtObject {
         const failures = [];
         // Read as this file finds them, where the check copies them. The maths
         // is given time enough, since its 50 ms patience is a key's budget, which
-        // maths-speed.qml holds: on a loaded builder "5 parsecs in km" came late
-        // and these cases, which judge what's answered, failed (2026-11-12).
+        // modules/quickshell/tests/maths-speed.qml holds: on a loaded builder
+        // "5 parsecs in km" came late and these cases, which judge what's
+        // answered, failed (2026-11-12).
         const patient = {
             calculate: (expression, waits) => Maths.calculate(expression, waits ?? 0)
         };

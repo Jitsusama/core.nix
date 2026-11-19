@@ -18,7 +18,7 @@
   # inside it (../../cadence/tests/served-stand-in.sh): the head as the
   # daemon says it with the alert glyph, which Agents' Spec row shows, the
   # axes in the order served, each a step in, and the out axis's reading
-  # inside it (tests/spec-served.qml).
+  # inside it (modules/quickshell/tests/spec-served.qml).
   the-launcher-reads-spec-from-its-daemon =
     let
       spec = lib.getExe (pkgs.callPackage ../../cadence/spec/package.nix { });
@@ -40,7 +40,7 @@
       ]}
       cp ${../../cadence/Spec.qml} launcher/Spec.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../../../tests/spec-served.qml} shell.qml
+      cp ${../tests/spec-served.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Until.qml} Until.qml
       mkdir -p runtime/daemons

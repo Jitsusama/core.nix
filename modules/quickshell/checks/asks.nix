@@ -93,7 +93,7 @@ in
   # (modules/quickshell/tests/asks-stand-ins.sh): For You holds each waiting
   # one, Return releases it once a first Return has armed it, r refuses, a yes
   # while locked is refused in the daemon's words, and Refuse It refuses the
-  # other (tests/asks-served.qml).
+  # other (modules/quickshell/tests/asks-served.qml).
   the-asks-place-releases-through-its-daemon =
     let
       asks = lib.getExe (pkgs.callPackage ../../secret-asks/package.nix { });
@@ -120,7 +120,7 @@ in
       cp ${niri} Niri.qml
       cp ${recorder} Recorder.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../../../tests/asks-served.qml} shell.qml
+      cp ${../tests/asks-served.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Until.qml} Until.qml
       export XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

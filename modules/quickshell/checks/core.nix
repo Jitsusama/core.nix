@@ -457,8 +457,9 @@ in
     '';
 
   # Each kind of list keeps its one order with nothing typed (docs/design.md,
-  # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in Qt's
-  # own engine, and modules/quickshell/tests/every-list-keeps-its-kinds-order.py
+  # Lists): modules/quickshell/tests/order.qml holds launcher/Order.js's orders
+  # to the rule in Qt's own engine, and
+  # modules/quickshell/tests/every-list-keeps-its-kinds-order.py
   # walks each place that lists things: its sort its kind's order, no A to Z by
   # hand, and no order of Order.js's sorted by Qt's Array.sort, which shuffles
   # rows alike, as a stand-in sorting three ways it refuses shows.
@@ -489,7 +490,7 @@ in
           exit 1
         fi
       done
-      cp ${../../../tests/order.qml} order.qml
+      cp ${../tests/order.qml} order.qml
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -550,19 +551,19 @@ in
     '';
 
   # A thing's drawer says each of its parts as a fact, leaving out its
-  # acts and opening a holder of figures in place, as tests/plate.qml
-  # holds launcher/Plate.js to it in Qt's own engine. A screen's drawer,
-  # its settings, its light and what its EDID says are the windows
-  # daemon's, tested there.
+  # acts and opening a holder of figures in place, as
+  # modules/quickshell/tests/plate.qml holds launcher/Plate.js to it in
+  # Qt's own engine. A screen's drawer, its settings, its light and what its
+  # EDID says are the windows daemon's, tested there.
   a-things-drawer-says-its-parts =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     # Kept in Nix because each line copies, or names in a variable, a file
     # Nix gives it, and the cases it runs are a QML file of their own
-    # (tests/plate.qml).
+    # (modules/quickshell/tests/plate.qml).
     pkgs.runCommandLocal "a-things-drawer-says-its-parts" { } ''
-      cp ${../../../tests/plate.qml} plate.qml
+      cp ${../tests/plate.qml} plate.qml
       cp ${../launcher/Plate.js} Plate.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -723,13 +724,14 @@ in
 
   # The launcher's sums and measures, through the shell's maths, take a
   # typical key well inside its budget, each input typed a letter at a time
-  # (tests/maths-speed.qml), which builds the maths' module too.
+  # (modules/quickshell/tests/maths-speed.qml), which builds the maths'
+  # module too.
   the-launcher-sums-within-a-key =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-sums-within-a-key" { } ''
-      cp ${../../../tests/maths-speed.qml} maths-speed.qml
+      cp ${../tests/maths-speed.qml} maths-speed.qml
       cp ${../launcher/Numbers.js} Numbers.js
       cp ${../launcher/Units.js} Units.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -796,8 +798,8 @@ in
 
   # A program's act on a copy or on the repositories under ~/src shows only
   # while it can act, and opens what it says: what decides it, in Qt's own
-  # engine (tests/quick-acts.qml, over Copied.js and Neovim's
-  # NeovimOpening.js and Neovim.js), then each program's
+  # engine (modules/quickshell/tests/quick-acts.qml, over Copied.js and
+  # Neovim's NeovimOpening.js and Neovim.js), then each program's
   # provider with the shell's one watcher of the clipboard, through
   # Quickshell itself, over repositories made here and served once for both
   # programs by the real programs daemon (launcher/Repositories.qml),
@@ -895,7 +897,7 @@ in
     pkgs.runCommandLocal "the-launcher-acts-only-on-what-it-can" { } ''
       mkdir cases shell
       cd $TMPDIR/cases
-      cp ${../../../tests/quick-acts.qml} quick-acts.qml
+      cp ${../tests/quick-acts.qml} quick-acts.qml
       ${copied [ "Copied.js" ]}
       cp ${../../neovim/NeovimOpening.js} NeovimOpening.js
       cp ${../../chrome/ChromeDownloads.js} ChromeDownloads.js
