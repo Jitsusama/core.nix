@@ -3362,14 +3362,21 @@ Scope {
     // screen is shared counts as shared, so the journal says how many were
     // forgotten, never their words, for the word lost in a gap to be found.
     // A row kept dimmed where it left (Steady.kept) is its copy as last
-    // shown, before the share, so it goes too, rather than naming what
-    // the share hides until the next key; and an arm made before goes,
-    // so no Return after the share releases on a line read before it.
+    // shown, before the share, so it goes too, from the steps and the
+    // rows on screen alike, since a refresh keeps on screen what it shows
+    // (Steady.forgottenAt), rather than naming what the share hides until
+    // the next key; and an arm made before goes, so no Return after the
+    // share releases on a line read before it.
     function untold() {
         const forgotten = toldOnOpen.length + saying.length;
         toldOnOpen = [];
         say([]);
         forgetGone();
+        const shown = Steady.forgottenAt(matches, current, pairedId);
+        if (shown.rows.length !== matches.length) {
+            matches = shown.rows;
+            current = shown.at;
+        }
         armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `
