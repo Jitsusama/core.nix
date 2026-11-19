@@ -1857,6 +1857,7 @@ ShellRoot {
         const parkedWoke = Sessions.woke?.address ?? null;
         Sessions.parked = [];
         Sessions.wentTo = null;
+        Sessions.woke = null;
         expect("parked, its answers offer Talk to it just before Go To, which wakes it",
             parkedRow.side === "needs your answer \u00b7 2 choices" && parkedActs.includes("talk")
                 && parkedActs.indexOf("talk") === parkedActs.indexOf("Go To") - 1

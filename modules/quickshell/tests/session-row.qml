@@ -59,16 +59,22 @@ QtObject {
         // offers Talk and Go To of its acts, in their order, and none that
         // steers or ends it: Go To only where it has a window, and one
         // parked only Talk, which wakes it, though a window be said of it.
+        // One asking a question or a yes has no Talk, as What Needs Me gives
+        // none (Now.qml's talkTo); one stuck, or parked, keeps it.
         const behind = [
-            ["working", true, "switch talk"],
-            ["listening", false, "talk"],
-            ["paused", true, "switch talk"],
-            ["parked", true, "talk"]
+            ["working", true, false, "switch talk"],
+            ["listening", false, false, "talk"],
+            ["paused", true, false, "switch talk"],
+            ["parked", true, false, "talk"],
+            ["needs", true, true, "switch"],
+            ["needs", false, false, "talk"],
+            ["parked", false, true, "talk"]
         ];
-        for (const [state, windowed, want] of behind) {
-            const got = SessionRow.behindActs(state, windowed).join(" ");
+        for (const [state, windowed, asking, want] of behind) {
+            const got = SessionRow.behindActs(state, windowed, asking).join(" ");
             if (got !== want)
-                failures.push(`the acts behind one ${state}: "${got}", not "${want}"`);
+                failures.push(`the acts behind one ${state}${asking ? " asking" : ""}: `
+                    + `"${got}", not "${want}"`);
         }
 
 

@@ -2208,11 +2208,15 @@ Provider {
     }
     // What a landing's row in For You offers of the session that landed it,
     // Talk and Go To as its own row does (SessionRow.js's behindActs), so
-    // what the mesh said reaches whoever said it; none once it has ended.
+    // what the mesh said reaches whoever said it; none once it has ended,
+    // and no Talk while it asks a question or a yes.
     function landerActs(one) {
         const session = provider.landerOf(one);
-        return session === null ? [] : SessionRow.behindActs(stateOf(session),
-            windowedOf(session)).map(id => sessionAct(session, id));
+        if (session === null)
+            return [];
+        const kind = session.presence?.wants?.kind;
+        return SessionRow.behindActs(stateOf(session), windowedOf(session),
+            kind === "question" || kind === "approval").map(id => sessionAct(session, id));
     }
     // Joel reads a landing, which the daemon keeps, and tells as its record
     // moves; one read already is asked nothing.
@@ -2600,14 +2604,16 @@ Provider {
             provider.readLanding(one.key);
         };
         // Its own Open leads its step, as a look's does, so the ↵ its drawer
-        // marks is what Return does and the one Go To is the session's.
+        // marks is what Return does and the one Go To is the session's. It
+        // keeps the launcher, as the row does, since it walks to Landed in it.
         const own = one => thing({
             key: `verb:agents:landed:open:${one.key}`,
             verb: Words.verb("verb:on:look:open"),
             name: Words.name("verb:on:look:open"),
             glyph: Words.glyph("verb:on:look:open"),
             hue: "action",
-            later: true,
+            stays: true,
+            changes: false,
             run: () => opens(one)
         });
         const row = (one, fields) => thing(Object.assign({

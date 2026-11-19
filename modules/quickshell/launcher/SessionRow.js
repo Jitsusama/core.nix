@@ -48,9 +48,14 @@ function acts(standing, windowed, here) {
 // 2026-11-16: "i have no way to go from the thing it shows to engaging
 // with the thing working on it"). None steers or ends it, since that row
 // is about what it made, not how it runs, so where it runs, which only
-// Close weighs, never changes them.
-function behindActs(standing, windowed) {
-    return acts(standing, windowed, false).filter(id => id === "switch" || id === "talk");
+// Close weighs, never changes them. One `asking` a question or a yes has
+// no Talk, as What Needs Me gives none (Now.qml's talkTo): its ask runs
+// until he answers, so words said to it would come after the answer they
+// were meant to shape. Parked, it runs no ask, so Talk stays.
+function behindActs(standing, windowed, asking) {
+    const talks = !asking || standing === "parked";
+    return acts(standing, windowed, false)
+        .filter(id => id === "switch" || (id === "talk" && talks));
 }
 
 // The theme's role its glyph is drawn in: a program's, as a live one
