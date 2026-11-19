@@ -5,7 +5,7 @@ account's jobs.slice and in build.slice, where a workstation's agents and builds
 is timed from the moment a stand-in keyboard pressed it to the first frame the launcher drew for
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
 those under load are held against the others, each bar stretched by the share of its processors
-the builder gave the VM, as a probe in the guest gauges it, which a last test proves it can. That
+the builder gave the VM, by what the guest counted it stole, which a last test proves it can. That
 text a program types at once is searched once, and a Return among it acts on what it found, is
 proven on a nested niri, in modules/quickshell/tests/launcher-on-niri-test.py. Long because its
 keys, steps and openings are each timed against the same loaded desktop, and a split would boot it
@@ -22,7 +22,6 @@ import math
 import os
 import re
 import shlex
-import statistics
 import time
 from datetime import timedelta
 from functools import partial
@@ -39,19 +38,12 @@ from desktop_session import (
     neovims_quit,
     retry,
 )
-from keeps_pace import MIDDLE_MORE, PROCESSORS, bound, builders_share, probed
+from keeps_pace import MIDDLE_MORE, PROCESSORS, bound, builders_share, ticks
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from desktop_session import Desktop, Json, Values
-
-    class PaceValues(Values):
-        """What tests/desktop.nix gives keeps-pace alone, so no other area's test moves."""
-
-        # The probe gauging the builder's share (desktop/pace-probe.py).
-        pace_probe: str
-
+    from desktop_session import Desktop, Json
 
 # Where the stand-in keyboard is told what to press, and says when it did (desktop/keyboard.py).
 KEYBOARD = "/run/keyboard"
@@ -105,17 +97,16 @@ PHASE = 20
 # What the guest's weights can't decide is the builder's share: holding all four processors
 # back under load, it slowed the middle key four to six times its frozen time on the net from
 # 16 to 19 November, while the compositor and the shell waited within WAITED. So the middle
-# key's bar, twice its time frozen and MIDDLE_MORE more, is stretched by how much longer a probe
-# took for the same work under load than frozen (keeps_pace.py, pace-probe.py), and every bar
-# here held to a time frozen is too.
+# key's bar, twice its time frozen and MIDDLE_MORE more, is stretched by how much more of its
+# busy time the guest counted stolen under load than frozen (keeps_pace.py), and every bar here
+# held to a time frozen is too.
 WAITED = 45
-PROBED = "/run/pace-probe.log"
-# The builder's processors the held subtest runs the VM's four on, so under load each runs about
-# half the time, the least share the probe must read for it, and how long it lets the probe work
-# in each turn.
-HELD_TO = 2
+# The builder's processors the held subtest runs the VM's four on, so under load each runs a
+# quarter of the time at most, the least share the guest's count must give for it, and how long
+# it counts in each turn, in seconds. Held to two, a run gave 1.28, too near any bar to tell.
+HELD_TO = 1
 HELD_SHARE = 1.5
-PROBING = 10
+GAUGING = 10
 TAIL = 0.95
 # Cage, which holds the compositor here, and the shell, by the units they run in.
 COMPOSITOR = "cage-tty1.service"
@@ -230,23 +221,13 @@ def loaded(desktop: Desktop) -> Iterator[None]:
     machine.succeed(
         f"systemd-run --collect --quiet --slice=build.slice --unit=stress-build {stress}"
     )
-    # The probe gauging the builder's share, never frozen, among the builds and weighed as they
-    # are, so it waits behind the desktop in the guest, which its time doesn't count.
-    probe = cast("PaceValues", desktop.values)["pace_probe"]
-    machine.succeed(
-        f"rm -f {PROBED} && systemd-run --collect --quiet --slice=build.slice"
-        f" --unit=pace-probe --property=CPUWeight=10 {probe}"
-    )
     try:
         desktop.as_account("systemctl --user is-active --quiet stress-jobs")
         machine.succeed("systemctl is-active --quiet stress-build")
-        machine.wait_for_file(PROBED, timeout=timedelta(seconds=30))
         yield
     finally:
-        # The load first, so a probe that ended early fails here with the load already gone.
         desktop.as_account("systemctl --user stop stress-jobs")
         machine.succeed("systemctl stop stress-build")
-        machine.succeed("systemctl stop pace-probe")
 
 
 def framed(desktop: Desktop) -> Json:
@@ -297,14 +278,10 @@ class Timing:
         # the turn being pressed with what they'd waited when it began.
         self.waited: dict[int, float] = {}
         self.open: tuple[int, float] | None = None
-        # The probe's pieces of work, in microseconds of its own processor time, under load and
-        # frozen, and how much of what it said has been read, from where it stood.
-        self.probed: dict[bool, list[float]] = {True: [], False: []}
-        self.probe_read = int(desktop.machine.succeed(f"wc -c < {PROBED}").strip())
-        # The guest's processor time stolen by the builder, and its busy time with it, in ticks,
-        # under load and frozen, and the counts as they stood at the last read.
-        self.stolen: dict[bool, list[int]] = {True: [0, 0], False: [0, 0]}
-        self.ticks = self.cpu_ticks()
+        # The guest's ticks the builder stole, and its busy ones with them, under load and
+        # frozen, and the kernel's count as it stood at the last read.
+        self.counted: dict[bool, tuple[int, int]] = {True: (0, 0), False: (0, 0)}
+        self.ticks = ticks(desktop.machine.succeed("head -1 /proc/stat"))
         show = "show --property=ControlGroup --value"
         self.groups = [
             desktop.machine.succeed(f"systemctl {show} {COMPOSITOR}").strip(),
@@ -324,57 +301,38 @@ class Timing:
         # A builder stalling the VM held a freeze for 50 s on 5 November, past the 25 s systemctl
         # waits for its answer by default, though the unit froze. FREEZING is longer than that.
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
-        self.probe(kept=True)
+        self.count(kept=True)
         self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs", timeout=2 * FREEZING)
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
-        # The probe's work while the load turned is neither turn's, so it's passed over.
-        self.probe(kept=False)
+        # The ticks while the load turned are neither turn's, so they're passed over.
+        self.count(kept=False)
 
-    def probe(self, *, kept: bool) -> None:
-        """Read what the probe has said since the last read, kept with the load as it stands."""
-        said = self.desktop.machine.succeed(f"tail -c +{self.probe_read + 1} {PROBED}")
-        pieces, used = probed(said)
-        self.probe_read += used
-        ticks = self.cpu_ticks()
+    def count(self, *, kept: bool) -> None:
+        """Count the ticks since the last count, kept with the load as it stands."""
+        now = ticks(self.desktop.machine.succeed("head -1 /proc/stat"))
         if kept:
-            self.probed[self.loading].extend(pieces)
-            steal, busy = (now - was for now, was in zip(ticks, self.ticks, strict=True))
-            self.stolen[self.loading][0] += steal
-            self.stolen[self.loading][1] += busy
-        self.ticks = ticks
-
-    def cpu_ticks(self) -> tuple[int, int]:
-        """Give the guest's stolen ticks and its busy ticks with them, over all its processors."""
-        # user nice system idle iowait irq softirq steal, after the line's name.
-        line = self.desktop.machine.succeed("head -1 /proc/stat")
-        ticks = [int(tick) for tick in line.split()[1:9]]
-        user, nice, system, _, _, irq, softirq, steal = ticks
-        return steal, user + nice + system + irq + softirq + steal
+            stolen, busy = self.counted[self.loading]
+            self.counted[self.loading] = (
+                stolen + now[0] - self.ticks[0],
+                busy + now[1] - self.ticks[1],
+            )
+        self.ticks = now
 
     def share(self) -> float:
-        """Give the builder's share as the probe gauged it so far, saying how it was gauged."""
-        self.probe(kept=True)
-        under, frozen = self.probed[True], self.probed[False]
-        # A probe that gave nothing would leave every bar unstretched, unseen.
-        if not under or not frozen:
-            said = self.desktop.machine.execute("journalctl -u pace-probe -n 20")[1]
+        """Give the builder's share as the guest counted it so far, saying how it was counted."""
+        self.count(kept=True)
+        under, frozen = self.counted[True], self.counted[False]
+        # A turn with no busy ticks would leave every bar unstretched, unseen.
+        if not under[1] or not frozen[1]:
             pytest.fail(
-                f"the probe gave {len(under)} pieces under load and {len(frozen)} frozen:\n{said}"
+                f"the guest counted {under[1]} busy ticks under load and {frozen[1]} frozen"
             )
         share = builders_share(under, frozen)
         print(
-            f"the probe's work took a mean {statistics.fmean(under or [0]) / 1000:.2f} ms under"
-            f" load over {len(under)} pieces, against {statistics.fmean(frozen or [0]) / 1000:.2f}"
-            f" ms frozen over {len(frozen)}, so the builder's share stretches each bar"
+            f"the guest counted {under[0]} of {under[1]} busy ticks stolen under load, against"
+            f" {frozen[0]} of {frozen[1]} frozen, so the builder's share stretches each bar"
             f" {share:.2f} times"
-        )
-        print(
-            "the guest counted stolen "
-            + ", ".join(
-                f"{steal} of {busy} busy ticks {'under load' if loaded else 'frozen'}"
-                for loaded, (steal, busy) in self.stolen.items()
-            )
         )
         return share
 
@@ -1058,13 +1016,13 @@ def hold_vm(started: int, processors: Sequence[int]) -> None:
 
 
 @pytest.mark.usefixtures("loaded")
-def test_the_probe_reads_a_builder_holding_the_machine_back(desktop: Desktop) -> None:
-    """The probe's share grows as the builder runs the VM's processors on fewer of its own.
+def test_the_share_grows_as_the_builder_holds_the_machine_back(desktop: Desktop) -> None:
+    """The builder's share grows as the builder runs the VM's processors on fewer of its own.
 
-    Held to HELD_TO of the builder's processors, the VM's four run about half the time each under
-    load, when every one is busy, and frozen the one that is runs on its own, as a busy builder
-    holds them. A share near 1 here is a probe blind to the builder, which no other subtest's
-    bars could tell from a quiet builder.
+    Held to HELD_TO of the builder's processors, the VM's four run a quarter of the time at most
+    under load, when every one is busy, and frozen the one that is runs mostly on its own, as a
+    busy builder holds them. A share near 1 here is a count blind to the builder, which no other
+    subtest's bars could tell from a quiet builder.
     """
     started = desktop.machine.pid
     assert started, "the VM has no process to hold to the builder's processors"
@@ -1074,20 +1032,22 @@ def test_the_probe_reads_a_builder_holding_the_machine_back(desktop: Desktop) ->
     timing = Timing(desktop)
     try:
         hold_vm(started, builders[:HELD_TO])
+        # Said, so a share near 1 tells a hold that never took from a count blind to one.
         held: dict[str, int] = {}
         for thread in vm_threads(started):
             with contextlib.suppress(ProcessLookupError):
                 on = ",".join(map(str, sorted(os.sched_getaffinity(thread))))
                 held[on] = held.get(on, 0) + 1
         print(f"the VM's threads, by the builder's processors each may run on: {held}")
-        time.sleep(PROBING)
+        time.sleep(GAUGING)
         timing.load(on=False)
-        time.sleep(PROBING)
+        time.sleep(GAUGING)
         share = timing.share()
     finally:
         hold_vm(started, builders)
         if not timing.loading:
             timing.load(on=True)
     assert share >= HELD_SHARE, (
-        f"held to {HELD_TO} of the builder's processors, the probe read a share of {share:.2f}"
+        f"held to {HELD_TO} of the builder's processors, the guest's count gave a share of"
+        f" {share:.2f}"
     )

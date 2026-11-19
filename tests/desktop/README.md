@@ -12,7 +12,6 @@ drive the desktop. Every file opens with what it is.
 | [`desktop_session.py`][desktop-session]                    | the boot and the helpers every area shares             |
 | [`looks_session.py`][looks]                                | what the looks areas share: Joel's scales and measures |
 | [`keeps_pace.py`][keeps-pace], `keeps-pace-test.py`        | what keeps-pace judges by, and its cases off any VM    |
-| [`pace-probe.py`][probe]                                   | the same work again, gauging the builder's share       |
 | `checks.nix`                                               | the checks of what the areas judge by, off any VM      |
 | `stand-in-*.py`, `*-stand-in.sh`                           | a daemon, a program or a server the VM can't run       |
 | [`stand-in-virsh.sh`][virsh], [`stand-in-time.conf`][time] | virsh for the launcher's VMs, and a time server        |
@@ -28,7 +27,6 @@ drive the desktop. Every file opens with what it is.
 [desktop-session]: desktop_session.py
 [looks]: looks_session.py
 [keeps-pace]: keeps_pace.py
-[probe]: pace-probe.py
 [virsh]: stand-in-virsh.sh
 [time]: stand-in-time.conf
 [keyboard]: keyboard.py

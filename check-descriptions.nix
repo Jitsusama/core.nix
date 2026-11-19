@@ -58,11 +58,11 @@
   '';
   a-loaded-desktop-is-judged-by-the-builders-share = ''
     keeps-pace holds a launcher under load to twice its time frozen and a little more, stretched by
-    how much longer the guest's probe took for the same work under load by the mean, never under
-    once nor past the VM's processors: a key a busy builder held back fails with no share and
-    holds with its share, a key slowed past the old bar fails where the probe's work took as long,
-    a share stretches the bar by itself alone, and one stall among a subtest's pieces barely moves
-    it
+    how much more of its busy time the guest ran frozen than under load, by what /proc/stat counts
+    stolen, never under once nor past the VM's processors: a key a busy builder held back fails
+    with nothing stolen and holds with half its time stolen, a key slowed past the old bar fails
+    where nothing was, a share stretches the bar by itself alone, what was stolen frozen weighs
+    against what was under load, and idle, iowait and guests' time are never counted busy
   '';
   a-live-site-stands-alone-as-a-folder = ''
     the system page, built on the real web kit and laid out as a folder that stands alone, has
@@ -5239,8 +5239,8 @@
     jobs.slice and build.slice as with that load frozen: half the keys, less the VM's software
     swap and each one's wait for its frame to begin, and nineteen in twenty of the middle turn,
     within twice their frozen times and design.md's budget more, timed in
-    turns in the same machine, and each bar here stretched by the builder's share as a probe
-    in the guest gauged it; and a step into
+    turns in the same machine, and each bar here stretched by the builder's share as the
+    guest counted what it stole; and a step into
     Programs, Chrome's, the reader's, Inkscape's and Neovim's pages, Chrome's Recent and
     Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more;
     and the first opening after the shell starts again, People listing 500 as Joel's lists
@@ -5250,8 +5250,8 @@
     frame within 50 ms of the ask, its own work, the settling after it and the wait for the
     frame, drawn from what the closed launcher kept and filled in without moving a row or the
     cursor, and its drawing takes within twice its time with the load frozen and 50 ms more;
-    and with the VM held to two of the builder's processors, the probe reads a share of at least
-    1.5
+    and with the VM held to one of the builder's processors, the guest's count gives a share of
+    at least 1.5
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and
