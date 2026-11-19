@@ -79,12 +79,13 @@ ROUNDED = 2
 # back from its own frame's number, which a wrong number or clock leaves unsaid.
 FRAMES_BEFORE = re.compile(r", after (?:at least )?\d+ other frames? since it was heard")
 # How the close says each key's press, swap and screen in monotonic ms (Presented.keysClockSaid),
-# each to a tenth, "-" for one not timed, so it lines up with niri's own log of its frames.
+# the press in whole ms as niri stamps it and the rest to a tenth, "-" for one not timed, so it
+# lines up with niri's own log of its frames.
 KEYS_CLOCK = re.compile(
     r"launcher: \d+ keys shown, each pressed, swapped and shown in monotonic ms: (.+)"
 )
 CLOCK_KEY = re.compile(
-    r"(-|[\d.]+) (-|[\d.]+) ([\d.]+)(?:, (\d+) frames? of the shell's after its own)?"
+    r"(-|\d+) (-|[\d.]+) ([\d.]+)(?:, (\d+) frames? of the shell's after its own)?"
 )
 # A tenth's rounding, with room for the float either side of it.
 TENTH = 0.051
@@ -2734,7 +2735,7 @@ def says_its_clock(said: str, key: Json) -> bool:
         return tenth != "-" and abs(float(tenth) - float(ms)) <= TENTH
 
     return (
-        (pressed == "-" if key["stamped"] is False else near(pressed, key["from"]))
+        (pressed == "-" if key["stamped"] is False else int(pressed) == math.floor(key["from"]))
         and near(swapped, key["swapped"])
         and near(shown, key["at"])
         and int(later or 0) == key["later"]
@@ -4799,6 +4800,9 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     shell.close_launcher()
     # The close says the key's press, swap and screen on its clock as its record holds them: a
     # wiring check, since the record's own times are proven above and the wording in pacing.qml.
+    # wtype's key carries no time (keytimes.cpp), so its record says so whatever the line reads;
+    # how many frames later niri answered has no such fact here, and is read from the record.
+    assert key["stamped"] is False, f"wtype's key carries no press time, yet its record is {key}"
     closed = said_once(shell, since, KEYS_CLOCK)
     clock = KEYS_CLOCK.search(closed)
     assert clock, "the close never said its keys' clock"

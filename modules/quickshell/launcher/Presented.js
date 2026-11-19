@@ -150,7 +150,9 @@ function shownSaid(times, at) {
 // A press niri gave no time for, as a typed one's, reads "-", as does a
 // swap the render thread didn't time or no longer keeps, 16 of the shell's
 // frames on (`stamped`, `swapped`); a held key's repeat is timed from when
-// Qt made it, as keytimes.cpp says, and reads as a press. A key niri
+// Qt made it, as keytimes.cpp says, and reads as a press. A press is said
+// in whole ms, as niri stamps it: keytimes.cpp's fraction past it is when
+// the shell handled the key, not when it was pressed. A key niri
 // answered for on a later frame of the shell's than its own says how many
 // later (`later`, keyClockOf), since its swap is its own frame's and its
 // showing the later one's; those are the shell's frames, not niri's
@@ -162,7 +164,7 @@ function keysClockSaid(times) {
         return "";
     }
     const each = times.slice().sort((a, b) => a.from - b.from).map(one => {
-        const pressed = one.stamped === false ? "-" : tenths(one.from);
+        const pressed = one.stamped === false ? "-" : String(Math.floor(one.from));
         const swapped = one.swapped > 0 ? tenths(one.swapped) : "-";
         const later = one.later > 0
             ? `, ${one.later} ${one.later === 1 ? "frame" : "frames"} of the shell's after its own`

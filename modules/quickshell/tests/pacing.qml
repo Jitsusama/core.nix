@@ -837,22 +837,23 @@ QtObject {
             + "on eDP-1 at 120 Hz");
         // As the launcher keeps them (keyPresented): a swap it didn't time
         // is null, one not reached 0 (frame-presentation.patch), and every
-        // key says whether niri timed its press.
+        // key says whether niri timed its press. A press's fraction is when
+        // the shell handled it, so 1000.7 is said as niri stamped it, 1000.
         const clocked = [Object.assign({ swapped: 2020.04, stamped: true, later: 0 }, keys[2]),
-            Object.assign({ swapped: null, stamped: true, later: 0 }, keys[1]),
+            Object.assign({ swapped: null, stamped: true, later: 0 }, keys[1], { from: 1000.7 }),
             Object.assign({ swapped: 82.36, stamped: true, later: 0 }, keys[0])];
-        check(failures, "each key says its press, swap and screen to a tenth, as pressed",
+        check(failures, "each key says its press in whole ms, its swap and screen to a tenth",
             Presented.keysClockSaid(clocked),
             "launcher: 3 keys shown, each pressed, swapped and shown in monotonic ms: "
-            + "0.0 82.4 100.0; "
-            + "1000.0 - 1050.0; 2000.0 2020.0 2300.0");
+            + "0 82.4 100.0; "
+            + "1000 - 1050.0; 2000 2020.0 2300.0");
         check(failures, "an untimed press, a swap not reached and a later frame are said",
             Presented.keysClockSaid([Object.assign({}, clocked[2], { stamped: false }),
                 Object.assign({}, clocked[1], { swapped: 0, later: 1 }),
                 Object.assign({}, clocked[0], { later: 2 })]),
             "launcher: 3 keys shown, each pressed, swapped and shown in monotonic ms: "
-            + "- 82.4 100.0; 1000.0 - 1050.0, 1 frame of the shell's after its own; "
-            + "2000.0 2020.0 2300.0, 2 frames of the shell's after its own");
+            + "- 82.4 100.0; 1000 - 1050.0, 1 frame of the shell's after its own; "
+            + "2000 2020.0 2300.0, 2 frames of the shell's after its own");
         // How the launcher reads a key's record and the frame niri answered.
         const clockOf = (key, answered) => JSON.stringify(Presented.keyClockOf(key, answered));
         check(failures, "a key niri answered on its own frame, or a later one, says how many on",
