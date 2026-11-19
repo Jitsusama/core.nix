@@ -124,6 +124,9 @@ ARROWS_PAST = 3
 # The two seconds a session's drawer must stay on its row to read its answer, and a while longer.
 A_STAY = 2.0
 PAST_A_STAY = 2.5
+# Long past a round trip to the lab's agents daemon, a few milliseconds, so a drawer watched
+# ahead as another is drawn is held by then.
+PAST_A_ROUND_TRIP = 0.5
 # What a session works on, as pi says it: its quest's title, then its summary, which runs to
 # about 290 letters on every real session.
 WORKS_ON = (
@@ -937,19 +940,7 @@ def test_a_sessions_drawer_lists_its_acts_and_arrows_past_it_make_none_of_its_ro
     arrow resting on a session, 891 in a held arrow's turns (keeps-up, 2026-11-12), and named
     each fact as an act. The sessions are inside their orchestration's fold.
     """
-    into_orchestration(shell)
-    shell.down_to(FOLD)
-    shell.step_in()
-    names = ("Listening Quest", "Paused Quest")
-    shell.launcher_until(lambda shown: all(name in shown["rows"] for name in names))
-
-    def rested_on(name: str) -> Callable[[Json], bool]:
-        return lambda shown: (
-            (shown["selected"] or {}).get("name") == name
-            and bool((shown["drawer"] or {}).get("shown"))
-            and bool((shown["drawer"] or {}).get("acts"))
-        )
-
+    names = into_the_fold(shell)
     shell.down_to(names[0])
     shell.launcher_until(rested_on(names[0]))
     acts = shell.showing()["drawer"]["acts"]
@@ -964,6 +955,65 @@ def test_a_sessions_drawer_lists_its_acts_and_arrows_past_it_make_none_of_its_ro
             shell.launcher_until(rested_on(name))
     made = made_by_agents(shell) - before
     assert made == 0, f"arrows between two sessions made {made} of Agents' rows"
+
+
+# The fold's sessions, in the order it lists them.
+FOLDED = ("Listening Quest", "Paused Quest")
+
+
+def into_the_fold(shell: Shell) -> tuple[str, str]:
+    """Step into the orchestration's fold, and give its sessions' names once both are listed."""
+    into_orchestration(shell)
+    shell.down_to(FOLD)
+    shell.step_in()
+    shell.launcher_until(lambda shown: all(name in shown["rows"] for name in FOLDED))
+    return FOLDED
+
+
+def rested_on(name: str) -> Callable[[Json], bool]:
+    """Test that the session named is selected, its drawer out and listing its acts."""
+    return lambda shown: (
+        (shown["selected"] or {}).get("name") == name
+        and bool((shown["drawer"] or {}).get("shown"))
+        and bool((shown["drawer"] or {}).get("acts"))
+    )
+
+
+def test_a_sessions_drawer_beside_the_one_drawn_comes_with_its_key(shell: Shell) -> None:
+    """A key to the session beside the one drawn finds its drawer held, drawn with the key.
+
+    Agents watched a session's drawer only once it was drawn, so an arrow to a session's row
+    whose drawer the shell didn't hold yet left it a daemon's round trip behind: all ten drawers
+    Joel's journal said came "a round trip after its row" from 18 to 19 November were
+    sessions', 23 to 71 ms each. So the drawers of the rows beside the one drawn are watched
+    too, as Landed's are.
+    """
+    # A drawer once watched stays held, so the case before's arrows left Paused's held, drawn
+    # in the key's frame whether its row was watched ahead or not. Started again, the shell
+    # holds none, as on the first walk after a switch.
+    shell.restart()
+    names = into_the_fold(shell)
+    rows = cast("list[str]", shell.showing()["rows"])
+    assert rows.index(names[1]) == rows.index(names[0]) + 1, f"the fold's rows: {rows}"
+    shell.down_to(names[0])
+    shell.launcher_until(rested_on(names[0]))
+    # Room for Paused's drawer, watched ahead as Listening's is drawn, to come before the arrow,
+    # since nothing reports it held. On main it's watched only once drawn, so no wait holds it.
+    time.sleep(PAST_A_ROUND_TRIP)
+    since = shell.mark()
+    shell.send_key("down")
+    shell.launcher_until(rested_on(names[1]))
+    row = shell.showing()["drawer"]["row"]
+    # Each state the launcher passed through on the way, as it reports each: any whose drawer
+    # followed the row with nothing to draw for it yet waited a round trip. One still drawing
+    # the row before is a follow's frame, which isn't this.
+    reports, _ = shell.said_since(since)
+    passed = [json.loads(said.removeprefix("showing ")) for said in reports
+              if said.startswith("showing ")]  # fmt: skip
+    short = [shown["drawer"] for shown in passed
+             if (shown["drawer"] or {}).get("row") == row
+             and not shown["drawer"].get("wanted")]  # fmt: skip
+    assert not short, f"{names[1]}'s row was drawn before its drawer: {short}"
 
 
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:

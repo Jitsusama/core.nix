@@ -342,6 +342,30 @@ QtObject {
                 failures.push(`${what}: "${said}", not "${want}"`);
         }
 
+        // The sessions an arrow reaches next from the one drawn, whose
+        // drawers Agents watches ahead with it: past a heading, and never a
+        // row that isn't a session's, nor the drawn one itself.
+        const listed = [{ key: "agent:TOP" }, { key: "heading:fold", heading: true },
+            { key: "agent:ONE" }, { key: "agent:TWO" }, { key: "agents:spec" }];
+        const headed = [{ key: "heading:a", heading: true }, { key: "agent:LAST" },
+            { key: "heading:b", heading: true }, { key: "heading:c", heading: true }];
+        const twice = [{ key: "agent:SAME" }, { key: "agent:SAME" }];
+        const besides = [
+            ["past a heading above and to a session below", listed, 2, "ONE", "TOP TWO"],
+            ["none past the list's top", listed, 0, "TOP", "ONE"],
+            ["a row not a session's is none", listed, 3, "TWO", "ONE"],
+            ["found though another session's row is selected", listed, 0, "ONE", "TOP TWO"],
+            ["found with no row selected", listed, -1, "ONE", "TOP TWO"],
+            ["none for a session not listed", listed, 0, "GONE", ""],
+            ["none past headings to either end", headed, 1, "LAST", ""],
+            ["never the drawn session itself", twice, 0, "SAME", ""]
+        ];
+        for (const [what, rows, current, address, want] of besides) {
+            const said = SessionDrawer.beside(rows, current, address).join(" ");
+            if (said !== want)
+                failures.push(`beside ${address}, ${what}: "${said}", not "${want}"`);
+        }
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
