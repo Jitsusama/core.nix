@@ -481,7 +481,7 @@ in
   # than a copy that could drift.
   every-puppy-pose-reads-as-one-puppy =
     let
-      puppys =
+      asPuppy =
         pose:
         "puppy"
         + lib.toUpper (builtins.substring 0 1 pose)
@@ -492,7 +492,7 @@ in
       animal = "puppy";
       sitting = "puppySitting";
       walkedFrom = catWalkedFrom;
-      strides = map puppys catWalk;
+      strides = map asPuppy catWalk;
       meant = "the margin's puppy, in one of its own poses";
       named = "puppy";
       also = [ "puppyBowing" ];
@@ -512,9 +512,9 @@ in
   # refused; a sitting misnamed, or a pose listed but undrawn, said
   # undrawn; a stride no pose lists held to the stray and size rules, and
   # one meant otherwise than its animal's poses are picked by refused,
-  # the same strides all meant so held, and an undrawn one said undrawn
-  # rather than meant otherwise; all planted on copies of the cat's own
-  # drawings; and an animal's poses
+  # the same strides all meant so held, all meant alike but not as asked
+  # refused, and an undrawn one said undrawn rather than meant otherwise;
+  # all planted on copies of the cat's own drawings; and an animal's poses
   # found by its glyphs, the start of its name and what a mark means,
   # though a sitting or stride is undrawn, and no mark meant otherwise nor
   # drawn as no glyph beside a sitting drawn so (refusals).

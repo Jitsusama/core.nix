@@ -1116,12 +1116,13 @@
     joined by a corner alone; and just over 15% fewer or more pixels, on sittings of 37 and 20,
     though not just under or on the line, and on one of 13; and they say a misnamed sitting
     undrawn, and a pose listed but missing, hold a stride no pose lists to the stray and size
-    rules, and refuse a stride meant otherwise than its animal's poses are picked by, though
-    not the same strides all meant so, and say an undrawn one undrawn rather than meant
-    otherwise; all of it planted on copies of the cat's own drawings; and they find an animal's
-    poses by its sitting's and strides' glyphs, the start of its name and what a mark means,
-    though one of them is undrawn, and no other mark, not one holding the name inside its own,
-    one meant otherwise, nor one drawn as no glyph beside a sitting drawn so
+    rules, and refuse a stride meant otherwise than its animal's poses are picked by, and
+    strides all meant alike but not as asked, though not the same strides all meant so, and
+    say an undrawn one undrawn rather than meant otherwise; all of it planted on copies of
+    the cat's own drawings; and they find an animal's poses by its sitting's and strides'
+    glyphs, the start of its name and what a mark means, though one of them is undrawn, and
+    no other mark, not one holding the name inside its own, one meant otherwise, nor one drawn
+    as no glyph beside a sitting drawn so
   '';
   every-puppy-pose-reads-as-one-puppy = ''
     every pose of the margin's puppy, each mark named or meant for it or drawn as its sitting's

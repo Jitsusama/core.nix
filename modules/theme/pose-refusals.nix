@@ -199,8 +199,8 @@ let
   # leap's tuck taken out would be, said so; a stride no pose lists
   # still held to the stray and size rules; and a stride meant otherwise
   # than the words its animal's poses are picked by refused for it alone,
-  # the same strides all meant so held, and an undrawn one said undrawn
-  # rather than meant otherwise.
+  # the same strides all meant so held, all meant alike but not as asked
+  # refused, and an undrawn one said undrawn rather than meant otherwise.
   sized = poseFaults {
     sitting = "small";
     poses = [
