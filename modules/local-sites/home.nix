@@ -572,9 +572,11 @@ in
           "${./code-site.sh}"
           "${config.xdg.dataHome}/jitsusama/sites/code"
         ];
-        # A reading takes about 60 ms, so one still going at the next minute
-        # is stuck, and ending it says so in the journal while the last homes
-        # stay.
+        # A reading takes well under a second, but starved on a machine short
+        # of memory it can stall for minutes. The writer ends one at 40 s
+        # itself, killing it five seconds on, keeping the last homes and
+        # saying so in a line, so a stall isn't a failure; this is the
+        # backstop for the writer itself stuck.
         TimeoutStartSec = "50s";
         Slice = "background.slice";
       };
