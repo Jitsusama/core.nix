@@ -48,6 +48,24 @@ import ./host-checks.nix args
       "pi-carry, which mycelium carry runs, isn't on the path of an account with pi."
       (carries (account workstation) && carries (account macWorkstation));
 
+  # Every pi compiles into pi's state, which the agents' fence holds
+  # read-only, never the temporary folder a fenced command can write: node
+  # runs what it reads back from there outside the fence.
+  pi-compiles-where-the-fence-cant-write =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      inState =
+        account: folder: folder == "${account.xdg.stateHome}/pi/agentic-harness.pi/node-compile-cache";
+    in
+    holds "pi-compiles-where-the-fence-cant-write"
+      "A pi keeps node's compile cache where a fenced command could write it."
+      (
+        inState home home.home.sessionVariables.NODE_COMPILE_CACHE
+        && inState home home.systemd.user.sessionVariables.NODE_COMPILE_CACHE
+        && inState mac mac.home.sessionVariables.NODE_COMPILE_CACHE
+      );
+
   # The launcher's AI actions are served on a socket systemd holds beside
   # the other daemons', named as daemons are, restarted by a switch, left
   # to rest once idle, in the background, only where the harness is

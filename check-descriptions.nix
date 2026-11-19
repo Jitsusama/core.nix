@@ -2733,6 +2733,10 @@
     pi-carry, the harness's program mycelium carry runs to carry a quest to another machine and put it
     back, is on the path of every account with pi, run by the store's node
   '';
+  pi-compiles-where-the-fence-cant-write = ''
+    every pi, on Linux and on a Mac, keeps node's compile cache in the harness's state, which the
+    agents' fence holds read-only, so no fenced command plants code a later unfenced pi runs
+  '';
   pi-keeps-its-folder-private = ''
     pi's own folder and its session logs' folder are the account's alone on every machine with pi, so a
     token a tool printed into a log isn't readable by another account
