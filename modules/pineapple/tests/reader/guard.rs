@@ -20,6 +20,9 @@ const HELD: &str = "PINEAPPLE_READER_FAILS_WHILE_HELD";
 /// failing case is shown.
 const SAID: &str = ", in shadow: ";
 
+/// How long a killed reader is given to end, which it does at once.
+const KILLED: Duration = Duration::from_secs(1);
+
 /// How `failing_while_held` fails, so its failure is told from any other.
 const STAGED: &str = "this case fails on purpose, to be shown its journal";
 
@@ -51,22 +54,32 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
     });
     // A guard that waits without killing waits for ever, one that does
     // neither leaves its reader running, and one that kills without
-    // reaping leaves it lingering; the case stops or reaps the reader
+    // reaping leaves it lingering; the case stops and reaps the reader
     // itself before it says so, rather than leave it.
-    let stopped = dropped.recv_timeout(PATIENCE).is_ok();
-    let left = left_as(&reader_itself);
-    if left == Left::Running || !stopped {
+    if dropped.recv_timeout(PATIENCE).is_err() {
+        // The guard is still waiting on it, and reaps it once it ends.
         stop(&reader_itself);
+        panic!("the guard never stopped its reader");
     }
-    if left == Left::Unreaped {
-        reap(&reader_itself);
+    // A kill lands a moment after it is sent, so a reader the guard
+    // killed has that moment to end before it is told from one it left.
+    ends_within(&reader_itself, KILLED);
+    match left_as(&reader_itself) {
+        Ok(Left::Reaped) => {}
+        Ok(Left::Running) => {
+            stop(&reader_itself);
+            reap(&reader_itself);
+            panic!("the failed case's reader still runs");
+        }
+        Ok(Left::Unreaped) => {
+            reap(&reader_itself);
+            panic!("the guard stopped its reader but never reaped it");
+        }
+        Err(why) => {
+            stop(&reader_itself);
+            panic!("the reader couldn't be asked how it was left: {why}");
+        }
     }
-    assert!(stopped, "the guard never stopped its reader");
-    assert!(left != Left::Running, "the failed case's reader still runs");
-    assert!(
-        left != Left::Unreaped,
-        "the guard stopped its reader but never reaped it"
-    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
@@ -175,16 +188,31 @@ enum Left {
 /// How the reader was left, asked of the reader itself, and changing
 /// nothing: this test binary is its parent, so the kernel answers with
 /// its status while it lingers, and with ECHILD once it has been reaped.
-fn left_as(reader: &OwnedFd) -> Left {
+fn left_as(reader: &OwnedFd) -> std::io::Result<Left> {
     match waited(reader, libc::WNOHANG | libc::WNOWAIT) {
-        Ok(0) => Left::Running,
-        Ok(_) => Left::Unreaped,
-        Err(why) if why.raw_os_error() == Some(libc::ECHILD) => Left::Reaped,
-        Err(why) => panic!("the reader couldn't be asked how it was left: {why}"),
+        Ok(0) => Ok(Left::Running),
+        Ok(_) => Ok(Left::Unreaped),
+        Err(why) if why.raw_os_error() == Some(libc::ECHILD) => Ok(Left::Reaped),
+        Err(why) => Err(why),
     }
 }
 
-/// Reaps the reader its guard stopped but left lingering.
+/// Until the reader has ended, reaped or not, or `patience` is spent:
+/// its pidfd reads ready once it has exited.
+fn ends_within(reader: &OwnedFd, patience: Duration) {
+    let mut asked = libc::pollfd {
+        fd: reader.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let patience = libc::c_int::try_from(patience.as_millis()).expect("a short patience");
+    // SAFETY: poll reads and writes only the one pollfd lent it here.
+    // What it answers is left to `left_as`, which asks again.
+    let _ = unsafe { libc::poll(&raw mut asked, 1, patience) };
+}
+
+/// Reaps a reader that has ended, or that the case has just stopped.
+/// Nothing else waits on it by then: the guard has given it up.
 fn reap(reader: &OwnedFd) {
     let reaped = waited(reader, 0);
     assert!(
@@ -197,9 +225,10 @@ fn reap(reader: &OwnedFd) {
 /// answering the pid it reported, 0 when it reported none.
 fn waited(reader: &OwnedFd, options: libc::c_int) -> std::io::Result<libc::pid_t> {
     let fd = libc::id_t::try_from(reader.as_raw_fd()).expect("an fd is never negative");
-    // SAFETY: an all-zero siginfo_t is a valid one, and the kernel leaves
-    // its pid at 0 when it has nothing to report.
+    // SAFETY: an all-zero siginfo_t is a valid one.
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    // Zeroed first, as waitid(2) asks, so a WNOHANG with nothing to
+    // report reads as pid 0.
     // SAFETY: waitid writes only the siginfo lent it here, and the fd is
     // the reader's own, open for as long as `reader`.
     let waited = unsafe { libc::waitid(libc::P_PIDFD, fd, &raw mut info, libc::WEXITED | options) };
