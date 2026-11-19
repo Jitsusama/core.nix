@@ -958,7 +958,7 @@ Provider {
         half: "sends and hears in turn, as when the two ends didn't agree on full"
     })
 
-    // A cable's link, as its card reads it now: the Speed and Duplex it
+    // A cable's link, as its card's files last loaded: the Speed and Duplex it
     // agreed with the other end, each left out where the driver can't say,
     // as while nothing's at the other end; how often its Link was Lost;
     // and its Errors, each way, every kind a step in.
@@ -1008,7 +1008,7 @@ Provider {
         "dropped-out": "set aside before sending, not broken"
     })
 
-    // A cable's errors a step in, as its card reads them now: what came in
+    // A cable's errors a step in, as its card's files last loaded: what came in
     // broken, then each kind it had, what couldn't go out, then each kind
     // of that, and what was set aside each way, which isn't an error.
     function errorParts(name) {

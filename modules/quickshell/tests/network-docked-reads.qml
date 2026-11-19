@@ -148,6 +148,8 @@ ShellRoot {
     // What Ethernet said each time Network told the launcher it had
     // something new, asked again as the launcher would on the tell.
     property var told: []
+    // Whether held has begun giving loads up on purpose.
+    property bool holdsMade: false
 
     Connections {
         target: networks
@@ -237,6 +239,18 @@ ShellRoot {
         return networks.cableLoading === null && networks.cablesAsked.length === 0;
     }
 
+    // Until held gives loads up on purpose, one given up on a slow builder
+    // is named at the step it came before, by each quiet wait, relinked
+    // and held itself, rather than by the step its hold would fail. One
+    // given up from held on isn't named: it may fail a later step, or none.
+    function noneGivenUp(name) {
+        if (!root.holdsMade)
+            Expect.expect(`no load before ${name} was given up`,
+                Object.keys(networks.factsStuck).length === 0
+                && Object.keys(networks.cablesStuck).length === 0,
+                JSON.stringify([networks.factsStuck, networks.cablesStuck]));
+    }
+
     // `step`, once every fact and cable load under way has landed, with a look counted
     // from then. An ask five seconds past the last look loads everything
     // again, and a load skips what's already under way, so a step that
@@ -245,6 +259,7 @@ ShellRoot {
     function quiet(name, step) {
         return () => waits.until(`the loads before ${name} landed`,
             within(4000, () => swept() && networks.factsAsked.length === 0), () => {
+            root.noneGivenUp(name);
             networks.lookedAt = Date.now();
             step();
         });
@@ -356,6 +371,10 @@ ShellRoot {
     // The uptime loaded again as it was counted on: nothing is told.
     function steady() {
         told = [];
+        // Two minutes counted on from the last load, so a load that agrees
+        // with the count is two minutes past it, as one checked against the
+        // last load alone would tell.
+        networks.upAt -= 120000;
         Written.written(up, `${Math.round(networks.uptime())}.00 4000.00\n`);
         const before = networks.upAt;
         networks.reloadFacts();
@@ -425,6 +444,7 @@ ShellRoot {
     // newer than they are: it's said as the daemon says until they land
     // again, and the load begun before isn't kept.
     function relinked() {
+        root.noneGivenUp("relinked");
         shown.held = [];
         kept = [];
         networks.recable();
@@ -449,6 +469,8 @@ ShellRoot {
     // made so; nothing is left reading, and asked again it's not loaded
     // again at once. Facts that never land are given up too.
     function held() {
+        root.noneGivenUp("held");
+        root.holdsMade = true;
         networks.links = [second, docked];
         networks.answer("ethernet");
         Expect.expect("a card plugged in between looks says it's still reading",
