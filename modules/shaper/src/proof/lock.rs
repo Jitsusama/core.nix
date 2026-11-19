@@ -56,7 +56,19 @@ mod tests {
             other => panic!("a second proof ran beside the first: {other:?}"),
         }
         drop(first);
-        assert!(alone(&marker).is_ok(), "a proof gone still held the next");
+        // flock(2) follows the open file, which a child another test forks
+        // shares until it execs and close-on-exec lets go of it, so the
+        // lock may outlive the drop by that moment.
+        let freed = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let next = loop {
+            match alone(&marker) {
+                Err(NotAlone::Another(_)) if std::time::Instant::now() < freed => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                next => break next,
+            }
+        };
+        assert!(next.is_ok(), "a proof gone still held the next: {next:?}");
         assert!(
             matches!(alone(&dir.join("no/such")), Err(NotAlone::Unopened(_))),
             "a lock it couldn't open taken for another proof's"
