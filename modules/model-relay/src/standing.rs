@@ -327,6 +327,13 @@ mod tests {
                 None,
                 "a request sent before it stood down was judged after it took requests again"
             );
+            // Taken before it stood down and sent once more as it stood
+            // down, as on a connection opened meanwhile.
+            assert_eq!(
+                standing.heard(back + A_SECOND * at, from + A_SECOND * 20, true),
+                None,
+                "a request sent as it stood down was judged after it took requests again"
+            );
         }
         assert!(
             hears(&standing, back + A_SECOND * 21, 0, 20).is_some(),

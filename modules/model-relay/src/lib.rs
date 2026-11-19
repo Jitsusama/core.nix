@@ -57,7 +57,8 @@
 //! nothing, so pi sends it direct, until ten minutes have passed, or
 //! twice the last stand-down, to an hour, when the last ended under an
 //! hour before. A request is judged once its answer ends, so one broken
-//! off midway fails, and only one that went down a connection: one that
+//! off midway fails, and only one that went down a connection, or that
+//! each connection it was offered closed under before it went: one that
 //! never reached the origin, as when none would open, would fail direct
 //! too, so it says nothing of the relay's connections. Nor does a reset
 //! giving the origin's own verdict, such as to calm down, so it isn't
@@ -394,9 +395,12 @@ struct Counts {
     /// Requests refused as it stood down, so each went direct, counted
     /// with the refused too.
     stood_down: AtomicU64,
+    /// Answers broken off midway, judged or not, so a stand-down for
+    /// streams that broke shows in the counts as well as resets do.
+    broken: AtomicU64,
     /// What the counts were when last said, but for how many connections
     /// were taking requests.
-    said_as: Held<[u64; 8]>,
+    said_as: Held<[u64; 9]>,
 }
 
 impl Counts {
@@ -412,6 +416,7 @@ impl Counts {
             &self.cancelled,
             &self.opened,
             &self.stood_down,
+            &self.broken,
         ]
         .map(|count| count.load(Ordering::Relaxed));
         {
@@ -430,11 +435,13 @@ impl Counts {
             cancelled,
             opened,
             stood_down,
+            broken,
         ] = now;
         eprintln!(
             "model-relay: {asked} asked, {refused} refused, {failed} failed, {reset} of them \
              reset; {again} reset and sent again; pi cancelled {cancelled}; {opened} \
-             connections opened, {} taking requests; {stood_down} refused as it stood down",
+             connections opened, {} taking requests; {stood_down} refused as it stood down; \
+             {broken} broken off midway",
             self.open.load(Ordering::Relaxed),
         );
     }
@@ -612,10 +619,12 @@ impl<B> Answering<B> {
         if !self.on_the_way.end() {
             return;
         }
-        match why {
-            None => self.relay.finished(self.on_the_way.sent, false),
-            Some(why) if fails_the_path(why) => self.relay.finished(self.on_the_way.sent, true),
-            Some(_) => {}
+        let Some(why) = why else {
+            return self.relay.finished(self.on_the_way.sent, false);
+        };
+        self.relay.counts.broken.fetch_add(1, Ordering::Relaxed);
+        if fails_the_path(why) {
+            self.relay.finished(self.on_the_way.sent, true);
         }
     }
 }
@@ -1120,6 +1129,17 @@ impl Relay {
                 .uri
                 .authority()
                 .is_none_or(|named| self.origin.is_named_by(named.as_str()));
+        // Another origin's request is no work of the relay's, so it's no
+        // reason to stay, even while its body is read.
+        let in_hand = names_origin.then(|| self.busy.one());
+        let whole = match self.readied(&mut parts, body).await {
+            Ok(whole) => whole,
+            Err(refused) => return *refused,
+        };
+        // Its body read whole before any 421, so pi isn't writing one the
+        // relay has stopped reading, failing on a broken pipe, when the
+        // 421 would send it direct; and the sleep looked for first, as a
+        // sleep forgets a stand-down.
         if !names_origin {
             self.counts.refused.fetch_add(1, Ordering::Relaxed);
             return said(
@@ -1134,14 +1154,6 @@ impl Relay {
                 "this relay is leaving, so go directly\n",
             );
         }
-        let in_hand = self.busy.one();
-        let whole = match self.readied(&mut parts, body).await {
-            Ok(whole) => whole,
-            Err(refused) => return *refused,
-        };
-        // Its body read whole first, so pi isn't writing one the relay
-        // has stopped reading when the 421 sends it direct; and the sleep
-        // looked for first, as a sleep forgets a stand-down.
         self.retire_after_a_sleep();
         if let Some(standing_down) = self.standing_down() {
             return standing_down;
@@ -1200,7 +1212,8 @@ impl Relay {
     /// Hears a request `sent` down a connection, and answered or `failed`
     /// for its path, and stands down when the share failed lately says to.
     /// A sleep is looked for first, as the streams it cut break before pi
-    /// asks anything new, and they're not to be judged.
+    /// asks anything new, and they're not to be judged. No test can sleep
+    /// the machine, so this order is held by reading it alone.
     fn finished(&self, sent: Instant, failed: bool) {
         self.retire_after_a_sleep();
         let Some(stood) = self.standing.heard(Instant::now(), sent, failed) else {
@@ -1331,9 +1344,9 @@ impl Relay {
             // counted as cancelled here; judged, it's by when this attempt went.
             let on_the_way = OnTheWay::sent(&tally, &self.counts);
             (went, down) = (on_the_way.sent, (at, number, tally));
-            let went = sender.try_send_request(request).await;
+            let tried = sender.try_send_request(request).await;
             let mut unread = None;
-            let failed = match went {
+            let failed = match tried {
                 Ok(answer) => Ok(answer),
                 Err(mut failed) => {
                     unread = failed.take_message();
@@ -1780,18 +1793,17 @@ fn goes_again(reason: h2::Reason) -> bool {
 /// resetting it or saying goodbye with a refused stream or a protocol
 /// error, as on 18 November. The origin's own verdict, such as to calm
 /// down or an error of its own, says nothing of the path, as it would
-/// fail direct too, and nor does h2 refusing what was asked of it, such as
-/// headers it won't send. Every error hyper calls the user's is judged, as
-/// the request's body is whole in memory and can't fail: what's left of
-/// them is chiefly a connection's task gone, which is the path failing.
+/// fail direct too. What hyper or h2 raise themselves is judged, whether
+/// a connection's task gone, which hyper calls the user's error, or h2
+/// refusing to send what was asked: the request's body is whole in
+/// memory and can't fail, and pi direct speaks HTTP/1.1, so it wouldn't
+/// meet h2's refusals, and a stand-down sending it there is the cure.
 fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
     let mut beneath = Some(why);
     while let Some(cause) = beneath {
         if let Some(h2) = cause.downcast_ref::<h2::Error>() {
             return match h2.reason() {
                 Some(reason) if h2.is_remote() => goes_again(reason),
-                // Neither a frame nor the socket, it's h2's own refusal.
-                None if !h2.is_io() => false,
                 _ => true,
             };
         }
@@ -1897,10 +1909,12 @@ fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
 
 /// An answer of the relay's own: a status and a line saying why.
 ///
-/// A 421 is said only when nothing of the request went to the origin,
-/// as pi sends a request the relay answers with one straight to the
-/// origin itself, knowing it by a line that begins "this relay " and
-/// ends "so go directly". A refusal once something went is a 5xx.
+/// A 421 of the relay's own is said only when nothing of the request
+/// went to the origin, as pi sends a request the relay answers with one
+/// straight to the origin itself. pi knows one by its whole body being
+/// one line, "this relay forwards to its own origin alone", or one that
+/// begins "this relay " and ends "so go directly", so a new one is
+/// worded so. A refusal once something went is a 5xx.
 fn said(status: StatusCode, why: &'static str) -> Response<Body> {
     let mut answer = Response::new(
         Full::new(Bytes::from_static(why.as_bytes()))
@@ -1995,7 +2009,7 @@ mod tests {
 
     use super::{
         HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot,
-        goes_again, reach, reach_any, slept, with_causes,
+        fails_the_path, goes_again, reach, reach_any, slept, with_causes,
     };
 
     #[test]
@@ -2291,17 +2305,40 @@ mod tests {
         );
     }
 
+    /// The socket lost, a connection's task gone or a reason h2 gives
+    /// itself fails the path, beneath hyper's error or alone. The origin's
+    /// own verdicts come in a frame from it, which only the relay's tests
+    /// can send, and h2's refusals can't be built outside it.
+    #[test]
+    fn what_the_socket_hyper_and_h2_raise_fails_the_path() {
+        let lost = std::io::Error::from(std::io::ErrorKind::BrokenPipe);
+        assert!(fails_the_path(&lost), "a socket lost wasn't judged");
+        let gone = Beneath("connection closed", std::io::Error::other("dispatch gone"));
+        assert!(
+            fails_the_path(&gone),
+            "a connection's task gone wasn't judged"
+        );
+        for reason in [
+            h2::Reason::PROTOCOL_ERROR,
+            h2::Reason::CANCEL,
+            h2::Reason::INTERNAL_ERROR,
+        ] {
+            let raised = Beneath("http2 error", h2::Error::from(reason));
+            assert!(fails_the_path(&raised), "h2's own {reason:?} wasn't judged");
+        }
+    }
+
     /// An error with one beneath it, as hyper's are.
     #[derive(Debug)]
-    struct Beneath(&'static str, std::io::Error);
+    struct Beneath<E>(&'static str, E);
 
-    impl std::fmt::Display for Beneath {
+    impl<E> std::fmt::Display for Beneath<E> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(self.0)
         }
     }
 
-    impl std::error::Error for Beneath {
+    impl<E: std::error::Error + 'static> std::error::Error for Beneath<E> {
         fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
             Some(&self.1)
         }

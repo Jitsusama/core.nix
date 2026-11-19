@@ -327,7 +327,7 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             .filter(|handed| handed.uri.ends_with(&path))
             .count()
     };
-    if path == "/reset-once-held" && heard == 1 {
+    if (path == "/reset-once-held" && heard == 1) || path == "/reset-held" {
         tokio::time::sleep(HELD_THEN_RESET).await;
     }
     if let Some(reason) = resets(&path, heard, connection) {
@@ -433,7 +433,7 @@ fn in_halves(path: &str, gone: Arc<Notify>) -> hyper::http::Result<Response<Answ
 fn resets(path: &str, heard: usize, connection: usize) -> Option<h2::Reason> {
     let resets = match path {
         "/calm-down" => return Some(h2::Reason::ENHANCE_YOUR_CALM),
-        "/reset" => true,
+        "/reset" | "/reset-held" => true,
         "/reset-once" | "/reset-once-held" => heard == 1,
         "/reset-on-the-first" => connection == 0,
         "/reset-but-on-the-second" => connection != 1,
@@ -712,6 +712,18 @@ async fn only_its_origin_is_reached() {
         let got = ask(&relay.socket, asked).await;
         assert_eq!(got.status, StatusCode::MISDIRECTED_REQUEST, "{what}");
     }
+    // Its body read whole first, so pi isn't left writing what the relay
+    // stopped reading.
+    let (got, answered_after_the_body) = ask_in_halves(&relay.socket, "example.com", "/echo").await;
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "another host, its body in halves"
+    );
+    assert!(
+        answered_after_the_body,
+        "the other-origin 421 came before the body was read whole"
+    );
     assert_eq!(
         origin.handed.lock().expect("the record").len(),
         0,
@@ -1239,6 +1251,24 @@ async fn ask_in_halves(socket: &Path, host: &str, path: &str) -> (Got, bool) {
     (got, answered >= written)
 }
 
+/// Three requests answered and seventeen reset, so seventeen failed of
+/// twenty finished, past the share that stands the relay down.
+async fn fail_past_its_share(socket: &Path, host: &str) {
+    for _ in 0..3 {
+        let got = ask(socket, request(host, "/echo", b"hi")).await;
+        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
+    }
+    // Each is reset, and then reset again or kept with nowhere else to go.
+    for _ in 0..17 {
+        let got = ask(socket, request(host, "/reset", b"")).await;
+        assert_eq!(
+            got.status,
+            StatusCode::BAD_GATEWAY,
+            "a request the origin reset"
+        );
+    }
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes_requests_again() {
     let origin = origin().await;
@@ -1250,21 +1280,7 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         &["--idle-exit", "6", "--stand-down-for", "20"],
     );
 
-    // Three answered count as finished, not failed, so seventeen failed
-    // of the twenty finished stand it down.
-    for _ in 0..3 {
-        let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
-        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
-    }
-    // Each is reset, and then reset again or kept with nowhere else to go.
-    for _ in 0..17 {
-        let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
-        assert_eq!(
-            got.status,
-            StatusCode::BAD_GATEWAY,
-            "a request the origin reset"
-        );
-    }
+    fail_past_its_share(&relay.socket, &host).await;
     let stood_down = Instant::now();
 
     // Standing down from the last of them, it sends the next direct.
@@ -1276,10 +1292,19 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
     );
     let words = String::from_utf8_lossy(&got.body).into_owned();
     assert!(
-        words.contains("this relay forwards to its own origin alone")
-            && words.contains("so go directly"),
+        words.starts_with("this relay ") && words.trim_end().ends_with("so go directly"),
         "the stand-down's 421 doesn't say what sends pi direct: {words}"
     );
+    // Standing down retires its connections, so none stays open on the
+    // path it stood down from.
+    let retiring = Instant::now();
+    while origin.ended.load(Ordering::SeqCst) < origin.connections.load(Ordering::SeqCst) {
+        assert!(
+            retiring.elapsed() < Duration::from_secs(2),
+            "a connection stayed open while it stood down"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     let first = retry_after(&got);
     assert!(
         first.is_some_and(|seconds| (1..=21).contains(&seconds)),
@@ -1395,18 +1420,7 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    for _ in 0..3 {
-        let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
-        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
-    }
-    for _ in 0..17 {
-        let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
-        assert_eq!(
-            got.status,
-            StatusCode::BAD_GATEWAY,
-            "a request the origin reset"
-        );
-    }
+    fail_past_its_share(&relay.socket, &host).await;
     let stood_down = Instant::now();
     assert!(
         !held.is_finished() && handed_to(&origin, "/reset-once-held") == 1,
@@ -1455,7 +1469,13 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
 async fn answers_broken_off_midway_as_their_connection_falls_stand_it_down() {
     let origin = origin().await;
     let host = origin.address.to_string();
-    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    // Its stand-down and idle time short, so it leaves and says its counts.
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1", "--stand-down-for", "1"],
+    );
 
     for _ in 0..3 {
         let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
@@ -1484,10 +1504,18 @@ async fn answers_broken_off_midway_as_their_connection_falls_stand_it_down() {
         StatusCode::MISDIRECTED_REQUEST,
         "answers broken off midway didn't stand it down"
     );
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle after its stand-down"
+    );
     let said = relay.said();
     assert!(
         said.contains("17 of the 20 requests it finished in ten minutes failed"),
         "the answers broken off weren't judged as failed: {said}"
+    );
+    assert!(
+        said.contains("; 17 broken off midway"),
+        "the counts don't say how many answers broke off: {said}"
     );
 }
 
@@ -1554,18 +1582,7 @@ async fn answers_sent_before_it_took_requests_again_are_never_judged() {
         assert_eq!(cut.status(), StatusCode::OK, "an answer to be cut off late");
         late.push((tokio::spawn(cut.into_body().collect()), pi, connection));
     }
-    for _ in 0..3 {
-        let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
-        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
-    }
-    for _ in 0..17 {
-        let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
-        assert_eq!(
-            got.status,
-            StatusCode::BAD_GATEWAY,
-            "a request the origin reset"
-        );
-    }
+    fail_past_its_share(&relay.socket, &host).await;
     let stood_down = Instant::now();
     tokio::time::sleep_until((stood_down + Duration::from_millis(1500)).into()).await;
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
@@ -1602,10 +1619,75 @@ async fn answers_sent_before_it_took_requests_again_are_never_judged() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn requests_sent_again_after_it_took_requests_again_are_judged() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--stand-down-for", "1"],
+    );
+
+    // Twenty first sent before the stand-down, each held and then reset
+    // every time it's heard, so each is sent again once the relay takes
+    // requests again: judged by when that attempt went, they fail.
+    let held: Vec<_> = (0..20)
+        .map(|_| {
+            let socket = relay.socket.clone();
+            let to = host.clone();
+            tokio::spawn(async move { ask(&socket, request(&to, "/reset-held", b"")).await })
+        })
+        .collect();
+    let reached = Instant::now();
+    while handed_to(&origin, "/reset-held") < 20 {
+        assert!(
+            reached.elapsed() < LISTENS_WITHIN,
+            "the held requests never all reached the origin"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    fail_past_its_share(&relay.socket, &host).await;
+    let stood_down = Instant::now();
+    tokio::time::sleep_until((stood_down + Duration::from_millis(1500)).into()).await;
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request once it stood down"
+    );
+    assert!(
+        held.iter().all(|asked| !asked.is_finished()),
+        "the held requests were answered before it took requests again, so prove nothing"
+    );
+    for asked in held {
+        let got = asked.await.expect("a held request");
+        assert_eq!(
+            got.status,
+            StatusCode::BAD_GATEWAY,
+            "a held request reset each time"
+        );
+    }
+
+    let said = relay.said();
+    assert_eq!(
+        said.matches("so it stands down for").count(),
+        2,
+        "requests sent again after it took requests again went unjudged: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn answers_the_origin_breaks_off_itself_never_stand_it_down() {
     let origin = origin().await;
     let host = origin.address.to_string();
-    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    // Its idle time short, so it leaves and says its counts.
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
 
     // Each answer begins, then fails with an error of the origin's own,
     // which would fail direct too: the relay's path did nothing wrong.
@@ -1634,10 +1716,18 @@ async fn answers_the_origin_breaks_off_itself_never_stand_it_down() {
         StatusCode::CREATED,
         "answers the origin broke off itself stood it down"
     );
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle"
+    );
     let said = relay.said();
     assert!(
         !said.contains("stands down"),
         "answers the origin broke off itself were judged as the path failing: {said}"
+    );
+    assert!(
+        said.contains("; 20 broken off midway"),
+        "the counts don't say the answers broken off unjudged: {said}"
     );
 }
 
@@ -1652,7 +1742,7 @@ async fn connections_falling_before_an_answer_stand_it_down() {
         assert_eq!(got.status, StatusCode::CREATED, "a request answered");
     }
     // Each reaches the origin, which lets its connection fall before it
-    // answers: the path failing, whatever hyper calls the error.
+    // answers: the path failing.
     for _ in 0..17 {
         let got = ask(&relay.socket, request(&host, "/drop", b"")).await;
         assert_eq!(

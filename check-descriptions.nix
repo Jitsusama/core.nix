@@ -1812,9 +1812,11 @@
     connection, sends on no body too large or
     left unfinished, stands down past its share failed with the 421 that sends pi direct, staying
     through its idle time and taking requests again after on connections opened afresh, over one
-    opened while it stood down, for answers broken off midway as their connection falls, though
-    never for requests no connection would take, resets saying to calm down or answers pi gives up
-    on, says its counts as it leaves, counts on each connection the requests pi gave up on and no
+    opened while it stood down, for answers broken off midway as their connection falls or requests
+    sent again once it takes requests again, though never for requests no connection would take,
+    resets saying to calm down, answers pi gives up on or answers sent before it took requests
+    again, says every 421 of its own once the body is read, says its counts as it leaves, answers
+    broken off among them, counts on each connection the requests pi gave up on and no
     answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a
     502 or a 504 without queueing, doesn't ask for a connection that won't open on every request, forgets a failure once the origin is back, sends pi direct with a
