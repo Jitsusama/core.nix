@@ -221,7 +221,7 @@ fn a_day_that_can_never_be_written_ends_health_after_an_hour_of_trying_without_s
 #[test]
 fn health_giving_up_past_midnight_names_the_day_held_from_before() {
     // A start after giving up replays only the new day, so what the day
-    // before saw and couldn't write is lost, and said to be.
+    // before it couldn't write is lost, and said to be.
     let Outcome { result, .. } = Ran {
         before: 1,
         tomorrow: 1,
@@ -233,9 +233,9 @@ fn health_giving_up_past_midnight_names_the_day_held_from_before() {
     assert!(
         result.as_ref().is_err_and(|error| {
             let words = error.to_string();
-            words.contains(
-                "trying, losing what 2026-11-12, held from before, saw and couldn't write: ",
-            ) && !words.ends_with(": ")
+            words
+                .contains("trying, losing what it couldn't write of 2026-11-12, held from before: ")
+                && !words.ends_with(": ")
         }),
         "giving up past midnight didn't name the day held from before: {result:?}"
     );
@@ -511,8 +511,8 @@ fn how_long_a_spell_lasted_reads_to_the_minute() {
 #[test]
 fn health_giving_up_names_the_days_held_it_loses_and_what_failed_last() {
     // The spell's first failure was a day held from before, written
-    // since, so only the latest names the day still failing, and a last
-    // try that failed names it over both.
+    // since, so only the latest, as a final try's, names the day still
+    // failing.
     let held = |dates: &[&str]| dates.iter().map(|date| Day::new(date)).collect::<Vec<_>>();
     let mut spell = Spell::default();
     for date in ["2026-11-10", "2026-11-13"] {
@@ -533,26 +533,15 @@ fn health_giving_up_names_the_days_held_it_loses_and_what_failed_last() {
                 .given_up(
                     Path::new("days"),
                     &spell::losing(&held(&["2026-11-11", "2026-11-12", "2026-11-13"])),
-                    None,
-                )
-                .to_string(),
-            spell
-                .given_up(
-                    Path::new("days"),
-                    "",
-                    Some(&io::Error::other("today's file: read-only file system")),
                 )
                 .to_string(),
         ],
         [
             String::new(),
-            ", losing what 2026-11-12, held from before, saw and couldn't write".to_owned(),
-            "health gave up writing the day into days after 60 minutes of trying, losing what \
-             2026-11-11, 2026-11-12 and 2026-11-13, held from before, saw and couldn't write: \
+            ", losing what it couldn't write of 2026-11-12, held from before".to_owned(),
+            "health gave up writing the day into days after 60 minutes of trying, losing what it \
+             couldn't write of 2026-11-11, 2026-11-12 and 2026-11-13, held from before: \
              2026-11-13's file: no space left on device"
-                .to_owned(),
-            "health gave up writing the day into days after 60 minutes of trying: today's file: \
-             read-only file system"
                 .to_owned(),
         ],
         "health gave up without naming the days held it lost, or what failed last"

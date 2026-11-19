@@ -49,20 +49,15 @@ impl Spell {
     }
 
     /// What health ends on once it has given up writing the day into
-    /// `into`, with the days held from before it `lost` (`losing`) and
-    /// what failed last: its `final_try`'s error, else the spell's latest,
-    /// since a first said long ago may name a day written since.
-    pub(super) fn given_up(
-        &self,
-        into: &Path,
-        lost: &str,
-        final_try: Option<&io::Error>,
-    ) -> io::Error {
-        let cause = final_try.map_or_else(|| self.latest.clone(), ToString::to_string);
+    /// `into`, with the days held from before it `lost` (`losing`) and the
+    /// spell's latest error, its final try's first failure, since a first
+    /// said long ago may name a day written since.
+    pub(super) fn given_up(&self, into: &Path, lost: &str) -> io::Error {
         io::Error::other(format!(
-            "health gave up writing the day into {} after {} minutes of trying{lost}: {cause}",
+            "health gave up writing the day into {} after {} minutes of trying{lost}: {}",
             into.display(),
             GIVES_UP.as_secs() / 60,
+            self.latest
         ))
     }
 
@@ -152,10 +147,10 @@ pub(super) fn losing(held: &[Day]) -> String {
     match dates.split_last() {
         None => String::new(),
         Some((last, [])) => {
-            format!(", losing what {last}, held from before, saw and couldn't write")
+            format!(", losing what it couldn't write of {last}, held from before")
         }
         Some((last, rest)) => format!(
-            ", losing what {} and {last}, held from before, saw and couldn't write",
+            ", losing what it couldn't write of {} and {last}, held from before",
             rest.join(", ")
         ),
     }

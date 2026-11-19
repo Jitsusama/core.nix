@@ -67,9 +67,7 @@ pub struct Follower {
     write_failed: bool,
     // The days before, oldest first, held until written, so the new day's
     // lines and ticks go on in it; a sleep, which stops `GIVES_UP`'s
-    // clock, can pass more than one midnight. Kept only in memory, so a
-    // signal ending health, as a stop or a switch's restart, drops them
-    // with nothing said.
+    // clock, can pass more than one midnight. A stop drops them unsaid.
     held: Vec<Day>,
     into: PathBuf,
     zone: TimeZone,
@@ -587,8 +585,7 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let mut follower = Follower::new(&today, into, zone.clone())
         .reading(source)
         .knowing(source.ends()?);
-    // The detector and pi-keys keep their days beside health's, in the
-    // account's state.
+    // The detector and pi-keys keep their days beside health's, in the account's state.
     if let Some(state) = into.parent() {
         follower = follower
             .feeling(&state.join("pain-points"))
@@ -776,10 +773,13 @@ fn run(
     }
     let written = follower.write();
     let lost = spell::losing(&follower.held);
-    // A start that gave up says so, naming this last try's failure over
-    // the spell's, which may name a day this try has just written.
+    // A start that gave up gives the spell its final try too: one that
+    // failed is what it ends on, and one that wrote everything lost nothing.
     if gave_up {
-        return Err(spell.given_up(&follower.into, &lost, written.err().as_ref()));
+        spell.tried(written.as_ref().err(), now(), &follower.into, say, notice);
+        written
+            .as_ref()
+            .map_err(|_| spell.given_up(&follower.into, &lost))?;
     }
     written.map_err(|error| {
         io::Error::new(
