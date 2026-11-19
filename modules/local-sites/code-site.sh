@@ -10,7 +10,11 @@
 # temporary name and moved into place only once repos has answered in full,
 # so no site reads half of them. When repos fails, as with nowhere to look,
 # the last good homes stay, one plain line says why, and the run still ends
-# well, since a unit failing every minute would say nothing more.
+# well, since a unit failing every minute would say nothing more. A reading
+# takes well under a second, but starved on a machine short of memory it can
+# stall for minutes, so the writer ends one at CODE_SITE_WAITS seconds, 40
+# unless said, the same way, before systemd's timeout would count the stall
+# as the unit failing.
 # usage: code-site.sh <site folder>
 # REPOS_ROOTS names where repos looks, as for repos itself.
 set -euo pipefail
@@ -20,10 +24,47 @@ mkdir -p "$site"
 work=$(mktemp -d "$site/.repos.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-if ! repos --json > "$work/repos.json" 2> "$work/said"; then
+waits=${CODE_SITE_WAITS:-40}
+# A wait of nothing would turn the bound off, so only a whole number of seconds stands, and
+# four digits at most keeps it far from where bash's arithmetic wraps. The unit's own
+# TimeoutStartSec in home.nix, 60 s, is set to outlast the default and its five seconds'
+# grace, so a wait said past it would be cut short by systemd instead.
+if [[ ! $waits =~ ^[1-9][0-9]{0,3}$ ]]; then
+  waits=40
+fi
+# A read that won't end on the first signal is killed five seconds on, which
+# timeout answers 137 for rather than 124. A read the kernel killed answers 137
+# too, sooner, and is a failure rather than a stall, so the time tells them apart.
+started=$SECONDS
+# timeout ends itself with the signal that ended the read, which bash would say on a line of its
+# own; the writer's one line says it instead, so bash's goes nowhere.
+if { timeout -k 5 "$waits" repos --json > "$work/repos.json" 2> "$work/said"; } 2> /dev/null; then
+  ended=0
+else
+  ended=$?
+fi
+if ((ended == 0)); then
+  :
+elif ((ended == 124 || (ended == 137 && SECONDS - started > waits))); then
+  echo "repos read for over $waits s, as a starved machine makes it; the last homes stay"
+  exit 0
+else
   said=$(< "$work/said")
   said=${said//$'\n'/ }
-  echo "repos failed (${said:0:200}); the last homes stay"
+  said=${said:0:200}
+  # A read killed outright says nothing itself, so the signal says it, by the name a
+  # journal's reader knows it by. A status no named signal explains is no kill, and is said as
+  # it is: past every signal's, or one Linux keeps for its threads, which kill -l names empty.
+  name=""
+  if ((ended > 128)); then
+    name=$(kill -l "$((ended - 128))" 2> /dev/null) || name=""
+  fi
+  if [[ -n $name ]]; then
+    said="killed by SIG$name${said:+: $said}"
+  elif ((ended > 128)); then
+    said="ended $ended${said:+: $said}"
+  fi
+  echo "repos failed ($said); the last homes stay"
   exit 0
 fi
 

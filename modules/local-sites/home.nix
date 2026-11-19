@@ -573,16 +573,25 @@ in
           "${./code-site.sh}"
           "${config.xdg.dataHome}/jitsusama/sites/code"
         ];
-        # A reading takes about 60 ms, so one still going at the next minute
-        # is stuck, and ending it says so in the journal while the last homes
-        # stay.
-        TimeoutStartSec = "50s";
+        # A reading takes well under a second, but starved on a machine short
+        # of memory it can stall for minutes. The writer ends one at 40 s
+        # itself, its CODE_SITE_WAITS default, killing it five seconds on,
+        # keeping the last homes and saying so in a line, so a stall isn't a
+        # failure; this is the backstop for the writer itself stuck, fifteen
+        # seconds past its worst, since the same starved machine slows its
+        # own ending.
+        TimeoutStartSec = "60s";
+        # The kernel's killer taking repos alone is one more failure the writer
+        # keeps the last homes through and says, so the unit ends well rather
+        # than systemd failing it for the kill. systemd-oomd ends the whole
+        # unit, the writer with it, which nothing here can answer.
+        OOMPolicy = "continue";
         Slice = "background.slice";
       };
     };
   };
 
-  # Every minute: a reading takes about 60 ms, and a link to a tree cut a
+  # Every minute: a reading takes well under a second, and a link to a tree cut a
   # minute ago landing on Code before its home is said is no harm, since
   # Code itself draws live.
   config.systemd.user.timers = lib.optionalAttrs (roots != null) {

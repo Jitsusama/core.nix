@@ -8,7 +8,7 @@ use repos::read;
 
 use serde_json::json;
 
-use super::{Disk, LONGEST, Of, QUIET, SPACED, health, settle};
+use super::{Disk, LONGEST, Of, QUIET, SPACED, health, ready, settle};
 
 fn of(name: &str) -> Of {
     Of::Checkout(PathBuf::from(name))
@@ -130,6 +130,16 @@ fn a_checkout_gone_when_its_folder_is_heard_is_let_go() {
         "a gone checkout still said: {record:#?}"
     );
     assert!(disk.found.is_empty(), "a gone checkout still held");
+}
+
+#[test]
+fn it_says_how_long_it_took_to_be_ready_in_the_words_health_times() {
+    // Health reads the first "in N ms" after the word ready as how long a restart
+    // was gone (modules/health/src/launches.rs), so the line keeps those words.
+    assert_eq!(
+        ready(Duration::from_micros(1_234_567)),
+        "repos: ready in 1234 ms, every repository read and the socket listening"
+    );
 }
 
 #[test]
