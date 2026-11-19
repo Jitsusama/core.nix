@@ -1015,7 +1015,8 @@ def vm_threads(started: int) -> list[int]:
             # The parent follows the name, which may hold spaces, in its parentheses.
             parent = int((process / "stat").read_text().rsplit(")", 1)[1].split()[1])
             children.setdefault(parent, []).append(int(process.name))
-    pids, threads = [started], []
+    pids = [started]
+    threads: list[int] = []
     while pids:
         pid = pids.pop()
         pids.extend(children.get(pid, []))
