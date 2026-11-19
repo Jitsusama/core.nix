@@ -44,6 +44,11 @@
 # past its date, to each holder of its subject's hub in turn, kept as a
 # need, then to the orchestrator once no holder is left to give it to.
 #
+# The owners are also written to ~/.config/cadence/owners.txt, one
+# `prefix=ADDRESS` a line, the very lines the tick takes as `--owner`, so
+# each pi session can say in its mesh presence the prefixes naming its
+# address, and a need about one finds the session that owns it.
+#
 # Each Friday at 18:00, `cadence review` sends the week's noise (what
 # nobody acted on or came again, by sender) and blind spots (where the
 # axes and Joel's pains disagree) to the orchestrator and to the owner
@@ -79,14 +84,14 @@ let
     (cfg.owners.review or null)
   ];
   # Who owns what, by the prefix of its key, for the tick's units and the
-  # day's findings alike.
+  # day's findings alike, and for the sessions that read owners.txt: one
+  # list of lines, so the flags and the file can't say different things.
+  ownerLines = lib.mapAttrsToList (prefix: address: "${prefix}=${address}") cfg.owners;
   owning = lib.optionals (cfg.orchestrator != null) (
-    lib.concatLists (
-      lib.mapAttrsToList (prefix: address: [
-        "--owner"
-        "${prefix}=${address}"
-      ]) cfg.owners
-    )
+    lib.concatMap (line: [
+      "--owner"
+      line
+    ]) ownerLines
   );
   asking = lib.optionals (cfg.watcher != null && cfg.orchestrator != null) [
     "--watcher"
@@ -167,7 +172,10 @@ in
         machine, updates failing, the follower held), in place of the
         watcher, and only its replies settle them.
         The key `review` names who gets Friday's `cadence review` beside the
-        orchestrator.
+        orchestrator. The same lines, `prefix=ADDRESS`, are written to
+        ~/.config/cadence/owners.txt for the pi sessions that route needs by
+        them, and the tick's flags and the file are both split at the first
+        `=`, so a prefix holds no `=` and neither holds a newline.
       '';
     };
     checkouts = lib.mkOption {
@@ -224,16 +232,21 @@ in
   config = {
     home.packages = [ package ];
 
-    # The same owners the tick takes as `--owner`, one `prefix=ADDRESS` a
-    # line, for whoever else routes by them: each pi session reads the
-    # prefixes naming its address into the subjects its mesh presence says,
-    # so a need about one finds the session that owns it. Written only where
-    # the tick takes them, so the two never disagree.
-    xdg.configFile."cadence/owners.txt" = lib.mkIf (owning != [ ]) {
-      text = lib.concatStrings (
-        lib.mapAttrsToList (prefix: address: "${prefix}=${address}\n") cfg.owners
-      );
+    # The owner lines for whoever else routes by them: each pi session reads
+    # the prefixes naming its address into the subjects its mesh presence
+    # says. Written wherever owners are named, orchestrator or not, since a
+    # session's routing doesn't need one; the tick takes them only with one.
+    xdg.configFile."cadence/owners.txt" = lib.mkIf (ownerLines != [ ]) {
+      text = lib.concatMapStrings (line: "${line}\n") ownerLines;
     };
+
+    # A newline would split one owner into lines the flags never had, and an
+    # `=` in a prefix would move where the tick and a reader split it.
+    assertions = lib.mapAttrsToList (prefix: address: {
+      assertion =
+        !(lib.hasInfix "\n" prefix) && !(lib.hasInfix "=" prefix) && !(lib.hasInfix "\n" address);
+      message = "jitsusama.cadence.owners: `${prefix}` holds an `=` or a newline, or its address one.";
+    }) cfg.owners;
 
     systemd.user.services.cadence = {
       Unit.Description = "Watches the delivery cycle and writes its card";
