@@ -660,7 +660,9 @@
     landing on a place, a repository or a tree in its season, and another site home to a kind found
     by the row claiming it, inside the sites' folders, its homes of that kind alone, and a
     store's weight said in disk units, about only where the daemon reckoned it, with its upkeep,
-    and every name, branch, change title, address and failed check drawn as words, never markup
+    the cells at work tying two repositories each tie once, laid out as rows and threads for the
+    map, and every name, branch, change title, address and failed check drawn as words, never
+    markup
   '';
   code-site-reads-live = ''
     the code page, served by the local sites' server beside a stand-in repos daemon and node, reads
@@ -672,8 +674,10 @@
     in place with the focused tree kept, today's growth yesterday's once the day turns, no row
     moving as the cursor steps, a reload not shifting as the feeds arrive, a second's burst of
     records drawing the list a few times, a first visit within its budget of files, bytes and
-    elements, both visits reaching only the sites' server and the second answered unchanged, and
-    nothing logged
+    elements, both visits reaching only the sites' server and the second answered unchanged, the
+    map at the page's foot drawing a thread for each cell joining two repositories, walked by its
+    keys, opening one as the list does, and handing the keys to the list once its last tie goes,
+    and nothing logged
   '';
   code-site-keeps-its-last-homes = ''
     the code site's writer, while repos fails or stalls, ends well in one line and leaves the last

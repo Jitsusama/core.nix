@@ -1,10 +1,11 @@
 // The map of the mycelium between repositories, drawn and walked: a row for each repository a
 // cell's work ties to another, and an arc of threads beside the rows for each tie, a thread to a
 // cell, as map.ts lays them out. The rows are a listbox, so a screen reader hears each with what
-// it's tied to; up and down, j and k walk them, Return opens the repository as a link to it
-// would, and the threads of the row the keys rest on are drawn brighter. The map keeps its own
-// keys from the page's, which walk the list; the list's other keys act on the list's cursor,
-// not the map's, so on the map they say where they act; and it lets the rest through.
+// it's tied to; up and down, j and k walk them, Return opens the repository as choosing it in
+// the list does, adding no step to Back, and the threads of the row the keys rest on are drawn
+// brighter. The map keeps its own keys from the page's, which walk the list; the list's other
+// keys act on the list's cursor, not the map's, so on the map they say where they act; and it
+// lets the rest through.
 
 import { escaped } from "./draw.ts";
 import {
