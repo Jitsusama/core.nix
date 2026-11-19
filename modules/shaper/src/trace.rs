@@ -1,12 +1,13 @@
 //! What the live shaper heard and held each second that the recorder's
 //! lines can't say, kept as day files of its own: whose the upload's queue
-//! was, a call's round trip through the VPN, the rate it held the upload
-//! to, and the ceiling, a trial's or its network's, it was held under.
+//! was, a call's round trip through the VPN, the rates its controller
+//! asked of the upload and the download, and the ceiling, a trial's or its
+//! network's, the upload was held under.
 //! A replay (src/replay.rs)
 //! puts these back into the recorded seconds, so a bite that came
 //! through our own queues or the VPN is replayed rather than passed as
-//! clean, and the rates the shaper really held are scored beside any a
-//! controller would set.
+//! clean, and the rates the live controller asked are scored beside any a
+//! replayed one would set.
 //!
 //! One short line a second, about 20 MB a day, kept for as many days as
 //! the recorder keeps.
@@ -32,9 +33,14 @@ pub struct Line {
     pub at: u64,
     /// The link it holds.
     pub link: String,
-    /// What the upload was held to, in kbit/s; none held no limit.
+    /// What the controller asked each way be held to, in kbit/s, before the
+    /// shaper's floor and the link's most; none asked no limit. A line
+    /// written before the download was traced has none for it too, so a
+    /// held replay of its day reads the download as never limited.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub up: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub down: Option<u64>,
     /// Whose the upload's queue was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ours: Option<Ours>,
@@ -63,6 +69,7 @@ impl Line {
             at,
             link: link.to_owned(),
             up: heard.up_limit,
+            down: heard.down_limit,
             ours: heard.ours,
             vpn_ms: heard.vpn_ms.map(tenth),
             vpn_base_ms: heard.vpn_base_ms.map(tenth),
@@ -145,7 +152,7 @@ pub fn read(folder: &Path) -> Result<BTreeMap<u64, Line>, String> {
 
 /// Puts what the shaper heard back into each stay's seconds, and gives
 /// the rates it held at each, in the stays' order: a second with no line
-/// holds the last rate, and the ceiling over it, for up to
+/// holds the last rates, and the ceiling over the upload, for up to
 /// `STANDS_S`, and no limit after.
 pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>> {
     stays
@@ -157,20 +164,23 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
                 .iter_mut()
                 .map(|second| {
                     let at = began + crate::rate::whole(second.t_s);
-                    let up = if let Some(line) = lines.get(&at) {
+                    let held = if let Some(line) = lines.get(&at) {
                         second.up_ours = line.ours;
                         second.vpn_ms = line.vpn_ms;
                         second.ceiling = line.ceiling;
                         last = Some((at, line));
-                        line.up
+                        Some(line)
                     } else {
                         let standing = last.filter(|(then, _)| at - then <= STANDS_S);
                         // A step that missed a write held the same trial,
                         // so its seconds are the trial's too.
                         second.ceiling = standing.and_then(|(_, l)| l.ceiling);
-                        standing.and_then(|(_, l)| l.up)
+                        standing.map(|(_, l)| l)
                     };
-                    Rates { up, down: None }
+                    Rates {
+                        up: held.and_then(|l| l.up),
+                        down: held.and_then(|l| l.down),
+                    }
                 })
                 .collect()
         })
@@ -297,7 +307,10 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("shaper-trace-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
         let mut writer = Writer::new(&folder);
-        writer.write(&line(NOV16 + 5, Some(10_800), Some(87.0)));
+        writer.write(&Line {
+            down: Some(20_000),
+            ..line(NOV16 + 5, Some(10_800), Some(87.0))
+        });
         writer.write(&line(NOV16 + 5, Some(1), None));
         writer.write(&line(NOV16 + 6, None, None));
         let read = read(&folder).expect("the folder reads");
@@ -322,6 +335,14 @@ mod tests {
             None,
             "no limit reads back as none: {read:?}"
         );
+        assert_eq!(
+            (read[&(NOV16 + 5)].down, read[&(NOV16 + 6)].down),
+            (Some(20_000), None),
+            "the download's ask, and none: {read:?}"
+        );
+        let before: Line = serde_json::from_str(r#"{"at":1,"link":"wlan0","up":5000}"#)
+            .expect("a line from before the download was traced reads");
+        assert_eq!((before.up, before.down), (Some(5_000), None));
     }
 
     #[test]
@@ -365,6 +386,48 @@ mod tests {
             s[3].up_ours, None,
             "nothing heard, nothing put in: {:?}",
             s[3]
+        );
+    }
+
+    #[test]
+    fn a_stays_seconds_hold_the_download_the_controller_asked() {
+        let heard = |down_limit| crate::live::Heard {
+            down_limit,
+            ..crate::live::Heard::default()
+        };
+        let at = |h: &crate::live::Heard| Line::of(NOV16, "wlan0", h).down;
+        assert_eq!(at(&heard(Some(20_000))), Some(20_000), "a limit");
+        assert_eq!(at(&heard(None)), None, "no limit asked");
+        let mut stays = vec![Stay {
+            network: "home".into(),
+            began_ms: NOV16 * 1_000,
+            seconds: (0..10).map(second).collect(),
+        }];
+        let lines = BTreeMap::from([
+            (
+                NOV16 + 1,
+                Line {
+                    down: Some(20_000),
+                    ..line(NOV16 + 1, Some(5_000), None)
+                },
+            ),
+            (NOV16 + 2, line(NOV16 + 2, Some(5_000), None)),
+            (
+                NOV16 + 3,
+                Line {
+                    down: Some(8_000),
+                    ..line(NOV16 + 3, Some(5_000), None)
+                },
+            ),
+        ]);
+        let held = merge(&mut stays, &lines);
+        let downs: Vec<Option<u64>> = held[0].iter().map(|r| r.down).collect();
+        let mut want = vec![None, Some(20_000), None];
+        want.extend([Some(8_000); 6]);
+        want.push(None);
+        assert_eq!(
+            downs, want,
+            "asked, no limit asked, then standing 5 s past the last line"
         );
     }
 
