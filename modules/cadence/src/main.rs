@@ -260,16 +260,17 @@ fn run(args: &Args) -> io::Result<()> {
         root: state_home.join("pi/agentic-harness.pi"),
     };
     let now = now_ms() / 1000;
+    let data_home =
+        env::var_os("XDG_DATA_HOME").map_or_else(|| home.join(".local/share"), PathBuf::from);
+    let quests = data_home.join("pi/agentic-harness.pi/quest-workflow/quests");
     if let (Some(restart), Some(orchestrator)) = (&args.restart, &args.orchestrator) {
-        let data_home =
-            env::var_os("XDG_DATA_HOME").map_or_else(|| home.join(".local/share"), PathBuf::from);
         let reviving = start::Reviving {
             orchestrator: orchestrator.clone(),
             watcher: args.watcher.clone(),
             orchestrators: args.orchestrators.clone(),
             skip: args.skip.clone(),
             restart: restart.clone(),
-            quests: data_home.join("pi/agentic-harness.pi/quest-workflow/quests"),
+            quests: quests.clone(),
         };
         let send = |to: &str, intent: &str, text: String| mesh.send(&message(to, intent, text));
         // Reviving doesn't wait on the card: a fetch that fails mustn't
@@ -285,7 +286,7 @@ fn run(args: &Args) -> io::Result<()> {
         // pi's own folder, where it keeps each session's log.
         let agent = env::var_os("PI_CODING_AGENT_DIR")
             .map_or_else(|| home.join(".pi/agent"), PathBuf::from);
-        if let Err(err) = idle::tell_idle(&mesh, &agent.join("sessions"), &folder, now) {
+        if let Err(err) = idle::tell_idle(&mesh, &agent.join("sessions"), &quests, &folder, now) {
             eprintln!("cadence: telling of idle sessions: {err}");
         }
     }

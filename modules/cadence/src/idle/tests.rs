@@ -1,3 +1,7 @@
+//! The idle checks' cases. Long because each way a spell is read wrong
+//! (a restart, midnight, a start dated ahead, a router) is a case of its
+//! own, replayed from the session it misled.
+
 use super::*;
 
 const NOW: i64 = 100_000;
@@ -19,6 +23,8 @@ fn quiet(idle: i64) -> Quiet {
         next: None,
         stepless: false,
         working: false,
+        routes: false,
+        starts: None,
     }
 }
 
@@ -205,6 +211,116 @@ fn clock(at: i64) -> String {
 
 fn told_to_orchestrator(tells: &[Tell]) -> Vec<&Tell> {
     tells.iter().filter(|t| !t.wakes).collect()
+}
+
+#[test]
+fn a_cell_of_a_quest_that_routes_is_never_woken_or_told_of() {
+    let mut told = Told::default();
+    // As 8GYNJ6, the void, on 19 November: idle by design on its quest.
+    let void = |idle| Quiet {
+        routes: true,
+        stepless: true,
+        ..quiet(idle)
+    };
+    assert_eq!(
+        due(&[void(WAKE_AFTER)], &mut told, NOW, clock),
+        Vec::<Tell>::new(),
+        "woken at twenty minutes"
+    );
+    assert_eq!(
+        due(&[void(IDLE_FOR + 3600)], &mut told, NOW, clock),
+        Vec::<Tell>::new(),
+        "told of at two hours"
+    );
+    let readme = |front: &str| format!("---\nid: QEST-1\n{front}status: active\n---\n# Q\n");
+    assert!(
+        routes(&readme("hears: addressed\n")),
+        "the harness's mark unread"
+    );
+    assert!(
+        routes(&readme("hears: \"addressed\"\n")),
+        "the mark quoted unread"
+    );
+    assert!(!routes(&readme("")), "a quest with no mark read as routing");
+    assert!(
+        !routes("# Q\n\nhears: addressed\n"),
+        "a body's line read as its frontmatter"
+    );
+}
+
+#[test]
+fn a_wake_before_a_steps_start_still_leaves_it_woken_once_it_starts() {
+    // As F8TT8O on 19 November: woken at 05:15 to a step starting 09:00,
+    // before its start was read.
+    let mut told = Told::default();
+    let s = Quiet {
+        starts: Some(NOW + 3600),
+        ..with_next(3 * 3600)
+    };
+    told.woken.insert(
+        "s-1".into(),
+        Woken {
+            since: NOW - 3 * 3600,
+            at: NOW - 600,
+            next: "Merge #12 once its gate passes".into(),
+            to_quest: None,
+        },
+    );
+    let tells = due(
+        std::slice::from_ref(&s),
+        &mut told,
+        NOW + 3600 + WAKE_AFTER,
+        clock,
+    );
+    assert!(
+        tells.len() == 1 && tells[0].wakes,
+        "not woken past its start for an earlier wake: {tells:?}"
+    );
+}
+
+#[test]
+fn a_step_dated_ahead_counts_no_idle_time_until_it_starts() {
+    let mut told = Told::default();
+    // Idle three hours, its step starting an hour from now.
+    let s = Quiet {
+        starts: Some(NOW + 3600),
+        ..with_next(3 * 3600)
+    };
+    let sessions = std::slice::from_ref(&s);
+    assert_eq!(
+        due(sessions, &mut told, NOW, clock),
+        Vec::<Tell>::new(),
+        "woken, or told of, before its step starts"
+    );
+    assert_eq!(
+        due(sessions, &mut told, NOW + 3600 + WAKE_AFTER - 60, clock),
+        Vec::<Tell>::new(),
+        "woken under twenty minutes past its start"
+    );
+    let tells = due(sessions, &mut told, NOW + 3600 + WAKE_AFTER, clock);
+    assert!(
+        tells.len() == 1 && tells[0].wakes,
+        "woken twenty minutes past its start: {tells:?}"
+    );
+    assert!(
+        tells[0].text.contains(&format!(
+            "has sat idle 0 h 20 min with a next step of its own, \
+             \"Merge #12 once its gate passes\": its next step said it starts at t{}.",
+            NOW + 3600
+        )),
+        "its spell said as a turn's end: {}",
+        tells[0].text
+    );
+    assert!(
+        told_to_orchestrator(&due(sessions, &mut told, NOW + 3600 + IDLE_FOR - 60, clock))
+            .is_empty(),
+        "its orchestrator told under two hours past its start"
+    );
+    assert_eq!(
+        told_to_orchestrator(&due(sessions, &mut told, NOW + 3600 + IDLE_FOR, clock)).len(),
+        1,
+        "its orchestrator told two hours past its start"
+    );
 }
 
 #[test]
@@ -446,6 +562,33 @@ fn a_spell_across_midnight_or_a_resumed_log_is_asked_and_told_once() {
         due(&[day_began], &mut told, after + 300, clock).is_empty(),
         "the same spell was asked or told of again"
     );
+}
+
+#[test]
+fn one_that_turned_since_it_was_woken_is_idle_from_its_turn_after_a_restart() {
+    // On 19 November 04TNWT, woken at 15:10 the day before to a spell
+    // begun at 14:46, worked all morning; once the 07:12 host restart left
+    // its presence naming no turn, it was said to have sat idle 16 h 28 min.
+    let mut told = Told::default();
+    let s = with_next(WAKE_AFTER);
+    let woken = due(std::slice::from_ref(&s), &mut told, NOW, clock);
+    assert_eq!(woken.len(), 1, "woken: {woken:?}");
+    let later = NOW + 10 * 3600;
+    let moving = Quiet {
+        turned: Some(later - 600),
+        since: Some(later - 600),
+        ..s
+    };
+    let tells = due(std::slice::from_ref(&moving), &mut told, later, clock);
+    assert!(tells.is_empty(), "one that moved was said idle: {tells:?}");
+    let restarted = Quiet {
+        turned: None,
+        since: Some(later + 120),
+        started: Some(later + 60),
+        ..moving
+    };
+    let tells = due(&[restarted], &mut told, later + 300, clock);
+    assert!(tells.is_empty(), "idle from before its turns: {tells:?}");
 }
 
 #[test]

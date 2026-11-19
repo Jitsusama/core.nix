@@ -22,9 +22,22 @@ use serde::{Deserialize, Serialize};
 use crate::ANSWERS_GO;
 use crate::mesh::Presence;
 
+pub mod dated;
 mod tell;
 
 pub use tell::tell_idle;
+
+/// Whether a quest's README says it routes: `hears: addressed` is the
+/// harness's mark for a quest whose sessions hear in full only what is
+/// put to them, as Joel's router does. Its cell is idle by design, waiting
+/// on his lines, so it is never woken and no orchestrator hears of it: on
+/// 19 November 8GYNJ6, the void, was woken at 03:10 and 05:10 to no end.
+#[must_use]
+pub fn routes(readme: &str) -> bool {
+    let front = crate::axes::plans::front(readme);
+    crate::axes::plans::field(front, "hears")
+        .is_some_and(|hears| hears.trim_matches(['"', '\'']) == "addressed")
+}
 
 /// How long a session with a next step may sit idle before it is woken:
 /// the hour's cells measure names one idle this long, by its
@@ -87,6 +100,11 @@ pub struct Quiet {
     /// Whether background work of its own runs, whose end starts its turn
     /// without a word from anyone.
     pub working: bool,
+    /// Whether its quest routes (see `routes`), so it is left alone.
+    pub routes: bool,
+    /// When its next step says it starts (see `dated`), in seconds: its
+    /// spell begins no earlier.
+    pub starts: Option<i64>,
 }
 
 impl Quiet {
@@ -133,6 +151,8 @@ impl Quiet {
                 && p.quest.as_deref().is_some_and(|q| !q.is_empty())
                 && p.next_step().is_none(),
             working,
+            routes: false,
+            starts: None,
         })
     }
 
@@ -152,6 +172,7 @@ impl Quiet {
     fn led(&self) -> Option<&str> {
         let by = self.orchestrated_by.as_deref()?;
         (!by.is_empty()
+            && !self.routes
             && !by.eq_ignore_ascii_case(&self.address)
             && self.listening
             && self.running)
@@ -161,6 +182,9 @@ impl Quiet {
     /// How its spell, begun at `since`, began, with `whose` for its own or
     /// its pi's.
     fn how(&self, since: i64, whose: &str, clock: &impl Fn(i64) -> String) -> String {
+        if self.starts == Some(since) {
+            return format!("{whose} next step said it starts at {}", clock(since));
+        }
         match self.started.filter(|s| self.unstarted && *s != since) {
             Some(started) => format!(
                 "{whose} last turn ended at {}, before {whose} pi started again at {}, \
@@ -201,6 +225,13 @@ pub struct Told {
     pub spells: BTreeMap<String, i64>,
     #[serde(default)]
     pub woken: BTreeMap<String, Woken>,
+    /// The end of the last turn each session's presence named, so a spell
+    /// read once it names none begins no earlier: on 19 November a host
+    /// restart left 04TNWT's presence naming no turn, and the spell it was
+    /// woken in the day before, which its turns since had ended, was read
+    /// as 16 h 28 min idle.
+    #[serde(default)]
+    pub turns: BTreeMap<String, i64>,
 }
 
 /// A line for a session itself, to wake it, or for its orchestrator.
@@ -215,8 +246,15 @@ pub struct Tell {
 /// When `s`'s spell began. Its own last turn says so when its presence
 /// names one. Without one, its day began again at midnight, or a host
 /// wrote its log on resuming it, and neither starts a spell: so the spell
-/// already told or woken in stands, unless what was read began later.
+/// already told or woken in stands, unless its last turn seen or what was
+/// read began later.
 fn spell(s: &Quiet, told: &Told) -> Option<i64> {
+    let read = read_spell(s, told)?;
+    Some(s.starts.map_or(read, |starts| read.max(starts)))
+}
+
+/// When `s`'s spell began as what was read says, before its step's start.
+fn read_spell(s: &Quiet, told: &Told) -> Option<i64> {
     let since = s.since?;
     if s.turned.is_some() {
         return Some(since);
@@ -227,6 +265,7 @@ fn spell(s: &Quiet, told: &Told) -> Option<i64> {
         .copied()
         .into_iter()
         .chain(told.woken.get(&s.session).map(|w| w.since))
+        .chain(told.turns.get(&s.session).copied())
         .filter(|kept| *kept <= since)
         .max();
     Some(kept.unwrap_or(since))
@@ -255,6 +294,13 @@ pub fn due(
     let seen = |session: &String| sessions.iter().any(|s| &s.session == session);
     told.spells.retain(|session, _| seen(session));
     told.woken.retain(|session, _| seen(session));
+    told.turns.retain(|session, _| seen(session));
+    for s in sessions {
+        if let Some(turned) = s.turned {
+            let last = told.turns.entry(s.session.clone()).or_insert(turned);
+            *last = (*last).max(turned);
+        }
+    }
     let mut tells = wakes(sessions, told, now, &clock);
     for s in sessions {
         let (Some(by), Some(since)) = (s.led(), spell(s, told)) else {
@@ -339,7 +385,9 @@ fn wakes(
                     (w.next.is_empty() && w.since == since)
                         || w.to_quest.is_some_and(|at| now - at < IDLE_FOR)
                 } else {
-                    w.next == next
+                    // A wake before its step's start, as one before this
+                    // read starts gave, didn't ask it of the step.
+                    w.next == next && s.starts.is_none_or(|starts| w.at >= starts)
                 }
             });
             (!asked && now - since >= WAKE_AFTER).then_some((s, by, since, next))

@@ -1,12 +1,14 @@
 //! Reading the sessions for idle.rs and sending what it decides.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::Path;
 
+use jiff::tz::TimeZone;
 use serde::Deserialize;
 
-use super::{Quiet, Told, due, unsay};
+use super::{Quiet, Told, dated, due, routes, unsay};
 use crate::asking::To;
 use crate::mesh::{self, Mesh, Presence};
 use crate::{clock, message, start, write_whole};
@@ -50,11 +52,42 @@ fn working(root: &Path, p: &Presence) -> bool {
         })
 }
 
+/// The quests in the harness's store `quests` whose READMEs say they
+/// route, by id. Only a README in the folder its id names counts, so a
+/// copy elsewhere in the store can't mark another quest. A store that
+/// can't be read gives none, and says so, since every router is then
+/// woken again.
+fn routers(quests: &Path) -> BTreeSet<String> {
+    let folders = match fs::read_dir(quests) {
+        Ok(folders) => folders,
+        Err(err) => {
+            eprintln!("cadence: reading the quests that route: {err}");
+            return BTreeSet::new();
+        }
+    };
+    folders
+        .flatten()
+        .filter_map(|entry| {
+            let readme = fs::read_to_string(entry.path().join("README.md")).ok()?;
+            let front = crate::axes::plans::front(&readme);
+            let id = crate::axes::plans::field(front, "id")?;
+            (routes(&readme) && entry.file_name().to_str() == Some(id)).then(|| id.to_owned())
+        })
+        .collect()
+}
+
 /// Wakes each session idle with a next step, or naming none on a quest,
 /// and tells each orchestrator
 /// of its sessions idle two hours, remembering in `idle.json` what was
-/// said.
-pub fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Result<()> {
+/// said. Sessions of the quests in the store `quests` that route are left
+/// alone, and a step dated ahead begins its spell at its start.
+pub fn tell_idle(
+    mesh: &Mesh,
+    logs: &Path,
+    quests: &Path,
+    folder: &Path,
+    now: i64,
+) -> io::Result<()> {
     let path = folder.join("idle.json");
     let mut told: Told = fs::read(&path)
         .ok()
@@ -64,6 +97,8 @@ pub fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Resul
         .ok()
         .map(|id| id.trim().to_owned());
     let logged = mesh::logs_written(logs);
+    let routers = routers(quests);
+    let zone = TimeZone::system();
     let sessions: Vec<Quiet> = mesh
         .all()
         .iter()
@@ -75,6 +110,11 @@ pub fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Resul
                 (mesh.is_parked(&p.session), working(&mesh.root, p)),
                 |p| p.runs(start::is_pi, start::is_host),
             )
+            .map(|q| Quiet {
+                routes: q.quest.as_ref().is_some_and(|id| routers.contains(id)),
+                starts: q.next.as_deref().and_then(|n| dated::starts(n, now, &zone)),
+                ..q
+            })
         })
         .collect();
     let tells = due(&sessions, &mut told, now, clock);
@@ -114,6 +154,32 @@ mod tests {
             "owner": {"pid": pid, "startedAt": started_ms, "bootId": "b"},
         }))
         .expect("a presence")
+    }
+
+    #[test]
+    fn only_a_readme_in_its_own_folder_marks_its_quest_as_routing() {
+        let store = tempfile::tempdir().expect("a folder");
+        let readme = |folder: &str, front: &str| {
+            let path = store.path().join(folder);
+            fs::create_dir_all(&path).expect("its folder");
+            fs::write(path.join("README.md"), format!("---\n{front}---\n# Q\n")).expect("written");
+        };
+        // 8GYNJ6's frontmatter as the harness wrote it on 19 November.
+        readme(
+            "QEST-20261112-8GYNJ6",
+            "id: QEST-20261112-8GYNJ6\nhears: addressed\nrealm: work\nkind: subquest\n",
+        );
+        readme("QEST-1", "id: QEST-1\nstatus: active\n");
+        readme("copy", "id: QEST-1\nhears: addressed\n");
+        assert_eq!(
+            routers(store.path()),
+            BTreeSet::from(["QEST-20261112-8GYNJ6".to_owned()]),
+            "the void unmarked, or a copy marked another quest"
+        );
+        assert!(
+            routers(&store.path().join("gone")).is_empty(),
+            "a store that can't be read named a router"
+        );
     }
 
     #[test]
