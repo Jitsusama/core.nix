@@ -34,4 +34,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   };
 
   tests = ./system-page-vm-test.py;
+  # What the sites' VM tests share: asking as the account, a feed opened as
+  # a page opens it, and the daemon started again after a test stops it.
+  extraPythonPackages = python: [ (pkgs.callPackage ./sites-session.nix { } python) ];
+  plugins = [ "sites_session" ];
 }
