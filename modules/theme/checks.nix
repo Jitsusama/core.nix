@@ -123,7 +123,7 @@ let
         lib.filter (step: why step != null) steps
       );
       stepping = pair: lib.any (step: lib.elem pair (moved (px step.from) (px step.to))) steps;
-      frozen = lib.optionals (strides != [ ] && lib.all (name: px name != [ ]) strides) (
+      dragged = lib.optionals (strides != [ ] && lib.all (name: px name != [ ]) strides) (
         lib.filter (pair: !stepping pair) [
           "fore"
           "hind"
@@ -137,7 +137,7 @@ let
           stray
           unlike
           skidding
-          frozen
+          dragged
           missing
         ]
         && strides != [ ];
@@ -146,7 +146,7 @@ let
           "stray ${builtins.toJSON stray}"
           "unlike ${builtins.toJSON unlike}"
           "skidding ${builtins.toJSON skidding}"
-          "never stepping ${builtins.toJSON frozen}"
+          "never stepping ${builtins.toJSON dragged}"
           "undrawn ${builtins.toJSON missing}"
         ]
         # Where they came from, so a pose failing on a change to the code
@@ -382,8 +382,11 @@ in
   # The pose rules refuse what they're for, so they're shown refusing as
   # well as passing: the cat's own strides out of order, alone, with a pair
   # never stepping, after a pose that isn't a stride, undrawn, and none at
-  # all, each by its reason; a pose planted with a stray pixel, and on each
-  # side of the 15% line, too few or many refused and under it held; and
+  # all, each by its reason, and a stride planted with its body moved; a
+  # pose planted with a stray pixel, and on each side of the 15% line, too
+  # few or many refused and under it held, or on it, on a sitting of 20; a
+  # sitting misnamed said undrawn, and a stride no pose lists held to the
+  # stray rule; and
   # the cat's code read as no walk, by the rule it breaks, when it strides
   # by anything but WALKS's frozen quoted words or declares either again,
   # though as its walk when they're only spaced, quoted or commented
@@ -405,7 +408,28 @@ in
       # under it; and with its top four rows filled and a pixel by them, six
       # more, over 15% more, or its top three, five more, under it.
       filled = lib.genList (_: "#####...") 5;
+      # A row with column `x` lit if it wasn't, or unlit if it was.
+      flip =
+        x: row:
+        builtins.substring 0 x row
+        + (if builtins.substring x 1 row == "#" then "." else "#")
+        + builtins.substring (x + 1) 8 row;
+      # Stride C with a pixel of its body moved, high in it or just above
+      # its feet.
+      bodied =
+        y: x:
+        let
+          moved = at: row: if at == y then flip x row else row;
+        in
+        lib.imap0 moved theirs.walkingC.pixels;
+      small = lib.take 4 filled;
       planted = theirs // {
+        shifted.pixels = bodied 3 1;
+        raised.pixels = bodied 6 2;
+        # A sitting of 20, and 3 more, 15% on the line, or 4.
+        small.pixels = small;
+        atLine.pixels = small ++ [ "###....." ];
+        pastLine.pixels = small ++ [ "####...." ];
         strayed.pixels = [ "${builtins.substring 0 7 (lib.head rows)}#" ] ++ lib.tail rows;
         shrunk.pixels = lib.init rows ++ [ "#......." ];
         trimmed.pixels = lib.init rows ++ [ "##......" ];
@@ -452,8 +476,55 @@ in
           sitting = "nothingHere";
           poses = [ "nothingHere" ];
           walkedFrom = "here";
+          glyphs = planted;
           inherit strides;
         };
+      # Each rule at its edge, so a rule loosened or tightened by a pixel,
+      # or a name it reads dropped, fails: on a sitting of 20, a pose 15%
+      # more held and one past it refused; a misnamed sitting said undrawn,
+      # rather than every pose unlike it; and a stride no pose lists still
+      # held to the stray rule.
+      sized = poseFaults {
+        sitting = "small";
+        poses = [
+          "atLine"
+          "pastLine"
+        ];
+        strides = drawnWalk;
+        glyphs = planted;
+      };
+      misnamed = poseFaults {
+        sitting = "nothingHer";
+        poses = [ "walkingA" ];
+        strides = drawnWalk;
+      };
+      unlisted = poseFaults {
+        sitting = "nothingHere";
+        poses = [ "nothingHere" ];
+        strides = drawnWalk ++ [ "strayed" ];
+        glyphs = planted;
+      };
+      edges = [
+        {
+          faults = sized;
+          reason = "atLine, 15% more, held, and pastLine refused";
+          holds = lib.hasInfix ''"pastLine"'' sized.said && !lib.hasInfix ''"atLine"'' sized.said;
+        }
+        {
+          faults = misnamed;
+          reason = "a misnamed sitting said undrawn, and nothing unlike it";
+          holds =
+            let
+              saying = text: lib.hasInfix text misnamed.said;
+            in
+            saying ''undrawn ["nothingHer"]'' && saying "unlike []";
+        }
+        {
+          faults = unlisted;
+          reason = "a stride no pose lists held to the stray rule";
+          holds = lib.hasInfix ''stray ["strayed"]'' unlisted.said;
+        }
+      ];
       refused =
         walk:
         !(said walk.strides).ok
@@ -479,6 +550,7 @@ in
       byWalks = walkedOf "STRIDING frozen as strides by WALKS";
       elsewhere = walkedOf "WALKS named nowhere else";
       once = walkedOf "WALKS and STRIDING each declared once";
+      found = walkedOf "WALKS and STRIDING each found outside a comment";
       walks = [
         {
           strides = [
@@ -510,6 +582,20 @@ in
         {
           strides = [
             "walkingA"
+            "shifted"
+          ];
+          reason = "walkingA to shifted, the body moved";
+        }
+        {
+          strides = [
+            "walkingA"
+            "raised"
+          ];
+          reason = "walkingA to raised, the body moved";
+        }
+        {
+          strides = [
+            "walkingA"
             "walkingZ"
           ];
           reason = "undrawn [\"walkingZ\"]";
@@ -521,6 +607,9 @@ in
           reason = "walkingA to walkingB, both pairs moved";
         }
         (quoted "")
+        (found "")
+        (found "/* ${walksSaid}\n${stridingSaid} */")
+        (found "${walksSaid}\nconst glob = \"src/*\";\n${stridingSaid}")
         (byWalks walksSaid)
         (quoted stridingSaid)
         (byWalks "${walksSaid}\n${stridingOf ''goes: WALKS, climbs: ["walkingA"]''}")
@@ -593,7 +682,8 @@ in
             )
           }, said ${(said walk.strides).said}"
         ) (lib.filter (walk: !refused walk) walks)
-        ++ map (one: "${one.reason}, said ${(plantedFaults one.pose).said}") unshown;
+        ++ map (one: "${one.reason}, said ${(plantedFaults one.pose).said}") unshown
+        ++ map (one: "${one.reason}, said ${one.faults.said}") (lib.filter (one: !one.holds) edges);
     in
     holds "every-skidding-walk-is-refused" (
       "Every skidding walk must be refused, by its reason, and a walk spaced otherwise "

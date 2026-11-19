@@ -1071,9 +1071,12 @@
   every-skidding-walk-is-refused = ''
     the margin's animals' stride rule refuses the cat's own strides out of order, alone, with a
     pair never stepping, after a pose that isn't a stride, undrawn, and none at all, each by
-    its reason; refuses a pose planted with a stray pixel or just over 15% fewer or more,
-    though not one just under; and reads the cat's code as no walk, by the rule it breaks,
-    when it strides by anything but WALKS's frozen quoted words, a word holds a space or
+    its reason, and a stride planted with its body moved; refuses a pose planted with a stray
+    pixel or just over 15% fewer or more, though not one just under, or one on the line of a
+    sitting of 20; says a misnamed sitting undrawn, and holds a stride no pose lists to the
+    stray rule; and reads the cat's code as no walk, by the rule it breaks, when it strides
+    by anything but WALKS's frozen quoted words, either isn't found outside a comment, a word
+    holds a space or
     mismatched quotes, either is left unfrozen or frozen only in part, WALKS is named
     elsewhere, or either is declared again, in a block or as a function, class or loop's
     variable, though as its walk when they're only spaced, quoted or commented otherwise,
