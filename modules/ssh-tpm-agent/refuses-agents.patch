@@ -17,6 +17,11 @@ since, as a rollback past the gate or a later gate's format leaves it,
 is judged by what it last said, journalled once as that starts and once
 as a read comes back. Where the variable is unset, nothing changes.
 
+Where systemd hands the agent's output to the journal, as
+JOURNAL_STREAM says, each line opens with the sd-daemon mark of its
+level's priority, so a refusal, or a gate refusing everyone, reaches
+what reads the journal's warnings rather than standing as info.
+
 diff --git a/agent/agent.go b/agent/agent.go
 index 47a77ee..1f8728f 100644
 --- a/agent/agent.go
@@ -965,3 +970,135 @@ index 0000000..f36a4c5
 +		t.Fatal("no case was judged")
 +	}
 +}
+diff --git a/cmd/ssh-tpm-agent/journal.go b/cmd/ssh-tpm-agent/journal.go
+new file mode 100644
+index 0000000..7704f73
+--- /dev/null
++++ b/cmd/ssh-tpm-agent/journal.go
+@@ -0,0 +1,63 @@
++package main
++
++import (
++	"bytes"
++	"context"
++	"fmt"
++	"io"
++	"log/slog"
++	"sync"
++)
++
++// levelled writes each record as the text handler would, opened with the
++// sd-daemon mark of the priority its level means. The journal stores a line
++// without one at the unit's default, info, so a refusal, or a gate refusing
++// everyone, would never reach `journalctl -p warning` or what watches it.
++type levelled struct {
++	mu   *sync.Mutex
++	out  io.Writer
++	line *bytes.Buffer
++	text slog.Handler
++}
++
++func newLevelled(out io.Writer, opts *slog.HandlerOptions) *levelled {
++	line := &bytes.Buffer{}
++	return &levelled{mu: &sync.Mutex{}, out: out, line: line, text: slog.NewTextHandler(line, opts)}
++}
++
++func (l *levelled) Enabled(ctx context.Context, level slog.Level) bool {
++	return l.text.Enabled(ctx, level)
++}
++
++func (l *levelled) Handle(ctx context.Context, r slog.Record) error {
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	l.line.Reset()
++	if err := l.text.Handle(ctx, r); err != nil {
++		return err
++	}
++	_, err := fmt.Fprintf(l.out, "<%d>%s", priorityOf(r.Level), l.line.Bytes())
++	return err
++}
++
++func (l *levelled) WithAttrs(attrs []slog.Attr) slog.Handler {
++	return &levelled{mu: l.mu, out: l.out, line: l.line, text: l.text.WithAttrs(attrs)}
++}
++
++func (l *levelled) WithGroup(name string) slog.Handler {
++	return &levelled{mu: l.mu, out: l.out, line: l.line, text: l.text.WithGroup(name)}
++}
++
++// priorityOf is syslog's priority for a level: err, warning, info or debug.
++func priorityOf(level slog.Level) int {
++	switch {
++	case level >= slog.LevelError:
++		return 3
++	case level >= slog.LevelWarn:
++		return 4
++	case level >= slog.LevelInfo:
++		return 6
++	default:
++		return 7
++	}
++}
+diff --git a/cmd/ssh-tpm-agent/journal_test.go b/cmd/ssh-tpm-agent/journal_test.go
+new file mode 100644
+index 0000000..2ca9828
+--- /dev/null
++++ b/cmd/ssh-tpm-agent/journal_test.go
+@@ -0,0 +1,38 @@
++package main
++
++import (
++	"bytes"
++	"log/slog"
++	"strings"
++	"testing"
++)
++
++func TestEachLineSaysItsPriority(t *testing.T) {
++	var out bytes.Buffer
++	log := slog.New(newLevelled(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
++	log.Debug("one")
++	log.Info("two")
++	log.Warn("three")
++	log.With("peer", "x").Error("four")
++	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
++	want := []string{"<7>", "<6>", "<4>", "<3>"}
++	if len(lines) != len(want) {
++		t.Fatalf("wrote %d lines, not %d: %q", len(lines), len(want), out.String())
++	}
++	for i, line := range lines {
++		if !strings.HasPrefix(line, want[i]+"time=") {
++			t.Errorf("line %d opens %q, not %q and the text", i, line, want[i])
++		}
++	}
++	if !strings.Contains(lines[3], "peer=x") {
++		t.Errorf("the attribute is lost: %q", lines[3])
++	}
++}
++
++func TestALevelBelowTheFloorWritesNothing(t *testing.T) {
++	var out bytes.Buffer
++	slog.New(newLevelled(&out, &slog.HandlerOptions{Level: slog.LevelInfo})).Debug("quiet")
++	if out.Len() != 0 {
++		t.Errorf("wrote %q", out.String())
++	}
++}
+diff --git a/cmd/ssh-tpm-agent/main.go b/cmd/ssh-tpm-agent/main.go
+index 14e9f17..dccfeff 100644
+--- a/cmd/ssh-tpm-agent/main.go
++++ b/cmd/ssh-tpm-agent/main.go
+@@ -148,7 +148,13 @@ func main() {
+ 		opts.Level = slog.LevelDebug
+ 	}
+ 
+-	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
++	// Where systemd hands the output to the journal, each line says its
++	// priority, so a refusal is seen by what reads warnings.
++	var handler slog.Handler = slog.NewTextHandler(os.Stdout, opts)
++	if os.Getenv("JOURNAL_STREAM") != "" {
++		handler = newLevelled(os.Stdout, opts)
++	}
++	logger := slog.New(handler)
+ 
+ 	slog.SetDefault(logger)
+ 

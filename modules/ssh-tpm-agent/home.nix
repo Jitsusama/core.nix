@@ -67,6 +67,8 @@
 
     # So the switch that first brings the gate, and the core limit below,
     # leaves the agent already running without either until its next start.
+    # zsh's socket text below waits on nothing: each shell opened after the
+    # switch keeps the agent it was given.
     #
     # The gate is read again for each connection, so a switch changes it
     # without the restart that would ask for the PIN again. Only this agent,
@@ -85,6 +87,10 @@
     # before the gate or a later gate in a format this agent predates
     # leaves it, is judged by what it last said, so Joel isn't shut out
     # until a restart asks for the PIN again and agents' work stays refused.
+    # So reverting the gate leaves its last rules in force until a restart;
+    # to stop it refusing without one, switch to a gate.conf whose first line
+    # is watch, which journals each refusal and serves it, keeping its
+    # refuse lines, since a gate refusing no place refuses everyone.
     # A file put in the link's place is replaced at the next switch, rather
     # than stopping the switch that puts the gate back.
     xdg.configFile."ssh-tpm-agent/gate" = {

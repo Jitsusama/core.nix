@@ -157,7 +157,8 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
     its gate and the cgroup the kernel puts the asking process in. The same listing in Joel's
     app slice, asking the same socket first, is served, and the agent's journal says the
     refusal was the gate's, so neither a gate refusing everyone nor an agent that isn't there
-    passes it. A commit from the same slice, Joel's socket in its environment, is still signed
+    passes it; the refusal is read at warning priority, as health reads the journal. A commit
+    from the same slice, Joel's socket in its environment, is still signed
     by the agents' own agent, which runs without the gate.
     """
     socket = f"{joel.runtime}/ssh-tpm-agent.sock"
@@ -169,7 +170,7 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
         )
 
     assert keys.joel in joel.run(listing("app"))
-    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -o cat"
+    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -p warning -o cat"
     # The journal is read from here on, so only this listing's refusal can pass it.
     since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
     said = joel.run(listing("agents"), succeed=False)
