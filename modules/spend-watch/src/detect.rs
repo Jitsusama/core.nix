@@ -1433,10 +1433,15 @@ pub fn unbilled(
     history: &History,
     config: &Config,
 ) -> Result<Vec<Finding>, String> {
-    let Some(through) = warehouse_settled(history, config)? else {
+    let runs: HashSet<&str> = config.feeds.iter().map(|feed| feed.name.as_str()).collect();
+    let Some(through) = warehouse_settled(history, &runs)? else {
         return Ok(Vec::new());
     };
-    if through < crate::time::hour_of(picture.now) - UNBILLED_STALE_HOURS {
+    // A feed's settled hour only moves on, so one it gave past now would
+    // hold the day in the future for good; no hour after now is billed.
+    let now = crate::time::hour_of(picture.now);
+    let through = through.min(now);
+    if through < now - UNBILLED_STALE_HOURS {
         return Ok(vec![unsettled_finding(picture, through)]);
     }
     let first = through - UNBILLED_HOURS;
@@ -1463,6 +1468,11 @@ pub fn unbilled(
         .map_err(fail)?;
     for row in rows {
         let (feed, budget, dollars, since) = row.map_err(fail)?;
+        // A feed the config no longer runs bills nothing more, so what it
+        // billed once doesn't make a budget's day one to judge.
+        if !runs.contains(feed.as_str()) {
+            continue;
+        }
         let budget = budgets.of_record(&feed, &budget);
         *billed.entry(budget.clone()).or_default() += dollars;
         if since < first {
@@ -1494,8 +1504,7 @@ pub fn unbilled(
 /// The hour through which every warehouse feed the config runs has
 /// settled, exclusive: none until one has. A feed removed or renamed in
 /// the config keeps its row, and doesn't hold the window back.
-fn warehouse_settled(history: &History, config: &Config) -> Result<Option<i64>, String> {
-    let runs: HashSet<&str> = config.feeds.iter().map(|feed| feed.name.as_str()).collect();
+fn warehouse_settled(history: &History, runs: &HashSet<&str>) -> Result<Option<i64>, String> {
     let mut statement = history
         .db
         .prepare("SELECT feed, through FROM settled WHERE source = 'warehouse'")
@@ -2302,13 +2311,25 @@ mod tests {
 
     /// What the warehouse billed `budget` at `hour` for `tool`.
     fn billed_for(history: &History, hour: &str, tool: &str, budget: &str, dollars: f64) {
+        billed_on(history, "proxy", hour, tool, budget, dollars);
+    }
+
+    /// What the warehouse billed `budget` at `hour` for `tool`, by `feed`.
+    fn billed_on(
+        history: &History,
+        feed: &str,
+        hour: &str,
+        tool: &str,
+        budget: &str,
+        dollars: f64,
+    ) {
         let line = serde_json::json!({
             "v": 1, "kind": "billed", "source": "warehouse", "hour": hour, "tool": tool,
             "model": "m", "vendor": "v", "dollars": dollars, "budget": budget,
             "tokens": {"input": 0, "cached": 0, "cacheWrite": 0, "output": 0},
         });
         let record = crate::feed::parse(&line.to_string()).unwrap();
-        crate::feed::store(history, "proxy", &record, NOW).unwrap();
+        crate::feed::store(history, feed, &record, NOW).unwrap();
     }
 
     /// The warehouse's last settled hour in the tests, 12:00 on 14 October.
@@ -2340,10 +2361,18 @@ mod tests {
 
     /// The config with the warehouse's one feed, as the machine runs it.
     fn fed_config() -> Config {
+        config_running(&["proxy"])
+    }
+
+    /// The config running each of `feeds`.
+    fn config_running(feeds: &[&str]) -> Config {
+        let feeds: Vec<serde_json::Value> = feeds
+            .iter()
+            .map(|name| serde_json::json!({"name": name, "label": name, "command": ["true"]}))
+            .collect();
         serde_json::from_value(serde_json::json!({
             "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
-            "state": "/none", "zone": "UTC",
-            "feeds": [{"name": "proxy", "label": "Proxy", "command": ["true"]}],
+            "state": "/none", "zone": "UTC", "feeds": feeds,
         }))
         .unwrap()
     }
@@ -2362,9 +2391,12 @@ mod tests {
     }
 
     fn unbilled_keys(history: &History) -> Vec<String> {
-        let config = fed_config();
-        let picture = Picture::read(history, &config, NOW).unwrap();
-        unbilled(&picture, history, &config)
+        unbilled_keys_running(history, &fed_config())
+    }
+
+    fn unbilled_keys_running(history: &History, config: &Config) -> Vec<String> {
+        let picture = Picture::read(history, config, NOW).unwrap();
+        unbilled(&picture, history, config)
             .unwrap()
             .into_iter()
             .map(|f| f.key)
@@ -2532,6 +2564,61 @@ mod tests {
         billed_before(&history);
         turn_on(&history, IN_SETTLED, 100.0, Some("umber"));
         billed_to(&history, SETTLED, "umber", 1.0);
+        assert_eq!(unbilled_keys(&history), [] as [String; 0]);
+    }
+
+    // A budget only a feed the config no longer runs ever billed has no
+    // bill to disagree with, so it isn't told billed nothing every day.
+    #[test]
+    fn a_budget_only_a_removed_feed_billed_is_left_out() {
+        let history = History::memory();
+        billed_before(&history);
+        billed_on(
+            &history,
+            "gone",
+            "2026-10-07T12:00:00Z",
+            "pi",
+            "umber",
+            10.0,
+        );
+        turn_on(&history, IN_SETTLED, 100.0, Some("umber"));
+        assert_eq!(unbilled_keys(&history), [] as [String; 0]);
+    }
+
+    // The day is the one every feed the config runs has settled, so the
+    // feed furthest behind holds it back.
+    #[test]
+    fn the_feed_furthest_behind_holds_the_day() {
+        let history = History::memory();
+        billed_before(&history);
+        settled_to(&history, "second", "2026-10-14T06:00:00Z");
+        let both = config_running(&["proxy", "second"]);
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        assert_eq!(unbilled_keys_running(&history, &both), [] as [String; 0]);
+        // 05:30, within the day the second feed has settled.
+        turn_on(&history, NOW - 9.0 * HOUR, 100.0, Some("ochre"));
+        assert_eq!(unbilled_keys_running(&history, &both), ["unbilled:ochre"]);
+    }
+
+    // A settled hour a feed gave past now would hold the day in the
+    // future for good, so the day ends at the hour under way instead.
+    #[test]
+    fn a_settled_hour_past_now_is_held_to_now() {
+        let history = History::memory();
+        billed_before(&history);
+        settled_to(&history, "proxy", "2026-10-16T00:00:00Z");
+        turn_on(&history, NOW - 2.0 * HOUR, 100.0, Some("teal"));
+        assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+    }
+
+    // The floor is on what went unbilled, not on what was logged: $30
+    // logged and $10 billed is under half, but only $20 short.
+    #[test]
+    fn the_floor_is_on_what_went_unbilled() {
+        let history = History::memory();
+        billed_before(&history);
+        turn_on(&history, IN_SETTLED, 30.0, Some("teal"));
+        billed_to(&history, SETTLED, "teal", 10.0);
         assert_eq!(unbilled_keys(&history), [] as [String; 0]);
     }
 }
