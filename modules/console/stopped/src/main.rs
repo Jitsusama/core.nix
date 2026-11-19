@@ -24,7 +24,8 @@
 //! The shell waits for it, and systemd gives the shell's start only so
 //! long, so every command it asks is held to a deadline (asking.rs): one
 //! that stalls, as a journal on a failing disk can, is stopped and not
-//! asked again, and the summary says what the others told it.
+//! asked again, and the summary says what the others told it, and under
+//! each unit the journal couldn't speak for, why.
 
 mod asking;
 mod summary;
@@ -81,10 +82,14 @@ fn run(context: &Context) -> Result<(), Failure> {
     let units: Vec<Failed> = shown
         .iter()
         .zip(abouts)
-        .map(|(name, about)| Failed {
-            about,
-            said: last(&budget, name),
-            name: name.clone(),
+        .map(|(name, about)| {
+            let (said, unread) = last(&budget, name);
+            Failed {
+                about,
+                said,
+                unread,
+                name: name.clone(),
+            }
         })
         .collect();
     let pen = on_the_console(context);
@@ -174,44 +179,59 @@ const FAILED_WITH_RESULT: &str = "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c";
 /// so the two that say why come first: the last time its process exited,
 /// then the last result it failed with, each asked apart, since a unit
 /// restarting into its start limit says two results and no exit between.
-/// Any other of its lines only when a unit has neither.
-fn last(budget: &Budget, unit: &str) -> Vec<String> {
-    let own = journal(budget, &[&format!("_SYSTEMD_UNIT={unit}")], 20);
-    let own = summary::last_shown(own, 3);
+/// Any other of its lines only when a unit has neither. Where none of it
+/// could be read, the first reason comes with it, since what followed most
+/// often only says the journal wasn't asked again.
+fn last(budget: &Budget, unit: &str) -> (Vec<String>, Option<String>) {
+    let mut unread = None;
+    let mut read = |matching: &[&str], lines: usize| {
+        journal(budget, matching, lines).unwrap_or_else(|why| {
+            unread.get_or_insert(why);
+            Vec::new()
+        })
+    };
+    let own = summary::last_shown(read(&[&format!("_SYSTEMD_UNIT={unit}")], 20), 3);
     if !own.is_empty() {
-        return own;
+        return (own, None);
     }
     let systemd = format!("UNIT={unit}");
-    let mut why = journal(budget, &[&systemd, "_PID=1", PROCESS_EXITED], 1);
-    why.extend(journal(
-        budget,
-        &[&systemd, "_PID=1", FAILED_WITH_RESULT],
-        1,
-    ));
+    let mut why = read(&[&systemd, "_PID=1", PROCESS_EXITED], 1);
+    why.extend(read(&[&systemd, "_PID=1", FAILED_WITH_RESULT], 1));
     if why.is_empty() {
-        journal(budget, &[&systemd, "_PID=1"], 1)
+        why = read(&[&systemd, "_PID=1"], 1);
+    }
+    if why.is_empty() {
+        (why, unread)
     } else {
-        why
+        (why, None)
     }
 }
 
 /// The last `lines` this boot's journal holds matching every one of
-/// `matching`, as they were said; nothing where the journal can't be read
-/// in time.
-fn journal(budget: &Budget, matching: &[&str], lines: usize) -> Vec<String> {
+/// `matching`, as they were said, or why the journal couldn't be read: in
+/// time, or at all, in journalctl's own words where it printed nothing.
+/// Nothing matching is no reason, since journalctl ends well for it.
+fn journal(budget: &Budget, matching: &[&str], lines: usize) -> Result<Vec<String>, String> {
     let lines = format!("--lines={lines}");
     let mut args = vec!["--boot"];
     args.extend(matching);
     args.extend([lines.as_str(), "--output=cat", "--no-pager", "--quiet"]);
-    budget
-        .ask("journalctl", &args)
-        .map(|said| {
-            String::from_utf8_lossy(&said.stdout)
-                .lines()
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default()
+    let said = budget.ask("journalctl", &args)?;
+    if !said.status.success() && said.stdout.is_empty() {
+        let errors = String::from_utf8_lossy(&said.stderr);
+        return Err(errors
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .map_or_else(
+                || format!("journalctl ended with {}", said.status),
+                |line| line.trim().to_owned(),
+            ));
+    }
+    Ok(String::from_utf8_lossy(&said.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect())
 }
 
 #[cfg(test)]

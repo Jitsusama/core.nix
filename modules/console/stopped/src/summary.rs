@@ -1,7 +1,8 @@
 //! What a failed boot's console says, laid out from what systemd said:
 //! each unit that failed, a step in from the edge, with what it said
-//! under it, at most four of them so the screen holds them above the
-//! shell's own words, and the way out last.
+//! under it, or why its journal couldn't say, at most four of them so
+//! the screen holds them above the shell's own words, and the way out
+//! last.
 
 use terminal_kit::Pen;
 use terminal_kit::layout::{self, Room};
@@ -26,6 +27,9 @@ pub struct Failed {
     /// The last its own programs said that draws, or, when none does, why
     /// systemd said it failed, a line each.
     pub said: Vec<String>,
+    /// Why its journal couldn't be read, where it gave nothing, so a
+    /// unit with nothing under it is told from one whose journal stalled.
+    pub unread: Option<String>,
 }
 
 /// The summary: the first `SHOWN` of `failed`, how many more there are
@@ -42,6 +46,13 @@ pub fn text(failed: &[Failed], all: usize, pen: &Pen, room: Room) -> String {
         out.push('\n');
         for line in &unit.said {
             for part in under(line, room) {
+                out.push_str(UNDER);
+                out.push_str(&pen.role("muted", &part));
+                out.push('\n');
+            }
+        }
+        if let Some(why) = &unit.unread {
+            for part in under(&format!("its journal couldn't be read: {why}"), room) {
                 out.push_str(UNDER);
                 out.push_str(&pen.role("muted", &part));
                 out.push('\n');
@@ -382,6 +393,7 @@ mod tests {
             name: name.to_owned(),
             about: about.to_owned(),
             said: said.iter().map(|line| (*line).to_owned()).collect(),
+            unread: None,
         }
     }
 
@@ -428,6 +440,20 @@ mod tests {
             shown.get(at + 1..at + 3),
             Some(&["     disk gone", ""][..]),
             "a line that draws nothing was given a row of its own: {summary:?}"
+        );
+    }
+
+    #[test]
+    fn a_journal_that_couldnt_be_read_says_why_under_its_unit() {
+        let failed = [Failed {
+            unread: Some("journalctl didn't answer in time, so it was stopped".to_owned()),
+            ..unit("home.mount", "Mount /home", &[])
+        }];
+        assert_eq!(
+            text(&failed, 1, &console(), Room::Cells(100)),
+            "\n  x  home.mount  Mount /home\n     its journal couldn't be read: journalctl didn't \
+             answer in time, so it was stopped\n\n     Ctrl+Alt+Delete restarts; hold \
+             Space as it starts for an older generation.\n\n"
         );
     }
 
