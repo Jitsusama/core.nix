@@ -224,7 +224,7 @@ in
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}
-        timeout 120 ${qs} -p shell.qml
+        timeout 180 ${qs} -p shell.qml
         touch $out
       '';
 

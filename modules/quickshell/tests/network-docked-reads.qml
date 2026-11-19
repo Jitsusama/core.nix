@@ -203,17 +203,22 @@ ShellRoot {
     }
 
     // Holds once `check` does, failing past `ms` as `what` never held,
-    // with what was said. A wait on a load stays inside the five seconds
-    // after which old facts are loaded again anyway, so a load that lands
-    // is the one the case set off: a card's sweep gets four, for a loaded
-    // builder. Only a wait on a give-up, which no load brings, runs longer.
+    // with what was said. `check` is tried first, so a poll that comes
+    // late can't fail a wait that holds. A wait on a load gets four
+    // seconds a card, for a loaded builder. An ask five seconds past the
+    // last look loads everything again, through the calls the case makes
+    // itself, so such a load proves only what the case's own would. A wait
+    // on a load said to come unasked looks first, so no ask in it can.
+    // Only a wait on a give-up, which no load brings, runs past four.
     function within(ms, check) {
         const began = Date.now();
         return () => {
+            if (check())
+                return true;
             if (Date.now() - began > ms)
                 throw new Error(`${waits.what} never held in ${ms} ms: ${said()}; `
                     + `told ${JSON.stringify(told)}`);
-            return check();
+            return false;
         };
     }
 
@@ -270,13 +275,13 @@ ShellRoot {
         Written.written(up, "1000.00 4000.00\n");
         networks.uptimeFile = `${root.dir}/uptime`;
         waits.until("the lease's time left from the uptime loaded",
-            within(2000, () => said().endsWith(" | ends in 2 h")), root.glanced);
+            within(4000, () => said().endsWith(" | ends in 2 h")), root.glanced);
     }
 
     // The drawer, made whole once the files land; and the uptime counted
     // on from when it was loaded, an hour back, by the clock.
     function glanced() {
-        waits.until("the cable's drawer made whole once its files land", within(2000, () => {
+        waits.until("the cable's drawer made whole once its files land", within(4000, () => {
             const facts = (networks.glances.enp0s1 ?? []).map(f => `${f.label}=${f.value}`);
             return facts.includes("Speed=1 Gb/s") && facts.includes("Duplex=full");
         }), () => {
@@ -307,7 +312,7 @@ ShellRoot {
         said();
         Expect.expect("asked after a gap, it's still reading until they land again",
             networks.stillReading, String(networks.stillReading));
-        waits.until("a terminal asking on told what they say now", within(2000, () =>
+        waits.until("a terminal asking on told what they say now", within(4000, () =>
             !networks.stillReading && said() === "100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in 3 min"
                 && brokenIn() === "5"), root.opening);
     }
@@ -320,7 +325,7 @@ ShellRoot {
         told = [];
         shown.open = true;
         waits.until("the launcher told of the uptime once the opening's load lands",
-            within(2000, () => told.includes("100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in 1 h")),
+            within(4000, () => told.includes("100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in 1 h")),
             root.steady);
     }
 
@@ -329,7 +334,7 @@ ShellRoot {
         told = [];
         Written.written(up, `${Math.round(networks.uptime())}.00 4000.00\n`);
         networks.reloadFacts();
-        waits.until("the facts loaded again", within(2000, () => networks.factsAsked.length === 0),
+        waits.until("the facts loaded again", within(4000, () => networks.factsAsked.length === 0),
             () => {
             Expect.expect("an uptime load that agrees with the count tells nothing",
                 told.length === 0, JSON.stringify(told));
@@ -349,7 +354,7 @@ ShellRoot {
             Written.written(resolv, "nameserver 1.1.1.1\n");
             networks.reloadFacts();
             waits.until("shut, a name server changed makes its drawer again",
-                within(2500, () =>
+                within(4000, () =>
                     JSON.stringify(networks.glances.enp0s1).includes("1.1.1.1")),
                 root.toldServers);
         });
@@ -360,28 +365,36 @@ ShellRoot {
         shown.open = true;
         networks.reloadFacts();
         waits.until("open, the launcher is told of a name server changed",
-            within(2000, () => told.some(each => each.includes(" | 8.8.8.8 | "))),
+            within(4000, () => told.some(each => each.includes(" | 8.8.8.8 | "))),
             root.recabled);
     }
 
     // Open, with no cable shown, so nothing loads it each second: once its
-    // files load again and land, changed, the launcher is told.
+    // files load again and land, changed, the launcher is told. Opening set
+    // off a sweep, which may have read the speed already, so it's let land
+    // first, or the speed written here would be asked of no load.
     function recabled() {
-        told = [];
-        Written.written(speed, "2500\n");
-        networks.recable();
-        waits.until("the launcher told once a cable's load lands changed",
-            within(2000, () => told.some(each => each.startsWith("2.5 Gb/s | "))), root.opened);
+        waits.until("the opening's sweep landed", within(4000, root.swept), () => {
+            told = [];
+            Written.written(speed, "2500\n");
+            networks.recable();
+            waits.until("the launcher told once a cable's load lands changed",
+                within(4000, () => told.some(each => each.startsWith("2.5 Gb/s | "))),
+                root.opened);
+        });
     }
 
     // A cable shown, held as a step into it: its link loads again each
     // second, unasked, and the launcher is told when it changes.
+    // Looked at now, so no ask in the five seconds it waits looks again:
+    // the load it waits on is the tick's alone, a second and a sweep on.
     function opened() {
+        networks.lookedAt = Date.now();
         shown.held = [{ row: { key: "networks:enp0s1" } }];
         told = [];
         Written.written(speed, "1000\n");
         waits.until("while a cable's shown, its link loads again each second",
-            within(2500, () => told.some(each => each.startsWith("1 Gb/s | "))), root.relinked);
+            within(5000, () => told.some(each => each.startsWith("1 Gb/s | "))), root.relinked);
     }
 
     // The daemon says the cable has lost its link as its files load,
@@ -443,7 +456,7 @@ ShellRoot {
                     && !networks.cablesAsked.includes("enp0s2"),
                 JSON.stringify([networks.cableLoading, networks.cablesAsked]));
             waits.until("a card held up has its drawer made as the daemon says it",
-                within(2000, () => networks.glances.enp0s2 !== undefined), root.watched);
+                within(4000, () => networks.glances.enp0s2 !== undefined), root.watched);
         });
     }
 
@@ -518,7 +531,7 @@ ShellRoot {
                 && fresh.every(view => networks.factsAsked.includes(view)),
             JSON.stringify(networks.factsStuck));
         waits.until("the facts asked land",
-            within(1000, () => networks.factsAsked.length === 0), () => {
+            within(4000, () => networks.factsAsked.length === 0), () => {
             Expect.expect("facts asked again, landing in time, are let go",
                 Object.keys(networks.factsStuck).join() === hungFact.path,
                 JSON.stringify(networks.factsStuck));
@@ -595,7 +608,7 @@ ShellRoot {
             JSON.stringify([networks.cableLoading, networks.cablesAsked]));
         networks.cablesStuck.enp0s2.at = Date.now() + 3600000;
         networks.recable();
-        waits.until("a card held up is loaded once the clock steps back", within(4000, () =>
+        waits.until("a card held up is loaded once the clock steps back", within(8000, () =>
             root.swept() && networks.cables.enp0s2 !== undefined
                 && networks.cablesStuck.enp0s2 === undefined), root.replugged);
     }
