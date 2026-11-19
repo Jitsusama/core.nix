@@ -47,12 +47,15 @@ interface Tie {
 
 const inOrder = (one: string, other: string): number => one.localeCompare(other);
 
-/** Each other repository a cell in `repository` works across, by key, with the cell. */
+/**
+ * Each other repository a cell at work in `repository` works across, by key, with the cell; a
+ * cell quiet or resting gets nothing done between them, as the page counts it nowhere else.
+ */
 function* across(
   repository: Repository,
   spellings: ReadonlyMap<string, readonly string[]>,
 ): Generator<readonly [string, string]> {
-  for (const cell of repository.cells) {
+  for (const cell of atWork(repository.cells)) {
     for (const name of networked(cell)) {
       const [key, ...alike] = name === "" ? [] : (spellings.get(name) ?? []);
       if (key !== undefined && alike.length === 0 && key !== repository.key) {

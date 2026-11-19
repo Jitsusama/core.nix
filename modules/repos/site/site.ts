@@ -148,7 +148,7 @@ function draw(): void {
   // A link in the drawer that a move redraws is gone, so focus stays in the drawer.
   const wasIn = opened.contains(document.activeElement);
   write(stand, groveOfTrees(grove));
-  drawMap(grove.repositories);
+  drawMap(grove.repositories, (key) => choose(key, null));
   drawList();
   drawOpen();
   if (wasIn) {

@@ -59,6 +59,8 @@ const UNIT = 10;
 let drawn: MycelialMap = { rows: [], threads: [], ties: [] };
 let at = 0;
 let saying = "";
+// How the page opens a repository by its key, as the list does, which the page gives the map.
+let opening: (key: string) => void = () => undefined;
 
 /** One thread as an arc from its tie's upper row to its lower, deeper the farther apart. */
 function arc(thread: Thread, rows: number): string {
@@ -85,12 +87,18 @@ function markup(): string {
       <span class="tie-name" data-name translate="no">${escaped(row.name)}</span></div>`,
     )
     .join("");
-  return `<svg class="tie-threads" viewBox="0 -1 100 ${height + 2}" preserveAspectRatio="none"
+  // The drawing is exactly the rows' height, so stretched to them each thread ends on its row's
+  // middle.
+  return `<svg class="tie-threads" viewBox="0 0 100 ${height}" preserveAspectRatio="none"
     aria-hidden="true">${lines}</svg>${options}`;
 }
 
-/** Draws the map of `repositories`, keeping the row the keys rest on by its repository. */
-function drawMap(repositories: readonly Repository[]): void {
+/**
+ * Draws the map of `repositories`, keeping the row the keys rest on by its repository, and opens
+ * one with `opens`, as the list would.
+ */
+function drawMap(repositories: readonly Repository[], opens: (key: string) => void): void {
+  opening = opens;
   const was = drawn;
   drawn = mapOf(repositories);
   at = kept(was, at, drawn);
@@ -120,15 +128,18 @@ function rest(): void {
   }
   map.setAttribute("aria-activedescendant", `tie-${at}`);
   // The caption names each repository as the page does elsewhere, as a link to its home, so a
-  // pointer opens any of them and the homes probe reads each named where it lives.
+  // pointer opens any of them and the homes probe reads each named where it lives. A link the
+  // redraw takes away leaves the keys on the map rather than at the top of the page.
+  const held = here.contains(document.activeElement);
   write(here, `${linked(row)}: ${saidOf(drawn, at, linked)}`);
+  if (held && !here.contains(document.activeElement)) {
+    map.focus({ preventScroll: true });
+  }
 }
 
-/** Says that nothing lies `way`, in other words when it's said again, so a repeat is heard. */
-function sayNothing(way: Way): void {
-  const name = drawn.rows[at]?.name ?? "";
-  const words = `Nothing lies ${NOTHING[way]} ${name} on the map.`;
-  saying = saying === words ? `Still nothing ${NOTHING[way]} ${name}.` : words;
+/** Says `words`, or `again` when they were said last, so a repeat is heard too. */
+function say(words: string, again: string): void {
+  saying = saying === words ? again : words;
   said.textContent = saying;
 }
 
@@ -136,7 +147,8 @@ function sayNothing(way: Way): void {
 function go(way: Way): void {
   const to = walked(drawn, at, way);
   if (to === undefined || to === at) {
-    sayNothing(way);
+    const where = `${NOTHING[way]} ${drawn.rows[at]?.name ?? ""}`;
+    say(`Nothing lies ${where} on the map.`, `Still nothing ${where}.`);
     return;
   }
   at = to;
@@ -148,18 +160,13 @@ function go(way: Way): void {
 }
 
 /**
- * Opens the repository at the row, as following a link to it does, which takes the keys to it in
- * the list; the one already open moves no address, so the keys are taken there here.
+ * Opens the repository at the row as the list does, which shows it there past any find, takes
+ * the keys to it, and moves the address in place, the one already open too.
  */
 function open(index: number): void {
   const row = drawn.rows[index];
-  if (row === undefined) {
-    return;
-  }
-  if (location.hash === row.address) {
-    list.focus();
-  } else {
-    location.hash = row.address;
+  if (row !== undefined) {
+    opening(row.key);
   }
 }
 
@@ -173,8 +180,8 @@ map.addEventListener("keydown", (event) => {
   } else if (event.key === "Enter") {
     open(at);
   } else if (LISTS.has(event.key)) {
-    const name = drawn.rows[at]?.name ?? "";
-    said.textContent = `${event.key} acts on the list: Return takes the keys to ${name} there.`;
+    const there = `on the list: Return takes the keys to ${drawn.rows[at]?.name ?? ""} there.`;
+    say(`${event.key} acts ${there}`, `${event.key} still acts ${there}`);
   } else if (event.key !== "Escape") {
     return;
   }
