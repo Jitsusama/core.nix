@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Lays out what tests/sessions-behind-the-lock.qml needs beside the session
-# it hands another beside, and tests/sessions-hosted-reopen.qml beside the
-# hosted sessions it reopens, which each one's stand-in for the machine's
-# node tells of, under the folder given: the realm the node keeps, the
-# list pi's host keeps of the sessions it runs, which names s-viewed alone,
-# and the harness's quest index, saying where a new session on QEST-ADRIFT
-# starts, for the one whose folder is gone.
+# Lays out what modules/quickshell/tests/sessions-behind-the-lock.qml needs
+# beside the session it hands another beside, and
+# modules/quickshell/tests/sessions-hosted-reopen.qml beside the hosted
+# sessions it reopens, which each one's stand-in for the machine's node tells
+# of, under the folder given: the realm the node keeps, the list pi's host
+# keeps of the sessions it runs, which names s-viewed alone, and the harness's
+# quest index, saying where a new session on QEST-ADRIFT starts, for the one
+# whose folder is gone.
 set -euo pipefail
 
 state=$1

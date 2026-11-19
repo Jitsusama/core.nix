@@ -38,13 +38,14 @@
   # pi, as an agent source, sorts the node's sessions into those running,
   # parked and closed this boot, and says each as the agent source
   # contract's record, leaving out what pi didn't say, as
-  # tests/pi-source.qml holds PiSource.js to it in Qt's own engine.
+  # modules/quickshell/tests/pi-source.qml holds PiSource.js to it in Qt's own
+  # engine.
   pi-tells-of-its-sessions-as-an-agent-source =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "pi-tells-of-its-sessions-as-an-agent-source" { } ''
-      cp ${../../../tests/pi-source.qml} pi-source.qml
+      cp ${../tests/pi-source.qml} pi-source.qml
       ${copied [ "PiSource.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

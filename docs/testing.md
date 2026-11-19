@@ -360,8 +360,8 @@ quietly stopped holding.
 ### The Desktop's Logic
 
 Run in Qt's own JavaScript engine, the one the desktop runs it in, over cases
-written beside the shell in `modules/quickshell/tests/`; a case a VM test
-reads too waits in `tests/` until it moves.
+written beside the shell in `modules/quickshell/tests/`; those not moved yet
+wait in `tests/` until they do.
 
 ### Examples
 
@@ -393,9 +393,10 @@ idle time passes, which `the-notices-wait-while-joel-is-away` uses.
 The launcher is typed into there: wtype's keys reach the surface holding the
 keyboard, the launcher's, so a case that only types and reads the launcher
 runs on the account's whole shell, through pytest, with
-`tests/launcher_on_niri.py` keeping the desktop test's helpers' names.
-`the-launcher-answers-whats-typed-on-niri` is the first, in seconds where the
-same cases took minutes in `vm-desktop-launcher-finds-by-name`.
+`modules/quickshell/tests/launcher_on_niri.py` keeping the desktop test's
+helpers' names. `the-launcher-answers-whats-typed-on-niri` is the first, in
+seconds where the same cases took minutes in
+`vm-desktop-launcher-finds-by-name`.
 
 Two things it can't do, so they stay in a machine. Nested, niri has one
 output that never goes, so screens coming and going need a VM. And keys
@@ -496,9 +497,9 @@ and 6 after it. The 18 that came the frame after took a median 32, 18 ms of it
 after the swap, niri's part. Another run on another builder presented a median 40,
 all the frame after (2026-11-15).
 
-A key is timed by the `keys-lab` beside it
-(`tests/launcher-keys-lab-on-niri.py`). It opens home round after round and
-types each of `LAB_WORDS` (Joel's `meet` and `om` unless given) a letter at
+A key is timed by `modules/quickshell/tests/launcher-keys-lab-on-niri.py`, the
+`keys-lab` beside it. It opens home round after round and types each of
+`LAB_WORDS` (Joel's `meet` and `om` unless given) a letter at
 a time, each once the one before is shown, and prints each key's line as the
 shell says it, then each part's median by key. The line splits a search's
 time before searching by what it set, and its rows by matching, ordering,

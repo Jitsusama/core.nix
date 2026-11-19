@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Lays out what pi's sessions leave beside what the machine's node says of
-# them, for tests/sessions.qml, under the folder given: the realm the node
-# keeps, closed sessions' own records, and a stand-in kitten listing one
-# kitty's windows. What the last boot's end took away the agents daemon
-# serves, which the test stands in for too. The sessions themselves
-# are the node's, which the test stands in for, so no presence record is
-# laid out and no process started.
+# them, for modules/quickshell/tests/sessions.qml, under the folder given: the
+# realm the node keeps, closed sessions' own records, and a stand-in kitten
+# listing one kitty's windows. What the last boot's end took away the agents
+# daemon serves, which the test stands in for too. The sessions themselves are
+# the node's, which the test stands in for, so no presence record is laid out
+# and no process started.
 set -euo pipefail
 
 state=$1

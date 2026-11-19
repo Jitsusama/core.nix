@@ -994,7 +994,7 @@ ShellRoot {
             // 2026-11-08); what it said is its note.
             // Each as the notices daemon serves it, its drawer and its acts
             // the daemon's (modules/notices' row.rs), done as every served
-            // row's are (tests/ready-rows.qml).
+            // row's are (modules/quickshell/tests/ready-rows.qml).
             same("its notices, newest first", names(sent), "Newest, Oldest");
             // Ctrl+] on a notice goes to its sender where it lives, as Vim
             // follows a tag, by the program's row among Programs.

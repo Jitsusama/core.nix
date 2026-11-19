@@ -31,12 +31,12 @@ in
 {
   # The launcher answers what's typed into it, and takes vi's keys, on the
   # account's whole shell on niri, in seconds rather than
-  # a machine's minutes (tests/launcher-on-niri-test.py). Its meanings come
-  # from the meaning daemon's stand-in, which loads no model
-  # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli
-  # answering from the files a test writes, the real warp reading them
-  # (tests/stand-ins/warp-cli-stand-in.sh), and warp holds its link on the socket
-  # the account's systemd would, as WARP, the shaper's status what a test
+  # a machine's minutes (modules/quickshell/tests/launcher-on-niri-test.py). Its
+  # meanings come from the meaning daemon's stand-in, which loads no model
+  # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli answering
+  # from the files a test writes, the real warp reading them
+  # (tests/stand-ins/warp-cli-stand-in.sh), and warp holds its link on the
+  # socket the account's systemd would, as WARP, the shaper's status what a test
   # writes in ~/shaper, and the clipboard's history serves Copies' rows and
   # Emoji's. The home network is the eero daemon's stand-in, holding the
   # contract's network and the rows the daemon serves of it
@@ -50,7 +50,7 @@ in
     in
     launcherOnNiri {
       name = "the-launcher-answers-whats-typed-on-niri";
-      tests = ../../../tests/launcher-on-niri-test.py;
+      tests = ../tests/launcher-on-niri-test.py;
       # Six parts side by side, of about 80 s of cases each by their
       # times on 13 November (--durations), the timed trials kept together
       # in the last, and the degraded Work Network's minute-long wait alone
@@ -102,8 +102,8 @@ in
   # Timing the Launcher), built only when asked for by name, since no gate runs
   # it (modules/quickshell/tests/launcher-lab-on-niri.py), and its `keys-lab`
   # each key typed from home as Joel types them, with Qt's profiler at hand for
-  # a run that asks (tests/launcher-keys-lab-on-niri.py). They're passed
-  # through, which outlasts the description checks.nix adds.
+  # a run that asks (modules/quickshell/tests/launcher-keys-lab-on-niri.py).
+  # They're passed through, which outlasts the description checks.nix adds.
   the-launcher-opens-on-what-it-kept-on-niri =
     let
       # What niri runs on a chord, said by the cases through a restart.
@@ -138,7 +138,7 @@ in
           };
           keys-lab = launcherOnNiri {
             name = "the-launcher-keys-lab-on-niri";
-            tests = ../../../tests/launcher-keys-lab-on-niri.py;
+            tests = ../tests/launcher-keys-lab-on-niri.py;
             # The profiler of the Qt the shell runs on, beside what the lab
             # is given, without which Emoji and Copies have no rows.
             given = given ++ [
@@ -154,10 +154,10 @@ in
 
   # The launcher and a window share the keys by one rule: the newest Joel
   # opened takes them, a notice arriving never does, and a click on a
-  # window gives it them (tests/focus-on-niri-test.py).
+  # window gives it them (modules/quickshell/tests/focus-on-niri-test.py).
   the-newest-surface-takes-the-keys-on-niri = launcherOnNiri {
     name = "the-newest-surface-takes-the-keys-on-niri";
-    tests = ../../../tests/focus-on-niri-test.py;
+    tests = ../tests/focus-on-niri-test.py;
     given = [ "WLRCTL=${lib.getExe pkgs.wlrctl}" ];
   };
 
@@ -216,15 +216,16 @@ in
     '';
 
   # The launcher lands where it did: a thing is one row, the same letters
-  # keep their row, and one slip teaches nothing, as tests/ranking.qml holds
-  # launcher/Rank.js to it in Qt's own engine, with launcher/Member.js
-  # making what a search found and launcher/Fading.js what picks still count.
+  # keep their row, and one slip teaches nothing, as
+  # modules/quickshell/tests/ranking.qml holds launcher/Rank.js to it in Qt's
+  # own engine, with launcher/Member.js making what a search found and
+  # launcher/Fading.js what picks still count.
   the-launcher-lands-where-it-did =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-lands-where-it-did" { } ''
-      cp ${../../../tests/ranking.qml} ranking.qml
+      cp ${../tests/ranking.qml} ranking.qml
       cp ${../launcher/Rank.js} Rank.js
       cp ${../launcher/Member.js} Member.js
       cp ${../launcher/Fading.js} Fading.js
@@ -572,14 +573,14 @@ in
 
   # Each opening of the launcher is kept as what it took: its keys by kind,
   # its pick and how long it took, and a miss only where letters were typed
-  # and nothing picked, as tests/trials.qml holds launcher/Trials.js to it in
-  # Qt's own engine.
+  # and nothing picked, as modules/quickshell/tests/trials.qml holds
+  # launcher/Trials.js to it in Qt's own engine.
   the-launcher-keeps-its-trials =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-keeps-its-trials" { } ''
-      cp ${../../../tests/trials.qml} trials.qml
+      cp ${../tests/trials.qml} trials.qml
       cp ${../launcher/Trials.js} Trials.js
       cp ${../launcher/RowsKept.js} RowsKept.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

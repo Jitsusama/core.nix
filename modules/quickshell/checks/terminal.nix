@@ -12,14 +12,14 @@
 {
   # What `launcher show` prints in a terminal is what the launcher holds:
   # a step names its row, a miss the names nearest it, and a row and its
-  # drawer come as the words drawn, as tests/showing.qml holds
-  # launcher/Showing.js to it in Qt's own engine.
+  # drawer come as the words drawn, as modules/quickshell/tests/showing.qml
+  # holds launcher/Showing.js to it in Qt's own engine.
   the-launcher-shows-a-terminal-what-it-holds =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-shows-a-terminal-what-it-holds" { } ''
-      cp ${../../../tests/showing.qml} showing.qml
+      cp ${../tests/showing.qml} showing.qml
       cp ${../launcher/Showing.js} Showing.js
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

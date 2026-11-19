@@ -16,8 +16,8 @@ pragma ComponentBehavior: Bound
 // parked, asks the node, which wakes it. What an earlier boot's end took away is
 // offered as the agents daemon serves it, stood in for too, one that ran
 // hosted among it, whose host brings it back, so asking reopens no pi for
-// it (tests/sessions-hosted-reopen.qml), the rest reopened held in its
-// own folder, one pi never saved started under its own id with its
+// it (modules/quickshell/tests/sessions-hosted-reopen.qml), the rest reopened
+// held in its own folder, one pi never saved started under its own id with its
 // quest, and Reopen Them All reopens even when niri never answers its ask
 // for the screens; what another machine carried here, or pi's host gave
 // back, is offered after it; forgetting one and putting the last boot off
@@ -276,7 +276,8 @@ ShellRoot {
         // one Joel is on, keeping niri's token, since he asked for it (Joel,
         // 2026-11-15 18:45: one "materialize[d] on my main chrome workspace").
         // The token alone never took him there; the shell focuses the window
-        // once niri lists it (tests/sessions-go-to-focuses.qml).
+        // once niri lists it
+        // (modules/quickshell/tests/sessions-go-to-focuses.qml).
         const opened = Niri.acted?.OpenNextWindowOn;
         expect("one elsewhere opens on its orchestrator's workspace",
             opened?.reference?.Id === 8 && opened?.app_id === asked(joined)?.classed,

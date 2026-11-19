@@ -121,16 +121,16 @@ in
   # pi's sessions are known by their own records as the machine's node
   # holds them, never by a window's title, and each one's window by the app
   # id it opened with, or for one opened without, through the kitty it runs
-  # in (tests/sessions.qml), with the node, the agents daemon, niri and
-  # kitten stood in over what modules/quickshell/tests/stand-ins/
-  # sessions-state.sh lays out.
+  # in (modules/quickshell/tests/sessions.qml), with the node, the agents
+  # daemon, niri and kitten stood in over what
+  # modules/quickshell/tests/stand-ins/sessions-state.sh lays out.
   a-session-is-known-by-its-own-record =
     let
       # Three windows of the same title, one of kitty 500's and two of 600's,
       # the second opened as pi-session.7 and laid out in workspace 3's
       # second column, each with the app id it opened with kept, as Niri.qml
       # keeps it; the windows daemon tells of the same three
-      # (tests/sessions.qml).
+      # (modules/quickshell/tests/sessions.qml).
       niri = singleton "Niri.qml" ''
         property var windows: ({
           "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse", opened: "kitty" },
@@ -186,7 +186,7 @@ in
       ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
-      cp ${../../../tests/sessions.qml} shell.qml
+      cp ${../tests/sessions.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
@@ -268,8 +268,9 @@ in
     '';
 
   # Reopen Them All opens only the viewer of a session pi's host brought
-  # back, quietly where the last boot kept it (tests/sessions-hosted-reopen.qml),
-  # with the node and niri stood in.
+  # back, quietly where the last boot kept it
+  # (modules/quickshell/tests/sessions-hosted-reopen.qml), with the node and
+  # niri stood in.
   a-hosted-viewer-reopens-where-it-was =
     let
       # Joel's window on the monitor's first workspace, and the empty one
@@ -302,7 +303,7 @@ in
       ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
-      cp ${../../../tests/sessions-hosted-reopen.qml} shell.qml
+      cp ${../tests/sessions-hosted-reopen.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Watch.js} Watch.js
       cp ${niri} Niri.qml
@@ -319,8 +320,9 @@ in
     '';
 
   # Go To on a session with no window here brings the window it opens to the
-  # front once niri lists it (tests/sessions-go-to-focuses.qml), with the node
-  # and niri stood in.
+  # front once niri lists it
+  # (modules/quickshell/tests/sessions-go-to-focuses.qml), with the node and
+  # niri stood in.
   go-to-brings-a-windowless-session-forward =
     let
       niri = ../tests/stand-ins/hosted-reopen-niri.qml;
@@ -351,7 +353,7 @@ in
       ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
-      cp ${../../../tests/sessions-go-to-focuses.qml} shell.qml
+      cp ${../tests/sessions-go-to-focuses.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml

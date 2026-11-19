@@ -3,8 +3,8 @@
 Here the launcher finds what Joel types: each thing once, by every name it had, emoji in
 their place, a category and a step by their words, the field's keys, and what Spotify found by
 its name holds once it's read, which needs its client's desktop entry. What it answers with
-no machine is tests/launcher-on-niri-test.py's, on a nested niri in seconds; only its shots
-are here.
+no machine is modules/quickshell/tests/launcher-on-niri-test.py's, on a nested niri in seconds;
+only its shots are here.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -1571,8 +1571,9 @@ def shoot_a_calendar(desktop: Desktop, calendar: str, picture: str, *, timed: bo
 def test_the_answers_are_shot_for_the_gallery(desktop: Desktop) -> None:
     """The launcher's answers are shot for the gallery, and only there.
 
-    What they answer is tests/launcher-on-niri-test.py's to prove, in seconds on a nested niri; a
-    person still looks at how each is drawn on the laptop's screen, so the gallery keeps them.
+    What they answer is modules/quickshell/tests/launcher-on-niri-test.py's to prove, in seconds on
+    a nested niri; a person still looks at how each is drawn on the laptop's screen, so the gallery
+    keeps them.
     """
     if not desktop.values["shots"]:
         return
@@ -1678,9 +1679,9 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
 
     It does nothing that ends something unasked: with no terminal, it's refused.
 
-    What the shell answers is tests/launcher-on-niri-test.py's, and how it's laid out
-    in-a-terminal's own tests'; here the program the account is given reaches the shell the
-    session runs, WARP's place and drawer among what it says, read from the stand-in
+    What the shell answers is modules/quickshell/tests/launcher-on-niri-test.py's, and how it's
+    laid out in-a-terminal's own tests'; here the program the account is given reaches the shell
+    the session runs, WARP's place and drawer among what it says, read from the stand-in
     warp-cli. The gallery keeps it in kitty at Joel's scales.
     """
     machine = desktop.machine
