@@ -260,6 +260,20 @@ pub fn checked_out(source: Source) -> (String, Option<PathBuf>) {
     (command, bundle.map(|(bundle, _)| bundle))
 }
 
+/// What the far side's shell runs to unpack the files `archived` sends,
+/// read from its standard input, in a folder of its own named in `leaves`
+/// and gone when the shell ends, as [`checked_out`]'s is, and to go into
+/// the run's folder there, ending `; `; and the archive it reads.
+pub fn unpacked(archived: there::Archived) -> (String, PathBuf) {
+    let into = "/tmp/nix-offload-changed-$$";
+    let command = format!(
+        "leaves={into}; set -e; rm -rf {into}; mkdir -p {into}/tree; \
+         trap 'rm -rf {into}' EXIT; tar -xzf - -C {into}/tree; cd {into}/tree/{}; ",
+        archived.dir.as_deref().unwrap_or("."),
+    );
+    (command, archived.archive)
+}
+
 /// What a run there asked for, read from changed-checks' own arguments:
 /// whether it builds, whether VM tests are among what it builds, and the
 /// system it was told.

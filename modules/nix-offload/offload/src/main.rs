@@ -1450,12 +1450,19 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let Ok(folder) = env::current_dir() else {
         return not_run("this folder can't be read");
     };
-    let source = match there::source(&folder, &scratch, None, there::Sends::Committed) {
-        Ok(source) => source,
+    let (at, checkout, bundle) = match there::for_run(&folder, &scratch) {
+        Ok(there::ForRun::Git(source)) => {
+            let at = there::at_of(&source);
+            let (checkout, bundle) = changed::checked_out(source);
+            (at, checkout, bundle)
+        }
+        Ok(there::ForRun::Archived(archived)) => {
+            let at = passed::At::new(&archived.commit, archived.dir.clone());
+            let (checkout, archive) = changed::unpacked(archived);
+            (at, checkout, Some(archive))
+        }
         Err(why) => return not_run(&why),
     };
-    let at = there::at_of(&source);
-    let (checkout, bundle) = changed::checked_out(source);
     // One name wherever it goes, since a run sent on to the other builder
     // starts afresh there and never shares this one's files.
     let run = command::run_name();

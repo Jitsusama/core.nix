@@ -6307,6 +6307,134 @@ fn a_run_carries_a_committed_gitlink_as_its_hash_alone() {
     );
 }
 
+impl RunTree {
+    /// The tree's origin moved off GitHub, with HEAD holding `files`, each
+    /// a path and its text, and the builder's ssh keeping what it's sent.
+    fn off_github(&mut self, files: &[(&str, &str)]) {
+        self.git(&[
+            "remote",
+            "set-url",
+            "origin",
+            "https://git.example.org/team/mono.git",
+        ]);
+        for (path, text) in files {
+            let path = self.tree.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+        self.git(&["add", "."]);
+        self.git(&["commit", "-q", "-m", "off GitHub"]);
+        self.head = self.git(&["rev-parse", "HEAD"]);
+        fs::rename(self.bin.join("ssh"), self.bin.join("ssh-builder")).unwrap();
+        executable(
+            &self.bin.join("ssh"),
+            "#!/bin/sh\nhere=$(dirname \"$0\")\n\
+             cat > \"$here/received\"; \"$here/ssh-builder\" \"$@\" </dev/null\n",
+        );
+    }
+
+    /// The files the tarball a run sent holds, each by its path.
+    fn unpacked(&self) -> Vec<String> {
+        let into = self.folder.path().join("unpacked");
+        let _ = fs::remove_dir_all(&into);
+        fs::create_dir(&into).unwrap();
+        let unpacked = Command::new("tar")
+            .arg("-xzf")
+            .arg(self.bin.join("received"))
+            .arg("-C")
+            .arg(&into)
+            .status()
+            .unwrap();
+        assert!(unpacked.success(), "what went is a tarball");
+        let listed = Command::new("find")
+            .args([".", "-type", "f"])
+            .current_dir(&into)
+            .output()
+            .unwrap();
+        let mut files: Vec<String> = String::from_utf8_lossy(&listed.stdout)
+            .lines()
+            .map(|line| line.trim_start_matches("./").to_owned())
+            .collect();
+        files.sort();
+        files
+    }
+
+    /// The command ssh was given for the run.
+    fn given(&self) -> String {
+        fs::read_to_string(self.bin.join("ssh-was-given")).unwrap()
+    }
+}
+
+// A tree whose origin isn't on GitHub can't be fetched there by its
+// commit, and a lent builder holds no credential to fetch it from
+// anywhere else, so a run sends HEAD's files: within its sparse cone, as
+// its checkout holds them, so a monorepo's tree costs its own part alone.
+#[test]
+fn a_run_from_a_tree_off_github_sends_heads_files_within_its_cone() {
+    let mut run = RunTree::new();
+    run.off_github(&[
+        ("zone/tool/src/main.rs", "fn main() {}"),
+        ("zone/tool/Cargo.toml", "[package]"),
+        ("zone/beside", "a file of the cone's parent"),
+        ("zone/other/secret", "another zone's"),
+        ("elsewhere/far", "out of the cone"),
+    ]);
+    run.git(&["sparse-checkout", "set", "--cone", "zone/tool"]);
+    let inside = run.tree.join("zone/tool");
+
+    let ran = there_command(&run.bin, &run.offload, run.folder.path())
+        .args(["--never-ask", "--run", "--", "cargo", "test"])
+        .current_dir(&inside)
+        .env("GIT_CONFIG_GLOBAL", &run.config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        run.unpacked(),
+        [
+            "package.json",
+            "zone/beside",
+            "zone/tool/Cargo.toml",
+            "zone/tool/src/main.rs",
+        ],
+        "HEAD's files within the cone went, and no others"
+    );
+    let given = run.given();
+    assert!(given.contains("tar -xzf -"), "it's unpacked there: {given}");
+    assert!(
+        given.contains("/tree/zone/tool;"),
+        "it runs in its folder: {given}"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("as a tarball of"),
+        "its size is said: {ran:?}"
+    );
+
+    // Still HEAD alone: a change not committed stops it, as from GitHub.
+    fs::write(inside.join("Cargo.toml"), "[workspace]").unwrap();
+    run.refused(&run.run(&[]), "commit them first");
+}
+
+#[test]
+fn a_run_from_a_tree_off_github_sends_all_of_head_when_it_isnt_sparse() {
+    let mut run = RunTree::new();
+    run.off_github(&[("zone/tool/Cargo.toml", "[package]")]);
+    let ran = run.run(&[]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(run.unpacked(), ["package.json", "zone/tool/Cargo.toml"]);
+}
+
+// Patterns other than cone mode's say nothing a tree of HEAD's can be cut
+// to, and sending all of a monorepo would cost far more than its part.
+#[test]
+fn a_run_from_a_tree_off_github_sparse_without_cones_is_refused() {
+    let mut run = RunTree::new();
+    run.off_github(&[("zone/tool/Cargo.toml", "[package]")]);
+    run.git(&["sparse-checkout", "set", "--no-cone", "/package.json"]);
+    run.refused(&run.run(&[]), "sparse without cone mode");
+}
+
 // A fenced session's changed-checks goes out as the person, and an
 // evaluator, a machine nearby or this one would evaluate as them, so with
 // `--lent-only` it goes to a lent builder, from HEAD alone, or nowhere.

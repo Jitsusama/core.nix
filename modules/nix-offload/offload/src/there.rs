@@ -2265,7 +2265,7 @@ pub fn git_with(
 /// `pinned` at, else at the one [`committed`] makes of it now. The newest
 /// commit GitHub has is where it meets its upstream branch, else origin's
 /// main. A tree that isn't git, or whose origin isn't on GitHub, can't
-/// reach it.
+/// reach it this way; `--run` sends the latter's files ([`for_run`]).
 pub fn source(
     folder: &Path,
     scratch: &Path,
@@ -2371,6 +2371,147 @@ fn head_alone(top: &Path) -> Result<String, &'static str> {
     )
     .map(|_| head)
     .ok_or("has changes not committed, and --run sends only what is, so commit them first")
+}
+
+/// A tree whose origin isn't on GitHub, as `--run` sends it: HEAD's files
+/// within the tree's sparse cone, as a tarball.
+///
+/// A lent builder can fetch a commit by name from GitHub alone, and holds
+/// no credential to fetch one from anywhere else, so a monorepo's tree
+/// whose origin is its own host couldn't go at all, and its suites ran
+/// here. Its files go instead, as its checkout holds them: every file at
+/// the top and in each folder above a cone, and every cone whole. A tree
+/// that isn't sparse sends all of HEAD. It's made from HEAD's objects
+/// alone, as a run from GitHub is, reading no attribute, so no filter
+/// runs and no file is left out by the tree's say; and it writes nothing
+/// into the repository, which a fenced session may not write.
+#[derive(Debug)]
+pub struct Archived {
+    pub commit: String,
+    /// The folder the run is in, in the repository, when not its top.
+    pub dir: Option<String>,
+    pub archive: PathBuf,
+}
+
+/// How `--run` sends the tree at `folder`: by [`source`] while its origin
+/// is on GitHub, else [`Archived`].
+#[derive(Debug)]
+pub enum ForRun {
+    Git(Source),
+    Archived(Archived),
+}
+
+/// How `--run` sends the tree at `folder`, any archive made in `scratch`.
+pub fn for_run(folder: &Path, scratch: &Path) -> Result<ForRun, String> {
+    let canonical =
+        fs::canonicalize(folder).map_err(|error| format!("{}: {error}", folder.display()))?;
+    let not = |what: &str| format!("{} {what}", canonical.display());
+    let top = git(&canonical, &["rev-parse", "--show-toplevel"], None)
+        .map(PathBuf::from)
+        .ok_or_else(|| not("isn't in a git tree"))?;
+    let on_github = git(&top, &["remote", "get-url", "origin"], None)
+        .as_deref()
+        .and_then(github_of)
+        .is_some();
+    if on_github {
+        return source(folder, scratch, None, Sends::Committed).map(ForRun::Git);
+    }
+    let commit = head_alone(&top).map_err(not)?;
+    let dir = canonical
+        .strip_prefix(&top)
+        .ok()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .filter(|dir| !dir.is_empty());
+    let paths = match cones(&top).map_err(not)? {
+        Some(cones) => Some(
+            within(&top, &commit, "", &cones)
+                .filter(|paths| !paths.is_empty())
+                .ok_or_else(|| not("holds no file of HEAD's in its cones"))?,
+        ),
+        None => None,
+    };
+    fs::create_dir_all(scratch).map_err(|_| not("has no scratch to pack it in"))?;
+    let archive = mine(scratch, "tree.tgz");
+    let output = archive.to_string_lossy();
+    let mut arguments = vec!["archive", "--format=tar.gz", "-o", &output, &commit, "--"];
+    arguments.extend(paths.iter().flatten().map(String::as_str));
+    let packed = git_with(
+        &top,
+        &arguments,
+        None,
+        &[
+            ("GIT_ATTR_SOURCE", EMPTY_TREE),
+            ("GIT_LITERAL_PATHSPECS", "1"),
+        ],
+    );
+    if packed.is_none() {
+        let _ = fs::remove_file(&archive);
+        return Err(not("couldn't be packed"));
+    }
+    let size = fs::metadata(&archive).map_or(0, |file| file.len());
+    eprintln!(
+        "nix-offload: sending HEAD of {}, whose origin isn't on GitHub, as a tarball of {}",
+        canonical.display(),
+        sized(size)
+    );
+    Ok(ForRun::Archived(Archived {
+        commit,
+        dir,
+        archive,
+    }))
+}
+
+/// The cones the git tree `top` is checked out to, or none when it isn't
+/// sparse; refused when it's sparse by patterns other than cones.
+fn cones(top: &Path) -> Result<Option<Vec<String>>, &'static str> {
+    let set = |key: &str| git(top, &["config", "--bool", key], None);
+    if set("core.sparseCheckout").as_deref() != Some("true") {
+        return Ok(None);
+    }
+    // Cones are git's default since 2.37, so only a tree set otherwise
+    // isn't in them.
+    if set("core.sparseCheckoutCone").as_deref() == Some("false") {
+        return Err(
+            "is sparse without cone mode, so which of its files to send can't be told; \
+             cones (git sparse-checkout set --cone) say",
+        );
+    }
+    let listed = git(top, &["sparse-checkout", "list"], None)
+        .ok_or("is sparse, but its cones can't be read")?;
+    Ok(Some(
+        listed
+            .lines()
+            .map(|cone| cone.trim_matches('/').to_owned())
+            .filter(|cone| !cone.is_empty())
+            .collect(),
+    ))
+}
+
+/// The paths, under `at` in the tree `tree` names, a sparse checkout of
+/// `cones` holds: each file there, each cone whole, and what's within each
+/// folder above a cone.
+fn within(top: &Path, tree: &str, at: &str, cones: &[String]) -> Option<Vec<String>> {
+    let listed = git(top, &["ls-tree", "-z", tree], None)?;
+    let mut paths = Vec::new();
+    for entry in listed.split('\0').filter(|entry| !entry.is_empty()) {
+        let (about, name) = entry.split_once('\t')?;
+        let mut about = about.split(' ');
+        let (kind, hash) = (about.nth(1)?, about.next()?);
+        let path = if at.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{at}/{name}")
+        };
+        if kind != "tree" || cones.contains(&path) {
+            paths.push(path);
+        } else if cones
+            .iter()
+            .any(|cone| cone.starts_with(&format!("{path}/")))
+        {
+            paths.extend(within(top, hash, &path, cones)?);
+        }
+    }
+    Some(paths)
 }
 
 /// The commit the git tree `top` is built at: its HEAD, or, with changes to
