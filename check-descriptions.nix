@@ -1915,7 +1915,8 @@
     forage, a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now and Escape closing it, the view zoomed in
-    and out, panned a step and fitted whole again, - climbing from a cell to its network, the
+    and out about its middle, panned a step across and down and fitted whole again, -
+    climbing from a cell to its network, the
     tree stepping, closing, opening, going in and out of a branch and opening a row, and the
     theme switch wrapping),
     the web-design skill's page checks and the map's own (each opened thing in view, its drawer

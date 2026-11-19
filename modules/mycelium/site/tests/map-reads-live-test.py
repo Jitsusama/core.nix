@@ -12,7 +12,8 @@ grow one network out of another while a forage says a cell of the one
 started a cell of the other,
 answer a key of each kind keys.ts decides (the keys dialog, find and its
 field, stepping through what was found, Escape's order, the walk, the
-machines, Now and Escape closing it, the view zoomed, panned and fitted, -
+machines, Now and Escape closing it, the view zoomed about its middle,
+panned across and down and fitted, -
 climbing from a cell to its network, the tree's steps, branches and
 Return, and the theme switch), and pass the web-design
 skill's page checks and the map's own (site-checks.js) at a phone's width
@@ -33,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from stand_in_daemon import StandIn, standing_in
 
 if TYPE_CHECKING:
@@ -481,47 +483,91 @@ def viewed(page: Page) -> tuple[float, float, float]:
     return float(x), float(y), float(k)
 
 
-def settled(page: Page) -> tuple[float, float, float]:
+# How long the view must read the same to stand still: three polls a fifth of a second apart,
+# twice the fit's glide (view.js's GLIDE_MS, 320), so a glide whose first frame is late still
+# moves between them.
+STILL_POLLS = 3
+STILL_POLL_MS = 200
+
+
+def settled(page: Page, why: str) -> tuple[float, float, float]:
     """Where the view stands once it has stopped moving, as a fit glides there."""
-    page.wait_for_function(
-        """() => {
-          const now = document.getElementById("world").getAttribute("transform");
-          const still = now === window.lastViewed;
-          window.lastViewed = now;
-          return still;
-        }""",
-        polling=250,
-        timeout=PACE_MS,
-    )
+    page.evaluate("window.viewedStill = 0; window.lastViewed = null")
+    try:
+        page.wait_for_function(
+            """(polls) => {
+              const now = document.getElementById("world").getAttribute("transform");
+              const still = now !== null && now === window.lastViewed;
+              window.viewedStill = still ? window.viewedStill + 1 : 0;
+              window.lastViewed = now;
+              return window.viewedStill >= polls;
+            }""",
+            arg=STILL_POLLS,
+            polling=STILL_POLL_MS,
+            timeout=PACE_MS,
+        )
+    except PlaywrightTimeoutError as moving:
+        message = f"{why}: the view never stood still, last at {viewed(page)}"
+        raise AssertionError(message) from moving
     return viewed(page)
 
 
-def test_the_view_zooms_pans_fits_and_climbs_to_its_keys(mycelium_opened: Opened) -> None:
+def pivot(before: tuple[float, float, float], after: tuple[float, float, float]) -> float:
+    """Read the height a zoom from `before` to `after` kept in place from how it moved."""
+    by = after[2] / before[2]
+    return (after[1] - before[1] * by) / (1 - by)
+
+
+def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
+    expect(page.locator("#world"), "the map was never drawn").to_have_attribute(
+        "transform",
+        VIEWED,
+    )
+    middle = page.evaluate(
+        "document.getElementById('world').ownerSVGElement.getBoundingClientRect().height / 2",
+    )
     page.locator("#map-view").focus()
     page.keyboard.press("0")
-    whole = settled(page)
+    whole = settled(page, "0 didn't fit the whole map")
     page.keyboard.press("i")
-    assert viewed(page)[2] > whole[2], f"i didn't zoom in from {whole}: {viewed(page)}"
+    zoomed = viewed(page)
+    assert zoomed[2] > whole[2], f"i didn't zoom in from {whole}: {zoomed}"
+    assert pivot(whole, zoomed) == pytest.approx(middle, abs=1), (
+        f"i didn't zoom about the view's middle, {middle}: from {whole} to {zoomed}"
+    )
     page.keyboard.press("o")
-    assert viewed(page)[2] == pytest.approx(whole[2], rel=1e-3), f"o didn't zoom back out: {whole}"
+    assert viewed(page) == pytest.approx(whole, abs=0.05), (
+        f"o didn't zoom back out to {whole}: {viewed(page)}"
+    )
     page.keyboard.press("+")
     assert viewed(page)[2] > whole[2], f"+ didn't zoom in from {whole}: {viewed(page)}"
     page.keyboard.press("0")
-    assert settled(page) == pytest.approx(whole, abs=0.05), "0 didn't fit the whole map again"
+    assert settled(page, "0 didn't fit after a zoom") == pytest.approx(whole, abs=0.05), (
+        "0 didn't fit the whole map again"
+    )
     page.keyboard.press("Shift+L")
     panned = (whole[0] - PANNED, whole[1], whole[2])
     assert viewed(page) == pytest.approx(panned, abs=0.05), (
         f"Shift and l didn't move the map one step from {whole}: {viewed(page)}"
     )
+    page.keyboard.press("Shift+J")
+    panned = (whole[0] - PANNED, whole[1] - PANNED, whole[2])
+    assert viewed(page) == pytest.approx(panned, abs=0.05), (
+        f"Shift and j didn't move the map one step down from {whole}: {viewed(page)}"
+    )
     page.keyboard.press("0")
-    assert settled(page) == pytest.approx(whole, abs=0.05), "0 didn't fit the map after a pan"
-    # Escape closes Now when nothing is open over it.
+    assert settled(page, "0 didn't fit after a pan") == pytest.approx(whole, abs=0.05), (
+        "0 didn't fit the map after a pan"
+    )
+    # Escape closes Now when nothing is open over it, and the drawer with it.
+    now = page.locator("#now-control")
     page.keyboard.press(".")
-    expect(page.locator("#panel-title"), ". didn't open Now").to_have_text("Now")
+    expect(now, ". didn't open Now").to_have_attribute("aria-expanded", "true")
     page.keyboard.press("Escape")
-    expect(page.locator("#where"), "Escape didn't close Now").to_have_text("Now is closed.")
+    expect(now, "Escape didn't close Now").to_have_attribute("aria-expanded", "false")
+    expect(page.locator("#where"), "Escape didn't say Now closed").to_have_text("Now is closed.")
     # - climbs from a cell to the network it's in.
     page.keyboard.press("/")
     page.keyboard.type(SOUGHT)
