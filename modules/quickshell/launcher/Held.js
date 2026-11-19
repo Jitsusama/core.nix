@@ -129,11 +129,13 @@ function foundNow(foundAs, offered, ways) {
 // as no row offered now says it's left, rather than showing what it
 // offered before, its row as it was entered. A thing landed in from a
 // search, `through`, is left back to the search, past the collection it
-// was found in, as Joel's - leaves it.
+// was found in, as Joel's - leaves it. `spent` is the step whose places
+// every history forgets: the step left, or, where the outermost is kept
+// though it offers nothing, the outermost.
 function leaveTo(made, how, ways) {
     const steps = made.steps.slice();
     if (made.leave < 0) {
-        return { steps, keep: -1 };
+        return { steps, keep: -1, spent: -1 };
     }
     const left = made.leave > 0 && steps[made.leave].through === true ? made.leave - 1
         : made.leave;
@@ -143,7 +145,11 @@ function leaveTo(made, how, ways) {
             rows: ways.keep(steps[made.leave], [])
         });
     }
-    return { steps, keep: keep < steps.length ? keep : -1 };
+    return {
+        steps,
+        keep: keep < steps.length ? keep : -1,
+        spent: Math.min(keep, made.leave)
+    };
 }
 
 // What the launcher's remaking answers its caller, from `made` and where

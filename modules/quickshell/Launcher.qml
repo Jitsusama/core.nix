@@ -6145,8 +6145,19 @@ Scope {
             steps[at] = step;
         });
         const answered = Held.answer(made, leaving);
-        if (answered !== "left")
+        if (answered !== "left") {
+            // The outermost alone, kept though it offers nothing, is made
+            // with its rows gone, but every place through it still goes
+            // from every history, since each would show its spent rows.
+            if (leaving.spent >= 0) {
+                const outer = [held.slice(0, 1), steps.slice(0, 1)];
+                forgetLeft(outer, outer, lastPlace);
+                console.info(`launcher: kept the outermost step of `
+                    + `${source?.settings.name ?? "a place"} with its rows gone, as it `
+                    + "offers nothing now");
+            }
             return answered;
+        }
         // Left by itself, it's no place Joel stepped to, so it goes on
         // neither the way back nor as the place used last, even where the
         // row it's left from was renamed as it was remade; and every place
@@ -6155,7 +6166,7 @@ Scope {
         // held may have moved by then.
         const last = lastPlace;
         const was = held.slice(0, leaving.keep);
-        const left = [held.slice(0, leaving.keep + 1), steps.slice(0, leaving.keep + 1)];
+        const left = [held.slice(0, leaving.spent + 1), steps.slice(0, leaving.spent + 1)];
         jumping = true;
         const before = steps.length;
         try {
@@ -6163,13 +6174,7 @@ Scope {
             back(false, held.length - leaving.keep);
         } finally {
             jumping = false;
-            const after = Held.afterLeave(
-                { jumps: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last },
-                { landed: [was, held], left }, placeOf);
-            jumpsBack = after.jumps;
-            jumpsAhead = after.ahead;
-            tagsBack = after.tags;
-            lastPlace = after.last;
+            forgetLeft([was, held], left, last);
         }
         // Said in the journal, so a step that closes under Joel by itself
         // can be told from one his key left: what changed, and from how
@@ -6181,6 +6186,18 @@ Scope {
         return "left";
     }
 
+    // Each history made to forget the places through `left`, and the
+    // last places where Joel `landed`, as Held.afterLeave says, from the
+    // place used last as it was before the leave, `last`.
+    function forgetLeft(landed, left, last) {
+        const after = Held.afterLeave(
+            { jumps: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last },
+            { landed, left }, placeOf);
+        jumpsBack = after.jumps;
+        jumpsAhead = after.ahead;
+        tagsBack = after.tags;
+        lastPlace = after.last;
+    }
 
     // Each step from `from` on made again from the rows the one above it
     // offers now (`above`, or that step's own rows), as enter made it:
