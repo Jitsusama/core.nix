@@ -43,9 +43,12 @@ fn a_mark_that_cant_be_trusted_is_said_once_and_a_stop_is_still_heard() {
         std::fs::write(home.join("state/pineapple/judged.json"), &kept).expect("the mark written");
         let mut reader = reader(&home, &origin);
         until_decided(&home, verdicts.len());
-        // Two rounds more, so a warning said each round would show.
-        until_marked_anew(&home, "judged.json");
-        until_marked_anew(&home, "judged.json");
+        // The first mark may be the deciding round's own, so three marks
+        // make at least two rounds more, where a warning said each round
+        // would show.
+        for _ in 0..3 {
+            until_marked_anew(&home, "judged.json");
+        }
         reader.kill().expect("the reader stops");
         reader.wait().expect("the reader is gone");
         assert_eq!(
@@ -54,17 +57,14 @@ fn a_mark_that_cant_be_trusted_is_said_once_and_a_stop_is_still_heard() {
             "kept {kept}, what was said since is judged, once"
         );
         let said = journal(&home);
-        for warning in [UNREADABLE, AHEAD, UNJUDGED] {
-            let count = said
-                .lines()
-                .filter(|line| line.starts_with(&format!("<4>{warning}")))
-                .count();
-            assert_eq!(
-                count,
-                usize::from(warning == says),
-                "kept {kept}, the journal warns {says:?} once and nothing else: {said}"
-            );
-        }
+        let warned: Vec<&str> = said
+            .lines()
+            .filter(|line| line.starts_with("<4>"))
+            .collect();
+        assert!(
+            warned.len() == 1 && warned[0].starts_with(&format!("<4>{says}")),
+            "kept {kept}, the journal warns {says:?} once and nothing else: {said}"
+        );
         std::fs::remove_dir_all(&home).expect("the case's home goes");
     }
 }

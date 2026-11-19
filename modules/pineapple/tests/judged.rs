@@ -154,10 +154,10 @@ fn keys_that_cant_all_be_read_keep_since_and_say_so() {
     let state = state("keys");
     std::fs::create_dir_all(&state).expect("the case's state");
     let key = said("C1", "1795000001.000000").key();
-    for keys in [
-        None,
-        Some("\"spoiled\"".to_owned()),
-        Some(format!(r#"[1, "{key}"]"#)),
+    for (keys, read_whole) in [
+        (None, vec![]),
+        (Some("\"spoiled\"".to_owned()), vec![]),
+        (Some(format!(r#"[1, "{key}"]"#)), vec![key.clone()]),
     ] {
         let kept = match &keys {
             Some(keys) => format!(r#"{{"since": "1795000000.000000", "keys": {keys}}}"#),
@@ -170,10 +170,9 @@ fn keys_that_cant_all_be_read_keep_since_and_say_so() {
             ("1795000000.000000", Some(Afresh::Unjudged)),
             "{kept} keeps how far it read, and says what it judged is partly lost"
         );
-        assert!(
-            judged.keys.iter().all(|kept| kept == &key),
-            "{kept} keeps only the keys that read: {:?}",
-            judged.keys
+        assert_eq!(
+            judged.keys, read_whole,
+            "{kept} keeps the keys that read, and only those"
         );
     }
     std::fs::remove_dir_all(&state).expect("the case's state goes");
