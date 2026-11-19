@@ -695,12 +695,6 @@
     keys, opening one as the list does, and handing the keys to the list once its last tie goes,
     and nothing logged
   '';
-  code-site-keeps-its-last-homes = ''
-    the code site's writer, while repos fails or stalls, ends well in one line and leaves the last
-    homes as they were, a stalled read ended in its time even when deaf to the first signal and a
-    killed one called a failure, and once repos answers replaces them whole with every repository
-    and present tree at its Code address, readable by the server
-  '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
     slice holds in memory and swap, and the pressure on it, as spans and moments
@@ -3113,7 +3107,14 @@
     auto-gc samples it and due as its config sets, over stores laid out by hand and one git wrote,
     every view of them fitting each width, and the GitHub receptor said with its counts, each
     change asking review as owner/name#N of a declared owner and the realm's owners, none of
-    them while a read failed
+    them while a read failed, and the daemon's homes for Code, every repository and present tree
+    at its Code address by key whatever the reading's order, written whole and readable by the
+    server through no link left in its way, not again while the file holds them, put right once
+    another writer changes or removes them or puts a link or a pipe there, which never holds the
+    daemon, and tried again after a failure it warns of whenever its reason changes, naming the
+    hidden file where that failed, and says it's over, the running daemon writing them after it's
+    ready and again as a tree is cut, serving on through a failure, and writing none and saying
+    nothing of them when none are named
   '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship
@@ -5822,7 +5823,7 @@
     stopped repos daemon through the socket systemd holds for it and says live with the repository
     it read on the disk under the root the account gives it; three commits git makes while one
     watch is open are each told on it as changed, with the checkout's new head, unasked; and the
-    homes the code site's timer writes, answered beside the page, say where the repository is home
+    homes the daemon writes as it reads, answered beside the page, say where the repository is home
   '';
   vm-the-network-page-reads-its-daemon = ''
     an account's sites' server, as its home module renders it, serves the network page with the

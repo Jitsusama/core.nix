@@ -196,6 +196,7 @@ version = "0.1.0"
 dependencies = [
  "daemon-serve",
  "inotify",
+ "libc",
  "receptor-say",
  "serde",
  "serde_json",

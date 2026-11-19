@@ -21,7 +21,8 @@
 //! gh's sign-in instead, the `gh` at `REPOS_GH` (the crate's gh.rs). How
 //! far each head is behind or ahead of its branch is kept beside it by
 //! `repos count`, on a timer of its own, with the `git` at `REPOS_GIT`
-//! (the crate's upstreams.rs).
+//! (the crate's upstreams.rs). `repos serve` writes Code's homes to the
+//! file `REPOS_HOMES` names, where the local sites set it (homes.rs).
 
 mod commands;
 // The daemon hears the disk through inotify, so it's Linux's alone.
@@ -29,6 +30,8 @@ mod commands;
 mod feed;
 #[cfg(target_os = "linux")]
 mod heard;
+#[cfg(target_os = "linux")]
+mod homes;
 #[cfg(target_os = "linux")]
 mod serve;
 mod views;

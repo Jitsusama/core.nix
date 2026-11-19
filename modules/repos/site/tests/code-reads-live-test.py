@@ -96,7 +96,7 @@ WRITTEN = sites_homing_cells([])
 # Where the cells' site says the cell at work is home.
 CELL_HOME = f"{CELLS_SITE}#cell=E2ZIAQ"
 # Where Code is home to each repository and present tree in repos.json, named as
-# code-site.sh names them.
+# the repos daemon names them (modules/repos/src/homes.rs).
 CODE_HOMES = [
     {
         "kind": "repository",
@@ -155,7 +155,7 @@ def code_served(tmp_path: Path, repos_daemon: StandIn, mycelium_node: StandIn) -
         (documents / CELLS_SITE).mkdir()
         thing = {"kind": "cell", "key": "E2ZIAQ", "name": "E2ZIAQ", "address": CELL_HOME}
         (documents / CELLS_SITE / "homes.json").write_text(json.dumps({"things": [thing]}))
-        # Code's own homes, as code-site.sh writes them among the documents, which the
+        # Code's own homes, as the repos daemon writes them among the documents, which the
         # server answers for the mount: the repositories and the present trees.
         (documents / "code").mkdir()
         (documents / "code" / "homes.json").write_text(json.dumps({"things": CODE_HOMES}))

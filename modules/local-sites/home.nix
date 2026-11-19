@@ -40,9 +40,9 @@
 # code/ draws every repository on the disk, watched live from the repos
 # daemon (modules/repos), and the cells at work in them from the node. Its
 # homes.json, where each repository and tree is home on it, changes with
-# the disk, so a timer writes it from repos's record into the documents
-# (code-site.sh), which answer for the mount. A machine without repos has
-# none of it.
+# the disk, so the daemon writes it into the documents as it reads, which
+# answer for the mount (modules/repos/src/homes.rs). A machine without
+# repos has none of it.
 {
   config,
   lib,
@@ -580,57 +580,10 @@ in
     };
   }
   // lib.optionalAttrs (roots != null) {
-    # repos reads git's own files alone, taking no lock and running no git, so
-    # a reading never gets in the way of an agent's work in a checkout.
-    code-site = {
-      Unit.Description = "Writes where each repository and tree is home on the code site";
-      Service = {
-        Type = "oneshot";
-        Environment = [
-          "REPOS_ROOTS=${lib.concatStringsSep ":" roots}"
-          "PATH=${
-            lib.makeBinPath [
-              (pkgs.callPackage ../repos/package.nix { })
-              pkgs.coreutils
-              pkgs.jq
-            ]
-          }"
-        ];
-        ExecStart = lib.escapeShellArgs [
-          (lib.getExe pkgs.bash)
-          "${./code-site.sh}"
-          "${config.xdg.dataHome}/jitsusama/sites/code"
-        ];
-        # A reading takes well under a second, but starved on a machine short
-        # of memory it can stall for minutes. The writer ends one at 40 s
-        # itself, its CODE_SITE_WAITS default, killing it five seconds on,
-        # keeping the last homes and saying so in a line, so a stall isn't a
-        # failure; this is the backstop for the writer itself stuck, fifteen
-        # seconds past its worst, since the same starved machine slows its
-        # own ending.
-        TimeoutStartSec = "60s";
-        # The kernel's killer taking repos alone is one more failure the writer
-        # keeps the last homes through and says, so the unit ends well rather
-        # than systemd failing it for the kill. systemd-oomd ends the whole
-        # unit, the writer with it, which nothing here can answer.
-        OOMPolicy = "continue";
-        Slice = "background.slice";
-      };
-    };
-  };
-
-  # Every minute: a reading takes well under a second, and a link to a tree cut a
-  # minute ago landing on Code before its home is said is no harm, since
-  # Code itself draws live.
-  config.systemd.user.timers = lib.optionalAttrs (roots != null) {
-    code-site = {
-      Unit.Description = "Rewrites the code site's homes every minute";
-      Timer = {
-        OnActiveSec = "5s";
-        OnUnitActiveSec = "60s";
-        AccuracySec = "5s";
-      };
-      Install.WantedBy = [ "timers.target" ];
-    };
+    # The daemon holds the record and hears the disk move, so it writes
+    # Code's homes as it reads rather than anything reading every repository
+    # again to write them. They're the code site's, which is declared here,
+    # so here is where the daemon is told where they go.
+    repos.Service.Environment = [ ''"REPOS_HOMES=${documents}/code/homes.json"'' ];
   };
 }
