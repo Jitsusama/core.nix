@@ -1031,9 +1031,12 @@ def test_a_start_a_switch_cut_off_is_told_once(desktop: Desktop) -> None:
             timeout=dt.timedelta(seconds=120),
         )
         # The held shell, served it as it came up, would tell it once its asker had surely
-        # told it, a moment after; there's no event for a notice never sent, so that's waited.
+        # told it: at its first look every START_SETTLES past that, so as late as a second
+        # step on, its notice landing after. There's no event for a notice never sent, so
+        # that's waited.
         waited = time.monotonic() - asked
-        machine.sleep(max(NOTICE_LANDS, int(ASKER_ANSWERS + START_SETTLES - waited) + 1))
+        latest = ASKER_ANSWERS + 2 * START_SETTLES + NOTICE_LANDS
+        machine.sleep(max(NOTICE_LANDS, int(latest - waited) + 1))
         told = starts_noticed(desktop)
         assert told == before + 1, f"a cut-off start was noticed {told - before} times"
     finally:

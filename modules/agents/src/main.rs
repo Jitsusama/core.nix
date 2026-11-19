@@ -320,11 +320,17 @@ fn sprouts_for_the_shell(
     shared.peered(
         &[sprout::ASK, starts::TOLD, starts::KEPT],
         Box::new(move |said, stream| {
+            // Whether the change reached the disk: a start or its end is
+            // answered either way, the shell being told as it would be with
+            // no file, but a told isn't taken, so the shell sends it again
+            // rather than a restart serving it a second time.
             let keep = |change: &dyn Fn(&mut Starts)| {
-                if let Err(why) = keeping.change(change) {
+                let kept = keeping.change(change);
+                if let Err(why) = &kept {
                     eprintln!("agents: can't keep {}: {why}", starts::FILE);
                 }
                 let _ = told.send(Heard::StartsMoved);
+                kept
             };
             if said["ask"] == starts::KEPT {
                 return Some(json!({"kept": keeping.kept(&starts::told_of(said))}));
@@ -334,8 +340,11 @@ fn sprouts_for_the_shell(
                 return Some(match asker {
                     Ok(()) => {
                         let tokens = starts::told_of(said);
-                        keep(&|kept: &mut Starts| kept.told(&tokens));
-                        json!({"told": tokens.len()})
+                        match keep(&|kept: &mut Starts| kept.told(&tokens)) {
+                            Ok(()) => json!({"told": tokens.len()}),
+                            Err(why) => json!({"error": {"code": "unkept",
+                                "message": format!("can't keep {}: {why}", starts::FILE)}}),
+                        }
                     }
                     Err(why) => json!({"error": {"code": "untold", "message": why}}),
                 });
@@ -344,11 +353,11 @@ fn sprouts_for_the_shell(
             let token = asker.as_ref().ok().and_then(|()| starts::token_of(said));
             if let Some(token) = &token {
                 let at = clock::now_ms();
-                keep(&|kept: &mut Starts| kept.begun(token, at));
+                let _ = keep(&|kept: &mut Starts| kept.begun(token, at));
             }
             let answer = sprout::answer(said, asker, node.as_deref());
             if let Some(token) = &token {
-                keep(&|kept: &mut Starts| kept.ended(token, &answer));
+                let _ = keep(&|kept: &mut Starts| kept.ended(token, &answer));
             }
             Some(answer)
         }),
