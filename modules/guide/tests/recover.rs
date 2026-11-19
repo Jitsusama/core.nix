@@ -3,13 +3,13 @@
 //! internal disk and never on the stick, and nothing found on a blank one.
 
 use guide::Machine;
+use guide::observe::disks::LSBLK;
 use guide::recover::boot::BootGeneration;
 use guide::recover::copy::{COPIED, CopyHome};
 use guide::recover::{
     AlreadyThere, CHECKED, CheckSystem, FindMachine, MountSystem, OpenDisk, STOPPED, STOPPED_EARLY,
     already_there, the_machine,
 };
-use guide::observe::disks::LSBLK;
 use guide::stand_in::StandIn;
 use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
