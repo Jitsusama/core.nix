@@ -65,6 +65,14 @@ fn a_session_naming_no_step_on_its_quest_is_woken_to_it() {
         tells[0].text
     );
     assert!(
+        tells[0].text.contains(
+            "Answer this with re, saying which. Send it to CADENCE: the mesh says that reaches \
+             no peer, but cadence reads it from what you send."
+        ),
+        "its answer goes to cadence, though no peer is reached: {}",
+        tells[0].text
+    );
+    assert!(
         tells[0]
             .text
             .contains("focus a plan whose next item says it"),
@@ -334,8 +342,9 @@ fn one_with_a_next_step_is_woken_itself_at_twenty_minutes_once() {
         "8C7D8C31: this session has sat idle 0 h 20 min with a next step of its own, \
          \"Merge #12 once its gate passes\": its last turn ended at t98800. Take it up now. \
          If it waits on someone or on its work, park saying on what; if it is another's, \
-         hand it to them by name. Answer this with re, saying which. VP50PC hears of it at \
-         two hours idle."
+         hand it to them by name. Answer this with re, saying which. Send it to CADENCE: the \
+         mesh says that reaches no peer, but cadence reads it from what you send. VP50PC hears \
+         of it at two hours idle."
     );
     assert!(
         due(&[with_next(WAKE_AFTER)], &mut told, NOW + 600, clock).is_empty(),

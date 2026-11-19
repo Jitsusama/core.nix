@@ -92,6 +92,14 @@ use watch::{Landing, Snapshot};
 
 /// The address cadence's questions come from.
 const FROM: &str = "CADENCE";
+/// Where a question of cadence's says its answer goes. No peer goes by
+/// CADENCE, so the mesh tells whoever answers that it reaches no one, and
+/// on 19 November 5FWIUS sent its answer to a wake to the cell that owns
+/// cadence instead. The answer is still written, and cadence reads each
+/// by its re from what the session sends, whoever it goes to: an alarm's
+/// ends its watch, and a wake's counts as answered in collaboration.
+const ANSWERS_GO: &str = "Send it to CADENCE: the mesh says that reaches no peer, but \
+                          cadence reads it from what you send.";
 /// Core's repository, which cadence keeps a bare clone of to read merges.
 const CORE: &str = "https://github.com/Jitsusama/core.nix";
 /// How far back the records are read, so the hour and the six hours a
@@ -313,14 +321,8 @@ fn run(args: &Args) -> io::Result<()> {
             To::Switcher => snapshot.switcher.as_deref().unwrap_or(watcher),
             To::Orchestrator => orchestrator.as_str(),
         };
-        // An answer ends cadence's watch, so it's asked for once handled;
-        // a switch outlasting the twenty minutes says why it isn't yet.
         let text = match question.to {
-            To::Watcher | To::Switcher => format!(
-                "{} Answer with re set to this question once handled, or to say why it can't be \
-                 yet: cadence looks for that every five minutes.",
-                question.text
-            ),
+            To::Watcher | To::Switcher => asked_to_answer(&question.text),
             To::Orchestrator => question.text.clone(),
         };
         let message = message(to, question.to.intent(), text);
@@ -637,6 +639,16 @@ fn failing_elsewhere(realms: &[String]) -> Vec<elsewhere::Failing> {
         .collect()
 }
 
+/// An alarm as the watcher or the switcher is asked it. An answer ends
+/// cadence's watch, so it's asked for once handled; a switch outlasting
+/// the twenty minutes says why it isn't yet.
+fn asked_to_answer(alarm: &str) -> String {
+    format!(
+        "{alarm} Answer with re set to this question once handled, or to say why it can't be \
+         yet: cadence looks for that every five minutes. {ANSWERS_GO}"
+    )
+}
+
 fn message(to: &str, intent: &str, text: String) -> Message {
     let ms = now_ms();
     let pid = std::process::id();
@@ -715,6 +727,22 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
+
+    #[test]
+    fn an_alarm_says_its_answer_goes_to_cadence_though_no_peer_is_reached() {
+        let asked = asked_to_answer("Cadence alarm: hot.");
+        assert!(
+            asked.starts_with("Cadence alarm: hot. Answer with re"),
+            "{asked}"
+        );
+        assert!(
+            asked.ends_with(
+                "Send it to CADENCE: the mesh says that reaches no peer, but cadence reads it \
+                 from what you send."
+            ),
+            "{asked}"
+        );
+    }
 
     #[test]
     fn a_fetch_that_fails_once_is_tried_again() {
