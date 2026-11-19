@@ -93,26 +93,33 @@ quiet.service|A program that said nothing
 nameless.service|
 blank.service|A program that drew nothing
 EOF
-# Its last lines draw nothing, so the three that say why are further back:
-# braille's blank and a direction mark, spelled in UTF-8's bytes, since
-# bash's \u spells a character in the locale's encoding.
+# Its last seventeen lines draw nothing, so the three that say why are
+# as far back as twenty reach, and the one before them past it: braille's
+# blank and a direction mark, spelled in UTF-8's bytes, since bash's \u
+# spells a character in the locale's encoding.
 blank=$'\xe2\xa0\x80' mark=$'\xe2\x80\x8e'
 printf '%s\n' "Mounting /home" "probing the disk" $'reading its label\a' \
   "mount: /home: wrong fs type" "$blank$blank" $'\e[0m' "$mark" > "$work/own/home.mount"
+for _ in {1..14}; do echo "$mark"; done >> "$work/own/home.mount"
 printf '%s\n' "$blank" $'\e[31m\e[0m' > "$work/own/blank.service"
 # systemd's lines with the ids sd-messages.h gives a process's exit, a
-# unit's result and what it cost; one it says of a unit with none of them.
+# unit's result, what it cost and a job that failed. quiet.service
+# restarts into its start limit, as systemd writes it, so its last two
+# results come with no exit between.
 exited=98e322203f7a4ed290d09fe03c09fe15 result=d9b373ed55a64feb8242e02dbe79a49c
-cost=ae8f7b866b0347b9af31fe1c80b127c0
+cost=ae8f7b866b0347b9af31fe1c80b127c0 job=be02cf6855d2428ba40df7e9d022f03d
 printf '%s\n' "$result|home.mount: Failed with result 'exit-code'." > "$work/systemd/home.mount"
 printf '%s\n' "$result|blank.service: Failed with result 'exit-code'." \
   "$cost|blank.service: Consumed 4ms CPU time." > "$work/systemd/blank.service"
-printf '%s\n' "|quiet.service: Scheduled restart job." \
+printf '%s\n' "$exited|quiet.service: Main process exited, code=exited, status=1/FAILURE" \
+  "$result|quiet.service: Failed with result 'exit-code'." \
+  "|quiet.service: Scheduled restart job, restart counter is at 5." \
   "$exited|quiet.service: Main process exited, code=killed, status=9/KILL" \
   "$result|quiet.service: Failed with result 'signal'." \
-  "$cost|quiet.service: Consumed 9ms CPU time." > "$work/systemd/quiet.service"
-printf '%s\n' "|nameless.service: Start request repeated too quickly." \
-  > "$work/systemd/nameless.service"
+  "$cost|quiet.service: Consumed 9ms CPU time." \
+  "|quiet.service: Start request repeated too quickly." \
+  "$result|quiet.service: Failed with result 'start-limit-hit'." > "$work/systemd/quiet.service"
+printf '%s\n' "$job|Dependency failed for nameless.service." > "$work/systemd/nameless.service"
 said
 says "  x  home.mount  Mount /home"
 says "     probing the disk"
@@ -122,11 +129,23 @@ grep -q -F "Mounting /home" "$work/said" && fails "it said more than the last th
 grep -q -F "home.mount: Failed" "$work/said" && fails "it said systemd's line past the unit's own"
 says "  x  quiet.service  A program that said nothing"
 says "     quiet.service: Main process exited, code=killed, status=9/KILL"
-says "     quiet.service: Failed with result 'signal'."
+says "     quiet.service: Failed with result 'start-limit-hit'."
 grep -q -F "Consumed" "$work/said" && fails "it said what a unit cost, not why it failed"
-grep -q -F "Scheduled restart" "$work/said" && fails "it said more than why systemd failed it"
+grep -q -F -e "Scheduled restart" -e "'signal'" -e "status=1/" -e "repeated too quickly" \
+  "$work/said" && fails "it said more than why systemd last failed it"
 says "  x  nameless.service"
-says "     nameless.service: Start request repeated too quickly."
+says "     Dependency failed for nameless.service."
+# Each line under its own unit, and a process's exit before its result.
+at=0
+for line in "  x  home.mount  Mount /home" "     mount: /home: wrong fs type" \
+  "  x  quiet.service  A program that said nothing" \
+  "     quiet.service: Main process exited, code=killed, status=9/KILL" \
+  "     quiet.service: Failed with result 'start-limit-hit'." "  x  nameless.service" \
+  "     Dependency failed for nameless.service." "  x  blank.service  A program that drew nothing"; do
+  next=$(grep -n -x -F -- "$line" "$work/said" | cut -d: -f1 | head -n 1)
+  ((next > at)) || fails "\"$line\" isn't where it belongs"
+  at=$next
+done
 says "  x  blank.service  A program that drew nothing"
 says "     blank.service: Failed with result 'exit-code'."
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."

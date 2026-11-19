@@ -150,15 +150,18 @@ const FAILED_WITH_RESULT: &str = "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c";
 /// fields, since `--unit=` also gives the unit's own lines, and its last
 /// may be one that draws nothing. Its last line of a unit is most often
 /// what the unit cost or that it failed to start, which the heading says,
-/// so the two that say why come first; any other of its lines only when a
-/// unit has neither.
+/// so the two that say why come first: the last time its process exited,
+/// then the last result it failed with, each asked apart, since a unit
+/// restarting into its start limit says two results and no exit between.
+/// Any other of its lines only when a unit has neither.
 fn last(unit: &str) -> Vec<String> {
     let own = summary::last_shown(journal(&[&format!("_SYSTEMD_UNIT={unit}")], 20), 3);
     if !own.is_empty() {
         return own;
     }
     let systemd = format!("UNIT={unit}");
-    let why = journal(&[&systemd, "_PID=1", PROCESS_EXITED, FAILED_WITH_RESULT], 2);
+    let mut why = journal(&[&systemd, "_PID=1", PROCESS_EXITED], 1);
+    why.extend(journal(&[&systemd, "_PID=1", FAILED_WITH_RESULT], 1));
     if why.is_empty() {
         journal(&[&systemd, "_PID=1"], 1)
     } else {

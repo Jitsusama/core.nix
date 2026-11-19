@@ -23,8 +23,8 @@ pub struct Failed {
     pub name: String,
     /// Its description, which is its name where it has none.
     pub about: String,
-    /// The last its own programs said, or, when they said nothing, the
-    /// last systemd said of it, a line each.
+    /// The last its own programs said that draws, or, when none does, why
+    /// systemd said it failed, a line each.
     pub said: Vec<String>,
 }
 
