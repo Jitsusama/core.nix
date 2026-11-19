@@ -1,6 +1,6 @@
 // Chrome's downloads, as chrome-recent-sites prints them, for its Recent
 // and its Open the Latest Download (ChromeProgram.qml). Plain JavaScript,
-// held to it by tests/quick-acts.qml in Qt's own engine.
+// held to it by modules/quickshell/tests/quick-acts.qml in Qt's own engine.
 .pragma library
 
 const MILLISECONDS = 1000;

@@ -1,8 +1,8 @@
 // What Tuple's links say, and how a call is put in words, for Tuple.qml
 // and Call.qml, and how Recent's calls read, for Calls.qml. Kept apart
 // from Quickshell's types, so the `the-desktop-follows-tuple-calls` check
-// can run it in Qt's own engine (tests/tuple.qml). How a call stands, and
-// which calls Recent keeps, is tuple-call's to say (call/).
+// can run it in Qt's own engine (modules/quickshell/tests/tuple.qml). How a
+// call stands, and which calls Recent keeps, is tuple-call's to say (call/).
 .pragma library
 .import "When.js" as When
 

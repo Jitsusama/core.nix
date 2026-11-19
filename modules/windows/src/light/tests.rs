@@ -1,7 +1,8 @@
 //! The cases for the light a screen's drawer says, from the machine
 //! daemon's records as modules/machine's light.rs and steered.rs write
-//! them; Displays.qml's cases for the same (tests/plate.qml's backlight
-//! and lights, tests/answers.qml's Warmth) moved here with it.
+//! them; Displays.qml's cases for the same (the backlight and lights of
+//! modules/quickshell/tests/plate.qml, and the Warmth of
+//! modules/quickshell/tests/answers.qml) moved here with it.
 
 use serde_json::{Value, json};
 

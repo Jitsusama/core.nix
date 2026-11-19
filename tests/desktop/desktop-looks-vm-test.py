@@ -522,8 +522,8 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
 
     The shell runs the real warp against the stand-in warp-cli, answering with the contract's
     made-up files (modules/warp/contract), which warp's own tests read too. What each part says
-    is tests/answers.qml's to prove; these are for the design's look at Joel's scales (VKCF3Z,
-    2026-11-08).
+    is modules/quickshell/tests/answers.qml's to prove; these are for the design's look at Joel's
+    scales (VKCF3Z, 2026-11-08).
     """
     at = scale.replace(".", "-")
     connected = [(f"{asked}.json", f"{asked}.json") for asked in WARP_QUESTIONS]

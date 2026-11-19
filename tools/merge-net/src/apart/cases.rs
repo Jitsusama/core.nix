@@ -10,7 +10,8 @@ use serde_json::Value;
 use super::{OUTSIDE, apart_read};
 
 /// Whether `file` is one read as cases, should it import pytest: a test
-/// file named for what it tests, as tests/launcher-on-niri-test.py is.
+/// file named for what it tests, as launcher-on-niri-test.py in
+/// modules/quickshell/tests/ is.
 pub fn is_cases(file: &str) -> bool {
     file.ends_with("-test.py")
 }

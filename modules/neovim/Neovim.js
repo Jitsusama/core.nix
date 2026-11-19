@@ -3,7 +3,7 @@
 // once, what each one's row says, what only Neovim says in its drawer, the
 // command going to it, and what the program's drawer says. Kept apart
 // from Quickshell's types, so the `the-launcher-acts-only-on-what-it-can`
-// check runs it in Qt's own engine (tests/quick-acts.qml).
+// check runs it in Qt's own engine (modules/quickshell/tests/quick-acts.qml).
 .pragma library
 
 // Between the parts of a side, as every side joins them.

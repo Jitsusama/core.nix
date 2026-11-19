@@ -1,5 +1,6 @@
 //! Location's rows as the launcher's Now drew them before the daemon
-//! served them (tests/now-moment.qml's cases), each kept as it read there.
+//! served them (modules/quickshell/tests/now-moment.qml's cases), each
+//! kept as it read there.
 
 use super::*;
 use crate::words::fixture;

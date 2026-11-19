@@ -1,6 +1,8 @@
-//! The node drawer the eero daemon serves, held to the figures the shell's
-//! own drawer said of `home-network.json` (tests/home-network.qml), in the
-//! launcher's words, its times left for the shell to word as it draws.
+//! The node drawer the eero daemon serves, held to the figures the
+//! shell's own drawer said of `home-network.json` (its cases in
+//! modules/quickshell/tests/home-network.qml until the daemon served
+//! it), in the launcher's words, its times left for the shell to word
+//! as it draws.
 
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};

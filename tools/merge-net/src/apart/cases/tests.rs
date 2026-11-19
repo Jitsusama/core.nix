@@ -1,8 +1,9 @@
 use super::*;
 
-/// A pytest file shaped as tests/launcher-on-niri-test.py was on 12
-/// November: a docstring, imports, a constant, a fixture, a helper and
-/// two cases, one of them with a docstring and one running over lines.
+/// A pytest file shaped as modules/quickshell/tests/launcher-on-niri-test.py
+/// was on 12 November: a docstring, imports, a constant, a fixture, a
+/// helper and two cases, one of them with a docstring and one running over
+/// lines.
 const BASE: &str = r#""""The launcher's cases, on niri.
 
 Every test starts with the launcher closed.

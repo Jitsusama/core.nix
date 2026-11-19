@@ -16,7 +16,8 @@ cd "${tree}"
 # for none and 2 when it can't search, and only none passes.
 status=0
 rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
-  --glob '!modules/quickshell/launcher/Colours.js' --glob '!tests/colour-cases.js' \
+  --glob '!modules/quickshell/launcher/Colours.js' \
+  --glob '!modules/quickshell/tests/colour-cases.js' \
   --glob '!modules/cadence/tests/theme.json' \
   --glob '!modules/terminal-kit/tests/osaka-jade.json' \
   --glob '!modules/quickshell/in-a-terminal/tests/theme.json' \

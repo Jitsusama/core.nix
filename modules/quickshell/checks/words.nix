@@ -200,9 +200,9 @@
   # (modules/quickshell/tests/command-drawers.qml), under an eyebrow naming the
   # place that lists it, as launcher/CommandRow.js makes it from the vocabulary
   # the account writes. What each example answers is held in
-  # the-launcher-answers-what- is-asked (tests/answers/command-examples.js),
-  # where the commands' own JavaScript runs with the shell's maths and Unicode's
-  # names.
+  # the-launcher-answers-what-is-asked
+  # (modules/quickshell/tests/answers/command-examples.js), where the commands'
+  # own JavaScript runs with the shell's maths and Unicode's names.
   every-command-row-has-a-drawer =
     let
       qt = pkgs.qt6.qtdeclarative;

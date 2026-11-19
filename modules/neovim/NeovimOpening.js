@@ -4,7 +4,7 @@
 // folder it's opened from, or in a new kitty there while none runs. Kept
 // apart from Quickshell's types, so the
 // `the-launcher-acts-only-on-what-it-can` check runs it in Qt's own
-// engine (tests/quick-acts.qml).
+// engine (modules/quickshell/tests/quick-acts.qml).
 .pragma library
 
 // Neovim given a file, at its line, and its column after that, as the
