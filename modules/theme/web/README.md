@@ -20,9 +20,11 @@ What the theme module gives a website, on every machine:
   `map.js` walks a map or graph by its keys, naming each arrow that breaks
   the one rule and each drawn name over a line or another name; and
   `homes.js` reads every site's `homes.json`, naming each mention of a thing
-  that doesn't link to its home.
+  that doesn't link to its home; and `looks.js`, run on a live page before
+  a deploy and after it, names each look the deploy lost.
 - `homes-test.py` holds `homes.js` to its cases in headless Chromium, as the
-  `homes-probe-reads-as-the-reader` check runs it.
+  `homes-probe-reads-as-the-reader` check runs it, and `looks-test.py`
+  holds `looks.js` to its, as `looks-probe-finds-what-a-deploy-lost` does.
 
 A rule every site would need goes in `base.css`; a value every site would
 need goes in `theme.css` through `web.nix`; a verdict of his on a site goes in

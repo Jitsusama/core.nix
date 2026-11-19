@@ -488,6 +488,35 @@ in
           --basetemp="$TMPDIR/pytest" ${./web/homes-test.py}
         touch $out
       '';
+  # The web-design skill's looks probe, run in headless Chromium over small
+  # sites of its own (web/looks-test.py): what a page draws beyond its
+  # words, measured before a deploy and after it, with the deploy of 18
+  # November 2026 that kept a guide's words and lost its masthead, art and
+  # stylesheets as its first case.
+  looks-probe-finds-what-a-deploy-lost =
+    let
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+    in
+    pkgs.runCommandLocal "looks-probe-finds-what-a-deploy-lost"
+      {
+        env = {
+          WEB_SKILL = "${./web/skill}";
+          FACE = "${pkgs.fraunces}/share/fonts/truetype/Fraunces[SOFT,WONK,opsz,wght].ttf";
+          # Without a fontconfig, the sandbox's Chromium fails a web face
+          # it fetched as often as it draws it.
+          FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ ]; };
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider \
+          --basetemp="$TMPDIR/pytest" ${./web/looks-test.py}
+        touch $out
+      '';
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design

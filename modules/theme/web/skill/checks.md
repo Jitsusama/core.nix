@@ -116,6 +116,11 @@ through axe-core and its own console.
    what's wrong or worth a look; a reader who can only repeat totals fails
    it too. The Code page passed every step above on 15 November and failed
    this one at a glance.
+9. **A deploy keeps its looks.** Every publish over a page already live,
+   whoever built it and wherever it's served, is measured on the live page
+   before and after ([Before and After](#before-and-after)). A look lost
+   that nobody named as meant, or an asset answering an error, fails the
+   publish, and the copy kept from before goes back at once.
 
 ## The Widths
 
@@ -276,6 +281,42 @@ On a throttled middling phone (4 times slower CPU, a fast 4G network):
   for the kit's two, since the home's build names only a document loading
   a script of its own, in the line its service prints (`journalctl --user
   -u local-sites-home`), never one missing the kit.
+
+## Before and After
+
+A deploy of a tracker on 18 November 2026 changed only its guide's and
+lexicon's words, and lost their masthead, heading art, faces and
+stylesheets to a plainer shell. Every word check passed, the publish said
+it was done, and Joel found it himself. A gate run on the new copy alone
+can't see what the old one had, so every publish over a live page holds
+the two side by side, in the render, not the markup: a stylesheet still
+linked that answers 404 is in the markup and on nobody's screen.
+
+1. **Before it goes out**, fetch the live copy of every file the publish
+   replaces and keep it, in the work's scratch rather than the site, so
+   it can go back whole. Then, on each live page, run `looks.js`, beside
+   this file, as `gate.js` is run, and keep its `looks`. Shoot each page
+   at 1440 and 390 px, in both looks, with every fold open.
+2. **After it goes out**, on each live page again, set the list kept as
+   `globalThis.looksBefore` with one eval, and each loss the change means
+   as `globalThis.looksMeant`, an object from the look to why it went;
+   then run `looks.js`. It answers each look the page had and has no
+   more in `lost`, each meant one with its reason in `meant`, each asset
+   that answered an error in `broken`, and its `looks` now, kept as the
+   next publish's before. Shoot the same shots.
+3. **Hold the shots side by side**, before and after, width by width and
+   look by look, and name every difference the change didn't mean: a
+   masthead gone, a face fallen back, a figure blank, a tint lost. The
+   list sees what loads; only the shots see a part drawn wrong.
+4. **It passes** on an empty `lost` and `broken` at each page, and a
+   difference in the shots that's each one meant. Otherwise put the kept
+   copy back at once, before anything else, measure it back to its
+   before list, and report the publish as failed, naming each loss.
+
+A page published for the first time has no before, and passes the gate
+above alone; its first after list is the next publish's before. A site
+that keeps its own guard beside its deploy, as a tracker reads its
+markup for lost looks, runs it too: the two see different things.
 
 ## Looking
 

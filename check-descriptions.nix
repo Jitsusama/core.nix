@@ -1650,6 +1650,13 @@
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
     64, asking nothing of the shell, niri or swayidle
   '';
+  looks-probe-finds-what-a-deploy-lost = ''
+    the web-design skill's looks probe, in headless Chromium over small sites of its own, lists a
+    page's stylesheet, face, type, colours, masthead, mark, drawings, images and scripts as drawn,
+    names each one lost when a deploy leaves its words in a plain shell, names a stylesheet that
+    answers 404 broken, says a loss named as meant with why, loses nothing to a change of words,
+    measures a drawing in a shut fold and leaves it shut, and fails a page that draws nothing
+  '';
   m4-pro-kernel-describes-both-external-screens = ''
     the 14-inch M4 Pro's device tree describes both external screens' coprocessors, their firmware
     memory and their crossbars as its own ADT has them
