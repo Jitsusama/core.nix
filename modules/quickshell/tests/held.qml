@@ -328,6 +328,18 @@ QtObject {
         check("a spent thing landed in from a search leaves past its collection",
             said(Held.leaveTo(through, how(false), ways)), "0");
         check("but never past the outermost", said(Held.leaveTo(through, how(true), ways)), "1");
+        // The step whose places every history forgets, `spent`: the one
+        // left, or the outermost where it's the one that offers nothing,
+        // though it's kept.
+        const forgets = to => `${to.keep} ${to.spent}`;
+        check("the places forgotten are through the step left",
+            forgets(Held.leaveTo(nothing, how(false), ways)), "1 1");
+        check("or through the outermost, kept but spent", forgets(top), "1 0");
+        check("as when it's alone", forgets(alone), "-1 0");
+        check("or through the collection a spent thing was found in",
+            forgets(Held.leaveTo(through, how(false), ways)), "0 0");
+        check("or through the thing itself, where the outermost keeps its collection",
+            forgets(Held.leaveTo(through, how(true), ways)), "1 1");
 
         // What the launcher's remaking answers its caller.
         const answer = made => Held.answer(made, Held.leaveTo(made, how(false), ways));
@@ -353,9 +365,10 @@ QtObject {
         // spent step's rows as live. Where he is, and the step left, read
         // as they did before the leave and as they do now, since a row is
         // remade as offered now, and may be renamed so.
-        const steps = place => place.split("/");
+        // Home, which holds no steps, reads as "" and is drawn as "~".
+        const steps = place => place === "" ? [] : place.split("/");
         const held = places => places.map(place => ({ held: steps(place) }));
-        const at = one => one.held.join("/");
+        const at = one => one.held.length === 0 ? "~" : one.held.join("/");
         const after = (went, landed, left) => {
             const now = Held.afterLeave({
                 jumps: held(went.jumps ?? []),
@@ -392,6 +405,12 @@ QtObject {
         check("Ctrl+I's places ahead and Ctrl+T's tags go alike",
             after({ ahead: ["home", "agents/s1/look", "agents"], tags: ["agents/s1", "agents"] },
                 ["agents"], ["agents/s1"]), " | home | ; elsewhere");
+        check("a spent outermost forgets every place through it",
+            after({ jumps: ["O/S2", "O", "O/S1", "O"], last: "O/S2" }, ["O"], ["O"]),
+            " |  | ; none");
+        check("a leave to home forgets home last on the way back, not before",
+            after({ jumps: ["", "q", "agents", ""], last: "" }, [""], ["agents"]),
+            "~ q |  | ; none");
         check("no place used last, as the launcher opens, is none still",
             after({ jumps: ["home", "agents"], last: null }, ["agents"], ["agents/s1"]),
             "home |  | ; none");
