@@ -60,6 +60,19 @@ use std::collections::VecDeque;
 pub const LATE_MS: f64 = 15.0;
 /// How long the delay must stand before a cut.
 const STANDING_S: f64 = 1.0;
+/// A flowing download's own delay past this has the upload's TCP hear
+/// its acks so late that its windows grow too slowly to fill a line in
+/// the seconds `elsewhere` judges one by: TCP fills a line through a few
+/// tens of ms more round trip, and on 18 November the download stood
+/// 200 ms and more past its floor while the upload carried a tenth of
+/// its line.
+const ACKS_LATE_MS: f64 = 100.0;
+/// How long a spell of late acks is waited out, at most: a queue our
+/// download's cuts drain goes within a few of them, a second apart,
+/// while one they leave standing, another's or one no cut of ours
+/// reaches, may stand for minutes with a hidden upload queue beside it,
+/// so past this the upload counts as ever.
+const ACKS_WAIT_S: f64 = 20.0;
 /// Below this delay a full direction may climb.
 const CLEAR_MS: f64 = 5.0;
 /// A direction carrying under this many kbit/s has no flow to cut.
@@ -358,6 +371,15 @@ pub struct Ours {
     /// None where the shaper didn't count it.
     #[serde(default)]
     pub sent: Option<u64>,
+    /// Whether the controller judged the acks this way's sending waits
+    /// on to come late, the other way's flowing queue standing past
+    /// `ACKS_LATE_MS` for no longer than `ACKS_WAIT_S`: a link carrying
+    /// under its rate then sends what its acks let it, whatever the
+    /// router's line. The controller's own
+    /// judgement from the other way's reading, so never read or recorded
+    /// with the rest, and made again from those in a replay.
+    #[serde(skip)]
+    pub acks_late: bool,
 }
 
 impl Ours {
@@ -383,6 +405,8 @@ impl Ours {
             resent,
             dropped,
             sent: None,
+            // The controller judges this from the other way's delay.
+            acks_late: false,
         })
     }
 }
@@ -644,6 +668,18 @@ impl Way {
         let line_full = self
             .line()
             .is_none_or(|anchor| through >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD);
+        // With the other way's queue standing late, our flows wait on acks
+        // that come late, so they send under any rate, the router's line
+        // or ours: on 18 November a download filling the router's queue
+        // had an upload with 15 Mbit/s of line carry about 1.5, taken for
+        // the line and held there while the calls lost most of what they
+        // sent up. A moment so, with our flows waiting and the link under
+        // its rate, says nothing of the line whatever it carried, so it
+        // puts off the seconds a count needs rather than add to them or
+        // end them: a download late now and then only puts off what the
+        // moments between find. One finding nothing waiting, or the link
+        // at its rate, ends them as ever.
+        let unjudged = ours.acks_late && ours.waiting && held_back && !backing_off;
         let elsewhere = ours.waiting
             && held_back
             && !backing_off
@@ -651,7 +687,11 @@ impl Way {
             && through > FLOWING_KBIT
             && self.reached(at) > 0.0
             && through >= self.reached(at) * REACHED;
-        if elsewhere {
+        if unjudged {
+            if let Some((since, _, _)) = self.elsewhere.as_mut() {
+                *since += dt;
+            }
+        } else if elsewhere {
             let (since, sum, n) = self.elsewhere.get_or_insert((at, 0.0, 0));
             *sum += through;
             *n += 1;
@@ -1342,6 +1382,9 @@ pub struct Controller {
     last_cut: LastCut,
     /// The hold on the VPN's own queue, for a wait inside its tunnel.
     tunnel: crate::tunnel::Hold,
+    /// Since when the upload's acks have come late, through the
+    /// download's queue, unbroken.
+    acks_late_since: Option<f64>,
 }
 
 impl Controller {
@@ -1370,7 +1413,19 @@ impl Controller {
             why_since: None,
             last_cut: LastCut::default(),
             tunnel: crate::tunnel::Hold::default(),
+            acks_late_since: None,
         }
+    }
+
+    /// Whether the upload's acks come late at `at`, from whether they do
+    /// by the download's delay, `late`: so for at most `ACKS_WAIT_S` of
+    /// an unbroken spell.
+    fn acks_late(&mut self, at: f64, late: bool) -> bool {
+        if !late {
+            self.acks_late_since = None;
+            return false;
+        }
+        at - *self.acks_late_since.get_or_insert(at) < ACKS_WAIT_S
     }
 
     /// The share of its lane the VPN's own queue is held to: under one
@@ -1567,21 +1622,28 @@ impl Controller {
         let idle_up = self.up.idle(seen.up_kbit);
         let idle_down = self.down.idle(seen.down_kbit);
         let cuts = self.up.last_cut;
+        // The download's own delay, with an idle upload's path taken off.
+        let down_own = down.map(|delay| {
+            let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
+            (delay - beside).max(0.0)
+        });
+        // The upload's acks come back the download's way, as the probes
+        // that read its delay do, through the queue a flowing download
+        // fills. An idle download's delay is the path's, which the
+        // upload's own delay already has taken off.
+        let acks_late = self.acks_late(
+            at,
+            !idle_down && down_own.is_some_and(|delay| delay > ACKS_LATE_MS),
+        );
         let fed = up.map(|delay| {
             let beside = if idle_down { down.unwrap_or(0.0) } else { 0.0 };
-            self.step_up(seen, (delay - beside).max(0.0), heeded)
+            self.step_up(seen, (delay - beside).max(0.0), heeded, acks_late)
         });
-        if let Some(delay) = down {
-            let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
+        if let Some(delay) = down_own {
             // The download's queue at home is the cable's, first come,
             // first served, which the delay finds.
-            self.down.step(
-                at,
-                (delay - beside).max(0.0),
-                seen.down_kbit,
-                None,
-                Tunnel::Unheard,
-            );
+            self.down
+                .step(at, delay, seen.down_kbit, None, Tunnel::Unheard);
         }
         for way in [&mut self.up, &mut self.down] {
             if way.misbehaving(at) {
@@ -1614,9 +1676,15 @@ impl Controller {
     }
 
     /// Steps the upload on its own delay, `seen_delay`, and on the queue
-    /// only the VPN's flow meets, while it's `heeded`, and gives the delay
-    /// it was stepped on.
-    fn step_up(&mut self, seen: &Seen, seen_delay: f64, heeded: Option<f64>) -> f64 {
+    /// only the VPN's flow meets, while it's `heeded`, with its acks heard
+    /// late while `acks_late`, and gives the delay it was stepped on.
+    fn step_up(
+        &mut self,
+        seen: &Seen,
+        seen_delay: f64,
+        heeded: Option<f64>,
+        acks_late: bool,
+    ) -> f64 {
         let at = seen.at_s;
         let hidden = heeded.unwrap_or(0.0);
         let tunnel = if hidden > seen_delay {
@@ -1633,7 +1701,8 @@ impl Controller {
         };
         let (cuts, plateau) = (self.up.last_cut, self.up.plateau);
         let fed = seen_delay.max(hidden);
-        self.up.step(at, fed, seen.up_kbit, seen.up_ours, tunnel);
+        let ours = seen.up_ours.map(|ours| Ours { acks_late, ..ours });
+        self.up.step(at, fed, seen.up_kbit, ours, tunnel);
         if self.up.last_cut > cuts {
             self.last_cut = LastCut {
                 delay_ms: fed,
@@ -4074,6 +4143,306 @@ mod tests {
             ..quiet(12_000.0, 300.0)(0.0)
         });
         assert_eq!(limits.up, None);
+    }
+
+    /// A download over a 30000 line, into the cable's queue ahead of us,
+    /// its sender sending 40000 with no limit of ours and coming to our
+    /// limit over seconds, as TCP's senders back off a round trip at a
+    /// time: our limit under the line drains the queue, but only once
+    /// it has risen for a while, as it did to 1,071 ms on 18 November.
+    struct Cable {
+        sending: f64,
+        queued_kbit: f64,
+    }
+
+    impl Cable {
+        fn new() -> Self {
+            Self {
+                sending: 40_000.0,
+                queued_kbit: 0.0,
+            }
+        }
+
+        /// A moment of `dt` under `limit`: what arrives, in kbit/s, and
+        /// the download's delay, in ms.
+        fn step(&mut self, limit: Option<u64>, dt: f64) -> (f64, f64) {
+            let to = limit.map_or(40_000.0, crate::rate::float).min(40_000.0);
+            self.sending += (to - self.sending) * dt / 3.0;
+            self.queued_kbit = (self.queued_kbit + (self.sending - 30_000.0) * dt).max(0.0);
+            let arrives = if self.queued_kbit > 0.0 {
+                30_000.0
+            } else {
+                self.sending
+            };
+            (arrives, 1.0 + self.queued_kbit / 30.0)
+        }
+    }
+
+    /// An upload beside a download through a `Cable`, from `from` to
+    /// `to`, as `beside` steps one.
+    fn beside_a_cable(
+        c: &mut Controller,
+        from: f64,
+        to: f64,
+        up: impl Fn(f64, bool) -> (f64, bool),
+    ) -> (Option<u64>, Option<f64>) {
+        let mut cable = Cable::new();
+        beside(c, from, to, |limit, _| cable.step(limit, 0.1), up)
+    }
+
+    /// An upload beside a download carrying and late as `down(limit,
+    /// at)` says, in kbit/s and ms, under the download's limit, from
+    /// `from` to `to`: the upload's flows wait to go and carry what
+    /// `up(rate, late)` says, with our CAKE holding a queue where it says
+    /// so, `late` where the download stands past `ACKS_LATE_MS`. Answers
+    /// the rate held at the end and the lowest plateau the upload had.
+    fn beside(
+        c: &mut Controller,
+        from: f64,
+        to: f64,
+        mut down: impl FnMut(Option<u64>, f64) -> (f64, f64),
+        up: impl Fn(f64, bool) -> (f64, bool),
+    ) -> (Option<u64>, Option<f64>) {
+        let (mut limits, mut lowest) = (None, c.up.plateau);
+        let mut at = from;
+        while at < to {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let (down_kbit, down_ms) = down(c.down.limit(), at);
+            let (up_kbit, queued) = up(rate, down_ms > ACKS_LATE_MS);
+            limits = c
+                .step(&Seen {
+                    at_s: at,
+                    up_kbit,
+                    up_ours: Some(Ours {
+                        queued,
+                        waiting: true,
+                        ..Ours::default()
+                    }),
+                    down_kbit,
+                    down_delay_ms: Some(down_ms),
+                    ..quiet(0.0, 300.0)(at)
+                })
+                .up;
+            lowest = match (lowest, c.up.plateau) {
+                (Some(was), Some(now)) => Some(was.min(now)),
+                (was, now) => was.or(now),
+            };
+            at += 0.1;
+        }
+        (limits, lowest)
+    }
+
+    /// An upload behind a 12000 line that queues by flow: what it
+    /// carries, and whether our CAKE holds a queue, at `rate`, carrying
+    /// `starved` while its acks come `late`.
+    fn starved_while_late(starved: f64) -> impl Fn(f64, bool) -> (f64, bool) {
+        move |rate, late| {
+            if late {
+                (starved, false)
+            } else {
+                (rate.min(12_000.0), rate < 12_000.0)
+            }
+        }
+    }
+
+    /// A flowing download whose queue moves, as one our cuts work on
+    /// does, between 150 and 300 ms each second.
+    fn wandering(_: Option<u64>, at: f64) -> (f64, f64) {
+        let high = at.rem_euclid(2.0) >= 1.0;
+        (30_000.0, if high { 300.0 } else { 150.0 })
+    }
+
+    // As in the call test on 18 November: an upload behind a 12000 line
+    // carries 2000 from its start while its acks come late, so the most
+    // it has reached is that, and the count would take it for the line.
+    #[test]
+    fn an_upload_late_on_its_acks_from_the_start_learns_no_line() {
+        let mut c = Controller::new(None, None);
+        let up = starved_while_late(2_000.0);
+        beside(&mut c, 0.0, 12.0, wandering, &up);
+        assert_eq!(c.up.plateau, None, "late acks taught a line");
+        let quick = |_: Option<u64>, _: f64| (30_000.0, 1.0);
+        let (limits, _) = beside(&mut c, 12.0, 20.0, quick, &up);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // An upload that carried its line, and so reached it, is held back
+    // to a tenth by late acks one half second in two: those moments put
+    // off the count rather than end it, so the quick ones between still
+    // find the router's queue.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_late_acks_that_starve_it() {
+        let mut c = Controller::new(None, None);
+        let up = starved_while_late(1_200.0);
+        let quick = |_: Option<u64>, _: f64| (30_000.0, 1.0);
+        beside(&mut c, 0.0, 6.0, quick, &up);
+        let now_and_then = |_: Option<u64>, at: f64| {
+            let late = at.rem_euclid(1.0) >= 0.5;
+            (30_000.0, if late { 150.0 } else { 1.0 })
+        };
+        let (limits, _) = beside(&mut c, 6.0, 12.0, now_and_then, &up);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // A spell of late acks is waited out only so long: a download queue
+    // our cuts don't drain, moving all the while, leaves a queue the
+    // router hides on the upload to be taken back once it has.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_a_download_late_for_long() {
+        let mut c = Controller::new(None, None);
+        let up = |rate: f64, _| (rate.min(12_000.0), rate < 12_000.0);
+        beside(&mut c, 0.0, ACKS_WAIT_S - 1.0, wandering, up);
+        assert_eq!(c.up.plateau, None, "the late acks went unheeded");
+        let (limits, _) = beside(&mut c, ACKS_WAIT_S - 1.0, 30.0, wandering, up);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // Its acks late, the upload carries 2000 and then its line once
+    // they come quick, the download still flowing, as the cable drains.
+    #[test]
+    fn a_queue_past_cake_is_still_taken_back_once_the_acks_come_quick() {
+        let mut c = Controller::new(None, None);
+        let (limits, lowest) = beside_a_cable(&mut c, 0.0, 30.0, |rate, late| {
+            if late {
+                (2_000.0, false)
+            } else {
+                (rate.min(12_000.0), rate < 12_000.0)
+            }
+        });
+        assert!(
+            lowest.is_some_and(|lowest| lowest > 11_000.0),
+            "late acks taught a line: {lowest:?}"
+        );
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    #[test]
+    fn an_upload_waiting_on_late_acks_keeps_its_plateau() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(8_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let (limits, lowest) = beside_a_cable(&mut c, 0.0, 20.0, |rate, late| {
+            if late {
+                (6_000.0, true)
+            } else {
+                (rate.min(12_000.0), rate < 12_000.0)
+            }
+        });
+        assert!(
+            lowest.is_some_and(|lowest| (lowest - 8_000.0).abs() < 1.0),
+            "late acks lowered the plateau to {lowest:?}"
+        );
+        assert!(near(limits, 7_600.0), "not held at it: {limits:?}");
+    }
+
+    /// An upload behind a router that queues by flow, as `flow_queued`
+    /// steps one, from `from` to `to` under a 12000 line, beside a
+    /// download carrying and late as `down(at)` says, in kbit/s and ms.
+    /// Answers the rate held at the end.
+    fn flow_queued_beside(
+        c: &mut Controller,
+        from: f64,
+        to: f64,
+        down: impl Fn(f64) -> (f64, f64),
+    ) -> Option<u64> {
+        flow_queued_beside_waiting(c, from, to, true, down)
+    }
+
+    /// As `flow_queued_beside`, with the upload's flows waiting to go or
+    /// not as `waiting` says.
+    fn flow_queued_beside_waiting(
+        c: &mut Controller,
+        from: f64,
+        to: f64,
+        waiting: bool,
+        down: impl Fn(f64) -> (f64, f64),
+    ) -> Option<u64> {
+        let mut limits = None;
+        let mut at = from;
+        while at < to {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let (down_kbit, down_ms) = down(at);
+            limits = c
+                .step(&Seen {
+                    at_s: at,
+                    up_kbit: rate.min(12_000.0),
+                    up_ours: Some(Ours {
+                        queued: rate < 12_000.0,
+                        waiting,
+                        ..Ours::default()
+                    }),
+                    down_kbit,
+                    down_delay_ms: Some(down_ms),
+                    ..quiet(0.0, 300.0)(at)
+                })
+                .up;
+            at += 0.1;
+        }
+        limits
+    }
+
+    // TCP fills a line through tens of ms more round trip, so a download
+    // that late leaves a queue the router hides still ours to take back,
+    // in the seconds a count needs rather than once a wait is over.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_a_download_a_little_late() {
+        let mut c = Controller::new(None, None);
+        let limits = flow_queued_beside(&mut c, 0.0, 10.0, |_| (30_000.0, 90.0));
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // An idle download's delay is the path's, or a queue both ways meet,
+    // and fills nothing our acks wait in.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_an_idle_download_late() {
+        let mut c = Controller::new(None, None);
+        let limits = flow_queued_beside(&mut c, 0.0, 10.0, |_| (300.0, 150.0));
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // A download late one second in two, each spell too short for its
+    // own cut, only puts off what the seconds between find.
+    #[test]
+    fn a_queue_past_cake_is_taken_back_beside_a_download_late_now_and_then() {
+        let mut c = Controller::new(None, None);
+        let limits = flow_queued_beside(&mut c, 0.0, 20.0, |at| {
+            let late = at.rem_euclid(2.0) >= 1.0;
+            (30_000.0, if late { 150.0 } else { 1.0 })
+        });
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    const QUICK: fn(f64) -> (f64, f64) = |_| (30_000.0, 1.0);
+    const LATE: fn(f64) -> (f64, f64) = |_| (30_000.0, 150.0);
+
+    // Beside a quick download, the count for the router's queue opens at
+    // 5 s and finds the line 2 s on. Late acks a second and a half in
+    // put off its end by as long, rather than end it at once.
+    #[test]
+    fn late_acks_put_off_the_seconds_a_queue_past_cake_needs() {
+        let mut c = Controller::new(None, None);
+        flow_queued_beside(&mut c, 0.0, 6.0, QUICK);
+        flow_queued_beside(&mut c, 6.0, 7.5, LATE);
+        flow_queued_beside(&mut c, 7.5, 7.55, QUICK);
+        assert_eq!(c.up.plateau, None, "the late seconds counted");
+        let limits = flow_queued_beside(&mut c, 7.6, 9.0, QUICK);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // Late acks that find no queue elsewhere, the upload's flows not
+    // waiting, end the count as any such moment does: what it had found
+    // is no longer known to stand.
+    #[test]
+    fn late_acks_with_no_queue_elsewhere_end_the_count() {
+        let mut c = Controller::new(None, None);
+        flow_queued_beside(&mut c, 0.0, 6.5, QUICK);
+        flow_queued_beside_waiting(&mut c, 6.5, 7.0, false, LATE);
+        flow_queued_beside(&mut c, 7.0, 7.6, QUICK);
+        assert_eq!(c.up.plateau, None, "the count went on past them");
+        let limits = flow_queued_beside(&mut c, 7.6, 9.5, QUICK);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
     }
 
     /// Steps a controller on a 12000 line with room to spare, behind a
