@@ -450,6 +450,8 @@ pub struct Guard {
     /// What freezes a runaway writer, once given one, and what each
     /// process has written lately.
     freeze: Option<Box<dyn crate::freeze::Freeze>>,
+    /// The disks it says the writes and wear of, once given them.
+    disks: Option<crate::disks::Watch>,
     /// Whether the daemon has been told to stop, which a survey asks as it
     /// walks; without one given, nothing stops a survey.
     stop: Box<dyn Fn() -> bool>,
@@ -551,6 +553,10 @@ pub struct Status {
     /// healthy, and when it was measured, in wall seconds.
     pub holders: Vec<crate::holders::Holder>,
     pub holders_at: Option<f64>,
+    /// How hard each disk is written and how worn it is, for a guard
+    /// given its disks to watch: the machine's.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub disks: Vec<crate::disks::DiskStatus>,
 }
 
 /// A process writing most of what's written, as the status file says it.
@@ -789,6 +795,7 @@ impl Guard {
             min_free: None,
             home,
             freeze: None,
+            disks: None,
             stop: Box::new(|| false),
             writers: Writers::default(),
             unread: (0, None),
@@ -928,6 +935,12 @@ impl Guard {
     /// left to take; without one, nothing is ever frozen.
     pub fn freeze_with(&mut self, freeze: Box<dyn crate::freeze::Freeze>) {
         self.freeze = Some(freeze);
+    }
+
+    /// Reads `disks` at every step and says how hard each is written, and
+    /// how worn, in the status.
+    pub fn watch_disks(&mut self, disks: Box<dyn crate::disks::Disks>) {
+        self.disks = Some(crate::disks::Watch::new(disks));
     }
 
     /// Ends a survey as soon as `stop` says the daemon was told to stop,
@@ -1135,6 +1148,9 @@ impl Guard {
         }
         self.memory.awake.observe(tick);
         self.watch();
+        if let Some(disks) = &mut self.disks {
+            disks.observe(tick);
+        }
         self.mark(tick);
         self.read_min_free(tick.wall);
         self.heartbeat();
@@ -2747,6 +2763,10 @@ impl Guard {
             notice: None,
             holders: Vec::new(),
             holders_at: None,
+            disks: self
+                .disks
+                .as_ref()
+                .map_or_else(Vec::new, crate::disks::Watch::status),
         };
         status.notice = crate::notices::standing(&status);
         if let Some((at, measured, grew)) =
@@ -2920,9 +2940,33 @@ pub fn news(written: &Status, status: &Status, now: f64) -> bool {
     if drifted {
         return true;
     }
-    // The status as written, carrying the estimates it had then.
+    // The status as written, carrying the estimates it had then, and the
+    // same disks' counts, which move every step and are said at each
+    // beat; a disk coming or going, or its health read, is news.
+    let same_disks = written.disks.len() == status.disks.len()
+        && written
+            .disks
+            .iter()
+            .zip(&status.disks)
+            .all(|(was, is)| was.name == is.name);
+    let disks = if same_disks {
+        written
+            .disks
+            .iter()
+            .zip(&status.disks)
+            .map(|(was, is)| crate::disks::DiskStatus {
+                written_this_boot: was.written_this_boot,
+                written_per_hour: was.written_per_hour,
+                rated_wear_in: was.rated_wear_in,
+                ..is.clone()
+            })
+            .collect()
+    } else {
+        status.disks.clone()
+    };
     let steady = Status {
         heartbeat: written.heartbeat,
+        disks,
         filesystems: written
             .filesystems
             .iter()

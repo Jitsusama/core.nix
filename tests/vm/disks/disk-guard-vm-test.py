@@ -203,6 +203,25 @@ def test_both_guards_run_on_the_configs_their_modules_render(account: Account) -
     machine.wait_until_succeeds(f"jq -e '.filesystems | length > 0' {STATUS}")
 
 
+def test_the_machines_guard_says_each_disks_writes_and_an_nvme_disks_wear(
+    account: Account,
+) -> None:
+    """The machine's guard says what each disk wrote, and asks an NVMe disk its wear.
+
+    Its unit lets it open only a few devices, so this is where a refused health log shows.
+    """
+    machine = account.machine
+    machine.wait_for_unit("disk-guard.service")
+    machine.wait_until_succeeds(
+        "jq -e '.disks[] | select(.name == \"nvme0n1\") | .used_percent != null'"
+        " /run/disk-guard/status.json"
+    )
+    said = machine.succeed("disk-guard status")
+    nvme = next(line for line in said.splitlines() if line.strip().startswith("nvme0n1"))
+    assert "% worn" in nvme, said
+    assert "since boot" in nvme, said
+
+
 def test_the_machines_guard_leaves_its_status_while_its_down(account: Account) -> None:
     """The machine's guard leaves its status while it's down, and takes its socket back.
 

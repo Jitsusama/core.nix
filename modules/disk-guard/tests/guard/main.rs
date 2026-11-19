@@ -21,6 +21,7 @@ mod dedupe;
 #[cfg(target_os = "linux")]
 mod desktop;
 mod discover;
+mod disks;
 mod entries;
 mod finished;
 mod footprint;

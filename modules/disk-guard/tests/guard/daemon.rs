@@ -834,6 +834,39 @@ fn a_status_is_stamped_when_it_is_written_not_when_its_step_began() {
     assert!(age < 5.0, "written {age:.0} seconds ago");
 }
 
+/// One disk that has written its bytes and is 3% worn.
+struct OneDisk(u64);
+
+impl disk_guard::disks::Disks for OneDisk {
+    fn read(&mut self, health: bool) -> Vec<disk_guard::disks::Reading> {
+        vec![disk_guard::disks::Reading {
+            name: "nvme0n1".into(),
+            written: self.0,
+            wear: health.then_some(disk_guard::disks::Wear {
+                used: 3,
+                written: 60 * self.0,
+            }),
+        }]
+    }
+}
+
+#[test]
+fn a_guard_watching_disks_says_their_writes_and_wear_and_one_not_says_none() {
+    let home = Home::new();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    assert_eq!(home.status().get("disks"), None, "{}", home.status());
+
+    guard.watch_disks(Box::new(OneDisk(1 << 30)));
+    guard.step(&tick(), &CALM).unwrap();
+    let disk = &home.status()["disks"][0];
+    assert_eq!(disk["name"], "nvme0n1", "{disk}");
+    assert_eq!(disk["written_this_boot"], 1u64 << 30);
+    assert_eq!(disk["used_percent"], 3);
+    assert_eq!(disk["written_in_life"], 60u64 << 30);
+    assert!(disk["rated_wear_in"].as_f64().is_some(), "{disk}");
+}
+
 /// A restarted guard's first step can take minutes, in which the status
 /// the last one left went quiet and the desktop took a restart for a
 /// guard that had stopped. It beats from its first moment, on what the
@@ -933,6 +966,7 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         notice: None,
         holders: Vec::new(),
         holders_at: None,
+        disks: Vec::new(),
     };
     let said = "The disk has room.";
     let written = status(
@@ -953,6 +987,55 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         now,
     );
     assert!(news(&written, &told, now), "what's said is news");
+}
+
+/// A disk's counts move at every step and are said at each beat, so they
+/// alone aren't news; its health read, or a disk coming or going, is.
+#[test]
+fn a_disks_counts_alone_are_no_news_and_its_health_or_a_disk_coming_is() {
+    use disk_guard::daemon::{Status, news};
+    use disk_guard::disks::DiskStatus;
+    use disk_guard::units::float;
+    let now = 1_000_000.0;
+    let disk = |name: &str, written: u64, used: Option<u8>| DiskStatus {
+        name: name.into(),
+        written_this_boot: written,
+        written_per_hour: Some(float(written) / 10.0),
+        used_percent: used,
+        // What it wrote in its life is read with its health, an hour
+        // apart, so it moves with its wear here.
+        written_in_life: used.map(|used| u64::from(used) * 20_000),
+        rated_wear_in: used.map(|_| float(written)),
+    };
+    let status = |disks: Vec<DiskStatus>, heartbeat: f64| Status {
+        version: 2,
+        heartbeat,
+        says: String::new(),
+        filesystems: Vec::new(),
+        cleared: Vec::new(),
+        last: None,
+        failed: None,
+        frozen: Vec::new(),
+        writer: None,
+        notice: None,
+        holders: Vec::new(),
+        holders_at: None,
+        disks,
+    };
+    let written = status(vec![disk("nvme0n1", 1000, Some(2))], now - 5.0);
+    let counted = status(vec![disk("nvme0n1", 9000, Some(2))], now);
+    assert!(!news(&written, &counted, now), "counts alone");
+    let worn = status(vec![disk("nvme0n1", 9000, Some(3))], now);
+    assert!(news(&written, &worn, now), "a percent more worn");
+    let unread = status(vec![disk("nvme0n1", 9000, None)], now);
+    assert!(news(&written, &unread, now), "its health gone unread");
+    let more = status(
+        vec![disk("nvme0n1", 9000, Some(2)), disk("sda", 10, None)],
+        now,
+    );
+    assert!(news(&written, &more, now), "a disk come");
+    let other = status(vec![disk("nvme1n1", 9000, Some(2))], now);
+    assert!(news(&written, &other, now), "another disk");
 }
 
 #[test]

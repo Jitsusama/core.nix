@@ -204,6 +204,12 @@ fn disk_facts(status: &Value, now: f64) -> Vec<(String, String)> {
         }
         disks.push((filesystem["path"].as_str().unwrap_or("?").to_owned(), said));
     }
+    for disk in status["disks"].as_array().into_iter().flatten() {
+        disks.push((
+            disk["name"].as_str().unwrap_or("?").to_owned(),
+            wear_said(disk),
+        ));
+    }
     let last = &status["last"];
     if last.is_object() {
         let said = [
@@ -219,6 +225,48 @@ fn disk_facts(status: &Value, now: f64) -> Vec<(String, String)> {
         disks.push(("last pass".to_owned(), said.join(layout::ITEMS)));
     }
     disks
+}
+
+/// A disk's wear and writes as one fact: how worn it is, what it wrote
+/// the last hour and since boot, and when it reaches its rated wear at
+/// that boot's pace, each said once it's known.
+fn wear_said(disk: &Value) -> String {
+    let mut said = Vec::new();
+    if let Some(used) = disk["used_percent"].as_u64() {
+        said.push(format!("{used}% worn"));
+    }
+    if let Some(hourly) = disk["written_per_hour"].as_f64() {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a rate written is never negative, and far short of a u64 of bytes"
+        )]
+        let hourly = hourly.max(0.0).round() as u64;
+        said.push(format!("wrote {} the last hour", size(hourly)));
+    }
+    said.push(format!(
+        "{} since boot",
+        size(disk["written_this_boot"].as_u64().unwrap_or(0))
+    ));
+    if disk["used_percent"]
+        .as_u64()
+        .is_some_and(|used| used >= 100)
+    {
+        said.push("past its rated wear".to_owned());
+    } else if let Some(left) = disk["rated_wear_in"].as_f64() {
+        // In whole days past one, since a percent worn is too coarse to
+        // say hours of a year by.
+        let left = if left >= 86_400.0 {
+            (left / 86_400.0).round() * 86_400.0
+        } else {
+            left
+        };
+        said.push(format!(
+            "rated wear in about {} at this boot's pace",
+            span(left)
+        ));
+    }
+    said.join(layout::ITEMS)
 }
 
 /// One line of a guard's journal, kept as it was written until it's said,

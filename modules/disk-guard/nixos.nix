@@ -158,6 +158,10 @@ in
         ProtectKernelModules = true;
         ProtectKernelLogs = true;
         ProtectClock = true;
+        # ProtectClock lets the unit open only the clock's devices, so the
+        # NVMe controllers are let in too, read alone, to ask each disk's
+        # health log.
+        DeviceAllow = [ "char-nvme r" ];
         ProtectHostname = true;
         LockPersonality = true;
         NoNewPrivileges = true;

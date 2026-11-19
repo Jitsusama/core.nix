@@ -12,7 +12,8 @@
 # a trash in is deleted in place. With its store filling, the machine's guard expires all but
 # the newest five of a profile's generations and collects what that and
 # anything else left dead. The machine's guard says what an account's
-# compressed files take on the disk, and refuses what isn't the account's.
+# compressed files take on the disk, and refuses what isn't the account's,
+# and what each disk wrote, with an NVMe disk's wear asked through its unit.
 # The tests are disk-guard-vm-test.py, which pytest
 # runs inside the driver (tests/lib/vm_pytest.py); one runs alone with
 # `run-subtests vm-disk-guard-keeps-the-disk <words>`.
@@ -79,6 +80,12 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       cores = 2;
       # What Nix adds to the store lands on a disk, as on a machine.
       writableStoreUseTmpfs = false;
+      # An NVMe disk holding nothing, whose health log the machine's guard
+      # asks through its unit's sandbox, as it asks a laptop's.
+      qemu.options = [
+        "-blockdev driver=null-co,node-name=wear,size=268435456,read-zeroes=on"
+        "-device nvme,serial=wear,drive=wear"
+      ];
       emptyDiskImages = [
         {
           size = 4096;
