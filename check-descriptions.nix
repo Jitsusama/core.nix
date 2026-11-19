@@ -1036,7 +1036,8 @@
     cable's rows, says it's still reading, and makes no drawer for it, and a lease says its
     server until the uptime lands; asked by a terminal after a gap it reads on until they land
     again; the launcher opening loads them again and is told of an uptime stepped, though not of
-    one that agrees, and is told of a cable loaded changed though none is shown; a cable shown
+    one that agrees, and open is told of one ahead of the count, and of a cable loaded changed
+    though none is shown; a cable shown
     loads again each second; a cable the daemon says has changed as it loads is said as it says,
     the load begun before not kept; a card whose load is given up is said as the daemon tells
     it, drawer and all, leaves nothing reading, and isn't loaded again at once, though waiting
