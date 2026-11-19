@@ -4313,8 +4313,8 @@
   the-launcher-remakes-what-it-holds = ''
     a step the launcher holds is made again with its row as it's offered now, a step whose row
     is gone is kept as it was, and one whose row is still offered but offers nothing now, a typed
-    one's too, is left back to the step above it, never past a dialog's own collection and not
-    while Joel holds the rows, the step kept then with its rows gone
+    one's too, is left back to the step above it, never past a dialog's own collection, which is
+    kept with its rows gone, and the way back forgets the place it landed on
   '';
   the-launcher-says-what-counted-most = ''
     the launcher's journal names what counted most, the most first and a tie by name, no more

@@ -277,7 +277,7 @@ QtObject {
         check("a typed step whose row is offered but offers nothing is left",
             `${typedEnded.leave} ${typedEnded.all}`, "1 false");
 
-        leaving(check, steps, deeper, nothing, below);
+        leaving(check, steps, nothing, below);
 
         for (const failure of failures) {
             console.warn(`FAIL ${failure}`);
@@ -286,73 +286,64 @@ QtObject {
     }
 
     // Where a step that offers nothing now leaves to, as `nothing` and
-    // `below` made Agents' steps again, `steps` and `deeper`, each told to
-    // `check`.
-    function leaving(check, steps, deeper, nothing, below) {
-        const how = (outermost, holding) => ({ outermost, holding });
-        const said = to => `${to.keep} ${to.waits}`;
+    // `below` made Agents' steps again, from `steps` and a step deeper,
+    // each told to `check`.
+    function leaving(check, steps, nothing, below) {
+        const how = outermost => ({ outermost });
+        const said = to => `${to.keep}`;
 
         check("nothing to leave keeps every step",
-            said(Held.leaveTo({ steps: steps, leave: -1, all: true }, how(false, false),
-                ways)), "-1 false");
+            said(Held.leaveTo({ steps: steps, leave: -1, all: true }, how(false), ways)), "-1");
         check("a step offering nothing is left, back to the step above it",
-            said(Held.leaveTo(nothing, how(false, false), ways)), "1 false");
+            said(Held.leaveTo(nothing, how(false), ways)), "1");
         check("and a step below one that does, back to it",
-            said(Held.leaveTo(below, how(false, false), ways)), "2 false");
-        // While Joel acts on the rows, as visual or a pending operator
-        // does, or has typed in the find, the step stays, its rows each
-        // gone, and the leave waits for him to finish, as the rows do.
-        keptWith = [];
-        const held = Held.leaveTo(nothing, how(false, true), ways);
-        check("while he holds the rows the step stays, and the leave waits", said(held),
-            "-1 true");
-        check("its rows each gone", keptWith.join(" "), "s1:0");
+            said(Held.leaveTo(below, how(false), ways)), "2");
         // A dialog's own collection, the outermost, is never left, for
         // the home it never showed; it stays, its rows each gone, rather
-        // than showing what it offered before.
+        // than showing what it offered before. Its row stays as it was
+        // entered, as the step a source's change leaves alone does.
         const spentTop = { steps: steps, leave: 0, all: false };
         keptWith = [];
-        const top = Held.leaveTo(spentTop, how(true, false), ways);
-        check("the outermost step is kept, the steps below it left", said(top), "1 false");
+        const top = Held.leaveTo(spentTop, how(true), ways);
+        check("the outermost step is kept, the steps below it left", said(top), "1");
         check("its rows each gone", keptWith.join(" "), "agents:0");
+        check("as it hands them back", read(top.steps.slice(0, 1)), "agents=Agents[]");
+        check("and what it was given is as it was", read(steps),
+            "agents=Agents[s1] s1=working[stop look]");
         keptWith = [];
-        const alone = Held.leaveTo({ steps: [steps[0]], leave: 0, all: false },
-            how(true, false), ways);
+        const alone = Held.leaveTo({ steps: [steps[0]], leave: 0, all: false }, how(true), ways);
         check("the outermost alone is kept with its rows gone, nothing left",
-            `${said(alone)} ${keptWith.join(" ")}`, "-1 false agents:0");
-        check("any other leaves to home", said(Held.leaveTo(spentTop, how(false, false), ways)),
-            "0 false");
+            `${said(alone)} ${keptWith.join(" ")} ${read(alone.steps)}`,
+            "-1 agents:0 agents=Agents[]");
+        check("any other leaves to home", said(Held.leaveTo(spentTop, how(false), ways)), "0");
         check("steps it doesn't leave are as made",
-            read(Held.leaveTo(below, how(false, false), ways).steps.slice(0, 2)),
+            read(Held.leaveTo(below, how(false), ways).steps.slice(0, 2)),
             read(below.steps.slice(0, 2)));
-        // A step below the spent one, made from what it offered, is gone
-        // with it, so the one on screen shows nothing stale under him.
-        keptWith = [];
-        const under = Held.leaveTo(Held.remade(deeper, 1, [row("s1", "ended")], ways),
-            how(false, true), ways);
-        check("while he holds the rows each step below the spent one is gone too",
-            keptWith.join(" "), "s1:0 look:0");
         // A thing landed in from a search, `through`, is left back to the
         // search, past the collection it was found in, as Joel's - leaves it.
         const through = { steps: [steps[0], Object.assign({}, steps[1], { through: true })],
             leave: 1, all: false };
         check("a spent thing landed in from a search leaves past its collection",
-            said(Held.leaveTo(through, how(false, false), ways)), "0 false");
-        check("but never past the outermost",
-            said(Held.leaveTo(through, how(true, false), ways)), "1 false");
+            said(Held.leaveTo(through, how(false), ways)), "0");
+        check("but never past the outermost", said(Held.leaveTo(through, how(true), ways)), "1");
 
-        // What the launcher's remaking answers its caller: a leave waiting
-        // on Joel is "held", its steps shown gone as they are and none
-        // below them made again over them, which would light them again.
-        const answer = (made, holding) => Held.answer(made, Held.leaveTo(made,
-            how(false, holding), ways));
-        check("every step made again is made", answer({ steps, leave: -1, all: true }, false),
-            "made");
-        check("a step kept as it was is kept", answer({ steps, leave: -1, all: false }, false),
-            "kept");
-        check("a step left is left", answer(nothing, false), "left");
-        check("a leave waiting on Joel is held", answer(nothing, true), "held");
+        // What the launcher's remaking answers its caller.
+        const answer = made => Held.answer(made, Held.leaveTo(made, how(false), ways));
+        check("every step made again is made", answer({ steps, leave: -1, all: true }), "made");
+        check("a step kept as it was is kept", answer({ steps, leave: -1, all: false }), "kept");
+        check("a step left is left", answer(nothing), "left");
         check("the outermost alone, kept with its rows gone, is made",
             Held.answer({ steps: [steps[0]], leave: 0, all: false }, alone), "made");
+
+        // A step left by itself goes on no way back, and the way back's
+        // last place, where Joel stepped in from, is now where he is, so
+        // it goes too: Ctrl+O would go nowhere, and show it as it was.
+        const at = places => places.join("/");
+        const jumps = [{ held: ["home"] }, { held: ["agents"] }, { held: ["agents"] }];
+        check("a way back to where a leave landed goes",
+            Held.unjumped(jumps, "agents", one => at(one.held)).map(one => at(one.held))
+                .join(" "), "home");
+        check("one to elsewhere stays",
+            Held.unjumped(jumps, "quests", one => at(one.held)).length, 3);
     }
 }
