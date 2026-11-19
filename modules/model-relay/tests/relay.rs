@@ -66,7 +66,11 @@ const LONG_GAP: Duration = Duration::from_secs(3);
 const HELD: Duration = Duration::from_millis(300);
 /// How long the origin holds `/reset-once-held` the first time before it
 /// resets it, long past the twenty requests that stand a relay down.
-const HELD_THEN_RESET: Duration = Duration::from_secs(2);
+const HELD_THEN_RESET: Duration = Duration::from_secs(4);
+
+/// How long `/cut` waits after its first half before its connection falls,
+/// so the relay has the half first.
+const CUT_AFTER: Duration = Duration::from_millis(100);
 /// How long the tests wait for the relay to listen.
 const LISTENS_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay is given to hear the origin's goodbye on a
@@ -276,7 +280,8 @@ const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 /// The origin's answer: `/echo` hands the body back, `/held` waits a
 /// moment first, `/stream` sends its halves a gap apart and `/long` a
 /// longer one, `/sized` names its length and ends in a frame of its own,
-/// `/broken` fails after its first half, `/bye` answers
+/// `/broken` fails after its first half, `/cut` lets its connection fall
+/// with no word after its first half, `/bye` answers
 /// and lets its connection go, `/reset` reads the request and resets
 /// its stream rather than answer, `/reset-once` does so the first time
 /// it's asked and echoes after, `/reset-on-the-first` does so on the
@@ -326,43 +331,7 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         return Err(h2::Error::from(reason));
     }
     let answer = match path.as_str() {
-        "/stream" | "/long" => {
-            let gap = if path == "/long" {
-                LONG_GAP
-            } else {
-                STREAM_GAP
-            };
-            let (mut sender, body) = Channel::<Bytes, Infallible>::new(2);
-            tokio::spawn(async move {
-                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
-                // An answer paused mid-body for its route's named gap, so
-                // the relay is seen passing what came before the rest.
-                tokio::time::sleep(gap).await;
-                let _ = sender.send_data(Bytes::from_static(b"second\n")).await;
-            });
-            Response::builder()
-                .header("content-type", "text/event-stream")
-                .body(boxed(body))
-        }
-        "/sized" => {
-            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
-            tokio::spawn(async move {
-                let _ = sender.send_data(Bytes::from_static(SIZED)).await;
-            });
-            Response::builder()
-                .header("content-length", SIZED.len().to_string())
-                .body(boxed(body))
-        }
-        "/broken" => {
-            let (mut sender, body) = Channel::<Bytes, io::Error>::new(1);
-            tokio::spawn(async move {
-                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
-                sender.abort(io::Error::other("the origin breaks off this answer"));
-            });
-            Response::builder()
-                .header("content-type", "text/event-stream")
-                .body(body.boxed())
-        }
+        "/stream" | "/long" | "/sized" | "/broken" | "/cut" => in_halves(&path, gone),
         "/held" => {
             let now = held.now.fetch_add(1, Ordering::SeqCst) + 1;
             held.most.fetch_max(now, Ordering::SeqCst);
@@ -385,6 +354,64 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             .body(boxed(Full::new(Bytes::from(body)))),
     };
     Ok(answer.expect("an answer"))
+}
+
+/// The origin's answer for `path`, one of the routes `answer` names whose
+/// body comes in halves, or ends or fails after its first; `/cut` lets its
+/// connection fall by `gone`.
+fn in_halves(path: &str, gone: Arc<Notify>) -> hyper::http::Result<Response<Answer>> {
+    match path {
+        "/sized" => {
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(SIZED)).await;
+            });
+            Response::builder()
+                .header("content-length", SIZED.len().to_string())
+                .body(boxed(body))
+        }
+        "/broken" => {
+            let (mut sender, body) = Channel::<Bytes, io::Error>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                sender.abort(io::Error::other("the origin breaks off this answer"));
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(body.boxed())
+        }
+        "/cut" => {
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                // The first half goes out before the connection falls, so
+                // the answer is broken off midway rather than never begun.
+                tokio::time::sleep(CUT_AFTER).await;
+                gone.notify_one();
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(boxed(body))
+        }
+        _ => {
+            let gap = if path == "/long" {
+                LONG_GAP
+            } else {
+                STREAM_GAP
+            };
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(2);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                // An answer paused mid-body for its route's named gap, so
+                // the relay is seen passing what came before the rest.
+                tokio::time::sleep(gap).await;
+                let _ = sender.send_data(Bytes::from_static(b"second\n")).await;
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(boxed(body))
+        }
+    }
 }
 
 /// The reason the origin resets a request for `path` with, the `heard`th
@@ -1300,7 +1327,7 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--stand-down-for", "6"],
+        &["--stand-down-for", "8"],
     );
 
     // Taken before the stand-down, and held by the origin through its
@@ -1331,6 +1358,10 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
         );
     }
     let stood_down = Instant::now();
+    assert!(
+        !held.is_finished() && handed_to(&origin, "/reset-once-held") == 1,
+        "the held request went once more before the stand-down, so proves nothing"
+    );
     let got = held.await.expect("the held request");
     assert_eq!(
         got.status,
@@ -1338,12 +1369,12 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
         "the held request, sent once more"
     );
     assert!(
-        stood_down.elapsed() < Duration::from_secs(5),
+        stood_down.elapsed() < Duration::from_secs(7),
         "the held request was answered after the stand-down, so proves nothing"
     );
     let opened_meanwhile = got.headers.get("x-origin-connection").cloned();
 
-    tokio::time::sleep_until((stood_down + Duration::from_secs(7)).into()).await;
+    tokio::time::sleep_until((stood_down + Duration::from_secs(9)).into()).await;
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
     assert_eq!(
         got.status,
@@ -1360,9 +1391,92 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
         "taking requests again, it went on the connection opened while it stood down"
     );
     let said = relay.said();
+    // The requests reset to stand it down go again too, but before it
+    // does, so the last sent again is the held request.
+    let stood = said.find("so it stands down for 8 s");
+    let again = said.rfind("is sent again on connection");
     assert!(
-        said.contains("so it stands down for 6 s"),
-        "it never stood down: {said}"
+        stood.is_some() && again.is_some() && stood < again,
+        "it didn't stand down before the held request went once more: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn answers_broken_off_midway_as_their_connection_falls_stand_it_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+
+    for _ in 0..3 {
+        let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+        assert_eq!(got.status, StatusCode::CREATED, "a request answered");
+    }
+    // Each answer begins, so carrying it went well, and is lost midway with
+    // its connection: judged only as its answer ends, it fails.
+    for _ in 0..17 {
+        let (mut pi, connection) = pi_asks(&relay.socket).await;
+        let cut = pi
+            .send_request(request(&host, "/cut", b""))
+            .await
+            .expect("an answer begun");
+        assert_eq!(cut.status(), StatusCode::OK, "an answer to be cut off");
+        assert!(
+            cut.into_body().collect().await.is_err(),
+            "an answer cut off midway came whole"
+        );
+        drop(pi);
+        connection.abort();
+    }
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "answers broken off midway didn't stand it down"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("17 of the 20 requests it finished in ten minutes failed"),
+        "the answers broken off weren't judged as failed: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn answers_pi_gives_up_on_never_stand_it_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
+
+    // pi hangs up partway through each answer, as its person pressing
+    // Escape does: the relay's path did nothing wrong.
+    for _ in 0..25 {
+        let (mut pi, connection) = pi_asks(&relay.socket).await;
+        let long = pi
+            .send_request(request(&host, "/long", b""))
+            .await
+            .expect("an answer begun");
+        drop(long);
+        drop(pi);
+        connection.abort();
+    }
+    let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
+    let left = relay.left_within(LISTENS_WITHIN);
+
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a request after pi gave up on 25"
+    );
+    assert!(left.is_some(), "the relay didn't leave once idle");
+    let said = relay.said();
+    assert!(
+        !said.contains("stands down") && said.contains("pi cancelled 25"),
+        "answers pi gave up on were judged, or not counted as its cancels: {said}"
     );
 }
 

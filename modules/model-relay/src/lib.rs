@@ -59,15 +59,15 @@
 //! hour before. A request is judged once its answer ends, so one broken
 //! off midway fails, and only one that went down a connection: one that
 //! never reached the origin, as when none would open, would fail direct
-//! too, so it says nothing of the relay's connections. Nor do a reset
-//! giving the origin's own verdict, such as to calm down, and an error
-//! hyper says was the request's own, so neither is judged. Standing down,
-//! and for its idle time after, it doesn't leave, which would forget it;
-//! taking requests again, it retires the connections opened meanwhile by
-//! requests it had already taken. The last stand-down, which the next
-//! doubles, is forgotten when it leaves or restarts. A sleep forgets a
-//! stand-down, as the clock it ran on stopped and the network it judged
-//! may be gone.
+//! too, so it says nothing of the relay's connections. Nor does a reset
+//! giving the origin's own verdict, such as to calm down, so it isn't
+//! judged. Standing down, and for its idle time after, it doesn't leave,
+//! which would forget it; taking requests again, it retires the
+//! connections opened meanwhile by requests it had already taken, and
+//! judges none of those. The last stand-down, which the next doubles, is
+//! forgotten when it leaves or restarts. A sleep forgets a stand-down,
+//! and what was sent before it, as the clock it ran on stopped and the
+//! network it judged may be gone.
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
@@ -538,6 +538,9 @@ struct OnTheWay {
     tally: Arc<Tally>,
     counts: Arc<Counts>,
     ended: AtomicBool,
+    /// When it was sent, so a request sent before a sleep, or before the
+    /// relay took requests again, isn't judged.
+    sent: Instant,
 }
 
 impl OnTheWay {
@@ -548,6 +551,7 @@ impl OnTheWay {
             tally: Arc::clone(tally),
             counts: Arc::clone(counts),
             ended: AtomicBool::new(false),
+            sent: Instant::now(),
         }
     }
 
@@ -609,8 +613,8 @@ impl<B> Answering<B> {
             return;
         }
         match why {
-            None => self.relay.finished(false),
-            Some(why) if fails_the_path(why) => self.relay.finished(true),
+            None => self.relay.finished(self.on_the_way.sent, false),
+            Some(why) if fails_the_path(why) => self.relay.finished(self.on_the_way.sent, true),
             Some(_) => {}
         }
     }
@@ -1193,11 +1197,10 @@ impl Relay {
         }
     }
 
-    /// Hears a request that went down a connection, and was answered or
-    /// `failed` for its path, and stands down when the share failed lately
-    /// says to.
-    fn finished(&self, failed: bool) {
-        let Some(stood) = self.standing.heard(Instant::now(), failed) else {
+    /// Hears a request `sent` down a connection, and answered or `failed`
+    /// for its path, and stands down when the share failed lately says to.
+    fn finished(&self, sent: Instant, failed: bool) {
+        let Some(stood) = self.standing.heard(Instant::now(), sent, failed) else {
             return;
         };
         eprintln!(
@@ -1283,7 +1286,7 @@ impl Relay {
         parts: &hyper::http::request::Parts,
         whole: &Bytes,
     ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
-        let mut request = sendable(parts, whole);
+        let (mut request, asked) = (sendable(parts, whole), Instant::now());
         let mut sent = 0;
         let mut taken = self.sender().await;
         // The connection the origin reset this request on, once it has.
@@ -1308,7 +1311,7 @@ impl Relay {
                     let Some((was_at, was)) = reset_on else {
                         return Err(Box::new(why.said()));
                     };
-                    self.finished(true);
+                    self.finished(asked, true);
                     // Reset, and then not sent again, so it's counted with
                     // the requests reset that failed, and a 502 as any
                     // reset is, never a 421 sending pi direct: the origin
@@ -1401,7 +1404,7 @@ impl Relay {
         };
         // Answered, it's judged once its answer ends, as it may break off.
         if answered.as_ref().is_err_and(|why| fails_the_path(why)) {
-            self.finished(true);
+            self.finished(asked, true);
         }
         answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
     }
@@ -1573,7 +1576,7 @@ impl Relay {
         }
         eprintln!("model-relay: the machine slept, so its connections are opened afresh");
         self.retire_every();
-        if self.standing.forget() {
+        if self.standing.forget(now.0) {
             eprintln!("model-relay: the machine slept, so it no longer stands down");
         }
     }
@@ -1772,17 +1775,12 @@ fn goes_again(reason: h2::Reason) -> bool {
 /// Whether a request failing with `why` failed for the relay's path to
 /// the origin, and so is judged: its connection lost, or the origin
 /// resetting it or saying goodbye with a refused stream or a protocol
-/// error, as on 18 November. Neither the origin's own verdict, such as to
-/// calm down or an error of its own, nor an error hyper says was the
-/// request's own says anything of the path, as either would fail direct
-/// too.
+/// error, as on 18 November. The origin's own verdict, such as to calm
+/// down or an error of its own, says nothing of the path, as it would
+/// fail direct too. Every error hyper calls the user's is judged, as the
+/// request's body is whole in memory and can't fail: what's left of them
+/// is chiefly a connection's task gone, which is the path failing.
 fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
-    if why
-        .downcast_ref::<hyper::Error>()
-        .is_some_and(hyper::Error::is_user)
-    {
-        return false;
-    }
     let mut beneath = Some(why);
     while let Some(cause) = beneath {
         if let Some(h2) = cause.downcast_ref::<h2::Error>() {

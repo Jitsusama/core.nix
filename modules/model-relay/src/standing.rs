@@ -52,6 +52,10 @@ struct State {
     down: Option<(Instant, Duration)>,
     /// When the last stand-down ended, and how long it was.
     last: Option<(Instant, Duration)>,
+    /// When it last forgot, or took requests again: a request sent before
+    /// rode a connection it has since retired, and may break off when the
+    /// path it was judged on is gone, so it isn't judged.
+    since: Option<Instant>,
 }
 
 /// A stand-down just begun: what it was judged on, and how long it lasts.
@@ -85,12 +89,14 @@ impl Standing {
         }
     }
 
-    /// Hears a request finished `at`, failed or answered, and says the
-    /// stand-down it begins, if it does. One finishing while it stands
-    /// down was taken before, so it isn't judged.
-    pub(crate) fn heard(&self, at: Instant, failed: bool) -> Option<StoodDown> {
+    /// Hears a request `sent` and finished `at`, failed or answered, and
+    /// says the stand-down it begins, if it does. One finishing while it
+    /// stands down was taken before, and one sent before it last forgot
+    /// or took requests again went down a connection since retired, so
+    /// neither is judged.
+    pub(crate) fn heard(&self, at: Instant, sent: Instant, failed: bool) -> Option<StoodDown> {
         let mut state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        if state.down.is_some() {
+        if state.down.is_some() || state.since.is_some_and(|since| sent < since) {
             return None;
         }
         state.finished.push_back((at, failed));
@@ -132,6 +138,7 @@ impl Standing {
             Some((until, lasting)) => {
                 state.down = None;
                 state.last = Some((until, lasting));
+                state.since = Some(at);
                 Taking::Again(lasting)
             }
         }
@@ -150,13 +157,17 @@ impl Standing {
             .is_some_and(|(until, _)| until.checked_add(after).is_none_or(|ended| at < ended))
     }
 
-    /// Forgets its stand-down and all it finished, as after the machine
-    /// sleeps: its clock stopped meanwhile, and the network it judged may
-    /// be gone. Says whether it was standing down.
-    pub(crate) fn forget(&self) -> bool {
+    /// Forgets its stand-down and all it finished, `at` once the machine
+    /// has slept: its clock stopped meanwhile, and the network it judged
+    /// may be gone, so what was sent before isn't judged either. Says
+    /// whether it was standing down.
+    pub(crate) fn forget(&self, at: Instant) -> bool {
         let mut state = self.held.lock().unwrap_or_else(PoisonError::into_inner);
         let was_down = state.down.is_some();
-        *state = State::default();
+        *state = State {
+            since: Some(at),
+            ..State::default()
+        };
         was_down
     }
 }
@@ -172,7 +183,8 @@ mod tests {
     const A_SECOND: Duration = Duration::from_secs(1);
 
     /// Hears `answered` requests answered then `failed` failed, a second
-    /// apart from `from`, and says the last stand-down heard, if any.
+    /// apart from `from`, each sent as it finished, and says the last
+    /// stand-down heard, if any.
     fn hears(
         standing: &Standing,
         from: Instant,
@@ -182,7 +194,7 @@ mod tests {
         let mut stood = None;
         for at in 0..answered + failed {
             let when = from + A_SECOND * u32::try_from(at).expect("a few");
-            stood = standing.heard(when, at >= answered).or(stood);
+            stood = standing.heard(when, when, at >= answered).or(stood);
         }
         stood
     }
@@ -198,7 +210,7 @@ mod tests {
             "3 of 20 is 15%, not past it"
         );
         assert_eq!(
-            standing.heard(from + A_SECOND * 20, true),
+            standing.heard(from + A_SECOND * 20, from + A_SECOND * 20, true),
             Some(StoodDown {
                 failed: 4,
                 finished: 21,
@@ -217,11 +229,15 @@ mod tests {
         for (since, stands_down) in [(TEN_MINUTES, true), (TEN_MINUTES + A_SECOND, false)] {
             let standing = Standing::new(TEN_MINUTES);
             for _ in 0..4 {
-                assert_eq!(standing.heard(from, true), None, "four alone are judged");
+                assert_eq!(
+                    standing.heard(from, from, true),
+                    None,
+                    "four alone are judged"
+                );
             }
             let mut stood = None;
             for _ in 0..16 {
-                stood = standing.heard(from + since, false).or(stood);
+                stood = standing.heard(from + since, from + since, false).or(stood);
             }
             assert_eq!(
                 stood.is_some(),
@@ -266,13 +282,55 @@ mod tests {
         assert_eq!(standing.taking(back), Taking::Again(TEN_MINUTES));
         hears(&standing, back, 0, 20).expect("it stands down again");
 
-        assert!(standing.forget(), "it didn't say it was standing down");
+        assert!(
+            standing.forget(back + A_SECOND * 20),
+            "it didn't say it was standing down"
+        );
         assert_eq!(standing.taking(back + A_SECOND * 20), Taking::Yes);
-        assert!(!standing.forget(), "it said it stood down after forgetting");
+        assert!(
+            !standing.forget(back + A_SECOND * 20),
+            "it said it stood down after forgetting"
+        );
         assert_eq!(
             hears(&standing, back + A_SECOND * 20, 0, 20).map(|stood| stood.lasting),
             Some(TEN_MINUTES),
             "a stand-down after a sleep doubled the one before it"
+        );
+    }
+
+    #[test]
+    fn what_was_sent_before_a_sleep_or_its_return_isnt_judged() {
+        let from = Instant::now();
+        let woke = from + TEN_MINUTES;
+        let standing = Standing::new(TEN_MINUTES);
+        assert!(!standing.forget(woke), "it said it stood down");
+        for at in 0..20 {
+            let ended = woke + A_SECOND * at;
+            assert_eq!(
+                standing.heard(ended, from, true),
+                None,
+                "a request sent before a sleep was judged as it broke off after"
+            );
+        }
+        assert!(
+            hears(&standing, woke, 0, 20).is_some(),
+            "what was sent after the sleep wasn't judged"
+        );
+
+        let standing = Standing::new(TEN_MINUTES);
+        hears(&standing, from, 0, 20).expect("it stands down");
+        let back = from + A_SECOND * 19 + TEN_MINUTES;
+        assert_eq!(standing.taking(back), Taking::Again(TEN_MINUTES));
+        for at in 1..=20 {
+            assert_eq!(
+                standing.heard(back + A_SECOND * at, from, true),
+                None,
+                "a request sent before it stood down was judged after it took requests again"
+            );
+        }
+        assert!(
+            hears(&standing, back + A_SECOND * 21, 0, 20).is_some(),
+            "what was sent after it took requests again wasn't judged"
         );
     }
 

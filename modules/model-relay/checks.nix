@@ -26,8 +26,9 @@ onLinux {
   # unfinished going nowhere, a relay failing past its share standing down
   # with the 421 that sends pi direct, staying through its idle time and
   # taking requests again after, over a connection opened while it stood
-  # down, though never for requests no connection would take nor for the
-  # origin's own verdicts, the counts said as it leaves, the requests pi gave up on
+  # down, for answers broken off as their connection falls, though never
+  # for requests no connection would take, the origin's own verdicts or
+  # answers pi gives up on, the counts said as it leaves, the requests pi gave up on
   # counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen
   # connection lost, an origin out of reach said as a 502 or a 504 without a
