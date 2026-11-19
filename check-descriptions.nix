@@ -1206,7 +1206,8 @@
   for-you-stands-each-under-its-cell = ''
     For You stands what needs Joel now under the cell behind each, the cells by their heaviest
     and what a cell asks leading it, heads each in the words Agents says it in, finds a
-    session's own notices by the cell they name, joining only those still open and asking,
+    session's own notices by the cell they name, joining only the unread that ask something and
+    haven't expired or been withdrawn,
     kept as one list till that moves, and sets Agents Asking above every heading
   '';
   for-you-weighs-again-only-for-news = ''

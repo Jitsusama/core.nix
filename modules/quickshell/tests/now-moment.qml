@@ -782,7 +782,7 @@ ShellRoot {
             const keys = now.waitingRows().map(one => one.key);
             const row = now.waitingRows().find(one => one.key === "notice:40") ?? null;
             expect("a session's notice served stands under it among what needs Joel as its row",
-                row !== null && tray() === 1
+                row !== null && tray() === 1 && keys.includes("on:heading:cell:KELP01")
                     && keys.indexOf("on:heading:cell:KELP01") === keys.indexOf("notice:40") - 1,
                 `${counts()} ${JSON.stringify(keys)}`);
             expect("which :filter holds as a thing to do from the desktop",
@@ -790,15 +790,34 @@ ShellRoot {
                 JSON.stringify(row.forYou ?? null));
             expect("and home's row names it", now.homeSays() === "Session K is done",
                 now.homeSays());
+            // Its session's want put off, as Sessions says it, the notice is
+            // its want's to say, so it stands nowhere and counts nothing.
+            Sessions.putOff = { KELP01: true };
+            expect("its session's want put off, it stands nowhere and counts nothing",
+                noticed().length === 0 && tray() === 0, counts());
+            Sessions.putOff = {};
             // Acted on from its row, the daemon reads it and puts it away
             // (daemon.rs's invoke), and it stays where it stood while For
             // You is open, as one read does.
             const done = Date.now();
-            Notices.history = Notices.history.map(one => one.id !== 40 ? one
+            const acted = one => one.id !== 40 ? one
                 : Object.assign({}, one, { read: true, readAt: done, left: "dismissed",
-                    leftAt: done }));
-            expect("acted on from its row, it stays where it stood",
-                noticed().length === 1 && tray() === 1, counts());
+                    leftAt: done });
+            Notices.history = Notices.history.map(acted);
+            noticesDaemon.notices = noticesDaemon.notices.map(acted);
+            expect("acted on from its row, it stays where it stood, its row with it",
+                noticed().length === 1 && tray() === 1
+                    && now.waitingRows().some(one => one.key === "notice:40"), counts());
+            // Put away unread, then withdrawn by its session while For You
+            // is open, which reads it and leaves it dismissed (held.rs's
+            // close), it goes at once, since Joel never read it (Lately.js's
+            // readHow).
+            Notices.history = Notices.history.map(one => one.id !== 40 ? one
+                : Object.assign({}, one, { read: false, readAt: null }));
+            Notices.history = Notices.history.map(one => one.id !== 40 ? one
+                : Object.assign({}, one, { read: true, readAt: Date.now(), withdrawn: true }));
+            expect("withdrawn by its session while For You is open, it goes at once",
+                noticed().length === 0 && tray() === 0, counts());
             // Shut, it's gone, and the tray counts it no more.
             theLauncher.open = false;
             expect("the launcher shut, it's gone, and the tray counts it no more",
@@ -806,7 +825,7 @@ ShellRoot {
             // Raised again with the launcher shut, the tray counts it.
             Notices.history = Notices.history.map(one => one.id !== 40 ? one
                 : Object.assign({}, one, { read: false, readAt: null, left: undefined,
-                    leftAt: undefined }));
+                    leftAt: undefined, withdrawn: undefined }));
             expect("raised with the launcher shut, the tray counts it", tray() === 1, counts());
         }))
             Qt.exit(0);
