@@ -10,13 +10,15 @@
 # WALKS named nowhere else, though a word of its own only, not another's
 # property. So anything else, another list, a stride written inline, an
 # entry not a quoted word, a walk left unfrozen, declared twice or not
-# found, reads as no walk, which fails saying what it wanted. It guards the
-# walk from an honest change, not a hostile one: a comment's marks are
-# found wherever they stand, so `//` or `/*` inside a string opens a
-# comment there; nor is a name spelt with a Unicode escape seen, one
-# declared again after a comma or as a parameter, or code that strides by a
-# list of its own rather than STRIDING, which the cat's own Qt cases see.
-# None of the cat's files has any.
+# found, reads as no walk, which fails saying what it wanted, strictly: a
+# string naming WALKS counts, and a key quoted or a pose with a digit isn't
+# read. It guards the walk from an honest change, not a hostile one: a
+# comment's marks are found wherever they stand, so `//` or `/*` inside a
+# string opens a comment there; nor is a name spelt with a Unicode escape
+# seen, one declared again after a comma, as a parameter or destructured,
+# which kinds STRIDING names, or code that strides by a list of its own or
+# reorders STRIDING's as it reads it, which no check here sees. None of the
+# cat's files has any.
 { lib }:
 file:
 let
