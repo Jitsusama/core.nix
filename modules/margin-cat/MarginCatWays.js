@@ -37,8 +37,9 @@ const SURGES = 0.1;
 // reads as lost.
 const UNSEEN = 360;
 // The beats it walks or climbs, its strides stepped by the ground it
-// covers, and the poses of each stride in turn: each pair of legs apart
-// two strides and gathered two, the hind pair a stride behind.
+// covers, and each stride's poses: each pair of legs apart two strides
+// and gathered two, the hind pair a stride behind. The theme's checks
+// read it here (modules/theme/walk-read.nix), saying what they wanted.
 const WALKS = ["walkingA", "walkingC", "walkingB", "walkingD"];
 const STRIDING = { goes: WALKS, climbs: WALKS };
 // The pose of each beat it holds still, or nearly: standing as it turns,
