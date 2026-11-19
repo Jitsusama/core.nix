@@ -159,6 +159,11 @@ ShellRoot {
         function sessionAct(session, id) {
             return { key: `verb:agent:${id}`, name: id, to: session.address };
         }
+
+        // Whether a session has a window, as a look's Go To asks: none here.
+        function windowedOf(session) {
+            return false;
+        }
     }
 
     // The launcher's placing of an answered thing, as Launcher.qml's
