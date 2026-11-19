@@ -16,7 +16,7 @@ import {
   treeAddress,
 } from "./model.ts";
 import type { Homes } from "./homes.ts";
-import { atWork } from "./joins.ts";
+import { atWork, leads } from "./joins.ts";
 import { weighedBriefly, weighedFully, weightOfAll } from "./weight.ts";
 
 /** What every part of the drawer reads besides its own: the time it's drawn at, the home
@@ -25,6 +25,12 @@ interface Context {
   readonly now: number;
   readonly home: string | undefined;
   readonly homes: Homes;
+}
+
+/** What the open repository's drawer reads besides: the other repositories each cell works
+ * across. */
+interface Drawing extends Context {
+  readonly across: (cell: Cell) => readonly Repository[];
 }
 
 const GITHUB_KEY = /^github:/u;
@@ -319,22 +325,38 @@ function cellName(cell: Cell, homes: Homes): string {
   return home === undefined ? name : `<a href="../${escaped(home)}" ${key}>${name}</a>`;
 }
 
+/**
+ * The other repositories a cell works across, each linked to where Code shows it, so the keys
+ * follow its work on from the folder it's in. Each link's key names it apart, so a redraw keeps
+ * focus on it.
+ */
+function cellAcross(cell: Cell, others: readonly Repository[]): string {
+  if (others.length === 0) {
+    return "";
+  }
+  const links = others.map(
+    (each) =>
+      `<a href="${escaped(each.address)}" data-key="across:${escaped(cell.name)}:${escaped(each.key)}">${escaped(each.name)}</a>`,
+  );
+  return ` <span class="cell-across">also in ${links.join(", ")}</span>`;
+}
+
 /** The cells at work in a folder, as a line under it. */
-function cellsLine(cells: readonly Cell[], homes: Homes): string {
+function cellsLine(cells: readonly Cell[], drawing: Drawing): string {
   const working = atWork(cells);
   if (working.length === 0) {
     return "";
   }
-  return `<span class="at-work">${working
-    .map(
-      (cell) => `${cellName(cell, homes)} <span class="cell-title">${escaped(cell.title)}</span>`,
-    )
-    .join("; ")}</span>`;
+  const said = working.map(
+    (cell) =>
+      `${cellName(cell, drawing.homes)} <span class="cell-title">${escaped(cell.title)}</span>${cellAcross(cell, drawing.across(cell))}`,
+  );
+  return `<span class="at-work">${said.join("; ")}</span>`;
 }
 
 /** One tree in the drawer: its leaf, its branch, its folder and its cells. */
-function treeRow(tree: Tree, cutIn: string | undefined, context: Context): string {
-  const { now, home, homes } = context;
+function treeRow(tree: Tree, cutIn: string | undefined, drawing: Drawing): string {
+  const { now, home } = drawing;
   // A tree in the folder the drawer has already named says only its own name, and none at all
   // when that name only repeats its branch, as the harness names the trees it cuts.
   const own =
@@ -357,7 +379,7 @@ function treeRow(tree: Tree, cutIn: string | undefined, context: Context): strin
   return `<li class="tree ${tree.season}" data-path="${escaped(tree.path)}" data-home="code/${escaped(treeAddress(tree.path))}" tabindex="-1">
     <span class="g-season">${leaf(tree.season)}</span>
     <span class="tree-body"><span class="branch" translate="no">${escaped(branch)}${tree.snapshot ? ' <span class="snap">snapshot</span>' : ""}</span>
-    ${where}${cellsLine(tree.cells, homes)}</span>
+    ${where}${cellsLine(tree.cells, drawing)}</span>
     ${change}${when(tree.writtenAt, now)}
   </li>`;
 }
@@ -370,7 +392,7 @@ const GROUPS: readonly [Season, string][] = [
 ];
 
 /** A repository's trees, grouped by season; resting and gone fold shut until opened. */
-function treeGroups(repository: Repository, context: Context, open: ReadonlySet<Season>): string {
+function treeGroups(repository: Repository, drawing: Drawing, open: ReadonlySet<Season>): string {
   return GROUPS.map(([season, title]) => {
     const trees = repository.trees.filter((each) => each.season === season);
     if (trees.length === 0) {
@@ -380,7 +402,7 @@ function treeGroups(repository: Repository, context: Context, open: ReadonlySet<
     const shown = !folds || open.has(season);
     const head = `<h3 class="group"><span class="group-title">${title}</span> <span class="n">${trees.length.toLocaleString("en-CA")}</span></h3>`;
     const list = shown
-      ? `<ul class="trees">${trees.map((each) => treeRow(each, repository.cutIn, context)).join("")}</ul>`
+      ? `<ul class="trees">${trees.map((each) => treeRow(each, repository.cutIn, drawing)).join("")}</ul>`
       : `<p class="folded">Folded; press <kbd>z</kbd> to open ${plural(trees.length, "tree")}.</p>`;
     return `<section class="season ${season}" data-season="${season}">${head}${list}</section>`;
   }).join("");
@@ -415,7 +437,17 @@ function drawer(
   context: Context,
   open: ReadonlySet<Season>,
 ): string {
-  const { home, homes } = context;
+  const { home } = context;
+  const found = (key: string): Repository | undefined =>
+    grove.repositories.find((each) => each.key === key);
+  const leading = leads(repository, grove.repositories);
+  const drawing: Drawing = {
+    ...context,
+    across: (cell) =>
+      (leading.get(cell.name) ?? [])
+        .map(found)
+        .filter((each): each is Repository => each !== undefined),
+  };
   // Where its remote keeps it, as the record keys it: GitHub's owner and name, or the host
   // and folder of any other remote, so no place is made up for one GitHub doesn't hold.
   const where = repository.key.replace(GITHUB_KEY, "");
@@ -428,11 +460,11 @@ function drawer(
       ].filter(Boolean);
       const weight = weighedFully(each.weight);
       return `<li class="checkout"><span class="path" translate="no">${escaped(tilde(each.path, home))}</span>
-        <span class="meta">${escaped([at, ...drift, weight].filter(Boolean).map(counted).join(" · "))}</span>${cellsLine(each.cells, homes)}</li>`;
+        <span class="meta">${escaped([at, ...drift, weight].filter(Boolean).map(counted).join(" · "))}</span>${cellsLine(each.cells, drawing)}</li>`;
     })
     .join("");
   const joined = repository.joined
-    .map((key) => grove.repositories.find((each) => each.key === key))
+    .map(found)
     .filter((each): each is Repository => each !== undefined);
   const threads =
     joined.length === 0
@@ -452,7 +484,7 @@ function drawer(
     ${threads}
     <ul class="checkouts">${checkouts}</ul>
     ${changes}
-    ${treeGroups(repository, context, open)}
+    ${treeGroups(repository, drawing, open)}
   </article>`;
 }
 

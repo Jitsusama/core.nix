@@ -137,6 +137,52 @@ it("names each cell's link to one home apart, so a redraw finds the cell's own a
   }
 });
 
+/**
+ * The drawer of a repository with cell `cell` at work in a tree of it, across a repository
+ * named `name` in the network `network`, as the mesh spells its name.
+ */
+function leadingDrawer(cell: string, name: string, network: string): string {
+  const notes = "github:owl/notes";
+  const both = [
+    ...records,
+    { key: `repository:${notes}`, kind: "repository", name, owner: "owl" },
+    {
+      key: "checkout:/home/ada/src/notes",
+      kind: "checkout",
+      repository: notes,
+      path: "/home/ada/src/notes",
+      bare: false,
+      head: { branch: "main", commit: "c3" },
+    },
+  ];
+  const working = { name: cell, title: "Join the notes", standing: "moving", networks: [network] };
+  const whole = groveOf(told(both), cellsOf({ cells: [{ ...working, cwd: `${tree}/src` }] }), NOW);
+  const opened = whole?.repositories.find((each) => each.key === repository);
+  assert.ok(whole !== undefined && opened !== undefined, "the records drew no repository");
+  const context = { now: NOW, home: "/home/ada", homes: () => undefined };
+  return drawer(opened, whole, context, new Set(["today"]));
+}
+
+it("leads a tree's cell on to each other repository it works across, where Code shows it", () => {
+  const markup = leadingDrawer("W9TIES", "notes", "repo.notes");
+  const link = '<a href="#repo=owl%2Fnotes" data-key="across:W9TIES:github:owl/notes">notes</a>';
+  const lead = `<span class="cell-across">also in ${link}</span>`;
+  assert.ok(markup.includes(lead), `W9TIES didn't lead on to notes: ${markup}`);
+});
+
+it("puts a cell's name and the repositories it leads on to as words", () => {
+  // The opened repository is named HOSTILE already, so the other is named apart from it, as a
+  // name two repositories share joins neither.
+  const markup = leadingDrawer(HOSTILE, "<i>notes</i>", "repo.i-notes-i");
+  const lead = markup.slice(markup.indexOf('class="cell-across"'));
+  assert.ok(markup.includes('class="cell-across"'), `the cell led nowhere: ${markup}`);
+  assert.ok(asWords(lead), `the lead put the cell's name in as markup: ${lead}`);
+  assert.ok(
+    lead.includes("&lt;i&gt;notes&lt;/i&gt;") && !lead.includes("<i>"),
+    `the lead put the repository's name in as markup: ${lead}`,
+  );
+});
+
 it("puts what was searched for as words when nothing is named like it", () => {
   const markup = rows([], NOW, HOSTILE);
   assert.ok(asWords(markup), `the list put what was searched for in as markup: ${markup}`);
