@@ -760,13 +760,18 @@ fn the_relay_carries_plain_http_straight_out_one_request_a_connection_but_never_
     let address = far.local_addr().expect("bound").to_string();
     let seen = thread::spawn(move || {
         let (mut stream, _) = far.accept().expect("accepted");
+        // Long enough for a loaded machine to say the one request.
         stream
-            .set_read_timeout(Some(Duration::from_millis(500)))
+            .set_read_timeout(Some(Duration::from_secs(10)))
             .expect("a timeout");
         let mut buffer = Vec::new();
         let head = http::read_head(&mut stream, &mut buffer).expect("a head");
         let body = http::read_body(&mut stream, &mut buffer, &head, 1024).expect("a body");
-        // Whatever comes after the one request, until the relay goes quiet.
+        // Whatever comes after the one request, until the relay goes quiet
+        // well past the client's second.
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .expect("a timeout");
         let _ = stream.read_to_end(&mut buffer);
         stream
             .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nplain")
@@ -774,18 +779,31 @@ fn the_relay_carries_plain_http_straight_out_one_request_a_connection_but_never_
         (head, body, buffer)
     });
     // As Ruby's Net::HTTP asks a proxy, which dev drives, with a hop's
-    // own header and the length named in Connection beside it, chunks
-    // for its body, another host in Host, and a second request behind it.
-    let said = ask_relay(
-        port,
-        &format!(
-            "POST http://{address}/gems?x=1#top HTTP/1.1\r\nHost: elsewhere.example\r\n\
-             Proxy-Connection: keep-alive\r\nConnection: keep-alive, X-Hop, Content-Length\r\n\
-             X-Hop: 1\r\nKeep-Alive: 300\r\nProxy-Authorization: Basic eDp5\r\n\
-             Accept: */*\r\nTransfer-Encoding: chunked\r\n\r\n2\r\na=\r\n1\r\n1\r\n0\r\n\r\n\
-             GET http://{address}/again HTTP/1.1\r\nHost: {address}\r\n\r\n"
-        ),
-    );
+    // own header, the length and Host named in Connection, as a request
+    // smuggled past a proxy that honoured them would be, another host in
+    // Host, and the fence's placeholder for the token.
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .expect("a timeout");
+    write!(
+        stream,
+        "POST http://{address}/gems?x=1#top HTTP/1.1\r\nHost: elsewhere.example\r\n\
+         Proxy-Connection: keep-alive\r\nConnection: keep-alive, X-Hop, Content-Length, Host\r\n\
+         X-Hop: 1\r\nKeep-Alive: 300\r\nProxy-Authorization: Basic eDp5\r\n\
+         Authorization: token {PLACEHOLDER}\r\nAccept: */*\r\nContent-Length: 3\r\n\r\na=1"
+    )
+    .expect("asked");
+    // A second request, written on its own once the first is out, so a
+    // relay that spliced the connection through would pass it on.
+    thread::sleep(Duration::from_millis(200));
+    write!(
+        stream,
+        "GET http://{address}/again HTTP/1.1\r\nHost: {address}\r\n\r\n"
+    )
+    .expect("asked again");
+    let mut said = String::new();
+    stream.read_to_string(&mut said).expect("answered");
     assert!(
         said.starts_with("HTTP/1.1 200") && said.ends_with("plain"),
         "{said}"
@@ -810,6 +828,11 @@ fn the_relay_carries_plain_http_straight_out_one_request_a_connection_but_never_
         "the host asked isn't the one the address named"
     );
     assert_eq!(head.header("Accept"), Some("*/*"));
+    assert_eq!(
+        head.header("Authorization"),
+        Some(format!("token {PLACEHOLDER}").as_str()),
+        "plain HTTP leaves with the placeholder, never the token, which the door alone holds"
+    );
     assert_eq!(
         head.header("Connection"),
         Some("close"),
@@ -845,11 +868,139 @@ fn the_relay_carries_plain_http_straight_out_one_request_a_connection_but_never_
         "GET https://rubygems.org/ HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
         "GET http://api.github.com:80:80/ HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
         "GET http://rubygems.org/ HTTP/1.0\r\nHost: rubygems.org\r\n\r\n",
+        "CONNECT rubygems.org HTTP/1.1\r\nHost: rubygems.org\r\n\r\n",
     ] {
         let said = ask_relay(port, asked);
         assert!(
             said.starts_with("HTTP/1.1 400"),
             "{asked:?} wasn't refused: {said}"
+        );
+    }
+    let _ = watched.kill();
+    let _ = watched.wait();
+}
+
+/// A host on localhost that reads one request and answers `answer`, and
+/// the address it listens on.
+fn far_end(answer: &'static [u8]) -> (String, thread::JoinHandle<Vec<u8>>) {
+    let far = TcpListener::bind(("127.0.0.1", 0)).expect("a port");
+    let address = far.local_addr().expect("bound").to_string();
+    let seen = thread::spawn(move || {
+        let (mut stream, _) = far.accept().expect("accepted");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("a timeout");
+        let mut buffer = Vec::new();
+        let head = http::read_head(&mut stream, &mut buffer).expect("a head");
+        let body = http::read_body(&mut stream, &mut buffer, &head, 1024).expect("a body");
+        stream.write_all(answer).expect("said");
+        // Held open, as a host that ignores the close would.
+        thread::sleep(Duration::from_secs(3));
+        body
+    });
+    (address, seen)
+}
+
+#[test]
+fn the_relay_passes_back_one_answer_framed_to_close_and_says_why_it_refuses() {
+    let running = door("good");
+    let (socket, _) = running.open("s1");
+    let (mut watched, port) = relay_for(&socket);
+    // A host that would keep the connection, answers twice, and never
+    // closes: the client hears the first answer alone, told the
+    // connection closes, as soon as it's whole.
+    let (address, seen) = far_end(
+        b"HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nKeep-Alive: timeout=60\r\n\
+          Content-Length: 2\r\n\r\nok\
+          HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nmore",
+    );
+    // A client that waits to be told to go on before its body, as curl
+    // and Net::HTTP may.
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .expect("a timeout");
+    write!(
+        stream,
+        "PUT http://{address}/up HTTP/1.1\r\nHost: {address}\r\nExpect: 100-continue\r\n\
+         Transfer-Encoding: chunked\r\n\r\n"
+    )
+    .expect("asked");
+    let mut go_on = [0u8; 25];
+    stream.read_exact(&mut go_on).expect("told to go on");
+    assert_eq!(&go_on, b"HTTP/1.1 100 Continue\r\n\r\n");
+    stream.write_all(b"2\r\nup\r\n0\r\n\r\n").expect("the body");
+    let started = std::time::Instant::now();
+    let mut said = String::new();
+    stream.read_to_string(&mut said).expect("answered");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "the client waited on a host that never closed"
+    );
+    assert!(said.starts_with("HTTP/1.1 200 OK\r\n"), "{said}");
+    assert!(
+        said.ends_with("\r\n\r\nok"),
+        "more than the one answer: {said}"
+    );
+    let said = said.to_ascii_lowercase();
+    assert!(said.contains("\r\nconnection: close\r\n"), "{said}");
+    assert!(
+        !said.contains("keep-alive"),
+        "the host's keep-alive came back: {said}"
+    );
+    assert_eq!(seen.join().expect("the far end"), b"up");
+    // Each refusal says why, the client hearing it whole even with its
+    // body still arriving.
+    let closed = TcpListener::bind(("127.0.0.1", 0)).expect("a port");
+    let gone = closed.local_addr().expect("bound").to_string();
+    drop(closed);
+    let big = 64 * 1024 * 1024 + 1;
+    for (asked, status, why) in [
+        (
+            format!("PUT http://{gone}/ HTTP/1.1\r\nHost: x\r\nContent-Length: {big}\r\n\r\n"),
+            "413",
+            "64 MiB",
+        ),
+        (
+            format!("PUT http://{gone}/ HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: gzip\r\n\r\n"),
+            "400",
+            "other than chunked",
+        ),
+        (
+            format!("GET http://{gone}/ HTTP/1.1\r\nHost: x\r\n\r\n"),
+            "502",
+            gone.as_str(),
+        ),
+        (
+            "GET https://rubygems.org/ HTTP/1.1\r\nHost: x\r\n\r\n".to_owned(),
+            "400",
+            "CONNECT",
+        ),
+        (
+            "GET http://user@rubygems.org/ HTTP/1.1\r\nHost: x\r\n\r\n".to_owned(),
+            "400",
+            "user",
+        ),
+        (
+            "PUT http://rubygems.org/ HTTP/1.1\r\nHost: x\r\nExpect: tea\r\n\r\n".to_owned(),
+            "417",
+            "100-continue",
+        ),
+    ] {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .expect("a timeout");
+        stream.write_all(asked.as_bytes()).expect("asked");
+        // A megabyte of the body behind the head, still arriving.
+        let _ = stream.write_all(&vec![b'x'; 1024 * 1024]);
+        let mut said = String::new();
+        stream
+            .read_to_string(&mut said)
+            .expect("answered, not reset");
+        assert!(
+            said.starts_with(&format!("HTTP/1.1 {status}")) && said.contains(why),
+            "{asked:?} wasn't told {status} for {why}: {said}"
         );
     }
     let _ = watched.kill();

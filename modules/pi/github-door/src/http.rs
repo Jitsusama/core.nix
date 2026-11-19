@@ -183,7 +183,9 @@ fn chunks(stream: &mut impl Read, buffer: &mut Vec<u8>, most: usize) -> Result<V
             while !line(stream, buffer)?.is_empty() {}
             return Ok(body);
         }
-        if body.len() + size > most {
+        // Said as what's left, since a size near the largest number would
+        // wrap a sum past the limit.
+        if size > most.saturating_sub(body.len()) {
             return Err(Unread::TooLarge);
         }
         body.extend(take(stream, buffer, size)?);
@@ -240,6 +242,73 @@ pub fn read_status(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<u16, 
     }
 }
 
+/// A response's head, as the relay passes one back.
+#[derive(Debug, Clone)]
+pub struct Answer {
+    pub status: u16,
+    pub reason: String,
+    /// Each header, its name as sent.
+    pub headers: Vec<(String, Vec<u8>)>,
+}
+
+impl Answer {
+    /// The value of the header named `name`, when there's exactly one,
+    /// as text.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        let mut found = self
+            .headers
+            .iter()
+            .filter(|(key, _)| key.eq_ignore_ascii_case(name));
+        let first = found.next()?;
+        if found.next().is_some() {
+            return None;
+        }
+        std::str::from_utf8(&first.1).ok().map(str::trim)
+    }
+}
+
+/// A response's head read from `stream`, with whatever was read past it
+/// left in `buffer`.
+pub fn read_answer(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<Answer, Unread> {
+    loop {
+        let mut headers = [httparse::EMPTY_HEADER; MOST_HEADERS];
+        let mut response = httparse::Response::new(&mut headers);
+        match response.parse(buffer) {
+            Ok(httparse::Status::Complete(length)) => {
+                let answer = Answer {
+                    status: response
+                        .code
+                        .ok_or_else(|| Unread::Malformed("an answer with no status".to_owned()))?,
+                    reason: response.reason.unwrap_or_default().to_owned(),
+                    headers: response
+                        .headers
+                        .iter()
+                        .map(|header| (header.name.to_owned(), header.value.to_vec()))
+                        .collect(),
+                };
+                buffer.drain(..length);
+                return Ok(answer);
+            }
+            Ok(httparse::Status::Partial) => {}
+            Err(error) => {
+                return Err(Unread::Malformed(format!(
+                    "an answer that won't parse: {error}"
+                )));
+            }
+        }
+        if buffer.len() >= MOST_HEAD {
+            return Err(Unread::Malformed("an answer's head past 64 KiB".to_owned()));
+        }
+        if more(stream, buffer)? == 0 {
+            return Err(if buffer.is_empty() {
+                Unread::Gone
+            } else {
+                Unread::Malformed("an answer cut short".to_owned())
+            });
+        }
+    }
+}
+
 /// Write a whole request: its line, `headers`, a length and `body`.
 pub fn write_request(
     out: &mut impl Write,
@@ -273,6 +342,7 @@ pub fn write_answer(out: &mut impl Write, status: u16, message: &str) -> io::Res
         403 => "Forbidden",
         405 => "Method Not Allowed",
         413 => "Payload Too Large",
+        417 => "Expectation Failed",
         429 => "Too Many Requests",
         502 => "Bad Gateway",
         503 => "Service Unavailable",
