@@ -139,6 +139,8 @@ WARMED = timedelta(seconds=20)
 # shell has kept home by then, and the drawing takes two frames, or three seconds at most.
 PRIMED_SAID = "launcher: drawing the card ahead ended"
 PRIMED_BY_FRAMES = "in 2 frames"
+# Said of a card drawn whole, as it is while nothing shares the screen.
+PRIMED_WHOLE = ", whole"
 PRIMED = timedelta(seconds=10)
 
 # What the shell says once it has collected after a closing (Launcher.qml's collectClosed), and
@@ -383,9 +385,9 @@ def test_the_card_is_drawn_before_its_first_opening(shell: Shell) -> None:
     Clear, Qt Quick skips the card's whole tree, so the first opening since the shell started
     made its shaders, glyphs and batches: Joel's drew in 19 and 24 ms where later ones drew in 1
     to 4 (2026-11-16 and 17), and the lab on OpenGL in 100 and 72 (2026-11-17). It's drawn on
-    two frames swapped, the second asked for, rather than by waiting out its cutoff. Its fall to
-    clear isn't a closing, so it collects nothing. First here, since any opening ends the
-    drawing.
+    two frames swapped, the second asked for, rather than by waiting out its cutoff, and whole
+    while nothing shares the screen. Its fall to clear isn't a closing, so it collects nothing.
+    First here, since any opening ends the drawing.
     """
     assert openings(shell) == [], "the launcher was opened before the test opened it"
     deadline = time.monotonic() + PRIMED.total_seconds()
@@ -401,6 +403,9 @@ def test_the_card_is_drawn_before_its_first_opening(shell: Shell) -> None:
         )
         time.sleep(launcher_on_niri.POLL)
     assert PRIMED_BY_FRAMES in said[0], f"the card's drawing didn't end on its frames: {said}"
+    # Drawn all but clear, it was blended as no opening draws it; so it's drawn whole once niri
+    # has said nothing's cast, which it has by the time the shell has kept home.
+    assert PRIMED_WHOLE in said[0], f"the card wasn't drawn whole with nothing cast: {said}"
     time.sleep(COLLECTED_AFTER.total_seconds())
     log = shell.log.read_bytes().decode(errors="replace")
     collected = [
