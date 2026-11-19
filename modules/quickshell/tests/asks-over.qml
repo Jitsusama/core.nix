@@ -17,7 +17,8 @@
 // only that it's hidden, with no acts and no frame timed, and shown again it
 // counts nothing until his next move (Niri and Recorder stood in by the
 // check). It exits 0 once every case holds, and otherwise 1, saying which
-// didn't.
+// didn't. Long because every case runs on one stand-in connection, launcher
+// and frame clock, which a split would have to copy into each half.
 import qs
 import Quickshell
 import QtQuick
@@ -81,7 +82,9 @@ ShellRoot {
             const next = Object.assign({}, held);
             const was = held[root.key] ?? root.record("");
             next[root.key] = Object.assign({}, was, {
-                row: Object.assign({}, was.row, { state: undefined, acts: [] })
+                // As row.rs serves an ask no longer waiting.
+                row: Object.assign({}, was.row, { state: undefined, hue: "machine",
+                    attention: undefined, acts: [] })
             });
             held = next;
             heard([root.key], []);
@@ -669,9 +672,8 @@ ShellRoot {
         // asks for; they were there before the share.
         const finds = one => JSON.stringify(one?.keywords ?? []).includes("kilnfiring");
         same("nor its search words", [finds(root.madeBefore), finds(row())], [true, false]);
-        // What a ready row draws of the kept fields: its glyph and hue.
-        same("while keeping what says it's an ask",
-            [row()?.glyph, row()?.hue], [root.madeBefore?.glyph, root.madeBefore?.hue]);
+        // What a ready row draws of the kept fields: its glyph.
+        same("while keeping what says it's an ask", row()?.glyph, root.madeBefore?.glyph);
         same("it has no act, so no key answers it unseen",
             [row()?.arms, row()?.verbs ?? null], ["", null]);
         // The launcher closes on a Return with no run, so his second
@@ -829,9 +831,15 @@ ShellRoot {
     // Return closes the launcher, as an ended ask's does unshared.
     function sharedEnded() {
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        const drawn = one => JSON.stringify([one?.hue, one?.state, one?.glyph]);
+        const waiting = drawn(row());
         link.tellEnded();
         same("an ask ended while the screen is shared is hidden", row()?.name,
             "Ask, Hidden While You Share");
+        // Its hue and state go with the rest, or one watching the share
+        // would see which hidden asks still wait, and one answered
+        // elsewhere change as they watched.
+        same("and draws as a hidden waiting one does", drawn(row()), waiting);
         // Hidden, it looks as a waiting one does, so Return on it holds
         // still too, rather than closing for his next to land behind.
         same("and its Return keeps the launcher open too, saying why",
