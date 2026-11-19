@@ -40,7 +40,13 @@ from keeps_pace import bound, builders_share, probed
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from desktop_session import Desktop, Json
+    from desktop_session import Desktop, Json, Values
+
+    class PaceValues(Values):
+        """What tests/desktop.nix gives keeps-pace alone, so no other area's test moves."""
+
+        # The probe gauging the builder's share (desktop/pace-probe.py).
+        pace_probe: str
 
 # Where the stand-in keyboard is told what to press, and says when it did (desktop/keyboard.py).
 KEYBOARD = "/run/keyboard"
@@ -215,7 +221,7 @@ def loaded(desktop: Desktop) -> Iterator[None]:
     # behind the desktop in the guest, which its time doesn't count.
     machine.succeed(
         f"rm -f {PROBED} && systemd-run --collect --quiet --unit=pace-probe"
-        f" --property=CPUWeight=10 {desktop.values['pace_probe']}"
+        f" --property=CPUWeight=10 {cast('PaceValues', desktop.values)['pace_probe']}"
     )
     try:
         desktop.as_account("systemctl --user is-active --quiet stress-jobs")

@@ -40,7 +40,7 @@ def test_a_key_the_builder_held_back_holds_by_the_probes_share() -> None:
     """The same key holds once the probe says the builder held the guest back by half."""
     share = builders_share([WORK * HELD_BACK] * 10, [WORK] * 10)
     assert share == HELD_BACK, f"the probe's work twice as long gave a share of {share}"
-    assert UNDER <= bound(FROZEN, MIDDLE_MORE, share), (
+    assert bound(FROZEN, MIDDLE_MORE, share) >= UNDER, (
         f"{UNDER} ms against {FROZEN} frozen failed at a share of {share}"
     )
 
@@ -50,7 +50,7 @@ def test_a_launcher_the_load_slows_is_refused_on_a_quiet_builder() -> None:
     share = builders_share([WORK] * 10, [WORK] * 10)
     slowed = SLOWER_MOST * QUIET_UNDER + MIDDLE_MORE
     assert share == 1.0, f"the probe's work as long under load gave a share of {share}"
-    assert QUIET_UNDER <= bound(QUIET_FROZEN, MIDDLE_MORE, share), (
+    assert bound(QUIET_FROZEN, MIDDLE_MORE, share) >= QUIET_UNDER, (
         f"a quiet builder's {QUIET_UNDER} ms against {QUIET_FROZEN} failed"
     )
     assert bound(QUIET_FROZEN, MIDDLE_MORE, share) < slowed, (
