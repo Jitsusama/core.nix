@@ -305,6 +305,11 @@ mod tests {
             lines(&["two", "three", "four"]),
             "more than three lines weren't cut to the last three"
         );
+        assert_eq!(
+            last_shown(lines(&["\u{1f469}\u{200d}\u{1f4bb}", "\u{200d}"]), 3),
+            lines(&["\u{1f469}\u{200d}\u{1f4bb}"]),
+            "an emoji joined through a joiner was taken as drawing nothing"
+        );
     }
 
     #[test]
