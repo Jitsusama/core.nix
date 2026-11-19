@@ -2,7 +2,7 @@
 //! each unit that failed, a step in from the edge, with what it said
 //! under it, or why its journal couldn't say, at most four of them so
 //! the screen holds them above the shell's own words, which of its files
-//! the journal skipped as unreadable, and the way out last.
+//! the journal skipped, and the way out last.
 
 use terminal_kit::Pen;
 use terminal_kit::layout::{self, Room};
@@ -68,19 +68,15 @@ pub fn text(failed: &[Failed], all: usize, skipped: &[String], pen: &Pen, room: 
     }
     // A file the journal skipped may hold any unit's lines, or only an
     // earlier boot's, so it's said once, for them all, rather than under
-    // a unit as its reason. The first says what kind of trouble it is.
+    // a unit as its reason. The first says what kind of trouble it is. A
+    // flaky disk can word one file two ways, so they're never counted.
     if let Some(first) = skipped.first() {
         let told = match skipped.len() {
-            1 => "journalctl skipped an unreadable file, so lines may be missing:".to_owned(),
-            count => format!(
-                "journalctl skipped {count} unreadable files, so lines may be missing, such as:"
-            ),
+            1 => "journalctl skipped a journal file, so lines may be missing:",
+            _ => "journalctl skipped journal files, so lines may be missing, such as:",
         };
         out.push('\n');
-        for part in [told.as_str(), first]
-            .into_iter()
-            .flat_map(|line| under(line, room))
-        {
+        for part in [told, first].into_iter().flat_map(|line| under(line, room)) {
             out.push_str(UNDER);
             out.push_str(&pen.role("muted", &part));
             out.push('\n');
@@ -496,15 +492,15 @@ mod tests {
         ];
         assert_eq!(
             super::text(&failed, 1, &skipped, &console(), Room::Cells(100)),
-            "\n  x  home.mount  Mount /home\n     wrong fs type\n\n     journalctl skipped 2 \
-             unreadable files, so lines may be missing, such as:\n     Journal file \
+            "\n  x  home.mount  Mount /home\n     wrong fs type\n\n     journalctl skipped \
+             journal files, so lines may be missing, such as:\n     Journal file \
              /j/system@a.journal~ is truncated, ignoring file.\n\n     Ctrl+Alt+Delete \
              restarts; hold Space as it starts for an older generation.\n\n",
             "the skipped files weren't said once, cleaned, above the way out"
         );
         says(
             &super::text(&failed, 1, &skipped[..1], &console(), Room::Cells(100)),
-            "     journalctl skipped an unreadable file, so lines may be missing:",
+            "     journalctl skipped a journal file, so lines may be missing:",
         );
     }
 

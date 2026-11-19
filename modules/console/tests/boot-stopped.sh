@@ -7,7 +7,7 @@
 # systemd said of a unit whose programs said nothing, or nothing that
 # shows; at most four units; the account's theme and the console's marks;
 # the way out; why a journal that couldn't be read gave a unit nothing;
-# a file the journal skipped as unreadable said once, above the way out;
+# a file the journal skipped said once, above the way out;
 # each unit described when the journal is slow; and each unit and the
 # way out in time when the journal stalls. How it lays itself out at the
 # console's width is the crate's own tests'.
@@ -190,16 +190,20 @@ says "     and 5 more"
 
 # A file the journal skipped is said once, for every unit, since any
 # unit's lines may have been in it, and is no unit's reason: the units
-# still show what the rest of the journal held.
+# still show what the rest of the journal held, and nameless.service,
+# with nothing in it here, shows nothing under its name.
 touch "$work/skipping"
+mv "$work/systemd/nameless.service" "$work/nameless"
 said
+mv "$work/nameless" "$work/systemd/nameless.service"
 says "     mount: /home: wrong fs type"
-if grep -q -F "its journal couldn't be read" "$work/said"; then
-  fails "a skipped file was taken for a unit's reason"
-fi
+under=$(grep -A 1 -x -F "  x  nameless.service" "$work/said" || true)
+# The row after its name is blank, and $(...) drops a blank last row.
+[[ $under == "  x  nameless.service" ]] ||
+  fails "a skipped file was taken for nameless.service's reason"
 at=0
 for line in "     and 5 more" \
-  "     journalctl skipped an unreadable file, so lines may be missing:" \
+  "     journalctl skipped a journal file, so lines may be missing:" \
   "     Journal file /j/system@a.journal~ is truncated, ignoring file." \
   "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."; do
   next=$(grep -n -x -F -- "$line" "$work/said" | cut -d: -f1 | head -n 1) ||

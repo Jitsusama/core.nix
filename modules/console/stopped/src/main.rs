@@ -224,7 +224,7 @@ fn last(
 
 /// The last `lines` this boot's journal holds matching every one of
 /// `matching`, as they were said, or why the journal couldn't be read in
-/// time or at all (`heard`). Each file it skipped as unreadable is added
+/// time or at all (`heard`). Each file it skipped is added
 /// to `skipped`, once however many reads skip it.
 fn journal(
     budget: &Budget,
@@ -245,22 +245,23 @@ fn journal(
     said
 }
 
-/// What journalctl says of each of its files it skipped as unreadable, as
+/// What journalctl says of each of its files it skipped, as
 /// journal-util.c words every kind: truncated, corrupted, with a feature
 /// it doesn't know, past its limit of files, or any other error opening
 /// it. It says them whatever `--quiet` asks, and still ends well.
 const SKIPPING: &str = ", ignoring file";
 
 /// The line journalctl adds under a file with a feature it doesn't know,
-/// saying how to look closer, which says nothing of why on its own.
+/// saying how to look closer, which says nothing of why on its own. It's
+/// found anywhere in a line, since systemd's logging may put words first.
 const SKIPPING_HINT: &str = "Use SYSTEMD_LOG_LEVEL=debug journalctl --file=";
 
 /// What a journal read printed, a line each, or, where it printed nothing
 /// that shows, why: the last line it said on stderr that shows, or else
 /// how it ended, where that was badly. Nothing matching ends well and
 /// says nothing, so it's no reason. Beside it, what it said of each file
-/// it skipped as unreadable, which is no unit's reason, since the file
-/// may hold only an earlier boot's lines.
+/// it skipped, however the read went, which is no unit's reason, since
+/// the file may hold only an earlier boot's lines.
 fn heard(said: &Output) -> (Result<Vec<String>, String>, Vec<String>) {
     let lines = |stream: &[u8]| -> Vec<String> {
         String::from_utf8_lossy(stream)
@@ -271,7 +272,7 @@ fn heard(said: &Output) -> (Result<Vec<String>, String>, Vec<String>) {
     let (skipped, words): (Vec<String>, Vec<String>) = lines(&said.stderr)
         .into_iter()
         .map(|line| line.trim().to_owned())
-        .filter(|line| !line.starts_with(SKIPPING_HINT))
+        .filter(|line| !line.contains(SKIPPING_HINT))
         .partition(|line| line.contains(SKIPPING));
     let printed = lines(&said.stdout);
     if !summary::last_shown(printed.clone(), 1).is_empty() {
@@ -390,6 +391,50 @@ mod tests {
             ),
             "a failed read that skipped a file lost its reason or the file"
         );
+        assert_eq!(
+            heard(&read(
+                1,
+                "",
+                "Journal file /j/c.journal corrupted, ignoring file.\n"
+            )),
+            (
+                Err("journalctl ended with exit status: 1".to_owned()),
+                lines(&["Journal file /j/c.journal corrupted, ignoring file."])
+            ),
+            "a failed read that only skipped a file didn't say how it ended"
+        );
+        assert_eq!(
+            heard(&read(
+                0,
+                "disk gone\n",
+                "Journal file /j/c.journal corrupted, ignoring file.\n"
+            )),
+            (
+                Ok(lines(&["disk gone"])),
+                lines(&["Journal file /j/c.journal corrupted, ignoring file."])
+            ),
+            "a read that printed lines lost the file it skipped"
+        );
+    }
+
+    #[test]
+    fn every_kind_of_skipped_file_is_set_aside() {
+        for said in [
+            "Too many journal files (limit is at 7168) in scope, ignoring file '/j/d.journal'.",
+            "An error was encountered while opening journal file or directory /j/e.journal, \
+             ignoring file: Input/output error",
+            "journalctl[1]: Journal file /j/f.journal is truncated, ignoring file.",
+        ] {
+            assert_eq!(
+                heard(&read(
+                    0,
+                    "",
+                    &format!("{said}\njournalctl[1]: {}/j/f\n", super::SKIPPING_HINT)
+                )),
+                (Ok(Vec::new()), lines(&[said])),
+                "a skipped file or its hint was taken for a reason"
+            );
+        }
     }
 
     #[test]
