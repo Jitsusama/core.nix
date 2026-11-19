@@ -18,7 +18,9 @@ is judged by what it last said, journalled once as that starts and once
 as a read comes back. Where the variable is unset, nothing changes.
 
 Where systemd hands the agent's output to the journal, as
-JOURNAL_STREAM says, each line opens with the sd-daemon mark of its
+JOURNAL_STREAM says by the stream's device and inode, matched against
+standard output's so one run from a terminal a unit started isn't
+taken for it, each line opens with the sd-daemon mark of its
 level's priority, so a refusal, or a gate refusing everyone, reaches
 what reads the journal's warnings rather than standing as info.
 
@@ -42,10 +44,10 @@ index 47a77ee..1f8728f 100644
  	}
 diff --git a/agent/gate.go b/agent/gate.go
 new file mode 100644
-index 0000000..16bac1c
+index 0000000..c65985c
 --- /dev/null
 +++ b/agent/gate.go
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,379 @@
 +package agent
 +
 +import (
@@ -253,8 +255,12 @@ index 0000000..16bac1c
 +	if pidfd < 0 {
 +		return true
 +	}
-+	return !gone(unix.PidfdSendSignal(pidfd, 0, nil, 0))
++	return !gone(signal(pidfd, 0, nil, 0))
 +}
++
++// signal is how stillThere signals a pidfd, which a test swaps to meet
++// what the build's sandbox can't give it, a process of another account.
++var signal = unix.PidfdSendSignal
 +
 +// gone says whether signalling a process failed for its having exited,
 +// ESRCH, rather than for its being another account's, EPERM.
@@ -301,12 +307,16 @@ index 0000000..16bac1c
 +// refused. Refusing no place counts as not parsing. One this agent never
 +// read whole is ErrGateUnread, since a gate that fails open looks just
 +// like one that works. Each is read again at the next connection, so
-+// putting the file back serves Joel again with no restart.
-+func readGate() (g gate, ok bool, err error) {
++// putting the file back serves Joel again with no restart. The file is
++// read under the lock, so a read that took longer than a later one can't
++// put back what the file said before it.
++func readGate(peer string) (g gate, ok bool, err error) {
 +	file := os.Getenv(GateVariable)
 +	if file == "" {
 +		return gate{}, false, nil
 +	}
++	lastRead.Lock()
++	defer lastRead.Unlock()
 +	text, err := os.ReadFile(file)
 +	why := ""
 +	switch {
@@ -319,8 +329,6 @@ index 0000000..16bac1c
 +			why = "doesn't parse: " + err.Error()
 +		}
 +	}
-+	lastRead.Lock()
-+	defer lastRead.Unlock()
 +	if why == "" {
 +		lastRead.gates[file] = g
 +		if _, was := lastRead.judged[file]; was {
@@ -338,7 +346,7 @@ index 0000000..16bac1c
 +	}
 +	slog.Error("refused a request, as the gate's file "+why+" and was never read; "+
 +		"putting it back serves Joel at the next connection, with no restart",
-+		"file", file)
++		"file", file, "peer", peer)
 +	return gate{}, false, ErrGateUnread
 +}
 +
@@ -348,7 +356,7 @@ index 0000000..16bac1c
 +// refuses everything. A peer whose chain can't be read to init is refused
 +// too. A watching gate serves each peer it would refuse, saying it would.
 +func refuses(c *net.UnixConn, peer string) error {
-+	g, ok, err := readGate()
++	g, ok, err := readGate(peer)
 +	if err != nil {
 +		return err
 +	}
@@ -421,10 +429,10 @@ index 0000000..16bac1c
 +func (r refusing) Extension(string, []byte) ([]byte, error) { return nil, r.why }
 diff --git a/agent/gate_serve_test.go b/agent/gate_serve_test.go
 new file mode 100644
-index 0000000..7ebd12d
+index 0000000..11611f1
 --- /dev/null
 +++ b/agent/gate_serve_test.go
-@@ -0,0 +1,275 @@
+@@ -0,0 +1,282 @@
 +package agent_test
 +
 +import (
@@ -501,8 +509,12 @@ index 0000000..7ebd12d
 +}
 +
 +func TestAWatchedPlaceIsServed(t *testing.T) {
++	said := journalled(t)
 +	if err := listWith(t, "watch\nrefuse .\n"); err != nil {
 +		t.Fatalf("a watched place was refused: %v", err)
++	}
++	if !strings.Contains(said.String(), "would have refused a request from agents' work") {
++		t.Fatalf("a watched refusal went unsaid: %q", said.String())
 +	}
 +}
 +
@@ -560,6 +572,9 @@ index 0000000..7ebd12d
 +	}
 +	if !strings.Contains(said.String(), "gate's file is gone and was never read") {
 +		t.Fatalf("refusing with no gate read went unsaid: %q", said.String())
++	}
++	if !strings.Contains(said.String(), "peer=") {
++		t.Fatalf("refusing with no gate read didn't say who: %q", said.String())
 +	}
 +	if err := os.WriteFile(file, []byte("allow .\nrefuse .\n"), 0o644); err != nil {
 +		t.Fatal(err)
@@ -702,10 +717,10 @@ index 0000000..7ebd12d
 +}
 diff --git a/agent/gate_test.go b/agent/gate_test.go
 new file mode 100644
-index 0000000..f36a4c5
+index 0000000..134a686
 --- /dev/null
 +++ b/agent/gate_test.go
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,278 @@
 +package agent
 +
 +import (
@@ -915,6 +930,20 @@ index 0000000..f36a4c5
 +	}
 +}
 +
++func TestAnotherAccountsPeerIsStillThere(t *testing.T) {
++	was := signal
++	t.Cleanup(func() { signal = was })
++	for _, c := range []struct {
++		err   error
++		there bool
++	}{{unix.EPERM, true}, {unix.ESRCH, false}} {
++		signal = func(int, unix.Signal, *unix.Siginfo, int) error { return c.err }
++		if stillThere(3) != c.there {
++			t.Errorf("a peer whose signal says %v was taken as there %v", c.err, !c.there)
++		}
++	}
++}
++
 +func TestOnlyAKernelWithoutPidfdsHasAPidTrustedAlone(t *testing.T) {
 +	if err := pidfdFailed(unix.ENOPROTOOPT); err != nil {
 +		t.Errorf("a kernel without SO_PEERPIDFD refused its peer: %v", err)
@@ -972,10 +1001,10 @@ index 0000000..f36a4c5
 +}
 diff --git a/cmd/ssh-tpm-agent/journal.go b/cmd/ssh-tpm-agent/journal.go
 new file mode 100644
-index 0000000..7704f73
+index 0000000..99b3ea5
 --- /dev/null
 +++ b/cmd/ssh-tpm-agent/journal.go
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,82 @@
 +package main
 +
 +import (
@@ -984,8 +1013,27 @@ index 0000000..7704f73
 +	"fmt"
 +	"io"
 +	"log/slog"
++	"os"
 +	"sync"
++
++	"golang.org/x/sys/unix"
 +)
++
++// toTheJournal says whether out is the stream JOURNAL_STREAM names by its
++// device and inode, as systemd.exec(5) says to check: a program run from a
++// terminal a unit started inherits the variable but not the stream, and
++// its lines there are a person's to read, unmarked.
++func toTheJournal(stream string, out *os.File) bool {
++	var dev, ino uint64
++	if n, err := fmt.Sscanf(stream, "%d:%d", &dev, &ino); err != nil || n != 2 {
++		return false
++	}
++	var st unix.Stat_t
++	if err := unix.Fstat(int(out.Fd()), &st); err != nil {
++		return false
++	}
++	return uint64(st.Dev) == dev && uint64(st.Ino) == ino
++}
 +
 +// levelled writes each record as the text handler would, opened with the
 +// sd-daemon mark of the priority its level means. The journal stores a line
@@ -1041,18 +1089,74 @@ index 0000000..7704f73
 +}
 diff --git a/cmd/ssh-tpm-agent/journal_test.go b/cmd/ssh-tpm-agent/journal_test.go
 new file mode 100644
-index 0000000..2ca9828
+index 0000000..484f057
 --- /dev/null
 +++ b/cmd/ssh-tpm-agent/journal_test.go
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,94 @@
 +package main
 +
 +import (
 +	"bytes"
++	"fmt"
 +	"log/slog"
++	"os"
 +	"strings"
++	"sync"
 +	"testing"
++
++	"golang.org/x/sys/unix"
 +)
++
++func TestOnlyTheStreamNamedIsTheJournal(t *testing.T) {
++	out, err := os.CreateTemp(t.TempDir(), "out")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer out.Close()
++	var st unix.Stat_t
++	if err := unix.Fstat(int(out.Fd()), &st); err != nil {
++		t.Fatal(err)
++	}
++	named := fmt.Sprintf("%d:%d", st.Dev, st.Ino)
++	if !toTheJournal(named, out) {
++		t.Errorf("the stream %s names was taken for another", named)
++	}
++	other := fmt.Sprintf("%d:%d", st.Dev, st.Ino+1)
++	for _, stream := range []string{"", other, "journal"} {
++		if toTheJournal(stream, out) {
++			t.Errorf("%q was taken as naming the stream", stream)
++		}
++	}
++}
++
++// Handlers made from one share its line and its lock, so lines written
++// through each at once still come out whole, one priority mark apiece.
++func TestHandlersMadeFromOneWriteWholeLines(t *testing.T) {
++	var out bytes.Buffer
++	log := slog.New(newLevelled(&out, nil))
++	loggers := []*slog.Logger{log, log.With("peer", "x"), log.WithGroup("g").With("k", "v")}
++	const each = 200
++	var wg sync.WaitGroup
++	for _, l := range loggers {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for range each {
++				l.Warn("said")
++			}
++		}()
++	}
++	wg.Wait()
++	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
++	if len(lines) != len(loggers)*each {
++		t.Fatalf("wrote %d lines, not %d", len(lines), len(loggers)*each)
++	}
++	for _, line := range lines {
++		if !strings.HasPrefix(line, "<4>time=") || strings.Count(line, "time=") != 1 {
++			t.Fatalf("a line came out broken: %q", line)
++		}
++	}
++}
 +
 +func TestEachLineSaysItsPriority(t *testing.T) {
 +	var out bytes.Buffer
@@ -1084,7 +1188,7 @@ index 0000000..2ca9828
 +	}
 +}
 diff --git a/cmd/ssh-tpm-agent/main.go b/cmd/ssh-tpm-agent/main.go
-index 14e9f17..dccfeff 100644
+index 14e9f17..8e5c141 100644
 --- a/cmd/ssh-tpm-agent/main.go
 +++ b/cmd/ssh-tpm-agent/main.go
 @@ -148,7 +148,13 @@ func main() {
@@ -1095,7 +1199,7 @@ index 14e9f17..dccfeff 100644
 +	// Where systemd hands the output to the journal, each line says its
 +	// priority, so a refusal is seen by what reads warnings.
 +	var handler slog.Handler = slog.NewTextHandler(os.Stdout, opts)
-+	if os.Getenv("JOURNAL_STREAM") != "" {
++	if toTheJournal(os.Getenv("JOURNAL_STREAM"), os.Stdout) {
 +		handler = newLevelled(os.Stdout, opts)
 +	}
 +	logger := slog.New(handler)

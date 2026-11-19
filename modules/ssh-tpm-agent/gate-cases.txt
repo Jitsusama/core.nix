@@ -12,6 +12,10 @@ serve /user.slice/user-1000.slice/user@1000.service/background.slice/health.serv
 # A fenced command made inside the awaited slice's cgroups.
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope/pi-jobs-ab12.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/pi-jobs-ab12.scope
+# Work moved to the awaited slice is still refused under an agent's parent,
+# and so is a cgroup an agent makes with the awaited slice's names.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope /user.slice/user-1000.slice/user@1000.service/jobs.slice/pi-spawner-3386655-21a0cd4c.scope
+refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope/jobs.slice/jobs-awaited.slice/awaited.service
 # A session window's pi, unheld, and its window's kitty.
 refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service
 refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service
