@@ -47,7 +47,7 @@ fn help() -> Help {
     .example("system --json", "the whole record, as system.view/1")
     .example(
         "system machine NAME",
-        "one machine whole: its ties to the other parts, and what can be done with it",
+        "one machine whole: its cells, network and code, and what can be done with it",
     )
     .example(
         "system serve --socket SOCKET",
@@ -183,7 +183,7 @@ fn sites() -> Option<PathBuf> {
     Some(data.join("jitsusama/sites"))
 }
 
-/// How this machine's quest backup last landed, as the backup writes it
+/// When this machine's quest backup last backed up, as the backup writes it
 /// under its state home (epoch seconds); none where this machine keeps no
 /// backup.
 fn backup() -> Option<parts::Backup> {
