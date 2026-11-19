@@ -311,7 +311,7 @@ or a copy, can be opened, copied or forgotten.
 | mark | one drawn symbol, such as each one in the margin | glyph, icon | `glyphs.nix` |
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `margin.pieces`, `Pieces.qml` |
 | margin's cat | the small cat sitting in the gap above the column Joel is in, which says nothing | | `modules/margin-cat`, `MarginCat.qml`, `MarginCatScreen.qml` |
-| margin's puppy | a second small animal for the margin beside the cat, drawn in the theme but not yet shown | dog | `glyphs.nix`'s `puppy` poses |
+| margin's puppy | a second small animal for the margin beside the cat, drawn in the theme but not yet shown | | `glyphs.nix`'s `puppySitting`, `puppyBowing` and `puppyWalkingA` to `D` |
 | meter | a level shown while it changes, such as the volume | overlay | `Meter.qml` |
 | card | the one frame the launcher and the arrival line's notice are drawn in, all it holds the inset from its edge | | `Card.qml` |
 | drawer | the card's continuation out of its right side, a plate about the selected row: what it has beyond its one line | | `Drawer.qml`, a row's `drawer` |
