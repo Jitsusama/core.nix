@@ -32,13 +32,16 @@ let
   # whether it holds and what it says, for readsAsOne and for the checks
   # showing each fault refused; `walkedFrom` is where the strides were
   # read from, and `glyphs` the drawings, the theme's unless that check
-  # plants its own.
+  # plants its own. Given `meant`, the words the animal's poses are picked
+  # by (posesOf), each stride drawn must mean them, so rewording what the
+  # strides mean fails rather than quietly picking none by meaning.
   poseFaults =
     {
       sitting,
       poses,
       strides,
       walkedFrom ? null,
+      meant ? null,
       glyphs ? import ./glyphs.nix { inherit lib; },
     }:
     let
@@ -153,6 +156,10 @@ let
             ) (lib.range 0 (lib.length steps - 1))
           )
       );
+      meansOtherwise = stride: (glyphs.${stride}.means or null) != meant;
+      unmeant = lib.optionals (meant != null) (
+        lib.filter (stride: lib.elem stride drawn && meansOtherwise stride) strides
+      );
       readFrom = lib.optionalString (walkedFrom != null) " read from ${walkedFrom}";
     in
     {
@@ -164,6 +171,7 @@ let
           shuffling
           dragged
           missing
+          unmeant
         ]
         && strides != [ ];
       said = lib.concatStringsSep ", " (
@@ -175,6 +183,7 @@ let
           "never stepping ${builtins.toJSON dragged}"
           "undrawn ${builtins.toJSON missing}"
         ]
+        ++ lib.optional (meant != null) "meant otherwise ${builtins.toJSON unmeant}"
         # Where they came from, so a pose failing on a change to the code
         # it's walked by says so.
         ++ lib.optional (strides == [ ] || walkedFrom != null) (
@@ -185,44 +194,26 @@ let
 
   # Whether every pose of one of the margin's animals reads as that one
   # animal, by poseFaults.
-  # Each stride drawn must mean what its check picks the animal's poses by
-  # (posesOf's meant), so rewording what they mean in glyphs.nix fails
-  # here rather than quietly picking none.
   readsAsOne =
-    {
-      check,
-      animal,
-      meant,
-      ...
-    }@walk:
+    { check, animal, ... }@walk:
     let
       found = poseFaults (
         removeAttrs walk [
           "check"
           "animal"
-          "meant"
         ]
       );
-      glyphs = import ./glyphs.nix { inherit lib; };
-      unmeant = lib.filter (
-        stride: glyphs ? ${stride} && (glyphs.${stride}.means or null) != meant
-      ) walk.strides;
-      said = lib.concatStringsSep "; " (
-        lib.optional (!found.ok) found.said ++ lib.optional (unmeant != [ ]) unmeantSaid
-      );
-      unmeantSaid =
-        lib.concatStringsSep ", " unmeant + " must mean \"${meant}\", as its poses are picked by";
     in
-    holds check "The ${animal}'s poses must read as one ${animal}: ${said}." (
-      found.ok && unmeant == [ ]
-    );
+    holds check "The ${animal}'s poses must read as one ${animal}: ${found.said}." found.ok;
 
   # An animal's poses: its sitting and every mark drawn as its sitting's or
   # a stride's glyph, named for it when it has a name of its own, or meant
-  # as one of its poses in the words its strides mean (readsAsOne), so a
+  # as one of its poses in the words its strides mean (poseFaults), so a
   # pose added for it can't skip its rules, nor one drawn in a glyph of
   # its own meant so, nor every pose but its sitting when the sitting's
   # glyph alone changes, nor every pose but its strides when theirs does.
+  # One in a glyph of its own whose meaning alone is reworded drops out,
+  # which only a list of its poses by name would see.
   posesOf =
     {
       sitting,
@@ -500,7 +491,8 @@ in
   # just under 15% fewer or more held and just over refused, on one of 20,
   # 15% held and past it refused, and on one of 13, 2 more or fewer
   # refused; a sitting misnamed, or a pose listed but undrawn, said
-  # undrawn; and a stride no pose lists held to the stray and size rules;
+  # undrawn; a stride no pose lists held to the stray and size rules, and
+  # one meant otherwise than its animal's poses are picked by refused;
   # the cat's own planted on copies of its drawings; and an animal's poses
   # found by its glyphs, the start of its name and what a mark means,
   # though a sitting or stride is undrawn, and no mark meant otherwise nor

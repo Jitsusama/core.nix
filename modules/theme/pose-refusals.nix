@@ -194,8 +194,9 @@ let
   # more held and one past it refused, and on one of 13, a pose 15.4%
   # more refused, as no 16% would; a misnamed sitting said undrawn,
   # rather than every pose unlike it, and a pose listed but undrawn, as a
-  # leap's tuck taken out would be, said so; and a stride no pose lists
-  # still held to the stray and size rules.
+  # leap's tuck taken out would be, said so; a stride no pose lists
+  # still held to the stray and size rules; and a stride meant otherwise
+  # than the words its animal's poses are picked by refused for it alone.
   sized = poseFaults {
     sitting = "small";
     poses = [
@@ -240,7 +241,21 @@ let
     ];
     glyphs = planted;
   };
+  meaning = poseFaults {
+    sitting = "nothingHere";
+    poses = [ "nothingHere" ];
+    strides = drawnWalk;
+    meant = "its own pose";
+    glyphs = lib.mapAttrs (
+      name: mark: mark // { means = if name == "walkingC" then "another's" else "its own pose"; }
+    ) planted;
+  };
   edges = [
+    {
+      faults = meaning;
+      reason = "walkingC, a stride meant otherwise, refused for it alone";
+      holds = !meaning.ok && lib.hasInfix ''meant otherwise ["walkingC"]'' meaning.said;
+    }
     {
       faults = sized;
       reason = "atLine and underAt, 15% off, held, and pastLine and underPast refused";
