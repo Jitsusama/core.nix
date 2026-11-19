@@ -10535,6 +10535,7 @@ Scope {
             // open join, and find home, here as ever.
             fillFinding = filling && fillOpening && !fillingPlace && homeKept.length > 0;
             fillFoundBy = "";
+            fillFoundThrew = false;
             fillFoundHome = false;
             fillFoundFrom = 0;
             fillFoundTook = 0;
@@ -11298,8 +11299,9 @@ Scope {
 
     // Brings a card shown from what it kept up to now: open, every source
     // it reads wakes, home is found again where its rows stand, after its
-    // frame (fillFound), and its drawer comes. A key or a click before its first frame is drawn does
-    // this first, so it acts on what's there now, never on what was kept.
+    // frame (fillFound), and its drawer comes. A key or a click before its
+    // first frame is drawn does this first, so it acts on what's there
+    // now, never on what was kept.
     function filled(by) {
         if (!opening || open)
             return;
@@ -11482,27 +11484,41 @@ Scope {
                 restart("");
                 homeKept = matches;
                 fillFoundHome = true;
+                // The card's height is home's as found, as the open
+                // handler sized it from before home was found after it.
+                tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap)
+                    ? apart : 0);
             }
             heldAgreed(sources);
             if (fillFoundHome)
                 filledFound();
         } catch (error) {
+            fillFoundThrew = true;
             console.warn(`launcher: finding home after the fill threw: ${error.message}\n`
                 + (error.stack ?? ""));
         } finally {
             fillFoundTook = KeyTimes.now() - began;
-            feltSpan(fillFoundHome ? "finding home" : "joining", began);
+            feltSpan(fillFoundThrew ? "finding home, threw"
+                : fillFoundHome ? "finding home" : "joining", began);
         }
     }
+    // Whether finding home after the fill threw, so its span and the
+    // waking line say so where they're read, not only the warning.
+    property bool fillFoundThrew: false
     // Home's rows once found again stand for the fill's (filledSaid), as
     // the check that a fill moves no row or cursor reads them, and the
     // fill's own were still the kept ones. Where the fill hasn't said
     // them yet, it says these as it does.
     function filledFound() {
+        // Found before this opening's frame, its record isn't made yet,
+        // and the last is the opening before's; the fill says these
+        // rows as its frame makes it (fillEarly).
+        if (fillEarly >= 0)
+            return;
         const last = openingsTimed[openingsTimed.length - 1];
         if (last?.kept && last.filled !== undefined)
-            openingsTimed = openingsTimed.slice(0, -1)
-                .concat([Object.assign({}, last, { filled: rowsSaid() })]);
+            openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last,
+                { filled: rowsSaid(), filledFoundBy: fillFoundBy })]);
     }
 
     // Every source still asleep woken at once, as a closing wants none.
@@ -11544,7 +11560,8 @@ Scope {
         const said = wakeSlices.map(one => one.woke.map(each =>
             `${each.name} ${Math.round(each.took)}`).join(", ")).join("; ");
         const foundSaid = fillFoundBy === "" ? ""
-            : `, ${fillFoundHome ? "home found again" : "joined again"} in`
+            : `, ${fillFoundThrew ? "threw finding home"
+                : fillFoundHome ? "home found again" : "joined again"} in`
                 + ` ${Math.round(fillFoundTook)} ms`
                 + (fillFoundBy === "slice" ? " in a slice of its own" : ` for a ${fillFoundBy}`);
         console.info(`launcher: woke the opening's sources in ${slices.length} slices over`
@@ -11767,7 +11784,9 @@ Scope {
         const worked = Math.round(fillWorked);
         const filled = { filling: Math.round(took), fillWorked: worked, fillParts: fillParts,
             fillJoined: fillJoined,
-            fillFrom: Math.round(fillFrom), verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy, woke: openWoke,
+            fillFrom: Math.round(fillFrom), verbs: openVerbsWeighed, filled: rowsSaid(),
+            filledFoundBy: fillFoundHome ? fillFoundBy : "", filledBy: openFilledBy,
+            woke: openWoke,
             madeBy: madeBy() };
         openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, filled)]);
         const made = Object.values(filled.madeBy).reduce((sum, rows) => sum + rows, 0);

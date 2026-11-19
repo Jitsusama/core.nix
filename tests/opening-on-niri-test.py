@@ -1707,10 +1707,13 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     assert woke[0].get("foundBy") == "slice", f"home wasn't found in a slice of its own: {woke}"
     # Searched again, not only joined, as the kept rows it shows till then list keys either way;
     # said only where the slice ran home's search.
-    said = shell.log.read_bytes()[since:].decode(errors="replace")
-    assert "home found again in" in said, f"the slice didn't find home again: {woke}"
-    # Found again with nothing changed, its rows and cursor stand where the first frame showed
-    # them, and the fill's record says those, as the storm's check reads it.
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while b"home found again in" not in shell.log.read_bytes()[since:]:
+        assert time.monotonic() < deadline, f"the slice didn't find home again: {woke}"
+        time.sleep(launcher_on_niri.POLL)
+    # The fill's record says home's rows as the slice found them, which the storm's check holds
+    # to the first frame's; found with nothing changed, they stand where that frame showed them.
+    assert woke[0].get("filledFoundBy") == "slice", f"the fill said home's kept rows: {woke}"
     shown, filled = cast("Json", woke[0]["shown"]), cast("Json", woke[0]["filled"])
     assert (filled["keys"], filled["at"]) == (shown["keys"], shown["at"]), (
         f"found again, home's rows or cursor moved: {woke}"
