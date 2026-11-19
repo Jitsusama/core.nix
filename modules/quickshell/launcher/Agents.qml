@@ -1666,7 +1666,7 @@ Provider {
             sproutAgainIn(Sprouting.SETTLE_MS);
             return;
         }
-        const still = Sprouting.stillKept(tell, answer.records);
+        const still = Sprouting.stillKept(tell, answer);
         tell.forEach(one => {
             sproutTokens[one.token] = "ended";
         });
