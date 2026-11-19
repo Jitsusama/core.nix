@@ -63,8 +63,7 @@ pub fn apps(text: Option<&str>, now: i64) -> Vec<Measure> {
             // apps-under-load leaves its hour unwritten while a call is on.
             "his apps under load, unread: no hour in 2 h, a call or a fault; hours since one"
         };
-        #[allow(clippy::cast_precision_loss)]
-        let since = at.map(|at| (now - at).max(0) as f64 / 3600.0);
+        let since = at.map(|at| super::hours_of((now - at).max(0)));
         return vec![Measure {
             key: UNREAD.to_owned(),
             class: Class::Apps,
@@ -79,8 +78,8 @@ pub fn apps(text: Option<&str>, now: i64) -> Vec<Measure> {
 }
 
 /// When an hour was read: seconds, whole or not, or an RFC 3339 moment.
+#[expect(clippy::cast_possible_truncation, reason = "a time in seconds")]
 fn when(at: &Value) -> Option<i64> {
-    #[allow(clippy::cast_possible_truncation)]
     at.as_i64()
         .or_else(|| at.as_f64().map(|at| at as i64))
         .or_else(|| super::seconds(at))
@@ -180,7 +179,10 @@ mod tests {
             read[1].owner, "5193FV",
             "its keeper, when a figure names none"
         );
-        assert!(read.iter().all(|m| m.class == Class::Apps));
+        assert!(
+            read.iter().all(|m| m.class == Class::Apps),
+            "every figure is his apps'"
+        );
     }
 
     #[test]
