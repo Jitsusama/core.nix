@@ -94,6 +94,9 @@ Provider {
     onUnheardChanged: {
         if (!hiding)
             return;
+        // The foot's word for a Return held while it was unknown goes,
+        // since the row now gives the share as why.
+        launcher?.unheld?.();
         ready.remade();
         heldAgain();
         changed();

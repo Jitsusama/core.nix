@@ -1657,8 +1657,10 @@ Scope {
         // as Return on it does neither.
         const refused = why => ({ done: false, said: why === "" ? said : `${said}: ${why}` });
         const stillHere = heldWhyOf(path, returnOf(target));
-        if (stillHere !== null)
+        if (stillHere !== null) {
+            console.info(`launcher: refused from outside, held still: ${stillHere}`);
             return refused(stillHere);
+        }
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
@@ -1922,8 +1924,10 @@ Scope {
         // opened or asked about, and never said done.
         const refused = why => ({ refused: why, in: names });
         const stillHere = heldWhyOf(trail, returnOf(target));
-        if (stillHere !== null)
+        if (stillHere !== null) {
+            console.info(`launcher: refused from a terminal, held still: ${stillHere}`);
             return refused(stillHere);
+        }
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
@@ -3347,11 +3351,11 @@ Scope {
 
     // Lets go of the foot's word for a Return held still (run), once what
     // held it may no longer, as a share ending lets an ask arm. Only while
-    // the foot still says it: what else it says, or waits to say as the
-    // launcher next opens, stays.
+    // the foot still says it (Arming.letsHeldGo): what else it says, or
+    // waits to say as the launcher next opens, stays.
     property var heldSaying: []
     function unheld() {
-        if (saying.length > 0 && JSON.stringify(saying) === JSON.stringify(heldSaying))
+        if (Arming.letsHeldGo(saying, heldSaying))
             say([]);
         heldSaying = [];
     }
@@ -7932,6 +7936,9 @@ Scope {
         // with it.
         const stillWhy = heldWhyOf([choice], choice.returns);
         if (stillWhy !== null) {
+            // Journalled, so a Return that did nothing can be told from
+            // one lost: the reason only, which names nothing hidden.
+            console.info(`launcher: Return held still: ${stillWhy}`);
             heldSaying = [["\u21b5", stillWhy]];
             say(heldSaying);
             return;

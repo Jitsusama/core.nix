@@ -51,6 +51,14 @@ function wayHeldWhy(trail, act, fallback) {
     return null;
 }
 
+// Whether the foot, `saying`, lets go of the word it said for a Return
+// held still, `heldSaying`, once what held it may no longer: only while
+// it still says that word, so another said since, another place's
+// among them, stays.
+function letsHeldGo(saying, heldSaying) {
+    return saying.length > 0 && JSON.stringify(saying) === JSON.stringify(heldSaying);
+}
+
 // Nothing armed.
 function rest() {
     return { key: "", keys: -1, at: 0 };
