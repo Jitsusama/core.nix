@@ -73,6 +73,7 @@ import "launcher/Catalogue.js" as Catalogue
 import "launcher/Member.js" as Member
 import "launcher/Parts.js" as Parts
 import "launcher/Rank.js" as Rank
+import "launcher/Shared.js" as Shared
 import "launcher/Showing.js" as Showing
 import "launcher/Flash.js" as Flash
 import "launcher/ActForms.js" as ActForms
@@ -10483,8 +10484,10 @@ Scope {
         // A viewer's command line opens no home, so it isn't one opened
         // whole (viewerCommandLine).
         if (open && !filling && openAsked >= 0 && openChord === "" && !viewing
-            && homeMeantKept)
+            && homeMeantKept && !openedShared)
             openedWholeSaid();
+        if (open)
+            openedShared = false;
         const began = lapped;
         opening = false;
         // However it opened or shut (a chord, a walk from outside, the
@@ -10565,9 +10568,10 @@ Scope {
             // kept: inside `open` they were a third of the fill's 14 ms on
             // a builder, and the fill's "opening" held a median 27 ms of
             // 32 of Joel's 53 longest stalls (2026-11-18). Only home's
-            // fill, with home kept (Wanted.findsLater).
+            // fill, with home kept, and never while the screen may be
+            // shared, as Asks and Copies hide by (Wanted.findsLater).
             fillFinding = Wanted.findsLater({ byFill: fillOpening, intoPlace: fillingPlace,
-                kept: homeKept.length });
+                kept: homeKept.length, shared: screenShared() });
             fillFoundBy = "";
             fillFoundThrew = false;
             fillFoundHome = false;
@@ -10817,14 +10821,24 @@ Scope {
     // what's kept where it can be (opening), or else made whole first, as
     // the first opening since the shell started is, with nothing kept.
     function toggled() {
+        // While the screen may be shared, home opens whole, never from the
+        // card kept before the share, which can name a waiting ask or a
+        // copy (Wanted.opensKept); that opening isn't one said whole.
+        openedShared = !open && !opening && !Wanted.opensKept(screenShared());
         if (opening)
             unopened();
         else if (open)
             open = false;
-        else if (homeHeld || homeRescued())
+        else if (!openedShared && (homeHeld || homeRescued()))
             beginOpening();
         else
             wakeOpen();
+    }
+    property bool openedShared: false
+    // Whether another program may be seeing the screen, as Asks and Copies
+    // hide by (launcher/Shared.js), failing closed until niri has said.
+    function screenShared() {
+        return Shared.hidden(Niri.castsHeard, Niri.casts, Recorder.windowSession);
     }
 
     // Home is held again once a closed card is clear, so every chord but
