@@ -281,6 +281,16 @@ mod tests {
             standing.holds_on(from + STANDS_DOWN_FOR_AT_MOST, Duration::MAX),
             "an idle time too long to add wasn't held on for"
         );
+        let back = from + A_SECOND * 19 + STANDS_DOWN_FOR_AT_MOST;
+        assert_eq!(
+            standing.taking(back),
+            Taking::Again(STANDS_DOWN_FOR_AT_MOST)
+        );
+        assert_eq!(
+            hears(&standing, back, 0, 20).map(|stood| stood.lasting),
+            Some(STANDS_DOWN_FOR_AT_MOST * 2),
+            "another soon after a day's didn't double it"
+        );
     }
 
     #[test]

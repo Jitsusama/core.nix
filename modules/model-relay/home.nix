@@ -89,6 +89,7 @@ in
         # A restart ends every answer the relay is streaming, each a turn
         # some agent is taking, so a switch leaves a running relay be. It
         # leaves on its own once it has forwarded nothing for two minutes,
+        # and isn't standing down nor stood down within them,
         # and its socket starts the new build and origin at the next
         # request. Agents busy enough never to leave it two quiet minutes
         # keep the old one until they do, or until it's restarted by hand

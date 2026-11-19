@@ -47,8 +47,9 @@
 //! retired and opened afresh, since the network they ran on may be gone
 //! and pings would take their time to say so. A ping is what finds a lost
 //! connection, and an unanswered one fails every request on it, so below
-//! h2 each layer holds little ahead of one: a body goes in short frames, through few records and a kernel
-//! holding little unsent, and on a slow uplink a ping is answered in time.
+//! h2 each layer holds little ahead of one: a body goes in short frames,
+//! through few records and a kernel holding little unsent, and on a slow
+//! uplink a ping is answered in time.
 //!
 //! Past 15 in 100 failed of the requests it finished in ten minutes, 20
 //! at least, it stands down (src/standing.rs says why): it retires its
@@ -882,8 +883,8 @@ pub struct Relay {
     next: AtomicUsize,
     /// When an attempt to open a connection last failed, and why.
     failed: Held<Option<(Instant, Unreachable)>>,
-    /// The relay's clock and the wall's when a connection was last asked
-    /// for, to tell when the machine slept between.
+    /// The relay's clock and the wall's when a request was last taken, or a
+    /// connection last asked for, to tell when the machine slept between.
     asked_at: Held<(Instant, SystemTime)>,
     /// Whether it has begun to leave, when a request is sent direct.
     leaving: AtomicBool,
@@ -1086,16 +1087,18 @@ impl Relay {
                 "this relay is leaving, so go directly\n",
             );
         }
-        // Before the stand-down is asked about, as a sleep forgets it.
-        self.retire_after_a_sleep();
-        if let Some(standing_down) = self.standing_down() {
-            return standing_down;
-        }
         let in_hand = self.busy.one();
         let whole = match self.readied(&mut parts, body).await {
             Ok(whole) => whole,
             Err(refused) => return *refused,
         };
+        // Its body read whole first, so pi isn't writing one the relay
+        // has stopped reading when the 421 sends it direct; and the sleep
+        // looked for first, as a sleep forgets a stand-down.
+        self.retire_after_a_sleep();
+        if let Some(standing_down) = self.standing_down() {
+            return standing_down;
+        }
         let (answer, on_the_way) = match self.carry(&parts, &whole).await {
             Ok(answered) => answered,
             Err(not_carried) => return *not_carried,
@@ -1487,6 +1490,7 @@ impl Relay {
     /// other that is while the next is opened behind it, or, with none
     /// open, the next not being opened already, once it's opened.
     async fn sender(self: &Arc<Relay>) -> Result<(usize, Kept), Unreachable> {
+        self.retire_after_a_sleep();
         let count = self.slots.len();
         let at = self.next.fetch_add(1, Ordering::Relaxed) % count;
         if let Some(kept) = self.slots[at].sender() {
