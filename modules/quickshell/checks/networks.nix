@@ -202,7 +202,7 @@ in
   # (modules/quickshell/tests/network-docked-reads.qml), since docked with one
   # card a step into Network read over forty files. The case writes its two
   # cards' folders, resolv.conf and uptime, in folders made here. Its
-  # waits add up to 146 s at their bounds, each `within` once a use, so its
+  # waits add up to 154 s at their bounds, each `within` once a use, so its
   # timeout sits above them, and a wait that runs out says which it was.
   ethernet-waits-on-no-cable-file =
     pkgs.runCommandLocal "ethernet-waits-on-no-cable-file" { }

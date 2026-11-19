@@ -218,18 +218,28 @@ ShellRoot {
     }
 
     // Holds once `check` does, failing past `ms` as `what` never held,
-    // with what was said. `check` is tried first, so a poll that comes
-    // late can't fail a wait that holds. A wait on a load gets four
-    // seconds a card, for a loaded builder. Only a wait on a give-up,
-    // which no load brings, runs past four.
+    // with what was said and any load given up since it began, since one
+    // given up inside a step's own wait fails that wait rather than the
+    // step before. A give-up makes a hold anew, so a hold still the one
+    // there as the wait began, put by the case on purpose or stamped by
+    // it, is left out. `check` is tried first, so a poll that comes late can't fail a wait
+    // that holds. A wait on a load gets four seconds a card, for a loaded
+    // builder. Only a wait on a give-up, which no load brings, runs past
+    // four.
     function within(ms, check) {
         const began = Date.now();
+        const facts = Object.assign(Object.create(null), networks.factsStuck);
+        const cables = Object.assign(Object.create(null), networks.cablesStuck);
+        const since = (stuck, before) => Object.keys(stuck)
+            .filter(name => stuck[name] !== before[name]);
         return () => {
             if (check())
                 return true;
             if (Date.now() - began > ms)
                 throw new Error(`${waits.what} never held in ${ms} ms: ${said()}; `
-                    + `told ${JSON.stringify(told)}`);
+                    + `told ${JSON.stringify(told)}; given up `
+                    + JSON.stringify(since(networks.factsStuck, facts)
+                        .concat(since(networks.cablesStuck, cables))));
             return false;
         };
     }
@@ -385,8 +395,24 @@ ShellRoot {
             () => {
             Expect.expect("an uptime load that agrees with the count tells nothing",
                 told.length === 0, JSON.stringify(told));
-            root.quiet("served", root.served)();
+            root.quiet("ahead", root.ahead)();
         });
+    }
+
+    // The uptime loaded about two minutes ahead of the count, as a clock
+    // stepped back leaves it, the launcher open: it's told once the load
+    // lands, as it is of one behind. The uptime written leaves the lease's
+    // end half a minute past a whole minute, 90 to 150 s ahead of the
+    // count, so the time left it's told with reads the same for thirty
+    // seconds, however long the steps before took.
+    function ahead() {
+        told = [];
+        const minutes = Math.floor((8230 - Math.round(networks.uptime()) - 120) / 60);
+        Written.written(up, `${8230 - minutes * 60 - 30}.00 4000.00\n`);
+        networks.reloadFacts();
+        const row = `100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in ${minutes} min`;
+        waits.until("the launcher told of an uptime ahead of the count",
+            within(4000, () => told.includes(row)), root.quiet("served", root.served));
     }
 
     // A name server changed: shut, once its file lands again, the drawer
