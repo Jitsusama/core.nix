@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  graphical,
   holds,
   pkgs,
   self,
@@ -47,12 +48,13 @@
       );
       # gate-cases.txt copies the slices' names by hand, so a slice renamed
       # would leave its cases passing and its work served: each slice the
-      # gate names must still be one the workstation makes.
+      # gate names must still be one a machine with a screen makes, as the
+      # graphical role brings the slices.
       named =
         holds "ssh-tpm-agent-gate-names-real-slices"
-          "ssh-tpm-agent's gate names a slice the workstation doesn't make."
+          "ssh-tpm-agent's gate names a slice the graphical role doesn't make."
           (
-            builtins.all (slice: workstation.config.systemd.user.slices ? ${slice}) [
+            builtins.all (slice: graphical.config.systemd.user.slices ? ${slice}) [
               "agents"
               "background"
               "jobs"
