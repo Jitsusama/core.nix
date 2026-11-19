@@ -148,6 +148,7 @@ let
       sitting = "nothingHere";
       poses = [ pose ];
       strides = drawnWalk;
+      meant = null;
       glyphs = planted;
     };
   shown = [
@@ -186,6 +187,7 @@ let
       sitting = "nothingHere";
       poses = [ "nothingHere" ];
       walkedFrom = "here";
+      meant = null;
       glyphs = planted;
       inherit strides;
     };
@@ -208,6 +210,7 @@ let
       "underPast"
     ];
     strides = drawnWalk;
+    meant = null;
     glyphs = planted;
   };
   sizedTight = poseFaults {
@@ -217,12 +220,14 @@ let
       "justShort"
     ];
     strides = drawnWalk;
+    meant = null;
     glyphs = planted;
   };
   misnamed = poseFaults {
     sitting = "nothingHer";
     poses = [ "walkingA" ];
     strides = drawnWalk;
+    meant = null;
     glyphs = planted;
   };
   untucked = poseFaults {
@@ -232,6 +237,7 @@ let
       "tucked"
     ];
     strides = drawnWalk;
+    meant = null;
     glyphs = planted;
   };
   unlisted = poseFaults {
@@ -241,6 +247,7 @@ let
       "strayed"
       "shrunk"
     ];
+    meant = null;
     glyphs = planted;
   };
   meantAs =
@@ -363,6 +370,7 @@ let
       inherit sitting;
       strides = [ "strode" ];
       glyphs = marks;
+      meant = null;
       inherit named;
     };
   picks = [
@@ -371,6 +379,7 @@ let
         sitting = "sat";
         strides = [ "strode" ];
         glyphs = marks;
+        named = null;
         meant = "its own pose";
       };
       wanted = [
@@ -416,6 +425,8 @@ let
           "absent"
         ];
         glyphs = marks;
+        named = null;
+        meant = null;
       };
       wanted = [
         "asStride"

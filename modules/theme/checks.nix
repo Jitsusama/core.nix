@@ -41,7 +41,7 @@ let
       poses,
       strides,
       walkedFrom ? null,
-      meant ? null,
+      meant,
       glyphs ? import ./glyphs.nix { inherit lib; },
     }:
     let
@@ -201,9 +201,12 @@ let
   # Whether every pose of one of the margin's animals reads as that one
   # animal, by poseFaults, its poses found by posesOf by its `named` and
   # by the `meant` its strides are held to, with `also` those named
-  # outright. Both are asked for, `named` as null where the animal has no
-  # name of its own, so a live check that stops passing either fails to
-  # build rather than quietly holding its poses to fewer rules.
+  # outright. Each is asked for, `named` as null where the animal has no
+  # name of its own and `also` empty where it has no such poses, and
+  # `meant` must be words, so a live check that stops passing one fails to
+  # build rather than quietly holding its poses to fewer rules. poseFaults
+  # and posesOf ask for theirs too, so dropping one on the way fails the
+  # same.
   readsAsOne =
     {
       check,
@@ -213,8 +216,9 @@ let
       walkedFrom,
       meant,
       named,
-      also ? [ ],
+      also,
     }:
+    assert lib.assertMsg (lib.isString meant) "${check}: meant must be the words its poses mean";
     let
       found = poseFaults {
         inherit
@@ -250,8 +254,8 @@ let
     {
       sitting,
       strides,
-      named ? null,
-      meant ? null,
+      named,
+      meant,
       glyphs ? import ./glyphs.nix { inherit lib; },
     }:
     let
