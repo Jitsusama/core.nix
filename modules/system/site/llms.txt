@@ -12,6 +12,8 @@
   health (good, watch, bad or not read), walked by keyboard or pointer.
 - [The page as text](index.md): how each is judged, the keys, and what
   the data holds.
+- A machine's address on the page: `#machine=` and its name, which
+  opens the page with the cursor on that machine.
 - The data: the system daemon's records, which the page watches live
   over the sites' server at /feed/system. An agent on the machine runs
   `system --json` itself.

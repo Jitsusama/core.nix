@@ -33,6 +33,14 @@ import {
 /** The most machines drawn whole, worst first, so thousands stay short. */
 const MACHINES_DRAWN = 8;
 
+/** The row the machines past those drawn are reached by. */
+const MORE_ROW = "machines:more";
+
+/** The row a machine's name sits on, the first of its section. */
+function machineRow(name: string): string {
+  return `machine:${name}`;
+}
+
 /** The other parts, said across the machines, in the order they are drawn. */
 const ACROSS = ["mycelium", "network", "code"] as const;
 
@@ -177,7 +185,7 @@ function machineOf(thing: Thing, at: number, here: string, when: (at: string) =>
     .map((tie) => tieOf(tie, `${tie.name.toLowerCase()}:${thing.name}`))
     .join("");
   return `<section class="machine ${thing.health}" id="${id}" data-part="${id}" aria-labelledby="name-${id}">
-  <h2 class="name" id="name-${id}"><a class="row" data-row="machine:${name}" data-health="${thing.health}" href="${escaped(home(thing))}"><span translate="no">${name}</span>${spoken(thing.health)}</a></h2>
+  <h2 class="name" id="name-${id}"><a class="row" data-row="${escaped(machineRow(thing.name))}" data-health="${thing.health}" href="${escaped(home(thing))}"><span translate="no">${name}</span>${spoken(thing.health)}</a></h2>
   ${kindLine}
   <p class="standing health ${thing.health}">${mark(thing.health)}${escaped(standing(thing))}</p>
   <div class="ties">${ties}</div>
@@ -214,7 +222,7 @@ function moreOf(system: System): string {
     return "";
   }
   const words = `And ${more.toLocaleString("en-CA")} more ${more === 1 ? "machine" : "machines"}, on the map`;
-  return `<p class="more"><a class="row" data-row="machines:more" href="../mycelium/">${escaped(words)}</a></p>`;
+  return `<p class="more"><a class="row" data-row="${MORE_ROW}" href="../mycelium/">${escaped(words)}</a></p>`;
 }
 
 /**
@@ -267,4 +275,15 @@ function legend(): string {
     .join("");
 }
 
-export { escaped, headlineOf, home, legend, MACHINES_DRAWN, machinesOf, partsOf, placesOf };
+export {
+  escaped,
+  headlineOf,
+  home,
+  legend,
+  MACHINES_DRAWN,
+  MORE_ROW,
+  machineRow,
+  machinesOf,
+  partsOf,
+  placesOf,
+};

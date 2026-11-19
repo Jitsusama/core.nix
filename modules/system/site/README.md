@@ -13,6 +13,7 @@ behind.
 | `machine.ts` | the words each machine and its ties are said in              |
 | `bridge.ts`  | the machines drawn as the piers of a bridge                  |
 | `draw.ts`    | the marks, the headline, each machine and the parts, drawn   |
+| `address.ts` | the page's address for a machine, and where it lands         |
 | `index.html` | the page; `site.css`, `parts.css` and `keys.css` its styles  |
 | `index.md`   | its Markdown twin, with `llms.txt` for a model               |
 | `tests/`     | the reading tried, and the page read live in Chromium        |
