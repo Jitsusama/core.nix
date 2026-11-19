@@ -342,6 +342,14 @@ function lasted(seconds) {
     return minutes > 0 ? `${minutes} min` : "under a minute";
 }
 
+// Whether an uptime loaded, in seconds, is more than a minute off the one
+// kept, counted on from the last load, as a clock stepped either way leaves it,
+// or nothing was counted before it; networkd counts a lease's times by
+// it, so a lease shown is said again then.
+function stepped(kept, loaded) {
+    return kept === null || Math.abs(kept - loaded) > MINUTE;
+}
+
 // A hold on a file given up `now`, { at, wait }: when, and how long in
 // milliseconds until it's asked again, a minute, then twice as long each
 // time it's given up again, to an hour, since a read that hangs holds one

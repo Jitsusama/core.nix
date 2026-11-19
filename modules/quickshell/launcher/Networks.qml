@@ -1025,13 +1025,12 @@ Provider {
     }
     // Said again where a lease is shown the first time it lands, and when
     // a load moves it from what was counted on by more than a minute, as
-    // a clock stepped does.
+    // a clock stepped does (Interfaces.stepped).
     function upLanded() {
         const counted = uptime();
         upLoaded = Number(up.text().trim().split(/\s+/)[0]) || 0;
         upAt = Date.now();
-        const moved = counted === null || Math.abs(counted - upLoaded) > 60;
-        if (moved && Object.keys(leases).length > 0) {
+        if (Interfaces.stepped(counted, upLoaded) && Object.keys(leases).length > 0) {
             glanceSoon();
             if (provider.launcher?.open)
                 answered();
