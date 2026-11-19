@@ -5,7 +5,16 @@ import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { networkOf } from "../model.ts";
 import { study } from "../shape.ts";
-import { lasted, linkSpeed, possessive, rank, rate, shellWord, slug } from "../words.ts";
+import {
+  deviceCommand,
+  lasted,
+  linkSpeed,
+  possessive,
+  rank,
+  rate,
+  shellWord,
+  slug,
+} from "../words.ts";
 import { told } from "./house.ts";
 
 function shaped() {
@@ -96,6 +105,7 @@ it("a name becomes an address's fragment, and owns things as English writes it",
 it("a name in a command is quoted so pasting it runs nothing else", () => {
   for (const [name, typed] of [
     ["Study", "Study"],
+    ["tv_2@home%5+=a:b,c./d-e", "tv_2@home%5+=a:b,c./d-e"],
     ["Main Floor", "'Main Floor'"],
     ["lamp;reboot", "'lamp;reboot'"],
     ["$(reboot)", "'$(reboot)'"],
@@ -110,6 +120,28 @@ it("a name in a command is quoted so pasting it runs nothing else", () => {
     ["back\\slash", "'back\\slash'"],
     ["", "''"],
   ]) {
-    assert.equal(shellWord(name), typed, `${name} wasn't one word that runs nothing`);
+    assert.equal(
+      shellWord(name),
+      typed,
+      `${JSON.stringify(name)} wasn't one word that runs nothing`,
+    );
+  }
+});
+
+it("a device's command is offered only when it pastes just as it reads", () => {
+  for (const [name, command] of [
+    ["Study", "net devices Study"],
+    ["lamp;reboot", "net devices 'lamp;reboot'"],
+    ["Main Floor", "net devices 'Main Floor'"],
+    ["Main  Floor", null],
+    ["lamp\u001b[201~reboot", null],
+    ["tab\there", null],
+    ["two\nlines", null],
+    ["next\u2028line", null],
+    ["\u202eevil", null],
+    ["zero\u200bwidth", null],
+    ["no\u00a0break", null],
+  ] as const) {
+    assert.equal(deviceCommand(name), command, `${JSON.stringify(name)} was offered wrongly`);
   }
 });

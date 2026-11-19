@@ -201,10 +201,38 @@ function shellWord(word: string): string {
   return `'${word.replaceAll("'", "'\\''")}'`;
 }
 
+/**
+ * What a terminal could be handed besides the words it shows: a control
+ * character, such as an escape that ends a terminal's bracketed paste and
+ * has the rest run as typed; a mark of format or direction, or one that
+ * draws nothing, which read one way and paste another; a line or
+ * paragraph break; and any blank but a plain space, which a page shows as
+ * one space wherever it stands.
+ */
+const UNSEEN =
+  /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]|[^\S ]/u;
+
+/**
+ * The command that shows a device at a terminal, as the terminal kit's
+ * try lines are drawn: only when it reads just as it would be typed, its
+ * name quoted as a shell word, holding nothing unseen and no blanks but
+ * single spaces between words. Nothing otherwise, since a page shows a
+ * run of spaces as one, and changing a name to show it would have the
+ * command name a device it didn't.
+ */
+function deviceCommand(name: string): string | null {
+  const command = `net devices ${shellWord(name)}`;
+  if (UNSEEN.test(command) || command.includes("  ")) {
+    return null;
+  }
+  return command;
+}
+
 export {
   ago,
   clock,
   dbm,
+  deviceCommand,
   gigabytes,
   lasted,
   listed,

@@ -13,12 +13,12 @@ import {
   ago,
   clock,
   dbm,
+  deviceCommand,
   lasted,
   linkSpeed,
   plural,
   rate,
   roleWords,
-  shellWord,
   v4,
 } from "./words.ts";
 
@@ -295,7 +295,7 @@ function factsOf(context: Context, device: Device): Child[] {
     device.readAt === undefined
       ? null
       : `${ago(device.readAt, context.now)}, from ${device.source ?? "net"}`;
-  const name = shellWord(device.name);
+  const command = deviceCommand(device.name);
   return [
     h("h3", {}, "Facts"),
     facts([
@@ -308,13 +308,15 @@ function factsOf(context: Context, device: Device): Child[] {
       ["up for", device.upS ? lasted(device.upS) : null],
       ["read", read],
     ]),
-    h(
-      "p",
-      { class: "hint" },
-      "At a terminal, ",
-      h("code", {}, `net devices ${name}`),
-      " shows everything net read of it.",
-    ),
+    command === null
+      ? null
+      : h(
+          "p",
+          { class: "hint" },
+          "At a terminal, ",
+          h("code", {}, command),
+          " shows everything net read of it.",
+        ),
   ];
 }
 
