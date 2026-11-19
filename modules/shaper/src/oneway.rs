@@ -631,6 +631,50 @@ impl Way {
         }
     }
 
+    /// Counts a moment toward a queue past CAKE: one held back with the
+    /// line full runs the count, a `late` one puts it off while it may,
+    /// and any other ends it. Answers whether the count finished and set
+    /// the plateau.
+    fn count_elsewhere(
+        &mut self,
+        at: f64,
+        dt: f64,
+        late: bool,
+        elsewhere: bool,
+        through: f64,
+    ) -> bool {
+        let unjudged = late
+            && self
+                .elsewhere
+                .is_none_or(|(_, _, _, put_off)| put_off < ACKS_WAIT_S);
+        if unjudged {
+            if let Some((since, _, _, put_off)) = self.elsewhere.as_mut() {
+                *since += dt;
+                *put_off += dt;
+            }
+        } else if elsewhere || late {
+            // A late moment here has a count to run on, which a judged
+            // moment opened, so the count is never empty.
+            let (since, sum, n, _) = self.elsewhere.get_or_insert((at, 0.0, 0, 0.0));
+            if !late {
+                *sum += through;
+                *n += 1;
+            }
+            if at - *since >= ELSEWHERE_S - 0.05 {
+                let plateau = *sum / f64::from(*n);
+                self.elsewhere = None;
+                self.plateau = Some(plateau);
+                self.rate = (plateau * self.tuning.hold).max(LEAST_KBIT);
+                self.probing_until = None;
+                self.next_probe = at + PROBE_EVERY_S;
+                return true;
+            }
+        } else {
+            self.elsewhere = None;
+        }
+        false
+    }
+
     /// Follows a queue our probes can't see: a router that queues flow by
     /// flow, as the eero does, delays no probe however full the link is,
     /// and shares what it carries out by flow, so Joel's upload gets one
@@ -697,10 +741,6 @@ impl Way {
         // but never takes in what they carried, which may be starved: it
         // finishes on the moments it judged.
         let late = ours.acks_late && ours.waiting && held_back && !backing_off;
-        let unjudged = late
-            && self
-                .elsewhere
-                .is_none_or(|(_, _, _, put_off)| put_off < ACKS_WAIT_S);
         let elsewhere = ours.waiting
             && held_back
             && !backing_off
@@ -708,30 +748,8 @@ impl Way {
             && through > FLOWING_KBIT
             && self.reached(at) > 0.0
             && through >= self.reached(at) * REACHED;
-        if unjudged {
-            if let Some((since, _, _, put_off)) = self.elsewhere.as_mut() {
-                *since += dt;
-                *put_off += dt;
-            }
-        } else if elsewhere || late {
-            // A late moment here has a count to run on, which a judged
-            // moment opened, so the count is never empty.
-            let (since, sum, n, _) = self.elsewhere.get_or_insert((at, 0.0, 0, 0.0));
-            if !late {
-                *sum += through;
-                *n += 1;
-            }
-            if at - *since >= ELSEWHERE_S - 0.05 {
-                let plateau = *sum / f64::from(*n);
-                self.elsewhere = None;
-                self.plateau = Some(plateau);
-                self.rate = (plateau * self.tuning.hold).max(LEAST_KBIT);
-                self.probing_until = None;
-                self.next_probe = at + PROBE_EVERY_S;
-                return true;
-            }
-        } else {
-            self.elsewhere = None;
+        if self.count_elsewhere(at, dt, late, elsewhere, through) {
+            return true;
         }
         let Some(plateau) = self.plateau else {
             return false;
