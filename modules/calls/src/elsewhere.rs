@@ -23,7 +23,9 @@
 //!   told.
 //!
 //! A machine's name is kept without its control characters, so no record
-//! steers the terminal or the day it's named in.
+//! steers the terminal or the day it's named in, and at most
+//! [`MACHINES_AT_MOST`] machines are kept, so no answer names as many as
+//! it likes; a call past them still counts.
 //!
 //! Untold, unseen and undated machines, and a node here that won't answer, are
 //! named rather than waited on: whatever asks counts can't tell as busy
@@ -60,6 +62,9 @@ pub struct Heard {
     pub undated: Vec<String>,
     /// Why each node here that didn't answer couldn't, naming its socket.
     pub unanswered: Vec<String>,
+    /// How many records past the first [`MACHINES_AT_MOST`] machines
+    /// were passed over unnamed, none of them a call.
+    pub unnamed: usize,
 }
 
 /// What this machine's nodes under `runtimes` hear of its peers now, on
@@ -97,12 +102,17 @@ enum Said {
 /// long as it likes.
 const NAMED_IN: usize = 64;
 
+/// The most machines the records may name: a person's realms hold a
+/// handful, so more says something lists what isn't theirs.
+pub const MACHINES_AT_MOST: usize = 64;
+
 /// What the nodes' answers to a `Machines` request say of every machine
 /// but `here`, `now` in seconds since the epoch. An answer that isn't a
 /// node's list of machines says nothing; the caller counts a node that
 /// couldn't answer.
 pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
     let mut machines: BTreeMap<String, Said> = BTreeMap::new();
+    let mut unnamed = 0;
     let records = answers
         .iter()
         .filter_map(|answer| answer["Ok"]["Machines"].as_array())
@@ -123,10 +133,18 @@ pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
         let Some(said) = said(record, now) else {
             continue;
         };
+        if said != Said::Call && machines.len() >= MACHINES_AT_MOST && !machines.contains_key(&name)
+        {
+            unnamed += 1;
+            continue;
+        }
         let strongest = machines.entry(name).or_insert(said);
         *strongest = (*strongest).max(said);
     }
-    let mut heard = Heard::default();
+    let mut heard = Heard {
+        unnamed,
+        ..Heard::default()
+    };
     for (name, said) in machines {
         let list = match said {
             Said::Call => &mut heard.calls,
@@ -448,6 +466,26 @@ mod tests {
             heard.unseen,
             ["s".repeat(64)],
             "a name wasn't cut at 64 characters"
+        );
+    }
+
+    #[test]
+    fn records_past_the_most_machines_go_unnamed_but_a_call_among_them_counts() {
+        let mut records: Vec<Value> = (0..100)
+            .map(|n| record(&format!("m{n:03}"), NOW, false, &json!({})))
+            .collect();
+        records.push(record("skiff", NOW, true, &json!({"call": true})));
+        let heard = judge(&[answer(&records)], HERE, AT);
+        assert_eq!(heard.calls, ["skiff"], "a call past the most went unheard");
+        assert_eq!(
+            heard.unseen.len(),
+            MACHINES_AT_MOST,
+            "more machines were named than the most"
+        );
+        assert_eq!(
+            heard.unnamed,
+            100 - MACHINES_AT_MOST,
+            "the records passed over weren't counted"
         );
     }
 

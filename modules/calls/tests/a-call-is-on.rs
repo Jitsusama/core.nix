@@ -89,16 +89,36 @@ impl World {
             .stderr(Stdio::piped())
             .spawn()
             .expect("a-call-is-on ran");
+        // Read as it writes, so a long answer can't fill a pipe and hold it
+        // till it's stopped, which would read as too slow.
+        let drain = |pipe: Option<Box<dyn std::io::Read + Send>>| {
+            thread::spawn(move || {
+                let mut said = Vec::new();
+                if let Some(mut pipe) = pipe {
+                    let _ = pipe.read_to_end(&mut said);
+                }
+                said
+            })
+        };
+        let stdout = drain(asking.stdout.take().map(|pipe| Box::new(pipe) as _));
+        let stderr = drain(asking.stderr.take().map(|pipe| Box::new(pipe) as _));
         let started = Instant::now();
-        while asking.try_wait().expect("its state").is_none() {
+        let status = loop {
+            if let Some(status) = asking.try_wait().expect("its state") {
+                break status;
+            }
             if started.elapsed() > within {
                 let _ = asking.kill();
                 let _ = asking.wait();
                 return None;
             }
             thread::sleep(Duration::from_millis(20));
-        }
-        Some(asking.wait_with_output().expect("what it said"))
+        };
+        Some(Output {
+            status,
+            stdout: stdout.join().expect("its output"),
+            stderr: stderr.join().expect("what it said beside"),
+        })
     }
 
     /// The runtime folders, as a-call-is-on is given them.
@@ -197,6 +217,27 @@ fn a_question_asked_wrongly_is_refused_with_its_help() {
         Some(64),
         "a mistyped flag was read as a folder: {told:?}"
     );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("--here"),
+        "the refusal doesn't name the flag it knows: {told:?}"
+    );
+}
+
+#[test]
+fn asking_for_more_said_is_no_mistyped_flag() {
+    let world = World::new();
+    world.account("1000", "[]");
+    for args in [
+        vec!["--verbose", world.runtimes()],
+        vec!["--here", "-v", world.runtimes()],
+    ] {
+        let told = world.told(&args);
+        assert_eq!(
+            told.status.code(),
+            Some(1),
+            "{args:?} was refused: {told:?}"
+        );
+    }
 }
 
 #[test]
@@ -464,8 +505,8 @@ fn a_node_that_never_answers_is_named_once_its_time_is_up() {
     world.account("1000", "[]");
     misbehaving(&world, "work", Vec::new());
     let told = world
-        .told_within(&[world.runtimes()], Duration::from_secs(15))
-        .expect("a node that never answered held it past its time");
+        .told_within(&[world.runtimes()], Duration::from_secs(9))
+        .expect("a node that never answered held it past a shaper proof's ten seconds");
     assert_eq!(
         told.status.code(),
         Some(1),
@@ -474,6 +515,25 @@ fn a_node_that_never_answers_is_named_once_its_time_is_up() {
     assert!(
         String::from_utf8_lossy(&told.stderr).contains("answered nothing within"),
         "it didn't say the node ran out of time: {told:?}"
+    );
+}
+
+#[test]
+fn a_mute_node_and_pipewire_looking_twice_still_answer_inside_a_proofs_time() {
+    // The slowest a-call-is-on can be: a node that never answers, no call
+    // elsewhere, and a recording here that PipeWire looks at again two
+    // seconds on, which has stopped by then. A shaper proof gives it ten.
+    let world = World::new();
+    let folder = world.account("1000", &recording(40, "zoom"));
+    fs::write(folder.join("later.json"), "[]").expect("a later graph");
+    misbehaving(&world, "work", Vec::new());
+    let told = world
+        .told_within(&[world.runtimes()], Duration::from_secs(9))
+        .expect("a mute node and PipeWire's second look ran past a shaper proof's ten seconds");
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "a recording gone two seconds on was a call: {told:?}"
     );
 }
 

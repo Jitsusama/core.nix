@@ -38,6 +38,14 @@ pub(super) const NODE_SILENT: &str =
 /// The thing the nodes here are counted under.
 pub(super) const NODES: &str = "the mycelium nodes here";
 
+/// The thing the machines past the most a-call-is-on names are counted
+/// under, as one, so no node can make as many faults as it likes.
+pub(super) const UNNAMED: &str = "calls on machines past the most named";
+
+/// What the day calls those machines.
+pub(super) const MACHINES_UNNAMED: &str =
+    "the nodes here list more machines than a person's realms hold, so the rest go unnamed";
+
 impl Follower {
     /// Ask the mycelium nodes under `runtimes` whose calls go unheard.
     #[must_use]
@@ -108,6 +116,9 @@ pub(super) fn unheard(heard: &Heard) -> Vec<(String, &'static str)> {
         .collect();
     if !heard.unanswered.is_empty() {
         unheard.push((NODES.to_owned(), NODE_SILENT));
+    }
+    if heard.unnamed > 0 {
+        unheard.push((UNNAMED.to_owned(), MACHINES_UNNAMED));
     }
     unheard
 }

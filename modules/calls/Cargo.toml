@@ -23,7 +23,7 @@ terminal-kit = { path = "../terminal-kit" }
 # Root's ask of the mycelium nodes: a connection that never waits, and who
 # answered it (src/nodes.rs).
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { version = "1.1", features = ["net"] }
+rustix = { version = "1.1", features = ["net", "process"] }
 
 [dev-dependencies]
 tempfile = "3"

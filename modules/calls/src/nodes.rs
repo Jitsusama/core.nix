@@ -4,9 +4,9 @@
 //! answers one JSON line, a `Machines` request, with another, the shape
 //! the mycelium node this core locks speaks (`mycelium machines --socket`
 //! says the same), so a lock bump that changes it shows here as every node
-//! named unanswered. Root reaches every account's; anyone else reaches
-//! their own, and another account's folder they can't read isn't theirs
-//! to ask.
+//! named unanswered. Root asks every account's; anyone else asks only
+//! their own, since another account can open its folder to them and
+//! answer as a node.
 //!
 //! Root asks as root, so it lists only what an account can't point
 //! elsewhere: a socket itself, never a link, owned by the account whose
@@ -32,7 +32,9 @@ use std::time::{Duration, Instant};
 /// healthy node answers in milliseconds, so five seconds lets one slowed
 /// by a build answer, while a node that won't still leaves a-call-is-on
 /// well inside the ten seconds a shaper proof gives it, and that proof
-/// hearing Joel come back within them.
+/// hearing Joel come back within them. While a node won't answer, the
+/// proof's once-a-second watch looks only every six or seven seconds,
+/// this and PipeWire's look between; a longer wait here costs it that.
 const WITHIN: Duration = Duration::from_secs(5);
 
 /// The most nodes asked of one account, a realm each: an account offering
@@ -105,11 +107,16 @@ fn nodes(runtimes: &Path) -> (Vec<Node>, Vec<String>) {
     let Ok(accounts) = fs::read_dir(runtimes) else {
         return (Vec::new(), Vec::new());
     };
+    let asker = rustix::process::geteuid();
+    let mine = |owner: u32| asker.is_root() || owner == asker.as_raw();
     let mut accounts: Vec<(u32, PathBuf, fs::ReadDir)> = accounts
         .flatten()
         .filter_map(|account| {
             let folder = fs::symlink_metadata(account.path()).ok()?;
-            let owner = folder.is_dir().then_some(folder.uid())?;
+            let owner = folder
+                .is_dir()
+                .then_some(folder.uid())
+                .filter(|owner| mine(*owner))?;
             let held = account.path().join("mycelium");
             fs::symlink_metadata(&held)
                 .ok()

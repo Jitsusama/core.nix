@@ -59,8 +59,16 @@ struct Heard {
 
 fn main() -> ExitCode {
     terminal_kit::ask(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        let (here, runtimes) = match context.args.as_slice() {
-            [flag, rest @ ..] if flag == "--here" => (true, rest),
+        // terminal-kit leaves every program's --verbose to it, to say more
+        // of a failure.
+        let args: Vec<&str> = context
+            .args
+            .iter()
+            .map(String::as_str)
+            .filter(|arg| !matches!(*arg, "--verbose" | "-v"))
+            .collect();
+        let (here, runtimes) = match args.as_slice() {
+            ["--here", rest @ ..] => (true, rest),
             rest => (false, rest),
         };
         let runtimes = match runtimes {
@@ -68,12 +76,13 @@ fn main() -> ExitCode {
             // A mistyped flag read as a folder would find no account and
             // answer no call without a word.
             [flag] if flag.starts_with('-') => {
-                return Err(
-                    Failure::new(Exit::Usage, format!("a-call-is-on knows no {flag}"))
-                        .try_this("a-call-is-on --help"),
-                );
+                return Err(Failure::new(
+                    Exit::Usage,
+                    format!("a-call-is-on knows no {flag}; its own is --here"),
+                )
+                .try_this("a-call-is-on --help"));
             }
-            [runtimes] => Some(runtimes.as_str()),
+            [runtimes] => Some(*runtimes),
             _ => {
                 return Err(
                     Failure::new(Exit::Usage, "a-call-is-on takes one folder at most")
@@ -131,10 +140,18 @@ fn cautions(peers: &calls::elsewhere::Heard) -> Vec<String> {
         .unanswered
         .iter()
         .map(|why| format!("{why}, so its peers' calls go unheard"));
+    let unnamed = (peers.unnamed > 0).then(|| {
+        format!(
+            "the nodes here list more than {} machines, so {} records past them go unnamed",
+            calls::elsewhere::MACHINES_AT_MOST,
+            peers.unnamed
+        )
+    });
     unseen
         .chain(untold)
         .chain(undated)
         .chain(unanswered)
+        .chain(unnamed)
         .collect()
 }
 

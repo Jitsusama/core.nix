@@ -323,6 +323,7 @@ fn each_machine_and_the_nodes_whose_calls_go_unheard_are_a_thing_apart() {
         untold: vec!["dinghy".to_owned()],
         undated: vec!["punt".to_owned()],
         unanswered: vec!["one".to_owned(), "two".to_owned()],
+        unnamed: 40_000,
         ..calls::elsewhere::Heard::default()
     };
     assert_eq!(
@@ -332,6 +333,7 @@ fn each_machine_and_the_nodes_whose_calls_go_unheard_are_a_thing_apart() {
             ("calls on dinghy".to_owned(), peers::CALL_UNTOLD),
             ("calls on punt".to_owned(), peers::CALL_UNDATED),
             (peers::NODES.to_owned(), peers::NODE_SILENT),
+            (peers::UNNAMED.to_owned(), peers::MACHINES_UNNAMED),
         ],
         "whose calls go unheard wasn't each a thing of its own"
     );
