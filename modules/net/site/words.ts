@@ -208,6 +208,8 @@ function shellWord(word: string): string {
  * variation selectors and their supplement, and the tags that spell a
  * flag. An emoji as a phone types it, a heart with its selector or a
  * family joined, and a script's letters are drawn wrong without them.
+ * Hangul's leading filler, U+115F, isn't among them: the kit reads it as
+ * a blank, as it reads braille's.
  */
 const SHAPING =
   String.raw`\u00ad\u1160\u180b-\u180f\u200c\u200d\ufe00-\ufe0f` +
@@ -230,12 +232,20 @@ const UNSEEN = new RegExp(
   "v",
 );
 
+/** A word without what shapes it, as it reads to a person. */
+const UNSHAPED = new RegExp(`[${SHAPING}]`, "gv");
+
 /**
  * A character that draws nothing standing where a word starts, as the
  * kit's `typed` refuses it: alone it shows nothing, and after a space it
- * draws as a second one.
+ * draws as a second one. Hangul's medial vowels and final consonants,
+ * U+1161 to U+11FF and U+D7B0 to U+D7FF, are letters to Unicode but take
+ * no cell of their own, as the kit measures them.
  */
-const OPENS_BARE = new RegExp(String.raw`(?:^| )[\p{Mn}\p{Me}${SHAPING}]`, "v");
+const OPENS_BARE = new RegExp(
+  String.raw`(?:^| )[\p{Mn}\p{Me}${SHAPING}\u1161-\u11ff\ud7b0-\ud7ff]`,
+  "v",
+);
 
 /**
  * Whether a word pastes into a terminal just as the page shows it:
@@ -252,21 +262,41 @@ function folded(word: string): string {
 }
 
 /**
+ * The devices besides `device`, which may be a copy of the one listed.
+ * Devices sharing an id net gives several are each other's others, so
+ * only the one entry that is this device is left out.
+ */
+function othersThan(device: Device, devices: readonly Device[]): Device[] {
+  if (!SHARED_IDS.has(device.id)) {
+    return devices.filter((other) => other.id !== device.id);
+  }
+  const same = (other: Device): boolean =>
+    other.id === device.id &&
+    other.name === device.name &&
+    other.addresses.join(" ") === device.addresses.join(" ");
+  const itself = devices.indexOf(device);
+  const at = itself === -1 ? devices.findIndex(same) : itself;
+  return devices.filter((_, index) => index !== at);
+}
+
+/**
  * The words that show a device at a terminal, each typed as it reads and
  * finding it alone, best first. net takes a word as an id, then as an
  * address, then as a name in any case, refuses a name two devices share,
  * and reads a word opening with `-` as a flag. So a name is offered when
  * nothing else answers to it; then the first address, as net's own try
  * lines choose it, when no other device answers there; then net's id,
- * unless it's one net gives to several. Others are told apart by their
- * id, as the page keys them.
+ * unless it's one net gives to several. A name that reads as another's
+ * once what shapes it is set aside isn't offered, since the command would
+ * read as naming the other.
  */
 function findingWords(device: Device, devices: readonly Device[]): string[] {
-  const others = devices.filter((other) => other.id !== device.id);
+  const others = othersThan(device, devices);
   const { name } = device;
+  const reads = (word: string): string => folded(word.replace(UNSHAPED, ""));
   const nameFinds = others.every(
     (other) =>
-      other.id !== name && !other.addresses.includes(name) && folded(other.name) !== folded(name),
+      other.id !== name && !other.addresses.includes(name) && reads(other.name) !== reads(name),
   );
   const address = device.addresses[0];
   const addressFinds =

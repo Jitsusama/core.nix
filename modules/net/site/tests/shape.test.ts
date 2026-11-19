@@ -183,8 +183,16 @@ it("a device's command names it by a name that pastes as it reads and finds it a
       "net devices '\u{1f3f4}\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f} den'",
     ],
     ["\u1100\u1160 room", "net devices '\u1100\u1160 room'"],
+    ["\u1100\u1161 room", "net devices '\u1100\u1161 room'"],
     ["\u1820\u180b desk", "net devices '\u1820\u180b desk'"],
     ["\u845b\u{e0100} hall", "net devices '\u845b\u{e0100} hall'"],
+    // Each kept range's far end, and the selectors and separator between.
+    [
+      "\u1820\u180c\u1821\u180d\u1822\u180e\u1823\u180f",
+      "net devices '\u1820\u180c\u1821\u180d\u1822\u180e\u1823\u180f'",
+    ],
+    ["\u845b\ufe00 \u845b\u{e01ef}", "net devices '\u845b\ufe00 \u845b\u{e01ef}'"],
+    ["\u{1f3f4}\u{e0020}\u{e007f} den", "net devices '\u{1f3f4}\u{e0020}\u{e007f} den'"],
     ["study", byId],
     ["10.0.0.2", byId],
     ["lamp-id", byId],
@@ -208,6 +216,17 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["\u0301accent", byId],
     ["a \u0301accent", byId],
     ["filler \u1160bare", byId],
+    ["a \u1161vowel", byId],
+    ["\u11a8final", byId],
+    ["x \ud7b0vowel", byId],
+    // Just past each kept range: a tag that opens a language, a tag and a
+    // selector nothing assigns.
+    ["a\u{e0001}b", byId],
+    ["a\u{e0080}b", byId],
+    ["a\u{e01f0}b", byId],
+    // Another's name once what shapes it is set aside.
+    ["Den\u200d", byId],
+    ["D\u00aden", byId],
   ] as const) {
     // A copy, as a device read again is, so the device is known by its id.
     const device = named(name, id);
@@ -221,7 +240,12 @@ it("a device's command names it by a name that pastes as it reads and finds it a
 
 it("a device no name finds is named by its address, its id, or by none", () => {
   const shared = named("Phone", "mac:02:00:00:00:00:02", ["10.0.0.2"]);
-  const network = (device: Device): Device[] => [device, shared, named("Hub", "hub", ["10.0.0.9"])];
+  const network = (device: Device): Device[] => [
+    device,
+    shared,
+    named("Hub", "hub", ["10.0.0.9"]),
+    named("Study", "mac:?", ["10.0.0.3"]),
+  ];
   for (const [device, command, why] of [
     [named("Phone", "mac:?", ["10.0.0.4"]), "net devices 10.0.0.4", "with its own address"],
     [
@@ -235,6 +259,11 @@ it("a device no name finds is named by its address, its id, or by none", () => {
       "with another's id as its address",
     ],
     [named("Phone", "mac:?", ["mac:?"]), undefined, "with a shared id as its address"],
+    [
+      named("Study", "mac:?", ["10.0.0.8"]),
+      "net devices 10.0.0.8",
+      "with a shared id and the name of another with it",
+    ],
     [named("Phone", "mac:?", ["10.0.0.9"]), undefined, "with another's address"],
     [named("Phone", "mac:?"), undefined, "with the id net gives every client without one"],
     [named("Phone", "eero:unknown"), undefined, "with the id net gives every eero without one"],
