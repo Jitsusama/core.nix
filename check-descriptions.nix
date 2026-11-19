@@ -1071,8 +1071,8 @@
     the margin's animals' stride rule refuses the cat's own strides out of order, alone, with a
     pair never stepping, after a pose that isn't a stride, undrawn, and none at all, each by
     its reason, a stride planted with its body moved on each row, and a foot moved either side
-    of the feet's middle; refuses a pose planted with a stray pixel or just over 15% fewer or
-    more, on sittings of 20 and 13, though not one just under, or one on the line; says a
+    of the feet's middle; refuses a pose planted with a pixel two cells off, or just over 15%
+    fewer or more, on sittings of 20 and 13, though not one just under, or on the line; says a
     misnamed sitting undrawn, and holds a stride no pose lists to the stray rule; and reads
     the cat's code as no walk, by the rule it breaks, when it strides by anything but WALKS's
     frozen quoted words, either isn't found outside a comment, a word holds a space or

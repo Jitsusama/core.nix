@@ -384,8 +384,8 @@ in
   # never stepping, after a pose that isn't a stride, undrawn, and none at
   # all, each by its reason, a stride planted with its body moved on each
   # row, and a foot moved either side of the feet's middle; a pose planted
-  # with a stray pixel, and on each side of the 15% line, too few or many
-  # refused and under it held, or on it, on sittings of 20 and 13; a
+  # with a pixel two cells from the rest, and on each side of the 15% line,
+  # too few or many refused and under or on it held, on sittings of 20 and 13; a
   # sitting misnamed said undrawn, and a stride no pose lists held to the
   # stray rule; and the cat's code read as no walk, by the rule it breaks,
   # when it strides by anything but WALKS's frozen quoted words or declares
@@ -428,18 +428,24 @@ in
         topped.pixels = flipped "walkingC" 0 5;
         necked.pixels = flipped "walkingC" 1 3;
         shifted.pixels = flipped "walkingC" 3 1;
+        edged.pixels = flipped "walkingC" 3 7;
         raised.pixels = flipped "walkingC" 6 2;
         # Stride A with one foot moved, either side of the feet's middle.
         foreFoot.pixels = flipped "walkingA" 7 3;
         hindFoot.pixels = flipped "walkingA" 7 4;
-        # A sitting of 20, and 3 more, 15% on the line, or 4; and one of
-        # 13, and 2 more, just past it.
+        # A sitting of 20, and 3 more or fewer, 15% on the line, or 4; and
+        # one of 13, and 2 more or fewer, just past it.
         small.pixels = small;
         atLine.pixels = small ++ [ "###....." ];
         pastLine.pixels = small ++ [ "####...." ];
+        underAt.pixels = lib.take 3 filled ++ [ "##......" ];
+        underPast.pixels = lib.take 3 filled ++ [ "#......." ];
         tight.pixels = lib.take 2 filled ++ [ "###....." ];
         justPast.pixels = lib.take 3 filled;
+        justShort.pixels = lib.take 2 filled ++ [ "#......." ];
         strayed.pixels = [ "${builtins.substring 0 7 (lib.head rows)}#" ] ++ lib.tail rows;
+        # A pixel two cells from the rest, no nearer.
+        reached.pixels = [ "${builtins.substring 0 6 (lib.head rows)}#." ] ++ lib.tail rows;
         shrunk.pixels = lib.init rows ++ [ "#......." ];
         trimmed.pixels = lib.init rows ++ [ "##......" ];
         grown.pixels = lib.take 4 filled ++ [ "####...." ] ++ lib.drop 5 rows;
@@ -457,6 +463,10 @@ in
         {
           pose = "strayed";
           reason = "stray [\"strayed\"]";
+        }
+        {
+          pose = "reached";
+          reason = "stray [\"reached\"]";
         }
         {
           pose = "shrunk";
@@ -499,13 +509,18 @@ in
         poses = [
           "atLine"
           "pastLine"
+          "underAt"
+          "underPast"
         ];
         strides = drawnWalk;
         glyphs = planted;
       };
       sizedTight = poseFaults {
         sitting = "tight";
-        poses = [ "justPast" ];
+        poses = [
+          "justPast"
+          "justShort"
+        ];
         strides = drawnWalk;
         glyphs = planted;
       };
@@ -523,17 +538,18 @@ in
       edges = [
         {
           faults = sized;
-          reason = "atLine, 15% more, held, and pastLine refused";
+          reason = "atLine and underAt, 15% off, held, and pastLine and underPast refused";
           holds =
             let
-              refusing = lib.hasInfix ''unlike ["pastLine",'' sized.said;
+              refusing = lib.hasInfix ''unlike ["pastLine","underPast",'' sized.said;
+              holding = !lib.hasInfix ''"atLine"'' sized.said && !lib.hasInfix "underAt" sized.said;
             in
-            refusing && !lib.hasInfix ''"atLine"'' sized.said;
+            refusing && holding;
         }
         {
           faults = sizedTight;
-          reason = "justPast, 2 more than a sitting of 13, refused";
-          holds = lib.hasInfix ''unlike ["justPast",'' sizedTight.said;
+          reason = "justPast and justShort, 2 more and fewer than a sitting of 13, refused";
+          holds = lib.hasInfix ''unlike ["justPast","justShort",'' sizedTight.said;
         }
         {
           faults = misnamed;
@@ -554,7 +570,8 @@ in
         walk:
         !(said walk.strides).ok
         && lib.hasInfix walk.reason (said walk.strides).said
-        && (!(walk ? wanted) || lib.elem walk.wanted walk.faults);
+        && (!(walk ? wanted) || lib.elem walk.wanted walk.faults)
+        && (!(walk.first or false) || lib.head walk.faults == walk.wanted);
       # The cat's two declarations, as its code has them.
       drawnSaid = ''["walkingA", "walkingC", "walkingB", "walkingD"]'';
       walksSaid = walksOf drawnSaid;
@@ -575,7 +592,13 @@ in
       byWalks = walkedOf "STRIDING frozen as strides by WALKS";
       elsewhere = walkedOf "WALKS named nowhere else";
       once = walkedOf "WALKS and STRIDING each declared once";
-      found = walkedOf "WALKS and STRIDING each found outside a comment";
+      # Said first of all, as the cause of the rest.
+      found =
+        ways:
+        let
+          wanted = "WALKS and STRIDING each found outside a comment";
+        in
+        walkedOf wanted ways // { first = true; };
       walks = [
         {
           strides = [
@@ -640,6 +663,13 @@ in
             "hindFoot"
           ];
           reason = "never stepping [\"fore\"]";
+        }
+        {
+          strides = [
+            "walkingA"
+            "edged"
+          ];
+          reason = "walkingA to edged, the body moved";
         }
         {
           strides = [
