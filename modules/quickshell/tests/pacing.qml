@@ -438,7 +438,7 @@ QtObject {
 
         // Only home's fill, run by filled() with home kept, finds home
         // after its frame; a place's, or any other opening, in the open.
-        const home = { filling: true, byFill: true, intoPlace: false, kept: 8 };
+        const home = { byFill: true, intoPlace: false, kept: 8 };
         check(failures, "home's fill finds home after its frame",
             Wanted.findsLater(home), true);
         check(failures, "a place's fill finds it in the open",
@@ -447,8 +447,6 @@ QtObject {
             Wanted.findsLater(Object.assign({}, home, { byFill: false })), false);
         check(failures, "an opening with no home kept finds it there",
             Wanted.findsLater(Object.assign({}, home, { kept: 0 })), false);
-        check(failures, "an opening drawn whole finds it there",
-            Wanted.findsLater(Object.assign({}, home, { filling: false })), false);
         // Found after it, home is searched again by a slice, a key or a
         // click, but a chord only joins, and a step or a word finds its own.
         const stands = { home: true, held: 0, typed: "" };

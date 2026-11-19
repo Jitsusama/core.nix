@@ -1707,6 +1707,7 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     shell.launcher_until(slept)
     assert woke[0].get("fillJoined") == 0, f"the fill joined the choices inside `open`: {woke}"
     assert woke[0].get("foundBy") == "slice", f"home wasn't found in a slice of its own: {woke}"
+    assert cast("int", woke[0].get("foundJoined", 0)) >= 1, f"the slice never joined: {woke}"
     # A slice runs once a frame is drawn, or the fallback's 33 ms, so never at the fill's end.
     assert cast("int", woke[0]["foundFrom"]) >= 1, f"home was found inside the fill: {woke}"
     # Searched again, not only joined, as the kept rows it shows till then list keys either way:
@@ -1724,8 +1725,10 @@ def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> 
     assert cast("int", woke[0]["longestSlice"]) >= found, f"the finding went uncounted: {woke}"
     slices = cast("list[Json]", woke[0]["slices"])
     ended = cast("int", woke[0]["foundFrom"]) + found
-    assert cast("int", slices[0]["from"]) >= ended - 1, (
-        f"a source woke before home was found: {woke}"
+    # The sources' first wakes on the frame after, or the fallback's 33 ms, never in the same
+    # slice: a millisecond past its end at least, though each is rounded.
+    assert cast("int", slices[0]["from"]) >= ended + 1, (
+        f"a source woke in the finding's slice: {woke}"
     )
     befores = [{"from": woke[0]["foundFrom"], "took": found}, *slices]
     waits = [cast("int", woke[0]["foundFrom"])] + [

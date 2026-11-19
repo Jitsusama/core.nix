@@ -117,7 +117,9 @@ def opened(shell: Shell, place: str, mark: int | None = None) -> Json:
 
     It's asked once the shut launcher has kept home, as Joel's openings come seconds apart.
     Given the log's mark from before the ask, it asks the shell nothing until the opening says
-    whether it was usable, as the shell answers on the thread whose stall the lab times.
+    whether it was usable, as the shell answers on the thread whose stall the lab times. One
+    still unusable when the wait gives up is asked about while its stall is timed, so it's
+    marked as such, and its stall is left out.
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     before = latest(openings(shell))
@@ -126,10 +128,12 @@ def opened(shell: Shell, place: str, mark: int | None = None) -> Json:
     else:
         words = ("toggle",) if place == "home" else ("collection", place)
         shell.as_account(shell.ipc(*words))
+    asked_early = False
     if mark is not None:
         giving_up = time.monotonic() + USABLE_S
         while not usable_said(shell, mark) and time.monotonic() < giving_up:
             time.sleep(launcher_on_niri.POLL)
+        asked_early = not usable_said(shell, mark)
     each: list[Json] = []
 
     def presented(_: Json) -> bool:
@@ -137,7 +141,7 @@ def opened(shell: Shell, place: str, mark: int | None = None) -> Json:
         return latest(each) > before and "presented" in each[-1]
 
     shell.launcher_until(presented)
-    return each[-1]
+    return {**each[-1], "askedEarly": True} if asked_early else each[-1]
 
 
 def usable_after(shell: Shell, nth: int, mark: int) -> tuple[Json, list[str]]:
@@ -283,17 +287,19 @@ def stall_of(
     """Give an opening's longest stall once it's usable, printing the line that names its parts.
 
     It's said once the opening is usable, which presented alone doesn't wait for, and given as
-    a list of one, or none where the opening's record never said it.
+    a list of one, or none where the opening's record never said it or the shell was asked
+    about it before it was usable.
     """
     usable, said = usable_after(shell, cast("int", opening["nth"]), mark)
+    early = "; asked before usable, so left out" if opening.get("askedEarly") else ""
     with capsys.disabled():
         print(
             f"lab-usable {os.environ.get('LAB_RUN', '')} {place}: "
-            f"{said[0].split('launcher: ', 1)[-1] if said else f'unsaid in {USABLE_S} s'}",
+            f"{said[0].split('launcher: ', 1)[-1] if said else f'unsaid in {USABLE_S} s'}{early}",
             flush=True,
         )
     stalled = usable.get("stalled")
-    return [stalled] if isinstance(stalled, int) else []
+    return [stalled] if isinstance(stalled, int) and not early else []
 
 
 def usable_said(shell: Shell, mark: int) -> list[str]:

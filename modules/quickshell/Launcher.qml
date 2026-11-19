@@ -10532,13 +10532,14 @@ Scope {
             // a builder, and the fill's "opening" held a median 27 ms of
             // 32 of Joel's 53 longest stalls (2026-11-18). Only home's
             // fill, with home kept (Wanted.findsLater).
-            fillFinding = Wanted.findsLater({ filling, byFill: fillOpening,
-                intoPlace: fillingPlace, kept: homeKept.length });
+            fillFinding = Wanted.findsLater({ byFill: fillOpening, intoPlace: fillingPlace,
+                kept: homeKept.length });
             fillFoundBy = "";
             fillFoundThrew = false;
             fillFoundHome = false;
             fillFoundFrom = 0;
             fillFoundTook = 0;
+            fillFoundJoined = 0;
             if (!fillFinding)
                 freshen();
             lap("joining");
@@ -11474,18 +11475,21 @@ Scope {
     // to come, and how many times the choices were joined inside it.
     property bool fillOpening: false
     property int fillJoined: 0
-    // What ran it, whether it searched home again, when after the fill
-    // and what it took, said with the sources' waking.
+    // What ran it, whether it searched home again, when after the fill,
+    // what it took and how many times it joined the choices, said with
+    // the sources' waking.
     property string fillFoundBy: ""
     property bool fillFoundHome: false
     property real fillFoundFrom: 0
     property real fillFoundTook: 0
+    property int fillFoundJoined: 0
     function fillFound(by) {
         if (!fillFinding)
             return;
         fillFinding = false;
         fillFoundBy = by;
         const began = KeyTimes.now();
+        const joinedBefore = choicesJoined;
         // A key, a click or a chord runs it once filled() has, so it's
         // timed from the fill's end as a slice is.
         fillFoundFrom = began - wakeBegan;
@@ -11515,6 +11519,7 @@ Scope {
         } finally {
             // Timed with the fill's record it makes, as that's this slice's
             // work too.
+            fillFoundJoined = choicesJoined - joinedBefore;
             fillSaidLate();
             fillFoundTook = KeyTimes.now() - began;
             feltSpan(fillFoundThrew ? "a throw finding home"
@@ -11546,7 +11551,8 @@ Scope {
         const { longest, waited } = Wanted.wakeTimes(found, wakeSlices);
         const woke = Object.assign({ slices, longestSlice: longest, longestWake: waited,
             foundBy: fillFoundBy }, found ? { foundFrom: Math.round(found.from),
-            foundTook: Math.round(found.took) } : {}, fillFoundThrew ? { foundThrew: true } : {});
+            foundTook: Math.round(found.took), foundJoined: fillFoundJoined } : {},
+            fillFoundThrew ? { foundThrew: true } : {});
         // Woken before its frame made its record, the last is the opening
         // before's, so this one's waking waits for the frame's (openDrawn).
         const last = openingsTimed[openingsTimed.length - 1];

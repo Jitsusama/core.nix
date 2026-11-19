@@ -133,7 +133,7 @@ function sourceNamed(all, nameOf, provider) {
 // until then. A place's fill, whose steps into it run in the open, and any
 // other opening find and join there as ever (H6EDLC, 2026-11-18).
 function findsLater(opening) {
-    return opening.filling && opening.byFill && !opening.intoPlace && opening.kept > 0;
+    return opening.byFill && !opening.intoPlace && opening.kept > 0;
 }
 
 // Whether that slice, or a key, a click or a chord run before it, searches
