@@ -2,8 +2,10 @@
 # Runs a failed boot's summary (modules/console/stopped/, as a machine
 # builds it, through its wrapper) with stand-ins for systemctl and
 # journalctl, and checks what it says: nothing when nothing failed; each
-# failed unit with its description and the last its own programs said;
-# what systemd said of a unit whose programs said nothing; at most four
+# failed unit with its description and the last three lines its own
+# programs said that show something, past lines that show nothing; what
+# systemd said of a unit whose programs said nothing, or nothing that
+# shows; at most four
 # units; the account's theme and the console's marks; and the way out. How
 # it lays itself out at the console's width is the crate's own tests'.
 # usage: boot-stopped.sh <boot-stopped>
@@ -74,9 +76,16 @@ cat > "$work/failed" <<'EOF'
 home.mount|Mount /home
 quiet.service|A program that said nothing
 nameless.service|
+blank.service|A program that drew nothing
 EOF
+# Its last lines draw nothing, so the three that say why are further back:
+# braille's blank and a direction mark, spelled in UTF-8's bytes, since
+# bash's \u spells a character in the locale's encoding.
+blank=$'\xe2\xa0\x80' mark=$'\xe2\x80\x8e'
 printf '%s\n' "Mounting /home" "probing the disk" $'reading its label\a' \
-  "mount: /home: wrong fs type" > "$work/own/home.mount"
+  "mount: /home: wrong fs type" "$blank$blank" $'\e[0m' "$mark" > "$work/own/home.mount"
+printf '%s\n' "$blank" $'\e[31m\e[0m' > "$work/own/blank.service"
+echo "blank.service: Failed with result 'exit-code'." > "$work/systemd/blank.service"
 echo "quiet.service: Main process exited, code=killed, status=9/KILL" > "$work/systemd/quiet.service"
 echo "quiet.service: Failed with result 'signal'." >> "$work/systemd/quiet.service"
 said
@@ -89,6 +98,8 @@ says "  x  quiet.service  A program that said nothing"
 says "     quiet.service: Failed with result 'signal'."
 grep -q -F "status=9/KILL" "$work/said" && fails "it said more than systemd's last line"
 says "  x  nameless.service"
+says "  x  blank.service  A program that drew nothing"
+says "     blank.service: Failed with result 'exit-code'."
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
 grep -q -F $'\e[31mx\e[0m' "$work/raw" || fails "the mark isn't in the console's red"
 # Without a theme the kit draws its sixteen own colours wherever it draws,
@@ -102,4 +113,4 @@ grep -q $'\a' "$work/raw" && fails "it passed on a control character"
 for unit in a b c d e; do echo "$unit.service|$unit" >> "$work/failed"; done
 said
 [[ $(grep -c '^  x  ' "$work/said") == 4 ]] || fails "it listed other than four units"
-says "     and 4 more"
+says "     and 5 more"

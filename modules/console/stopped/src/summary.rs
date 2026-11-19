@@ -344,6 +344,16 @@ mod tests {
             Some(&["     disk gone", ""][..]),
             "a wrapped line gave a row of blanks: {summary:?}"
         );
+        let (first, second) = ("a".repeat(40), "b".repeat(40));
+        let said = format!("{first} \u{200d} {second}");
+        let summary = text(
+            &[unit("disk.service", "", &[&said])],
+            1,
+            &console(),
+            Room::Cells(80),
+        );
+        says(&summary, &format!("     {first}"));
+        says(&summary, &format!("     {second}"));
     }
 
     #[test]
