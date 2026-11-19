@@ -10926,7 +10926,20 @@ Scope {
             openAskedRedone = redone();
             presentedBegin(openAsked);
             openChord = "";
+            openLaps = { at: openAsked, parts: {} };
         }
+    }
+    // The opening's own work from its ask, said in laps, so the first
+    // opening since a start says which of it ran slow: it worked 15 to 29
+    // ms where later ones worked 4, said only as "showing" (5FWIUS's
+    // finding, 19 November).
+    property var openLaps: ({ at: -1, parts: {} })
+    function openLap(name) {
+        if (openAsked < 0 || openLaps.at < 0)
+            return;
+        const now = KeyTimes.now();
+        openLaps.parts[name] = (openLaps.parts[name] ?? 0) + now - openLaps.at;
+        openLaps.at = now;
     }
     // When the ask that opened it was done, every binding the opening
     // changed made again with it, and when the frame that draws it began:
@@ -11137,13 +11150,19 @@ Scope {
     property int warmed: -1
     // Whether the pass has had its last turn, which keeps home.
     property bool warmingDone: false
-    // Whether the card is drawn once, all but clear, as the pass ends, so
-    // its first opening isn't Qt Quick's first drawing of it. Clear, the
+    // Whether the card is drawn once, whole, as the pass ends, so its
+    // first opening isn't Qt Quick's first drawing of it. Clear, the
     // renderer skips the card's whole tree, so its glyphs, materials and
     // batches were made by the first opening since the shell started:
     // Joel's took 47 and 58 ms, 19 and 24 of it drawing, where later ones
-    // drew in 1 to 4 (2026-11-16 and 17). The card is then off the screen
-    // but for the surface's one pixel, its shadow's edge.
+    // drew in 1 to 4 (2026-11-16 and 17). Drawn all but clear, at 0.01,
+    // it was drawn see-through, blended as no opening draws it, so what
+    // an opening draws whole was still first drawn by the first opening.
+    // A builder's nested niri doesn't tell the two apart (both drew a
+    // first opening in 1 to 15 ms over eleven runs, 19 November),
+    // so Joel's first opening after the switch says whether it holds. The
+    // card is then off the screen but for the surface's one pixel, its
+    // shadow's outer edge, for two frames.
     property bool priming: false
     // Whether priming is ending, so the card's fall to clear doesn't keep
     // home or collect as a closing would.
@@ -11411,6 +11430,7 @@ Scope {
     // over so the first one lands, and asks for its frame; nothing else
     // wakes until that frame is drawn (openShown).
     function beginOpening() {
+        openLap("asking");
         keptUnfilled.restart();
         openKept = true;
         openFilledBy = "";
@@ -11423,6 +11443,7 @@ Scope {
         openFirstDrawn = -1;
         openFirstMade = null;
         openAskedMade = tallies();
+        openLap("tallying");
         // What the last closing left for later is put off, as the opening's
         // own work puts it off once open: its spots made half a second after
         // it, or a minute after that, came between a quick reopening's ask
@@ -11431,19 +11452,24 @@ Scope {
         spotsLater.stop();
         spotsFreshened.stop();
         leavingLater.stop();
+        openLap("stopping");
         opening = true;
+        openLap("showing");
         // Asked once opening, as the card's size follows what it shows.
         openSizedAtAsk = drawnAsAsked();
+        openLap("sizing");
         keysHeld = false;
         // Said open from the ask, written off the shell's thread, so a
         // switch waiting on the mark never restarts the shell under the
         // card, which is on the screen before it's filled in (Y2YBTS,
         // 2026-11-11).
         markOpen(true);
+        openLap("marking");
         prompt.take();
+        openLap("taking");
         if (openAsked >= 0) {
             openWorked = KeyTimes.now() - openAsked;
-            openParts = { showing: openWorked };
+            openParts = openLaps.parts;
         }
         afterFrame(openShown);
     }
@@ -13171,8 +13197,8 @@ Scope {
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
-            // All but clear while priming, as root.priming says.
-            opacity: root.cardUp || root.parting !== "" ? 1 : root.priming ? 0.01 : 0
+            // Whole while priming, as root.priming says.
+            opacity: root.cardUp || root.parting !== "" || root.priming ? 1 : 0
             // Clear, it's put back to home for the next opening, once the
             // closing's own handler is done (keepHome checks it's still shut).
             onOpacityChanged: {
