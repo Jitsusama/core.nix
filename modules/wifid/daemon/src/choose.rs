@@ -8,9 +8,11 @@
 //! measured lately carried far better. A card on a wider band slowed by
 //! its own download keeps off a narrower band, which has less room to
 //! bring the download down, unless one is known quicker under load and
-//! the card isn't using the room; its trial waits for the download to end,
-//! unless it was made under load too. Figures are weighed like with like:
-//! under load against what others carried under load, and a wider band
+//! the card isn't using the room; using it, the card keeps off a narrower
+//! band however slow, unless it loses echoes. Its trial waits for the
+//! download to end, unless it was made under load too. Figures are weighed
+//! like with like: under load against what others carried under load and
+//! what the card's own point usually carries under load, and a wider band
 //! from a narrower one carrying well against what the card's own access
 //! point usually carries as well as its last two minutes, since one slow
 //! minute isn't how a point carries.
@@ -292,12 +294,19 @@ impl Chooser {
         // kept off its 2.4 GHz radio, which had carried 25 to 81 at a mean
         // 37.5 ms. A narrower band may bring the download down slower, so
         // its trial goes back where it does (`MOVED_BY`).
+        // Using a wider band's room, a card carrying badly but losing
+        // little keeps off a narrower band too, which can't carry what it
+        // moves: at 22:12 on 18 Nov 2026 a download of 122 Mbit/s on ch52
+        // read 59 ms at p95 with its p50 at 12.1 ms, just past `STEADY`,
+        // and the card tried its 2.4 GHz radio, where the download fell to
+        // 68 Mbit/s and the p95 rose to 89 ms.
         let resting = resting(measured);
         let may_narrow = queued && !used(measured);
+        let roomy = wide(frequency) && used(measured) && measured.lost <= LOSSY;
         let untried = others.iter().filter(|other| {
             other.point != point
                 && !self.spurned.contains_key(&other.point)
-                && ((bad && !queued)
+                && ((bad && !queued && !roomy)
                     || resting
                     || wide(other.frequency)
                     || !wide(frequency)
@@ -325,9 +334,21 @@ impl Chooser {
         let quieter =
             crowded.and_then(|busy| for_quiet(untried.clone(), (signal, frequency, busy)));
         let reached = untried.filter(|other| within_reach(other, signal, frequency));
+        // Bringing a download down and losing little, the card weighs
+        // another against what its own point usually carries under load as
+        // well as its span, since a download's queue slows any point a
+        // while: at 04:48 on 19 Nov 2026 ch52, whose minutes moving `LEAST`
+        // or more had carried a mean 21.5 ms at p95 that night, read 163
+        // ms, and the card tried the hall's radio on its 49.2 at that
+        // hour, where it carried 124 to 137.
+        let ours = if loaded(measured) && measured.lost <= LOSSY {
+            quickest(measured, usual)
+        } else {
+            measured
+        };
         let faster = reached.clone().filter_map(|other| {
             let theirs = other.measured.as_ref()?;
-            quicker(theirs, measured).then_some((slowness(theirs), other))
+            quicker(theirs, ours).then_some((slowness(theirs), other))
         });
         let near = reached.filter(|other| {
             bad && other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST)
@@ -955,6 +976,92 @@ pub(crate) mod tests {
         );
     }
 
+    /// What a card carried on 18 Nov 2026 at 22:12, bringing a download
+    /// down at 122 Mbit/s on ch52: its middle echo rose just past `STEADY`
+    /// with none lost.
+    fn using_its_room(lost: f64) -> Measured {
+        Measured {
+            p50: Some(Duration::from_micros(12_100)),
+            lost,
+            moving: Some(122),
+            ..downloading(72)
+        }
+    }
+
+    #[test]
+    fn a_download_using_a_wider_band_s_room_keeps_off_a_narrower_one_unless_lossy() {
+        let narrower = [near_at(-37, None)];
+        let tried = |measured: &Measured| {
+            after_a_bad_minute(DESK).choose(
+                Instant::now(),
+                (DESK, measured, -44, CH52),
+                &narrower,
+                false,
+            )
+        };
+
+        assert_eq!(
+            tried(&using_its_room(2.0)),
+            Choice::Stay,
+            "122 Mbit/s wants the room 2.4 GHz lacks, slow in the middle or not"
+        );
+        assert_eq!(
+            tried(&using_its_room(2.1)),
+            Choice::Try(NEAR.into()),
+            "2.1% lost is the air"
+        );
+    }
+
+    #[test]
+    fn a_download_weighs_another_against_what_its_point_usually_carries_under_load() {
+        let slowed = Measured {
+            moving: Some(77),
+            ..downloading(163)
+        };
+        let hall_learned = hall(-43, None, Some(carried(49, 0.0)));
+        let usual = desk_at(-41, Some(carried(21, 0.0)));
+        let on = (DESK, &slowed, -41, CH52);
+
+        let weighed = after_a_bad_minute(DESK).choose(
+            Instant::now(),
+            on,
+            &[usual, hall_learned.clone()],
+            false,
+        );
+        let unweighed = after_a_bad_minute(DESK).choose(Instant::now(), on, &[hall_learned], false);
+
+        assert_eq!(
+            weighed,
+            Choice::Stay,
+            "49 ms is slower than the 21 ch52 carries downloads at, as at 04:48 on 19 Nov"
+        );
+        assert_eq!(
+            unweighed,
+            Choice::Try(HALL.into()),
+            "with nothing usual known, the span is gone by"
+        );
+    }
+
+    #[test]
+    fn a_lossy_download_leaves_however_well_its_point_usually_carries_under_load() {
+        let lossy = Measured {
+            lost: 2.1,
+            moving: Some(77),
+            ..downloading(163)
+        };
+        let hall_learned = hall(-43, None, Some(carried(49, 0.0)));
+        let usual = desk_at(-41, Some(carried(21, 0.0)));
+
+        let choice = after_a_bad_minute(DESK).choose(
+            Instant::now(),
+            (DESK, &lossy, -41, CH52),
+            &[usual, hall_learned],
+            false,
+        );
+
+        assert_eq!(choice, Choice::Try(HALL.into()), "2.1% lost is the air");
+    }
+
     #[test]
     fn a_trial_made_under_load_is_judged_under_load() {
         let mut chooser = after_a_bad_minute(NEAR);
@@ -1506,7 +1613,7 @@ pub(crate) mod tests {
         let mut chooser = after_a_bad_minute(DESK);
         let now = Instant::now();
         let later = now + Duration::from_secs(12);
-        let slow = carried(106, 0.0);
+        let slow = idle(carried(106, 0.0));
         let on = (DESK, &slow, -45, CH52);
 
         let looks = chooser.choose(now, on, &[], false);
