@@ -44,25 +44,47 @@ function connectorOf(at, screens) {
     return at.output in screens ? at.output : undefined;
 }
 
+// connectorOf, beside the places kept with `at` at once: an alike screen
+// another was kept on is that one, so with only it connected `at`'s is gone.
+function whereKept(at, beside, screens) {
+    const taken = beside.filter(one => one && one !== at && at.screen && one.screen === at.screen
+        && one.output !== at.output).map(one => one.output);
+    const found = connectorOf(at, screens);
+    if (found === undefined || found === at.output || !taken.includes(found)) {
+        return found;
+    }
+    return Object.keys(screens).find(name => screens[name] === at.screen && !taken.includes(name));
+}
+
+// The other screens as `at` is found gone (othersAt): those connected, and
+// those of the places kept with it (`beside`) gone too, as alike twins are.
+function othersGone(at, beside, screens) {
+    const gone = beside.filter(one => one && one !== at && one.output
+        && whereKept(one, beside, screens) === undefined);
+    const heard = Object.assign({}, ...gone.map(one => ({ [one.output]: one.screen || one.output })), screens);
+    return othersAt(at.output, Object.keys(screens), gone.map(one => one.output), heard);
+}
+
 // Where each kept place goes now, in the order given, null for none: on
 // its own screen, wherever it's connected now. One whose screen is gone
 // goes to the screen in use, its workspaces after every workspace the
 // places there use, in their order, as niri moves a gone screen's
 // workspaces, rather than mixed into the same numbers, and says where it
 // belongs (`away`), so its workspace can go there once the screen comes,
-// with the other screens as it was found gone (`others`, of othersAt): those
-// connected, and those of the places gone with it, as two alike are when
-// they're gone at a boot. `screens` maps each connector there is to its description; with none
+// with the other screens as it was found gone (`others`, of othersGone)
+// beside those of the same boot (`boots`, each place's; none for one boot).
+// `screens` maps each connector there is to its description; with none
 // known, as when niri didn't answer, or no screen in use, a gone one is
 // left as it was kept.
-function placed(places, screens, inUse) {
+function placed(places, screens, inUse, boots) {
     const known = Object.keys(screens ?? {}).length > 0;
-    const found = places.map(at => {
+    const besideOf = index => places.filter((_, at) => (boots?.[at] ?? "") === (boots?.[index] ?? ""));
+    const found = places.map((at, index) => {
         if (!at) {
             return null;
         }
-        const output = known ? connectorOf(at, screens) : at.output;
-        return output === undefined ? { at, gone: at.screen || at.output } : { at, output };
+        const output = known ? whereKept(at, besideOf(index), screens) : at.output;
+        return output === undefined ? { at, gone: at.screen || at.output, index } : { at, output };
     });
     let last = 0;
     for (const one of found) {
@@ -75,9 +97,6 @@ function placed(places, screens, inUse) {
         .map(one => one.gone)
         .filter((gone, at, all) => all.indexOf(gone) === at)
         .sort();
-    const goneAt = found.filter(one => one?.gone !== undefined && one.at.output);
-    const heard = Object.assign({}, ...goneAt.map(one => ({ [one.at.output]: one.gone })), screens);
-    const goneOutputs = goneAt.map(one => one.at.output);
     const after = {};
     for (const gone of goneScreens) {
         after[gone] = last;
@@ -104,7 +123,7 @@ function placed(places, screens, inUse) {
                 screen: one.gone,
                 workspace: one.at.workspace,
                 output: one.at.output,
-                others: othersAt(one.at.output, Object.keys(screens), goneOutputs, heard)
+                others: othersGone(one.at, besideOf(one.index), screens)
             }
         });
     });
@@ -119,7 +138,8 @@ function placed(places, screens, inUse) {
 // lowest kept number first, and the moves go so; their order there is the
 // windows daemon's to put back. One gone already is dropped; one on its
 // screen already is marked (`there`) and left. `waiting` is `away` with
-// those still waiting, as they were.
+// those still waiting, each knowing a connector a sibling that was another
+// screen as it left (or the other way) took as another's, kept for later.
 function homeward(away, screens, workspaces) {
     const moves = [];
     const waiting = {};
@@ -130,13 +150,15 @@ function homeward(away, screens, workspaces) {
             .filter(one => workspaces.some(each => each.id === one.id))
             .sort((a, b) => a.workspace - b.workspace);
         for (const one of live) {
-            const claimed = given.filter(was => one.others?.[was.from] === screen).map(was => was.to);
+            const claimed = given.filter(was => one.others?.[was.from] === screen
+                || was.one.others?.[one.output] === screen).map(was => was.to);
             const output = wayBack(one, screen, screens, claimed);
             if (output === null) {
-                held.push(one);
+                const others = Object.assign({}, one.others, ...claimed.map(name => ({ [name]: screen })));
+                held.push(claimed.length > 0 ? Object.assign({}, one, { others }) : one);
                 continue;
             }
-            given.push({ to: output, from: one.output });
+            given.push({ to: output, from: one.output, one });
             const now = workspaces.find(each => each.id === one.id);
             moves.push(now.output === output ? { output, id: one.id, there: true } : { output, id: one.id });
         }
@@ -303,6 +325,10 @@ function opensAt(where, beside) {
 // `restored`, each places by id.
 function keptFor(id, kept) {
     return kept.now?.[id] ?? kept.restored?.[id] ?? null;
+}
+// Which boot keptFor took a session's place from: "now", "restored" or "".
+function keptFrom(id, kept) {
+    return ["now", "restored"].find(boot => (kept[boot]?.[id] ?? null) !== null) ?? "";
 }
 
 // Reopen Them All's queue, `{ one, kept }` each, with those whose kept

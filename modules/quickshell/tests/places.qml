@@ -117,6 +117,23 @@ QtObject {
                 { "eDP-1": panel, "Virtual-2": twin },
                 { "eDP-1": panel, "Virtual-1": twin }
             ]);
+        // One alike twin of the two kept back: the place kept on it stays,
+        // and the other's screen is gone, rather than both taken for it.
+        expect("a twin kept beside another isn't taken for it",
+            Places.placed([{ screen: twin, output: "Virtual-1", workspace: 1, column: 1, tile: 1 },
+                { screen: twin, output: "Virtual-2", workspace: 1, column: 1, tile: 1 }],
+                { "Virtual-1": twin }, "Virtual-1").map(at => [at.output, at.workspace, at.away?.others ?? null]),
+            [["Virtual-1", 1, null], ["Virtual-1", 2, { "Virtual-1": twin }]]);
+        // One monitor kept on two connectors, a boot apart: not two
+        // screens, so neither is the other's, gone or found.
+        const twoBoots = [{ screen: monitor, output: "DP-4", workspace: 1, column: 1, tile: 1 },
+            { screen: monitor, output: "DP-5", workspace: 2, column: 1, tile: 1 }];
+        expect("one monitor kept over two boots isn't another screen to itself",
+            Places.placed(twoBoots, { "eDP-1": panel }, "eDP-1", ["restored", "now"])
+                .map(at => at.away.others), [{ "eDP-1": panel }, { "eDP-1": panel }]);
+        expect("one monitor kept over two boots is found on its one connector",
+            Places.placed(twoBoots, { "DP-5": monitor }, "DP-5", ["restored", "now"])
+                .map(at => at.output), ["DP-5", "DP-5"]);
 
         // The monitor comes after the reopen began: the workspaces given
         // the panel in its place go to it, lowest kept number first, their
@@ -238,6 +255,28 @@ QtObject {
                 [{ id: 1, output: "eDP-1" }, { id: 2, output: "eDP-1" }]), {
                 moves: [{ output: "DP-6", id: 1 }, { output: "DP-7", id: 2 }], waiting: {}
             });
+        // Back one by one: the one still waiting keeps the first's new
+        // connector as another screen's, so the next call doesn't take it.
+        const offThePanel = [{ id: 1, output: "eDP-1" }, { id: 2, output: "eDP-1" }];
+        const oneNew = Places.homeward(both, { "eDP-1": panel, "DP-6": qemu }, offThePanel);
+        expect("one alike screen back on a new connector, the other waits knowing it", oneNew, {
+            moves: [{ output: "DP-6", id: 1 }],
+            waiting: { [qemu]: [Object.assign({}, both[qemu][1],
+                { others: { "Virtual-1": qemu, "DP-6": qemu } })] }
+        });
+        expect("the other alike screen back on a new connector, its workspace takes that",
+            Places.homeward(oneNew.waiting, { "eDP-1": panel, "DP-6": qemu, "DP-7": qemu }, offThePanel),
+            { moves: [{ output: "DP-7", id: 2 }], waiting: {} });
+        // Either was another screen as the other left, as when one went
+        // first: the second leaving's note names the first, not the other
+        // way, and still neither takes the other's.
+        const oneWay = { [qemu]: [{ id: 1, workspace: 1, output: "Virtual-1", others: { "Virtual-2": qemu } },
+            { id: 2, workspace: 2, output: "Virtual-2", others: {} }] };
+        expect("a sibling noted one way still doesn't take the other's",
+            Places.homeward(oneWay, { "DP-6": qemu }, offThePanel), {
+                moves: [{ output: "DP-6", id: 1 }],
+                waiting: { [qemu]: [Object.assign({}, oneWay[qemu][1], { others: { "DP-6": qemu } })] }
+            });
         // The connectors other screens' as a workspace leaves one, by their
         // descriptions as last heard ("" for one not heard yet): those
         // connected, and those left with it, each once, but the one it left.
@@ -350,6 +389,9 @@ QtObject {
         expect("handed over: this boot's, the restored boot's, none",
             ["01-a", "01-b", "01-c"].map(id => Places.keptFor(id, keptPlaces)),
             [here, restoredAt, null]);
+        // Which boot's each was, so placed knows which were kept at once.
+        expect("handed over from: this boot, the restored boot, none",
+            ["01-a", "01-b", "01-c"].map(id => Places.keptFrom(id, keptPlaces)), ["now", "restored", ""]);
         // A session started under an orchestrator opens on the orchestrator's
         // workspace, in title order after it, wherever the session that
         // started it sits; one under it elsewhere doesn't count.

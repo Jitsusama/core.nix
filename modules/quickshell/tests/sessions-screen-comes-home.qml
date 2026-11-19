@@ -184,11 +184,13 @@ ShellRoot {
     }
 
     // The first monitor, alike it, is still there, so it isn't the second
-    // come back: the workspace waits on the laptop's screen.
+    // come back: the workspace waits on the laptop's screen. The five
+    // seconds count from the shell saying it holds it back, so they're
+    // seconds comeHome had to move it, however slow the start.
     function twinGone() {
         root.answerOutputs({ "Virtual-1": root.laptop, "Virtual-2": root.monitor });
         const away = (Sessions.awayFrom["Gull Wide 2"] ?? []).find(one => one.id === 30);
-        if (away === undefined)
+        if (away === undefined || !Sessions.heldSaid.includes(30))
             return;
         if (root.twinGoneSince === 0) {
             Expect.expect("the second monitor's workspace is noted with the other screens as it left",

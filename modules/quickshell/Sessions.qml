@@ -1439,11 +1439,12 @@ Singleton {
     // (reopened), as Reopen Them All tells each to carry on.
     property var reopening: null
     function reopenAll(lost, gone, keptAt, told) {
-        const kept = keptAt ?? (id => Places.keptFor(id, { now: arrangement[bootId],
-            restored: arrangement[restoring.boot] }));
+        const boots = { now: arrangement[bootId], restored: arrangement[restoring.boot] };
+        const kept = keptAt ?? (id => Places.keptFor(id, boots));
+        const from = keptAt ? (() => "") : (id => Places.keptFrom(id, boots));
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one, true));
         const here = lost.filter(one => one.machine === undefined);
-        lookAtScreens(() => reopenHere(here, gone, kept, told ?? ""));
+        lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", from));
     }
     // What Reopen Them All tells each session it reopens, so a boot never
     // leaves them waiting to be poked one by one (P9R1KI, 2026-11-02
@@ -1455,11 +1456,12 @@ Singleton {
         + "left off: your plan's next open item."
     // Each kept place found on its own screen as it's connected now, or a
     // gone screen's after the one in use's (Places.js), then in order.
-    function reopenHere(here, gone, kept, told) {
+    function reopenHere(here, gone, kept, told, from) {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
-        const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null);
+        const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null,
+            here.map(one => (from ?? (() => ""))(one.id)));
         const queue = Places.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: keptPlaces[at], gone, told })).sort(order));
         if (reopening !== null) {
@@ -2036,8 +2038,11 @@ Singleton {
         const outputs = now.map(one => one.output ?? "");
         const noted = Object.values(root.awayFrom)
             .reduce((all, kept) => all.concat(kept.map(one => one.id)), []);
-        const lefts = now.map(one => root.workspacesWere[one.id]?.output)
-            .filter(output => output !== undefined && !outputs.includes(output));
+        // Only connectors there as niri last said its workspaces are other
+        // screens, since one that comes in the same moment may be the one
+        // going, on another connector, and those gone just now are siblings.
+        const lefts = root.outputsWere.filter(output => !outputs.includes(output));
+        const stayed = outputs.filter(output => root.outputsWere.includes(output));
         const next = {};
         for (const one of now) {
             const was = root.workspacesWere[one.id];
@@ -2045,11 +2050,13 @@ Singleton {
             if (left && was.output !== (one.output ?? "") && !noted.includes(one.id))
                 root.noteAway({ screen: root.screens[was.output] || was.output, workspace: was.idx,
                     output: was.output,
-                    others: Places.othersAt(was.output, outputs, lefts, root.screens) }, one.id);
+                    others: Places.othersAt(was.output, stayed, lefts, root.screens) }, one.id);
             next[one.id] = left ? was : { output: one.output ?? "", idx: one.idx };
         }
         root.workspacesWere = next;
+        root.outputsWere = [...new Set(outputs)];
     }
+    property var outputsWere: []
     function comeHome() {
         if (root.placingNow() || Object.keys(awayFrom).length === 0)
             return;
@@ -2067,12 +2074,12 @@ Singleton {
         // the screen was away (2026-11-11, modules/windows/src/order.rs).
         moving.forEach(move => Niri.act({ MoveWorkspaceToMonitor: { output: move.output,
             reference: { Id: move.id } } }));
-        // Each is where it was sent now, so niri moving it there isn't its
-        // screen going again (noteGone), as it was when it went to an alike
-        // screen on another connector than the one it left.
-        if (moving.length > 0) {
+        // Each is where it was sent, or found, now, so niri moving it there
+        // isn't its screen going again (noteGone), as it was when it went
+        // to an alike screen on another connector than the one it left.
+        if (going.moves.length > 0) {
             const were = Object.assign({}, root.workspacesWere);
-            moving.forEach(move => {
+            going.moves.forEach(move => {
                 were[move.id] = { output: move.output, idx: Niri.workspace(move.id)?.idx ?? 1 };
             });
             root.workspacesWere = were;
@@ -2131,8 +2138,11 @@ Singleton {
         going.used.push(index);
         const at = going.kept[index];
         const beside = root.besideOf(going.back);
+        // Every place kept that boot, sessions' and other windows', so two
+        // alike screens gone at once are each other's other screen.
+        const keptWith = Object.values(arrangement[going.boot] ?? {}).concat(going.kept);
         const found = Places.whereBack(at, beside);
-        const output = found.output ?? Places.connectorOf(at, screens)
+        const output = found.output ?? Places.whereKept(at, keptWith, screens)
             ?? Niri.workspace()?.output ?? null;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
@@ -2146,10 +2156,9 @@ Singleton {
             .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
-        if (into !== null && Places.connectorOf(at, screens) === undefined)
+        if (into !== null && Places.whereKept(at, keptWith, screens) === undefined)
             root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
-                output: at.output, others: Places.othersAt(at.output, Object.keys(screens), [], screens) },
-                into);
+                output: at.output, others: Places.othersGone(at, keptWith, screens) }, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;
