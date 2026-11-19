@@ -41,7 +41,7 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
         ]);
     }
     for link in all {
-        blocks.push(said(&link));
+        blocks.push(said(&link, context.room.for_prose()));
         for (way, dev) in [("sent", &link.name), ("received", &link.ifb)] {
             let json = sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).unwrap_or_default();
             blocks.push(tins_table(
@@ -64,8 +64,9 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
     Ok(())
 }
 
-/// A link's name, its network, and what the shaper holds it to and why.
-fn said(link: &LinkStatus) -> Vec<String> {
+/// A link's name, its network, and what the shaper holds it to and why,
+/// set in `room`.
+fn said(link: &LinkStatus, _room: Room) -> Vec<String> {
     let mut lines = vec![format!("{}  on {}", link.name, link.network)];
     let mut say = |line: String| lines.push(format!("{INSET}{line}"));
     say(format!("up {}, down {}", mbit(link.up), mbit(link.down)));
@@ -398,6 +399,75 @@ mod tests {
             lanes_said(&shared(0, 0)).len(),
             1,
             "a line said that no agent waits"
+        );
+    }
+
+    /// A link as it reads on a busy afternoon, its upload held for the
+    /// VPN's tunnel: the why is the longest line status says, 103 cells
+    /// set by hand on 19 November.
+    fn held() -> LinkStatus {
+        LinkStatus {
+            name: "wlp0s20f3".to_owned(),
+            ifb: "ifb4wlp0s20f3".to_owned(),
+            network: "6c:ae:f6:c2:d6:b2".to_owned(),
+            up: 10_800,
+            down: 2_000_000,
+            state: "steady".to_owned(),
+            baselines: vec![
+                ("1.1.1.1".to_owned(), 14.0),
+                ("8.8.8.8".to_owned(), 17.0),
+                ("9.9.9.9".to_owned(), 21.0),
+            ],
+            follows: Some("enp0s13f0u1u4".to_owned()),
+            live: true,
+            straight: false,
+            heard: Some(crate::live::Heard {
+                why: Some(
+                    "Upload 10.8 Mb/s: the VPN waited 89 ms inside its tunnel, so its own \
+                     queue is held to 38% of its lane; held so for 36 s."
+                        .to_owned(),
+                ),
+                plateau: Some(9_900.0),
+                ..crate::live::Heard::default()
+            }),
+            lanes: Some(shared(12, 3)),
+        }
+    }
+
+    #[test]
+    fn a_link_s_lines_fit_the_room_from_sixty_columns_up() {
+        for cells in [60, 80, 100, 200] {
+            let text = said(&held(), Room::Cells(cells)).join("\n");
+            assert_eq!(
+                layout::overrun(&text, Room::Cells(cells)),
+                None,
+                "at {cells} columns a link's line runs past the edge"
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_too_long_for_the_room_hangs_under_its_first_words() {
+        let lines = said(&held(), Room::Cells(80));
+        let at = lines
+            .iter()
+            .position(|line| line.starts_with("  Upload"))
+            .expect("the why is said");
+        let next = &lines[at + 1];
+        assert!(
+            next.starts_with("    ") && !next.starts_with("     "),
+            "{next:?} doesn't hang two cells in from {:?}",
+            lines[at]
+        );
+    }
+
+    #[test]
+    fn into_a_pipe_each_of_a_link_s_lines_stays_whole() {
+        let why = held().heard.and_then(|heard| heard.why).expect("a why");
+        let lines = said(&held(), Room::Unbounded);
+        assert!(
+            lines.contains(&format!("{INSET}{why}")),
+            "the why was parted into a pipe: {lines:#?}"
         );
     }
 
