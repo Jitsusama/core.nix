@@ -124,6 +124,30 @@ function readingSaid(ms) {
     return ms >= 0.5 ? `, ${Math.round(ms)} reading what they hold` : "";
 }
 
+// What else a showing spent, each part a millisecond or more: listing its
+// rows, putting them in the list apart from the laying it says already,
+// and moving the selection among them. Joel's step into a session showed
+// for 49 ms of which laying took 3, and "→ Programs" 47 of which 17, with
+// nothing saying where the rest went (2026-11-19).
+function showingSplit(parts) {
+    const putting = Math.max(0, (parts.putting ?? 0) - (parts.kept?.laying ?? 0));
+    const each = [[parts.listing ?? 0, "listing them"], [putting, "putting them in"],
+        [parts.selecting ?? 0, "selecting"]].filter(([ms]) => ms >= 1);
+    return each.map(([ms, words]) => `, ${Math.round(ms)} ${words}`).join("");
+}
+
+// A showing's keeping, what else it took (`others`) and its own parts
+// (showingSplit), or those parts alone where it kept nothing worth saying,
+// as keptPart says nothing of a weighing then.
+function showingSaid(parts, others = "") {
+    const split = showingSplit(parts);
+    const kept = keptPart(parts.kept, others + split);
+    if (kept !== "" || split === "") {
+        return kept;
+    }
+    return ` (${split.slice(2)})`;
+}
+
 // How much of a key's wait for answers was past its bound, behind the
 // shell's other work (Awaited.waitedOf), and what that work was
 // (Awaited.behindOn), or nothing when none was.

@@ -378,6 +378,30 @@ QtObject {
             Trials.readingSaid(12.6) === ", 13 reading what they hold"
                 && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",
             Trials.readingSaid(12.6));
+        // A showing's own parts, the putting less the laying it holds, as
+        // Launcher.qml's compose and search time them apart.
+        const showingParts = { kept: { fresh: 3, laying: 3, built: 3, reused: 0,
+            split: unstepped }, listing: 6.4, putting: 40.2, selecting: 2.6 };
+        expect("a showing says what it spent listing, putting in and selecting, past laying",
+            Trials.showingSaid(showingParts, ", 5 weighing their keys")
+                === " (3 rows new, 3 laying them out: 3 rows built, 0 taken back,"
+                + " 5 weighing their keys, 6 listing them, 37 putting them in, 3 selecting)",
+            Trials.showingSaid(showingParts, ", 5 weighing their keys"));
+        const keptShowing = Object.assign({}, showingParts, { kept: splitting });
+        expect("a showing's parts come before where a step back came to",
+            Trials.showingSaid(keptShowing).endsWith(", 6 listing them, 10 putting them in,"
+                + " 3 selecting; 6 of the laying splitting them at row 10, back to row 17)"),
+            Trials.showingSaid(keptShowing));
+        const bareShowing = { kept: { fresh: 0, laying: 0, split: unstepped }, listing: 0.4,
+            putting: 12.2, selecting: 0.9 };
+        expect("a showing that laid nothing says its parts alone, a weighing unsaid",
+            Trials.showingSaid(bareShowing, ", 5 weighing") === " (12 putting them in)",
+            Trials.showingSaid(bareShowing, ", 5 weighing"));
+        expect("a showing with no part of a millisecond, or none timed, says what keptPart does",
+            Trials.showingSaid(Object.assign({}, bareShowing, { putting: 0.5 })) === ""
+                && Trials.showingSaid({ kept: splitting }, ", 5 weighing their keys")
+                    === Trials.keptPart(splitting, ", 5 weighing their keys"),
+            Trials.showingSaid({ kept: splitting }, ", 5 weighing their keys"));
         expect("a key held past its bound says what it was behind",
             Trials.behindSaid({ behind: 69, behindOn: "syncing 40, 29 unnamed" })
                 === " (69 of it behind the shell's other work: syncing 40, 29 unnamed)",

@@ -396,7 +396,13 @@ Scope {
         readingBegun();
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
-        matches = listedAs(composed);
+        // Its showing's parts timed apart (Trials.showingSplit): listing the
+        // rows, putting them in, which holds their laying, and selecting.
+        const listingAt = Date.now();
+        const listedRows = listedAs(composed);
+        const puttingAt = Date.now();
+        matches = listedRows;
+        const selectingAt = Date.now();
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
         // so is no name Joel was typing, and gave "batt" to a copy that
@@ -410,10 +416,12 @@ Scope {
         else if (current >= 0)
             current = Steady.selection(matches, { row: was, at: current + rows.length - before,
                 lowest: 0, nth: nth }, Rank.identity);
+        const shownAt = Date.now();
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
-            showing: Date.now() - placedAll, kept: RowsKept.keptWhole(list.keptLast),
+            showing: shownAt - placedAll, kept: RowsKept.keptWhole(list.keptLast),
             weighing: keysWeighing,
-            reading: readingSpent() };
+            reading: readingSpent(), listing: puttingAt - listingAt,
+            putting: selectingAt - puttingAt, selecting: shownAt - selectingAt };
     }
 
     // The rows with what the first thing found by its name holds listed
@@ -6828,7 +6836,10 @@ Scope {
             list.keptLast = null;
             keysWeighing = 0;
             readingBegun();
-            matches = listedAs(lived);
+            const listedRows = listedAs(lived);
+            const puttingAt = Date.now();
+            matches = listedRows;
+            const selectingAt = Date.now();
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
             const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
@@ -6842,11 +6853,14 @@ Scope {
             // laying them out took, so a letter or a step inside says where
             // its time went. Without the laying, Capture's step said only
             // "showing 138" (Joel, 2026-11-11).
+            const shownAt = Date.now();
             searchParts = { before: 0, lists: foundAt - searchBegan, rows: 0,
-                answers: Date.now() - foundAt, each: {}, within: null,
+                answers: shownAt - foundAt, each: {}, within: null,
                 composing: { asking: 0, placing: livedAt - foundAt,
-                    showing: Date.now() - livedAt, kept: RowsKept.keptWhole(list.keptLast),
-                    weighing: keysWeighing, reading: readingSpent() } };
+                    showing: shownAt - livedAt, kept: RowsKept.keptWhole(list.keptLast),
+                    weighing: keysWeighing, reading: readingSpent(),
+                    listing: puttingAt - livedAt, putting: selectingAt - puttingAt,
+                    selecting: shownAt - selectingAt } };
             return;
         }
         // What the search spends its time on, said with a key that's slow

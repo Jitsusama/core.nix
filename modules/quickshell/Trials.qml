@@ -146,10 +146,11 @@ Scope {
     // to the list and how long laying them out took, with how many rows that
     // drew, built and taken back from those let go, then how long weighing
     // every listed row's keys took, which a drawn row's cost doesn't say,
-    // and last where a step back out came to.
+    // what else it spent listing, putting the rows in and selecting, and
+    // last where a step back out came to.
     function composed(parts) {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
-            + Trials.keptPart(parts.kept,
+            + Trials.showingSaid(parts,
                 weighed(parts.weighing) + Trials.readingSaid(parts.reading))
             : "";
     }
