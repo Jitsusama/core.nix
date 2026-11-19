@@ -273,9 +273,12 @@ ShellRoot {
             said() === started, `${said()} after ${started}`);
         traffic.reads = kept;
 
+        // The counters' load lands too, so the look after it isn't one
+        // asked just after a load and passed over.
+        const landed = loads;
         lookAgain();
-        waits.until("a line holding is said so", () => idle()
-            && lineNote() === "as measured, held under what the connection can carry", () => {
+        waits.until("a line holding is said so", () => loads > landed && idle()
+            && lineNote() === "as measured, held to the shaper's limit", () => {
             counted({ lo: [1000, 2000] });
             lookAgain();
             waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined

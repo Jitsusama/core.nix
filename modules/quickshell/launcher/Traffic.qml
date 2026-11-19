@@ -427,7 +427,7 @@ Provider {
     // What the shaper is doing with the line, in Joel's words: it writes
     // only resting or holding, and resting is said as measured alone.
     readonly property var stateNotes: ({
-        holding: "as measured, held under what the connection can carry"
+        holding: "as measured, held to the shaper's limit"
     })
 
     function told() {

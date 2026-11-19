@@ -1046,7 +1046,7 @@
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,
     though each file has changed since, a first rate over the uptime loaded; the shaper's line
-    resting is said as measured, and holding as held under what the connection can carry;
+    resting is said as measured, and holding as held to the shaper's limit;
     asked after a gap with the launcher closed, it says its figures are from when last read and
     loads them again, reading on until a rate of now has landed, or until the counters fail to
     load, after which it reads on no more; a load stamped ahead of now, as a clock stepped back
