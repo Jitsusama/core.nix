@@ -328,6 +328,9 @@ impl State {
             "commit": commit,
             "check": check,
             "passed": ran == Ran::Passed,
+            // A pass that failed, which a quarantine excused, so whoever
+            // counts real passes needn't read its code.
+            "excused": ran == Ran::Passed && code != Some(0),
             "stalled": ran == Ran::Stalled,
             "code": code,
             "log": log.display().to_string(),
@@ -341,11 +344,11 @@ impl State {
         let Ok(text) = fs::read_to_string(self.root.join("results.jsonl")) else {
             return HashMap::new();
         };
-        // A failure may end early, and a stall at its limit, so only a pass
-        // says how long a check takes.
+        // A failure may end early, an excused one too, and a stall at its
+        // limit, so only a run that passed says how long a check takes.
         text.lines()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-            .filter(|line| line["passed"] == true)
+            .filter(|line| line["passed"] == true && line["code"] == 0)
             .filter_map(|line| {
                 Some((
                     line["check"].as_str()?.to_owned(),

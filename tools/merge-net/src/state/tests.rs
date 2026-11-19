@@ -162,6 +162,42 @@ fn a_check_lasts_as_long_as_its_newest_pass() {
     );
 }
 
+// A failure a quarantine excuses counts as passed for blame, but it ran no
+// further than its failure, and a count of passes in a row read from the
+// record took 7 such runs of one call test as passes from 14 November.
+#[test]
+fn an_excused_failure_is_kept_apart_from_a_pass() {
+    let state = state("excused");
+    let log = state.log("aaaa", "vm-a", 1);
+    state
+        .record("aaaa", "vm-a", Ran::Passed, Some(0), &log, 600)
+        .unwrap();
+    state
+        .record("bbbb", "vm-a", Ran::Passed, Some(1), &log, 40)
+        .unwrap();
+    assert_eq!(
+        state.lasted().get("vm-a"),
+        Some(&600),
+        "an excused failure says nothing of how long vm-a takes"
+    );
+    let record = fs::read_to_string(state.root.join("results.jsonl")).unwrap();
+    let excused: Vec<bool> = record
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()["excused"] == true)
+        .collect();
+    assert_eq!(
+        excused,
+        [false, true],
+        "each run says whether it was excused: {record}"
+    );
+    assert_eq!(
+        state.runs("bbbb", "vm-a"),
+        vec![Ran::Passed],
+        "blame still takes it as passed"
+    );
+    fs::remove_dir_all(&state.root).unwrap();
+}
+
 #[test]
 fn a_run_is_kept_by_its_commit_and_check() {
     let state = state("runs");
