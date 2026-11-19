@@ -30,6 +30,7 @@
 //! says once, since any unit's lines may have been in them.
 
 mod asking;
+mod fit;
 mod summary;
 
 use std::fs;
@@ -105,6 +106,7 @@ fn run(context: &Context) -> Result<(), Failure> {
             &skipped,
             &pen,
             context.room,
+            None,
         ))
         .map_err(|error| {
             Failure::new(Exit::Failed, "the summary couldn't be said").because(error.to_string())
