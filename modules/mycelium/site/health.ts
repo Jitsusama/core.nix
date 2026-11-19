@@ -115,16 +115,14 @@ export interface MachineFacts extends Machine {
   readonly leaves_at?: string | null | undefined;
   readonly declared?: { readonly leaves_at?: string | null | undefined } | null | undefined;
   readonly basin?: unknown;
-  readonly pressure?:
-    | { readonly cpu: number; readonly memory: number; readonly io: number }
-    | null
-    | undefined;
+  /** How pressed it is, as a peer's node says it, so in no shape for sure. */
+  readonly pressure?: unknown;
   readonly power?:
     | { readonly on_battery?: boolean | null | undefined; readonly charge?: number | null }
     | null
     | undefined;
-  /** The resources it runs short of. */
-  readonly over?: readonly string[] | null | undefined;
+  /** The resources it runs short of, as a peer's node says them. */
+  readonly over?: unknown;
   readonly available?: number | null | undefined;
   readonly disk?: number | null | undefined;
   readonly disk_free?: number | null | undefined;
@@ -161,9 +159,37 @@ export const machineForm = (x: MachineFacts): "basin" | "lent" | "shut" => {
 export const gib = (bytes: number | null | undefined): string =>
   bytes === null || bytes === undefined ? "" : `${(bytes / GIB).toFixed(0)} GiB`;
 
-/** What a lent machine is, and how long it has left. */
-export const sandboxWords = (x: MachineFacts, at: string): string =>
-  `a cloud sandbox, ${leftWords(leavesAt(x) ?? at, at)}`;
+/** What a lent machine is, and how long it has left; nothing for bare metal. */
+export const sandboxWords = (x: MachineFacts, at: string): string => {
+  const end = leavesAt(x);
+  return end === null ? "" : `a cloud sandbox, ${leftWords(end, at)}`;
+};
+
+/** A machine's pressure, only where each share of it is a number. */
+interface Pressure {
+  readonly cpu: number;
+  readonly memory: number;
+  readonly io: number;
+}
+
+const SHARES = ["cpu", "memory", "io"] as const;
+
+/** A machine's pressure where its node said all of it, as a number each. */
+const pressureOf = (x: MachineFacts): Pressure | null => {
+  const p = x.pressure;
+  if (typeof p !== "object" || p === null) {
+    return null;
+  }
+  const said: Record<string, unknown> = { ...p };
+  const [cpu, memory, io] = SHARES.map((share) => said[share]);
+  return typeof cpu === "number" && typeof memory === "number" && typeof io === "number"
+    ? { cpu, memory, io }
+    : null;
+};
+
+/** What a machine runs short of, as names, whatever else its node sent. */
+const overOf = (x: MachineFacts): string[] =>
+  Array.isArray(x.over) ? x.over.filter((name) => typeof name === "string") : [];
 
 const leaseShort = (x: MachineFacts, at: string): boolean => {
   const end = leavesAt(x);
@@ -171,10 +197,10 @@ const leaseShort = (x: MachineFacts, at: string): boolean => {
 };
 
 const machineVerdict = (x: MachineFacts, at: string): Verdict => {
-  const p = x.pressure;
+  const p = pressureOf(x);
   const charge = x.power?.on_battery ? x.power.charge : null;
   const low = charge !== null && charge !== undefined && charge < CHARGE_TEND;
-  if (x.state !== "ready" || (x.over?.length ?? 0) > 0 || low) {
+  if (x.state !== "ready" || overOf(x).length > 0 || low) {
     return 2;
   }
   const pressed = p && (p.cpu >= PRESSURE_WATCH || p.memory >= PRESSURE_WATCH);
@@ -191,7 +217,8 @@ export const machineHealth = (
   at: string,
   lead: readonly string[] = [],
 ): Health => {
-  const p = x.pressure;
+  const p = pressureOf(x);
+  const over = overOf(x);
   const charge = x.power?.on_battery ? x.power.charge : null;
   const end = leavesAt(x);
   const filling = x.disk_band === "filling" ? ", filling" : "";
@@ -200,7 +227,7 @@ export const machineHealth = (
     ...lead,
     x.state === "ready" ? "" : (x.state ?? ""),
     p ? `cpu ${Math.round(p.cpu)}%, memory ${Math.round(p.memory)}%, io ${Math.round(p.io)}%` : "",
-    x.over?.length ? `${x.over.join(" and ")} short` : "",
+    over.length > 0 ? `${over.join(" and ")} short` : "",
     x.available === null || x.available === undefined ? "" : `${gib(x.available)} memory free`,
     disk,
     charge === null || charge === undefined ? "" : `on battery, ${charge}%`,

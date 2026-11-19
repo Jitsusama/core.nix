@@ -15,9 +15,10 @@
 // by what changes for one reason as it is rewritten in TypeScript on the
 // kit (modules/mycelium/site/README.md says what remains). What each key
 // asks is decided in keys.ts, which network grows out of which in
-// lineage.ts, what each thing is in words in words.ts, and the tree beside
-// the map, its rows and their walk, in outline.ts, which this imports as
-// the modules they're built to.
+// lineage.ts, what each thing is in words in words.ts, the tree beside the
+// map, its rows and their walk, in outline.ts, how a time is said in
+// when.ts, and how each thing stands and why in health.ts, which this
+// imports as the modules they're built to.
 import {
   contextWords,
   flagNames,
@@ -53,7 +54,7 @@ import {
   cellsOn as machineCells,
   waitingWords,
 } from "./words.js";
-import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClockAt, leftWords as leftWordsAt, minutesWord } from "./when.js";
+import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClockAt, minutesWord } from "./when.js";
 
 (() => {
   // The most time between two readings while the node moves: site.ts hands
@@ -2952,7 +2953,6 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
   const DOINGS_SHOWN = 2;
   // Every machine as itself, a basin's taken out of it.
   const everyMachine = () => current.machines.flatMap((x) => x.members || [x]);
-  const leftWords = (iso) => leftWordsAt(iso, current.at);
   const sandboxWords = (x) => sandboxWordsAt(x, current.at);
   const verdictMark = (v) => `<strong class="verdict v${v}">${VERDICT[v]}</strong>`;
   // One level of health: a name, its verdict and why. A level that opens

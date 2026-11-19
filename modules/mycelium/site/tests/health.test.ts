@@ -122,6 +122,9 @@ it("tends a machine that isn't ready, runs short or is nearly out of charge", ()
     machineHealth(machine({ power: { on_battery: true, charge: 15 } }), AT),
     machineHealth(machine({ power: { on_battery: true, charge: 60 } }), AT),
     machineHealth(machine({ power: { on_battery: false, charge: 15 } }), AT),
+    machineHealth(machine({ power: { on_battery: true, charge: 0 } }), AT),
+    machineHealth(machine({ power: { on_battery: true, charge: 19 } }), AT),
+    machineHealth(machine({ power: { on_battery: true, charge: 20 } }), AT),
   ];
   assert.deepEqual(
     said,
@@ -131,8 +134,11 @@ it("tends a machine that isn't ready, runs short or is nearly out of charge", ()
       { v: 2, words: "on battery, 15%" },
       { v: 0, words: "on battery, 60%" },
       { v: 0, words: "nothing said" },
+      { v: 2, words: "on battery, 0%" },
+      { v: 2, words: "on battery, 19%" },
+      { v: 0, words: "on battery, 20%" },
     ],
-    "a machine on the mains should say nothing of its charge",
+    "a machine on the mains should say nothing of its charge, and under 20% on battery tend",
   );
 });
 
@@ -143,6 +149,9 @@ it("watches a machine under pressure, filling its disk or near its lease's end",
     machineHealth(machine({ disk: 100 * GIB, disk_free: 50 * GIB, disk_band: "filling" }), AT),
     machineHealth(machine({ leaves_at: "2026-11-19T10:20:00" }), AT),
     machineHealth(machine({ declared: { leaves_at: "2026-11-19T12:00:00" } }), AT),
+    machineHealth(machine({ leaves_at: "2026-11-19T10:29:00" }), AT),
+    machineHealth(machine({ leaves_at: "2026-11-19T10:30:00" }), AT),
+    machineHealth(machine({ leaves_at: "2026-11-19T09:00:00" }), AT),
   ];
   assert.deepEqual(
     said,
@@ -152,8 +161,11 @@ it("watches a machine under pressure, filling its disk or near its lease's end",
       { v: 1, words: "50 GiB of 100 GiB disk free, filling" },
       { v: 1, words: "20 min left, until 10:20" },
       { v: 0, words: "2 h left, until 12:00" },
+      { v: 1, words: "29 min left, until 10:29" },
+      { v: 0, words: "30 min left, until 10:30" },
+      { v: 1, words: "its time is up" },
     ],
-    "a lease with half an hour or more left should be well",
+    "a lease with half an hour or more left should be well, and one past watched",
   );
 });
 
@@ -161,19 +173,50 @@ it("says what leads first, then each fact in its order", () => {
   const x = machine({
     state: "draining",
     pressure: { cpu: 20, memory: 30, io: 1 },
+    over: ["memory"],
     available: 8 * GIB,
     disk: 200 * GIB,
     disk_free: 120 * GIB,
+    power: { on_battery: true, charge: 50 },
+    leaves_at: "2026-11-19T12:00:00",
   });
   assert.deepEqual(
     machineHealth(x, AT, ["3 cells"]),
     {
       v: 2,
       words:
-        "3 cells; draining; cpu 20%, memory 30%, io 1%; 8 GiB memory free; " +
-        "120 GiB of 200 GiB disk free",
+        "3 cells; draining; cpu 20%, memory 30%, io 1%; memory short; 8 GiB memory free; " +
+        "120 GiB of 200 GiB disk free; on battery, 50%; 2 h left, until 12:00",
     },
     "the lead should come first and each fact after it",
+  );
+});
+
+it("says a machine's nothing left as none, not as nothing said", () => {
+  const x = machine({ available: 0, disk: 100 * GIB, disk_free: 0 });
+  assert.deepEqual(
+    machineHealth(x, AT),
+    { v: 0, words: "0 GiB memory free; 0 GiB of 100 GiB disk free" },
+    "no memory or disk free should still be said",
+  );
+});
+
+it("takes only the facts a peer's node said in their shape", () => {
+  const said = [
+    machineHealth(machine({ pressure: { cpu: 99 } }), AT),
+    machineHealth(machine({ pressure: "high" }), AT),
+    machineHealth(machine({ over: "disk" }), AT),
+    machineHealth(machine({ over: ["disk", 3] }), AT),
+  ];
+  assert.deepEqual(
+    said,
+    [
+      { v: 0, words: "nothing said" },
+      { v: 0, words: "nothing said" },
+      { v: 0, words: "nothing said" },
+      { v: 2, words: "disk short" },
+    ],
+    "a pressure missing a share, or what it runs short of not as names, should say nothing",
   );
 });
 
@@ -184,10 +227,12 @@ it("tells a basin's box, a lent machine and bare metal apart by what each declar
     machineForm(machine({ leaves_at: AT })),
     machineForm(machine({ declared: { leaves_at: AT } })),
     machineForm(machine()),
+    machineForm(machine({ leaves_at: "", declared: { leaves_at: AT } })),
+    machineForm(machine({ leaves_at: "" })),
   ];
   assert.deepEqual(
     said,
-    ["basin", "basin", "lent", "lent", "shut"],
+    ["basin", "basin", "lent", "lent", "shut", "lent", "shut"],
     "a basin should win over a lease",
   );
   assert.equal(
@@ -195,6 +240,7 @@ it("tells a basin's box, a lent machine and bare metal apart by what each declar
     "a cloud sandbox, 1 h left, until 11:00",
     "a lent machine should say how long it has left",
   );
+  assert.equal(sandboxWords(machine(), AT), "", "bare metal should be no sandbox");
 });
 
 it("says a machine's share as the balance reads it", () => {

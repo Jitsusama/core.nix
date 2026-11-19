@@ -1,12 +1,24 @@
 // When things happened, as the drawer says it against the reading's own
 // time. Every time here is written in the reader's own zone, with no offset,
-// so the words are the same wherever the tests run.
+// so the words are the same wherever the tests run. The zone is set half an
+// hour off any whole one before when.ts loads, since a build runs in UTC,
+// where a time read as UTC rather than the reader's own reads the same.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { agoWords, atWords, clock, dayClock, leftWords, minutesWord } from "../when.ts";
+
+process.env["TZ"] = "Asia/Kolkata";
+const { agoWords, atWords, clock, dayClock, leftWords, minutesWord } = await import("../when.ts");
 
 const AT = "2026-11-19T10:00:00";
+
+it("reads each time in the reader's own zone, not in UTC", () => {
+  assert.deepEqual(
+    [clock("2026-11-19T03:00:00", false), dayClock("2026-11-19T03:00:00", AT)],
+    ["03:00", "03:00"],
+    "a time early in the reader's day should keep its clock and its day",
+  );
+});
 
 it("reads a clock to the second, or to the minute", () => {
   assert.equal(clock("2026-11-19T06:49:05"), "06:49:05", "a clock should keep its seconds");
@@ -44,12 +56,14 @@ it("says how long ago by the minute within the hour, and by the clock past it", 
   const said = [
     agoWords("2026-11-19T09:59:30", AT),
     agoWords("2026-11-19T09:55:00", AT),
+    agoWords("2026-11-19T09:00:01", AT),
+    agoWords("2026-11-19T09:00:00", AT),
     agoWords("2026-11-19T08:00:00", AT),
     agoWords("2026-11-19T10:05:00", AT),
   ];
   assert.deepEqual(
     said,
-    ["under a minute ago", "5 min ago", "at 08:00", "at 10:05"],
+    ["under a minute ago", "5 min ago", "60 min ago", "at 09:00", "at 08:00", "at 10:05"],
     "a time ahead of the reading should be said by the clock",
   );
 });
