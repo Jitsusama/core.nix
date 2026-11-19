@@ -877,7 +877,11 @@ def test_the_map_draws_a_thread_for_each_cell_joining_two_repositories(
     code_page: Page, mycelium_node: StandIn
 ) -> None:
     says_it_stands(code_page, "live")
-    # The one cell the stand-in holds names only its own repository, which joins nothing.
+    # The one cell the stand-in holds names only its own repository, which joins nothing; it's
+    # heard first, so the map hidden is the mycelium's word and not its silence.
+    expect(row(code_page, "github:owl/core"), "the cell at work wasn't drawn").to_contain_text(
+        "1 cell", timeout=PACE_MS
+    )
     expect(code_page.locator("#ties"), "a map with nothing joined was shown").to_be_hidden()
     spanning(mycelium_node)
     rows = code_page.locator(TIE_ROWS)
@@ -888,13 +892,18 @@ def test_the_map_draws_a_thread_for_each_cell_joining_two_repositories(
     )
     threads = code_page.locator("#ties-map [data-line]")
     expect(threads, "the map drew a thread other than the cell's one").to_have_count(1)
+    lit = code_page.locator("#ties-map .tie-thread.lit")
+    expect(lit, "the threads of the row the keys rest on weren't lit").to_have_count(1)
     here = code_page.locator("#ties-here")
     expect(here, "the map didn't say what core joins").to_contain_text("Joined to notes by 1")
     expect(here.locator("a", has_text="notes"), "notes wasn't linked home").to_have_attribute(
         "href", "#repo=notes"
     )
+    # The keys on the map when its last tie goes are handed to the list, not dropped.
+    code_page.locator("#ties-map").focus()
     mycelium_node.tell("cell", gone=["cell:W9TIES"])
     expect(code_page.locator("#ties"), "the map stayed once nothing joined").to_be_hidden()
+    expect(code_page.locator("#list"), "the keys fell out of the page").to_be_focused()
 
 
 def test_the_maps_keys_walk_its_rows_and_open_one(code_page: Page, mycelium_node: StandIn) -> None:
@@ -927,7 +936,22 @@ def test_the_maps_keys_walk_its_rows_and_open_one(code_page: Page, mycelium_node
         "Still nothing to the left of core."
     )
     expect(rows.first, "the left arrow moved the keys").to_have_attribute("aria-selected", "true")
+    # A step clears the words, so the same words said after it are heard as new.
+    code_page.keyboard.press("j")
+    expect(said, "a step left the last words standing").to_have_text("")
+    code_page.keyboard.press("k")
+    # The list's own keys act on the list's cursor, which the map doesn't hold, so they say
+    # where they act rather than act on another repository than the one marked.
+    code_page.keyboard.press("z")
+    expect(said, "z on the map didn't say where it acts").to_have_text(
+        "z acts on the list: Return takes the keys to core there."
+    )
+    # Escape on the map holds on to a find the list holds.
+    find = code_page.locator("#find")
+    find.fill("o")
+    tied.focus()
     code_page.keyboard.press("Escape")
+    expect(find, "Escape on the map let go of the find").to_have_value("o")
     expect(rows.first, "Escape moved the map").to_have_attribute("aria-selected", "true")
     code_page.keyboard.press("End")
     code_page.keyboard.press("Enter")
@@ -935,6 +959,14 @@ def test_the_maps_keys_walk_its_rows_and_open_one(code_page: Page, mycelium_node
     expect(chosen, "notes wasn't the repository opened").to_have_attribute(
         "data-key", "local:~/src/notes"
     )
+    lister = code_page.locator("#list")
+    expect(lister, "Return didn't take the keys to the list").to_be_focused()
+    # The repository already open is opened as a link to it would be: the keys go to it.
+    tied.focus()
+    code_page.keyboard.press("Enter")
+    expect(lister, "Return on the repository open did nothing").to_be_focused()
+    rows.first.click()
+    expect(code_page, "a click didn't open core").to_have_url(re.compile(r"#repo=owl%2Fcore$"))
     tied.focus()
     code_page.keyboard.press("Tab")
     left = code_page.evaluate("() => document.activeElement.id !== 'ties-map'")

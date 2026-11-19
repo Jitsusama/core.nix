@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { ties } from "../joins.ts";
-import { mapOf, saidOf, walked } from "../map.ts";
+import { bowed, mapOf, saidOf, THREADS_A_TIE, walked } from "../map.ts";
 import type { Cell, Repository } from "../model.ts";
 
 /** A cell at work, in the networks named. */
@@ -86,10 +86,32 @@ it("draws at most six threads for a tie, while its words count every cell", () =
   assert.equal(saidOf(map, 0), "Joined to world by 9\u00a0cells.");
 });
 
-it("says each row's ties, the most cells first, and its cells by name", () => {
+it("says each row's ties, the most cells first, and ties of as many by name", () => {
   const map = mapOf(grove);
   assert.equal(saidOf(map, 0), "Joined to world by 3\u00a0cells, and harness by 1\u00a0cell.");
   assert.equal(saidOf(map, 1), "Joined to core by 1\u00a0cell.");
+  const alike = mapOf([
+    repository("core", [cell("Z", ["repo.zeta"]), cell("A", ["repo.alpha"])]),
+    repository("zeta"),
+    repository("alpha"),
+  ]);
+  assert.equal(saidOf(alike, 0), "Joined to alpha by 1\u00a0cell, and zeta by 1\u00a0cell.");
+});
+
+it("keeps the grove's order of the rows, whatever their names", () => {
+  const map = mapOf([repository("zeta", [cell("Z", ["repo.alpha"])]), repository("alpha")]);
+  assert.deepEqual(
+    map.rows.map((each) => each.name),
+    ["zeta", "alpha"],
+  );
+});
+
+it("bows each of a tie's threads apart, the farthest tie's too, inside the gutter", () => {
+  const many = Array.from({ length: THREADS_A_TIE }, (_, at) => cell(`M${at}`, ["repo.world"]));
+  const map = mapOf([repository("core", many), repository("world")]);
+  const bows = map.threads.map((each) => bowed(each, map.rows.length));
+  assert.equal(new Set(bows).size, THREADS_A_TIE, `two threads bowed alike: ${bows}`);
+  assert.ok(Math.max(...bows) <= 96, `a thread bowed past the gutter: ${bows}`);
 });
 
 it("writes each other row's name as it's asked, so the page can link it home", () => {
