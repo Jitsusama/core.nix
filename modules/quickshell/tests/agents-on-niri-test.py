@@ -1319,8 +1319,14 @@ def test_landed_lists_a_row_a_day_before_today_whose_landings_come_only_inside(
     shell.down_to(newest)
     assert shell.showing()["selected"]["side"] == f"{count} landed", shell.showing()
     shell.step_in()
+    # What the launcher shows says only its first rows, so each of those is the day's, newest
+    # first, and the side said how many it holds.
     shell.launcher_until(
-        lambda shown: len(shown["rows"]) == count and shown["rows"][0] == "Earlier change 0."
+        lambda shown: (
+            shown["held"][-1] == newest
+            and shown["rows"][:1] == ["Earlier change 0."]
+            and all(row.startswith("Earlier change") for row in shown["rows"])
+        )
     )
     shell.close_launcher()
 
