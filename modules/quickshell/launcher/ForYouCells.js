@@ -110,7 +110,10 @@ function noticeCell(notice, held) {
 // `wanting`, whose want's row already says what it asks, or one whose want
 // Joel put off for now (`putOff`, by address in capitals), which he asked
 // to hear nothing of until then, or a low one, as away mode's saying a
-// session rests, which asks nothing of him. A session's own notices are
+// session rests, which asks nothing of him, or one whose card he put away,
+// which its session can't take back once it's off the screen (held.rs's
+// close), so a question he answered would stand again once its want
+// ended; one that went by itself unseen still joins. A session's own notices are
 // pi's, which Desktop leaves to its want's row (Lately.js's LISTED), so one
 // about a session no longer asking, as away mode's saying a run ended,
 // stood in no list until now. Another program's naming a cell stays in
@@ -121,7 +124,7 @@ function joining(notices, held, wanting, putOff) {
     return (Array.isArray(notices) ? notices : []).filter(notice => {
         if (notice === null || typeof notice !== "object" || notice.app !== "pi"
             || notice.read === true || notice.transient === true
-            || notice.urgency === "low") {
+            || notice.urgency === "low" || notice.left === "dismissed") {
             return false;
         }
         const cell = noticeCell(notice, held);

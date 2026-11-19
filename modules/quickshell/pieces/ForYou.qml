@@ -18,9 +18,10 @@ Piece {
 
     // Set together as what it holds changes, so the margin never reads it
     // wanting and not lit, or lit and not wanting: two bindings would come
-    // true in whichever order Qt notifies them. No card says what it holds,
-    // since a session's want posts none (Sessions.qml), so it waits for
-    // none. Counted here, not read from the count, which Qt may not have
+    // true in whichever order Qt notifies them. It waits for no card: a
+    // session's want posts none (Sessions.qml), and a session's own notice
+    // counts while its card is up, its row standing under its cell all the
+    // while (Holding.js's joined). Counted here, not read from the count, which Qt may not have
     // made again yet.
     function hold() {
         const any = Holding.count(holds) > 0;

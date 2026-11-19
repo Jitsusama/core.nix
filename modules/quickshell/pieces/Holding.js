@@ -31,7 +31,10 @@ function wanting(sessions) {
 // to-do (`waits`) is that to-do, counted once among them. `joined`, a
 // session's own notices What Needs Me lists under its cell (ForYouCells.js's
 // joining), each counts as itself, critical or not, card up or not, since
-// its row stands among what needs Joel now, and never again as a notice.
+// its row stands among what needs Joel now, and never again as a notice;
+// and none of pi's counts as critical, since Desktop lists none of them
+// (Lately.js's LISTED), so it would have no row: one of a session asking
+// is its want's, and one of a session gone the history's.
 function held(sources) {
     const given = sources ?? {};
     const each = name => Array.isArray(given[name]) ? given[name] : [];
@@ -44,7 +47,8 @@ function held(sources) {
         given: each("given"),
         reopen: each("toReopen").length > 0 ? [each("toReopen")] : [],
         notices: each("notices").filter(one => one?.urgency === "critical"
-            && one.read !== true && !one.waits && !shown.includes(String(one.id))
+            && one.app !== "pi" && one.read !== true && !one.waits
+            && !shown.includes(String(one.id))
             && !joined.includes(String(one.id))),
         joined: each("joined")
     };

@@ -126,27 +126,33 @@ QtObject {
         // Those that join their cell: pi's, unread, kept, from a session
         // held, and not of a cell wanting Joel, whose want's row already
         // says what it asks, nor of one whose want he put off, nor a low
-        // one, as away mode's saying a session rests, which asks nothing.
+        // one, as away mode's saying a session rests, which asks nothing,
+        // nor one whose card Joel put away, which its session can't take
+        // back once it's off the screen (held.rs's close).
         const raised = (id, more) => Object.assign({ id, app: "pi", read: false,
             cell: "mycelium:cell/9F3A2B1C" }, more);
         expect("pi's, unread, kept and from a session held not wanting Joel, each joins it",
             Cells.joining([raised(1), raised(2, { read: true }), raised(3, { cell: null }),
                 raised(4, { transient: true }), raised(5, { cell: "mycelium:cell/BBBBBB" }),
                 raised(6, { app: "Slack" }), raised(7, { cell: "mycelium:cell/GONE0001" }),
-                raised(8, { urgency: "low" })],
-            held, [cellB], {}).map(one => one.id), [1]);
+                raised(8, { urgency: "low" }), raised(9, { left: "dismissed" }),
+                raised(10, { left: "expired" })],
+            held, [cellB], {}).map(one => one.id), [1, 10]);
         expect("one whose want Joel put off joins nothing",
             Cells.joining([raised(1)], held, [], { KELP01: true }).length, 0);
         expect("nothing told, none", Cells.joining(undefined, undefined, undefined, undefined),
             []);
         // The list kept while it holds the same notices saying the same, so
-        // one said anew, or read since For You opened, makes nothing again;
+        // one said anew, or read since For You opened, as Lately.js's
+        // holdingStill gives it again unread with its read stamped, makes
+        // nothing again;
         // one more, one fewer, another order or new words in one is new.
         const keptOnes = [raised(1), raised(2)];
         expect("the same notices said anew keep the list",
             Cells.alike(keptOnes, [raised(1), raised(2)]) === keptOnes, true);
         expect("one read since For You opened keeps it",
-            Cells.alike(keptOnes, [raised(1, { read: true }), raised(2)]) === keptOnes, true);
+            Cells.alike(keptOnes, [raised(1, { readHow: "read", readAt: 9 }), raised(2)])
+                === keptOnes, true);
         const another = [raised(1), raised(3)];
         expect("another notice makes it anew", Cells.alike(keptOnes, another) === another, true);
         const fewer = [raised(1)];
@@ -156,10 +162,12 @@ QtObject {
         const reworded = [raised(1, { summary: "Run ended" }), raised(2)];
         expect("one replaced with new words makes it anew",
             Cells.alike(keptOnes, reworded) === reworded, true);
-        // Replaced in place, it weighs from when it came again, and stands
-        // under whichever session it names now.
+        // Raised again once its card closed, it weighs from when it came
+        // again; replaced in place, it keeps when it first came (held.rs's
+        // arrive) but stands under whichever session it names now.
         const later = [raised(1, { at: 5 }), raised(2)];
-        expect("one replaced later makes it anew", Cells.alike(keptOnes, later) === later, true);
+        expect("one raised again later makes it anew",
+            Cells.alike(keptOnes, later) === later, true);
         const moved = [raised(1, { cell: "mycelium:cell/BBBBBB" }), raised(2)];
         expect("one naming another session makes it anew",
             Cells.alike(keptOnes, moved) === moved, true);

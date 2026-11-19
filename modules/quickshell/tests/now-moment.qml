@@ -1100,6 +1100,12 @@ ShellRoot {
         expect("a notice of a session wanting Joel is its want's to say",
             noticed().length === 0 && ForYouHolds.count === 1 && now.waiting.side === "1 to do",
             JSON.stringify([noticed().length, ForYouHolds.count, now.waiting.side]));
+        // A critical one too: Desktop lists none of pi's, so it counts as
+        // nothing apart from the want.
+        Notices.history = [Object.assign({}, raised, { urgency: "critical" })];
+        expect("a critical notice of a session wanting Joel is its want's to say too",
+            noticed().length === 0 && ForYouHolds.count === 1 && now.waiting.side === "1 to do",
+            JSON.stringify([noticed().length, ForYouHolds.count, now.waiting.side]));
         Sessions.wanting = [];
         Sessions.running = [];
         Notices.history = [];
