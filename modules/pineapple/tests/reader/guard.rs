@@ -57,8 +57,8 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
     // reaping leaves it lingering; the case stops and reaps the reader
     // itself before it says so, rather than leave it.
     if dropped.recv_timeout(PATIENCE).is_err() {
-        // The guard is still waiting on it, and reaps it once it ends.
         stop(&reader_itself);
+        reap_if_ended(&reader_itself);
         panic!("the guard never stopped its reader");
     }
     // A kill lands a moment after it is sent, so a reader the guard
@@ -77,6 +77,7 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
         }
         Err(why) => {
             stop(&reader_itself);
+            reap_if_ended(&reader_itself);
             panic!("the reader couldn't be asked how it was left: {why}");
         }
     }
@@ -219,6 +220,17 @@ fn reap(reader: &OwnedFd) {
         reaped.is_ok(),
         "the reader the guard left couldn't be reaped: {reaped:?}"
     );
+}
+
+/// Reaps a reader the case has just stopped, if it ends within a while,
+/// on a path that is failing anyway. A guard hung in its own wait may
+/// reap it first, and then this finds nothing, which is as good; a guard
+/// hung anywhere else leaves it to this, or to no one.
+fn reap_if_ended(reader: &OwnedFd) {
+    ends_within(reader, KILLED);
+    // Whatever it answers, the case fails next with what it saw, and a
+    // reader still unreaped goes when the test binary does.
+    let _ = waited(reader, libc::WNOHANG);
 }
 
 /// Waits on the reader for its end with `options` besides WEXITED,
