@@ -178,9 +178,10 @@ function flipped(hex) {
 }
 
 // Each interface's IPv4 default gateway, by name, from /proc/net/route,
-// with its metric, the lowest the way out.
+// with its metric, the lowest the way out. It has no prototype, so an
+// interface named as one of an object's own members is one like any other.
 function gateways(text) {
-    const found = {};
+    const found = Object.create(null);
     for (const line of String(text).split("\n").slice(1)) {
         const fields = line.trim().split(SPACES);
         if (fields.length >= ROUTE_FIELDS && fields[1] === DEFAULT_FOUR) {
@@ -194,9 +195,10 @@ function gateways(text) {
 }
 
 // Each interface's IPv6 default gateway, by name, from /proc/net/ipv6_route,
-// in groups of four digits for Addresses.js to shorten.
+// in groups of four digits for Addresses.js to shorten, with no prototype
+// as gateways has.
 function gateways6(text) {
-    const found = {};
+    const found = Object.create(null);
     for (const line of String(text).split("\n")) {
         const fields = line.trim().split(SPACES);
         const hop = fields[SIX_NEXT_HOP] ?? "";

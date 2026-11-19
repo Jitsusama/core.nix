@@ -18,6 +18,7 @@ import QtQuick
 import "launcher" as Launcher
 import "launcher/Interfaces.js" as Interfaces
 import "Expect.js" as Expect
+import "Written.js" as Written
 
 ShellRoot {
     id: root
@@ -139,7 +140,7 @@ ShellRoot {
 
     Component.onCompleted: {
         counted({ lo: [1000, 2000] });
-        write(uptime, "1000.00 4000.00\n");
+        Written.written(uptime, "1000.00 4000.00\n");
         // Traffic loads the uptime and the counters as it's pointed at
         // them, which it only is once there are some to load.
         traffic.uptimeFile = `${root.sys}/uptime`;
@@ -148,22 +149,18 @@ ShellRoot {
         waits.until("lo known", () => idle() && traffic.interfaceKinds.lo?.sure, root.first);
     }
 
-    function write(file, text) {
-        file.setText(text);
-        file.waitForJob();
-    }
-
     // lo's sysfs folder, as the kernel would write it for the facts given.
     function made(said, typed) {
-        write(uevent, said);
-        write(type, typed);
+        Written.written(uevent, said);
+        Written.written(type, typed);
     }
 
     // The counters, as /proc/net/dev says them: each interface's bytes in
     // and out, nothing dropped.
     function counted(each) {
-        write(dev, Object.keys(each).map(name => `${name}: ${each[name][0]} 10 0 0 0 0 0 0 `
-            + `${each[name][1]} 20 0 0 0 0 0 0`).join("\n") + "\n");
+        Written.written(dev, Object.keys(each)
+            .map(name => `${name}: ${each[name][0]} 10 0 0 0 0 0 0 `
+                + `${each[name][1]} 20 0 0 0 0 0 0`).join("\n") + "\n");
     }
 
     // The reads kept as though the last was taken `ago` ms before now, as
@@ -236,7 +233,8 @@ ShellRoot {
         // A card beside lo, as though its files said so, so the answer
         // counts it, and the shaper's measure of it.
         counted({ lo: [1000, 2000], eth0: [1000000, 2000000] });
-        write(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 100000, up: 20000,
+        Written.written(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 100000,
+            up: 20000,
             state: "climbing", baselines: [["one", 12]] }]));
         lookAgain();
         waits.until("eth0 counted", () => traffic.reads.last.all.eth0 !== undefined && idle(),
@@ -254,7 +252,7 @@ ShellRoot {
     function loaded() {
         const was = said();
         counted({ lo: [1000, 2000], eth0: [9000000000, 9000000000] });
-        write(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 1, up: 1,
+        Written.written(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 1, up: 1,
             state: "holding", baselines: [["one", 99]] }]));
         Expect.expect("an answer says the counters and the shaper's status as last loaded",
             said() === was, `${said()} after ${was}`);
@@ -268,7 +266,7 @@ ShellRoot {
         Expect.expect("a first read's rate is over the uptime loaded",
             traffic.answer("speed").headline === sinceStart,
             `${traffic.answer("speed").headline}, not ${sinceStart}`);
-        write(uptime, "1.00 1.00\n");
+        Written.written(uptime, "1.00 1.00\n");
         Expect.expect("a first read's rate since startup says the uptime as last loaded",
             said() === started, `${said()} after ${started}`);
         traffic.reads = kept;

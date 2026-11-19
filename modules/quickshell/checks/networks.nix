@@ -156,6 +156,7 @@ in
         cp ${../tests/traffic-reads.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         cp ${../../../tests/lib/Until.qml} Until.qml
+        cp ${../../../tests/lib/Written.js} Written.js
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}
@@ -190,6 +191,42 @@ in
     timeout 60 ${qs} -p shell.qml
     touch $out
   '';
+
+  # Ethernet answers from a cable's files, the name servers and the time since
+  # boot as last loaded, waiting on none, and loads them again in the
+  # background as the launcher opens and each second while a cable's shown,
+  # telling the launcher once a load changes them; a cable's drawer is made
+  # only once its files land, a card gone or changed has its load let go, and a
+  # card whose load is given up isn't asked again at once
+  # (modules/quickshell/tests/network-docked-reads.qml), since docked with one
+  # card a step into Network read over forty files. The case writes its two
+  # cards' folders, resolv.conf and uptime, in folders made here. Its
+  # waits add up to 146 s at their bounds, each `within` once a use, so its
+  # timeout sits above them, and a wait that runs out says which it was.
+  ethernet-waits-on-no-cable-file =
+    pkgs.runCommandLocal "ethernet-waits-on-no-cable-file" { }
+      # Kept in Nix because each line copies a file Nix gives it beside the
+      # case, or sets what the shell runs it with.
+      ''
+        mkdir -p launcher runtime net etc sys/enp0s1/statistics sys/enp0s2 && chmod 700 runtime
+        ${copied [
+          "Daemon.qml"
+          "Words.qml"
+          "launcher/Networks.qml"
+          "launcher/Provider.qml"
+          "launcher/words.json"
+        ]}
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${../tests/network-docked-reads.qml} shell.qml
+        cp ${../../../tests/lib/Expect.js} Expect.js
+        cp ${../../../tests/lib/Until.qml} Until.qml
+        cp ${../../../tests/lib/Written.js} Written.js
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        ${shellFolderLint}
+        timeout 180 ${qs} -p shell.qml
+        touch $out
+      '';
 
   # Wi-Fi joins a network by the acts wifid serves on its row, asking each word
   # a join needs in the field before it's sent

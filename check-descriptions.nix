@@ -1014,6 +1014,35 @@
     telling the launcher once that load changes the way out, and nothing for a load that
     changes only the kernel's use counts; and loads them again as the links change
   '';
+  ethernet-waits-on-no-cable-file = ''
+    Ethernet answers from its cable's files, its errors, the name servers and the time since
+    boot as last loaded, though each has changed since, the uptime counted on by the clock;
+    before a cable's files land it says the link as the daemon told it, with none of the
+    cable's rows, says it's still reading, and makes no drawer for it, and a lease says its
+    server until the uptime lands; asked by a terminal after a gap it reads on until they land
+    again; the launcher opening loads them again and is told of an uptime stepped, though not of
+    one that agrees, and is told of a cable loaded changed though none is shown; a cable shown
+    loads again each second; a cable the daemon says has changed as it loads is said as it says,
+    the load begun before not kept; a card whose load is given up is said as the daemon tells
+    it, drawer and all, leaves nothing reading, and isn't loaded again at once, though waiting
+    its turn, but a minute on, then twice as long if held up again, to an hour, held though its
+    link changes or it's plugged in again, asked again once the clock steps back, and held up
+    no more once loaded; a fact is asked on the watch's tick, isn't asked again as it loads,
+    keeping its ask's tick, and is given up on the eighth of the watch's ticks after it, about
+    two seconds, not the seventh, alone beside facts just asked; one given up leaves nothing
+    reading and is held off as a card is, a minute, then twice as long, kept though it lands
+    late, and let go once asked again it lands in time; the watch keeps a fact that never lands
+    a second and a half, then gives it up; a name server changed makes the drawer again shut
+    and tells the launcher open; a card asked alone, and the facts asked alone, are still
+    reading; a card given up keeps the view still reading its file, isn't asked again while
+    that read hangs, and once it lands late destroys the view, keeps its hold and credits no
+    other card with it; a cable file asked is watched and asked once, its watch stopped as it
+    lands, and given up in flight by the watch about two seconds on when it never does, its
+    view kept and a new one made; each cable file is named once; a card whose hold is over is
+    asked for by the answer itself; a card gone is forgotten, though its load
+    was under way; a card named __proto__ has its own lease and neighbours; and one named
+    constructor no gateway
+  '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,
     though each file has changed since, a first rate over the uptime loaded; asked after a gap
