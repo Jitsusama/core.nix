@@ -2,8 +2,8 @@
   {
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
-    "due": "2026-11-19",
-    "due_why": "Its owner, the launcher's, fixes it by 2026-11-19 23:59 UTC: 9 of its 40 net runs from 15 Nov to 18 Nov 05:30 UTC named a listed subtest, so a rerun alone wouldn't take it off",
+    "due": "2026-11-21",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-21 17:00 UTC, moved from 2026-11-19 since it waits on Joel's 15:31 pivot of 19 Nov, which puts the interfaces to mycelium first: 9 of its 40 net runs from 15 Nov to 18 Nov 05:30 UTC named a listed subtest, so a rerun alone wouldn't take it off",
     "owner_pr": 3304,
     "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 042387bc604a",
