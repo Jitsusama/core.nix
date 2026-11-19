@@ -133,9 +133,9 @@ let
             # takes the host's word for which conversation each pi-spawner
             # serves only where this is the first option on the host's
             # command line, no option there opens the inspector, and the
-            # host's environment gives no NODE_OPTIONS (the unit clears
-            # it), LD_PRELOAD or LD_AUDIT. It refuses the word of a host
-            # started otherwise, and logs why.
+            # host's environment gives no NODE_OPTIONS, LD_PRELOAD,
+            # LD_AUDIT or LD_LIBRARY_PATH, which the unit clears below. It
+            # refuses the word of a host started otherwise, and logs why.
             "--disable-sigusr1"
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
@@ -204,12 +204,17 @@ let
         # Environment= and EnvironmentFile= a machine adds, so neither those
         # nor the user manager's environment hand node an option: --inspect
         # would open the inspector the flag above shuts, and --require or
-        # --import would run code as the host before pi does. A hosted
+        # --import would run code as the host before pi does. So do the
+        # loader's LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH, which would
+        # load a library's code into node as it starts. A hosted
         # conversation's commands, which inherit the host's environment,
-        # start without it too.
+        # start without them too.
         UnsetEnvironment = [
           "SSH_TPM_AUTH_SOCK"
           "NODE_OPTIONS"
+          "LD_PRELOAD"
+          "LD_AUDIT"
+          "LD_LIBRARY_PATH"
         ];
         # The host parks its conversations and keeps their records when told
         # to stop, so only its own failure restarts it; a crash's next start

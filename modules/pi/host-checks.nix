@@ -199,8 +199,10 @@ in
       # for which conversation a spawner serves; so node is told to ignore
       # it, nothing opens the inspector another way, and the unit clears
       # NODE_OPTIONS, so neither the user manager's environment nor a
-      # machine's hands node an option. A host started through env is held
-      # to it as one started plainly is.
+      # machine's hands node an option, and the loader's LD_PRELOAD,
+      # LD_AUDIT and LD_LIBRARY_PATH, which would load a library's code
+      # into it. A host started through env is held to it as one started
+      # plainly is.
       shutsItsInspector =
         unit: start:
         let
@@ -208,7 +210,12 @@ in
         in
         lib.hasPrefix "${start}${node} --disable-sigusr1 " execStart
         && !(opensInspector execStart)
-        && lib.elem "NODE_OPTIONS" (lib.toList (unit.Service.UnsetEnvironment or [ ]));
+        && lib.all (name: lib.elem name (lib.toList (unit.Service.UnsetEnvironment or [ ]))) [
+          "NODE_OPTIONS"
+          "LD_PRELOAD"
+          "LD_AUDIT"
+          "LD_LIBRARY_PATH"
+        ];
       starts =
         kind:
         let
@@ -281,7 +288,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS to the user manager, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS or the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH to the user manager, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         readsOptions
         && starts "attended"
