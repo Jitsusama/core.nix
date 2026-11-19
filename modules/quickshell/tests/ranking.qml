@@ -7,6 +7,7 @@
 import QtQuick
 import "Fading.js" as Fading
 import "Member.js" as Member
+import "Parts.js" as Parts
 import "Rank.js" as Rank
 
 QtObject {
@@ -70,6 +71,21 @@ QtObject {
             row("window:kitty:zsh", "zsh", { is: "window:1" }),
             row("window:kitty:zsh", "zsh", { is: "window:2" })
         ])), "window:kitty:zsh window:kitty:zsh");
+
+        // A collection's parts after its own rows, or before them where they
+        // lead, are each one row: a part it lists itself stands where it
+        // lists it, as Agents listed Spec twice, once among its rows and
+        // once as a part, and the cursor, found by key, left one for the
+        // other as the rows were laid out again (Joel, 2026-11-18).
+        const members = [row("agent:A", "A"), row("agents:spec", "Spec")];
+        const parts = [row("collection:runs", "Runs"), row("agents:spec", "Spec")];
+        expect("a part listed already is one row", keys(Parts.withParts(members, parts, false)),
+            "agent:A agents:spec collection:runs");
+        expect("parts that lead are one row each too",
+            keys(Parts.withParts(members, parts, true)),
+            "collection:runs agent:A agents:spec");
+        expect("rows with no key are never taken for each other",
+            Parts.withParts([row(undefined, "x")], [row(undefined, "y")], false).length, 2);
 
         // A program's own keys named as it is are one Neovim; a layer named
         // otherwise, or with no program beside it, stays.

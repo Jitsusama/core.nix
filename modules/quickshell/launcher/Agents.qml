@@ -703,8 +703,11 @@ Provider {
     // Said as every row it shows moves, the sessions' and those after
     // them, so a step held in Landed loses a landing as it's read; and
     // only while they're wanted, so a change nobody sees refreshes
-    // nothing. Wanted again, it says whatever moved meanwhile.
-    readonly property var everyRow: provider.wanted ? everything() : null
+    // nothing. Wanted again, it says whatever moved meanwhile. The parts
+    // it makes itself, Budgets and Spec, are said too, though listed as
+    // parts, so a new head or axes from their daemons shows where it's held.
+    readonly property var everyRow: provider.wanted
+        ? everything().concat([budgets, spec].filter(row => row !== null)) : null
     onEveryRowChanged: {
         if (everyRow !== null)
             changedTo(everyRow);
@@ -2454,7 +2457,9 @@ Provider {
     // wearing the daemon's glyph, and a step in its axes, each stepping in
     // to its readings (modules/cadence/Spec.qml). Agents' own row says
     // nothing of it, so it never competes with "needs you". None where
-    // cadence-spec hasn't answered or isn't on this machine.
+    // cadence-spec hasn't answered or isn't on this machine. Listed as its
+    // part, as Budgets is, and never among Agents' own rows as well, where
+    // its key twice over moved the cursor between them (2026-11-18).
     readonly property var spec: {
         if (!readNow)
             return madeBefore("spec", null);
@@ -2482,7 +2487,7 @@ Provider {
         // made ready from those (Provider.qml's looksThrough).
         const tree = provider.wanted || !opened() ? treeRows() : laidOut();
         const sessions = topServed && opened() && !provider.lookingThrough.now ? top.rows() : tree;
-        return sessions.concat([toReopen, landed, spec, recent, start, startNewWork]
+        return sessions.concat([toReopen, landed, recent, start, startNewWork]
             .filter(row => row !== null));
     }
 
