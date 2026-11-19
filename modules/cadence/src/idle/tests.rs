@@ -334,8 +334,8 @@ fn one_with_a_next_step_is_woken_itself_at_twenty_minutes_once() {
         "8C7D8C31: this session has sat idle 0 h 20 min with a next step of its own, \
          \"Merge #12 once its gate passes\": its last turn ended at t98800. Take it up now. \
          If it waits on someone or on its work, park saying on what; if it is another's, \
-         hand it to them by name. Answer this with re, saying which. VP50PC hears of it at \
-         two hours idle."
+         hand it to them by name. No answer is needed: cadence sees the turn or the park, and \
+         an answer to CADENCE reaches no peer. VP50PC hears of it at two hours idle."
     );
     assert!(
         due(&[with_next(WAKE_AFTER)], &mut told, NOW + 600, clock).is_empty(),

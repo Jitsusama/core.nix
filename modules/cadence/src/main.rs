@@ -315,10 +315,14 @@ fn run(args: &Args) -> io::Result<()> {
         };
         // An answer ends cadence's watch, so it's asked for once handled;
         // a switch outlasting the twenty minutes says why it isn't yet.
+        // Cadence reads it from what the asked sends, whoever it goes to,
+        // so the mesh's word that CADENCE reaches no peer is said not to
+        // matter, lest the answer go to another session instead.
         let text = match question.to {
             To::Watcher | To::Switcher => format!(
                 "{} Answer with re set to this question once handled, or to say why it can't be \
-                 yet: cadence looks for that every five minutes.",
+                 yet: cadence looks for that every five minutes. Send it to CADENCE: the \
+                 mesh says that reaches no peer, but cadence reads it from what you send.",
                 question.text
             ),
             To::Orchestrator => question.text.clone(),
