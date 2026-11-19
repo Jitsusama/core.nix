@@ -1379,12 +1379,13 @@
     with the declared row that has the kind, strips each page that asks after its skip link, names
     each document loading a script file of its own rather than the kit's, loads the kit's keys and
     switch and the theme and its fonts from the sites' shared copy, takes away the scripts it used
-    to copy, draws its mark in each look's tint or the other look's where one is missing, takes its grounds and tints from the theme it's handed rather than a kit/ among
-    the documents, says a theme that isn't there and fails on one that isn't a stylesheet, leaves
-    out and says a tint or ground that isn't a colour, leaves out and says a recorded row whose path
-    leads off the sites however a browser would read it and fails on a declared one before writing
-    anything, keeps the last build for a record holding NaN, an infinity or a lone surrogate, and
-    changes nothing on a second run
+    to copy, draws its mark in each look's tint or the other look's where one is missing, takes its
+    grounds and tints from the theme it's handed rather than a kit/ among the documents, says a
+    theme that isn't there and fails on one that isn't a stylesheet, leaves out and says a tint or
+    ground that isn't a colour, leaves out and says a recorded row whose path leads off the sites
+    however a browser would read it and fails on a declared one before writing anything, keeps the
+    last build for a record holding NaN, an infinity or a lone surrogate, and changes nothing on a
+    second run
   '';
   homes-probe-reads-as-the-reader = ''
     the web-design skill's homes probe, in headless Chromium over small sites of its own, learns a

@@ -230,7 +230,8 @@
     );
   const wontRead = (said) =>
     `rows.json's taken holds ${JSON.stringify(said)}: a list of claims, `
-    + `{"kind", "from", "to"}, as the home writes them`;
+    + `{"kind", "from", "to"}, as the home writes them: read `
+    + "`journalctl --user -u local-sites-home`";
   if (!Array.isArray(took)) {
     missing.push(wontRead(took));
   }
@@ -247,7 +248,7 @@
     missing.push(
       `${JSON.stringify(each.from)} in sites.json claims ${JSON.stringify(each.kind)}, which `
         + `home.nix declares ${JSON.stringify(each.to)} home to, so the home took the claim: `
-        + "drop it from sites.json, or move the kind's home in home.nix",
+        + "drop it from sites.json, since a declared home is moved only in home.nix",
     );
   }
   for (const site of sites.sites) {

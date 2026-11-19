@@ -284,8 +284,8 @@ def taken(path: str, kind: str) -> str:
     """Say what the probe says of `path`'s claim on `kind`, which the home took for system/."""
     return (
         f'"{path}" in sites.json claims "{kind}", which home.nix declares "system/" home to, '
-        "so the home took the claim: drop it from sites.json, or move the kind's home in "
-        "home.nix"
+        "so the home took the claim: drop it from sites.json, since a declared home is moved "
+        "only in home.nix"
     )
 
 
@@ -314,10 +314,34 @@ def test_a_taken_kinds_things_are_not_blamed_twice(browser: Browser, tmp_path: P
     assert found == [taken("./notes", "machine")]
 
 
+def test_a_kind_its_built_row_still_gives_is_checked(browser: Browser, tmp_path: Path) -> None:
+    """A taken kind the built row still gives isn't excused: its things are read as ever."""
+    notes = {"path": "notes/", "homes": ["note", "machine"]}
+    rows = json.dumps({"sites": [CODE, notes], "taken": [TOOK_MACHINE]})
+    things = [
+        {"kind": "note", "name": "diary", "address": "notes/#note=diary"},
+        {"kind": "machine", "name": "studio", "address": "elsewhere/#machine=studio"},
+    ]
+    found = probed(browser, tmp_path, [CODE, notes], NOTHING, rows, code=[NOTEBOOK], notes=things)
+    assert found == [
+        taken("./notes", "machine"),
+        (
+            'notes/homes.json gives studio "elsewhere/#machine=studio": an address is notes/ '
+            "and a fragment (#), in plain bytes"
+        ),
+    ]
+
+
 def test_a_claim_since_dropped_is_not_named(browser: Browser, tmp_path: Path) -> None:
-    """A claim the home took that sites.json no longer makes waits on the next build unnamed."""
-    rows = json.dumps({"sites": [SYSTEM, CODE], "taken": [TOOK_MACHINE]})
-    assert probed(browser, tmp_path, [CODE], NOTHING, rows, code=[NOTEBOOK]) == []
+    """A claim the home took that sites.json no longer makes waits on the next build unnamed.
+
+    The row is still there, home to its other kind.
+    """
+    notes = {"path": "notes/", "homes": ["note"]}
+    rows = json.dumps({"sites": [SYSTEM, CODE, notes], "taken": [TOOK_MACHINE]})
+    diary = {"kind": "note", "name": "diary", "address": "notes/#note=diary"}
+    found = probed(browser, tmp_path, [CODE, notes], NOTHING, rows, code=[NOTEBOOK], notes=[diary])
+    assert found == []
 
 
 def test_only_what_the_home_says_it_took_is_named(browser: Browser, tmp_path: Path) -> None:
@@ -350,7 +374,8 @@ def test_what_the_home_took_that_wont_read_is_named(
     assert probed(browser, tmp_path, [CODE], NOTHING, rows, code=[NOTEBOOK]) == [
         (
             f"rows.json's taken holds {json.dumps(said, separators=(',', ':'))}: a list of "
-            'claims, {"kind", "from", "to"}, as the home writes them'
+            'claims, {"kind", "from", "to"}, as the home writes them: read '
+            "`journalctl --user -u local-sites-home`"
         ),
     ]
 
