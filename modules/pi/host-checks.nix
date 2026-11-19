@@ -321,9 +321,11 @@ in
         # realm says.
         && lib.elem ''"TPM2_PKCS11_STORE=/var/empty"'' environment
         && lib.elem ''"TSS2_FAPICONF=/var/empty/fapi-config.json"'' environment
-        && lib.all (
-          name: lib.elem ''"${name}=device:/var/empty/tpm"'' environment
-        ) [ "TPM2TOOLS_TCTI" "TPM2_PKCS11_TCTI" "TSS2_TCTI" ];
+        && lib.all (name: lib.elem ''"${name}=device:/var/empty/tpm"'' environment) [
+          "TPM2TOOLS_TCTI"
+          "TPM2_PKCS11_TCTI"
+          "TSS2_TCTI"
+        ];
       # A realm naming folders runs node through env, which puts them before
       # the PATH systemd expands, quoted so it stays one word, with a folder's
       # % and $ doubled so systemd takes them as they are.
