@@ -10255,7 +10255,10 @@ Scope {
     // being timed came by, said in its line.
     property string openInto: ""
     property string openChord: ""
-    // A place whose rows a share hides is never kept (Arming.keepsPlace).
+    // A place that marks itself never kept, as asks do, isn't kept
+    // (Arming.keepsPlace); every other place is, and while the screen may
+    // be shared its kept rows are never drawn (Wanted.keptPlaceListed), nor
+    // left drawn once a share begins as it opens (sharedMidOpening).
     function keepPlace(name) {
         if (held.length === 0
             || !Arming.keepsPlace(collections.find(one => one.settings.name === name)))
@@ -11048,7 +11051,30 @@ Scope {
     // Whether another program may be seeing the screen, as Asks and Copies
     // hide by (launcher/Shared.js), failing closed until niri has said.
     function screenShared() {
-        return Shared.hidden(Niri.castsHeard, Niri.casts, Recorder.windowSession);
+        return screenMayBeShared;
+    }
+    readonly property bool screenMayBeShared: Shared.hidden(Niri.castsHeard, Niri.casts,
+        Recorder.windowSession)
+    onScreenMayBeSharedChanged: sharedMidOpening()
+    // A share begun while the card shows what it kept, before its fill or
+    // before home is found after it, would be shown those rows, made before
+    // it, until niri presents the kept frame, up to half a second on
+    // (fillUnpresented), so the opening is filled in, or home found, at once
+    // (Wanted.sharedMidOpening).
+    function sharedMidOpening() {
+        const how = Wanted.sharedMidOpening({ shared: screenMayBeShared,
+            unfilled: opening && !open, finding: fillFinding });
+        if (how === "")
+            return;
+        console.info(`launcher: ${openInto === "" ? "home" : openInto} filled in at once, as `
+            + sharedWhy());
+        if (how === "find") {
+            fillFound("share");
+            return;
+        }
+        fillPresented = false;
+        fillUnpresented.stop();
+        filled("share");
     }
     // Why it may be, for the journal: a cast seen, or niri yet to say.
     function sharedWhy() {

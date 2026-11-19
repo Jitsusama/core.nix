@@ -174,6 +174,23 @@ function keptPlaceListed(place) {
     return opensKept(place.shared) ? "kept" : "";
 }
 
+// What a share begun as an opening shows what it kept does (Launcher.qml's
+// sharedMidOpening): "fill" fills it in at once, while it's yet to be
+// (`unfilled`), and "find" finds home at once, while it's yet to be found
+// after the fill (`finding`), so rows kept from before the share go as it
+// begins, not as niri presents the kept frame, up to half a second on;
+// "" leaves it be, with nothing under way or nothing that may see the
+// screen (`shared`, Shared.js's hidden). Each source hides its own rows.
+function sharedMidOpening(opening) {
+    if (opensKept(opening.shared)) {
+        return "";
+    }
+    if (opening.unfilled === true) {
+        return "fill";
+    }
+    return opening.finding === true ? "find" : "";
+}
+
 // Whether that slice, or a key, a click or a chord run before it, searches
 // home again rather than only joining: only where the open would have
 // found home, and never for a chord, which steps away from it at once, or
