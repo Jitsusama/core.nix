@@ -66,14 +66,14 @@ const LONG_GAP: Duration = Duration::from_secs(3);
 const HELD: Duration = Duration::from_millis(300);
 /// How long the origin holds `/reset-once-held` the first time before it
 /// resets it, long past the twenty requests that stand a relay down.
-const HELD_THEN_RESET: Duration = Duration::from_secs(4);
+const HELD_THEN_RESET: Duration = Duration::from_secs(8);
 
 /// How long `/cut` waits after its first half before its connection falls,
 /// and `/broken` before its answer breaks, so the relay has the half first.
 const CUT_AFTER: Duration = Duration::from_millis(100);
 /// How long `/cut-late` waits after its first half before its connection
 /// falls, long past a stand-down of a second and the return after it.
-const CUT_LATE: Duration = Duration::from_secs(6);
+const CUT_LATE: Duration = Duration::from_secs(10);
 /// How long the tests wait for the relay to listen.
 const LISTENS_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay is given to hear the origin's goodbye on a
@@ -1178,7 +1178,7 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--idle-exit", "1"],
+        &["--idle-exit", "1", "--stand-down-for", "3"],
     );
 
     let answer = asked_too_much(&relay.socket, &host).await;
@@ -1195,6 +1195,15 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         "another origin's body too large was answered {:?}",
         String::from_utf8_lossy(&answer)
     );
+    // And standing down, the 421 too, as the origin asked directly may
+    // take what the relay won't.
+    fail_past_its_share(&relay.socket, &host).await;
+    let answer = asked_too_much(&relay.socket, &host).await;
+    assert!(
+        answer.starts_with(b"HTTP/1.1 421"),
+        "a body too large while it stood down was answered {:?}",
+        String::from_utf8_lossy(&answer)
+    );
 
     assert!(
         relay.left_within(LISTENS_WITHIN).is_some(),
@@ -1208,7 +1217,8 @@ async fn a_body_over_64_mib_is_a_413_and_goes_nowhere() {
         "a body too large went unsaid, or another origin's was said as one: {said}"
     );
     assert!(
-        said.contains("2 asked, 2 refused, 0 failed"),
+        said.contains("23 asked, 3 refused, 17 failed")
+            && said.contains("; 1 refused as it stood down"),
         "a body too large wasn't counted as refused: {said}"
     );
 }
@@ -1426,7 +1436,7 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
         &format!("https://{host}"),
         &origin.roots,
         1,
-        &["--stand-down-for", "8"],
+        &["--stand-down-for", "12"],
     );
 
     // Taken before the stand-down, and held by the origin through its
@@ -1457,12 +1467,12 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
         "the held request, sent once more"
     );
     assert!(
-        stood_down.elapsed() < Duration::from_secs(7),
+        stood_down.elapsed() < Duration::from_secs(11),
         "the held request was answered after the stand-down, so proves nothing"
     );
     let opened_meanwhile = got.headers.get("x-origin-connection").cloned();
 
-    tokio::time::sleep_until((stood_down + Duration::from_secs(9)).into()).await;
+    tokio::time::sleep_until((stood_down + Duration::from_secs(13)).into()).await;
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
     assert_eq!(
         got.status,
@@ -1481,7 +1491,7 @@ async fn taking_requests_again_it_retires_a_connection_opened_while_it_stood_dow
     let said = relay.said();
     // The requests reset to stand it down go again too, but before it
     // does, so the last sent again is the held request.
-    let stood = said.find("so it stands down for 8 s");
+    let stood = said.find("so it stands down for 12 s");
     let again = said.rfind("is sent again on connection");
     assert!(
         stood.is_some() && again.is_some() && stood < again,

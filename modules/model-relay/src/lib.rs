@@ -1151,17 +1151,19 @@ impl Relay {
                 "this relay is leaving, so go directly\n",
             );
         }
+        // The sleep looked for first, as a sleep forgets a stand-down, and
+        // the stand-down's 421 said whatever came of the body too, as the
+        // origin asked directly may take one the relay won't.
+        self.retire_after_a_sleep();
+        if let Some(standing_down) = self.standing_down() {
+            return standing_down;
+        }
         let whole = match read {
             Ok(whole) => whole,
             Err(unread) => return self.unread(unread),
         };
         if let Err(refused) = self.pointed(&mut parts) {
             return *refused;
-        }
-        // The sleep looked for first, as a sleep forgets a stand-down.
-        self.retire_after_a_sleep();
-        if let Some(standing_down) = self.standing_down() {
-            return standing_down;
         }
         let (answer, on_the_way) = match self.carry(&parts, &whole).await {
             Ok(answered) => answered,
@@ -1185,14 +1187,15 @@ impl Relay {
         match self.standing.taking(Instant::now()) {
             Taking::Yes => None,
             Taking::Again(lasted) => {
+                // Requests it had taken before it stood down may have
+                // opened connections since, on the path it stood down from,
+                // so they go before the line, which may wait on the journal.
+                self.retire_every();
                 eprintln!(
                     "model-relay: it stood down {} s, so it takes requests again, on \
                      connections opened afresh",
                     lasted.as_secs()
                 );
-                // Requests it had taken before it stood down may have
-                // opened connections since, on the path it stood down from.
-                self.retire_every();
                 None
             }
             Taking::No(more) => {
