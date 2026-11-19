@@ -56,13 +56,34 @@ impl Judged {
     }
 }
 
-/// How far Slack has been read, as kept in `state`; none when nothing is
-/// kept or what is can't be read.
+/// Why a reader starts from `fresh` rather than from what was kept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Afresh {
+    /// Nothing was kept: a first start.
+    Nothing,
+    /// What was kept couldn't be read, so none of it is used.
+    Unreadable,
+    /// What was kept starts later than `fresh`, or at no time at all, so
+    /// it would miss what was said since; the keys judged are kept. A
+    /// clock set back since it was kept leaves one.
+    Ahead,
+}
+
+/// How far Slack has been read, as kept in `state`, and why it starts
+/// from `fresh`, in seconds, when it does.
 #[must_use]
-pub fn read(state: &Path) -> Option<Judged> {
-    let kept = kept(state)?;
-    let since = kept.get("since").and_then(Value::as_str)?.to_owned();
-    let keys = kept
+pub fn read(state: &Path, fresh: u64) -> (Judged, Option<Afresh>) {
+    let afresh = |why| (Judged::starting(fresh), Some(why));
+    let Ok(text) = std::fs::read_to_string(state.join(FILE)) else {
+        return afresh(Afresh::Nothing);
+    };
+    let Some((since, keys)) = serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|kept| Some((kept.get("since")?.as_str()?.to_owned(), kept)))
+    else {
+        return afresh(Afresh::Unreadable);
+    };
+    let keys = keys
         .get("keys")
         .and_then(Value::as_array)
         .into_iter()
@@ -70,7 +91,17 @@ pub fn read(state: &Path) -> Option<Judged> {
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect();
-    Some(Judged { since, keys })
+    let starting = Judged::starting(fresh);
+    match micros(&since) {
+        Some(at) if Some(at) <= micros(&starting.since) => (Judged { since, keys }, None),
+        _ => (
+            Judged {
+                since: starting.since,
+                keys,
+            },
+            Some(Afresh::Ahead),
+        ),
+    }
 }
 
 /// When Slack was last read whole, in milliseconds, so a quiet reader is
