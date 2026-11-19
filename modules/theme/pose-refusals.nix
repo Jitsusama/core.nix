@@ -5,70 +5,66 @@
 {
   lib,
   poseFaults,
+  posesOf,
   walkRead,
 }:
 let
   walkIn = file: (walkRead file).walk;
-  # The cat's sitting and strides as they're drawn today, copied, so a
-  # redrawn cat fails its own pose check rather than these plants, which
-  # are made from them.
-  theirs =
-    let
-      glyphs = import ./glyphs.nix { inherit lib; };
-    in
-    glyphs
-    // lib.mapAttrs (name: pixels: glyphs.${name} // { inherit pixels; }) {
-      nothingHere = [
-        "#...#..."
-        "#####..."
-        "#.#.#..."
-        "#####..."
-        ".###...."
-        "#####..#"
-        "#####..#"
-        "#######."
-      ];
-      walkingA = [
-        ".......#"
-        "#.#...#."
-        "###...#."
-        "#.#####."
-        "#######."
-        ".######."
-        ".#...#.."
-        "#.#.#.#."
-      ];
-      walkingB = [
-        "......#."
-        "#.#...#."
-        "###...#."
-        "#.#####."
-        "#######."
-        ".######."
-        ".#...#.."
-        "##..##.."
-      ];
-      walkingC = [
-        "......#."
-        "#.#...#."
-        "###...#."
-        "#.#####."
-        "#######."
-        ".######."
-        ".#...#.."
-        "##..#.#."
-      ];
-      walkingD = [
-        ".......#"
-        "#.#...#."
-        "###...#."
-        "#.#####."
-        "#######."
-        ".######."
-        ".#...#.."
-        "#.#.##.."
-      ];
-    };
+  # The cat's sitting and strides as they're drawn today, copied and read
+  # from nothing else, so a cat redrawn or renamed fails its own pose check
+  # rather than these plants, which are made from them.
+  theirs = lib.mapAttrs (_: pixels: { inherit pixels; }) {
+    nothingHere = [
+      "#...#..."
+      "#####..."
+      "#.#.#..."
+      "#####..."
+      ".###...."
+      "#####..#"
+      "#####..#"
+      "#######."
+    ];
+    walkingA = [
+      ".......#"
+      "#.#...#."
+      "###...#."
+      "#.#####."
+      "#######."
+      ".######."
+      ".#...#.."
+      "#.#.#.#."
+    ];
+    walkingB = [
+      "......#."
+      "#.#...#."
+      "###...#."
+      "#.#####."
+      "#######."
+      ".######."
+      ".#...#.."
+      "##..##.."
+    ];
+    walkingC = [
+      "......#."
+      "#.#...#."
+      "###...#."
+      "#.#####."
+      "#######."
+      ".######."
+      ".#...#.."
+      "##..#.#."
+    ];
+    walkingD = [
+      ".......#"
+      "#.#...#."
+      "###...#."
+      "#.#####."
+      "#######."
+      ".######."
+      ".#...#.."
+      "#.#.##.."
+    ];
+  };
   # The cat's walk as it's drawn, so the planted poses are held to it
   # whether or not its code is read.
   drawnWalk = [
@@ -113,8 +109,8 @@ let
     # row's last two columns, which no body rule reads.
     tippedC.pixels = flipped "walkingC" 0 7;
     # Stride A with one foot moved, either side of the feet's middle,
-    # and on an odd width with its middle column's moved, the hind
-    # half's.
+    # and on an odd width with its middle column's or its last moved,
+    # both the hind half's.
     foreFoot.pixels = flipped "walkingA" 7 3;
     hindFoot.pixels = flipped "walkingA" 7 4;
     # Stride A's feet stepping fore, hind, fore, hind and fore again,
@@ -125,6 +121,7 @@ let
     wrapE.pixels = feet "#####.#.";
     oddA.pixels = odd;
     oddB.pixels = lib.init odd ++ [ (flip 3 (lib.last odd)) ];
+    oddC.pixels = lib.init odd ++ [ (flip 6 (lib.last odd)) ];
     # The sitting with a pixel joined to the rest by a corner alone.
     cornered.pixels = lib.imap0 (y: row: if y == 4 then flip 5 row else row) rows;
     # A sitting of 20, and 3 more or fewer, 15% on the line, or 4; and
@@ -197,7 +194,7 @@ let
   # more held and one past it refused, and on one of 13, a pose 15.4%
   # more refused, as no 16% would; a misnamed sitting said undrawn,
   # rather than every pose unlike it; and a stride no pose lists still
-  # held to the stray rule.
+  # held to the stray and size rules.
   sized = poseFaults {
     sitting = "small";
     poses = [
@@ -227,7 +224,10 @@ let
   unlisted = poseFaults {
     sitting = "nothingHere";
     poses = [ "nothingHere" ];
-    strides = drawnWalk ++ [ "strayed" ];
+    strides = drawnWalk ++ [
+      "strayed"
+      "shrunk"
+    ];
     glyphs = planted;
   };
   edges = [
@@ -257,8 +257,10 @@ let
     }
     {
       faults = unlisted;
-      reason = "a stride no pose lists held to the stray rule";
-      holds = lib.hasInfix ''stray ["strayed"]'' unlisted.said;
+      reason = "a stride no pose lists held to the stray and size rules";
+      holds =
+        lib.hasInfix ''stray ["strayed"]'' unlisted.said
+        && builtins.match ''.*unlike \[[^]]*"shrunk".*'' unlisted.said != null;
     }
     {
       faults = plantedFaults "cornered";
@@ -271,18 +273,72 @@ let
       holds = (said tipped).ok;
     }
   ];
+  # A sitting, a stride and marks drawn as either's glyph or named for
+  # the animal are its poses, and no other mark, nor one drawn as no
+  # glyph but a sitting drawn so.
+  markedAs = glyph: { inherit glyph; };
+  marks = {
+    sat = markedAs "s";
+    strode = markedAs "w";
+    asSitting = markedAs "s";
+    asStride = markedAs "w";
+    petNamed = markedAs "x";
+    other = markedAs "x";
+    bare = { };
+  };
+  picked =
+    sitting: named:
+    posesOf {
+      inherit sitting;
+      strides = [ "strode" ];
+      glyphs = marks;
+      inherit named;
+    };
+  picks = [
+    {
+      found = picked "sat" "pet";
+      wanted = [
+        "asSitting"
+        "asStride"
+        "petNamed"
+        "sat"
+        "strode"
+      ];
+    }
+    {
+      found = picked "sat" null;
+      wanted = [
+        "asSitting"
+        "asStride"
+        "sat"
+        "strode"
+      ];
+    }
+    {
+      found = picked "bare" null;
+      wanted = [
+        "asStride"
+        "bare"
+        "strode"
+      ];
+    }
+  ];
   tipped = [
     "walkingA"
     "tippedC"
     "walkingB"
     "walkingD"
   ];
+  # Code read as no walk is judged by the reader's own faults alone, so a
+  # fault in the pose rules isn't blamed on it.
   refused =
     walk:
-    !(said walk.strides).ok
-    && lib.hasInfix walk.reason (said walk.strides).said
-    && (!(walk ? wanted) || lib.elem walk.wanted walk.faults)
-    && (!(walk.first or false) || lib.head walk.faults == walk.wanted);
+    if walk ? wanted then
+      walk.strides == [ ]
+      && lib.elem walk.wanted walk.faults
+      && (!(walk.first or false) || lib.head walk.faults == walk.wanted)
+    else
+      !(said walk.strides).ok && lib.hasInfix walk.reason (said walk.strides).said;
   # The cat's two declarations, as its code has them.
   drawnSaid = ''["walkingA", "walkingC", "walkingB", "walkingD"]'';
   walksSaid = walksOf drawnSaid;
@@ -295,7 +351,7 @@ let
   # Code read as no walk, and the rule it's refused by.
   walkedOf = wanted: ways: {
     strides = walkIn ways;
-    reason = "no strides read from here";
+    reason = "no walk read";
     inherit wanted;
     inherit (walkRead ways) faults;
   };
@@ -428,6 +484,13 @@ let
       ];
       reason = "never stepping [\"fore\"]";
     }
+    {
+      strides = [
+        "oddA"
+        "oddC"
+      ];
+      reason = "never stepping [\"fore\"]";
+    }
   ];
   codeWalks = [
     # A copy commented out above is no walk of the cat's: the one
@@ -520,6 +583,9 @@ in
   poses =
     unrefusedOf strideWalks
     ++ map (one: "${one.reason}, said ${(plantedFaults one.pose).said}") unshown
-    ++ map (one: "${one.reason}, said ${one.faults.said}") (lib.filter (one: !one.holds) edges);
+    ++ map (one: "${one.reason}, said ${one.faults.said}") (lib.filter (one: !one.holds) edges)
+    ++ map (one: "poses ${builtins.toJSON one.wanted}, found ${builtins.toJSON one.found}") (
+      lib.filter (one: one.found != one.wanted) picks
+    );
   code = unrefusedOf codeWalks;
 }

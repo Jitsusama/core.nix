@@ -195,6 +195,33 @@ let
     in
     holds check "The ${animal}'s poses must read as one ${animal}: ${found.said}." found.ok;
 
+  # An animal's poses: its sitting and every mark drawn as its sitting's or
+  # a stride's glyph, or named for it when it has a name of its own, so a
+  # pose added for it can't skip its rules, nor every pose but its sitting
+  # when the sitting's glyph alone changes.
+  posesOf =
+    {
+      sitting,
+      strides,
+      named ? null,
+      glyphs ? import ./glyphs.nix { inherit lib; },
+    }:
+    let
+      its = lib.filter (glyph: glyph != null) (
+        map (name: glyphs.${name}.glyph or null) ([ sitting ] ++ strides)
+      );
+    in
+    lib.attrNames (
+      lib.filterAttrs (
+        name: mark:
+        let
+          drawnAs = lib.elem (mark.glyph or null) its;
+          namedFor = named != null && lib.hasPrefix named name;
+        in
+        name == sitting || drawnAs || namedFor
+      ) glyphs
+    );
+
   # The walk the cat's code takes, read from the code that walks it, so its
   # check proves the walk that's drawn rather than a copy (walk-read.nix
   # says how, and what it can't see).
@@ -214,7 +241,14 @@ let
   };
   # The pose rules, and the reader of the cat's walk, shown refusing what
   # they're for as well as passing, for the two checks that say so.
-  refusals = import ./pose-refusals.nix { inherit lib poseFaults walkRead; };
+  refusals = import ./pose-refusals.nix {
+    inherit
+      lib
+      poseFaults
+      posesOf
+      walkRead
+      ;
+  };
 
 in
 {
@@ -361,48 +395,29 @@ in
       crooked == [ ] && missing == [ ]
     );
 
-  # Every pose of the margin's cat reads as the same cat (readsAsOne). A
-  # leap's rise, tuck and fall are drawn, so every fall can take the last.
+  # Every pose of the margin's cat reads as the same cat (readsAsOne), its
+  # poses all drawn as its sitting's glyph or its paw (posesOf). A leap's
+  # rise, tuck and fall are drawn, so every fall can take the last.
   every-cat-pose-reads-as-one-cat = readsAsOne {
     check = "every-cat-pose-reads-as-one-cat";
     animal = "cat";
     sitting = "nothingHere";
     strides = catWalk;
     walkedFrom = catWalkedFrom;
-    poses = [
-      "batting"
-      "blinking"
-      "curled"
-      "earFlick"
-      "falling"
-      "grooming"
-      "leaning"
-      "leaping"
-      "lookingAbout"
-      "nothingHere"
-      "pouncing"
-      "scruffed"
-      "stretching"
-      "tailSwish"
-      "tucked"
-      "walkingA"
-      "walkingB"
-      "walkingC"
-      "walkingD"
-    ];
+    poses = posesOf {
+      sitting = "nothingHere";
+      strides = catWalk;
+    };
   };
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
-  # held to its own sitting, as the cat's are to the cat's. Its poses are
-  # every mark named for it or drawn as its sitting's glyph, so a pose
-  # added for it can't skip these rules, nor every pose but the sitting
-  # when the sitting's glyph alone changes. Its strides are drawn for the cat's walk, so they're
-  # the cat's, read from the cat's code and each named for the puppy, as
-  # runningA would be puppyRunningA, rather than a copy that could drift.
+  # held to its own sitting, as the cat's are to the cat's, its poses every
+  # mark named for it as well (posesOf). Its strides are drawn for the
+  # cat's walk, so they're the cat's, read from the cat's code and each
+  # named for the puppy, as runningA would be puppyRunningA, rather than a
+  # copy that could drift.
   every-puppy-pose-reads-as-one-puppy =
     let
-      glyphs = import ./glyphs.nix { inherit lib; };
-      dog = glyphs.puppySitting.glyph or null;
       named =
         pose:
         "puppy"
@@ -415,11 +430,11 @@ in
       sitting = "puppySitting";
       walkedFrom = catWalkedFrom;
       strides = map named catWalk;
-      poses = lib.attrNames (
-        lib.filterAttrs (
-          name: mark: lib.hasPrefix "puppy" name || dog != null && (mark.glyph or null) == dog
-        ) glyphs
-      );
+      poses = posesOf {
+        sitting = "puppySitting";
+        strides = map named catWalk;
+        named = "puppy";
+      };
     };
 
   # The pose rules refuse what they're for: the cat's own strides out of
@@ -428,13 +443,14 @@ in
   # undrawn, and none at all, each by its reason; a stride planted with
   # its body moved on its top row, the row below, its middle or the row
   # above its feet, and held with only its tail's tip moved; a foot moved
-  # either side of the feet's middle, on an odd width too; a pose planted
-  # with a pixel two cells from the rest refused, and one joined by a
-  # corner held; on the cat's sitting of 37, just under 15% fewer or more
-  # held and just over refused, on one of 20, 15% held and past it
-  # refused, and on one of 13, 2 more or fewer refused; a sitting misnamed
-  # said undrawn; and a stride no pose lists held to the stray rule; all
-  # planted on copies of the cat's drawings (refusals).
+  # either side of the feet's middle, on an odd width in its middle and
+  # its last column; a pose planted with a pixel two cells from the rest
+  # refused, and one joined by a corner held; on the cat's sitting of 37,
+  # just under 15% fewer or more held and just over refused, on one of 20,
+  # 15% held and past it refused, and on one of 13, 2 more or fewer
+  # refused; a sitting misnamed said undrawn; and a stride no pose lists held to the stray and size
+  # rules; the cat's own planted on copies of its drawings; and an
+  # animal's poses found by its glyphs and its name (refusals).
   every-pose-fault-is-refused =
     let
       unrefused = builtins.toJSON refusals.poses;
