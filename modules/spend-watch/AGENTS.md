@@ -105,7 +105,11 @@ feed speaks.
   and a change back within that time takes both away, since a
   provider's figure can flicker for one reading. A fall stops being an
   alert once the cap is back, and its finding clears at once, as a
-  source's health does. `src/caps.rs` `held`.
+  source's health does. `src/caps.rs` `held`. A raise whose end the feed
+  can't say, over a fallback already spent, is warned while it stands,
+  since the cap refuses the moment it ends and no day can be warned
+  ahead of; the clock's middle path says when the allowance is reached at
+  this pace, and the warning and the near one carry it.
 - **Detectors.** Each threshold is set for a stated false-alarm rate. A
   burn is a minute CUSUM against twice a working hour's rate (the median
   hour of eight weeks that spent a dollar) at any time of day, since

@@ -239,7 +239,11 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
     if over {
         return vec![over_finding(picture, view, allowance, &counted, ask)];
     }
-    let mut out = Vec::new();
+    // An end nobody knows needs no forecast to be warned of.
+    let unending = unending_finding(picture, view, view.clock.as_ref(), allowance, ask.clone());
+    // An end nobody knows is said once, by the unknown-end warning.
+    let unwarned = unending.is_none();
+    let mut out: Vec<Finding> = unending.into_iter().collect();
     let Some(clock) = &view.clock else {
         return out;
     };
@@ -280,7 +284,15 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
             "caps",
             Severity::Warning,
             format!("near {}", allowance_named(cap)),
-            format!("{} of {}{counted}.", whole(view.spent), whole(allowance)),
+            format!(
+                "{} of {}{counted}.{}",
+                whole(view.spent),
+                whole(allowance),
+                reach(picture, view, clock).map_or_else(String::new, |at| format!(
+                    " At this pace it's reached by {}.",
+                    dated(&picture.zone, at)
+                ))
+            ),
         );
         f.badge = percent(share);
         f.note = format!("{} of {}", whole(view.spent), whole(allowance));
@@ -289,8 +301,94 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
         f.action.clone_from(&ask);
         out.push(f);
     }
-    out.extend(ending_finding(picture, view, clock, allowance, ask));
+    if unwarned {
+        out.extend(ending_finding(picture, view, clock, allowance, ask));
+    }
     out
+}
+
+/// When the allowance is reached at this pace, unless that's past a known
+/// end still ahead, when the allowance will be another figure.
+fn reach(picture: &Picture, view: &CapView, clock: &crate::caps::Clock) -> Option<f64> {
+    let ends = view
+        .ends_at
+        .filter(|end| view.cap.ends_known && *end > picture.now);
+    clock
+        .reaches_at
+        .filter(|at| ends.is_none_or(|end| *at <= end))
+}
+
+/// An override whose end the feed can't say, warned while the spend is
+/// already over what follows it: the cap refuses the moment it ends, and
+/// nothing can warn ahead of a day nobody knows. On 19 November the
+/// proxy's weekly cap stood at a $40,000 raise, ending who knew when,
+/// over a $4,000 fallback, with $33,671 spent; on 31 October and 2
+/// November the cap refused 107 requests. A guessed end is no end known,
+/// and nor is one already past while the override still stands.
+fn unending_finding(
+    picture: &Picture,
+    view: &CapView,
+    clock: Option<&crate::caps::Clock>,
+    allowance: f64,
+    ask: Option<Action>,
+) -> Option<Finding> {
+    let fallback = view.cap.fallback?;
+    let now = picture.now;
+    let ahead = view.ends_at.filter(|end| *end > now);
+    if (view.cap.ends_known && ahead.is_some()) || view.spent < fallback {
+        return None;
+    }
+    // Why the end it gives, if any, isn't one to warn ahead of.
+    // A known end past while the feed still reads the override may be one
+    // the feed hasn't run since, so the cap may already refuse.
+    let given = match (view.cap.ends, ahead, view.cap.ends_known) {
+        (Some(day), Some(_), _) => format!(" (its end, {}, is a guess)", Zone::day_name(day)),
+        (Some(day), None, false) => {
+            format!(" (its end, {}, a guess, has passed)", Zone::day_name(day))
+        }
+        (Some(day), None, true) => format!(
+            " (its end, {}, has passed, but the feed still reads it, and may not have \
+             run since)",
+            Zone::day_name(day)
+        ),
+        (None, ..) => String::new(),
+    };
+    let reaches = clock
+        .and_then(|clock| reach(picture, view, clock))
+        .map_or_else(String::new, |at| {
+            format!(
+                " At this pace it reaches {} by {}.",
+                whole(allowance),
+                dated(&picture.zone, at)
+            )
+        });
+    let mut f = finding(
+        cap_key(view, "unending"),
+        "caps",
+        Severity::Warning,
+        format!("{} override's end is unknown", allowance_named(&view.cap)),
+        format!(
+            "Nobody knows when the {} override ends{given}, and the {} spent is \
+             already over the {} that follows it, so the cap refuses the moment it \
+             ends.{reaches}",
+            whole(allowance),
+            whole(view.spent),
+            whole(fallback)
+        ),
+    );
+    f.badge = "end unknown".into();
+    f.note = format!("over the {} after it", whole(fallback));
+    f.dollars = view.spent - fallback;
+    f.surprise = 2.5;
+    f.cap = true;
+    f.action = ask;
+    Some(f)
+}
+
+/// A moment by its day and time, "Fri 20 Nov 23:00", for a finding told
+/// once and read later, when "tomorrow" would have moved.
+fn dated(zone: &Zone, at: f64) -> String {
+    format!("{} {}", Zone::day_name(zone.day(at)), zone.clock(at, at))
 }
 
 /// A share of a plan's window used up, or past its warning: said
@@ -410,6 +508,8 @@ fn ending_finding(
         return None;
     }
     let day = Zone::day_name(picture.zone.day(ends_at - 1.0));
+    // A guessed end is still warned as it nears, but said to be a guess.
+    let known = view.cap.ends_known;
     let mut f = finding(
         cap_key(view, "ending"),
         "caps",
@@ -418,16 +518,25 @@ fn ending_finding(
         } else {
             Severity::Warning
         },
-        format!("{} override is ending", allowance_named(&view.cap)),
         format!(
-            "The {} override ends {day}. At this pace, a {} chance the spend \
+            "{} override {}",
+            allowance_named(&view.cap),
+            if known { "is ending" } else { "may be ending" }
+        ),
+        format!(
+            "The {} override ends {day}{}. At this pace, a {} chance the spend \
              is over the {} that follows the moment it does.",
             whole(allowance),
+            if known { "" } else { ", by the feed's guess" },
             percent(after),
             whole(fallback)
         ),
     );
-    f.badge = format!("ends {day}");
+    f.badge = if known {
+        format!("ends {day}")
+    } else {
+        format!("ends {day}, a guess")
+    };
     f.note = ending_note(after, fallback);
     f.dollars = view.spent;
     f.surprise = 2.5;
@@ -2015,6 +2124,211 @@ mod tests {
                 Some("85% of the Five Hours allowance used")
             )]
         );
+    }
+
+    /// The weekly cap's findings when raised to $40,000 over a $4,000
+    /// fallback, with `spent` spent and the override ending `ends`.
+    fn raised(spent: f64, ends: Option<&str>) -> Vec<Finding> {
+        unending(&raised_picture(spent, ends, true))
+    }
+
+    fn unending(picture: &Picture) -> Vec<Finding> {
+        caps(picture)
+            .into_iter()
+            .filter(|found| found.key.ends_with(":unending"))
+            .collect()
+    }
+
+    /// The picture of that cap, its end given as `ends`, known or not.
+    fn raised_picture(spent: f64, ends: Option<&str>, known: bool) -> Picture {
+        let history = History::memory();
+        let mut line = serde_json::json!({
+            "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
+            "allowance": 40_000, "windowHours": 168, "spent": spent, "warn": 0.9,
+            "fallback": 4000, "state": "ok", "at": crate::time::rfc3339(NOW - 60.0),
+        });
+        if let Some(ends) = ends {
+            line["ends"] = ends.into();
+            line["endsKnown"] = known.into();
+        }
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, NOW - 60.0).unwrap();
+        Picture::read(&history, &config(), NOW).unwrap()
+    }
+
+    // A raise whose end nobody knows, over a fallback already spent, is
+    // warned: the cap refuses the moment it ends, and no day can be warned
+    // ahead of. Under the fallback, or with its end known, it isn't.
+    #[test]
+    fn a_raise_with_no_known_end_over_what_follows_is_warned() {
+        let found = raised(33_671.0, None);
+        assert_eq!(found.len(), 1, "{found:?}");
+        let found = &found[0];
+        assert_eq!(
+            (found.title.as_str(), found.severity, found.cap),
+            (
+                "the Week allowance override's end is unknown",
+                Severity::Warning,
+                true
+            )
+        );
+        // Without a clock there's no reach to say, so the detail ends there.
+        assert_eq!(
+            found.detail,
+            "Nobody knows when the $40,000 override ends, and the $33,671 spent is \
+             already over the $4,000 that follows it, so the cap refuses the moment \
+             it ends."
+        );
+        assert_eq!(found.dollars, 29_671.0);
+        assert_eq!(found.badge, "end unknown");
+        assert!(raised(3_999.0, None).is_empty(), "under the fallback");
+        assert_eq!(raised(4_000.0, None).len(), 1, "at the fallback");
+        assert!(
+            raised(33_671.0, Some("2026-10-20")).is_empty(),
+            "its end is known"
+        );
+    }
+
+    // A guessed end is no end known, and nor is a known one already past
+    // while the override stands: each is warned, saying which it is.
+    #[test]
+    fn a_guessed_or_passed_end_is_still_unknown() {
+        let detail = |ends: &str, known: bool| {
+            let found = unending(&raised_picture(33_671.0, Some(ends), known));
+            assert_eq!(found.len(), 1, "{ends} {known}: {found:?}");
+            found[0].detail.clone()
+        };
+        assert!(
+            detail("2026-10-20", false).starts_with(
+                "Nobody knows when the $40,000 override ends (its end, Tue 20 Oct, is a guess),"
+            ),
+            "{}",
+            detail("2026-10-20", false)
+        );
+        assert!(
+            detail("2026-10-10", true).starts_with(
+                "Nobody knows when the $40,000 override ends (its end, Sat 10 Oct, has passed, \
+                 but the feed still reads it, and may not have run since),"
+            ),
+            "{}",
+            detail("2026-10-10", true)
+        );
+        assert!(
+            detail("2026-10-10", false).starts_with(
+                "Nobody knows when the $40,000 override ends (its end, Sat 10 Oct, a guess, \
+                 has passed),"
+            ),
+            "{}",
+            detail("2026-10-10", false)
+        );
+    }
+
+    // With a clock, the warning and the near one say by when the allowance
+    // is reached at this pace, as a day and a time that don't move.
+    #[test]
+    fn the_reach_is_said_by_its_day() {
+        let mut picture = raised_picture(37_000.0, None, true);
+        picture.caps[0].clock = Some(crate::caps::Clock {
+            reaches_at: Some(NOW + 36.0 * HOUR),
+            ..crate::caps::Clock::default()
+        });
+        let found = caps(&picture);
+        let detail = |what: &str| {
+            found
+                .iter()
+                .find(|found| found.key.ends_with(what))
+                .map(|found| found.detail.clone())
+                .unwrap_or_default()
+        };
+        assert!(
+            detail(":unending").ends_with(" At this pace it reaches $40,000 by Fri 16 Oct 02:30."),
+            "{found:?}"
+        );
+        assert!(
+            detail(":near").ends_with(" At this pace it's reached by Fri 16 Oct 02:30."),
+            "{found:?}"
+        );
+    }
+
+    /// What the weekly cap says, keys and details, with $37,000 spent, its
+    /// end `ends`, known or not, and a clock reaching it by `reaches` and
+    /// over what follows the end on every path.
+    fn ending_in(ends: &str, known: bool, reaches: f64) -> Vec<(String, String)> {
+        spent_ending_in(37_000.0, ends, known, reaches)
+    }
+
+    /// The same, with `spent` spent.
+    fn spent_ending_in(spent: f64, ends: &str, known: bool, reaches: f64) -> Vec<(String, String)> {
+        let mut picture = raised_picture(spent, Some(ends), known);
+        picture.caps[0].clock = Some(crate::caps::Clock {
+            reaches_at: Some(reaches),
+            over_after_end: Some(1.0),
+            ..crate::caps::Clock::default()
+        });
+        caps(&picture)
+            .into_iter()
+            .map(|found| {
+                (
+                    found.key.rsplit(':').next().unwrap_or_default().into(),
+                    found.detail,
+                )
+            })
+            .collect()
+    }
+
+    // A guessed end a day off is the unknown-end warning's alone, with its
+    // reach past the guess, since the guess doesn't end it; the ending
+    // warning would say as fact what nobody knows.
+    #[test]
+    fn a_guessed_end_close_by_is_not_said_to_be_ending() {
+        let said = ending_in("2026-10-15", false, NOW + 36.0 * HOUR);
+        let keys: Vec<&str> = said.iter().map(|(key, _)| key.as_str()).collect();
+        assert!(
+            keys.contains(&"unending") && !keys.contains(&"ending"),
+            "{said:?}"
+        );
+        let unending = &said.iter().find(|(key, _)| key == "unending").unwrap().1;
+        assert!(unending.ends_with(" by Fri 16 Oct 02:30."), "{unending}");
+    }
+
+    // Under the fallback there's no unknown-end warning, so a guessed end
+    // close by is still warned of as it nears, said to be a guess.
+    #[test]
+    fn a_guessed_end_close_by_under_what_follows_is_said_to_be_a_guess() {
+        let said = spent_ending_in(3_000.0, "2026-10-15", false, NOW + 36.0 * HOUR);
+        let keys: Vec<&str> = said.iter().map(|(key, _)| key.as_str()).collect();
+        assert!(!keys.contains(&"unending"), "{said:?}");
+        let ending = &said.iter().find(|(key, _)| key == "ending").unwrap().1;
+        assert!(
+            ending.starts_with("The $40,000 override ends Thu 15 Oct, by the feed's guess."),
+            "{ending}"
+        );
+    }
+
+    // A known end already past doesn't hide a reach after it, since the
+    // feed still reads the override.
+    #[test]
+    fn a_passed_end_keeps_its_reach() {
+        let said = ending_in("2026-10-10", true, NOW + 36.0 * HOUR);
+        let unending = &said.iter().find(|(key, _)| key == "unending").unwrap().1;
+        assert!(unending.ends_with(" by Fri 16 Oct 02:30."), "{unending}");
+    }
+
+    // A known end a day off is said to be ending, and a reach past it isn't
+    // said, since by then the allowance is the fallback's.
+    #[test]
+    fn a_known_end_close_by_hides_a_reach_past_it() {
+        let said = ending_in("2026-10-15", true, NOW + 36.0 * HOUR);
+        let keys: Vec<&str> = said.iter().map(|(key, _)| key.as_str()).collect();
+        assert!(
+            keys.contains(&"ending") && !keys.contains(&"unending"),
+            "{said:?}"
+        );
+        let near = &said.iter().find(|(key, _)| key == "near").unwrap().1;
+        assert!(!near.contains("At this pace"), "{near}");
+        let before = ending_in("2026-10-15", true, NOW + 30.0 * HOUR);
+        let near = &before.iter().find(|(key, _)| key == "near").unwrap().1;
+        assert!(near.ends_with(" by Thu 15 Oct 20:30."), "{near}");
     }
 
     // A fall is told once it has stood, and only while the cap stays down:

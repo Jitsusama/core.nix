@@ -4,7 +4,12 @@
 //! forecast's simulated paths, how likely the window's spend is to reach
 //! the warning and the cap within a day and before an override ends, and,
 //! while over, when the oldest hours rolling out of the window, or the
-//! period resetting, bring it back under.
+//! period resetting, bring it back under, and when it's reached at this
+//! pace.
+//!
+//! Long because the clock and its tests are one judgement: each chance is
+//! pinned by a test of paths built to sit either side of it, and those
+//! read best beside the arithmetic they pin.
 
 use crate::forecast::{Paths, Shape};
 use crate::history::{History, sql as fail};
@@ -207,6 +212,9 @@ pub struct Clock {
     pub frees_at: Option<f64>,
     /// What rolls out of the window, or goes with a reset, in the next day.
     pub freeing_in_day: f64,
+    /// The hour by which half the paths have reached the allowance, when
+    /// half do within what the paths reach: when it's reached at this pace.
+    pub reaches_at: Option<f64>,
 }
 
 /// Spend expected in each coming hour, for one path of daily totals: each
@@ -325,6 +333,10 @@ pub fn clock(
         .map(|end| ((end - now) / HOUR).ceil().max(0.0) as usize)
         .filter(|end| end.max(&1) <= &horizon);
     let (mut warned, mut capped, mut before_end, mut over_after) = (0, 0, 0, 0);
+    // The first hour each path reaches the allowance in, of those that do.
+    // It runs past any end, since only the reader knows whether that end
+    // is one: a guessed or passed end doesn't stop the override.
+    let mut reached = Vec::new();
     for path in paths {
         let coming = hourly(path, shape, zone, now, horizon);
         // What's simulated from now, by the k-th hour.
@@ -333,8 +345,12 @@ pub fn clock(
             since[k] = since[k - 1] + coming[k - 1];
         }
         let (mut w, mut c, mut b) = (false, false, false);
+        let mut first = None;
         for k in 1..=horizon {
             let window = window.counted(spent, &since, k, now);
+            if first.is_none() && window >= allowance {
+                first = Some(k);
+            }
             if k <= 24 {
                 w |= window >= allowance * warn;
                 c |= window >= allowance;
@@ -353,7 +369,13 @@ pub fn clock(
         warned += usize::from(w);
         capped += usize::from(c);
         before_end += usize::from(b);
+        reached.extend(first);
     }
+    // The middle path's hour, counting those that never reach it as
+    // later than any that do: none when fewer than half reach it.
+    reached.sort_unstable();
+    let middle = paths.len().div_ceil(2).max(1);
+    let reaches_at = reached.get(middle - 1).map(|k| now + count(*k) * HOUR);
     let n = count(paths.len().max(1));
     let frees_at = (spent >= allowance).then(|| window.frees(spent, allowance, now));
     Clock {
@@ -363,6 +385,7 @@ pub fn clock(
         over_after_end: end_hour.and(fallback).map(|_| count(over_after) / n),
         frees_at,
         freeing_in_day: window.freeing_in_day(spent, now),
+        reaches_at,
     }
 }
 
@@ -580,6 +603,83 @@ mod tests {
         // Two hours roll out $200, bringing $4,100 to $3,900.
         assert_eq!(clock.frees_at, Some(now + 2.0 * HOUR));
         assert_eq!(clock.cap_within_day, 1.0);
+    }
+
+    /// The clock of $39,000 spent against $40,000, nothing rolling out,
+    /// over `paths`, the override ending at `ends_at`.
+    fn reaching_until(paths: &Paths, ends_at: Option<f64>, now: f64) -> Clock {
+        clock(
+            39_000.0,
+            40_000.0,
+            0.9,
+            Some(4000.0),
+            ends_at,
+            Window::Rolling(&[0.0; 168]),
+            paths,
+            &even(),
+            &Zone::utc(),
+            now,
+        )
+    }
+
+    fn reaching(paths: &Paths, now: f64) -> Clock {
+        reaching_until(paths, None, now)
+    }
+
+    // When the cap is reached at this pace is the middle path's hour, past
+    // a day too: $100 an hour on most paths takes ten hours to the $1,000
+    // left, and the slower paths don't hold it back while half are at it.
+    #[test]
+    fn the_cap_is_reached_when_the_middle_path_reaches_it() {
+        let now = 1_791_936_000.0; // midnight
+        let mut paths = vec![vec![2400.0; 7]; 6];
+        paths.extend(vec![vec![0.0; 7]; 4]);
+        assert_eq!(reaching(&paths, now).reaches_at, Some(now + 10.0 * HOUR));
+        // $10 an hour reaches it in 100 hours, past the day but in the week.
+        let slow = vec![vec![240.0; 7]; 10];
+        assert_eq!(reaching(&slow, now).reaches_at, Some(now + 100.0 * HOUR));
+    }
+
+    // Ten paces, slowest first, $10 to $100 an hour: the $1,000 left takes
+    // 100, 50, 34, 25, 20, 17, 15, 13, 12 and 10 hours. The middle is the
+    // fifth soonest, 17, not the fifth path, the soonest or the latest.
+    #[test]
+    fn the_middle_is_told_apart_from_the_order_and_the_ends() {
+        let now = 1_791_936_000.0;
+        let paths: Paths = (1..=10)
+            .map(|pace| vec![240.0 * f64::from(pace); 7])
+            .collect();
+        assert_eq!(reaching(&paths, now).reaches_at, Some(now + 17.0 * HOUR));
+    }
+
+    // Exactly half the paths reaching it is enough to say when.
+    #[test]
+    fn half_the_paths_reaching_it_give_a_time() {
+        let now = 1_791_936_000.0;
+        let mut paths = vec![vec![2400.0; 7]; 5];
+        paths.extend(vec![vec![0.0; 7]; 5]);
+        assert_eq!(reaching(&paths, now).reaches_at, Some(now + 10.0 * HOUR));
+    }
+
+    // An end doesn't cut the reach: whether it's one is the reader's call.
+    #[test]
+    fn a_reach_runs_past_an_end() {
+        let now = 1_791_936_000.0;
+        let paths = vec![vec![2400.0; 7]; 10];
+        let clock = reaching_until(&paths, Some(now + 9.0 * HOUR), now);
+        assert_eq!(clock.reaches_at, Some(now + 10.0 * HOUR));
+    }
+
+    // Fewer than half the paths reaching the cap says nothing of when.
+    #[test]
+    fn a_cap_most_paths_miss_is_not_given_a_time() {
+        let now = 1_791_936_000.0;
+        let mut paths = vec![vec![2400.0; 7]; 4];
+        paths.extend(vec![vec![0.0; 7]; 6]);
+        assert_eq!(reaching(&paths, now).reaches_at, None);
+        // Four of nine is under half too, though nine halved is four.
+        paths.pop();
+        assert_eq!(reaching(&paths, now).reaches_at, None);
     }
 
     #[test]
