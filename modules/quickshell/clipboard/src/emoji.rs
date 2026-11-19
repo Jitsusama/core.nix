@@ -91,7 +91,7 @@ fn group_record(group: &str, first: &str, count: usize, at: u64, words: &Words) 
         "name": group,
         "glyph": { "code": code(first) },
         "hue": "text",
-        "side": words.figure(count),
+        "side": [{ "said": words.figure(count) }],
         "acts": [{ "key": "verb:more", "step": "rows" }],
     });
     json!({ "key": key, "kind": "row", "row": row })
@@ -241,7 +241,11 @@ mod tests {
             groups[0]["order"].as_u64() < groups[1]["order"].as_u64(),
             "in the order the list first names them: {groups:?}"
         );
-        assert_eq!(groups[0]["side"], "2", "it says how many it holds");
+        assert_eq!(
+            groups[0]["side"],
+            json!([{ "said": "2" }]),
+            "it says how many it holds"
+        );
         assert_eq!(
             groups[0]["glyph"],
             json!({ "code": "1F600" }),
