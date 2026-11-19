@@ -2395,6 +2395,26 @@ pub enum ForRun {
     Archived(archived::Archived),
 }
 
+impl ForRun {
+    /// Where a pass of the run is kept, what the far side's shell runs to
+    /// check it out, and what that reads from its standard input. No pass
+    /// is kept from files the session's own cones cut, since a gate taking
+    /// it would take a pass of the whole commit.
+    pub fn sent(self) -> (Option<passed::At>, String, Option<PathBuf>) {
+        match self {
+            Self::Git(source) => {
+                let at = at_of(&source);
+                let (checkout, bundle) = crate::changed::checked_out(source);
+                (at, checkout, bundle)
+            }
+            Self::Archived(archived) => {
+                let (checkout, archive) = archived::unpacked(archived);
+                (None, checkout, Some(archive))
+            }
+        }
+    }
+}
+
 /// How `--run` sends the tree at `folder`, any archive made in `scratch`.
 pub fn for_run(folder: &Path, scratch: &Path) -> Result<ForRun, String> {
     let canonical =

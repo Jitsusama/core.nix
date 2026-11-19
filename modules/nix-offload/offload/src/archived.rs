@@ -21,6 +21,7 @@
 
 use std::env;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -51,11 +52,17 @@ pub fn packed(
 ) -> Result<Archived, String> {
     let cones = cones(top)?;
     fs::create_dir_all(scratch).map_err(|_| "has no scratch to pack it in".to_owned())?;
+    swept(scratch);
     let borrowed = Borrowed::new(top, scratch).ok_or("couldn't borrow its objects to pack them")?;
     let paths = match cones {
-        Some(cones) => within(&borrowed, commit, "", &cones)
-            .filter(|paths| !paths.is_empty())
-            .ok_or("holds no file of HEAD's in its cones")?,
+        Some(cones) => {
+            let paths = within(&borrowed, commit, "", &cones)
+                .ok_or("couldn't read HEAD's folders to find its cones")?;
+            if paths.is_empty() {
+                return Err("holds no file of HEAD's in its cones".to_owned());
+            }
+            paths
+        }
         None => Vec::new(),
     };
     let size = borrowed
@@ -150,6 +157,15 @@ fn cones(top: &Path) -> Result<Option<Vec<String>>, String> {
                 "has a cone, {cone}, whose name git quotes, so it can't be told"
             ));
         }
+        // git lists a cone bare, and its sparse file's own lines, each
+        // opening so, when it can't read them as cones and checks out by
+        // patterns instead.
+        if cone.starts_with(['/', '!']) {
+            return Err(format!(
+                "is sparse by a pattern, {cone}, that git can't read as a cone, so which \
+                 of its files to send can't be told; git sparse-checkout set --cone says"
+            ));
+        }
         let cone = cone.trim_matches('/');
         if !cone.is_empty() {
             cones.push(cone.to_owned());
@@ -183,6 +199,42 @@ fn within(borrowed: &Borrowed, tree: &str, at: &str, cones: &[String]) -> Option
         }
     }
     Some(paths)
+}
+
+/// Each tarball and borrowing repository in `scratch` that a run which
+/// ended before it could remove them left, as one killed does. Each may
+/// hold up to [`LARGEST`] bytes of the runtime folder, which is memory.
+fn swept(scratch: &Path) {
+    let Ok(entries) = fs::read_dir(scratch) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let left = entry.file_name().to_str().and_then(left_by);
+        if left.is_some_and(|pid| !runs(pid)) {
+            let path = entry.path();
+            let _ = fs::remove_dir_all(&path).or_else(|_| fs::remove_file(&path));
+        }
+    }
+}
+
+/// The process whose run packed `name`, when it's a tarball or a
+/// borrowing repository; none for what other parts of a run keep there,
+/// such as the uplink's turns, whose numbers aren't processes.
+fn left_by(name: &str) -> Option<u32> {
+    ["tree.tgz-", "borrowed.git-"]
+        .iter()
+        .find_map(|prefix| name.strip_prefix(prefix)?.parse().ok())
+}
+
+/// Whether the process `pid` may still run: one of another user's, or
+/// one past what a pid holds, counts.
+fn runs(pid: u32) -> bool {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return true;
+    };
+    // SAFETY: signal 0 only asks whether the process exists.
+    let asked = unsafe { libc::kill(pid, 0) };
+    asked == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
 /// An empty repository of this run's own, in its scratch, that borrows a
@@ -449,6 +501,84 @@ mod tests {
         );
     }
 
+    // Cones that hold none of HEAD's files would send an empty tree, whose
+    // run would fail far from the reason.
+    #[test]
+    fn cones_holding_no_file_are_refused() {
+        let folder = tempfile::tempdir().unwrap();
+        let top = repository(folder.path(), &[("held/file", "x")]);
+        git(&top, &["sparse-checkout", "set", "--cone", "elsewhere"]);
+        let commit = git(&top, &["rev-parse", "HEAD"]);
+
+        let refused = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST);
+        assert!(
+            refused.as_ref().unwrap_err().contains("holds no file"),
+            "{refused:?}"
+        );
+    }
+
+    // In cone mode, git checks out by patterns when its sparse file holds
+    // one that isn't a cone, and lists the file's lines, which read as
+    // cones would have sent what the checkout doesn't hold.
+    #[test]
+    fn patterns_git_cant_read_as_cones_are_refused() {
+        let folder = tempfile::tempdir().unwrap();
+        let top = repository(folder.path(), &[("a/x", "1"), ("b/y", "2")]);
+        git(&top, &["sparse-checkout", "set", "--cone", "a"]);
+        fs::write(
+            top.join(".git/info/sparse-checkout"),
+            "/*\n!/*/\n/a/\nb/*.y\n",
+        )
+        .unwrap();
+        let commit = git(&top, &["rev-parse", "HEAD"]);
+
+        let refused = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST);
+        assert!(
+            refused
+                .as_ref()
+                .unwrap_err()
+                .contains("can't read as a cone"),
+            "{refused:?}"
+        );
+    }
+
+    // A run killed while packing leaves its tarball, up to a gigabyte of
+    // memory, and its borrowing repository; the next run sweeps them, and
+    // nothing of a run still going or anything else kept there.
+    #[test]
+    fn what_a_run_that_ended_left_is_swept() {
+        let folder = tempfile::tempdir().unwrap();
+        let top = repository(folder.path(), &[("file", "x")]);
+        let commit = git(&top, &["rev-parse", "HEAD"]);
+        let scratch = folder.path().join("scratch");
+        fs::create_dir_all(&scratch).unwrap();
+        let mut ended = Command::new("true").spawn().unwrap();
+        ended.wait().unwrap();
+        let mut going = Command::new("sleep").arg("60").spawn().unwrap();
+        let (gone, going_pid) = (ended.id(), going.id());
+        fs::write(scratch.join(format!("tree.tgz-{gone}")), "left").unwrap();
+        fs::create_dir_all(scratch.join(format!("borrowed.git-{gone}/objects"))).unwrap();
+        fs::write(scratch.join(format!("tree.tgz-{going_pid}")), "its").unwrap();
+        fs::write(scratch.join(format!("uplink-{gone}")), "").unwrap();
+
+        let packed = packed(&top, &commit, None, &scratch, LARGEST);
+        going.kill().unwrap();
+        going.wait().unwrap();
+        assert!(packed.is_ok(), "{packed:?}");
+        let mut left: Vec<String> = fs::read_dir(&scratch)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        let mut kept = vec![
+            format!("tree.tgz-{going_pid}"),
+            format!("tree.tgz-{}", std::process::id()),
+            format!("uplink-{gone}"),
+        ];
+        kept.sort();
+        assert_eq!(left, kept, "only what the ended run packed was swept");
+    }
+
     // A name past ASCII is a cone like any other, and a repository whose
     // path holds a colon is still borrowed whole.
     #[test]
@@ -466,6 +596,24 @@ mod tests {
         let held = held(&packed.archive, &folder.path().join("unpacked"));
         let names: Vec<&str> = held.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(names, ["café/file", "top"], "the cone and the top went");
+    }
+
+    // A gate taking a pass kept from a run of the files the session's own
+    // cones cut would take it for the whole commit.
+    #[test]
+    fn a_run_of_packed_files_keeps_no_pass() {
+        let folder = tempfile::tempdir().unwrap();
+        let top = repository(folder.path(), &[("file", "x")]);
+        let commit = git(&top, &["rev-parse", "HEAD"]);
+        let packed = packed(&top, &commit, None, &folder.path().join("scratch"), LARGEST).unwrap();
+
+        let (at, command, read) = there::ForRun::Archived(packed).sent();
+        assert!(at.is_none(), "a pass would be kept at {at:?}");
+        assert!(
+            command.contains("tar -xzf -"),
+            "it's unpacked there: {command}"
+        );
+        assert!(read.is_some(), "the tarball is what the far side reads");
     }
 
     // The far side's shell reads the tarball from its input, runs in the

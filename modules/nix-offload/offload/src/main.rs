@@ -1453,17 +1453,7 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         return not_run("this folder can't be read");
     };
     let (at, checkout, bundle) = match there::for_run(&folder, &scratch) {
-        Ok(there::ForRun::Git(source)) => {
-            let at = there::at_of(&source);
-            let (checkout, bundle) = changed::checked_out(source);
-            (at, checkout, bundle)
-        }
-        // No pass is kept from files the session's own cones cut, since a
-        // gate taking it would take a pass of the whole commit.
-        Ok(there::ForRun::Archived(archived)) => {
-            let (checkout, archive) = archived::unpacked(archived);
-            (None, checkout, Some(archive))
-        }
+        Ok(sending) => sending.sent(),
         Err(why) => return not_run(&why),
     };
     // One name wherever it goes, since a run sent on to the other builder
