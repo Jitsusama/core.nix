@@ -99,9 +99,10 @@ SLOWER_MOST = 2
 MIDDLE_MORE = 50
 # The builder's processors the held subtest runs the VM's four on, so under load each runs about
 # half the time, the least part of the guest's busy time it must count stolen for that, and how
-# long it counts, in seconds. Held so on 19 November the guest counted 45% stolen, where unheld
-# it counted 2 to 8%. Held to one, the frozen guest starved as much as the loaded one, its idle
-# processors' halts and QEMU's own threads taking the builder's one, so that's no busy builder.
+# long it counts, in seconds. Held so on 19 November the guest counted 45 to 50% stolen, where
+# unheld it counted under 1 to 8%, by how busy the builder was. Held to one, the frozen guest
+# starved as much as the loaded one, its idle processors' halts and QEMU's own threads taking
+# the builder's one, so that's no busy builder.
 HELD_TO = 2
 HELD_STOLEN = 0.25
 GAUGING = 10
@@ -310,14 +311,15 @@ class Timing:
         self.ledger.count(stat, turn=self.loading if kept else None)
 
     def end(self) -> None:
-        """Let the load run again if it's frozen, and say what the guest counted stolen.
+        """Say what the guest counted stolen, then let the load run again if it's frozen.
 
-        Said before any of a test's bars is judged, so a run that fails says it too.
+        Said before any of a test's bars is judged, so a run that fails says it too, and before
+        the thaw, which a stalled builder can fail.
         """
-        if not self.loading:
-            self.load(on=True)
         self.count(kept=True)
         print(self.ledger.said())
+        if not self.loading:
+            self.load(on=True)
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""
@@ -779,8 +781,8 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
     first: dict[bool, list[int]] = {True: [], False: []}
     # Each opening as the launcher timed it, the first after a start and the one after it.
     said: list[tuple[bool, Json, Json]] = []
-    desktop.as_account(f"echo '{LISTED} 1 listed' > {CROWD}.new && mv {CROWD}.new {CROWD}")
     try:
+        desktop.as_account(f"echo '{LISTED} 1 listed' > {CROWD}.new && mv {CROWD}.new {CROWD}")
         for turn in range(STARTS):
             loaded = turn % 2 == 1
             if loaded != timing.loading:
@@ -876,10 +878,10 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
     fill it in, where its rows stand. Its drawing is held to its drawing with the load frozen.
     """
     timing = Timing(desktop)
-    # The first opening after the shell starts makes every row, with nothing kept yet.
-    opened_timed(desktop)
     each: dict[bool, list[Json]] = {True: [], False: []}
     try:
+        # The first opening after the shell starts makes every row, with nothing kept yet.
+        opened_timed(desktop)
         for loaded, times in ((True, OPENINGS), (False, FROZEN)):
             if loaded != timing.loading:
                 timing.load(on=loaded)
@@ -965,8 +967,9 @@ def vm_threads(started: int) -> list[int]:
     for process in Path("/proc").iterdir():
         if not process.name.isdigit():
             continue
-        # A process that ended as this read is no part of the VM, which runs on.
-        with contextlib.suppress(FileNotFoundError):
+        # A process that ended as this read is no part of the VM, which runs on; the kernel
+        # says so either way.
+        with contextlib.suppress(FileNotFoundError, ProcessLookupError):
             # The parent follows the name, which may hold spaces, in its parentheses.
             parent = int((process / "stat").read_text().rsplit(")", 1)[1].split()[1])
             children.setdefault(parent, []).append(int(process.name))
@@ -975,7 +978,7 @@ def vm_threads(started: int) -> list[int]:
     while pids:
         pid = pids.pop()
         pids.extend(children.get(pid, []))
-        with contextlib.suppress(FileNotFoundError):
+        with contextlib.suppress(FileNotFoundError, ProcessLookupError):
             threads.extend(int(thread.name) for thread in Path(f"/proc/{pid}/task").iterdir())
     return threads
 
@@ -1005,6 +1008,8 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
     timing = Timing(desktop)
     try:
         hold_vm(started, builders[:HELD_TO])
+        # The ticks before the hold took aren't held ones, so they're passed over.
+        timing.count(kept=False)
         # Said, so a share near 1 tells a hold that never took from a count blind to one.
         held: dict[str, int] = {}
         for thread in vm_threads(started):
