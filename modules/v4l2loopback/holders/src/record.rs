@@ -204,15 +204,22 @@ impl Stream {
     }
 }
 
+/// How long a control that didn't answer goes unasked. A camera may time
+/// out only while a stream is set up, as when a call changes size without
+/// letting go, so one timeout costs a minute of lines rather than the
+/// rest of the call, and the watch waits on one at most once a minute.
+const AGAIN: Duration = Duration::from_secs(60);
+
 /// What the record follows of a camera's stream.
 pub struct Record {
     sysfs: PathBuf,
     debugfs: PathBuf,
     stream: Stream,
-    /// The controls that didn't answer, kept for the stream, so each line
-    /// doesn't wait on them again; the next stream asks them afresh, since
-    /// a camera may time out only as a stream is set up.
+    /// The controls that didn't answer, so each line doesn't wait on them
+    /// again; they're asked afresh a minute on, and at the next stream.
     unanswered: BTreeSet<u32>,
+    /// When the controls were last all asked.
+    asked_afresh: Option<Instant>,
 }
 
 impl Record {
@@ -222,6 +229,7 @@ impl Record {
             debugfs: debugfs.to_owned(),
             stream: Stream::default(),
             unanswered: BTreeSet::new(),
+            asked_afresh: None,
         }
     }
 
@@ -248,6 +256,7 @@ impl Record {
         let since = *stream.since.get_or_insert_with(|| {
             stream.counted = counted(&self.sysfs, &self.debugfs, node);
             self.unanswered.clear();
+            self.asked_afresh = Some(at);
             at
         });
         stream.count(at);
@@ -264,6 +273,13 @@ impl Record {
                 Err(error) => return Some(line(holders, Err(&error.to_string()), &gave)),
             },
         };
+        if self
+            .asked_afresh
+            .is_none_or(|then| at.duration_since(then) >= AGAIN)
+        {
+            self.unanswered.clear();
+            self.asked_afresh = Some(at);
+        }
         let asked = Asked {
             format: Some(v4l2::format(file).map_err(|error| error.to_string())),
             rate: Some(v4l2::asked_rate(file).map_err(|error| error.to_string())),
@@ -528,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_stream_asks_again_what_the_last_found_unanswered() {
+    fn a_control_found_unanswered_is_asked_again_a_minute_on_and_at_the_next_stream() {
         let (camera, stats, mut record) = streaming("record-asks-again");
         record.unanswered.insert(0x0098_0900);
         count(&stats, 10, 0);
@@ -547,6 +563,23 @@ mod tests {
             "no line"
         );
         assert_eq!(record.unanswered.len(), 1);
+        // A line just short of a minute on still passes it over.
+        count(&stats, 300, 0);
+        let short = start + Duration::from_secs(59);
+        assert!(
+            record.at(short, &camera.node, &holders).is_some(),
+            "no line"
+        );
+        assert_eq!(record.unanswered.len(), 1);
+        // A minute on, it's asked again, so a timeout as the stream was set
+        // up again doesn't lose it for the rest of the call.
+        count(&stats, 600, 0);
+        let again = short + EVERY;
+        assert!(
+            record.at(again, &camera.node, &holders).is_some(),
+            "no line"
+        );
+        assert_eq!(record.unanswered.len(), 0);
     }
 
     #[test]
