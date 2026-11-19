@@ -101,11 +101,21 @@ QtObject {
 
         // A gone screen's place says where it belongs, so its workspace
         // can go there when the screen comes; one on its screen doesn't.
+        // It also says which connectors were other screens as it was found
+        // gone, since a reopen notes it minutes later, by when the screen
+        // may have come back on one of them.
         expect("a gone screen's place says where it belongs",
             Places.placed(docked, { "DP-4": monitor }, "DP-4").map(at => at.away ?? null), [
                 null, null,
-                { screen: panel, workspace: 2, output: "eDP-1" },
-                { screen: panel, workspace: 1, output: "eDP-1" }
+                { screen: panel, workspace: 2, output: "eDP-1", others: { "DP-4": monitor } },
+                { screen: panel, workspace: 1, output: "eDP-1", others: { "DP-4": monitor } }
+            ]);
+        expect("two alike screens gone at a boot are other screens to each other",
+            Places.placed([{ screen: twin, output: "Virtual-1", workspace: 1, column: 1, tile: 1 },
+                { screen: twin, output: "Virtual-2", workspace: 1, column: 1, tile: 1 }],
+                { "eDP-1": panel }, "eDP-1").map(at => at.away.others), [
+                { "eDP-1": panel, "Virtual-2": twin },
+                { "eDP-1": panel, "Virtual-1": twin }
             ]);
 
         // The monitor comes after the reopen began: the workspaces given
@@ -130,15 +140,29 @@ QtObject {
             });
         expect("a screen still gone keeps its workspaces waiting, but not one gone",
             Places.homeward(away, { "eDP-1": panel }, workspaces), { moves: [], waiting: {
-                [monitor]: [{ id: 11, workspace: 1, stayed: [] }, { id: 12, workspace: 2, stayed: [] },
-                    { id: 13, workspace: 3, stayed: [] }, { id: 15, workspace: 5, stayed: [] }]
+                [monitor]: [{ id: 11, workspace: 1 }, { id: 12, workspace: 2 },
+                    { id: 13, workspace: 3 }, { id: 15, workspace: 5 }]
             } });
-        // The monitor is on another connector now, and none alike was
-        // connected when its workspace was noted, so this is it.
+        // The monitor is on another connector now, which was no other
+        // screen as it left, or another screen's then, so this is it.
+        const another = { [monitor]: [{ id: 11, workspace: 1, output: "DP-4", others: { "eDP-1": panel } }] };
         expect("a screen come back on another connector takes its workspaces",
-            Places.homeward({ [monitor]: [{ id: 11, workspace: 1, output: "DP-4", stayed: [] }] },
+            Places.homeward(another, { "eDP-1": panel, "DP-5": monitor }, [{ id: 11, output: "eDP-1" }]),
+            { moves: [{ output: "DP-5", id: 11 }], waiting: {} });
+        expect("a screen come back on a connector another's as it left takes its workspaces",
+            Places.homeward({ [monitor]: [{ id: 11, workspace: 1, output: "DP-4",
+                others: { "DP-5": "Dell Inc. DELL U2723QE 7XY" } }] },
                 { "eDP-1": panel, "DP-5": monitor }, [{ id: 11, output: "eDP-1" }]),
             { moves: [{ output: "DP-5", id: 11 }], waiting: {} });
+        // One monitor noted twice, from two connectors at two times (a
+        // reopen's kept place, then an unplug): both are it, so both go.
+        const twice = { [monitor]: [{ id: 1, workspace: 1, output: "DP-4", others: {} },
+            { id: 2, workspace: 2, output: "DP-5", others: { "eDP-1": panel } }] };
+        expect("one monitor noted from two connectors takes both workspaces",
+            Places.homeward(twice, { "eDP-1": panel, "DP-5": monitor },
+                [{ id: 1, output: "eDP-1" }, { id: 2, output: "eDP-1" }]), {
+                moves: [{ output: "DP-5", id: 1 }, { output: "DP-5", id: 2 }], waiting: {}
+            });
 
         // Two screens alike, as two monitors of one model without serials
         // are, and as a VM's are. Each workspace decides by the connector it
@@ -146,15 +170,13 @@ QtObject {
         // an alike screen as if home (vm-screens-keep-places flaked so,
         // 2026-11-16 and 18 Nov).
         const qemu = "Red Hat, Inc. QEMU Monitor Unknown";
-        const left = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2", stayed: ["Virtual-1"] }] };
-        const wanted = { moves: [{ output: "Virtual-2", id: 21 }], waiting: {} };
+        const left = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
+            others: { "eDP-1": panel, "Virtual-1": qemu } }] };
         const onThePanel = [{ id: 21, output: "eDP-1" }];
-        expect("a workspace goes back to the alike screen it left, listed first",
-            Places.homeward(left, { "eDP-1": panel, "Virtual-2": qemu, "Virtual-1": qemu }, onThePanel),
-            wanted);
-        expect("a workspace goes back to the alike screen it left, listed last",
-            Places.homeward(left, { "eDP-1": panel, "Virtual-1": qemu, "Virtual-2": qemu }, onThePanel),
-            wanted);
+        expect("a workspace goes back to the alike screen it left, wherever it sits",
+            Places.homeward(left, { "eDP-1": panel, "Virtual-1": qemu, "Virtual-2": qemu },
+                [{ id: 21, output: "Virtual-1" }]),
+            { moves: [{ output: "Virtual-2", id: 21 }], waiting: {} });
         expect("a workspace niri handed back to the screen it left is there",
             Places.homeward(left, { "Virtual-1": qemu, "Virtual-2": qemu }, [{ id: 21, output: "Virtual-2" }]),
             { moves: [{ output: "Virtual-2", id: 21, there: true }], waiting: {} });
@@ -166,37 +188,64 @@ QtObject {
         const waits = { moves: [], waiting: left };
         expect("a workspace on the alike screen it was sent to waits for the one it left",
             Places.homeward(left, { "Virtual-1": qemu }, [{ id: 21, output: "Virtual-1" }]), waits);
-        expect("a workspace off the alike screen that stayed waits for the one it left",
+        expect("a workspace off the alike screen still there waits for the one it left",
             Places.homeward(left, { "eDP-1": panel, "Virtual-1": qemu }, onThePanel), waits);
         const three = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
-            stayed: ["Virtual-1", "Virtual-3"] }] };
+            others: { "Virtual-1": qemu, "Virtual-3": qemu } }] };
         expect("a third alike screen isn't the one it left",
             Places.homeward(three, { "Virtual-1": qemu, "Virtual-3": qemu },
                 [{ id: 21, output: "Virtual-1" }]), { moves: [], waiting: three });
+        // A connector connected as it left whose screen wasn't heard yet
+        // may have been an alike one, just plugged in, so it isn't taken.
+        const unheard = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2", others: { "Virtual-1": "" } }] };
+        expect("a connector not heard as it left isn't the one it left",
+            Places.homeward(unheard, { "Virtual-1": qemu }, [{ id: 21, output: "Virtual-1" }]),
+            { moves: [], waiting: unheard });
+        // The screen it left can come back alike on a connector that was
+        // no other screen as it left, as a dock that numbers them anew does.
+        expect("a workspace goes to an alike connector new since it left",
+            Places.homeward(left, { "Virtual-1": qemu, "Virtual-3": qemu }, [{ id: 21, output: "Virtual-1" }]),
+            { moves: [{ output: "Virtual-3", id: 21 }], waiting: {} });
         // Both alike screens gone at once, as at an undock: each workspace
         // goes to the one it left, one there already left there, and one
         // whose screen is still gone doesn't take its sibling's for it.
-        const both = { [qemu]: [{ id: 1, workspace: 1, output: "Virtual-1", stayed: [] },
-            { id: 2, workspace: 1, output: "Virtual-2", stayed: [] }] };
+        const both = { [qemu]: [{ id: 1, workspace: 1, output: "Virtual-1", others: { "Virtual-2": qemu } },
+            { id: 2, workspace: 1, output: "Virtual-2", others: { "Virtual-1": qemu } }] };
         expect("both alike screens back, each takes its own",
             Places.homeward(both, { "Virtual-1": qemu, "Virtual-2": qemu },
                 [{ id: 1, output: "Virtual-1" }, { id: 2, output: "Virtual-1" }]), {
                 moves: [{ output: "Virtual-1", id: 1, there: true }, { output: "Virtual-2", id: 2 }],
                 waiting: {}
             });
-        expect("one alike screen back, the other's workspace waits beside it",
-            Places.homeward(both, { "Virtual-2": qemu },
-                [{ id: 1, output: "Virtual-2" }, { id: 2, output: "Virtual-2" }]), {
-                moves: [{ output: "Virtual-2", id: 2, there: true }],
-                waiting: { [qemu]: [{ id: 1, workspace: 1, output: "Virtual-1", stayed: ["Virtual-2"] }] }
+        // As comeHome runs it, again on each change: what still waits is
+        // fed back, and goes once the screen it left comes.
+        const oneBack = [{ id: 1, output: "Virtual-2" }, { id: 2, output: "Virtual-2" }];
+        const first = Places.homeward(both, { "Virtual-2": qemu }, oneBack);
+        expect("one alike screen back, the other's workspace waits beside it", first, {
+            moves: [{ output: "Virtual-2", id: 2, there: true }],
+            waiting: { [qemu]: [both[qemu][0]] }
+        });
+        expect("what waits fed back keeps waiting while its screen is gone",
+            Places.homeward(first.waiting, { "Virtual-2": qemu }, oneBack),
+            { moves: [], waiting: first.waiting });
+        expect("what waits fed back goes once its screen comes",
+            Places.homeward(first.waiting, { "Virtual-1": qemu, "Virtual-2": qemu }, oneBack),
+            { moves: [{ output: "Virtual-1", id: 1 }], waiting: {} });
+        // Back alike on two new connectors, as a dock numbering them anew:
+        // each takes its own, rather than both the first.
+        expect("two alike screens back on new connectors share them out",
+            Places.homeward(both, { "eDP-1": panel, "DP-6": qemu, "DP-7": qemu },
+                [{ id: 1, output: "eDP-1" }, { id: 2, output: "eDP-1" }]), {
+                moves: [{ output: "DP-6", id: 1 }, { output: "DP-7", id: 2 }], waiting: {}
             });
-        // What stayed beside a screen as it went: the connected connectors
-        // alike it, but the one it left, each once.
-        expect("the alike screens that stayed",
-            Places.alikeStayed(qemu, "Virtual-2", { "eDP-1": panel, "Virtual-1": qemu, "Virtual-2": qemu },
-                ["eDP-1", "Virtual-1", "Virtual-1", "Virtual-2"]), ["Virtual-1"]);
-        expect("none stay beside a screen known by its connector",
-            Places.alikeStayed("eDP-1", "eDP-1", { "eDP-1": panel }, ["eDP-1"]), []);
+        // The connectors other screens' as a workspace leaves one, by their
+        // descriptions as last heard ("" for one not heard yet): those
+        // connected, and those left with it, each once, but the one it left.
+        expect("the other screens as a workspace leaves one",
+            Places.othersAt("Virtual-2", ["eDP-1", "Virtual-1", "Virtual-1", "Virtual-5"],
+                ["Virtual-2", "Virtual-3"], { "eDP-1": panel, "Virtual-1": qemu, "Virtual-2": qemu,
+                    "Virtual-3": qemu }),
+            { "eDP-1": panel, "Virtual-1": qemu, "Virtual-5": "", "Virtual-3": qemu });
 
         // Windows that reopen themselves, matched by program and title,
         // else the first of that program, each kept window used once.

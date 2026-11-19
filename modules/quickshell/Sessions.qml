@@ -1998,7 +1998,9 @@ Singleton {
     // connected, once nothing's being placed. A screen can come well after
     // niri starts, as the monitor came 52 s after it on 2026-11-02, and niri
     // keeps a workspace that took a window while its screen was away on the
-    // screen it took it on, so without this they'd stay there.
+    // screen it took it on, so without this they'd stay there. Each keeps
+    // the other screens as it left (`others`, Places.js's othersAt), said by
+    // whoever saw it leave, since a reopen notes one minutes after.
     property var awayFrom: ({})
     function noteAway(away, id) {
         if (!away || id === null || id === undefined)
@@ -2006,10 +2008,9 @@ Singleton {
         const kept = awayFrom[away.screen] ?? [];
         if (kept.some(one => one.id === id))
             return;
-        const outputs = Object.values(Niri.workspaces).map(one => one.output ?? "");
-        const stayed = Places.alikeStayed(away.screen, away.output, screens, outputs);
         const next = Object.assign({}, awayFrom);
-        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output, stayed }]);
+        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
+            others: away.others ?? {} }]);
         awayFrom = next;
     }
     // Each workspace's screen and number as last seen with that screen
@@ -2035,13 +2036,16 @@ Singleton {
         const outputs = now.map(one => one.output ?? "");
         const noted = Object.values(root.awayFrom)
             .reduce((all, kept) => all.concat(kept.map(one => one.id)), []);
+        const lefts = now.map(one => root.workspacesWere[one.id]?.output)
+            .filter(output => output !== undefined && !outputs.includes(output));
         const next = {};
         for (const one of now) {
             const was = root.workspacesWere[one.id];
             const left = was !== undefined && !outputs.includes(was.output);
             if (left && was.output !== (one.output ?? "") && !noted.includes(one.id))
-                root.noteAway({ screen: root.screens[was.output] || was.output,
-                    workspace: was.idx, output: was.output }, one.id);
+                root.noteAway({ screen: root.screens[was.output] || was.output, workspace: was.idx,
+                    output: was.output,
+                    others: Places.othersAt(was.output, outputs, lefts, root.screens) }, one.id);
             next[one.id] = left ? was : { output: one.output ?? "", idx: one.idx };
         }
         root.workspacesWere = next;
@@ -2063,6 +2067,16 @@ Singleton {
         // the screen was away (2026-11-11, modules/windows/src/order.rs).
         moving.forEach(move => Niri.act({ MoveWorkspaceToMonitor: { output: move.output,
             reference: { Id: move.id } } }));
+        // Each is where it was sent now, so niri moving it there isn't its
+        // screen going again (noteGone), as it was when it went to an alike
+        // screen on another connector than the one it left.
+        if (moving.length > 0) {
+            const were = Object.assign({}, root.workspacesWere);
+            moving.forEach(move => {
+                were[move.id] = { output: move.output, idx: Niri.workspace(move.id)?.idx ?? 1 };
+            });
+            root.workspacesWere = were;
+        }
         // A screen just connected keeps its empty workspace while it's the
         // active one there, so the first moved is focused, which lets niri
         // drop the empty one, and then Joel's window again.
@@ -2134,7 +2148,8 @@ Singleton {
             into = root.moveTo(window, where, workspace, column, beside);
         if (into !== null && Places.connectorOf(at, screens) === undefined)
             root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
-                output: at.output }, into);
+                output: at.output, others: Places.othersAt(at.output, Object.keys(screens), [], screens) },
+                into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;
