@@ -126,12 +126,14 @@ it("links each cell a cell started to that cell's row", () => {
   });
 });
 
-/** A comma tied to the address before it, which the panel never breaks. */
-const TIED =
-  /<span class="tie">(<a [^>]*><code>[^<]*<\/code><\/a>(\u00a0\(as claimed\))?|\d+ more),<\/span>/gu;
+/** A comma tied to the link before it, which the panel never breaks. */
+const TIED = /<span class="tie"><a [^>]*><code>[^<]*<\/code><\/a>,<\/span>/gu;
 
-/** A bracketed hedge held to its name or count by a no-break space, as "(as claimed)". */
-const HELD = "\u00a0(";
+/** A claimed name held whole with its bracket, which the panel never breaks. */
+const HELD = /<span class="tie"><a [^>]*><code>[^<]*<\/code><\/a> \(as claimed\)<\/span>/gu;
+
+/** A count's bracketed hedge, held to the count by a no-break space. */
+const COUNT_HELD = "\u00a0(";
 
 /** `count` cells' addresses: AAAAAA, BBBBBB and on. */
 function cells(count: number): readonly string[] {
@@ -153,24 +155,27 @@ it("says the cells a cell started are only claimed unless the node's book holds 
   const three = ["OSPREY", "SKIFFS", "TERNAA"];
   assert.equal(
     read(startedLine(forage(), three, () => false)).says,
-    "3 cells: OSPREY, SKIFFS and TERNAA, as claimed",
+    "3 cells, all as claimed: OSPREY, SKIFFS and TERNAA",
+  );
+  assert.equal(
+    read(startedLine(forage(), ["OSPREY"], () => false)).says,
+    "One cell, as claimed: OSPREY",
   );
   // Some claimed: each in brackets where it's named, and the count by how many of it are.
   const says = (started: readonly string[], claimed: readonly string[]) =>
     read(startedLine(forage(), started, (cell) => !claimed.includes(cell))).says;
   assert.equal(
     says(three, ["OSPREY", "TERNAA"]),
-    `3 cells: OSPREY${HELD}as claimed), SKIFFS and TERNAA${HELD}as claimed)`,
+    "3 cells: OSPREY (as claimed), SKIFFS and TERNAA (as claimed)",
   );
   const six = "AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF";
-  assert.equal(says(cells(8), ["HHHHHH"]), `8 cells: ${six} and 2 more${HELD}some as claimed)`);
-  assert.equal(
-    says(cells(8), ["GGGGGG", "HHHHHH"]),
-    `8 cells: ${six} and 2 more${HELD}as claimed)`,
-  );
-  assert.equal(says(cells(8), cells(8)), `8 cells: ${six} and 2 more, as claimed`);
+  const more = `2 more${COUNT_HELD}`;
+  assert.equal(says(cells(8), ["HHHHHH"]), `8 cells: ${six} and ${more}some as claimed)`);
+  assert.equal(says(cells(8), ["GGGGGG", "HHHHHH"]), `8 cells: ${six} and ${more}as claimed)`);
+  // All claimed is said before the list, so it can't read as the count's alone.
+  assert.equal(says(cells(8), cells(8)), `8 cells, all as claimed: ${six} and 2 more`);
   // Seven are all named, so a claimed seventh is said once, by its name.
-  assert.equal(says(cells(7), ["GGGGGG"]), `7 cells: ${six} and GGGGGG${HELD}as claimed)`);
+  assert.equal(says(cells(7), ["GGGGGG"]), `7 cells: ${six} and GGGGGG (as claimed)`);
 });
 
 it("escapes an address the node gives before linking it", () => {
@@ -180,6 +185,20 @@ it("escapes an address the node gives before linking it", () => {
   assert.ok(line.includes('data-cell="&lt;b a=&quot;1&quot;&gt;&amp;"'), line);
 });
 
+it("escapes a claimed address not standing here", () => {
+  const away = '<img src="x">';
+  const panel = panelOf(
+    forage({ cell: "TERNAA", startedBy: away, booked: false, splitFrom: away }),
+    new Set(["TERNAA"]),
+    [],
+  );
+  assert.ok(!panel.includes("<img"), panel);
+  assert.equal(
+    panel.match(/<code>&lt;img src=&quot;x&quot;&gt;<\/code>,<\/span> as claimed/gu)?.length,
+    2,
+  );
+});
+
 it("ties each comma to the address before it, so no line starts with one", () => {
   // A comma follows each name but the two around "and"; eight name six.
   for (const [count, ties] of [
@@ -187,14 +206,17 @@ it("ties each comma to the address before it, so no line starts with one", () =>
     [7, 5],
     [8, 5],
   ] as const) {
-    // Every other start claimed, so a claimed name's comma is tied too.
+    for (const line of [
+      startedLine(forage(), cells(count)),
+      startedLine(forage(), cells(count), () => false),
+    ]) {
+      assert.ok(!line.replace(TIED, "").includes("</a>,"), `a comma stands loose in ${line}`);
+      assert.equal(line.match(TIED)?.length, ties, line);
+    }
+    // Every other start claimed: each claimed name held whole with its bracket.
     const line = startedLine(forage(), cells(count), (cell) => cell.charCodeAt(0) % 2 === 0);
-    assert.ok(!line.replace(TIED, "").includes(","), `a comma stands loose in ${line}`);
-    assert.equal(line.match(TIED)?.length, ties, line);
-    // Every start claimed, so the hedge's comma is tied to the last too.
-    const all = startedLine(forage(), cells(count), () => false);
-    assert.ok(!all.replace(TIED, "").includes(","), `a comma stands loose in ${all}`);
-    assert.equal(all.match(TIED)?.length, ties + 1, all);
+    const rest = line.replace(HELD, "").replace(TIED, "");
+    assert.ok(!(rest.includes("</a>,") || rest.includes("</a> (")), `loose in ${line}`);
   }
 });
 
@@ -305,7 +327,10 @@ const SPLIT_FROM =
 
 /** The panel's line for the two cells a cell split into, one here and one away. */
 const SPLIT_INTO =
-  /<dt>Split into<\/dt><dd><span>2 cells: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><span class="tie"><code>FARAWAY<\/code>,<\/span> as claimed, not standing here<\/span><\/span>/u;
+  /<dt>Split into<\/dt><dd><span>2 cells, all as claimed: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><code>FARAWAY<\/code>, not standing here<\/span><\/span>/u;
+
+/** An away cell's comma in a list, held by the text before it, so none of it is tied. */
+const AWAY_LISTED = /<span><code>FARAWAY<\/code>, not standing here<\/span>, <a /u;
 
 /** The panel's line for a cell split from one not drawn here, hedged before the away note. */
 const SPLIT_FROM_AWAY =
@@ -355,6 +380,8 @@ it("says the cell a cell split from and the cells it split into, linked when her
   );
   assert.match(split, SPLIT_FROM);
   assert.match(split, SPLIT_INTO);
+  const three = panelOf(forage({ splitInto: ["FARAWAY", "TERNAA", "KESTRL"] }), here, []);
+  assert.match(three, AWAY_LISTED);
   assert.match(panelOf(forage({ splitFrom: "FARAWAY" }), here, []), SPLIT_FROM_AWAY);
 });
 

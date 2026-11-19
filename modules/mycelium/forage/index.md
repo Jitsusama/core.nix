@@ -17,8 +17,8 @@ a terminal, `mycelium forage` gathers the realm's.
   whole; one without is hollow, told by its shape. A cell started by
   another, or split from it, branches down from it: solid when the node's
   own start book holds the start, dashed when it's only claimed, as every
-  split is. The panel says "as claimed" after each tie the book doesn't
-  hold, at either end. A dotted arc, bowing
+  split is. The panel says "as claimed" of each tie the book doesn't
+  hold, at either end, and before a list when all of it is. A dotted arc, bowing
   below both, joins a cell to one serving a need of its. A cap rises over a cell whose plans
   have landed steps, its gills lit as they land. The machine the cells
   stand on is named under the ground. The first 48 cells are drawn; the

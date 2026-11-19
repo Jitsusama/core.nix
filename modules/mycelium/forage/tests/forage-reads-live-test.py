@@ -160,7 +160,7 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
     )
     panel = opened_on(forage_page, "TERNAA")
     expect(fact(panel, "Split into"), "TERNAA didn't say it split into OSPREY").to_contain_text(
-        "OSPREY, as claimed"
+        "One cell, as claimed: OSPREY"
     )
 
 

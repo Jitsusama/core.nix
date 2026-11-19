@@ -90,6 +90,10 @@ it("says a node-wide fault in where starts came from once", () => {
     "KESTRL's started_by_from said neither book nor presence",
     "where TERNAA's start came from",
   ]);
+  // A node sending no source at all is said once, however many cells it starts.
+  assert.deepEqual(unread(forage("KESTRL", lineage()), forage("TERNAA", lineage())), [
+    "where any start came from, as the node sends none yet, so each reads as claimed",
+  ]);
   // One that names no starter needs no source.
   assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA")), []);
   assert.deepEqual(unread(forage("KESTRL")), []);

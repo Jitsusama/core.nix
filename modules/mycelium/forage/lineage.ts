@@ -56,9 +56,17 @@ function claimedCell(cell: string, here: ReadonlySet<string>): string {
     : `<span>${asClaimed(`<code>${escaped(cell)}</code>`)}, not standing here</span>`;
 }
 
-/** A hedge said after one name or count, held to it by a no-break space. */
+/** A hedge said after a count, held to it by a no-break space. */
 function bracketed(hedge: string): string {
   return `\u00a0(${hedge})`;
+}
+
+/**
+ * `item` with the comma after it in a list: a link is drawn as a box of its own, which a
+ * line may break after, so its comma is tied to it; text holds its comma itself.
+ */
+function listed(item: string): string {
+  return item.endsWith("</a>") ? `<span class="tie">${item},</span>` : `${item},`;
 }
 
 /** How many of `count` cells a list names, past `MOST_STARTED` counting the rest. */
@@ -70,27 +78,24 @@ function namedOf(count: number): number {
  * The cells drawn here that a cell started, each linked to its row, as "Started by" links
  * back. Past `MOST_STARTED` the rest are counted, as a wall of links would bury the facts
  * below, though one more is named, as "and 1 more" says less than its name. It's one span,
- * read as a sentence, each comma tied to the address before it so no line starts with one.
- * `hedged`, given, says the last cell as claimed, or the count, of a list all claimed.
+ * read as a sentence, so no line starts with a comma. A list all `claimed` says so before
+ * its first cell, as a hedge after its last would read as that cell's alone.
  */
 function cellsStarted(
   started: readonly string[],
   name: (cell: string) => string = cellLink,
-  hedged?: (cell: string) => string,
+  claimed = false,
 ): string {
   if (started.length === 0) {
     return "None here yet";
   }
-  const count = started.length === 1 ? "One cell" : `${started.length} cells`;
-  const named = started.slice(0, namedOf(started.length));
-  const rest = started.length - named.length;
-  const lastCell = rest === 0 ? named.pop() : undefined;
-  const links = named.map(name);
-  const more = hedged === undefined ? `${rest} more` : asClaimed(`${rest} more`);
-  const last = lastCell === undefined ? more : (hedged ?? name)(lastCell);
-  const before = links
-    .map((link, at) => (at < links.length - 1 ? `<span class="tie">${link},</span>` : link))
-    .join(" ");
+  const one = started.length === 1;
+  const counted = one ? "One cell" : `${started.length} cells`;
+  const count = claimed ? `${counted}, ${one ? "" : "all "}as claimed` : counted;
+  const links = started.slice(0, namedOf(started.length)).map(name);
+  const rest = started.length - links.length;
+  const last = rest === 0 ? (links.pop() ?? "") : `${rest} more`;
+  const before = links.map((link, at) => (at < links.length - 1 ? listed(link) : link)).join(" ");
   return before === "" ? `${count}: ${last}` : `${count}: ${before} and ${last}`;
 }
 
@@ -102,10 +107,11 @@ function startsSaid(started: readonly Pick<Forage, "cell" | "booked">[]): string
   const cells = started.map((each) => each.cell);
   const claimed = new Set(started.filter((each) => !each.booked).map((each) => each.cell));
   if (claimed.size > 0 && claimed.size === cells.length) {
-    return cellsStarted(cells, cellLink, (cell) => asClaimed(cellLink(cell)));
+    return cellsStarted(cells, cellLink, true);
   }
+  // A bracketed name is held whole, so its bracket never opens a line.
   const name = (cell: string) =>
-    `${cellLink(cell)}${claimed.has(cell) ? bracketed("as claimed") : ""}`;
+    claimed.has(cell) ? `<span class="tie">${cellLink(cell)} (as claimed)</span>` : cellLink(cell);
   const counted = cells.slice(namedOf(cells.length));
   const some = counted.filter((cell) => claimed.has(cell)).length;
   const all = some === counted.length;
@@ -124,11 +130,7 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
 
 /** The cells `forage` split into, every split only claimed, so the whole list is hedged. */
 function splitSaid(forage: Forage, here: ReadonlySet<string>): string {
-  return cellsStarted(
-    forage.splitInto,
-    (cell) => cellOrAway(cell, here),
-    (cell) => claimedCell(cell, here),
-  );
+  return cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here), true);
 }
 
 export { cellOrAway, claimedCell, escaped, namedOf, splitSaid, startedBy, startsSaid };

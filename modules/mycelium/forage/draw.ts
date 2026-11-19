@@ -31,6 +31,25 @@ import {
   type Wait,
 } from "./model.ts";
 
+/**
+ * Each month as a need's since says it, when the need wasn't taken today; fixed, as a
+ * runtime's locale data may say a month otherwise.
+ */
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
 /** Each stage of a document as the page says it. */
 const STAGES: { readonly [stage: string]: string } = {
   think: "Thinking",
@@ -313,7 +332,7 @@ function sinceOf(since: string | undefined, now: number): string {
   }
   const when = new Date(at);
   const today = new Date(now).toDateString() === when.toDateString();
-  const month = when.toLocaleString("en", { month: "short" });
+  const month = MONTHS[when.getMonth()];
   const day = today ? "" : `${when.getDate()} ${month}, `;
   return `, since <time datetime="${when.toISOString()}">${day}${clockTime(at)}</time>`;
 }
