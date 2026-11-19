@@ -586,19 +586,31 @@ QtObject {
             [turnSeen.beat, turnSeen.pose, turnSeen.into, seenRuns.map(run => run.pose)],
             ["turns", "walkingA", 1, ["walkingC", "walkingB"]]);
         // Set off a pixel under its row, its first stride too short to be
-        // seen, it holds the stride it was drawn in, as a stand's B; set off
-        // mid-stride, it strides on from that one instead; and from no
-        // stride, or a pose that isn't one, grooming, it steps into D at once
-        // rather than slide in that pose.
+        // seen, it holds the stride it stood in, a stand's B or any other;
+        // set off mid-stride, at none, half or all of it, it strides on from
+        // that one instead; and from no stride, or a pose that isn't one,
+        // grooming, it steps into D at once rather than slide in that pose.
+        // Every pose it's drawn in is shown 33 ms but the one it set off in,
+        // already seen.
         const offRow = ([drawnIn, drawnInto]) => Paths.walk({ x: 300, y: 8 }, { x: 500, y: 7 },
             world({ hurried: true, facing: 1, drawnIn, drawnInto }));
-        const opensOn = way => [way.beats[0].ends - way.beats[0].begins < 33,
-            way.beats[0].held ?? null, runsOf(way, 120).slice(0, 2).map(run => run.pose)];
-        expect("set off into a stride too short to see, it holds the stride it's drawn in",
-            [["walkingB", null], ["walkingB", 0.5], [null, null], ["grooming", null]]
-                .map(set => opensOn(offRow(set))),
-            [[true, "walkingB", ["walkingB", "walkingD"]], [true, null, ["walkingB", "walkingD"]],
-                [true, null, ["walkingD", "walkingA"]], [true, null, ["walkingD", "walkingA"]]]);
+        const opensOn = set => {
+            const way = offRow(set);
+            const runs = runsOf(way, 200).slice(0, 3);
+            return [way.beats[0].ends - way.beats[0].begins < 33, way.beats[0].held ?? null,
+                runs.slice(0, 2).map(run => run.pose),
+                runs.every((run, k) => run.ms >= 33 || (k === 0 && run.pose === set[0]))];
+        };
+        expect("set off into a stride too short to see, it holds only a stride it stood in",
+            [["walkingB", null], ["walkingA", null], ["walkingB", 0.5], ["walkingA", 0],
+                ["walkingA", 1], [null, null], ["grooming", null]].map(opensOn),
+            [[true, "walkingB", ["walkingB", "walkingD"], true],
+                [true, "walkingA", ["walkingA", "walkingC"], true],
+                [true, null, ["walkingB", "walkingD"], true],
+                [true, null, ["walkingA", "walkingC"], true],
+                [true, null, ["walkingC", "walkingB"], true],
+                [true, null, ["walkingD", "walkingA"], true],
+                [true, null, ["walkingD", "walkingA"], true]]);
         // And over it on its way, as a route goes, to a seat clear of it.
         const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
             world({ floats: [flush] }));

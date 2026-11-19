@@ -227,7 +227,7 @@ QtObject {
             // And the windows changed under it somewhere on its way past
             // the slide, its way found again from where it's got to, in
             // the stride it's drawn in as the screen sets it off
-            // (MarginCatScreen.qml's walkFrom()).
+            // (MarginCatScreen.qml's walkTo()).
             const t = journey.beats[0].ends + random() * (journey.ends - journey.beats[0].ends);
             const here = Paths.frame(journey, t);
             const changed = changes(now, random);
