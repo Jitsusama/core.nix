@@ -357,12 +357,13 @@ impl Launches {
     /// after the stop it caused, or after that restart was timed: either is
     /// then taken back as the tool's own, until a switch's reload heard
     /// after it says the stop was the switch's after all (`taken.rs`). One
-    /// heard after the restart's ready line, or after the day it was timed
-    /// in, comes too late, and the restart stays counted as a switch's. A
-    /// switch's reload heard only after the day a restart taken back was
-    /// timed in comes too late as well: that day was written without it,
-    /// so it is in neither day, as one wholly before midnight heard after
-    /// it is (`before`).
+    /// heard after the restart's ready line, after a newer restart of its
+    /// service was timed, or after the day it was timed in, comes too
+    /// late, and the restart stays counted as a switch's. A switch's reload
+    /// heard only after the day a restart taken back was timed in comes
+    /// too late as well: that day was written without it, so it is in
+    /// neither day, as one wholly before midnight heard after it is
+    /// (`before`).
     fn keep_reload(&mut self, switch: bool, entry: &Entry) {
         let kept = self.reloaded.entry(switch).or_default();
         kept.retain(|reload| {

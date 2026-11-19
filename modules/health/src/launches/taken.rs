@@ -274,3 +274,53 @@ impl Launches {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::{Launches, MOST_RELOADS};
+    use crate::day::tests::entry;
+    use crate::journal::{Entry, Job, Origin};
+
+    #[test]
+    fn a_tool_restarting_over_and_over_keeps_only_the_most_taken_and_the_newest() {
+        let clocked = |at, line| Entry {
+            at,
+            since_boot: at,
+            ..line
+        };
+        let reload = |program: &str| Entry {
+            origin: Origin::Systemd,
+            ..entry(
+                "systemd",
+                5,
+                &format!("Reload requested from client PID 1 ('{program}') (unit x.service)..."),
+            )
+        };
+        let job = |job| Entry {
+            job: Some(job),
+            ..entry("backend.service", 6, "")
+        };
+        // A tool restarting its own service every 200 s, past the most
+        // kept: each restart stays taken back, for a switch's reload heard
+        // late, until the cap lets the oldest go.
+        let mut launches = Launches::default();
+        let mut at = 1_000_000;
+        for _ in 0..=MOST_RELOADS {
+            launches.heard(&clocked(at, reload("systemctl")));
+            launches.heard(&clocked(at + 500_000, job(Job::Stopping)));
+            launches.heard(&clocked(at + 600_000, job(Job::Started)));
+            at += 200_000_000;
+        }
+        // A switch's reload written just before the newest, heard after
+        // it, still gives that one back.
+        launches.heard(&clocked(at - 201_000_000, reload("sd-switch")));
+        assert_eq!(
+            (
+                launches.taken.len(),
+                launches.restarted.get("backend.service")
+            ),
+            (MOST_RELOADS - 1, Some(&vec![100])),
+            "the restarts taken back grew past the most, or the newest was lost"
+        );
+    }
+}

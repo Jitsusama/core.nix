@@ -14,8 +14,9 @@ const REQUESTED: &str = "Reload requested from client PID ";
 /// own switch and as the follower's, and home-manager's sd-switch. The
 /// name is the one a program gives itself, so any program of the user's
 /// can pass for a switch, a reload heard late included, and one passing
-/// for a tool, heard late, can take back a restart already timed: either
-/// skews no more than health's figures, by something that already runs as
+/// for a tool, heard late, can take back a restart already timed, or crowd
+/// a stop taken back out past the most kept: each skews no more than
+/// health's figures, by something that already runs as
 /// the user, and only at the moment of the stop, since journald stamps
 /// both clocks.
 const SWITCHES: [&str; 3] = ["switch-to-confi", ".switch-to-conf", "sd-switch"];
@@ -520,6 +521,20 @@ mod tests {
                 ],
                 vec![200],
             ),
+            // A tool's reload heard after a newer restart of the service
+            // was timed: too late for the older, which stays a switch's,
+            // though the newer is taken back.
+            (
+                "a tool's reload heard after a newer restart",
+                vec![
+                    backend("b", 10_800_000, Job::Stopping),
+                    backend("b", 10_900_000, Job::Started),
+                    backend("b", 11_000_000, Job::Stopping),
+                    backend("b", 11_100_000, Job::Started),
+                    reload_in("b", 10_000_000, "systemctl"),
+                ],
+                vec![100],
+            ),
         ];
         each_restarted(days);
     }
@@ -692,6 +707,17 @@ mod tests {
                     backend("b", 12_000_000, Job::Stopping),
                     clocked(backend("b", 0, Job::Started), 0, 12_050_000),
                     backend("b", 16_000_000, Job::Started),
+                ],
+                vec![],
+            ),
+            (
+                "a start without the boot's stamp while a tool's reload took it",
+                vec![
+                    backend("b", 13_000_000, Job::Stopping),
+                    reload_in("b", 8_000_000, "systemctl"),
+                    clocked(backend("b", 0, Job::Started), 0, 13_050_000),
+                    reload_in("b", 9_000_000, "sd-switch"),
+                    backend("b", 17_000_000, Job::Started),
                 ],
                 vec![],
             ),

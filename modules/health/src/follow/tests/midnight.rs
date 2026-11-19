@@ -36,9 +36,10 @@ fn a_restart_across_midnight_is_the_new_days() {
     let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
     let m = MIDNIGHT;
     let (stopping, started) = (journal::UNIT_STOPPING, journal::UNIT_STARTED);
-    // Each case is in a boot of its own, so no reload is another's. The
-    // day turns once, at the warning; what comes before it is heard in the
-    // old day, what comes after in the new.
+    // Each case with a reload is in a boot of its own, so no reload is
+    // another's, and boot a holds those with none. The day turns once, at
+    // the warning; what comes before it is heard in the old day, what
+    // comes after in the new.
     let heard_before_the_turn = [
         // done: restarted before midnight, the old day's alone.
         job("a", stopping, "done.service", m - 60 * SECOND),
@@ -132,6 +133,51 @@ fn a_restart_across_midnight_is_the_new_days() {
         ),
         "a stop or reload before midnight was lost to the new day, or a restart before it \
          counted in it"
+    );
+}
+
+/// The same `line` without its boot's clock, as journald writes a line it
+/// couldn't stamp.
+fn unstamped(line: &str) -> String {
+    let at = line
+        .split(r#""__MONOTONIC_TIMESTAMP":""#)
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("a stamped line");
+    line.replace(
+        &format!(r#""__MONOTONIC_TIMESTAMP":"{at}""#),
+        r#""__MONOTONIC_TIMESTAMP":"0""#,
+    )
+}
+
+#[test]
+fn a_start_of_the_day_before_without_its_stamp_ends_the_stop_it_cant_time() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let m = MIDNIGHT;
+    let (stopping, started) = (journal::UNIT_STOPPING, journal::UNIT_STARTED);
+    // carried: a stop carried, then a start of the day before with no
+    // stamp, heard after the turn, ends it, so the start after it times
+    // nothing. taken: the same while a tool's reload has the stop, given
+    // back after the start.
+    for line in [
+        job("k", stopping, "carried.service", m - 3 * SECOND),
+        job("l", stopping, "taken.service", m - 3 * SECOND),
+        reload("l", "systemctl", m - 8 * SECOND),
+        warning(m + 1),
+        unstamped(&job("k", started, "carried.service", m - 2_900_000)),
+        job("k", started, "carried.service", m + SECOND),
+        unstamped(&job("l", started, "taken.service", m - 2_900_000)),
+        reload("l", "sd-switch", m - 7 * SECOND),
+        job("l", started, "taken.service", m + SECOND),
+    ] {
+        follower.take(&line).expect("a line");
+    }
+    follower.write().expect("the new day is written");
+    assert_eq!(
+        read(into.path(), "2026-11-13").launches.restarted,
+        BTreeMap::new(),
+        "a start without its stamp left the stop waiting for the next start"
     );
 }
 
