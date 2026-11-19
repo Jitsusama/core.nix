@@ -78,6 +78,12 @@ ROUNDED = 2
 # How a key's line says the frames begun since it was heard (Trials.js's framesBeforeSaid), read
 # back from its own frame's number, which a wrong number or clock leaves unsaid.
 FRAMES_BEFORE = re.compile(r", after (?:at least )?\d+ other frames? since it was heard")
+# How the close says each key's press, swap and screen in monotonic ms (Presented.keysClockSaid),
+# each to a tenth, "-" for one not timed, so it lines up with niri's own log of its frames.
+KEYS_CLOCK = re.compile(r"launcher: \d+ keys pressed, swapped and shown, in monotonic ms: (.+)")
+CLOCK_KEY = re.compile(r"(-|[\d.]+) (-|[\d.]+) ([\d.]+)")
+# A tenth's rounding, with room for the float either side of it.
+TENTH = 0.051
 # The most facts a home network thing's drawer holds, the rest its step in's (modules/eero's
 # drawers.rs GLANCE).
 GLANCE = 6
@@ -4769,6 +4775,18 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
         f" and {heard} before the shell heard it"
     )
     shell.close_launcher()
+    # The close says the key's own swap and screen, which it read from its record, on its clock.
+    closed = said_once(shell, since, KEYS_CLOCK)
+    clock = KEYS_CLOCK.search(closed)
+    assert clock, "the close never said its keys' clock"
+    each = [CLOCK_KEY.match(one) for one in clock.group(1).split("; ")]
+    assert any(
+        one
+        and one.group(2) != "-"
+        and abs(float(one.group(2)) - float(key["swapped"])) <= TENTH
+        and abs(float(one.group(3)) - float(key["at"])) <= TENTH
+        for one in each
+    ), f"its clock said {clock.group(0)}; its key was {key}"
 
 
 # How long niri is held just after a daemon's line, well past Joel's 50 ms bar.

@@ -47,6 +47,12 @@ function median(ms) {
     return sorted[(sorted.length - 1) >> 1];
 }
 
+// A monotonic time to a tenth of a millisecond, as niri's own log says its
+// frames' times, so the lines here that say one line up with it.
+function tenths(ms) {
+    return (Math.round(ms * 10) / 10).toFixed(1);
+}
+
 // What the journal says of the keys presented, each `{from, at}` and, once
 // its frame began, `heard` and `begun`, or of those `verb` names landed:
 // how long they took, and with `apart` where that went, each part's median,
@@ -128,27 +134,35 @@ function shownSaid(times, at) {
     // the vblank it lies on.
     const count = Math.max(1, Math.ceil((at - times.swapped) / refresh - 0.01));
     const frames = `${count} ${count === 1 ? "frame" : "frames"} at ${hz} Hz`;
-    const tenths = ms => (Math.round(ms * 10) / 10).toFixed(1);
     return `; ${frames} from its swap to the screen`
         + ` (swapped ${tenths(times.swapped)}, shown ${tenths(at)} monotonic ms)`;
 }
 
 // When each key was pressed, its frame swapped and niri showed it, in
 // CLOCK_MONOTONIC ms as KeyTimes and frame-presentation.patch read them,
-// in the order pressed, "-" for a swap the render thread didn't time, or ""
-// for no keys. The line the keys' medians make can't be lined up with
-// niri's own log of each frame it asked for: on the 60 Hz screen keys
-// spent a median 16 ms from their swap to the screen, against 11 on the
-// 120 Hz panel, and which frames waited needs each key's times (LR3WMN,
-// 2026-11-19).
-function keysShownSaid(times) {
+// in the order pressed, or "" for no keys. The line the keys' medians make
+// can't be lined up with niri's own log of each frame it asked for: on the
+// 60 Hz screen keys spent a median 16 ms from their swap to the screen,
+// against 11 on the 120 Hz panel, and which frames waited needs each key's
+// times (LR3WMN, 2026-11-19). niri says a frame's steps only for one asked
+// for after 100 ms idle (says-a-frames-steps-after-idle.patch), so in a
+// burst of keys the first has a line of niri's to match and the rest don't.
+// A press niri gave no time for, as a typed one's, reads "-", as does a
+// swap the render thread didn't time (`stamped`, `swapped`); a held key's
+// repeat is timed from when Qt made it, as keytimes.cpp says. A key whose
+// own frame niri dropped says how many it dropped (`dropped`), since its
+// swap is its own frame's and its showing a later one's. Keys typed into
+// an ask are never timed (Launcher.qml's searchedNow), so none is secret.
+function keysClockSaid(times) {
     if (times.length === 0) {
         return "";
     }
-    const tenths = ms => (Math.round(ms * 10) / 10).toFixed(1);
-    const each = times.slice().sort((a, b) => a.from - b.from).map(one =>
-        [one.from, one.swapped > 0 ? one.swapped : null, one.at]
-            .map(ms => ms === null ? "-" : tenths(ms)).join(" "));
+    const each = times.slice().sort((a, b) => a.from - b.from).map(one => {
+        const pressed = one.stamped === false ? "-" : tenths(one.from);
+        const swapped = one.swapped > 0 ? tenths(one.swapped) : "-";
+        const dropped = one.dropped > 0 ? ` after ${one.dropped} dropped` : "";
+        return `${pressed} ${swapped} ${tenths(one.at)}${dropped}`;
+    });
     return `launcher: ${times.length} keys pressed, swapped and shown, in monotonic ms: `
         + each.join("; ");
 }

@@ -7019,8 +7019,8 @@ Scope {
             step: stepped === true ? typed : "",
             searched: Date.now() - began, thread: Thread.spent(thread, threadNow()),
             parts: searchParts, begun: null,
-            rendered: null, pressed: pressed > 0 ? pressed : heard, heard,
-            done: KeyTimes.now() }]);
+            rendered: null, pressed: pressed > 0 ? pressed : heard, stamped: pressed > 0,
+            heard, done: KeyTimes.now() }]);
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
         // Its handler is done once it's searched or moved, all a key's own
@@ -12512,7 +12512,12 @@ Scope {
         // dropped for it.
         // A step in or out says which, by its arrow and place, so a check
         // finds it however fast it was; typed words are never said here.
+        // Whether niri gave its press a time, and how many frames niri
+        // dropped from its own to the one it showed, so its clock's line
+        // says each (Presented.keysClockSaid).
+        const dropped = key.frame !== undefined && answered > key.frame ? answered - key.frame : 0;
         const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
+            stamped: key.stamped !== false, dropped,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "",
             refresh: root.refreshOf(answered),
@@ -12611,7 +12616,7 @@ Scope {
 
     function keysPresentedSaid() {
         const first = Presented.keysSaid("presented", keysPresented, true);
-        const clock = Presented.keysShownSaid(keysPresented);
+        const clock = Presented.keysClockSaid(keysPresented);
         const updates = Presented.changesSaid(updatesPresented)
             .concat(Presented.drawersSaid(drawersPresented));
         // Each key's own time goes with the opening's trial, where health
