@@ -4,20 +4,14 @@
 # cores, so with every core busy each runs near the same clock; held lower,
 # the efficient ones leave the performance cores the budget (nixos.nix says
 # why). Writing a ceiling needs root, so efficient-cores-held@.service runs
-# it. EFFICIENT_CORES_SYSFS puts sysfs elsewhere, for the test alone.
+# it. Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand. EFFICIENT_CORES_SYSFS puts sysfs under
+# another root, for the test alone.
 set -euo pipefail
 sys=${EFFICIENT_CORES_SYSFS:-}/sys
 
-usage() {
-  cat <<'EOF'
-efficient-cores hold MHZ   hold each efficient core's ceiling at MHZ, within its own range
-efficient-cores free       free each efficient core's ceiling to its full clock
-EOF
-}
-
 refuse() {
-  echo "efficient-cores: $1" >&2
-  usage >&2
+  printf '%s\n' "efficient-cores $1" "  try  efficient-cores --help" >&2
   exit 64
 }
 
@@ -38,11 +32,12 @@ efficient() {
 
 # ceiling <kHz, or empty for each core's full clock>
 ceiling() {
-  local want=$1 n freq low high kHz held=0
+  local want=$1 cores n freq low high kHz held=0
   if [[ ! -r "$sys/devices/cpu_atom/cpus" ]]; then
     echo "efficient-cores: this processor has no efficient cores, so it holds nothing"
     return
   fi
+  cores=$(efficient)
   while read -r n; do
     freq=$sys/devices/system/cpu/cpu$n/cpufreq
     low=$(<"${freq}/cpuinfo_min_freq")
@@ -55,7 +50,7 @@ ceiling() {
     fi
     echo "${kHz}" >"${freq}/scaling_max_freq"
     held=$((held + 1))
-  done < <(efficient)
+  done <<<"${cores}"
   if [[ -n "${want}" ]]; then
     echo "efficient-cores: ${held} efficient cores held at most ${want} kHz"
   else
@@ -64,12 +59,24 @@ ceiling() {
 }
 
 case "${1-}" in
---help | -h)
-  usage
+-h | --help)
+  cat <<'EOF'
+efficient-cores  holds the efficient cores' clock, or frees it
+
+EXAMPLES
+  efficient-cores hold MHZ  hold each at most MHZ, within
+                            its own range
+  efficient-cores free      free each to its full clock
+
+EXIT
+  0   done
+  1   the kernel refused a setting
+  64  asked wrongly
+EOF
   ;;
 hold)
   [[ $# -eq 2 ]] || refuse "hold takes one speed, in MHz"
-  [[ "$2" =~ ^[0-9]+$ ]] || refuse "'$2' isn't a speed in MHz"
+  [[ "$2" =~ ^[0-9]+$ ]] || refuse "holds a speed in MHz, not $2"
   ceiling "$(($2 * 1000))"
   ;;
 free)
@@ -77,6 +84,6 @@ free)
   ceiling ""
   ;;
 *)
-  refuse "say hold or free"
+  refuse "holds or frees the clock, not ${1:-nothing}"
   ;;
 esac
