@@ -100,23 +100,33 @@ mod tests {
         // The child is forked with a copy of every end, close-on-exec or
         // not, so it closes its copy of `go` before it waits: with the
         // parent's the only writer left, `go` dropping is the end of the
-        // pipe, and a check that panics lets the child go on to its exec.
+        // pipe, and a check that panics ends the child before its exec.
         let go_fd = go.as_raw_fd();
         let child = std::thread::spawn(move || {
             let mut command = std::process::Command::new("sleep");
             // It sleeps till it's killed, so the lock taken below was
             // free while it ran, however long the taking took.
-            command.arg("infinity");
+            command
+                .arg("infinity")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
             // SAFETY: between its fork and its exec the child only closes
-            // a descriptor, writes a byte and reads one, all
-            // async-signal-safe.
+            // a descriptor, writes a byte, reads one and makes an error of
+            // a number, all async-signal-safe.
             unsafe {
                 command.pre_exec(move || {
                     libc::close(go_fd);
                     let _ = libc::write(told_fd, [1_u8].as_ptr().cast(), 1);
+                    // Only the byte the parent writes once its check holds
+                    // lets it exec: the end of the pipe, a check failing,
+                    // ends the child here, and spawn gives the error.
                     let mut byte = 0_u8;
-                    let _ = libc::read(held_fd, (&raw mut byte).cast(), 1);
-                    Ok(())
+                    if libc::read(held_fd, (&raw mut byte).cast(), 1) == 1 {
+                        Ok(())
+                    } else {
+                        Err(std::io::Error::from_raw_os_error(libc::ECANCELED))
+                    }
                 });
             }
             // A spawn returns once the child has execed, and one that
@@ -130,7 +140,7 @@ mod tests {
         assert_eq!(heard, 1, "the child never forked");
         drop(first);
         // The child waits for this check before it execs, however slow
-        // the machine, and a check that panics lets it go as `go` drops.
+        // the machine, and a check that panics ends it as `go` drops.
         assert!(
             matches!(alone(&marker), Err(NotAlone::Another(_))),
             "a forked child let go of the lock before it execed"
