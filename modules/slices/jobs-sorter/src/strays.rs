@@ -50,7 +50,7 @@ impl Told {
             };
             let process = proc.join(pid.to_string());
             let command = fs::read(process.join("cmdline")).unwrap_or_default();
-            if starting(&process, &command) {
+            if starting(fs::read_link(process.join("exe")), &command) {
                 continue;
             }
             says.push(line(&unit, &command));
@@ -82,23 +82,35 @@ fn made_by_run(slice: &Path) -> Vec<PathBuf> {
 /// forks the process into the service's cgroup as a copy of itself, which
 /// runs `systemd-executor`, which renames itself to the command's name in
 /// brackets, `(sleep)`, before it hands over. A look in that last step once
-/// said a stray ran `(sleep)`, so the program is read from the process's
-/// `exe`, which no rename changes, and only systemd's two programs wait:
-/// any other program named in brackets is said of. Where `exe` can't be
-/// read, the command's first word is the guide.
-fn starting(process: &Path, command: &[u8]) -> bool {
+/// said a stray ran `(sleep)`. So the program is read from the process's
+/// `exe`, `exe` here, which no rename changes, and only systemd's two
+/// programs wait: any other program named in brackets is said of. The
+/// user manager's `exe` is refused even to its own account, and so was a
+/// process renamed `(sleep)` in the VM test, which a readable `exe` would
+/// have shown as systemd's. A process refused so waits while its first
+/// word is systemd's or bracketed. One gone, or whose `exe` can't be read for another reason,
+/// waits only while its first word is systemd's.
+fn starting(exe: std::io::Result<PathBuf>, command: &[u8]) -> bool {
     let systemds = |name: &str| name == "systemd" || name == "systemd-executor";
-    if let Ok(exe) = fs::read_link(process.join("exe")) {
-        let exe = exe.to_string_lossy();
-        let exe = exe.strip_suffix(" (deleted)").unwrap_or(&exe);
-        return Path::new(exe)
-            .file_name()
-            .is_some_and(|name| systemds(&name.to_string_lossy()));
-    }
     let program = command.split(|byte| *byte == 0).next().unwrap_or_default();
-    Path::new(&*String::from_utf8_lossy(program))
+    let first_word_is_systemds = Path::new(&*String::from_utf8_lossy(program))
         .file_name()
-        .is_some_and(|name| systemds(&name.to_string_lossy()))
+        .is_some_and(|name| systemds(&name.to_string_lossy()));
+    match exe {
+        Ok(exe) => {
+            let exe = exe.to_string_lossy();
+            let exe = exe.strip_suffix(" (deleted)").unwrap_or(&exe);
+            Path::new(exe)
+                .file_name()
+                .is_some_and(|name| systemds(&name.to_string_lossy()))
+        }
+        Err(refused) if refused.kind() == std::io::ErrorKind::PermissionDenied => {
+            let bracketed =
+                program.len() > 2 && program.starts_with(b"(") && program.ends_with(b")");
+            bracketed || first_word_is_systemds
+        }
+        Err(_) => first_word_is_systemds,
+    }
 }
 
 /// A cgroup's first process, if it has one.
@@ -262,6 +274,32 @@ mod tests {
             "once the command runs, it's said of by its own words"
         );
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_process_whose_program_cant_be_read_waits_only_while_it_reads_as_systemds() {
+        let refused = || Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        let gone = || Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert!(
+            starting(refused(), b"(sleep)\x00"),
+            "the manager's copy, which no one may read, renamed after the command, waits"
+        );
+        assert!(starting(
+            refused(),
+            b"/nix/store/a-systemd/lib/systemd/systemd\x00--user\x00"
+        ));
+        assert!(
+            !starting(refused(), b"ssh-agent\x00-D\x00"),
+            "a program that hides itself from readers but names itself plainly is said of"
+        );
+        assert!(
+            !starting(gone(), b"(sleep)\x00"),
+            "brackets alone wait only where the program was refused, not where it's gone"
+        );
+        assert!(starting(
+            gone(),
+            b"systemd-executor\x00--deserialize\x0075\x00"
+        ));
     }
 
     #[test]
