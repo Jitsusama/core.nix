@@ -11,10 +11,10 @@ the same on both sides. Each place's line also splits its time at the shell's sw
 shell took to its frame, and what niri took after it to present it, since the VM's niri draws on
 the CPU and once held about half its frames some 150 ms past the swap, which read as the
 launcher's when only the whole was said (RTOIMQ, 2026-11-11). It fails only when an opening
-never says it was presented. Beside it, a second test times each step into a place from home,
-as Joel takes them, since a step is navigation and held to the same 50 ms. A third holds a place
-open while its daemon's changes come, and prints the line the shell says of them as it closes,
-since an update is held to it too: 6 of Machine's 20 on Joel's shell took longer (2026-11-11).
+never says it was presented, or the windows it opened never close. Beside it, a second test
+times each step into a place from home, as Joel takes them, since a step is navigation and held
+to the same 50 ms. A third holds a place open while its daemon's changes come, and prints the
+line the shell says of them as it closes, since an update is held to it too: 6 of Machine's 20 on Joel's shell took longer (2026-11-11).
 """
 
 from __future__ import annotations
@@ -151,7 +151,8 @@ def test_each_chord_opening_is_timed(
     places = os.environ.get("LAB_PLACES", " ".join(PLACES)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
     windows = closing(shell, request)
-    windows.extend(shell.opened(f"Lab {nth}", app="foot") for nth in range(WINDOWS))
+    for nth in range(WINDOWS):
+        windows.append(shell.opened(f"Lab {nth}", app="foot"))
     # Super+N opens the notices on screen, so a run timing it has some there all along.
     if "notices" in places:
         for nth in range(NOTICES):
@@ -282,10 +283,8 @@ def test_each_step_is_timed(
     steps = os.environ.get("LAB_STEPS", " ".join(STEPS)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
     windows = closing(shell, request)
-    windows.extend(
-        shell.opened(f"Lab {nth}", app="foot")
-        for nth in range(int(os.environ.get("LAB_WINDOWS", str(WINDOWS))))
-    )
+    for nth in range(int(os.environ.get("LAB_WINDOWS", str(WINDOWS)))):
+        windows.append(shell.opened(f"Lab {nth}", app="foot"))
     opened(shell, "home")
     shell.close_launcher()
     timed: dict[str, list[int]] = {name: [] for name in steps}
@@ -338,14 +337,22 @@ def closing(shell: Shell, request: pytest.FixtureRequest) -> list[Json]:
 
 def closed(shell: Shell, windows: list[Json]) -> None:
     """Close the windows a test opened, once niri lists none of them, so the next hasn't them."""
+    # A close niri refuses doesn't stop the others: the wait says whether its window stayed.
+    refused: list[str] = []
     for window in windows:
-        shell.close(window)
+        try:
+            shell.close(window)
+        except AssertionError as error:
+            refused.append(str(error))
     ids = {window["id"] for window in windows}
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     # Niri lets a window go once its foot has gone, so it's asked again a poll's length apart.
     while left := [listed for listed in shell.windows() if listed["id"] in ids]:
         if time.monotonic() >= deadline:
-            failed = f"{len(left)} windows never closed: {[w['title'] for w in left]!r}"
+            failed = (
+                f"{len(left)} windows never closed: {[w['title'] for w in left]!r}, "
+                f"closes refused: {refused!r}"
+            )
             raise AssertionError(failed)
         time.sleep(launcher_on_niri.POLL)
 
