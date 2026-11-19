@@ -148,6 +148,15 @@ QtObject {
         expect("nor a word with no held Return said",
             Arming.letsHeldGo([["q", "quit"]], []), false);
 
+        // Which places may be kept to draw at once at the next opening
+        // (Launcher.qml's keepPlace): never one whose rows a share hides,
+        // since a share starting while it's shut would leave the kept copy
+        // drawing its first frame as it was before (ISXEG8, 2026-11-19).
+        expect("a place that hides its rows is never kept",
+            Arming.keepsPlace({ keptNever: true }), false);
+        expect("any other place is", Arming.keepsPlace({}), true);
+        expect("and so is one no source has", Arming.keepsPlace(null), true);
+
         // What Return does on the selected row, as onAccepted asks: a held
         // row is held before anything else it might be stepped into,
         // lined or landed on, as every other way in asks it first.
