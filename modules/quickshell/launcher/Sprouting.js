@@ -39,11 +39,18 @@ function ask(text, folder) {
         where !== "" ? { folder: where } : {});
 }
 
+// A token's digits, letters and digits alike, so it stays short.
+const TOKEN_BASE = 36;
+
+// How many tokens one moment can tell apart.
+const TOKEN_CHANCES = 2 ** 32;
+
 // A token naming a start to the agents daemon, which keeps it by that
 // token until told (starts.rs, letters, digits and dashes): the moment
 // `now` and a `chance` in [0, 1), so two asked in one moment differ.
 function token(now, chance) {
-    return `${Math.floor(now).toString(36)}-${Math.floor(chance * 2 ** 32).toString(36)}`;
+    return `${Math.floor(now).toString(TOKEN_BASE)}-${Math.floor(chance * TOKEN_CHANCES)
+        .toString(TOKEN_BASE)}`;
 }
 
 // Of the starts the agents daemon keeps ended and untold (`kept`, each
@@ -53,8 +60,8 @@ function token(now, chance) {
 // and every token to say told, all but those it's still asking.
 function untold(kept, known) {
     const tell = kept.filter(one => !(one.token in known));
-    const told = kept.filter(one => known[one.token] !== "asking").map(one => one.token);
-    return { tell, told };
+    const heard = kept.filter(one => known[one.token] !== "asking").map(one => one.token);
+    return { tell, told: heard };
 }
 
 // Why `ask` would ask nothing, in `said`'s words (`empty` or

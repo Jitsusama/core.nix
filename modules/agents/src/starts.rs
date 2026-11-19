@@ -169,7 +169,10 @@ fn cut_off() -> Value {
 
 #[cfg(test)]
 mod tests {
+    use daemon_serve::asks::place_of;
+
     use super::*;
+    use crate::served;
 
     const NOW: u128 = 1_800_000_000_000;
 
@@ -191,7 +194,13 @@ mod tests {
         let found = Starts::read(&path, NOW + 1000);
         let records = found.records();
         assert_eq!(records.len(), 1, "{records:?}");
-        assert_eq!(records[0]["key"], "start:a-1");
+        // A watch narrowed to Agents' place reads a key's second part.
+        let key = records[0]["key"].as_str().unwrap_or_default();
+        assert_eq!(
+            place_of(key),
+            Some(served::PLACE),
+            "{key} is served in no place Agents watches"
+        );
         assert_eq!(records[0]["start"]["ended"]["error"]["code"], "unanswered");
         assert_eq!(records[0]["start"]["ended"]["error"]["message"], CUT_OFF);
     }
@@ -209,7 +218,7 @@ mod tests {
         assert_eq!(found.records()[0]["start"]["ended"], answer);
         found.told(&["a-1".to_owned()]);
         found.write(&path).unwrap();
-        assert!(Starts::read(&path, NOW).records().is_empty());
+        assert_eq!(Starts::read(&path, NOW).records(), Vec::<Value>::new());
     }
 
     #[test]
@@ -222,7 +231,7 @@ mod tests {
         assert_eq!(starts.0[0].token, "a-1", "the oldest wasn't let go first");
         let path = kept_at("old");
         starts.write(&path).unwrap();
-        assert!(Starts::read(&path, NOW + KEPT_FOR_MS).records().is_empty());
+        assert_eq!(Starts::read(&path, NOW + KEPT_FOR_MS).records(), Vec::<Value>::new());
     }
 
     #[test]
