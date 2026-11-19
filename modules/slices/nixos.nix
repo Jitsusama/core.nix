@@ -143,10 +143,6 @@ let
   # waiting behind them, is the suspected cause, not yet measured. So that
   # disk keeps its targets.
   disks = config.jitsusama.slices.disks;
-
-  # The cores the work nobody waits on is held to, if the machine names them.
-  efficient = config.jitsusama.slices.efficientCores;
-  onEfficient = lib.optionalAttrs (efficient != null) { AllowedCPUs = efficient; };
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
   efficientCores = pkgs.callPackage ./efficient-cores.nix { };
@@ -307,6 +303,7 @@ in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
   imports = [
+    ./cores.nix
     ./probe.nix
     ./tiers.nix
   ];
@@ -339,21 +336,6 @@ in
         ]
       )
     );
-  };
-
-  options.jitsusama.slices.efficientCores = lib.mkOption {
-    description = ''
-      The processor's efficient cores, as the kernel lists them in
-      /sys/devices/cpu_atom/cpus, such as "4-15". Naming them holds the
-      work nobody waits on, jobs and background in each account and the
-      builds, to them, so the performance cores and the power budget they
-      share are left to Joel's programs. An account's slices take it at
-      its next login, and the builds at the switch. A processor without
-      efficient cores names none, and nothing is held.
-    '';
-    default = null;
-    example = "4-15";
-    type = lib.types.nullOr (lib.types.strMatching "[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*");
   };
 
   options.jitsusama.slices.disks = lib.mkOption {
@@ -482,21 +464,8 @@ in
       CPUWeight = "idle";
       MemoryHigh = "26%";
       IOWeight = 1;
-    }
-    // onEfficient;
-    systemd.user.slices.background.sliceConfig = {
-      IOWeight = 1;
-    }
-    // onEfficient;
-
-    # Under every core's load the processor's one power budget held each
-    # near 2.3 GHz on 19 November, so one of Joel's threads ran no faster
-    # on a performance core than on an efficient one, and a quarter of
-    # the processors' quota on jobs took it from about 2140 ms to 1580.
-    # Held to the efficient cores, jobs, background and the builds leave
-    # the performance cores, and the budget they'd spend, to what he uses
-    # (jitsusama.slices.efficientCores).
-    systemd.slices.build.sliceConfig = onEfficient;
+    };
+    systemd.user.slices.background.sliceConfig.IOWeight = 1;
 
     # Work other sessions wait on, beside jobs rather than in it, so it runs
     # ahead of jobs, which is idle on the processor. On 5 November, while the
@@ -535,16 +504,10 @@ in
 
     systemd.services = {
       # Every account's manager, user@<uid>.service, beside its slice.
-      "user@".serviceConfig =
-        limits
-        // {
-          MemoryMin = account;
-          MemoryLow = above;
-        }
-        # systemd's own unit hands the manager the cpu, memory and pids
-        # controllers, and io reaches it besides; holding its slices to
-        # the efficient cores takes cpuset too, so all five are named.
-        // lib.optionalAttrs (efficient != null) { Delegate = "cpu cpuset io memory pids"; };
+      "user@".serviceConfig = limits // {
+        MemoryMin = account;
+        MemoryLow = above;
+      };
       # A machine already up takes favordynmods at the switch that brings it,
       # from a remount, which keeps the hierarchy's other flags; it can't be
       # turned off again until the next boot.
