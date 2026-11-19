@@ -162,8 +162,9 @@ function drawerSaid(one) {
 // The keys gone into a drawer, `{ key, from, at, swapped, laid, screen,
 // refresh }`, said as the frame they came in is presented, with how much
 // of it was the shell's, to that frame's swap where it was kept, and how
-// many of its lines that frame laid: Ctrl+W l into Emoji's laid all 1,914
-// names first, where its view shows some 35 lines (2026-11-19).
+// many of its lines that frame laid: Ctrl+W l into Emoji's laid all 1,833
+// lines first, where its view shows some 37, until only those were
+// (2026-11-19).
 function intoSaid(one) {
     const swap = one.swapped > 0
         ? `, ${Math.round(one.swapped - one.from)} to the shell's swap` : "";

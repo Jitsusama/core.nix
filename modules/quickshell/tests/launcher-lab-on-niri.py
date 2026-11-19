@@ -16,7 +16,7 @@ times each step into a place from home, as Joel takes them, since a step is navi
 to the same 50 ms. A third holds a place open while its daemon's changes come, and prints the
 line the shell says of them as it closes, since an update is held to it too: 6 of Machine's 20
 on Joel's shell took longer (2026-11-11). A fourth times going into a long drawer by Ctrl+W l,
-which lays every line of it before its frame.
+whose frame lays only the lines that show and the rest after it.
 """
 
 from __future__ import annotations
@@ -578,7 +578,7 @@ def test_each_drawer_is_timed(
 
 
 # The place and row whose drawer the keys go into, unless the run says otherwise (LAB_INTO_IN,
-# LAB_INTO): Desktop's Emoji, whose 1,914 names Ctrl+W l lays before its frame (2026-11-19).
+# LAB_INTO): Desktop's Emoji, whose 1,833 lines laid first took a median 558 ms (2026-11-19).
 INTO_IN = "Desktop"
 INTO = "Emoji"
 

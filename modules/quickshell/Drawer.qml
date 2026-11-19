@@ -861,10 +861,10 @@ Floating {
     // Its frame lays only what shows, a run as it's laid at rest, and its
     // whole run once that frame is drawn: laid first, going into Emoji's
     // 1,833 names took a median 558 ms from the key in the drawer lab, and
-    // 81 laid after, where its view shows some 35 lines (2026-11-19;
-    // docs/testing.md's Timing the Launcher). Its lines down to the short run's cut are the
-    // whole run's too, so the cursor's line still stands once it's laid
-    // whole.
+    // 81 laid after, where its view shows some 37 lines (2026-11-19;
+    // docs/testing.md's Timing the Launcher). Its lines down to the short
+    // run's cut are the whole run's too, so the cursor's line still stands
+    // once it's laid whole.
     function enter() {
         runWhole = false;
         lastChosen = null;
@@ -885,11 +885,14 @@ Floating {
     // The whole run laid, its lines read again and the cursor kept where
     // it is, as relay keeps it. A key that reads past what shows, as G, a
     // search, o, gv or y does, lays it first, should it come before the
-    // frame the keys came in is drawn.
+    // frame the keys came in is drawn. What follows the run is moved down
+    // at once, not at the next frame's polish, so its lines are read where
+    // they'll be drawn rather than amid the run.
     function layWhole() {
         if (runWhole || !keys)
             return;
         runWhole = true;
+        flow.forceLayout();
         laid = lines();
         if (laid.length === 0)
             return;

@@ -688,7 +688,7 @@ QtObject {
             + "slowest 40 ms, the p99 40 ms, 1 within 50 ms: a median 5 ms before it "
             + "followed, 10 until its frame began and 25 from its frame's start");
         check(failures, "none presented says nothing", Presented.drawersSaid([]).length, 0);
-        // Ctrl+W l into Emoji's drawer lays all 1,914 names before its
+        // Ctrl+W l into Emoji's drawer laid all 1,833 lines before its
         // frame, and nothing timed it (2026-11-19). Going in says its time
         // from the key as it's presented, with how many lines that frame
         // laid, so a long lay is seen in the time it costs.

@@ -489,8 +489,9 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     # The cursor counts its lines from one, so it's told by where it began.
     entered = shell.showing()["drawer"]
     began, whole = entered["cursor"]["line"], entered["bodyLines"]
+    whole_lines = entered["cursor"]["lines"]
     # The frame the keys came in laid only what shows, the rest after it: Emoji's whole run
-    # laid first held that frame back a median 526 ms in the drawer lab (2026-11-19).
+    # laid first held that frame back a median 558 ms in the drawer lab (2026-11-19).
     laid = laid_going_in(shell, going_in)
     assert laid < whole_least, f"going in laid {laid} lines before its frame, not its view's"
     shell.send_chars("j" * deep)
@@ -511,12 +512,14 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     # The foot counts what's below where the view was left, so it still says there's more.
     assert drawer["moreSays"], f"left {deep} lines down, the foot said no more: {drawer}"
     # G typed with the chord, before the rest is laid after its frame, still goes to the run's
-    # end rather than the end of what was laid first.
+    # end rather than the end of what was laid first, which the rest laid after would leave
+    # the cursor far above. Both are held to the whole run's count, since what's laid first
+    # this deep is itself past whole_least.
     shell.as_account("wtype -M ctrl -k w -m ctrl -k l G")
     shell.launcher_until(
         lambda shown: (
-            (shown["drawer"]["cursor"] or {}).get("lines", 0) > whole_least
-            and shown["drawer"]["cursor"]["line"] >= shown["drawer"]["cursor"]["lines"] - 1
+            (shown["drawer"]["cursor"] or {}).get("lines", 0) >= whole_lines
+            and shown["drawer"]["cursor"]["line"] >= whole_lines - 1
         )
     )
     # close_launcher can't close from inside the drawer's keys, so they're left first.
