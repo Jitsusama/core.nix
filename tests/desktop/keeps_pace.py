@@ -57,17 +57,27 @@ def ticks(stat: str) -> tuple[int, int]:
 
 
 class Ledger:
-    """Stand in for the turns' ticks, to be written."""
+    """The guest's stolen and busy ticks in each turn, under load (True) and frozen (False)."""
 
     def __init__(self, stat: str) -> None:
         """Start counting from the kernel's line as it stands."""
-        del stat
+        self.last = ticks(stat)
         self.turns: dict[bool, tuple[int, int]] = {True: (0, 0), False: (0, 0)}
 
     def count(self, stat: str, *, turn: bool | None) -> None:
-        """Stand in for counting."""
-        del stat, turn
+        """Count the ticks since the last line into this turn, or into none while it turned."""
+        now = ticks(stat)
+        if turn is not None:
+            stolen, busy = self.turns[turn]
+            self.turns[turn] = (stolen + now[0] - self.last[0], busy + now[1] - self.last[1])
+        self.last = now
 
     def said(self) -> str:
-        """Stand in for saying."""
-        return ""
+        """Say each turn's stolen and busy ticks, and the share they give."""
+        under, frozen = self.turns[True], self.turns[False]
+        (stolen_under, busy_under), (stolen_frozen, busy_frozen) = under, frozen
+        share = builders_share(under, frozen)
+        return (
+            f"the guest counted {stolen_under} of {busy_under} busy ticks stolen under load,"
+            f" against {stolen_frozen} of {busy_frozen} frozen, a share of {share:.2f}"
+        )
