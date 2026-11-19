@@ -380,8 +380,9 @@ in
       # waits on its person for, and the needs it serves and relies on:
       # each entry whole as the node sends it, of which the page draws the
       # cell at the other end, the need's own words, escaped, and since
-      # when. The map reads its
-      # networks and cells whole, as `mycelium networks` draws them; of
+      # when. The map reads, of each forage, only its cell and who started
+      # it, from its lineage, though every page is passed what the forage
+      # page reads. It reads its networks and cells whole, as `mycelium networks` draws them; of
       # each machine only what the map draws; of each message only who
       # sent it, how and where, never its words; the balance service's
       # latest reading whole, for each machine's share of the work; and of

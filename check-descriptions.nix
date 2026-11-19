@@ -1827,9 +1827,14 @@
     and groups, a cut title's ellipsis as three full stops, and each machine's share of the work
     from the balance's latest reading, none when it is past three minutes old, has no time or is
     not served, what a receptor fed a cell, kept for ten minutes and up to a minute ahead, the
-    map drawing again when the first balance or feeding ends, and what each key asks of the map,
-    its tree, its find line, the page and the theme switch, chords, typing and a key named after
-    an object's own asking nothing
+    map drawing again when the first balance or feeding ends, who started each cell from its
+    forage, none where no forage is served and none for a cell started by itself or by nobody,
+    a network the node sets within none growing out of the one whose cells started more of its
+    cells than any other, a tie going by name, where the node sets a network standing, no start
+    from inside it counting, of two that started each other's cells the stronger the trunk and
+    no branch looping back round, and what each key asks of the map, its tree, its find line,
+    the page and the theme switch, chords, typing and a key named after an object's own asking
+    nothing
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
@@ -1837,7 +1842,10 @@
     drawn and counted, a cell moving and one going, broken while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, a receptor's feeding of a cell drawn with both
-    drawers saying it and leaving once its ten minutes end or the node drops it, a key of each
+    drawers saying it and leaving once its ten minutes end or the node drops it, a network grown
+    out of another as its branch once a forage says a cell of the other started one of its own,
+    its hub laid out again as a branch, both drawers saying so and the branch going with the
+    forage, a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now, the tree and the theme switch wrapping),
     the web-design skill's page checks and the map's own (each opened thing in view, its drawer
