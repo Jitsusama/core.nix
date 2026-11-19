@@ -6,28 +6,59 @@
 # aside, and each name only as a word of its own, not another's property.
 # Each is read whole, to its semicolon, and must be only what's meant,
 # spaces allowed only between its parts; elsewhere, WALKS is named only in
-# STRIDING, and STRIDING is declared once and otherwise only read by a key
-# with nothing assigned there. So anything else, another list, a stride
-# written inline, an entry not a quoted word, something after its bracket,
-# an assignment to either or either not found, reads as no walk, which
-# fails saying where it looked and what it wanted. It guards the walk from
-# an honest change, not a hostile one: comments are found by their marks,
-# so one inside a string isn't seen, nor a delete, a write through what a
-# read hands back or a destructuring pattern, or one from another file;
-# none of the cat's files has any.
+# STRIDING, and STRIDING is declared once and otherwise only read by a key,
+# then perhaps by a method that changes nothing, with nothing assigned
+# there. So anything else, another list, a stride written inline, an entry
+# not a quoted word, something after its bracket, a key nested past three
+# deep, an assignment to either or either not found, reads as no walk,
+# which fails saying where it looked and what it wanted. It guards the walk
+# from an honest change, not a hostile one: a comment's marks are found
+# wherever they stand, so `//` or `/*` inside a string opens a comment
+# there; nor is a delete seen, a write through what a read hands back or a
+# destructuring pattern, or one from another file. None of the cat's files
+# has any, and honest reads written otherwise, `kind in STRIDING` say, are
+# refused, failing loudly rather than reading a walk it doesn't take.
 { lib }:
 file:
 let
-  # The code with each comment, a line's or a block's, made a space.
-  comment = "//[^\n]*|/\\*([^*]|\\*+[^*/])*\\*+/";
-  ways = lib.concatMapStrings (piece: if lib.isString piece then piece else " ") (
-    builtins.split comment file
-  );
+  # The code with each comment, a line's or a block's, made a space, read
+  # mark by mark, so a long comment costs no deeper a regex than a short
+  # one: a pattern repeated per character overflows Nix's stack on one of
+  # some thousands.
+  ways =
+    let
+      step =
+        was: piece:
+        let
+          mark = lib.head piece;
+        in
+        if lib.isString piece then
+          was // lib.optionalAttrs (was.inside == "code") { code = was.code ++ [ piece ]; }
+        else if was.inside == "code" && (mark == "//" || mark == "/*") then
+          {
+            inside = if mark == "//" then "line" else "block";
+            code = was.code ++ [ " " ];
+          }
+        else if was.inside == "code" then
+          was // { code = was.code ++ [ mark ]; }
+        else if was.inside == "line" && mark == "\n" || was.inside == "block" && mark == "*/" then
+          {
+            inside = "code";
+            code = was.code ++ lib.optional (mark == "\n") mark;
+          }
+        else
+          was;
+    in
+    lib.concatStrings
+      (lib.foldl' step {
+        inside = "code";
+        code = [ ];
+      } (builtins.split "(//|/\\*|\\*/|\n)" file)).code;
   # The constant's declaration, up to the semicolon that ends it.
   declared =
     name:
     let
-      after = builtins.split "const ${name}[[:space:]]*=[[:space:]]*" ways ++ [
+      after = builtins.split "const[[:space:]]+${name}[[:space:]]*=[[:space:]]*" ways ++ [
         [ ]
         ""
       ];
@@ -67,29 +98,47 @@ let
     lib.filter alone (lib.genList use (lib.length pieces - 1));
   named = name: text: lib.length (uses name text);
   # STRIDING is declared once, and everywhere else read by a key, or keys
-  # in a row, each holding brackets of its own too, assigning nothing
-  # there, by itself or with an operator, on its line or the next, and
-  # neither counted up nor down.
+  # in a row, each holding keys of its own up to three deep, then perhaps
+  # by a method that changes nothing, assigning nothing there, by itself
+  # or with an operator, anywhere up to its semicolon, and neither counted
+  # up nor down. A key that can't be read whole, or any other method,
+  # fails it.
   onlyRead =
     let
       by = "(\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?";
-      key = "\\[([^][]|\\[[^][]*])*]";
-      writes =
+      inner = "\\[([^][]|\\[[^][]*])*]";
+      key = "\\[([^][]|${inner})*]";
+      unchanging = "length|includes|indexOf|lastIndexOf|at|slice|concat|join|map|filter|some|every";
+      method = "[[:space:]]*\\??\\.[[:space:]]*(${unchanging})([^A-Za-z0-9_$].*)?";
+      # What follows its keys, past a method that changes nothing.
+      rest =
         one:
-        builtins.match "(${key})+[[:space:]]*(${by}=([^=].*)?|(\\+\\+|--).*)" one.after != null
-        || bumped one.before;
-      bumped =
-        before:
         let
-          tail = builtins.substring (lib.max 0 (lib.stringLength before - 8)) 8 before;
+          keyed = builtins.match "(${key})+(.*)" one.after;
+          after = if keyed == null then null else lib.last keyed;
+          called = builtins.match method (if after == null then "" else after);
         in
-        builtins.match ".*(\\+\\+|--)[[:space:]]*" tail != null;
-      declaring = one: lib.hasSuffix "const " one.before;
+        if after == null then
+          null
+        else if called != null then
+          toString (lib.last called)
+        else if builtins.match "[[:space:]]*(\\??\\.|\\[).*" after != null then
+          null
+        else
+          after;
+      writes = after: builtins.match "[[:space:]]*(${by}=([^=].*)?|(\\+\\+|--).*)" after != null;
+      read = one: rest one != null && !writes (rest one) && !bumped one.before;
+      ending = n: s: builtins.substring (lib.max 0 (lib.stringLength s - n)) n s;
+      bumped = before: builtins.match ".*(\\+\\+|--)[[:space:]]*" (ending 8 before) != null;
+      declaring =
+        one:
+        builtins.match "(.*[^A-Za-z0-9_$])?const[[:space:]]+" (
+          builtins.replaceStrings [ "\n" ] [ " " ] (ending 16 one.before)
+        ) != null;
       all = uses "STRIDING" ways;
       reads = lib.filter (one: !declaring one) all;
     in
-    lib.length (lib.filter declaring all) == 1
-    && lib.all (one: lib.hasPrefix "[" one.after && !writes one) reads;
+    lib.length (lib.filter declaring all) == 1 && lib.all read reads;
   s = "[[:space:]]*";
   word = "(\"[A-Za-z]+\"|'[A-Za-z]+')";
   stride = "[A-Za-z_]+${s}:${s}WALKS";

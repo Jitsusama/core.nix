@@ -405,13 +405,17 @@ in
         "walkingD"
       ];
       rows = theirs.nothingHere.pixels;
-      # The sitting cat, 37 pixels, with a pixel lit alone at its top right,
-      # and with six of its bottom row's seven gone, over 15% fewer, or five,
-      # under it.
+      # The sitting cat, 37 pixels, with a pixel lit alone at its top right;
+      # with six of its bottom row's seven gone, over 15% fewer, or five,
+      # under it; and with its top five rows filled, seven more, over 15%
+      # more, or its top three, five more, under it.
+      filled = lib.genList (_: "#####...") 5;
       planted = theirs // {
         strayed.pixels = [ "${builtins.substring 0 7 (lib.head rows)}#" ] ++ lib.tail rows;
         shrunk.pixels = lib.init rows ++ [ "#......." ];
         trimmed.pixels = lib.init rows ++ [ "##......" ];
+        grown.pixels = filled ++ lib.drop 5 rows;
+        fuller.pixels = lib.take 3 filled ++ lib.drop 3 rows;
       };
       plantedFaults =
         pose:
@@ -430,6 +434,10 @@ in
           pose = "shrunk";
           reason = "unlike [\"shrunk\"]";
         }
+        {
+          pose = "grown";
+          reason = "unlike [\"grown\"]";
+        }
       ];
       unshown =
         lib.filter (
@@ -438,6 +446,10 @@ in
         ++ lib.optional (!(plantedFaults "trimmed").ok) {
           pose = "trimmed";
           reason = "trimmed, just under 15% fewer, held as one";
+        }
+        ++ lib.optional (!(plantedFaults "fuller").ok) {
+          pose = "fuller";
+          reason = "fuller, just under 15% more, held as one";
         };
       said =
         strides:
@@ -536,6 +548,15 @@ in
         (readOnly "${walksSaid}\n${stridingSaid}\n[...STRIDING.goes] = RUNS;")
         (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[STRIDING[\"goes\"]] = RUNS;")
         (readOnly "${walksSaid}\n${stridingSaid}\nconst pace = speed\n  * 2; STRIDING.goes = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[a[b[c]]] = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[a[b[c[d]]]] = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind][a[b[c[d]]]] = RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind] ||= RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind] += RUNS;")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind].reverse();")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind]?.sort();")
+        (readOnly "${walksSaid}\n${stridingSaid}\nSTRIDING[kind].length = 0;")
+        (readOnly "${walksSaid}\nconst  STRIDING = { goes: WALKS };\nconst\nSTRIDING = {};")
       ];
       # The same walk, spaced and quoted otherwise, still reads whole.
       reread = walkIn ''
@@ -552,7 +573,7 @@ in
           'walkingB',
           'walkingD',
         ];
-        const STRIDING={ goes: WALKS, climbs: WALKS };
+        const  STRIDING={ goes: WALKS, climbs: WALKS };
         const strides = STRIDING[beat.kind];
         const joined = STRIDING[was.kind] === STRIDING[beat.kind];
         const pose = STRIDING[beat.kind][0]; // not WALKS.reverse()
@@ -563,6 +584,9 @@ in
         const length = pace
           * STRIDING[beat.kind].length;
         const all = [...STRIDING[beat.kind]];
+        const deep = STRIDING[beats[order[i]].kind];
+        const carried = STRIDING[beats[0]?.kind]?.includes(at.drawnIn) ? at.drawnInto : 0;
+        const last = STRIDING[beat.kind].at(-1) === pose;
       '';
       passed =
         map (
