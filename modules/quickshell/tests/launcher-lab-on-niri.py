@@ -14,7 +14,8 @@ launcher's when only the whole was said (RTOIMQ, 2026-11-11). It fails only when
 never says it was presented, or the windows it opened never close. Beside it, a second test
 times each step into a place from home, as Joel takes them, since a step is navigation and held
 to the same 50 ms. A third holds a place open while its daemon's changes come, and prints the
-line the shell says of them as it closes, since an update is held to it too: 6 of Machine's 20 on Joel's shell took longer (2026-11-11).
+line the shell says of them as it closes, since an update is held to it too: 6 of Machine's 20
+on Joel's shell took longer (2026-11-11).
 """
 
 from __future__ import annotations
@@ -460,8 +461,11 @@ def test_each_drawer_is_timed(
             # Its time with where it went, as the shell split it, and how it came.
             spent = f"{found.group(2)} ms ({found.group(3)}), {found.group(4)}" if found else ""
             with capsys.disabled():
-                # What its making spent, as the shell split it.
+                # What its making spent, as the shell split it: the drawer's own line, not
+                # the key's, which says "j" took as a slow key.
                 for line in said_after(shell, mark, '" took '):
+                    if "launcher: drawer for " not in line:
+                        continue
                     print(f"lab-drawer-took {line.split('qml: ', 1)[-1]}", flush=True)
                 print(
                     f"lab-drawer {within} round {round_}: {name}, "
