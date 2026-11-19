@@ -2,14 +2,15 @@
 //! realm's mycelium node, which draws it as a cell on the calls' outside
 //! network (mycelium's PROTOCOL.md, Receptors).
 //!
-//! Only counts and fixed words leave: the calls started in the last hour
-//! and since local midnight, taken from the book's own start times and
-//! from when each Tuple call Joel missed rang (rings.rs, which reads when
-//! alone and never who), and whether the book could be read. A missed
+//! Counts and fixed words leave, and one kind of pointer. The counts are
+//! the calls started in the last hour and since local midnight, taken
+//! from the book's own start times and from when each Tuple call Joel
+//! missed rang (rings.rs, which reads when alone and never who), and the
+//! words say whether the book could be read. A missed
 //! ring is a call that asked for Joel as much as one he took, so it
 //! counts in each, and every one is addressed to him. Beside them goes
 //! the calendar event of each call a summary was written of, by its id
-//! alone, so the node can tell the one cell whose quest claims that
+//! alone, so the node can tell the live cells whose quests claim that
 //! event (mycelium's PROTOCOL.md, Feeding): a pointer, never the
 //! summary. No title, person, quote or folder of a call is ever an
 //! argument: of what a call's files say, only its event id reaches the
