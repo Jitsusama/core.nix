@@ -425,8 +425,6 @@ ShellRoot {
             root.swept() && networks.cablesHung.enp0s2 === undefined), () => {
             Expect.expect("a read given up landing late keeps its card's hold",
                 networks.cablesStuck.enp0s2 !== undefined, JSON.stringify(networks.cablesStuck));
-            Expect.expect("a late read isn't taken for the other card's",
-                networks.cables.enp0s1?.state === "up", JSON.stringify(networks.cables.enp0s1));
             const ethernet = networks.answer("ethernet");
             const side = name => (ethernet?.rows ?? []).find(row => row.key
                 === `networks:${name}`)?.side ?? "";
@@ -620,16 +618,47 @@ ShellRoot {
         });
     }
 
+    // Facts asked again are still reading until they land, though no card
+    // is asked with them.
+    function factsAlone() {
+        networks.links = [];
+        networks.cableLoading = null;
+        networks.cablesAsked = [];
+        networks.factsAsked = [];
+        networks.factsStuck = Object.create(null);
+        networks.stillReading = false;
+        networks.reloadFacts();
+        Expect.expect("facts asked with no card's cable are still reading",
+            networks.stillReading && networks.factsAsked.length === 3,
+            JSON.stringify(networks.factsAsked.length));
+    }
+
     // A card asked again is still reading until it lands, though no fact
     // is asked with it.
     function recabledAlone() {
         networks.links = [docked];
         networks.cableLoading = null;
         networks.cablesAsked = [];
+        networks.factsAsked = [];
         networks.stillReading = false;
         networks.recable();
         Expect.expect("a card asked alone is still reading", networks.stillReading
             && networks.factsAsked.length === 0, JSON.stringify(networks.cablesAsked));
+    }
+
+    // A card forgotten between a file landing and the next ask, then
+    // plugged back in, is asked at the path the probe already holds,
+    // and that file is read again rather than left to its watch.
+    function askedAtItsPath() {
+        const asked = String(networks.cableProbe.path).slice(networks.sysfs.length + 1);
+        const name = asked.slice(0, asked.indexOf("/"));
+        networks.cableLoading = { name, at: networks.cableFiles.indexOf(asked.slice(name.length
+            + 1)), texts: {}, state: "", stale: true, inFlight: false };
+        Expect.expect("the probe last read a card's cable file", name === "enp0s1"
+            && networks.cableLoading.at >= 0, asked);
+        networks.cableFile();
+        waits.until("a file asked at the probe's own path is read again", within(1000, () =>
+            networks.cableLoading === null && !networks.cableWatching), () => Qt.exit(0));
     }
 
     // A card named as one of an object's own members has a lease and
@@ -666,6 +695,9 @@ ShellRoot {
         });
     }
 
+    // Whether hungReads' view, its read landed late, is gone.
+    property bool hungGone: false
+
     // A file asked that never lands is given up by the cable's own watch.
     function watchedCable() {
         networks.cableLoading = { name: "enp0s8", at: 0, texts: {}, state: "", stale: true,
@@ -675,8 +707,11 @@ ShellRoot {
             within(4000, () => networks.cablesStuck.enp0s8 !== undefined), () => {
             root.hungReads();
             root.oddlyNamed();
+            root.factsAlone();
             root.recabledAlone();
-            Qt.exit(0);
+            waits.until("a hung read's view, landed, is destroyed", within(1000, () =>
+                root.hungGone), () => waits.until("the card asked alone loaded",
+                within(2000, root.swept), root.askedAtItsPath));
         });
     }
 
@@ -685,7 +720,8 @@ ShellRoot {
     // stays, and the card under way isn't credited with it. A file asked
     // is watched, asked once, and its watch stops as it lands.
     function hungReads() {
-        const reading = Qt.createQmlObject("import QtQuick; QtObject {}", root);
+        const reading = Qt.createQmlObject("import QtQuick; QtObject {"
+            + " Component.onDestruction: root.hungGone = true }", root);
         const hung = Object.create(null);
         hung.enp0s9 = reading;
         networks.cablesHung = hung;

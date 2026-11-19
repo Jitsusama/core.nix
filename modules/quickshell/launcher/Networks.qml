@@ -478,10 +478,8 @@ Provider {
         const cable = cables[name];
         if (cable !== undefined)
             return cable;
-        if (!stuck(name)) {
-            stillReading = true;
+        if (!stuck(name))
             recable();
-        }
         return null;
     }
 
@@ -1381,8 +1379,11 @@ Provider {
         }
         const hung = Object.assign(Object.create(null), cablesHung);
         for (const name of Object.keys(hung))
-            if (hung[name] === view)
+            if (hung[name] === view) {
                 delete hung[name];
+                console.info(`Networks: ${name}'s read given up landed, so it's asked again`
+                    + " once its wait is over");
+            }
         cablesHung = hung;
         view.destroy();
     }

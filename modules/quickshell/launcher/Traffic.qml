@@ -624,7 +624,8 @@ Provider {
     // probe waiting for good and every interface after it left out, so
     // one that takes this long is given up; the next load asks again.
     // Pointed at no file, the probe lets go of the read under way, so one
-    // that lands after it's given up is dropped.
+    // that lands after it's given up is dropped: Quickshell's FileView
+    // disconnects the reader it cancels and ignores one no longer live.
     Timer {
         id: probeWatch
         interval: 2 * provider.second
