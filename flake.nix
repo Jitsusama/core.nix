@@ -282,6 +282,7 @@
         secret-asks = moduleFrom ./modules/secret-asks/home.nix { inherit (self.homeModules) quickshell; };
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         session-backup = ./modules/session-backup/home.nix;
+        sessions-come-back = moduleFrom ./modules/sessions-come-back/home.nix { inherit mycelium; };
         signing = ./modules/signing/home.nix;
         slack = moduleFrom ./modules/slack/home.nix { inherit (self.homeModules) people quickshell; };
         sound = ./modules/sound/home.nix;

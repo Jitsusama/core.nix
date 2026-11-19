@@ -2,7 +2,8 @@
 # workstation role in every account, and commits signed with keys in its
 # Secure Enclave. Builds churn its disk, so a guard in the machine and in
 # every account takes what regenerates before the disk fills. Its Nix signs
-# what it builds, so another machine can take that by key.
+# what it builds, so another machine can take that by key. The pi sessions
+# a restart ends come back by themselves once it's up again.
 { darwinModules, homeModules }:
 {
   imports = [
@@ -16,5 +17,6 @@
     homeModules.workstation
     homeModules.disk-guard
     homeModules.secure-enclave-signing
+    homeModules.sessions-come-back
   ];
 }

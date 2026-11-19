@@ -118,6 +118,10 @@
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
+  a-macs-sessions-come-back-in-each-realm = ''
+    a Mac whose account joins realms runs sessions-come-back as its login starts and each
+    minute, on mycelium and every realm it joins, and a Mac in no realm runs none
+  '';
   a-notice-comes-forward = ''
     once a notice is opened, its sender's window comes forward, the one used last, unless one of
     its own is in front already or it has none open
@@ -3310,6 +3314,15 @@
   session-memory-is-protected = ''
     session.slice and app.slice carry hard memory floors and agents.slice a soft one, and every
     slice above them carries one hard and one soft floor, the same at each
+  '';
+  sessions-come-back-after-a-reboot = ''
+    after a newer boot, sessions-come-back starts each pi session held before it again on the
+    machine, in its own folder, as pi --session with its id; one that ended while the machine
+    ran stays ended, one whose folder is gone is left, and one the node refuses is tried again
+    for a quarter of an hour
+  '';
+  sessions-come-back-passes-clippy = ''
+    clippy finds nothing in sessions-come-back or its tests
   '';
   sessions-sit-beside-the-programs = ''
     agents' sessions have a slice beside Joel's programs, which outweigh it ten times over on the
