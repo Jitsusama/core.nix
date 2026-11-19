@@ -9,7 +9,8 @@
 // `offers` decides, `keep(step, into)` those rows kept in the order the
 // step shows them, and `looked()` all a source searches (own's foundNow).
 // Each gives `steps` made again, `leave`, the first step to leave or -1,
-// and `all`, whether every step was made again.
+// and `all`, whether every step was made again; leaveTo says where that
+// leave goes.
 .pragma library
 
 // Each step from `from` on made again from the rows the one above it
@@ -118,4 +119,26 @@ function foundNow(foundAs, offered, ways) {
     return Object.assign({}, foundAs, found === null ? {} : { verbs: () => found },
         foundAs.landsIn === undefined ? {} : { landsIn: asNow(foundAs.landsIn)
             ?? foundAs.landsIn });
+}
+
+// Where the launcher goes once `made` (remade's or own's answer) says a
+// step offers nothing now: `keep`, how many steps it keeps, back to the
+// step above the one to leave, or -1 to leave none, with `steps` as
+// they're shown. A dialog's own collection, `how.outermost`, is never
+// left, for the home it never showed, and while Joel acts on the rows,
+// `how.holding`, as visual, a pending operator or words in the find do,
+// none is left under him: the leave `waits` for him to finish. Either
+// way, the step that stays keeps its rows, each gone, as no row offered
+// now says it's left, rather than showing what it offered before.
+function leaveTo(made, how, ways) {
+    const steps = made.steps.slice();
+    if (made.leave < 0) {
+        return { steps, keep: -1, waits: false };
+    }
+    const keep = how.holding ? steps.length : Math.max(made.leave, how.outermost ? 1 : 0);
+    if (keep > made.leave) {
+        const step = steps[made.leave];
+        steps[made.leave] = Object.assign({}, step, { rows: ways.keep(step, []) });
+    }
+    return { steps, keep: keep < steps.length ? keep : -1, waits: how.holding === true };
 }

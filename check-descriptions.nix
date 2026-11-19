@@ -4296,11 +4296,6 @@
     so, each drawer says where it is and its kind, the heading, how far down, each mark and its
     path, and the reader's drawer says how many files are still to finish
   '';
-  the-launcher-remakes-what-it-holds = ''
-    a step the launcher holds is made again with its row as it's offered now, a step whose row
-    is gone is kept as it was, and one whose row is still offered but offers nothing now is
-    left, the steps above it kept
-  '';
   the-launcher-remakes-only-the-screens-that-changed = ''
     the launcher's Screens draws each screen's row as the windows daemon serves it, makes again
     only the row a change names, offers Windows the screens laid out by what their rows hold, asks
@@ -4314,6 +4309,12 @@
     Capture's rows of the windows do, and Capture asks each thing taken's facts of the programs
     daemon's one file-preview, only the newest wanted waiting, one changed asked again, and one
     that can't answer said so
+  '';
+  the-launcher-remakes-what-it-holds = ''
+    a step the launcher holds is made again with its row as it's offered now, a step whose row
+    is gone is kept as it was, and one whose row is still offered but offers nothing now, a typed
+    one's too, is left back to the step above it, never past a dialog's own collection and not
+    while Joel holds the rows, the step kept then with its rows gone
   '';
   the-launcher-says-what-counted-most = ''
     the launcher's journal names what counted most, the most first and a tie by name, no more
