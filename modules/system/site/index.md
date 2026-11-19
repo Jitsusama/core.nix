@@ -83,7 +83,8 @@ Every health is good, watch, bad or not read, each with its own mark.
 The page's address for a machine is `#machine=` and its name, as in
 `system/#machine=osprey`: opened there, the cursor starts on that
 machine. One past the first 8 starts on the row for the rest, and a
-name the page doesn't have is said.
+name the page doesn't have is said. While a machine's record may still
+be coming, the page waits for it up to five seconds, or until you move.
 
 ## What the Data Holds
 

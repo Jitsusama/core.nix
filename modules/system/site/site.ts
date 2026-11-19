@@ -14,7 +14,7 @@ import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { askedOf, landingOf } from "./address.ts";
+import { askedOf, landingOf, recordsOf } from "./address.ts";
 import { bridgeOf } from "./bridge.ts";
 import { headlineOf, legend, MACHINES_DRAWN, machinesOf, partsOf, placesOf } from "./draw.ts";
 import { machineHeadline, machineLede, whenSaid } from "./machine.ts";
@@ -75,7 +75,9 @@ setTimeout(() => {
 }, PATIENCE);
 // What the note last said, of problems and of a landing, so a redraw that
 // finds the same leaves the note, and what y said there, alone.
-let noteSaid = "";
+// None once a landing has news to say, which is said even when it reads as
+// the last.
+let noteSaid: string | undefined = "";
 // What the last landing from an address had to say, beside the problems.
 let landingNote = "";
 // The last thing each watch couldn't read, said until it reads another.
@@ -90,7 +92,10 @@ let drawnParts = "";
 let drawnBridge = "";
 let drawnPlaces = "";
 /** The machine the address asks for, until the cursor has landed for it. */
-let asked = askedOf(location.hash);
+let asked: string | undefined;
+// When the page began waiting for the machine asked for, so the wait for
+// records that never come ends in a note rather than in silence.
+let askedSince = 0;
 
 /** A minute's milliseconds, how often the ties' times are said again. */
 const MINUTE = 60_000;
@@ -209,18 +214,32 @@ function markPlace(): void {
 }
 
 /**
- * Whether records that may name a machine are still to come: the machine
- * watch not live, or the machines part untold or naming records not yet
- * arrived, as a new machine's can be one push behind its part's.
+ * Takes the machine the address asks for, if it does, and answers it on the
+ * next draw that can, or once the page has waited its patience for it.
  */
-function machinesComing(read: System): boolean {
-  const machines = read.parts.find((part) => part.part === "machines");
-  return (
-    !told.has("machine") ||
-    standings.get("machine")?.state !== "live" ||
-    read.untold.includes("machines") ||
-    (machines?.untold ?? 0) > 0
-  );
+function ask(): void {
+  asked = askedOf(location.hash);
+  if (asked === undefined) {
+    return;
+  }
+  const since = Date.now();
+  askedSince = since;
+  setTimeout(() => {
+    // Only for the ask it was set for; a later one keeps its own patience.
+    if (system !== undefined && askedSince === since) {
+      landAsked(system, true);
+    }
+  }, PATIENCE);
+}
+
+/** Ends the wait for the machine asked for, clearing its address. */
+function answered(): void {
+  asked = undefined;
+  // Cleared, so following the same address again is a change the page
+  // hears; the URL is mended whole, so no path can make it another site's.
+  const here = new URL(location.href);
+  here.hash = "";
+  history.replaceState(null, "", here);
 }
 
 /**
@@ -228,23 +247,22 @@ function machinesComing(read: System): boolean {
  * when that isn't its own row. One not found while its record may yet come
  * waits for a later draw.
  */
-function landAsked(read: System): void {
+function landAsked(read: System, overdue = Date.now() - askedSince >= PATIENCE): void {
   if (asked === undefined) {
     return;
   }
+  const watch = { told: told.has("machine"), state: standings.get("machine")?.state };
   const landing = landingOf(
     machinesOf(read).map((thing) => thing.name),
     asked,
-    machinesComing(read),
+    recordsOf(read, watch, overdue),
   );
   if (landing.waits) {
     return;
   }
-  asked = undefined;
-  // Cleared once answered, so following the same address again is a change
-  // the page hears.
-  history.replaceState(null, "", `${location.pathname}${location.search}`);
+  answered();
   landingNote = landing.note ?? "";
+  noteSaid = undefined;
   sayWhen();
   if (landing.row === undefined) {
     return;
@@ -281,6 +299,7 @@ function draw(): void {
   markPlace();
 }
 
+ask();
 for (const kind of KINDS) {
   held[kind] = follow(
     { feed: "system", kind },
@@ -385,10 +404,27 @@ listen({
   answersAt: (target) => target.closest("a[data-row]") !== null || !hasOwnKeys(target),
 });
 
+/**
+ * Joel's own move, by key, pointer, wheel or touch, ends a landing still
+ * waiting, so a record arriving late never takes the page from under him,
+ * and puts away what the last landing said. Read from his input, not from
+ * focus, which the page moves itself when it redraws.
+ */
+function joelMoved(): void {
+  if (asked !== undefined) {
+    answered();
+  }
+  if (landingNote !== "") {
+    landingNote = "";
+    sayWhen();
+  }
+}
+for (const input of ["keydown", "pointerdown", "wheel", "touchstart"]) {
+  // Caught first, so what a key itself says in the note comes after.
+  document.addEventListener(input, joelMoved, { capture: true, passive: true });
+}
+
 list.addEventListener("focusin", (event) => {
-  // Joel's own move ends a landing still waiting, so a record arriving late
-  // never takes the cursor from under him; a landing has cleared it already.
-  asked = undefined;
   if (event.target instanceof HTMLAnchorElement && event.target.dataset["row"] !== undefined) {
     cursor = event.target.dataset["row"];
   }
@@ -414,7 +450,7 @@ list.addEventListener("click", (event) => {
 
 // A link to another machine's address, once the page is open, lands there too.
 globalThis.addEventListener("hashchange", () => {
-  asked = askedOf(location.hash);
+  ask();
   if (system !== undefined) {
     landAsked(system);
   }

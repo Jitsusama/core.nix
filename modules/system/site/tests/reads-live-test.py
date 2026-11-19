@@ -196,6 +196,44 @@ def test_a_machines_address_puts_the_cursor_on_it(browser: Browser, system_serve
         opened.close()
 
 
+def test_an_address_for_a_machine_still_coming_lands_when_it_comes(
+    system_page: Page, system_daemon: StandIn
+) -> None:
+    says_it_stands(system_page, "live")
+    counted(system_page)
+    # The part names wren a push before wren's own record comes, as a new
+    # machine's can be.
+    named: dict[str, object] = {
+        "key": "part:machines",
+        "things": ["machine:kestrel", "machine:osprey", "machine:wren"],
+    }
+    system_daemon.tell("part", changed=[named])
+    system_page.keyboard.press("1")
+    first = system_page.locator("#parts a[data-row^='machine:']").first
+    expect(first, "1 didn't put the cursor on the first machine").to_be_focused()
+    system_page.evaluate("location.hash = '#machine=wren'")
+    expect(
+        system_page.locator("#note"), "a machine still coming was said not to be here"
+    ).to_have_text("")
+    expect(first, "a machine still coming moved the cursor").to_be_focused()
+    wren: dict[str, object] = {
+        "key": "machine:wren",
+        "kind": "machine",
+        "part": "machines",
+        "name": "wren",
+        "health": "good",
+        "says": "is fine",
+        "side": [],
+    }
+    # The redraw wren's record brings puts the cursor back where it was
+    # first, which mustn't count as Joel's own move.
+    system_daemon.tell("machine", changed=[wren])
+    expect(
+        system_page.locator("#parts a[data-row='machine:wren']"),
+        "the machine the address waited for didn't land when it came",
+    ).to_be_focused(timeout=PACE_MS)
+
+
 def test_a_machine_that_turns_is_counted(system_page: Page, system_daemon: StandIn) -> None:
     says_it_stands(system_page, "live")
     counted(system_page)

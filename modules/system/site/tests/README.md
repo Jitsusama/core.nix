@@ -19,14 +19,16 @@ draws them.
   piers, and every name escaped.
 - `address.test.ts` tries the page's address for a machine: the name it
   asks for, and where the cursor lands for one drawn, one past those
-  drawn, and one the page doesn't have.
+  drawn, and one the page doesn't have, and when the records that may
+  name it are still coming, overdue or all in.
 - `page.test.ts` tries that the page preloads every module of its own
   that it reaches only through another, so its first draw comes whole.
 - Node's own test runner runs all five as the local sites build the
   page, so `system-site-holds` fails when one does.
 - `reads-live-test.py` reads the page Nix builds in a headless browser, beside
   a stand-in daemon holding `system.json`: the page as the records change,
-  stop and come back, the cursor landing on a machine's address, and the
+  stop and come back, the cursor landing on a machine's address, even
+  one whose record comes after the page has redrawn, and the
   web-design skill's page checks, its links to
   each thing's home among them. It is `system-site-reads-live`.
 - `system.json` is that stand-in's records, under test names.
