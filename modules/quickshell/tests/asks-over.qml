@@ -837,8 +837,8 @@ ShellRoot {
         same("an ask ended while the screen is shared is hidden", row()?.name,
             "Ask, Hidden While You Share");
         // Its hue and state go with the rest, or one watching the share
-        // would see which hidden asks still wait, and one answered
-        // elsewhere change as they watched.
+        // could tell the hidden rows apart, and see one answered elsewhere
+        // change as they watched; how many wait is For You's to say.
         same("and draws as a hidden waiting one does", drawn(row()), waiting);
         // Hidden, it looks as a waiting one does, so Return on it holds
         // still too, rather than closing for his next to land behind.

@@ -1651,11 +1651,12 @@ Scope {
         const ids = path.map(row => steadyId(row));
         console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} ${said}`);
         // One held still, as an ask hidden while Joel shares, is refused,
-        // saying why, rather than run or said done for nothing; asked
-        // first, so a held row is never opened or offered, whatever else
-        // it holds, as Return on it does neither.
+        // saying why, rather than run or said done for nothing: any step on
+        // the way, or the last one's Return's act, asked first, so a held
+        // row is never opened or offered, nor anything it holds reached,
+        // as Return on it does neither.
         const refused = why => ({ done: false, said: why === "" ? said : `${said}: ${why}` });
-        const stillHere = heldWhyOf(target);
+        const stillHere = heldWhyOf(path, returnOf(target));
         if (stillHere !== null)
             return refused(stillHere);
         if (Catalogue.kindOf(target) === "place") {
@@ -1676,19 +1677,15 @@ Scope {
         // Said done only where nothing refused it as it ran (walkedRun).
         const ran = why => why === "" ? { done: true, said: said }
             : { done: false, said: `${said}: ${why}` };
-        // Its Return's act held still is refused too.
-        const still = heldWhyOf(act);
-        if (still !== null)
-            return refused(still);
         if (act.given) {
             if ((words ?? "") === "")
                 return { error: `${said} takes words: ${act.ask ?? ""}` };
             return ran(walkedRun(() => act.given(words)));
         }
-        // One with nothing to run, as an answered ask, sends nothing and
-        // says so, as a terminal's do does, rather than throw.
+        // One with nothing to run, as an answered ask or a figure, does
+        // nothing and says so, as a terminal's do does, rather than throw.
         if (typeof act.run !== "function")
-            return refused(Words.field.becoming?.dropped ?? "");
+            return refused(Words.field.becoming?.idle ?? "");
         // As Return does it, save that what's typed, Ask's question, picks
         // nothing: one whose outcome takes a while keeps the launcher, and
         // the rest close it first.
@@ -1898,11 +1895,11 @@ Scope {
         }
     }
 
-    // Why a terminal's way to a row, or to its Return's act, is refused
-    // for its being held still, so no way in acts where Return holds
-    // still; null for one not held.
-    function heldWhyOf(row) {
-        return Arming.heldWhy(row, Words.field.becoming?.dropped ?? "");
+    // Why a way in from outside, `trail`, or its last step's Return's act,
+    // is refused for a row held still on it, so no way in acts where
+    // Return holds still; null for one held nowhere.
+    function heldWhyOf(trail, act) {
+        return Arming.wayHeldWhy(trail, act, Words.field.becoming?.dropped ?? "");
     }
 
     // Does what's walked, as doneFromTerminal says; none walked, it's
@@ -1919,10 +1916,11 @@ Scope {
         const ids = trail.map(one => steadyId(one));
         console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)}`
             + ` ${names.join(" \u203a ")}`);
-        // One held still is refused, saying why, as the walk refuses it:
-        // first, so it's never opened or asked about, and never said done.
+        // One held still on the way, or as the last step's Return's act, is
+        // refused, saying why, as the walk refuses it: first, so it's never
+        // opened or asked about, and never said done.
         const refused = why => ({ refused: why, in: names });
-        const stillHere = heldWhyOf(target);
+        const stillHere = heldWhyOf(trail, returnOf(target));
         if (stillHere !== null)
             return refused(stillHere);
         if (Catalogue.kindOf(target) === "place") {
@@ -1959,18 +1957,16 @@ Scope {
         // Said done only where nothing refused it as it ran, else why, kept
         // apart from a daemon with no answer (walkedRun, Reached.answered).
         const ran = why => Reached.answered(why, names, Words.field.becoming?.noAnswer ?? "");
-        const still = heldWhyOf(act);
-        if (still !== null)
-            return refused(still);
         if (act.given) {
             if (words === "")
                 return { takes: act.ask ?? "", in: names };
             return ran(walkedRun(() => act.given(words)));
         }
-        // One with nothing to run, as an answered ask, sends nothing and
-        // says so, where Return on it would only close the launcher.
+        // One with nothing to run, as an answered ask or a figure, does
+        // nothing and says so, where Return on it would only close the
+        // launcher.
         if (typeof act.run !== "function")
-            return refused(Words.field.becoming?.dropped ?? "");
+            return refused(Words.field.becoming?.idle ?? "");
         // As the catalogue's run does it, as Return would.
         trials.picked(target, "", trail.length - 1);
         if (act.stays)
@@ -7920,9 +7916,11 @@ Scope {
         // One held still, as a secret ask hidden while Joel shares, keeps
         // the launcher open and does nothing, so a second Return meant for
         // a yes never reaches the window behind; the foot says why, so no
-        // Return goes unanswered.
-        if (Arming.holdsStill(choice)) {
-            say([["\u21b5", Arming.heldWhy(choice, Words.field.becoming?.dropped ?? "")]]);
+        // Return goes unanswered. A row whose Return's act is held is held
+        // with it.
+        const stillWhy = heldWhyOf([choice], choice.returns);
+        if (stillWhy !== null) {
+            say([["\u21b5", stillWhy]]);
             return;
         }
         traces.began("act", { key: choice.key ?? "", depth: held.length });

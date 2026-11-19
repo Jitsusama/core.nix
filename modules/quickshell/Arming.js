@@ -37,6 +37,20 @@ function heldWhy(row, fallback) {
     return typeof why === "string" && why !== "" ? why : fallback;
 }
 
+// Why a way in from outside is refused for a row held still: the first
+// step on it held, not only the last, or the last one's Return's act
+// (`act`), so nothing a held row holds is reached past it; null where
+// none is held.
+function wayHeldWhy(trail, act, fallback) {
+    for (const row of trail.concat(act ? [act] : [])) {
+        const why = heldWhy(row, fallback);
+        if (why !== null) {
+            return why;
+        }
+    }
+    return null;
+}
+
 // Nothing armed.
 function rest() {
     return { key: "", keys: -1, at: 0 };
