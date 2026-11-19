@@ -214,9 +214,16 @@ fn a_pipe_at_the_homes_never_holds_the_writing_and_is_put_right() {
     let file = folder.join("homes.json");
     let named = CString::new(file.as_os_str().as_bytes()).expect("a path without nulls");
     // SAFETY: `named` is a valid C string that outlives the call.
-    assert_eq!(unsafe { libc::mkfifo(named.as_ptr(), 0o644) }, 0, "a pipe at the homes");
+    assert_eq!(
+        unsafe { libc::mkfifo(named.as_ptr(), 0o644) },
+        0,
+        "a pipe at the homes"
+    );
     let mut homes = Homes::at(file.clone());
-    assert!(homes.write(&record()).expect("written"), "the pipe was read as the homes");
+    assert!(
+        homes.write(&record()).expect("written"),
+        "the pipe was read as the homes"
+    );
     let kind = fs::symlink_metadata(&file).expect("the homes").file_type();
     assert!(kind.is_file(), "the pipe stayed where the homes go");
     assert_eq!(read(&file), of(&record()));

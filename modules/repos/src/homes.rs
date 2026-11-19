@@ -9,7 +9,7 @@
 
 use std::fmt::Write as _;
 use std::fs::{self, OpenOptions, Permissions};
-use std::io::{self, Write as _};
+use std::io::{self, Read as _, Write as _};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -50,7 +50,10 @@ impl Homes {
         // each time, so a writing a killed daemon left half-done goes at
         // the next. One daemon an account writes it.
         let temp = folder.join(format!(".{name}.writing"));
-        let wrote = write_whole(&temp, &said).and_then(|()| fs::rename(&temp, &self.file));
+        // Named, since the hidden file is one a reader of the folder won't see.
+        let wrote = write_whole(&temp, &said)
+            .map_err(|why| io::Error::new(why.kind(), format!("{why}, at {}", temp.display())))
+            .and_then(|()| fs::rename(&temp, &self.file));
         if let Err(why) = wrote {
             let _ = fs::remove_file(&temp);
             return Err(why);
@@ -83,11 +86,24 @@ impl Homes {
 
 /// Whether `file` holds `said` already: only a plain file of its length is
 /// read, so a pipe or a link to a device there never holds the reading
-/// loop, and is put right like any other homes gone wrong.
+/// loop, and is put right like any other homes gone wrong. It's opened
+/// once, following no link and waiting on no pipe, and what was opened is
+/// what's judged, so nothing swapped in after a look can hold it either.
 fn holds(file: &Path, said: &str) -> bool {
-    let plain = fs::symlink_metadata(file)
-        .is_ok_and(|held| held.is_file() && held.len() == said.len() as u64);
-    plain && fs::read_to_string(file).is_ok_and(|held| held == said)
+    let Ok(held) = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(file)
+    else {
+        return false;
+    };
+    let length = said.len() as u64;
+    let plain = held
+        .metadata()
+        .is_ok_and(|kind| kind.is_file() && kind.len() == length);
+    // A byte past the homes at most, should another writer be growing it.
+    let mut text = String::new();
+    plain && held.take(length + 1).read_to_string(&mut text).is_ok() && text == said
 }
 
 /// `said` in a file of its own at `temp`: made anew, so whatever was left
@@ -95,8 +111,9 @@ fn holds(file: &Path, said: &str) -> bool {
 /// it's whole. Then it's open to every reader, as the documents' other
 /// files are, whatever umask the daemon started with. It isn't flushed to
 /// the disk: a start compares the homes with the file and writes them
-/// again, so a crash costs nothing, and a flush would hold the reading
-/// loop behind everyone else's writes.
+/// again, so a machine that lost power serves its homes again from the
+/// first reading, and a flush would hold the reading loop behind
+/// everyone else's writes.
 fn write_whole(temp: &Path, said: &str) -> io::Result<()> {
     match fs::remove_file(temp) {
         Err(why) if why.kind() != io::ErrorKind::NotFound => return Err(why),
