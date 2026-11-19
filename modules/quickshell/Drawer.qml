@@ -860,11 +860,11 @@ Floating {
     // else the first line in view, so nothing moves as the keys come in.
     // Its frame lays only what shows, a run as it's laid at rest, and its
     // whole run once that frame is drawn: laid first, going into Emoji's
-    // 1,833 names took a median 558 ms from the key in the drawer lab, and
-    // 81 laid after, where its view shows some 37 lines (2026-11-19;
-    // docs/testing.md's Timing the Launcher). Its lines down to the short
-    // run's cut are the whole run's too, so the cursor's line still stands
-    // once it's laid whole.
+    // 1,914 names, in 1,833 lines, took a median 558 ms from the key in the
+    // drawer lab, and 81 laid after, where its view shows some 37 lines
+    // (2026-11-19; docs/testing.md's Timing the Launcher). Its lines down
+    // to the short run's cut are the whole run's too, so the cursor's line
+    // still stands once it's laid whole.
     function enter() {
         runWhole = false;
         lastChosen = null;
