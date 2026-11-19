@@ -80,6 +80,10 @@ const WANDER_SITS = 1500;
 // and 30 minutes after it plays, drawn each time (VKCF3Z 63b08065: "at
 // most one per 15 minutes idle, randomly spaced").
 const YARN_RESTS = [15 * 60_000, 30 * 60_000];
+// How many scenes drawn for a play asked for a cat may turn down before
+// the ask is let go: a cat walking back or held refuses for a moment, one
+// with no room for the play every time.
+const REFUSALS = 3;
 
 // How long the yarn rests once it's played, in ms, `chance` (0 to 1)
 // choosing where in YARN_RESTS.
@@ -153,16 +157,23 @@ function next(lively, draw, last, more) {
 }
 
 // What a scene's beat leaves of what it was drawn with (`was`) once it's
-// handed out: whether the scene still `answers` the play `asked` for, that
-// play, and whether the yarn's rest starts now (`rests`). A screen's cat
-// took the beat or none did (`taken`; a pose is always taken). One none
-// took plays nothing, as a cat still walking or held turns a play down,
-// so the ask waits for a later scene and the yarn rests only once batted.
+// handed out: whether the scene still `answers` the play `asked` for, its
+// first beat not yet handed out; that play; how many scenes drawn for it
+// were `refused`; and whether the yarn's rest starts now (`rests`). A
+// screen's cat took the beat or none did (`taken`; a pose is always
+// taken). One none took plays nothing, as a cat still walking or held
+// turns a play down, so the ask waits for a later scene, up to REFUSALS
+// of them, since one no cat can ever take would else take every scene;
+// and the yarn rests only once a cat begins its play.
 function handed(was, beat, taken) {
-    if (!taken) {
-        return { answers: false, asked: was.asked, rests: false };
-    }
-    return { answers: false, asked: was.answers ? "" : was.asked, rests: beat.play === "yarn" };
+    const refused = was.answers && !taken ? was.refused + 1 : was.refused;
+    const spent = was.answers && (taken || refused >= REFUSALS);
+    return {
+        answers: false,
+        asked: spent ? "" : was.asked,
+        refused: spent ? 0 : refused,
+        rests: taken && beat.play === "yarn"
+    };
 }
 
 // Where a short wander goes, from `at` as sits takes it with the `seat` it
