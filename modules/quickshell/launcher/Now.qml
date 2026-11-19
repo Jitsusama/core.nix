@@ -746,8 +746,9 @@ Provider {
     // A session asking a question or a yes has no Talk, from any row: its
     // ask tool runs until he answers, and words said to it wait for its
     // run to end (the harness's lib/mesh/steer.ts), so they'd come after
-    // the answer they were meant to shape; In Your Own Words is how words
-    // reach it.
+    // the answer they were meant to shape; its answer is what reaches it,
+    // In Your Own Words where its question takes words. Parked, it runs no
+    // ask, and woken it reads its inbox as it starts, so Talk stays.
     function talkTo(session) {
         const agents = provider.source("agents");
         return !session || !agents || asking(session) ? null
@@ -756,10 +757,12 @@ Provider {
 
     // Whether a session wanting Joel asks him something still open, a
     // question or a yes (the harness's WantKind), rather than having
-    // ended blocked.
+    // ended blocked: the kinds the agents daemon rings for (wants.rs's
+    // rings), which keep its session on Joel's keys; parked, none runs.
     function asking(session) {
         const kind = session.presence?.wants?.kind;
-        return kind === "question" || kind === "approval";
+        return (kind === "question" || kind === "approval")
+            && !Sessions.parkedAs(session.address);
     }
 
     // An act on an item, named in the vocabulary.
@@ -1074,11 +1077,11 @@ Provider {
     // What a look's row does with the cell behind it (Joel, 2026-11-16:
     // "the look list is useless. i have no way to go from the thing it
     // shows to engaging with the thing working on it"): Talk, Agents' own,
-    // whose words go to that cell unless it's asking (talkTo), and Go To its window, which a terminal's
-    // Open already is, offered as Agents offers it: where it has a window,
-    // or is parked and wakes into one; then Explain It, which says what the
-    // cell works on in a sentence or two (explainAct), where the machine
-    // has Ask's pi to answer it. None while no cell is held for it, or
+    // whose words go to that cell unless it's asking (talkTo), and Go To
+    // its window, which a terminal's Open already is, offered as Agents
+    // offers it: where it has a window, or is parked and wakes into one;
+    // then Explain It, which says what the cell works on in a sentence or
+    // two (explainAct), where the machine has Ask's pi to answer it. None while no cell is held for it, or
     // Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
@@ -1898,7 +1901,7 @@ Provider {
             side: madeFrom.title,
             later: true,
             run: () => Sessions.wakeToGo(resting, session())
-        })), putOffWant(address, key, known)].filter(row => row !== null));
+        })), putOffWant(address, key, known)]);
         const count = answers.choices.length;
         const row = member(Object.assign({}, made, {
             key: key,
