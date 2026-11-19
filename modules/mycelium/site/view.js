@@ -17,8 +17,9 @@
 // asks is decided in keys.ts, which network grows out of which in
 // lineage.ts, what each thing is in words in words.ts, the tree beside the
 // map, its rows and their walk, in outline.ts, how a time is said in
-// when.ts, and how each thing stands and why in health.ts, which this
-// imports as the modules they're built to.
+// when.ts, how each thing stands and why in health.ts, and what each is
+// doing in doing.ts, which this imports as the modules they're built to.
+import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
   flagNames,
@@ -2950,7 +2951,6 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
   // network, a branch and a machine all read alike. ----
 
   // The verdicts, and the words saying why, are health.ts's.
-  const DOINGS_SHOWN = 2;
   // Every machine as itself, a basin's taken out of it.
   const everyMachine = () => current.machines.flatMap((x) => x.members || [x]);
   const sandboxWords = (x) => sandboxWordsAt(x, current.at);
@@ -2962,48 +2962,15 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
     const body = `<span class="what"><span class="name">${esc(label)}</span><span class="fact">${verdictMark(v)}: ${esc(words)}</span></span>`;
     return go ? `<li><button type="button" class="row" data-go="${esc(go)}">${body}</button></li>` : `<li class="row still">${body}</li>`;
   };
-  // What a receptor fed a cell, in words, by the node's word for its kind:
-  // GitHub's review asked of Joel, or the calls receptor's summary of a
-  // call the cell's quest claims.
-  const FED_WORDS = { review: "a review asked of you", summary: "a call's summary" };
-  const fedWords = (kind) => (Object.hasOwn(FED_WORDS, kind) ? FED_WORDS[kind] : "something from outside");
   const factList = (facts) => (facts.length ? `<dl class="facts">${facts.map(([k2, v]) => `<div><dt>${k2}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : "");
   const glance = (purpose, doing, health) =>
     `<dl class="glance">` +
     `<div><dt>Purpose</dt><dd>${purpose}</dd></div>` +
     `<div><dt>Doing</dt><dd>${doing}</dd></div>` +
     `<div><dt>Health</dt><dd>${health}</dd></div></dl>`;
-  const lastTurnOf = (cells) =>
-    cells
-      .map((s) => s.usage?.last_turn)
-      .filter(Boolean)
-      .sort()
-      .at(-1);
-  // What a set of cells is doing: the moving ones, by what they say.
-  const groupDoing = (cells) => {
-    const moving = cells.filter((s) => s.standing === "moving");
-    if (!moving.length) {
-      const asks = cells.filter((s) => s.standing === "asks").length;
-      const last = lastTurnOf(cells);
-      return asks ? `Nothing moving; ${plural(asks, "cell")} waiting on you.` : `Nothing moving${last ? `; the last turn ended ${agoWords(last)}` : ""}.`;
-    }
-    const shown = moving.slice(0, DOINGS_SHOWN).map((s) => `${s.short}: ${(s.doing || "in a turn").replace(/[.\s]+$/, "")}`);
-    const more = moving.length - shown.length;
-    return `${plural(moving.length, "cell")} moving. ${shown.join("; ")}${more ? `; and ${more} more` : ""}.`;
-  };
-  // The receptors, each said in full, since there are only a few and each
-  // hears something different.
-  const sensesDoing = (cells) => {
-    const reading = cells.filter((s) => s.standing === "moving").length;
-    return `${reading ? `${plural(reading, "receptor")} reading` : "Nothing reading"}. ${cells.map((s) => `${s.short}: ${(s.doing || "listening").replace(/[.\s]+$/, "")}`).join("; ")}.`;
-  };
-  const cellDoing = (s) => {
-    if (s.standing === "moving") return s.doing || "In a turn now";
-    if (s.standing === "asks") return s.wants ? `Asks you: ${s.wants}` : "Waiting on you";
-    if (s.standing === "stuck") return "Stuck: paused, waiting to be resumed";
-    if (s.standing === "dormant") return "Parked, its place kept";
-    return `Quiet, waiting for its next word${s.usage?.last_turn ? `; its last turn ended ${agoWords(s.usage.last_turn)}` : ""}`;
-  };
+  // What each thing is doing is doing.ts's, said against the reading's time.
+  const groupDoing = (cells) => groupDoingAt(cells, current.at);
+  const cellDoing = (s) => cellDoingAt(s, current.at);
   const cellHealth = (s) => {
     const u = s.usage || {};
     const owed = s.owes.map((o) => `${current.byAddress.get(o.from)?.short || o.from}'s question waiting since ${dayClock(o.at)}`);
@@ -3081,14 +3048,10 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
     );
   };
 
-  // Signal against noise: how much of the talk asked or found something,
-  // against what was sent for context only.
-  const SIGNAL = new Set(["question", "finding", "hold", "pivot"]);
+  // Signal against noise, in doing.ts's words.
   const talkLine = (messages, among) => {
-    if (!messages.length) return "";
-    const said = messages.filter((x) => SIGNAL.has(x.intent)).length;
-    const of = among ? `Of the latest ${current.messages.length} messages, ${plural(messages.length, "touches", "touch")} it` : `Of the latest ${plural(messages.length, "message")}`;
-    return `<p class="talk-line">${esc(`${of}: ${said} asked or found something, and ${messages.length - said} ${messages.length - said === 1 ? "was" : "were"} for context only.`)}</p>`;
+    const said = talkLineWords(messages, current.messages.length, Boolean(among));
+    return said ? `<p class="talk-line">${esc(said)}</p>` : "";
   };
   const touching = (cells, key) => {
     const peers = new Set(cells.map((s) => `peer.${s.address.toLowerCase()}`));
@@ -3444,7 +3407,7 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
     const ends = id.split("|");
     const said = talkSaid.get(id) || [];
     const tied = tieOf.get(id);
-    const asked = said.filter(({ msg }) => SIGNAL.has(msg.intent)).length;
+    const asked = said.filter(({ msg }) => asksOrFinds(msg)).length;
     const rows = [...said]
       .reverse()
       .map(({ msg, to }) => {

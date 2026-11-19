@@ -15,6 +15,7 @@ which leaves this note behind.
 | `words.ts`     | what each cell, network and machine is, in words            |
 | `when.ts`      | each time, said against the reading's own                   |
 | `health.ts`    | how each set of cells and each machine stands, and why      |
+| `doing.ts`     | what each is doing, and how much of the talk asks something |
 | `reach.ts`     | whether the drawing reaches every cell, said when asked     |
 | `map-check.sh` | `mycelium-map-check`, asking the page this machine serves   |
 | `index.html`   | the page, and `site.css` its styles                         |
@@ -26,8 +27,9 @@ which leaves this note behind.
 by hand, served unchanged but for its seams: site.ts hands it each reading,
 keys.ts says what each key it hears asks, outline.ts which rows the tree
 shows and where its keys go, words.ts what each thing is in words, when.ts
-how a time is said and health.ts how each thing stands, so those decisions
-are typed and unit-tested while the drawing carries them out. They come
+how a time is said, health.ts how each thing stands and doing.ts what each
+is doing, so those decisions are typed and unit-tested while the drawing
+carries them out. They come
 under the linters as the drawing is rewritten in TypeScript on the kit, and
 until then `treefmt.nix` names them as kept out.
 
