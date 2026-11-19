@@ -327,12 +327,18 @@ fn a_writing_that_fails_is_warned_of_and_said_over_as_the_daemon_serves_on() {
     let documents = at.join("documents");
     fs::write(&documents, "in the way").expect("a file in the folder's way");
     let (serving, socket) = serve(&at, Some(&homes));
-    said_until(
-        &serving,
-        &format!(
-            "<4>repos: couldn't write Code's homes to {}",
-            homes.display()
-        ),
+    let warning = format!(
+        "<4>repos: couldn't write Code's homes to {}",
+        homes.display()
+    );
+    said_until(&serving, &warning);
+    let said = said_until(&serving, "repos: ready in ");
+    // Said ready first, since views are answered before the homes are written,
+    // so writing them never holds up the first.
+    let ready = said.find("repos: ready in ").expect("said ready");
+    assert!(
+        ready < said.find(&warning).expect("said the warning"),
+        "it wrote the homes before it was ready: {said:?}"
     );
 
     // Still serving: a watch is answered with the checkout.

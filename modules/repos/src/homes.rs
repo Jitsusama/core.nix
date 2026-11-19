@@ -62,7 +62,8 @@ impl Homes {
     }
 
     /// Writes the homes `record` gives, and answers the line to say when
-    /// they couldn't be written for a reason not said already, or are right
+    /// they couldn't be written for a reason other than the last said, which
+    /// a reason coming back after another says again, or are right
     /// again after failing, written or put right by another writer, so a
     /// failure's line isn't left reading as though it still held. A failure
     /// is remembered for the run alone: after a restart, the new run's ready

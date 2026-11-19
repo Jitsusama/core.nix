@@ -158,7 +158,7 @@ fn homes_named() -> Option<Homes> {
 }
 
 /// Writes the homes `record` gives, saying to the journal why they
-/// couldn't be, once for each reason; the last homes stay meanwhile.
+/// couldn't be whenever the reason changes; the last homes stay meanwhile.
 fn keep(homes: Option<&mut Homes>, record: &Record) {
     if let Some(said) = homes.and_then(|homes| homes.keep(record)) {
         eprintln!("{said}");
