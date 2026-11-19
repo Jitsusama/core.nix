@@ -3,9 +3,13 @@
 # state), and the first to share a webcam from Linux. Every command
 # v2026_11_16.0 had answers its help the same; tuple webcam is new, and
 # lists the cameras, opens the app's camera picker on the call and stops
-# sharing it. The log lines and stream keys tuple-call reads are in both
-# builds. Screen sharing through the portal was last seen working here on
-# v2026_10_21.0.
+# sharing it. The log lines and stream keys tuple-call reads, and the
+# contacts' keys and status words tuple-people reads, are in both builds.
+# Screen sharing through the portal was last seen working here on
+# v2026_10_21.0. Webcam sharing is yet to be seen here: the build reads
+# cameras through PipeWire, where the IR camera is hidden, and until the
+# Brio is shared through a relay every app reads, whichever app opens it
+# first keeps it from the rest, a call in Meet included.
 # The address and checksum of each build are what Tuple's latest_version
 # endpoint gives, the one nixpkgs' own update script reads.
 #
