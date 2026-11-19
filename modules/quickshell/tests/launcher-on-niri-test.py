@@ -502,6 +502,7 @@ def test_a_drawer_stepped_off_a_long_run_measures_none_of_it(shell: Shell) -> No
     shell.step_in()
     rows = cast("list[str]", shell.showing()["rows"])
     at = rows.index("Emoji")
+    assert 0 < at < len(rows) - 1, f"Emoji needs a row either side of it in Desktop: {rows}"
     asked: dict[str, int] = {}
     for beside in (rows[at + 1], rows[at - 1]):
         shell.down_to("Emoji")
