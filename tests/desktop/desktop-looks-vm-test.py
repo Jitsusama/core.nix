@@ -999,6 +999,17 @@ def closed_stand_last(desktop: Desktop, shot: str) -> None:
     desktop.step_out()
 
 
+def a_landing_leads_with_its_open(desktop: Desktop) -> None:
+    """Follow the landing to its parts: its own Open, then its cell's acts, and come back.
+
+    The cell that landed it, TESTQC, has its window, so its acts are Go To, then Talk.
+    """
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Go To", "Talk"])
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: shown["selected"]["name"] == TRYING)
+
+
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     """Shoot For You's one landing to try, Landed, then a landing's drawer, then History.
 
@@ -1032,12 +1043,7 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
         )
     )
     desktop.shoot(f"launcher-for-you-landing-at-{shot}")
-    # Its parts are its own Open, then the acts of the cell that landed it, TESTQC, in its
-    # window: Go To, Talk.
-    desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Go To", "Talk"])
-    desktop.step_out()
-    desktop.launcher_until(lambda shown: shown["selected"]["name"] == TRYING)
+    a_landing_leads_with_its_open(desktop)
     # Return steps into it where it lives, Agents \u203a Landed, and reads it.
     desktop.machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRYING])
