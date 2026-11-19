@@ -552,6 +552,17 @@ fn the_nodes_mend_once_every_one_answers_and_those_past_the_most_never() {
         Some(1),
         "the machines past the most, unsaid on one look, were counted again"
     );
+
+    // A machine named for them is a machine, and mends only its own.
+    let named_so = heard_well(look(&[], 1, &[]), &["machines past the most named"]);
+    follower.see_heard(&named_so, NOON + 1150 * second);
+    follower.see_heard(&crowded, NOON + 1180 * second);
+    follower.see_heard(&crowded, NOON + 1360 * second);
+    assert_eq!(
+        errors(&follower.day, peers::UNNAMED),
+        Some(1),
+        "a machine named for the machines past the most mended them"
+    );
 }
 
 #[test]
@@ -572,6 +583,93 @@ fn two_looks_a_suspend_keeps_apart_make_no_three_minutes() {
         errors(&follower.day),
         Some(1),
         "a machine unseen three minutes after a suspend wasn't counted"
+    );
+
+    // What the day keeps of it is the one thing, however often it's said.
+    for at in [3810, 3840] {
+        follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), NOON + at * second);
+    }
+    follower.see_heard(&look(&["dinghy"], 1, &[]), NOON + 3870 * second);
+    assert_eq!(
+        follower.day.seeing.unseen_calls,
+        ["calls on skiff"],
+        "the day kept other than the one machine counted"
+    );
+}
+
+#[test]
+fn three_minutes_between_two_looks_keep_a_stretch_and_a_second_more_ends_it() {
+    let second = 1_000_000;
+    let counted_after = |gap: i64| {
+        let into = tempfile::tempdir().expect("a folder");
+        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+        follower.see_heard(&look(&["skiff"], 1, &[]), NOON);
+        follower.see_heard(&look(&["skiff"], 1, &[]), NOON + gap * second);
+        follower
+            .day
+            .things
+            .get("calls on skiff")
+            .map(|thing| thing.errors)
+    };
+    assert_eq!(
+        counted_after(180),
+        Some(1),
+        "two looks three minutes apart didn't keep the stretch"
+    );
+    assert_eq!(
+        counted_after(181),
+        None,
+        "two looks past three minutes apart kept the stretch"
+    );
+}
+
+#[test]
+fn a_machine_still_unseen_at_midnight_counts_once_in_each_day() {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let second = 1_000_000;
+    let midnight = NOON + DAY / 2;
+    let errors = |day: &Day, machine: &str| {
+        day.things
+            .get(&format!("calls on {machine}"))
+            .map(|thing| thing.errors)
+    };
+    follower.see_heard(&look(&["skiff"], 1, &[]), midnight - 200 * second);
+    follower.see_heard(&look(&["dinghy"], 1, &[]), midnight - 190 * second);
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), midnight - 20 * second);
+    assert_eq!(
+        (
+            errors(&follower.day, "skiff"),
+            errors(&follower.day, "dinghy")
+        ),
+        (Some(1), None),
+        "skiff wasn't counted before midnight, or dinghy was before its time"
+    );
+    // A look past midnight, before the journal says the day has turned,
+    // belongs to neither day.
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), midnight + 5 * second);
+    assert_eq!(
+        errors(&follower.day, "dinghy"),
+        None,
+        "a look past midnight counted into the day before"
+    );
+    follower
+        .take(&warning(midnight + 10 * second))
+        .expect("the day rolls over");
+    follower.see_heard(&look(&["skiff", "dinghy"], 1, &[]), midnight + 30 * second);
+    assert_eq!(
+        (
+            errors(&follower.day, "skiff"),
+            errors(&follower.day, "dinghy")
+        ),
+        (Some(1), Some(1)),
+        "a machine still unseen at midnight wasn't counted in the new day"
+    );
+    let before = read(into.path(), "2026-11-12");
+    assert_eq!(
+        (errors(&before, "skiff"), errors(&before, "dinghy")),
+        (Some(1), None),
+        "the day before didn't keep its count, or took one past midnight"
     );
 }
 

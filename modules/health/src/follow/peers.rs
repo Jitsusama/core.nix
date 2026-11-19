@@ -33,15 +33,17 @@ const UNHEARD_FOR: i64 = calls::elsewhere::FRESH * 1_000_000;
 
 /// What the day calls a node here that won't answer, or that an account
 /// offering too many leaves unasked; a-call-is-on names which, and why.
-pub(super) const NODE_SILENT: &str = "a mycelium node here won't answer or isn't asked, so its peers' calls go unheard; \
-     a-call-is-on names which and why";
+pub(super) const NODE_SILENT: &str = "a mycelium node here won't answer or isn't asked, \
+     so its peers' calls go unheard; a-call-is-on names which and why";
 
 /// The thing the nodes here are counted under.
 pub(super) const NODES: &str = "the mycelium nodes here";
 
 /// The thing the machines past the most a-call-is-on names are counted
-/// under, as one, so no node can make as many faults as it likes.
-pub(super) const UNNAMED: &str = "calls on machines past the most named";
+/// under, as one, so no node can make as many faults as it likes. It
+/// isn't a [`calls_on`] thing, so no machine's name, whatever it spells,
+/// can mend it.
+pub(super) const UNNAMED: &str = "the machines past the most named";
 
 /// What the day calls those machines.
 pub(super) const MACHINES_UNNAMED: &str =
@@ -81,8 +83,8 @@ impl Follower {
         }
         let unheard = unheard(heard);
         let mended = mended(heard);
-        // Sets, so a look costs as much as what it says, however many
-        // things a day has counted.
+        // Sets, so each lookup stays cheap however many things a day has
+        // counted.
         let in_look: BTreeSet<&str> = unheard.iter().map(|(thing, _)| thing.as_str()).collect();
         let well: BTreeSet<&str> = mended.iter().map(String::as_str).collect();
         let was_counted: BTreeSet<String> = self.day.seeing.unseen_calls.iter().cloned().collect();
@@ -112,6 +114,10 @@ impl Follower {
                 counted.push(thing);
             }
         }
+        // In order, so a thing said on one look and unsaid on the next
+        // writes no day for a list that only moved.
+        counted.sort();
+        counted.dedup();
         if self.day.seeing.unseen_calls != counted {
             self.day.seeing.unseen_calls = counted;
             self.changed = true;
@@ -137,7 +143,7 @@ pub(super) fn mended(heard: &Heard) -> Vec<String> {
         .calls
         .iter()
         .chain(&heard.no_call)
-        .map(|machine| format!("calls on {machine}"))
+        .map(|machine| calls_on(machine))
         .collect();
     if heard.answered > 0 && heard.unanswered.is_empty() {
         mended.push(NODES.to_owned());
@@ -150,7 +156,6 @@ pub(super) fn mended(heard: &Heard) -> Vec<String> {
 /// of the same name, the nodes here as one, and the machines past the
 /// most named as one.
 pub(super) fn unheard(heard: &Heard) -> Vec<(String, &'static str)> {
-    let calls_on = |machine: &String| format!("calls on {machine}");
     let mut unheard: Vec<(String, &str)> = heard
         .unseen
         .iter()
@@ -175,6 +180,12 @@ pub(super) fn unheard(heard: &Heard) -> Vec<(String, &'static str)> {
         unheard.push((UNNAMED.to_owned(), MACHINES_UNNAMED));
     }
     unheard
+}
+
+/// The thing a machine's calls are counted under, apart from any service
+/// of the same name.
+pub(super) fn calls_on(machine: &str) -> String {
+    format!("calls on {machine}")
 }
 
 /// What the nodes under `runtimes` hear, on Linux, where a-call-is-on
