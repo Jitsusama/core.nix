@@ -91,12 +91,28 @@
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
-      SPEND_WATCH=${lib.getExe watch} SERVE_CONFIG=$PWD/serve.json timeout 90 ${qs} -p served.qml
+      # Each program may take longer than all its ten-second waits together,
+      # and one stopped says which and why in the check's own words, since a
+      # builder may keep no log of a failed try.
+      runs() {
+        limit=$1
+        shift
+        timeout "$limit" "$@" || {
+          status=$?
+          if [ "$status" = 124 ]; then
+            echo "FAIL $* ran past $limit s" >&2
+          else
+            echo "FAIL $* ended with $status" >&2
+          fi
+          exit "$status"
+        }
+      }
+      runs 180 ${qs} -p shell.qml
+      SPEND_WATCH=${lib.getExe watch} SERVE_CONFIG=$PWD/serve.json runs 180 ${qs} -p served.qml
       # Serve ended with the shell, its socket left behind for the stand-in.
       rm -f runtime/spend-watch/socket
       cp runtime/written/collection.json runtime/written/budgets.json runtime/spend-watch/
-      timeout 60 ${qs} -p told.qml
+      runs 180 ${qs} -p told.qml
       touch $out
     '';
 }
