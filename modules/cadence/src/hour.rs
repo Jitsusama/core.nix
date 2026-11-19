@@ -222,6 +222,7 @@ fn gather(
             &measures::failed_in,
         ),
         landed(&core_log, &harness_log, &machine_log, now),
+        rounds_per_merge(state_home, &core_log, &harness_log, now),
     ];
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
@@ -250,6 +251,39 @@ fn gather(
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
     all.push(measures::pains(pains.as_deref(), now, owner));
     Ok(all)
+}
+
+/// The council rounds each change merged to core's and the harness's
+/// mains in the last day took, from the harness's review runs, reading
+/// only the records written since the oldest round that could count.
+fn rounds_per_merge(state_home: &Path, core: &str, harness: &str, now: i64) -> Measure {
+    use measures::rounds::{BEFORE, Main, rounds};
+    let since = u64::try_from(now - DAY - BEFORE).map_or(std::time::UNIX_EPOCH, |s| {
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
+    });
+    let records: Vec<String> = fs::read_dir(state_home.join("pi/agentic-harness.pi/review/runs"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| {
+            entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .is_ok_and(|at| at >= since)
+        })
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .collect();
+    let mains = [
+        Main {
+            repo: "github:Jitsusama/core.nix",
+            log: core,
+        },
+        Main {
+            repo: "github:Jitsusama/agentic-harness.pi",
+            log: harness,
+        },
+    ];
+    rounds(&mains, &records, now, measures::ASKS)
 }
 
 /// Each quest's spend today beside what it landed since midnight here,

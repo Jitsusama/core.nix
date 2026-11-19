@@ -18,6 +18,7 @@ mod misses;
 mod owner;
 mod pains;
 mod reports;
+pub mod rounds;
 pub mod spent;
 pub mod unbilled;
 pub mod unresolved;
