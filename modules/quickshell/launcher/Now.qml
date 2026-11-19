@@ -1613,18 +1613,19 @@ Provider {
     // there, else among Now's own rows (latelyInForYou). The notices stay
     // found by `/` (PastNotices.qml). "forYou",
     // as the margin's tray is pressed, is For You itself. "onScreen", as
-    // Super+N with notices on screen, is those notices alone (onScreenRow).
+    // Super+N with notices on screen, is those notices alone (onScreenRow),
+    // passing through where Desktop stands, so - climbs to the notices'
+    // own place rather than a For You that may hold nothing of them.
     function leadsTo(name) {
         if (name === "forYou")
             return [waiting];
-        if (name === "onScreen")
-            return [waiting, onScreenRow()];
-        if (name !== "notices")
+        if (name !== "notices" && name !== "onScreen")
             return null;
         const { holding } = latelyBands(Date.now());
         const desktop = keptNoticesRow("desktop", Lately.members(holding.desktop, one => one.who),
             { kind: "notice", source: "desktop" });
-        return latelyInForYou(desktop) ? [waiting, desktop] : [desktop];
+        const through = latelyInForYou(desktop) ? [waiting] : [];
+        return through.concat(name === "onScreen" ? [onScreenRow()] : [desktop]);
     }
 
     // Everything that wants Joel, For You, one row however many: the pi
@@ -2472,8 +2473,9 @@ Provider {
     // keys, acts and drawer are. One read or come while it's open stays,
     // the new at the end, so no row moves under the cursor: a stopgap
     // merging ids until the notices daemon serves this place's rows whole.
-    // For You never lists it; it's Super+N's alone, and - climbs to For
-    // You. The line steps aside while it's open, each in one place.
+    // No place lists it; it's Super+N's alone, and - climbs to where
+    // Desktop stands (leadsTo). The line steps aside while it's open, each
+    // in one place.
     function onScreenRow() {
         let ids = (Notices.front.order ?? []).slice();
         const listed = () => {

@@ -452,7 +452,7 @@ def slack_row_does(desktop: Desktop, name: str) -> list[str]:
     """Name what the first row so named in Now's Slack does, as `launcher show` says it."""
     # Each step after the mark, since qs takes no empty argument, and after
     # `--`, since `show` is also qs ipc's own command otherwise.
-    path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "for you", "slack", name)))
+    path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "slack", name)))
     ask = f"qs ipc call -- launcher show {path}"
     # What a source still reads is said to the next ask, so the ask is made
     # again while the shell says it's reading.
