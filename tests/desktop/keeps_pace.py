@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 # Under load a time may take twice its time frozen, and a budget more, in the guest's own time.
 SLOWER_MOST = 2
+# The budget a key's middle may take more than twice its time frozen, in ms.
+MIDDLE_MORE = 50
 # The VM's processors, all busy under load and one frozen, so the most the builder splitting
 # its share between them can stretch one; more would be the builder's own load changing
 # between the turns, which the load's can't be told from.
@@ -38,9 +40,10 @@ def builders_share(under: Sequence[float], frozen: Sequence[float]) -> float:
 
     By the mean of each, not the middle: a piece of work is a couple of milliseconds, shorter
     than the builder's turns, so most pieces go untouched and the middle one reads as no share
-    at all, while the mean is the share of the time the probe's processor ran. With no probe in
-    either, as on a builder that gives steal time and so stretches none of it, it's 1, and the
-    bar is the guest's alone.
+    at all, while the mean is the share of the time the probe's processor ran. One long stall
+    among the thousands of pieces a subtest gathers moves it by about its own length over
+    theirs, so it takes the builder holding the guest back through a turn to move it far. With
+    no pieces in either it's 1, and the bar is the guest's alone.
     """
     if not under or not frozen:
         return 1.0
@@ -48,7 +51,11 @@ def builders_share(under: Sequence[float], frozen: Sequence[float]) -> float:
 
 
 def bound(frozen: float, more: float, share: float) -> float:
-    """Give the most a time under load may take, against its time frozen, by the share."""
+    """Give the most a time under load may take, against its time frozen, by the share.
+
+    The budget is stretched with the doubled time, since it's work the guest does in its own
+    processor time too, which the builder holding the guest back stretches alike.
+    """
     return share * (SLOWER_MOST * frozen + more)
 
 

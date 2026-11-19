@@ -4,7 +4,8 @@ Here the launcher keeps pace with the keys while the machine is busy. Every core
 account's jobs.slice and in build.slice, where a workstation's agents and builds run, and each key
 is timed from the moment a stand-in keyboard pressed it to the first frame the launcher drew for
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
-those under load are held against the others, so the builder's own load slows both alike. That
+those under load are held against the others, each bar stretched by the share of its processors
+the builder gave the VM, as a probe in the guest gauges it, which a last test proves it can. That
 text a program types at once is searched once, and a Return among it acts on what it found, is
 proven on a nested niri, in modules/quickshell/tests/launcher-on-niri-test.py. Long because its
 keys, steps and openings are each timed against the same loaded desktop, and a split would boot it
@@ -15,14 +16,17 @@ its opening comment says what the test proves. Every test asks for the desktop, 
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
+import os
 import re
 import shlex
 import statistics
 import time
 from datetime import timedelta
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 import pytest
@@ -35,7 +39,7 @@ from desktop_session import (
     neovims_quit,
     retry,
 )
-from keeps_pace import bound, builders_share, probed
+from keeps_pace import MIDDLE_MORE, PROCESSORS, bound, builders_share, probed
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -105,8 +109,13 @@ PHASE = 20
 # took for the same work under load than frozen (keeps_pace.py, pace-probe.py), and every bar
 # here held to a time frozen is too.
 WAITED = 45
-MIDDLE_MORE = 50
 PROBED = "/run/pace-probe.log"
+# The builder's processors the held subtest runs the VM's four on, so under load each runs about
+# half the time, the least share the probe must read for it, and how long it lets the probe work
+# in each turn.
+HELD_TO = 2
+HELD_SHARE = 1.5
+PROBING = 10
 TAIL = 0.95
 # Cage, which holds the compositor here, and the shell, by the units they run in.
 COMPOSITOR = "cage-tty1.service"
@@ -208,6 +217,9 @@ def keyboard(desktop: Desktop) -> Iterator[None]:
 def loaded(desktop: Desktop) -> Iterator[None]:
     """Load every core in jobs.slice and in build.slice, as agents and builds do, until done."""
     machine = desktop.machine
+    # The share the builder splits between the VM's processors is read as at most their count.
+    processors = int(machine.succeed("nproc").strip())
+    assert processors == PROCESSORS, f"the VM has {processors} processors, not {PROCESSORS}"
     # Builds weigh what the workstation role gives them (modules/nix-daemon).
     weight = machine.succeed("systemctl show build.slice --property=CPUWeight --value").strip()
     assert weight == "10", f"build.slice weighs {weight}, not the workstation's 10"
@@ -218,11 +230,12 @@ def loaded(desktop: Desktop) -> Iterator[None]:
     machine.succeed(
         f"systemd-run --collect --quiet --slice=build.slice --unit=stress-build {stress}"
     )
-    # The probe gauging the builder's share, never frozen, weighed as builds are so it waits
-    # behind the desktop in the guest, which its time doesn't count.
+    # The probe gauging the builder's share, never frozen, among the builds and weighed as they
+    # are, so it waits behind the desktop in the guest, which its time doesn't count.
+    probe = cast("PaceValues", desktop.values)["pace_probe"]
     machine.succeed(
-        f"rm -f {PROBED} && systemd-run --collect --quiet --unit=pace-probe"
-        f" --property=CPUWeight=10 {cast('PaceValues', desktop.values)['pace_probe']}"
+        f"rm -f {PROBED} && systemd-run --collect --quiet --slice=build.slice"
+        f" --unit=pace-probe --property=CPUWeight=10 {probe}"
     )
     try:
         desktop.as_account("systemctl --user is-active --quiet stress-jobs")
@@ -230,9 +243,10 @@ def loaded(desktop: Desktop) -> Iterator[None]:
         machine.wait_for_file(PROBED, timeout=timedelta(seconds=30))
         yield
     finally:
-        machine.succeed("systemctl stop pace-probe")
+        # The load first, so a probe that ended early fails here with the load already gone.
         desktop.as_account("systemctl --user stop stress-jobs")
         machine.succeed("systemctl stop stress-build")
+        machine.succeed("systemctl stop pace-probe")
 
 
 def framed(desktop: Desktop) -> Json:
@@ -325,6 +339,12 @@ class Timing:
         """Give the builder's share as the probe gauged it so far, saying how it was gauged."""
         self.probe(kept=True)
         under, frozen = self.probed[True], self.probed[False]
+        # A probe that gave nothing would leave every bar unstretched, unseen.
+        if not under or not frozen:
+            said = self.desktop.machine.execute("journalctl -u pace-probe -n 20")[1]
+            pytest.fail(
+                f"the probe gave {len(under)} pieces under load and {len(frozen)} frozen:\n{said}"
+            )
         share = builders_share(under, frozen)
         print(
             f"the probe's work took a mean {statistics.fmean(under or [0]) / 1000:.2f} ms under"
@@ -982,3 +1002,61 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
             timing.load(on=True)
         desktop.close_launcher()
     timing.said_and_held()
+
+
+def vm_threads(started: int) -> list[int]:
+    """Give every thread of the process that started the VM and of those it started, QEMU's."""
+    children: dict[int, list[int]] = {}
+    for process in Path("/proc").iterdir():
+        if not process.name.isdigit():
+            continue
+        # A process that ended as this read is no part of the VM, which runs on.
+        with contextlib.suppress(FileNotFoundError):
+            # The parent follows the name, which may hold spaces, in its parentheses.
+            parent = int((process / "stat").read_text().rsplit(")", 1)[1].split()[1])
+            children.setdefault(parent, []).append(int(process.name))
+    pids, threads = [started], []
+    while pids:
+        pid = pids.pop()
+        pids.extend(children.get(pid, []))
+        with contextlib.suppress(FileNotFoundError):
+            threads.extend(int(thread.name) for thread in Path(f"/proc/{pid}/task").iterdir())
+    return threads
+
+
+def hold_vm(started: int, processors: Sequence[int]) -> None:
+    """Run each of the VM's threads on these of the builder's processors alone."""
+    for thread in vm_threads(started):
+        # QEMU's workers come and go, and one gone is none to hold.
+        with contextlib.suppress(ProcessLookupError):
+            os.sched_setaffinity(thread, processors)
+
+
+@pytest.mark.usefixtures("loaded")
+def test_the_probe_reads_a_builder_holding_the_machine_back(desktop: Desktop) -> None:
+    """The probe's share grows as the builder runs the VM's processors on fewer of its own.
+
+    Held to HELD_TO of the builder's processors, the VM's four run about half the time each under
+    load, when every one is busy, and frozen the one that is runs on its own, as a busy builder
+    holds them. A share near 1 here is a probe blind to the builder, which no other subtest's
+    bars could tell from a quiet builder.
+    """
+    started = desktop.machine.pid
+    assert started, "the VM has no process to hold to the builder's processors"
+    # The VM started with the test's own, so they're what it's given back.
+    builders = sorted(os.sched_getaffinity(0))
+    assert len(builders) >= HELD_TO, f"the builder gives this test processors {builders} only"
+    timing = Timing(desktop)
+    try:
+        hold_vm(started, builders[:HELD_TO])
+        time.sleep(PROBING)
+        timing.load(on=False)
+        time.sleep(PROBING)
+        share = timing.share()
+    finally:
+        hold_vm(started, builders)
+        if not timing.loading:
+            timing.load(on=True)
+    assert share >= HELD_SHARE, (
+        f"held to {HELD_TO} of the builder's processors, the probe read a share of {share:.2f}"
+    )
