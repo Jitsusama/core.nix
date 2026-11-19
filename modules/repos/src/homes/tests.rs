@@ -195,6 +195,26 @@ fn homes_unchanged_on_the_disk_are_not_written_again() {
 }
 
 #[test]
+fn a_name_two_repositories_share_goes_to_the_lowest_key() {
+    // Read newest first, the later key comes first, as a reading may give it.
+    let mut shared = record();
+    shared.repositories = vec![
+        repository("github:zed/kestrel", "kestrel", Some("zed"), Vec::new()),
+        repository("github:ada/kestrel", "kestrel", Some("ada"), Vec::new()),
+    ];
+    let homes = of(&shared);
+    let first = homes["things"]
+        .as_array()
+        .and_then(|things| things.first())
+        .expect("a thing");
+    assert_eq!(
+        first["key"], "github:ada/kestrel",
+        "the shared name went first to {}",
+        first["key"]
+    );
+}
+
+#[test]
 fn homes_the_server_can_not_read_are_written_again() {
     // The server reads as the daemon's own account, so homes closed to it are
     // homes the skip can't open to judge either.

@@ -2,8 +2,9 @@
 //! git lays it out: a watch is answered with the checkout as the disk
 //! holds it, and told when its branch moves, as git moves one, and when a
 //! tree is cut from it; and Code's homes are written at its first reading
-//! and again as a tree is cut. The daemon hears the disk through inotify,
-//! so this is Linux's alone.
+//! and again as a tree is cut, none when none are named, and a writing that
+//! fails is warned of, and said over, as it serves on. The daemon hears the
+//! disk through inotify, so this is Linux's alone.
 #![cfg(target_os = "linux")]
 
 use std::fs;
@@ -11,7 +12,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -38,10 +40,11 @@ fn written(path: &Path, text: &str) {
 }
 
 /// The daemon, stopped when the test ends however it ends, its runtime
-/// folder taken away with it.
+/// folder taken away with it, and what it's said to its journal so far.
 struct Serving {
     child: Child,
     run: PathBuf,
+    said: Arc<Mutex<String>>,
 }
 
 impl Drop for Serving {
@@ -52,15 +55,16 @@ impl Drop for Serving {
     }
 }
 
-/// The daemon, looking under `at`, writing Code's homes to `homes(at)` as
-/// the local sites tell its unit to when `writing`, and otherwise none, as
-/// a machine without them runs it; serving in a runtime folder of its own,
-/// named for `at` as `place` names it, so no two tests share one.
+/// The daemon, looking under `at` and working in it, writing Code's homes
+/// to `homes` as the local sites tell its unit to, and with none named
+/// otherwise, as a machine without them runs it; serving in a runtime
+/// folder of its own, named for `at` as `place` names it, so no two tests
+/// share one. What it says is heard, and passed on to the test's own.
 /// That folder is named short, and not past its link, since a socket's
 /// path stops at 108 bytes. It's made afresh, readable by this account
 /// alone, so nothing else sharing the temporary folder reaches the socket
 /// or puts one of its own there first.
-fn serve(at: &Path, writing: bool) -> (Serving, PathBuf) {
+fn serve(at: &Path, homes: Option<&Path>) -> (Serving, PathBuf) {
     let name = at
         .file_name()
         .and_then(|name| name.to_str())
@@ -72,19 +76,79 @@ fn serve(at: &Path, writing: bool) -> (Serving, PathBuf) {
         .mode(0o700)
         .create(&run)
         .expect("a runtime folder of its own");
-    let mut daemon = Command::new(env!("CARGO_BIN_EXE_repos"));
-    daemon
+    let mut child = Command::new(env!("CARGO_BIN_EXE_repos"))
         .arg("serve")
         .env_clear()
+        .current_dir(at)
         .env("HOME", at)
         .env("XDG_RUNTIME_DIR", &run)
-        .env("REPOS_ROOTS", at.join("src"));
-    if writing {
-        daemon.env("REPOS_HOMES", homes(at));
-    }
-    let child = daemon.spawn().expect("repos serve started");
+        .env("REPOS_ROOTS", at.join("src"))
+        // None named empty, which the daemon reads as it reads none set.
+        .env(
+            "REPOS_HOMES",
+            homes.map(Path::as_os_str).unwrap_or_default(),
+        )
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("repos serve started");
+    let said = Arc::new(Mutex::new(String::new()));
+    let heard = Arc::clone(&said);
+    let journal = child.stderr.take().expect("its journal");
+    std::thread::spawn(move || {
+        for line in BufReader::new(journal).lines().map_while(Result::ok) {
+            eprintln!("{line}");
+            let mut said = heard.lock().expect("what it said");
+            said.push_str(&line);
+            said.push('\n');
+        }
+    });
     let socket = run.join("daemons/repos.sock");
-    (Serving { child, run }, socket)
+    (Serving { child, run, said }, socket)
+}
+
+/// What the daemon has said, once it's said `wanted`.
+fn said_until(serving: &Serving, wanted: &str) -> String {
+    let began = Instant::now();
+    loop {
+        let said = serving.said.lock().expect("what it said").clone();
+        if said.contains(wanted) {
+            return said;
+        }
+        assert!(
+            began.elapsed() < Duration::from_secs(10),
+            "it never said {wanted:?}; it said {said:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// A checkout of core.nix under `at`, on main at `FIRST`, laid out as git
+/// lays one out; answers its git folder.
+fn checkout(at: &Path) -> PathBuf {
+    let git = at.join("src/core.nix/.git");
+    written(
+        &git.join("config"),
+        "[remote \"origin\"]\n\turl = git@github.com:Jitsusama/core.nix.git\n",
+    );
+    written(&git.join("HEAD"), "ref: refs/heads/main\n");
+    written(&git.join("refs/heads/main"), &format!("{FIRST}\n"));
+    git
+}
+
+/// A tree cut from the checkout whose git folder is `git`, as `git worktree
+/// add` cuts one: its entry under worktrees/, then the tree's folder with
+/// its .git file; answers the tree.
+fn cut(at: &Path, git: &Path) -> PathBuf {
+    let tree = at.join("trees/say-trees");
+    let own = git.join("worktrees/say-trees");
+    written(&own.join("commondir"), "../..\n");
+    written(
+        &own.join("gitdir"),
+        &format!("{}\n", tree.join(".git").display()),
+    );
+    written(&tree.join(".git"), &format!("gitdir: {}\n", own.display()));
+    written(&own.join("HEAD"), "ref: refs/heads/main\n");
+    tree
 }
 
 /// Where the daemon under `at` writes Code's homes: two folders down, in
@@ -175,30 +239,15 @@ fn holding(things: &[Value], key: &str) -> bool {
 #[test]
 fn the_homes_are_written_at_the_first_reading_and_again_as_a_tree_is_cut() {
     let at = place("homes");
-    let git = at.join("src/core.nix/.git");
-    written(
-        &git.join("config"),
-        "[remote \"origin\"]\n\turl = git@github.com:Jitsusama/core.nix.git\n",
-    );
-    written(&git.join("HEAD"), "ref: refs/heads/main\n");
-    written(&git.join("refs/heads/main"), &format!("{FIRST}\n"));
-    let (serving, _socket) = serve(&at, true);
+    let git = checkout(&at);
     let homes = homes(&at);
+    let (serving, _socket) = serve(&at, Some(&homes));
     homes_until(&homes, |things| {
         holding(things, "github:Jitsusama/core.nix")
     });
 
     // Cut well inside the pace, so only a reading of what was heard writes it.
-    let tree = at.join("trees/say-trees");
-    let own = git.join("worktrees/say-trees");
-    written(&own.join("commondir"), "../..\n");
-    written(
-        &own.join("gitdir"),
-        &format!("{}\n", tree.join(".git").display()),
-    );
-    written(&tree.join(".git"), &format!("gitdir: {}\n", own.display()));
-    written(&own.join("HEAD"), "ref: refs/heads/main\n");
-    let path = tree.display().to_string();
+    let path = cut(&at, &git).display().to_string();
     let things = homes_until(&homes, |things| holding(things, &path));
     assert!(
         holding(&things, "github:Jitsusama/core.nix"),
@@ -212,14 +261,8 @@ fn the_homes_are_written_at_the_first_reading_and_again_as_a_tree_is_cut() {
 #[test]
 fn a_watch_is_told_as_a_branch_moves_and_a_tree_is_cut() {
     let at = place("watched");
-    let git = at.join("src/core.nix/.git");
-    written(
-        &git.join("config"),
-        "[remote \"origin\"]\n\turl = git@github.com:Jitsusama/core.nix.git\n",
-    );
-    written(&git.join("HEAD"), "ref: refs/heads/main\n");
-    written(&git.join("refs/heads/main"), &format!("{FIRST}\n"));
-    let (serving, socket) = serve(&at, false);
+    let git = checkout(&at);
+    let (serving, socket) = serve(&at, None);
 
     let stream = connect(&socket);
     let mut lines = BufReader::new(stream.try_clone().expect("a reader"));
@@ -240,38 +283,77 @@ fn a_watch_is_told_as_a_branch_moves_and_a_tree_is_cut() {
     assert_eq!(told["changed"][0]["key"], checkout.as_str());
     assert_eq!(told["changed"][0]["head"]["commit"], MOVED);
 
-    // As `git worktree add` cuts one: its entry under worktrees/, then the
-    // tree's folder with its .git file.
-    let tree = at.join("trees/say-trees");
-    let own = git.join("worktrees/say-trees");
-    written(&own.join("commondir"), "../..\n");
-    written(
-        &own.join("gitdir"),
-        &format!("{}\n", tree.join(".git").display()),
-    );
-    written(&tree.join(".git"), &format!("gitdir: {}\n", own.display()));
-    written(&own.join("HEAD"), "ref: refs/heads/main\n");
-    let key = format!("tree:{}", tree.display());
+    let key = format!("tree:{}", cut(&at, &git).display());
     let told = told_until(&mut lines, |said| {
         said["changed"]
             .as_array()
             .is_some_and(|changed| changed.iter().any(|one| one["key"] == key.as_str()))
     });
-    let cut = told["changed"]
+    let tree = told["changed"]
         .as_array()
         .and_then(|changed| changed.iter().find(|one| one["key"] == key.as_str()))
         .expect("the tree told");
     assert_eq!(
-        cut["checkout"],
+        tree["checkout"],
         at.join("src/core.nix").display().to_string()
     );
-    assert_eq!(cut["present"], true);
+    assert_eq!(tree["present"], true);
     // Told none, as a machine without the local sites runs it, it writes none
-    // anywhere in the home it's given, where any default of its own would go.
-    let written = homes_under(&at);
+    // in the home it's given or the folder it works in, where a default of its
+    // own would go, nor in its runtime folder, and says nothing of them.
+    let written: Vec<_> = homes_under(&at)
+        .into_iter()
+        .chain(homes_under(&serving.run))
+        .collect();
     assert!(
         written.is_empty(),
         "homes were written with none named, to {written:?}"
+    );
+    let said = serving.said.lock().expect("what it said").clone();
+    assert!(
+        !said.contains("Code's homes"),
+        "it spoke of homes with none named: {said:?}"
+    );
+    drop(serving);
+    fs::remove_dir_all(&at).expect("cleaned");
+}
+
+#[test]
+fn a_writing_that_fails_is_warned_of_and_said_over_as_the_daemon_serves_on() {
+    let at = place("failing");
+    let git = checkout(&at);
+    let homes = homes(&at);
+    // A file where the homes' folder goes, so no writing can make it.
+    let documents = at.join("documents");
+    fs::write(&documents, "in the way").expect("a file in the folder's way");
+    let (serving, socket) = serve(&at, Some(&homes));
+    said_until(
+        &serving,
+        &format!(
+            "<4>repos: couldn't write Code's homes to {}",
+            homes.display()
+        ),
+    );
+
+    // Still serving: a watch is answered with the checkout.
+    let stream = connect(&socket);
+    let mut lines = BufReader::new(stream.try_clone().expect("a reader"));
+    let mut writing = stream;
+    let ask = json!({"id": 1, "ask": "watch", "kind": ["checkout"]});
+    writeln!(writing, "{ask}").expect("asked");
+    let first = told_until(&mut lines, |said| said.get("records").is_some());
+    assert_eq!(
+        first["records"][0]["repository"],
+        "github:Jitsusama/core.nix"
+    );
+
+    // With the way cleared, the next reading writes them and says so.
+    fs::remove_file(&documents).expect("the way cleared");
+    let path = cut(&at, &git).display().to_string();
+    homes_until(&homes, |things| holding(things, &path));
+    said_until(
+        &serving,
+        &format!("repos: Code's homes at {} are right again", homes.display()),
     );
     drop(serving);
     fs::remove_dir_all(&at).expect("cleaned");
