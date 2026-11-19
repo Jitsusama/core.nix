@@ -35,6 +35,10 @@ if TYPE_CHECKING:
 # screens returning does, so one read can see it just before it goes.
 STEADY_READS = 2
 
+# How many times to read niri's workspaces and windows again before a window on a workspace it
+# doesn't list counts as niri's fault rather than a move between the two reads.
+READS_TO_AGREE = 5
+
 # How long a wait for the shell's surfaces may take, and a launcher's step.
 SURFACING = dt.timedelta(seconds=60)
 
@@ -421,6 +425,14 @@ class Screens:
             "~/.local/state/agents/arrangement.json",
             {"v": 1, "boots": {"a-boot-before": where}},
         )
+        # The shell hears the places through the agents daemon, a moment after
+        # the file is written, and a reopen asked before then puts every session
+        # nowhere, in no order (at 9bceeeda and a9f253f9, by 2026-11-19).
+        heard = shlex.quote(f"a-boot-before: {' '.join(sorted(where))}")
+        self.machine.wait_until_succeeds(
+            self.in_niri(f"journalctl --user -u quickshell -o cat | grep -qF {heard}"),
+            timeout=dt.timedelta(seconds=60),
+        )
         return self.machine.succeed("cat /proc/sys/kernel/random/boot_id").strip()
 
     def reopen(self, where: dict[str, dict[str, Any]]) -> None:
@@ -450,9 +462,18 @@ class Screens:
 
     def sessions_sat(self, prefix: str) -> dict[str, tuple[str, int, int]]:
         """Give each stand-in session's screen, workspace and column, by its session."""
-        listed = json.loads(self.machine.succeed(self.in_niri("niri msg --json workspaces")))
-        spaces = {one["id"]: one for one in listed}
-        windows = json.loads(self.machine.succeed(self.in_niri("niri msg --json windows")))
+        # Two reads, so a window can land on a workspace made between them
+        # (KeyError: 5 at a9f253f9): read both again until each window's is listed.
+        for _ in range(READS_TO_AGREE):
+            listed = json.loads(self.machine.succeed(self.in_niri("niri msg --json workspaces")))
+            spaces = {one["id"]: one for one in listed}
+            windows = json.loads(self.machine.succeed(self.in_niri("niri msg --json windows")))
+            ours = [one for one in windows if one["title"].startswith(f"pi --session {prefix}")]
+            if all(window["workspace_id"] in spaces for window in ours):
+                break
+        else:
+            msg = f"niri's windows sit on workspaces it doesn't list: {windows} on {listed}"
+            raise AssertionError(msg)
         return {
             # "pi --session <id>", then what it was told, if anything.
             window["title"].split()[2]: (
@@ -460,8 +481,7 @@ class Screens:
                 spaces[window["workspace_id"]]["idx"],
                 window["layout"]["pos_in_scrolling_layout"][0],
             )
-            for window in windows
-            if window["title"].startswith(f"pi --session {prefix}")
+            for window in ours
         }
 
 
