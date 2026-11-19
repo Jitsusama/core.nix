@@ -8,7 +8,8 @@ are the system's reader's (modules/system/src/homes.rs) and Code's
 named here. Where the rows come from is the
 probe's own: rows.json, which the home writes (modules/local-sites/home),
 or sites.json where the sites serve none.
-The probe's path comes from WEB_SKILL, as the check running this sets it.
+The probe's path comes from WEB_SKILL, as the check running this sets it,
+and its browser from probe_browser.py, loaded as a plugin.
 """
 
 import json
@@ -21,12 +22,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from playwright.sync_api import Browser, sync_playwright
 
 if TYPE_CHECKING:
     import socket
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Mapping, Sequence
     from socketserver import BaseServer
+
+    from playwright.sync_api import Browser
 
 PROBE = Path(os.environ["WEB_SKILL"]) / "homes.js"
 CODE = {"path": "code/", "homes": ["repository"]}
@@ -69,15 +71,6 @@ class Quiet(SimpleHTTPRequestHandler):
         """Say nothing, so the test's output is what it finds."""
 
 
-@pytest.fixture(scope="module")
-def browser() -> Iterator[Browser]:
-    """One headless Chromium for every case."""
-    with sync_playwright() as playwright:
-        opened = playwright.chromium.launch()
-        yield opened
-        opened.close()
-
-
 def probed(
     browser: Browser,
     root: Path,
@@ -110,11 +103,14 @@ def probed(
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         tab = browser.new_page()
-        tab.goto(f"http://127.0.0.1:{server.server_address[1]}/page.html")
-        found = tab.evaluate(PROBE.read_text())
-        tab.close()
+        try:
+            tab.goto(f"http://127.0.0.1:{server.server_address[1]}/page.html")
+            found = tab.evaluate(PROBE.read_text())
+        finally:
+            tab.close()
     finally:
         server.shutdown()
+        server.server_close()
     return found
 
 

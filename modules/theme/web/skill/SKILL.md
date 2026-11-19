@@ -94,7 +94,9 @@ answers: every later choice is judged against them.
    detail, never by retreating to the kit's defaults.
 7. **Ship small, and say what's unfinished.** Post early, keep it
    current, and call anything that hasn't passed both the judging and the
-   gates unfinished, never done.
+   gates unfinished, never done. Every deploy over a live page measures
+   it before and after, shots side by side, and puts the old copy back
+   on a look lost (`checks.md`, Before and After).
 
 ## What His Loved Sites Share
 
@@ -139,7 +141,7 @@ Load each when its step needs it, not before.
 | `craft.md` | the CSS for a technique: faces' axes, the switch, folds, side sheets, replays, diagrams |
 | `sites.md` | making, placing or publishing a site: the local home, links home, the kit |
 | `gates.md` | verifying, after the design is judged |
-| `checks.md` | running the verification, with `gate.js`, `layout.js`, `map.js`, `homes.js` and `svgtext.js` |
+| `checks.md` | running the verification, with `gate.js`, `layout.js`, `map.js`, `homes.js`, `svgtext.js` and `looks.js` |
 
 The kit (`~/.local/share/jitsusama/web/`, `sites.md`) gives a site its
 colours, faces, space ladder and a sensible base. It's a palette to

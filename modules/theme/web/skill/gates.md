@@ -39,6 +39,14 @@ contrast of the tint, not the tint into the kit's default.
    and the layout's measure and edges. The faces and the tint are the
    site's own choice within `language.md`.
 
+A page already live passes them twice, before its new copy goes out and
+on the live page after, held to what it drew before the deploy: a look
+lost that nobody meant fails the publish however well the new copy passes
+alone, and the copy from before goes back at once. On 18 November 2026 a
+tracker's guide lost its masthead, art and stylesheets to a deploy that
+changed only its words, and Joel found it himself (`checks.md`, Before
+and After).
+
 The gates make a page fit to show. Only the design makes it his, and that
 was judged before this file was opened (SKILL.md, The Process).
 
