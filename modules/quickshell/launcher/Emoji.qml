@@ -57,10 +57,14 @@ Provider {
 
     // A group's row, stepped into for its emoji and searched within by the
     // history; or an emoji's, from the one the history serves: named and
-    // marked there, its acts done as it serves them.
+    // marked there, its acts done as it serves them. A group's emoji are
+    // things (nested), so a terminal names an emoji's acts as its own, and
+    // selecting a group in normal mode reads none of them, which would make
+    // them all (Launcher.qml's collects and readSelectedActions).
     function made(served, key) {
         if (served.kind === "emoji-group")
-            return ready.thing(served, key, { hue: "text", finds: provider.findsIn(key) });
+            return ready.thing(served, key,
+                { hue: "text", nested: true, finds: provider.findsIn(key) });
         const held = served.held ?? {};
         const readied = ready.thing(served, key, {
             thing: true,
