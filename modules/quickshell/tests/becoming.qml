@@ -120,6 +120,8 @@ QtObject {
             fireOn(holds, 6000), "a|2000");
         check(failures, "and with none left it comes no more", fireOn({ a: holds.a }, 6000),
             "a|-1");
+        // Each left untouched by another's settling is still the one found late.
+        check(failures, "two late at once are both settled", fireOn(holds, 9000), "a b|-1");
         // Settling one can let go of another, as an agreed source answers for
         // both, and a hold gone is never settled again.
         check(failures, "a hold let go while another settles is not settled",
