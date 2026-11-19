@@ -79,22 +79,7 @@ onLinux {
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
-      # Every case runs, and each that fails or runs past its minute is
-      # named, since the build's log otherwise says only the exit code of
-      # the first, not which case, nor any after it.
-      failed=0
-      for case in *.qml; do
-        QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml "$case" || {
-          code=$?
-          if [ "$code" = 124 ]; then
-            echo "$case ran past its 60 s" >&2
-          else
-            echo "$case failed, exit code $code" >&2
-          fi
-          failed=1
-        }
-      done
-      [ "$failed" = 0 ]
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml $BASH ${./tests/runs-every-case.sh} ${qt}/bin/qml
       touch $out
     '';
 
