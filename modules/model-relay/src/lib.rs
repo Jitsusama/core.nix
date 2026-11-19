@@ -1071,6 +1071,18 @@ impl Relay {
             self.origin.authority,
             self.slots.len()
         );
+        let (every, lasting) = (
+            self.clocks.tries_its_path_every,
+            self.clocks.stands_down_for,
+        );
+        if first_trial_after(every, lasting, lasting) >= lasting {
+            eprintln!(
+                "model-relay: it stands down {} s, too short to try its path every {} s, so a \
+                 stand-down ends on its timer alone",
+                lasting.as_secs(),
+                every.as_secs()
+            );
+        }
         let relay = Arc::new(self);
         tokio::spawn(say_counts(Arc::clone(&relay.counts)));
         tokio::spawn(Arc::clone(&relay).tries_its_path());
@@ -1622,11 +1634,12 @@ impl Relay {
         // would retry: pi sends a 502's request again whole, so going
         // direct asks the origin nothing more, and asks it now, on a path
         // that answers, where pi's own retry waited up to a minute on
-        // 19 November to fail on this one again. Reset again saying to
-        // calm down, or with an error of the origin's own, is the origin's
-        // verdict rather than the path's, so it's a 502, for pi's retry to
-        // wait out.
-        let path_failed_again = !reset_by_the_origin(why) || goes_once_more(why);
+        // 19 November to fail on this one again. Reset again or said
+        // goodbye to saying to calm down, or with an error of the origin's
+        // own, is the origin's verdict rather than the path's, so it's a
+        // 502, for pi's retry to wait out: the path's failure is judged as
+        // the stand-down judges it.
+        let path_failed_again = fails_the_path(why);
         let (answer, then) = if reset_on.is_some() && path_failed_again {
             (goes_directly(), "pi goes directly")
         } else {
@@ -2101,9 +2114,11 @@ fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
 
 /// An answer of the relay's own: a status and a line saying why.
 ///
-/// A 421 of the relay's own is said only when nothing of the request
-/// went to the origin, as pi sends a request the relay answers with one
-/// straight to the origin itself. pi knows one by its whole body being
+/// A 421 of the relay's own is said when nothing of the request went to
+/// the origin, or when one reset and sent once more failed again on the
+/// relay's path, which pi would send again whole after a 502 anyway, as
+/// pi sends a request the relay answers with one straight to the origin
+/// itself. pi knows one by its whole body being
 /// one line, "this relay forwards to its own origin alone", or one that
 /// begins "this relay " and ends "so go directly", so a new one is
 /// worded so. A refusal once something went is a 5xx.

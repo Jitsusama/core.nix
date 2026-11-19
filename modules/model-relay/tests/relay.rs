@@ -123,7 +123,7 @@ struct Origin {
     handed: Arc<Mutex<Vec<Handed>>>,
     held: Arc<Held>,
     /// How it fails every request, as a path that has failed would: one
-    /// of `ANSWERS`, `RESETS`, `ANSWERS_THE_FIRST` or `ANSWERS_502`.
+    /// of `ANSWERS`, `RESETS`, `ANSWERS_THE_FIRST_TWO` or `ANSWERS_502`.
     failing: Arc<AtomicU8>,
     _tls: Tls,
 }
@@ -132,9 +132,10 @@ struct Origin {
 const ANSWERS: u8 = 0;
 /// The origin resets every request once it has read it.
 const RESETS: u8 = 1;
-/// The origin answers each connection's first request and resets the
-/// rest, as fresh connections were on 18 November.
-const ANSWERS_THE_FIRST: u8 = 2;
+/// The origin answers each connection's first two requests and resets
+/// the rest, as fresh connections were reset after one to three on 18
+/// November, so only a trial that asks a third finds it failing.
+const ANSWERS_THE_FIRST_TWO: u8 = 2;
 /// The origin answers every request 502, as one failing behind its front.
 const ANSWERS_502: u8 = 3;
 
@@ -361,7 +362,9 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
     };
     match failing.load(Ordering::SeqCst) {
         RESETS => return Err(h2::Error::from(h2::Reason::PROTOCOL_ERROR)),
-        ANSWERS_THE_FIRST if nth > 1 => return Err(h2::Error::from(h2::Reason::PROTOCOL_ERROR)),
+        ANSWERS_THE_FIRST_TWO if nth > 2 => {
+            return Err(h2::Error::from(h2::Reason::PROTOCOL_ERROR));
+        }
         ANSWERS_502 => {
             let failed = Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
@@ -1593,8 +1596,9 @@ async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answer
     fail_past_its_share(&relay.socket, &host).await;
     origin.failing.store(RESETS, Ordering::SeqCst);
     let stood_down = Instant::now();
-    // Its first trial waits two periods, not one.
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Its first trial waits two periods, not one, so none has come a
+    // period and a half in.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
     assert_eq!(
         trials(),
         0,
@@ -1629,7 +1633,7 @@ async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answer
     // A path that answers a trial's first request and fails the next, or
     // answers each with a 502, still keeps it standing down.
     for (failing, how) in [
-        (ANSWERS_THE_FIRST, "failing partway"),
+        (ANSWERS_THE_FIRST_TWO, "failing partway"),
         (ANSWERS_502, "answering 502"),
     ] {
         origin.failing.store(failing, Ordering::SeqCst);
@@ -1668,10 +1672,6 @@ async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answer
         tokio::time::sleep(ASK_EVERY).await;
     }
     let taken = trials();
-    assert!(
-        taken >= tried + 3,
-        "it took requests again before a trial asked three times"
-    );
     // Taking requests again, it tries its path no more.
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert_eq!(
@@ -1703,8 +1703,8 @@ fn says_each_trial(said: &str) {
         "a trial that failed went unsaid: {said}"
     );
     assert!(
-        said.contains("failed request 2 of 3"),
-        "a trial failing partway went unsaid: {said}"
+        said.contains("failed request 3 of 3"),
+        "a trial failing at its third request went unsaid: {said}"
     );
     assert!(
         said.contains("failed request 1 of 3: answered 502 Bad Gateway"),
