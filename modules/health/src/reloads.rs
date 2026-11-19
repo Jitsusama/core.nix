@@ -428,6 +428,27 @@ mod tests {
                 ],
                 vec![100],
             ),
+            // Two restarts of the backend, the second the tool's: only the
+            // second goes when its reload is heard late.
+            (
+                "a tool's reload heard late after a switch's restart before",
+                vec![
+                    reload_in("b", 1_000_000, "sd-switch"),
+                    backend("b", 2_000_000, Job::Stopping),
+                    backend("b", 2_064_000, Job::Started),
+                    backend("b", 300_800_000, Job::Stopping),
+                    backend("b", 300_900_000, Job::Started),
+                    reload_in("b", 300_000_000, "systemctl"),
+                ],
+                vec![64],
+            ),
+        ];
+        each_restarted(days);
+    }
+
+    #[test]
+    fn a_switchs_reload_heard_after_a_tools_late_one_keeps_its_restart() {
+        let days: Vec<(&str, Vec<Entry>, Vec<u64>)> = vec![
             // A tool's reload, then a switch's, both before the stop and
             // heard after it, in the order written: the switch's makes the
             // restart its own again, whether the tool's reload took back
@@ -492,20 +513,6 @@ mod tests {
                     reload_in("b", 10_000_000, "systemctl"),
                 ],
                 vec![200],
-            ),
-            // Two restarts of the backend, the second the tool's: only the
-            // second goes when its reload is heard late.
-            (
-                "a tool's reload heard late after a switch's restart before",
-                vec![
-                    reload_in("b", 1_000_000, "sd-switch"),
-                    backend("b", 2_000_000, Job::Stopping),
-                    backend("b", 2_064_000, Job::Started),
-                    backend("b", 300_800_000, Job::Stopping),
-                    backend("b", 300_900_000, Job::Started),
-                    reload_in("b", 300_000_000, "systemctl"),
-                ],
-                vec![64],
             ),
         ];
         each_restarted(days);
