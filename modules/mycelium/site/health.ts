@@ -324,5 +324,5 @@ export const flagWords = (f: Flag, self: string | null = null): string => {
   if (f.flag === "imbalanced") {
     return "the machines' loads are uneven, so new work leans to the least loaded";
   }
-  return f.flag.replace(/_/g, " ");
+  return f.flag.replace(/_/gu, " ");
 };

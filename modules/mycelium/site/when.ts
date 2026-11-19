@@ -7,7 +7,7 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 // Words that open with a digit are a clock or a date, which take a verb's word.
-const OPENS_WITH_DIGIT = /^\d/;
+const OPENS_WITH_DIGIT = /^\d/u;
 
 // One formatter for each clock, made once: toLocaleString makes a new one
 // on every call, which at 10k cells was most of what a tree row cost.
