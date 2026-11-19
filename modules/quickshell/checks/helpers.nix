@@ -179,7 +179,7 @@ let
   # The account says what its shell does, as the desktop test's does, and
   # counts as away after so many seconds of nothing typed or moved. Its
   # notices daemon serves the bus beside it, started as its unit would be
-  # (tests/notices-beside.sh), logging to logs.
+  # (modules/quickshell/tests/notices-beside.sh), logging to logs.
   shellOnNiri =
     {
       name,
@@ -281,7 +281,7 @@ let
         ${lib.optionalString (root != null) "install -m 644 ${root} quickshell/shell.qml"}
         ${lib.optionalString (size != null) "export NESTED_SIZE=${size}"}
         ${lib.getExe pkgs.bash} ${../../../tests/nested-niri.sh} niri/config.kdl logs \
-          ${lib.getExe pkgs.bash} ${../../../tests/notices-beside.sh} ${command}
+          ${lib.getExe pkgs.bash} ${../tests/notices-beside.sh} ${command}
         touch $out
       '';
 
@@ -321,7 +321,7 @@ let
 
   # The account's whole shell on niri, its launcher typed into through
   # wtype, with a file of tests run through pytest against it
-  # (tests/launcher_on_niri.py starts the shell and types).
+  # (modules/quickshell/tests/launcher_on_niri.py starts the shell and types).
   #
   # A long file runs in parts side by side, each on a shell of its own: `parts`
   # names the case each part after the first starts at, and `every` the cases
@@ -341,7 +341,7 @@ let
     let
       python = pkgs.python3.withPackages (python: [ python.pytest ]);
       checked = pkgs.runCommandLocal "${name}-tests" { } ''
-        install -D -m 644 ${../../../tests/launcher_on_niri.py} $out/launcher_on_niri.py
+        install -D -m 644 ${../tests/launcher_on_niri.py} $out/launcher_on_niri.py
         install -D -m 644 ${../tests/cases_in_parts.py} $out/cases_in_parts.py
         install -D -m 644 ${tests} $out/${baseNameOf tests}
       '';

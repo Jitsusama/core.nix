@@ -15,8 +15,8 @@
 {
   # The launcher's Power draws its rows and headline as the machine daemon
   # serves them ready, makes again only the rows a change names, and asks
-  # a charge limit on the rows' own socket (tests/power.qml), over a
-  # stand-in for the daemon, with niri stood in.
+  # a charge limit on the rows' own socket (modules/quickshell/tests/power.qml),
+  # over a stand-in for the daemon, with niri stood in.
   power-remakes-only-what-moved =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -36,7 +36,7 @@
       cp ${singleton "Niri.qml" ''
         function spawn(command) { }
       ''} Niri.qml
-      cp ${../../../tests/power.qml} shell.qml
+      cp ${../tests/power.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

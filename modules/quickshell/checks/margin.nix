@@ -94,8 +94,8 @@
       );
 
   # Now's own pieces say in their drawers all their source holds, in the
-  # order every drawer keeps, as tests/piece-drawers.qml holds
-  # pieces/Drawers.js to what the disk guards, Notices, lag-watch, niri,
+  # order every drawer keeps, as modules/quickshell/tests/piece-drawers.qml
+  # holds pieces/Drawers.js to what the disk guards, Notices, lag-watch, niri,
   # the recorder and Quiet say.
   a-piece-says-all-it-knows =
     let
@@ -103,7 +103,7 @@
     in
     pkgs.runCommandLocal "a-piece-says-all-it-knows" { } ''
       mkdir pieces
-      cp ${../../../tests/piece-drawers.qml} piece-drawers.qml
+      cp ${../tests/piece-drawers.qml} piece-drawers.qml
       ${copied [ "pieces/Drawers.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -133,14 +133,14 @@
 
   # Now's Work Network piece says what ails the link to work, and nothing
   # while Joel took it down himself or it's only coming up, as
-  # tests/work-network-ails.qml holds pieces/WorkNetwork.js to the states
-  # the warp daemon tells.
+  # modules/quickshell/tests/work-network-ails.qml holds pieces/WorkNetwork.js
+  # to the states the warp daemon tells.
   now-says-what-ails-the-work-network =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "now-says-what-ails-the-work-network" { } ''
-      cp ${../../../tests/work-network-ails.qml} work-network-ails.qml
+      cp ${../tests/work-network-ails.qml} work-network-ails.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "pieces/WorkNetwork.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

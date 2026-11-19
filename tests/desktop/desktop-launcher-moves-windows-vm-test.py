@@ -577,7 +577,7 @@ def test_niri_tells_the_shell_it_gives_the_keys_on_demand(desktop: Desktop) -> N
     The shell asks on demand only once told, and exclusively before, since a switch restarts
     it under the niri already running, and an older niri never gives a mapped surface the
     keys on demand. What the newest surface and a click do with them is proven on a nested
-    niri (tests/focus-on-niri-test.py); this is the wire from niri to the shell.
+    niri (modules/quickshell/tests/focus-on-niri-test.py); this is the wire from niri to the shell.
     """
     shell = "/proc/$(systemctl --user show quickshell -p MainPID --value)/environ"
     environment = desktop.as_account(f"tr '\\0' '\\n' < {shell}").splitlines()
@@ -1173,7 +1173,8 @@ def test_what_is_picked_inside_a_programs_page_is_learned_there(desktop: Desktop
 
     Learning applies wherever typing searches, inside a step too (RSCH-20261030-GB56HX), so
     "new" in kitty's page lands on the row picked for it last time. The cases are in
-    tests/ranking.qml; this is the one path from a pick there to the next opening's order.
+    modules/quickshell/tests/ranking.qml; this is the one path from a pick there to the next
+    opening's order.
     """
     machine = desktop.machine
 

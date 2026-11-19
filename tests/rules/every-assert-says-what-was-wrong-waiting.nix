@@ -297,7 +297,7 @@
   "tests/desktop/desktop-looks-vm-test.py" = 2;
   "tests/vm/disks/hibernate-vm-test.py" = 1;
   "tests/vm/devices/idle-sleep-vm-test.py" = 2;
-  "tests/launcher-on-niri-test.py" = 5;
+  "modules/quickshell/tests/launcher-on-niri-test.py" = 5;
   "tests/lib/qemu-after-its-sockets-test.py" = 3;
   "tests/lib/vm-helpers-test.py" = 3;
   "tests/lib/vm-pytest-test.py" = 1;

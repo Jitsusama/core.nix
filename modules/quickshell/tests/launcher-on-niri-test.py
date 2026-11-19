@@ -503,9 +503,9 @@ def test_a_place_stepped_into_from_whats_typed_is_kept_as_what_it_meant(shell: S
     """Return into For You from "for you" keeps For You as a pick of those words, once each.
 
     Only doing something learned what was meant, so a place stepped into and left never came
-    first for its words, however often (VKCF3Z, 2026-11-12); tests/ranking.qml holds the rest.
-    The pick is learned once the step's frame is drawn, so the letters typed inside before it
-    are never what it's learned for, and a launcher closed before it is drawn still learns it.
+    first for its words, however often (VKCF3Z, 2026-11-12); modules/quickshell/tests/ranking.qml
+    holds the rest. The pick is learned once the step's frame is drawn, so the letters typed inside
+    before it are never what it's learned for, and one closed before it's drawn still learns it.
     """
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
 
@@ -752,8 +752,8 @@ def test_do_not_disturb_says_until_when_in_its_drawer(shell: Shell) -> None:
     """Do Not Disturb, off, has a drawer saying until when Return holds notices.
 
     Joel wants every row to say a little more beside it (2026-11-11), and Desktop's Do Not
-    Disturb had none; what each fact says is tests/piece-drawers.qml's, and this is its one
-    path through the launcher.
+    Disturb had none; what each fact says is modules/quickshell/tests/piece-drawers.qml's, and this
+    is its one path through the launcher.
     """
     shell.answer("do not")
     shell.launcher_until(
@@ -1176,7 +1176,7 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
 
 
 def notices_daemon() -> int:
-    """Give the notices daemon's process, which tests/notices-beside.sh started beside the shell."""
+    """Give the notices daemon's process, started by modules/quickshell/tests/notices-beside.sh."""
     for named in Path("/proc").glob("[0-9]*/comm"):
         with contextlib.suppress(OSError):
             if named.read_text().strip() == "notices":
@@ -2420,7 +2420,8 @@ def test_an_emoji_shows_the_drawer_its_history_serves(shell: Shell) -> None:
 
     Each held no drawer, only a list of Paste and Copy, which Return and y already do (Joel,
     2026-11-11 22:00: "if they have nothing under them, we shouldn't open a submenu for
-    them"). That it opens no list is tests/ready-rows.qml's, over what the history serves.
+    them"). That it opens no list is modules/quickshell/tests/ready-rows.qml's, over what the
+    history serves.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -3039,8 +3040,8 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
 
     The shell walks from home by its own rows (Launcher.qml's shownToTerminal), each step a
     name in any case or the start of only one (launcher/Showing.js, whose cases are
-    tests/showing.qml), so a terminal says what the launcher would, a thing's own acts apart
-    from its rows. The launcher stays closed: a terminal's asking never opens it.
+    modules/quickshell/tests/showing.qml), so a terminal says what the launcher would, a thing's own
+    acts apart from its rows. The launcher stays closed: a terminal's asking never opens it.
     """
 
     def shown(*steps: str) -> Json:
@@ -3091,7 +3092,7 @@ def test_a_meaning_lands_on_a_part_inside_a_place(shell: Shell) -> None:
     as its things (tests/desktop/stand-in-meaning.py), and a spot it says is meant is added below
     what the letters found as typing would find it, saying where it lives and that it was found
     by its meaning. That it stands where its place would have, and is meant once by its name, is
-    tests/meaning.qml's to prove; this is the wiring.
+    modules/meaning/tests/meaning.qml's to prove; this is the wiring.
     """
     runtime = Path(os.environ["XDG_RUNTIME_DIR"])
     means = runtime / "meaning-means.json"
@@ -3358,7 +3359,7 @@ def test_now_says_while_the_work_network_isnt_answering_and_forgets_it_once_it_i
 
     The margin holds a watch on how WARP stands always, so it's said with the launcher shut,
     gone within seconds of healing (VKCF3Z, 2026-11-11). What each state says is
-    tests/work-network-ails.qml's; this is the wiring, warp to the margin to Now.
+    modules/quickshell/tests/work-network-ails.qml's; this is the wiring, warp to the margin to Now.
     """
     said = Path(os.environ["HOME"]) / "warp-cli"
     contract = Path(os.environ["WARP_CONTRACT"])
@@ -4840,7 +4841,8 @@ def quests() -> Iterator[StandIn]:
 def battery(pct: int) -> list[Json]:
     """Give Power's headline and Charge row at `pct`, as the machine daemon serves them.
 
-    The shapes are power_rows.rs's, in the crate's wrap, as tests/power.qml serves them too.
+    The shapes are power_rows.rs's, in the crate's wrap, as modules/quickshell/tests/power.qml
+    serves them too.
     """
     graph = {"shape": "bar", "values": [pct / 100], "warn": False}
     head = {"said": f"{pct}% \u00b7 on battery", "graph": graph}
@@ -5227,7 +5229,7 @@ def test_a_walk_through_a_place_is_timed_once_as_where_it_ends(shell: Shell) -> 
     A spot's Return and a terminal's go to walk the places on the way, as Machine on the way
     to Power, and each step was timed as its own, so one walk said two steps and the first
     left out what the last took (a council, 2026-11-17). What the places on the way took is
-    said as passing, which tests/trials.qml holds.
+    said as passing, which modules/quickshell/tests/trials.qml holds.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()

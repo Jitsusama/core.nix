@@ -1,10 +1,10 @@
 // niri, for Reopen Them All opening the viewers of sessions pi's host runs
-// (tests/sessions-hosted-reopen.qml): Joel's window on the monitor's first
-// workspace, and the empty one niri keeps last, the test making more as
-// windows open there. What the shell asks of niri is kept, acts and
-// spawns alike, and each request with the answer it waits on, answered
-// only by a case that answers it: a monitor coming back while niri is
-// slow to say so (tests/sessions-screen-comes-home.qml) sets its own
+// (modules/quickshell/tests/sessions-hosted-reopen.qml): Joel's window on the
+// monitor's first workspace, and the empty one niri keeps last, the test making
+// more as windows open there. What the shell asks of niri is kept, acts and
+// spawns alike, and each request with the answer it waits on, answered only by
+// a case that answers it: a monitor coming back while niri is slow to say so
+// (modules/quickshell/tests/sessions-screen-comes-home.qml) sets its own
 // workspaces and answers late.
 pragma Singleton
 import Quickshell

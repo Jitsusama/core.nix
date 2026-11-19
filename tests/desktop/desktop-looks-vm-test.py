@@ -1705,8 +1705,8 @@ def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> 
     a stand-in that loads no model (tests/desktop/stand-in-meaning.py): at most three of what
     it finds are added below every row typing found, none of them twice, each saying it was
     found by its meaning (VKCF3Z, 2026-11-07). Which it adds, and that nothing moves when they
-    arrive late, is tests/meaning.qml's to prove; this is the wiring, and the look at Joel's
-    scales.
+    arrive late, is modules/meaning/tests/meaning.qml's to prove; this is the wiring, and the look
+    at Joel's scales.
     """
     desktop.as_account("rm -f $XDG_RUNTIME_DIR/meaning-means.json $XDG_RUNTIME_DIR/meaning-asked")
     desktop.answer(MEANT)
@@ -1757,7 +1757,7 @@ def a_screenshot_found_by_what_it_shows(desktop: Desktop, at_each_scale: list[st
     them, its line below it, then the one the meaning daemon says looks like them, on a stand-in
     that loads no model (tests/desktop/stand-in-meaning.py), saying in the foot that it was
     found by its meaning and nothing under it (VKCF3Z, 2026-11-07). Which it adds is
-    tests/meaning.qml's to prove; this is the wiring, and the look at Joel's scales.
+    modules/meaning/tests/meaning.qml's to prove; this is the wiring, and the look at Joel's scales.
     """
     shots = desktop.pictures
     named, said, seen = (

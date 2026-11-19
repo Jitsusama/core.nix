@@ -99,14 +99,14 @@
   "modules/quickshell/tests/ex.qml" = 1;
   "modules/quickshell/tests/file-chooser.qml" = 2;
   "modules/quickshell/tests/file-facts.qml" = 1;
-  "tests/focus-on-niri-test.py" = 2;
+  "modules/quickshell/tests/focus-on-niri-test.py" = 2;
   "tests/for-you-filter.qml" = 1;
   "tests/vm/keys/gnome-keyring-vm-test.py" = 1;
   "modules/quickshell/tests/graphs.qml" = 1;
   "modules/quickshell/tests/keyboard.qml" = 1;
   "modules/quickshell/tests/key-map.qml" = 1;
-  "tests/launcher_on_niri.py" = 2;
-  "tests/launcher-on-niri-test.py" = 3;
+  "modules/quickshell/tests/launcher_on_niri.py" = 2;
+  "modules/quickshell/tests/launcher-on-niri-test.py" = 3;
   "tests/vm/keys/linux-id-vm-test.py" = 1;
   "modules/quickshell/tests/machine.qml" = 1;
   "modules/quickshell/tests/machines.qml" = 1;
@@ -117,8 +117,8 @@
   "modules/quickshell/tests/part-names.qml" = 2;
   "modules/quickshell/tests/passwords-on-niri-test.py" = 1;
   "modules/quickshell/tests/people.qml" = 2;
-  "tests/piece-drawers.qml" = 1;
-  "tests/pi-source.qml" = 1;
+  "modules/quickshell/tests/piece-drawers.qml" = 1;
+  "modules/quickshell/tests/pi-source.qml" = 1;
   "modules/quickshell/tests/program-acts.qml" = 2;
   "modules/quickshell/tests/program-controls.qml" = 2;
   "modules/quickshell/tests/program-drawer.qml" = 1;
@@ -131,7 +131,7 @@
   "modules/quickshell/tests/rows.qml" = 1;
   "modules/quickshell/tests/runs.qml" = 2;
   "modules/quickshell/tests/sessions-behind-the-lock.qml" = 3;
-  "tests/sessions.qml" = 3;
+  "modules/quickshell/tests/sessions.qml" = 3;
   "tests/vm/sound/shure-mv7-voice-vm-test.py" = 1;
   "tests/vm/keys/signing-vm-test.py" = 1;
   "modules/quickshell/tests/sound.qml" = 2;

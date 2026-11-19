@@ -151,16 +151,16 @@ in
   # What the live sites' page tests share, which each page's test imports
   # by name, as their checks put the folder on Python's path.
   # niri's stand-in client too, which the windows daemon's prompt check
-  # imports beside niri's own checks. And the three modules the shell's
-  # cases in modules/quickshell/tests import from the tests folder, as their
-  # checks copy them in beside them: the nested niri's driver, and the
-  # glossary's reader and its replaced names. And what the sites' VM tests
-  # share, which each imports as its driver's plugin. Each is named alone,
-  # so an edit to a VM test beside them rebuilds no mypy.
+  # imports beside niri's own checks. And the nested niri's driver, which
+  # the two shell cases still in tests/ import from outside its folder, and
+  # the tests folder's glossary reader and its replaced names, which the
+  # shell's cases import as their checks copy them in beside them. And what
+  # the sites' VM tests share, which each imports as its driver's plugin.
+  # Each is named alone, so an edit to a file beside them rebuilds no mypy.
   jitsusama.mypy.paths = [
     ./modules/local-sites/tests
     ./modules/niri/tests
-    ./tests/launcher_on_niri.py
+    ./modules/quickshell/tests/launcher_on_niri.py
     ./tests/repository/glossary.py
     ./tests/repository/names.py
     ./tests/vm/sites/sites_session.py

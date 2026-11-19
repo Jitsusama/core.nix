@@ -23,14 +23,14 @@
       ((unit.X-SwitchMethod or null) == "restart");
 }
 // onLinux {
-  # What the launcher works out to search by meaning, as tests/meaning.qml
-  # holds it, in Qt's own engine.
+  # What the launcher works out to search by meaning, as
+  # modules/meaning/tests/meaning.qml holds it, in Qt's own engine.
   meaning-adds-only-below =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "meaning-adds-only-below" { } ''
-      cp ${../../tests/meaning.qml} meaning.qml
+      cp ${./tests/meaning.qml} meaning.qml
       cp ${./Meaning.js} Meaning.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}

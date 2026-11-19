@@ -3,7 +3,7 @@
 Here the launcher draws only what changes: a list scrolled, a burst of changes, the foot's facts
 and marks. That it draws nothing left still, stands a selection on its row in an arrow's first
 frame, draws it on its row and reads on a long name is proven on a nested niri, in
-tests/launcher-on-niri-test.py.
+modules/quickshell/tests/launcher-on-niri-test.py.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run

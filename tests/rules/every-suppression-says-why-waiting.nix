@@ -16,7 +16,7 @@
   "tests/desktop/desktop-looks-machine-vm-test.py" = 2;
   "tests/desktop/desktop-opens-and-sets-vm-test.py" = 1;
   "tests/vm/boot/greeter-vm-test.py" = 2;
-  "tests/launcher-on-niri-test.py" = 7;
+  "modules/quickshell/tests/launcher-on-niri-test.py" = 7;
   "tests/repository/every-vm-test-keeps-to-the-pyramid.py" = 1;
   "tools/run-subtests/run-subtests.py" = 5;
 }

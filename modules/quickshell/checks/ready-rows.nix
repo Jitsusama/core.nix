@@ -33,8 +33,8 @@
 
   # The shell takes a place's rows as its daemon serves them ready, placing
   # only its rows by their order and wording every time form, side, note
-  # and drawer, as tests/ready-rows.qml holds launcher/ReadyRows.js and
-  # launcher/Found.js to records made up there.
+  # and drawer, as modules/quickshell/tests/ready-rows.qml holds
+  # launcher/ReadyRows.js and launcher/Found.js to records made up there.
   the-launcher-words-each-ready-row-it-is-served =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -43,7 +43,7 @@
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-words-each-ready-row-it-is-served" { } ''
       mkdir launcher
-      cp ${../../../tests/ready-rows.qml} ready-rows.qml
+      cp ${../tests/ready-rows.qml} ready-rows.qml
       ${copied [
         "launcher/Beneath.js"
         "launcher/Found.js"

@@ -23,7 +23,7 @@
   "tests/desktop/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/desktop-shows-then-rests-vm-test.py" = 1;
   "tests/desktop/desktop_session.py" = 1;
-  "tests/launcher_on_niri.py" = 1;
+  "modules/quickshell/tests/launcher_on_niri.py" = 1;
   "tests/lib/qemu-after-its-sockets-test.py" = 1;
   "tests/vm/boot/plymouth-vm-test.py" = 1;
   "tests/vm/guide/secure-boot-vm-test.py" = 1;
