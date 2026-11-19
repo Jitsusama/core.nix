@@ -5508,7 +5508,7 @@
   '';
   vm-cores-kept-from-their-owner = ''
     the cores' folder is root's alone from boot and after each crash, so an account that aborts
-    two of its own processes, a stand-in pi host named node and sleep, can neither open nor dump
+    two of its own processes, a stand-in pi named node and sleep, can neither open nor dump
     either core, while the journal still shows it, in wheel, each crash's stack trace; the
     removal keeps a node's core five hours on and takes it seven hours on, leaving the other's
   '';

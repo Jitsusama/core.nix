@@ -11,8 +11,9 @@
 
   # A core is root's, with an access list that lets the crashed process's
   # account read it, and it holds whatever that process held: a pi
-  # session's keys and tokens, a password manager's vault. Any program running as the same account can abort another and
-  # read its core seconds later, so the folder is root's alone and the
+  # session's keys and tokens, a password manager's vault. Any program
+  # running as the same account can abort another and read its core
+  # seconds later, so the folder is root's alone and the
   # access lists lead nowhere. coredumpctl's list and each crash's stack
   # trace come from the journal and still reach an account in wheel, though
   # coredumpctl info then fails to reach the core; Joel reads a core

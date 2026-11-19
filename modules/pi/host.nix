@@ -220,20 +220,21 @@ let
         # minutes; the watchdog aborted it at 120 s and systemd waited 150 s
         # more before the kill, since an abort's timeout is the stop's
         # (TimeoutStopSec below) unless set apart. A node without the listener
-        # still aborts at once, and is killed 10 s on, which loses little:
-        # the host's hold watcher has written what held the loop by then.
+        # dies of the abort at once, keeping no core (LimitCORE below); one
+        # with it is killed 10 s on, which loses little: the host's hold
+        # watcher has written what held the loop by then.
         TimeoutAbortSec = "10s";
         # A host keeps no core. One was kept from 18 November to find a
         # segmentation fault in native code, but a host's core can't be
         # written in the time systemd-coredump has: at 22:07 that day the
-        # background host faulted, and its dump wrote 18.4 GB for the five
-        # minutes coredump runs before its limit ended it, kept nothing and
-        # logged no stack trace. The dying host held its restart until the
-        # watchdog's kill two minutes on. A core costs a crash that much
-        # outage and gives nothing back. A native fault leaves the host no
+        # background host faulted, and the dying host, still being dumped,
+        # held its restart until the watchdog killed it two minutes on. The
+        # dump ran on to coredump's five-minute limit, which ended it after
+        # 18.4 GB, keeping nothing and logging no stack trace. A core costs a
+        # crash that much outage and gives nothing back. A native fault leaves the host no
         # time to write anything, so what a crash was comes from around it:
         # systemd-coredump's line naming the signal, the host's last journal
-        # lines before it, and the reason a failed keyring call gives. The
+        # lines before it, and the reason a failed keyring call gives there. The
         # commands a host runs inherit the limit, so they keep none either;
         # a person wanting one's core runs it outside the host.
         LimitCORE = "0";
