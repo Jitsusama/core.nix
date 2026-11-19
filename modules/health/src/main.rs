@@ -78,6 +78,7 @@ mod unified;
 use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::SystemTime;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -108,9 +109,13 @@ fn run(context: &Context) -> Result<(), Failure> {
                 .because(fault.to_string())
         });
     }
-    let date = day
-        .unwrap_or_else(|| follow::date_of(Timestamp::now().as_microsecond(), &TimeZone::system()));
+    let today = follow::date_of(Timestamp::now().as_microsecond(), &TimeZone::system());
+    let date = day.unwrap_or_else(|| today.clone());
     let day = cli::day_in(&into, &date)?;
+    // Said first, as what follows it may have stood still.
+    if let Some(stale) = cli::stale(&into, &date, &today, SystemTime::now()) {
+        eprintln!("{}{stale}", context.err.marked("caution", "warning"));
+    }
     let shown = match view {
         View::Words(words) => show::asked(&day, &words, &context.out, context.room),
         View::Day | View::Follow => show::day(&day, &context.out, context.room),

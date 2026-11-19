@@ -4,8 +4,9 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
-use terminal_kit::{Exit, Failure, Help, flags};
+use terminal_kit::{Exit, Failure, Help, flags, time};
 
 use crate::day::Day;
 use crate::follow;
@@ -209,6 +210,34 @@ pub fn day_in(into: &Path, date: &str) -> Result<Day, Failure> {
     })
 }
 
+/// How long today's file may go unwritten before `health` says so. A
+/// running daemon writes it every half minute, since it minds memory at
+/// each look, so this long means its writes fail, as on a full disk, or
+/// it isn't running. A machine just woken is said so too until health's
+/// first look, within half a minute, since the file's clock went on.
+const STALE_AFTER: Duration = Duration::from_mins(3);
+
+/// What `health` says of the day `date` kept in `into` when it's `today`
+/// and its file was last written `STALE_AFTER` or more before `now`, so
+/// what it shows has stood still: nothing for another day, which is done,
+/// or a file it can't time.
+pub fn stale(into: &Path, date: &str, today: &str, now: SystemTime) -> Option<String> {
+    if date != today {
+        return None;
+    }
+    let written = fs::metadata(follow::file_of(into, date))
+        .ok()?
+        .modified()
+        .ok()?;
+    let since = now.duration_since(written).ok()?;
+    (since >= STALE_AFTER).then(|| {
+        format!(
+            "{date} was last written {} ago; health may not be running, or can't write it",
+            time::span(since.as_secs())
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,6 +393,54 @@ mod tests {
             Exit::Failed,
             "a day that couldn't be opened ended {:?}",
             unopened.exit
+        );
+    }
+
+    #[test]
+    fn only_today_written_minutes_ago_is_said_to_have_stood_still() {
+        let kept = tempfile::tempdir().expect("a folder for the days");
+        let written = SystemTime::UNIX_EPOCH + Duration::from_hours(498_468);
+        // The day before is kept too, written as long ago, so only its
+        // date can keep it from being said to stand still.
+        for date in ["2026-11-11", "2026-11-12"] {
+            let file = follow::file_of(kept.path(), date);
+            fs::write(&file, "{}").expect("a kept day");
+            fs::File::options()
+                .write(true)
+                .open(&file)
+                .and_then(|open| open.set_modified(written))
+                .expect("the day's time set");
+        }
+        let after = |seconds| written + Duration::from_secs(seconds);
+        let today = |date, seconds| stale(kept.path(), date, "2026-11-12", after(seconds));
+        assert_eq!(
+            [
+                today("2026-11-12", 179),
+                today("2026-11-12", 180),
+                today("2026-11-12", 540),
+                today("2026-11-11", 540),
+            ],
+            [
+                None,
+                Some(
+                    "2026-11-12 was last written 3 m ago; health may not be running, or can't \
+                     write it"
+                        .to_owned()
+                ),
+                Some(
+                    "2026-11-12 was last written 9 m ago; health may not be running, or can't \
+                     write it"
+                        .to_owned()
+                ),
+                None,
+            ],
+            "a day written within three minutes, or a day done, was said to stand still, or \
+             today written nine minutes ago wasn't"
+        );
+        assert_eq!(
+            stale(kept.path(), "2026-11-13", "2026-11-13", after(540)),
+            None,
+            "a day never kept was said to stand still"
         );
     }
 }
