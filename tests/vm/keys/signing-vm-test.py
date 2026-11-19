@@ -157,7 +157,8 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
     its gate and the cgroup the kernel puts the asking process in. The same listing in Joel's
     app slice, asking the same socket first, is served, and the agent's journal says the
     refusal was the gate's, so neither a gate refusing everyone nor an agent that isn't there
-    passes it.
+    passes it. A commit from the same slice, Joel's socket in its environment, is still signed
+    by the agents' own agent, which runs without the gate.
     """
     socket = f"{joel.runtime}/ssh-tpm-agent.sock"
 
@@ -179,6 +180,12 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
         ' | grep -q "refused a request from agents\' work"',
         timeout=30,
     )
+    joel.run(
+        f"systemd-run --user --slice=agents --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
+        ' -E PATH="$PATH" $(command -v git) -C "$HOME/repo"'
+        " commit -q --allow-empty -m from-agents < /dev/null"
+    )
+    assert joel.signer_of_last_commit() == ["G", keys.agent]
 
 
 def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:

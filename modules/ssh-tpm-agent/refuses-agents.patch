@@ -14,8 +14,8 @@ everyone. Refused too is a peer the kernel doesn't name, one whose
 chain can't be read to init, or one gone by the time it's judged, as
 its pidfd says. A file read once and gone, unreadable or unparsable
 since, as a rollback past the gate or a later gate's format leaves it,
-is judged by what it last said. Where the variable is unset, nothing
-changes.
+is judged by what it last said, journalled once as that starts and once
+as a read comes back. Where the variable is unset, nothing changes.
 
 diff --git a/agent/agent.go b/agent/agent.go
 index 47a77ee..1f8728f 100644
@@ -37,10 +37,10 @@ index 47a77ee..1f8728f 100644
  	}
 diff --git a/agent/gate.go b/agent/gate.go
 new file mode 100644
-index 0000000..c4133c4
+index 0000000..16bac1c
 --- /dev/null
 +++ b/agent/gate.go
-@@ -0,0 +1,363 @@
+@@ -0,0 +1,373 @@
 +package agent
 +
 +import (
@@ -225,8 +225,8 @@ index 0000000..c4133c4
 +	pidfd = -1
 +	if cerr := rc.Control(func(fd uintptr) {
 +		ucred, err = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-+		if fd, ferr := unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PEERPIDFD); ferr == nil {
-+			pidfd = fd
++		if got, ferr := unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PEERPIDFD); ferr == nil {
++			pidfd = got
 +		} else if err == nil {
 +			err = pidfdFailed(ferr)
 +		}
@@ -278,11 +278,14 @@ index 0000000..c4133c4
 +}
 +
 +// lastRead holds the last gate each file parsed into, so a file gone
-+// since is judged by what it last said.
++// since is judged by what it last said, and why each file is judged so,
++// journalled once as it starts rather than at every connection, which
++// would bury the refusals the journal is watched for.
 +var lastRead = struct {
 +	sync.Mutex
-+	gates map[string]gate
-+}{gates: map[string]gate{}}
++	gates  map[string]gate
++	judged map[string]string
++}{gates: map[string]gate{}, judged: map[string]string{}}
 +
 +// readGate is the gate the file named by GateVariable holds, or ok false
 +// where none is set. A file this agent has read once that is gone, can't
@@ -292,8 +295,8 @@ index 0000000..c4133c4
 +// isn't shut out until a restart asks for his PIN, and agents' work stays
 +// refused. Refusing no place counts as not parsing. One this agent never
 +// read whole is ErrGateUnread, since a gate that fails open looks just
-+// like one that works. Each is read again at the next connection, so a
-+// switch that puts the file back serves Joel again with no restart.
++// like one that works. Each is read again at the next connection, so
++// putting the file back serves Joel again with no restart.
 +func readGate() (g gate, ok bool, err error) {
 +	file := os.Getenv(GateVariable)
 +	if file == "" {
@@ -315,14 +318,21 @@ index 0000000..c4133c4
 +	defer lastRead.Unlock()
 +	if why == "" {
 +		lastRead.gates[file] = g
++		if _, was := lastRead.judged[file]; was {
++			delete(lastRead.judged, file)
++			slog.Info("read the gate's file again, so it judges requests itself", "file", file)
++		}
 +		return g, true, nil
 +	}
 +	if last, read := lastRead.gates[file]; read {
-+		slog.Warn("judged a request by the gate last read, as its file "+why, "file", file)
++		if lastRead.judged[file] != why {
++			lastRead.judged[file] = why
++			slog.Warn("judging requests by the gate last read, as its file "+why, "file", file)
++		}
 +		return last, true, nil
 +	}
 +	slog.Error("refused a request, as the gate's file "+why+" and was never read; "+
-+		"a switch that puts it back serves Joel at the next connection, with no restart",
++		"putting it back serves Joel at the next connection, with no restart",
 +		"file", file)
 +	return gate{}, false, ErrGateUnread
 +}
@@ -406,10 +416,10 @@ index 0000000..c4133c4
 +func (r refusing) Extension(string, []byte) ([]byte, error) { return nil, r.why }
 diff --git a/agent/gate_serve_test.go b/agent/gate_serve_test.go
 new file mode 100644
-index 0000000..f04d077
+index 0000000..7ebd12d
 --- /dev/null
 +++ b/agent/gate_serve_test.go
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,275 @@
 +package agent_test
 +
 +import (
@@ -557,6 +567,7 @@ index 0000000..f04d077
 +// A gate gone after it was read keeps serving what it served, so a
 +// rollback past the gate doesn't shut Joel out until a restart.
 +func TestAGateGoneAfterItWasReadServesWhatItServed(t *testing.T) {
++	said := journalled(t)
 +	file, list := gated(t, "allow .\nrefuse .\n")
 +	if err := list(); err != nil {
 +		t.Fatalf("an allowed place was refused: %v", err)
@@ -566,6 +577,9 @@ index 0000000..f04d077
 +	}
 +	if err := list(); err != nil {
 +		t.Fatalf("a gate taken away after it was read refused what it served: %v", err)
++	}
++	if !strings.Contains(said.String(), "gate last read, as its file is gone") {
++		t.Fatalf("judging by the last gate went unsaid: %q", said.String())
 +	}
 +}
 +
@@ -608,6 +622,58 @@ index 0000000..f04d077
 +	}
 +	if err := refused(); err == nil {
 +		t.Fatal("a gate emptied after it was read served what it refused")
++	}
++}
++
++// A gate read once that can't be read since, a folder in its place, is
++// judged by what it last said, both ways, and says so once rather than
++// at every connection, until a read of the file comes back.
++func TestAGateUnreadableSinceJudgesByItsLast(t *testing.T) {
++	said := journalled(t)
++	file, list := gated(t, "allow .\nrefuse .\n")
++	if err := list(); err != nil {
++		t.Fatalf("an allowed place was refused: %v", err)
++	}
++	unreadable(t, file)
++	for range 3 {
++		if err := list(); err != nil {
++			t.Fatalf("a gate unreadable after it was read refused what it served: %v", err)
++		}
++	}
++	if n := strings.Count(said.String(), "gate last read, as its file can't be read"); n != 1 {
++		t.Fatalf("judging by the last gate was said %d times, not once: %q", n, said.String())
++	}
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(file, []byte("allow .\nrefuse .\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := list(); err != nil {
++		t.Fatalf("a gate put back didn't serve what it allows: %v", err)
++	}
++	if !strings.Contains(said.String(), "read the gate's file again") {
++		t.Fatalf("the gate's return went unsaid: %q", said.String())
++	}
++	refusing, refused := gated(t, "refuse .\n")
++	if err := refused(); err == nil {
++		t.Fatal("a refused place listed the keys")
++	}
++	unreadable(t, refusing)
++	if err := refused(); err == nil {
++		t.Fatal("a gate unreadable after it was read served what it refused")
++	}
++}
++
++// unreadable puts a folder where the gate's file was, which no read of a
++// file gets past whoever runs the test, root included.
++func unreadable(t *testing.T, file string) {
++	t.Helper()
++	if err := os.Remove(file); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Mkdir(file, 0o755); err != nil {
++		t.Fatal(err)
 +	}
 +}
 +

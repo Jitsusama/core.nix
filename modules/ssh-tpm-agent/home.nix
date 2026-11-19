@@ -75,8 +75,12 @@
     # anything running as him may rewrite, so it catches accidents rather
     # than escapes. One the agent never read whole, emptied, unreadable,
     # refusing nowhere or gone, refuses everyone, since it looks just like
-    # one that works, until a switch puts it back, which serves Joel at the
-    # next connection with no restart; the journal says so. One the agent
+    # one that works, until the link is back, which serves Joel at the next
+    # connection with no restart of the agent; the journal says so. A switch
+    # that changes nothing leaves Home Manager's unit as it is, so the link
+    # comes back with a restart of home-manager-<user>.service instead. A
+    # signing key added while the gate refused is missing until its unit,
+    # tpm-signing's signing-key.service, is started again. One the agent
     # read that is gone, unreadable or garbled since, as rolling back to
     # before the gate or a later gate in a format this agent predates
     # leaves it, is judged by what it last said, so Joel isn't shut out
