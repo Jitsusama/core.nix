@@ -431,15 +431,21 @@ def declaring(recorded: list[Site], declared: list[Site]) -> list[Site]:
     return placed
 
 
-def kind_of(home: object) -> object:
-    """Say the kind a home claims, a kind's name or a pattern's kind, or None."""
-    return home.get("kind") if isinstance(home, dict) else home
+def kind_of(home: object) -> str | None:
+    """Say the kind a home claims, a kind's name or a pattern's kind, or None.
+
+    A home of any other shape claims nothing, as its readers take it, so a
+    session's slip is left as it was written rather than failing the build.
+    """
+    kind = home.get("kind") if isinstance(home, dict) else home
+    return kind if isinstance(kind, str) else None
 
 
 def leaving(sites: list[Site], declared: list[Site]) -> tuple[list[Site], list[str]]:
     """Leave each kind a declared row is home to with it, taking it from the recorded rows.
 
-    It says each claim it took, as the row's path and the kind.
+    It says each claim it took, its kind and its row's path quoted, since a
+    session writes both.
     """
     kinds = {kind_of(home) for site in declared for home in site.row.get("homes") or []}
     kinds.discard(None)
@@ -453,7 +459,9 @@ def leaving(sites: list[Site], declared: list[Site]) -> tuple[list[Site], list[s
             left.append(site)
             continue
         kept = [home for home in homes if kind_of(home) not in kinds]
-        taken += [f"{site.row['path']}'s {kind_of(home)}" for home in homes if home not in kept]
+        taken += [
+            f"{kind_of(home)!r} from {site.row['path']!r}" for home in homes if home not in kept
+        ]
         left.append(site if kept == homes else replace(site, row={**site.row, "homes": kept}))
     return left, taken
 
@@ -485,14 +493,14 @@ def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) 
     except (ValueError, KeyError, TypeError, AttributeError) as error:
         return f"home: sites.json can't be read ({error}), so the last build stays"
     # Nix wrote the declared rows, so a fault in them is the build's, and fails it.
-    taken: list[str] = []
-    if declared:
-        rows_declared = live(declared)
-        sites, taken = leaving(declaring(sites, rows_declared), rows_declared)
+    rows_declared = live(declared) if declared else []
+    sites = declaring(sites, rows_declared) if declared else sites
     # A row's path becomes the home's link to it, so one that would lead
     # anywhere but a page of the sites' own is left out, and said.
     strays = [site.row["path"] for site in sites if not ours(site.row["path"])]
     sites = [site for site in sites if ours(site.row["path"])]
+    # Only then, so a claim is said taken from a row the readers would see.
+    sites, taken = leaving(sites, rows_declared)
     for name in FILES:
         write(root / name, (sources / name).read_text(encoding="utf-8"))
     mark = (sources / "favicon.svg").read_text(encoding="utf-8")
