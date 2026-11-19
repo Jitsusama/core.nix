@@ -15,7 +15,7 @@ ids and names as `google-chrome=Google Chrome`, comma between, it installs those
 two actions, so a program's own page, whose provider keys it by its id, is there to step into,
 by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts a program).
 Given LAB_BACK too, it steps back out of that place with - each round and prints that step's
-line, and it refuses LAB_BACK without LAB_STEP. Given LAB_WINDOWS, it opens that many windows first, so Windows holds some. Given
+line, and given LAB_WINDOWS, it opens that many windows first, so Windows holds some. Given
 LAB_CHORD, a place's name as its chord asks for it, it opens that place from shut each round
 and steps out of it to home with nothing typed, as Joel's Super+Tab then - does.
 Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
@@ -24,7 +24,7 @@ leaves the first word typed at home each round while a window holding it in its 
 many new titles, and prints what the shell says of those changes, as Joel's daemons change rows
 under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails when a key is never
 shown, and at once when LAB_WITHIN names no function of the launcher's or comes without
-LAB_PROFILE.
+LAB_PROFILE, or LAB_BACK without LAB_STEP.
 """
 
 from __future__ import annotations
@@ -204,7 +204,7 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | 
 def chorded_out(shell: Shell, place: str) -> str | None:
     """Open the place from shut as its chord does, step out to home, and give the step's line.
 
-    Nothing is typed, so no words are put back and the step searches nothing, as Joel's out of
+    Nothing is typed, so no words are put back and the step searches none, as Joel's out of
     Windows spent 20 and 19 ms of its 58 and 53 ms holding, before it searched (2026-11-17 and
     18).
     """
