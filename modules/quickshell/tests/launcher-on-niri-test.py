@@ -2502,6 +2502,15 @@ def test_a_drawer_shown_again_measures_little_anew(shell: Shell) -> None:
     )
 
 
+# Emoji's first row: the first of Unicode's groups, which it lists with nothing typed.
+FIRST_GROUP = "Smileys & Emotion"
+# How many of Emoji's rows its start makes and Super+E lists at most: its groups, not 1,914.
+EMOJI_MADE_MOST = 20
+# The start line's count of rows by source, the most first, and Emoji's among them, where it's
+# one of the sources the line names; one it leaves out made fewer than the last it names.
+START_MADE = re.compile(r"places kept as the shell started, \d+ rows made \(([^)]*)\)")
+EMOJI_MADE = re.compile(r"\bemoji (\d+)")
+
 DRAWER_SAID = re.compile(
     r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: a median (\d+) ms '
     r"before it followed, (\d+) until its frame began and (\d+) from its frame's start"
@@ -2558,13 +2567,16 @@ def test_an_emoji_shows_the_drawer_its_history_serves(shell: Shell) -> None:
     Each held no drawer, only a list of Paste and Copy, which Return and y already do (Joel,
     2026-11-11 22:00: "if they have nothing under them, we shouldn't open a submenu for
     them"). That it opens no list is modules/quickshell/tests/ready-rows.qml's, over what the
-    history serves.
+    history serves. Emoji lists Unicode's groups, so the emoji are a step into the first.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("emoji", selecting="Emoji")
     shell.step_in()
     shell.launcher_until(functools.partial(stands_in, "Emoji"))
+    shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
     shell.normal()
     shell.launcher_until(drawer_on_selected)
     title = shell.showing()["drawer"]["title"]
@@ -2575,6 +2587,30 @@ def test_an_emoji_shows_the_drawer_its_history_serves(shell: Shell) -> None:
     lines = [line for line in said.splitlines() if "drawer for" in line]
     assert DRAWER_SAID.search(said), f"the emoji's drawer was never said presented: {lines}"
     stepped_out(shell)
+    shell.close_launcher()
+
+
+def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
+    """Super+E lists Unicode's groups, and the clipboard's history finds what's typed there.
+
+    Every one of Emoji's 1,914 rows was made as the shell started, kept for Super+E and matched
+    in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
+    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows.
+    """
+    launcher_on_niri.warmed(shell)
+    said = shell.log.read_bytes()[shell.launched :].decode(errors="replace")
+    start = START_MADE.search(said)
+    assert start, f"the shell never said what its start made\n{shell.tail()}"
+    made = EMOJI_MADE.search(start.group(1))
+    counted = int(made.group(1)) if made else 0
+    assert counted < EMOJI_MADE_MOST, f"the start made {counted} of Emoji's rows"
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    rows = shell.showing()["rows"]
+    # showing() lists at most 20 rows, so 20 or more shows as 20, which this refuses.
+    assert len(rows) < EMOJI_MADE_MOST, f"Super+E listed {rows[:12]}, not Unicode's groups"
+    shell.type_in("tada", selecting="Party popper")
     shell.close_launcher()
 
 
@@ -3207,7 +3243,7 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     assert reboot["verb"] == "reboot", reboot
     # A thing's own acts are said apart from its rows, for `launcher do` (VKCF3Z),
     # and only the row the path names says its drawer, never each row it lists.
-    grinning = shown("desktop", "emoji", "grinning face")
+    grinning = shown("desktop", "emoji", FIRST_GROUP, "grinning face")
     assert "Copy" in [row["name"] for row in grinning["acts"]], grinning
     assert "Copy" not in [row["name"] for row in grinning["rows"]], grinning
     assert all("drawer" not in row for row in machine["rows"]), machine["rows"]

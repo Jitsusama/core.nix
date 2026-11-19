@@ -786,6 +786,8 @@ QtObject {
         Expect.same("an answer holds its words, its order and its marks",
             [found.words, found.keys, found.marks], ["shot", ["b", "far", "lost"],
                 { far: [[0, 4]] }]);
+        Expect.same("one that says no grade is graded 0, and one that says is as said",
+            [found.grade, Found.foundOf("shot", { keys: ["b"], grade: 1 }).grade], [0, 1]);
         const held = { b: record("b", 2048) };
         Expect.same("a row it found that the watch serves is the watch's",
             Found.foundRecord(found, held, "b"), held.b);

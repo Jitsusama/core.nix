@@ -405,9 +405,14 @@ Scope {
     property var found: Found.foundOf(null, null)
     readonly property var foundMade: ({})
     property string asking: ""
-    // Whether the daemon said it can't search, so the place matches its
-    // rows itself, as it did before, said once in the journal.
+    // Whether the daemon said it can't search, so a place that can matches
+    // its rows itself, as it did before, said once in the journal. It's
+    // asked again a minute on, as a daemon an old shell asked while a
+    // switch put a new one in its place can search once it's back, and
+    // Emoji has nothing of its own to match with.
     property bool searchless: false
+    property double searchlessAt: 0
+    readonly property int searchlessFor: 60000
     // Said once an answer to `words` is held, for the place to show it.
     signal searched(string words)
     // The keys found before their rows were served, each said once.
@@ -418,7 +423,8 @@ Scope {
     function search(words, most) {
         if (found.words === words)
             return found;
-        if (asking !== words && !searchless && link) {
+        const asks = !searchless || Date.now() - searchlessAt > searchlessFor;
+        if (asking !== words && asks && link) {
             asking = words;
             const ask = { ask: "search", place: ready.place, words: words };
             link.find(most > 0 ? Object.assign(ask, { most: most }) : ask,
@@ -444,12 +450,14 @@ Scope {
             return;
         if (answer.error) {
             if (!searchless)
-                console.warn(`launcher: ${place}'s daemon can't search, so the launcher `
-                    + `matches its rows itself: ${JSON.stringify(answer.error)}`);
+                console.warn(`launcher: ${place}'s daemon can't search, asked again a `
+                    + `minute on: ${JSON.stringify(answer.error)}`);
             searchless = true;
+            searchlessAt = Date.now();
             searched(words);
             return;
         }
+        searchless = false;
         ended();
         found = Found.foundOf(words, answer);
         searched(words);

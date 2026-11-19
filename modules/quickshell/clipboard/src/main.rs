@@ -21,9 +21,10 @@
 //! launcher keeps no copies.
 //!
 //! With `--emoji`, naming the launcher's list of them (launcher/emoji.nix),
-//! it serves Emoji's rows too, `row:emoji:<N>` in the list's order
-//! (src/emoji.rs), since it's what pastes them, so the shell reads no
-//! list of its own.
+//! it serves Emoji's rows too, `row:emoji:<N>` in the list's order, each
+//! inside its group's row (src/emoji.rs), since it's what pastes them, so
+//! the shell reads no list of its own, and answers what's typed in Emoji
+//! with the emoji it finds (src/search.rs), so the shell matches none.
 //!
 //! Text is kept in memory, and pictures in files of their own in the
 //! directory `--pictures` names, only this account's to read, which should
@@ -80,6 +81,7 @@
 mod commands;
 mod emoji;
 mod rows;
+mod search;
 
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File, OpenOptions};
@@ -1348,10 +1350,15 @@ fn read(asked: mpsc::Sender<Asked>, wake: PipeWriter) -> Reading {
 }
 
 /// The shell's own asks, handed to the Wayland side, which is woken to do
-/// them, and answered as it answers, on the asking connection's thread.
-fn own(asked: mpsc::Sender<Asked>, wake: PipeWriter) -> Own {
+/// them, and answered as it answers, on the asking connection's thread. A
+/// search needs nothing of Wayland's, so it's answered on that thread
+/// from the emoji's `index`, at once.
+fn own(asked: mpsc::Sender<Asked>, wake: PipeWriter, index: search::Index) -> Own {
     let wake = Mutex::new(wake);
     Box::new(move |said| {
+        if said["ask"] == "search" {
+            return Some(index.answer(said));
+        }
         let wanted = wanted(said)?;
         let (reply, answer) = mpsc::channel();
         let handed = asked.send(Asked::Wanted(wanted, reply)).is_ok()
@@ -1421,7 +1428,7 @@ fn run(settings: &Settings, words: Words, emoji: Vec<Value>) -> Result<(), Strin
         asked.clone(),
         wake.try_clone().map_err(|e| format!("no pipe: {e}"))?,
     );
-    let shared = Shared::new(DOMAIN, own(asked, wake));
+    let shared = Shared::new(DOMAIN, own(asked, wake, search::Index::of(&emoji)));
     shared.read_on_get(&["selection"], read(selecting, waking_to_read));
     let mut served = Served {
         shared: Arc::clone(&shared),
@@ -1931,7 +1938,7 @@ mod tests {
     fn an_ask_is_handed_to_the_wayland_side_and_answered_as_it_answers() {
         let (asked, handed) = mpsc::channel();
         let (mut woken, wake) = io::pipe().unwrap();
-        let own = own(asked, wake);
+        let own = own(asked, wake, search::Index::of(&[]));
         let answering = thread::spawn(move || {
             let Ok(Asked::Wanted(wanted, reply)) = handed.recv() else {
                 panic!("nothing was handed over");
@@ -1954,8 +1961,21 @@ mod tests {
         let (asked, handed) = mpsc::channel();
         let (_woken, wake) = io::pipe().unwrap();
         drop(handed);
-        let answer = own(asked, wake)(&json!({ "ask": "clear" })).unwrap();
+        let answer = own(asked, wake, search::Index::of(&[]))(&json!({ "ask": "clear" })).unwrap();
         assert_eq!(answer["error"]["code"], "not-answering");
+    }
+
+    #[test]
+    fn a_search_is_answered_at_once_with_no_wayland_side() {
+        let (asked, handed) = mpsc::channel();
+        let (_woken, wake) = io::pipe().unwrap();
+        drop(handed);
+        let list = "[\"🎉\", \"party popper\", \"tada\", \"Activities\"]";
+        let index = search::Index::of(&emoji::records(list, &rows::words()));
+        let answer =
+            own(asked, wake, index)(&json!({ "ask": "search", "place": "emoji", "words": "tada" }))
+                .unwrap();
+        assert_eq!(answer["keys"], json!(["row:emoji:0"]), "{answer}");
     }
 
     #[test]

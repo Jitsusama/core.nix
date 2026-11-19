@@ -868,13 +868,16 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
         desktop.launcher_until(stands)
     # An emoji's acts are all on its row, so Ctrl+] opens no list of them
     # (Joel, 2026-11-11), and it lives where it's listed: there it says so
-    # and stays.
+    # and stays. Emoji lists Unicode's groups, so its emoji are a step into one.
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["held"][:1] == ["emoji"] and shown["held"][1:])
+    grouped = desktop.showing()["held"]
     desktop.normal()
     machine.send_key("ctrl-bracket_right")
     desktop.launcher_until(
-        lambda shown: shown["saying"] == ["Ctrl+] not here"] and shown["held"] == ["emoji"]
+        lambda shown: shown["saying"] == ["Ctrl+] not here"] and shown["held"] == grouped
     )
     desktop.close_launcher()
     desktop.answer("s")

@@ -1625,7 +1625,8 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     Those rows moved into place one at a time, each move reading the rows in view again, so the
     letter's frame came 2.4 to 7.3 s after it (H6EDLC, 2026-11-11); listed afresh instead, the
     selection stands on the first row found, drawn there rather than gliding, and the list
-    starts at its top and holds every row found.
+    starts at its top and holds every row found. Emoji's are found by the clipboard's history,
+    so the letter's rows are read once its answer has come.
     """
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
@@ -1640,7 +1641,7 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
         shell.send_key("down")
     shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == ROWS_DOWN)
     shell.send_chars("f")
-    shell.launcher_until(lambda shown: shown["typed"] == "f")
+    shell.launcher_until(lambda shown: shown["typed"] == "f" and cast("int", shown["count"]) > 0)
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
     selection = laid["selection"]
     assert selection is not None, f"the letter left no selection drawn: {laid['rows']}"

@@ -89,12 +89,18 @@ impl Words {
         if count == 0 {
             return "empty".to_owned();
         }
+        let figure = self.figure(count);
+        self.fill(if count == 1 { one } else { many }, &[("count", &figure)])
+    }
+
+    /// A count in figures, grouped as the launcher groups them: an emoji
+    /// group's side.
+    pub fn figure(&self, count: usize) -> String {
         #[expect(
             clippy::cast_precision_loss,
-            reason = "a count of copies or lines is far below 2^52"
+            reason = "a count of copies, lines or emoji is far below 2^52"
         )]
-        let figure = self.numbers.number(count as f64, 0);
-        self.fill(if count == 1 { one } else { many }, &[("count", &figure)])
+        self.numbers.number(count as f64, 0)
     }
 
     /// A size in bytes to three digits and its unit, a thousand a step,

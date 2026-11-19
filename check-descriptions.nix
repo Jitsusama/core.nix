@@ -3953,7 +3953,7 @@
     a file holds gx, opening it in its own program
   '';
   the-launcher-finds-emoji = ''
-    emoji are found by name and meaning, best first
+    the clipboard's history finds emoji by name and meaning, best first, over the built list
   '';
   the-launcher-finds-the-desk-light = ''
     the launcher says how the desk light is lit, its drawer its lumens, node and serial, sets its
