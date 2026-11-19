@@ -1,6 +1,7 @@
 //! pineapple-slack telling Joel in For You when it can't hear Slack: a
 //! sign-in Slack refuses, or none to read, writes the row, hearing Slack
-//! again takes it away, and a Slack that can't be reached writes none.
+//! again takes it away, a row that couldn't be written is written once it
+//! can be, and a Slack that can't be reached writes none.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,7 +30,12 @@ fn until(file: &Path, exists: bool) -> bool {
 
 /// The row told, or nothing when none could be read.
 fn row(home: &Path) -> Value {
-    std::fs::read_to_string(waiting(home))
+    row_in(&waiting(home))
+}
+
+/// The row told in `file`, or nothing when none could be read.
+fn row_in(file: &Path) -> Value {
+    std::fs::read_to_string(file)
         .ok()
         .and_then(|said| serde_json::from_str(&said).ok())
         .unwrap_or_default()
@@ -243,4 +249,37 @@ fn a_slack_failing_in_ways_signing_in_cant_mend_isnt_told_as_deaf() {
         );
         std::fs::remove_dir_all(&home).expect("the case's home goes");
     }
+}
+
+#[test]
+fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
+    let (origin, _) =
+        answering_whole(|_, _| Answered::ok(json!({"ok": false, "error": "invalid_auth"})));
+    let home = home();
+    // A file where the row's folder would be, so the tell can't land.
+    let blocked = home.join("blocked");
+    std::fs::write(&blocked, "in the way").expect("in the way");
+    let named = blocked.join("pineapple.json");
+    let mut reader = reading(&home, &origin, &[], Some(&named));
+    let began = Instant::now();
+    while !journal(&home).contains("couldn't tell Joel in For You") && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    // Checked before the way is cleared, so a write that never fails fails
+    // this case at once rather than after a second patience. The guard stops
+    // the reader and prints its journal.
+    assert!(
+        journal(&home).contains("<3>couldn't tell Joel in For You whether Slack is heard"),
+        "a tell that can't land is said"
+    );
+    std::fs::remove_file(&blocked).expect("out of the way");
+    let told = until(&named, true);
+    let row = row_in(&named);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    assert!(
+        told && says(&row, "Slack refused the safe word's sign-in"),
+        "and made again once it can, rather than counted as told: {row}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
