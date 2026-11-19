@@ -24,6 +24,19 @@ pub(super) enum Landing {
         kept: Vec<String>,
         why: String,
     },
+    /// GitHub refused the rider at `refused`, for `why`, after merging the
+    /// riders at `kept`, which stay landed as `landed`, the tree the
+    /// candidate had after them; the riders after the refused one ride
+    /// again.
+    Partly {
+        landed: String,
+        kept: Vec<String>,
+        refused: String,
+        why: String,
+    },
+    /// GitHub refused the first rider, at `refused`, for `why`, so nothing
+    /// merged; the riders after it ride again.
+    Turned { refused: String, why: String },
     /// Main moved beside it, so its riders ride the next run.
     Moved,
     /// Main refused it for this reason, though main stood still.
@@ -54,7 +67,7 @@ pub(super) fn land(
             return Landing::Refused("origin's main couldn't be read".to_owned());
         };
         if main == base {
-            return through(git, hub, &going, &riding);
+            return through(git, hub, &base, &going, &riding);
         }
         let whole = cut(git, &main, &riding).is_ok_and(|again| again.merged.len() == merged.len());
         let Ok(head) = git(&["rev-parse", "HEAD"]) else {
@@ -154,8 +167,13 @@ fn thrice<T>(ask: impl Fn() -> Result<T, String>) -> Result<T, String> {
 /// them, then hold the tree GitHub gives the train's own last merge to the
 /// candidate's. GitHub merges each on main as it is when asked, so one
 /// that landed meanwhile, or a merge GitHub works out otherwise than git,
-/// gives main a tree no gate ran, and so does stopping short at a merge
-/// GitHub refuses; then each merge made is reverted, the newest first. A
+/// gives main a tree no gate ran; then each merge made is reverted, the
+/// newest first. A merge GitHub refuses stops it short, and the merges
+/// before it stay, held to the tree the candidate had after them: each
+/// passed its own checks, and on 19 November reverting two of them for a
+/// draft behind them cost both their owners a revert of the revert. When
+/// GitHub refuses the first, it alone leaves the train, which merged
+/// nothing. A
 /// change merged after the train's last merge leaves it landed, as that
 /// merge's tree is still the one tested. A merge GitHub can't say it made
 /// stops it at once, keeping every merge and saying so, as reverting
@@ -163,6 +181,7 @@ fn thrice<T>(ask: impl Fn() -> Result<T, String>) -> Result<T, String> {
 fn through(
     git: &dyn Fn(&[&str]) -> Result<String, String>,
     hub: &dyn Hub,
+    base: &str,
     candidate: &str,
     riding: &[Merging],
 ) -> Landing {
@@ -172,7 +191,10 @@ fn through(
         match merge(hub, merging) {
             Merge::Made(commit) => made.push((merging, commit)),
             Merge::Refused(why) => {
-                refused = Some(format!("GitHub refused #{}: {why}", merging.number));
+                refused = Some((
+                    format!("GitHub refused #{}: {why}", merging.number),
+                    merging,
+                ));
                 break;
             }
             Merge::Unknown(why) => {
@@ -189,25 +211,78 @@ fn through(
         }
     }
     let Some((_, last)) = made.last() else {
-        return Landing::Refused(refused.unwrap_or_default());
+        return match refused {
+            Some((why, refusing)) => Landing::Turned {
+                refused: refusing.head.clone(),
+                why,
+            },
+            None => Landing::Refused("the train had no riders to merge".to_owned()),
+        };
     };
-    if let Some(why) = refused {
-        return reverted(hub, &made, why);
-    }
-    let tested = git(&["rev-parse", &format!("{candidate}^{{tree}}")]);
-    let why = match (thrice(|| hub.tree(last)), tested) {
-        (Ok(merged), Ok(tested)) if merged == tested => return Landing::Landed(last.clone()),
-        (Ok(_), _) => format!(
-            "GitHub's merge {} doesn't hold the tree the train tested at {}",
+    // The candidate as it stood after the riders made: just before its
+    // merge of the first rider not made, or all of it when it holds none.
+    let unmade: Vec<&str> = riding[made.len()..]
+        .iter()
+        .map(|merging| merging.head.as_str())
+        .collect();
+    let tested = before_any(git, base, candidate, &unmade)
+        .and_then(|at| git(&["rev-parse", &format!("{at}^{{tree}}")]).map(|tree| (at, tree)));
+    let landed_as_tested = |why: String| match (thrice(|| hub.tree(last)), &tested) {
+        (Ok(merged), Ok((_, tree))) if merged == *tree => Ok(()),
+        (Ok(_), Ok((at, _))) => Err(format!(
+            "{why}GitHub's merge {} doesn't hold the tree the train tested at {}",
             short(last),
-            short(candidate)
-        ),
-        (Err(error), _) => format!(
-            "GitHub couldn't say what its merge {} holds: {error}",
+            short(at)
+        )),
+        (Ok(_), Err(error)) => Err(format!(
+            "{why}the train couldn't say which tree it tested: {error}"
+        )),
+        (Err(error), _) => Err(format!(
+            "{why}GitHub couldn't say what its merge {} holds: {error}",
             short(last)
-        ),
+        )),
     };
-    reverted(hub, &made, why)
+    if let Some((why, refusing)) = refused {
+        return match landed_as_tested(format!("{why}, and ")) {
+            Ok(()) => Landing::Partly {
+                landed: last.clone(),
+                kept: made.iter().map(|(at, _)| at.head.clone()).collect(),
+                refused: refusing.head.clone(),
+                why,
+            },
+            Err(why) => reverted(hub, &made, why),
+        };
+    }
+    match landed_as_tested(String::new()) {
+        Ok(()) => Landing::Landed(last.clone()),
+        Err(why) => reverted(hub, &made, why),
+    }
+}
+
+/// The candidate, cut on `base`, as it stood before it merged any of
+/// `heads`: the first parent of its oldest merge of one, or `candidate`
+/// itself when it merged none, found by each merge's second parent
+/// rather than counted, since a rider whose head main already held left
+/// no merge of its own. Only the commits the candidate added to `base`
+/// are read, so a merge in main's own history is never taken for one.
+fn before_any(
+    git: &dyn Fn(&[&str]) -> Result<String, String>,
+    base: &str,
+    candidate: &str,
+    heads: &[&str],
+) -> Result<String, String> {
+    let listed = git(&[
+        "rev-list",
+        "--first-parent",
+        "--parents",
+        &format!("{base}..{candidate}"),
+    ])?;
+    let first = listed.lines().rev().find_map(|line| {
+        let mut commits = line.split(' ');
+        let (_, before, merged) = (commits.next()?, commits.next()?, commits.next()?);
+        heads.contains(&merged).then(|| before.to_owned())
+    });
+    Ok(first.unwrap_or_else(|| candidate.to_owned()))
 }
 
 /// Revert each of `made` through `hub`, the newest first, for `why`,

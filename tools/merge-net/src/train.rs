@@ -23,7 +23,11 @@
 //! and signs each merge with the key machines trust main by, which no
 //! agent holds; the train pushes nothing to main. Main's tree after those
 //! merges must be the candidate's, or the train reverts them on GitHub,
-//! the newest first. When main moved before the merges, the candidate is
+//! the newest first. When GitHub refuses one, those it merged before it
+//! stay, as main then holds the candidate's tree just before that merge;
+//! the refused one falls to run again alone, and the rest stay aboard,
+//! unless GitHub refused the first rider twice in a row, when they fall
+//! too (`landing.rs`). A draft never boards. When main moved before the merges, the candidate is
 //! cut again on it, and goes when its pass still speaks for it as one for
 //! a rebased change would (`earlier.rs`); otherwise it runs again with
 //! whoever has boarded since, holding the right of way meanwhile, so
@@ -61,12 +65,15 @@ mod gated;
 mod hub;
 mod installed;
 mod landing;
+mod pulls;
 mod splitting;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
 use installed::{build, hand_over, handed, newer};
 use landing::{Landing, land};
+use pulls::aboard;
+pub use pulls::drafted;
 use splitting::{After, Splitting, UNTAKEN_FOR};
 
 /// A change waiting on the train.
@@ -542,6 +549,55 @@ fn after_landing(
             way(root, &Ended::Landed { left });
             return;
         }
+        Landing::Partly {
+            landed,
+            kept,
+            refused,
+            why,
+        } => {
+            // The riders landed alight, the refused one falls to run again
+            // alone, and those after it stay aboard for the next run.
+            // The refused rider leaves the front with those landed, so a
+            // search for a red candidate looks past it too.
+            splitting.landed(kept.len() + 1);
+            for head in &kept {
+                alight(root, head);
+            }
+            keep_landed(root, &landed, &kept, crate::state::now() - began);
+            let (before, stay) = match kept.len() {
+                1 => ("the rider before it".to_owned(), "stays"),
+                riders => (format!("the {riders} riders before it"), "stay"),
+            };
+            let said = format!(
+                "{why}; {before} landed as {} and {stay}, and it leaves the train",
+                short(&landed)
+            );
+            println!("merge-net: {said}");
+            let _ = fall(root, &refused, &said);
+            let left = !riders(root).is_empty();
+            way(root, &Ended::Landed { left });
+            return;
+        }
+        Landing::Turned { refused, why } => {
+            if splitting.turned() {
+                falls(&format!(
+                    "{why}, as it refused the train's first rider before, so every rider \
+                     leaves the train"
+                ));
+                way(root, &Ended::Otherwise);
+                *splitting = Splitting::default();
+                return;
+            }
+            // Nothing merged, so only the refused rider falls, and those
+            // after it stay aboard for the next run with the train's way
+            // and search kept, as after a landing that leaves riders.
+            let said = format!("{why}; the train merged nothing, and it leaves the train");
+            println!("merge-net: {said}");
+            let _ = fall(root, &refused, &said);
+            let left = !riders(root).is_empty();
+            way(root, &Ended::Landed { left });
+            return;
+        }
         Landing::Moved => {
             way(root, &Ended::Moved);
             return;
@@ -648,73 +704,6 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
     }
 }
 
-/// The riders still their pull request's head, as the candidate merges
-/// them, fetched into the checkout; one whose pull request moved on or
-/// closed steps off.
-fn aboard(
-    root: &Path,
-    git: &dyn Fn(&[&str]) -> Result<String, String>,
-    slug: &str,
-    owner: &str,
-    waiting: &[Rider],
-) -> Vec<Merging> {
-    let mut mergings = Vec::new();
-    for rider in waiting {
-        let open = pull_of(slug, &rider.branch);
-        let still = open
-            .as_ref()
-            .is_some_and(|(_, _, head)| *head == rider.head);
-        let fetched = still && git(&["fetch", "--quiet", "origin", &rider.head]).is_ok();
-        match open {
-            Some((number, title, _)) if fetched => mergings.push(Merging {
-                number,
-                head: rider.head.clone(),
-                subject: subject(number, owner, &rider.branch),
-                title,
-            }),
-            _ => {
-                println!(
-                    "merge-net: {} steps off the train: its pull request moved on or closed",
-                    short(&rider.head)
-                );
-                alight(root, &rider.head);
-            }
-        }
-    }
-    mergings
-}
-
-/// The open pull request from `branch`: its number, title and head.
-fn pull_of(slug: &str, branch: &str) -> Option<(u64, String, String)> {
-    let out = hub::gh(&[
-        "pr",
-        "list",
-        "--repo",
-        slug,
-        "--head",
-        branch,
-        "--state",
-        "open",
-        "--json",
-        "number,title,headRefOid,headRepositoryOwner,baseRefName",
-    ])
-    .ok()?;
-    let pulls: Value = serde_json::from_str(&out).ok()?;
-    // A fork's pull request may name a branch of the same name; only the
-    // repository's own are the rider's, and only one into main, as GitHub
-    // merges a pull request into its own base.
-    let owner = slug.split('/').next().unwrap_or_default();
-    let pull = pulls.as_array()?.iter().find(|pull| {
-        pull["headRepositoryOwner"]["login"].as_str() == Some(owner)
-            && pull["baseRefName"].as_str() == Some("main")
-    })?;
-    Some((
-        pull["number"].as_u64()?,
-        pull["title"].as_str()?.to_owned(),
-        pull["headRefOid"].as_str()?.to_owned(),
-    ))
-}
-
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
 fn gate(checkout: &Path, log: &Path) -> Gated {
     let Ok(words) = fs::File::create(log) else {
@@ -754,7 +743,10 @@ fn keep_landed(root: &Path, landed: &str, heads: &[String], seconds: u64) {
 
 /// `owner/name` of the repository at `url`.
 fn slug_of(url: &str) -> String {
-    url.trim_end_matches(".git")
+    // An ssh origin names its host before a colon, git@github.com:owner/repo.
+    let path = url.rsplit_once(':').map_or(url, |(_, path)| path);
+    path.trim_end_matches('/')
+        .trim_end_matches(".git")
         .rsplit('/')
         .take(2)
         .collect::<Vec<_>>()

@@ -41,6 +41,9 @@ pub(super) struct Splitting {
     suspects: usize,
     /// Whether a rider fell riding alone since the train last landed.
     fell_alone: bool,
+    /// Whether GitHub refused the last candidate's first rider, nothing
+    /// landing since.
+    turned: bool,
     /// When the first of the candidates in a row no builder took ended;
     /// none since one was taken.
     untaken_since: Option<u64>,
@@ -65,6 +68,7 @@ impl Splitting {
         *self = Self {
             suspects: 0,
             fell_alone: !twice,
+            turned: false,
             untaken_since: None,
         };
         if twice { After::AllFall } else { After::Falls }
@@ -92,5 +96,18 @@ impl Splitting {
     pub(super) fn landed(&mut self, riding: usize) {
         self.suspects = self.suspects.saturating_sub(riding);
         self.fell_alone = false;
+        self.turned = false;
+    }
+
+    /// GitHub refused a passing candidate's first rider, which leaves the
+    /// front as a landing would: whether it refused the one before it too,
+    /// nothing landing between. A refusal no rider earns, as for a token
+    /// that can't merge or a rule GitHub added, refuses each in turn, and
+    /// one gate run each, about 13 minutes, would empty the train.
+    pub(super) fn turned(&mut self) -> bool {
+        self.suspects = self.suspects.saturating_sub(1);
+        let twice = self.turned;
+        self.turned = !twice;
+        twice
     }
 }

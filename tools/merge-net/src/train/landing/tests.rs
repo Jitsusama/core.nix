@@ -235,7 +235,6 @@ fn landed_by(name: &str, hub: impl FnOnce(&Path, &Path) -> Fake) -> Landed {
         asked: hub.asked.take(),
         main_tree: tree(&origin, &main),
         tested_tree: tree(&checkout, &candidate),
-        base_tree: tree(&checkout, &base),
         // A main GitHub never merged into holds one commit, with none under it.
         under_main: git_in(&origin, &["rev-parse", "main^"]).unwrap_or_default(),
         holds: ["one", "two", "elsewhere"]
@@ -279,7 +278,6 @@ struct Landed {
     under_main: String,
     main_tree: String,
     tested_tree: String,
-    base_tree: String,
     /// Which of the riders' files, and another change's, main holds.
     holds: Vec<&'static str>,
     /// The commits main gained along its first parent that GitHub didn't
@@ -355,8 +353,12 @@ fn a_first_merge_github_refuses_leaves_main_alone() {
         ..Fake::of(place, origin)
     });
     assert!(
-        matches!(landed.landing, Landing::Refused(_)),
-        "a merge GitHub refused didn't fall back: {:?}",
+        matches!(
+            &landed.landing,
+            Landing::Turned { refused, why }
+                if *refused == landed.one && why.contains("not mergeable")
+        ),
+        "a first merge GitHub refused didn't turn that rider alone away: {:?}",
         landed.landing
     );
     assert_eq!(
@@ -367,10 +369,153 @@ fn a_first_merge_github_refuses_leaves_main_alone() {
     assert_eq!(landed.main, landed.base, "main moved though nothing merged");
 }
 
+// At 02:58 on 19 November GitHub refused a draft, the third rider, and
+// the train reverted the two riders it had merged, whose checks had
+// passed. A rider GitHub refuses leaves the train, and those landed stay.
 #[test]
-fn the_riders_merged_before_one_github_refuses_are_reverted() {
+fn the_riders_merged_before_one_github_refuses_stay_landed() {
     let landed = landed_by("github-partly", |place, origin| Fake {
         refuses: Some(2),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Partly { landed: at, kept, refused, why }
+                if *at == landed.main
+                    && *kept == [landed.one.clone()]
+                    && *refused == landed.two
+                    && why.contains("not mergeable")
+        ),
+        "the rider merged before GitHub refused the next didn't stay landed alone: {:?}",
+        landed.landing
+    );
+    let mut asked = vec!["merge 1"];
+    asked.extend(vec!["merge 2"; MERGE_TRIES]);
+    assert_eq!(
+        landed.asked, asked,
+        "the train reverted a merge, or went on, once GitHub kept refusing the next"
+    );
+    assert_eq!(
+        landed.holds,
+        ["one"],
+        "main doesn't hold the landed rider alone"
+    );
+}
+
+// Three riders, the middle one refused: the first stays, held to the
+// candidate's own merge of it rather than its top or the merge after, and
+// the third is never asked to merge, so it rides again.
+#[test]
+fn a_rider_after_the_one_github_refuses_isnt_merged() {
+    let (place, origin, checkout, base) = hubbed("github-partly-three");
+    let git = |arguments: &[&str]| git_in(&checkout, arguments);
+    let one = proposed(&checkout, &base, "one", 1);
+    let two = proposed(&checkout, &base, "two", 2);
+    let three = proposed(&checkout, &base, "three", 3);
+    let riding = [merging(&one, 1), merging(&two, 2), merging(&three, 3)];
+    let done = cut(&git, &base, &riding).unwrap();
+    let candidate = git(&["rev-parse", "HEAD"]).unwrap();
+    let hub = Fake {
+        refuses: Some(2),
+        ..Fake::of(&place, &origin)
+    };
+
+    let landing = land(
+        &checkout,
+        &git,
+        &hub,
+        &base,
+        &candidate,
+        &riding,
+        &done.merged,
+    );
+    let main = git_in(&origin, &["rev-parse", "main"]).unwrap();
+    assert!(
+        matches!(
+            &landing,
+            Landing::Partly { landed, kept, refused, .. }
+                if *landed == main && *kept == [one.clone()] && *refused == two
+        ),
+        "the first rider didn't stay landed alone: {landing:?}"
+    );
+    let mut asked = vec!["merge 1"];
+    asked.extend(vec!["merge 2"; MERGE_TRIES]);
+    assert_eq!(
+        hub.asked.take(),
+        asked,
+        "the rider after the refused one was asked to merge"
+    );
+    let held: Vec<&str> = ["one", "two", "three"]
+        .into_iter()
+        .filter(|file| git_in(&origin, &["cat-file", "-e", &format!("main:{file}")]).is_ok())
+        .collect();
+    assert_eq!(held, ["one"], "main doesn't hold the first rider alone");
+    fs::remove_dir_all(&place).unwrap();
+}
+
+// A rider whose head main already held leaves no merge in the candidate,
+// nor on main: made last before a refusal, it is held to the candidate
+// as it stood before the refused rider's merge, not reverted for want
+// of a merge of its own.
+#[test]
+fn a_rider_main_already_held_before_a_refusal_stays_landed() {
+    let (place, origin, checkout, first) = hubbed("github-partly-held");
+    let git = |arguments: &[&str]| git_in(&checkout, arguments);
+    let one = proposed(&checkout, &first, "one", 1);
+    git(&[
+        "push",
+        "--quiet",
+        "origin",
+        &format!("{one}:refs/heads/main"),
+    ])
+    .unwrap();
+    git(&["fetch", "--quiet", "origin", "main"]).unwrap();
+    let base = one.clone();
+    let two = proposed(&checkout, &base, "two", 2);
+    let three = proposed(&checkout, &base, "three", 3);
+    let riding = [merging(&one, 1), merging(&two, 2), merging(&three, 3)];
+    let done = cut(&git, &base, &riding).unwrap();
+    let candidate = git(&["rev-parse", "HEAD"]).unwrap();
+    let hub = Fake {
+        refuses: Some(2),
+        ..Fake::of(&place, &origin)
+    };
+
+    let landing = land(
+        &checkout,
+        &git,
+        &hub,
+        &base,
+        &candidate,
+        &riding,
+        &done.merged,
+    );
+    assert!(
+        matches!(
+            &landing,
+            Landing::Partly { landed, kept, refused, .. }
+                if *landed == base && *kept == [one.clone()] && *refused == two
+        ),
+        "a rider main already held was reverted rather than kept: {landing:?}"
+    );
+    assert!(
+        !hub.asked
+            .take()
+            .iter()
+            .any(|asked| asked.starts_with("revert")),
+        "the train reverted a landing that held the tree it tested"
+    );
+    fs::remove_dir_all(&place).unwrap();
+}
+
+// What GitHub merged before a refusal is still held to the tree the
+// candidate had there, as a whole landing is to the candidate's.
+#[test]
+fn a_merge_before_a_refusal_onto_a_main_that_moved_is_reverted() {
+    let landed = landed_by("github-partly-moved", |place, origin| Fake {
+        refuses: Some(2),
+        moved_before: Some(1),
         ..Fake::of(place, origin)
     });
     assert!(
@@ -379,19 +524,13 @@ fn the_riders_merged_before_one_github_refuses_are_reverted() {
             Landing::Reverted { reverted, kept, .. }
                 if *reverted == [(landed.one.clone(), 101)] && kept.is_empty()
         ),
-        "the rider merged before GitHub refused the next, a tree no gate ran, stayed: {:?}",
+        "a merge onto a main the train didn't test stayed when the next was refused: {:?}",
         landed.landing
     );
-    let mut asked = vec!["merge 1"];
-    asked.extend(vec!["merge 2"; MERGE_TRIES]);
-    asked.push("revert 1");
     assert_eq!(
-        landed.asked, asked,
-        "the merge made before the refusal wasn't reverted alone, once GitHub kept refusing"
-    );
-    assert_eq!(
-        landed.main_tree, landed.base_tree,
-        "main after the revert doesn't hold the tree it had before the train"
+        landed.holds,
+        ["elsewhere"],
+        "main after the revert doesn't hold just the other change"
     );
 }
 

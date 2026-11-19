@@ -334,6 +334,17 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
         if turn::waiting(commit, passes, files) {
             return ExitCode::FAILURE;
         }
+        // A draft is its owner's word that it isn't to land yet, and
+        // GitHub merges none, so it neither boards the train nor is told
+        // it may merge.
+        let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
+        if let Some(said) = (!branch.is_empty())
+            .then(|| train::drafted(&branch))
+            .flatten()
+        {
+            eprintln!("merge-net: {said}");
+            return ExitCode::FAILURE;
+        }
         if let Some(said) = train::gives_way(commit) {
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;
@@ -438,9 +449,10 @@ fn run_again(commit: &str) -> String {
 /// still has it go first.
 fn ride_or_run_again(commit: &str, main: &str, checked: &str, files: &[String]) -> String {
     if turn::waits_to_run(commit).is_none() && needs_heard(commit, main, &[checked], files) {
+        // A draft boards no more here than through may_merge.
         let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
         if let Some(said) = (!branch.is_empty())
-            .then(|| train::offer(commit, &branch))
+            .then(|| train::drafted(&branch).or_else(|| train::offer(commit, &branch)))
             .flatten()
         {
             return said;
