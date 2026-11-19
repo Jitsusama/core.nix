@@ -48,13 +48,16 @@
 // straight after any sweep, not only the closing's, so a room that lasted
 // until the next collection let one opening of Joel's shell run two whole
 // collections 16 s apart, each inside a key, 115 ms of its 175 and 193
-// (2026-11-19). It never lets the chunks grow past twice the room beyond
-// what they held at the first ask since a collection ended, so a heap whose
-// sweeps keep a few items in each chunk it grew into doesn't grow by the
-// room at every one, and the opening's ask shares the closing's, as an
-// ask for another room does; and it reckons from what each sweep left, not
-// from where leaveRoom set it, so asking twice leaves the room once.
-// weigh() says where the next starts.
+// (2026-11-19). A miss never starts the collector later than twice the room
+// past what the chunks held at the first ask since a collection ended, nor
+// sooner than Qt itself would, so a heap whose sweeps keep a few items in
+// each chunk it grew into doesn't grow by the room at every one, and the
+// opening's ask shares the closing's, as an ask for another room does; and
+// it reckons from what each sweep left, not from where leaveRoom set it, so
+// asking twice leaves the room once. weigh() says where the next starts.
+// Each closing asks after its own collection, so such a heap may still
+// climb by up to twice the room between closings, where main let it climb
+// by the room at each ask: the closing's line says what it holds.
 //
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,
@@ -193,12 +196,13 @@ QVariantMap Heap::weigh() const {
     // Large items have chunks of their own, as big as each, so they're
     // live and held alike.
     const std::size_t large = manager->getLargeItemsMem();
-    const std::size_t slots =
+    // Not `slots`, which is Qt's keyword macro.
+    const std::size_t chunkSlots =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
-        {QStringLiteral("chunks"), megabytes(slots * QV4::Chunk::SlotSize)},
+        {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
