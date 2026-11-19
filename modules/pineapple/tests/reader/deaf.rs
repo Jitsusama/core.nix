@@ -265,12 +265,12 @@ fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
     while !journal(&home).contains("couldn't tell Joel in For You") && began.elapsed() < PATIENCE {
         thread::sleep(Duration::from_millis(20));
     }
-    let failed = journal(&home);
-    // Said before the way is cleared, so a tell that never fails is told
-    // at once rather than after a second patience; the guard stops the reader.
+    // Checked before the way is cleared, so a write that never fails fails
+    // this case at once rather than after a second patience. The guard stops
+    // the reader and prints its journal.
     assert!(
-        failed.contains("<3>couldn't tell Joel in For You whether Slack is heard"),
-        "a tell that can't land is said: {failed}"
+        journal(&home).contains("<3>couldn't tell Joel in For You whether Slack is heard"),
+        "a tell that can't land is said"
     );
     std::fs::remove_file(&blocked).expect("out of the way");
     let told = until(&named, true);
@@ -279,8 +279,7 @@ fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
     reader.wait().expect("the reader is gone");
     assert!(
         told && says(&row, "Slack refused the safe word's sign-in"),
-        "and made again once it can, rather than counted as told: {row}, {}",
-        journal(&home)
+        "and made again once it can, rather than counted as told: {row}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
