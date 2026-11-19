@@ -5,14 +5,16 @@ Spec's place as the account's cadence module gives it, and cadence-spec serving 
 stand-in for cadence prints from a file here. On 18 November Spec was listed twice in Agents,
 as its part and among Agents' own rows, and the cursor moved between the two as each read
 came; Qt's own engine holds the parts' order (tests/ranking.qml), and this holds the whole
-launcher to listing it once, the cursor staying on it, and a step held in Spec taking the
-rows its daemon serves next.
+launcher to listing it once, the cursor staying on it as the daemon's answers change, and a
+step held in Spec taking the rows the daemon serves after a restart.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import time
@@ -53,7 +55,7 @@ def cadence() -> Path:
     bash = shutil.which("bash")
     assert bash is not None, "no bash to stand in for cadence"
     program = LOGS.resolve() / "cadence"
-    program.write_text(f"#!{bash}\nexec cat {SERVED}\n")
+    program.write_text(f"#!{bash}\nexec cat {shlex.quote(str(SERVED))}\n")
     program.chmod(0o755)
     return program
 
@@ -74,65 +76,74 @@ def shell() -> Iterator[Shell]:
     started.stop()
 
 
-@pytest.fixture(autouse=True)
-def launcher_closed_after(shell: Shell) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    shell.close_launcher()
-
-
-def agents_with_spec(shell: Shell) -> None:
-    """Open Agents, once it lists Spec from the daemon's head."""
+@contextlib.contextmanager
+def agents_with_spec(shell: Shell) -> Iterator[None]:
+    """Open Agents once it lists Spec, and close it after, so a case failing open fails alone."""
     shell.as_account(shell.ipc("collection", "agents"))
-    shell.launcher_ready()
-    shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Spec" in shown["rows"])
+    try:
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Spec" in shown["rows"])
+        yield
+    finally:
+        shell.close_launcher()
 
 
-def test_agents_lists_spec_once_after_budgets_and_the_cursor_stays_on_it(shell: Shell) -> None:
-    """Spec is one row in Agents, after Budgets where Budgets is, and stays chosen as reads come.
+def test_agents_lists_spec_once_and_the_cursor_stays_on_it_as_its_head_changes(
+    shell: Shell,
+) -> None:
+    """Spec is one row in Agents, and stays chosen while the daemon's answer changes.
 
-    Its key listed twice moved the cursor between the two rows as each read came, so the
-    cursor is watched on it for longer than the daemon takes to answer a watch again.
+    Its key listed twice moved the cursor between the two rows as each answer came. The
+    daemon reads cadence at most once in five minutes, so a new answer here is its start
+    again over a head rewritten, and the cursor is watched until the row says it.
     """
-    agents_with_spec(shell)
-    rows = shell.showing()["rows"]
-    assert rows.count("Spec") == 1, f"Spec isn't listed once: {rows}"
-    if "Budgets" in rows:
-        assert rows.index("Spec") == rows.index("Budgets") + 1, f"Spec isn't after Budgets: {rows}"
-    shell.down_to("Spec")
-    deadline = time.monotonic() + 3
-    while time.monotonic() < deadline:
-        shown = shell.showing()
-        chosen = (shown["selected"] or {}).get("name")
-        assert chosen == "Spec", f"the cursor left Spec for {chosen}: {shown['rows']}"
-        assert shown["rows"].count("Spec") == 1, f"Spec was listed again: {shown['rows']}"
-        time.sleep(0.2)
+    with agents_with_spec(shell):
+        rows = shell.showing()["rows"]
+        assert rows.count("Spec") == 1, f"Spec isn't listed once: {rows}"
+        shell.down_to("Spec")
+        served = served_first()
+        served["head"]["said"] = "2 readings out of spec"
+        serve(served)
+        shell.daemon_stopped("cadence-spec")
+        spec_daemon(shell)
+        deadline = time.monotonic() + 20
+        while True:
+            shown = shell.showing()
+            selected = shown["selected"] or {}
+            chosen = selected.get("name")
+            assert chosen == "Spec", f"the cursor left Spec for {chosen}: {shown['rows']}"
+            assert shown["rows"].count("Spec") == 1, f"Spec was listed again: {shown['rows']}"
+            if selected.get("side") == "2 readings out of spec":
+                break
+            assert time.monotonic() < deadline, f"Spec never said the new head: {selected}"
+            time.sleep(0.2)
 
 
-def test_a_step_held_in_spec_takes_the_rows_its_daemon_serves_next(shell: Shell) -> None:
+def test_a_step_held_in_spec_takes_the_rows_a_restarted_daemon_serves(shell: Shell) -> None:
     """Held in Spec, its axes are those served, and become what the daemon serves after.
 
     cadence-spec reads cadence at most once in five minutes, so the next read here is its
-    start again over rows rewritten, which the shell's connection holds through the gap and
-    then replaces with what the daemon says (modules/quickshell/Daemon.qml).
+    start again over rows rewritten; the step stays held through the gap, and its rows are
+    replaced with what the daemon says once it answers again (modules/quickshell/Daemon.qml).
     """
-    agents_with_spec(shell)
-    shell.down_to("Spec")
-    shell.step_in()
-    shell.launcher_until(
-        lambda shown: (
-            shown["held"] == ["agents", "Spec"] and shown["rows"] == ["Time to Done", "Quality"]
+    with agents_with_spec(shell):
+        shell.down_to("Spec")
+        shell.step_in()
+        shell.launcher_until(
+            lambda shown: (
+                shown["held"] == ["agents", "Spec"] and shown["rows"] == ["Time to Done", "Quality"]
+            )
         )
-    )
-    rows = served_first()
-    quality = next(row for row in rows["rows"] if row["key"] == "row:spec:quality")
-    quality["name"] = "Quality Held Up"
-    serve(rows)
-    shell.daemon_stopped("cadence-spec")
-    spec_daemon(shell)
-    shell.launcher_until(
-        lambda shown: (
-            shown["held"] == ["agents", "Spec"]
-            and shown["rows"] == ["Time to Done", "Quality Held Up"]
+        rows = served_first()
+        quality = next((row for row in rows["rows"] if row["key"] == "row:spec:quality"), None)
+        assert quality is not None, f"the rows' stand-in serves no Quality: {rows['rows']}"
+        quality["name"] = "Quality Held Up"
+        serve(rows)
+        shell.daemon_stopped("cadence-spec")
+        spec_daemon(shell)
+        shell.launcher_until(
+            lambda shown: (
+                shown["held"] == ["agents", "Spec"]
+                and shown["rows"] == ["Time to Done", "Quality Held Up"]
+            )
         )
-    )

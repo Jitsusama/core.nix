@@ -282,8 +282,8 @@
   '';
   agents-lists-spec-once-on-niri = ''
     on the account's whole shell on niri, over the cadence-spec daemon itself, Agents lists Spec
-    once, after Budgets where Budgets is, the cursor staying on it as reads come, and a step held
-    in Spec takes the rows the daemon serves next
+    once, the cursor staying on it as the daemon's answer changes, and a step held in Spec takes
+    the rows the daemon serves after a restart
   '';
   agents-makes-the-launchers-rows = ''
     the agents daemon says how each pi session stands, its acts and what Return does, lays

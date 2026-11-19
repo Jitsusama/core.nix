@@ -55,10 +55,11 @@
     '';
 
   # On the whole launcher, over cadence-spec itself and a stand-in for cadence
-  # printing a file the cases rewrite, Agents lists Spec once, after Budgets
-  # where Budgets is, with the cursor staying on it, and a step held in Spec
-  # takes the rows the daemon serves next (modules/quickshell/tests/
-  # spec-on-niri-test.py). Spec's place is the cadence module's.
+  # printing a file the cases rewrite, Agents lists Spec once with the cursor
+  # staying on it as the daemon's answer changes, and a step held in Spec takes
+  # the rows the daemon serves after a restart (modules/quickshell/tests/
+  # spec-on-niri-test.py). Spec's place among the parts is held in Qt's own
+  # engine (tests/ranking.qml); the order here is the cadence module's.
   agents-lists-spec-once-on-niri = launcherOnNiri {
     name = "agents-lists-spec-once-on-niri";
     tests = ../tests/spec-on-niri-test.py;
