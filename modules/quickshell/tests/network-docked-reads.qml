@@ -240,8 +240,9 @@ ShellRoot {
     }
 
     // Until held gives loads up on purpose, one given up on a slow builder
-    // is named at the step it came before, by each quiet wait and by held
-    // itself, rather than by the step its hold would fail.
+    // is named at the step it came before, by each quiet wait, relinked
+    // and held itself, rather than by the step its hold would fail. One
+    // given up from held on is left to the step it fails.
     function noneGivenUp(name) {
         if (!root.holdsMade)
             Expect.expect(`no load before ${name} was given up`,
@@ -443,6 +444,7 @@ ShellRoot {
     // newer than they are: it's said as the daemon says until they land
     // again, and the load begun before isn't kept.
     function relinked() {
+        root.noneGivenUp("relinked");
         shown.held = [];
         kept = [];
         networks.recable();
