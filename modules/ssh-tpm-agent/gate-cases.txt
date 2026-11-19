@@ -48,12 +48,19 @@ refuse /user.slice/user-1000.slice/user@1000.service/background.slice/run-p90020
 serve /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/run-u7.scope /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/work-2214-3404643.scope /user.slice/user-1000.slice/user@1000.service/app.slice/kitty-2210-1.scope
 # A unit an agent names itself, as the harness tells it to, started from
 # work placed in the awaited slice; and names as long as awaited or near it,
-# each by its own line, while awaited.service above is served.
+# each by its own line and alternative, while awaited.service above is
+# served. The run-*.service there above is refused by the first of these.
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/queue-isxeg8-1.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaite.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/build-1.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaxted.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaitex.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/a.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaitedx.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/abcdefg.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awxited.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaixed.service /user.slice/user-1000.slice/user@1000.service/init.scope
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaitxd.service /user.slice/user-1000.slice/user@1000.service/init.scope
 # A spawner somewhere no other line names, which only its own line refuses.
 refuse /user.slice/user-1000.slice/user@1000.service/background.slice/pi-spawner-3386655-c0ffee00.scope
 # Joel's own services there, refused knowingly, as none signs in over SSH.

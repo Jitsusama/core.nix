@@ -50,11 +50,15 @@
       # would leave its cases passing and its work served: each slice the
       # gate names must still be one a machine with a screen makes, as the
       # graphical role brings the slices.
+      awaited = graphical.config.systemd.user.services.awaited.serviceConfig;
       named =
         holds "ssh-tpm-agent-gate-names-real-slices"
-          "ssh-tpm-agent's gate names a slice the graphical role doesn't make."
+          "ssh-tpm-agent's gate names a slice, or spares a service, the graphical role lacks."
           (
-            builtins.all (slice: graphical.config.systemd.user.slices ? ${slice}) [
+            # gate.conf spells out every name in the awaited slice but
+            # awaited, so that must be the service the slices put there.
+            (awaited.Slice or null) == "jobs-awaited.slice"
+            && builtins.all (slice: graphical.config.systemd.user.slices ? ${slice}) [
               "agents"
               "background"
               "jobs"
