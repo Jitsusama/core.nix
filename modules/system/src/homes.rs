@@ -5,8 +5,8 @@
 //! everywhere at once. A site may instead say a pattern in its row, as the
 //! home lists it in `rows.json`,
 //! `{"kind": "machine", "address": "#machine={name}"}`, when
-//! every thing of a kind has its page there by construction, as the mycelium
-//! map's machines do: the pattern is the site's own word, so it is read, not
+//! every thing of a kind has its page there by construction, as the system
+//! page's machines do: the pattern is the site's own word, so it is read, not
 //! guessed, and no record listing the things has to be kept beside a source
 //! that already knows them. A pattern holds its whole kind, so a row can't
 //! give a kind a pattern once an earlier row has claimed it by name, and no
@@ -192,7 +192,7 @@ fn names(thing: &Value) -> impl Iterator<Item = &str> {
 /// A claim's address, from its row's path on, when it is a pattern whose
 /// address names the thing and is a fragment on the row's own page, its
 /// bytes plain. It may be written from the row's page, `#machine={name}`,
-/// or from the sites' root as a record's is, `mycelium/#machine={name}`. A
+/// or from the sites' root as a record's is, `system/#machine={name}`. A
 /// fragment never reaches a server and can't change which page a browser
 /// opens, so neither the pattern nor a name put in it can step off the site.
 fn pattern<'a>(claim: &'a Value, path: &str) -> Option<&'a str> {

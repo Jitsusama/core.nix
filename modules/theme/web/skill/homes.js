@@ -125,7 +125,7 @@
   // is named here rather than missed: a path of plain steps, and an
   // address that is a fragment on the row's own page in plain bytes. A
   // pattern may be written from its page, "#machine={name}", or from the
-  // sites' root, "mycelium/#machine={name}", and reads no homes.json.
+  // sites' root, "system/#machine={name}", and reads no homes.json.
   const slot = "{name}";
   // A letter an address keeps as it is: a letter, a digit or one of -._~.
   const unreserved = (letter) =>

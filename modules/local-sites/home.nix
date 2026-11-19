@@ -286,6 +286,14 @@ in
           "Step through the machines with j and k; say whether the first screen tells "
           "you which machine is which and how each is doing."
         ];
+        # Each machine's address on the page, which every other site links to:
+        # opened there, its cursor starts on that machine.
+        homes = [
+          {
+            kind = "machine";
+            address = "#machine={name}";
+          }
+        ];
       };
       network = {
         name = "Your home network, now";
@@ -316,13 +324,6 @@ in
           "from the networks it has joined, moving the moment one changes."
         ];
         asks = "Keep it open a while; say what you'd want to see that it doesn't show.";
-        # Each machine's address on the map, which system links to.
-        homes = [
-          {
-            kind = "machine";
-            address = "#machine={name}";
-          }
-        ];
       };
       web = {
         name = "What your sessions murmur";

@@ -34,8 +34,9 @@ Every health is good, watch, bad or not read, each with its own mark.
   more are below. The drawing is hidden from a screen reader, since
   every word in it is said again below.
 - **A section for each machine,** worst first, at most eight, then how
-  many more, linked to the map. Each has its name, its kind (model and
-  system, and whether it is this one) and how it stands, then four ties:
+  many more, linked to the map. Each has its name, linked to it on the
+  map, its kind (model and system, and whether it is this one) and how
+  it stands, then four ties:
   - Cells: how many of the mycelium's cells are busy and idle on it,
     those ended aside, linked to it on the map.
   - Network: where it meets the network, by band or by wire, and how
@@ -80,7 +81,8 @@ Every health is good, watch, bad or not read, each with its own mark.
 | y      | Copy the first command of the machine or part you're in             |
 | ?, F1  | The list of keys                                                    |
 
-The page's address for a machine is `#machine=` and its name, as in
+The page is each machine's home, so every other site links a machine
+here. Its address for one is `#machine=` and its name, as in
 `system/#machine=osprey`: opened there, the cursor starts on that
 machine. One past the first 8 starts on the row for the rest, and a
 name the page doesn't have is said. While a machine's record may still

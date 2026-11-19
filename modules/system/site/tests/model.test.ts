@@ -61,7 +61,7 @@ const records = [
     name: "osprey",
     health: "watch",
     says: "has a filling disk",
-    address: "mycelium/#machine=osprey",
+    address: "system/#machine=osprey",
   },
 ];
 
@@ -83,7 +83,7 @@ it("the parts come in the summary's order, each with its things", () => {
     system.parts[0]?.things.map((thing) => [thing.name, thing.health, thing.address]),
     [
       ["kestrel", "good", undefined],
-      ["osprey", "watch", "mycelium/#machine=osprey"],
+      ["osprey", "watch", "system/#machine=osprey"],
     ],
   );
   assert.deepEqual(system.unread, []);
@@ -295,6 +295,41 @@ it("steps through each machine's rows, then the parts across them", () => {
     "cells:osprey",
     "part:code",
   ]);
+});
+
+it("is a machine's home, and sends its name and its cells on to the map", () => {
+  const system = systemWith((record) =>
+    record.key === "machine:kestrel" ? { ...record, name: "kestrel two" } : record,
+  );
+  const drawn = partsOf(system, when);
+  const [kestrel, osprey] = drawn.split('<section class="machine ').slice(1);
+  assert.ok(kestrel && osprey, "both machines weren't drawn");
+  assert.ok(
+    osprey.startsWith(
+      'watch" id="machine-2" data-part="machine-2" data-home="system/#machine=osprey"',
+    ),
+    "osprey's section didn't say this page is its home",
+  );
+  assert.ok(!kestrel.includes("data-home"), "a machine the sites home nowhere claimed a home");
+  const map = /href="(?<href>[^"]*)"/gu;
+  const [name, cells] = [...osprey.matchAll(map)].map((each) => each.groups?.["href"]);
+  assert.equal(name, "../mycelium/#machine=osprey", "osprey's name didn't lead to the map");
+  assert.equal(cells, "../mycelium/#machine=osprey", "osprey's cells didn't lead to the map");
+  assert.ok(
+    kestrel.includes('href="../mycelium/#machine=kestrel%20two"'),
+    "a name wasn't encoded on its way to the map",
+  );
+  assert.ok(!drawn.includes('href="../system/'), "a machine's link led back to this page");
+});
+
+it("draws no home for a machine the sites home elsewhere", () => {
+  const system = systemWith((record) =>
+    record.key === "machine:osprey" ? { ...record, address: "mycelium/#machine=osprey" } : record,
+  );
+  assert.ok(
+    !partsOf(system, when).includes("data-home"),
+    "a machine homed on the map was claimed here",
+  );
 });
 
 it("goes to a machine's place on the network, and offers the launcher only with an act", () => {
