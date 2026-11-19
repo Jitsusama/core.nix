@@ -33,7 +33,7 @@
     pi-fence-display-passes-clippy = "a Wayland display is a compositor's socket, not a screen";
     pi-hosts-ignore-sigusr1 = "a pi host is the harness's process holding many pi conversations, not a machine";
     pi-hosts-refuse-an-unproven-runtime = "a pi host is the harness's process holding many pi conversations, not a machine";
-    pi-hosts-refuse-node-options = "a pi host is the harness's process holding many pi conversations, not a machine";
+    pi-hosts-refuse-code-loading-variables = "a pi host is the harness's process holding many pi conversations, not a machine";
     pi-hosts-start-with-the-session = "a pi host is the harness's process holding many pi conversations, not a machine";
     platform-profiles-reach-the-legacy-file = "the kernel's platform_profile file, by its name";
     quickshell-restarts-with-its-files = "a program restarts; the machine isn't rebooted";

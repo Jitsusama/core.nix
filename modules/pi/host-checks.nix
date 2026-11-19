@@ -84,8 +84,8 @@ in
 
   # A realm's own NODE_OPTIONS, or any other variable a host's unit clears
   # since it would run code as the host, fails evaluation, naming the realm
-  # and the variable, rather than being dropped unseen.
-  pi-hosts-refuse-node-options =
+  # and each variable, rather than being dropped unseen.
+  pi-hosts-refuse-code-loading-variables =
     let
       runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
       realm = environment: {
@@ -94,31 +94,70 @@ in
         proof = proofOf { inherit runtime; };
         inherit environment;
       };
-      refusals = lib.concatMapStrings (check: check.message + "\n") (
-        lib.filter (check: !check.assertion)
-          (account (bareNixos [
-            self.nixosModules.workstation
-            {
-              home-manager.users.someone.jitsusama.pi.hosts = {
-                plain = realm { GREETING = "hi"; };
-                optioned = realm { NODE_OPTIONS = "--require /x.js"; };
-                preloaded = realm { LD_PRELOAD = "/x.so"; };
-                configured = realm {
-                  LD_LIBRARY_PATH = "/x";
-                  OPENSSL_CONF = "/x.cnf";
-                };
-              };
-            }
-          ])).assertions
+      # Written out rather than read from host.nix's list, so dropping one
+      # there fails here.
+      loadsCode = [
+        "NODE_OPTIONS"
+        "NODE_PATH"
+        "LD_PRELOAD"
+        "LD_AUDIT"
+        "LD_LIBRARY_PATH"
+        "OPENSSL_CONF"
+        "OPENSSL_MODULES"
+      ];
+      # A realm giving each alone, named for it: node_options and so on.
+      realmOf = name: lib.toLower name;
+      refusals = lib.filter (message: message != "") (
+        map (check: check.message) (
+          lib.filter (check: !check.assertion)
+            (account (bareNixos [
+              self.nixosModules.workstation
+              {
+                home-manager.users.someone.jitsusama.pi.hosts =
+                  lib.listToAttrs (
+                    map (
+                      name:
+                      lib.nameValuePair (realmOf name) (realm {
+                        ${name} = "/x";
+                      })
+                    ) loadsCode
+                  )
+                  // {
+                    plain = realm { GREETING = "hi"; };
+                    both = realm {
+                      OPENSSL_CONF = "/x.cnf";
+                      LD_PRELOAD = "/x.so";
+                    };
+                  };
+              }
+            ])).assertions
+        )
       );
+      # The one refusal naming a realm, or none.
+      prefixOf = realm: "jitsusama.pi.hosts.${realm}.environment gives ";
+      refusalOf = realm: lib.findFirst (lib.hasPrefix (prefixOf realm)) null refusals;
+      # Whether a realm's refusal names just these variables, in any order.
+      names =
+        realm: wanted:
+        let
+          refused = refusalOf realm;
+          given = lib.splitString ", " (
+            lib.head (
+              lib.splitString ", which a pi host's unit clears" (lib.removePrefix (prefixOf realm) refused)
+            )
+          );
+        in
+        refused != null && lib.sort lib.lessThan given == lib.sort lib.lessThan wanted;
     in
-    holds "pi-hosts-refuse-node-options"
-      "A realm's NODE_OPTIONS, LD_PRELOAD, LD_LIBRARY_PATH or OPENSSL_CONF, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and each variable."
+    holds "pi-hosts-refuse-code-loading-variables"
+      "A realm giving NODE_OPTIONS, NODE_PATH, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and each variable it gave."
       (
-        !lib.hasInfix "hosts.plain." refusals
-        && lib.hasInfix "jitsusama.pi.hosts.optioned.environment gives NODE_OPTIONS," refusals
-        && lib.hasInfix "jitsusama.pi.hosts.preloaded.environment gives LD_PRELOAD," refusals
-        && lib.hasInfix "jitsusama.pi.hosts.configured.environment gives LD_LIBRARY_PATH, OPENSSL_CONF," refusals
+        refusalOf "plain" == null
+        && lib.all (name: names (realmOf name) [ name ]) loadsCode
+        && names "both" [
+          "LD_PRELOAD"
+          "OPENSSL_CONF"
+        ]
       );
 }
 # The hosts run as Linux's systemd user units, in slices a Mac has none of.
@@ -219,6 +258,7 @@ in
         && !(opensInspector execStart)
         && lib.all (name: lib.elem name (lib.toList (unit.Service.UnsetEnvironment or [ ]))) [
           "NODE_OPTIONS"
+          "NODE_PATH"
           "LD_PRELOAD"
           "LD_AUDIT"
           "LD_LIBRARY_PATH"

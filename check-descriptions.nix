@@ -2816,11 +2816,11 @@
     it is in; a proof of another runtime, or one that isn't a proof, fails evaluation, naming the
     realm and how to prove it
   '';
-  pi-hosts-refuse-node-options = ''
-    a realm that gives its pi hosts NODE_OPTIONS, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH,
-    OPENSSL_CONF or OPENSSL_MODULES, which their unit clears so none opens the host's inspector
-    or runs code as the host, fails evaluation naming the realm and each variable, rather than
-    having them dropped unseen
+  pi-hosts-refuse-code-loading-variables = ''
+    a realm that gives its pi hosts any one of NODE_OPTIONS, NODE_PATH, LD_PRELOAD, LD_AUDIT,
+    LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, or two at once, which their unit clears so
+    none opens the host's inspector or runs code as the host, fails evaluation naming the realm
+    and just the variables it gave, rather than having them dropped unseen
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the

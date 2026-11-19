@@ -74,12 +74,14 @@ let
   # What would run code as the host as its node starts, so a host's unit
   # clears each and a realm giving one is refused: NODE_OPTIONS, whose
   # --require or --import runs a script and whose --inspect opens the
-  # inspector; the loader's LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH, which
-  # load a library; and OpenSSL's OPENSSL_CONF and OPENSSL_MODULES, whose
-  # configuration loads a module. mycelium takes no host's word whose
-  # environment gives any of them but blank.
+  # inspector; NODE_PATH, where a require that finds nothing beside it looks,
+  # as a library's optional require does; the loader's LD_PRELOAD, LD_AUDIT
+  # and LD_LIBRARY_PATH, which load a library; and OpenSSL's OPENSSL_CONF and
+  # OPENSSL_MODULES, whose configuration loads a module. mycelium takes no
+  # host's word whose environment gives any of them but blank.
   loadsCode = [
     "NODE_OPTIONS"
+    "NODE_PATH"
     "LD_PRELOAD"
     "LD_AUDIT"
     "LD_LIBRARY_PATH"
@@ -412,7 +414,7 @@ in
       in
       {
         assertion = given == [ ];
-        message = "jitsusama.pi.hosts.${realm}.environment gives ${lib.concatStringsSep ", " given}, which a pi host's unit clears, since each would run code as the host as its node starts: --require or --import in NODE_OPTIONS, or its --inspect opening the host's inspector; a library LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH loads; or a module OPENSSL_CONF or OPENSSL_MODULES has OpenSSL load. Drop it. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get none of these from it.";
+        message = "jitsusama.pi.hosts.${realm}.environment gives ${lib.concatStringsSep ", " given}, which a pi host's unit clears, since each would run code as the host as its node starts: NODE_OPTIONS through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. Drop each one. A host's node takes no option from a realm but its heap, set with heapMb, and the conversations' commands, which share the host's environment, get none of these from it.";
       }
     ) cfg;
 
