@@ -87,8 +87,7 @@ class Shell:
         # The windows come from the windows daemon, hearing this niri as the account's does, and
         # the screens' rows with them, in the words the check gives as WINDOWS_WORDS.
         if "WINDOWS" in os.environ:
-            words = os.environ.get("WINDOWS_WORDS")
-            self.daemon("windows", os.environ["WINDOWS"], *(["--words", words] if words else []))
+            self.windows_daemon()
         # Programs' rows come from the programs daemon, over the desktop entries this niri's
         # environment names, given the lists the check gives as PROGRAMS_SOURCES.
         if "PROGRAMS" in os.environ:
@@ -152,6 +151,20 @@ class Shell:
         # seat's keymap, "agents" as "123456". A key of another keymap first makes the word's
         # keymap new again, as a key Joel presses does on his keyboard. F24 does nothing here.
         subprocess.run(["wtype", "-k", "F24"], check=True)
+
+    def unshared(self) -> None:
+        """Wait until the shell knows nothing sees the screen, which it can't till niri says.
+
+        Until then a chord opens home, and a kept place it doesn't list afresh, whole (Wanted.js's
+        opensKept and keptPlaceListed), so a case timing a kept chord waits for this first, after
+        each start; a restart doesn't, since some cases act before the shell has made its spots.
+        The log's tail says why copies hide, a cast seen or niri yet to say.
+        """
+        assert "shared" in self.showing(), "the launcher doesn't say whether the screen's shared"
+        deadline = time.monotonic() + STARTING.total_seconds()
+        while self.showing().get("shared") is not False:
+            assert time.monotonic() < deadline, f"the screen never read unshared:\n{self.tail()}"
+            time.sleep(POLL * 2)
 
     def launch(self, mode: str) -> None:
         """Start the shell alone, its log opened in this mode, and wait until it answers, closed."""
@@ -227,6 +240,11 @@ class Shell:
         """Start the machine daemon the check gives as MACHINE, in MACHINE_WORDS' words."""
         words = os.environ.get("MACHINE_WORDS")
         self.daemon("machine", os.environ["MACHINE"], *(["--words", words] if words else []))
+
+    def windows_daemon(self) -> None:
+        """Start the windows daemon the check gives as WINDOWS, in WINDOWS_WORDS' words."""
+        words = os.environ.get("WINDOWS_WORDS")
+        self.daemon("windows", os.environ["WINDOWS"], *(["--words", words] if words else []))
 
     def daemon_stopped(self, name: str) -> None:
         """Stop the daemon started as `name`, so a case may stand in on its socket."""

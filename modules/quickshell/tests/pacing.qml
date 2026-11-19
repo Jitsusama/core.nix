@@ -472,6 +472,31 @@ QtObject {
             Wanted.opensKept(false), true);
         check(failures, "one under a share opens whole", Wanted.opensKept(true), false);
         check(failures, "as does one that never said", Wanted.opensKept(undefined), false);
+        // A chord into a kept place draws its kept rows only while nothing may
+        // see the screen, as they predate any share and a shut launcher never
+        // makes them again: Super+V's would show a copy, Super+O's a waiting
+        // ask. A place listed as it stands as it opens draws either way.
+        const chord = { listed: false, asNow: false, named: false, led: false };
+        const under = shared => Object.assign({}, chord, { shared: shared });
+        check(failures, "Super+V with nothing sharing draws the copies kept",
+            Wanted.keptPlaceListed(under(false)), "kept");
+        check(failures, "Super+V, or For You asked for from outside, under a share opens whole",
+            Wanted.keptPlaceListed(under(true)), "");
+        check(failures, "as does a chord missing whether it's shared",
+            Wanted.keptPlaceListed(Object.assign({}, chord)), "");
+        check(failures, "Windows under a share lists its source as it stands",
+            Wanted.keptPlaceListed(Object.assign(under(true), { listed: true })), "source");
+        check(failures, "a mark into On under a share lists it as it stands",
+            Wanted.keptPlaceListed(Object.assign(under(true), { asNow: true, named: true })),
+            "asItStands");
+        check(failures, "Super+N under a share lists what it's led to",
+            Wanted.keptPlaceListed(Object.assign(under(true), { led: true })), "led");
+        check(failures, "as does a place asked for by name",
+            Wanted.keptPlaceListed(Object.assign(under(true), { named: true })), "led");
+        check(failures, "a source that lists its place lists it, even asked to list now",
+            Wanted.keptPlaceListed(Object.assign(under(true),
+                { listed: true, asNow: true, named: true })),
+            "source");
         // Found after it, home is searched again by a slice, a key or a
         // click, but a chord only joins, and a step or a word finds its own.
         const stands = { home: true, held: 0, typed: "" };

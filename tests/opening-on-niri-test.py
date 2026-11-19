@@ -191,8 +191,13 @@ PRESENTED_SAID = re.compile(r"launcher: opening presented (\d+) ms from the chor
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
-    """Give the shell once it has kept home by itself, started once a run and never opened."""
+    """Give the shell once it has kept home by itself, started once a run and never opened.
+
+    It waits for niri to have said its casts too (Shell.unshared), as each case does after
+    restarting the shell before it times a kept chord.
+    """
     started = launcher_on_niri.started()
+    started.unshared()
     started.launcher_until(lambda shown: shown.get("kept"))
     yield started
     started.stop()
@@ -207,6 +212,7 @@ def home_kept_after(shell: Shell) -> Iterator[None]:
     """
     yield
     shell.launcher_left_closed()
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
 
 
@@ -223,6 +229,71 @@ def told(line: str) -> None:
     with socket.socket(socket.AF_UNIX) as said:
         said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
         said.sendall(f"{line}\n".encode())
+
+
+class CastsUnsaid:
+    """Stand in for the windows daemon, answering every ask with nothing and its casts unsaid.
+
+    It says hello as answering, so the shell takes it for the daemon rather than hearing niri
+    itself (Niri.qml's standIn), and answers the places watch with no word on its sources, so
+    the casts stay unsaid (NiriRecords.castsHeard) and the screen may be shared, for as long as
+    it stands in.
+    """
+
+    def __init__(self, path: Path) -> None:
+        """Listen on `path`, where the windows daemon listened."""
+        self.path = path
+        self.came: list[socket.socket] = []
+        # Set once the places watch, which says the casts, is answered: before that the shell
+        # may still be hearing niri itself, which says them at once.
+        self.casts_watched = threading.Event()
+        self.listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.listening.bind(str(path))
+        self.listening.listen()
+        threading.Thread(target=self.accept, daemon=True).start()
+
+    def accept(self) -> None:
+        """Answer each client that connects, until it's closed."""
+        while True:
+            try:
+                client, _ = self.listening.accept()
+            except OSError:
+                return
+            self.came.append(client)
+            threading.Thread(target=self.serve, args=(client,), daemon=True).start()
+
+    def serve(self, client: socket.socket) -> None:
+        """Answer one client a line for each ask: hello as answering, any other with nothing.
+
+        A line it can't read is passed over, so the ask after it is still answered.
+        """
+        with contextlib.suppress(OSError), client.makefile("r") as lines:
+            for line in lines:
+                try:
+                    asked = json.loads(line)
+                except ValueError:
+                    continue
+                said: Json = {"id": asked.get("id"), "records": []}
+                if asked.get("ask") == "hello":
+                    said = {"id": "hello", "version": 1, "state": "answering"}
+                client.sendall((json.dumps(said) + "\n").encode())
+                if asked.get("ask") == "watch" and "cast" in (asked.get("kind") or []):
+                    self.casts_watched.set()
+
+    def close(self) -> None:
+        """Stop listening and let each client go, so the daemon started again is heard.
+
+        Shut first, since each client's thread blocks reading it, and a bare close leaves the
+        shell's end open until that read ends, as StandIn's close says.
+        """
+        with contextlib.suppress(OSError):
+            self.listening.shutdown(socket.SHUT_RDWR)
+        self.listening.close()
+        for client in self.came:
+            with contextlib.suppress(OSError):
+                client.shutdown(socket.SHUT_RDWR)
+            client.close()
+        self.path.unlink(missing_ok=True)
 
 
 def heard_closing(shell: Shell, since: int, by: float) -> None:
@@ -247,7 +318,11 @@ def latest(timed: list[Json]) -> int:
 
 
 def opened_from_kept(shell: Shell) -> Json:
-    """Open the launcher as its chord does, and give that opening as it was timed and filled."""
+    """Open the launcher as its chord does, and give that opening as it was timed and filled.
+
+    It waits for niri to have said its casts first, as a restart just before it leaves unsaid.
+    """
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
     timed = latest(openings(shell))
     shell.as_account(shell.ipc("toggle"))
@@ -507,6 +582,7 @@ def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_starte
     to the frame, while every later chord drew from what was kept in 13 to 35.
     """
     shell.restart()
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
     timed = latest(openings(shell))
     shell.as_account(shell.ipc("collection", "on"))
@@ -816,6 +892,7 @@ def test_an_opening_as_the_shell_starts_puts_off_keeping_its_places(shell: Shell
             f"opened as the shell started, it never kept its places once shut:\n{shell.tail()}"
         )
         time.sleep(launcher_on_niri.POLL)
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
     timed = latest(openings(shell))
     shell.as_account(shell.ipc("collection", "on"))
@@ -828,6 +905,54 @@ def test_an_opening_as_the_shell_starts_puts_off_keeping_its_places(shell: Shell
 
     shell.launcher_until(timed_after)
     assert each[-1].get("kept"), f"the first chord into On was made whole: {each[-1]}"
+
+
+def test_a_kept_place_opens_afresh_while_niri_hasnt_said_its_casts(shell: Shell) -> None:
+    """A chord into a kept place opens it afresh until niri has said nothing casts the screen.
+
+    Its rows were kept before any share could begin, so a chord in a call drew them on its first
+    frame: Super+V a copy, Super+O a waiting ask. Here a stand-in for the windows daemon holds
+    the shell where niri is yet to say its casts, which counts as a share, and home opens afresh
+    there too.
+    """
+    shell.daemon_stopped("windows")
+    unsaid = CastsUnsaid(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "windows.sock")
+    try:
+        waited = unsaid.casts_watched.wait(launcher_on_niri.WAITING.total_seconds())
+        assert waited, f"the shell never watched the stand-in's casts:\n{shell.tail()}"
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while shell.showing().get("shared") is not True:
+            assert time.monotonic() < deadline, f"the screen never read shared:\n{shell.tail()}"
+            time.sleep(launcher_on_niri.POLL)
+        since = shell.mark()
+        into_on = opened_by(shell, "collection", "on")
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_closed()
+        home = opened_by(shell, "toggle")
+        said = shell.log.read_bytes()[since:].decode(errors="replace")
+    finally:
+        unsaid.close()
+        shell.windows_daemon()
+    unsaid_why = "as niri hasn't said its casts yet"
+    assert not into_on.get("kept"), f"On was drawn from its kept rows under a share: {into_on}"
+    assert f"launcher: on opened afresh, {unsaid_why}" in said, f"On's wasn't said:\n{said}"
+    assert not home.get("kept"), f"home was drawn from its kept rows under a share: {home}"
+    assert f"launcher: home opened afresh, {unsaid_why}" in said, f"home's wasn't said:\n{said}"
+
+
+def opened_by(shell: Shell, *asked: str) -> Json:
+    """Open the launcher by the IPC call `asked`, and give that opening as it was timed."""
+    timed = latest(openings(shell))
+    shell.as_account(shell.ipc(*asked))
+    shell.launcher_ready()
+    each: list[Json] = []
+
+    def timed_after(_: Json) -> bool:
+        each[:] = openings(shell)
+        return latest(each) > timed
+
+    shell.launcher_until(timed_after)
+    return each[-1]
 
 
 def test_a_first_letter_after_a_restart_is_drawn_on_the_rows_it_lets_go(shell: Shell) -> None:
@@ -1637,6 +1762,7 @@ def test_super_n_first_after_a_restart_draws_the_notices_on_screen_from_what_was
     none on screen it opens the notices, and with some those on screen, each kept apart.
     """
     shell.restart()
+    shell.unshared()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     launcher_on_niri.warmed(shell)
     timed = latest(openings(shell))

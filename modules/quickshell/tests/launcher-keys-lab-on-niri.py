@@ -616,6 +616,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     named(os.environ.get("LAB_NAMED", ""), step, step_key)
     within_known(Path(os.environ["SHELL_FOLDER"]) / "Launcher.qml")
     with launcher_on_niri.running() as shell:
+        shell.unshared()
         shell.launcher_until(lambda shown: shown.get("kept"))
         # Windows to list are opened before the profiler listens, so it hears only the keys.
         for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):

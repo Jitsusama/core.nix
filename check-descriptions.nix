@@ -4088,7 +4088,9 @@
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
     words file or the face has changed; and a daemon's changes are timed from the first line
     its draw shows, and said a place a line, with where their time went as a key's is; and y's
-    flash starts its time a turn after the frame that draws it, and only for the newest yank
+    flash starts its time a turn after the frame that draws it, and only for the newest yank;
+    and a chord into a kept place draws the rows it kept only once niri has said nothing casts
+    the screen, unless its source, a mark or what it's led to lists them afresh
   '';
   the-launcher-places-each-row-it-is-served = ''
     the rows a daemon serves ready are kept in the order each says, each a change names placed
