@@ -48,7 +48,7 @@ JOELS_SCALES = ("1.5", "2")
 # Whether Keep Awake holds something, and whether it holds the lid.
 HELD = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
 LID_HELD = f"{HELD} | grep -q handle-lid-switch"
-# The stand-in sleep leaves this file (tests/desktop.nix).
+# The stand-in sleep adds a line to this file each time (tests/desktop.nix).
 ASLEEP = "test -e /run/suspended"
 # logind sees the lid open and no sleep is coming, queued or running. The sleep unit's state
 # is read, since is-active calls a oneshot still running "activating".
@@ -147,9 +147,14 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
         desktop.lid(shut=True)
         machine.wait_until_succeeds(ASLEEP, timeout=timedelta(minutes=1))
+        # A sleep lasts until the lid opens, so one shut lid is one sleep, and one lock: the
+        # sleeps a shut lid repeated each locked the screen again after it was unlocked.
+        desktop.lid(shut=False)
+        machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
+        machine.succeed('test "$(wc -l < /run/suspended)" -eq 1')
     finally:
         desktop.lid(shut=False)
-        # The stand-in sleep ends at once and logind may queue another, so it settles first.
+        # The stand-in sleep ends once logind sees the lid open, so it settles first.
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
         machine.succeed("rm -f /run/suspended")
         desktop.power("on")
