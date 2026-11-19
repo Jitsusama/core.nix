@@ -121,7 +121,15 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             .collect();
         let fallback = to.unwrap_or_default();
         let quests = quests();
-        measures.extend(measures::cells(&sessions, quests.as_deref(), now, fallback));
+        // The kit's reader, which every tool matching mycelium's names shares.
+        let here = terminal_kit::environment::machine();
+        measures.extend(measures::cells(
+            &sessions,
+            quests.as_deref(),
+            &here,
+            now,
+            fallback,
+        ));
         let (exit, out) = exit_and_out("mycelium-map-check", &["--json"]);
         measures.push(measures::mapped(exit, &out, fallback));
         let looks = looks(&state_home.join("pi/agentic-harness.pi/looks"));

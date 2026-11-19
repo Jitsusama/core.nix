@@ -1,12 +1,14 @@
 //! Reading the sessions for idle.rs and sending what it decides.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::Path;
 
+use jiff::tz::TimeZone;
 use serde::Deserialize;
 
-use super::{Quiet, Told, due, unsay};
+use super::{Quiet, Told, dated, due, routes, unsay};
 use crate::asking::To;
 use crate::mesh::{self, Mesh, Presence};
 use crate::{clock, message, start, write_whole};
@@ -50,11 +52,34 @@ fn working(root: &Path, p: &Presence) -> bool {
         })
 }
 
+/// The quests in the harness's store `quests` whose READMEs say they
+/// route, by id; none where the store can't be read.
+fn routers(quests: &Path) -> BTreeSet<String> {
+    fs::read_dir(quests)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| fs::read_to_string(entry.path().join("README.md")).ok())
+        .filter(|readme| routes(readme))
+        .filter_map(|readme| {
+            let front = crate::axes::plans::front(&readme);
+            Some(crate::axes::plans::field(front, "id")?.to_owned())
+        })
+        .collect()
+}
+
 /// Wakes each session idle with a next step, or naming none on a quest,
 /// and tells each orchestrator
 /// of its sessions idle two hours, remembering in `idle.json` what was
-/// said.
-pub fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Result<()> {
+/// said. Sessions of the quests in the store `quests` that route are left
+/// alone, and a step dated ahead begins its spell at its start.
+pub fn tell_idle(
+    mesh: &Mesh,
+    logs: &Path,
+    quests: &Path,
+    folder: &Path,
+    now: i64,
+) -> io::Result<()> {
     let path = folder.join("idle.json");
     let mut told: Told = fs::read(&path)
         .ok()
@@ -64,6 +89,8 @@ pub fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Resul
         .ok()
         .map(|id| id.trim().to_owned());
     let logged = mesh::logs_written(logs);
+    let routers = routers(quests);
+    let zone = TimeZone::system();
     let sessions: Vec<Quiet> = mesh
         .all()
         .iter()
@@ -75,6 +102,11 @@ pub fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Resul
                 (mesh.is_parked(&p.session), working(&mesh.root, p)),
                 |p| p.runs(start::is_pi, start::is_host),
             )
+            .map(|q| Quiet {
+                routes: q.quest.as_ref().is_some_and(|id| routers.contains(id)),
+                starts: q.next.as_deref().and_then(|n| dated::starts(n, now, &zone)),
+                ..q
+            })
         })
         .collect();
     let tells = due(&sessions, &mut told, now, clock);

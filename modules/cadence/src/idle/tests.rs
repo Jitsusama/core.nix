@@ -19,6 +19,8 @@ fn quiet(idle: i64) -> Quiet {
         next: None,
         stepless: false,
         working: false,
+        routes: false,
+        starts: None,
     }
 }
 
@@ -205,6 +207,73 @@ fn clock(at: i64) -> String {
 
 fn told_to_orchestrator(tells: &[Tell]) -> Vec<&Tell> {
     tells.iter().filter(|t| !t.wakes).collect()
+}
+
+#[test]
+fn a_cell_of_a_quest_that_routes_is_never_woken_or_told_of() {
+    let mut told = Told::default();
+    // As 8GYNJ6, the void, on 19 November: idle by design on its quest.
+    let void = |idle| Quiet {
+        routes: true,
+        stepless: true,
+        ..quiet(idle)
+    };
+    assert_eq!(
+        due(&[void(WAKE_AFTER)], &mut told, NOW, clock),
+        Vec::<Tell>::new(),
+        "woken at twenty minutes"
+    );
+    assert_eq!(
+        due(&[void(IDLE_FOR + 3600)], &mut told, NOW, clock),
+        Vec::<Tell>::new(),
+        "told of at two hours"
+    );
+    let readme = |front: &str| format!("---\nid: QEST-1\n{front}status: active\n---\n# Q\n");
+    assert!(
+        routes(&readme("hears: addressed\n")),
+        "the harness's mark unread"
+    );
+    assert!(!routes(&readme("")), "a quest with no mark read as routing");
+    assert!(
+        !routes("# Q\n\nhears: addressed\n"),
+        "a body's line read as its frontmatter"
+    );
+}
+
+#[test]
+fn a_step_dated_ahead_counts_no_idle_time_until_it_starts() {
+    let mut told = Told::default();
+    // Idle three hours, its step starting an hour from now.
+    let s = Quiet {
+        starts: Some(NOW + 3600),
+        ..with_next(3 * 3600)
+    };
+    let sessions = std::slice::from_ref(&s);
+    assert_eq!(
+        due(sessions, &mut told, NOW, clock),
+        Vec::<Tell>::new(),
+        "woken, or told of, before its step starts"
+    );
+    assert_eq!(
+        due(sessions, &mut told, NOW + 3600 + WAKE_AFTER - 60, clock),
+        Vec::<Tell>::new(),
+        "woken under twenty minutes past its start"
+    );
+    let tells = due(sessions, &mut told, NOW + 3600 + WAKE_AFTER, clock);
+    assert!(
+        tells.len() == 1 && tells[0].wakes,
+        "woken twenty minutes past its start: {tells:?}"
+    );
+    assert!(
+        told_to_orchestrator(&due(sessions, &mut told, NOW + 3600 + IDLE_FOR - 60, clock))
+            .is_empty(),
+        "its orchestrator told under two hours past its start"
+    );
+    assert_eq!(
+        told_to_orchestrator(&due(sessions, &mut told, NOW + 3600 + IDLE_FOR, clock)).len(),
+        1,
+        "its orchestrator told two hours past its start"
+    );
 }
 
 #[test]
