@@ -5,8 +5,10 @@
 # from any home network, as a VM is, net still serves how each of its
 # sources stands, so the feed has something to say before eero has; once a
 # record is where eero writes it in the runtime folder, net's next round
-# reads the house from it. The VM reaches no network beyond itself, so
-# nothing net asks of the house's addresses leaves it.
+# reads the house from it. Built as a check, in the build's sandbox, the VM
+# reaches no network beyond itself, so nothing net asks of the house's
+# addresses is answered; a driver run outside the sandbox may let those few
+# reads out to whatever holds the same private addresses.
 # That the page draws what the feed says is network-site-reads-live's,
 # beside stand-in daemons in the build; only a running account's manager,
 # its runtime folder and the units side by side show that they find each

@@ -13,32 +13,31 @@ need no value from Nix.
 
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
-from sites_session import LISTENING_S, SITES, as_the_account, listened
+from sites_session import SITES, Feed, Said, as_the_account, stands, told
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from test_driver.machine import BaseMachine
 
-# A line the feed says, as JSON reads it.
-type Said = dict[str, Any]
-
-FEED = "ws://127.0.0.1:8484/feed/net"
 # The kinds the network page watches, as home.nix declares its feed.
 KINDS = ["device", "link", "source", "internet", "concern"]
-# The page's kit's asks of a feed: hello, then a watch of each kind it reads.
-ASKS: list[dict[str, object]] = [
-    {"id": 1, "ask": "hello"},
-    *({"id": at, "ask": "watch", "kind": kind} for at, kind in enumerate(KINDS, start=2)),
-]
-# How long the feed has to say what changed: past the bridge's first few tries at the daemon, and
-# past net's next round, a minute after its last, which once eero's record is in also waits two
-# seconds on each receiver, printer and Apple TV it lists, none of which answers in a VM.
-SAYING_S = 150
+# The feed, asked hello and then a watch of each kind the page reads, as its kit asks. It has past
+# the bridge's first few tries at the daemon, and past net's next round, to say what changed. That
+# round comes a minute after the last, and once eero's record is in it waits up to about 14 s on
+# what the record lists, none of which answers here: 2 s on the modem's first page, 2 s on the
+# receiver's description, 2 s on each of the printer's four pages and 2 s on the Apple TV.
+FEED = Feed(
+    address="ws://127.0.0.1:8484/feed/net",
+    asks=[
+        {"id": 1, "ask": "hello"},
+        *({"id": at, "ask": "watch", "kind": kind} for at, kind in enumerate(KINDS, start=2)),
+    ],
+    saying_s=150,
+)
 # net's socket and its unit, as its home module names them, which sites_session's daemon_back starts
 # again after a test that stops them.
 DAEMON = ["net.socket", "net.service"]
@@ -49,28 +48,14 @@ EERO_WRITES = "/run/user/1000/eero/home-network.json"
 NOT_WRITTEN = "eero hasn't written what it read"
 
 
-def told(heard: list[Said]) -> dict[str, Said]:
-    """Give every record the feed told, by its key, the last word on each kept."""
-    return {
-        record["key"]: record
-        for line in heard
-        for record in line.get("records", []) + line.get("changed", [])
-        if "key" in record
-    }
+def eero_said(records: dict[str, Said]) -> bool:
+    """Whether the feed has told eero's source yet."""
+    return "source:eero" in records
 
 
-def stands(machine: BaseMachine, state: str, holding: str = "") -> list[Said]:
-    """Listen until the feed says it stands at `state`, holding a key starting `holding`."""
-    words = ""
-    for _ in range(SAYING_S // LISTENING_S):
-        words = listened(machine, FEED, ASKS)
-        heard = [json.loads(line) for line in words.splitlines() if line.startswith("{")]
-        # A broken feed tells no records, so only a state that holds them is asked for one.
-        if any(line.get("state") == state for line in heard) and (
-            not holding or any(key.startswith(holding) for key in told(heard))
-        ):
-            return heard
-    pytest.fail(f"the feed never said it was {state} with {holding!r}; last it said:\n{words}")
+def eero_answers(records: dict[str, Said]) -> bool:
+    """Whether eero's source answers, as it does once net has read eero's record."""
+    return records.get("source:eero", {}).get("state") == "answering"
 
 
 @pytest.fixture(scope="module")
@@ -104,7 +89,7 @@ def test_the_server_serves_the_network_page(served: BaseMachine) -> None:
 
 def test_the_feed_says_how_each_source_stands_before_eero_has(served: BaseMachine) -> None:
     """With nothing from eero yet, the feed says live, and that eero hasn't written."""
-    records = told(stands(served, "live", "source:eero"))
+    records = told(stands(served, FEED, "live", eero_said))
     eero = records["source:eero"]
     assert eero.get("state") == "unreachable", f"eero answered with nothing written: {eero}"
     assert NOT_WRITTEN in str(eero.get("reason", "")), f"eero's source didn't say why: {eero}"
@@ -114,19 +99,19 @@ def test_the_house_eero_wrote_reaches_the_feed(eero_written: BaseMachine) -> Non
     """Once eero's record is where its daemon writes it, the running net's next round tells it.
 
     Away from any home network, the modem and the switch say nothing, so every device the feed
-    tells is one net read from eero's record.
+    tells is one net read from eero's record, told over its own watch apart from eero's source.
     """
-    records = told(stands(eero_written, "live", "device:"))
-    assert records["source:eero"].get("state") == "answering", (
-        f"eero's record was read but its source didn't answer: {records['source:eero']}"
+    records = told(stands(eero_written, FEED, "live", eero_answers))
+    assert any(key.startswith("device:") for key in records), (
+        f"eero's source answered but no device of its record was told: {sorted(records)}"
     )
 
 
 def test_a_daemon_stopped_is_said_broken_then_live(daemon_back: BaseMachine) -> None:
     """The feed says broken once net and its socket stop, and live once the socket's back."""
-    stands(daemon_back, "live", "source:")
+    stands(daemon_back, FEED, "live", eero_said)
     units = " ".join(DAEMON)
     daemon_back.succeed(as_the_account(f"systemctl --user stop {units}"))
-    stands(daemon_back, "broken")
+    stands(daemon_back, FEED, "broken")
     daemon_back.succeed(as_the_account("systemctl --user start net.socket"))
-    stands(daemon_back, "live", "source:")
+    stands(daemon_back, FEED, "live", eero_said)
