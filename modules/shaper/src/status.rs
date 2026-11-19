@@ -627,7 +627,10 @@ mod tests {
         };
         // A why long enough to wrap at 60, so the hang's path is read.
         if let Some(heard) = link.heard.as_mut() {
-            heard.why = heard.why.take().map(|why| format!("{why} \u{1b}[2J\u{7}cleared"));
+            heard.why = heard
+                .why
+                .take()
+                .map(|why| format!("{why} \u{1b}[2J\u{7}cleared"));
         }
         for cells in [60, 200] {
             let lines = said(&link, Room::Cells(cells));
