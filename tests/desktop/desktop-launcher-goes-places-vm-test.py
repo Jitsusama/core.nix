@@ -206,8 +206,33 @@ def foot(desktop: Desktop, moved_from: str) -> tuple[int, int]:
         moved = (shown["selected"] or {}).get("is", "") != moved_from
         return moved and not shown["saying"]
 
-    desktop.launcher_until(keys_alone)
+    try:
+        desktop.launcher_until(keys_alone)
+    except AssertionError as failed:
+        # A word told over the keys outlasts any wait, so name it: one an earlier subtest's act
+        # left reads as a slow shell otherwise, as it did on 2026-11-18.
+        told = f"the foot never stood alone, told {read[0]['saying'] if read else []}"
+        raise AssertionError(told) from failed
     return read[0]["keysAt"], len(read[0]["glance"])
+
+
+def settled(desktop: Desktop, key: str, since: str, within: dt.timedelta) -> None:
+    """Wait for the launcher to say how its act on a row came out, become or not, since a mark.
+
+    What didn't become is told at the next opening until a key, so a subtest that runs an act
+    waits here while its own openings can spend the word. Within is the act's own bound and more.
+    """
+    became, not_become = f"became {key}", f"not become {key}"
+
+    def came_out(said: str) -> bool:
+        # What didn't become may say why after a colon.
+        return said in {became, not_become} or said.startswith(f"{not_become}: ")
+
+    try:
+        desktop.reported("", came_out, since, within)
+    except AssertionError as failed:
+        unsaid = f"the launcher never said how {key} came out"
+        raise AssertionError(unsaid) from failed
 
 
 def at_rotation(shown: Json) -> bool:
@@ -798,8 +823,9 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # How the reopening came out is told at the next opening until a key, so it settles here,
     # where this subtest's own openings and their keys spend it. Left to land late, it was told
     # as Home opened and stood over the foot it reads before any key (twice on 2026-11-18).
-    # Either way will do: the reopening itself is the sessions test's.
-    desktop.reported("", lambda said: said.startswith(("became ", "not become ")), since)
+    # Either way will do: the reopening itself is the sessions test's. It's held 30 s for the
+    # session to start (Sessions.startsWithin), so the wait is longer.
+    settled(desktop, "orchestrator:TESTQA", since, dt.timedelta(seconds=60))
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,
@@ -829,8 +855,11 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     assert ran(sleep)["offered"]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake")
     desktop.land()
+    since = desktop.mark()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
+    # The last act here, so it settles before the close, where a word it's told is spent.
+    settled(desktop, "session:awake", since, dt.timedelta(seconds=30))
     desktop.close_launcher()
     # One not there says so.
     assert "error" in ran({"id": "nothing:here"})
