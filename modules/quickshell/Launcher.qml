@@ -1464,7 +1464,9 @@ Scope {
         }
     }
 
-    // The rows an id is the path to, from home, or null for one not there.
+    // The rows an id is the path to, from home (`path`), and whether it
+    // names them all (`whole`), or only those found before a step that
+    // names nothing.
     function catalogued(id) {
         let rows = home();
         let things = true;
@@ -1476,12 +1478,12 @@ Scope {
             const row = rows.find(one => (Catalogue.listed(one) || Arming.holdsStill(one))
                 && steadyId(one) === step) ?? null;
             if (row === null)
-                return null;
+                return { path, whole: false };
             path.push(row);
             rows = catalogueHolds(row, things);
             things = collects({ row: row });
         }
-        return path.length > 0 ? path : null;
+        return { path, whole: path.length > 0 };
     }
 
     // Does what an id names, as asked from outside, saying what it did: a
@@ -1643,9 +1645,19 @@ Scope {
 
     function catalogueRunWalked(id, words) {
         freshen();
-        const path = catalogued(id);
-        if (path === null)
-            return { error: `the launcher has nothing called ${id}` };
+        const walked = catalogued(id);
+        if (!walked.whole) {
+            // A step missed under one held still, as an ask's Release It
+            // under the row a share hides, which holds no acts, is refused
+            // for it, saying why, rather than said gone, as it isn't.
+            const stillOn = heldWhyOf(walked.path, null);
+            if (stillOn === null)
+                return { error: `the launcher has nothing called ${id}` };
+            console.info(`launcher: refused from outside, held still: ${stillOn}`);
+            return { done: false, said: walked.path.map(row => row.name).join(" \u203a ")
+                + `: ${stillOn}` };
+        }
+        const path = walked.path;
         const target = path[path.length - 1];
         const said = path.map(row => row.name).join(" \u203a ");
         const ids = path.map(row => steadyId(row));
@@ -1860,7 +1872,7 @@ Scope {
             const found = rows.find(one => !!one && !one.gone && steadyId(one) === ids[at]);
             if (!found)
                 return { missing: String(steps[at] ?? ids[at]), near: [],
-                    in: trail.map(one => one.name) };
+                    in: trail.map(one => one.name), trail: trail };
             trail.push(found);
             among = things;
             rows = catalogueHolds(found, things);
@@ -1908,8 +1920,17 @@ Scope {
     // Does what's walked, as doneFromTerminal says; none walked, it's
     // `nothing`, which the terminal says in its own words.
     function doneWalked(walked, words, sure) {
-        if (walked.missing !== undefined)
-            return { missing: walked.missing, near: walked.near, in: walked.in };
+        if (walked.missing !== undefined) {
+            // A step missed under one held still is refused for it, saying
+            // why, as the walk from outside refuses it, rather than said
+            // missing: a sure ask's Release It, under an ask a share began
+            // to hide since, is still there once the share ends.
+            const stillOn = heldWhyOf(walked.trail ?? [], null);
+            if (stillOn === null)
+                return { missing: walked.missing, near: walked.near, in: walked.in };
+            console.info(`launcher: refused from a terminal, held still: ${stillOn}`);
+            return { refused: stillOn, in: walked.in };
+        }
         const trail = walked.trail;
         if (trail.length === 0)
             return { nothing: true };
@@ -3340,10 +3361,16 @@ Scope {
     // share hides (secret-asks/Asks.qml). Not yet knowing whether the
     // screen is shared counts as shared, so the journal says how many were
     // forgotten, never their words, for the word lost in a gap to be found.
+    // A row kept dimmed where it left (Steady.kept) is its copy as last
+    // shown, before the share, so it goes too, rather than naming what
+    // the share hides until the next key; and an arm made before goes,
+    // so no Return after the share releases on a line read before it.
     function untold() {
         const forgotten = toldOnOpen.length + saying.length;
         toldOnOpen = [];
         say([]);
+        forgetGone();
+        armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `
                 + "as the screen may be shared");
