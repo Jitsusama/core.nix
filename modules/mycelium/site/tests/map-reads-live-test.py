@@ -600,6 +600,9 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
         expect(hub, "a network nobody else started was drawn as a branch").not_to_have_attribute(
             "data-branch-of", re.compile(".")
         )
+        # Where it stood before it grew: a branch is laid out further out,
+        # so a layout kept from before the forage would leave it there.
+        stood = hub.get_attribute("transform")
         started = {"started_by": GROWN_BY, "split_from": None, "parent": None}
         key = f"forage:{GROWN_CELL}"
         heard = int(datetime.now(UTC).timestamp() * 1000)
@@ -607,6 +610,9 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
         forage_node.tell("forage", changed=[{**forage, "lineage": started}])
         expect(hub, "the network never grew out of the one that started it").to_have_attribute(
             "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        expect(hub, "the branch was drawn where it stood before it grew").not_to_have_attribute(
+            "transform", stood or ""
         )
         the_map_counts(page, COUNTED, "a branch grown changed the count")
         # Its drawer says what it grew out of and whose start grew it, and

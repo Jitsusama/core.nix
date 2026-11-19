@@ -29,8 +29,12 @@ Nothing on it acts on the network.
   started inside another hangs from its parent's hub by a cord of its own.
   So does a network grown out of another, one whose cells were started by
   cells of the other: it branches from the network whose cells started
-  most of its own, and its drawer names them. Who started a cell is known
-  only of this machine's cells for now, so only those grow a branch.
+  more of its cells than any other, and its drawer names them. A branch
+  lasts only while the cell that started it is on the map, since that
+  cell's network is known from where it is drawn. Who started a cell is
+  known only of this machine's cells for now, so each machine's map grows
+  branches only from its own cells, and two machines' maps of one realm
+  can differ.
 - **Hyphae join a hub to its cells.** Each session is a cell, seeded round
   its hub like the seeds of a sunflower, and joined to it by fine hyphae.
 - **Dotted cross-hyphae join cells sharing something else**: sea glass

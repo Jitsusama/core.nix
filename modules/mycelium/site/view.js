@@ -14,8 +14,10 @@
 // so the map moves to the feed without changing what it draws; it is split
 // by what changes for one reason as it is rewritten in TypeScript on the
 // kit (modules/mycelium/site/README.md says what remains). What each key
-// asks is decided in keys.ts, which this imports as the module it's built to.
+// asks is decided in keys.ts, and which network grows out of which in
+// lineage.ts, which this imports as the modules they're built to.
 import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
+import { grownOf } from "./lineage.js";
 
 (() => {
   // The most time between two readings while the node moves: site.ts hands
@@ -538,31 +540,19 @@ import { EVERY_PAGE_ACT, EVERY_TREE_ACT, findKey, mapKey, pageKey, stepped, swit
     // Where they run is said only to tell two such groups apart.
     if (loose.size === 1) for (const h of loose.values()) h.name = "Working alone";
     // A network the node sets within none grows out of the network whose
-    // cells started most of its own, as a hypha branches from another: who
-    // started each cell comes from its forage (lineage.ts). Where the node
-    // says a network sits stands, and no branch is grown that would loop
-    // back round to the network it grows from.
+    // cells started more of its cells than any other, as a hypha branches
+    // from another: who started each cell comes from its forage, and which
+    // grows out of which is lineage.ts's to say. A starter is known only
+    // while it is drawn, since its network is where it is drawn.
     const startedBy = new Map((now.started || []).map((x) => [x.cell, x.by]));
     const cellNamed = new Map(cells.map((s) => [s.address, s]));
-    const sitsIn = (h, of) => {
-      for (let at = h, seen = new Set(); at && !seen.has(at); seen.add(at), at = at.within && hubs.get(at.within)) if (at === of) return true;
-      return false;
-    };
-    for (const h of [...hubs.values()].sort((a, b) => collate(a.key, b.key))) {
-      if (h.within) continue;
-      const from = new Map();
-      for (const s of h.cells) {
-        const by = cellNamed.get(startedBy.get(s.address));
-        if (!by?.hub || sitsIn(by.hub, h)) continue;
-        const had = from.get(by.hub) || { by: new Set(), cells: 0 };
-        had.by.add(by);
-        had.cells += 1;
-        from.set(by.hub, had);
-      }
-      const [parent, grown] = [...from].sort(([p, x], [q, y]) => y.cells - x.cells || collate(p.name, q.name))[0] || [];
-      if (!parent) continue;
+    const hubOf = new Map(cells.filter((s) => s.hub).map((s) => [s.address, s.hub.key]));
+    const networks = [...hubs.values()].map((h) => ({ key: h.key, name: h.name, within: h.within, cells: h.cells.map((s) => s.address) }));
+    for (const [key, grown] of grownOf(networks, hubOf, now.started)) {
+      const h = hubs.get(key);
+      const parent = hubs.get(grown.from);
       h.within = parent.key;
-      h.grown = { by: [...grown.by].sort((a, b) => collate(a.short, b.short)), cells: grown.cells };
+      h.grown = { by: grown.by.map((a) => cellNamed.get(a)).sort((a, b) => collate(a.short, b.short)), cells: grown.cells };
       parent.children.push(h);
     }
     for (const h of loose.values()) hubs.set(h.key, h);

@@ -1819,8 +1819,12 @@
     not served, what a receptor fed a cell, kept for ten minutes and up to a minute ahead, the
     map drawing again when the first balance or feeding ends, who started each cell from its
     forage, none where no forage is served and none for a cell started by itself or by nobody,
-    and what each key asks of the map, its tree, its find line, the page and the theme switch,
-    chords, typing and a key named after an object's own asking nothing
+    a network the node sets within none growing out of the one whose cells started more of its
+    cells than any other, a tie going by name, where the node sets a network standing, no start
+    from inside it counting, of two that started each other's cells the stronger the trunk and
+    no branch looping back round, and what each key asks of the map, its tree, its find line,
+    the page and the theme switch, chords, typing and a key named after an object's own asking
+    nothing
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
@@ -1830,7 +1834,8 @@
     words drawn as words and never as markup, a receptor's feeding of a cell drawn with both
     drawers saying it and leaving once its ten minutes end or the node drops it, a network grown
     out of another as its branch once a forage says a cell of the other started one of its own,
-    both drawers saying so and the branch going with the forage, a key of each
+    its hub laid out again as a branch, both drawers saying so and the branch going with the
+    forage, a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now, the tree and the theme switch wrapping),
     the web-design skill's page checks and the map's own (each opened thing in view, its drawer
