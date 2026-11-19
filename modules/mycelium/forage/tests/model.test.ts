@@ -71,7 +71,7 @@ it("says a node-wide fault in where starts came from once", () => {
   });
   const unread = (...records: ReturnType<typeof forage>[]) => foragesOf(told(records)).unread;
   assert.deepEqual(unread(forage("KESTRL", lineage("Book")), forage("TERNAA", lineage("Book"))), [
-    "2 cells' started_by_from said neither book nor presence",
+    "2 cells' started_by_from said neither book nor presence (KESTRL and TERNAA)",
   ]);
   // Once the node sends sources, a starter with none is said by its cell.
   assert.deepEqual(unread(forage("KESTRL", lineage("book")), forage("TERNAA", lineage())), [
@@ -83,8 +83,13 @@ it("says a node-wide fault in where starts came from once", () => {
       forage("TERNAA", lineage()),
       forage("SKIFFS", lineage()),
     ),
-    ["where 2 cells' starts came from"],
+    ["where 2 cells' starts came from (TERNAA and SKIFFS)"],
   );
+  // Past six, the rest are counted, so the line stays short.
+  const nine = [..."ABCDEFGHI"].map((letter) => forage(letter.repeat(6), lineage()));
+  assert.deepEqual(unread(forage("KESTRL", lineage("book")), ...nine), [
+    "where 9 cells' starts came from (AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF and 3 more)",
+  ]);
   // A misspelt source is still a source sent, so a starter with none beside it is said by cell.
   assert.deepEqual(unread(forage("KESTRL", lineage("Book")), forage("TERNAA", lineage())), [
     "KESTRL's started_by_from said neither book nor presence",

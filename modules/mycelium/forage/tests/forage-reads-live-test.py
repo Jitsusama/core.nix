@@ -144,8 +144,8 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
         "stroke-dasharray", "none"
     )
     # Each booked end says its cell whole, so a fact gone missing can't pass for one unhedged.
-    # These read text, which is the same however a line wraps; that each hedge stays with its
-    # cell is pinned by the markup in draw.test.ts, which stands in for the layout here.
+    # These read text, which is the same however a line wraps; the markup in draw.test.ts
+    # pins which comma each tie holds, and here a tie is checked to hold, as its style says.
     panel = opened_on(forage_page, "SKIFFS")
     expect(fact(panel, "Started by"), "SKIFFS's booked start didn't read whole").to_have_text(
         "KESTRL"
@@ -157,6 +157,10 @@ def test_a_cell_started_or_split_stands_under_the_one_it_grew_from(forage_page: 
     panel = opened_on(forage_page, "OSPREY")
     expect(fact(panel, "Split from"), "OSPREY didn't say it split from TERNAA").to_contain_text(
         "TERNAA, as claimed"
+    )
+    tie = fact(panel, "Split from").locator(".tie")
+    expect(tie, "OSPREY's hedged ancestor could break from its comma").to_have_css(
+        "white-space", "nowrap"
     )
     panel = opened_on(forage_page, "TERNAA")
     expect(fact(panel, "Split into"), "TERNAA didn't say it split into OSPREY").to_contain_text(

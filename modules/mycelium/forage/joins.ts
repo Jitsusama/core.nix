@@ -168,6 +168,23 @@ function bookedOf(lineage: Fields, cell: string, told: StartsTold): boolean {
   return from === "book";
 }
 
+/** How many cells a fault names before counting the rest, so its line stays short. */
+const MOST_NAMED = 6;
+
+/**
+ * The cells a fault of several is about, in brackets, so whoever reads it knows where to
+ * look; one more is named rather than counted, as "and 1 more" says less than its name.
+ */
+function which(cells: readonly string[]): string {
+  if (cells.length < 2) {
+    return "";
+  }
+  const named = cells.length > MOST_NAMED + 1 ? cells.slice(0, MOST_NAMED) : [...cells];
+  const rest = cells.length - named.length;
+  const last = rest === 0 ? named.pop() : `${rest} more`;
+  return ` (${named.join(", ")} and ${last})`;
+}
+
 /**
  * Why starts read as claimed: a source neither word, or a starter with none, said by cell
  * unless no cell's start had one, as a node from before the field, said once for all.
@@ -177,11 +194,12 @@ function startsUnread(told: StartsTold): string[] {
     cells.length === 1 ? `${cells[0]}'s` : `${cells.length} cells'`;
   const unread: string[] = [];
   if (told.odd.length > 0) {
-    unread.push(`${whose(told.odd)} started_by_from said neither book nor presence`);
+    const odd = `${whose(told.odd)} started_by_from said neither book nor presence`;
+    unread.push(odd + which(told.odd));
   }
   if (told.unsourced.length > 0 && told.said) {
     const starts = told.unsourced.length === 1 ? "start" : "starts";
-    unread.push(`where ${whose(told.unsourced)} ${starts} came from`);
+    unread.push(`where ${whose(told.unsourced)} ${starts} came from${which(told.unsourced)}`);
   } else if (told.unsourced.length > 0) {
     unread.push("where any start came from, as the node sends none yet, so each reads as claimed");
   }

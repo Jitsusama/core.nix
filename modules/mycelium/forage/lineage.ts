@@ -62,11 +62,22 @@ function bracketed(hedge: string): string {
 }
 
 /**
- * `item` with the comma after it in a list: a link is drawn as a box of its own, which a
- * line may break after, so its comma is tied to it; text holds its comma itself.
+ * A cell as a list says it, and whether it ends in a link, drawn as a box of its own which a
+ * line may break after; the one drawing it knows, where its markup would only hint.
  */
-function listed(item: string): string {
-  return item.endsWith("</a>") ? `<span class="tie">${item},</span>` : `${item},`;
+interface Named {
+  readonly said: string;
+  readonly boxed: boolean;
+}
+
+/** `cell` linked to its row, a box a line may break after. */
+function linked(cell: string): Named {
+  return { said: cellLink(cell), boxed: true };
+}
+
+/** `item` with the comma after it in a list, tied to a box; text holds its comma itself. */
+function listed(item: Named): string {
+  return item.boxed ? `<span class="tie">${item.said},</span>` : `${item.said},`;
 }
 
 /** How many of `count` cells a list names, past `MOST_STARTED` counting the rest. */
@@ -83,7 +94,7 @@ function namedOf(count: number): number {
  */
 function cellsStarted(
   started: readonly string[],
-  name: (cell: string) => string = cellLink,
+  name: (cell: string) => Named = linked,
   claimed = false,
 ): string {
   if (started.length === 0) {
@@ -94,24 +105,27 @@ function cellsStarted(
   const count = claimed ? `${counted}, ${one ? "" : "all "}as claimed` : counted;
   const links = started.slice(0, namedOf(started.length)).map(name);
   const rest = started.length - links.length;
-  const last = rest === 0 ? (links.pop() ?? "") : `${rest} more`;
-  const before = links.map((link, at) => (at < links.length - 1 ? listed(link) : link)).join(" ");
+  const last = rest === 0 ? (links.pop()?.said ?? "") : `${rest} more`;
+  const said = (link: Named, at: number) => (at < links.length - 1 ? listed(link) : link.said);
+  const before = links.map(said).join(" ");
   return before === "" ? `${count}: ${last}` : `${count}: ${before} and ${last}`;
 }
 
 /**
- * The cells a cell started, the book's unheld as claimed: after the list if all, else in
+ * The cells a cell started, the book's unheld as claimed: before the list if all, else in
  * brackets after each named and the count, as a bare hedge would read onto the one before.
  */
 function startsSaid(started: readonly Pick<Forage, "cell" | "booked">[]): string {
   const cells = started.map((each) => each.cell);
   const claimed = new Set(started.filter((each) => !each.booked).map((each) => each.cell));
   if (claimed.size > 0 && claimed.size === cells.length) {
-    return cellsStarted(cells, cellLink, true);
+    return cellsStarted(cells, linked, true);
   }
-  // A bracketed name is held whole, so its bracket never opens a line.
-  const name = (cell: string) =>
-    claimed.has(cell) ? `<span class="tie">${cellLink(cell)} (as claimed)</span>` : cellLink(cell);
+  // A bracketed name is held whole, so its bracket never opens a line; it ends in text.
+  const name = (cell: string): Named =>
+    claimed.has(cell)
+      ? { said: `<span class="tie">${cellLink(cell)} (as claimed)</span>`, boxed: false }
+      : linked(cell);
   const counted = cells.slice(namedOf(cells.length));
   const some = counted.filter((cell) => claimed.has(cell)).length;
   const all = some === counted.length;
@@ -130,7 +144,8 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
 
 /** The cells `forage` split into, every split only claimed, so the whole list is hedged. */
 function splitSaid(forage: Forage, here: ReadonlySet<string>): string {
-  return cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here), true);
+  const name = (cell: string): Named => ({ said: cellOrAway(cell, here), boxed: here.has(cell) });
+  return cellsStarted(forage.splitInto, name, true);
 }
 
 export { cellOrAway, claimedCell, escaped, namedOf, splitSaid, startedBy, startsSaid };

@@ -200,11 +200,12 @@ it("escapes a claimed address not standing here", () => {
 });
 
 it("ties each comma to the address before it, so no line starts with one", () => {
-  // A comma follows each name but the two around "and"; eight name six.
-  for (const [count, ties] of [
-    [3, 1],
-    [7, 5],
-    [8, 5],
+  // A comma follows each name but the two around "and"; eight name six, of them A, C and E
+  // claimed below.
+  for (const [count, ties, held] of [
+    [3, 1, 2],
+    [7, 5, 4],
+    [8, 5, 3],
   ] as const) {
     for (const line of [
       startedLine(forage(), cells(count)),
@@ -215,6 +216,7 @@ it("ties each comma to the address before it, so no line starts with one", () =>
     }
     // Every other start claimed: each claimed name held whole with its bracket.
     const line = startedLine(forage(), cells(count), (cell) => cell.charCodeAt(0) % 2 === 0);
+    assert.equal(line.match(HELD)?.length, held, line);
     const rest = line.replace(HELD, "").replace(TIED, "");
     assert.ok(!(rest.includes("</a>,") || rest.includes("</a> (")), `loose in ${line}`);
   }
@@ -380,6 +382,9 @@ it("says the cell a cell split from and the cells it split into, linked when her
   );
   assert.match(split, SPLIT_FROM);
   assert.match(split, SPLIT_INTO);
+  // A booked start from the cell it split from still says the split as claimed.
+  const booked = forage({ startedBy: "TERNAA", booked: true, splitFrom: "TERNAA" });
+  assert.match(panelOf(booked, here, []), SPLIT_FROM);
   const three = panelOf(forage({ splitInto: ["FARAWAY", "TERNAA", "KESTRL"] }), here, []);
   assert.match(three, AWAY_LISTED);
   assert.match(panelOf(forage({ splitFrom: "FARAWAY" }), here, []), SPLIT_FROM_AWAY);
@@ -404,6 +409,20 @@ it("says each need a cell serves and relies on, in the asking cell's words, esca
   assert.ok(saidBy(panel, "QEST-20261116-KESTRL").includes("a plan"));
   assert.match(panel, AWAY_FOR);
   assert.ok(!panel.includes("not a time"));
+});
+
+it("says a need's month from its own table, whatever the runtime's locale says", () => {
+  const { toLocaleDateString: dateOf, toLocaleString: timeOf } = Date.prototype;
+  Date.prototype.toLocaleDateString = () => "Brumaire";
+  Date.prototype.toLocaleString = () => "Brumaire";
+  try {
+    const serves = [{ cell: "OSPREY", need: "", since: "2025-11-16T13:05:00Z" }];
+    const panel = panelOf(forage({ serves }), new Set(["KESTRL", "OSPREY"]), []);
+    assert.ok(panel.includes(" Nov, ") && !panel.includes("Brumaire"), panel);
+  } finally {
+    Date.prototype.toLocaleDateString = dateOf;
+    Date.prototype.toLocaleString = timeOf;
+  }
 });
 
 it("draws one dotted arc for each pair a need joins on the floor, and a branch for a split", () => {
