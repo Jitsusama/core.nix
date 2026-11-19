@@ -60,8 +60,16 @@ def test_the_share_is_never_under_one_nor_over_the_processors() -> None:
 
 def test_a_turn_with_no_busy_ticks_gives_a_share_of_one() -> None:
     """With no busy ticks in a turn there's nothing to weigh, rather than a division by none."""
-    share = builders_share((0, 0), (0, BUSY))
-    assert share == 1.0, f"a turn with no busy ticks gave a share of {share}"
+    unloaded = builders_share((0, 0), (0, BUSY))
+    unfrozen = builders_share((0, BUSY), (0, 0))
+    assert unloaded == 1.0, f"no busy ticks under load gave a share of {unloaded}"
+    assert unfrozen == 1.0, f"no busy ticks frozen gave a share of {unfrozen}"
+
+
+def test_every_tick_stolen_in_both_turns_gives_a_share_of_one() -> None:
+    """A builder that ran the guest no more frozen than under load took nothing from the load."""
+    share = builders_share((BUSY, BUSY), (BUSY, BUSY))
+    assert share == 1.0, f"every tick stolen in both turns gave a share of {share}"
 
 
 def test_stolen_and_busy_ticks_are_read_from_the_kernels_line() -> None:
