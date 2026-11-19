@@ -451,7 +451,7 @@ QtObject {
 
         // Only home's fill, run by filled() with home kept, finds home
         // after its frame; a place's, or any other opening, in the open.
-        const home = { byFill: true, intoPlace: false, kept: 8 };
+        const home = { byFill: true, intoPlace: false, kept: 8, shared: false };
         check(failures, "home's fill finds home after its frame",
             Wanted.findsLater(home), true);
         check(failures, "a place's fill finds it in the open",
@@ -464,6 +464,14 @@ QtObject {
         // ask, a copy), so while one is on it's found before the frame.
         check(failures, "home's fill under a share finds home there",
             Wanted.findsLater(Object.assign({}, home, { shared: true })), false);
+        check(failures, "as does one that never said whether it's shared",
+            Wanted.findsLater(Object.assign({}, home, { shared: undefined })), false);
+        // A chord draws home's kept card before it's filled in only while
+        // nothing may see the screen, as the kept card predates any share.
+        check(failures, "a chord with nothing sharing opens from the kept card",
+            Wanted.opensKept(false), true);
+        check(failures, "one under a share opens whole", Wanted.opensKept(true), false);
+        check(failures, "as does one that never said", Wanted.opensKept(undefined), false);
         // Found after it, home is searched again by a slice, a key or a
         // click, but a chord only joins, and a step or a word finds its own.
         const stands = { home: true, held: 0, typed: "" };
