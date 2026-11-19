@@ -28,7 +28,7 @@ let
   # some thousands. Each step's code is made at once, so a long file
   # leaves no chain of joins as deep as its marks are many, though each
   # copies the code so far, so the cost grows with the square of the
-  # marks: small at this one file's size, and the check's cases are short.
+  # marks: small at this one file's size.
   ways =
     let
       step =
