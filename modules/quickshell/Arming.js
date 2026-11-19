@@ -59,6 +59,35 @@ function letsHeldGo(saying, heldSaying) {
     return saying.length > 0 && JSON.stringify(saying) === JSON.stringify(heldSaying);
 }
 
+// What Return does on the selected row, from what `how` says of it: an
+// answer being given is given, a Return doubling a landing does nothing
+// more, and a held row is held before anything else, as every other
+// way in asks it first; then one that arms arms ("arming", for the
+// caller to press), one that steps in is entered, one that ends
+// something is lined, one that changes something is landed on, and any
+// other runs.
+function returnAct(how) {
+    if (how.asking) {
+        return "gave";
+    }
+    if (how.landed) {
+        return "";
+    }
+    if (how.held) {
+        return "held";
+    }
+    if (how.arming) {
+        return "arming";
+    }
+    if (how.steps) {
+        return "entered";
+    }
+    if (how.ends) {
+        return "lined";
+    }
+    return how.lands ? "landed" : "ran";
+}
+
 // Nothing armed.
 function rest() {
     return { key: "", keys: -1, at: 0 };

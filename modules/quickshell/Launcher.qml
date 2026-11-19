@@ -10567,6 +10567,9 @@ Scope {
         markOpen(open);
         if (!open) {
             Report.say("closing");
+            // Why Return held still was about the row it was on: closed,
+            // it would come back over another, whose Return runs.
+            unheld();
             drafts.flush();
             drawerMakingsKeep();
             landOn = null;
@@ -13242,17 +13245,22 @@ Scope {
                             const pressed = KeyTimes.pressed();
                             root.searchNow();
                             trials.pressed("returns");
-                            // One that ends the session arms first, and a
-                            // second Return does it (pressArming).
-                            const arming = !root.asking && !root.landedJustNow()
-                                && root.arms(root.selected);
-                            const act = root.asking ? "gave" : root.landedJustNow() ? ""
-                                : arming ? root.pressArming(root.selected, 1)
-                                : root.stepsThing(root.selected) ? "entered"
-                                : root.endsSomething(root.selected) ? "lined"
-                                : root.lands(root.selected) ? "landed"
-                                : root.heldWhyOf([root.selected], root.selected?.returns)
-                                    !== null ? "held" : "ran";
+                            // A held row is held before all else
+                            // (Arming.returnAct); one that ends the session
+                            // arms first, and a second Return does it
+                            // (pressArming).
+                            const one = root.selected;
+                            const chosen = Arming.returnAct({
+                                asking: !!root.asking,
+                                landed: root.landedJustNow(),
+                                held: root.heldWhyOf([one], one?.returns) !== null,
+                                arming: !!root.arms(one),
+                                steps: root.stepsThing(one),
+                                ends: root.endsSomething(one),
+                                lands: root.lands(one)
+                            });
+                            const arming = chosen === "arming";
+                            const act = arming ? root.pressArming(one, 1) : chosen;
                             // Arming did its own press, armed or done, and
                             // any landing before it is over.
                             if (arming)
