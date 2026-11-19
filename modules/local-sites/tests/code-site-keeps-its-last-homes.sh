@@ -130,11 +130,12 @@ touch "$work/stubborn"
 stalls "stalled, deaf to the first signal"
 rm "$work/stalled" "$work/stubborn"
 
-# A read killed by something else is a failure, not a stall, however it ended.
+# A read killed by something else is a failure, not a stall, however it ended, and
+# says what killed it. Its wait is long, so a slow builder can't make the kill a stall.
 touch "$work/killed"
-said=$(CODE_SITE_WAITS=1 "$BASH" "$writer" "$work/site")
-if [[ $said != "repos failed"* ]]; then
-  echo "With repos killed outright, the writer said '$said' rather than that it failed." >&2
+said=$(CODE_SITE_WAITS=30 "$BASH" "$writer" "$work/site")
+if [[ $said != "repos failed (killed by signal 9"*"); the last homes stay" ]]; then
+  echo "With repos killed outright, the writer said '$said' rather than what killed it." >&2
   exit 1
 fi
 rm "$work/killed"
