@@ -20,11 +20,13 @@ let
   # smaller or bigger animal. Each is held to its own sitting, as a puppy is
   # stockier than the cat. Its strides, in the order it walks them, each
   # step one pair of feet, so its paws are seen walking rather than the
-  # animal skidding (Joel, 2026-11-13: "i always want to see its paws
+  # animal skidding (Joel, 2026-11-14 17:19: "i always want to see its paws
   # moving when it is walking or running"): from one stride to the next,
-  # and from the last back to the first, the body between the tail's tip on
-  # the top row and the feet on the bottom holds still, and of the feet only
-  # the fore half or the hind half changes.
+  # and from the last back to the first, all but the feet on the bottom row
+  # and the tail's tip, the top row's last two columns, holds still, and of
+  # the feet only the fore half or the hind half changes. Over the whole
+  # walk each half changes, since a pair that never steps is being dragged
+  # however the other one walks.
   readsAsOne =
     {
       check,
@@ -36,8 +38,11 @@ let
     let
       glyphs = import ./glyphs.nix { inherit lib; };
       # The sitting is named among the undrawn when it's missing or misnamed,
-      # rather than every pose being called unlike a sitting of nothing.
-      named = lib.unique (poses ++ [ sitting ]);
+      # rather than every pose being called unlike a sitting of nothing, and
+      # so is a stride, which is held to the stray and size rules too rather
+      # than only being called skidding.
+      named = lib.unique (poses ++ strides ++ [ sitting ]);
+      px = name: glyphs.${name}.pixels or [ ];
       drawn = lib.filter (name: (glyphs.${name}.pixels or [ ]) != [ ]) named;
       missing = lib.subtractLists drawn named;
       # Each lit pixel, as its column and row.
@@ -78,37 +83,85 @@ let
         inherit from;
         to = lib.elemAt strides (lib.mod (i + 1) (lib.length strides));
       }) strides;
-      # Which halves of the feet's row, fore and hind, differ between two.
+      # Which halves of the feet's row, fore and hind, differ between two;
+      # on an odd width the middle column is the hind half's, so every
+      # column is compared.
       moved =
         a: b:
         let
-          half = lib.stringLength (lib.last a) / 2;
-          feet = rows: at: builtins.substring at half (lib.last rows);
+          width = lib.stringLength (lib.last a);
+          half = width / 2;
+          feet = rows: {
+            fore = builtins.substring 0 half (lib.last rows);
+            hind = builtins.substring half (width - half) (lib.last rows);
+          };
         in
-        lib.filter (at: feet a at != feet b at) [
-          0
-          half
+        lib.filter (pair: (feet a).${pair} != (feet b).${pair}) [
+          "fore"
+          "hind"
         ];
-      stepsOnePair =
+      # Why a step skids, or null when it steps one pair; an undrawn stride
+      # is said among the undrawn instead.
+      why =
         { from, to }:
         let
-          a = glyphs.${from}.pixels or [ ];
-          b = glyphs.${to}.pixels or [ ];
-          body = rows: lib.sublist 1 (lib.length rows - 2) rows;
+          a = px from;
+          b = px to;
+          back = rows: builtins.substring 0 (lib.stringLength (lib.head rows) - 2) (lib.head rows);
+          body = rows: [ (back rows) ] ++ lib.sublist 1 (lib.length rows - 2) rows;
+          pairs = lib.length (moved a b);
         in
-        a != [ ] && lib.length a == lib.length b && body a == body b && lib.length (moved a b) == 1;
-      skids = lib.filter (step: !stepsOnePair step) steps;
-      skidding = map ({ from, to }: "${from} to ${to}") skids;
+        if a == [ ] || b == [ ] then
+          null
+        else if lib.length a != lib.length b || body a != body b then
+          "the body moved"
+        else if pairs == 2 then
+          "both pairs moved"
+        else if pairs == 0 then
+          "no pair moved"
+        else
+          null;
+      skidding = map (step: "${step.from} to ${step.to}, ${why step}") (
+        lib.filter (step: why step != null) steps
+      );
+      stepping = pair: lib.any (step: lib.elem pair (moved (px step.from) (px step.to))) steps;
+      frozen = lib.optionals (lib.all (name: px name != [ ]) strides) (
+        lib.filter (pair: !stepping pair) [
+          "fore"
+          "hind"
+        ]
+      );
+      walked = lib.length strides;
       said = lib.concatStringsSep ", " [
         "stray ${builtins.toJSON stray}"
         "unlike ${builtins.toJSON unlike}"
         "skidding ${builtins.toJSON skidding}"
+        "never stepping ${builtins.toJSON frozen}"
         "undrawn ${builtins.toJSON missing}"
+        "walked in ${toString walked} strides of the 2 or more a walk needs"
       ];
     in
     holds check "The ${animal}'s poses must read as one ${animal}: ${said}." (
-      stray == [ ] && unlike == [ ] && skidding == [ ] && missing == [ ] && lib.length strides >= 2
+      lib.all (found: found == [ ]) [
+        stray
+        unlike
+        skidding
+        frozen
+        missing
+      ]
+      && walked >= 2
     );
+
+  # The order the cat walks its strides in, read from the code that walks
+  # them, so its check proves the walk that's drawn rather than a copy of
+  # it. Were the line to move, the walk reads as no strides, which fails.
+  catWalk =
+    let
+      prefix = "const WALKS = ";
+      lines = lib.splitString "\n" (builtins.readFile ../margin-cat/MarginCatWays.js);
+      line = lib.findFirst (lib.hasPrefix prefix) "${prefix}[];" lines;
+    in
+    builtins.fromJSON (lib.removeSuffix ";" (lib.removePrefix prefix line));
 in
 {
   # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
@@ -260,12 +313,7 @@ in
     check = "every-cat-pose-reads-as-one-cat";
     animal = "cat";
     sitting = "nothingHere";
-    strides = [
-      "walkingA"
-      "walkingC"
-      "walkingB"
-      "walkingD"
-    ];
+    strides = catWalk;
     poses = [
       "batting"
       "blinking"
@@ -290,7 +338,8 @@ in
   };
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
-  # held to its own sitting, as the cat's are to the cat's.
+  # held to its own sitting, as the cat's are to the cat's. Nothing walks it
+  # yet, so its strides are listed here in the cat's order, A, C, B, D.
   every-puppy-pose-reads-as-one-puppy = readsAsOne {
     check = "every-puppy-pose-reads-as-one-puppy";
     animal = "puppy";
