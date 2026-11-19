@@ -30,10 +30,20 @@
 //! request. A request hyper hands back unsent, as when its connection was
 //! retired before it went, goes again on another; one the origin dropped
 //! after it went is said as a 502, for pi's retry. One the origin reset
-//! rather than answer is a 502 too, since the origin may have acted on it,
-//! and retires the connection it went on, which may be refusing every
-//! request it's given. After the machine
-//! sleeps, the connections it held are retired and opened afresh, since
+//! before its answer began retires the connection it went on, which may be
+//! refusing every request it's given. Reset saying its stream was refused
+//! or a protocol error, it goes once more on another: one opened since,
+//! another already open, or one opened for it, shared by every request
+//! reset there with it, never the one that reset it. Reset again, reset
+//! saying anything else, or with no other connection to go on, as when its
+//! slot retired one lately or none would open, it's a 502. Nothing of an
+//! answer came, and one bad connection would otherwise fail every request
+//! on it, each a turn some agent retries whole. A reset saying a protocol
+//! error doesn't promise the origin acted on nothing, so a model's answer
+//! may now and then be asked for twice, which pi's own retry of the whole
+//! turn would do anyway. To send one again, it reads each body whole, to
+//! 64 MiB, before it goes, from pi on this machine, and holds it until its
+//! answer begins. After the machine sleeps, the connections it held are retired and opened afresh, since
 //! the network they ran on may be gone and pings would take their time to
 //! say so. A ping is what finds a lost connection, and an unanswered one
 //! fails every request on it, so below h2 each layer holds little ahead
@@ -41,11 +51,15 @@
 //! holding little unsent, and on a slow uplink a ping is answered in time.
 //!
 //! It says on stderr only what a reader may keep: each connection opened
-//! and retired, why one couldn't be made, and counts of what it served.
+//! and retired, why one couldn't be made, and counts of what it served,
+//! every ten minutes and as it leaves once idle; stopped by systemd, it
+//! says nothing of the stretch since the last.
 //! Nothing of a request's or an answer's headers or body is said, a failure
 //! included, and nothing is written to disk. A request it couldn't carry is
 //! answered as a 502, or a 504 when the origin couldn't be reached in time,
-//! never by closing the socket, so pi's own retry decides what follows.
+//! never by closing the socket, so pi's own retry decides what follows. A
+//! body over 64 MiB is a 413, one pi leaves unfinished a 400 and one
+//! still coming after a minute a 408, both counted as pi's cancel.
 //!
 //! A switch leaves a running relay be, since a restart would end every
 //! answer still streaming. So it leaves on its own once nothing has been
@@ -72,7 +86,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use bytes::{Buf, Bytes};
 use http_body_util::combinators::BoxBody;
-use http_body_util::{BodyExt, Full};
+use http_body_util::{BodyExt, Full, LengthLimitError, Limited};
 use hyper::body::{Body as HttpBody, Frame, Incoming, SizeHint};
 use hyper::client::conn::http2::SendRequest;
 use hyper::header::{self, HeaderMap, HeaderName};
@@ -141,8 +155,9 @@ const SLEPT_AT_LEAST: Duration = Duration::from_secs(10);
 
 /// What a relay answers with: the origin's body, or a line of its own.
 type Body = BoxBody<Bytes, hyper::Error>;
-/// What a relay sends to its origin: pi's body, in pieces.
-type Sent = InPieces<Incoming>;
+/// What a relay sends to its origin: pi's body, read whole and sent in
+/// pieces, so it can go again.
+type Sent = InPieces<Full<Bytes>>;
 
 /// A body handed on in pieces of at most `HELD_AHEAD_AT_MOST`, so that no
 /// DATA frame h2 writes is longer, since h2 cuts a frame from one piece
@@ -338,9 +353,82 @@ struct Counts {
     refused: AtomicU64,
     failed: AtomicU64,
     reset: AtomicU64,
+    /// Requests reset before their answers began, sent once more and
+    /// answered, so the resets a resend saved; those it didn't are with
+    /// the failed ones reset.
+    again: AtomicU64,
     cancelled: AtomicU64,
     opened: AtomicU64,
     open: AtomicUsize,
+    /// What the counts were when last said, but for how many connections
+    /// were taking requests.
+    said_as: Held<[u64; 7]>,
+}
+
+impl Counts {
+    /// Says the counts, when any has moved since they were last said: a
+    /// request asked before then may have ended since.
+    fn say(&self) {
+        let now = [
+            &self.asked,
+            &self.refused,
+            &self.failed,
+            &self.reset,
+            &self.again,
+            &self.cancelled,
+            &self.opened,
+        ]
+        .map(|count| count.load(Ordering::Relaxed));
+        {
+            let mut said_as = self.said_as.lock().unwrap_or_else(PoisonError::into_inner);
+            if *said_as == now {
+                return;
+            }
+            *said_as = now;
+        }
+        let [asked, refused, failed, reset, again, cancelled, opened] = now;
+        eprintln!(
+            "model-relay: {asked} asked, {refused} refused, {failed} failed, {reset} of them \
+             reset; {again} reset and sent again; pi cancelled {cancelled}; {opened} \
+             connections opened, {} taking requests",
+            self.open.load(Ordering::Relaxed),
+        );
+    }
+}
+
+/// What's open for a request reset to go once more on.
+enum ForAgain {
+    /// A connection, other than the one that reset it.
+    Open(usize, Kept),
+    /// None, as its slot kept the one that reset it and no other is open.
+    Kept,
+    /// None, with the one that reset it retired, so one may be opened.
+    Closed,
+}
+
+/// A request reset and waiting on a connection to go once more. Should pi
+/// leave meanwhile, hyper drops the request with nothing said, so it's
+/// counted as pi's cancel.
+struct WaitingAgain<'a>(Option<&'a Counts>);
+
+impl<'a> WaitingAgain<'a> {
+    /// A request starting to wait, for `counts`.
+    fn new(counts: &'a Counts) -> Self {
+        WaitingAgain(Some(counts))
+    }
+
+    /// Its wait is over, with or without a connection.
+    fn over(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for WaitingAgain<'_> {
+    fn drop(&mut self) {
+        if let Some(counts) = self.0 {
+            counts.cancelled.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 /// What one connection to the origin has carried: the requests sent down
@@ -639,6 +727,17 @@ struct Slot<S = SendRequest<Sent>> {
 /// reset, where it means to hold a few.
 const RETIRED_FOR_A_RESET_AT_MOST_EVERY: Duration = Duration::from_secs(60);
 
+/// The largest body the relay reads, which it holds whole until its answer
+/// begins so a reset request can go again. pi's turns run to a few
+/// megabytes, images and all, and the socket is the account's alone, so
+/// this only keeps a runaway sender from taking the relay's memory.
+const BODY_AT_MOST: usize = 64 * 1024 * 1024;
+/// How long the relay waits on a body to end. pi writes its whole body at
+/// once over a socket on this machine, so one still coming after this was
+/// left unfinished, and a request in hand would otherwise keep the relay,
+/// and its build, from ever leaving.
+const BODY_WITHIN: Duration = Duration::from_secs(60);
+
 /// A connection a slot keeps: its sender, which of the slot's it is, so
 /// what retires it can't retire one opened since, and what it has carried.
 #[derive(Clone)]
@@ -834,6 +933,8 @@ impl Relay {
                 break;
             }
         }
+        // Said as it leaves too, or the last stretch's would go unsaid.
+        relay.counts.say();
         let idle_for = relay.clocks.idle_exit.unwrap_or_default().as_secs();
         eprintln!("model-relay: idle for {idle_for} s, so it leaves; its socket starts it again");
         relay.leaving.store(true, Ordering::SeqCst);
@@ -855,6 +956,8 @@ impl Relay {
             () = tokio::time::sleep(taking_for) => drained.await,
             () = &mut drained => {}
         }
+        // Once more for those refused while it left.
+        relay.counts.say();
     }
 
     /// Answers each connection `listener` takes. One taken before `leaving`
@@ -954,6 +1057,33 @@ impl Relay {
             );
         }
         let in_hand = self.busy.one();
+        let whole = match self.readied(&mut parts, body).await {
+            Ok(whole) => whole,
+            Err(refused) => return *refused,
+        };
+        let (answer, on_the_way) = match self.carry(&parts, &whole).await {
+            Ok(answered) => answered,
+            Err(not_carried) => return *not_carried,
+        };
+        let (mut parts, body) = answer.into_parts();
+        parts.version = Version::HTTP_11;
+        without_connection_headers(&mut parts.headers);
+        // The request stays in hand until its answer is sent or given up on,
+        // so the relay never leaves mid-answer.
+        let body = Answering::new(body, on_the_way).map_err(move |why| {
+            let _ = &in_hand;
+            why
+        });
+        Response::from_parts(parts, body.boxed())
+    }
+
+    /// Points a request pi asked of the origin at the origin itself, and
+    /// reads its body whole, or says why pi is refused.
+    async fn readied(
+        &self,
+        parts: &mut hyper::http::request::Parts,
+        body: Incoming,
+    ) -> Result<Bytes, Box<Response<Body>>> {
         let path = parts
             .uri
             .path_and_query()
@@ -966,17 +1096,67 @@ impl Relay {
             .build()
         else {
             self.counts.refused.fetch_add(1, Ordering::Relaxed);
-            return said(
+            return Err(Box::new(said(
                 StatusCode::BAD_REQUEST,
                 "this relay couldn't read the request's path\n",
-            );
+            )));
         };
         parts.uri = uri;
         parts.version = Version::HTTP_2;
         without_connection_headers(&mut parts.headers);
+        // Read whole so it can go again. pi's requests carry no trailers
+        // to keep.
+        let reading = tokio::time::timeout(BODY_WITHIN, Limited::new(body, BODY_AT_MOST).collect());
+        match reading.await {
+            Ok(Ok(read)) => Ok(read.to_bytes()),
+            Ok(Err(why)) if why.is::<LengthLimitError>() => {
+                self.counts.refused.fetch_add(1, Ordering::Relaxed);
+                eprintln!("model-relay: a request's body passed 64 MiB, so it's refused");
+                Err(Box::new(said(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "this relay carries a body of 64 MiB at most\n",
+                )))
+            }
+            // Still coming after the deadline, it's said, so a pi writing
+            // slowly is told from one that left.
+            Err(_) => {
+                self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
+                eprintln!(
+                    "model-relay: a request's body was still coming after {} s, so it's \
+                     dropped",
+                    BODY_WITHIN.as_secs()
+                );
+                Err(Box::new(said(
+                    StatusCode::REQUEST_TIMEOUT,
+                    "this relay waited too long on the request's body\n",
+                )))
+            }
+            // pi went before its body ended, as it does when its person
+            // presses Escape, so it's a cancel, and nobody hears the answer.
+            Ok(Err(_)) => {
+                self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
+                Err(Box::new(said(
+                    StatusCode::BAD_REQUEST,
+                    "this relay couldn't read the request's body\n",
+                )))
+            }
+        }
+    }
 
-        let mut request = Request::from_parts(parts, InPieces::new(body));
+    /// Sends a request to the origin until its answer begins, or says what
+    /// pi is answered when it never does.
+    async fn carry(
+        self: &Arc<Relay>,
+        parts: &hyper::http::request::Parts,
+        whole: &Bytes,
+    ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
+        let mut request = sendable(parts, whole);
         let mut sent = 0;
+        let mut taken = self.sender().await;
+        // The connection the origin reset this request on, once it has.
+        // Sent again, it's answered or fails on that send, so a request
+        // reset is one not yet sent again for as long as the loop goes.
+        let mut reset_on: Option<(usize, u64)> = None;
         let mut down;
         let answered = loop {
             let (
@@ -986,21 +1166,55 @@ impl Relay {
                     mut sender,
                     tally,
                 },
-            ) = match self.sender().await {
+            ) = match taken {
                 Ok(taken) => taken,
                 Err(why) => {
                     self.counts.failed.fetch_add(1, Ordering::Relaxed);
-                    return why.said();
+                    let Some((was_at, was)) = reset_on else {
+                        return Err(Box::new(why.said()));
+                    };
+                    // Reset, and then not sent again, so it's counted with
+                    // the requests reset that failed, and a 502 as any
+                    // reset is, never a 421 sending pi direct: the origin
+                    // may have acted on it.
+                    self.counts.reset.fetch_add(1, Ordering::Relaxed);
+                    eprintln!(
+                        "model-relay: a request reset on connection {was_at}.{was} couldn't be \
+                         sent again, as no other connection would take it; pi is answered 502"
+                    );
+                    return Err(Box::new(not_answered()));
                 }
             };
             // Dropped while it waits for the answer, as when pi hangs up,
             // it's counted as cancelled on this connection.
             let on_the_way = OnTheWay::sent(&tally, &self.counts);
             down = (at, number, tally);
-            match sender.try_send_request(request).await {
-                Ok(answer) => break Ok((answer, on_the_way)),
+            let went = sender.try_send_request(request).await;
+            let mut unread = None;
+            let failed = match went {
+                Ok(answer) => Ok(answer),
                 Err(mut failed) => {
-                    let unread = failed.take_message();
+                    unread = failed.take_message();
+                    Err(failed)
+                }
+            };
+            // Gone to the origin, it's said as sent again, answered or not.
+            if let Some((was_at, was)) = reset_on
+                && unread.is_none()
+            {
+                eprintln!(
+                    "model-relay: a request reset on connection {was_at}.{was} is sent again \
+                     on connection {at}.{number}"
+                );
+            }
+            match failed {
+                Ok(answer) => {
+                    if reset_on.is_some() {
+                        self.counts.again.fetch_add(1, Ordering::Relaxed);
+                    }
+                    break Ok((answer, on_the_way));
+                }
+                Err(failed) => {
                     if unread.is_some() {
                         on_the_way.unsent();
                     } else {
@@ -1012,58 +1226,87 @@ impl Relay {
                         Some(unread) if sent < SENT_AGAIN_AT_MOST => {
                             sent += 1;
                             request = unread;
+                            // Reset already, it never goes back to the
+                            // connection that reset it, which `sender`
+                            // could hand it.
+                            taken = match reset_on {
+                                Some((at, number)) => {
+                                    let waiting = WaitingAgain::new(&self.counts);
+                                    let another = self.another(at, number).await;
+                                    waiting.over();
+                                    another
+                                }
+                                None => self.sender().await,
+                            };
+                        }
+                        // Reset before its answer began, saying the origin
+                        // may be asked again, so it goes once more, on
+                        // another connection, if there's one it may go on.
+                        None if reset_on.is_none() && goes_once_more(failed.error()) => {
+                            let retiring = self.slots[at].retire(number);
+                            // Said before any wait for a connection, so a
+                            // pi that hangs up meanwhile leaves it said.
+                            Relay::said_reset(
+                                failed.error(),
+                                &down,
+                                &retiring,
+                                "it goes once more, if another connection will take it",
+                            );
+                            reset_on = Some((at, number));
+                            request = sendable(parts, whole);
+                            let waiting = WaitingAgain::new(&self.counts);
+                            taken = self.another(at, number).await;
+                            waiting.over();
                         }
                         _ => break Err(failed.into_error()),
                     }
                 }
             }
         };
-        match answered {
-            Ok((answer, on_the_way)) => {
-                let (mut parts, body) = answer.into_parts();
-                parts.version = Version::HTTP_11;
-                without_connection_headers(&mut parts.headers);
-                // The request stays in hand until its answer is sent or
-                // given up on, so the relay never leaves mid-answer.
-                let body = Answering::new(body, on_the_way).map_err(move |why| {
-                    let _ = &in_hand;
-                    why
-                });
-                Response::from_parts(parts, body.boxed())
-            }
-            Err(why) => self.not_carried(&why, &down),
-        }
+        answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
     }
 
-    /// What pi is answered for a request that went down connection `at`'s
-    /// `number`, which `tally` counts, and came back with no answer.
+    /// A connection for a request reset on slot `at`'s `number` to go once
+    /// more on, or why there's none: `fresh`'s, refused when it has none.
+    async fn another(&self, at: usize, number: u64) -> Result<(usize, Kept), Unreachable> {
+        self.fresh(at, number).await.unwrap_or_else(|| {
+            // Said, so a journal of these isn't read as an origin refusing
+            // connections, when the relay chose to open none.
+            eprintln!(
+                "model-relay: slot {at} kept connection {at}.{number}, as it retired one \
+                 lately, and no other is open, so none is opened for a request it reset"
+            );
+            Err(Unreachable::Refused)
+        })
+    }
+
+    /// What pi is answered for a request that went `down` a connection and
+    /// came back with no answer, and won't be sent again; `reset_on` is the
+    /// connection that reset it before, if one did and it was sent again.
     fn not_carried(
         &self,
         why: &hyper::Error,
-        (at, number, tally): &(usize, u64, Arc<Tally>),
+        down: &Down,
+        reset_on: Option<(usize, u64)>,
     ) -> Response<Body> {
-        let (at, number) = (*at, *number);
         // hyper's error says what failed, never what was sent, which a
         // test holds it to.
         self.counts.failed.fetch_add(1, Ordering::Relaxed);
         if reset_by_the_origin(why) {
-            // On 18 November the origin reset 1,545 of 24,218 requests,
-            // each within a second of its asking, in spells of minutes that
-            // took 10 to 15% of every session's: the shape one connection of
-            // several refusing all it's given would make. Retired, such a
-            // connection costs one request. It's still a 502 rather than a
-            // 421 sending pi direct, since only a reset saying the stream
-            // was refused promises the origin acted on nothing, and these
-            // said a protocol error. The number says whether a fresh
-            // connection is reset too, which one bad one wouldn't be, and
-            // the tally whether the connections reset carried more of pi's
-            // cancels than those left be.
-            let done = self.slots[at].retire(number).said();
+            // It's a 502 rather than a 421 sending pi direct, since only a
+            // reset saying the stream was refused promises the origin acted
+            // on nothing, and these said a protocol error.
+            let (at, number, _) = down;
+            let retiring = self.slots[*at].retire(*number);
+            Relay::said_reset(why, down, &retiring, "pi is answered 502");
+            self.counts.reset.fetch_add(1, Ordering::Relaxed);
+        } else if let Some((was_at, was)) = reset_on {
+            // Reset, then lost some other way when it went again, so it's
+            // still counted with the requests reset that failed.
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
             eprintln!(
-                "model-relay: the origin reset a request on connection {at}.{number}, {done}, \
-                 {}: {}",
-                tally.said(),
+                "model-relay: a request reset on connection {was_at}.{was} couldn't be \
+                 carried again: {}",
                 with_causes(why)
             );
         } else {
@@ -1072,10 +1315,83 @@ impl Relay {
                 with_causes(why)
             );
         }
-        said(
-            StatusCode::BAD_GATEWAY,
-            "this relay's request to its origin failed\n",
-        )
+        not_answered()
+    }
+
+    /// Says the origin reset a request on connection `at`'s `number`, what
+    /// `retiring` it did to the connection, and what came of the request.
+    fn said_reset(why: &hyper::Error, (at, number, tally): &Down, retiring: &Retiring, then: &str) {
+        // On 18 November the origin reset 1,545 of 24,218 requests, each
+        // within a second of its asking, in spells of minutes that took 10
+        // to 15% of every session's: the shape one connection of several
+        // refusing all it's given would make. Retired, such a connection
+        // costs one request. The number says whether a fresh connection is
+        // reset too, which one bad one wouldn't be, and the tally whether
+        // the connections reset carried more of pi's cancels than those
+        // left be.
+        let done = retiring.said();
+        eprintln!(
+            "model-relay: the origin reset a request on connection {at}.{number}, {done}, \
+             {}: {}; {then}",
+            tally.said(),
+            with_causes(why)
+        );
+    }
+
+    /// A connection other than slot `at`'s `number`, which the origin reset
+    /// a request on, for the request to go once more: one opened in the
+    /// slot since, another slot's that's open, or, with the reset one
+    /// retired, one opened for it. None when the slot kept the reset one,
+    /// as it retired one lately, and no other is open: opening one over it
+    /// would undo that allowance. A burst of requests reset on one
+    /// connection shares the one opened for the first, and when that
+    /// attempt fails, those that waited on it hear so, as `open` has it.
+    async fn fresh(&self, at: usize, number: u64) -> Option<Result<(usize, Kept), Unreachable>> {
+        let waited_from = Instant::now();
+        // Looked for before the slot's lock, which an open behind holds
+        // while it connects, and again once it's held.
+        match self.open_for_again(at, number) {
+            ForAgain::Open(slot, kept) => return Some(Ok((slot, kept))),
+            ForAgain::Kept => return None,
+            ForAgain::Closed => {}
+        }
+        let _opening = self.slots[at].opening.lock().await;
+        match self.open_for_again(at, number) {
+            ForAgain::Open(slot, kept) => return Some(Ok((slot, kept))),
+            ForAgain::Kept => return None,
+            ForAgain::Closed => {}
+        }
+        let failed = *self.failed.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((when, why)) = failed
+            && when >= waited_from
+        {
+            return Some(Err(why));
+        }
+        Some(self.open_now(at).await.map(|kept| (at, kept)))
+    }
+
+    /// What's open for a request reset on slot `at`'s `number` to go once
+    /// more on, as `fresh` has it.
+    fn open_for_again(&self, at: usize, number: u64) -> ForAgain {
+        let kept = self.slots[at].sender();
+        if let Some(kept) = &kept
+            && kept.number > number
+        {
+            return ForAgain::Open(at, kept.clone());
+        }
+        match (self.open_beside(at), kept) {
+            (Some((slot, other)), _) => ForAgain::Open(slot, other),
+            (None, Some(_)) => ForAgain::Kept,
+            (None, None) => ForAgain::Closed,
+        }
+    }
+
+    /// A connection open in a slot other than `at`, the next after it first.
+    fn open_beside(&self, at: usize) -> Option<(usize, Kept)> {
+        let count = self.slots.len();
+        (1..count)
+            .map(|step| (at + step) % count)
+            .find_map(|other| self.slots[other].sender().map(|kept| (other, kept)))
     }
 
     /// A connection to send down: the next in turn if it's open, or any
@@ -1088,10 +1404,7 @@ impl Relay {
         if let Some(kept) = self.slots[at].sender() {
             return Ok((at, kept));
         }
-        if let Some(taken) = (1..count)
-            .map(|step| (at + step) % count)
-            .find_map(|other| self.slots[other].sender().map(|kept| (other, kept)))
-        {
+        if let Some(taken) = self.open_beside(at) {
             self.open_behind(at);
             return Ok(taken);
         }
@@ -1290,14 +1603,38 @@ impl Relay {
 /// Whether the origin reset the request's stream rather than answer it,
 /// as hyper says through the h2 error beneath its own.
 fn reset_by_the_origin(why: &hyper::Error) -> bool {
+    reset_saying(why).is_some()
+}
+
+/// Whether the origin reset a request saying it may be asked again.
+fn goes_once_more(why: &hyper::Error) -> bool {
+    reset_saying(why).is_some_and(goes_again)
+}
+
+/// Whether a reset giving `reason` is one to send again: its stream
+/// refused, which promises the origin did nothing, or a protocol error, as
+/// on 18 November. An error of the origin's own may come after its work
+/// was done and billed, and one saying to calm down, or that it cancelled
+/// the request, isn't one to send again at once.
+fn goes_again(reason: h2::Reason) -> bool {
+    [h2::Reason::REFUSED_STREAM, h2::Reason::PROTOCOL_ERROR].contains(&reason)
+}
+
+/// The reason the origin gave for resetting the request's stream, when it
+/// reset it, found in the h2 error beneath hyper's.
+fn reset_saying(why: &hyper::Error) -> Option<h2::Reason> {
     let mut beneath: Option<&(dyn std::error::Error + 'static)> = Some(why);
     while let Some(cause) = beneath {
         if let Some(h2) = cause.downcast_ref::<h2::Error>() {
-            return h2.is_reset() && h2.is_remote();
+            return if h2.is_reset() && h2.is_remote() {
+                h2.reason()
+            } else {
+                None
+            };
         }
         beneath = cause.source();
     }
-    false
+    None
 }
 
 /// Readies a connection to the origin: each frame goes as it's written,
@@ -1391,6 +1728,21 @@ fn said(status: StatusCode, why: &'static str) -> Response<Body> {
     answer
 }
 
+/// Where a request went: the slot, the connection's number there, and
+/// the tally that counts what the connection carried.
+type Down = (usize, u64, Arc<Tally>);
+
+/// The request `parts` names with its body `whole`, made afresh each time
+/// it goes, since sending one hands it to hyper.
+fn sendable(parts: &hyper::http::request::Parts, whole: &Bytes) -> Request<Sent> {
+    let mut request = Request::new(InPieces::new(Full::new(whole.clone())));
+    *request.method_mut() = parts.method.clone();
+    *request.uri_mut() = parts.uri.clone();
+    *request.version_mut() = parts.version;
+    *request.headers_mut() = parts.headers.clone();
+    request
+}
+
 /// The headers that belong to one hop's connection, which HTTP/2 forbids
 /// and the next hop mustn't read as its own: those any `Connection` line
 /// names, and the standing ones, `Host` among them, since HTTP/2 names its
@@ -1427,27 +1779,21 @@ fn without_connection_headers(headers: &mut HeaderMap) {
     }
 }
 
-/// Says the counts every `COUNTS_EVERY`, when anything was asked since.
+/// Says the counts every `COUNTS_EVERY`, when any has moved since.
 async fn say_counts(counts: Arc<Counts>) {
-    let mut last = 0;
     loop {
         tokio::time::sleep(COUNTS_EVERY).await;
-        let asked = counts.asked.load(Ordering::Relaxed);
-        if asked == last {
-            continue;
-        }
-        last = asked;
-        eprintln!(
-            "model-relay: {asked} asked, {} refused, {} failed, {} of them reset; \
-             pi cancelled {}; {} connections opened, {} taking requests",
-            counts.refused.load(Ordering::Relaxed),
-            counts.failed.load(Ordering::Relaxed),
-            counts.reset.load(Ordering::Relaxed),
-            counts.cancelled.load(Ordering::Relaxed),
-            counts.opened.load(Ordering::Relaxed),
-            counts.open.load(Ordering::Relaxed),
-        );
+        counts.say();
     }
+}
+
+/// What pi is answered for a request the origin took and didn't answer: a
+/// 502, for pi's own retry.
+fn not_answered() -> Response<Body> {
+    said(
+        StatusCode::BAD_GATEWAY,
+        "this relay's request to its origin failed\n",
+    )
 }
 
 #[cfg(test)]
@@ -1462,8 +1808,31 @@ mod tests {
 
     use super::{
         HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot,
-        reach, reach_any, slept, with_causes,
+        goes_again, reach, reach_any, slept, with_causes,
     };
+
+    #[test]
+    fn only_a_reset_refusing_its_stream_or_saying_a_protocol_error_goes_again() {
+        for reason in [h2::Reason::REFUSED_STREAM, h2::Reason::PROTOCOL_ERROR] {
+            assert!(
+                goes_again(reason),
+                "a reset saying {reason:?} wasn't sent again"
+            );
+        }
+        for reason in [
+            h2::Reason::NO_ERROR,
+            h2::Reason::INTERNAL_ERROR,
+            h2::Reason::CANCEL,
+            h2::Reason::ENHANCE_YOUR_CALM,
+            h2::Reason::STREAM_CLOSED,
+            h2::Reason::FLOW_CONTROL_ERROR,
+        ] {
+            assert!(
+                !goes_again(reason),
+                "a reset saying {reason:?} was sent again"
+            );
+        }
+    }
 
     /// A connection kept for a test, closed only when the test closes it.
     #[derive(Clone, Default)]
