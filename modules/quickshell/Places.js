@@ -113,15 +113,26 @@ function homeward(away, screens, workspaces) {
     const moves = [];
     const home = [];
     for (const screen of Object.keys(away ?? {}).sort()) {
-        const alike = Object.keys(screens ?? {})
-            .filter(name => screens[name] === screen || name === screen);
-        if (alike.length > 0) {
+        const ranked = away[screen]
+            .filter(one => workspaces.some(each => each.id === one.id))
+            .sort((a, b) => a.workspace - b.workspace);
+        // An alike screen holding one that left another connector is the
+        // screen it was sent to, not its own come back: two monitors of one
+        // model without serials, or a VM's two, describe themselves the
+        // same, and taking that one for home dropped the note before the
+        // screen it left came back.
+        const sentTo = ranked
+            .filter(one => one.output)
+            .map(one => [one.output, workspaces.find(each => each.id === one.id).output])
+            .filter(([left, now]) => now !== left)
+            .map(([, now]) => now);
+        const free = Object.keys(screens ?? {})
+            .filter(name => screens[name] === screen || name === screen)
+            .filter(name => !sentTo.includes(name));
+        if (free.length > 0) {
             home.push(screen);
-            const ranked = away[screen]
-                .filter(one => workspaces.some(each => each.id === one.id))
-                .sort((a, b) => a.workspace - b.workspace);
             for (const one of ranked) {
-                const output = alike.includes(one.output) ? one.output : alike[0];
+                const output = free.includes(one.output) ? one.output : free[0];
                 const now = workspaces.find(each => each.id === one.id);
                 moves.push(now.output === output ? { output, id: one.id, there: true }
                     : { output, id: one.id });

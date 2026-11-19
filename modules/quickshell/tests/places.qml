@@ -141,6 +141,20 @@ QtObject {
             Places.homeward(left, { "Virtual-1": qemu, "Virtual-2": qemu }, onTheOther), wanted);
         expect("a workspace goes back to the alike screen it left, listed last",
             Places.homeward(left, { "Virtual-2": qemu, "Virtual-1": qemu }, onTheOther), wanted);
+        // While the screen it left is still gone, the alike screen it was
+        // sent to isn't that screen come back, so it keeps waiting: taken
+        // for home, its note was dropped and the replug left it where it
+        // was sent (vm-screens-keep-places, 8 of 14 failures from 18 Nov).
+        expect("a workspace on the alike screen it was sent to waits for the one it left",
+            Places.homeward(left, { "Virtual-1": qemu }, onTheOther), { moves: [], home: [] });
+        // An alike screen that holds none of them is one to go to, as two
+        // monitors of one model are when the one a workspace left comes
+        // back on another connector.
+        const elsewhere = [{ id: 21, output: "eDP-1" }];
+        expect("a workspace goes to an alike screen holding none of them",
+            Places.homeward(left, { "eDP-1": panel, "Virtual-1": qemu }, elsewhere), {
+                moves: [{ output: "Virtual-1", id: 21 }], home: [qemu]
+            });
 
         // Windows that reopen themselves, matched by program and title,
         // else the first of that program, each kept window used once.
