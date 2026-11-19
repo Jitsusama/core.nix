@@ -64,7 +64,9 @@ pub fn token_of(said: &Value) -> Option<String> {
         .filter(|token| {
             !token.is_empty()
                 && token.len() <= TOKEN_AT_MOST
-                && token.chars().all(|one| one.is_ascii_alphanumeric() || one == '-')
+                && token
+                    .chars()
+                    .all(|one| one.is_ascii_alphanumeric() || one == '-')
         })
         .map(str::to_owned)
 }
@@ -111,7 +113,11 @@ impl Starts {
                         Value::Null => cut_off(),
                         ended => ended.clone(),
                     };
-                    Some(Start { token, at, ended: Some(ended) })
+                    Some(Start {
+                        token,
+                        at,
+                        ended: Some(ended),
+                    })
                 })
                 .filter(|one| one.at + KEPT_FOR_MS > now_ms)
                 .collect()
@@ -138,10 +144,14 @@ impl Starts {
         fs::rename(&writing, path)
     }
 
-    /// The start `token` asked at `at_ms`, kept before the node is asked.
+    /// The start `token` asked at `at_ms`, kept as the node is asked.
     pub fn begun(&mut self, token: &str, at_ms: u128) {
         self.0.retain(|one| one.token != token);
-        self.0.push(Start { token: token.to_owned(), at: at_ms, ended: None });
+        self.0.push(Start {
+            token: token.to_owned(),
+            at: at_ms,
+            ended: None,
+        });
         let over = self.0.len().saturating_sub(KEPT_AT_MOST);
         self.0.drain(..over);
     }
@@ -191,8 +201,8 @@ mod tests {
     /// A file of the test's own, `case` keeping each test's apart, since
     /// they run at once in one process.
     fn kept_at(case: &str) -> std::path::PathBuf {
-        let folder = std::env::temp_dir()
-            .join(format!("agents-starts-{}-{case}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("agents-starts-{}-{case}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
         folder.join(FILE)
     }
@@ -222,7 +232,10 @@ mod tests {
         let path = kept_at("ended");
         let mut starts = Starts::default();
         starts.begun("a-1", NOW);
-        assert!(starts.records().is_empty(), "a start still asked was served");
+        assert!(
+            starts.records().is_empty(),
+            "a start still asked was served"
+        );
         let answer = json!({"sprouted": {"machine": "heron", "held": "h1"}});
         starts.ended("a-1", &answer);
         starts.write(&path).unwrap();
@@ -243,17 +256,26 @@ mod tests {
         assert_eq!(starts.0[0].token, "a-1", "the oldest wasn't let go first");
         let path = kept_at("old");
         starts.write(&path).unwrap();
-        assert_eq!(Starts::read(&path, NOW + KEPT_FOR_MS).records(), Vec::<Value>::new());
+        assert_eq!(
+            Starts::read(&path, NOW + KEPT_FOR_MS).records(),
+            Vec::<Value>::new()
+        );
     }
 
     #[test]
     fn a_token_is_letters_digits_and_dashes_and_short() {
-        assert_eq!(token_of(&json!({"start": "1763-ab"})), Some("1763-ab".to_owned()));
+        assert_eq!(
+            token_of(&json!({"start": "1763-ab"})),
+            Some("1763-ab".to_owned())
+        );
         assert_eq!(token_of(&json!({"start": "a:b"})), None);
         assert_eq!(token_of(&json!({"start": ""})), None);
         assert_eq!(token_of(&json!({"start": "a".repeat(65)})), None);
         assert_eq!(token_of(&json!({})), None);
-        assert_eq!(told_of(&json!({"starts": ["a-1", "x y", 3]})), vec!["a-1".to_owned()]);
+        assert_eq!(
+            told_of(&json!({"starts": ["a-1", "x y", 3]})),
+            vec!["a-1".to_owned()]
+        );
     }
 
     #[test]

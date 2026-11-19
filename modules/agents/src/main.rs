@@ -599,9 +599,15 @@ mod sprouts {
         // Each is answered on a thread of its own, so in either order.
         answers.sort_by_key(|one| one["id"].as_u64());
         let [answer, told_answer] = answers;
-        assert_eq!(told_answer["error"]["code"], "untold", "took a told: {told_answer}");
+        assert_eq!(
+            told_answer["error"]["code"], "untold",
+            "took a told: {told_answer}"
+        );
         // Both are answered after all they tell the loop.
-        assert!(heard.try_recv().is_err(), "the loop was told of another's start");
+        assert!(
+            heard.try_recv().is_err(),
+            "the loop was told of another's start"
+        );
         let why = answer["error"]["message"].as_str().unwrap_or_default();
         // The lent builders run Linux 6.1, where who asked can't be told;
         // there that refusal is what's held to.
