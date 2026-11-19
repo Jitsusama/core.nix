@@ -298,16 +298,26 @@ def test_a_claim_the_home_took_is_named(browser: Browser, tmp_path: Path) -> Non
 
 
 def test_a_taken_kinds_things_are_not_blamed_twice(browser: Browser, tmp_path: Path) -> None:
-    """A kind taken from a row's names is named once, not again as its homes.json's slip."""
+    """A kind taken from a row's names is named once, not again as its homes.json's slip.
+
+    The home says the row as written, ./notes, which is the notes/ the
+    rows hold.
+    """
     notes = {"path": "notes/", "homes": ["note", "machine"]}
     built = [SYSTEM, CODE, {"path": "notes/", "homes": ["note"]}]
-    rows = json.dumps({"sites": built, "taken": [{**TOOK_MACHINE, "from": "notes/"}]})
+    rows = json.dumps({"sites": built, "taken": [TOOK_MACHINE]})
     things = [
         {"kind": "note", "name": "diary", "address": "notes/#note=diary"},
         {"kind": "machine", "name": "studio", "address": "notes/#machine=studio"},
     ]
     found = probed(browser, tmp_path, [CODE, notes], NOTHING, rows, code=[NOTEBOOK], notes=things)
-    assert found == [taken("notes/", "machine")]
+    assert found == [taken("./notes", "machine")]
+
+
+def test_a_claim_since_dropped_is_not_named(browser: Browser, tmp_path: Path) -> None:
+    """A claim the home took that sites.json no longer makes waits on the next build unnamed."""
+    rows = json.dumps({"sites": [SYSTEM, CODE], "taken": [TOOK_MACHINE]})
+    assert probed(browser, tmp_path, [CODE], NOTHING, rows, code=[NOTEBOOK]) == []
 
 
 def test_only_what_the_home_says_it_took_is_named(browser: Browser, tmp_path: Path) -> None:
@@ -321,7 +331,15 @@ def test_only_what_the_home_says_it_took_is_named(browser: Browser, tmp_path: Pa
     assert probed(browser, tmp_path, stale, NOTHING, rows, code=[NOTEBOOK]) == []
 
 
-@pytest.mark.parametrize("took", ['"machine"', '[{"kind": "machine", "from": "notes/"}]'])
+@pytest.mark.parametrize(
+    "took",
+    [
+        '"machine"',
+        "null",
+        json.dumps(TOOK_MACHINE),
+        '[{"kind": "machine", "from": "notes/"}]',
+    ],
+)
 def test_what_the_home_took_that_wont_read_is_named(
     browser: Browser, tmp_path: Path, took: str
 ) -> None:

@@ -93,7 +93,8 @@
     try {
       const body = await answer.json();
       if (body !== null && Array.isArray(body.sites)) {
-        return { rows: body.sites, taken: body.taken };
+        // A home from before it said what it took writes no taken at all.
+        return "taken" in body ? { rows: body.sites, taken: body.taken } : { rows: body.sites };
       }
     } catch {
       // Not JSON at all, which is the same fault as JSON of another shape.
@@ -213,19 +214,35 @@
   }
   // The kinds the home took from each recorded row, by its folder, so a
   // homes.json listing one isn't blamed on rows.json as well. A home from
-  // before it said what it took says nothing.
+  // before it said what it took says nothing. A claim sites.json no longer
+  // makes was taken by a build since overtaken, so it isn't named.
   const taken = new Map();
-  const took = fromRows ? (listed.taken ?? []) : [];
+  const took = fromRows && "taken" in listed ? listed.taken : [];
   const isText = (said) => typeof said === "string";
-  for (const each of Array.isArray(took) ? took : [took]) {
+  const claimsNow = (from, kind) =>
+    !Array.isArray(recorded.rows)
+    || recorded.rows.some(
+      (site) =>
+        typeof site?.path === "string"
+        && folderOf(site.path) === from
+        && Array.isArray(site.homes)
+        && site.homes.some((said) => said === kind || said?.kind === kind),
+    );
+  const wontRead = (said) =>
+    `rows.json's taken holds ${JSON.stringify(said)}: a list of claims, `
+    + `{"kind", "from", "to"}, as the home writes them`;
+  if (!Array.isArray(took)) {
+    missing.push(wontRead(took));
+  }
+  for (const each of Array.isArray(took) ? took : []) {
     if (!(isText(each?.kind) && isText(each?.from) && isText(each?.to))) {
-      missing.push(
-        `rows.json's taken holds ${JSON.stringify(each)}: a list of claims, `
-          + `{"kind", "from", "to"}, as the home writes them`,
-      );
+      missing.push(wontRead(each));
       continue;
     }
     const from = folderOf(each.from);
+    if (!claimsNow(from, each.kind)) {
+      continue;
+    }
     taken.set(from, (taken.get(from) ?? new Set()).add(each.kind));
     missing.push(
       `${JSON.stringify(each.from)} in sites.json claims ${JSON.stringify(each.kind)}, which `
@@ -296,8 +313,9 @@
       continue;
     }
     for (const thing of homes.things) {
-      // A thing of a kind the home took is named above, with where its home is.
-      if (taken.get(folder)?.has(thing.kind)) {
+      // A thing of a kind the home took is named above, with where its home
+      // is, unless the built row still gives the kind.
+      if (taken.get(folder)?.has(thing.kind) && !kinds.includes(thing.kind)) {
         continue;
       }
       if (!kinds.includes(thing.kind)) {

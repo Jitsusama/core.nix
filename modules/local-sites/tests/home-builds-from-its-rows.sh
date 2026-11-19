@@ -245,7 +245,8 @@ after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 # A kind a declared row is home to stays its home: a recorded row claiming it
 # by name or by pattern, even one listed above the declared row, loses that
 # claim in rows.json, and it's said, in the log and in rows.json's taken with
-# the declared row home to the kind, while its other fields and homes, and a
+# the declared row home to the kind, once for a kind claimed both ways, while
+# its other fields and homes, and a
 # declared row's own, stand. Homes of a shape no reader takes, and a row left
 # out as a stray, are neither taken nor said, and fail nothing.
 mkdir -p "$work/claimed"
@@ -254,7 +255,8 @@ cat > "$work/claimed/sites.json" << 'EOF'
   {"path": "notes/", "name": "Notes", "what": "Notes.", "kind": "record", "when": "today",
    "homes": ["tree", {"kind": "heron", "address": "#heron={name}"}, "otter"]},
   {"path": "old/", "name": "The old one", "kind": "record", "homes": ["tree"]},
-  {"path": "./shed/", "name": "The shed", "kind": "mock", "homes": ["heron"]},
+  {"path": "./shed/", "name": "The shed", "kind": "mock",
+   "homes": ["heron", {"kind": "heron", "address": "#heron={name}"}]},
   {"path": "pond/", "name": "The pond", "kind": "mock", "homes": ["otter"]},
   {"path": "../up/", "name": "Stray", "kind": "mock", "homes": ["tree"]},
   {"path": "odd/", "name": "Odd", "kind": "mock", "homes": "tree"},

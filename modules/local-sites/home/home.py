@@ -469,8 +469,12 @@ def leaving(sites: list[Site], declared: list[Site]) -> tuple[list[Site], list[d
         kept = [home for home in homes if kind_of(home) not in owners]
         for home in homes:
             kind = kind_of(home)
-            if home not in kept and kind is not None:
-                taken.append({"kind": kind, "from": site.row["path"], "to": owners[kind]})
+            if home in kept or kind is None:
+                continue
+            claim = {"kind": kind, "from": site.row["path"], "to": owners[kind]}
+            # A row claiming a kind twice, by name and by pattern, is said once.
+            if claim not in taken:
+                taken.append(claim)
         left.append(site if kept == homes else replace(site, row={**site.row, "homes": kept}))
     return left, taken
 
@@ -522,7 +526,8 @@ def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) 
     write(root / "llms.txt", llms(root, sites))
     write(root / "index.md", twin(sites))
     # What the home took is said beside the rows, since they don't say which
-    # are declared; the readers of a row's homes read only "sites".
+    # are declared; the system's and Code's readers read only "sites", and
+    # the web-design skill's reader names each claim in "taken".
     listed = {"sites": [site.row for site in sites], "taken": taken}
     write(root / "rows.json", json.dumps(listed, indent=2) + "\n")
 
