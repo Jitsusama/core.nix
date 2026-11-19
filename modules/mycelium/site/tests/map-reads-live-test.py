@@ -7,6 +7,7 @@ declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, follow a change within its pace, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
+list what each cell, machine, network and branch spent today, most first,
 draw a receptor's feeding of a cell while the node says it and not after,
 grow one network out of another while a forage says a cell of the one
 started a cell of the other,
@@ -59,11 +60,11 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 23 files since the balance, who started each cell, the tree beside the map,
-# what each thing is in words, how a time is said, how each thing stands and
-# what each is doing were read in modules of their own, and one spare; 704 KB,
-# with room above.
-BUDGET = Budget(files=24, kilobytes=745, elements=590)
+# 24 files since the balance, who started each cell, the tree beside the map,
+# what each thing is in words, how a time is said, how each thing stands, what
+# each is doing and what each spent were read in modules of their own, and one
+# spare; about 706 KB, with room above.
+BUDGET = Budget(files=25, kilobytes=745, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -845,6 +846,56 @@ def test_a_records_words_are_drawn_as_words(
     page.wait_for_timeout(REDRAWN_MS)
     drawn = page.locator('b:has-text("Hull"), img[src="x"], [onmouseover]')
     expect(drawn, "a cell's title was drawn as markup somewhere on the map").to_have_count(0)
+
+
+# What node.json's cells spent today, as the Spent Today fold lists it under
+# its sum, line by line: by machine and network in Now, by network on osprey
+# with only the cells that run there, and by branch in the skiff's network.
+SPENT_NOW = ["$8.10", "By Machine", "kestrel", "$5.60, 5 cells", "osprey", "$2.50, 3 cells"]
+SPENT_NOW_NETWORKS = ["By Network", "Rig the Skiff for the Season", "$6.10, 5 cells"]
+SPENT_NOW_CELLS = ["Chart the Harbour", "$2.00, 2 cells", "Its Cells", "Rig The Skiff"]
+SPENT_ON_OSPREY = ["$2.50", "By Network", "Chart the Harbour", "$2.00, 2 cells"]
+SPENT_ON_OSPREY_CELLS = ["Rig the Skiff for the Season", "$0.50, 1 cell", "Its Cells"]
+SPENT_IN_SKIFF = ["$6.10", "By Branch", "Its own cells", "$4.75, 3 cells"]
+SPENT_IN_SKIFF_BRANCHES = ["Mend the Sails", "$1.35, 2 cells", "Its Cells", "Rig The Skiff"]
+
+
+def spent(page: Page) -> list[str]:
+    """Open the drawer's Spent Today fold and read its lines after its heading and hint."""
+    fold = page.locator("#panel details.spend")
+    # A click landing while the drawer is redrawn can be lost, and a redraw
+    # keeps an open fold open, so press only while it is shut and wait for it.
+    if fold.get_attribute("open") is None:
+        fold.locator("summary").click()
+    expect(fold.locator("ul.rows").first, "the Spent Today fold never opened").to_be_visible()
+    lines = [line for line in fold.inner_text().splitlines() if line.strip()]
+    return lines[1:2] + lines[3:]
+
+
+def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press(".")
+    now = SPENT_NOW + SPENT_NOW_NETWORKS + SPENT_NOW_CELLS
+    said = spent(page)
+    assert said[: len(now)] == now, f"Now's fold misread what was spent: {said}"
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    osprey = SPENT_ON_OSPREY + SPENT_ON_OSPREY_CELLS
+    said = spent(page)
+    assert said[: len(osprey)] == osprey, (
+        f"osprey's fold should count only the cells that run there: {said}"
+    )
+    page.evaluate("location.hash = '#net=orchestration.skiff1'")
+    expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
+        "Rig the Skiff for the Season"
+    )
+    skiff = SPENT_IN_SKIFF + SPENT_IN_SKIFF_BRANCHES
+    said = spent(page)
+    assert said[: len(skiff)] == skiff, (
+        f"the skiff's fold should count its own cells beside its branch: {said}"
+    )
 
 
 def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) -> None:

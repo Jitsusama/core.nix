@@ -17,8 +17,9 @@
 // asks is decided in keys.ts, which network grows out of which in
 // lineage.ts, what each thing is in words in words.ts, the tree beside the
 // map, its rows and their walk, in outline.ts, how a time is said in
-// when.ts, how each thing stands and why in health.ts, and what each is
-// doing in doing.ts, which this imports as the modules they're built to.
+// when.ts, how each thing stands and why in health.ts, what each is doing
+// in doing.ts, and what each spent in spend.ts, which this imports as the
+// modules they're built to.
 import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
@@ -36,6 +37,7 @@ import {
   VERDICT,
   verdictOf,
 } from "./health.js";
+import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, partsBySpend, partWords, restWords, shownAndRest, splits } from "./spend.js";
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
@@ -50,7 +52,6 @@ import {
   STANDING_WORD,
   STANDINGS,
   spends,
-  spentBy,
   spentOf,
   cellsOn as machineCells,
   waitingWords,
@@ -3061,60 +3062,43 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
 
 
   // Spent today, as a sum that opens on what it counts: the parts it
-  // splits into, then the cells that spent most, highest first.
-  const SPEND_CELLS = 10;
+  // splits into, then the cells that spent most, highest first. What each
+  // list says, and in what order, is spend.ts's; the rows are drawn here.
   const TURN = `<svg class="turn" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5L7 5L3 8.5"/></svg>`;
-  const BY_SPEND = new WeakMap();
-  const bySpend = (cells) => {
-    if (!BY_SPEND.has(cells)) BY_SPEND.set(cells, cells.filter((s) => spentBy(s) > 0).sort((a, b) => spentBy(b) - spentBy(a)));
-    return BY_SPEND.get(cells);
-  };
   // A part of a sum: its cells, and the row that opens it.
   const spendRow = (go, mark, name, cells, mono = "") => [
     cells,
     `<li><button type="button" class="row" data-go="${esc(go)}">${mark}<span class="what"><span class="name${mono}">${esc(name)}</span>` +
-      `<span class="fact">${esc(`${money(spentOf(cells))}, ${plural(cells.length, "cell")}`)}</span></span></button></li>`,
+      `<span class="fact">${esc(partWords(cells))}</span></span></button></li>`,
   ];
   // The most a list shows; the rest are counted, and their sum said.
-  const PART_WORDS = { machine: ["Machine", "Machines", "machines"], network: ["Network", "Networks", "networks"], branch: ["Branch", "Branches", "branches"], cell: ["Cell", "Cells", "cells"] };
   const spendList = (head, rows, rest, noun) =>
-    `<h3>${head}</h3><ul class="rows">${rows.join("")}</ul>` +
-    (rest.length ? `<p class="hint">${esc(`${plural(rest.length, `more ${noun}`, `more ${PART_WORDS[noun][2]}`)} spent ${money(rest.reduce((t, cells) => t + spentOf(cells), 0))} between them.`)}</p>` : "");
+    `<h3>${head}</h3><ul class="rows">${rows.join("")}</ul>` + (rest.length ? `<p class="hint">${esc(restWords(rest, noun))}</p>` : "");
   const spendCell = (s) =>
     `<li><button type="button" class="row" data-go="cell=${esc(s.address)}">${stateGlyph(s)}<span class="what"><span class="name">${esc(s.short)}</span>` +
-    `<span class="fact">${esc([money(spentBy(s)), s.usage?.turns_today != null ? plural(s.usage.turns_today, "turn") : ""].filter(Boolean).join(", "))}</span></span></button></li>`;
-  // parts: [a key of PART_WORDS, parts from spendRow in spend order].
+    `<span class="fact">${esc(cellSpendWords(s))}</span></span></button></li>`;
+  // A list of parts, or of cells, cut where the fold stops showing rows.
+  const partList = ([noun, rows]) => {
+    const [listed, rest] = shownAndRest(rows);
+    return spendList(partHeading(noun, rows.length), listed.map(([, row]) => row), rest.map(([part]) => part), noun);
+  };
+  const cellList = (top) => {
+    const [listed, rest] = shownAndRest(top);
+    return spendList(cellsHeading(top.length), listed.map(spendCell), rest.map((s) => [s]), "cell");
+  };
+  // parts: [a split spend.ts names, parts from spendRow in spend order].
   const spendBlock = (cells, parts = []) => {
     if (!spends(cells)) return "";
     const top = bySpend(cells);
-    const shown = parts.filter(([, rows]) => rows.length > 1);
+    const shown = parts.filter(([, rows]) => splits(rows.length));
     return (
       `<details class="fold spend" data-keep="spend"><summary>${TURN}<span>Spent Today</span><span class="sum mono">${esc(money(spentOf(cells)))}</span></summary>` +
       `<p class="hint">Since midnight, at the list price of each call, as the sessions count it; the bill may differ.</p>` +
-      shown
-        .map(([noun, rows]) =>
-          spendList(
-            rows.length > SPEND_CELLS ? `The ${SPEND_CELLS} ${PART_WORDS[noun][1]} That Spent Most` : `By ${PART_WORDS[noun][0]}`,
-            rows.slice(0, SPEND_CELLS).map(([, row]) => row),
-            rows.slice(SPEND_CELLS).map(([part]) => part),
-            noun,
-          ),
-        )
-        .join("") +
-      (top.length
-        ? spendList(
-            top.length > SPEND_CELLS ? `The ${SPEND_CELLS} Cells That Spent Most` : "Its Cells",
-            top.slice(0, SPEND_CELLS).map(spendCell),
-            top.slice(SPEND_CELLS).map((s) => [s]),
-            "cell",
-          )
-        : "") +
+      shown.map(partList).join("") +
+      (top.length ? cellList(top) : "") +
       `</details>`
     );
   };
-  // A network's rows count its branches' cells with its own, so a list of
-  // networks adds up to the sum above it; on a machine, only the cells
-  // that run there.
   // A network's own cells, beside its branches, so the branches and it
   // add up to its sum; a row to read, not a way to go, since it is here.
   const ownSpendRow = (h) =>
@@ -3123,16 +3107,12 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
           [
             h.cells,
             `<li><span class="row">${glyph(h.shape, 10)}<span class="what"><span class="name">Its own cells</span>` +
-              `<span class="fact">${esc(`${money(spentOf(h.cells))}, ${plural(h.cells.length, "cell")}`)}</span></span></span></li>`,
+              `<span class="fact">${esc(partWords(h.cells))}</span></span></span></li>`,
           ],
         ]
       : [];
   const hubSpendRows = (hubs, machine = null) =>
-    hubs
-      .map((h) => [h, machine ? allCells(h).filter((s) => s.machine === machine) : allCells(h)])
-      .filter(([, cells]) => spentOf(cells) > 0)
-      .sort(([, a], [, b]) => spentOf(b) - spentOf(a))
-      .map(([h, cells]) => spendRow(`net=${h.key}`, glyph(h.shape, 10), h.name, cells));
+    partsBySpend(hubs, (h) => networkCells(h, machine)).map(([h, cells]) => spendRow(`net=${h.key}`, glyph(h.shape, 10), h.name, cells));
 
   // A cell that says nothing of what it is for serves no use he can see,
   // so Now and its machine name it as the fault to tend.
@@ -3172,10 +3152,7 @@ import { agoWords as agoWordsAt, atWords as atWordsAt, clock, dayClock as dayClo
       spendBlock(m.cells, [
         [
           "machine",
-          m.machines
-            .filter((x) => spentOf(cellsOn(x.name)) > 0)
-            .sort((a, b) => spentOf(cellsOn(b.name)) - spentOf(cellsOn(a.name)))
-            .map((x) => spendRow(`machine=${x.name}`, MACHINE_GLYPH, x.name, cellsOn(x.name), " mono")),
+          partsBySpend(m.machines, (x) => cellsOn(x.name)).map(([x, cells]) => spendRow(`machine=${x.name}`, MACHINE_GLYPH, x.name, cells, " mono")),
         ],
         ["network", hubSpendRows([...m.hubs.values()].filter((h) => !h.within))],
       ]) +

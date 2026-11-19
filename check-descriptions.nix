@@ -1962,8 +1962,9 @@
     where each tree key goes from a row, edges included, what each cell, network and machine is
     in words, counts, sums and labels included, each time said against the reading's own with
     its day only off the reading's and a lease's time left, and how each set of cells and each
-    machine stands and why, worst first, its form, its share and the balance's flags, and what
-    each set of cells, receptor and cell is doing and how much of the talk asked or found something
+    machine stands and why, worst first, its form, its share and the balance's flags, what each
+    set of cells, receptor and cell is doing and how much of the talk asked or found something,
+    and what each spent today, most first, ten to a list and the rest counted and summed
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
