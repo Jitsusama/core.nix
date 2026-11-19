@@ -1058,7 +1058,7 @@
     every pose of the margin's puppy has no lit pixel standing alone, a diagonal touching, and lit
     pixels within 15% of its own sitting's, each of its four strides steps one pair of feet with
     its body still, and each pair over the walk, and its sitting, bow and four strides are all
-    drawn; its strides are the check's own only while the cat's walking code names none of them
+    drawn; its strides are the walk the cat's code takes, each named for the puppy
   '';
   every-script-finds-what-it-imports = ''
     every folder's Python that nix fmt hands mypy passes it when handed to it alone, as a script
@@ -1073,14 +1073,12 @@
     pair never stepping, after a pose that isn't a stride, undrawn, and none at all, each by
     its reason; refuses a pose planted with a stray pixel or just over 15% fewer or more,
     though not one just under; and reads the cat's code as no walk, by the rule it breaks,
-    when it strides by anything but WALKS's quoted words, a word holds a space or mismatched
-    quotes, either list is assigned to, by a bracketed, wrapped or nested key too, three deep
-    or past, with an operator, in brackets or not, counted up or down, changed in place by a
-    method, later in its statement too, spread or named otherwise, or STRIDING is declared
-    twice, though as its walk when they're only spaced, quoted or commented otherwise, mid-line
-    or at length too, a longer name or another's property holds theirs, and STRIDING is only
-    read, by an optional key or a method that changes nothing too, above its declaration or
-    below; and reads past a copy commented out
+    when it strides by anything but WALKS's frozen quoted words, a word holds a space or
+    mismatched quotes, either is left unfrozen or frozen only in part, WALKS is named
+    elsewhere, or either is declared again, in a block or as a function, class or loop's
+    variable, though as its walk when they're only spaced, quoted or commented otherwise,
+    mid-line or at length too, a longer name or another's property holds theirs, and STRIDING
+    is read above its declaration or below; and reads past a copy commented out
   '';
   every-suppression-says-why = ''
     every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or
