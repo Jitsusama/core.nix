@@ -1366,13 +1366,24 @@ ShellRoot {
         expect("a kept session's Go To goes to it as it is now",
             heldFirst.includes(wantKept) && Sessions.wentTo === movedB,
             JSON.stringify(Sessions.wentTo));
-        // Talk to it, Agents' own, comes after Deal With It, before Go To.
-        const wantActs = wantKept.verbs().map(act => act.key.replace(/:on:waiting:want:.*$/u, ""));
-        expect("a session's want offers Talk to it, after Deal With It",
-            JSON.stringify(wantActs.slice(0, 3)) === JSON.stringify(["verb:on:waiting:deal",
+        // A question holds its session's ask open, and words said to it
+        // wait for that to end (lib/mesh/steer.ts), so asking offers no
+        // Talk; ended blocked, its run is over and Talk reaches it at once,
+        // after Deal With It, before Go To.
+        const actsOf = row => row.verbs().map(act => act.key.replace(/:on:waiting:want:.*$/u, ""));
+        expect("a session asking a question offers no Talk, its words held behind the ask",
+            JSON.stringify(actsOf(wantKept).slice(0, 2))
+                === JSON.stringify(["verb:on:waiting:deal", "verb:on:waiting:go"]),
+            JSON.stringify(actsOf(wantKept)));
+        Sessions.wanting = [Object.assign({}, movedB, { presence: Object.assign({},
+            movedB.presence, { wants: { kind: "blocked", said: "Which?" } }) })];
+        const blockedB = forYou().find(row => row.key === "on:waiting:want:WANTB");
+        expect("a session ended blocked offers Talk to it, after Deal With It",
+            JSON.stringify(actsOf(blockedB).slice(0, 3)) === JSON.stringify(["verb:on:waiting:deal",
                 "verb:agent:talk", "verb:on:waiting:go"])
-                && wantKept.verbs()[1].to === "WANTB",
-            JSON.stringify(wantActs));
+                && blockedB.verbs()[1].to === "WANTB",
+            JSON.stringify(actsOf(blockedB)));
+        Sessions.wanting = [movedB];
         Sessions.wentTo = null;
         // Joel's own report: a plain ask's Put It Off names the ask the
         // row shows, and one asked anew makes the row again with it.
@@ -1455,14 +1466,21 @@ ShellRoot {
             JSON.stringify(read));
         // Inside, Talk to its session follows dealing with it there, so
         // what's working on it is reached from it (42P0R4, 2026-11-19); one
-        // done in a window of its own leads with going there, as the
-        // waits-on-joel walk holds it, a window being there to go to.
-        const formActs = forYou().find(row => row.key === "on:waiting:Sign The Form").verbs()
-            .map(act => [act.name, act.to ?? ""]);
-        expect("a session's to-do offers Talk to it after Deal With It",
-            JSON.stringify(formActs.slice(0, 2)) === JSON.stringify(
-                [["Deal With It", ""], ["talk", "ACTED"]]),
+        // done in a window of its own leads with going there.
+        const actsOf = () => forYou().find(row => row.key === "on:waiting:Sign The Form").verbs()
+            .slice(0, 3).map(act => [act.name, act.to ?? ""]);
+        const formActs = actsOf();
+        expect("a session's to-do offers Talk to it after Deal With It, then Go To",
+            JSON.stringify(formActs) === JSON.stringify(
+                [["Deal With It", ""], ["talk", "ACTED"], ["Go To", ""]]),
             JSON.stringify(formActs));
+        WaitingOnYou.now = [Object.assign({}, form, { window: "forms" })];
+        const ownActs = actsOf();
+        expect("one done in a window of its own leads with Go To, then Deal With It and Talk",
+            JSON.stringify(ownActs) === JSON.stringify(
+                [["Go To", ""], ["Deal With It", ""], ["talk", "ACTED"]]),
+            JSON.stringify(ownActs));
+        WaitingOnYou.now = [form];
         const heardBefore = root.forYouHeardTimes;
         agents.rows.ACTED.doing = "working";
         agents.remade += 1;
@@ -1696,14 +1714,15 @@ ShellRoot {
                     ["Choice", "Not yet"], ["Session", "Session E"]]),
             JSON.stringify(drawer.facts));
         const inside = row.verbs();
-        expect("inside, the recommended answer first, then Deal With It apart, Talk and Go To "
-            + "the session, Put It Off last",
+        // No Talk: its ask is open, so words said to it would wait for
+        // the answer they were meant to shape.
+        expect("inside, the recommended answer first, then Deal With It apart, Go To the "
+            + "session, Put It Off last",
             JSON.stringify(inside.map(one => [one.name, one.side ?? "", !!one.gap]))
                 === JSON.stringify([["Yes, push it", "recommended", false],
                     ["Not yet", "", false], ["Deal With It", "", true],
-                    ["In Your Own Words", "", false], ["talk", "", false],
-                    ["Go To", "Session E", false], ["Put It Off", "for an hour", true]])
-                && inside[4].to === "WANTE",
+                    ["In Your Own Words", "", false],
+                    ["Go To", "Session E", false], ["Put It Off", "for an hour", true]]),
             JSON.stringify(inside.map(one => [one.name, one.side, one.gap])));
         expect("an answer copies its words and its drawer leads with what it means",
             inside[0].copies === "Yes, push it"
@@ -1735,9 +1754,11 @@ ShellRoot {
         const named = name => inside.find(one => one.name === name);
         Sessions.wentTo = null;
         named("Go To").run();
-        expect("Go To goes to the session that asked, answering nothing",
-            Sessions.wentTo?.address === "WANTE" && agents.answered.length === 3,
-            JSON.stringify([Sessions.wentTo?.address ?? null, agents.answered.length]));
+        expect("Go To goes to the session that asked, answering nothing and filling nothing",
+            Sessions.wentTo?.address === "WANTE" && agents.answered.length === 3
+                && Sessions.steered.length === 0,
+            JSON.stringify([Sessions.wentTo?.address ?? null, agents.answered.length,
+                Sessions.steered]));
         Sessions.wentTo = null;
         named("Put It Off").run();
         expect("Put It Off asks the daemon to put off its session's want, staying open",
@@ -1757,11 +1778,11 @@ ShellRoot {
                 recommended: false }] } } };
         const approval = forYou().find(one => one.key === "on:waiting:want:WANTF");
         const asked = approval?.verbs() ?? [];
-        expect("a yes asked with its choices says so, and holds them, Deal With It, Talk, "
-            + "Go To and Put It Off",
+        expect("a yes asked with its choices says so, and holds them, Deal With It, Go To "
+            + "and Put It Off",
             approval?.side === "needs your answer \u00b7 2 choices"
                 && JSON.stringify(asked.map(one => one.name))
-                    === '["Yes","No","Deal With It","talk","Go To","Put It Off"]',
+                    === '["Yes","No","Deal With It","Go To","Put It Off"]',
             JSON.stringify([approval?.side, asked.map(one => one.name)]));
         asked[0]?.run();
         expect("its Yes asks the daemon to answer it",
