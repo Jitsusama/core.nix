@@ -303,12 +303,14 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 budget,
             } => {
                 let start = offers.len();
+                let bytes = budget_bytes(*budget, roots);
                 for root in roots {
                     if let Some((root, device, found)) = walks.under(root, *depth, world) {
-                        trees_under(&root, device, &found, Kind::Target, world, &mut offers);
+                        let (at, budgeted) = ((root.as_path(), device), bytes.is_some());
+                        trees_under(at, &found, Kind::Target, budgeted, world, &mut offers);
                     }
                 }
-                if let Some(bytes) = budget_bytes(*budget, roots) {
+                if let Some(bytes) = bytes {
                     hold_to_budget(
                         &mut offers[start..],
                         bytes,
@@ -321,7 +323,8 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
             Source::Installs { roots, depth } => {
                 for root in roots {
                     if let Some((root, device, found)) = walks.under(root, *depth, world) {
-                        trees_under(&root, device, &found, Kind::Install, world, &mut offers);
+                        let at = (root.as_path(), device);
+                        trees_under(at, &found, Kind::Install, false, world, &mut offers);
                     }
                 }
             }
@@ -855,11 +858,13 @@ fn target_frees(target: &Path, world: &World) -> u64 {
         .saturating_sub(working)
 }
 
+/// Offers what `kind` of tree the walk `found` under a root holds, on
+/// `device`. Only a `budgeted` source's replaced builds go an hour unused.
 fn trees_under(
-    root: &Path,
-    device: u64,
+    (root, device): (&Path, u64),
     found: &[discover::Found],
     kind: Kind,
+    budgeted: bool,
     world: &mut World,
     offers: &mut Vec<Offer>,
 ) {
@@ -939,41 +944,81 @@ fn trees_under(
                     device,
                 });
             }
-            // Each older build of a crate, dated by its last open; where
-            // nothing watches, nothing can say it's unused.
-            for build in crate::replaced::replaced(&tree.path) {
-                let Some(last_used) = world.uses.last_used(&build) else {
-                    continue;
-                };
-                let idle = world
-                    .awake
-                    .since(last_used.min(world.now), world.now)
-                    .max(0.0);
-                let candidate = Candidate {
-                    path: build.deps.join(format!("{}-{}", build.name, build.digest)),
-                    class: Class::Replaced,
-                    idle,
-                    size: build.size,
-                    occupied: false,
-                    // A gate snapshot builds one commit after another, and
-                    // on 17 November one kept 89 builds of a single test
-                    // crate, 55 GiB in all: an older build an hour unused
-                    // there is an earlier gate's, even while the next runs.
-                    spent: seen.pinned && idle >= trees::SNAPSHOT_UNUSED,
-                    checkout: checkout.map(Path::to_owned),
-                };
-                offers.push(Offer {
-                    candidate,
-                    action: Action::Build {
-                        root: root.to_owned(),
-                        target: tree.path.clone(),
-                    },
-                    device,
-                });
-            }
+            let held = Held {
+                pinned: seen.pinned,
+                budgeted,
+                checkout,
+            };
+            replaced_in(&tree.path, &held, (root, device), world, offers);
         }
     }
 }
+
+/// What holds a target's builds: whether it's a pinned snapshot's, whether
+/// its source holds builds to a budget, and the checkout it builds.
+struct Held<'a> {
+    pinned: bool,
+    budgeted: bool,
+    checkout: Option<&'a Path>,
+}
+
+/// Offers each older build in `target`, dated by its last open; where
+/// nothing watches, nothing can say it's unused.
+fn replaced_in(
+    target: &Path,
+    held: &Held,
+    (root, device): (&Path, u64),
+    world: &World,
+    offers: &mut Vec<Offer>,
+) {
+    for build in crate::replaced::replaced(target) {
+        let Some(last_used) = world.uses.last_used(&build) else {
+            continue;
+        };
+        let idle = world
+            .awake
+            .since(last_used.min(world.now), world.now)
+            .max(0.0);
+        let heard_unused = held.budgeted
+            && idle >= REPLACED_UNUSED
+            && world
+                .uses
+                .heard_since(std::slice::from_ref(&build.deps))
+                .is_some_and(|since| {
+                    world.awake.since(since.min(world.now), world.now) >= REPLACED_UNUSED
+                });
+        let candidate = Candidate {
+            path: build.deps.join(format!("{}-{}", build.name, build.digest)),
+            class: Class::Replaced,
+            idle,
+            size: build.size,
+            occupied: false,
+            // A gate snapshot builds one commit after another, and on 17
+            // November one kept 89 builds of a single test crate, 55 GiB in
+            // all: an older build an hour unused there is an earlier
+            // gate's, even while the next runs.
+            spent: (held.pinned && idle >= trees::SNAPSHOT_UNUSED) || heard_unused,
+            checkout: held.checkout.map(Path::to_owned),
+        };
+        offers.push(Offer {
+            candidate,
+            action: Action::Build {
+                root: root.to_owned(),
+                target: target.to_owned(),
+            },
+            device,
+        });
+    }
+}
+
+/// How long a replaced build in a budgeted builds folder stays after its
+/// last use, where this guard heard its `deps` all that time. On 18
+/// November a gate's build held 28 GiB of test binaries a newer build of
+/// the same test replaced, nearly all one to six hours old, which the
+/// day a replaced build otherwise waits never reached. Where the guard
+/// didn't hear it the whole hour, an open it missed could be a build's
+/// still in use, so it waits its day.
+pub const REPLACED_UNUSED: f64 = 3600.0;
 
 /// How long a build stays after its last use, whatever the budget, since
 /// a run of checks reuses one build minutes apart and a cap that took it

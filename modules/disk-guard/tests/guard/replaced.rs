@@ -79,6 +79,7 @@ fn an_older_build_of_a_crate_is_replaced_and_the_newest_stays() {
                 .join(profile)
                 .join(format!(".fingerprint/alpha-{OLD}")),
         ),
+        unit: None,
         written: 1_000.0,
         size: 15,
     };
@@ -114,9 +115,150 @@ fn build(deps: &Path, written: f64) -> Build {
             deps.join(format!("libalpha-{OLD}.rmeta")),
         ],
         fingerprint: None,
+        unit: None,
         written,
         size: 10,
     }
+}
+
+/// An executable cargo built in `deps` for `package`'s `unit`, as its
+/// fingerprint names it, written at `seconds`, with its dep-info.
+fn executable(deps: &Path, package: &str, unit: &str, name: &str, digest: &str, seconds: i64) {
+    use std::os::unix::fs::PermissionsExt;
+    let path = artifact(deps, &format!("{name}-{digest}"), seconds);
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    written(&path, seconds);
+    artifact(deps, &format!("{name}-{digest}.d"), seconds);
+    let fingerprint = deps
+        .parent()
+        .unwrap()
+        .join(format!(".fingerprint/{package}-{digest}"));
+    for file in [
+        unit.to_owned(),
+        format!("{unit}.json"),
+        format!("dep-{unit}"),
+        "invoked.timestamp".to_owned(),
+    ] {
+        crate::discover::file(&fingerprint.join(file), "fingerprint");
+    }
+}
+
+#[test]
+fn an_older_executable_of_a_unit_is_replaced_and_the_newest_stays() {
+    // On 18 November a gate's build held 81 builds of one test binary,
+    // 28 GiB of executables in all a newer build of the same test had
+    // replaced. Only one package's same unit replaces another.
+    let root = tempfile::tempdir().unwrap();
+    let deps = root.path().join("target/debug/deps");
+    let test = "test-integration-test-integration";
+    executable(&deps, "server", test, "integration", OLD, 1_000);
+    executable(&deps, "server", test, "integration", NEW, 5_000);
+    // Another package's test of the same name is its own newest.
+    executable(
+        &deps,
+        "client",
+        test,
+        "integration",
+        "aaaaaaaaaaaaaaaa",
+        500,
+    );
+    // A binary and its unit tests share a name, and neither replaces the
+    // other.
+    executable(&deps, "tool", "bin-dt", "dt", "bbbbbbbbbbbbbbbb", 500);
+    executable(&deps, "tool", "test-bin-dt", "dt", "cccccccccccccccc", 900);
+    // The profile's own copy of an older binary is the one a person runs,
+    // so it's never taken from under them.
+    executable(&deps, "tool", "bin-dt", "dt", "dddddddddddddddd", 100);
+    fs::hard_link(
+        deps.join("dt-dddddddddddddddd"),
+        root.path().join("target/debug/dt"),
+    )
+    .unwrap();
+    // Nothing says which unit an executable with no fingerprint is.
+    artifact(&deps, "stray-eeeeeeeeeeeeeeee", 100);
+    artifact(&deps, "stray-ffffffffffffffff", 900);
+    let found = replaced(&root.path().join("target"));
+    let older = Build {
+        deps: deps.clone(),
+        name: "integration".to_owned(),
+        digest: OLD.to_owned(),
+        files: vec![
+            deps.join(format!("integration-{OLD}")),
+            deps.join(format!("integration-{OLD}.d")),
+        ],
+        fingerprint: Some(
+            root.path()
+                .join(format!("target/debug/.fingerprint/server-{OLD}")),
+        ),
+        unit: Some(format!("server/{test}")),
+        written: 1_000.0,
+        size: 10,
+    };
+    assert_eq!(
+        found,
+        vec![older],
+        "only the older build of one package's test is replaced"
+    );
+}
+
+#[test]
+fn reclaiming_an_executable_takes_it_its_dep_info_and_fingerprint() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("target");
+    let deps = target.join("debug/deps");
+    let test = "test-integration-test-integration";
+    executable(&deps, "server", test, "integration", OLD, 1_000);
+    executable(&deps, "server", test, "integration", NEW, 5_000);
+    let anchor = Dir::open(root.path()).unwrap();
+    let candidate = Candidate {
+        path: deps.join(format!("integration-{OLD}")),
+        ..older(&target)
+    };
+    let outcome = reclaim::build(
+        &anchor,
+        root.path(),
+        &target,
+        &candidate,
+        &mut crate::reclaim::Script::default(),
+    );
+    assert_eq!(
+        outcome,
+        Outcome::Reclaimed,
+        "the older executable wasn't taken"
+    );
+    assert_eq!(
+        names(&deps),
+        [format!("integration-{NEW}"), format!("integration-{NEW}.d")],
+        "an older executable's build was left, or the newer one's taken"
+    );
+    assert_eq!(
+        names(&target.join("debug/.fingerprint")),
+        [format!("server-{NEW}")],
+        "the older executable's fingerprint stayed, or the newer one's went"
+    );
+}
+
+#[test]
+fn a_build_a_process_works_in_is_kept_whatever_its_locks_say() {
+    // A cargo can be between taking its lock and its rustc, or a test
+    // binary run without cargo, so the lock alone can't say a target is
+    // free.
+    use disk_guard::activity::Use;
+    let root = tempfile::tempdir().unwrap();
+    let target = target(root.path());
+    let anchor = Dir::open(root.path()).unwrap();
+    let mut looker = crate::reclaim::Script::default();
+    looker.uses.push_back(Use::Busy(4242));
+    let outcome = reclaim::build(&anchor, root.path(), &target, &older(&target), &mut looker);
+    assert!(
+        matches!(&outcome, Outcome::Kept(why) if why.contains("4242")),
+        "a build a process works in wasn't kept for it: {outcome:?}"
+    );
+    assert_eq!(
+        names(&target.join("debug/deps")).len(),
+        8,
+        "a build a process works in lost files"
+    );
 }
 
 #[test]
@@ -308,7 +450,13 @@ fn reclaiming_a_build_takes_its_artifacts_and_fingerprint_alone() {
     let root = tempfile::tempdir().unwrap();
     let target = target(root.path());
     let anchor = Dir::open(root.path()).unwrap();
-    let outcome = reclaim::build(&anchor, root.path(), &target, &older(&target));
+    let outcome = reclaim::build(
+        &anchor,
+        root.path(),
+        &target,
+        &older(&target),
+        &mut crate::reclaim::Script::default(),
+    );
     assert_eq!(outcome, Outcome::Reclaimed);
     assert_eq!(
         names(&target.join("debug/deps")),
@@ -340,7 +488,13 @@ fn a_build_whose_target_cargo_holds_is_kept() {
     let lock = fs::File::open(target.join("debug/.cargo-lock")).unwrap();
     flock(&lock, FlockOperation::LockShared).unwrap();
     let anchor = Dir::open(root.path()).unwrap();
-    let outcome = reclaim::build(&anchor, root.path(), &target, &older(&target));
+    let outcome = reclaim::build(
+        &anchor,
+        root.path(),
+        &target,
+        &older(&target),
+        &mut crate::reclaim::Script::default(),
+    );
     assert!(matches!(outcome, Outcome::Kept(_)), "{outcome:?}");
     assert_eq!(names(&target.join("debug/deps")).len(), 8);
 }

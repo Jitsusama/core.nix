@@ -547,7 +547,9 @@ impl Reclaimer for Reclaim<'_> {
             Action::Variant { .. } => {
                 reclaim::variant(&root, root_path, candidate, SystemTime::now())
             }
-            Action::Build { target, .. } => reclaim::build(&root, root_path, target, candidate),
+            Action::Build { target, .. } => {
+                reclaim::build(&root, root_path, target, candidate, self.scan)
+            }
             Action::Entry { .. } | Action::LiveEntry { .. } => {
                 let written = action.surveyed_write();
                 reclaim::live_entry(

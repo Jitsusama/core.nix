@@ -2096,6 +2096,40 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
 }
 
 #[test]
+fn a_pass_journals_how_many_replaced_builds_went_from_each_target_and_their_bytes() {
+    // So whoever reads how fast a build fills sees what each sweep took
+    // from it, not only a line per artifact.
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("100%");
+    let mut uses = Uses::default();
+    uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
+    let mut guard = home.guard(config);
+    guard.step(&tick(), &CALM).unwrap();
+    let target = deps.parent().unwrap().parent().unwrap();
+    let swept: Vec<_> = home
+        .journal()
+        .into_iter()
+        .filter(|line| line["event"] == "replaced")
+        .collect();
+    assert_eq!(
+        swept.len(),
+        1,
+        "a pass that took replaced builds left no line per target: {:?}",
+        home.journal()
+    );
+    assert_eq!(
+        (&swept[0]["target"], &swept[0]["count"], &swept[0]["bytes"]),
+        (
+            &serde_json::json!(target),
+            &serde_json::json!(1),
+            &serde_json::json!(4096)
+        ),
+        "the target's line says the wrong target, count or bytes"
+    );
+}
+
+#[test]
 fn a_daemon_that_cant_hear_keeps_replaced_builds_and_forgets_what_was_watched() {
     // Earlier guards' dates stop where a daemon with no watch starts, so
     // trusting them would date a build by opens nobody heard.

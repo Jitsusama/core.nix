@@ -123,12 +123,20 @@ pub fn target(
 /// Then each session goes and then its lock, the order rustc's own
 /// collection uses, and the directory goes only if nothing is left in it,
 /// so a session rustc started meanwhile survives.
-/// Reclaims an older build of a crate inside `target`: its libraries and
-/// dep-info in `deps`, and the fingerprint beside them, so cargo builds it
-/// afresh if it's ever wanted again. Cargo's locks on the target are held
-/// throughout, so no build reads or writes it meanwhile; one holding them
-/// keeps it.
-pub fn build(root: &Dir, root_path: &Path, target: &Path, candidate: &Candidate) -> Outcome {
+/// Reclaims an older build inside `target`: a crate's libraries, or an
+/// executable, and its dep-info in `deps`, and the fingerprint beside
+/// them, so cargo builds it afresh if it's ever wanted again. A process
+/// working in the target keeps it, judged by `looker`, since a cargo
+/// starting up holds no lock yet and a test binary runs without one.
+/// Cargo's locks on the target are held throughout, so no build reads or
+/// writes it meanwhile; one holding them keeps it.
+pub fn build(
+    root: &Dir,
+    root_path: &Path,
+    target: &Path,
+    candidate: &Candidate,
+    looker: &mut impl Looker,
+) -> Outcome {
     let (Ok(target_relative), Ok(relative)) = (
         target.strip_prefix(root_path),
         candidate.path.strip_prefix(target),
@@ -145,6 +153,14 @@ pub fn build(root: &Dir, root_path: &Path, target: &Path, candidate: &Candidate)
     let Some((name, digest)) = stem.rsplit_once('-') else {
         return Outcome::Failed("not a build's name".to_owned());
     };
+    match looker.judge(target, None) {
+        Ok(used) => {
+            if let Some(reason) = refusal(used, false) {
+                return Outcome::Kept(reason);
+            }
+        }
+        Err(error) => return Outcome::Kept(format!("its use can't be judged: {error}")),
+    }
     let target_dir = match root.child(target_relative) {
         Ok(dir) => dir,
         Err(error) => return Outcome::Failed(format!("opening its target: {error}")),
@@ -157,6 +173,7 @@ pub fn build(root: &Dir, root_path: &Path, target: &Path, candidate: &Candidate)
     let ours = |file: &[u8]| {
         let file = String::from_utf8_lossy(file);
         file == format!("{name}-{digest}.d")
+            || file == format!("{name}-{digest}")
             || ["rlib", "rmeta", "so", "a", "dylib"]
                 .iter()
                 .any(|suffix| file == format!("lib{name}-{digest}.{suffix}"))

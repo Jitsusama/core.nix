@@ -2649,6 +2649,7 @@ impl Guard {
             });
         }
         self.note_actions(here, &report.actions, tick.wall);
+        self.journal_replaced(here, &report.actions, tick.wall)?;
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();
         let failing = say_pass(&report, scan, seconds, &crate::clock::stamp(tick.wall));
@@ -2680,6 +2681,25 @@ impl Guard {
 
     /// Notes what came of each action a pass took, whatever it was, so a
     /// failing command waits its window too.
+    /// Journals how many replaced builds a pass took from each target among
+    /// `here`'s offers, and their bytes.
+    fn journal_replaced(
+        &mut self,
+        here: &[Offer],
+        actions: &[(PathBuf, Outcome)],
+        at: f64,
+    ) -> io::Result<()> {
+        for (target, (count, bytes)) in replaced_taken(here, actions) {
+            self.journal.write(&Line::Replaced {
+                at,
+                target,
+                count,
+                bytes,
+            })?;
+        }
+        Ok(())
+    }
+
     fn note_actions(&mut self, here: &[Offer], actions: &[(PathBuf, Outcome)], wall: f64) {
         for (taken, outcome) in actions {
             if *outcome == Outcome::Reclaimed
@@ -3325,6 +3345,29 @@ fn mounted(path: &Path, device: u64) -> PathBuf {
 fn written_since(meta: &fs::Metadata, listed_at: f64) -> bool {
     use std::os::unix::fs::MetadataExt;
     crate::units::wall(meta.ctime(), meta.ctime_nsec()) > listed_at
+}
+
+/// How many replaced builds a pass took from each target among `here`'s
+/// offers, and their bytes.
+fn replaced_taken(here: &[Offer], actions: &[(PathBuf, Outcome)]) -> BTreeMap<PathBuf, (u64, u64)> {
+    let mut taken: BTreeMap<PathBuf, (u64, u64)> = BTreeMap::new();
+    for (path, outcome) in actions {
+        if *outcome != Outcome::Reclaimed {
+            continue;
+        }
+        let offered = here.iter().find(|offer| &offer.candidate.path == path);
+        if let Some(Offer {
+            candidate,
+            action: Action::Build { target, .. },
+            ..
+        }) = offered
+        {
+            let (count, bytes) = taken.entry(target.clone()).or_default();
+            *count += 1;
+            *bytes += candidate.size;
+        }
+    }
+    taken
 }
 
 /// Whether a delete failed for garbage that came alive since the listing.
