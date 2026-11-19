@@ -371,7 +371,7 @@ let
   # Code read as no walk, and the rule it's refused by.
   walkedOf = wanted: ways: {
     strides = walkIn ways;
-    reason = "no walk read";
+    reason = "code to be read as no walk";
     inherit wanted;
     inherit (walkRead ways) faults;
   };
@@ -562,7 +562,13 @@ let
   belowCopy = "// ${walksSaid}\n${skidded}\n${stridingSaid}";
   reread = rereadBy.walk;
   rereadSaid = faultsSaid rereadBy.faults;
-  wantedSaid = walk: " for want of ${walk.wanted}, though it wanted ${faultsSaid walk.faults}";
+  # A reader case says what was read and the reader's own faults, never
+  # the pose rules' words, so a reader fault isn't blamed on them.
+  wantedSaid =
+    walk:
+    "${walk.reason}: read ${builtins.toJSON walk.strides}, wanted none, for want of "
+    + "${walk.wanted}${lib.optionalString (walk.first or false) " first"}, "
+    + "though it wanted ${faultsSaid walk.faults}";
   faultsSaid = faults: if faults == [ ] then "nothing" else lib.concatStringsSep ", " faults;
   rereadBy = walkRead ''
     ${long}
@@ -603,9 +609,10 @@ let
       if walk ? read then
         "${walk.reason}: read ${builtins.toJSON walk.strides}, wanted "
         + "${builtins.toJSON walk.read}, for want of ${faultsSaid walk.faults}"
+      else if walk ? wanted then
+        wantedSaid walk
       else
-        "${walk.reason}${lib.optionalString (walk ? wanted) (wantedSaid walk)}, "
-        + "said ${(said walk.strides).said}"
+        "${walk.reason}, said ${(said walk.strides).said}"
     ) (lib.filter (walk: !refused walk) walks);
 in
 {

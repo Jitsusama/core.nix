@@ -398,17 +398,26 @@ in
 
   # Every pose of the margin's cat reads as the same cat (readsAsOne), its
   # poses all drawn as its sitting's glyph or its paw (posesOf). A leap's
-  # rise, tuck and fall are drawn, so every fall can take the last.
+  # rise, tuck and fall are named as well, so one taken out is said
+  # undrawn rather than no longer read as a pose, and every fall can take
+  # the last.
   every-cat-pose-reads-as-one-cat = readsAsOne {
     check = "every-cat-pose-reads-as-one-cat";
     animal = "cat";
     sitting = "nothingHere";
     strides = catWalk;
     walkedFrom = catWalkedFrom;
-    poses = posesOf {
-      sitting = "nothingHere";
-      strides = catWalk;
-    };
+    poses = lib.unique (
+      posesOf {
+        sitting = "nothingHere";
+        strides = catWalk;
+      }
+      ++ [
+        "leaping"
+        "tucked"
+        "falling"
+      ]
+    );
   };
 
   # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
