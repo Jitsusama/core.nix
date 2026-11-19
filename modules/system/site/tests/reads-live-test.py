@@ -7,7 +7,8 @@ say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
 page checks at a phone's width and a desk's in both looks. Its keys and places
-must move the cursor from section to section. Anything the page
+must move the cursor from section to section, and a machine's address must
+put it on that machine. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
 The server, the browser and the tab are modules/local-sites/tests/live_page.py's.
 """
@@ -147,6 +148,38 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
     expect(system_page.locator("#note"), "y off a machine didn't say why").to_have_text(
         re.compile(r"^Nothing to copy here")
     )
+
+
+def test_a_machines_address_puts_the_cursor_on_it(browser: Browser, system_served: Served) -> None:
+    root, _ = system_served
+    opened = Opened(browser, f"{root}system/#machine=osprey", SIZES[-1], "dark")
+    page = opened.page
+    try:
+        says_it_stands(page, "live")
+        counted(page)
+        expect(
+            page.locator("#parts a[data-row='machine:osprey']"),
+            "osprey's address didn't land on it",
+        ).to_be_focused()
+        page.evaluate("location.hash = '#machine=heron'")
+        expect(page.locator("#note"), "an address for no machine here didn't say so").to_have_text(
+            "No machine here is called heron."
+        )
+        expect(
+            page.locator("#parts a[data-row='machine:osprey']"),
+            "an address for no machine here moved the cursor",
+        ).to_be_focused()
+        page.evaluate("location.hash = '#machine=kestrel'")
+        expect(
+            page.locator("#parts a[data-row='machine:kestrel']"),
+            "a new address on the open page didn't land on its machine",
+        ).to_be_focused()
+        expect(
+            page.locator('#places a[data-place="machine-1"]'),
+            "the place of the machine landed on wasn't marked",
+        ).to_have_attribute("aria-current", "location")
+    finally:
+        opened.close()
 
 
 def test_a_machine_that_turns_is_counted(system_page: Page, system_daemon: StandIn) -> None:

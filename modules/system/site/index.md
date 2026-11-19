@@ -80,6 +80,11 @@ Every health is good, watch, bad or not read, each with its own mark.
 | y      | Copy the first command of the machine or part you're in             |
 | ?, F1  | The list of keys                                                    |
 
+The page's address for a machine is `#machine=` and its name, as in
+`system/#machine=osprey`: opened there, the cursor starts on that
+machine. One past the first 8 starts on the row for the rest, and a
+name the page doesn't have is said.
+
 ## What the Data Holds
 
 The system daemon holds three kinds of record. The `summary` has
