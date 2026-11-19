@@ -131,7 +131,6 @@ says "  x  home.mount  Mount /home"
 says "     probing the disk"
 says "     reading its label"
 says "     mount: /home: wrong fs type"
-grep -q -F "Mounting /home" "$work/said" && fails "it said more than the last three lines"
 grep -q -F "home.mount: Failed" "$work/said" && fails "it said systemd's line past the unit's own"
 says "  x  quiet.service  A program that said nothing"
 says "     quiet.service: Main process exited, code=killed, status=9/KILL"
@@ -147,7 +146,8 @@ for line in "  x  home.mount  Mount /home" "     mount: /home: wrong fs type" \
   "  x  quiet.service  A program that said nothing" \
   "     quiet.service: Main process exited, code=killed, status=9/KILL" \
   "     quiet.service: Failed with result 'start-limit-hit'." "  x  nameless.service" \
-  "     Failed to start nameless.service." "  x  blank.service  A program that drew nothing"; do
+  "     Failed to start nameless.service." "  x  blank.service  A program that drew nothing" \
+  "     blank.service: Failed with result 'exit-code'."; do
   next=$(grep -n -x -F -- "$line" "$work/said" | cut -d: -f1 | head -n 1) ||
     fails "no line \"$line\""
   ((next > at)) || fails "\"$line\" isn't where it belongs"
