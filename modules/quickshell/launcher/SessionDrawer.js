@@ -70,3 +70,25 @@ function shown(drawer, words) {
         nerd: (drawer.nerd ?? []).map(bit => timed(bit, words))
     };
 }
+
+// The addresses of the sessions whose rows stand either side of the row
+// keyed `agent:<address>` in `rows`, the list the launcher shows, past any
+// heading between, as an arrow steps past one (Headings.js): the sessions
+// an arrow reaches next, whose drawers Agents watches ahead with the one
+// drawn. The selected row, `current`, is looked at first, as it's nearly
+// always the one drawn; a row that isn't a session's is none.
+function beside(rows, current, address) {
+    const own = `agent:${address}`;
+    const at = rows[current]?.key === own ? current : rows.findIndex(row => row?.key === own);
+    if (at < 0) {
+        return [];
+    }
+    const next = step => {
+        let near = at + step;
+        while (rows[near]?.heading === true) {
+            near += step;
+        }
+        return /^agent:(.+)$/u.exec(String(rows[near]?.key ?? ""))?.[1] ?? "";
+    };
+    return [next(-1), next(1)].filter(one => one !== "" && one !== address);
+}

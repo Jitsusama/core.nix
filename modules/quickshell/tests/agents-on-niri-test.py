@@ -124,6 +124,9 @@ ARROWS_PAST = 3
 # The two seconds a session's drawer must stay on its row to read its answer, and a while longer.
 A_STAY = 2.0
 PAST_A_STAY = 2.5
+# Long past a round trip to the lab's agents daemon, a few milliseconds, so a drawer watched
+# ahead as another is drawn is held by then.
+PAST_A_ROUND_TRIP = 0.5
 # What a session works on, as pi says it: its quest's title, then its summary, which runs to
 # about 290 letters on every real session.
 WORKS_ON = (
@@ -994,6 +997,8 @@ def test_a_sessions_drawer_beside_the_one_drawn_comes_with_its_key(shell: Shell)
     assert rows.index(names[1]) == rows.index(names[0]) + 1, f"the fold's rows: {rows}"
     shell.down_to(names[0])
     shell.launcher_until(rested_on(names[0]))
+    # Watched only once drawn, Paused's isn't held however long this waits.
+    time.sleep(PAST_A_ROUND_TRIP)
     since = shell.mark()
     shell.send_key("down")
     shell.launcher_until(rested_on(names[1]))

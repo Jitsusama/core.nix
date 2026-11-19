@@ -342,6 +342,24 @@ QtObject {
                 failures.push(`${what}: "${said}", not "${want}"`);
         }
 
+        // The sessions an arrow reaches next from the one drawn, whose
+        // drawers Agents watches ahead with it: past a heading, and never a
+        // row that isn't a session's.
+        const listed = [{ key: "agent:TOP" }, { key: "heading:fold", heading: true },
+            { key: "agent:ONE" }, { key: "agent:TWO" }, { key: "agents:spec" }];
+        const besides = [
+            ["past a heading above and to a session below", 2, "ONE", "TOP TWO"],
+            ["none past the list's top", 0, "TOP", "ONE"],
+            ["a row not a session's is none", 3, "TWO", "ONE"],
+            ["found though another row is selected", 0, "TWO", "ONE"],
+            ["none for a session not listed", 0, "GONE", ""]
+        ];
+        for (const [what, current, address, want] of besides) {
+            const said = SessionDrawer.beside(listed, current, address).join(" ");
+            if (said !== want)
+                failures.push(`beside ${address}, ${what}: "${said}", not "${want}"`);
+        }
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

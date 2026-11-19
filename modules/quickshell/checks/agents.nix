@@ -206,8 +206,9 @@
       touch $out
     '';
 
-  # A pi session says how it stands and its acts, and its drawer's times are
-  # worded, as modules/quickshell/tests/session-row.qml holds
+  # A pi session says how it stands and its acts, its drawer's times are
+  # worded, and the sessions beside the one drawn are found to watch their
+  # drawers ahead, as modules/quickshell/tests/session-row.qml holds
   # launcher/SessionRow.js and SessionDrawer.js to them in Qt's own engine, and
   # Landed what they landed, kept past their end (Landed.js). How Agents lays
   # sessions out, and what its drawer says, is the agents daemon's, proven in

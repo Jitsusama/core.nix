@@ -396,10 +396,7 @@ Provider {
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
             paced: provider.launcher
-            ahead: provider.drawerWanted !== ""
-                ? [provider.drawerWanted].concat(provider.sessionDrawersAhead,
-                    provider.landingDrawersAhead)
-                : provider.landingDrawersAhead
+            ahead: provider.drawersWatched.concat(provider.landingDrawersAhead)
             answersWhole: true
             onHeard: (changed, gone) => provider.placed(changed, gone)
             // Told as it answers, and again as sharing changes, whether the
@@ -892,12 +889,20 @@ Provider {
     // (SessionDrawer.js), so one left open never waits on the daemon to
     // turn a minute.
     property string drawerWanted: ""
-    // The drawers of the sessions' rows beside the one drawn, watched ahead
-    // with it as Landed's are (landingDrawerOf), so an arrow to either finds
-    // its drawer held and draws it with its key: watched only once drawn,
-    // each session's came a round trip after its row, 23 to 71 ms after its
-    // key (Joel's journal, 18 and 19 November).
-    property var sessionDrawersAhead: []
+    // The session drawers watched: the one drawn, then those of the
+    // sessions' rows beside it, watched ahead as Landed's are
+    // (landingDrawerOf), so an arrow to either finds its drawer held and
+    // draws it with its key. Watched only once drawn, each session's came a
+    // round trip after its row, 23 to 71 ms after its key (Joel's journal,
+    // 18 and 19 November). Set whole, so an arrow tells the daemon one watch.
+    property var drawersWatched: []
+    function watchDrawers() {
+        const drawn = drawerWanted.slice("drawer:agents:".length);
+        const watched = drawerWanted === "" ? []
+            : [drawerWanted].concat(sessionDrawersBeside(drawn));
+        if (watched.join("\n") !== drawersWatched.join("\n"))
+            drawersWatched = watched;
+    }
 
     function drawerOf(address) {
         const key = `drawer:agents:${address}`;
@@ -906,9 +911,7 @@ Provider {
                 if (provider.drawerWanted === key)
                     return;
                 provider.drawerWanted = key;
-                const beside = provider.sessionDrawersBeside(address);
-                if (beside.join("\n") !== provider.sessionDrawersAhead.join("\n"))
-                    provider.sessionDrawersAhead = beside;
+                provider.watchDrawers();
                 staying.stop();
                 staying.address = "";
             });
@@ -933,24 +936,12 @@ Provider {
     }
 
     // The drawers' keys of the sessions' rows either side of the session at
-    // `address` in the list the launcher shows, the selected row first
-    // looked at, as it's nearly always the one drawn.
+    // `address` in the list the launcher shows (SessionDrawer.beside), each
+    // a session here.
     function sessionDrawersBeside(address) {
-        const rows = launcher?.matches ?? [];
-        const current = launcher?.current ?? -1;
-        const at = sessionOfRow(rows[current]) === address ? current
-            : rows.findIndex(row => sessionOfRow(row) === address);
-        if (at < 0)
-            return [];
-        return [rows[at - 1], rows[at + 1]].map(beside => sessionOfRow(beside))
-            .filter(beside => beside !== "" && beside !== address)
+        return SessionDrawer.beside(launcher?.matches ?? [], launcher?.current ?? -1, address)
+            .filter(beside => sessionAt(beside) !== null)
             .map(beside => `drawer:agents:${beside}`);
-    }
-    // The session a launcher row is, by its key, as the tree's and the top's
-    // session rows are keyed (`agent:<address>`), or "" for any other row.
-    function sessionOfRow(row) {
-        const address = /^agent:(.+)$/u.exec(String(row?.key ?? ""))?.[1] ?? "";
-        return address !== "" && sessionAt(address) !== null ? address : "";
     }
 
     // A session's drawer with its acts by name, Return's by ↵, read from
@@ -1874,9 +1865,15 @@ Provider {
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
                 provider.drawerWanted = "";
-                provider.sessionDrawersAhead = [];
+                provider.watchDrawers();
                 provider.sproutShut();
             }
+        }
+        // The rows beside the one drawn move with the list, as a session
+        // turns or another place is shown, which watches none beside it.
+        function onMatchesChanged() {
+            if (provider.drawerWanted !== "")
+                provider.watchDrawers();
         }
         // An opening let go before it showed shuts as well: a tell told it
         // waits for an opening that may be hours off.
