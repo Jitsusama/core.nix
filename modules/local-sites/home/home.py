@@ -19,7 +19,10 @@ config declares, as declared.json writes them, stand in for the record's row
 at the same path, however it is spelled, or go first if it has none. Every
 row the home lists, each as it was written, goes into rows.json beside it,
 for the pages that read what each site is home to, so they read a live
-site's row as its declaration says it rather than the record's.
+site's row as its declaration says it rather than the record's. A kind a
+declared row is home to stays its home: a recorded row's claim on it, by name
+or by pattern, is left out of rows.json and said, since the readers would
+otherwise give the kind to whichever row came first, or fault both.
 
 usage: home.py <sources> <root> <theme> [<declared>], where sources holds the
 home's page and its files, root is the sites' folder, theme is the web kit's
@@ -36,7 +39,7 @@ import json
 import math
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -428,6 +431,33 @@ def declaring(recorded: list[Site], declared: list[Site]) -> list[Site]:
     return placed
 
 
+def kind_of(home: object) -> object:
+    """Say the kind a home claims, a kind's name or a pattern's kind, or None."""
+    return home.get("kind") if isinstance(home, dict) else home
+
+
+def leaving(sites: list[Site], declared: list[Site]) -> tuple[list[Site], list[str]]:
+    """Leave each kind a declared row is home to with it, taking it from the recorded rows.
+
+    It says each claim it took, as the row's path and the kind.
+    """
+    kinds = {kind_of(home) for site in declared for home in site.row.get("homes") or []}
+    kinds.discard(None)
+    # The declared rows themselves, the very ones declaring placed.
+    theirs = {id(site) for site in declared}
+    left: list[Site] = []
+    taken: list[str] = []
+    for site in sites:
+        homes = site.row.get("homes")
+        if id(site) in theirs or not isinstance(homes, list):
+            left.append(site)
+            continue
+        kept = [home for home in homes if kind_of(home) not in kinds]
+        taken += [f"{site.row['path']}'s {kind_of(home)}" for home in homes if home not in kept]
+        left.append(site if kept == homes else replace(site, row={**site.row, "homes": kept}))
+    return left, taken
+
+
 def folder(path: str) -> str:
     """Say a row's path as one folder name and a slash, however it was spelled."""
     return "/".join(part for part in path.split("/") if part not in {"", "."}) + "/"
@@ -455,8 +485,10 @@ def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) 
     except (ValueError, KeyError, TypeError, AttributeError) as error:
         return f"home: sites.json can't be read ({error}), so the last build stays"
     # Nix wrote the declared rows, so a fault in them is the build's, and fails it.
+    taken: list[str] = []
     if declared:
-        sites = declaring(sites, live(declared))
+        rows_declared = live(declared)
+        sites, taken = leaving(declaring(sites, rows_declared), rows_declared)
     # A row's path becomes the home's link to it, so one that would lead
     # anywhere but a page of the sites' own is left out, and said.
     strays = [site.row["path"] for site in sites if not ours(site.row["path"])]
@@ -487,7 +519,8 @@ def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) 
     said = f"home: {len(sites) - kept} sites, {kept} kept; strips on {len(pages)} pages"
     owning = own_scripts(root, sites)
     said += f"; scripts of their own in {', '.join(owning)}" if owning else ""
-    return said + (f"; left out {', '.join(map(repr, strays))}, no path of ours" if strays else "")
+    said += f"; left out {', '.join(map(repr, strays))}, no path of ours" if strays else ""
+    return said + (f"; homes left to the declared sites: {', '.join(taken)}" if taken else "")
 
 
 if __name__ == "__main__":

@@ -16,9 +16,10 @@
 # said, never written in; a second run changes no file; a broken record keeps
 # the last build; a root with no sites.json is left alone; a row Nix declares
 # stands in for the record's, or goes first, and rows.json says every row
-# listed as it was written, in the home's order; a recorded row whose path
-# leads off the sites is left out and said, and a declared one fails the
-# build; and a document loading a script file of its own is named, on any of
+# listed as it was written, in the home's order, but for a recorded row's
+# claim on a kind a declared row is home to, left out and said; a recorded
+# row whose path leads off the sites is left out and said, and a declared one
+# fails the build; and a document loading a script file of its own is named, on any of
 # its pages, however its tag is spelled and even past a byte that isn't UTF-8,
 # while one loading only the kit's, and an app loading its own, are not.
 # usage: home-builds-from-its-rows.sh <python> <sources>
@@ -240,6 +241,31 @@ before=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 [ "$before" = "$after" ] || fail "a second run with declared rows changed a file"
 "$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" > /dev/null
+
+# A kind a declared row is home to stays its home: a recorded row claiming it
+# by name or by pattern loses that claim in rows.json, and it's said, while
+# its other homes, and a declared row's own, stand.
+mkdir -p "$work/claimed"
+cat > "$work/claimed/sites.json" << 'EOF'
+{"sites": [
+  {"path": "notes/", "name": "Notes", "kind": "record",
+   "homes": ["tree", {"kind": "heron", "address": "#heron={name}"}, "otter"]},
+  {"path": "./shed/", "name": "The shed", "kind": "mock", "homes": ["heron"]},
+  {"path": "pond/", "name": "The pond", "kind": "mock", "homes": ["otter"]}
+]}
+EOF
+said=$("$python" "$sources/home.py" "$sources" "$work/claimed" "$work/claimed/kit/theme.css" \
+  "$work/declared.json")
+taken="homes left to the declared sites: notes/'s tree, notes/'s heron, ./shed/'s heron"
+[ "$said" = "home: 5 sites, 0 kept; strips on 0 pages; $taken" ] ||
+  fail "with recorded rows claiming declared homes, it said: $said"
+homes=$("$python" -c 'import json, sys
+rows = json.load(open(sys.argv[1]))["sites"]
+print(json.dumps({row["path"]: row.get("homes") for row in rows}))' \
+  "$work/claimed/rows.json")
+want='{"grove/": null, "old/": ["tree", {"kind": "heron", "address": "#heron={name}"}],'
+want+=' "notes/": ["otter"], "./shed/": [], "pond/": ["otter"]}'
+[ "$homes" = "$want" ] || fail "rows.json didn't leave declared kinds to their sites: $homes"
 
 # A path the record holds twice, however spelled, is listed once when
 # declared, and with no record or folder yet the declared rows make both.
