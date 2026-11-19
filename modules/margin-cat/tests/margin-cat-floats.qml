@@ -410,7 +410,9 @@ QtObject {
         const sets = (way, was) => way === null
             || (drawn => skidsIn(drawn).length + flashesIn(drawn).length > 0)(drawings(way, was));
         for (let x = 120; x < 1200; x += 37) {
-            const [share, atPace] = [shares[((x - 120) / 37) % 4], x % 2 === 1];
+            // Each share at its pace and easing, in turn.
+            const [share, atPace] = [shares[((x - 120) / 37) % 4],
+                Math.floor((x - 120) / 148) % 2 === 1];
             const ways = [[`back to ${x}`, Paths.walk({ x: 1100, y: 7 }, { x, y: 7 },
                 world({ hurried: true }))], [`on to ${x}`, Paths.walk({ x: 100, y: 7 },
                 { x, y: 7 }, world({ floats: [flush] }))]].concat(...strideOrder.map(drawn =>
@@ -424,7 +426,8 @@ QtObject {
             }
         }
         for (let y = 20; y < 790; y += 37) {
-            const [share, atPace] = [shares[((y - 20) / 37) % 4], y % 2 === 1];
+            const [share, atPace] = [shares[((y - 20) / 37) % 4],
+                Math.floor((y - 20) / 148) % 2 === 1];
             const way = Paths.walk({ x: 620, y: 776 }, { x: 640, y }, world({}));
             if (sets(way))
                 skidding.push(`up to ${y}`);
@@ -475,7 +478,7 @@ QtObject {
         const chasedFlashes = chasedInto.filter((one, i) => i > 0 && i < chasedInto.length - 1
             && chasedInto[i + 1].t - one.t < 25).length;
         expect("set off again every frame, a stride steps once a stride's ground",
-            [chasedStride > 0, chasedDrawn.x - chasedAt >= alone / 2,
+            [chasedStride > 0, chasedDrawn.x - chasedAt >= alone * 3 / 4,
                 Math.abs(chasedSteps - chasedStrides) <= 1.5, chasedSkids, chasedFlashes],
             [true, true, true, 0, 0]);
         // Set off again as it eases in, it eases in on, rather than lurch to

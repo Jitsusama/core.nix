@@ -373,7 +373,7 @@ function striding(strides, walk, t) {
         return strides[t < walk.last ? at(t) : (end + 1) % many];
     }
     const [before, early] = [(end - 1 + many) % many, walk.last - 2 * walk.shown];
-    if (early >= walk.since && at(early) === before && t >= early + walk.shown) {
+    if (early >= walk.since && at(early) === before) {
         return strides[t < walk.last ? end : (end + 1) % many];
     }
     const stopping = t >= walk.last - walk.shown && at(t) === end;

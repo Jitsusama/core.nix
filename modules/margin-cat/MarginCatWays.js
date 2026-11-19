@@ -141,18 +141,15 @@ function fallen(speed, s) {
         : speed.reaches + speed.most * (s - speed.until);
 }
 
-// Riding niri's motion to `to` over `ride.ms`, `ride.edge` its share of
-// the way at each ms of the leg. Its first frames catch up to the edge without a jump (VKCF3Z,
-// 2026-11-13 a36e05f9). Carried, its seat coming up into it, it closes
-// within two frames in the pose it has. Left in the air, its seat going
-// from under it (`ride.away`), it goes on with the edge and falls the gap
-// the edge opened before it heard, at gravity's pace or faster where it
-// must sit flush by the time the edge stops, and never more than
-// `ride.room` behind, before what follows would pass through it; past two
-// cells in the falling drawing, landing crouched, and no pose for less
-// than two frames at 60 Hz. Fallen from a row gone under it
-// (`ride.falls`), it's in the falling drawing the whole way, and lands
-// after.
+// Riding niri's motion to `to` over `ride.ms`, `ride.edge` its share of the way at each ms of the
+// leg. Its first frames catch up to the edge without a jump (VKCF3Z, 2026-11-13 a36e05f9). Carried,
+// its seat coming up into it, it closes within two frames in the pose it has. Left in the air, its
+// seat going from under it (`ride.away`), it goes on with the edge and falls the gap the edge
+// opened before it heard, at gravity's pace or faster where it must sit flush by the time the edge
+// stops, and never more than `ride.room` behind, before what follows would pass through it; past
+// two cells in the falling drawing, landing crouched, and no pose for less than two frames at
+// 60 Hz. Fallen from a row gone under it (`ride.falls`), it's in the falling drawing the whole
+// way, and lands after.
 function rides(way, to, ride) {
     const at = way.at;
     const edge = ride.edge;
@@ -408,12 +405,12 @@ function frame(route, t) {
     // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): none but the one stopped
     // on starts in a beat's last SHOWN, and one too short for a stride goes on in the pose
     // it came in; joined to another, its last strides are that one's first. It strides on from
-    // the stride drawn before, from A out of a leap, which drew none, else its stand, into it.
+    // the stride drawn before, else its stand, into it.
     const strides = STRIDING[beat.kind];
     const counted = strides && t >= beat.since ? MarginCat.strode(beat, spot) : null;
     const last = beat.joins ? beat.ends : Math.max(beat.begins, beat.ends - SHOWN);
     const was = strides && route.beats[route.beats.findIndex(one => one.since === beat.since) - 1];
-    const before = was ? was.held ?? was.pose ?? WALKS.slice(-1)[0] : route.drawnIn;
+    const before = was ? was.held ?? was.pose : route.drawnIn;
     const walk = strides && { shown: SHOWN, last, since: beat.since, joins: beat.joins,
         stops: HOLDS.turns, stand: strides.includes(before) ? before : HOLDS.turns,
         count: time => (time === t && counted !== null ? counted : strodeBy(route, beat, time)) };
@@ -425,18 +422,21 @@ function frame(route, t) {
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
         beat: beat.name, aboard: beat.aboard === true, done: false,
         into: strides && !beat.held ? drawnFor(route, beat, t, { walk, pose, spot }) : null,
-        atPace: !!strides && spot.p >= ramps[0] / half && spot.p <= 1 - ramps[1] / half };
+        atPace: Boolean(strides) && spot.p >= ramps[0] / half && spot.p <= 1 - ramps[1] / half };
 }
 
-// How far into `pose`, drawn `t` ms in `walk` at `spot`, it is, in strides: since
-// it began, since `walk.last` stepped on to stop, or the stride before held to stop.
+// How far into `pose`, drawn `t` ms in `walk` at `spot`, it is, in strides: since it began by
+// the count, since it stepped on at `walk.last`, or since the last SHOWN began, if drawn then.
 function drawnFor(route, beat, t, { walk, pose, spot }) {
     const strides = STRIDING[beat.kind];
     const counted = walk.count(Math.min(t, walk.last));
     const plain = strides[(counted + strides.indexOf(walk.stand) + 1) % strides.length];
     const ahead = pose === strides[(strides.indexOf(plain) + 1) % strides.length];
-    const from = ahead ? MarginCat.went(beat, placed(route, beat, walk.last))
-        : (counted - (pose === plain ? 0 : 1)) * beat.stride;
+    const shown = Math.max(walk.since, walk.last - walk.shown);
+    const fromShown = t >= shown && t < walk.last && !walk.joins && MarginCat.striding(strides,
+        walk, shown) === pose ? MarginCat.went(beat, placed(route, beat, shown)) : Infinity;
+    const from = Math.min(fromShown, ahead ? MarginCat.went(beat, placed(route, beat, walk.last))
+        : (counted - (pose === plain ? 0 : 1)) * beat.stride);
     return Math.max(0, MarginCat.went(beat, spot) - from) / beat.stride;
 }
 
