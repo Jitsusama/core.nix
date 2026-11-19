@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from keeps_pace import PROCESSORS, Ledger, builders_share, ticks
+from keeps_pace import PROCESSORS, Ledger, builders_share, every_tick, ticks
 
 # A turn's busy ticks, and a builder that ran the guest half of them under load.
 BUSY = 1000
@@ -25,6 +25,8 @@ STAT = "cpu  100 200 300 400 500 600 700 800 900 1000"
 # iowait aren't busy and a guest's time is already in user and nice.
 STOLEN = 800
 BUSIED = 100 + 200 + 300 + 600 + 700 + 800
+# Every tick it counts, idle and iowait with the busy, but not a guest's, already in user and nice.
+EVERY = 100 + 200 + 300 + 400 + 500 + 600 + 700 + 800
 
 
 def stat(stolen: int, busy: int) -> str:
@@ -80,6 +82,22 @@ def test_stolen_and_busy_ticks_are_read_from_the_kernels_line() -> None:
     stolen, busy = ticks(STAT)
     assert stolen == STOLEN, f"{STAT!r} read as {stolen} stolen ticks"
     assert busy == BUSIED, f"{STAT!r} read as {busy} busy ticks"
+
+
+def test_every_tick_is_read_from_the_kernels_line() -> None:
+    """Every tick is the eight fields' up to steal, leaving out the guests' times they hold."""
+    every = every_tick(STAT)
+    assert every == EVERY, f"{STAT!r} read as {every} ticks"
+
+
+def test_each_turn_keeps_every_tick_it_counted_and_a_turning_none() -> None:
+    """A turn's every tick weighs its busy ones by the guest's own clock, whatever a read took."""
+    ledger = Ledger("cpu  0 0 0 0 0 0 0 0 0 0")
+    ledger.count("cpu  60 0 0 30 10 0 0 0 0 0", turn=True)
+    ledger.count("cpu  90 0 0 80 10 0 0 0 0 0", turn=None)
+    ledger.count("cpu  95 0 0 120 10 0 0 0 0 0", turn=False)
+    assert ledger.ticked[True] == 100, f"under load the ledger kept {ledger.ticked[True]} ticks"
+    assert ledger.ticked[False] == 45, f"frozen the ledger kept {ledger.ticked[False]} ticks"
 
 
 def test_each_count_goes_to_its_own_turn_and_a_turning_to_neither() -> None:

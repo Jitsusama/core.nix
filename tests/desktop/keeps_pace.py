@@ -65,6 +65,11 @@ def ticks(stat: str) -> tuple[int, int]:
     return steal, user + nice + system + irq + softirq + steal
 
 
+def every_tick(stat: str) -> int:
+    """Give every tick on /proc/stat's first line, idle and iowait with the busy."""
+    return 0
+
+
 class Ledger:
     """The guest's stolen and busy ticks in each turn, under load (True) and frozen (False)."""
 
@@ -72,6 +77,7 @@ class Ledger:
         """Start counting from the kernel's line as it stands."""
         self.last = ticks(stat)
         self.turns: dict[bool, tuple[int, int]] = {True: (0, 0), False: (0, 0)}
+        self.ticked: dict[bool, int] = {True: 0, False: 0}
         # Whether the load is between turns, from asking it to turn until it has.
         self.between = False
 
