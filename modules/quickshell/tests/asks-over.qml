@@ -745,7 +745,7 @@ ShellRoot {
         // screen is shared over an ask that would arm (Arming.letsHeldGo
         // decides whether it still says it), and what another place told
         // during the share stays, since nothing hidden is in it.
-        same("and only why Return held it is let go from the foot",
+        same("and the launcher is asked to let go only of why Return held it",
             [stage.untolds - untolds, stage.unhelds - unhelds], [0, 1]);
         same("nor is it held still", [row()?.still, row()?.stillWhy], [undefined, undefined]);
     }
@@ -868,6 +868,7 @@ ShellRoot {
                 : one[field]]));
         const waiting = drawn(row());
         link.tellEnded();
+        same("the ended ask is its own row, no longer waiting", row()?.waiting, false);
         same("an ask ended while the screen is shared is hidden", row()?.name,
             "Ask, Hidden While You Share");
         // Its hue and state go with the rest, or one watching the share

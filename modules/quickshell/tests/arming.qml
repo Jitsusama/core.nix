@@ -145,6 +145,23 @@ QtObject {
         expect("nor a word with no held Return said",
             Arming.letsHeldGo([["q", "quit"]], []), false);
 
+        // What Return does on the selected row, as onAccepted asks: a held
+        // row is held before anything else it might be stepped into,
+        // lined or landed on, as every other way in asks it first.
+        const every = { arming: true, steps: true, ends: true, lands: true };
+        expect("a held row is held, whatever else it is",
+            Arming.returnAct(Object.assign({ held: true }, every)), "held");
+        expect("but an answer being given is given",
+            Arming.returnAct(Object.assign({ asking: true, held: true }, every)), "gave");
+        expect("and a Return doubling a landing does nothing more",
+            Arming.returnAct(Object.assign({ landed: true, held: true }, every)), "");
+        expect("one not held arms first", Arming.returnAct(every), "arming");
+        expect("then steps in", Arming.returnAct({ steps: true, ends: true, lands: true }),
+            "entered");
+        expect("then lines", Arming.returnAct({ ends: true, lands: true }), "lined");
+        expect("then lands", Arming.returnAct({ lands: true }), "landed");
+        expect("and otherwise runs", Arming.returnAct({}), "ran");
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         console.log(`${asked - failures.length} of ${asked} passed`);
