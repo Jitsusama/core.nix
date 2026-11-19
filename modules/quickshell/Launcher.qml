@@ -10231,7 +10231,7 @@ Scope {
         const how = Wanted.keptPlaceListed({ listed: source?.keptListed === true, asNow: asNow,
             named: listedNow === true, led: kept.led === true, shared: screenShared() });
         if (how === "") {
-            console.info(`launcher: ${name} opened whole, as ${sharedWhy()}`);
+            console.info(`launcher: ${name} opened afresh, as ${sharedWhy()}`);
             return false;
         }
         const listed = how === "source" ? keptListing(source)
@@ -10239,6 +10239,8 @@ Scope {
             : how === "led" ? ledListing(name) : how === "kept" ? kept.matches : null;
         if (listed === null)
             return false;
+        // The kept steps are only the way into the place, never its rows,
+        // so they're drawn under a share too.
         const steps = asNow ? [placeStep(source)] : kept.held;
         keeping = true;
         try {
@@ -10946,7 +10948,7 @@ Scope {
         // copy (Wanted.opensKept); that opening isn't one said whole.
         openedShared = !open && !opening && !Wanted.opensKept(screenShared());
         if (openedShared && homeHeld)
-            console.info(`launcher: home opened whole, as ${sharedWhy()}`);
+            console.info(`launcher: home opened afresh, as ${sharedWhy()}`);
         if (opening)
             unopened();
         else if (open)

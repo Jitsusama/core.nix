@@ -253,7 +253,11 @@ def latest(timed: list[Json]) -> int:
 
 
 def opened_from_kept(shell: Shell) -> Json:
-    """Open the launcher as its chord does, and give that opening as it was timed and filled."""
+    """Open the launcher as its chord does, and give that opening as it was timed and filled.
+
+    It waits for niri to have said its casts first, as a restart just before it leaves unsaid.
+    """
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
     timed = latest(openings(shell))
     shell.as_account(shell.ipc("toggle"))
