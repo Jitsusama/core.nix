@@ -843,15 +843,16 @@ QtObject {
             Object.assign({ swapped: 82.36, stamped: true, later: 0 }, keys[0])];
         check(failures, "each key says its press, swap and screen to a tenth, as pressed",
             Presented.keysClockSaid(clocked),
-            "launcher: 3 keys pressed, swapped and shown, in monotonic ms: 0.0 82.4 100.0; "
+            "launcher: 3 keys shown, each pressed, swapped and shown in monotonic ms: "
+            + "0.0 82.4 100.0; "
             + "1000.0 - 1050.0; 2000.0 2020.0 2300.0");
         check(failures, "an untimed press, a swap not reached and a later frame are said",
             Presented.keysClockSaid([Object.assign({}, clocked[2], { stamped: false }),
                 Object.assign({}, clocked[1], { swapped: 0, later: 1 }),
                 Object.assign({}, clocked[0], { later: 2 })]),
-            "launcher: 3 keys pressed, swapped and shown, in monotonic ms: - 82.4 100.0; "
-            + "1000.0 - 1050.0, 1 frame after its own; "
-            + "2000.0 2020.0 2300.0, 2 frames after its own");
+            "launcher: 3 keys shown, each pressed, swapped and shown in monotonic ms: "
+            + "- 82.4 100.0; 1000.0 - 1050.0, 1 frame of the shell's after its own; "
+            + "2000.0 2020.0 2300.0, 2 frames of the shell's after its own");
         // How the launcher reads a key's record and the frame niri answered.
         const clockOf = (key, answered) => JSON.stringify(Presented.keyClockOf(key, answered));
         check(failures, "a key niri answered on its own frame, or a later one, says how many on",

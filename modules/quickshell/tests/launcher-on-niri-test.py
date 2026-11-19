@@ -80,8 +80,12 @@ ROUNDED = 2
 FRAMES_BEFORE = re.compile(r", after (?:at least )?\d+ other frames? since it was heard")
 # How the close says each key's press, swap and screen in monotonic ms (Presented.keysClockSaid),
 # each to a tenth, "-" for one not timed, so it lines up with niri's own log of its frames.
-KEYS_CLOCK = re.compile(r"launcher: \d+ keys pressed, swapped and shown, in monotonic ms: (.+)")
-CLOCK_KEY = re.compile(r"(-|[\d.]+) (-|[\d.]+) ([\d.]+)(?:, (\d+) frames? after its own)?")
+KEYS_CLOCK = re.compile(
+    r"launcher: \d+ keys shown, each pressed, swapped and shown in monotonic ms: (.+)"
+)
+CLOCK_KEY = re.compile(
+    r"(-|[\d.]+) (-|[\d.]+) ([\d.]+)(?:, (\d+) frames? of the shell's after its own)?"
+)
 # A tenth's rounding, with room for the float either side of it.
 TENTH = 0.051
 # The most facts a home network thing's drawer holds, the rest its step in's (modules/eero's

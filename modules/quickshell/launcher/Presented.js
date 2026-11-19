@@ -148,12 +148,15 @@ function shownSaid(times, at) {
 // for after 100 ms idle (says-a-frames-steps-after-idle.patch), so in a
 // burst of keys the first has a line of niri's to match and the rest don't.
 // A press niri gave no time for, as a typed one's, reads "-", as does a
-// swap the render thread didn't time (`stamped`, `swapped`); a held key's
-// repeat is timed from when Qt made it, as keytimes.cpp says. A key niri
-// answered for on a later frame than its own says how many later
-// (`later`, keyClockOf), since its swap is its own frame's and its
-// showing the later one's. Keys typed into an ask are never timed
-// (Launcher.qml's searchedNow), so none is secret.
+// swap the render thread didn't time or no longer keeps, 16 of the shell's
+// frames on (`stamped`, `swapped`); a held key's repeat is timed from when
+// Qt made it, as keytimes.cpp says, and reads as a press. A key niri
+// answered for on a later frame of the shell's than its own says how many
+// later (`later`, keyClockOf), since its swap is its own frame's and its
+// showing the later one's; those are the shell's frames, not niri's
+// refreshes. Only keys niri showed are said, the last 300 (keysKept).
+// Keys typed into an ask are never timed (Launcher.qml's searchedNow), so
+// none is secret.
 function keysClockSaid(times) {
     if (times.length === 0) {
         return "";
@@ -162,11 +165,11 @@ function keysClockSaid(times) {
         const pressed = one.stamped === false ? "-" : tenths(one.from);
         const swapped = one.swapped > 0 ? tenths(one.swapped) : "-";
         const later = one.later > 0
-            ? `, ${one.later} ${one.later === 1 ? "frame" : "frames"} after its own`
+            ? `, ${one.later} ${one.later === 1 ? "frame" : "frames"} of the shell's after its own`
             : "";
         return `${pressed} ${swapped} ${tenths(one.at)}${later}`;
     });
-    return `launcher: ${times.length} keys pressed, swapped and shown, in monotonic ms: `
+    return `launcher: ${times.length} keys shown, each pressed, swapped and shown in monotonic ms: `
         + each.join("; ");
 }
 
