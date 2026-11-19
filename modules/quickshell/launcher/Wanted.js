@@ -131,9 +131,12 @@ function sourceNamed(all, nameOf, provider) {
 // already shows what was kept: only home's fill, run by `filled()` and so
 // sure of a slice to follow, with a home kept for the card to stand on
 // until then. A place's fill, whose steps into it run in the open, and any
-// other opening find and join there as ever (H6EDLC, 2026-11-18).
+// other opening find and join there as ever (H6EDLC, 2026-11-18). Nor
+// while the screen may be shared (`shared`, Shared.js's hidden): home kept
+// from before a share can name what it hides, an ask or a copy, which its
+// first frame would draw on the shared screen (5GLTPH, 2026-11-19).
 function findsLater(opening) {
-    return opening.byFill && !opening.intoPlace && opening.kept > 0;
+    return opening.byFill && !opening.intoPlace && opening.kept > 0 && opening.shared !== true;
 }
 
 // Whether that slice, or a key, a click or a chord run before it, searches

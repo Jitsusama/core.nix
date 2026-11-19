@@ -73,6 +73,7 @@ import "launcher/Catalogue.js" as Catalogue
 import "launcher/Member.js" as Member
 import "launcher/Parts.js" as Parts
 import "launcher/Rank.js" as Rank
+import "launcher/Shared.js" as Shared
 import "launcher/Showing.js" as Showing
 import "launcher/Flash.js" as Flash
 import "launcher/ActForms.js" as ActForms
@@ -10565,9 +10566,11 @@ Scope {
             // kept: inside `open` they were a third of the fill's 14 ms on
             // a builder, and the fill's "opening" held a median 27 ms of
             // 32 of Joel's 53 longest stalls (2026-11-18). Only home's
-            // fill, with home kept (Wanted.findsLater).
+            // fill, with home kept, and never while the screen may be
+            // shared, as Asks and Copies hide by (Wanted.findsLater).
             fillFinding = Wanted.findsLater({ byFill: fillOpening, intoPlace: fillingPlace,
-                kept: homeKept.length });
+                kept: homeKept.length,
+                shared: Shared.hidden(Niri.castsHeard, Niri.casts, Recorder.windowSession) });
             fillFoundBy = "";
             fillFoundThrew = false;
             fillFoundHome = false;
