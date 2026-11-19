@@ -124,33 +124,26 @@ function foundNow(foundAs, offered, ways) {
 // Where the launcher goes once `made` (remade's or own's answer) says a
 // step offers nothing now: `keep`, how many steps it keeps, back to the
 // step above the one to leave, or -1 to leave none, with `steps` as
-// they're shown. A dialog's own collection, `how.outermost`, is never
-// left, for the home it never showed: it stays with its rows each gone,
-// as no row offered now says it's left, rather than showing what it
-// offered before, its row as it was entered. A thing landed in from a
-// search, `through`, is left back to the search, past the collection it
-// was found in, as Joel's - leaves it.
-function leaveTo(made, how, ways) {
+// they're shown. A thing landed in from a search, `through`, is left back
+// to the search, past the collection it was found in, as Joel's - leaves
+// it, but never past a dialog's own collection, `how.outermost`, for the
+// home it never showed. That collection is itself never left: it's a
+// place's own step, with no key, which own keeps with its rows each gone.
+function leaveTo(made, how) {
     const steps = made.steps.slice();
     if (made.leave < 0) {
         return { steps, keep: -1 };
     }
     const left = made.leave > 0 && steps[made.leave].through === true ? made.leave - 1
         : made.leave;
-    const keep = Math.max(left, how.outermost ? 1 : 0);
-    if (keep > made.leave) {
-        steps[made.leave] = Object.assign({}, steps[made.leave], {
-            rows: ways.keep(steps[made.leave], [])
-        });
-    }
-    return { steps, keep: keep < steps.length ? keep : -1 };
+    return { steps, keep: how.outermost && left < made.leave ? Math.max(left, 1) : left };
 }
 
 // What every history forgets once `made` says a step offers nothing now,
 // for afterLeave, or null where none does: `left`, the places through
-// that step, whether it's left, left past the collection a search found
-// it in, or kept as a dialog's outermost; and `landed`, where Joel is
-// once `leaving` (leaveTo's answer) has gone, whose last places go. Each
+// that step, whether it's left or left past the collection a search
+// found it in; and `landed`, where Joel is once `leaving` (leaveTo's
+// answer) has gone, whose last places go. Each
 // is read as `held` read it before the remaking and as `steps` read it
 // after, since a row remade as offered now may be renamed so. Only the
 // spent step's places go, never its collection's, whose other rows still
@@ -160,37 +153,52 @@ function forgets(made, leaving, held, steps) {
         return null;
     }
     const through = made.leave + 1;
-    const at = leaving.keep < 0 ? steps.length : leaving.keep;
     return {
-        landed: [held.slice(0, at), steps.slice(0, at)],
+        landed: [held.slice(0, leaving.keep), steps.slice(0, leaving.keep)],
         left: [held.slice(0, through), steps.slice(0, through)]
     };
 }
 
-// Where a list of steps goes, for telling the histories' places apart:
-// each step's row by its key, or what it is, as the launcher's sameRow
-// matches a row remade, and only a row with neither by its name. So a
-// place recorded under a name its row had before a refresh renamed it
-// is still the same place.
+// Where a list of steps goes, the one way the launcher tells places
+// apart, for its histories as they're kept and as they forget: a row by
+// its key, as the launcher's sameRow matches a row remade, so a refresh
+// renaming a held row is no step to a new place; and a row with none,
+// as an answer or a place's own step, by what it is and its name
+// together, since every answer is the same "answer".
 function placeOf(steps) {
     return steps.map(step => {
         const row = step.row ?? {};
-        if ((row.key ?? "") !== "") {
-            return `key\u0000${row.key}`;
-        }
-        return (row.is ?? "") !== "" ? `is\u0000${row.is}` : `name\u0000${row.name ?? ""}`;
+        return (row.key ?? "") !== "" ? `key\u0000${row.key}`
+            : `is\u0000${row.is ?? ""}\u0000${row.name ?? ""}`;
     }).join("\u0001");
 }
 
-// What the launcher's remaking answers its caller, from `made` and where
-// `leaving` (leaveTo's answer) goes: "made" when every step was made
-// again, or the outermost alone kept with its rows gone; "kept" when one
-// was kept as it was; and "left" when steps were left.
-function answer(made, leaving) {
+// What the launcher's remaking answers its caller, from `made`: "made"
+// when every step was made again, "kept" when one was kept as it was,
+// and "left" when steps were left.
+function answer(made) {
     if (made.leave < 0) {
         return made.all ? "made" : "kept";
     }
-    return leaving.keep < 0 ? "made" : "left";
+    return "left";
+}
+
+// A throw caught as the launcher refreshes a source, as one journal line:
+// its kind and where it threw first, never its message, which could
+// carry what a source served, nor every frame, which would bury the
+// journal. The kind always ends "Error:", as the VM tests' error nets
+// look for, a thrown value that isn't an Error, or one named otherwise,
+// said as "Error"; and a first line not shaped wholly as a frame, as
+// another engine's "Error: message" is, is left out, so no message can
+// come in through it.
+const errorKind = /^[A-Za-z]*Error$/;
+const frameLine = /^[^\s@]*@[^\s@]+:\d+(:\d+)?$/;
+function thrown(error) {
+    const real = error instanceof Error;
+    const kind = real && errorKind.test(`${error.name}`) ? error.name : "Error";
+    const first = real ? `${error.stack ?? ""}`.split("\n")[0] : "";
+    const where = frameLine.test(first) ? ` at ${first}` : "";
+    return `${kind}: ${real ? "" : `${typeof error} `}thrown${where}`;
 }
 
 // What each history keeps once a step left by itself has landed where
@@ -209,7 +217,9 @@ function afterLeave(went, at, where) {
     const left = at.left.map(steps => ({ depth: steps.length, place: where(steps) }));
     const through = one => left.some(step =>
         one.held.length >= step.depth && where(one.held.slice(0, step.depth)) === step.place);
-    const there = one => landed.includes(where(one.held));
+    // Home is no place a leave strands an entry at: going back to it
+    // brings back what was typed there, which may be another search.
+    const there = one => one.held.length > 0 && landed.includes(where(one.held));
     const kept = places => {
         const away = places.filter(one => !through(one));
         let end = away.length;

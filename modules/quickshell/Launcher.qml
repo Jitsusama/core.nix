@@ -4125,14 +4125,11 @@ Scope {
     // where it was left, which Tab goes back to, the place it leaves taking
     // its turn, so Tab again comes back. A place is what's held, so a step
     // in, out or beside makes the one left the last; what a held step
-    // says of itself changing, as its rows are found, never does. It's
-    // let go as the launcher opens, since the places before were left.
+    // says of itself changing, as its rows are found or a refresh renames
+    // it, never does, as Held.placeOf tells places apart. It's let go as
+    // the launcher opens, since the places before were left.
     property var lastPlace: null
     property var placeHeld: []
-    function placeOf(steps) {
-        return steps.map(step => `${step.row?.key ?? ""}\u0000${step.row?.name ?? ""}`)
-            .join("\u0001");
-    }
     // Called as held changes, before the field is set for the new place,
     // so where the launcher is still says where the place left was left.
     onHeldChanged: {
@@ -4145,10 +4142,17 @@ Scope {
         // few as its own rows need.
         gutterDigits = leastDigits;
         numberDigits = 1;
-        if (open && placeOf(left) !== placeOf(held)) {
+        if (open && Held.placeOf(left) !== Held.placeOf(held)) {
             // A place opening redraws every row, so its foot's room is
             // weighed afresh then, as its rows come.
             footReset();
+            // What y copied flashed where it was, by place, so it's let
+            // go with the place, rather than flashing whatever stands
+            // there in the next, however Joel moved.
+            if (Object.keys(flashing).length > 0) {
+                flash.stop();
+                flashing = {};
+            }
             lastPlace = { held: left, here: here() };
             // A place stepped to afresh goes on the way back, and leaves
             // nothing ahead, as Vim's jump list does.
@@ -4201,7 +4205,7 @@ Scope {
         } finally {
             jumping = false;
         }
-        const moved = placeOf(left.held) !== placeOf(held);
+        const moved = Held.placeOf(left.held) !== Held.placeOf(held);
         jumpsBack = moved ? was.back.concat([left]) : was.back;
         jumpsAhead = moved ? [] : was.ahead;
         tagsBack = was.tags;
@@ -5797,19 +5801,8 @@ Scope {
                 shown = refreshNow(source);
             } catch (error) {
                 threw = true;
-                // One line: the error's kind and where it threw first,
-                // never its message, which could carry what a source
-                // served, nor every frame, which would bury the journal.
-                // A thrown value that isn't an Error is named by its type,
-                // and a first line not shaped as a frame is left out, so
-                // another engine or thrower can't put a message in. Its
-                // kind ends in a colon, as an uncaught throw's does, so
-                // the VM tests' error net still catches it.
-                const real = error instanceof Error;
-                const first = real ? `${error.stack ?? ""}`.split("\n")[0] : "";
-                const where = /@\S+:\d+(:\d+)?$/.test(first) ? ` at ${first}` : "";
                 console.warn(`launcher: refreshing ${source.settings.name} failed: `
-                    + `${real ? error.name : typeof error}: thrown${where}`);
+                    + Held.thrown(error));
             }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.
@@ -5834,7 +5827,10 @@ Scope {
                 tookMs: one.tookMs, rows: matches.length, depth: held.length });
         }
         actsRefreshed(done, begun);
-        heldAgreed(due);
+        // A source that threw isn't asked again for what it holds, which
+        // would throw again with nothing to catch it; its holds wait for
+        // its next change.
+        heldAgreed(done.filter(one => !one.threw).map(one => one.source));
         // What it cost sizes how long the next change waits (Pacing.js).
         pace = Pacing.costed(pace, KeyTimes.now() - begun);
         if (wasOpen)
@@ -6139,34 +6135,22 @@ Scope {
     // caller holds, and a step Held.js says to leave, one still offered
     // that now offers nothing, left where Held.leaveTo says: back to the
     // step above it in one step out, as Joel's - would leave it, never past
-    // a dialog's own collection (canGoUp), which stays with its rows gone.
+    // a dialog's own collection (canGoUp).
     // Says, as Held.answer has it, "made" when every step was made again,
-    // one kept with its rows gone included, for the caller to show; "left"
+    // for the caller to show; "left"
     // when steps were left, which shows itself, so the caller puts nothing
     // back; and "kept" when a step couldn't be made again, so the caller
     // changes nothing. `source` is what changed, for the journal.
     function heldAgain(steps, made, source) {
         const outermost = steps[0]?.row.from?.collection?.outermost === true;
-        const leaving = Held.leaveTo(made, { outermost }, heldWays(source));
+        const leaving = Held.leaveTo(made, { outermost });
         leaving.steps.forEach((step, at) => {
             steps[at] = step;
         });
-        const answered = Held.answer(made, leaving);
-        const forgetting = Held.forgets(made, leaving, held, steps);
-        if (answered !== "left") {
-            // The outermost alone, kept though it offers nothing, is made
-            // with its rows gone, but every place through it still goes
-            // from every history, since each would show its spent rows.
-            // Said once, as it goes spent, not again on every change of a
-            // source while it stays so, its rows each gone already.
-            if (forgetting !== null && held[0]?.rows.some(row => !row.went)) {
-                forgetLeft(forgetting, lastPlace);
-                console.info(`launcher: kept the outermost step of `
-                    + `${source?.settings.name ?? "a place"} with its rows gone, as it `
-                    + "offers nothing now");
-            }
+        const answered = Held.answer(made);
+        if (answered !== "left")
             return answered;
-        }
+        const forgetting = Held.forgets(made, leaving, held, steps);
         // Left by itself, it's no place Joel stepped to, so it goes on
         // neither the way back nor as the place used last, even where the
         // row it's left from was renamed as it was remade; and every place
@@ -6407,13 +6391,6 @@ Scope {
         // collection it was found in.
         const steps = depth > 0 ? Math.min(depth, held.length)
             : held[held.length - 1].through && held.length > 1 ? 2 : 1;
-        // What y copied flashed where it was, by place, so it's let go with
-        // the step, rather than flashing whatever stands there in the step
-        // above.
-        if (Object.keys(flashing).length > 0) {
-            flash.stop();
-            flashing = {};
-        }
         traces.began("back", { from: held[held.length - 1].key ?? "", depth: held.length });
         // Timed to its frame as a step in is, named by the arrow and the
         // place left: Joel's - out of Agents and For You took 61 to 67 ms
