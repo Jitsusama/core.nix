@@ -4,7 +4,9 @@ Here the launcher keeps pace with the keys while the machine is busy. Every core
 account's jobs.slice and in build.slice, where a workstation's agents and builds run, and each key
 is timed from the moment a stand-in keyboard pressed it to the first frame the launcher drew for
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
-those under load are held against the others, so the builder's own load slows both alike. That
+those under load are held against the others, so the builder's own load slows both alike, and
+each test says how much of its time the guest counted stolen in each turn, which a last test
+proves it can count, so a run that fails shows whether the builder took the time. That
 text a program types at once is searched once, and a Return among it acts on what it found, is
 proven on a nested niri, in modules/quickshell/tests/launcher-on-niri-test.py. Long because its
 keys, steps and openings are each timed against the same loaded desktop, and a split would boot it
@@ -15,13 +17,16 @@ its opening comment says what the test proves. Every test asks for the desktop, 
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
+import os
 import re
 import shlex
 import time
 from datetime import timedelta
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 import pytest
@@ -34,6 +39,7 @@ from desktop_session import (
     neovims_quit,
     retry,
 )
+from keeps_pace import PROCESSORS, Ledger
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -75,7 +81,7 @@ PHASE = 20
 # processors want to run, and the builder, which can't see the guest's weights, holds the one
 # drawing the launcher behind its own work, as it doesn't hold a processor that's idle. On 5
 # November main's launcher failed and passed at the same commit by what else the builder ran,
-# and these builders give the guest no steal time to tell it by. A desktop the load starves
+# and the tail can't tell that from the shell. A desktop the load starves
 # doesn't show in the tail either: with the desktop's slices weighed 1 its slowest key in twenty
 # took 124 ms against 442 ms frozen. So beside the middle key, what the machine's own weights
 # decide is judged: how long the compositor and the shell were ready to run and waited for a
@@ -91,6 +97,22 @@ PHASE = 20
 WAITED = 45
 SLOWER_MOST = 2
 MIDDLE_MORE = 50
+# The builder's processors the held subtest runs the VM's four on, so under load each runs about
+# half the time, the least part of the guest's busy time it must count stolen for that, and how
+# long it counts, in seconds. Held so on 19 November the guest counted 45 to 50% stolen, where
+# unheld it counted under 1 to 8%, by how busy the builder was. Held to one, the frozen guest
+# starved as much as the loaded one, its idle processors' halts and QEMU's own threads taking
+# the builder's one, so that's no busy builder.
+HELD_TO = 2
+HELD_STOLEN = 0.25
+GAUGING = 10
+# A halted processor has nothing stolen, so little stolen held is a count blind to the builder
+# only while the four are busy: at least this part of the ticks they could in the time counted,
+# at /proc/stat's 100 a second. Held so on 19 November they counted 4204 to 4318 in over 10 s.
+HELD_BUSY = 0.75
+TICKING = 100
+# The passes holding the VM's threads may take, past which a hold still missing one fails as that.
+HOLDING = 5
 TAIL = 0.95
 # Cage, which holds the compositor here, and the shell, by the units they run in.
 COMPOSITOR = "cage-tty1.service"
@@ -192,6 +214,9 @@ def keyboard(desktop: Desktop) -> Iterator[None]:
 def loaded(desktop: Desktop) -> Iterator[None]:
     """Load every core in jobs.slice and in build.slice, as agents and builds do, until done."""
     machine = desktop.machine
+    # The share the builder splits between the VM's processors is read as at most their count.
+    processors = int(machine.succeed("nproc --all").strip())
+    assert processors == PROCESSORS, f"the VM has {processors} processors, not {PROCESSORS}"
     # Builds weigh what the workstation role gives them (modules/nix-daemon).
     weight = machine.succeed("systemctl show build.slice --property=CPUWeight --value").strip()
     assert weight == "10", f"build.slice weighs {weight}, not the workstation's 10"
@@ -259,6 +284,8 @@ class Timing:
         # the turn being pressed with what they'd waited when it began.
         self.waited: dict[int, float] = {}
         self.open: tuple[int, float] | None = None
+        # The guest's ticks the builder stole, and its busy ones with them, by turn.
+        self.ledger = Ledger(desktop.machine.succeed("head -1 /proc/stat"))
         show = "show --property=ControlGroup --value"
         self.groups = [
             desktop.machine.succeed(f"systemctl {show} {COMPOSITOR}").strip(),
@@ -271,9 +298,28 @@ class Timing:
         self.timed = framed(self.desktop)["timed"]
         self.pressing = 0
         self.turns = []
+        # What the shell did before the keys is timed by no bar, so its ticks are passed over.
+        self.count(kept=False)
 
     def load(self, *, on: bool) -> None:
-        """Let the machine's load run, or freeze it where it stands, which takes no time back."""
+        """Let the machine's load run, or freeze it where it stands, which takes no time back.
+
+        The ticks before it turns go to the turn that's ending.
+        """
+        self.count(kept=True)
+        self.ledger.turning()
+        self.turn(on=on)
+        # The ticks while the load turned are neither turn's, so they're passed over, and only
+        # then is the turn done: one that fails here leaves the ledger between turns.
+        self.count(kept=False)
+        self.ledger.turned()
+
+    def turn(self, *, on: bool) -> None:
+        """Let the load run or freeze it, counting nothing, as main's load did.
+
+        A count that just failed would likely fail again, so a thaw that mustn't wait on one
+        comes here.
+        """
         verb = "thaw" if on else "freeze"
         # A builder stalling the VM held a freeze for 50 s on 5 November, past the 25 s systemctl
         # waits for its answer by default, though the unit froze. FREEZING is longer than that.
@@ -281,6 +327,27 @@ class Timing:
         self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs", timeout=2 * FREEZING)
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
+
+    def count(self, *, kept: bool) -> None:
+        """Count the ticks since the last count, kept with the load as it stands."""
+        stat = self.desktop.machine.succeed("head -1 /proc/stat")
+        self.ledger.count(stat, turn=self.loading if kept else None)
+
+    def end(self) -> None:
+        """Say what the guest counted stolen, then let the load run again if it's frozen.
+
+        Said before any of a test's bars is judged, so a run that fails says it too, and before
+        the thaw, which a stalled builder can fail. A last count that fails still says the turns
+        already counted, without the last, and a load left between turns is let run too.
+        """
+        try:
+            self.count(kept=True)
+        finally:
+            print(self.ledger.said())
+            # Let run as main always tried, the last count failed or not: nothing reads the
+            # ledger now, so the thaw counts nothing first, which could fail as the last did.
+            if not self.loading or self.ledger.between:
+                self.turn(on=True)
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""
@@ -353,6 +420,9 @@ class Timing:
         lines = machine.succeed(f"tail -n +{self.said + 1} {SAID}").splitlines()
         noted = self.caught_up()
         self.close_turn()
+        # The turn ends once its keys are caught up, so its ticks go to it before what follows.
+        # Counted after its wait is read, so the wait spans what main's did.
+        self.count(kept=True)
         assert noted["clock"] == "monotonic", f"the launcher keeps time by {noted['clock']}"
         kept = len(noted["frames"])
         assert len(noted["pressed"]) == len(noted["heard"]) == kept, (
@@ -632,6 +702,8 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     made: dict[bool, list[str]] = {True: [], False: []}
     try:
         stepped_round(desktop)
+        # The round warming the drawers up is timed by no bar, so its ticks are passed over.
+        timing.count(kept=False)
         for turn in range(ROUNDS):
             loaded = turn % 2 == 1
             if loaded != timing.loading:
@@ -648,8 +720,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
                     searching.setdefault(place, []).append(search)
                     slowest[place] = max(slowest.get(place, (0, "")), (took, line))
     finally:
-        if not timing.loading:
-            timing.load(on=True)
+        timing.end()
         desktop.close_launcher()
 
     def middle(times: list[int]) -> int:
@@ -743,8 +814,8 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
     first: dict[bool, list[int]] = {True: [], False: []}
     # Each opening as the launcher timed it, the first after a start and the one after it.
     said: list[tuple[bool, Json, Json]] = []
-    desktop.as_account(f"echo '{LISTED} 1 listed' > {CROWD}.new && mv {CROWD}.new {CROWD}")
     try:
+        desktop.as_account(f"echo '{LISTED} 1 listed' > {CROWD}.new && mv {CROWD}.new {CROWD}")
         for turn in range(STARTS):
             loaded = turn % 2 == 1
             if loaded != timing.loading:
@@ -760,8 +831,7 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
             first[loaded].append(opening["took"])
             said.append((loaded, opening, opened_timed(desktop)))
     finally:
-        if not timing.loading:
-            timing.load(on=True)
+        timing.end()
         desktop.as_account(f"echo '0 0' > {CROWD}.new && mv {CROWD}.new {CROWD}")
         desktop.launcher_left_closed()
 
@@ -841,10 +911,12 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
     fill it in, where its rows stand. Its drawing is held to its drawing with the load frozen.
     """
     timing = Timing(desktop)
-    # The first opening after the shell starts makes every row, with nothing kept yet.
-    opened_timed(desktop)
     each: dict[bool, list[Json]] = {True: [], False: []}
     try:
+        # The first opening after the shell starts makes every row, with nothing kept yet.
+        opened_timed(desktop)
+        # That opening is timed by no bar, so its ticks are passed over.
+        timing.count(kept=False)
         for loaded, times in ((True, OPENINGS), (False, FROZEN)):
             if loaded != timing.loading:
                 timing.load(on=loaded)
@@ -856,8 +928,7 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
                 )
                 each[loaded].append(opening)
     finally:
-        if not timing.loading:
-            timing.load(on=True)
+        timing.end()
         desktop.launcher_left_closed()
 
     def middle(times: list[int]) -> int:
@@ -888,10 +959,11 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
 @pytest.mark.usefixtures("keyboard", "loaded")
 def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desktop) -> None:
     """The launcher draws each key soon after it's pressed, while every core is busy."""
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
     timing = Timing(desktop)
     try:
+        # Opened inside, so a launcher too slow to open under load says what was stolen too.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
         desktop.down_to("Programs")
         desktop.step_in("ret")
         desktop.launcher_until(lambda shown: shown["held"] == ["programs"])
@@ -920,7 +992,115 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
                 timing.press("backspace")
         timing.keep()
     finally:
-        if not timing.loading:
-            timing.load(on=True)
+        timing.end()
         desktop.close_launcher()
     timing.said_and_held()
+
+
+def vm_threads(started: int) -> list[int]:
+    """Give every thread of the process that started the VM and of those it started.
+
+    They're QEMU's and the virtiofsd's beside it, which run the VM's work too.
+    """
+    children: dict[int, list[int]] = {}
+    for process in Path("/proc").iterdir():
+        if not process.name.isdigit():
+            continue
+        # A process that ended as this read is no part of the VM, which runs on; the kernel
+        # says so either way.
+        with contextlib.suppress(FileNotFoundError, ProcessLookupError):
+            # The parent follows the name, which may hold spaces, in its parentheses.
+            parent = int((process / "stat").read_text().rsplit(")", 1)[1].split()[1])
+            children.setdefault(parent, []).append(int(process.name))
+    pids = [started]
+    threads: list[int] = []
+    while pids:
+        pid = pids.pop()
+        pids.extend(children.get(pid, []))
+        with contextlib.suppress(FileNotFoundError, ProcessLookupError):
+            threads.extend(int(thread.name) for thread in Path(f"/proc/{pid}/task").iterdir())
+    return threads
+
+
+def hold_vm(started: int, processors: Sequence[int]) -> None:
+    """Run each of the VM's threads on these of the builder's processors alone.
+
+    A thread started as they're held takes its starter's processors, so each is held again
+    until a pass finds none left to hold. One still moving after HOLDING passes fails as that,
+    since a VM left partly held would slow whatever runs on it with no line saying why.
+    """
+    for _ in range(HOLDING):
+        moved = [hold_thread(thread, processors) for thread in vm_threads(started)]
+        if not any(moved):
+            return
+    unsettled = f"the VM's threads still moved after {HOLDING} passes holding them to {processors}"
+    raise AssertionError(unsettled)
+
+
+def hold_thread(thread: int, processors: Sequence[int]) -> bool:
+    """Run one of the VM's threads on these of the builder's processors, saying if it moved."""
+    try:
+        if os.sched_getaffinity(thread) == set(processors):
+            return False
+        os.sched_setaffinity(thread, processors)
+    except ProcessLookupError:
+        # QEMU's workers come and go, and one gone is none to hold.
+        return False
+    except OSError as error:
+        # The kernel refuses some threads outright, as io_uring's workers, so it names which.
+        name = "gone"
+        with contextlib.suppress(OSError):
+            name = Path(f"/proc/{thread}/comm").read_text().strip()
+        refused = f"the builder wouldn't hold the VM's thread {thread} ({name}) to {processors}"
+        raise AssertionError(refused) from error
+    return True
+
+
+@pytest.mark.usefixtures("loaded")
+def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop) -> None:
+    """The guest counts as stolen the time the builder runs its processors on fewer of its own.
+
+    Held to HELD_TO of the builder's processors, the VM's four run about half the time each under
+    load, when every one is busy, as a busy builder holds them. A guest whose four were busy
+    and that counted little stolen here has a count blind to the builder, which no other
+    subtest's bars could tell from a quiet builder, and every share would read 1.
+    """
+    started = desktop.machine.pid
+    assert started, "the VM has no process to hold to the builder's processors"
+    # The VM started with the test's own, so they're what it's given back.
+    builders = sorted(os.sched_getaffinity(0))
+    assert len(builders) >= HELD_TO, f"the builder gives this test processors {builders} only"
+    timing = Timing(desktop)
+    try:
+        hold_vm(started, builders[:HELD_TO])
+        # The ticks before the hold took aren't held ones, so they're passed over.
+        timing.count(kept=False)
+        began = time.monotonic()
+        # Said with the builder's processors, so little stolen tells a hold that never took,
+        # or one that changed nothing, from a count blind to one.
+        held: dict[str, int] = {}
+        for thread in vm_threads(started):
+            with contextlib.suppress(ProcessLookupError):
+                on = ",".join(map(str, sorted(os.sched_getaffinity(thread))))
+                held[on] = held.get(on, 0) + 1
+        print(
+            f"the VM's threads, by the builder's processors each may run on: {held},"
+            f" of the builder's {builders}"
+        )
+        # A hold that didn't take fails as that, so the bar on what was stolen judges the count.
+        holding = ",".join(map(str, builders[:HELD_TO]))
+        assert list(held) == [holding], f"the VM's threads weren't held to {holding}: {held}"
+        time.sleep(GAUGING)
+        timing.count(kept=True)
+        gauged = time.monotonic() - began
+        stolen, busy = timing.ledger.turns[True]
+        # Said before the VM is let go, which may fail, so the figures it counted are kept.
+        print(f"held, the guest counted {stolen} of {busy} busy ticks stolen in {gauged:.1f} s")
+    finally:
+        hold_vm(started, builders)
+    least = HELD_BUSY * PROCESSORS * gauged * TICKING
+    assert busy >= least, f"held, the guest's processors were busy {busy} ticks, under {least:.0f}"
+    assert stolen / busy >= HELD_STOLEN, (
+        f"held to {HELD_TO} of the builder's processors, the guest counted {stolen} of {busy}"
+        " busy ticks stolen"
+    )

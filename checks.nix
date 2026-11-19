@@ -720,6 +720,7 @@ gather {
     ./modules/zoom/checks.nix
     ./modules/zoxide/checks.nix
     ./modules/zsh/checks.nix
+    ./tests/desktop/checks.nix
     ./tests/lib/checks.nix
     ./tests/repository/checks.nix
     ./tests/rules/checks.nix

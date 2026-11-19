@@ -556,6 +556,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         + pkgs.lib.optionalString isLooks ''
           cp ${./desktop/looks_session.py} $out/${python.python.sitePackages}/looks_session.py
         ''
+        # And how keeps-pace counts what its builder took, only there, for the same reason.
+        + pkgs.lib.optionalString (area == "keeps-pace") ''
+          cp ${./desktop/keeps_pace.py} $out/${python.python.sitePackages}/keeps_pace.py
+        ''
       )
     ))
   ];
