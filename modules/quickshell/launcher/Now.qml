@@ -743,13 +743,15 @@ Provider {
     // from the ask itself (Joel, 2026-11-16: "i have no way to go from the
     // thing it shows to engaging with the thing working on it"); null with
     // no session, or with Agents not there to talk through.
-    // A session asking a question or a yes has no Talk: its ask tool runs
-    // until he answers, and words said to it wait for its run to end
-    // (the harness's lib/mesh/steer.ts), so they'd come after the answer
-    // they were meant to shape; In Your Own Words is how words reach it.
+    // A session asking a question or a yes has no Talk, from any row: its
+    // ask tool runs until he answers, and words said to it wait for its
+    // run to end (the harness's lib/mesh/steer.ts), so they'd come after
+    // the answer they were meant to shape; In Your Own Words is how words
+    // reach it.
     function talkTo(session) {
         const agents = provider.source("agents");
-        return session === null || !agents ? null : agents.sessionAct(session, "talk");
+        return !session || !agents || asking(session) ? null
+            : agents.sessionAct(session, "talk");
     }
 
     // Whether a session wanting Joel asks him something still open, a
@@ -1072,7 +1074,7 @@ Provider {
     // What a look's row does with the cell behind it (Joel, 2026-11-16:
     // "the look list is useless. i have no way to go from the thing it
     // shows to engaging with the thing working on it"): Talk, Agents' own,
-    // whose words go to that cell, and Go To its window, which a terminal's
+    // whose words go to that cell unless it's asking (talkTo), and Go To its window, which a terminal's
     // Open already is, offered as Agents offers it: where it has a window,
     // or is parked and wakes into one; then Explain It, which says what the
     // cell works on in a sentence or two (explainAct), where the machine
@@ -1083,11 +1085,11 @@ Provider {
         const agents = provider.source("agents");
         if (cell === null || !agents)
             return [];
-        const talk = agents.sessionAct(cell, "talk");
+        const talk = [talkTo(cell)].filter(act => act !== null);
         const explain = source("ask") === null ? []
             : [explainAct(`verb:on:waiting:explain:on:look:${one.id}`, cell)];
         const reachable = agents.windowedOf(cell) || !!Sessions.parkedAs(cell.address);
-        return one.kind === "terminal" || !reachable ? [talk].concat(explain) : [talk, thing({
+        return one.kind === "terminal" || !reachable ? talk.concat(explain) : talk.concat([thing({
             // Under Go To's own word, so the : line names it as a want's is.
             key: `verb:on:waiting:go:on:look:${one.id}`,
             verb: Words.verb("verb:on:waiting:go"),
@@ -1097,7 +1099,7 @@ Provider {
             side: cell.title,
             later: true,
             run: () => provider.goToCell(one)
-        })].concat(explain);
+        })], explain);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked
@@ -1773,7 +1775,7 @@ Provider {
                     Sessions.goTo(session());
                 }
             })),
-            asking(madeFrom) ? null : talkTo(session()),
+            talkTo(session()),
             thing(Object.assign(named("go"), {
                 key: `verb:on:waiting:go:${key}`,
                 run: () => Sessions.wakeToGo(resting, session())
