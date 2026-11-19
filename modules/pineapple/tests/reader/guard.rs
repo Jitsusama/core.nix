@@ -15,8 +15,9 @@ use super::{PATIENCE, home, journal, reader, stand_in};
 /// Set for the one run of `failing_while_held` that is meant to fail.
 const HELD: &str = "PINEAPPLE_READER_FAILS_WHILE_HELD";
 
-/// What the Slack reader says to its journal of each stop it keeps in
-/// shadow, so its own words are what a failing case is shown.
+/// What the Slack reader says to its journal of whatever it keeps in
+/// shadow (a stop, a reply, Joel's phone), so its own words are what a
+/// failing case is shown.
 const SAID: &str = ", in shadow: ";
 
 /// How `failing_while_held` fails, so its failure is told from any other.
@@ -52,7 +53,7 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
     // does neither leaves its reader running; either way, the case stops
     // the reader itself before it says so, rather than leave it.
     let stopped = dropped.recv_timeout(PATIENCE).is_ok();
-    let gone = !Path::new(&format!("/proc/{pid}")).exists();
+    let gone = ended(&reader_itself);
     if !gone || !stopped {
         stop(&reader_itself);
     }
@@ -142,10 +143,30 @@ fn pidfd(pid: u32) -> OwnedFd {
     let pid = libc::pid_t::try_from(pid).expect("a pid the kernel gave");
     // SAFETY: pidfd_open reads no memory, and a new fd or -1 comes back.
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+    let why = std::io::Error::last_os_error();
     let fd = i32::try_from(fd).expect("an fd");
-    assert!(fd >= 0, "the reader was opened by its pid");
+    assert!(fd >= 0, "the reader couldn't be opened by its pid: {why}");
     // SAFETY: the fd was just opened here and nothing else owns it.
     unsafe { OwnedFd::from_raw_fd(fd) }
+}
+
+/// Whether the reader has ended, asked of the reader itself: its pidfd
+/// reads ready once it has exited, whether or not it has been reaped.
+fn ended(reader: &OwnedFd) -> bool {
+    let mut asked = libc::pollfd {
+        fd: reader.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // SAFETY: poll reads and writes only the one pollfd lent it here, and
+    // a timeout of 0 answers at once.
+    let ready = unsafe { libc::poll(&raw mut asked, 1, 0) };
+    let why = std::io::Error::last_os_error();
+    assert!(
+        ready >= 0,
+        "the reader couldn't be asked whether it ended: {why}"
+    );
+    asked.revents & libc::POLLIN != 0
 }
 
 /// Stops the reader its guard didn't; one already gone needs nothing.
