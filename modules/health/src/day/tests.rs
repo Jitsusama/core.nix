@@ -225,6 +225,29 @@ fn every_fault_of_a_thing_is_kept_through_a_start() {
     );
 }
 
+#[test]
+fn a_fault_in_words_kept_before_they_had_a_name_of_their_own_counts_once() {
+    // A day kept before the change may hold his words under a bare place
+    // named as a fault is, with the fault inside them, kept whole.
+    let mut kept = Day::new("2026-11-12");
+    kept.things.entry("disk-guard".to_owned()).or_default().kind = Some(Kind::Words);
+    kept.fault("disk-guard", Kind::Services, "stopped saying it's there", 3);
+    let mut day = Day::new("2026-11-12");
+    day.resume(kept);
+    let mut again = Day::new("2026-11-12");
+    again.resume(day);
+    let thing = again
+        .things
+        .get("disk-guard")
+        .map(|thing| (thing.kind, thing.errors));
+    assert_eq!(
+        (thing, again.seen.len()),
+        (Some((Some(Kind::Words), 1)), 1),
+        "two starts counted the fault again: {:?}",
+        again.things
+    );
+}
+
 /// Joel's words, typed at 4 to a session that ran at `place`.
 fn words(place: &str, day: &mut Day) {
     day.heard(
