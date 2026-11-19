@@ -12,9 +12,8 @@
 // went (RTOIMQ, 2026-11-10). The search's time before it began is said
 // apart, as a key's is, since Joel's step into Machine spent 16 ms after
 // opening, where it had spent 10, with nothing saying where (2026-11-11).
-// A step out's `at.holding` holds the ms before it was held and the rows
-// made by each source before and after, said with its holding
-// (steppedHolding).
+// A step out's `at.holding` holds the ms until it was held and the rows
+// each source made while it was, said with its holding (steppedHolding).
 function stepped(inner, at) {
     const finding = inner ? inner.lists : 0;
     const answers = inner ? inner.answers : 0;
@@ -32,9 +31,7 @@ function stepped(inner, at) {
         each: Object.assign({}, inner?.each, { making: at.made - at.began, finding,
             holding: at.pushed - at.made, opening: at.opened - at.pushed, passing }),
         makingSplit: at.making ?? null,
-        holdingSplit: at.holding
-            ? { before: at.holding.before, rows: madeBetween(at.holding.from, at.holding.to) }
-            : null,
+        holdingSplit: at.holding ?? null,
         composing: inner?.composing ?? null
     };
 }
@@ -51,25 +48,15 @@ function passed(parts, passing) {
         each: Object.assign({}, parts.each, { passing }) });
 }
 
-// The rows each source made between two of the launcher's tallies, by
-// source, those that made none left out.
-function madeBetween(before, after) {
-    const made = {};
-    for (const name of Object.keys(after ?? {})) {
-        const rows = after[name] - (before?.[name] ?? 0);
-        if (rows > 0) {
-            made[name] = rows;
-        }
-    }
-    return made;
-}
-
 // What a step out's holding spent on, in parentheses: the rows each source
-// made while the step was held, the three that made most, and the time
-// before it was held. Joel's step out of Now held 14, 22, then 38 ms in one
+// made while the step was held, the three that made most, the first by
+// name where two made as many, and the time until it was held, from
+// the key. Joel's step out of Now held 14, 22, then 38 ms in one
 // evening, where every other step out held 2 to 4, and the lab's Now held 3
 // to 6 with nothing to say where it went (2026-11-18). `split` holds the
-// rows by source and the ms before; nothing for an untold split.
+// rows by source and the ms until held; nothing for an untold split. Its
+// time is said as "until held", never "before", which the line says of the
+// search's own time before it began.
 function steppedHolding(holding, split) {
     if (!split || !(holding > 0)) {
         return "";
@@ -78,9 +65,9 @@ function steppedHolding(holding, split) {
     const made = Object.keys(rows).filter((name) => rows[name] > 0)
         .sort((one, other) => rows[other] - rows[one] || one.localeCompare(other))
         .slice(0, 3).map((name) => `${name} ${rows[name]} rows`);
-    const before = Math.round(split.before ?? 0);
+    const until = Math.round(split.untilHeld ?? 0);
     const named = made.length > 0 ? made : ["no rows"];
-    return ` (${named.concat(before > 0 ? [`before ${before}`] : []).join(", ")})`;
+    return ` (${named.concat(until > 0 ? [`until held ${until}`] : []).join(", ")})`;
 }
 
 // What a step's making spent on, in parentheses, most first: making its

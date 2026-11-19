@@ -5230,6 +5230,29 @@ def test_a_step_out_fits_the_foot_once(shell: Shell) -> None:
     assert held == fresh, f"the foot held {held} where its row fits {fresh}"
 
 
+def test_a_step_out_counts_the_rows_made_while_it_held(shell: Shell) -> None:
+    """- out of a place a chord opened counts the rows home's sources made as it was held.
+
+    Joel's - out of Now held 14, 22 and 38 ms in one evening, where every other step out held 2
+    to 4, and nothing said where (his journal, 2026-11-18). Setting held wakes home's sources,
+    which a chord's place left unwanted, and each makes its rows within it. Counted on either side
+    of held alone, those rows are what the step's line names; counted after it, they'd be none.
+    """
+    shell.launcher_until(lambda shown: not shown["open"])
+    shell.as_account(shell.ipc("collection", "windows"))
+    shell.launcher_until(lambda shown: shown["open"] and len(shown["held"]) > 0)
+    shell.launcher_ready()
+    shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: not shown["held"])
+    holding = laid_out(shell)["stepHolding"]
+    shell.close_launcher()
+    assert holding is not None, "- out of Windows counted nothing as it held"
+    made = {name: rows for name, rows in holding["rows"].items() if rows > 0}
+    assert made, f"- out of Windows counted no rows made as it held: {holding}"
+    assert holding["untilHeld"] >= 0, f"- out of Windows was held before its key: {holding}"
+
+
 def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> None:
     """- back onto what was typed is timed once, as the step out and the place it left.
 

@@ -260,26 +260,31 @@ QtObject {
         expect("a step keeps its making's split", made.each.making === 87
             && made.makingSplit === split, JSON.stringify(made));
         // A step out's holding says the rows each source made while it was
-        // held, most first, and the time before it was held.
+        // held, most first, and the time until it was held.
         const held = { runs: 99, agents: 3, quests: 2, rooms: 1 };
-        expect("a step out's holding says its sources' rows, then before",
-            Stepped.steppedHolding(38, { before: 1.4, rows: held })
-                === " (runs 99 rows, agents 3 rows, quests 2 rows, before 1)",
-            Stepped.steppedHolding(38, { before: 1.4, rows: held }));
-        expect("a holding that made no rows says so, with no before where it took none",
-            Stepped.steppedHolding(6, { before: 0, rows: {} }) === " (no rows)",
-            Stepped.steppedHolding(6, { before: 0, rows: {} }));
+        expect("a step out's holding says its sources' rows, then until held",
+            Stepped.steppedHolding(38, { untilHeld: 1.4, rows: held })
+                === " (runs 99 rows, agents 3 rows, quests 2 rows, until held 1)",
+            Stepped.steppedHolding(38, { untilHeld: 1.4, rows: held }));
+        // Sources that made as many are said by name, so a line reads the
+        // same each time its rows do.
+        const tied = { wifi: 2, agents: 2, runs: 2, quests: 2 };
+        expect("sources that made as many rows are said by name",
+            Stepped.steppedHolding(9, { untilHeld: 0, rows: tied })
+                === " (agents 2 rows, quests 2 rows, runs 2 rows)",
+            Stepped.steppedHolding(9, { untilHeld: 0, rows: tied }));
+        expect("a holding that made no rows says so, with no until held where it took none",
+            Stepped.steppedHolding(6, { untilHeld: 0, rows: {} }) === " (no rows)",
+            Stepped.steppedHolding(6, { untilHeld: 0, rows: {} }));
         expect("a holding of nothing, or untold, says no split",
-            Stepped.steppedHolding(0, { before: 2, rows: held }) === ""
+            Stepped.steppedHolding(0, { untilHeld: 2, rows: held }) === ""
                 && Stepped.steppedHolding(14, null) === "",
             Stepped.steppedHolding(14, null));
+        const holding = { untilHeld: 2, rows: { runs: 99, now: 2 } };
         const out = Stepped.stepped(null, { began: 0, made: 0, pushed: 38, opened: 38,
-            ended: 40, making: {}, holding: { before: 2,
-                from: { runs: 4, agents: 7, now: 1 }, to: { runs: 103, agents: 7, now: 3 } } });
+            ended: 40, making: {}, holding });
         expect("a step out keeps the rows each source made while held",
-            out.each.holding === 38 && out.holdingSplit.before === 2
-                && JSON.stringify(out.holdingSplit.rows) === JSON.stringify({ runs: 99, now: 2 }),
-            JSON.stringify(out));
+            out.each.holding === 38 && out.holdingSplit === holding, JSON.stringify(out));
         expect("a step with no holding told keeps none", made.holdingSplit === null,
             JSON.stringify(made.holdingSplit));
         const unstepped = { back: -1, from: 0, took: 0, whole: false, stepping: false };
