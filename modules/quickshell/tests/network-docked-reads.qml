@@ -705,12 +705,18 @@ ShellRoot {
     // Whether hungReads' view, its read landed late, is gone.
     property bool hungGone: false
 
-    // A file asked that never lands is given up by the cable's own watch,
-    // about two seconds on: its hold is stamped as it's given up, so a
-    // loop held up late can't make the watch look early.
+    // A file in flight that never lands is given up by the cable's own
+    // watch, about two seconds on, its view kept and a new one made: its
+    // hold is stamped as it's given up, so a loop held up late can't make
+    // the watch look early. The sandbox can't hang a read, so the view
+    // stands idle as one hung would.
     function watchedCable() {
+        Expect.expect("each cable file is read once, and there's more than one",
+            new Set(networks.cableFiles).size === networks.cableFiles.length
+                && networks.cableFiles.length > 1, JSON.stringify(networks.cableFiles));
+        const reading = networks.cableProbe;
         networks.cableLoading = { name: "enp0s8", at: 0, texts: {}, state: "", stale: true,
-            inFlight: false };
+            inFlight: true };
         networks.cableWatching = true;
         const began = Date.now();
         waits.until("the watch gives up a cable file that never lands",
@@ -718,6 +724,11 @@ ShellRoot {
             const after = networks.cablesStuck.enp0s8.at - began;
             Expect.expect("the watch gives up a cable file about two seconds on",
                 after >= 1500 && after <= 3000, `${after} ms`);
+            Expect.expect("the watch keeps the view in flight and makes another",
+                networks.cablesHung.enp0s8 === reading && networks.cableProbe !== reading,
+                JSON.stringify(Object.keys(networks.cablesHung)));
+            // Standing idle, the view would never land; it goes, as if it had.
+            networks.probeLanded(reading, "");
             root.hungReads();
             root.oddlyNamed();
             root.factsAlone();

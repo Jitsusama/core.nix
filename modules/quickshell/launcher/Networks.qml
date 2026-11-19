@@ -517,6 +517,11 @@ Provider {
         Qt.callLater(cableFile);
     }
 
+    // Set to the path it holds, the probe would load nothing, but it's never
+    // asked for it: a load moves on to a file unlike the one before, and
+    // starts again at the first after another's last, since each file is
+    // read once (the case holds cableFiles to that), and a probe given up
+    // in flight is swapped for a new one.
     function cableFile() {
         if (cableLoading === null || cableLoading.inFlight)
             return;
