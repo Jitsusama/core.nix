@@ -174,32 +174,33 @@ let
 
   # The walk the cat's code takes, read from the code that walks it, so its
   # check proves the walk that's drawn rather than a copy: the words WALKS
-  # lists, when it's every list STRIDING strides by. Each is read whole,
-  # spaces aside, and must be only what's meant, so anything else, another
-  # list, a stride written inline, an entry not a quoted word or either
-  # not found, reads as no walk, which fails saying where it looked.
+  # lists, when it's every list STRIDING strides by. Each is read whole, to
+  # its semicolon, spaces aside, and must be only what's meant, so anything
+  # else, another list, a stride written inline, an entry not a quoted
+  # word, something after its bracket or either not found, reads as no
+  # walk, which fails saying where it looked.
   walkIn =
     ways:
     let
-      # What follows the constant's declaration, up to the first `close`,
+      # The constant's whole declaration, up to the semicolon that ends it,
       # without its spaces.
       declared =
-        name: close:
+        name:
         let
           after = lib.splitString "const ${name} = " ways ++ [ "" ];
         in
         lib.replaceStrings [ " " "\t" "\n" ] [ "" "" "" ] (
-          lib.head (lib.splitString close (lib.elemAt after 1))
+          lib.head (lib.splitString ";" (lib.elemAt after 1))
         );
-      walks = declared "WALKS" "]";
-      striding = declared "STRIDING" "}";
+      walks = declared "WALKS";
+      striding = declared "STRIDING";
       word = "[\"'][A-Za-z]+[\"']";
       stride = "[A-Za-z_]+:WALKS";
       words = map lib.head (lib.filter lib.isList (builtins.split "[\"']([A-Za-z]+)[\"']" walks));
     in
     lib.optionals (
-      builtins.match "\\[(${word},)*${word},?" walks != null
-      && builtins.match "\\{(${stride},)*${stride},?" striding != null
+      builtins.match "\\[(${word},)*${word},?]" walks != null
+      && builtins.match "\\{(${stride},)*${stride},?}" striding != null
     ) words;
   catWalk = walkIn (builtins.readFile ../margin-cat/MarginCatWays.js);
   catWalkedFrom = "STRIDING's WALKS in modules/margin-cat/MarginCatWays.js";
@@ -468,6 +469,8 @@ in
         (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: WALKS.slice(1) };")
         (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: RUNS };")
         (walkedOf "const WALKS = [\"walkingA\", ...RUNS];\n${striding}")
+        (walkedOf "const WALKS = [\"walkingA\", \"walkingC\"].concat(RUNS);\n${striding}")
+        (walkedOf "${strides}\nconst STRIDING = { goes: WALKS, climbs: WALKS } || RUNS;")
       ];
       # The same walk, spaced and quoted otherwise, still reads whole.
       reread = walkIn ''
