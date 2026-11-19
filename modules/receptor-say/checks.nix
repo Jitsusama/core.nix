@@ -9,7 +9,8 @@
 onLinux {
   # Its tests run as it builds: mycelium is run by its absolute path with
   # fixed words, a realm of its letters and counts held to u32, each
-  # receptor's arguments alone; said off, each count is none; a refusal
+  # receptor's arguments alone, with any words its caller adds after its
+  # own; said off, each count is none; a refusal
   # stops there; and only a declared address or login, ASCII case aside,
   # is taken as the source's own.
   receptor-say-gives-mycelium-words-and-numbers-alone = pkgs.callPackage ./package.nix { };

@@ -15,8 +15,9 @@
 # how).
 #
 # Each refresh also says to the machine's realm, as its GitHub receptor, how
-# many open changes ask the declared login's review, counting only the
-# owners declared for that realm (src/receptor.rs). Both come from here
+# many open changes ask the declared login's review, and which, each as
+# owner/name#N, counting and naming only the owners declared for that realm
+# (src/receptor.rs). Both come from here
 # alone, never from a file repos reads, and a machine declaring no realm or
 # no login says nothing.
 { mycelium }:

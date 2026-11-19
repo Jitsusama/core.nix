@@ -28,7 +28,8 @@
 //!
 //! What a refresh reads is also said to the realm's mycelium node, as the
 //! GitHub receptor: how many open changes ask Joel's review, and which,
-//! each named only as `owner/name#N` (receptor.rs).
+//! each named only as `owner/name#N`, with the realm's owners named every
+//! time so mycelium can clear what it kept (receptor.rs).
 
 pub mod broker;
 pub mod gh;

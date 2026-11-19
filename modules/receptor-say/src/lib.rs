@@ -1,7 +1,7 @@
 //! How a daemon says one of mycelium's receptors: how an outside source
-//! stands, in counts, to the realm's mycelium node, which draws it as a
-//! cell on the source's outside network (mycelium's PROTOCOL.md,
-//! Receptors).
+//! stands, in counts and, for a source mycelium keeps more of, its items,
+//! to the realm's mycelium node, which draws it as a cell on the source's
+//! outside network (mycelium's PROTOCOL.md, Receptors).
 //!
 //! Each daemon reading an outside source counts what it already holds and
 //! hands the counts here, so the rules of what reaches mycelium are kept
