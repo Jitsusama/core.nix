@@ -112,7 +112,7 @@ QtObject {
         check(failures, "the next due is the soonest", Becoming.nextDue(holds, 2000, 5000), 4000);
         check(failures, "one past due is due now", Becoming.nextDue(holds, 9000, 5000), 0);
         check(failures, "none held is none due", Becoming.nextDue({}, 0, 5000), -1);
-        // Qt's coarse timer can come early, so it can fire just before a hold is
+        // QML's Timer steps with frames, so it can fire just before a hold is
         // due; it comes again for it rather than stopping (goes-places, 2026-11-18).
         check(failures, "a timer fired early puts nothing back and comes again for it",
             fireOn(holds, 5999), "|1");
@@ -124,6 +124,10 @@ QtObject {
         // both, and a hold gone is never settled again.
         check(failures, "a hold let go while another settles is not settled",
             fireOn(holds, 9000, held => Becoming.without(held, ["a", "b"])), "a|-1");
+        // One made afresh under a late key while another settles isn't late.
+        const fresh = { key: "b", row: null, at: 9000 };
+        check(failures, "a hold made afresh while another settles is not settled",
+            fireOn(holds, 9000, () => ({ b: fresh })), "a|5000");
         // It comes again for what's held once all are settled, not before.
         const added = { key: "c", row: null, at: 6000 };
         check(failures, "and comes again for a hold made while settling",

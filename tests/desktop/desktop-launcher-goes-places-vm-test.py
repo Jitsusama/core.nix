@@ -233,8 +233,12 @@ def settled(desktop: Desktop, key: str, within: dt.timedelta) -> Iterator[None]:
     became, not_become = f"became {key}", f"not become {key}"
 
     def came_out(said: str) -> bool:
-        # What didn't become may say why after a colon.
-        return said in {became, not_become} or said.startswith(f"{not_become}: ")
+        # What didn't become may say why after a colon. Which came is printed, so the runs show
+        # whether an act that may come out either way ever doesn't become.
+        out = said in {became, not_become} or said.startswith(f"{not_become}: ")
+        if out:
+            print(f"{key} came out: {said}")
+        return out
 
     try:
         desktop.reported("", came_out, since, within)
