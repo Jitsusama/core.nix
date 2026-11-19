@@ -160,9 +160,10 @@ ShellRoot {
             return { key: `verb:agent:${id}`, name: id, to: session.address };
         }
 
-        // Whether a session has a window, as a look's Go To asks: none here.
+        // Whether a session has a window, as a look's Go To asks: as the
+        // case gives it one.
         function windowedOf(session) {
-            return false;
+            return !!session?.window;
         }
     }
 
@@ -1383,10 +1384,10 @@ ShellRoot {
         Sessions.wanting = [Object.assign({}, movedB, { presence: Object.assign({},
             movedB.presence, { wants: { kind: "blocked", said: "Which?" } }) })];
         const blockedB = forYou().find(row => row.key === "on:waiting:want:WANTB");
-        expect("a session ended blocked offers Talk to it, after Deal With It",
+        expect("a session ended blocked offers Talk to it, after Deal With It, its row made anew",
             JSON.stringify(actsOf(blockedB).slice(0, 3)) === JSON.stringify(["verb:on:waiting:deal",
                 "verb:agent:talk", "verb:on:waiting:go"])
-                && blockedB.verbs()[1].to === "WANTB",
+                && blockedB.verbs()[1].to === "WANTB" && blockedB !== wantKept,
             JSON.stringify(actsOf(blockedB)));
         Sessions.wanting = [movedB];
         Sessions.wentTo = null;
@@ -1498,9 +1499,38 @@ ShellRoot {
         Sessions.wanting = [asked];
         WaitingOnYou.sessionOf = { "Sign The Form": asked };
         const talksAsking = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
-        expect("no row offers Talk to a session while it asks, its look included",
-            JSON.stringify([talksActing, talksAsking]) === "[[1,1],[0,0]]",
-            JSON.stringify([talksActing, talksAsking]));
+        const approved = Object.assign({}, acted, { presence: Object.assign({},
+            acted.presence, { wants: { kind: "approval", said: "May I?" } }) });
+        Sessions.running = [approved];
+        Sessions.wanting = [approved];
+        WaitingOnYou.sessionOf = { "Sign The Form": approved };
+        const talksYes = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
+        // Parked, it runs no ask: woken, it reads its inbox as it starts,
+        // so Talk reaches it, waking it as Agents' own row does.
+        Sessions.running = [];
+        Sessions.parked = [approved];
+        const talksParked = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
+        Sessions.parked = [];
+        expect("no row offers Talk to a session while it asks or wants a yes, but parked",
+            JSON.stringify([talksActing, talksAsking, talksYes, talksParked])
+                === "[[1,1],[0,0],[0,0],[1,1]]",
+            JSON.stringify([talksActing, talksAsking, talksYes, talksParked]));
+        // Its look offers Talk and then Go To where it has a window, and only
+        // Go To while it asks.
+        const lookActs = () => forYou().find(row => row.key === "on:look:e").verbs()
+            .map(act => act.key);
+        const windowed = session => Object.assign({}, session, { window: 3 });
+        Sessions.running = [windowed(acted)];
+        Sessions.wanting = [windowed(acted)];
+        const actingLook = lookActs();
+        Sessions.running = [windowed(asked)];
+        Sessions.wanting = [windowed(asked)];
+        const askingLook = lookActs();
+        expect("a look offers Talk to its windowed cell, then Go To, and only Go To as it asks",
+            JSON.stringify([actingLook, askingLook]) === JSON.stringify([
+                ["verb:agent:talk", "verb:on:waiting:go:on:look:e"],
+                ["verb:on:waiting:go:on:look:e"]]),
+            JSON.stringify([actingLook, askingLook]));
         Sessions.running = [acted];
         Sessions.wanting = [acted];
         WaitingOnYou.sessionOf = { "Sign The Form": acted };
