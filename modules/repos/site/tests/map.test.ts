@@ -72,6 +72,24 @@ it("keeps two ties apart whatever their keys hold, a local folder's line breaks 
   );
 });
 
+it("orders ties by their first end, then their second, as their keys read", () => {
+  // Joined whole, a and z read after ab and c, which a comparison that skips the null between
+  // them would put first.
+  const spread = [
+    repository("a", [cell("C1", ["repo.z"])]),
+    repository("ab", [cell("C2", ["repo.c"])]),
+    repository("c"),
+    repository("z"),
+  ];
+  assert.deepEqual(
+    ties(spread).map((tie) => tie.ends),
+    [
+      ["github:owl/a", "github:owl/z"],
+      ["github:owl/ab", "github:owl/c"],
+    ],
+  );
+});
+
 it("ties nothing by a spelling two repositories share, though the other side may", () => {
   // Core's cells name a world two repositories are spelled as, so only world's own cells,
   // which name core, tie the two.

@@ -906,9 +906,12 @@ def test_the_map_draws_a_thread_for_each_cell_joining_two_repositories(
     mycelium_node.tell("cell", gone=["cell:W9TIES"])
     expect(code_page.locator("#ties"), "the map stayed once nothing joined").to_be_hidden()
     expect(code_page.locator("#list"), "the keys fell out of the page").to_be_focused()
-    expect(code_page.locator("#ties-said"), "the keys left the map unsaid").to_have_text(
+    # Said outside the hidden map, where a screen reader still hears it.
+    ties_said = code_page.locator("#ties-said")
+    expect(ties_said, "the keys left the map unsaid").to_have_text(
         "No cell at work joins two repositories now, so the keys are on the list."
     )
+    expect(ties_said, "the map's last words hid with it").to_be_visible()
 
 
 def test_the_maps_keys_walk_its_rows(code_page: Page, mycelium_node: StandIn) -> None:
