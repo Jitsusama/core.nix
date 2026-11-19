@@ -775,10 +775,11 @@ ShellRoot {
         const noticed = () => now.forYouBands.now.filter(one => one.kind === "notice");
         const counts = () => JSON.stringify([noticed().length, ForYouHolds.count]);
         if (tried(() => {
-            const row = now.waitingRows().find(one => one.key === "row:notices-desktop:40")
-                ?? null;
-            expect("a session's notice served stands among what needs Joel as its row",
-                row !== null && ForYouHolds.count === 1,
+            const keys = now.waitingRows().map(one => one.key);
+            const row = now.waitingRows().find(one => one.key === "notice:40") ?? null;
+            expect("a session's notice served stands under it among what needs Joel as its row",
+                row !== null && ForYouHolds.count === 1
+                    && keys.indexOf("on:heading:cell:KELP01") === keys.indexOf("notice:40") - 1,
                 JSON.stringify(now.waitingRows().map(one => one.key)));
             expect("which :filter holds as a thing to do from the desktop",
                 row.forYou?.kind === "do" && row.forYou?.source === "desktop",
