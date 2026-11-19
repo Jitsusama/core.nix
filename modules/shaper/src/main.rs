@@ -320,12 +320,12 @@ struct Shaped {
     told_at: Option<Instant>,
     /// How what the link receives comes in.
     download: Download,
-    /// The bytes the upload's CAKE had sent when last read, and when the
-    /// controller was last told: what crossed the line, apart from the
-    /// home network's traffic, which the link sends as well. None where
-    /// the last read failed.
-    sent_bytes: Option<u64>,
-    sent_told: Option<u64>,
+    /// The bytes the upload's CAKE had sent at its last good read, and at
+    /// the last good read before the controller was last told, each with
+    /// when it was read: what crossed the line, apart from the home
+    /// network's traffic, which the link sends as well.
+    sent_read: Option<(u64, Instant)>,
+    sent_told: Option<(u64, Instant)>,
     /// How the upload is split between its lanes, what was put on its
     /// classes, when it was last split, and what Joel's CAKE's tins sent.
     lanes: lanes::Lanes,
@@ -396,7 +396,9 @@ impl Shaped {
         if let Some(now) = up.as_deref().and_then(qdisc::drops) {
             self.dropped += since(self.drops.replace(now), now);
         }
-        self.sent_bytes = up.and_then(|json| qdisc::shaped_bytes(&json));
+        if let Some(sent) = up.and_then(|json| qdisc::shaped_bytes(&json)) {
+            self.sent_read = Some((sent, Instant::now()));
+        }
     }
 
     /// Whose the upload's queue has been since last asked: whether CAKE
@@ -411,17 +413,23 @@ impl Shaped {
         let dropped = std::mem::take(&mut self.dropped);
         let seconds = self.told_at.replace(now).map(|at| (now - at).as_secs_f64());
         let dropped = seconds.map_or(0, |s| segments_kbit(dropped, s));
-        // A read that failed, or counts that went back as CAKE was put in
-        // again, counted nothing: the controller would take a CAKE that
-        // sent nothing for one starved.
-        let then = std::mem::replace(&mut self.sent_told, self.sent_bytes);
-        let sent = seconds
-            .zip(then)
-            .zip(self.sent_bytes)
-            .and_then(|((s, then), now)| (now >= then).then(|| bytes_kbit(now - then, s)));
+        let then = std::mem::replace(&mut self.sent_told, self.sent_read);
+        let sent = sent_kbit(then, self.sent_read);
         oneway::Ours::from_reads(link, vpn, wait, waiting, (resent, dropped))
             .map(|ours| oneway::Ours { sent, ..ours })
     }
+}
+
+/// What the upload's CAKE sent between two good reads, in kbit/s, over
+/// the time between them, so one failed read costs nothing while another
+/// that second worked. None where it can't be told: no read before, none
+/// new since, or counts that went back as CAKE was put in again. The
+/// controller then judges by the rate, rather than take a CAKE that sent
+/// nothing for one starved.
+fn sent_kbit(then: Option<(u64, Instant)>, now: Option<(u64, Instant)>) -> Option<u64> {
+    let ((before, read_before), (after, read_after)) = then.zip(now)?;
+    (after >= before && read_after > read_before)
+        .then(|| bytes_kbit(after - before, (read_after - read_before).as_secs_f64()))
 }
 
 /// Record the signal of the first uplink with an IPv4 gateway, and of the
@@ -603,7 +611,7 @@ fn start(
         dropped: 0,
         told_at: None,
         download: Download::Turned,
-        sent_bytes: None,
+        sent_read: None,
         sent_told: None,
         lanes,
         split,
@@ -976,7 +984,10 @@ fn tell_live(
 
 /// Adds what each follower's CAKE sent, dropped and held to its leader's:
 /// the two send over one connection, so what crossed it is what both sent,
-/// and TCP's resends, the machine's, are of what both dropped.
+/// and TCP's resends, the machine's, are of what both dropped. A leader
+/// whose follower's count can't be told can't tell what crossed either,
+/// so is judged by its rate, rather than by a sum leaving the follower
+/// out.
 fn crossing(seen: &mut BTreeMap<String, oneway::Ours>, follows: &BTreeMap<String, String>) {
     for (follower, leader) in follows {
         let Some(theirs) = seen.get(follower).copied() else {
@@ -985,9 +996,7 @@ fn crossing(seen: &mut BTreeMap<String, oneway::Ours>, follows: &BTreeMap<String
         let Some(ours) = seen.get_mut(leader) else {
             continue;
         };
-        if let (Some(total), Some(sent)) = (ours.sent.as_mut(), theirs.sent) {
-            *total += sent;
-        }
+        ours.sent = ours.sent.zip(theirs.sent).map(|(own, sent)| own + sent);
         ours.dropped += theirs.dropped;
         // Only a VPN's queue stood on the line while none stood of a link's
         // own, on either.
@@ -1731,6 +1740,32 @@ mod tests {
             Some(50),
             "a link nobody follows keeps its own"
         );
+        seen.get_mut("eth2").expect("eth2").sent = None;
+        crossing(&mut seen, &follows);
+        assert_eq!(seen["eth1"].sent, None, "a sum left the follower out");
+    }
+
+    #[test]
+    fn what_cake_sent_is_counted_between_good_reads() {
+        let start = Instant::now();
+        let read = |bytes, ms| Some((bytes, start + Duration::from_millis(ms)));
+        // What was read before and now, and what CAKE sent between them:
+        // 125,000 bytes is 1000 kbit over a second.
+        let cases = [
+            (None, read(125_000, 1_000), None),
+            (read(0, 0), None, None),
+            (read(0, 0), read(125_000, 1_000), Some(1_000)),
+            // The last read of a second failed, so the count runs to the
+            // one before it, over the time between them.
+            (read(0, 0), read(100_000, 800), Some(1_000)),
+            // Every read since failed: nothing new to tell.
+            (read(125_000, 1_000), read(125_000, 1_000), None),
+            // CAKE was put in again and counts from nothing.
+            (read(125_000, 1_000), read(5_000, 2_000), None),
+        ];
+        for (then, now, sent) in cases {
+            assert_eq!(sent_kbit(then, now), sent, "{then:?} to {now:?}");
+        }
     }
 
     #[test]
