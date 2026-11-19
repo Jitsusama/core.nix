@@ -6,12 +6,16 @@ level changes. Its moment was timed from the change, so on a builder whose frame
 apart it was gone before niri had drawn it, and the desktop test's meter over dictation never
 said it was drawn (17 and 18 November). Here niri is held stopped for longer than the moment as
 the screen's brightness is picked, so the meter's surface can't be drawn until niri goes on, and
-the meter must still be drawn, then stay its moment.
+the meter must still be drawn, then stay its moment, and no longer, so it was timed from its
+frame rather than spent by its cap. When each frame is spent is held in Qt's engine
+(modules/quickshell/tests/meter-moment.qml).
 """
 
 from __future__ import annotations
 
+import os
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import launcher_on_niri
@@ -22,9 +26,10 @@ if TYPE_CHECKING:
 
     from launcher_on_niri import Shell
 
-# A meter's moment (modules/quickshell/Meter.qml), and the least of it a case allows, since its
-# reports are read every 50 ms.
-MOMENT, AT_LEAST = 1.5, 1.3
+# A meter's moment (modules/quickshell/Moment.qml), and the least and most of it a case allows,
+# its reports read every 50 ms and niri showing its frame a frame or two after it's drawn. Its
+# cap, ten seconds unseen, would keep one niri held for 2.5 s some 7 s past its frame.
+MOMENT, AT_LEAST, AT_MOST = 1.5, 1.3, 3.0
 # How long niri is held: longer than the moment, as the slowest builder frame was.
 HELD = 2.5
 # How long a meter's reports may take to come once niri goes on.
@@ -36,7 +41,13 @@ CHOSEN = '"$XDG_RUNTIME_DIR/backlight-chosen"'
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
-    """Give the shell, started once for the file."""
+    """Give the shell, started once for the file, with a level already picked before it.
+
+    Made before the shell starts, the file is one it watches from the start, and a pick made
+    before it isn't news (modules/quickshell/Brightness.qml), so the case's pick is the meter's
+    first showing.
+    """
+    (Path(os.environ["XDG_RUNTIME_DIR"]) / "backlight-chosen").write_text("0.3")
     with launcher_on_niri.running() as shell:
         yield shell
 
@@ -56,11 +67,6 @@ def heard(shell: Shell, since: int, until: str) -> dict[str, float]:
 
 def test_a_meter_niri_draws_late_is_drawn_and_stays_its_moment(shell: Shell) -> None:
     """Pick a brightness while niri is held, and see the meter drawn, then gone a moment after."""
-    # The file's first writing may go unheard, since it's made by it; any meter it shows has
-    # gone by the end of the wait.
-    since = shell.mark()
-    shell.as_account(f"printf 0.3 > {CHOSEN}")
-    heard(shell, since, "gone")
     since = shell.mark()
     with launcher_on_niri.niri_held():
         shell.as_account(f"printf 0.6 > {CHOSEN}")
@@ -69,4 +75,6 @@ def test_a_meter_niri_draws_late_is_drawn_and_stays_its_moment(shell: Shell) -> 
     assert "drawn" in came, f"the meter was never drawn: {sorted(came)}\n{shell.tail()}"
     assert "gone" in came, f"the meter never went: {sorted(came)}\n{shell.tail()}"
     stayed = came["gone"] - came["drawn"]
-    assert stayed >= AT_LEAST, f"the meter stayed {stayed:.2f} s once drawn, not {MOMENT}"
+    assert AT_LEAST <= stayed <= AT_MOST, (
+        f"the meter stayed {stayed:.2f} s once drawn, not {MOMENT}"
+    )

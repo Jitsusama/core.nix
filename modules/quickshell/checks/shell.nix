@@ -610,6 +610,26 @@
     given = [ "QS_GIVEN=--log-rules qt.qml.gc.allocatorStats.debug=true" ];
   };
 
+  # A meter's moment lasts from its first frame shown, or the last change once
+  # seen, and at most so long unseen, as modules/quickshell/tests/meter-moment.qml
+  # holds Moment.qml to, in Qt's engine.
+  a-meter-stays-its-moment-once-seen =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Qt's engine runs them with.
+    pkgs.runCommandLocal "a-meter-stays-its-moment-once-seen" { } ''
+      cp ${../tests/meter-moment.qml} meter-moment.qml
+      ${copied [ "Moment.qml" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml meter-moment.qml
+      touch $out
+    '';
+
   # A meter picked while niri can't draw is drawn once it can, and stays its
   # moment from then (modules/quickshell/tests/meter-on-niri-test.py).
   a-meter-stays-its-moment-once-drawn-on-niri = launcherOnNiri {

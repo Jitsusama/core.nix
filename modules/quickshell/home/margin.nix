@@ -7,6 +7,7 @@
   "Volume.qml"
   "Brightness.qml"
   "Meter.qml"
+  "Moment.qml"
   "Meters.qml"
   "Facts.qml"
   "Wallpaper.qml"
