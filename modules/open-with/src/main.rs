@@ -73,14 +73,27 @@ enum Ended {
 /// mimeinfo.cache, as for an entry in the account's own folder, but still
 /// names that app as the last choice; the shell could only say "Nothing
 /// here opens it" (Joel's mycelium: and tuple: links, 2026-11-17). With one
-/// app offered the portal opens it itself, so this does as it would. It
-/// opens any scheme whose default no folder registers without asking, so
-/// for such a link nothing here asks before it opens; whether anything
-/// asks is the program's it came from, which this code can't see (#5399's
-/// council, 2026-11-18).
-fn at_once(choices: &[String], last: Option<String>) -> Option<String> {
-    if choices.is_empty() { last } else { None }
+/// app offered the portal opens it itself, so this does as it would. Only
+/// the links declared in `DECLARED` open so, and only in the app declared
+/// for each, so a default some other program wrote for a kind no folder
+/// registers is asked of the shell as any other (#5386's council,
+/// 2026-11-18). Whether anything asks before such a link opens is the
+/// program's it came from, which this code can't see.
+fn at_once(kind: Option<&str>, choices: &[String], last: Option<String>) -> Option<String> {
+    let last = last?;
+    let declared = DECLARED
+        .iter()
+        .any(|&(declared, app)| kind == Some(declared) && last == app);
+    (choices.is_empty() && declared).then_some(last)
 }
+
+/// The links core.nix declares an app for whose entry lives in the
+/// account's own folder, which no mimeinfo.cache registers: the launcher's
+/// mycelium: links (modules/quickshell/home.nix) and Tuple's (modules/tuple).
+const DECLARED: [(&str, &str); 2] = [
+    ("x-scheme-handler/mycelium", "mycelium-link"),
+    ("x-scheme-handler/tuple", "tuple"),
+];
 
 /// What the portal is told for how a choice ended, and the app picked,
 /// which must be one it offered, since the shell's answer is only a line.
@@ -306,7 +319,13 @@ impl Chooser {
     ) -> (u32, HashMap<String, OwnedValue>) {
         // The shell asks over its own window, whichever program asked.
         let _ = (app_id, parent_window);
-        if let Some(app) = at_once(&choices, text(&options, "last_choice")) {
+        let kind = text(&options, "content_type");
+        if let Some(app) = at_once(kind.as_deref(), &choices, text(&options, "last_choice")) {
+            // Said each time, so what opened without asking can be found.
+            eprintln!(
+                "<6>open-with: opened {} in {app} at once, its declared app",
+                kind.as_deref().unwrap_or_default()
+            );
             return (PICKED, picked(app, &options));
         }
         let words = vec![
@@ -453,17 +472,50 @@ mod tests {
 
     #[test]
     fn the_portals_default_opens_at_once_where_it_offers_no_app() {
+        let mycelium = Some("x-scheme-handler/mycelium");
         let default = Some("mycelium-link".to_owned());
         assert_eq!(
-            at_once(&[], default.clone()),
+            at_once(mycelium, &[], default.clone()),
             Some("mycelium-link".to_owned())
         );
         assert_eq!(
-            at_once(&offered(), default),
+            at_once(
+                Some("x-scheme-handler/tuple"),
+                &[],
+                Some("tuple".to_owned())
+            ),
+            Some("tuple".to_owned())
+        );
+        assert_eq!(
+            at_once(mycelium, &offered(), default),
             None,
             "one offered went unasked"
         );
-        assert_eq!(at_once(&[], None), None, "an app was made up");
+        assert_eq!(at_once(mycelium, &[], None), None, "an app was made up");
+    }
+
+    #[test]
+    fn only_a_declared_link_opens_in_its_declared_app_at_once() {
+        let default = Some("mycelium-link".to_owned());
+        assert_eq!(
+            at_once(Some("x-scheme-handler/elsewhere"), &[], default.clone()),
+            None,
+            "a kind none declared opened unasked"
+        );
+        assert_eq!(
+            at_once(
+                Some("x-scheme-handler/mycelium"),
+                &[],
+                Some("tuple".to_owned())
+            ),
+            None,
+            "a declared link opened in another's app"
+        );
+        assert_eq!(
+            at_once(None, &[], default),
+            None,
+            "a link of no kind opened unasked"
+        );
     }
 
     #[test]
