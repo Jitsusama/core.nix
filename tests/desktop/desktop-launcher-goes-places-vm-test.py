@@ -195,9 +195,9 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
 def foot(desktop: Desktop, moved_from: str) -> tuple[int, int]:
     """Give where the foot's keys start, and how long how things stand reads.
 
-    It's read once the selection has left `moved_from` and nothing is told over the keys: an act
-    an earlier subtest ran, as the catalogue's reopening of Lighthouse, may say how it ended while
-    the next walks, and what the foot is told isn't a row's keys.
+    It's read once the selection has left `moved_from` and nothing is told over the keys, since
+    what the foot is told isn't a row's keys. Only a key lets a told word go, so a subtest that
+    runs an act waits for how it came out, as the catalogue does Lighthouse's reopening.
     """
     read: list[Json] = []
 
@@ -792,8 +792,14 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # again where it's closed (#1069), so the launcher doesn't open on it.
     lighthouse = one(listed(), "Lighthouse", closed_in)
     assert lighthouse["kind"] == "action", lighthouse
+    since = desktop.mark()
     assert ran(lighthouse)["done"]
     machine.fail(closed)
+    # How the reopening came out is told at the next opening until a key, so it settles here,
+    # where this subtest's own openings and their keys spend it. Left to land late, it was told
+    # as Home opened and stood over the foot it reads before any key (twice on 2026-11-18).
+    # Either way will do: the reopening itself is the sessions test's.
+    desktop.reported("", lambda said: said.startswith(("became ", "not become ")), since)
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,
