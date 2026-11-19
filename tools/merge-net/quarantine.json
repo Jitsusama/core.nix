@@ -136,19 +136,6 @@
     "test": "murmurs-site-reads-live"
   },
   {
-    "at": 1795006406,
-    "commit": "e27e8f339c7df90d945adde69e63c82d57cc81f4",
-    "due": "2026-11-20",
-    "owner_pr": 5463,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at e27e8f339c7d",
-    "subtests": [
-      "test_an_app_outruns_the_jobs",
-      "test_work_put_first_outruns_the_jobs"
-    ],
-    "test": "vm-a-hidden-queue-is-taken-back"
-  },
-  {
     "at": 1795022147,
     "commit": "28d1e29f9bd69c9661b0ae2dc85309c626bdf43a",
     "due": "2026-11-20",
