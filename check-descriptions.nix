@@ -1042,13 +1042,23 @@
     are each titled by more than their app id or the name of a program running in them
   '';
   every-pixel-mark-stands-level = ''
-    every mark the theme draws in pixels, the empty places' cat in each pose, is square, its ink
-    touching its top and bottom rows and centred across to within a cell, and the three empty
-    places' marks are drawn
+    every mark the theme draws in pixels, the three empty places' marks and the margin's cat and
+    puppy in each pose, is square, its ink touching its top and bottom rows and centred across to
+    within a cell, the cat's yarn standing on the sitting cat's ground line in its square instead,
+    and the three empty places' marks, the cat's and the puppy's poses it names and the yarn are
+    drawn
   '';
   every-cat-pose-reads-as-one-cat = ''
     every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
-    pixels within 15% of sitting's, and a leap's rise, tuck and fall are all drawn
+    pixels within 15% of sitting's, each stride of the walk the cat's code takes steps one pair
+    of feet with its body still, and each pair over the walk, and a leap's rise, tuck and fall
+    are all drawn
+  '';
+  every-puppy-pose-reads-as-one-puppy = ''
+    every pose of the margin's puppy has no lit pixel standing alone, a diagonal touching, and lit
+    pixels within 15% of its own sitting's, each of its strides steps one pair of feet with its
+    body still, and each pair over the walk, and its sitting, bow and strides are all drawn; its
+    strides are the walk the cat's code takes, each named for the puppy
   '';
   every-script-finds-what-it-imports = ''
     every folder's Python that nix fmt hands mypy passes it when handed to it alone, as a script

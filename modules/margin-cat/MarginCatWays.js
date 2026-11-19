@@ -37,10 +37,11 @@ const SURGES = 0.1;
 // reads as lost.
 const UNSEEN = 360;
 // The beats it walks or climbs, its strides stepped by the ground it
-// covers, and the poses of each stride in turn: each pair of legs apart
-// two strides and gathered two, the hind pair a stride behind.
-const WALKS = ["walkingA", "walkingC", "walkingB", "walkingD"];
-const STRIDING = { goes: WALKS, climbs: WALKS };
+// covers, and each stride's poses: each pair of legs apart two strides
+// and gathered two, the hind pair a stride behind. Frozen, so the walk the
+// theme's checks read here (modules/theme/walk-read.nix) is the one walked.
+const WALKS = Object.freeze(["walkingA", "walkingC", "walkingB", "walkingD"]);
+const STRIDING = Object.freeze({ goes: WALKS, climbs: WALKS });
 // The pose of each beat it holds still, or nearly: standing as it turns,
 // thinks or settles; crouched as it gathers itself, lands or perches on
 // a mark or shoved by a window; batting at the first mark before it hops
