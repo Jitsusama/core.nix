@@ -242,7 +242,7 @@ ShellRoot {
     // Until held gives loads up on purpose, one given up on a slow builder
     // is named at the step it came before, by each quiet wait, relinked
     // and held itself, rather than by the step its hold would fail. One
-    // given up from held on is left to the step it fails.
+    // given up from held on isn't named: it may fail a later step, or none.
     function noneGivenUp(name) {
         if (!root.holdsMade)
             Expect.expect(`no load before ${name} was given up`,
