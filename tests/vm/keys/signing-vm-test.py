@@ -195,6 +195,45 @@ def test_a_process_where_agents_work_runs_is_refused_the_keys(joel: Joel, keys: 
     joel.machine.wait_until_succeeds(refused.format(shlex.quote(since)), timeout=30)
 
 
+def test_a_commit_where_agents_work_runs_still_signs_with_their_key(joel: Joel, keys: Keys) -> None:
+    """A commit over pipes in the agents' slice is signed with their key, past the gate.
+
+    The agents' agent has no gate, so every commit an agent makes stays signed. Both the
+    socket SSH reads and the one the signer takes Joel's agent from name Joel's gated agent,
+    as an agent's environment might. Joel's agent holds the agents' key too, so the key alone
+    can't say which agent signed: the gate, shown live here first, refuses this slice, so a
+    signer that asked Joel's agent would fail the commit, and his agent's warnings, synced
+    after it and read whole, name no refusal while it's made: journalctl exits 0 with no
+    entries, so a read that fails fails the case.
+    """
+    socket = f"{joel.runtime}/ssh-tpm-agent.sock"
+    journal = "journalctl _SYSTEMD_USER_UNIT=ssh-tpm-agent.service -o cat"
+    refused = (
+        f'{journal} -p warning --after-cursor={{}} | grep -q "refused a request from agents\' work"'
+    )
+    since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
+    said = joel.run(
+        f"systemd-run --user --slice=agents --pipe --wait -q -E SSH_AUTH_SOCK={socket}"
+        " $(command -v ssh-add) -l 2>&1",
+        succeed=False,
+    )
+    assert "refused" in said, said
+    joel.machine.wait_until_succeeds(refused.format(shlex.quote(since)), timeout=30)
+    since = journal_cursor(joel.machine.succeed(f"{journal} -n 0 --show-cursor"))
+    said = joel.run(
+        f"systemd-run --user --slice=agents --pipe --wait -q -p RuntimeMaxSec=120"
+        f" -E SSH_AUTH_SOCK={socket} -E SSH_TPM_AUTH_SOCK={socket}"
+        ' -E PATH="$PATH" $(command -v git) -C "$HOME/repo"'
+        " commit -q --allow-empty -m from-agents < /dev/null 2>&1 || echo failed: $?"
+    )
+    assert "failed" not in said, said
+    assert joel.run("git -C repo log -1 --format=%s").strip() == "from-agents"
+    assert joel.signer_of_last_commit() == ["G", keys.agent]
+    joel.machine.succeed("journalctl --sync")
+    warned = joel.machine.succeed(f"{journal} -p warning --after-cursor={shlex.quote(since)}")
+    assert "refus" not in warned, warned
+
+
 def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:
     """Git trusts the signers the module lists."""
     signers = joel.run('cat "$(git config gpg.ssh.allowedSignersFile)"')
