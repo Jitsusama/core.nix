@@ -164,6 +164,16 @@ def browser() -> Iterator[Browser]:
         launched.close()
 
 
+def _crashed(error: Exception) -> bool:
+    # Playwright's own error says a crash in its message. A failed expect says
+    # it on a line of its own, after the text the page drew, so only that line
+    # counts: a page that draws the words has not crashed.
+    if isinstance(error, Error):
+        return any(words in error.message for words in CRASHES)
+    lines = {line.strip() for line in str(error).splitlines()}
+    return any(f"Error: {words}" in lines for words in CRASHES)
+
+
 class Opened:
     """A tab on a page, keeping every error and warning the page logs."""
 
@@ -177,11 +187,11 @@ class Opened:
         # Words a test expects the page to log from some line on, each with
         # where in the log it began expecting them (see expecting).
         self.expected: list[tuple[str, int]] = []
-        self.browser, self.reopened = browser, False
+        self.browser = browser
         try:
             self._open(browser, address)
         except Error as error:
-            if not self._may_open_again(error):
+            if not _crashed(error):
                 raise
             self._open_again()
 
@@ -191,27 +201,25 @@ class Opened:
         A renderer can die just after the load, while the page draws what its
         feed first sent, so a reading taken before a test tells its stand-in
         anything can be taken again in a fresh tab. A tab that dies after it
-        fails the test.
+        fails the test, as does one that dies again at its second reading, and
+        a reading that fails for any other reason fails at once.
         """
         try:
             reading(self.page)
         except (AssertionError, Error) as error:
-            if not self._may_open_again(error):
+            if not _crashed(error):
                 raise
             self._open_again()
             reading(self.page)
 
-    def _may_open_again(self, error: Exception) -> bool:
+    def _open_again(self) -> None:
         # A renderer dies on a builder short of memory, with no word from the
         # page, so the tab is opened once more in a fresh context, but only
-        # once: a page that crashes its tab itself crashes it again and fails.
-        return not self.reopened and any(words in str(error) for words in CRASHES)
-
-    def _open_again(self) -> None:
-        # What the dead tab logged is dropped, since the second load logs again
-        # whatever the page says, but the warning keeps it in pytest's summary,
-        # so a page that starts crashing is seen.
-        self.reopened = True
+        # once for each of the load and the first reading: a page that crashes
+        # its tab itself crashes it again and fails. What the dead tab logged
+        # is dropped, since the second load logs again whatever the page says,
+        # and what a test expected is expected from the new log's start; the
+        # warning keeps it in pytest's summary.
         self.context.close()
         warnings.warn(
             f"the tab on {self.address} at {self.size} in {self.look} crashed and was opened "
@@ -219,6 +227,7 @@ class Opened:
             stacklevel=3,
         )
         self.logged.clear()
+        self.expected = [(words, 0) for words, _ in self.expected]
         self._open(self.browser, self.address)
 
     def _open(self, browser: Browser, address: str) -> None:
