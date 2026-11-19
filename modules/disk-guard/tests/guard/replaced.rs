@@ -1,9 +1,9 @@
-use crate::discover::file;
+use crate::discover::{CARGO_TAG, file};
 use disk_guard::anchor::Dir;
 use disk_guard::pass::Outcome;
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::reclaim;
-use disk_guard::replaced::{Build, Uses, replaced};
+use disk_guard::replaced::{Build, Uses, replaced, watched_dirs};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -137,6 +137,134 @@ fn a_build_is_used_when_last_opened_and_never_before_its_deps_was_watched() {
     // Events lost to an overflow could have been opens of anything.
     uses.lost(30_000.0);
     assert_eq!(uses.last_used(&build(deps, 1_000.0)), Some(30_000.0));
+}
+
+#[test]
+fn a_target_is_last_opened_when_its_lock_or_a_build_in_its_deps_was() {
+    // Every cargo opens its profile's lock, even one that finds all fresh
+    // and writes nothing, so the profile is watched beside its deps.
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("target");
+    let profile = target.join("debug");
+    let deps = profile.join("deps");
+    fs::create_dir_all(&deps).unwrap();
+    let kept = target.join("run");
+    fs::create_dir_all(kept.join("debug/deps")).unwrap();
+    fs::write(kept.join("CACHEDIR.TAG"), CARGO_TAG).unwrap();
+    assert_eq!(
+        watched_dirs(&target),
+        vec![profile.clone(), deps.clone()],
+        "a target's watch marks each profile and its deps, and nothing of a target kept in it"
+    );
+    let mut uses = Uses::default();
+    assert_eq!(
+        uses.last_opened_in(&watched_dirs(&target)),
+        None,
+        "a target nothing opened has no last open"
+    );
+    uses.opened(&deps.join(format!("libalpha-{OLD}.rlib")), 7_000.0);
+    assert_eq!(
+        uses.last_opened_in(&watched_dirs(&target)),
+        Some(7_000.0),
+        "a library a build read in its deps didn't date the target"
+    );
+    uses.opened(&profile.join(".cargo-build-lock"), 9_000.0);
+    uses.opened(&kept.join("debug/.cargo-build-lock"), 20_000.0);
+    uses.opened(
+        &profile.join("incremental/alpha-1/s-1/query-cache.bin"),
+        30_000.0,
+    );
+    assert_eq!(
+        uses.last_opened_in(&watched_dirs(&target)),
+        Some(9_000.0),
+        "something deeper than a target's watched folders dated it"
+    );
+}
+
+// A Mac gives no folder a handle, so nothing there is ever heard.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_target_is_heard_since_this_guard_marked_its_folders_as_they_are() {
+    // An open the watch missed would make a build in use look old, so
+    // what it says is trusted only from when this guard's marks last
+    // heard everything, on the folders there now.
+    let root = tempfile::tempdir().unwrap();
+    let dirs = [root.path().join("debug"), root.path().join("debug/deps")];
+    fs::create_dir_all(&dirs[1]).unwrap();
+    let mut uses = Uses::default();
+    uses.watching(&dirs[0], 1.0);
+    uses.watching(&dirs[1], 1.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a target an earlier guard watched was heard by this one"
+    );
+    let mark = |uses: &mut Uses, dir: &Path, at: f64| {
+        uses.marked(dir, at, disk_guard::opens::handle(dir).unwrap());
+    };
+    mark(&mut uses, &dirs[0], 100.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a target with an unmarked deps was heard"
+    );
+    mark(&mut uses, &dirs[1], 300.0);
+    mark(&mut uses, &dirs[1], 400.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        Some(300.0),
+        "a target isn't heard from when its last folder was first marked"
+    );
+    uses.lost(700.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        Some(700.0),
+        "a target isn't heard from when the watch last lost events"
+    );
+    // Cleaned and built again: the mark went with the old folder.
+    fs::rename(&dirs[1], root.path().join("old-deps")).unwrap();
+    fs::create_dir(&dirs[1]).unwrap();
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a deps made anew was heard through the old one's mark"
+    );
+    // Its handle read before it was made anew, as a mark landing on the
+    // new folder after the watch named the old one would be.
+    let before = disk_guard::opens::handle(&dirs[1]).unwrap();
+    fs::remove_dir(&dirs[1]).unwrap();
+    fs::create_dir(&dirs[1]).unwrap();
+    uses.marked(&dirs[1], 800.0, before);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a deps made anew was heard through a handle read of the one before"
+    );
+    mark(&mut uses, &dirs[1], 900.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        Some(900.0),
+        "a deps made anew isn't heard from when it was marked again"
+    );
+    fs::remove_dir(&dirs[1]).unwrap();
+    assert_eq!(uses.heard_since(&dirs), None, "a gone deps was heard");
+    uses.deaf();
+    assert!(
+        uses.watched.is_empty(),
+        "a deaf guard still dated replaced builds by what it watched before"
+    );
+    fs::create_dir(&dirs[1]).unwrap();
+    mark(&mut uses, &dirs[1], 1000.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a deaf guard still heard a profile it had marked"
+    );
+    assert_eq!(
+        uses.heard_since(&[]),
+        None,
+        "a target with no profile was heard"
+    );
 }
 
 #[test]

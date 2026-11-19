@@ -26,13 +26,31 @@ pub struct Build {
     pub size: u64,
 }
 
-/// When each library artifact was last opened, as the watch on its `deps`
-/// saw it, and since when each `deps` has been watched. Kept across
-/// restarts, since a build replaced a week ago is judged by a week of it.
+/// When each file the watch marks was last opened, as it saw it, and since
+/// when each folder it marks has been watched. Kept across restarts,
+/// since a build replaced a week ago is judged by a week of it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Uses {
     pub opened: BTreeMap<PathBuf, f64>,
     pub watched: BTreeMap<PathBuf, f64>,
+    /// Each folder this guard holds a mark on: when the mark landed, and
+    /// the folder it landed on. Never kept, since a mark dies with the
+    /// guard that placed it, and one on a folder since made anew hears
+    /// nothing of the new one.
+    #[serde(skip)]
+    pub heard: BTreeMap<PathBuf, Heard>,
+    /// The last moment the watch lost events, which could have been opens
+    /// of anything it marks. Never kept, as the marks aren't.
+    #[serde(skip)]
+    pub unheard: f64,
+}
+
+/// A mark this guard placed on a folder: when, and on which folder, by
+/// the handle the watch read before marking it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Heard {
+    pub since: f64,
+    pub handle: Vec<u8>,
 }
 
 impl Uses {
@@ -41,9 +59,23 @@ impl Uses {
         *last = last.max(at);
     }
 
-    /// Notes that `deps` is watched from `at`, unless it already was.
-    pub fn watching(&mut self, deps: &Path, at: f64) {
-        self.watched.entry(deps.to_owned()).or_insert(at);
+    /// Notes that `dir` is watched from `at`, unless it already was.
+    pub fn watching(&mut self, dir: &Path, at: f64) {
+        self.watched.entry(dir.to_owned()).or_insert(at);
+    }
+
+    /// This guard's mark landed at `at` on the folder `handle` names, at
+    /// `dir`. A mark again on the folder it already marked keeps its time;
+    /// one on a folder made anew at the same path starts afresh.
+    pub fn marked(&mut self, dir: &Path, at: f64, handle: Vec<u8>) {
+        match self.heard.get_mut(dir) {
+            Some(heard) if heard.handle == handle => {}
+            Some(heard) => *heard = Heard { since: at, handle },
+            None => {
+                self.heard
+                    .insert(dir.to_owned(), Heard { since: at, handle });
+            }
+        }
     }
 
     /// The watch lost events at `at`, which could have been opens of
@@ -52,6 +84,31 @@ impl Uses {
         for since in self.watched.values_mut() {
             *since = since.max(at);
         }
+        self.unheard = self.unheard.max(at);
+    }
+
+    /// Forgets every mark, and since when each folder was watched, for a
+    /// guard that hears nothing: an open it missed could be of anything,
+    /// so no build is dated by what it heard before, and a replaced build
+    /// stays as it does where nothing watches.
+    pub fn deaf(&mut self) {
+        self.heard.clear();
+        self.watched.clear();
+    }
+
+    /// Since when this guard has heard every one of `dirs` without a gap:
+    /// its mark on each, on the folder there now, and its last lost
+    /// events. Nothing when one isn't marked, or was made anew since, or
+    /// there are none.
+    pub fn heard_since(&self, dirs: &[PathBuf]) -> Option<f64> {
+        if dirs.is_empty() {
+            return None;
+        }
+        dirs.iter().try_fold(self.unheard, |since, dir| {
+            let heard = self.heard.get(dir)?;
+            let now = crate::opens::handle(dir).ok()?;
+            (now == heard.handle).then_some(since.max(heard.since))
+        })
     }
 
     /// Drops what's no longer there, so the store holds only what's built.
@@ -59,6 +116,25 @@ impl Uses {
         let there = |path: &PathBuf| path.symlink_metadata().is_ok();
         self.opened.retain(|path, _| there(path));
         self.watched.retain(|path, _| there(path));
+        self.heard.retain(|path, _| there(path));
+    }
+
+    /// When anything right in one of `dirs` was last opened, which for a
+    /// target's [`watched_dirs`] is when a cargo last ran in it or a build
+    /// last read one of its libraries. Nothing deeper counts, so a
+    /// target kept inside, or rustc's incremental sessions, never date it.
+    pub fn last_opened_in(&self, dirs: &[PathBuf]) -> Option<f64> {
+        dirs.iter()
+            .flat_map(|dir| {
+                // Paths order by component, so whatever lies in `dir`
+                // follows it at once.
+                self.opened
+                    .range(dir.clone()..)
+                    .take_while(move |(path, _)| path.starts_with(dir))
+                    .filter(move |(path, _)| path.parent() == Some(dir.as_path()))
+                    .map(|(_, &at)| at)
+            })
+            .reduce(f64::max)
     }
 
     /// When a build was last used: its newest open, when it was written if
@@ -101,6 +177,22 @@ pub fn deps_dirs(target: &Path) -> Vec<PathBuf> {
     }
     found.sort();
     found
+}
+
+/// What the watch marks in a target: each profile's `deps`, whose
+/// libraries later builds read, and the profile itself, whose
+/// `.cargo-build-lock` every cargo opens, even one that finds every unit
+/// fresh and writes nothing. On 18 November a fresh `cargo test` and
+/// `cargo clippy` each opened that lock and changed no time in the build.
+pub fn watched_dirs(target: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = deps_dirs(target)
+        .into_iter()
+        .flat_map(|deps| [deps.parent().map(Path::to_owned), Some(deps)])
+        .flatten()
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    dirs
 }
 
 /// Every build in `target` a newer build of its crate replaced.

@@ -3,13 +3,15 @@
 
 use crate::discover::{CARGO_TAG, checkout, dir, file};
 use crate::survey::{
-    DAY, config, find, now, offers, offers_using, real, src, surveyed, surveyed_pinned, written_ago,
+    DAY, config, find, now, offers, offers_awake, offers_using, real, src, surveyed,
+    surveyed_pinned, written_ago,
 };
 use disk_guard::activity::Process;
+use disk_guard::clock::{Awake, Tick};
 use disk_guard::config::Config;
 use disk_guard::plan::{self, Class, Group};
-use disk_guard::replaced::Uses;
-use disk_guard::survey::{Action, Sizes};
+use disk_guard::replaced::{Uses, watched_dirs};
+use disk_guard::survey::{Action, BUDGET_RECENT, Sizes};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::Path;
@@ -275,7 +277,7 @@ fn a_pinned_snapshots_older_builds_go_once_an_hour_unused() {
             pinned,
             &BTreeMap::new(),
             &uses,
-            (now(), Sizes::default()),
+            (now(), Sizes::default(), &Awake::default()),
         );
         let older = find(&found, &replaced);
         (older.candidate.spent, plan::windows(&older.candidate).0)
@@ -328,7 +330,7 @@ fn a_pinned_snapshots_incremental_goes_at_once_while_nobody_sits_there() {
             pinned,
             &BTreeMap::new(),
             &Uses::default(),
-            (now(), Sizes::default()),
+            (now(), Sizes::default(), &Awake::default()),
         );
         let offered = find(&found, &variant);
         (offered.candidate.spent, plan::windows(&offered.candidate).0)
@@ -510,16 +512,21 @@ fn a_budget_of_nothing_spends_nothing() {
     );
 }
 
+/// Hours a minute either side of the budget's floor, so a case pins the
+/// floor itself rather than anywhere in a wide gap.
+const JUST_INSIDE: f64 = (BUDGET_RECENT - 60.0) / 3600.0;
+const JUST_PAST: f64 = (BUDGET_RECENT + 60.0) / 3600.0;
+
 #[test]
-fn a_build_used_within_the_hour_or_sat_in_counts_but_stays() {
+fn a_build_used_within_a_quarter_hour_or_sat_in_counts_but_stays() {
     // A run of checks reuses one build minutes apart, and a shell sits in
     // a build it will use again: both hold room, but neither is taken for
     // the budget, so the next least recently used goes in their place.
     let (_home, made, config) = budgeted(
         &[
-            ("c-recent", 0.2),
+            ("c-fits", 0.05),
             ("a-sat-in", 5.0),
-            ("f-recent", 0.5),
+            ("f-recent", JUST_INSIDE),
             ("e-old", 4.0),
         ],
         1,
@@ -531,11 +538,13 @@ fn a_build_used_within_the_hour_or_sat_in_counts_but_stays() {
         readable: true,
         ..Default::default()
     };
-    let found = offers(&config, &[shell], &|_| false);
+    // Heard throughout, so the quarter hour is the floor in force.
+    let uses = heard(&made, 3.0);
+    let found = offers_using(&config, &[shell], &|_| false, &BTreeMap::new(), &uses);
     let offered = |app: &Path| find(&found, &app.join("target")).candidate.clone();
     assert!(
-        !offered(&made[0]).spent && !offered(&made[2]).spent,
-        "builds used within the hour stay, even past the budget"
+        !offered(&made[2]).spent,
+        "a build used a minute inside the floor stays, even past the budget"
     );
     assert!(
         offered(&made[1]).occupied && !offered(&made[1]).spent,
@@ -544,5 +553,203 @@ fn a_build_used_within_the_hour_or_sat_in_counts_but_stays() {
     assert!(
         offered(&made[3]).spent,
         "the least recently used nobody sits in goes past the budget"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_build_left_past_a_quarter_hour_goes_past_the_budget() {
+    // On 18 November the builds disk held 56 GiB against its 20, 55 of it
+    // used within the hour, so an hour's floor held almost nothing back.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-left", JUST_PAST)], 1);
+    // Heard for hours, or only just long enough.
+    for hours in [3.0, JUST_PAST] {
+        let uses = heard(&made, hours);
+        let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+        assert!(
+            find(&found, &made[1].join("target")).candidate.spent,
+            "a build heard unused a minute past the floor, marked {hours} h, stays past the budget"
+        );
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_budget_keeps_the_builds_used_last_not_written_last() {
+    // A run of checks over an unchanged crate writes nothing, so a build
+    // it opened two minutes ago must rank ahead of one written since.
+    let (_home, made, config) = budgeted(&[("a-reopened", 3.0), ("b-written", 0.5)], 1);
+    let mut uses = heard(&made, 3.0);
+    uses.opened(
+        &made[0].join("target/debug/.cargo-build-lock"),
+        now() - 120.0,
+    );
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+    let spent = |app: &Path| find(&found, &app.join("target")).candidate.spent;
+    assert!(
+        !spent(&made[0]),
+        "a build a cargo opened two minutes ago went"
+    );
+    assert!(
+        spent(&made[1]),
+        "a build written half an hour ago kept the budget's room from one opened since"
+    );
+}
+
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn a_build_left_past_a_quarter_hour_keeps_its_hour_where_nothing_is_heard() {
+    // A Mac has no watch and can't tell one folder from another made
+    // where it stood, so the floor stays the hour it was.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-left", JUST_PAST)], 1);
+    let uses = heard(&made, 3.0);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+    assert!(
+        !find(&found, &made[1].join("target")).candidate.spent,
+        "a build left a minute past the quarter hour went past the budget where nothing is heard"
+    );
+}
+
+#[test]
+fn a_build_the_watch_may_have_missed_keeps_its_hour() {
+    // A fresh check's only sign is an open, so where one in the last
+    // quarter hour could have gone unheard, a build stays the hour it
+    // stayed before opens were heard.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-left", JUST_PAST)], 1);
+    let watched_lately = heard(&made, JUST_INSIDE);
+    let mut overflowed = heard(&made, 3.0);
+    overflowed.lost(now() - 600.0);
+    let mut deafened = heard(&made, 3.0);
+    deafened.deaf();
+    // Only an earlier guard's word for it, since its marks died with it.
+    let mut earlier = Uses::default();
+    for dir in watched_dirs(&made[1].join("target")) {
+        earlier.watching(&dir, now() - 3.0 * 3600.0);
+    }
+    for (why, uses) in [
+        ("nothing watches it", Uses::default()),
+        (
+            "it was first marked a minute inside the floor",
+            watched_lately,
+        ),
+        ("the watch lost events minutes ago", overflowed),
+        ("the guard stopped hearing", deafened),
+        ("only an earlier guard watched it", earlier),
+    ] {
+        let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+        assert!(
+            !find(&found, &made[1].join("target")).candidate.spent,
+            "a build left a minute past the floor went past the budget though {why}"
+        );
+    }
+    // Last, since it changes the build itself: cleaned and built again,
+    // as the guard's own take of a target leaves it, so its old mark
+    // hears nothing of the folders there now.
+    let remade = heard(&made, 3.0);
+    let deps = made[1].join("target/debug/deps");
+    std::fs::rename(&deps, made[1].join("target/debug/old-deps")).unwrap();
+    std::fs::create_dir(&deps).unwrap();
+    // Written no later than the rest of the build, so only the mark
+    // tells it apart from one heard throughout.
+    aged(&made[1].join("target"), JUST_PAST);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &remade);
+    assert!(
+        !find(&found, &made[1].join("target")).candidate.spent,
+        "a build left a minute past the floor went past the budget, its deps made anew since"
+    );
+}
+
+#[test]
+fn a_suspend_ages_neither_a_builds_last_open_nor_its_marks() {
+    // Every other idle is counted awake, and a lid closed for an hour
+    // between two checks would otherwise make the build they share look
+    // an hour old, or its marks an hour trusted.
+    let base = now();
+    let minutes = |m: f64| m * 60.0;
+    let asleep = |from: f64, to: f64| {
+        let mut awake = Awake::default();
+        let tick = |wall: f64, suspended: f64| Tick {
+            wall: base - wall,
+            monotonic: minutes(240.0) - wall - suspended,
+            suspended,
+            boot: "b".into(),
+        };
+        awake.observe(&tick(minutes(240.0), 0.0));
+        awake.observe(&tick(from, 0.0));
+        awake.observe(&tick(to, from - to));
+        // Awake since, as each step until now saw.
+        awake.observe(&tick(0.0, from - to));
+        awake
+    };
+    // Opened 65 minutes ago, 60 of them asleep, heard for hours.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-opened", 2.0)], 1);
+    let mut uses = heard(&made, 3.0);
+    uses.opened(
+        &made[1].join("target/debug/.cargo-build-lock"),
+        base - minutes(65.0),
+    );
+    let found = offers_awake(&config, &uses, &asleep(minutes(61.0), minutes(1.0)));
+    assert!(
+        !find(&found, &made[1].join("target")).candidate.spent,
+        "a build opened five awake minutes ago went past the budget across a suspend"
+    );
+    // Written 40 minutes ago, marked 20 ago, 10 of those asleep: heard
+    // only 10 awake minutes, so the hour stands.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-written", 40.0 / 60.0)], 1);
+    let uses = heard(&made, 20.0 / 60.0);
+    let found = offers_awake(&config, &uses, &asleep(minutes(20.0), minutes(10.0)));
+    assert!(
+        !find(&found, &made[1].join("target")).candidate.spent,
+        "a build marked ten awake minutes ago kept only a quarter hour's floor"
+    );
+}
+
+/// What the watch says of `apps`' builds when this guard has marked their
+/// profiles and `deps` for `hours` and nothing was opened in them. On a
+/// Mac, which gives no folder a handle, the marks name none, as nothing
+/// there can.
+fn heard(apps: &[PathBuf], hours: f64) -> Uses {
+    let mut uses = Uses::default();
+    for app in apps {
+        for dir in watched_dirs(&app.join("target")) {
+            uses.watching(&dir, now() - hours * 3600.0);
+            let handle = disk_guard::opens::handle(&dir);
+            #[cfg(target_os = "linux")]
+            let handle = handle.unwrap();
+            #[cfg(not(target_os = "linux"))]
+            let handle = handle.unwrap_or_default();
+            uses.marked(&dir, now() - hours * 3600.0, handle);
+            assert!(
+                uses.heard.contains_key(&dir),
+                "{} wasn't marked",
+                dir.display()
+            );
+        }
+    }
+    uses
+}
+
+#[test]
+fn a_build_a_cargo_found_fresh_is_used_though_nothing_was_written() {
+    // A cargo that finds every unit fresh writes nothing in the build, but
+    // opens its profile's lock; a run of such checks minutes apart reuses
+    // a build last written long before, which the budget would otherwise
+    // take between two of them.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-checked", 2.0)], 1);
+    let profile = made[1].join("target/debug");
+    let mut uses = heard(&made, 3.0);
+    uses.opened(&profile.join(".cargo-build-lock"), now() - 120.0);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+    let checked = find(&found, &made[1].join("target")).candidate.clone();
+    assert!(
+        !checked.spent,
+        "a build a cargo opened two minutes ago went past the budget"
+    );
+    // Only the budget reads opens: a reader such as a backup would
+    // otherwise hold back every other window.
+    assert!(
+        checked.idle > 3600.0,
+        "an open moved the build's idle time, {}, which only the budget reads",
+        checked.idle
     );
 }

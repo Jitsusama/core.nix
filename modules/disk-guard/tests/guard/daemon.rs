@@ -2073,6 +2073,8 @@ impl Home {
 
 #[test]
 fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
+    // A guard that never listened, as `plan` and `explain` don't, reads
+    // what the daemon watched, so they say what it would take.
     let home = Home::new();
     let (config, deps) = home.replaced_build("100%");
     // Watched for three days, and nothing opened it.
@@ -2094,7 +2096,32 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
 }
 
 #[test]
-fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
+fn a_daemon_that_cant_hear_keeps_replaced_builds_and_forgets_what_was_watched() {
+    // Earlier guards' dates stop where a daemon with no watch starts, so
+    // trusting them would date a build by opens nobody heard.
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("100%");
+    let mut uses = Uses::default();
+    uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
+    let mut guard = home.guard(config);
+    guard.hears_nothing();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        deps.join(format!("libapp-{OLD}.rlib")).exists(),
+        "a daemon that can't hear took a replaced build by an earlier guard's dates"
+    );
+    let kept: Uses = disk_guard::state::load(&home.root.join("state/uses.json"))
+        .unwrap()
+        .unwrap_or_default();
+    assert!(
+        kept.watched.is_empty(),
+        "a daemon that can't hear saved earlier guards' dates for the next: {kept:?}"
+    );
+}
+
+#[test]
+fn the_opens_a_watch_hears_are_kept_and_its_own_marks_heard() {
     let Ok(watch) = disk_guard::opens::Watch::new() else {
         eprintln!("no fanotify here, so nothing to check");
         return;
@@ -2105,8 +2132,12 @@ fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
     guard.listen(std::sync::Arc::new(watch));
     guard.step(&tick(), &CALM).unwrap();
     let rlib = deps.join(format!("libapp-{OLD}.rlib"));
+    // Every cargo opens its profile's lock, even one that writes nothing.
+    let lock = deps.parent().unwrap().join(".cargo-build-lock");
+    fs::write(&lock, "").unwrap();
     std::process::Command::new("cat")
         .arg(&rlib)
+        .arg(&lock)
         .output()
         .unwrap();
     // Each step late enough after the last that the guard saves.
@@ -2124,13 +2155,174 @@ fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
         let kept: Uses = disk_guard::state::load(&home.root.join("state/uses.json"))
             .unwrap()
             .unwrap_or_default();
-        if kept.opened.contains_key(&rlib) || std::time::Instant::now() > deadline {
+        let heard = kept.opened.contains_key(&rlib) && kept.opened.contains_key(&lock);
+        if heard || std::time::Instant::now() > deadline {
             break kept;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
     assert!(kept.watched.contains_key(&deps), "{kept:?}");
+    assert!(
+        kept.watched.contains_key(deps.parent().unwrap()),
+        "the profile, whose lock a fresh cargo opens, went unwatched: {kept:?}"
+    );
     assert!(kept.opened.contains_key(&rlib), "{kept:?}");
+    assert!(
+        kept.opened.contains_key(&lock),
+        "a cargo opening its profile's lock went unheard: {kept:?}"
+    );
+    let hears = guard.hears();
+    assert!(
+        hears.contains(&deps) && hears.contains(&deps.parent().unwrap().to_owned()),
+        "the guard's marks on the profile and its deps weren't kept as heard: {hears:?}"
+    );
+}
+
+/// How a listener's reads go, once a test says they start going wrong:
+/// failing (`Err`), passing (`Ok`) or panicking, in turn, and then as the
+/// last says for good.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Read {
+    Fails,
+    Passes,
+    Panics,
+}
+
+/// A guard listening through reads that go as `reads` says once they turn,
+/// its builds' deps, and how many reads went since they turned.
+struct Listening {
+    home: Home,
+    guard: Guard,
+    deps: PathBuf,
+    read: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// Starts a guard on a real watch whose reads, after its first step has
+/// marked the build, go as `reads` says; nothing when there's no
+/// fanotify here.
+fn listening(reads: &'static [Read]) -> Option<Listening> {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    let Ok(watch) = disk_guard::opens::Watch::new() else {
+        eprintln!("no fanotify here, so nothing to check");
+        return None;
+    };
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("0%");
+    let mut guard = home.guard(config);
+    let turned = Arc::new(AtomicBool::new(false));
+    let read = Arc::new(AtomicUsize::new(0));
+    let (turns, reading) = (Arc::clone(&turned), Arc::clone(&read));
+    guard.listen_to(Arc::new(watch), move |within| {
+        std::thread::sleep(within.min(std::time::Duration::from_millis(20)));
+        if !turns.load(Ordering::SeqCst) {
+            return Ok(Vec::new());
+        }
+        let at = reading.fetch_add(1, Ordering::SeqCst);
+        match reads[at.min(reads.len() - 1)] {
+            Read::Fails => Err(std::io::Error::other("a read that fails")),
+            Read::Passes => Ok(Vec::new()),
+            Read::Panics => panic!("a read that panics"),
+        }
+    });
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        guard.hears().contains(&deps),
+        "the guard didn't hear the deps it marked, before anything went wrong"
+    );
+    turned.store(true, Ordering::SeqCst);
+    Some(Listening {
+        home,
+        guard,
+        deps,
+        read,
+    })
+}
+
+/// Waits up to `seconds` for `done`.
+fn within(seconds: u64, mut done: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
+    while !done() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_guard_hears_through_failed_reads_that_pass_before_five() {
+    // A read can fail and pass, as running short of memory does, so only
+    // five failures in a row end the listener; each counts as lost events.
+    use Read::{Fails, Passes};
+    use std::sync::atomic::Ordering;
+    static READS: [Read; 11] = [
+        Fails, Fails, Fails, Fails, Passes, Fails, Fails, Fails, Fails, Passes, Passes,
+    ];
+    let started = wall();
+    let Some(listening) = listening(&READS) else {
+        return;
+    };
+    within(20, || listening.read.load(Ordering::SeqCst) >= READS.len());
+    assert!(
+        listening.read.load(Ordering::SeqCst) >= READS.len(),
+        "the listener stopped reading after {} reads, though none failed five in a row",
+        listening.read.load(Ordering::SeqCst)
+    );
+    let hears = listening.guard.hears();
+    assert!(
+        hears.contains(&listening.deps),
+        "failed reads that passed before five left the guard hearing nothing: {hears:?}"
+    );
+    assert!(
+        listening.guard.lost_at() >= started,
+        "a failed read didn't count as lost events"
+    );
+}
+
+/// Checks a guard whose listener ended hears nothing, saves no watched
+/// dates for the next guard, and marks nothing an hour on; answers how
+/// many reads it made once they turned.
+fn ends_deaf(reads: &'static [Read]) -> Option<usize> {
+    let mut listening = listening(reads)?;
+    let tries = u64::from(disk_guard::daemon::LISTEN_TRIES);
+    within(tries + 3, || listening.guard.hears().is_empty());
+    let hears = listening.guard.hears();
+    assert!(
+        hears.is_empty(),
+        "a guard whose listener ended ({reads:?}) still heard {hears:?}"
+    );
+    let later = Tick {
+        wall: wall() + 3700.0,
+        monotonic: 7300.0,
+        ..tick()
+    };
+    listening.guard.step(&later, &CALM).unwrap();
+    let kept: Uses = disk_guard::state::load(&listening.home.root.join("state/uses.json"))
+        .unwrap()
+        .unwrap_or_default();
+    assert!(
+        kept.watched.is_empty(),
+        "a deaf guard saved what it watched for the next guard to trust: {kept:?}"
+    );
+    let hears = listening.guard.hears();
+    assert!(
+        hears.is_empty(),
+        "a deaf guard marked its builds again an hour on: {hears:?}"
+    );
+    Some(listening.read.load(std::sync::atomic::Ordering::SeqCst))
+}
+
+#[test]
+fn a_guard_whose_reads_keep_failing_hears_nothing() {
+    if let Some(reads) = ends_deaf(&[Read::Fails]) {
+        assert_eq!(
+            reads, 5,
+            "the listener didn't stop at its fifth failed read"
+        );
+    }
+}
+
+#[test]
+fn a_guard_whose_listener_panicked_hears_nothing() {
+    ends_deaf(&[Read::Panics]);
 }
 
 #[test]

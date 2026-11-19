@@ -77,13 +77,47 @@ or launchd, and [`home.nix`][2] the account's.
   `cargo` source given a `budget` (a size, or a share of the disk its
   first root is on) keeps its builds newest first while they fit; past
   it, the least recently used go whatever the band. A build a session
-  sits in, or one used within the hour, counts but stays, a build
-  already spent takes no room, and a build a cargo runs in is never
-  offered. A budget that comes to nothing, as a share of a disk that
-  can't be measured does, is none. While the first root's disk holds
-  more than the budget, the guard makes upkeep due, at most once an
-  hour. Cargo's shared builds folder held 63 GiB on 17 November, 59 of
-  it written within a day, which no idle window reached. A temp entry
+  sits in, or one used within the last 15 minutes, counts but stays, a
+  build already spent takes no room, and a build a cargo runs in, which
+  holds its lock, is never offered. For the budget alone, a build is
+  used when a cargo last wrote it or when the watch on opens last heard
+  anything right in its profile or `deps` opened, as every cargo opens
+  its profile's `.cargo-build-lock`: a cargo that finds every unit fresh
+  writes nothing, so a run of checks over an unchanged crate would
+  otherwise look idle between them. Any reader of a profile, such as
+  rust-analyzer or a backup, holds its build back from the budget the
+  same way, which costs room, never a build in use. Other windows read
+  writes alone, so such a reader holds none of them back. The 15
+  minutes hold only where this guard's own marks have heard a build's
+  folders, as they are now, for 15 minutes of awake time without a
+  gap; a folder is told by the file handle its mark was placed through,
+  which a folder made anew never shares. The handle and the mark are
+  read through one descriptor, so a folder renamed between them can't
+  lend its handle to another. A build not marked since the guard
+  started, one whose profile or `deps` was made anew since its mark,
+  one after lost events, and every build where nothing hears, as on
+  macOS, in `plan`, or once the watch or its listener fails, keeps the
+  hour, and the guard says how many folders it couldn't mark and why.
+  A failed read or a record it can't parse counts as lost events, and
+  the listener tries again a second later; five failures in a row, or
+  a panic, end it. A guard whose listener ended, or a daemon with no
+  watch, forgets what it watched and marks nothing more, in its saved
+  record too, so it and the next guard keep replaced builds until they
+  have watched them afresh. `plan` and `explain` never listen, and read
+  what the daemon watched. A
+  budget that comes to nothing, as a share of a disk that can't be
+  measured does, is none. While the first root's
+  disk holds more than the budget, the guard makes upkeep due, at most
+  once an hour, so a build stays until the first look after its 15
+  minutes. Cargo's shared builds folder held 63 GiB on 17 November, 59
+  of it written within a day, which no idle window reached, and 56 GiB
+  against its 20 on 18 November, 55 of it used within the hour, so the
+  floor came down from an hour. Incremental sessions are most of what a
+  one-shot build writes and never reads again, so one-shot runs should
+  set `CARGO_INCREMENTAL=0`: gates, councils' builds, and clippy and
+  test sweeps. Nothing here sets it; each run's owner does. A session
+  iterating on a crate keeps incremental builds, since quick iteration
+  is the point of them, and the budget takes them once it moves on. A temp entry
   nothing has changed since the last boot goes whatever the band and
   whatever its name, since whatever made it ended with that boot. A browser profile in the `tmp/`
   of a quest still at work goes once nothing has changed in it for an

@@ -23,6 +23,29 @@ fn watch() -> Watch {
 }
 
 #[test]
+fn a_watch_answers_the_handle_of_the_folder_it_marked() {
+    // The survey trusts a mark only while the folder there now has the
+    // handle the watch answered, so the two must name a folder alike.
+    let root = tempfile::tempdir().unwrap();
+    let deps = root.path().join("deps");
+    fs::create_dir(&deps).unwrap();
+    let watch = watch();
+    let marked = watch.watch(&deps).unwrap();
+    assert_eq!(
+        marked,
+        disk_guard::opens::handle(&deps).unwrap(),
+        "the watch answered a handle the survey wouldn't read of the folder it marked"
+    );
+    fs::remove_dir(&deps).unwrap();
+    fs::create_dir(&deps).unwrap();
+    assert_ne!(
+        marked,
+        disk_guard::opens::handle(&deps).unwrap(),
+        "a folder made anew where the marked one stood has its handle"
+    );
+}
+
+#[test]
 fn another_process_opening_an_artifact_is_seen_by_its_path() {
     let root = tempfile::tempdir().unwrap();
     let deps = root.path().join("deps");

@@ -1,7 +1,8 @@
 //! Watching who opens a build's artifacts, with fanotify. Under noatime
 //! a read leaves no trace on disk, so a build read by every test run looks
-//! as old as one nobody needs; an inode mark on each `deps` hears every
-//! open of what's in it instead, by any process of any account.
+//! as old as one nobody needs; an inode mark on each profile and its `deps`
+//! hears every open of what's in it instead, by any process of any
+//! account.
 //!
 //! An account gets fanotify without privilege when events name files by
 //! handle (`FAN_REPORT_DFID_NAME`) and marks are on inodes, which is all
@@ -61,20 +62,26 @@ impl Watch {
     }
 
     /// Hears every open of what's in `dir` from now on, until the
-    /// directory goes. Watching one again changes nothing.
-    pub fn watch(&self, dir: &Path) -> io::Result<()> {
-        let path = CString::new(dir.as_os_str().as_bytes())?;
-        let key = key(&path)?;
+    /// directory goes. Watching one again changes nothing. Answers the
+    /// [`handle`] of the folder the mark landed on: both are read through
+    /// one descriptor of it, so a folder swapped in at the path between
+    /// them can't pass as the one marked.
+    pub fn watch(&self, dir: &Path) -> io::Result<Vec<u8>> {
+        let folder = folder(dir)?;
+        let key = key(&folder)?;
         let mask = libc::FAN_OPEN | libc::FAN_OPEN_EXEC | libc::FAN_EVENT_ON_CHILD;
         let flags = libc::FAN_MARK_ADD | libc::FAN_MARK_ONLYDIR | libc::FAN_MARK_DONT_FOLLOW;
-        // SAFETY: the fd is a fanotify group and path a NUL-ended string.
+        // SAFETY: the fd is a fanotify group, and "." resolved from the
+        // descriptor marks the directory it holds. A null path would ask
+        // the kernel to take the descriptor as a file, which it refuses
+        // for one opened only as a path.
         let marked = unsafe {
             libc::fanotify_mark(
                 self.fd.as_raw_fd(),
                 flags,
                 mask,
-                libc::AT_FDCWD,
-                path.as_ptr(),
+                folder.as_raw_fd(),
+                c".".as_ptr(),
             )
         };
         if marked != 0 {
@@ -83,8 +90,8 @@ impl Watch {
         self.dirs
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(key, dir.to_owned());
-        Ok(())
+            .insert(key.clone(), dir.to_owned());
+        Ok(key)
     }
 
     /// What was seen, waiting up to `within` for something.
@@ -140,55 +147,93 @@ impl Watch {
             if event.vers != libc::FANOTIFY_METADATA_VERSION
                 || length < header
                 || length > events.len()
+                || (event.metadata_len as usize) < header
+                || event.metadata_len as usize > length
             {
+                // The rest of the read can't be told apart, and could hold
+                // opens of anything marked.
+                seen.push(Seen::Lost);
                 return;
             }
             if event.mask & libc::FAN_Q_OVERFLOW != 0 {
                 seen.push(Seen::Lost);
-            } else if event.pid != self.me
-                && let Some(path) = self.opened(&events[event.metadata_len as usize..length])
-            {
-                seen.push(Seen::Opened(path));
+            } else if event.pid != self.me {
+                match self.opened(&events[event.metadata_len as usize..length]) {
+                    Ok(Some(path)) => seen.push(Seen::Opened(path)),
+                    Ok(None) => {}
+                    Err(Unreadable) => seen.push(Seen::Lost),
+                }
             }
             events = &events[length..];
         }
     }
 
-    /// The file an event's directory and name record names, if the
-    /// directory is one this watch watches.
-    fn opened(&self, mut records: &[u8]) -> Option<PathBuf> {
+    /// The file an event's directory and name record names: nothing when
+    /// its directory isn't one this watch watches, and [`Unreadable`] for
+    /// a record that can't be read, which could have named anything.
+    fn opened(&self, mut records: &[u8]) -> Result<Option<PathBuf>, Unreadable> {
         while records.len() >= 4 {
             let kind = records[0];
             let length = u16::from_ne_bytes([records[2], records[3]]) as usize;
             if length < 4 || length > records.len() {
-                return None;
+                return Err(Unreadable);
             }
             let record = &records[..length];
             if kind == libc::FAN_EVENT_INFO_TYPE_DFID_NAME {
-                // The header, the filesystem's id, then a file_handle: its
-                // length, its type and its bytes, and the name after them.
-                let handle_bytes =
-                    u32::from_ne_bytes(record.get(12..16)?.try_into().ok()?) as usize;
-                let handle_end = 20 + handle_bytes;
-                let mut key = record.get(4..12)?.to_vec();
-                key.extend_from_slice(record.get(16..handle_end)?);
-                let name = record.get(handle_end..)?;
-                let name = &name[..name.iter().position(|&byte| byte == 0)?];
+                let (key, name) = dfid_name(record).ok_or(Unreadable)?;
                 let dirs = self.dirs.lock().unwrap_or_else(PoisonError::into_inner);
-                return dirs.get(&key).map(|dir| dir.join(OsStr::from_bytes(name)));
+                return Ok(dirs.get(&key).map(|dir| dir.join(OsStr::from_bytes(name))));
             }
             records = &records[length..];
         }
-        None
+        Ok(None)
     }
+}
+
+/// An event's record that can't be read.
+struct Unreadable;
+
+/// A directory and name record's key, as [`key`] makes it, and its name.
+fn dfid_name(record: &[u8]) -> Option<(Vec<u8>, &[u8])> {
+    // The header, the filesystem's id, then a file_handle: its length, its
+    // type and its bytes, and the name after them.
+    let handle_bytes = u32::from_ne_bytes(record.get(12..16)?.try_into().ok()?) as usize;
+    let handle_end = 20 + handle_bytes;
+    let mut key = record.get(4..12)?.to_vec();
+    key.extend_from_slice(record.get(16..handle_end)?);
+    let name = record.get(handle_end..)?;
+    Some((key, &name[..name.iter().position(|&byte| byte == 0)?]))
+}
+
+/// Which folder `dir` is now, by its filesystem's id and file handle: the
+/// way a mark names it. The handle carries the inode's generation, so a
+/// folder made anew where one was removed differs even when its inode
+/// number is reused.
+pub fn handle(dir: &Path) -> io::Result<Vec<u8>> {
+    key(&folder(dir)?)
+}
+
+/// The directory at `dir` itself, never through a symlink, held by a
+/// descriptor that reads nothing, so everything asked of it is asked of
+/// that one folder.
+fn folder(dir: &Path) -> io::Result<OwnedFd> {
+    let path = CString::new(dir.as_os_str().as_bytes())?;
+    let flags = libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+    // SAFETY: path is a NUL-ended string, and open returns a new fd.
+    let fd = unsafe { libc::open(path.as_ptr(), flags) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fd is a new descriptor nothing else owns.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
 /// A directory as fanotify names it: its filesystem's id, then its file
 /// handle's type and bytes.
-fn key(path: &CString) -> io::Result<Vec<u8>> {
-    // SAFETY: statfs fills the struct it's given.
+fn key(folder: &OwnedFd) -> io::Result<Vec<u8>> {
+    // SAFETY: fstatfs fills the struct it's given.
     let mut stat: libc::statfs = unsafe { std::mem::zeroed() };
-    if unsafe { libc::statfs(path.as_ptr(), &raw mut stat) } != 0 {
+    if unsafe { libc::fstatfs(folder.as_raw_fd(), &raw mut stat) } != 0 {
         return Err(io::Error::last_os_error());
     }
     // A file_handle followed by room for the longest handle, kept aligned.
@@ -198,9 +243,18 @@ fn key(path: &CString) -> io::Result<Vec<u8>> {
     let longest = u32::try_from(MAX_HANDLE).map_err(io::Error::other)?;
     // SAFETY: handle points at a file_handle with MAX_HANDLE bytes after it.
     unsafe { (*handle).handle_bytes = longest };
-    if unsafe { libc::name_to_handle_at(libc::AT_FDCWD, path.as_ptr(), handle, &raw mut mount, 0) }
-        != 0
-    {
+    // SAFETY: an empty path with AT_EMPTY_PATH names the descriptor's own
+    // folder.
+    let named = unsafe {
+        libc::name_to_handle_at(
+            folder.as_raw_fd(),
+            c"".as_ptr(),
+            handle,
+            &raw mut mount,
+            libc::AT_EMPTY_PATH,
+        )
+    };
+    if named != 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: fsid_t is two ints, read as their bytes.
@@ -213,4 +267,124 @@ fn key(path: &CString) -> io::Result<Vec<u8>> {
     let header = size_of::<libc::file_handle>();
     key.extend_from_slice(&handle_bytes[header..header + bytes]);
     Ok(key)
+}
+
+// The kernel never hands a watch a malformed event to test with, so these
+// cases build the bytes themselves and read them as a watch would.
+#[cfg(test)]
+mod tests {
+    use super::{Seen, Watch};
+    use std::collections::HashMap;
+    use std::os::fd::OwnedFd;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    const HANDLE: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    /// A watch over `/w`, by [`HANDLE`], that reads what it's given and
+    /// holds no fanotify group.
+    fn watch() -> Watch {
+        let mut key = 7_u64.to_ne_bytes().to_vec();
+        key.extend_from_slice(&1_i32.to_ne_bytes());
+        key.extend_from_slice(&HANDLE);
+        Watch {
+            fd: OwnedFd::from(std::fs::File::open("/dev/null").unwrap()),
+            dirs: Mutex::new(HashMap::from([(key, PathBuf::from("/w"))])),
+            me: 0,
+        }
+    }
+
+    /// A directory and name record for [`HANDLE`], of type 1 on
+    /// filesystem 7, naming `lib.rlib`, as `alter` leaves it before its
+    /// length is filled in.
+    fn record(alter: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+        let mut record = vec![libc::FAN_EVENT_INFO_TYPE_DFID_NAME, 0, 0, 0];
+        record.extend_from_slice(&7_u64.to_ne_bytes());
+        record.extend_from_slice(&u32::try_from(HANDLE.len()).unwrap().to_ne_bytes());
+        record.extend_from_slice(&1_i32.to_ne_bytes());
+        record.extend_from_slice(&HANDLE);
+        record.extend_from_slice(b"lib.rlib\0");
+        alter(&mut record);
+        let length = u16::try_from(record.len()).unwrap();
+        record[2..4].copy_from_slice(&length.to_ne_bytes());
+        record
+    }
+
+    /// What a watch reads of an open by another process carrying
+    /// `records`, in an event of version `vers`.
+    fn read(vers: u8, records: &[u8]) -> Vec<Seen> {
+        parsed(&read_bytes(vers, records))
+    }
+
+    /// What a watch reads of `events`.
+    fn parsed(events: &[u8]) -> Vec<Seen> {
+        let mut seen = Vec::new();
+        watch().parse(events, &mut seen);
+        seen
+    }
+
+    /// The bytes of an open by another process carrying `records`, in an
+    /// event of version `vers`.
+    fn read_bytes(vers: u8, records: &[u8]) -> Vec<u8> {
+        let header = size_of::<libc::fanotify_event_metadata>();
+        let metadata = libc::fanotify_event_metadata {
+            event_len: u32::try_from(header + records.len()).unwrap(),
+            vers,
+            reserved: 0,
+            metadata_len: u16::try_from(header).unwrap(),
+            mask: libc::FAN_OPEN,
+            fd: -1,
+            pid: 42,
+        };
+        // SAFETY: the struct is plain data with no padding, read as its
+        // bytes.
+        let bytes = unsafe { std::slice::from_raw_parts((&raw const metadata).cast(), header) };
+        let mut events = bytes.to_vec();
+        events.extend_from_slice(records);
+        events
+    }
+
+    #[test]
+    fn an_event_that_cant_be_read_counts_as_lost() {
+        let version = libc::FANOTIFY_METADATA_VERSION;
+        assert_eq!(
+            read(version, &record(|_| {})),
+            [Seen::Opened(PathBuf::from("/w/lib.rlib"))],
+            "a well-formed record wasn't read as the open it names"
+        );
+        assert_eq!(
+            read(version + 1, &record(|_| {})),
+            [Seen::Lost],
+            "an event of another version was read as if it were this one"
+        );
+        let header = u16::try_from(size_of::<libc::fanotify_event_metadata>()).unwrap();
+        let mut events = read_bytes(version, &record(|_| {}));
+        events[6..8].copy_from_slice(&(header + 200).to_ne_bytes());
+        assert_eq!(
+            parsed(&events),
+            [Seen::Lost],
+            "an event whose header runs past it was passed over"
+        );
+        let mut short = record(|_| {});
+        short[2..4].copy_from_slice(&2_u16.to_ne_bytes());
+        assert_eq!(
+            read(version, &short),
+            [Seen::Lost],
+            "a record shorter than its own header was passed over"
+        );
+        let unended = record(|record| {
+            record.pop();
+        });
+        assert_eq!(
+            read(version, &unended),
+            [Seen::Lost],
+            "a record whose name never ends was passed over"
+        );
+        let overlong = record(|record| record[12..16].copy_from_slice(&200_u32.to_ne_bytes()));
+        assert_eq!(
+            read(version, &overlong),
+            [Seen::Lost],
+            "a record whose handle runs past it was passed over"
+        );
+    }
 }

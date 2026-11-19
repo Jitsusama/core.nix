@@ -129,6 +129,7 @@ pub(super) fn daemon(
         match crate::opens::Watch::new() {
             Ok(watch) => guard.listen(std::sync::Arc::new(watch)),
             Err(error) => {
+                guard.hears_nothing();
                 let _ = writeln!(
                     err,
                     "disk-guard: no watch on builds, so older ones stay: {error}"
