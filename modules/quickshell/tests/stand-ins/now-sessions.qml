@@ -1,6 +1,6 @@
 // pi's sessions, for the launcher's Now (tests/now-moment.qml): where an
 // item is done names its session, and For You lists the sessions wanting
-// Joel, none of them parked, and those to reopen, each as the case gives;
+// Joel, those parked, and those to reopen, each as the case gives;
 // Go To says the session it went to, as it was handed it, and each steer
 // is kept as it was sent, and said put or not as the case sets (puts);
 // and each Put It Off asked is kept as its session's address and the
@@ -11,9 +11,11 @@ import QtQuick
 
 Singleton {
     property var running: []
+    property var parked: []
     property var wanting: []
     property var toReopen: []
     property var wentTo: null
+    property var woke: null
     property var steered: []
     property bool puts: true
     property var putOffAsked: []
@@ -45,11 +47,14 @@ Singleton {
     }
 
     function parkedAs(address) {
-        return null;
+        const upper = String(address).toUpperCase();
+        return parked.find(one => (one.presence?.addresses ?? [one.address])
+            .some(each => String(each).toUpperCase() === upper)) ?? null;
     }
 
-    // Nothing here is parked, so going is all there is to it.
+    // Keeps whom it woke, as the real one wakes only one parked (resting).
     function wakeToGo(resting, session) {
+        woke = resting;
         goTo(session);
     }
 }

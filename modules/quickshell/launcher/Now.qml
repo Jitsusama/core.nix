@@ -738,6 +738,34 @@ Provider {
         return session ? session.title : window.title ?? "";
     }
 
+    // Talk to a session, Agents' own act, as a look's row offers it
+    // (cellActs), so the session working on what Joel's asked is reached
+    // from the ask itself (Joel, 2026-11-16: "i have no way to go from the
+    // thing it shows to engaging with the thing working on it"); null with
+    // no session, or with Agents not there to talk through.
+    // A session asking a question or a yes has no Talk from any row in What
+    // Needs Me (Agents' own row is its own to say): its ask tool runs until
+    // he answers, and words said to it wait for its run to end (the
+    // harness's lib/mesh/steer.ts), so they'd come after the answer they
+    // were meant to shape; its answer is what reaches it, In Your Own Words
+    // where its question takes words. Parked, it runs no ask, and woken it
+    // reads its inbox as it starts, so Talk stays.
+    function talkTo(session) {
+        const agents = provider.source("agents");
+        return !session || !agents || asking(session) ? null
+            : agents.sessionAct(session, "talk");
+    }
+
+    // Whether a session wanting Joel asks him something still open, a
+    // question or a yes (the harness's WantKind), rather than having
+    // ended blocked: the kinds the agents daemon rings for (wants.rs's
+    // rings), which keep its session on Joel's keys; parked, none runs.
+    function asking(session) {
+        const kind = session.presence?.wants?.kind;
+        return (kind === "question" || kind === "approval")
+            && !Sessions.parkedAs(session.address);
+    }
+
     // An act on an item, named in the vocabulary.
     function act(each, id, fields) {
         return thing(Object.assign({
@@ -755,8 +783,10 @@ Provider {
     // and by when; and in its drawer its steps and why only he can. One he
     // can do now is strong, one for later muted. Return goes where it's
     // done, its window or its session's, and with nowhere to go steps in, as
-    // the right arrow does: Go To, then Done and Not Now, which stay open as
-    // the item leaves its place, then its quest.
+    // the right arrow does: Deal With It and Talk where it has a session,
+    // Go To first where it's done in a window of its own and after them
+    // where not, then Done and Not Now, which stay open as the item leaves
+    // its place, then its quest.
     // In For You's weighed list (`weighed`, the time it's weighed at), its
     // side says the strongest reason it's there instead (ForYou.js's reason),
     // and its row is kept while what it says reads the same (itemsKept).
@@ -828,7 +858,8 @@ Provider {
         const inside = () => {
             const one = current();
             const own = typeof one.window === "string" && one.window !== "";
-            return (own ? [does(one), deal(one)] : [deal(one), does(one)]).concat([
+            const talk = talkTo(WaitingOnYou.session(one));
+            return (own ? [does(one), deal(one), talk] : [deal(one), talk, does(one)]).concat([
                 act(one, "done", { stays: true, run: () => WaitingOnYou.settle(one, "done") }),
                 act(one, "notNow", { stays: true,
                     run: () => WaitingOnYou.settle(one, "notNow") }),
@@ -1047,22 +1078,22 @@ Provider {
     // What a look's row does with the cell behind it (Joel, 2026-11-16:
     // "the look list is useless. i have no way to go from the thing it
     // shows to engaging with the thing working on it"): Talk, Agents' own,
-    // whose words go to that cell, and Go To its window, which a terminal's
-    // Open already is, offered as Agents offers it: where it has a window,
-    // or is parked and wakes into one; then Explain It, which says what the
-    // cell works on in a sentence or two (explainAct), where the machine
-    // has Ask's pi to answer it. None while no cell is held for it, or
-    // Agents isn't there to talk through.
+    // whose words go to that cell unless it's asking (talkTo), and Go To
+    // its window, which a terminal's Open already is, offered as Agents
+    // offers it: where it has a window, or is parked and wakes into one;
+    // then Explain It, which says what the cell works on in a sentence or
+    // two (explainAct), where the machine has Ask's pi to answer it. None
+    // while no cell is held for it, or Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
         if (cell === null || !agents)
             return [];
-        const talk = agents.sessionAct(cell, "talk");
+        const talk = [talkTo(cell)].filter(act => act !== null);
         const explain = source("ask") === null ? []
             : [explainAct(`verb:on:waiting:explain:on:look:${one.id}`, cell)];
         const reachable = agents.windowedOf(cell) || !!Sessions.parkedAs(cell.address);
-        return one.kind === "terminal" || !reachable ? [talk].concat(explain) : [talk, thing({
+        return one.kind === "terminal" || !reachable ? talk.concat(explain) : talk.concat([thing({
             // Under Go To's own word, so the : line names it as a want's is.
             key: `verb:on:waiting:go:on:look:${one.id}`,
             verb: Words.verb("verb:on:waiting:go"),
@@ -1072,7 +1103,7 @@ Provider {
             side: cell.title,
             later: true,
             run: () => provider.goToCell(one)
-        })].concat(explain);
+        })], explain);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked
@@ -1690,12 +1721,15 @@ Provider {
     // past it (Joel, 2026-11-08: "Selecting one brings me often into a pi
     // session that is so far past what i'm being asked that i don't know if
     // it is still relevant"). Inside, Deal With It brings its window forward
-    // with the prompt filled in, naming what it asked, then Go To. One parked
-    // is woken by either, its window showing it come back, as a key typed
-    // there would; Deal With It wakes it once the filled prompt is in its
-    // inbox, which it reads as it starts, as Talk does (Sessions.talk).
-    // Each is kept while Agents' row for it, what it asked, its title and
-    // whether it's parked are the same, as Agents keeps its own row while
+    // with the prompt filled in, naming what it asked, then Talk to it,
+    // Agents' own, once its run has ended blocked (asking, it has none:
+    // talkTo), then Go To. One parked is woken by any of them, its window
+    // showing it come back, as a key typed there would; Deal With It and
+    // Talk wake it once what they say is in its inbox, which it reads as
+    // it starts (Sessions.talk).
+    // Each is kept while Agents' row for it, what it asked, its title,
+    // whether it's parked, its answers and its want's kind are the same,
+    // the kind deciding Talk (talkTo), as Agents keeps its own row while
     // its window and how it stands are (wantsKept).
     function wantRow(made, session) {
         // What it asked, in its own words, or the session by its name.
@@ -1707,7 +1741,7 @@ Provider {
         wantsNow[session.address] = session;
         return keptAlike(wantsKept, session.address,
             [made, asked, resting, session.title, JSON.stringify(answers),
-                Sessions.wantKnown(session.address)],
+                Sessions.wantKnown(session.address), session.presence?.wants?.kind],
             () => madeWantRow(made, session, asked, resting, answers));
     }
     readonly property var wantsKept: keeper()
@@ -1746,12 +1780,13 @@ Provider {
                     Sessions.goTo(session());
                 }
             })),
+            talkTo(session()),
             thing(Object.assign(named("go"), {
                 key: `verb:on:waiting:go:${key}`,
                 run: () => Sessions.wakeToGo(resting, session())
             })),
             putOffWant(address, key, known)
-        ];
+        ].filter(row => row !== null);
         const row = member(Object.assign({}, made, {
             key: key,
             forYou: { kind: "agent", source: "sessions" },
@@ -1794,7 +1829,9 @@ Provider {
     // row, the recommended first and the cursor on it, whose Return
     // answers at once, since stepping in and picking a labelled answer is
     // already deliberate, and y copies its words; then, set apart, Deal
-    // With It, and In Your Own Words where it takes them. The session
+    // With It, and In Your Own Words where it takes them; then Talk, only
+    // while it's parked, its ask being open otherwise (talkTo), and Go To
+    // the session, which answers nothing. The session
     // says it took the answer by its want leaving, which takes the row
     // out of For You. Its answers are the agents daemon's, which takes the
     // answer too, naming the want itself; the rows are still made here
@@ -1861,7 +1898,12 @@ Provider {
                 if (text !== "")
                     answer({ other: text }, text);
             }
-        }))] : [], [putOffWant(address, key, known)]);
+        }))] : [], [talkTo(session()), thing(Object.assign(named("go"), {
+            key: `verb:on:waiting:go:${key}`,
+            side: madeFrom.title,
+            later: true,
+            run: () => Sessions.wakeToGo(resting, session())
+        })), putOffWant(address, key, known)].filter(row => row !== null));
         const count = answers.choices.length;
         const row = member(Object.assign({}, made, {
             key: key,
