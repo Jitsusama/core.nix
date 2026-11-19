@@ -215,6 +215,7 @@ QtObject {
             tells: {
                 kept: "Turned on by hand.",
                 shared: "On while the screen is shared.",
+                unheard: "On until the desktop hears who sees the screen.",
                 off: "New notices wait in the notices list rather than showing."
             }
         };
@@ -231,6 +232,9 @@ QtObject {
         expect("on for a share, with no start known, says what it held and why",
             said(sharing).concat(sharing.body),
             ["[on:quiet:held] 4 notices", "On while the screen is shared."]);
+        const unheard = Drawers.quiet({ since: "", held: 0, kept: false, unheard: true }, told);
+        expect("on before niri said who sees the screen, it says it waits to hear",
+            unheard.body, "On until the desktop hears who sees the screen.");
         // Off, Desktop's row says what Return would do and until when, and whether a
         // share turns it on, so it says more than its line (Joel, 2026-11-11: every row
         // has a drawer).

@@ -306,6 +306,7 @@
       "tells": {
         "kept": "Turned on by hand.",
         "shared": "On while the screen is shared.",
+        "unheard": "On until the desktop hears who sees the screen.",
         "off": "New notices wait in the notices list rather than showing."
       }
     },

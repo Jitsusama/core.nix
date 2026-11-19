@@ -56,6 +56,20 @@ Singleton {
         sharedSince = sharing ? Date.now() : 0;
         waived = false;
     }
+    // A waiver given while the screen only may have been shared never carries
+    // over to a share niri then says is real, which leaves sharing true and so
+    // fires no change of its own (#5399's council, 2026-11-18).
+    onUnheardChanged: waived = false
+
+    // A hold for want of niri's casts that lasts past a moment is said in the
+    // journal, since it holds every notice, and only the margin's mark says
+    // so otherwise.
+    Timer {
+        running: root.sharing && root.unheard && !root.waived
+        interval: 10000
+        onTriggered: console.info(
+            "quiet: notices held for 10 s now, since niri hasn't said who sees the screen")
+    }
     Component.onCompleted: sharedSince = sharing ? Date.now() : 0
 
     // Holds notices for this many minutes, or until it's ended with none.
