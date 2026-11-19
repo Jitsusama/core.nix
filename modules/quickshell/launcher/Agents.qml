@@ -2605,15 +2605,14 @@ Provider {
         };
         // Its own Open leads its step, as a look's does, so the ↵ its drawer
         // marks is what Return does and the one Go To is the session's. It
-        // keeps the launcher, as the row does, since it walks to Landed in it.
+        // keeps the launcher as the row does, since the row always stays
+        // (Catalogue.js's closingFirst sets how a staying row's own act runs).
         const own = one => thing({
             key: `verb:agents:landed:open:${one.key}`,
             verb: Words.verb("verb:on:look:open"),
             name: Words.name("verb:on:look:open"),
             glyph: Words.glyph("verb:on:look:open"),
             hue: "action",
-            stays: true,
-            changes: false,
             run: () => opens(one)
         });
         const row = (one, fields) => thing(Object.assign({
@@ -2628,6 +2627,9 @@ Provider {
             spot: "",
             stays: true,
             changes: false,
+            // Its step's Open walks to Landed in the launcher too, so Return
+            // there keeps it rather than closing it on nothing.
+            alwaysStays: true,
             // Every one says open, so the foot weighs one of a run.
             keysAlike: "landing:for-you",
             // Asked as it's stepped into, since its session may have gone;
