@@ -454,9 +454,9 @@ mod tests {
     }
 
     #[test]
-    fn a_do_the_shell_failed_at_exits_as_the_shell_silent() {
+    fn a_do_the_desktop_failed_at_exits_failed() {
         let said = Words::from_value(&serde_json::json!({"terminal": {
-            "failed": "{name} not done \u{b7} the desktop failed"}}));
+            "failed": "{name} not done \u{b7} the desktop failed at it"}}));
         assert_eq!(
             done(
                 &asking::stand_in::qs("failed"),

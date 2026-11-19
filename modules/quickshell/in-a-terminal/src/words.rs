@@ -205,7 +205,7 @@ mod tests {
                     "takes":"{name} takes words \u00b7 {ask} \u00b7 give them after --",
                     "takesWords":"{name} not done \u00b7 give its words after --",
                     "asks":"{question} (y/n)",
-                    "failed":"{name} not done \u00b7 the desktop failed \u00b7 its log says why"}}"#,
+                    "failed":"{name} not done \u00b7 the desktop failed at it \u00b7 its log says why"}}"#,
             )
             .expect("the words parse"),
         )
@@ -236,7 +236,7 @@ mod tests {
     fn a_failure_is_a_refusal_naming_the_act_and_its_log() {
         assert_eq!(
             words().failed("Reboot"),
-            "Reboot not done \u{b7} the desktop failed \u{b7} its log says why"
+            "Reboot not done \u{b7} the desktop failed at it \u{b7} its log says why"
         );
     }
 
