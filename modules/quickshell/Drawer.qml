@@ -346,24 +346,66 @@ Floating {
     // layProse as anything it reads changes, never bound: it's measured
     // by giving proseInk each cut of the words in turn, which a binding
     // reading proseInk would be told of while it read, as a loop.
+    // It's kept with the words it was laid from (`from`), and its width and
+    // face, so words read before it's laid anew are never another drawer's
+    // cut, and the same words given again, as a drawer read again each
+    // minute is, aren't laid again.
     property var proseLaid: null
-    readonly property var proseAsked: [prose, runs, whole, body, shown?.styled === true,
-        wordsBox.width, bodyText.font]
+    // What it and its words read, each from the drawer shown rather than
+    // from the properties above, which change one at a time as a drawer
+    // follows another: a drawer stepped to from Emoji's read itself as a
+    // run no longer while its words were still Emoji's 1,914 names, so its
+    // words said (bodySaid) were all of them, laid in lines and measured,
+    // 7,596 widths and 134 to 228 ms in the drawer lab (2026-11-19), where
+    // others took 9 to 16.
+    readonly property var proseAsked: [shown, wordsBox.width, bodyText.font]
     onProseAskedChanged: layProse()
+    function laysProse(given) {
+        return given?.prose === true && given.runs !== true && given.whole !== true
+            && (given.body ?? "") !== "";
+    }
+    // The words a drawer's prose is laid from, with whether they're styled.
+    function proseFrom(given) {
+        return `${given.styled === true ? "styled" : "plain"}\u241d${given.body}`;
+    }
+    // Its prose as laid, if it was laid from the drawer's words, or null.
+    function laidFor(given) {
+        return laysProse(given) && proseLaid?.from === proseFrom(given) ? proseLaid : null;
+    }
     function layProse() {
-        proseLaid = prose && !runs && !whole && body !== ""
-            ? Prose.lines({ text: body, styled: shown?.styled === true }, wordsBox.width,
-                proseMost, drawnWidthOf(Measures.drawnFace(bodyText.font, "plain")))
-            : null;
+        const given = shown;
+        if (!laysProse(given)) {
+            if (proseLaid !== null)
+                proseLaid = null;
+            return;
+        }
+        const from = proseFrom(given);
+        const width = wordsBox.width;
+        const face = Measures.drawnFace(bodyText.font, "plain");
+        if (proseLaid?.from === from && proseLaid.width === width && proseLaid.face === face)
+            return;
+        proseLaid = Object.assign({ from, width, face },
+            Prose.lines({ text: given.body, styled: given.styled === true }, width, proseMost,
+                drawnWidthOf(face)));
     }
     // Whether its prose runs past its lines, so the fold holds the rest.
-    readonly property bool bodyCut: proseLaid?.cut === true
+    readonly property bool bodyCut: laidFor(shown)?.cut === true
     // Its words as they're given to be drawn, a run measured in their own
     // face, and prose cut while the fold is shut, for the launcher to
-    // report.
-    readonly property string bodySaid: runs
-        ? itemsKept(body, bodyFace, wordsBox.width, runWhole ? 0 : runMost)
-        : bodyCut && folded ? proseLaid.said : body
+    // report: none while its prose is still to be laid, a moment that's
+    // never drawn, rather than the whole of it laid once for nothing.
+    readonly property string bodySaid: {
+        const given = shown;
+        const words = given?.body ?? "";
+        if (given?.runs === true)
+            return itemsKept(words, bodyFace, wordsBox.width, runWhole ? 0 : runMost);
+        if (!laysProse(given))
+            return words;
+        const laid = laidFor(given);
+        if (laid === null)
+            return "";
+        return laid.cut && folded ? laid.said : words;
+    }
     // How many lines Qt draws its words in, for the launcher to report: a
     // run laid as one is as many as bodySaid's, Qt wrapping none further.
     readonly property int bodyLines: bodyText.lineCount
@@ -1277,9 +1319,10 @@ Floating {
     // laying and lines ask of each, made the first time it's asked for and
     // let go as its face's font changes, rather than a property of the
     // face, which a binding could read before it was set. And how many
-    // widths they asked and how many reached the face, for the check that
-    // a drawer shown again measures little anew. A plain object's, as a
-    // binding asks them.
+    // widths they and its words' (drawnWidthOf) asked and how many reached
+    // a face, for the checks that a drawer shown again measures little anew
+    // and that one stepped off a long run measures none of it. A plain
+    // object's, as a binding asks them.
     readonly property var widths: ({ asked: 0, made: 0, held: new Map() })
     function widthIn(face) {
         const held = widths.held.get(face);
@@ -1692,9 +1735,11 @@ Floating {
     // don't. Only a handler asks it, never a binding.
     function drawnWidthOf(face) {
         return words => {
+            widths.asked += 1;
             const held = Measures.drawnWidth(face, words);
             if (held !== undefined)
                 return held;
+            widths.made += 1;
             proseInk.text = words;
             const wide = proseInk.advanceWidth;
             Measures.drew(face, words, wide);

@@ -485,6 +485,40 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     shell.close_launcher()
 
 
+def test_a_drawer_stepped_off_a_long_run_measures_none_of_it(shell: Shell) -> None:
+    """The row either side of Emoji in Desktop shows its drawer measuring none of Emoji's names.
+
+    A drawer going from Emoji's run to a short one read its words and whether they were a run
+    apart, so for a moment it held a run no longer, with Emoji's 1,914 names still its words,
+    and laid and measured them all as plain words: 7,596 widths and 134 to 228 ms on the row
+    after Emoji whichever way the drawer lab walked Desktop (2026-11-19), where other drawers
+    took 9 to 16.
+    """
+    # Far more widths than a short drawer asks, and far fewer than Emoji's names take.
+    most = 1000
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("desktop", selecting="Desktop")
+    shell.step_in()
+    rows = cast("list[str]", shell.showing()["rows"])
+    at = rows.index("Emoji")
+    assert 0 < at < len(rows) - 1, f"Emoji needs a row either side of it in Desktop: {rows}"
+    asked: dict[str, int] = {}
+    for beside in (rows[at + 1], rows[at - 1]):
+        shell.down_to("Emoji")
+        shell.launcher_until(
+            lambda shown: drawer_on_selected(shown) and shown["drawer"]["title"] == "Emoji"
+        )
+        before = int(laid_out(shell)["widthsAsked"])
+        shell.down_to(beside)
+        shell.launcher_until(functools.partial(drawer_moved, "Emoji"))
+        asked[beside] = int(laid_out(shell)["widthsAsked"]) - before
+    shell.close_launcher()
+    assert all(count < most for count in asked.values()), (
+        f"widths measured stepping off Emoji to each row beside it: {asked}"
+    )
+
+
 def openings_kept() -> list[Json]:
     """Give every opening the launcher's trials have kept, in no order."""
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
