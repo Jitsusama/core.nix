@@ -134,6 +134,17 @@ QtObject {
         expect("nor is one that reaches nothing",
             Arming.wayHeldWhy([], null, "nothing sent"), null);
 
+        // The foot's word for a held Return is let go only while the foot
+        // still says it: another word said since, another place's, stays.
+        const heldWord = [["\u21b5", "not while shared"]];
+        expect("the foot saying why Return held lets it go",
+            Arming.letsHeldGo([["\u21b5", "not while shared"]], heldWord), true);
+        expect("but not another word said since",
+            Arming.letsHeldGo([["q", "quit"]], heldWord), false);
+        expect("nor an empty foot", Arming.letsHeldGo([], heldWord), false);
+        expect("nor a word with no held Return said",
+            Arming.letsHeldGo([["q", "quit"]], []), false);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         console.log(`${asked - failures.length} of ${asked} passed`);

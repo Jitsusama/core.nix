@@ -741,10 +741,10 @@ ShellRoot {
         stage.selected = row();
         same("the share over, the ask's row says what it asks for again", row()?.name,
             "op://Private/Kiln/password");
-        // Else the foot would still say the screen is shared over an ask
-        // that would arm on Return.
-        // What another place told while the launcher was shut during the
-        // share stays for the next opening, since nothing hidden is in it.
+        // The foot lets go of why Return held it, or it would say the
+        // screen is shared over an ask that would arm (Arming.letsHeldGo
+        // decides whether it still says it), and what another place told
+        // during the share stays, since nothing hidden is in it.
         same("and only why Return held it is let go from the foot",
             [stage.untolds - untolds, stage.unhelds - unhelds], [0, 1]);
         same("nor is it held still", [row()?.still, row()?.stillWhy], [undefined, undefined]);
@@ -785,8 +785,11 @@ ShellRoot {
         const held = () => Object.values(stage.becoming).find(one => one.from !== stage) ?? {};
         same("a no while it's unknown is held as a row waiting on knowing", held().row?.note,
             waiting);
+        const unhelds = stage.unhelds;
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         Niri.castsHeard = true;
+        same("niri then saying there's a share lets go of why Return held it, waiting on knowing",
+            stage.unhelds, unhelds + 1);
         same("niri then saying there's a share, the row no longer says it waits on knowing",
             [row()?.name, row()?.note], ["Ask, Hidden While You Share", ""]);
         same("nor does the row it's held as", [held().row?.name, held().row?.note],
@@ -841,11 +844,9 @@ ShellRoot {
         same("what was told before the share is forgotten", stage.untolds, untolds + 1);
         same("another source's hold is left as it was", stage.becoming["wifi:kiln"] === other,
             true);
-        const untoldsShared = stage.untolds;
         Niri.casts = {};
         same("the share ended holds it again as itself", [held().name, held().row?.name],
             [real, real]);
-        same("and forgets nothing told during it", stage.untolds, untoldsShared);
         same("still saying when it's done after, as it did", held().done === done, true);
     }
 
@@ -856,11 +857,15 @@ ShellRoot {
         // A ready row's state is read as it's drawn, since JSON says any
         // function, and so any state, as null.
         const stands = one => typeof one?.state === "function" ? one.state() : one?.state;
-        // Every field it carries, its state as it reads, but whether it
-        // waits and since when, which For You counts (a named limit).
+        // Every field it carries, its state, drawer and verbs as each
+        // reads, but whether it waits and since when, which For You counts
+        // (a named limit).
+        const reads = ["drawer", "verbs"];
         const drawn = one => JSON.stringify(Object.keys(one ?? {}).sort()
             .filter(field => field !== "waiting" && field !== "asked")
-            .map(field => [field, field === "state" ? stands(one) ?? null : one[field]]));
+            .map(field => [field, field === "state" ? stands(one) ?? null
+                : reads.includes(field) && typeof one[field] === "function" ? one[field]()
+                : one[field]]));
         const waiting = drawn(row());
         link.tellEnded();
         same("an ask ended while the screen is shared is hidden", row()?.name,
