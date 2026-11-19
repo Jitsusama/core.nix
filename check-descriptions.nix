@@ -56,6 +56,12 @@
     in the shell's own Qt, turning a field into a getter in objects whose shapes grow one from
     another leaves every other field of each reading what it was given
   '';
+  a-loaded-desktop-is-judged-by-the-builders-share = ''
+    keeps-pace holds a launcher under load to twice its time frozen and a little more, stretched by
+    how much longer the guest's probe took for the same work under load, never under once nor past
+    the VM's processors: a key a busy builder held back fails with no share and holds with its
+    share, and one the guest's own load slows fails where the probe wasn't slowed
+  '';
   a-live-site-stands-alone-as-a-folder = ''
     the system page, built on the real web kit and laid out as a folder that stands alone, has
     its page at the root, reading the theme and the kit from its own web/ and kit/ with no strip
