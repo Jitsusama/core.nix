@@ -1,7 +1,7 @@
 //! The guard every reader case holds its reader by: a case that fails
 //! part way leaves no reader still running, and is shown its journal.
 
-use std::io::Write;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::process::Command;
@@ -10,13 +10,14 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::{PATIENCE, home, journal_of, reader, stand_in};
+use super::{PATIENCE, home, journal, reader, stand_in};
 
 /// Set for the one run of `failing_while_held` that is meant to fail.
 const HELD: &str = "PINEAPPLE_READER_FAILS_WHILE_HELD";
 
-/// What `failing_while_held` says to its journal, to be shown it again.
-const SAID: &str = "a word from the case, for its journal";
+/// What the Slack reader says to its journal of each stop it keeps in
+/// shadow, so its own words are what a failing case is shown.
+const SAID: &str = ", in shadow: ";
 
 /// How `failing_while_held` fails, so its failure is told from any other.
 const STAGED: &str = "this case fails on purpose, to be shown its journal";
@@ -35,6 +36,9 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
         state.is_some_and(|state| !state.starts_with('Z')),
         "the reader runs before the case fails, not {stat:?}"
     );
+    // Taken while the reader runs, so a stop reaches it and nothing else
+    // that comes to hold its pid once it is reaped.
+    let reader_itself = pidfd(pid);
     let (done, dropped) = mpsc::channel();
     thread::spawn(move || {
         let _ = catch_unwind(AssertUnwindSafe(move || {
@@ -50,7 +54,7 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
     let stopped = dropped.recv_timeout(PATIENCE).is_ok();
     let gone = !Path::new(&format!("/proc/{pid}")).exists();
     if !gone || !stopped {
-        stop(pid);
+        stop(&reader_itself);
     }
     assert!(stopped, "the guard never stopped its reader");
     assert!(gone, "the failed case's reader still runs");
@@ -82,8 +86,8 @@ fn a_case_failing_while_it_holds_its_reader_is_shown_its_journal() {
     });
     let home = home.unwrap_or_else(|| panic!("the case wasn't shown its journal:\n{heard}"));
     assert!(
-        lines.any(|line| line.ends_with(SAID)),
-        "the case was shown a journal without what it said:\n{heard}"
+        lines.any(|line| line.contains(SAID)),
+        "the case was shown a journal without what its reader said:\n{heard}"
     );
     let home = Path::new(home);
     let ours = home.parent() == Some(std::env::temp_dir().as_path())
@@ -111,10 +115,14 @@ fn failing_while_held() {
     let home = home();
     let mut held = reader(&home, &origin);
     asked_once(&asked);
+    let began = Instant::now();
+    while !journal(&home).contains(SAID) {
+        assert!(began.elapsed() < PATIENCE, "the reader never kept a stop");
+        thread::sleep(Duration::from_millis(50));
+    }
     // Stopped here, so only the stop case pins the guard's own stop.
     held.kill().expect("the reader stops");
     held.wait().expect("the stopped reader is reaped");
-    writeln!(journal_of(&home), "{SAID}").expect("the case's word written");
     panic!("{STAGED}");
 }
 
@@ -128,10 +136,35 @@ fn asked_once(asked: &Mutex<Vec<String>>) {
     }
 }
 
-/// Stops the reader at `pid` that its guard didn't.
-fn stop(pid: u32) {
+/// The process at `pid` itself, held so it can be stopped by what it
+/// is rather than by a number the kernel may give out again.
+fn pidfd(pid: u32) -> OwnedFd {
     let pid = libc::pid_t::try_from(pid).expect("a pid the kernel gave");
-    // SAFETY: kill takes any pid and signal, and touches no memory.
-    let killed = unsafe { libc::kill(pid, libc::SIGKILL) };
-    assert!(killed == 0, "the reader the guard left couldn't be stopped");
+    // SAFETY: pidfd_open reads no memory, and a new fd or -1 comes back.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+    let fd = i32::try_from(fd).expect("an fd");
+    assert!(fd >= 0, "the reader was opened by its pid");
+    // SAFETY: the fd was just opened here and nothing else owns it.
+    unsafe { OwnedFd::from_raw_fd(fd) }
+}
+
+/// Stops the reader its guard didn't; one already gone needs nothing.
+fn stop(reader: &OwnedFd) {
+    let siginfo = std::ptr::null::<libc::siginfo_t>();
+    // SAFETY: a null siginfo asks for an ordinary kill, and no memory is
+    // read; the fd is the reader's own, open for as long as `reader`.
+    let sent = unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            reader.as_raw_fd(),
+            libc::SIGKILL,
+            siginfo,
+            0,
+        )
+    };
+    let why = std::io::Error::last_os_error();
+    assert!(
+        sent == 0 || why.raw_os_error() == Some(libc::ESRCH),
+        "the reader the guard left couldn't be stopped: {why}"
+    );
 }

@@ -39,7 +39,7 @@ daemon-serve = { path = "../daemon-serve" }
 # (src/bin/pineapple-github.rs).
 ureq = { version = "3", features = ["json"] }
 # The kernel's name for who pressed (SO_PEERPIDFD), so only Joel's shell
-# acts on a stop.
+# acts on a stop; the reader cases stop a reader by its pidfd with it too.
 libc = "0.2"
 
 [dev-dependencies]
