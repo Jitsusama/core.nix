@@ -351,6 +351,102 @@ mod tests {
     }
 
     #[test]
+    fn a_reload_heard_after_its_stop_still_makes_the_restart_the_tools() {
+        // Heard live, the jobs' follower can run ahead of the reloads'.
+        let days: Vec<(&str, Vec<Entry>, Vec<u64>)> = vec![
+            // A tool's reload heard after the stop it caused, before the
+            // start: the restart is the tool's own.
+            (
+                "a tool's reload heard after its stop",
+                vec![
+                    backend("b", 10_800_000, Job::Stopping),
+                    reload_in("b", 10_000_000, "systemctl"),
+                    backend("b", 10_900_000, Job::Started),
+                ],
+                vec![],
+            ),
+            // Heard after the start too: the restart already timed is the
+            // tool's own, so it goes.
+            (
+                "a tool's reload heard after its restart",
+                vec![
+                    backend("b", 10_800_000, Job::Stopping),
+                    backend("b", 10_900_000, Job::Started),
+                    reload_in("b", 10_000_000, "systemctl"),
+                ],
+                vec![],
+            ),
+            // A switch's reload before both: the restart is still the
+            // switch's, whenever the tool's is heard.
+            (
+                "a tool's reload heard late in a switch",
+                vec![
+                    reload_in("b", 1_000_000, "sd-switch"),
+                    backend("b", 10_800_000, Job::Stopping),
+                    backend("b", 10_900_000, Job::Started),
+                    reload_in("b", 10_000_000, "systemctl"),
+                ],
+                vec![100],
+            ),
+            // A tool's reload more than ten seconds before the stop, or
+            // after it, or in another boot, heard late: none made it.
+            (
+                "a tool's reload heard late, too early for the stop",
+                vec![
+                    backend("b", 30_000_000, Job::Stopping),
+                    backend("b", 30_100_000, Job::Started),
+                    reload_in("b", 10_000_000, "systemctl"),
+                ],
+                vec![100],
+            ),
+            (
+                "a tool's reload heard late, after the stop",
+                vec![
+                    backend("b", 30_000_000, Job::Stopping),
+                    backend("b", 30_100_000, Job::Started),
+                    reload_in("b", 30_050_000, "systemctl"),
+                ],
+                vec![100],
+            ),
+            (
+                "a tool's reload heard late from another boot",
+                vec![
+                    backend("b", 10_800_000, Job::Stopping),
+                    backend("b", 10_900_000, Job::Started),
+                    reload_in("z", 10_000_000, "systemctl"),
+                ],
+                vec![100],
+            ),
+            // Before the stop on the boot's clock, but a sleep between them
+            // on the wall's: the reload can't have made it.
+            (
+                "a tool's reload heard late, a sleep before the stop",
+                vec![
+                    clocked(backend("b", 0, Job::Stopping), 10_800_000, 7_210_800_000),
+                    clocked(backend("b", 0, Job::Started), 10_900_000, 7_210_900_000),
+                    reload_in("b", 10_000_000, "systemctl"),
+                ],
+                vec![100],
+            ),
+            // Two restarts of the backend, the second the tool's: only the
+            // second goes when its reload is heard late.
+            (
+                "a tool's reload heard late after a switch's restart before",
+                vec![
+                    reload_in("b", 1_000_000, "sd-switch"),
+                    backend("b", 2_000_000, Job::Stopping),
+                    backend("b", 2_064_000, Job::Started),
+                    backend("b", 300_800_000, Job::Stopping),
+                    backend("b", 300_900_000, Job::Started),
+                    reload_in("b", 300_000_000, "systemctl"),
+                ],
+                vec![64],
+            ),
+        ];
+        each_restarted(days);
+    }
+
+    #[test]
     fn a_reload_only_systemd_tells() {
         let mut day = Day::new("2026-11-17");
         let job = |at, job| Entry {
