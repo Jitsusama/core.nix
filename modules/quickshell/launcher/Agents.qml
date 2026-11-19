@@ -2454,7 +2454,9 @@ Provider {
     // wearing the daemon's glyph, and a step in its axes, each stepping in
     // to its readings (modules/cadence/Spec.qml). Agents' own row says
     // nothing of it, so it never competes with "needs you". None where
-    // cadence-spec hasn't answered or isn't on this machine.
+    // cadence-spec hasn't answered or isn't on this machine. Listed as its
+    // part, as Budgets is, and never among Agents' own rows as well, where
+    // its key twice over moved the cursor between them (2026-11-18).
     readonly property var spec: {
         if (!readNow)
             return madeBefore("spec", null);
@@ -2482,7 +2484,7 @@ Provider {
         // made ready from those (Provider.qml's looksThrough).
         const tree = provider.wanted || !opened() ? treeRows() : laidOut();
         const sessions = topServed && opened() && !provider.lookingThrough.now ? top.rows() : tree;
-        return sessions.concat([toReopen, landed, spec, recent, start, startNewWork]
+        return sessions.concat([toReopen, landed, recent, start, startNewWork]
             .filter(row => row !== null));
     }
 

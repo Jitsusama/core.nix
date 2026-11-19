@@ -10075,12 +10075,11 @@ Scope {
 
     // A collection's rows with nothing typed: all of it, and its parts, the
     // parts first where its vocabulary says they lead ("lead": "parts"),
-    // so the Keyboard's keyboards aren't below a hundred keys.
+    // so the Keyboard's keyboards aren't below a hundred keys; a part it
+    // lists itself is listed once, where it lists it (Rank.js's withParts).
     function listedWhole(from) {
-        const members = from.everything();
-        const parts = partsOf(from);
-        return Words.of(from.settings.name).lead === "parts" ? parts.concat(members)
-            : members.concat(parts);
+        return Rank.withParts(from.everything(), partsOf(from),
+            Words.of(from.settings.name).lead === "parts");
     }
 
     // A kept place whose rows its source lists afresh (`keptListed`), as
