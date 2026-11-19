@@ -26,11 +26,17 @@ const LEADING_HASH = /^#/u;
 
 /**
  * A shared network as the panel names it, "the backwater repository", or
- * its key where the reading holds none by it.
+ * its key where the reading holds none by it. The model passes only shapes
+ * with a word; one with none, or a name every object inherits, is said as
+ * itself rather than as whatever the lookup finds.
  */
 export const sharedWords = (key: string, seen: Seen | null): string => {
   const n = seen?.shared.find((x) => x.key === key);
-  return n ? `the ${n.short} ${SHARED_WORD[n.shape] ?? n.shape}` : key;
+  if (!n) {
+    return key;
+  }
+  const word = Object.hasOwn(SHARED_WORD, n.shape) ? SHARED_WORD[n.shape] : undefined;
+  return `the ${n.short} ${word ?? n.shape}`;
 };
 
 /**
@@ -80,10 +86,29 @@ export const ageOf = (owes: readonly Owed[], at: string): number => {
 export const owedWords = (o: Owed, seen: Seen, at: string): string =>
   `${askerOf(o, seen)}'s question waiting since ${dayClock(o.at, at)}`;
 
-/** What holds a cell up, in words: how many wait, the oldest's asker and age, and how it knows. */
-export const heldWords = (s: Cell, asker: string, at: string, judged: boolean): string =>
-  `${waitingWords(s.owes)}; ${s.owes.length === 1 ? "it came" : "the oldest came"} ` +
-  `from ${asker} ${minutesWord(ageOf(s.owes, at))} ago, ${unansweredWords(judged)}`;
+/** How the page says what holds a cell up: whether the node judged it, and how a name fits. */
+export interface HeldSaid {
+  readonly judged: boolean;
+  readonly named?: ((name: string) => string) | undefined;
+}
+
+/**
+ * What holds a cell up, in words: how many wait, the oldest's asker and age,
+ * and how it knows; `named` fits the asker's name to the room the row has.
+ */
+export const heldWords = (
+  s: Cell,
+  seen: Seen,
+  at: string,
+  { judged, named = (name) => name }: HeldSaid,
+): string => {
+  const oldest = s.owes[0];
+  const asker = oldest ? named(askerOf(oldest, seen)) : "";
+  return (
+    `${waitingWords(s.owes)}; ${s.owes.length === 1 ? "it came" : "the oldest came"} ` +
+    `from ${asker} ${minutesWord(ageOf(s.owes, at))} ago, ${unansweredWords(judged)}`
+  );
+};
 
 /** The cells with questions waiting on them, the oldest question first. */
 export const heldFirst = (cells: readonly Cell[]): readonly Cell[] =>

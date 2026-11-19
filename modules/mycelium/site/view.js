@@ -58,7 +58,7 @@ import {
   waitingWords,
 } from "./words.js";
 import { agoWords as agoWordsAt, atWords as atWordsAt, clock } from "./when.js";
-import { ageOf as ageOfAt, askerOf, heldFirst, heldWords, holdingFirst, holdWords as holdWordsAt, owedWords, sharedWords as sharedWordsOf } from "./waits.js";
+import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as holdWordsAt, owedWords, sharedWords as sharedWordsOf } from "./waits.js";
 
 (() => {
   // The most time between two readings while the node moves: site.ts hands
@@ -2989,13 +2989,9 @@ import { ageOf as ageOfAt, askerOf, heldFirst, heldWords, holdingFirst, holdWord
   };
 
   // What holds others up, oldest first, said as plainly as the node knows it.
-  const heldRow = (s) => {
-    const asker = clipped(askerOf(s.owes[0], current));
-    return (
-      `<li><button type="button" class="row" data-go="cell=${esc(s.address)}">${stateGlyph(s)}<span class="what"><span class="name">${esc(s.short)}</span>` +
-      `<span class="fact">${esc(heldWords(s, asker, current.at, Boolean(current.judged)))}</span></span></button></li>`
-    );
-  };
+  const heldRow = (s) =>
+    `<li><button type="button" class="row" data-go="cell=${esc(s.address)}">${stateGlyph(s)}<span class="what"><span class="name">${esc(s.short)}</span>` +
+    `<span class="fact">${esc(heldWords(s, current, current.at, { judged: Boolean(current.judged), named: clipped }))}</span></span></button></li>`;
   // A hold puts off what others would do, which is a choice and no fault,
   // so it is said beside what waits, and never counted against health.
   const holdRow = (s) =>

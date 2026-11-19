@@ -52,6 +52,7 @@ const seen: Seen = {
     { key: "project.locks", short: "locks", shape: "project" },
     { key: "group.nets", short: "nets", shape: "group" },
     { key: "other.bay", short: "bay", shape: "harbour" },
+    { key: "other.eddy", short: "eddy", shape: "constructor" },
   ],
 };
 
@@ -62,6 +63,7 @@ it("names a shared network by its shape, or its key where none is held", () => {
       sharedWords("project.locks", seen),
       sharedWords("group.nets", seen),
       sharedWords("other.bay", seen),
+      sharedWords("other.eddy", seen),
       sharedWords("repository.tide", seen),
       sharedWords("repository.backwater", null),
     ],
@@ -70,10 +72,12 @@ it("names a shared network by its shape, or its key where none is held", () => {
       "the locks quest",
       "the nets group",
       "the bay harbour",
+      "the eddy constructor",
       "repository.tide",
       "repository.backwater",
     ],
-    "a quest should be a project's word, an unknown shape its own, and an unheld key itself",
+    "a quest should be a project's word, a shape the model never passes its own, " +
+      "an inherited name too, and an unheld key itself",
   );
 });
 
@@ -150,32 +154,49 @@ it("names who asked, and how long the oldest question waited", () => {
 it("says one question waiting, and what holds a cell up", () => {
   const one = [{ from: "TERN01", at: "2026-11-19T09:59:30" }];
   const two = [
-    { from: "TERN01", at: "2026-11-19T09:45:00" },
-    { from: "GULL02", at: "2026-11-19T09:50:00" },
+    { from: "GULL02", at: "2026-11-19T09:45:00" },
+    { from: "TERN01", at: "2026-11-19T09:50:00" },
   ];
   const said = [
     owedWords({ from: "TERN01", at: "2026-11-18T21:15:00" }, seen, AT),
-    heldWords(cell("A", { owes: one }), "tern01", AT, true),
-    heldWords(cell("A", { owes: two }), "tern01", AT, false),
+    heldWords(cell("A", { owes: one }), seen, AT, { judged: true }),
+    heldWords(cell("A", { owes: two }), seen, AT, { judged: false }),
   ];
   assert.deepEqual(
     said,
     [
       "tern01's question waiting since yesterday at 21:15",
       "a question waiting; it came from tern01 under a minute ago, with no answer yet",
-      "2 questions waiting; the oldest came from tern01 15 min ago, with no word since",
+      "2 questions waiting; the oldest came from GULL02 15 min ago, with no word since",
     ],
     "the count, the oldest's asker and age, and how the page knows should each be said",
+  );
+  assert.equal(
+    heldWords(cell("A", { owes: one }), seen, AT, { judged: true, named: (n) => n.slice(0, 3) }),
+    "a question waiting; it came from ter under a minute ago, with no answer yet",
+    "the asker's name should be fitted to the row as the drawer asks",
   );
 });
 
 it("lists the cells held up and holding, the oldest first", () => {
   const cells = [
-    cell("A", { owes: [{ from: "B", at: "2026-11-19T09:50:00" }] }),
+    // Each cell's own are oldest first, as the model leaves them, so a cell
+    // goes by its first, not its latest.
+    cell("A", { owes: [{ from: "B", at: "2026-11-19T09:45:00" }] }),
     cell("B"),
-    cell("C", { owes: [{ from: "B", at: "2026-11-19T09:40:00" }] }),
-    cell("D", { holds: [{ to: [], at: "2026-11-19T09:55:00" }] }),
-    cell("E", { holds: [{ to: [], at: "2026-11-19T09:35:00" }] }),
+    cell("C", {
+      owes: [
+        { from: "B", at: "2026-11-19T09:40:00" },
+        { from: "D", at: "2026-11-19T09:58:00" },
+      ],
+    }),
+    cell("D", { holds: [{ to: [], at: "2026-11-19T09:50:00" }] }),
+    cell("E", {
+      holds: [
+        { to: [], at: "2026-11-19T09:35:00" },
+        { to: [], at: "2026-11-19T09:59:00" },
+      ],
+    }),
   ];
   assert.deepEqual(
     [heldFirst(cells).map((s) => s.address), holdingFirst(cells).map((s) => s.address)],

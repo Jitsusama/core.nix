@@ -495,7 +495,8 @@ in
   # drawn, a cell moving and another going, broken while the node is away
   # with the realm kept and live once it's back, stale once the server goes
   # with the realm kept, a cell's title drawn as words and never as markup,
-  # the web-design skill's page checks and the map's own (site-checks.js)
+  # what each spent today, what waits on a cell and what holds stand as the
+  # drawer says them, the web-design skill's page checks and the map's own (site-checks.js)
   # passing at two widths in both looks, nothing logged but what a test
   # causes, and every cell reached (reach.ts) there and on a twin of 10,000.
   # Chromium builds only on Linux.

@@ -105,9 +105,11 @@ FED_ENDING_S = FED_DRAWN_MS // 1000 + 2
 # with most of an hour left; and the names Now and HERON1's drawer give each.
 ASKER, WAITED, HOLDER = "TERN03", "HERON1", "GULL01"
 ASKED_AGO, HELD_AGO, HELD_FOR = timedelta(minutes=10), timedelta(minutes=5), timedelta(hours=1)
-HELD_ON = ["orchestration.skiff1", "repo.harbour"]
+HELD_ON = ["#orchestration/skiff1", "#repo/harbour"]
+WAITS = ("asked", "held")
+MINUTE = timedelta(minutes=1)
 ASKER_SHORT, WAITED_SHORT, HOLDER_SHORT = "Count the Cleats", "Chart The Harbour", "Paint The Hull"
-ASKED_WORDS = f"a question waiting; it came from {ASKER_SHORT} 10 min ago, with no answer yet"
+ASKED_WORDS = f"a question waiting; it came from {ASKER_SHORT} {{}} min ago, with no answer yet"
 HELD_WORDS = "holding Rig the Skiff for the Season and the harbour repository"
 # HERON1, which leads node.json's Chart the Harbour, said by its forage to
 # have been started by SKIFF1, which leads Rig the Skiff, so the one network
@@ -293,9 +295,7 @@ def unanswered(key: str, sender: str, ago: timedelta, **said: object) -> dict[st
 def waiting() -> dict[str, list[dict[str, object]]]:
     """Node.json's realm with ASKER's question waiting on WAITED and HOLDER's hold standing."""
     reading = json.loads((HERE / "node.json").read_text())["kinds"]
-    asked = unanswered(
-        "asked", ASKER, ASKED_AGO, intent="question", groups=[f"peer.{WAITED.lower()}"]
-    )
+    asked = unanswered("asked", ASKER, ASKED_AGO, intent="question", groups=[f"@{WAITED}"])
     held = unanswered("held", HOLDER, HELD_AGO, intent="hold", groups=HELD_ON)
     until = datetime.now(UTC) + HELD_FOR
     return {
@@ -953,12 +953,12 @@ def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> 
 
 
 def day_clock(said: object, now: datetime) -> str:
-    """Say a time as when.ts's dayClock does against `now`, in the zone the browser shares."""
+    """Say a time within a day of `now` as when.ts's dayClock does, in the browser's zone."""
     t = datetime.fromisoformat(str(said)).astimezone()
     days = (t.date() - now.astimezone().date()).days
+    assert abs(days) <= 1, f"day_clock says only times within a day of now, not {said!r}"
     hm = f"{t:%H:%M}"
-    near = {0: hm, -1: f"yesterday at {hm}", 1: f"tomorrow at {hm}"}
-    return near.get(days, f"{t:%-d %b} at {hm}")
+    return {0: hm, -1: f"yesterday at {hm}", 1: f"tomorrow at {hm}"}[days]
 
 
 def test_what_waits_and_what_holds_are_said_as_the_node_judges(
@@ -973,21 +973,33 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         page.keyboard.press(".")
         body = page.locator("#panel-body")
         expect(body, "Now never listed the holds standing").to_contain_text("Holds Standing")
-        now = datetime.now(UTC)
-        held = waiting_node.records["unanswered"]["unanswered:held"]
-        until = f"{day_clock(held['until'], now)} at most"
-        waits = ["Questions Waiting", WAITED_SHORT, ASKED_WORDS, "Holds Standing", HOLDER_SHORT]
-        waits.append(f"{HELD_WORDS} since {day_clock(held['since'], now)}, until {until}")
         lines = [line for line in body.inner_text().splitlines() if line.strip()]
-        first = lines.index(waits[0]) if waits[0] in lines else len(lines)
-        said = lines[first : first + len(waits)]
-        assert said == waits, f"Now misread what waits and what holds: {said}"
+        # The page says each against its reading's time, which falls between
+        # the realm being built and now, so either end's words will do.
+        read = datetime.now(UTC)
+        asked, held = (waiting_node.records["unanswered"][f"unanswered:{k}"] for k in WAITS)
+        since = datetime.fromisoformat(str(asked["since"]))
+        ends = (since + ASKED_AGO, read)
+        ages = range(round(ASKED_AGO / MINUTE), round((read - since) / MINUTE) + 1)
+        reach = [f"{HELD_WORDS} since {day_clock(held['since'], at)}" for at in ends]
+        until = [f"until {day_clock(held['until'], at)} at most" for at in ends]
+        first = lines.index("Questions Waiting") if "Questions Waiting" in lines else len(lines)
+        said = lines[first : first + 6]
+        assert said[:2] == ["Questions Waiting", WAITED_SHORT], f"Now misread who waits: {said}"
+        assert said[2:3] in [[ASKED_WORDS.format(age)] for age in ages], (
+            f"Now misread the question waiting: {said}"
+        )
+        assert said[3:5] == ["Holds Standing", HOLDER_SHORT], f"Now misread who holds: {said}"
+        held_words = [f"{one}, {other}" for one, other in zip(reach, until, strict=True)]
+        assert said[5:] in [[words] for words in held_words], f"Now misread the hold: {said}"
         page.evaluate(f"location.hash = '#cell={WAITED}'")
         title = page.locator("#panel-title")
         expect(title, f"{WAITED}'s drawer never opened").to_have_text(WAITED_SHORT)
-        asked = waiting_node.records["unanswered"]["unanswered:asked"]
-        owed = f"{ASKER_SHORT}'s question waiting since {day_clock(asked['since'], now)}"
-        expect(body, f"{WAITED}'s health left out the question waiting on it").to_contain_text(owed)
+        waits = f"{ASKER_SHORT}'s question waiting since"
+        owed = [f"{waits} {day_clock(asked['since'], at)}" for at in ends]
+        expect(body, f"{WAITED}'s health left out the question waiting on it").to_contain_text(
+            re.compile("|".join(map(re.escape, owed)))
+        )
     finally:
         opened.close()
 
