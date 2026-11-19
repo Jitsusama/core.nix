@@ -12,15 +12,8 @@
 
 import { clockTime } from "../../local-sites/kit/status.ts";
 import { type Join, joined } from "./joins.ts";
-import {
-  cellOrAway,
-  claimedCell,
-  escaped,
-  namedOf,
-  splitSaid,
-  startedBy,
-  startsSaid,
-} from "./lineage.ts";
+import { cellOrAway, claimedCell, namedOf, splitSaid, startedBy, startsSaid } from "./lineage.ts";
+import { escaped } from "./markup.ts";
 import {
   type Document,
   type Forage,

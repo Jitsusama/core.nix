@@ -83,13 +83,17 @@ it("says a node-wide fault in where starts came from once", () => {
       forage("TERNAA", lineage()),
       forage("SKIFFS", lineage()),
     ),
-    ["where 2 cells' starts came from (TERNAA and SKIFFS)"],
+    ["where 2 cells' starts came from (SKIFFS and TERNAA)"],
   );
-  // Past six, the rest are counted, so the line stays short.
-  const nine = [..."ABCDEFGHI"].map((letter) => forage(letter.repeat(6), lineage()));
-  assert.deepEqual(unread(forage("KESTRL", lineage("book")), ...nine), [
-    "where 9 cells' starts came from (AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF and 3 more)",
-  ]);
+  // By address, seven named whole, and past seven six named and the rest counted.
+  const unsourced = (letters: string) =>
+    unread(
+      forage("KESTRL", lineage("book")),
+      ...[...letters].map((letter) => forage(letter.repeat(6), lineage())),
+    );
+  const six = "AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF";
+  assert.deepEqual(unsourced("GFEDCBA"), [`where 7 cells' starts came from (${six} and GGGGGG)`]);
+  assert.deepEqual(unsourced("IHGFEDCBA"), [`where 9 cells' starts came from (${six} and 3 more)`]);
   // A misspelt source is still a source sent, so a starter with none beside it is said by cell.
   assert.deepEqual(unread(forage("KESTRL", lineage("Book")), forage("TERNAA", lineage())), [
     "KESTRL's started_by_from said neither book nor presence",

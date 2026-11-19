@@ -193,15 +193,12 @@ it("escapes a claimed address not standing here", () => {
     [],
   );
   assert.ok(!panel.includes("<img"), panel);
-  assert.equal(
-    panel.match(/<code>&lt;img src=&quot;x&quot;&gt;<\/code>,<\/span> as claimed/gu)?.length,
-    2,
-  );
+  const hedged = /<code>&lt;img src=&quot;x&quot;&gt;<\/code>,<\/span> as claimed/gu;
+  assert.equal(panel.match(hedged)?.length, 2, panel);
 });
 
 it("ties each comma to the address before it, so no line starts with one", () => {
-  // A comma follows each name but the two around "and"; eight name six, of them A, C and E
-  // claimed below.
+  // A comma follows each name but the two around "and"; eight name six, A, C and E claimed.
   for (const [count, ties, held] of [
     [3, 1, 2],
     [7, 5, 4],
@@ -211,7 +208,8 @@ it("ties each comma to the address before it, so no line starts with one", () =>
       startedLine(forage(), cells(count)),
       startedLine(forage(), cells(count), () => false),
     ]) {
-      assert.ok(!line.replace(TIED, "").includes("</a>,"), `a comma stands loose in ${line}`);
+      const loose = line.replace(TIED, "").replace("cells, all as claimed:", "");
+      assert.ok(!loose.includes(","), `a comma stands loose in ${line}`);
       assert.equal(line.match(TIED)?.length, ties, line);
     }
     // Every other start claimed: each claimed name held whole with its bracket.
@@ -332,7 +330,8 @@ const SPLIT_INTO =
   /<dt>Split into<\/dt><dd><span>2 cells, all as claimed: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><code>FARAWAY<\/code>, not standing here<\/span><\/span>/u;
 
 /** An away cell's comma in a list, held by the text before it, so none of it is tied. */
-const AWAY_LISTED = /<span><code>FARAWAY<\/code>, not standing here<\/span>, <a /u;
+const AWAY_LISTED =
+  /<span><code>FARAWAY<\/code>, not standing here<\/span>, <span class="tie"><a /u;
 
 /** The panel's line for a cell split from one not drawn here, hedged before the away note. */
 const SPLIT_FROM_AWAY =
@@ -385,8 +384,11 @@ it("says the cell a cell split from and the cells it split into, linked when her
   // A booked start from the cell it split from still says the split as claimed.
   const booked = forage({ startedBy: "TERNAA", booked: true, splitFrom: "TERNAA" });
   assert.match(panelOf(booked, here, []), SPLIT_FROM);
-  const three = panelOf(forage({ splitInto: ["FARAWAY", "TERNAA", "KESTRL"] }), here, []);
-  assert.match(three, AWAY_LISTED);
+  // Only TERNAA, drawn here, has its comma tied to its link; an away cell's text holds its own.
+  const four = panelOf(forage({ splitInto: ["FARAWAY", "TERNAA", "OSPREY", "SKIFFS"] }), here, []);
+  assert.match(four, AWAY_LISTED);
+  const ties = four.match(TIED)?.map((tie) => tie.includes("#cell=TERNAA"));
+  assert.deepEqual(ties, [true], four);
   assert.match(panelOf(forage({ splitFrom: "FARAWAY" }), here, []), SPLIT_FROM_AWAY);
 });
 
@@ -413,15 +415,22 @@ it("says each need a cell serves and relies on, in the asking cell's words, esca
 
 it("says a need's month from its own table, whatever the runtime's locale says", () => {
   const { toLocaleDateString: dateOf, toLocaleString: timeOf } = Date.prototype;
+  const { DateTimeFormat } = Intl;
   Date.prototype.toLocaleDateString = () => "Brumaire";
   Date.prototype.toLocaleString = () => "Brumaire";
+  Intl.DateTimeFormat = class {
+    format = () => "Brumaire";
+    formatToParts = () => [{ type: "month", value: "Brumaire" }];
+  } as unknown as typeof Intl.DateTimeFormat;
   try {
-    const serves = [{ cell: "OSPREY", need: "", since: "2025-11-16T13:05:00Z" }];
+    // September, as locales differ on how they shorten it.
+    const serves = [{ cell: "OSPREY", need: "", since: "2025-09-16T13:05:00Z" }];
     const panel = panelOf(forage({ serves }), new Set(["KESTRL", "OSPREY"]), []);
-    assert.ok(panel.includes(" Nov, ") && !panel.includes("Brumaire"), panel);
+    assert.ok(panel.includes(" Sep, ") && !panel.includes("Brumaire"), panel);
   } finally {
     Date.prototype.toLocaleDateString = dateOf;
     Date.prototype.toLocaleString = timeOf;
+    Intl.DateTimeFormat = DateTimeFormat;
   }
 });
 

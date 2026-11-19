@@ -6,6 +6,7 @@
 
 import type { Fields } from "../../local-sites/kit/records.ts";
 import { isObject, text } from "../../local-sites/kit/records.ts";
+import { namedOf } from "./lineage.ts";
 
 /**
  * One need joining two forages: the cell at its other end, what the need
@@ -168,18 +169,16 @@ function bookedOf(lineage: Fields, cell: string, told: StartsTold): boolean {
   return from === "book";
 }
 
-/** How many cells a fault names before counting the rest, so its line stays short. */
-const MOST_NAMED = 6;
-
 /**
- * The cells a fault of several is about, in brackets, so whoever reads it knows where to
- * look; one more is named rather than counted, as "and 1 more" says less than its name.
+ * The cells a fault of several is about, by address, in brackets, so whoever reads it knows
+ * where to look, past a list's few counting the rest as the panel's lists do.
  */
 function which(cells: readonly string[]): string {
   if (cells.length < 2) {
     return "";
   }
-  const named = cells.length > MOST_NAMED + 1 ? cells.slice(0, MOST_NAMED) : [...cells];
+  const sorted = [...cells].sort((one, other) => one.localeCompare(other));
+  const named = sorted.slice(0, namedOf(cells.length));
   const rest = cells.length - named.length;
   const last = rest === 0 ? named.pop() : `${rest} more`;
   return ` (${named.join(", ")} and ${last})`;

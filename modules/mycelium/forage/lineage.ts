@@ -4,23 +4,11 @@
 // hedges so no line opens with a comma or a bracket. Every word read from
 // a record is escaped before it reaches the page.
 
+import { escaped } from "./markup.ts";
 import type { Forage } from "./model.ts";
 
-const ESCAPES: { readonly [character: string]: string } = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-/** How many of the cells a cell started its panel names before counting the rest. */
+/** How many cells a list names before counting the rest, in a panel or a fault. */
 const MOST_STARTED = 6;
-
-/** `text` safe to put in markup, as text or an attribute's value. */
-function escaped(text: string): string {
-  return text.replace(/[&<>"']/gu, (character) => ESCAPES[character] ?? character);
-}
 
 /** `cell`'s address, linked to its row, where a press moves the cursor to it. */
 function cellLink(cell: string): string {
@@ -33,9 +21,14 @@ function cellLink(cell: string): string {
  * here, since it may have ended or stand on another machine.
  */
 function cellOrAway(cell: string, here: ReadonlySet<string>): string {
+  return namedOrAway(cell, here).said;
+}
+
+/** `cell` as `cellOrAway` says it, and whether that ends in its link's box. */
+function namedOrAway(cell: string, here: ReadonlySet<string>): Named {
   return here.has(cell)
-    ? cellLink(cell)
-    : `<span><code>${escaped(cell)}</code>, not standing here</span>`;
+    ? linked(cell)
+    : { said: `<span><code>${escaped(cell)}</code>, not standing here</span>`, boxed: false };
 }
 
 /**
@@ -144,8 +137,7 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
 
 /** The cells `forage` split into, every split only claimed, so the whole list is hedged. */
 function splitSaid(forage: Forage, here: ReadonlySet<string>): string {
-  const name = (cell: string): Named => ({ said: cellOrAway(cell, here), boxed: here.has(cell) });
-  return cellsStarted(forage.splitInto, name, true);
+  return cellsStarted(forage.splitInto, (cell) => namedOrAway(cell, here), true);
 }
 
-export { cellOrAway, claimedCell, escaped, namedOf, splitSaid, startedBy, startsSaid };
+export { cellOrAway, claimedCell, namedOf, splitSaid, startedBy, startsSaid };
