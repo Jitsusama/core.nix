@@ -10,6 +10,7 @@ opening comment says what the test proves. Every test asks for the desktop, star
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shlex
@@ -136,7 +137,16 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
     machine.wait_until_succeeds(LID_HELD, timeout=timedelta(seconds=10))
     # Joel keeps it awake to run with no power and the lid shut (2026-11-10).
     desktop.power("off")
-    passed = False
+
+    def let_go() -> None:
+        desktop.lid(shut=False)
+        # The stand-in sleep ends once logind sees the lid open, so it settles first.
+        machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
+        machine.succeed("rm -f /run/suspended")
+        desktop.power("on")
+        # The sleep locked the screen first, as it does before every one.
+        desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
+
     try:
         machine.succeed(LID_HELD)
         desktop.lid(shut=True)
@@ -157,20 +167,16 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
         slept = int(machine.succeed("wc -l < /run/suspended"))
         assert slept == 1, f"one shut lid slept {slept} times"
-        passed = True
-    finally:
-        desktop.lid(shut=False)
-        # The stand-in sleep ends once logind sees the lid open, so it settles first.
-        machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
-        machine.succeed("rm -f /run/suspended")
-        desktop.power("on")
-        # The sleep locked the screen first, as it does before every one.
-        desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
-        # Only a test that passed is held to it, so a failure above is the one told; after
-        # one, a lock still queued may land on the subtests that follow.
-        if passed:
-            machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
-    # Unlocked, it stays so; relocked, every subtest after failed on it (2026-11-19).
+    except BaseException:
+        # Let go as far as it can without a word, so the failure above is the one told; a
+        # lock still queued may then land on the subtests that follow.
+        with contextlib.suppress(Exception):
+            let_go()
+        raise
+    let_go()
+    # Unlocked, it stays so, whether a before-sleep lock lands late or the lid's own hold
+    # locks again; relocked, every subtest after failed on it (2026-11-19).
+    machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
     machine.sleep(LOOKING)
     machine.succeed(unlocked)
 
