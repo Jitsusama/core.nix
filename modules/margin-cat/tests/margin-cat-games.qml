@@ -216,32 +216,44 @@ QtObject {
     // neither spent nor rested from: the yarn asked for comes in a later
     // scene, and its rest starts only once a cat begins its play (a test on
     // niri waited a minute for a yarn its first scene's cat had turned
-    // down); though an ask no cat ever takes is let go after a few scenes.
+    // down); though an ask no cat takes for 20 s from its first refusal is
+    // let go, however many scenes a test's pace brings in that time.
     function turnedDown(expect) {
         const yarn = { play: "yarn", pause: 200 };
         const back = { walk: true, to: "column" };
-        const answering = { answers: true, asked: "yarn", refused: 0 };
-        const refused = Plays.handed(answering, yarn, false);
+        const now = 100_000;
+        const answering = { answers: true, asked: "yarn", refusedAt: null };
+        const refused = Plays.handed(answering, yarn, false, now);
         expect("the yarn asked for, turned down, still asked, and not rested from",
-            refused, { answers: false, asked: "yarn", refused: 1, rests: false });
+            refused, { answers: false, asked: "yarn", refusedAt: now, rests: false });
         expect("nor spent by the walk back no cat takes after it",
-            Plays.handed(refused, back, false), refused);
+            Plays.handed(refused, back, false, now + 10), refused);
         expect("the yarn asked for, begun, spent, and its rest begun",
-            Plays.handed(answering, yarn, true),
-            { answers: false, asked: "", refused: 0, rests: true });
+            Plays.handed(answering, yarn, true, now),
+            { answers: false, asked: "", refusedAt: null, rests: true });
+        expect("begun after it was turned down, spent and its refusal forgotten",
+            Plays.handed(Object.assign({}, answering, { refusedAt: now }), yarn, true,
+                now + 5_000), { answers: false, asked: "", refusedAt: null, rests: true });
         expect("a yarn drawn at random, begun, rests and leaves another play asked",
-            Plays.handed({ answers: false, asked: "pounce", refused: 1 }, yarn, true),
-            { answers: false, asked: "pounce", refused: 1, rests: true });
+            Plays.handed({ answers: false, asked: "pounce", refusedAt: now }, yarn, true, now),
+            { answers: false, asked: "pounce", refusedAt: now, rests: true });
         expect("a play asked for in place, spent by its first pose",
-            Plays.handed({ answers: true, asked: "batting", refused: 0 }, { pose: "batting" },
-                true).asked, "");
+            Plays.handed({ answers: true, asked: "batting", refusedAt: null },
+                { pose: "batting" }, true, now).asked, "");
         expect("asked again while one plays, kept through that one's walk back",
-            Plays.handed({ answers: false, asked: "yarn", refused: 0 }, back, true).asked,
-            "yarn");
-        const scenes = [1, 2, 3].map(drawn => Plays.handed(
-            { answers: true, asked: "yarn", refused: drawn - 1 }, yarn, false).asked);
-        expect("turned down in three scenes drawn for it, the ask let go at the third",
-            scenes, ["yarn", "yarn", ""]);
+            Plays.handed({ answers: false, asked: "yarn", refusedAt: null }, back, true,
+                now).asked, "yarn");
+        let left = refused;
+        const quick = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(scene => {
+            left = Plays.handed(Object.assign({}, left, { answers: true }), yarn, false,
+                now + 300 * scene);
+            return left.asked;
+        });
+        expect("turned down in ten scenes 300 ms apart, still asked", quick,
+            Array(10).fill("yarn"));
+        const late = [19_999, 20_000].map(after => Plays.handed(
+            Object.assign({}, answering, { refusedAt: now }), yarn, false, now + after).asked);
+        expect("turned down 20 s after its first refusal, the ask let go", late, ["yarn", ""]);
     }
 
     // The yarn drawn once a look (MarginCat.yarnLooks), as the screen draws

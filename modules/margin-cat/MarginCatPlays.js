@@ -80,10 +80,12 @@ const WANDER_SITS = 1500;
 // and 30 minutes after it plays, drawn each time (VKCF3Z 63b08065: "at
 // most one per 15 minutes idle, randomly spaced").
 const YARN_RESTS = [15 * 60_000, 30 * 60_000];
-// How many scenes drawn for a play asked for a cat may turn down before
-// the ask is let go: a cat walking back or held refuses for a moment, one
-// with no room for the play every time.
-const REFUSALS = 3;
+// How long, in ms from the first refusal, the cats may turn down scenes
+// drawn for a play asked for before the ask is let go: a cat walking back
+// refuses for a few seconds (a long gentle walk takes about 8), one with
+// no room for the play every time. Timed rather than counted, since a
+// test's pace brings scenes fifteen times sooner but walks no faster.
+const REFUSED_FOR = 20_000;
 
 // How long the yarn rests once it's played, in ms, `chance` (0 to 1)
 // choosing where in YARN_RESTS.
@@ -158,20 +160,21 @@ function next(lively, draw, last, more) {
 
 // What a scene's beat leaves of what it was drawn with (`was`) once it's
 // handed out: whether the scene still `answers` the play `asked` for, its
-// first beat not yet handed out; that play; how many scenes drawn for it
-// were `refused`; and whether the yarn's rest starts now (`rests`). A
-// screen's cat took the beat or none did (`taken`; a pose is always
-// taken). One none took plays nothing, as a cat still walking or held
-// turns a play down, so the ask waits for a later scene, up to REFUSALS
-// of them, since one no cat can ever take would else take every scene;
-// and the yarn rests only once a cat begins its play.
-function handed(was, beat, taken) {
-    const refused = was.answers && !taken ? was.refused + 1 : was.refused;
-    const spent = was.answers && (taken || refused >= REFUSALS);
+// first beat not yet handed out; that play; when a cat first turned down
+// a scene drawn for it (`refusedAt`, by the clock `now`, or null); and
+// whether the yarn's rest starts now (`rests`). A screen's cat took the
+// beat or none did (`taken`; a pose is always taken). One none took plays
+// nothing, as a cat still walking or held turns a play down, so the ask
+// waits for a later scene, for REFUSED_FOR, since one no cat can ever
+// take would else take every scene; and the yarn rests only once a cat
+// begins its play.
+function handed(was, beat, taken, now) {
+    const refusedAt = was.answers && !taken && was.refusedAt === null ? now : was.refusedAt;
+    const spent = was.answers && (taken || now - refusedAt >= REFUSED_FOR);
     return {
         answers: false,
         asked: spent ? "" : was.asked,
-        refused: spent ? 0 : refused,
+        refusedAt: spent ? null : refusedAt,
         rests: taken && beat.play === "yarn"
     };
 }

@@ -105,10 +105,10 @@ Scope {
     // The play a test asks to come next, by its name, kept until a scene
     // drawn for it is under way; "" for one at random. Whether the scene
     // under way was drawn for it, until its first beat is handed out, and
-    // how many such scenes a cat turned down (Plays.handed).
+    // when a cat first turned such a scene down, or null (Plays.handed).
     property string asked: ""
     property bool answers: false
-    property int refused: 0
+    property var refusedAt: null
 
     IpcHandler {
         target: "cat"
@@ -117,7 +117,7 @@ Scope {
         // the scene waiting is drawn again with it, its rest left running.
         function next(play: string): void {
             root.asked = play;
-            root.refused = 0;
+            root.refusedAt = null;
             if (root.coming !== null)
                 root.coming = Plays.scene(root.lively, Math.random, root.played,
                     root.drawsWith(play));
@@ -183,10 +183,10 @@ Scope {
     // rest, as Plays.handed says, so a play a cat turned down is neither
     // spent nor rested from.
     function handed(beat: var, taken: bool): void {
-        const left = Plays.handed({ answers, asked, refused }, beat, taken);
+        const left = Plays.handed({ answers, asked, refusedAt }, beat, taken, Date.now());
         answers = left.answers;
         asked = left.asked;
-        refused = left.refused;
+        refusedAt = left.refusedAt;
         if (left.rests)
             yarnFrom = Date.now() + Plays.yarnRests(Math.random());
     }
