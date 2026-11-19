@@ -94,7 +94,7 @@ own links, and none would meet.
 
   | Kind       | Home        | Its address, for example           |
   | ---------- | ----------- | ---------------------------------- |
-  | machine    | `mycelium/` | `mycelium/#machine=studio`         |
+  | machine    | `system/`   | `system/#machine=studio`           |
   | cell       | `mycelium/` | `mycelium/#cell=E2ZIAQ`            |
   | network    | `mycelium/` | `mycelium/#net=repo.world`         |
   | repository | `code/`     | `code/#repo=Jitsusama%2Fcore.nix`  |
@@ -124,7 +124,7 @@ own links, and none would meet.
   `{"kind": "machine", "address": "#machine={name}"}` beside or in place
   of its kinds. The address is a fragment on the site's own page, written
   from the page (`#machine={name}`) or from the sites' root
-  (`mycelium/#machine={name}`), with the thing's name, percent-encoded,
+  (`system/#machine={name}`), with the thing's name, percent-encoded,
   for `{name}`. It is plain bytes, as a record's is. A row homing anything
   has a plain path: steps of letters, digits and `-._~`, none empty and
   none starting with a dot. A pattern reads no `homes.json`, and a record
