@@ -1499,6 +1499,11 @@
   joels-work-goes-before-agents = ''
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
   '';
+  journalctl-words-skips-as-the-summary-reads = ''
+    the journalctl a failed boot's summary runs, in the initrd as after it, words each kind of
+    journal file it skips, and the hint on its own line under one, word for word as the summary
+    reads them
+  '';
   json-strings-at-their-length = ''
     in the shell's own Qt, 20,000 distinct string values of 248 characters parsed grow its memory
     by under 17 MB, where grown a character at a time they took about 21, and what's parsed reads
