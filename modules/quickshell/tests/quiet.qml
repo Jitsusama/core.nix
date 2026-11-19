@@ -1,6 +1,8 @@
 // Drives do not disturb (modules/quickshell/Quiet.qml) through what can
 // happen to it, with niri's casts, the notices and the recorder stood in
-// for: sharing the screen holds notices and stopping lets them go,
+// for: sharing the screen holds notices and stopping lets them go, and
+// so does niri not having said its casts, as at the shell's start or while
+// the windows daemon is away, since nothing can yet say nobody sees;
 // recording the screen or a window through its own screencast doesn't, ending
 // it while sharing lasts until the sharing stops, and what Joel turned on
 // outlasts the sharing. It exits 0 once every case holds, and otherwise 1,
@@ -21,7 +23,9 @@ ShellRoot {
 
     Component.onCompleted: {
         try {
-            expect("at first", false);
+            expect("before niri said its casts", true, "while the screen may be shared");
+            Niri.castsHeard = true;
+            expect("once niri said none", false);
             share("PipeWire");
             expect("sharing", true, "while you share");
             share("");
@@ -43,6 +47,10 @@ ShellRoot {
             expect("kept past sharing", true, "until it's ended");
             Quiet.end();
             expect("ended", false);
+            Niri.castsHeard = false;
+            expect("once niri's casts went unheard again", true, "while the screen may be shared");
+            Niri.castsHeard = true;
+            expect("heard again", false);
             Quiet.keep(60);
             const hour = Qt.formatDateTime(new Date(Quiet.until), "HH:mm");
             expect("kept for an hour", true, `until ${hour}`);

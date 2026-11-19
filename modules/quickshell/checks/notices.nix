@@ -50,7 +50,10 @@
       mkdir runtime && chmod 700 runtime
       ${copied [ "Quiet.qml" ]}
       cp ${../tests/quiet.qml} shell.qml
-      cp ${singleton "Niri.qml" "property var casts: ({})"} Niri.qml
+      cp ${singleton "Niri.qml" ''
+        property var casts: ({})
+        property bool castsHeard: false
+      ''} Niri.qml
       cp ${singleton "Notices.qml" "property var history: []"} Notices.qml
       cp ${singleton "Recorder.qml" "property var windowSession: null"} Recorder.qml
       cp ${options} Options.qml
