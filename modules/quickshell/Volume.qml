@@ -34,26 +34,22 @@ Scope {
 
         function onVolumesChanged() {
             root.shown = true;
-            hide.restart();
+            meter.again();
         }
 
         function onMutedChanged() {
             root.shown = true;
-            hide.restart();
+            meter.again();
         }
     }
 
-    Timer {
-        id: hide
-        interval: 1500
-        onTriggered: root.shown = false
-    }
-
     Meter {
+        id: meter
         name: root.input ? "microphone" : "volume"
         glyph: root.input ? (off ? Theme.glyph.muted : Theme.glyph.microphone)
             : (off ? Theme.glyph.silent : Theme.glyph.volume)
         visible: root.shown
+        onSpent: root.shown = false
         level: root.audio ? root.audio.volume : 0
         off: root.audio ? root.audio.muted : false
     }

@@ -35,8 +35,56 @@ PanelWindow {
             Report.say(`level ${meter.name} ${meter.figure}`);
     }
 
+    // Its moment: shown a second and a half from the first frame drawn of
+    // it, or from the last change once one has been, then spent, which
+    // hides it. Timed from the change, a meter on a screen slow to draw
+    // went before it was seen, as the desktop test's did on builders
+    // drawing a frame in 1.3 to 2 s (17 and 18 November). One whose frame
+    // never comes is spent five seconds after the last change.
+    signal spent()
+    property bool seen: false
+
+    // Begins its moment again, as what shows it says the level changed.
+    function again() {
+        atMost.restart();
+        if (seen)
+            moment.restart();
+    }
+
     onFigureChanged: tell()
-    onVisibleChanged: tell()
+    onVisibleChanged: {
+        if (!visible) {
+            seen = false;
+            moment.stop();
+            atMost.stop();
+        }
+        tell();
+    }
+    onSeenChanged: {
+        if (seen)
+            moment.restart();
+    }
+
+    Timer {
+        id: moment
+        interval: 1500
+        onTriggered: meter.spent()
+    }
+
+    Timer {
+        id: atMost
+        interval: 5000
+        onTriggered: meter.spent()
+    }
+
+    Connections {
+        target: card.Window.window
+
+        function onFrameSwapped() {
+            if (meter.visible)
+                meter.seen = true;
+        }
+    }
 
     anchors.bottom: true
     implicitWidth: length + 2 * Theme.floating.reach

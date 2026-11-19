@@ -20,7 +20,13 @@ Scope {
 
     function show(light) {
         root.shown = light;
-        hide.restart();
+        const meters = {
+            screen: screenMeter,
+            keyboard: keyboardMeter,
+            desk: deskMeter,
+            "desk-warmth": warmthMeter
+        };
+        meters[light].again();
     }
 
     FileView {
@@ -61,39 +67,41 @@ Scope {
         }
     }
 
-    Timer {
-        id: hide
-        interval: 1500
-        onTriggered: root.shown = ""
-    }
-
     Meter {
+        id: screenMeter
         name: "brightness"
         glyph: Theme.glyph.brightness
         visible: root.shown === "screen"
+        onSpent: root.shown = ""
         level: root.level
     }
 
     Meter {
+        id: keyboardMeter
         name: "keyboard-light"
         glyph: Theme.glyph.keyboard
         visible: root.shown === "keyboard"
+        onSpent: root.shown = ""
         level: Lights.lit
         off: Lights.dark
     }
 
     Meter {
+        id: deskMeter
         name: "desk-light"
         glyph: Theme.glyph.lamp
         visible: root.shown === "desk"
+        onSpent: root.shown = ""
         level: DeskLight.light === null ? 0 : DeskLight.light.percent / 100
     }
 
     // From warm, empty, to cool, full, said in kelvin.
     Meter {
+        id: warmthMeter
         name: "desk-warmth"
         glyph: Theme.glyph.lamp
         visible: root.shown === "desk-warmth"
+        onSpent: root.shown = ""
         level: DeskLight.light === null ? 0
             : (DeskLight.light.kelvin - DeskLight.warmest) / (DeskLight.coolest - DeskLight.warmest)
         reading: DeskLight.light === null ? "" : `${DeskLight.light.kelvin} K`
