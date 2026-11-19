@@ -164,6 +164,10 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     named("Caf\u00e9", "mac:02:00:00:00:00:04"),
     named("Lo\u00adft", "mac:02:00:00:00:00:05"),
     named("kitchen", "mac:02:00:00:00:00:06"),
+    named("Attic\u2063", "mac:02:00:00:00:00:07"),
+    named("stra\u00dfe", "mac:02:00:00:00:00:08"),
+    named("\u039f\u0394\u039f\u03a3 hall", "mac:02:00:00:00:00:09"),
+    named("Back\u00a0\u00a0porch", "mac:02:00:00:00:00:0a"),
   ];
   for (const [name, command] of [
     ["Hall", "net devices Hall"],
@@ -251,6 +255,17 @@ it("a device's command names it by a name that pastes as it reads and finds it a
     ["école", byId],
     ["\u212acafe", "net devices '\u212acafe'"],
     ["\u212aitchen", byId],
+    // Another's name read past what draws nothing, with its blanks one
+    // space, a wide letter as the letter, and a case that changes length.
+    ["attic", byId],
+    ["back porch", byId],
+    ["\uff24en", byId],
+    ["STRASSE", byId],
+    ["\u03bf\u03b4\u03bf\u03c2 hall", byId],
+    // And names a letter apart from another's, which are kept.
+    ["Cafe", "net devices Cafe"],
+    ["Dens", "net devices Dens"],
+    ["strase", "net devices strase"],
     // An id net gives several, which it reads as the first holding it, and
     // one that reads as it to a person, though net takes it as a name.
     ["mac:?", byId],

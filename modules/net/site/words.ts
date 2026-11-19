@@ -232,8 +232,17 @@ const UNSEEN = new RegExp(
   "v",
 );
 
-/** A word without what shapes it, as it reads to a person. */
-const UNSHAPED = new RegExp(`[${SHAPING}]`, "gv");
+/**
+ * What a person reads past in a word: what shapes it, and what draws
+ * nothing, such as a mark of format or a default-ignorable character.
+ */
+const READ_PAST = new RegExp(
+  String.raw`[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}${SHAPING}]`,
+  "gv",
+);
+
+/** A run of blanks, which a person reads as one space: braille's among them. */
+const BLANKS = /[\s\u115f\u2800]+/gu;
 
 /**
  * A character that draws nothing standing where a word starts, as the
@@ -262,15 +271,18 @@ function folded(word: string): string {
 }
 
 /**
- * A word as it reads to a person: without what shapes it, composed as
- * Unicode composes it, in any case, then composed again, since a small
- * letter can take a mark its capital can't. Shaping goes first so a joiner
- * between a letter and its mark can't keep them apart; every case folds so
- * a capital reads as its small letter however it's written, as É, E and its
- * mark, or the Kelvin sign.
+ * A word as it reads to a person: its blanks one space, without what they
+ * read past, in Unicode's compatibility form, which reads a wide or
+ * mathematical letter as the letter, and in one case, then in that form
+ * again, since a letter's case can leave its mark apart. What is read past
+ * goes first so a joiner between a letter and its mark can't keep them
+ * apart. Case goes up then down, so a capital reads as its small letter
+ * however it's written, as É, E and its mark, or the Kelvin sign, and so
+ * do ß and SS, and Greek's two small sigmas.
  */
 function reads(word: string): string {
-  return word.replace(UNSHAPED, "").normalize("NFC").toLowerCase().normalize("NFC");
+  const seen = word.replace(BLANKS, " ").replace(READ_PAST, "").trim();
+  return seen.normalize("NFKC").toUpperCase().toLowerCase().normalize("NFKC");
 }
 
 /**
