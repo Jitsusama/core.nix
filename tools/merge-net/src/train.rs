@@ -574,6 +574,13 @@ fn after_landing(
             way(root, &Ended::Landed { left });
             return;
         }
+        Landing::Turned { refused, why } => {
+            // Nothing merged, so only the refused rider falls; those after
+            // it stay aboard for the next run.
+            let said = format!("{why}; the train merged nothing, and it leaves the train");
+            println!("merge-net: {said}");
+            let _ = fall(root, &refused, &said);
+        }
         Landing::Moved => {
             way(root, &Ended::Moved);
             return;

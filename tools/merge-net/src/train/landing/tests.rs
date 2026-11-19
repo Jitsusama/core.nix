@@ -353,8 +353,12 @@ fn a_first_merge_github_refuses_leaves_main_alone() {
         ..Fake::of(place, origin)
     });
     assert!(
-        matches!(landed.landing, Landing::Refused(_)),
-        "a merge GitHub refused didn't fall back: {:?}",
+        matches!(
+            &landed.landing,
+            Landing::Turned { refused, why }
+                if *refused == landed.one && why.contains("not mergeable")
+        ),
+        "a first merge GitHub refused didn't turn that rider alone away: {:?}",
         landed.landing
     );
     assert_eq!(
@@ -447,6 +451,61 @@ fn a_rider_after_the_one_github_refuses_isnt_merged() {
         .filter(|file| git_in(&origin, &["cat-file", "-e", &format!("main:{file}")]).is_ok())
         .collect();
     assert_eq!(held, ["one"], "main doesn't hold the first rider alone");
+    fs::remove_dir_all(&place).unwrap();
+}
+
+// A rider whose head main already held leaves no merge in the candidate,
+// nor on main: made last before a refusal, it is held to the candidate
+// as it stood before the refused rider's merge, not reverted for want
+// of a merge of its own.
+#[test]
+fn a_rider_main_already_held_before_a_refusal_stays_landed() {
+    let (place, origin, checkout, first) = hubbed("github-partly-held");
+    let git = |arguments: &[&str]| git_in(&checkout, arguments);
+    let one = proposed(&checkout, &first, "one", 1);
+    git(&[
+        "push",
+        "--quiet",
+        "origin",
+        &format!("{one}:refs/heads/main"),
+    ])
+    .unwrap();
+    git(&["fetch", "--quiet", "origin", "main"]).unwrap();
+    let base = one.clone();
+    let two = proposed(&checkout, &base, "two", 2);
+    let three = proposed(&checkout, &base, "three", 3);
+    let riding = [merging(&one, 1), merging(&two, 2), merging(&three, 3)];
+    let done = cut(&git, &base, &riding).unwrap();
+    let candidate = git(&["rev-parse", "HEAD"]).unwrap();
+    let hub = Fake {
+        refuses: Some(2),
+        ..Fake::of(&place, &origin)
+    };
+
+    let landing = land(
+        &checkout,
+        &git,
+        &hub,
+        &base,
+        &candidate,
+        &riding,
+        &done.merged,
+    );
+    assert!(
+        matches!(
+            &landing,
+            Landing::Partly { landed, kept, refused, .. }
+                if *landed == base && *kept == [one.clone()] && *refused == two
+        ),
+        "a rider main already held was reverted rather than kept: {landing:?}"
+    );
+    assert!(
+        !hub.asked
+            .take()
+            .iter()
+            .any(|asked| asked.starts_with("revert")),
+        "the train reverted a landing that held the tree it tested"
+    );
     fs::remove_dir_all(&place).unwrap();
 }
 
