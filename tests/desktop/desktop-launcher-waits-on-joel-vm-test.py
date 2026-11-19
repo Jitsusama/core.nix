@@ -459,6 +459,35 @@ def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     desktop.as_account("niri msg output winit scale 1")
 
 
+def test_the_safe_words_slack_reader_stays_down_and_tells_for_you_nothing(
+    desktop: Desktop,
+) -> None:
+    """pineapple-slack stays down here, and For You holds no row from it.
+
+    With no sign-in to read, a reader up would rightly tell For You it can't hear Slack, and
+    Now would lead with that rather than what each test writes (servesTheSafeWord in
+    tests/desktop.nix). Said once here, so a reader back up names itself rather than showing
+    as other tests timing out behind its row.
+
+    The unit must be loaded, since systemd calls a unit it doesn't know inactive too. Its
+    stop takes the row away, so the row is looked for apart: only the Slack reader writes
+    it, and a row here means a reader ran by some road other than its unit.
+    """
+    shown = desktop.as_account("systemctl --user show -p LoadState -p ActiveState pineapple-slack")
+    unit = dict(line.split("=", 1) for line in shown.split())
+    assert unit["LoadState"] == "loaded", (
+        f"pineapple-slack is {unit['LoadState']} here, so whether the reader is down can't be read"
+    )
+    assert unit["ActiveState"] == "inactive", (
+        f"the safe word's Slack reader is {unit['ActiveState']}, not down; servesTheSafeWord "
+        "in tests/desktop.nix is what holds it down here"
+    )
+    told = desktop.as_account(f"ls {MISSION}/waiting/pineapple.json 2>/dev/null || true")
+    assert not told.strip(), (
+        "For You holds the safe word's can't-hear-Slack row, so a Slack reader ran outside its unit"
+    )
+
+
 def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     """Now leads with what waits on Joel, and Return goes to where it's done."""
     machine = desktop.machine
