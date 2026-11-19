@@ -660,8 +660,10 @@ Scope {
                 steps[at - 1] = Object.assign({}, steps[at - 1], {
                     rows: steps[at - 1].rows.map(one => one === was.row ? row : one)
                 });
-            if (!remade(steps, at + 1))
-                return false;
+            // A step left shows itself, and counts as made again.
+            const below = remade(steps, at + 1, null, source);
+            if (below !== "made")
+                return below === "left";
         } else if (category !== null && (steps[last].rows.some(row => row.asker === source)
             || (answer && answer.asker === source))) {
             // A row a condition holds back stays dimmed as it's said again,
@@ -4123,14 +4125,11 @@ Scope {
     // where it was left, which Tab goes back to, the place it leaves taking
     // its turn, so Tab again comes back. A place is what's held, so a step
     // in, out or beside makes the one left the last; what a held step
-    // says of itself changing, as its rows are found, never does. It's
-    // let go as the launcher opens, since the places before were left.
+    // says of itself changing, as its rows are found or a refresh renames
+    // it, never does, as Held.placeOf tells places apart. It's let go as
+    // the launcher opens, since the places before were left.
     property var lastPlace: null
     property var placeHeld: []
-    function placeOf(steps) {
-        return steps.map(step => `${step.row?.key ?? ""}\u0000${step.row?.name ?? ""}`)
-            .join("\u0001");
-    }
     // Called as held changes, before the field is set for the new place,
     // so where the launcher is still says where the place left was left.
     onHeldChanged: {
@@ -4143,10 +4142,17 @@ Scope {
         // few as its own rows need.
         gutterDigits = leastDigits;
         numberDigits = 1;
-        if (open && placeOf(left) !== placeOf(held)) {
+        if (open && Held.placeOf(left) !== Held.placeOf(held)) {
             // A place opening redraws every row, so its foot's room is
             // weighed afresh then, as its rows come.
             footReset();
+            // What y copied flashed where it was, by place, so it's let
+            // go with the place, rather than flashing whatever stands
+            // there in the next, however Joel moved.
+            if (Object.keys(flashing).length > 0) {
+                flash.stop();
+                flashing = {};
+            }
             lastPlace = { held: left, here: here() };
             // A place stepped to afresh goes on the way back, and leaves
             // nothing ahead, as Vim's jump list does.
@@ -4199,7 +4205,7 @@ Scope {
         } finally {
             jumping = false;
         }
-        const moved = placeOf(left.held) !== placeOf(held);
+        const moved = Held.placeOf(left.held) !== Held.placeOf(held);
         jumpsBack = moved ? was.back.concat([left]) : was.back;
         jumpsAhead = moved ? [] : was.ahead;
         tagsBack = was.tags;
@@ -5702,7 +5708,7 @@ Scope {
             rows: Steady.kept(step.rows, members(step.row.category), pairedId)
                 .map(row => heldBack(step.row.category, row))
         }) : step);
-        if (!remade(steps, held.length))
+        if (remade(steps, held.length) !== "made")
             return;
         held = steps;
         reshow(steps.length);
@@ -5722,7 +5728,7 @@ Scope {
         const steps = held.map(step => step.row.category ? Object.assign({}, step, {
             rows: members(step.row.category).map(row => heldBack(step.row.category, row))
         }) : step);
-        if (!remade(steps, held.length))
+        if (remade(steps, held.length) !== "made")
             return;
         held = steps;
         reshow(steps.length, true);
@@ -5785,14 +5791,26 @@ Scope {
         const done = due.map(source => {
             const startedAt = Date.now();
             const started = KeyTimes.now();
-            const shown = refreshNow(source);
+            // One source that throws leaves the rest still refreshed, and
+            // says so, rather than leaving them waiting for a next change.
+            // What it changed before it threw is shown again, so the list
+            // never shows a step it may have left.
+            let shown = false;
+            let threw = false;
+            try {
+                shown = refreshNow(source);
+            } catch (error) {
+                threw = true;
+                console.warn(`launcher: refreshing ${source.settings.name} failed: `
+                    + Held.thrown(error));
+            }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.
             if (spansHeard)
                 feltSpan(`${source.settings.name} changing`, started);
-            return { source, startedAt, shown, tookMs: KeyTimes.now() - started };
+            return { source, startedAt, shown, threw, tookMs: KeyTimes.now() - started };
         });
-        if (done.some(one => one.shown)) {
+        if (done.some(one => one.shown || one.threw)) {
             const reshown = KeyTimes.now();
             reshow(held.length);
             feltSpan("showing again", reshown);
@@ -5809,7 +5827,10 @@ Scope {
                 tookMs: one.tookMs, rows: matches.length, depth: held.length });
         }
         actsRefreshed(done, begun);
-        heldAgreed(due);
+        // A source that threw isn't asked again for what it holds, which
+        // would throw again with nothing to catch it; its holds wait for
+        // its next change.
+        heldAgreed(done.filter(one => !one.threw).map(one => one.source));
         // What it cost sizes how long the next change waits (Pacing.js).
         pace = Pacing.costed(pace, KeyTimes.now() - begun);
         if (wasOpen)
@@ -6076,11 +6097,18 @@ Scope {
         // parts too, so one held in Agents' Spec or Budgets is made again
         // rather than left frozen as it was stepped into (2026-11-18).
         const offered = from < 0 ? [] : listedWhole(source);
-        if (from >= 0 && !heldAgain(steps, Held.own(steps, from, offered, heldWays(source))))
-            return false;
+        // A step left shows itself, so it's shown, and the steps it held
+        // aren't put back over where it went. Counted as shown, it's shown
+        // once more after the step out's own search, for the updates
+        // measure to count it: one search, once a step is left.
+        const itself = from < 0 ? "made"
+            : heldAgain(steps, Held.own(steps, from, offered, heldWays(source)), source);
+        if (itself !== "made")
+            return itself === "left";
         const above = top ? own : offered;
-        if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
-            return false;
+        const below = remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above, source);
+        if (below !== "made")
+            return below === "left";
         held = steps;
         return true;
     }
@@ -6104,31 +6132,64 @@ Scope {
     }
 
     // Held.js's steps made again put back into `steps`, the array each
-    // caller holds; a step Held.js says to leave, one still offered that
-    // now offers nothing, is left as Joel's - would leave it, back to the
-    // step above it. Says whether every step was made again.
-    function heldAgain(steps, made) {
-        made.steps.forEach((step, at) => {
+    // caller holds, and a step Held.js says to leave, one still offered
+    // that now offers nothing, left where Held.leaveTo says: back to the
+    // step above it in one step out, as Joel's - would leave it, never past
+    // a dialog's own collection (canGoUp).
+    // Says, as Held.answer has it, "made" when every step was made again,
+    // for the caller to show; "left"
+    // when steps were left, which shows itself, so the caller puts nothing
+    // back; and "kept" when a step couldn't be made again, so the caller
+    // changes nothing. `source` is what changed, for the journal.
+    function heldAgain(steps, made, source) {
+        const outermost = steps[0]?.row.from?.collection?.outermost === true;
+        const leaving = Held.leaveTo(made, { outermost });
+        leaving.steps.forEach((step, at) => {
             steps[at] = step;
         });
-        if (made.leave < 0)
-            return made.all;
-        // A dialog's own collection is never left, for the home it never
-        // showed (canGoUp).
-        const outermost = steps[0]?.row.from?.collection?.outermost === true;
-        const leave = Math.max(made.leave, outermost ? 1 : 0);
-        held = steps;
-        const before = held.length;
-        while (held.length > leave)
-            back();
+        const answered = Held.answer(made);
+        if (answered !== "left")
+            return answered;
+        const forgetting = Held.forgets(made, leaving, held, steps);
+        // Left by itself, it's no place Joel stepped to, so it goes on
+        // neither the way back nor as the place used last, even where the
+        // row it's left from was renamed as it was remade; and every place
+        // through it, and where it lands, goes from every history, as
+        // Held.forgets and Held.afterLeave say, even where the leave throws
+        // partway. Both are read first, as onHeldChanged moves lastPlace.
+        const last = lastPlace;
+        jumping = true;
+        const before = steps.length;
+        try {
+            held = steps;
+            back(false, held.length - leaving.keep);
+        } finally {
+            jumping = false;
+            forgetLeft(forgetting, last);
+        }
         // Said in the journal, so a step that closes under Joel by itself
-        // can be told from one his key left: how many, as back() may leave
-        // two at once, and never the row's name, which a source served.
-        const left = before - held.length;
-        if (left > 0)
-            console.info(`launcher: left ${left} ${left === 1 ? "step" : "steps"} by `
-                + "itself, as what it held offers nothing now");
-        return false;
+        // can be told from one his key left: what changed, and from how
+        // deep to how deep, never the row's name, which a source served.
+        if (held.length < before)
+            console.info(`launcher: left ${before - held.length} of ${before} steps to `
+                + `${held.length} by itself, as what ${source?.settings.name ?? "a place"} `
+                + "offered there offers nothing now");
+        return "left";
+    }
+
+    // Each history made to forget what `forgetting` (Held.forgets's answer)
+    // says, as Held.afterLeave does, from the place used last as it was
+    // before the leave, `last`. Places are told apart by their rows' keys,
+    // Held.placeOf, so one recorded under a name a refresh changed since
+    // goes too.
+    function forgetLeft(forgetting, last) {
+        const after = Held.afterLeave(
+            { jumps: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last },
+            forgetting, Held.placeOf);
+        jumpsBack = after.jumps;
+        jumpsAhead = after.ahead;
+        tagsBack = after.tags;
+        lastPlace = after.last;
     }
 
     // Each step from `from` on made again from the rows the one above it
@@ -6137,11 +6198,11 @@ Scope {
     // for their verbs and then their parts, anything else for its targets.
     // A step entered from what was typed is made again from its own row,
     // since what was typed found it, not the rows above, as a place the
-    // picker holds at home is found from any folder. Says whether every
-    // step was still there.
-    function remade(steps, from, above) {
+    // picker holds at home is found from any folder. Answers as
+    // heldAgain does, with one of Held.answer's three answers.
+    function remade(steps, from, above, source) {
         const rows = above ?? (from > 0 && from <= steps.length ? steps[from - 1].rows : []);
-        return heldAgain(steps, Held.remade(steps, from, rows, heldWays()));
+        return heldAgain(steps, Held.remade(steps, from, rows, heldWays()), source);
     }
 
     // What's shown searched again under what's held now, `count` steps,
@@ -6321,12 +6382,15 @@ Scope {
     // `pressedOut` when - asked for it, the one way out that's timed: a
     // daemon's answer, Escape out of an ask and :q go back too, and were
     // no key of Joel's or are timed as their own.
-    function back(pressedOut) {
+    // `depth`, how many steps it leaves at once, is for a step that closes
+    // by itself, which leaves all it held in one step out (heldAgain).
+    function back(pressedOut, depth) {
         if (held.length === 0)
             return;
         // A thing landed in from a search goes back to the search, past the
         // collection it was found in.
-        const steps = held[held.length - 1].through && held.length > 1 ? 2 : 1;
+        const steps = depth > 0 ? Math.min(depth, held.length)
+            : held[held.length - 1].through && held.length > 1 ? 2 : 1;
         traces.began("back", { from: held[held.length - 1].key ?? "", depth: held.length });
         // Timed to its frame as a step in is, named by the arrow and the
         // place left: Joel's - out of Agents and For You took 61 to 67 ms

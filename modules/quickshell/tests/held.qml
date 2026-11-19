@@ -271,10 +271,245 @@ QtObject {
         const ownSpent = Held.own(spent, 1, [], ways);
         check("a source's own row gone, offering nothing, keeps its rows, each gone",
             `${ownSpent.leave} ${ownSpent.all} ${keptWith.join(" ")}`, "-1 true s1:0");
+        // A step found by what was typed whose row is still offered, but
+        // offers nothing now, is left as any other is.
+        const typedEnded = Held.remade(typed, 1, [row("s1", "ended")], ways);
+        check("a typed step whose row is offered but offers nothing is left",
+            `${typedEnded.leave} ${typedEnded.all}`, "1 false");
+
+        leaving(check, steps, nothing, below);
 
         for (const failure of failures) {
             console.warn(`FAIL ${failure}`);
         }
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // Where a step that offers nothing now leaves to, as `nothing` and
+    // `below` made Agents' steps again, from `steps` and a step deeper,
+    // each told to `check`.
+    function leaving(check, steps, nothing, below) {
+        const how = outermost => ({ outermost });
+        const said = to => `${to.keep}`;
+
+        check("nothing to leave keeps every step",
+            said(Held.leaveTo({ steps: steps, leave: -1, all: true }, how(false))), "-1");
+        check("a step offering nothing is left, back to the step above it",
+            said(Held.leaveTo(nothing, how(false))), "1");
+        check("and a step below one that does, back to it",
+            said(Held.leaveTo(below, how(false))), "2");
+        const spentTop = { steps: steps, leave: 0, all: false };
+        check("a spent first step leaves to home", said(Held.leaveTo(spentTop, how(false))),
+            "0");
+        check("steps it doesn't leave are as made, and handed back as made",
+            read(Held.leaveTo(below, how(false)).steps), read(below.steps));
+        // A thing landed in from a search, `through`, is left back to the
+        // search, past the collection it was found in, as Joel's - leaves it,
+        // but never past a dialog's own collection, the outermost.
+        const through = { steps: [steps[0], Object.assign({}, steps[1], { through: true })],
+            leave: 1, all: false };
+        check("a spent thing landed in from a search leaves past its collection",
+            said(Held.leaveTo(through, how(false))), "0");
+        check("but never past the outermost", said(Held.leaveTo(through, how(true))), "1");
+        // The outermost is itself never left: a dialog's collection is a
+        // place's own step, with no key, which own keeps with its rows
+        // each gone, its row as entered, rather than leaving.
+        const placeStep = { row: { key: "", says: "Chooser" }, rows: [row("f", "f")] };
+        keptWith = [];
+        const spentPlace = Held.own([placeStep], 0, [], ways);
+        check("a place's own step offering nothing is kept, its rows each gone",
+            `${spentPlace.leave} ${spentPlace.all} ${keptWith.join(" ")} `
+                + read(spentPlace.steps), "-1 true :0 =Chooser[]");
+        const left = Held.leaveTo(nothing, how(false));
+
+        // What every history forgets: the places through the step that
+        // offers nothing, as they read before it was made again and after,
+        // and where Joel lands, read both ways, each as its depths.
+        const before = steps.map(step => Object.assign({}, step, {
+            row: Object.assign({}, step.row, { says: `${step.row.says} before` })
+        }));
+        const forgets = (made, how) => {
+            const at = Held.forgets(made, Held.leaveTo(made, how), before, made.steps);
+            return at === null ? "none" : [at.landed, at.left].map(both =>
+                both.map(one => one.length).join(",")).join(" ");
+        };
+        check("nothing offering nothing forgets nothing",
+            forgets({ steps: steps, leave: -1, all: true }, how(false)), "none");
+        check("a step left forgets the places through it, landing above it",
+            forgets(nothing, how(false)), "1,1 2,2");
+        check("a spent first step forgets the places through it, landing at home",
+            forgets(spentTop, how(false)), "0,0 1,1");
+        check("a spent thing found by a search forgets only the places through it",
+            forgets(through, how(false)), "0,0 2,2");
+        check("where the outermost keeps its collection too", forgets(through, how(true)),
+            "1,1 2,2");
+        const spent = Held.forgets(nothing, left, before, nothing.steps);
+        check("each read as it was before it was made again and as it is now",
+            [spent.left[0], spent.left[1], spent.landed[0], spent.landed[1]]
+                .map(one => one[one.length - 1].row.says).join(" | "),
+            [before[1], nothing.steps[1], before[0], nothing.steps[0]]
+                .map(step => step.row.says).join(" | "));
+
+        // What the launcher's remaking answers its caller.
+        check("every step made again is made",
+            Held.answer({ steps, leave: -1, all: true }), "made");
+        check("a step kept as it was is kept",
+            Held.answer({ steps, leave: -1, all: false }), "kept");
+        check("a step left is left", Held.answer(nothing), "left");
+        check("as is one left past the outermost's search", Held.answer(through), "left");
+
+        afterLeaving(check);
+        thrownAs(check);
+    }
+
+    // A throw caught as a source refreshes, as the journal says it, each
+    // told to `check`: never its message, and always with a kind ending
+    // "Error:", as the VM tests' error nets look for.
+    function thrownAs(check) {
+        const shaped = (kind, stack) => Object.assign(Object.create(kind.prototype), {
+            message: "joel's secret", stack
+        });
+        check("an Error says its kind and frame, never its message",
+            Held.thrown(shaped(TypeError, "refreshNow@file:///Launcher.qml:5991\nwalk@x:1")),
+            "TypeError: thrown at refreshNow@file:///Launcher.qml:5991");
+        check("a frame with no function still says where",
+            Held.thrown(shaped(Error, "@file:///Launcher.qml:12:4")),
+            "Error: thrown at @file:///Launcher.qml:12:4");
+        check("a first line shaped as another engine's message is left out",
+            Held.thrown(shaped(Error, "Error: could not reach joel@box:22\nf@x:1")),
+            "Error: thrown");
+        check("as is a stack with none", Held.thrown(shaped(RangeError, undefined)),
+            "RangeError: thrown");
+        const named = shaped(Error, "f@x:1");
+        named.name = "joel's secret";
+        check("an Error named otherwise is said as Error", Held.thrown(named),
+            "Error: thrown at f@x:1");
+        check("a thrown string says its type, never itself", Held.thrown("joel's secret"),
+            "Error: string thrown");
+        check("as does a thrown object", Held.thrown({ message: "joel's secret" }),
+            "Error: object thrown");
+        check("and nothing thrown", Held.thrown(undefined), "Error: undefined thrown");
+    }
+
+    // What Ctrl+O, Ctrl+I, Ctrl+T and Tab keep once a step is left by
+    // itself, each told to `check`. Places read as their steps joined by
+    // "/", as the launcher's placeOf joins them.
+    function afterLeaving(check) {
+        // Where Joel stepped in from is now where he is, so the way back's
+        // last places there go, as the place used last does there: each
+        // would go nowhere, and show it as it was. Every place through the
+        // step left goes too, wherever it is, since each would show that
+        // spent step's rows as live. Where he is, and the step left, read
+        // as they did before the leave and as they do now, since a row is
+        // remade as offered now, and may be renamed so.
+        // Home, which holds no steps, reads as "" and is drawn as "~".
+        const steps = place => place === "" ? [] : place.split("/");
+        const held = places => places.map(place => ({ held: steps(place) }));
+        const at = one => one.held.length === 0 ? "~" : one.held.join("/");
+        const after = (went, landed, left) => {
+            const now = Held.afterLeave({
+                jumps: held(went.jumps ?? []),
+                ahead: held(went.ahead ?? []),
+                tags: held(went.tags ?? []),
+                last: went.last === null ? null : held([went.last ?? "elsewhere"])[0]
+            }, { landed: landed.map(steps), left: left.map(steps) }, one => one.join("/"));
+            return [now.jumps, now.ahead, now.tags].map(list => list.map(at).join(" "))
+                .join(" | ") + `; ${now.last === null ? "none" : at(now.last)}`;
+        };
+        check("a way back and a place used last where a leave landed go",
+            after({ jumps: ["q", "agents", "agents"], last: "agents" }, ["agents"],
+                ["agents/s1"]), "q |  | ; none");
+        check("only the last of the way back",
+            after({ jumps: ["agents", "q", "agents"] }, ["agents"], ["agents/s1"]),
+            "agents q |  | ; elsewhere");
+        check("where it landed as it read before it was remade",
+            after({ jumps: ["q", "Agents"] }, ["Agents", "Agents Now"], ["Agents/s1"]),
+            "q |  | ; elsewhere");
+        check("and as it reads now",
+            after({ jumps: ["q", "Agents Now"] }, ["Agents", "Agents Now"],
+                ["Agents/s1"]), "q |  | ; elsewhere");
+        check("every place through the step left goes, the deepest last included",
+            after({ jumps: ["q", "p", "p/s", "p/s/t"], last: "p/s/t" }, ["p"], ["p/s"]),
+            "q |  | ; none");
+        check("wherever it is on the way back",
+            after({ jumps: ["p/s", "q", "p"] }, ["p"], ["p/s"]), "q |  | ; elsewhere");
+        check("through the step left as it read now",
+            after({ jumps: ["q", "p/S Now/t"] }, ["p"], ["p/s", "p/S Now"]),
+            "q |  | ; elsewhere");
+        check("a place through a step beside it stays",
+            after({ jumps: ["q", "agents/s2"], last: "agents/s2" }, ["agents"],
+                ["agents/s1"]), "q agents/s2 |  | ; agents/s2");
+        check("Ctrl+I's places ahead and Ctrl+T's tags go alike",
+            after({ ahead: ["q", "agents/s1/look", "agents"], tags: ["agents/s1", "agents"] },
+                ["agents"], ["agents/s1"]), " | q | ; elsewhere");
+        check("a spent first step forgets every place through it",
+            after({ jumps: ["O/S2", "q", "O/S1", "O"], last: "O/S2" }, [""], ["O"]),
+            "q |  | ; none");
+        // Home is never a place a leave strands: going back to it brings
+        // back what was typed there, which may be another search.
+        check("a leave to home keeps home on the way back and as the place used last",
+            after({ jumps: ["", "q", "agents", ""], last: "" }, [""], ["agents"]),
+            "~ q ~ |  | ; ~");
+        check("no place used last, as the launcher opens, is none still",
+            after({ jumps: ["q", "agents"], last: null }, ["agents"], ["agents/s1"]),
+            "q |  | ; none");
+        check("a leave elsewhere leaves each as it was",
+            after({ jumps: ["q", "agents"], last: "agents" }, ["quests"], ["quests/x"]),
+            "q agents |  | ; agents");
+
+        // Held.placeOf, as the launcher tells places apart for this: a row
+        // by its key, as a row remade is matched, so a place recorded under
+        // a name its row had before an earlier remaking is the same place.
+        const at2 = (key, name) => ({ row: { key, name } });
+        const agents = at2("agents", "Agents");
+        const was = [[agents, at2("s1", "s1 working")], [agents, at2("s1", "s1 waiting")],
+            [agents, at2("s2", "s2 working")]].map(one => ({ held: one }));
+        const now = Held.afterLeave({ jumps: was, ahead: [], tags: [], last: was[1] },
+            { landed: [[agents]], left: [[agents, at2("s1", "s1 idle")]] }, Held.placeOf);
+        check("a place through the step left under an older name goes",
+            `${now.jumps.map(one => one.held[1].row.name).join(" ")}; ${now.last}`,
+            "s2 working; null");
+        const same = (one, other) =>
+            Held.placeOf([{ row: one }]) === Held.placeOf([{ row: other }]);
+        check("a row with a key is told by it alone, whatever its name",
+            [same({ key: "k", name: "a" }, { key: "k", name: "b" }),
+                same({ key: "k", name: "a" }, { key: "j", name: "a" }),
+                same({ key: "k", name: "a" }, { name: "k" })].join(" "), "true false false");
+        // Every answer is the same "answer", so one with no key is told by
+        // what it is and its name together.
+        check("a row with no key is told by what it is and its name",
+            [same({ name: "a" }, { name: "b" }), same({ name: "a" }, { key: "", name: "a" }),
+                same({ is: "answer", name: "4" }, { is: "answer", name: "5" }),
+                same({ is: "answer", name: "4" }, { is: "answer", name: "4" }),
+                same({ is: "answer", name: "4" }, { name: "4" })].join(" "),
+            "false true false true false");
+        // An answer's name is the figure it says now, which every re-answer
+        // changes (again()), so it's told by the words asked (its chip), as
+        // again() keeps them: CPU's figure moving is no step to a new place,
+        // and y's flash in it stays.
+        const answer = (chip, name) => ({ is: "answer", chip, name });
+        check("an answer is told by the words asked, whatever it says now",
+            [same(answer("cpu", "4%"), answer("cpu", "5%")),
+                same(answer("cpu", "4"), answer("mem", "4")),
+                same(answer("cpu", "4"), { chip: "cpu", name: "4" })].join(" "),
+            "true false false");
+
+        // Held.forgets into Held.afterLeave, over steps as the launcher
+        // holds them: a place's own step, with no key, renamed as it was
+        // made again, so each history's places are found under each name.
+        const step = (key, name) => ({ row: { key, name }, rows: [] });
+        const old = [step("", "Agents"), step("s1", "s1 working")];
+        const anew = [step("", "Agents Now"), step("s1", "s1 idle")];
+        const made = { steps: anew, leave: 1, all: false };
+        const forgetting = Held.forgets(made, Held.leaveTo(made, { outermost: false }), old,
+            anew);
+        const places = [[old[0], old[1]], [anew[0], anew[1]], [old[0], step("s2", "s2")],
+            [anew[0]]].map(one => ({ held: one }));
+        const across = Held.afterLeave(
+            { jumps: places, ahead: [], tags: [], last: { held: [old[0]] } },
+            forgetting, Held.placeOf);
+        check("each history forgets the step left and where it landed, named either way",
+            `${across.jumps.map(one => one.held.map(at => at.row.name).join("/")).join(" ")}; `
+                + `${across.last}`, "Agents/s2; null");
     }
 }
