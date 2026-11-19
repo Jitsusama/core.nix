@@ -37,6 +37,7 @@
 //! terminal kit's shape (`help()`).
 
 mod camera;
+mod count;
 mod holders;
 mod record;
 mod v4l2;
