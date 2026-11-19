@@ -155,8 +155,8 @@ in
         && unit.Service.TimeoutStopSec or null == "150s"
         # Twenty minutes to start, unless the machine gives longer.
         && unit.Service.TimeoutStartSec or null == "20min"
-        # Its core is kept until 20 November (host.nix says why).
-        && unit.Service.LimitCORE or null == "infinity"
+        # It keeps no core (host.nix says why).
+        && unit.Service.LimitCORE or null == "0"
         # Never given the TPM agent's own variable.
         && lib.elem "SSH_TPM_AUTH_SOCK" (lib.toList (unit.Service.UnsetEnvironment or [ ]))
         && unit.Unit.StartLimitIntervalSec or null == 600

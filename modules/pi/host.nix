@@ -220,31 +220,20 @@ let
         # minutes; the watchdog aborted it at 120 s and systemd waited 150 s
         # more before the kill, since an abort's timeout is the stop's
         # (TimeoutStopSec below) unless set apart. A node without the listener
-        # still aborts at once, and its core (LimitCORE below) is cut off by
-        # the kill 10 s on, which loses little: the host's hold watcher has
-        # written what held the loop by then. A crash's own core has longer,
-        # since the watchdog aborts only two minutes after the host's last
-        # word, at least a minute after it crashed: at 16 November's 70 MB/s
-        # that holds a core of about 5 GB, and a larger one is cut off, with
-        # no stack trace.
+        # still aborts at once, and is killed 10 s on, which loses little:
+        # the host's hold watcher has written what held the loop by then.
         TimeoutAbortSec = "10s";
-        # A host keeps its core, for now. At 07:41 on 18 November the
-        # background host died of a segmentation fault in native code, with
-        # its heap at a third of its limit, and kept no core, since this was
-        # 0; nothing else says where native code faults. systemd-coredump
-        # writes the host's stack trace to the journal from the core, which
-        # is under its 32 GB ProcessSizeMax, and keeps the core itself where
-        # only root reads it (modules/coredump), until the coredump module's
-        # timer removes it six hours on, since it holds every hosted
-        # conversation's keys and tokens. Writing it takes time: on 16
-        # November an out-of-memory abort streamed 12.5 GB for three minutes
-        # before the watchdog's kill, so a crash restarts the host that much
-        # later. The commands a host runs inherit the limit, as any command a
-        # plain pi in a terminal runs does, so their cores are kept too, up
-        # to the coredump module's MaxUse; the coredump module keeps them all
-        # in a folder only root enters. Back to 0 once the fault is found, or
-        # by 18:00 on Friday 20 November, whichever comes first.
-        LimitCORE = "infinity";
+        # A host keeps no core. One was kept from 18 November to find a
+        # segmentation fault in native code, but a host's core can't be
+        # written in the time systemd-coredump has: at 22:07 that day the
+        # background host faulted, and its dump wrote 18.4 GB for the five
+        # minutes coredump runs before its limit ended it, kept nothing and
+        # logged no stack trace. The dying host held its restart until the
+        # watchdog's kill two minutes on. A core costs a crash that much
+        # outage and gives nothing back; the host's own journal lines, and
+        # the reason a failed keyring call gives, say what a crash was. The
+        # commands a host runs inherit the limit, so they keep none either.
+        LimitCORE = "0";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
         # refuse again, so it waits for a fix rather than retrying forever.
