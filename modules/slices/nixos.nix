@@ -585,20 +585,23 @@ in
       # he works leaves the performance cores, which reach 4.7 GHz, the
       # budget; whether that buys his threads their clock is what this unit
       # is for measuring. Starting efficient-cores-held@1600 holds each
-      # efficient core at most 1600 MHz, and stopping it gives each back the
-      # ceiling it had. One hold stands at a time: a second at another speed
-      # is refused (efficient-cores.sh says how). A hold that fails partway
-      # is still freed, since the stop runs after a failed start too. One
-      # that's never stopped ends itself after an hour, so an agent that
-      # dies mid-measurement leaves no cores held. Nothing starts it at
-      # boot. Administrators may start and stop it (efficient-cores.rules).
+      # efficient core at most 1600 MHz, and stopping it frees each to its
+      # highest clock. One hold stands at a time: a second at another speed
+      # is refused (efficient-cores.sh says how), and whoever stops a hold
+      # frees it for all who started it. A hold that fails partway is still
+      # freed, since the stop runs after a failed start too. One that's
+      # never stopped ends itself after an hour, as its sleep ends, so an
+      # agent that dies mid-measurement leaves no cores held and no unit
+      # failed. A refused or failed hold is let go rather than left failed,
+      # since the journal keeps what it said. Nothing starts it at boot.
+      # Administrators may start and stop it (efficient-cores.rules).
       "efficient-cores-held@" = {
         description = "Holds the efficient cores' clock at most %i MHz";
+        unitConfig.CollectMode = "inactive-or-failed";
         serviceConfig = {
           ExecStartPre = "${lib.getExe efficientCores} hold %i";
-          ExecStart = "${lib.getExe' pkgs.coreutils "sleep"} infinity";
+          ExecStart = "${lib.getExe' pkgs.coreutils "sleep"} 1h";
           ExecStopPost = "${lib.getExe efficientCores} free %i";
-          RuntimeMaxSec = "1h";
           # Every instance shares the one folder of notes, so one ending
           # mustn't take it from the hold another stands on.
           RuntimeDirectory = "efficient-cores";

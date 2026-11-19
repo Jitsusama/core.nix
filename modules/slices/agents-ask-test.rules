@@ -110,10 +110,12 @@ expect("holding the efficient cores", held("start", hold), "terminal", "yes");
 expect("killing the efficient cores' hold", held("kill", hold), "command", "no");
 expect("restarting the efficient cores' hold", held("restart", hold), "command", "no");
 expect("a hold at no speed", held("start", "efficient-cores-held@0.service"), "command", "no");
-expect("a hold at the lowest speed", held("start", "efficient-cores-held@400.service"),
-  "command", "yes");
-expect("a hold at the highest speed", held("stop", "efficient-cores-held@5000.service"),
-  "command", "yes");
+["start", "stop"].forEach(function (verb) {
+  expect(verb + " at the lowest speed", held(verb, "efficient-cores-held@400.service"),
+    "command", "yes");
+  expect(verb + " at the highest speed", held(verb, "efficient-cores-held@5000.service"),
+    "command", "yes");
+});
 expect("a hold below the lowest speed", held("start", "efficient-cores-held@399.service"),
   "command", "no");
 expect("a hold above the highest speed", held("start", "efficient-cores-held@5001.service"),

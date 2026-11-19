@@ -46,8 +46,8 @@ exits() {
 # Two performance cores, then three efficient ones, the last two of which
 # reach less, as the laptop's low-power ones do, and a performance core
 # between them, so the list's ranges are read rather than assumed. The
-# first efficient core boots below its highest clock, as another writer
-# may have set it, so giving back its ceiling differs from freeing it.
+# first efficient core boots below its highest clock, as a thermal limit
+# reads, so freeing it to its highest differs from leaving it as it was.
 # The second can't run below 800 MHz, so the lowest speed asked for shows
 # a core held at its own lowest.
 core 0 400000 4800000 4800000
@@ -58,7 +58,7 @@ core 4 400000 4700000 4700000
 core 5 400000 3300000 3300000
 mkdir -p "$sys/devices/cpu_atom"
 echo "2-3,5" >"$sys/devices/cpu_atom/cpus"
-boot="4800000 4700000 3000000 3300000 4700000 3300000"
+free="4800000 4700000 3700000 3300000 4700000 3300000"
 
 exits 0 hold 1600
 ceilings "4800000 4700000 1600000 1600000 4700000 1600000"
@@ -70,9 +70,9 @@ ceilings "4800000 4700000 1600000 1600000 4700000 1600000"
 exits 0 free 2000
 ceilings "4800000 4700000 1600000 1600000 4700000 1600000"
 exits 0 free 1600
-ceilings "${boot}"
+ceilings "${free}"
 exits 0 free 1600
-ceilings "${boot}"
+ceilings "${free}"
 
 # Below a core's lowest clock it's held at its lowest, above its highest at
 # its highest, so no ceiling is one the kernel would refuse.
@@ -82,16 +82,30 @@ exits 0 free
 exits 0 hold 5000
 ceilings "4800000 4700000 3700000 3300000 4700000 3300000"
 exits 0 free
-ceilings "${boot}"
+ceilings "${free}"
 
-# A hold the kernel refuses partway fails, and its stop still gives back
-# every ceiling it changed.
+# A hold the kernel refuses partway fails, and its stop still frees every
+# ceiling it changed.
 chmod a-w "$sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq"
 exits 1 hold 1600
 ceilings "4800000 4700000 1600000 1600000 4700000 3300000"
 chmod u+w "$sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq"
 exits 0 free 1600
-ceilings "${boot}"
+ceilings "${free}"
+
+# A free the kernel refuses partway fails and keeps the hold's note, so
+# another speed is still refused, and asking again frees the rest.
+exits 0 hold 1600
+chmod a-w "$sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq"
+exits 1 free 1600
+exits 75 hold 2000
+chmod u+w "$sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq"
+exits 0 free 1600
+ceilings "${free}"
+exits 0 hold 2000
+ceilings "4800000 4700000 2000000 2000000 4700000 2000000"
+exits 0 free 2000
+ceilings "${free}"
 
 exits 0 --help
 exits 64
@@ -108,10 +122,10 @@ exits 64 hold 1600 more
 exits 64 free 16a
 exits 64 free 1600 more
 exits 64 warm
-ceilings "${boot}"
+ceilings "${free}"
 
 # A processor with no efficient cores holds nothing and fails, so a unit
 # never reads as holding what it couldn't.
 rm -r "$sys/devices/cpu_atom"
 exits 69 hold 1600
-ceilings "${boot}"
+ceilings "${free}"

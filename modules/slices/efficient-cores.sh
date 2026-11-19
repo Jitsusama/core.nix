@@ -1,16 +1,27 @@
 # shellcheck shell=bash
-# Holds the efficient cores' clock ceiling at a given speed, or gives each
-# back the ceiling it had before. The processor shares one power budget
-# among its cores, so with every core busy each runs near the same clock;
-# held lower, the efficient ones leave the performance cores the budget
+# Holds the efficient cores' clock ceiling at a given speed, or frees each
+# to its highest clock. The processor shares one power budget among its
+# cores, so with every core busy each runs near the same clock; held
+# lower, the efficient ones leave the performance cores the budget
 # (nixos.nix says why). Writing a ceiling needs root, so
-# efficient-cores-held@.service runs it. One hold stands at a time: it
-# writes down its speed and each core's ceiling before it holds one, so a
-# second hold is refused, a hold that failed partway is freed in full, and
-# freeing gives back whatever ceiling another writer had set. Its help and
-# failures take the shape every command of ours does (docs/commands.md),
-# by hand. EFFICIENT_CORES_SYSFS puts sysfs under another root and
-# EFFICIENT_CORES_RUN its notes elsewhere, for the test alone.
+# efficient-cores-held@.service runs it.
+#
+# One hold stands at a time: it writes down its speed before it holds,
+# under a lock, so a second hold at another speed is refused even when
+# both start together, and a hold that failed partway is freed in full.
+# The note goes only once every core is freed, so a free the kernel
+# refused partway can be asked again.
+#
+# Freeing writes each core's highest clock rather than the ceiling read
+# before the hold, because the kernel reads back the lowest of every
+# limit on a core, a thermal one among them, and writing that back would
+# keep it as ours once it lifted. The kernel keeps each other limit on
+# its own, so freeing ours leaves theirs standing.
+#
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand. EFFICIENT_CORES_SYSFS puts sysfs under
+# another root and EFFICIENT_CORES_RUN its notes elsewhere, for the test
+# alone.
 set -euo pipefail
 sys=${EFFICIENT_CORES_SYSFS:-}/sys
 run=${EFFICIENT_CORES_RUN:-/run/efficient-cores}
@@ -47,6 +58,14 @@ efficient() {
 
 cpu=$sys/devices/system/cpu
 
+# Holds and frees run one at a time, since systemd starts and stops each
+# speed's unit on its own.
+lock() {
+  mkdir -p "${run}"
+  exec 9>"${run}/lock"
+  flock 9
+}
+
 hold() {
   local mhz=$1 cores n low high kHz said=""
   if [[ ! -r "${atom}" ]]; then
@@ -59,14 +78,10 @@ hold() {
     other=$(<"${run}/held")
     if [[ "${other}" != "${mhz}" ]]; then
       printf '%s\n' "efficient-cores: already held at ${other} MHz" \
-        "  stop efficient-cores-held@${other} first" >&2
+        "  stop efficient-cores-held@${other} first, or start and stop it if it's stopped" >&2
       exit 75
     fi
   else
-    mkdir -p "${run}"
-    while read -r n; do
-      cp "${cpu}/cpu${n}/cpufreq/scaling_max_freq" "${run}/cpu${n}"
-    done <<<"${cores}"
     echo "${mhz}" >"${run}/held"
   fi
   while read -r n; do
@@ -84,11 +99,11 @@ hold() {
   echo "efficient-cores: held at most, in MHz:${said}"
 }
 
-# free [MHZ]: give each efficient core back the ceiling it had before the
-# hold, or its highest clock where none was written down. Given a speed,
-# as a unit's stop gives its own, it leaves a hold at another speed alone.
+# free [MHZ]: free each efficient core to its highest clock. Given a
+# speed, as a unit's stop gives its own, it leaves a hold at another speed
+# alone.
 free() {
-  local mhz=${1:-} cores n saved
+  local mhz=${1:-} cores n
   if [[ ! -e "${run}/held" ]]; then
     echo "efficient-cores: nothing is held"
     return
@@ -100,16 +115,11 @@ free() {
   if [[ -r "${atom}" ]]; then
     cores=$(efficient)
     while read -r n; do
-      saved=${run}/cpu${n}
-      if [[ ! -r "${saved}" ]]; then
-        saved=${cpu}/cpu${n}/cpufreq/cpuinfo_max_freq
-      fi
-      cp "${saved}" "${cpu}/cpu${n}/cpufreq/scaling_max_freq"
-      rm -f "${run}/cpu${n}"
+      cp "${cpu}/cpu${n}/cpufreq/cpuinfo_max_freq" "${cpu}/cpu${n}/cpufreq/scaling_max_freq"
     done <<<"${cores}"
   fi
   rm "${run}/held"
-  echo "efficient-cores: each efficient core has its own ceiling back"
+  echo "efficient-cores: each efficient core is free to its highest clock"
 }
 
 case "${1-}" in
@@ -120,7 +130,7 @@ efficient-cores  holds or frees the efficient cores' clock
 EXAMPLES
   efficient-cores hold MHZ  hold each at most MHZ, from 400
                             to 5000, within its own range
-  efficient-cores free      give each its own ceiling back
+  efficient-cores free      free each to its highest clock
   efficient-cores free MHZ  the same, if the hold is MHZ's
 
 EXIT
@@ -134,11 +144,13 @@ EOF
 hold)
   [[ $# -eq 2 ]] || refuse "hold takes one speed, in MHz"
   speed "$2"
+  lock
   hold "$2"
   ;;
 free)
   [[ $# -le 2 ]] || refuse "free takes at most a speed"
   [[ $# -eq 1 ]] || speed "$2"
+  lock
   free "${2-}"
   ;;
 *)
