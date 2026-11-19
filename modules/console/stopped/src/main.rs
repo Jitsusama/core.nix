@@ -22,23 +22,20 @@
 //! whatever `TERM` says.
 //!
 //! The shell waits for it, and systemd gives the shell's start only so
-//! long, so every command it asks is held to a deadline (`Budget`): one
-//! that stalls, as a journal on a failing disk can, is killed and not
+//! long, so every command it asks is held to a deadline (asking.rs): one
+//! that stalls, as a journal on a failing disk can, is stopped and not
 //! asked again, and the summary says what the others told it.
 
+mod asking;
 mod summary;
 
-use std::cell::RefCell;
-use std::ffi::OsString;
 use std::fs;
-use std::io::Read;
-use std::process::{Command, ExitCode, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::ExitCode;
 
 use terminal_kit::flags::Format;
 use terminal_kit::{Context, Exit, Failure, Help, Ink, Pen, ink};
 
+use asking::Budget;
 use summary::Failed;
 
 fn help() -> Help {
@@ -73,11 +70,19 @@ fn run(context: &Context) -> Result<(), Failure> {
     }
     let budget = Budget::from_now();
     let names = failed(&budget)?;
-    let units: Vec<Failed> = names
+    let shown = &names[..names.len().min(summary::SHOWN)];
+    // Every unit's description is asked before any journal is, so a slow
+    // journal that spends the budget still leaves each unit named as
+    // systemd describes it.
+    let abouts: Vec<String> = shown
         .iter()
-        .take(summary::SHOWN)
-        .map(|name| Failed {
-            about: described(&budget, name).unwrap_or_else(|| name.clone()),
+        .map(|name| described(&budget, name).unwrap_or_else(|| name.clone()))
+        .collect();
+    let units: Vec<Failed> = shown
+        .iter()
+        .zip(abouts)
+        .map(|(name, about)| Failed {
+            about,
             said: last(&budget, name),
             name: name.clone(),
         })
@@ -115,131 +120,16 @@ fn is_a_console(path: &str) -> bool {
             .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// How long the summary may take, and each command it asks. systemd
-/// gives the shell's start, this included, ninety seconds, since
-/// emergency.service sets no time of its own, and Plymouth's leaving
-/// comes first, so the summary takes a small share. Each command has a
-/// share of its own, so one that stalls leaves the rest their time, and a
-/// program that stalled once isn't asked again: a journal that stalls on
-/// one unit stalls on the next.
-struct Budget {
-    by: Instant,
-    stalled: RefCell<Vec<OsString>>,
-}
-
-impl Budget {
-    const WHOLE: Duration = Duration::from_secs(10);
-    const EACH: Duration = Duration::from_secs(2);
-
-    fn from_now() -> Self {
-        Budget {
-            by: Instant::now() + Self::WHOLE,
-            stalled: RefCell::default(),
-        }
-    }
-
-    /// What a command printed and how it ended, if it ends in its share
-    /// of the time left, or why not.
-    fn ask(&self, command: &mut Command) -> Result<Output, String> {
-        let program = command.get_program().to_owned();
-        if self.stalled.borrow().contains(&program) {
-            return Err(format!(
-                "{} didn't answer before, so it wasn't asked again",
-                program.to_string_lossy()
-            ));
-        }
-        answered(command, self.by.min(Instant::now() + Self::EACH)).map_err(|unanswered| {
-            if unanswered.late {
-                self.stalled.borrow_mut().push(program);
-            }
-            unanswered.why
-        })
-    }
-}
-
-/// Why a command gave no answer, and whether that was for want of time.
-#[derive(Debug)]
-struct Unanswered {
-    why: String,
-    late: bool,
-}
-
-/// What a command printed and how it ended, if it ends and closes what it
-/// prints to by `by`; past that it's killed. What it prints is read as it
-/// prints it, so a full pipe can't hold it, and the time covers the reads
-/// too, since a process it leaves behind can hold its pipe past its end.
-fn answered(command: &mut Command, by: Instant) -> Result<Output, Unanswered> {
-    let program = command.get_program().to_string_lossy().into_owned();
-    let broken = |why: String| Unanswered { why, late: false };
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| broken(format!("{program} couldn't run: {error}")))?;
-    let readers = [
-        child.stdout.take().map(read_apart),
-        child.stderr.take().map(read_apart),
-    ];
-    let mut status = None;
-    loop {
-        if status.is_none() {
-            status = child
-                .try_wait()
-                .map_err(|error| broken(format!("{program} couldn't be waited on: {error}")))?;
-        }
-        let read = readers
-            .iter()
-            .flatten()
-            .all(thread::JoinHandle::is_finished);
-        if let (Some(status), true) = (status, read) {
-            let [stdout, stderr] = readers.map(|reader| {
-                reader
-                    .and_then(|reader| reader.join().ok())
-                    .unwrap_or_default()
-            });
-            return Ok(Output {
-                status,
-                stdout,
-                stderr,
-            });
-        }
-        if Instant::now() >= by {
-            // Killed and reaped, and its readers left to end on their own:
-            // what holds their pipes may outlive it.
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(Unanswered {
-                why: format!("{program} didn't answer in time, so it was stopped"),
-                late: true,
-            });
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-}
-
-/// A stream read to its end on a thread of its own.
-fn read_apart(mut stream: impl Read + Send + 'static) -> thread::JoinHandle<Vec<u8>> {
-    thread::spawn(move || {
-        let mut read = Vec::new();
-        let _ = stream.read_to_end(&mut read);
-        read
-    })
-}
-
 /// The units that failed, by name, as systemd lists them.
 fn failed(budget: &Budget) -> Result<Vec<String>, Failure> {
     let unavailable = |why: String| {
         Failure::new(Exit::Unavailable, "systemd couldn't say which units failed").because(why)
     };
     let listed = budget
-        .ask(Command::new("systemctl").args([
-            "list-units",
-            "--failed",
-            "--plain",
-            "--no-legend",
-            "--full",
-        ]))
+        .ask(
+            "systemctl",
+            &["list-units", "--failed", "--plain", "--no-legend", "--full"],
+        )
         .map_err(unavailable)?;
     if !listed.status.success() {
         return Err(unavailable(
@@ -256,13 +146,10 @@ fn failed(budget: &Budget) -> Result<Vec<String>, Failure> {
 /// A unit's description, where systemd gives one.
 fn described(budget: &Budget, unit: &str) -> Option<String> {
     let shown = budget
-        .ask(Command::new("systemctl").args([
-            "show",
-            "--property=Description",
-            "--value",
-            "--",
-            unit,
-        ]))
+        .ask(
+            "systemctl",
+            &["show", "--property=Description", "--value", "--", unit],
+        )
         .ok()?;
     let about = String::from_utf8_lossy(&shown.stdout).trim().to_owned();
     (shown.status.success() && !about.is_empty()).then_some(about)
@@ -311,18 +198,12 @@ fn last(budget: &Budget, unit: &str) -> Vec<String> {
 /// `matching`, as they were said; nothing where the journal can't be read
 /// in time.
 fn journal(budget: &Budget, matching: &[&str], lines: usize) -> Vec<String> {
+    let lines = format!("--lines={lines}");
+    let mut args = vec!["--boot"];
+    args.extend(matching);
+    args.extend([lines.as_str(), "--output=cat", "--no-pager", "--quiet"]);
     budget
-        .ask(
-            Command::new("journalctl")
-                .arg("--boot")
-                .args(matching)
-                .args([
-                    &format!("--lines={lines}"),
-                    "--output=cat",
-                    "--no-pager",
-                    "--quiet",
-                ]),
-        )
+        .ask("journalctl", &args)
         .map(|said| {
             String::from_utf8_lossy(&said.stdout)
                 .lines()
@@ -334,94 +215,7 @@ fn journal(budget: &Budget, matching: &[&str], lines: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
-    use std::time::{Duration, Instant};
-
-    use super::{Budget, answered, is_a_console};
-
-    #[test]
-    fn a_command_that_answers_in_time_is_heard() {
-        let said = answered(
-            Command::new("echo").arg("disk gone"),
-            Instant::now() + Duration::from_secs(5),
-        )
-        .expect("echo wasn't heard");
-        assert!(said.status.success(), "echo was heard failing");
-        assert_eq!(
-            said.stdout, b"disk gone\n",
-            "echo was heard saying something else"
-        );
-    }
-
-    #[test]
-    fn a_command_past_its_deadline_is_stopped() {
-        let started = Instant::now();
-        let said = answered(
-            Command::new("sleep").arg("30"),
-            started + Duration::from_millis(200),
-        );
-        assert!(
-            said.as_ref().is_err_and(|unanswered| unanswered.late),
-            "a stalled command wasn't stopped for time: {said:?}"
-        );
-        assert!(
-            started.elapsed() < Duration::from_secs(5),
-            "a stalled command held it {:?}",
-            started.elapsed()
-        );
-    }
-
-    #[test]
-    fn a_process_left_holding_the_pipe_is_out_of_time_too() {
-        let started = Instant::now();
-        let said = answered(
-            Command::new("sh").args(["-c", "sleep 30 & echo started"]),
-            started + Duration::from_millis(200),
-        );
-        assert!(
-            said.as_ref().is_err_and(|unanswered| unanswered.late),
-            "what it left behind was waited on: {said:?}"
-        );
-        assert!(
-            started.elapsed() < Duration::from_secs(5),
-            "what it left behind held it {:?}",
-            started.elapsed()
-        );
-    }
-
-    #[test]
-    fn a_program_that_stalled_isnt_asked_again() {
-        let budget = Budget::from_now();
-        let first = budget.ask(Command::new("sleep").arg("30"));
-        assert!(first.is_err(), "a stalled command was heard: {first:?}");
-        let started = Instant::now();
-        let again = budget.ask(Command::new("sleep").arg("0"));
-        assert!(
-            again
-                .as_ref()
-                .is_err_and(|why| why.contains("wasn't asked again")),
-            "a program that stalled was asked again: {again:?}"
-        );
-        assert!(
-            started.elapsed() < Duration::from_millis(500),
-            "asking again took {:?}",
-            started.elapsed()
-        );
-    }
-
-    #[test]
-    fn a_command_that_cant_run_says_so() {
-        let said = answered(
-            &mut Command::new("/nonexistent/journalctl"),
-            Instant::now() + Duration::from_secs(5),
-        );
-        assert!(
-            said.as_ref().is_err_and(
-                |unanswered| !unanswered.late && unanswered.why.contains("couldn't run")
-            ),
-            "a missing program was heard: {said:?}"
-        );
-    }
+    use super::is_a_console;
 
     #[test]
     fn only_the_console_and_a_virtual_terminal_are_the_console() {

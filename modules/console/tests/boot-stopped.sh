@@ -183,6 +183,9 @@ said
 says "  x  home.mount  Mount /home"
 says "  x  blank.service  A program that drew nothing"
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
+# Under the units only the count of the rest and the way out: a journal
+# that didn't answer gives a unit nothing to show.
+[[ $(grep -c '^     ' "$work/said") == 2 ]] || fails "it showed lines a stalled journal can't give"
 if grep -q -F "wrong fs type" "$work/said"; then
   fails "the journal didn't stall, so this shows nothing"
 fi
