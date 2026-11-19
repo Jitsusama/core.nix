@@ -435,6 +435,13 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/keyboard.py);
 
+  # A gauge of the builder's share of the VM's processors, doing the same
+  # work again and saying its time, which keeps-pace stretches its bars by
+  # (desktop/pace-probe.py).
+  paceProbe = pkgs.writers.writePython3 "pace-probe" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/pace-probe.py);
+
   # A stand-in ErgoDox, plugged in for as long as it runs
   # (desktop/ergodox.py), and the layout its module describes for the
   # shell, from the firmware the board runs.
@@ -555,6 +562,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # area's test moves with it.
         + pkgs.lib.optionalString isLooks ''
           cp ${./desktop/looks_session.py} $out/${python.python.sitePackages}/looks_session.py
+        ''
+        # And what keeps-pace judges by, only there, for the same reason.
+        + pkgs.lib.optionalString (area == "keeps-pace") ''
+          cp ${./desktop/keeps_pace.py} $out/${python.python.sitePackages}/keeps_pace.py
         ''
       )
     ))
@@ -1527,10 +1538,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           }
           # WARP's contract, for the stand-in warp-cli to answer with, only
           # where WARP is shown.
-          # The storm of windows keeps-pace opens the launcher through, only
-          # there, so no other area moves with it.
+          # The storm of windows keeps-pace opens the launcher through, and
+          # the probe it gauges the builder by, only there, so no other area
+          # moves with them.
           // pkgs.lib.optionalAttrs (area == "keeps-pace") {
             window_storm = windowStorm;
+            pace_probe = paceProbe;
           }
           // pkgs.lib.optionalAttrs standsInForWarp {
             warp_contract = "${../modules/warp/contract}";

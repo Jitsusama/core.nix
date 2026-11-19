@@ -19,6 +19,7 @@ import json
 import math
 import re
 import shlex
+import statistics
 import time
 from datetime import timedelta
 from functools import partial
@@ -34,6 +35,7 @@ from desktop_session import (
     neovims_quit,
     retry,
 )
+from keeps_pace import bound, builders_share, probed
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -88,9 +90,16 @@ PHASE = 20
 # 58 ms more, 78 against 20. Twice the frozen wait and 10 ms more failed 5 of those 48 runs with
 # the weights as they should be, four where the frozen wait came in at 17 to 20 ms; and it failed
 # #2724 on 9 November at 21.8 to 26.1 against 3.9 to 6.9, 18 to 19 ms more.
+#
+# What the guest's weights can't decide is the builder's share: holding all four processors
+# back under load, it slowed the middle key four to six times its frozen time on the net from
+# 16 to 19 November, while the compositor and the shell waited within WAITED. So the middle
+# key's bar, twice its time frozen and MIDDLE_MORE more, is stretched by how much longer a probe
+# took for the same work under load than frozen (keeps_pace.py, pace-probe.py), and every bar
+# here held to a time frozen is too.
 WAITED = 45
-SLOWER_MOST = 2
 MIDDLE_MORE = 50
+PROBED = "/run/pace-probe.log"
 TAIL = 0.95
 # Cage, which holds the compositor here, and the shell, by the units they run in.
 COMPOSITOR = "cage-tty1.service"
@@ -202,11 +211,19 @@ def loaded(desktop: Desktop) -> Iterator[None]:
     machine.succeed(
         f"systemd-run --collect --quiet --slice=build.slice --unit=stress-build {stress}"
     )
+    # The probe gauging the builder's share, never frozen, weighed as builds are so it waits
+    # behind the desktop in the guest, which its time doesn't count.
+    machine.succeed(
+        f"rm -f {PROBED} && systemd-run --collect --quiet --unit=pace-probe"
+        f" --property=CPUWeight=10 {desktop.values['pace_probe']}"
+    )
     try:
         desktop.as_account("systemctl --user is-active --quiet stress-jobs")
         machine.succeed("systemctl is-active --quiet stress-build")
+        machine.wait_for_file(PROBED, timeout=timedelta(seconds=30))
         yield
     finally:
+        machine.succeed("systemctl stop pace-probe")
         desktop.as_account("systemctl --user stop stress-jobs")
         machine.succeed("systemctl stop stress-build")
 
@@ -259,6 +276,10 @@ class Timing:
         # the turn being pressed with what they'd waited when it began.
         self.waited: dict[int, float] = {}
         self.open: tuple[int, float] | None = None
+        # The probe's pieces of work, in microseconds of its own processor time, under load and
+        # frozen, and how much of what it said has been read, from where it stood.
+        self.probed: dict[bool, list[float]] = {True: [], False: []}
+        self.probe_read = int(desktop.machine.succeed(f"wc -c < {PROBED}").strip())
         show = "show --property=ControlGroup --value"
         self.groups = [
             desktop.machine.succeed(f"systemctl {show} {COMPOSITOR}").strip(),
@@ -278,9 +299,33 @@ class Timing:
         # A builder stalling the VM held a freeze for 50 s on 5 November, past the 25 s systemctl
         # waits for its answer by default, though the unit froze. FREEZING is longer than that.
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
+        self.probe(kept=True)
         self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs", timeout=2 * FREEZING)
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
+        # The probe's work while the load turned is neither turn's, so it's passed over.
+        self.probe(kept=False)
+
+    def probe(self, *, kept: bool) -> None:
+        """Read what the probe has said since the last read, kept with the load as it stands."""
+        said = self.desktop.machine.succeed(f"tail -c +{self.probe_read + 1} {PROBED}")
+        pieces, used = probed(said)
+        self.probe_read += used
+        if kept:
+            self.probed[self.loading].extend(pieces)
+
+    def share(self) -> float:
+        """Give the builder's share as the probe gauged it so far, saying how it was gauged."""
+        self.probe(kept=True)
+        under, frozen = self.probed[True], self.probed[False]
+        share = builders_share(under, frozen)
+        print(
+            f"the probe's work took a mean {statistics.fmean(under or [0]) / 1000:.2f} ms under"
+            f" load over {len(under)} pieces, against {statistics.fmean(frozen or [0]) / 1000:.2f}"
+            f" ms frozen over {len(frozen)}, so the builder's share stretches each bar"
+            f" {share:.2f} times"
+        )
+        return share
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""
@@ -436,10 +481,11 @@ class Timing:
             f"against {unswapped[False]:.0f} ms frozen, and less its wait for its frame to begin "
             f"too, {judged[True]:.0f} ms against {judged[False]:.0f} ms"
         )
-        assert judged[True] <= SLOWER_MOST * judged[False] + MIDDLE_MORE, (
+        share = self.share()
+        assert judged[True] <= bound(judged[False], MIDDLE_MORE, share), (
             f"half the keys under load took {judged[True]:.0f} ms to their frames less their "
             f"swaps and their waits for them to begin, against {judged[False]:.0f} ms with the "
-            f"load frozen; "
+            f"load frozen, the builder's share {share:.2f}; "
             f"as written, {middle:.0f} ms against {middle_free:.0f}"
         )
         assert wait <= wait_free + WAITED, (
@@ -562,10 +608,11 @@ def makings_said(desktop: Desktop, since: str) -> list[str]:
     return [line.strip() for line in said.splitlines() if line.strip()]
 
 
-def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]]) -> list[str]:
+def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]], share: float) -> list[str]:
     """Say each place's drawers by turns, and give those the load slowed past their bound.
 
-    Each is judged by its making alone (Drawn.judged), its wait and drawing said beside it.
+    Each is judged by its making alone (Drawn.judged), its wait and drawing said beside it, its
+    bound stretched by the builder's share.
     """
     slowed = []
     for place in sorted(drawn[True]):
@@ -576,8 +623,8 @@ def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]]) -> list[str]:
             f" against {sorted(drawn[False].get(place, []))}, made in {frozen},"
             " with the load frozen"
         )
-        if frozen and loaded[(len(loaded) - 1) // 2] > (
-            SLOWER_MOST * frozen[(len(frozen) - 1) // 2] + STEPPED_MORE
+        if frozen and loaded[(len(loaded) - 1) // 2] > bound(
+            frozen[(len(frozen) - 1) // 2], STEPPED_MORE, share
         ):
             slowed.append(place)
     return slowed
@@ -655,6 +702,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     def middle(times: list[int]) -> int:
         return sorted(times)[(len(times) - 1) // 2]
 
+    share = timing.share()
     slowed = []
     for place in sorted(under):
         print(
@@ -662,17 +710,18 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
             f" {sorted(searching[place])} of it searching, against {sorted(free.get(place, []))}"
             f" with the load frozen; its slowest said {slowest[place][1]}"
         )
-        if place in free and middle(under[place]) > (
-            SLOWER_MOST * middle(free[place]) + STEPPED_MORE
-        ):
+        if place in free and middle(under[place]) > bound(middle(free[place]), STEPPED_MORE, share):
             slowed.append(place)
-    drawers_slowed = slowed_drawers(drawn)
+    drawers_slowed = slowed_drawers(drawn, share)
     print("under load, made by their parts:", *made[True], sep="\n  ")
     assert "Programs" in under, f"no step into Programs was timed: {sorted(under)}"
     assert "Programs" in drawn[True], f"no drawer in Programs was timed: {drawn}"
     assert not drawers_slowed, f"the load slowed the drawers of {drawers_slowed}: {drawn}"
     assert not early, f"keys done at and timed by frames begun before: {early}"
-    assert not slowed, f"the load slowed stepping into {slowed}: {under} against {free}"
+    assert not slowed, (
+        f"the load slowed stepping into {slowed}: {under} against {free}, the builder's share"
+        f" {share:.2f}"
+    )
 
 
 def openings(desktop: Desktop) -> list[Json]:
@@ -779,9 +828,10 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
     assert not unusable, f"an opening never answered on time for 100 ms: {unusable}"
     weighing = [after for _, _, after in said if after.get("verbs") != 0]
     assert not weighing, f"an opening after the first weighed the verbs again: {weighing}"
-    assert middle(first[True]) <= SLOWER_MOST * middle(first[False]) + STEPPED_MORE, (
+    share = timing.share()
+    assert middle(first[True]) <= bound(middle(first[False]), STEPPED_MORE, share), (
         f"the load slowed the first opening after a start: {first[True]} ms against "
-        f"{first[False]} ms frozen"
+        f"{first[False]} ms frozen, the builder's share {share:.2f}"
     )
 
 
@@ -879,9 +929,10 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
         f"an opening through the storm took {readied[-1]} ms to be ready to draw: {readied}"
     )
     drawing = {loaded: [one["after"]["drawing"] for one in each[loaded]] for loaded in each}
-    assert middle(drawing[True]) <= SLOWER_MOST * middle(drawing[False]) + STEPPED_MORE, (
+    share = timing.share()
+    assert middle(drawing[True]) <= bound(middle(drawing[False]), STEPPED_MORE, share), (
         f"the load slowed drawing an opening through the storm: {drawing[True]} ms against "
-        f"{drawing[False]} ms frozen"
+        f"{drawing[False]} ms frozen, the builder's share {share:.2f}"
     )
 
 
