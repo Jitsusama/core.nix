@@ -824,7 +824,9 @@ def spanned(tmp_path: Path, code_served: Served, mycelium_node: StandIn) -> None
 @pytest.mark.usefixtures("spanned")
 def test_code_keeps_to_its_budget(code_opened: Opened) -> None:
     says_it_stands(code_opened.page, "live")
-    expect(code_opened.page.locator(TIE_ROWS), "the map wasn't drawn").to_have_count(2)
+    expect(code_opened.page.locator(TIE_ROWS), "the map wasn't drawn").to_have_count(
+        2, timeout=PACE_MS
+    )
     # Counted once every part the feeds draw is there, so the count is the page's
     # whole and not how far it got.
     for key in ["github:owl/core", "local:~/src/notes"]:
@@ -866,7 +868,9 @@ def test_code_passes_the_skills_page_checks(
         assert unlinked == [], f"homes.js at {size} in the {look} look found {unlinked}"
         # The skill's check for a walked map, last since it presses keys on it: every name
         # clear of the others and of every thread, and the keys walking as a map's do.
-        expect(opened.page.locator(TIE_ROWS), "the map wasn't drawn").to_have_count(2)
+        expect(opened.page.locator(TIE_ROWS), "the map wasn't drawn").to_have_count(
+            2, timeout=PACE_MS
+        )
         unwalked = opened.page.evaluate((Path(os.environ["WEB_SKILL"]) / "map.js").read_text())
         assert unwalked == [], f"map.js at {size} in the {look} look found {unwalked}"
     finally:
@@ -886,7 +890,7 @@ def test_the_map_draws_a_thread_for_each_cell_joining_two_repositories(
     expect(code_page.locator("#ties"), "a map with nothing joined was shown").to_be_hidden()
     spanning(mycelium_node)
     rows = code_page.locator(TIE_ROWS)
-    expect(rows, "the map drew no row for each joined repository").to_have_count(2)
+    expect(rows, "the map drew no row for each joined repository").to_have_count(2, timeout=PACE_MS)
     expect(code_page.locator("#ties"), "the map wasn't shown").to_be_visible()
     expect(rows.first, "core wasn't the first row, in the grove's order").to_have_attribute(
         "data-key", "github:owl/core"
@@ -918,7 +922,7 @@ def test_the_maps_keys_walk_its_rows(code_page: Page, mycelium_node: StandIn) ->
     says_it_stands(code_page, "live")
     spanning(mycelium_node)
     rows = code_page.locator(TIE_ROWS)
-    expect(rows, "the map wasn't drawn").to_have_count(2)
+    expect(rows, "the map wasn't drawn").to_have_count(2, timeout=PACE_MS)
     chosen = code_page.locator("#list .row[aria-selected='true']")
     listed = chosen.get_attribute("data-key")
     tied = code_page.locator("#ties-map")
@@ -982,7 +986,7 @@ def test_return_on_the_map_opens_a_repository_as_the_list_does(
     says_it_stands(code_page, "live")
     spanning(mycelium_node)
     rows = code_page.locator(TIE_ROWS)
-    expect(rows, "the map wasn't drawn").to_have_count(2)
+    expect(rows, "the map wasn't drawn").to_have_count(2, timeout=PACE_MS)
     chosen = code_page.locator("#list .row[aria-selected='true']")
     find = code_page.locator("#find")
     tied = code_page.locator("#ties-map")

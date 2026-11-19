@@ -72,6 +72,23 @@ it("keeps two ties apart whatever their keys hold, a local folder's line breaks 
   );
 });
 
+it("ties two folders once, though their keys read alike to a reader of words", () => {
+  // One folder's name is written composed and the other's decomposed, as a Mac writes it, so a
+  // comparison of words calls them equal and each side would put its own first.
+  const keyed = (key: string, name: string, working: readonly Cell[]): Repository => ({
+    ...repository(name, working),
+    key,
+  });
+  const folders = [
+    keyed("local:~/caf\u00e9", "aa", [cell("C1", ["repo.bb"])]),
+    keyed("local:~/cafe\u0301", "bb", [cell("C1", ["repo.aa"])]),
+  ];
+  assert.deepEqual(
+    ties(folders).map((tie) => tie.cells),
+    [["C1"]],
+  );
+});
+
 it("orders ties by their first end, then their second, as their keys read", () => {
   // Joined whole, a and z read after ab and c, which a comparison that skips the null between
   // them would put first.
