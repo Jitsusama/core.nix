@@ -12,10 +12,9 @@
 //! end, unless it was made under load too. Figures are weighed like with
 //! like: under load against what others carried under load, slowed by its
 //! own download against what its own point usually carries too, and a
-//! wider band
-//! from a narrower one carrying well against what the card's own access
-//! point usually carries as well as its last two minutes, since one slow
-//! minute isn't how a point carries.
+//! wider band from a narrower one carrying well against what the card's
+//! own access point usually carries as well as its last two minutes, since
+//! one slow minute isn't how a point carries.
 //! A wider band, 5 or 6 GHz, is kept to while it carries well, unless the
 //! card is known to move little and 2.4 GHz is known far quicker, and
 //! tried from 2.4 GHz while the card moves enough to use its room, or when
@@ -338,7 +337,7 @@ impl Chooser {
         let quieter =
             crowded.and_then(|busy| for_quiet(untried.clone(), (signal, frequency, busy)));
         let reached = untried.filter(|other| within_reach(other, signal, frequency));
-        let ours = weighed_by(measured, usual, queued_lately);
+        let ours = weighed_by(measured, usual, queued_lately && measured.lost <= LOSSY);
         let faster = reached.clone().filter_map(|other| {
             let theirs = other.measured.as_ref()?;
             quicker(theirs, &ours).then_some((slowness(theirs), other))
@@ -643,8 +642,9 @@ fn quickest<'a>(lately: &'a Measured, usual: Option<&'a Measured>) -> &'a Measur
 }
 
 /// What the card's own point is weighed by against another's quicker:
-/// the span, or, slowed by its own download lately, the quicker slow end
-/// of the span and what the point usually carries, since the download's
+/// the span, or, slowed by its own download lately and losing no more than
+/// `LOSSY`, the quicker slow end of the span and what the point usually
+/// carries, since the download's
 /// queue slows any point a while. At 04:48 on 19 Nov 2026 ch52, whose
 /// minutes moving `LEAST` or more had carried a mean 21.5 ms at p95 that
 /// night, read 163 ms, and the card tried the hall's radio on its 49.2
@@ -940,6 +940,11 @@ pub(crate) mod tests {
                 false,
             ),
             (
+                "a 24 ms middle moving 100 losing 2.1%",
+                with(Some(24_000), 2.1, Some(100), 143),
+                false,
+            ),
+            (
                 "a 12.1 ms middle moving 99",
                 with(Some(12_100), 0.0, Some(99), 143),
                 false,
@@ -1061,6 +1066,10 @@ pub(crate) mod tests {
             false,
         );
         let unweighed = after_a_bad_minute(DESK).choose(Instant::now(), on, &[hall_learned], false);
+        let quicker_still = hall(-43, None, Some(carried(9, 0.0)));
+        let beaten = desk_at(-41, Some(carried(21, 0.0)));
+        let bettered =
+            after_a_bad_minute(DESK).choose(Instant::now(), on, &[beaten, quicker_still], false);
 
         assert_eq!(
             weighed,
@@ -1071,6 +1080,39 @@ pub(crate) mod tests {
             unweighed,
             Choice::Try(HALL.into()),
             "with nothing usual known, the span is gone by"
+        );
+        assert_eq!(
+            bettered,
+            Choice::Try(HALL.into()),
+            "9 ms is far quicker than the 21 ch52 usually carries downloads at"
+        );
+    }
+
+    #[test]
+    fn a_lossy_minute_just_after_a_download_goes_by_its_span() {
+        let start = Instant::now();
+        let slowed = Measured {
+            moving: Some(77),
+            ..downloading(163)
+        };
+        let lossy = Measured {
+            lost: 2.1,
+            ..slowed.clone()
+        };
+        let others = [
+            desk_at(-41, Some(carried(21, 0.0))),
+            hall(-43, None, Some(carried(49, 0.0))),
+        ];
+        let mut chooser = after_a_bad_minute(DESK);
+
+        let first = chooser.choose(start, (DESK, &slowed, -41, CH52), &others, false);
+        let next = chooser.choose(start + TAIL, (DESK, &lossy, -41, CH52), &others, false);
+
+        assert_eq!(first, Choice::Stay, "its own queue is weighed by its usual");
+        assert_eq!(
+            next,
+            Choice::Try(HALL.into()),
+            "2.1% lost in the tail is the air"
         );
     }
 
@@ -2342,6 +2384,25 @@ pub(crate) mod tests {
 
         let to_the_desk = Choice::Try(DESK.into());
         assert_eq!(choice, to_the_desk, "5 GHz is heard fainter, and wider");
+    }
+
+    #[test]
+    fn a_move_to_a_wider_band_isn_t_judged_on_a_heavy_download_s_own_queue() {
+        let start = Instant::now();
+        let well = carried(9, 0.0);
+        let mut chooser = Chooser::default();
+        let tried = chooser.choose(start, (NEAR, &well, -34, CH6), &[desk_at(-45, None)], false);
+        assert_eq!(tried, Choice::Try(DESK.into()), "the first move is made");
+        let near = near_at(-34, Some(well.clone()));
+        let queued = carried(60, 0.0);
+
+        let judged = chooser.choose(start + TRIAL, (DESK, &queued, -45, CH52), &[near], false);
+
+        assert_eq!(
+            judged,
+            Choice::Stay,
+            "60 ms moving 200 with a 20 ms middle is its own queue, which 2.4 GHz drains slower"
+        );
     }
 
     #[test]
