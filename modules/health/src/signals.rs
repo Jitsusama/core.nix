@@ -19,8 +19,9 @@
 //! A stop under way is `stopping`, from the moment it's caught: a follower
 //! the same stop ended, as a terminal's interrupt ends its whole group,
 //! says nothing of its end, and health's own end waits for the signal's.
-//! A second stop while the first ends the followers ends health at once,
-//! leaving any follower not yet ended, so a stop can never hang.
+//! A second stop before the first has ended health ends it at once,
+//! leaving any follower not yet ended and the day unwritten, so a stop can
+//! never hang.
 
 use std::io::{self, PipeReader, Read as _};
 use std::mem;
@@ -49,13 +50,16 @@ static STOPPED: AtomicBool = AtomicBool::new(false);
 /// it says so: a stop to health's whole group, as a service manager's,
 /// reaches health and its followers at once, and a follower may end of it
 /// before health's catch has run, by the signal or, as journalctl does,
-/// cleanly.
-pub const CAUGHT_WITHIN: Duration = Duration::from_millis(100);
+/// cleanly. A follower's end is a fault health waits out for ten minutes
+/// anyway, so a quarter second costs nothing, and leaves a busy machine
+/// room to run the catch.
+pub const CAUGHT_WITHIN: Duration = Duration::from_millis(250);
 
 /// How long a stop waits for `run` to return once the followers are
 /// ended, so it writes the day, before it ends health all the same: a
-/// write takes milliseconds, and a service manager waits a minute and a
-/// half before it kills.
+/// write takes milliseconds. A stop gives longer by default, systemd 90
+/// seconds and launchd 20, but a reboot gives the account's services 5 in
+/// all (`modules/systemd/nixos.nix`), so there the write had best be quick.
 const WRITES_WITHIN: Duration = Duration::from_secs(5);
 
 /// Whether `run` has returned, and the stop's thread and `rest` woken as
@@ -98,7 +102,17 @@ fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
             let (returned, woken) = &RAN;
             let returned = returned.lock().unwrap_or_else(PoisonError::into_inner);
             woken.notify_all();
-            drop(woken.wait_timeout_while(returned, WRITES_WITHIN, |ran| !*ran));
+            let (returned, _) = woken
+                .wait_timeout_while(returned, WRITES_WITHIN, |ran| !*ran)
+                .unwrap_or_else(PoisonError::into_inner);
+            if !*returned {
+                crate::source::fail(&format!(
+                    "health: a stop ended health before it wrote the day, as its run hadn't \
+                     returned {} seconds on",
+                    WRITES_WITHIN.as_secs()
+                ));
+            }
+            drop(returned);
             die_by(c_int::from(signal[0]));
         }
     });

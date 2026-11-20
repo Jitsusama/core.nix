@@ -34,9 +34,11 @@ in
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
       # Each time it starts, after a fault or a stop, it reads today's
       # journals again from the day's start. It writes the day as it ends,
-      # by a follower's end or a stop, so only a kill, a crash or a day it
-      # can't write loses what it saw itself since its last write, as the
-      # lid and the disk, and the days before it held to try again. A stop
+      # by a follower's end or a stop it has five seconds to write in, so
+      # what it saw itself since its last write, as the lid and the disk,
+      # and the days before it held to try again, are lost only to a kill,
+      # a crash, a second stop or a day it can't write. A stop in its first
+      # half minute writes nothing, as the replay may be under way. A stop
       # just past midnight also loses the old day's journal lines it hadn't
       # read yet, as a start reads only today's.
       Restart = "always";
@@ -64,8 +66,9 @@ in
         "follow"
       ];
       RunAtLoad = true;
-      # As on Linux, it reads the day again each time it starts, and loses
-      # the same to a fault or a stop; launchd waits 10 s between starts.
+      # As on Linux, it reads the day again each time it starts, and writes
+      # it as it ends; launchd waits 10 s between starts, and gives a stop
+      # 20 s before it kills.
       KeepAlive = true;
       # Whatever the account runs comes first, as background.slice does on
       # Linux.

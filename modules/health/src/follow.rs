@@ -65,7 +65,7 @@ pub struct Follower {
     write_failed: bool,
     // The days before, oldest first, held until written, so the new day's
     // lines and ticks go on in it; a sleep, which stops `GIVES_UP`'s
-    // clock, can pass more than one midnight. A stop drops them unsaid.
+    // clock, can pass more than one midnight. A kill drops them unsaid.
     held: Vec<Day>,
     into: PathBuf,
     zone: TimeZone,

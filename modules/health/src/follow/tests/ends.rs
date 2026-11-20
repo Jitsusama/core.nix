@@ -1,6 +1,7 @@
 //! When health's run ends: once a follower has ended and it has run long
-//! enough, never while its followers are only quiet, and on a start that
-//! fails; and how often it ticks on a busy journal.
+//! enough, never while its followers are only quiet, on a start that
+//! fails, and on a stop in the day's replay; and how often it ticks on a
+//! busy journal.
 
 use super::*;
 
@@ -117,6 +118,30 @@ fn health_ends_no_sooner_than_it_has_run_long_enough_however_its_followers_end()
              after {ends} followers ended at its start"
         );
     }
+}
+
+#[test]
+fn a_stop_before_the_first_tick_leaves_the_day_as_the_last_run_wrote_it() {
+    // A line a second, as the day's replay sends them, and a stop at the
+    // clock's tenth look, four lines in and well within the half minute,
+    // whose day so far would be written over the whole one on disk.
+    let Outcome {
+        result,
+        unread,
+        today,
+        ..
+    } = Ran {
+        before: 30,
+        step: Duration::from_secs(1),
+        stops: 10,
+        ..Ran::default()
+    }
+    .outcome();
+    assert!(
+        result.is_ok() && unread == 26 && today.is_none(),
+        "a stop in the replay ended the run with {unread} unread, writing a day: {}",
+        today.is_some()
+    );
 }
 
 #[test]
