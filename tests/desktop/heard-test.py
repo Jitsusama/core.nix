@@ -41,9 +41,10 @@ def test_a_wait_that_hears_nothing_says_the_state_it_first_read() -> None:
 
 def test_a_change_that_passes_ends_the_wait() -> None:
     heard: list[str] = []
+    said_in_turn = ('{"rows": ["Install"]}', '{"rows": ["Restart"]}', '{"rows": []}')
 
     def hear(passes: Callable[[str], object]) -> None:
-        for said in ('{"rows": ["Install"]}', '{"rows": ["Restart"]}', '{"rows": []}'):
+        for said in said_in_turn:
             heard.append(said)
             if passes(said):
                 return
@@ -51,7 +52,8 @@ def test_a_change_that_passes_ends_the_wait() -> None:
         raise AssertionError(message)
 
     until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
-    assert len(heard) == 2, f"the wait heard on past the change that passed: {heard}"
+    wanted = list(said_in_turn[:2])
+    assert heard == wanted, f"the wait heard on past the change that passed: {heard}"
 
 
 def test_a_state_passing_at_first_read_hears_nothing() -> None:
