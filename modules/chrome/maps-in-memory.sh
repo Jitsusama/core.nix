@@ -16,6 +16,13 @@
 # lock whose process is gone or is some other program is stale. It's read
 # again before each folder, so a Chrome started partway stops the rest.
 #
+# Chrome drops its lock before its last processes are gone, so a Chrome
+# process still mapping a file in the profile holds it too, and is waited
+# for, up to half a minute, rather than left to the next quit. A run that
+# finds the profile held looks once more as it ends, and starts over if
+# the lock went meanwhile: the watch that starts it misses a change made
+# while it runs, so a quit landing then would otherwise wait for the next.
+#
 # The folders in memory are made first, whatever the lock says, since the
 # runtime folder is empty after each boot and the links from the boot
 # before would otherwise point at nothing. A link that does is no harm:
@@ -45,6 +52,8 @@ EOF
 esac
 
 set -euo pipefail
+# Chrome makes its profile readable by its owner alone, and so does this.
+umask 077
 
 if [ $# -lt 3 ]; then
   echo "✕ chrome-maps-in-memory needs a profile, a folder in memory and a folder" >&2
@@ -54,6 +63,16 @@ fi
 profile=$1 memory=$2
 shift 2
 here=$(uname -n)
+for folder in "$@"; do
+  case /$folder/ in
+  // | */../* | */./* | //*)
+    echo "✕ chrome-maps-in-memory needs folders inside the profile, not '$folder'" >&2
+    echo "  try  chrome-maps-in-memory --help" >&2
+    exit 64
+    ;;
+  *) ;;
+  esac
+done
 
 # Says which Chrome holds the profile, or nothing when none does.
 holder() {
@@ -70,26 +89,68 @@ holder() {
   fi
 }
 
+# Says which Chrome process still maps a file in the profile, or nothing.
+# Each process's name is read by the shell itself, since a machine runs
+# thousands, and only Chrome's maps are searched.
+quitting() {
+  local proc comm
+  for proc in /proc/[0-9]*; do
+    read -r comm 2>/dev/null <"$proc/comm" || continue
+    [ "$comm" = chrome ] || continue
+    if grep -qF " $profile/" "$proc/maps" 2>/dev/null; then
+      echo "Chrome, as process ${proc#/proc/}, still quitting,"
+      return 0
+    fi
+  done
+}
+
+# Says what holds the profile once a quitting Chrome has had its half
+# minute, or nothing when nothing does.
+held() {
+  local chrome wait
+  for wait in $(seq 30); do
+    chrome=$(holder)
+    if [ -n "$chrome" ]; then
+      echo "$chrome"
+      return 0
+    fi
+    chrome=$(quitting)
+    [ -n "$chrome" ] || return 0
+    # A second between looks lets Chrome's last processes go.
+    [ "$wait" = 30 ] || sleep 1
+  done
+  echo "$chrome"
+}
+
 for folder in "$@"; do
   mkdir -p "$memory/$folder"
 done
 
-for folder in "$@"; do
-  link=$(readlink "$profile/$folder" 2>/dev/null) || link=
-  if [ "$link" = "$memory/$folder" ]; then
-    continue
-  fi
-  chrome=$(holder)
-  if [ -n "$chrome" ]; then
-    echo "$chrome holds the profile, so $folder and those after it stay on the disk"
-    echo "until Chrome quits and this runs again"
-    exit 0
-  fi
-  # What was there is a cache Chrome fills again, or its histograms, which
-  # feed only its usage reports to Google.
-  rm -rf "${profile:?}/$folder"
-  parent=$(dirname "$profile/$folder")
-  mkdir -p "$parent"
-  ln -s "$memory/$folder" "$profile/$folder"
-  echo "$folder is in memory now"
+while :; do
+  chrome=
+  for folder in "$@"; do
+    link=$(readlink "$profile/$folder" 2>/dev/null) || link=
+    if [ "$link" = "$memory/$folder" ]; then
+      continue
+    fi
+    chrome=$(held)
+    if [ -n "$chrome" ]; then
+      echo "$chrome holds the profile, so $folder and those after it stay on the disk"
+      echo "until Chrome quits and this runs again"
+      break
+    fi
+    # What was there is a cache Chrome fills again, or its histograms, which
+    # feed only its usage reports to Google.
+    rm -rf "${profile:?}/$folder"
+    parent=$(dirname "$profile/$folder")
+    mkdir -p "$parent"
+    # A folder Chrome made again since the rm fails the link, rather than
+    # taking it inside.
+    ln -sT "$memory/$folder" "$profile/$folder"
+    echo "$folder is in memory now"
+  done
+  [ -n "$chrome" ] || exit 0
+  chrome=$(held)
+  [ -z "$chrome" ] || exit 0
+  echo "Chrome quit as this ran, so it starts over"
 done

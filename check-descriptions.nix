@@ -584,9 +584,10 @@
     Dawn caches, are links into the runtime folder once the account's command runs on a profile
     Chrome already filled, its old files gone and the rest left alone; a second run changes
     nothing, a boot's empty runtime folder is filled again, a lock left by a Chrome that's gone
-    doesn't stop it, and with Chrome running nothing in the profile is touched, so no folder is
-    swapped under it; the unit starts with the account's manager, before the graphical session,
-    and again on each change in the profile's folder, as when Chrome quits and drops its lock
+    doesn't stop it, a Chrome still quitting is waited for, and with Chrome running nothing in
+    the profile is touched, so no folder is swapped under it; the unit starts with the account's
+    manager, before the graphical session, and again on each change in the profile's folder, as
+    when Chrome quits and drops its lock, with no start limit for Chrome's writes to reach
   '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests

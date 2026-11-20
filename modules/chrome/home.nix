@@ -374,7 +374,10 @@ let
   ];
   mapsInMemory = pkgs.writeShellApplication {
     name = "chrome-maps-in-memory";
-    runtimeInputs = [ pkgs.coreutils ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnugrep
+    ];
     text = builtins.readFile ./maps-in-memory.sh;
   };
 in
@@ -401,11 +404,14 @@ in
   config = {
     # As the session starts, before Chrome can, and never under a running
     # Chrome, which a switch would otherwise find. It stays inactive once
-    # done, so the watch below can start it again.
+    # done, so the watch below can start it again, and has no limit on how
+    # often it starts: Chrome's own writes there come in bursts, and five
+    # starts in ten seconds would stop the watch before Chrome quits.
     systemd.user.services.chrome-maps-in-memory = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
         Description = "Moves the folders Chrome writes through shared maps into memory";
         Before = [ "graphical-session-pre.target" ];
+        StartLimitIntervalSec = 0;
       };
       Service = {
         Type = "oneshot";

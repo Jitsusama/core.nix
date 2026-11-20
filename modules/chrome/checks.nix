@@ -123,11 +123,13 @@ onLinux {
   # folder once the account's command runs on a profile Chrome has already
   # filled, its old files gone and the rest of the profile left alone; a
   # second run, a boot's empty runtime folder and a lock Chrome left behind
-  # are each handled, and with Chrome running nothing in the profile is
-  # touched (tests/chrome-maps-land-in-memory.sh). The unit runs as the
-  # account's manager starts, before the session that starts Chrome, and
-  # again on each change in the profile's folder, as when Chrome quits;
-  # it doesn't stay active, which would leave the watch nothing to start.
+  # are each handled, a Chrome still quitting is waited for, and with
+  # Chrome running nothing in the profile is touched
+  # (tests/chrome-maps-land-in-memory.sh). The unit runs as the account's
+  # manager starts, before the session that starts Chrome, and again on
+  # each change in the profile's folder, as when Chrome quits; it doesn't
+  # stay active, which would leave the watch nothing to start, and has no
+  # start limit for Chrome's bursts of writes to reach.
   chrome-maps-land-in-memory =
     let
       home = account (bareNixos [
@@ -151,6 +153,9 @@ onLinux {
     assert lib.assertMsg (
       !(unit.Service.RemainAfterExit or false)
     ) "chrome-maps-in-memory stays active, so its watch can't start it again.";
+    assert lib.assertMsg (
+      unit.Unit.StartLimitIntervalSec or null == 0
+    ) "chrome-maps-in-memory keeps a start limit, so Chrome's writes can stop its watch.";
     assert lib.assertMsg (
       watch.Path.PathChanged or null == "%h/.config/google-chrome"
       && watch.Path.Unit or null == "chrome-maps-in-memory.service"
