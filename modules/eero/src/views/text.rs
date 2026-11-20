@@ -355,7 +355,9 @@ enum Last {
 /// Columns of cells, each column as wide as its widest cell and two
 /// spaces from the next, the header muted. Into a terminal too narrow for
 /// it, whole columns give way in the order the view names them, least
-/// needed first; then the column of names is shortened in its middle, and
+/// needed first, save that one with a dash in every row goes before
+/// them all, and a shared one only where every shared table has only
+/// dashes in it; then the column of names is shortened in its middle, and
 /// the last column's words are cut or wrapped. The first column names
 /// each row, so it never goes.
 #[derive(Debug)]
@@ -923,6 +925,21 @@ mod tests {
             headings(Room::Cells(28)),
             ["device", "kind", "speed"],
             "a down that no row has a figure for goes before the kind named first"
+        );
+        let shared = |room| {
+            let mut page = Page::default();
+            page.shared_table(0, table());
+            let text = set(page, room);
+            let header = text.lines().next().unwrap_or_default().to_owned();
+            header
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            shared(Room::Cells(28)),
+            ["device", "kind", "speed"],
+            "a shared table alone, as the devices on are when none is off, gives way alike"
         );
         assert_eq!(
             headings(Room::Cells(33)),

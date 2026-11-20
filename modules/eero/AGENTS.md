@@ -211,12 +211,16 @@ it holds as lines, facts and tables (`src/views/text.rs`), and the page
 is laid out in the room it's given. Lines and values wrap at their items,
 then their words, under where they started (`src/views/fit.rs`); a table
 gives way by whole columns in the order it names, least needed first,
-then shortens its names in their middle and cuts or wraps its last
-column, dropping that column instead where it'd keep fewer than six
+save that a column with a dash in every row goes before them all, since
+eero's cloud gives most reads no device speeds. So under `--watch` a
+narrow devices page shows tx on a read without speeds, and down and up
+on one with them. Then it shortens its names in their middle and cuts
+or wraps its last column, dropping that column instead where it'd keep fewer than six
 cells. Tables a page sets as shared (`Page::shared_table`) place the
 columns they lead with alike, so the devices on now and those not on
 line up one under the other, and a shared column one gives way goes
-from both. Every page is held to a golden one drawn from
+from both, so a shared column counts as all dashes only where it is in
+every one of them. Every page is held to a golden one drawn from
 `home-network.json` (`src/views/golden/`), into a pipe and at 60, 80, 100
 and 140 columns, and runs no line past 40 or 50 either, with no golden
 page there: change a page on purpose with
