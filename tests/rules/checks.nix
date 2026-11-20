@@ -201,9 +201,7 @@
         boot-fell-back = script "boot-fell-back" ../../modules/lanzaboote/fell-back.sh { };
         boot-fell-back-told = script "boot-fell-back-told" ../../modules/lanzaboote/fell-back-told.sh { };
         camera = script "camera" ../../modules/camera/camera.sh { };
-        camera-loopback =
-          script "camera-loopback" ../../hardware/dell-xps-14-da14260/camera/loopback.sh
-            { };
+        camera-loopback = script "camera-loopback" ../../modules/v4l2loopback/loopback.sh { };
         cargo-builds = script "cargo-builds" ../../modules/cargo/builds.sh { };
         chrome-maps-in-memory = script "chrome-maps-in-memory" ../../modules/chrome/maps-in-memory.sh { };
         chrony-network-servers =

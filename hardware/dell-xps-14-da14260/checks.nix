@@ -169,7 +169,7 @@ in
         name = "v4l2loopback-ctl";
         text = builtins.readFile ./tests/v4l2loopback-ctl-stand-in.sh;
       };
-      start = pkgs.callPackage ./camera/loopback.nix { ctl = stand-in; };
+      start = pkgs.callPackage ../../modules/v4l2loopback/loopback.nix { ctl = stand-in; };
       inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.systemd.services.camera)
         preStart
         ;

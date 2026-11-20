@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Runs the camera's loopback start (camera/loopback.sh), built over the
+# Runs the camera's loopback start (modules/v4l2loopback/loopback.sh), built over the
 # v4l2loopback-ctl stand-in, through each start the camera service meets,
 # and fails naming each that leaves the wrong loopbacks, names the wrong
 # node or exits failing.

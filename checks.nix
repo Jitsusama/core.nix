@@ -619,6 +619,7 @@ gather {
     ./modules/mic-mute-light/checks.nix
     ./modules/model-relay/checks.nix
     ./modules/mpv/checks.nix
+    ./modules/mx-brio/checks.nix
     ./modules/mycelium/checks.nix
     ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix

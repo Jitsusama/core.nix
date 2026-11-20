@@ -4679,6 +4679,13 @@
     the music is the player that started last, never playerctld's echo,
     and it shows itself as one row, on a key always, on a track unless held
   '';
+  the-mx-brio-is-shared = ''
+    udev reads the MX Brio's rule, read between the seat's tagging and its handing, keeping the
+    Brio from the seat, marking it relayed and starting its relay on the capture node; the relay
+    is bound to that node, takes its loopback under the Brio's name and reads its NV12 at 1080p
+    and 30 frames a second; the loopback's holders file is named as the Brio is, and the Brio's
+    own watch writes in the hidden folder, never beside it
+  '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
     void says it went is told apart from the time it can be undone by, and a take-back stands
