@@ -84,9 +84,11 @@ struct Known {
 /// its kind draws with, as a renderer does in the moment before it starts
 /// its compositor. A process outside his apps has only its cgroup read,
 /// each minute, since one starts in its launcher's cgroup in the moment
-/// before it's moved into its scope. One in his own `app.slice` but in no
-/// app's unit, as a browser started from his terminal is, is counted by
-/// its label, so a gap in what's watched shows rather than reads as quiet.
+/// before it's moved into its scope. One started from his terminal, in its
+/// kitty scope, is counted by its label, so a gap in what's watched shows
+/// rather than reads as quiet; a test's, an agent's or a service's isn't.
+/// The count is as of the minute's look, so one that ends or starts is
+/// seen at the next.
 #[derive(Debug)]
 pub struct Apps {
     slice: String,
@@ -105,8 +107,10 @@ impl Apps {
         }
     }
 
-    /// How many processes of each app's label run in Joel's own
-    /// `app.slice` but outside his apps' units, and so go unwatched.
+    /// How many processes of each app's label Joel started from his
+    /// terminal, which go unwatched, as of the minute's last look. One
+    /// jobs-sorter has since moved to the jobs slice can't be told from an
+    /// agent's there, and isn't counted.
     pub fn unwatched(&self) -> BTreeMap<String, usize> {
         let mut counted = BTreeMap::new();
         for label in self.outside.values() {
@@ -124,7 +128,7 @@ impl Apps {
         let cgroup = text(&process.join("cgroup"));
         if !self.launched_by_joel(&cgroup) {
             self.known.remove(pid);
-            if self.in_his_slice(&cgroup) {
+            if self.in_his_terminal(&cgroup) {
                 self.outside.insert(pid.to_string(), label);
             } else {
                 self.outside.remove(pid);
@@ -184,12 +188,19 @@ impl Apps {
         self.outside.retain(|pid, _| running.contains(pid));
     }
 
-    /// Whether `cgroup` is anywhere in Joel's own `app.slice`.
-    fn in_his_slice(&self, cgroup: &str) -> bool {
+    /// Whether `cgroup` is a scope of Joel's terminal, directly in his own
+    /// `app.slice`, as kitty puts each window's shell. An agent's kitty
+    /// scope is in its own slice, and is no window of his.
+    fn in_his_terminal(&self, cgroup: &str) -> bool {
         cgroup.lines().any(|line| {
             line.strip_prefix("0::")
                 .and_then(|path| path.strip_prefix(self.slice.as_str()))
-                .is_some_and(|rest| rest.starts_with('/'))
+                .and_then(|rest| rest.strip_prefix('/'))
+                .is_some_and(|unit| {
+                    !unit.contains('/')
+                        && unit.starts_with("kitty-")
+                        && unit.rsplit_once('.').is_some_and(|(_, k)| k == "scope")
+                })
         })
     }
 
@@ -236,17 +247,7 @@ impl Apps {
     /// read as a call, is in neither. One jobs-sorter has moved into the
     /// jobs slice can't be told from an agent's there, and is left out.
     pub fn may_call(&self, cgroup: &str) -> bool {
-        self.launched_by_joel(cgroup)
-            || cgroup.lines().any(|line| {
-                line.strip_prefix("0::")
-                    .and_then(|path| path.strip_prefix(self.slice.as_str()))
-                    .and_then(|rest| rest.strip_prefix('/'))
-                    .is_some_and(|unit| {
-                        !unit.contains('/')
-                            && unit.starts_with("kitty-")
-                            && unit.rsplit_once('.').is_some_and(|(_, k)| k == "scope")
-                    })
-            })
+        self.launched_by_joel(cgroup) || self.in_his_terminal(cgroup)
     }
 }
 
@@ -324,13 +325,20 @@ mod tests {
         );
         write(&proc.join("92/task/92/comm"), "chrome\n");
         write(&proc.join("92/task/93/comm"), "Chrome_IOThread\n");
-        // One Joel started from his terminal, in his app.slice but no app's
-        // unit, goes unwatched and is counted; an agent's, in its own
-        // slice, is neither.
-        write(&proc.join("96/comm"), "slack\n");
+        // Ones Joel started from his terminal go unwatched and are
+        // counted; an agent's, in its own slice, a test's in its service
+        // and the other session's browser above are not.
+        for (pid, comm) in [("94", "chrome"), ("96", "slack")] {
+            write(&proc.join(pid).join("comm"), &format!("{comm}\n"));
+            write(
+                &proc.join(pid).join("cgroup"),
+                &format!("0::{ACCOUNT}/app.slice/kitty-70-0.scope\n"),
+            );
+        }
+        write(&proc.join("97/comm"), "chrome\n");
         write(
-            &proc.join("96/cgroup"),
-            &format!("0::{ACCOUNT}/app.slice/kitty-70-0.scope\n"),
+            &proc.join("97/cgroup"),
+            &format!("0::{ACCOUNT}/app.slice/apps-under-load.service\n"),
         );
         write(&proc.join("98/comm"), "chrome\n");
         write(
@@ -358,6 +366,15 @@ mod tests {
         );
         // Once one has ended, it's no longer counted.
         fs::remove_dir_all(proc.join("96")).unwrap();
+        fs::remove_dir_all(proc.join("94")).unwrap();
+        drawing_threads(&proc, &mut apps);
+        assert!(apps.unwatched().is_empty(), "{:?}", apps.unwatched());
+        fs::create_dir_all(proc.join("94")).unwrap();
+        write(&proc.join("94/comm"), "chrome\n");
+        write(
+            &proc.join("94/cgroup"),
+            &format!("0::{ACCOUNT}/app.slice/kitty-70-0.scope\n"),
+        );
         drawing_threads(&proc, &mut apps);
         assert_eq!(
             apps.unwatched(),
