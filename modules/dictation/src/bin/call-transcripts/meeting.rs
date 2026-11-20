@@ -214,13 +214,25 @@ fn invited(meeting: &Value) -> Vec<String> {
         .into_iter()
         .flatten()
         .filter(|guest| guest["answer"] != "no");
+    // Someone listed twice, as organizer and guest or under two names, is
+    // one person, known by their address, or by their name with none.
+    let mut seen = std::collections::HashSet::new();
     std::iter::once(&meeting["organizer"])
         .chain(guests)
         .filter(|someone| {
             let email = someone["email"].as_str().unwrap_or_default().to_lowercase();
             !CALENDARS.iter().any(|calendar| email.ends_with(calendar))
         })
-        .filter_map(|someone| named(someone, "name").or_else(|| named(someone, "email")))
+        .filter_map(|someone| {
+            let name = named(someone, "name").or_else(|| named(someone, "email"))?;
+            let email = someone["email"].as_str().unwrap_or_default().to_lowercase();
+            let known_by = if email.is_empty() {
+                name.clone()
+            } else {
+                email
+            };
+            seen.insert(known_by).then_some(name)
+        })
         .collect()
 }
 
@@ -356,6 +368,20 @@ mod tests {
         ]});
         let on = meeting(&[standup], NOW).unwrap();
         assert_eq!(on.people, ["Ada"], "only Ada is someone");
+    }
+
+    #[test]
+    fn someone_invited_twice_is_one_person() {
+        let review = json!({"id": "e3", "title": "Review",
+        "start": NOW - 5 * MINUTE, "end": NOW + 25 * MINUTE,
+        "organizer": {"name": "Ada", "email": "Ada@Example.com"},
+        "guests": [
+            {"name": "Ada L.", "email": "ada@example.com", "answer": "yes"},
+            {"name": "Bo", "answer": "yes"},
+            {"name": "Bo", "answer": "maybe"},
+        ]});
+        let on = meeting(&[review], NOW).unwrap();
+        assert_eq!(on.people, ["Ada", "Bo"], "each is counted once");
     }
 
     #[test]
