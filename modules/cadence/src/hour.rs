@@ -15,6 +15,7 @@
 mod card;
 mod lines;
 mod measures;
+mod moved;
 mod owing;
 
 use std::collections::BTreeMap;
@@ -33,6 +34,7 @@ use crate::tracking::Tracking;
 use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
 use card::{Kept, compose};
 use measures::{Class, Measure};
+use moved::{HARNESS, moved};
 use owing::file;
 
 /// Who moves the measures no file names an owner for: the merge net's
@@ -249,7 +251,13 @@ fn gather(
         ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
-    all.extend(rounds_per_merge(state_home, &core_log, &harness_log, now));
+    all.extend(rounds_per_merge(
+        state_home,
+        &core,
+        &core_log,
+        &harness_log,
+        now,
+    ));
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
     if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
@@ -289,8 +297,25 @@ fn gather(
 /// be filed. Each note's sender is taken to the quest its presence works
 /// on, as the spend measure does, since a session can end before its
 /// drag is due while its quest's cell answers.
-fn rounds_per_merge(state_home: &Path, core: &str, harness: &str, now: i64) -> Vec<Measure> {
+fn rounds_per_merge(
+    state_home: &Path,
+    core_git: &Path,
+    core: &str,
+    harness: &str,
+    now: i64,
+) -> Vec<Measure> {
     use measures::rounds::{BEFORE, Main, rounds};
+    // The harness's mirror is its installer's and keeps only refs, so a
+    // head a rebase left behind is gone from it. Cadence asks its own
+    // clone beside core's, made from the mirror the first time a late
+    // round needs it, and fetches into that.
+    let harness_git = core_git.with_file_name("harness.git");
+    let mirror = axes::landings::harness_mirror();
+    let mirror = mirror.to_string_lossy();
+    let origin = crate::CORE;
+    let core_moved = |merge: &str, witness: &str| moved(core_git, origin, origin, merge, witness);
+    let harness_moved =
+        |merge: &str, witness: &str| moved(&harness_git, &mirror, HARNESS, merge, witness);
     let since = u64::try_from(now - DAY - BEFORE).map_or(std::time::UNIX_EPOCH, |s| {
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
@@ -330,10 +355,12 @@ fn rounds_per_merge(state_home: &Path, core: &str, harness: &str, now: i64) -> V
         Main {
             repo: "github:Jitsusama/core.nix",
             log: core,
+            moved: &core_moved,
         },
         Main {
             repo: "github:Jitsusama/agentic-harness.pi",
             log: harness,
+            moved: &harness_moved,
         },
     ];
     rounds(
