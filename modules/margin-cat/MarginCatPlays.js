@@ -10,10 +10,16 @@
 // at the doze. It keeps still whatever else is true (VKCF3Z, eb64260b)
 // while Do Not Disturb holds (`quiet`), since being left alone means the
 // cat too; on a call, a camera in use (`onCamera`); with the screen
-// `locked`; and where it's drawn on no screen (`unseen`), fullscreen,
-// shared or in the overview, since a play there wakes for no one.
+// `locked`; where it's drawn on no screen (`unseen`), fullscreen,
+// shared or in the overview, since a play there wakes for no one; and while
+// the launcher's card is up (`launched`), since his keys are there, and a
+// frame drawn for the cat then is one the shell isn't drawing for them;
+// what his hand sets off is his, and runs on (MarginCatScreen.qml's byHand).
+// Each card, like any change of level, draws a fresh rest once it goes, so a
+// launcher opened often while he types makes its plays rarer still: it's
+// as much his engagement as a key that changes the level.
 function level(heard) {
-    if (heard.quiet || heard.onCamera || heard.locked || heard.unseen) {
+    if (heard.quiet || heard.onCamera || heard.locked || heard.unseen || heard.launched) {
         return "still";
     }
     if (heard.asleep) {

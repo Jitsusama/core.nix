@@ -28,6 +28,7 @@
   "Devices.js"
   "LineEditing.js"
   "Niri.qml"
+  "Launched.qml"
   "Fuzzy.js"
   "Trials.qml"
   "Traces.qml"

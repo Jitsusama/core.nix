@@ -16,7 +16,10 @@
 // gentle plays in place every few seconds, at random; a minute, sometimes
 // a hop or a short wander and back, on the same walk. Each wait is one
 // timer, never a poll, a key ends any play at once, and it keeps still in
-// Do Not Disturb, on a call, locked, and where no screen draws it. This is
+// Do Not Disturb, on a call, locked, and where no screen draws it; while
+// the launcher's card is up, a walk under way holds where it got to, too,
+// but for what Joel's hand sets off, a drop, fetch or chase, which runs on
+// beside the card (MarginCatScreen.qml). This is
 // the scene every screen shares; each screen's cat, where it sits and how
 // it moves and is drawn, is MarginCatScreen.qml's.
 pragma ComponentBehavior: Bound
@@ -63,7 +66,7 @@ Scope {
         : Theme.pixels.nothingHere) ?? []
     // How lively it may be, from how engaged Joel is: typing, paused ten
     // seconds, idle a minute, or asleep; still in Do Not Disturb, on a
-    // call, locked, or drawn on no screen.
+    // call, locked, drawn on no screen, or under the launcher's card.
     readonly property string lively: Plays.level({
         paused: pausing.isIdle,
         idle: idling.isIdle,
@@ -71,7 +74,8 @@ Scope {
         quiet: Quiet.on,
         onCamera: root.onCamera,
         locked: root.lockSaid === "locked",
-        unseen: root.placedOn === 0
+        unseen: root.placedOn === 0,
+        launched: Launched.up
     })
     // How many screens draw it now, each window counting itself in and out.
     property int placedOn: 0
