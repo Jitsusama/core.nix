@@ -1367,7 +1367,7 @@
   '';
   health-gives-back-the-pages-it-reads = ''
     health's unit holds a high mark of 256 MiB, past which the kernel takes back the pages its
-    start's replay reads, and no hard limit that would end it
+    start's replay reads, and no hard limit, whose kill would lose what health holds unwritten
   '';
   health-passes-clippy = ''
     clippy finds nothing in health or its tests
