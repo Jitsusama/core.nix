@@ -3764,12 +3764,18 @@ import {
     sproutInput.setCustomValidity("");
     if (sproutInput.value.length >= LONGEST_WORDS) where.textContent = FULL_WORDS;
   });
-  // Where the line hangs a second row over what's under it, the drawer
-  // makes room above its first line, so nothing in it is covered.
-  new ResizeObserver(() => {
-    const hang = sproutLine.hidden ? 0 : sproutLine.getBoundingClientRect().bottom - sproutLine.parentElement.getBoundingClientRect().bottom - 1;
-    treeBox.style.setProperty("--hang", `${Math.max(0, Math.round(hang))}px`);
-  }).observe(sproutLine);
+  // Where the line hangs a second row over the drawer, the drawer starts
+  // below all of it, so nothing in it is covered. The room is measured
+  // from the foot of the line's row, where the drawer's place starts,
+  // since the drawer's own edge moves with the room; again whenever the
+  // line or the row round it changes size.
+  const lineRow = sproutLine.closest(".headline");
+  const hangOver = new ResizeObserver(() => {
+    const hang = sproutLine.hidden ? 0 : Math.ceil(sproutLine.getBoundingClientRect().bottom - lineRow.getBoundingClientRect().bottom);
+    treeBox.style.setProperty("--hang", `${Math.max(0, hang)}px`);
+  });
+  hangOver.observe(sproutLine);
+  hangOver.observe(lineRow);
   // A held s opens the line once; its repeats don't type into the field.
   sproutLine.addEventListener("keyup", () => {
     sproutHeld = false;

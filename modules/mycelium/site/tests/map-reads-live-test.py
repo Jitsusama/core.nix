@@ -797,6 +797,11 @@ PLACED = """(selector) => {
   const r = document.querySelector(selector).getBoundingClientRect();
   return [r.left + scrollX, r.top + scrollY, r.width, r.height];
 }"""
+# Whether the drawer's first line starts at or under the hanging sheet.
+CLEAR_OF_SHEET = """() => {
+  const sheet = document.getElementById("sprout-line").getBoundingClientRect();
+  return document.getElementById("panel-body").getBoundingClientRect().top >= sheet.bottom - 1;
+}"""
 # Where the field's chosen words start and end.
 CHOSEN = """(() => {
   const f = document.getElementById("sprout");
@@ -966,8 +971,13 @@ def test_new_works_line_hangs_over_the_map_on_a_phone(
         _, top, _, tall = page.evaluate(PLACED, "#sprout-line")
         assert tall > 44 + 1, f"the line held one row, {tall} px tall"
         assert page.evaluate(PLACED, "#map") == was, "the line moved the map"
-        _, body, _, _ = page.evaluate(PLACED, "#panel-body")
-        assert body >= top + tall - 1, f"the line, to {top + tall}, covers the drawer from {body}"
+        # The drawer makes its room once the line is laid out, a frame on.
+        try:
+            page.wait_for_function(CLEAR_OF_SHEET, timeout=PACE_MS)
+        except PlaywrightTimeoutError:
+            _, body, _, _ = page.evaluate(PLACED, "#panel-body")
+            room = page.evaluate("getComputedStyle(document.getElementById('panel')).marginTop")
+            pytest.fail(f"the line, to {top + tall}, covers the drawer from {body}, given {room}")
     finally:
         opened.close()
 

@@ -1237,8 +1237,9 @@ body {
    room from its top, a line too narrow for one row hangs its second
    over the map, as a sheet would, rather than pushing the map down; its
    rule lies on the line's own while it holds one row, and under the
-   sheet when it hangs. The drawer makes room above itself for what
-   hangs (view.js sets --hang), so none of it is covered. */
+   sheet when it hangs. The drawer starts below what hangs (view.js sets
+   --hang), so none of it is covered: by its edge, since padding in a
+   box that scrolls is scrolled past to keep what's read in place. */
 .sprout {
   position: absolute;
   z-index: 3;
@@ -1254,8 +1255,7 @@ body {
 }
 
 .panel {
-  padding-block-start: var(--hang, 0px);
-  scroll-padding-block-start: var(--hang, 0px);
+  margin-block-start: var(--hang, 0px);
 }
 
 .sprout svg {
