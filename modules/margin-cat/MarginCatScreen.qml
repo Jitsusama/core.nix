@@ -708,11 +708,12 @@ PanelWindow {
     // After a frame's answer, `heard` (Shown.heard): the walk told once
     // every frame of it is in, or the next frame asked of while it goes.
     // Nothing is asked while it's held under the launcher, since each ask
-    // draws a frame of its own (stilled, below).
+    // draws a frame of its own (stilled, below), but for what Joel's hand
+    // set off, which runs on there and is heard frame by frame as ever.
     function answered(heard: var): void {
         if (heard.ends)
             sayWalked();
-        else if (telling === "" && !Launched.up)
+        else if (telling === "" && (!Launched.up || byHand))
             window.FramePresentation.ask();
     }
     // The longest a walk done waits to hear of its last frames.
@@ -882,7 +883,11 @@ PanelWindow {
         landedOn = null;
         holding = true;
         byHand = true;
-        if (yarnAt !== null && !yarnFades.running)
+        // A play's yarn under the card was held fading as halt() ended
+        // it, before his hand was on it, so it fades on now he has it.
+        if (yarnAt !== null && yarnFades.paused)
+            yarnFades.resume();
+        else if (yarnAt !== null && !yarnFades.running)
             goes(yarnFades);
     }
 
@@ -1323,8 +1328,9 @@ PanelWindow {
             leaning: window.leaning,
             swatting: window.swatting,
             held: window.holding,
-            // Whether it's held still under the launcher's card.
-            stilled: window.stilled,
+            // Whether it's held still under the launcher's card, which
+            // what Joel's hand set off never is.
+            stilled: window.stilled && !window.byHand,
             landed: window.landedOn,
             yarn: yarnLies ? { x: yarnAt.x, y: yarnAt.y } : null,
             walk: going === null || stepped === null ? null : {
