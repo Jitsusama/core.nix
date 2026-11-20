@@ -55,6 +55,10 @@ run() {
   fi
 }
 
+# A case that fails leaves its quitting stand-in waiting for this file, so
+# it's made as the test ends, however it ends.
+trap 'touch "$work/quit"' EXIT
+
 # Waits until a stand-in's process has taken Chrome's name, which it does a
 # moment after the fork.
 named() {
@@ -222,7 +226,8 @@ python3 "$unreadable" "$work/quit" &
 hidden=$!
 named "$hidden"
 if grep -q . "/proc/$hidden/maps" 2>/dev/null; then
-  echo "the stand-in's maps can still be read, so it stands in for no sandboxed Chrome"
+  echo "the stand-in's maps can still be read, so it stands in for no sandboxed Chrome;"
+  echo "this test's account may read processes that aren't dumpable, as root does"
   exit 1
 fi
 run "unreadable Chrome's" &
@@ -262,13 +267,12 @@ fill
 quit_later "$work/quit"
 # The last run's log says the same, so it can't be what's read.
 rm -f run.log
+started=$SECONDS
 run "long-quitting Chrome's" &
 running=$!
-looks=0
 until grep -q 'holds the profile' run.log 2>/dev/null; do
   waiting "a Chrome still quitting, ending before it gave up"
-  looks=$((looks + 1))
-  if [ "$looks" -gt 900 ]; then
+  if [ $((SECONDS - started)) -gt 90 ]; then
     echo "the command hadn't given up on a quitting Chrome after a minute and a half"
     exit 1
   fi
@@ -276,8 +280,13 @@ until grep -q 'holds the profile' run.log 2>/dev/null; do
   # a minute to say it.
   sleep 0.1
 done
+# Half a minute of looks a second apart, less a few for a slow clock.
+if [ $((SECONDS - started)) -lt 25 ]; then
+  echo "the command gave up on a quitting Chrome after $((SECONDS - started)) s, not half a minute"
+  exit 1
+fi
 waiting "a Chrome still quitting as it gave up, to see it quit"
-untouched "once a Chrome had quit for half a minute"
+untouched "while a Chrome was still quitting after half a minute"
 touch "$work/quit"
 wait "$quitting"
 wait "$running"
