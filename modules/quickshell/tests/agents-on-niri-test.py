@@ -4003,7 +4003,13 @@ def test_a_parked_sessions_return_lands_on_wake_and_a_second_asks_the_wake(shell
         assert not [one for one in landed if one.startswith("becoming agent:PARKED")], landed
         shell.send_key("ret")
         unheld = "PARKED isn't parked with a holder to wake it this boot"
-        shell.reported("unsteered PARKED: ", lambda why: why == unheld, first)
+        # Fenced, with no holder, it's reopened by its own id under its fence instead, and
+        # with no session file of its own that's refused too (Sessions' reopensUnwoken).
+        shell.reported(
+            "couldn't reopen PARKED: ",
+            lambda why: why == "no session file or folder of its own",
+            first,
+        )
         # Its row, drawn as woken from the second Return, is taken back at once, not after
         # the half minute a wake is waited for.
         shell.reported(
