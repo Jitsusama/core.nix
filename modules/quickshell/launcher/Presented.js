@@ -282,7 +282,9 @@ const kindWord = /^[a-z][a-z0-9-]*$/;
 // A program's own id, as kitty, 1Password or org.gnome.Evolution. A
 // browser's app window may build one from a page's address, with
 // underscores for its slashes, so one that isn't shaped like this is said
-// as no app at all, as is a window that names none.
+// as no app at all, as is a window that names none: niri's records leave
+// its app empty, and a key built from a window read past them would say
+// null or undefined.
 const appWord = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
 const appsUnnamed = ["null", "undefined"];
 
