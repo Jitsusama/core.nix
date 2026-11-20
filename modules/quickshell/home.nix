@@ -2761,8 +2761,13 @@ in
         NotifyAccess = "all";
         # GTK's platform theme, which other Qt programs take, changes the
         # shell's default font and slows its start, and it draws from the
-        # theme itself.
-        UnsetEnvironment = [ "QT_QPA_PLATFORMTHEME" ];
+        # theme itself. Qt's perf map is unset too, so one exported for a
+        # profile never reaches Joel's shell through the login's environment
+        # (Environment, below).
+        UnsetEnvironment = [
+          "QT_QPA_PLATFORMTHEME"
+          "QV4_PROFILE_WRITE_PERF_MAP"
+        ];
         # niri calls back a surface it isn't drawing, as behind the lock or on
         # a dark screen, only once a second. Qt took a callback 100 ms late for
         # a window gone out of sight and drew it whole when it came, asking for
@@ -2814,7 +2819,7 @@ in
         # (2026-11-19); which of its writes waited isn't yet shown. A lab
         # on a quiet disk had found the map cost nothing. A profile sets
         # it in the environment shell-preview starts from, which hands it
-        # to its own shell, never on his. Qt's profiler would name the
+        # to its own shell; the unit unsets it on his. Qt's profiler would name the
         # functions too, but only through a debugging port any local
         # process could drive, in the shell that asks for his password.
         Environment = shellEnvironment;

@@ -3054,7 +3054,8 @@
     every corner and border in the shell and in each module's surface is the theme's
   '';
   quickshell-writes-no-perf-map = ''
-    the account's Quickshell unit leaves Qt writing no perf map of the JavaScript it compiles
+    the account's Quickshell unit sets Qt no perf map of the JavaScript it compiles, and unsets one
+    the login's environment would give it
   '';
   reader-builds-again-only-for-the-pages-keys = ''
     a new act in the key language for lists leaves the reader's build as it was, and one for pages
