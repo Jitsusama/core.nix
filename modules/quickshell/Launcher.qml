@@ -9472,8 +9472,9 @@ Scope {
         if (!open)
             return;
         // A place's own answers, as Network's Address, carry no key and
-        // a command row no source, so they're named by their name and the
-        // place held: each was said as `drawer for ""`, in home.
+        // a command row no source, so they're named by their name, or as
+        // an answer with reports off (Presented.rowShown), and the place
+        // held: each was said as `drawer for ""`, in home.
         const key = drawerRow?.key || drawerRow?.name || "";
         // What a source wrote, a window's title or a row's name, kept out
         // of every line this says, as a key's is, unless reports are on;
