@@ -140,17 +140,23 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
     desktop.power("off")
 
     def let_go(*, quietly: bool) -> None:
-        steps: list[Callable[[], object]] = [
-            lambda: desktop.lid(shut=False),
+        steps: list[tuple[str, Callable[[], object]]] = [
+            ("opening the lid", lambda: desktop.lid(shut=False)),
             # The stand-in sleep ends once logind sees the lid open, so it settles first.
-            lambda: machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1)),
-            lambda: machine.succeed("rm -f /run/suspended"),
-            lambda: desktop.power("on"),
-            lambda: desktop.as_account("systemctl --user stop keep-awake.service"),
-            # The sleep locked the screen first, as it does before every one.
-            lambda: desktop.as_account("qs ipc call lock release"),
+            (
+                "settling",
+                lambda: machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1)),
+            ),
+            ("forgetting the sleeps", lambda: machine.succeed("rm -f /run/suspended")),
+            ("powering on", lambda: desktop.power("on")),
+            (
+                "stopping Keep Awake",
+                lambda: desktop.as_account("systemctl --user stop keep-awake.service"),
+            ),
+            # The sleep locked the screen, so it's let go.
+            ("releasing the lock", lambda: desktop.as_account("qs ipc call lock release")),
         ]
-        for step in steps:
+        for name, step in steps:
             if not quietly:
                 step()
                 continue
@@ -159,7 +165,7 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
             try:
                 step()
             except Exception as missed:  # noqa: BLE001
-                machine.log(f"letting go after a failure: {missed!r}")
+                machine.log(f"letting go after a failure, {name} failed: {missed!r}")
 
     try:
         machine.succeed(LID_HELD)
@@ -174,24 +180,27 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
         desktop.lid(shut=True)
         machine.wait_until_succeeds(ASLEEP, timeout=timedelta(minutes=1))
-        # A sleep lasts until the lid opens, so a lid shut long enough for logind to start a
-        # second sleeps once: each repeated sleep locked the screen again after its release.
+        # The sleep locks the screen before it starts, as it does before every one.
+        machine.wait_until_succeeds(locked, timeout=timedelta(seconds=10))
+        # A sleep lasts until the lid opens, so one shut lid sleeps once. This holds the
+        # stand-in to it: one that returned at once had logind sleep again for as long as
+        # the lid stayed shut, each sleep locking the screen again after its release.
         machine.sleep(LOOKING)
         desktop.lid(shut=False)
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
         slept = int(machine.succeed("wc -l < /run/suspended"))
         assert slept == 1, f"one shut lid slept {slept} times"
+        let_go(quietly=False)
+        # The release takes, and nothing locks the screen again; relocked, every subtest
+        # after failed on it (2026-11-19).
+        machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
+        machine.sleep(LOOKING)
+        machine.succeed(unlocked)
     except Exception:
         # Let go without raising, so the failure above is the one told; a lock still queued,
         # or a sleep that never ended, may then fail the subtests that follow.
         let_go(quietly=True)
         raise
-    let_go(quietly=False)
-    # Unlocked, it stays so, whether a before-sleep lock lands late or the lid's own hold
-    # locks again; relocked, every subtest after failed on it (2026-11-19).
-    machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
-    machine.sleep(LOOKING)
-    machine.succeed(unlocked)
 
 
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(
