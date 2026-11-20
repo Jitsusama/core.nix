@@ -195,7 +195,10 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     # still finds the second after its own look over the channel, and is asked into nothing.
     # The card gives up on it within tens of milliseconds, and wpa_supplicant was on its way
     # to the Roadside Inn before wifid heard it gave up (2026-11-20), so the card moves with
-    # its other networks off, and is back within a second, never on the Inn.
+    # its other networks off, and is back within a second, never on the Inn. A card that left
+    # the first for the second without a word finds the first still holding it as joined,
+    # and bidding it come back once it has asked whether the card is still there, so the
+    # second is counted beyond that wait.
     machine.succeed("systemctl stop lantern-two")
     since = wifid.journal_now()
     answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
@@ -229,7 +232,12 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         if "wlan2: CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:00:00" in line
     )
     took = float(back.split()[0]) - float(moved.split()[0])
-    assert took < 1, f"back {took:.3f} s after the move was asked"
+    bidden = machine.succeed(
+        f"journalctl -k -o cat --after-cursor='{since}'"
+        " | sed -n 's/^wlan2: .* rejected association temporarily;.* (\\([0-9]*\\) ms)$/\\1/p'"
+    ).split()
+    waited = sum(int(ms) for ms in bidden) / 1000
+    assert took < 1 + waited, f"back {took:.3f} s after the move was asked, bidden wait {waited} s"
     inn = [line for line in said if "SSID='Roadside Inn'" in line]
     assert not inn, f"tried the Inn on the way back: {inn}"
     machine.succeed(

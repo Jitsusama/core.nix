@@ -24,7 +24,7 @@
 //! comes off its network on the way, is handed back, once, with the point
 //! its card left, so the card is sent back there rather than left on no
 //! network: the 16 Nov failure scanned for 18 s. The way back is followed
-//! as a move of its own, given `BACK_AFTER` too, whatever its steps say.
+//! as a move of its own, given `BACK_FOR`, whatever its steps say.
 
 use std::collections::HashMap;
 
@@ -46,6 +46,14 @@ const FOLLOWED: Duration = Duration::from_secs(30);
 /// the one it left. Good moves reached theirs 113 and 166 ms after the ask
 /// (19 Nov 2026), and the slowest of 15 Nov went silent for 401 ms.
 pub const BACK_AFTER: Duration = Duration::from_secs(1);
+
+/// How long a way back has to reach the point it left before its card may
+/// join whatever it hears. A card moving leaves its point without a word,
+/// so a point that protects its frames, as every WPA3 one does, still
+/// holds it as joined and bids it come back after 1024 ms, while it asks
+/// whether the card is still there; in a test the way back took 1.25 s
+/// for that (2026-11-20).
+pub const BACK_FOR: Duration = Duration::from_secs(2);
 
 /// Each card's move on its way, by the card's name.
 #[derive(Default)]
@@ -178,8 +186,13 @@ impl Arrivals {
     pub fn due(&self) -> Option<Instant> {
         self.moves
             .values()
-            .filter(|moving| moving.from.is_some() || moving.back)
-            .map(|moving| moving.asked + BACK_AFTER)
+            .filter_map(|moving| {
+                if moving.back {
+                    Some(moving.asked + BACK_FOR)
+                } else {
+                    moving.from.as_ref().map(|_| moving.asked + BACK_AFTER)
+                }
+            })
             .min()
     }
 
@@ -193,13 +206,13 @@ impl Arrivals {
     }
 
     /// Hands back each card whose way back hasn't reached its point
-    /// `BACK_AFTER` after it was sent, with that point, and forgets it, so
+    /// `BACK_FOR` after it was sent, with that point, and forgets it, so
     /// the card can be let join whatever it hears.
     pub fn stranded(&mut self, now: Instant) -> Vec<(String, String)> {
         let stranded: Vec<String> = self
             .moves
             .iter()
-            .filter(|(_, moving)| moving.back && now >= moving.asked + BACK_AFTER)
+            .filter(|(_, moving)| moving.back && now >= moving.asked + BACK_FOR)
             .map(|(card, _)| card.clone())
             .collect();
         let mut stranded: Vec<_> = stranded
@@ -746,7 +759,7 @@ mod tests {
     }
 
     #[test]
-    fn a_way_back_not_there_in_a_second_is_stranded_once_whatever_its_steps_said() {
+    fn a_way_back_not_there_in_two_seconds_is_stranded_once_whatever_its_steps_said() {
         let mut arrivals = Arrivals::default();
         let now = Instant::now();
         arrivals.asked("wlan0", Some(DESK), FAR, now);
@@ -756,17 +769,18 @@ mod tests {
 
         let due = arrivals.due();
         let going = arrivals.going_back("wlan0");
-        let early = arrivals.stranded(now + ms(1188));
-        let stranded = arrivals.stranded(now + ms(189) + BACK_AFTER);
-        let again = arrivals.stranded(now + ms(3000));
+        // As long as the point bade it wait in a test, and the join after.
+        let early = arrivals.stranded(now + ms(189) + ms(1250));
+        let stranded = arrivals.stranded(now + ms(189) + BACK_FOR);
+        let again = arrivals.stranded(now + ms(5000));
 
         assert_eq!(
             due,
-            Some(now + ms(189) + BACK_AFTER),
-            "due a second after it's sent"
+            Some(now + ms(189) + BACK_FOR),
+            "due two seconds after it's sent"
         );
         assert!(going, "still going back, though it said it disconnected");
-        assert_eq!(early, [], "not before its second is up");
+        assert_eq!(early, [], "not while a point bids it wait its second");
         assert_eq!(
             stranded,
             [("wlan0".to_owned(), DESK.to_owned())],
