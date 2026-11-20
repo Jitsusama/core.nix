@@ -397,10 +397,14 @@ fn carries(path: &str, sha: &str, rev: &str) -> Option<bool> {
 fn changed(path: &str, sha: &str) -> Option<String> {
     command(
         "git",
-        // A rename would hide the name a runtime still applies the patch by.
+        // A rename would hide the name a runtime still applies the patch by,
+        // and a quoted name would miss the patches' folder and read as
+        // reaching no host.
         &[
             "-C",
             path,
+            "-c",
+            "core.quotePath=false",
             "diff",
             "--no-renames",
             "--name-only",
@@ -463,14 +467,19 @@ fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
         let since = log(&["--first-parent", &range], patch)?;
         let earlier = log(&["--full-history", &parent], patch)?;
         let apart = log(&["--full-history", &range], patch)?;
-        let after = log(&["--full-history", "--ancestry-path", &range], patch)?;
+        // Asked of each commit, since `--ancestry-path` under a path leaves
+        // out a merge that descends from `sha` and keeps its text. One git
+        // can't place counts as apart, which only stops the walk sooner.
+        let descends = |commit: &&str| {
+            command(
+                "git",
+                &["-C", path, "merge-base", "--is-ancestor", sha, commit],
+            )
+            .is_ok()
+        };
         let mut before: Vec<Option<String>> = earlier
             .lines()
-            .chain(
-                apart
-                    .lines()
-                    .filter(|commit| !after.lines().any(|a| a == *commit)),
-            )
+            .chain(apart.lines().filter(|commit| !descends(commit)))
             .map(read)
             .collect::<Option<_>>()?;
         before.push(read(&parent)?);
@@ -545,10 +554,7 @@ fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
     Some(
         units
             .lines()
-            // A unit gone from the config, though still listed, is no host's.
-            .filter(|line| line.split_whitespace().nth(1) == Some("loaded"))
-            .filter_map(|line| line.split_whitespace().next())
-            .filter(|unit| host_unit(unit))
+            .filter_map(listed_host)
             .map(|unit| {
                 let shown = command(
                     "systemctl",
@@ -577,6 +583,16 @@ fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
             })
             .collect(),
     )
+}
+
+/// The host unit a line of `systemctl list-units --all` names, unless it's
+/// one gone from the config and stopped: a host still running after its
+/// unit's file went still loads its runtime, so it's read.
+fn listed_host(line: &str) -> Option<&str> {
+    let mut fields = line.split_whitespace();
+    let unit = fields.next().filter(|unit| host_unit(unit))?;
+    let (load, active) = (fields.next(), fields.next());
+    (load == Some("loaded") || active != Some("inactive")).then_some(unit)
 }
 
 /// A host unit's main process and when it started, from `systemctl show`.
@@ -629,7 +645,15 @@ fn unit_runtime(shown: &str) -> Option<std::path::PathBuf> {
 /// The store path `dir` lies in, whatever it's named: what makes it a host's
 /// runtime is the copies of its patches it keeps, which `applied` reads.
 fn store_root(dir: &str) -> Option<std::path::PathBuf> {
-    let name = Path::new(dir)
+    let dir = Path::new(dir);
+    // `..` would name one store path while pi loads from another.
+    if dir
+        .components()
+        .any(|part| part == std::path::Component::ParentDir)
+    {
+        return None;
+    }
+    let name = dir
         .strip_prefix("/nix/store")
         .ok()?
         .components()

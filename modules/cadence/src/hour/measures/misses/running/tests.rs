@@ -199,9 +199,34 @@ fn a_host_is_read_by_its_units_main_process() {
         "a pi outside the store"
     );
     assert_eq!(runtime(b"HOME=/home/x\0"), None, "no pi named");
+    let climbs = format!("PI_PACKAGE_DIR=/nix/store/{OLD}-a/../{OLD}-b/lib\0");
+    assert_eq!(
+        runtime(climbs.as_bytes()),
+        None,
+        "a path climbing out of one store path was judged by it"
+    );
     assert!(
         host_unit("pi-host-work-background.service"),
         "a host's unit wasn't a host"
+    );
+    let listed = [
+        "pi-host-work-attended.service loaded active running pi",
+        "pi-host-work-background.service loaded inactive dead pi",
+        "pi-host-home-attended.service not-found active running pi",
+        "pi-host-gone-attended.service not-found inactive dead pi",
+        "pi-host-down@x.service loaded inactive dead down",
+    ];
+    assert_eq!(
+        listed
+            .iter()
+            .filter_map(|line| listed_host(line))
+            .collect::<Vec<_>>(),
+        [
+            "pi-host-work-attended.service",
+            "pi-host-work-background.service",
+            "pi-host-home-attended.service",
+        ],
+        "a stopped host, or one still running after its unit's file went, was left out"
     );
     assert!(
         !host_unit("pi-host-down@pi-host-work-attended.service"),
@@ -358,10 +383,15 @@ fn scratch(name: &str) -> std::path::PathBuf {
 fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
     let repo = scratch("versions");
     std::fs::create_dir_all(&repo).expect("a scratch history");
+    // The patches lie where core keeps them, and are named by their files.
+    let [x, y, gone, later] =
+        ["x", "y", "gone", "later"].map(|name| format!("{PATCHES}{name}.patch"));
+    let (x, y, gone, later) = (x.as_str(), y.as_str(), gone.as_str(), later.as_str());
     // Writes each patch named with its text, or removes it, and commits.
     let commit = |patches: &[(&str, Option<&str>)], message: &str| {
         for (name, text) in patches {
             let file = repo.join(name);
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("a folder made");
             match text {
                 Some(text) => std::fs::write(file, text).expect("a patch written"),
                 None => std::fs::remove_file(file).expect("a patch removed"),
@@ -372,20 +402,22 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
     };
     git(&repo, &["init", "-q", "-b", "main"]);
     let first = [
-        ("x.patch", Some("oldest")),
-        ("gone.patch", Some("g")),
-        ("later.patch", Some("l0")),
+        (x, Some("oldest")),
+        (y, Some("y0")),
+        (gone, Some("g")),
+        (later, Some("l0")),
     ];
     commit(&first, "before");
-    commit(&[("x.patch", Some("old"))], "a step");
-    // A side branch cut before the fix, holding the patch without it.
+    commit(&[(x, Some("old"))], "a step");
+    // A side branch cut before the fix, holding a patch without it.
     git(&repo, &["checkout", "-qb", "side"]);
-    commit(&[("x.patch", Some("side"))], "side");
+    commit(&[(y, Some("side"))], "side");
     git(&repo, &["checkout", "-qb", "fix", "main"]);
     let fix = [
-        ("x.patch", Some("new")),
-        ("gone.patch", None),
-        ("later.patch", Some("l1")),
+        (x, Some("new")),
+        (y, Some("y1")),
+        (gone, None),
+        (later, Some("l1")),
     ];
     commit(&fix, "fix");
     git(&repo, &["checkout", "-q", "main"]);
@@ -395,9 +427,10 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
         .output()
         .expect("git runs");
     let sha = String::from_utf8_lossy(&out.stdout).trim().to_owned();
-    commit(&[("x.patch", Some("newer"))], "a later fix");
-    // The side branch merged since, its text taking the patch back to one
-    // without the fix.
+    commit(&[(x, Some("newer"))], "a later fix");
+    // The side branch merged since, its text taking y back to one without
+    // the fix.
+    commit(&[(y, Some("y2"))], "a later fix to y");
     git(
         &repo,
         &[
@@ -406,21 +439,21 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
     );
     // A revert to a state from before the step before the fix, a rewrite
     // built on it, and a later removal of what the fix rewrote.
-    commit(&[("x.patch", Some("oldest"))], "a revert");
-    commit(&[("x.patch", Some("rewritten"))], "a rewrite");
-    commit(&[("later.patch", None)], "a removal");
+    commit(&[(x, Some("oldest"))], "a revert");
+    commit(&[(x, Some("rewritten")), (y, Some("y3"))], "a rewrite");
+    commit(&[(later, None)], "a removal");
     let path = repo.to_string_lossy();
-    let patches = [
-        "x.patch".to_owned(),
-        "gone.patch".to_owned(),
-        "later.patch".to_owned(),
-    ];
+    let patches = [x, y, gone, later].map(str::to_owned);
     assert_eq!(
         versions(&path, &sha, &patches),
         Some(Wanted::from([
             (
                 "x.patch".to_owned(),
                 vec![Some("new".to_owned()), Some("newer".to_owned())]
+            ),
+            (
+                "y.patch".to_owned(),
+                vec![Some("y1".to_owned()), Some("y2".to_owned())]
             ),
             ("gone.patch".to_owned(), vec![None]),
             ("later.patch".to_owned(), vec![Some("l1".to_owned())]),
@@ -434,11 +467,11 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
         "a merge cadence doesn't have read as one carrying nothing"
     );
     assert!(
-        matches!(state(&path, &sha, "gone.patch"), Ok(None)),
+        matches!(state(&path, &sha, gone), Ok(None)),
         "a patch the merge removed wasn't read as absent"
     );
     assert!(
-        state(&path, "0000000000000000000000000000000000000000", "x.patch").is_err(),
+        state(&path, "0000000000000000000000000000000000000000", x).is_err(),
         "a commit git can't read was taken for one lacking the patch"
     );
     std::fs::remove_dir_all(&repo).expect("the scratch history removed");
