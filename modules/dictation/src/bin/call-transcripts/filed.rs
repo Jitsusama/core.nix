@@ -25,11 +25,12 @@ pub fn whole(title: &str, summary: Option<&str>, transcript: &str) -> String {
         .or_else(|| said.strip_prefix("# Transcript"))
         .unwrap_or(said)
         .trim_start();
-    let mut file = String::new();
-    if !title.is_empty() {
-        file.push_str(&format!("# {title}\n\n"));
-    }
-    file.push_str(&format!("{SUMMARY}\n\n{summary}\n\n{TRANSCRIPT}\n\n{said}"));
+    let heading = if title.is_empty() {
+        String::new()
+    } else {
+        format!("# {title}\n\n")
+    };
+    let mut file = format!("{heading}{SUMMARY}\n\n{summary}\n\n{TRANSCRIPT}\n\n{said}");
     if !file.ends_with('\n') {
         file.push('\n');
     }
