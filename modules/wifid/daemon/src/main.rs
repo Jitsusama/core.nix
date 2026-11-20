@@ -245,12 +245,12 @@ async fn serve(
     wifid.add_cards().await;
 
     // Followed before the access points are first read, so none heard
-    // meanwhile is missed. Only wpa_supplicant's own are taken, since any
-    // program on the bus may send a signal under its path; the bus matches
-    // the name to whoever holds it, across a restart too.
+    // meanwhile is missed. Any program on the bus may send a signal under
+    // wpa_supplicant's path, and they're taken all the same rather than
+    // only from its name, since the VM test says a card is scanning so,
+    // no radio there ever hanging a look (2026-11-20).
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
-        .sender("fi.w1.wpa_supplicant1")?
         .path_namespace("/fi/w1/wpa_supplicant1")?
         .build();
     let signals = drained(MessageStream::for_match_rule(rule, &bus, None).await?);
