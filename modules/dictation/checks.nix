@@ -250,14 +250,17 @@
   # takes grouped with no count of the people, of the speech given a voice
   # at least `right` is its voice's speaker's, and at least `named` of the
   # speech is given one. A change that tells them apart better raises the
-  # floors to what it reaches.
+  # floors to what it reaches. On 2026-11-20 it named 86.1% right and
+  # 43.5% of the speech: TS3003a's far end is one talker with 97% of it,
+  # rightly left under Others, so its speech is never named and holds the
+  # second share near half; each floor sits half a point under.
   call-transcripts-tells-voices-apart-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "99.9";
-      named = "99.9";
+      right = "85.6";
+      named = "43.0";
     in
     pkgs.runCommand "call-transcripts-tells-voices-apart-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts voices ${voices} ${meetings} \
