@@ -16,6 +16,16 @@ const KIND = "session";
 // on each row as its `state` and `rank` and read by Agents.qml's stateOf
 // and rankOf, so nothing here works them out a second way.
 
+// Where a session stands in that order, from the agents daemon's row for
+// it (`row.held.rank`). Only a number is a rank: one not served yet, or
+// served as anything else, goes after every one ranked, since Number would
+// make null, "" or false 0, the first place, ahead of one needing Joel.
+const UNRANKED = Number.MAX_SAFE_INTEGER;
+function rankOf(row) {
+    const rank = row?.held?.rank;
+    return Number.isFinite(rank) ? rank : UNRANKED;
+}
+
 // The acts a running session offers, by their vocabulary's ids, in the
 // order every kind keeps (docs/design.md, the order of actions): what
 // leaves it as it is before what changes it, and what ends it last. Every

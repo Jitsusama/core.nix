@@ -114,7 +114,10 @@
     "launcher/Program.js"
     "launcher/Recent.js"
   ];
-  "launcher/Ask.qml" = [ "Fuzzy.js" ];
+  "launcher/Ask.qml" = [
+    "Fuzzy.js"
+    "launcher/TalkOn.js"
+  ];
   "launcher/Awaited.js" = [
     "launcher/Pacing.js"
     "launcher/Trials.js"
@@ -300,6 +303,7 @@
     "launcher/Addresses.js"
     "launcher/Numbers.js"
   ];
+  "launcher/TalkOn.js" = [ "launcher/Order.js" ];
   "launcher/Today.qml" = [
     "launcher/Moment.js"
     "launcher/NowDrawers.js"

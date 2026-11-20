@@ -746,6 +746,8 @@ in
       cp ${../launcher/Keyboards.js} Keyboards.js
       cp ${../launcher/KeyCounts.js} KeyCounts.js
       cp ${../launcher/Order.js} Order.js
+      cp ${../launcher/TalkOn.js} TalkOn.js
+      cp ${../launcher/SessionRow.js} SessionRow.js
       cp ${../tests/colour-cases.js} colour-cases.js
       cp ${import ../launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
