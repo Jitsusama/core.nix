@@ -395,40 +395,55 @@ fn unrun(
 /// cells: it lists each again only as the cell resumes. At 08:10 on 20
 /// November the hour read a minute after the background host restarted
 /// and counted 51 quests no cell had taken up, against 8 the hour before,
-/// while by 08:25 the node had 133 of its 143 cells carrying their quest.
+/// while by 08:25 the node had 133 of its 143 cells carrying their quest,
+/// the 10 left near the 8 of the hour before.
 const RESUMING: i64 = 15 * 60;
 
-/// The measures of quests no live cell runs, which read a cell the node
-/// hasn't listed again as gone.
-const UNRUN: [&str; 3] = [
+/// The measures `cells` reads from the node's list of cells, each of which
+/// a cell it hasn't listed again misreads: a quest it ran counts as unrun,
+/// and an idle one goes uncounted, so its owner's drag reads as back in.
+const LISTED: [&str; 5] = [
+    "cells-idle",
+    "cells-parked-done",
     "quests-without-cells",
     "quests-cells-ended",
     "quests-parked-past-start",
 ];
 
-/// The measures of quests no live cell runs, left unjudged and saying so
-/// where a pi host in `started`, each running host's start, began within
-/// `RESUMING` of `now`. Their lines stay, since some may be real; the
-/// measures of the cells the node lists are judged as ever. Hosts that
-/// couldn't be listed leave the hour as it was, and a measure already
-/// unread keeps its one reason.
+/// What an hour read while a host resumes says of its cells.
+const COMING_BACK: &str = "its cells still coming back";
+
+/// The measures of the node's list of cells, left unjudged and saying so
+/// where a pi host in `started`, when each on this machine last resumed,
+/// did so within `RESUMING` of `now`, or after it, as one starting while
+/// the hour reads. Unjudged, the card names none of their lines and no
+/// owner is filed or let off, since most are the resume's; they're kept
+/// in the hour's record. Any host's resume does it, since the node can't
+/// say which quests a host's cells ran before it lost them, so it costs
+/// every quest one hour's judgment. Other machines' hosts aren't read:
+/// the restarts that misled were this machine's. Hosts that couldn't be
+/// listed leave the hour as it was, and a measure already unread keeps its
+/// one reason.
 pub fn mid_resume(measures: &mut [Measure], started: Option<&[i64]>, now: i64) {
     let Some(newest) = started
         .unwrap_or_default()
         .iter()
         .copied()
-        .filter(|&at| at <= now && now - at < RESUMING)
+        .filter(|&at| now - at < RESUMING)
         .max()
     else {
         return;
     };
-    let why = format!(
-        " (read {} min after a pi host started, its cells still coming back)",
-        (now - newest) / 60
-    );
+    // A host still activating resumes now, and one may start after `now`.
+    let when = match now - newest {
+        ..=0 => "as".to_owned(),
+        1..60 => "under a minute after".to_owned(),
+        seconds => format!("{} min after", seconds / 60),
+    };
+    let why = format!(" (read {when} a pi host started, {COMING_BACK})");
     for m in measures
         .iter_mut()
-        .filter(|m| UNRUN.contains(&m.key.as_str()) && m.target.is_some())
+        .filter(|m| LISTED.contains(&m.key.as_str()) && m.target.is_some())
     {
         m.target = None;
         m.says.push_str(&why);
@@ -949,55 +964,80 @@ pub(super) mod tests {
     #[test]
     fn quests_read_while_a_host_resumes_its_cells_are_unjudged_and_say_so() {
         let quests = [quest_of("AAAAAA", "active", "driving", Some("PARENT"))];
+        // Beside the cells' own, a measure the node's list doesn't feed.
+        let other = Measure {
+            key: "reports-unasked".into(),
+            ..measure(
+                &cells(&[answer(&[])], None, HERE, &zone(), NOW, "F"),
+                "cells-idle",
+            )
+            .clone()
+        };
         let read = |started: Option<&[i64]>| {
             let mut all = cells(&[answer(&[])], Some(&quests), HERE, &zone(), NOW, "F");
+            all.push(other.clone());
             mid_resume(&mut all, started, NOW);
             all
         };
-        let unrun = [
-            "quests-without-cells",
-            "quests-cells-ended",
-            "quests-parked-past-start",
-        ];
+        let judged = read(None);
+        assert_eq!(
+            judged.len(),
+            LISTED.len() + 1,
+            "cells gave other measures than LISTED"
+        );
         // At 08:10 on 20 November the hour read a minute after the
         // background host restarted, and counted 51 quests no cell had
-        // taken up against 8 the hour before.
-        let resuming = read(Some(&[NOW - 4 * 3600, NOW - 60]));
-        for key in unrun {
-            let m = measure(&resuming, key);
+        // taken up against 8 the hour before. The newest start counts.
+        for (started, when) in [
+            (vec![NOW - 60, NOW - 4 * 3600, NOW - 600], "1 min after"),
+            (vec![NOW - 30], "under a minute after"),
+            (vec![NOW], "as"),
+            (vec![NOW + 20], "as"),
+        ] {
+            let resuming = read(Some(&started));
+            for key in LISTED {
+                let m = measure(&resuming, key);
+                assert_eq!(
+                    m.target, None,
+                    "{key} was judged as a host resumed: {started:?}"
+                );
+                assert_eq!(
+                    m.says,
+                    format!(
+                        "{} (read {when} a pi host started, {COMING_BACK})",
+                        measure(&judged, key).says
+                    ),
+                    "{key} didn't say why it went unjudged: {started:?}"
+                );
+            }
             assert_eq!(
-                m.target, None,
-                "{key} was judged a minute after a host began"
+                measure(&resuming, "reports-unasked"),
+                measure(&judged, "reports-unasked"),
+                "a measure the node's list doesn't feed went unjudged"
             );
-            assert!(
-                m.says
-                    .ends_with("(read 1 min after a pi host started, its cells still coming back)"),
-                "{key} didn't say why it went unjudged: {}",
-                m.says
+            assert_eq!(
+                measure(&resuming, "quests-without-cells").behind,
+                ["AAAAAA driving, no cell the node knows · PARENT"],
+                "the quests read mid-resume were no longer kept in the hour's record"
             );
         }
-        assert_eq!(
-            measure(&resuming, "quests-without-cells").behind,
-            ["AAAAAA driving, no cell the node knows · PARENT"],
-            "the quests read mid-resume were no longer named"
-        );
-        assert_eq!(
-            measure(&resuming, "cells-idle").target,
-            Some(0.0),
-            "a measure of the cells listed went unjudged"
-        );
         for started in [None, Some(&[NOW - 15 * 60][..]), Some(&[][..])] {
-            assert!(
-                read(started)
-                    .iter()
-                    .all(|m| m.target == Some(0.0) && !m.says.contains("resum")),
+            assert_eq!(
+                read(started),
+                judged,
                 "an hour with no host just begun went unjudged: {started:?}"
             );
         }
+        assert!(
+            LISTED
+                .iter()
+                .all(|key| measure(&judged, key).target == Some(0.0)),
+            "an hour read with no host resuming wasn't judged"
+        );
         let mut unread = cells(&[], Some(&quests), HERE, &zone(), NOW, "F");
         mid_resume(&mut unread, Some(&[NOW - 60]), NOW);
         assert!(
-            unread.iter().all(|m| !m.says.contains("still coming back")),
+            unread.iter().all(|m| !m.says.contains(COMING_BACK)),
             "a measure already unread was given a second reason"
         );
     }
