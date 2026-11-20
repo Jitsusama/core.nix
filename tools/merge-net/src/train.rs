@@ -5,7 +5,8 @@
 //! merges an hour, main moved beside a change again before its run ended,
 //! and #4983 missed its time five times so.
 //!
-//! `ready`, where it would start a change's run again, boards it instead:
+//! `ready`, where it would start a change's run again, or send a head
+//! behind main to rebase over files main moved, boards it instead:
 //! a file under the net's state folder, `train/riders/<head>.json`, says
 //! its head, its branch and when it boarded, and `ready` starts the train
 //! as a user unit of its own, `merge-net ride`, unless it already goes.

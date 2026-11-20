@@ -448,21 +448,30 @@ fn run_again(commit: &str) -> String {
 /// this head runs again alone, as a reader of the kit owed its turn first
 /// still has it go first.
 fn ride_or_run_again(commit: &str, main: &str, checked: &str, files: &[String]) -> String {
-    if turn::waits_to_run(commit).is_none() && needs_heard(commit, main, &[checked], files) {
-        // A draft boards no more here than through may_merge.
-        let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
-        if let Some(said) = (!branch.is_empty())
-            .then(|| train::drafted(&branch).or_else(|| train::offer(commit, &branch)))
-            .flatten()
-        {
-            return said;
-        }
+    if let Some(said) = boards(commit, main, checked, files) {
+        return said;
     }
     let again = run_again(commit);
     match train::fell_said(commit) {
         Some(fell) => format!("{fell}; {again}"),
         None => again,
     }
+}
+
+/// What `ready` says of `commit`, whose pass at `checked` main moved
+/// beside, once it boards the merge train, or that it can't as a draft;
+/// nothing when it can't board. One whose needs no one heard, asked from
+/// no branch, that fell off the train at this head, or that a reader of
+/// the kit owed its turn goes ahead of, doesn't board.
+fn boards(commit: &str, main: &str, checked: &str, files: &[String]) -> Option<String> {
+    if turn::waits_to_run(commit).is_some() || !needs_heard(commit, main, &[checked], files) {
+        return None;
+    }
+    // A draft boards no more here than through may_merge.
+    let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
+    (!branch.is_empty())
+        .then(|| train::drafted(&branch).or_else(|| train::offer(commit, &branch)))
+        .flatten()
 }
 
 /// The newest commit on `main` to change the rules for which VM tests run
@@ -480,13 +489,17 @@ fn newest_rules(main: &str) -> String {
 }
 
 /// Refuse `commit`, behind origin's main at `main`, which since moved
-/// `shared` of its files unseen by its run at `checked`. A run again at a
-/// head behind main would check it against the same old base, so only a
-/// rebase brings main's moves in.
+/// `shared` of its files unseen by its run at `checked`, where it couldn't
+/// board the train. A run again at a head behind main would check it
+/// against the same old base, so only a rebase brings main's moves in.
 fn rebase_over(commit: &str, main: &str, checked: &str, shared: &[String]) -> ExitCode {
+    let fell = train::fell_said(commit)
+        .map(|fell| format!("{fell}; "))
+        .unwrap_or_default();
     eprintln!(
         "merge-net: {} doesn't sit on origin's main as it is now, {}, which has since moved \
-         {}, so its run at {} didn't see them; rebase onto origin/main, push, and merge again",
+         {}, so its run at {} didn't see them; {fell}rebase onto origin/main, push, and merge \
+         again",
         short(commit),
         short(main),
         shared.join(", "),
@@ -552,8 +565,25 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
                 return Ok(said);
             }
+            // On 20 November four changes ready to merge were sent to
+            // rebase by hand and run again, three of them missing their
+            // times, while main moved about every five minutes. The train merges a head as it
+            // stands, as a merge commit, and builds what main moved in one
+            // run over all its riders, so a head behind main boards it too,
+            // and only one that can't is sent to rebase.
             if behind {
-                return Ok(rebase_over(commit, main, &checked, &shared));
+                return Ok(match boards(commit, main, &checked, &files) {
+                    Some(said) => {
+                        eprintln!(
+                            "merge-net: the same change passed at {}, but main has since \
+                             moved {}; {said}",
+                            short(&checked),
+                            shared.join(", ")
+                        );
+                        ExitCode::FAILURE
+                    }
+                    None => rebase_over(commit, main, &checked, &shared),
+                });
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
