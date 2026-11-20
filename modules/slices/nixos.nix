@@ -466,7 +466,18 @@ in
       MemoryHigh = "26%";
       IOWeight = 1;
     };
-    systemd.user.slices.background.sliceConfig.IOWeight = 1;
+    # The account's own daemons, 33 of them on 20 November (indexers, cadence,
+    # transcripts, models reading the screen), are held to eight processors'
+    # time, half the laptop's 16. Their weight of 30 only ranks them once every
+    # core is taken: a burst of theirs still lands on every idle core, and an
+    # app thread that wakes there waits for it to be preempted. The quota
+    # keeps half the cores clear of them. It rarely bites: from 13:35 to
+    # 14:00 on 20 November they had work in 14,952 tenths of a second and
+    # were held back in one. Set only at runtime before, a reset lost it.
+    systemd.user.slices.background.sliceConfig = {
+      IOWeight = 1;
+      CPUQuota = "800%";
+    };
 
     # Work other sessions wait on, beside jobs rather than in it, so it runs
     # ahead of jobs, which is idle on the processor. On 5 November, while the
