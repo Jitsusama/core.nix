@@ -548,6 +548,17 @@ pub fn post(endpoint: &str, token: &Token, query: &str) -> Result<Value, Failed>
 /// The keeping of what a refresh saw at `file`, written whole through a
 /// file beside it and renamed over it, so a reading never finds half of
 /// one, and readable by its owner alone, since it names private changes.
+/// Keeps what a refresh saw, as `keep` does, each change first marked by
+/// whether it asks the review of `login`, the one the machine declares, so
+/// the collection can lead with the reviews asked of him once the refresh
+/// has gone. With no login, nothing is marked.
+pub fn keep_marked(file: &Path, seen: &mut Seen, login: Option<&str>) -> io::Result<()> {
+    if let Some(login) = login {
+        seen.mark_asked(login);
+    }
+    keep(file, seen)
+}
+
 pub fn keep(file: &Path, seen: &Seen) -> io::Result<()> {
     kept::write(file, &serde_json::to_vec(seen).map_err(io::Error::other)?)
 }

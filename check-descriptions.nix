@@ -3229,7 +3229,8 @@
   '';
   repos-is-told-every-realms-owners = ''
     the refresh's unit gives repos every realm's declared owners as one word that systemd passes
-    whole, on a machine declaring two realms that list one owner in both
+    whole, on a machine declaring two realms that list one owner in both, and runs a repos that
+    sets the declared login outright, so what a refresh keeps as asked of him is his
   '';
   repos-passes-clippy = ''
     clippy finds nothing in repos or its tests

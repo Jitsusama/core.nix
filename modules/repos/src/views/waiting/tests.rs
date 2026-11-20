@@ -12,8 +12,8 @@ use crate::views::repositories;
 use crate::views::tests::{HOME, NOW, ROOMS, change, clock, home, record, refreshed};
 
 /// The refreshed record with changes waiting on `joel`: one asking his
-/// review in core.nix, a newer one in walgit-rs, his own failing, his own
-/// with changes asked, one of his own that waits on nobody, and someone
+/// review in core.nix, a newer one in walgit-rs, his own failing, newer
+/// than a review asked of him, his own with changes asked, one of his own that waits on nobody, and someone
 /// else's failing, which waits on him not at all. Only what a refresh
 /// keeps is set, so no change holds the logins it asked.
 fn waiting_on_joel() -> Record {
@@ -31,7 +31,7 @@ fn waiting_on_joel() -> Record {
         "joel/fails",
         ChecksState::Failing,
         Review::ChangesAsked,
-        60,
+        3,
     );
     failing.author = Some("JOEL".to_owned());
     let mut asked_to_change = change(
@@ -87,8 +87,8 @@ fn drawn(record: &Record, room: Room) -> String {
 const LEADS: [&str; 4] = [
     "Jitsusama/walgit-rs#4794",
     "core.nix#4795",
-    "core.nix#4792",
     "core.nix#4793",
+    "core.nix#4792",
 ];
 
 #[test]
@@ -216,20 +216,17 @@ fn a_review_asked_of_the_login_leads_once_a_refresh_has_kept_it() {
         "github:Jitsusama/core.nix".to_owned(),
         vec![asked, asked_of_another],
     );
-    seen.mark_asked("joel");
     let folder = std::env::temp_dir().join(format!("repos-{}-asked-and-kept", std::process::id()));
     let file = folder.join("github.json");
-    github::keep(&file, &seen).expect("it keeps");
+    github::keep_marked(&file, &mut seen, Some("joel")).expect("it keeps");
     let written = std::fs::read_to_string(&file).expect("it reads");
-    let _ = std::fs::remove_dir_all(&folder);
-    assert!(
-        !written.contains("Joel") && !written.contains("osprey"),
-        "a login whose review was asked was kept: {written}"
-    );
     let mut record = record();
-    github::merge(
-        &mut record,
-        &serde_json::from_str(&written).expect("what's kept reads back"),
+    github::merge_kept(&mut record, &file);
+    let _ = std::fs::remove_dir_all(&folder);
+    let lowered = written.to_ascii_lowercase();
+    assert!(
+        !lowered.contains("joel") && !lowered.contains("osprey"),
+        "a login whose review was asked was kept: {written}"
     );
     let text = drawn(&record, Room::Cells(80));
     assert_eq!(for_you(&text), ["core.nix#4795"], "{text}");

@@ -292,11 +292,8 @@ fn refresh(home: Option<&Path>, now: u64) -> Result<Seen, Failure> {
         || gh::token(gh::command(&gh)),
         |token, query| github::post(github::GRAPHQL, token, query),
     ));
-    if let Some(login) = login() {
-        seen.mark_asked(&login);
-    }
     let file = seen_file(home)?;
-    github::keep(&file, &seen).map_err(|why| {
+    github::keep_marked(&file, &mut seen, login().as_deref()).map_err(|why| {
         Failure::new(Exit::Failed, "repos couldn't keep what GitHub holds")
             .because(format!("{}: {why}", file.display()))
     })?;

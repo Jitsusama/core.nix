@@ -62,7 +62,9 @@ Where the machine declares Joel's GitHub login, `repos` opens with what
 waits on him: each change asking his review, then each of his own failing
 its checks or with changes asked, newest first. In `--json` that's each
 change's `asks_your_review`, which a refresh sets against the declared
-login and which holds no login, and its `author`.
+login and which holds no login, and its `author`. Whose review a change
+asks is as of the last refresh, five minutes at most on Linux, and until
+`repos refresh` on a Mac, which has no timer.
 
 A name two repositories share is refused with exit 64 and each one's key, so
 ask again by `owner/name` or key. An unknown name exits 66 and names the
