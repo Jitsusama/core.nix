@@ -343,7 +343,6 @@ QtObject {
             ["a gap past those shown", [{}, {}, {}, { gap: true }], 2, 2, 32],
             ["fewer rows than room", [{ gap: true }], 2, 1, 40],
             ["no rows at all", [], 2, 0, 32],
-            // As the home network's list stands, a gap above each eero.
             ["two rows standing apart", [{ gap: true }, {}, { gap: true }, {}], 3, 3, 64],
             ["a headed list", [{ heading: true }, {}, { heading: true }, {}, {}, {}], 3, 5, 72],
             ["a heading among a card's rows", [{}, { heading: true }, {}, {}], 2, 3, 46],

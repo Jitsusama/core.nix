@@ -136,7 +136,8 @@ Scope {
     // never run off the screen). A page's gap is allowed for whether it
     // shows or not, so what's found never changes how many; the gaps and
     // headings past it the card takes only as far as listRoom holds them
-    // (Steady.tallFor).
+    // (Steady.tallFor), which on a screen too small for three shows what
+    // fits rather than run off it.
     readonly property int rows: !screenHere ? 8
         : Math.max(3, Math.min(8, Math.floor((listRoom - groupGap) / rowTall)))
     // How tall the list may stand on this screen: all but its margins
@@ -12148,8 +12149,11 @@ Scope {
     // A kept card is drawn at the height it was kept at, never laid out
     // again as it opens, so a screen that shrinks while it's shut (a new
     // scale, another output) keeps it again at as many rows as now fit;
-    // kept at 1 and opened at 1.5, its foot ran 30 px off the bottom.
-    onRowsChanged: {
+    // kept at 1 and opened at 1.5, its foot ran 30 px off the bottom. Its
+    // height reads the room and the rows' sizes as well as how many, and
+    // rowSizes holds every one `rows` is worked out from, so it's kept
+    // again as any of them moves.
+    onRowSizesChanged: {
         if (homeHeld)
             keepHome();
     }

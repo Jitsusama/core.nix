@@ -224,8 +224,7 @@ function landing(waiting, came) {
 // How tall the list stands while the launcher is open, sized from `shown`,
 // the rows it's sized for: as tall as its first `rows` rows stand by
 // tallOf, and the headings among them, so the last row it shows ends at
-// its foot, every gap among them counted, as the home network's eeros
-// each have one. A heading is never a row (Headings.js), so it adds its
+// its foot, every gap among them counted however many stand apart. A heading is never a row (Headings.js), so it adds its
 // line and not to the count, which `heading` tells it of. It never passes
 // `sizes.room`, the screen's room for the list, stopping at the last row
 // that fits in it, and a heading is never left alone at its foot. A list
