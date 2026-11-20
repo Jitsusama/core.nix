@@ -203,6 +203,15 @@ QtObject {
             failures.push(`a way holding a place again isn't let go: ${marked(refilled)}`);
         if (Steady.letGoTold(none, "ahead").say)
             failures.push("a way that never held a place says what Vim says");
+        // A way written by anything but a share's letting go (a step, a
+        // jump, Ctrl+], a step leaving by itself) is no longer the share's
+        // to explain, though no key looked while it held a place; one not
+        // let go is left as it was, so nothing that reads the marks moves.
+        const written = Steady.wayWritten(started, "tags");
+        if (marked(written) !== "back last")
+            failures.push(`a way written since isn't the share's to explain: ${marked(written)}`);
+        if (Steady.wayWritten(written, "ahead") !== written)
+            failures.push("a way not let go leaves the marks as they were");
 
         // A row that arrives while the list is shown comes at the end, out
         // of the place a tree would give it, so it reads as it would ranked
