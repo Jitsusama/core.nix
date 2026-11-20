@@ -166,11 +166,11 @@ what net says of the day.
   name it was given on its own screen, which stands for eero's unless
   Joel nicknamed it there. A TV heard once is remembered while the
   daemon runs: a minute it's silent, or answers as something else, keeps
-  its name, role and model, says it isn't answering, and makes the source
-  unreachable while no TV answers. A TV switched off leaves eero's list,
-  so it isn't asked. The answer stays as `detail.samsung`, but for its ids and the
-  addresses eero gives. Sending it a key waits on Joel pressing Allow on
-  the TV, so none is sent.
+  its name, role and model, says it isn't answering as a TV, and makes the
+  source unreachable while no TV answers. A TV switched off leaves eero's
+  list, so it isn't asked, and is forgotten. The answer stays as
+  `detail.samsung`, but for its ids and the addresses eero gives. Sending
+  it a key waits on Joel pressing Allow on the TV, so none is sent.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
@@ -223,7 +223,7 @@ words is `said.rs`, and what the line carried over the last day is
   device can say, its ports and radios, the links it's on, a modem's
   channels and log, a receiver's volume and what it's doing, a
   printer's ink, what it's doing and the pages it has printed, a
-  television's power, or that it isn't answering, then what
+  television's power, or that it isn't answering as a TV, then what
   each source says that those didn't, in the source's words. A list of
   records or a series of readings is left to `--json`, which keeps every
   source's detail whole, but for a printer's statuses, read field by

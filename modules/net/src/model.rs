@@ -360,8 +360,8 @@ pub struct Television {
     /// Whether it's on or in standby, in its own word; none in a minute
     /// it didn't answer.
     pub power: Option<String>,
-    /// Whether it answered this minute; a TV heard before keeps its name
-    /// and role while it's silent.
+    /// Whether it answered as a TV this minute; a TV heard before keeps
+    /// its name and role while it's silent or answers as something else.
     pub answering: bool,
 }
 

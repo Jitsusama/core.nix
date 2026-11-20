@@ -120,6 +120,12 @@ pub fn remember(heard: &mut Heard, mac: String, answer: Result<Answer, String>) 
     }
 }
 
+/// Forgets each TV eero no longer lists, so the memory holds only the TVs
+/// on the network now, however many boxes have answered as one.
+pub fn forget_unlisted(heard: &mut Heard, listed: &[(String, String)]) {
+    heard.retain(|mac, _| listed.iter().any(|(listed, _)| listed == mac));
+}
+
 /// Each TV as it answered, or as it last answered while it's silent, and
 /// the source, or none when no box has answered as a TV. The source
 /// answers while any TV does, and is unreachable while every TV it has
@@ -390,6 +396,11 @@ pub mod tests {
             "its name went with its answer"
         );
         assert_eq!(
+            tv.model.as_deref(),
+            Some("QN55Q70CAFXZC"),
+            "its model went with its answer"
+        );
+        assert_eq!(
             tv.television,
             Television {
                 power: None,
@@ -426,6 +437,11 @@ pub mod tests {
             Some("Living Room"),
             "its name went with its answer"
         );
+        assert_eq!(
+            tv.model.as_deref(),
+            Some("QN55Q70CAFXZC"),
+            "its model went with its answer"
+        );
         assert!(
             !tv.television.answering,
             "an answer that isn't a TV's reads as one"
@@ -435,6 +451,16 @@ pub mod tests {
             Some("Living Room: its answer isn't a TV's: it says it's Samsung Soundbar"),
             "the reason doesn't say what it answered"
         );
+    }
+
+    #[test]
+    fn a_tv_eero_no_longer_lists_is_forgotten() {
+        let mut heard = Heard::new();
+        remember(&mut heard, MAC.into(), Ok(answer()));
+        remember(&mut heard, OTHER.into(), Ok(answer()));
+        forget_unlisted(&mut heard, &[(OTHER.to_owned(), ADDRESS.to_owned())]);
+        let kept = heard.keys().collect::<Vec<_>>();
+        assert_eq!(kept, [OTHER], "a TV that left is still remembered");
     }
 
     #[test]
